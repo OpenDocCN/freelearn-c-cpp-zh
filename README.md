@@ -4,22 +4,22 @@
 > 
 > 让开源界提前感受入关。
 
-* [在线阅读](https://ccpp.apachecn.org)
+* [在线阅读](https://ccpp.flygon.net)
 ## 下载
 
 ### Docker
 
 ```
-docker pull apachecn0/apachecn-c-cpp-zh
-docker run -tid -p <port>:80 apachecn0/apachecn-c-cpp-zh
+docker pull apachecn0/flygon-c-cpp-zh
+docker run -tid -p <port>:80 apachecn0/flygon-c-cpp-zh
 # 访问 http://localhost:{port} 查看文档
 ```
 
 ### NPM
 
 ```
-npm install -g apachecn-c-cpp-zh
-apachecn-c-cpp-zh <port>
+npm install -g flygon-c-cpp-zh
+flygon-c-cpp-zh <port>
 # 访问 http://localhost:{port} 查看文档
 ```
 
