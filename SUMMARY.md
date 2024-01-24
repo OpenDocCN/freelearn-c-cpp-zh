@@ -1,4 +1,3 @@
-+   [笨办法学C 中文版](docs/lcthw-zh/README.md)
 +   [C++ 高级编程](docs/adv-cpp/README.md)
 +   [C++ 高级编程秘籍](docs/adv-cpp-prog-cb/README.md)
 +   [C++ Qt5 GUI 编程](docs/cpp-gui-prog-qt5/README.md)
