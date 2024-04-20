@@ -99,16 +99,16 @@ dotnet new console -n MyConsoleApp
 1.  打开 VS Code 集成终端，输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_01 
-    ```
+dotnet new console -n Exercise1_01 
+```
 
 这个命令将在`Exercise1_01`文件夹中创建一个新的控制台应用程序。
 
 1.  在命令行中，输入以下内容：
 
 ```cpp
-    dotnet run --project Exercise1_01
-    ```
+dotnet run --project Exercise1_01
+```
 
 您应该看到以下输出：
 
@@ -230,24 +230,24 @@ var name = "Elon Musk";
 1.  打开命令提示符，输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_02
-    ```
+dotnet new console -n Exercise1_02
+```
 
 这个命令在`Exercise1_02`文件夹中创建一个新的控制台应用程序。
 
 1.  打开`Program.cs`文件。将以下内容粘贴到`Main`方法中：
 
 ```cpp
-    Console.WriteLine("Hi! I'm your first Program. What is your name?");
-    var name = Console.ReadLine();
-    Console.WriteLine($"Hi {name}, it is very nice to meet you. We have a really fun journey ahead.");
-    ```
+Console.WriteLine("Hi! I'm your first Program. What is your name?");
+var name = Console.ReadLine();
+Console.WriteLine($"Hi {name}, it is very nice to meet you. We have a really fun journey ahead.");
+```
 
 1.  保存文件。在命令行中，输入以下内容：
 
 ```cpp
-    dotnet run --project Exercise1_02
-    ```
+dotnet run --project Exercise1_02
+```
 
 这将输出以下内容：
 
@@ -258,10 +258,10 @@ Hi! I'm your first Program. What is your name?
 1.  现在，在控制台中输入你的名字，然后按下键盘上的`Enter`。例如，如果你输入`Mateus`，输出将会是：
 
 ```cpp
-    Hi! I'm your first Program. What is your name?
-    Mateus
-    Hi Mateus, it is very nice to meet you. We have a really fun journey ahead.
-    ```
+Hi! I'm your first Program. What is your name?
+Mateus
+Hi Mateus, it is very nice to meet you. We have a really fun journey ahead.
+```
 
 注意
 
@@ -297,8 +297,8 @@ var message4 = "A random message"     ;
 1.  现在，在字符串内部，放置花括号和你想要放入字符串中的变量的名称。在这种情况下，通过在初始字符串中放置`{name}`来实现：
 
 ```cpp
-    $"Hi {name}, it is very nice to meet you. We have a really fun journey ahead.");
-    ```
+$"Hi {name}, it is very nice to meet you. We have a really fun journey ahead.");
+```
 
 关于字符串的另一个重要事实是它们是不可变的。这意味着字符串对象在创建后无法更改。这是因为 C#中的字符串是字符数组。数组是一种数据结构，它们收集相同类型的对象并具有固定的长度。您将在接下来的部分详细介绍数组。
 
@@ -311,46 +311,46 @@ var message4 = "A random message"     ;
 1.  打开 VS Code 集成终端，并输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_03
-    ```
+dotnet new console -n Exercise1_03
+```
 
 1.  打开`Program.cs`文件，并创建一个返回类型为`void`的方法，用于替换字符串的一部分，如下所示：
 
 ```cpp
-    static void FormatString(string stringToFormat)
-    {
-    stringToFormat.Replace("World", "Mars");
-    }
-    ```
+static void FormatString(string stringToFormat)
+{
+stringToFormat.Replace("World", "Mars");
+}
+```
 
 在上面的代码片段中，使用`Replace`函数将第一个字符串（在本例中为`World`）替换为第二个字符串（`Mars`）。
 
 1.  现在，创建一个方法，执行相同的操作，但返回结果：
 
 ```cpp
-    static string FormatReturningString(string stringToFormat)
-    {
-    return stringToFormat.Replace("Earth", "Mars");
-    }
-    ```
+static string FormatReturningString(string stringToFormat)
+{
+return stringToFormat.Replace("Earth", "Mars");
+}
+```
 
 1.  现在在上述方法之后插入以下内容。在这里，您创建两个字符串变量，并在尝试使用先前创建的方法修改它们后观察它们的行为：
 
 ```cpp
-    var greetings = "Hello World!";
-    FormatString(greetings);
-    Console.WriteLine(greetings);
-    var anotherGreetings = "Good morning Earth!";
-    Console.WriteLine(FormatReturningString(anotherGreetings));
-    ```
+var greetings = "Hello World!";
+FormatString(greetings);
+Console.WriteLine(greetings);
+var anotherGreetings = "Good morning Earth!";
+Console.WriteLine(FormatReturningString(anotherGreetings));
+```
 
 1.  最后，从命令行调用`dotnet run --project Exercise1_03`。您应该在控制台上看到以下输出：
 
 ```cpp
-    dotnet run
-    Hello World!
-    Good morning Mars!
-    ```
+dotnet run
+Hello World!
+Good morning Mars!
+```
 
 注意
 
@@ -405,20 +405,20 @@ C#将其数字类型细分为两大类——整数和浮点类型数字。整数
 +   `float`：占用 4 字节，可以存储从± 1.5 x 10−45 到± 3.4 x 1038 的数字，精度范围为 6 到 9 位。要使用`var`声明一个浮点数，您可以简单地在数字后面添加`f`，如下所示：
 
 ```cpp
-    var myFloat = 10f;
-    ```
+var myFloat = 10f;
+```
 
 +   `double`：占用 8 字节，可以存储从± 5.0 × 10−324 到± 1.7 × 1030 的数字，精度范围为 15 到 17 位。要使用 var 声明一个双精度数，您可以在数字后面添加 d，如下所示：
 
 ```cpp
-    var myDouble = 10d;
-    ```
+var myDouble = 10d;
+```
 
 +   `decimal`：占用 16 字节，可以存储从± 1.0 x 10-28 到± 7.9228 x 1028 的数字，精度范围为 28 到 29 位。要使用 var 声明一个十进制数，您只需在数字后面添加 m，如下所示：
 
 ```cpp
-    var myDecimal = 10m;
-    ```
+var myDecimal = 10m;
+```
 
 选择浮点类型主要取决于所需的精度程度。例如，`decimal`主要用于需要非常高精度且不能依赖四舍五入进行精确计算的金融应用。对于 GPS 坐标，如果需要处理通常具有 10 位数字的亚米精度，`double`变量可能是合适的选择。
 
@@ -435,43 +435,43 @@ C#将其数字类型细分为两大类——整数和浮点类型数字。整数
 1.  打开 VS Code 集成终端，输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_04
-    ```
+dotnet new console -n Exercise1_04
+```
 
 1.  导航到项目文件夹，打开`Program.cs`文件，在`Main`方法中声明两个变量，读取用户输入，如下所示：
 
 ```cpp
-    Console.WriteLine("Type a value for a: ");
-    var a = int.Parse(Console.ReadLine());
-    Console.WriteLine("Now type a value for b: ");
-    var b = int.Parse(Console.ReadLine());
-    ```
+Console.WriteLine("Type a value for a: ");
+var a = int.Parse(Console.ReadLine());
+Console.WriteLine("Now type a value for b: ");
+var b = int.Parse(Console.ReadLine());
+```
 
 前面的代码片段使用`.ReadLine`方法读取输入。但是，这个方法返回一个`string`，而您需要评估一个数字。因此，在这里使用了`Parse`方法。所有数字类型都有一个名为 Parse 的方法，它接收一个字符串并将其转换为数字。
 
 1.  接下来，您需要将这些基本运算符的输出写入控制台。将以下代码添加到`Main`方法中：
 
 ```cpp
-    Console.WriteLine($"The value for a is { a } and for b is { b }");
-    Console.WriteLine($"Sum: { a + b}");
-    Console.WriteLine($"Multiplication: { a * b}");
-    Console.WriteLine($"Subtraction: { a - b}");
-    Console.WriteLine($"Division: { a / b}"); 
-    ```
+Console.WriteLine($"The value for a is { a } and for b is { b }");
+Console.WriteLine($"Sum: { a + b}");
+Console.WriteLine($"Multiplication: { a * b}");
+Console.WriteLine($"Subtraction: { a - b}");
+Console.WriteLine($"Division: { a / b}"); 
+```
 
 1.  使用`dotnet run`命令运行程序，如果您输入`10`和`20`，您应该会看到以下输出：
 
 ```cpp
-    Type a value for a:
-    10
-    Now type a value for b:
-    20
-    The value for a is 10 and b is 20
-    Sum: 30
-    Multiplication: 200
-    Subtraction: -10
-    Division: 0
-    ```
+Type a value for a:
+10
+Now type a value for b:
+20
+The value for a is 10 and b is 20
+Sum: 30
+Multiplication: 200
+Subtraction: -10
+Division: 0
+```
 
 注意
 
@@ -524,22 +524,22 @@ var person = new Person();
 +   在创建时，通过它的构造函数：
 
 ```cpp
-    var person = new Person("John", 10);
-    ```
+var person = new Person("John", 10);
+```
 
 +   在创建时，通过直接变量赋值：
 
 ```cpp
-    var person = new Person() { Name = "John", Age = 10 };
-    ```
+var person = new Person() { Name = "John", Age = 10 };
+```
 
 +   对象创建后，如下所示：
 
 ```cpp
-    var person = new Person();
-    person.Name = "John";
-    person.Age = 10;
-    ```
+var person = new Person();
+person.Name = "John";
+person.Age = 10;
+```
 
 类还有很多你将在后面看到的内容。现在，主要思想如下：
 
@@ -560,8 +560,8 @@ var person = new Person();
 +   如下分配当前时间：
 
 ```cpp
-    var now = DateTime.Now;
-    ```
+var now = DateTime.Now;
+```
 
 这将变量设置为调用计算机上的当前日期和时间，表示为本地时间。
 
@@ -584,37 +584,37 @@ var now = DateTime.UtcNow;
 1.  打开 VS Code 集成终端并键入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_05
-    ```
+dotnet new console -n Exercise1_05
+```
 
 1.  打开`Program.cs`文件。
 
 1.  将以下内容粘贴到`Main`方法中并保存文件：
 
 ```cpp
-    Console.WriteLine("Are the local and utc dates equal? {0}", DateTime.Now.Date == DateTime.UtcNow.Date);
-    Console.WriteLine("\nIf the dates are equal, does it mean that there's no TimeSpan interval between them? {0}",
-    (DateTime.Now.Date - DateTime.UtcNow.Date) == TimeSpan.Zero);
-    DateTime localTime = DateTime.Now;
-    DateTime utcTime = DateTime.UtcNow;
-    TimeSpan interval = (localTime - utcTime);
-    Console.WriteLine("\nDifference between the {0} Time and {1} Time: {2}:{3} hours",
-        localTime.Kind.ToString(),
-        utcTime.Kind.ToString(),
-        interval.Hours,
-        interval.Minutes);
-    Console.Write("\nIf we jump two days to the future on {0} we'll be on {1}",
-        new DateTime(2020, 12, 31).ToShortDateString(),
-        new DateTime(2020, 12, 31).AddDays(2).ToShortDateString());
-    ```
+Console.WriteLine("Are the local and utc dates equal? {0}", DateTime.Now.Date == DateTime.UtcNow.Date);
+Console.WriteLine("\nIf the dates are equal, does it mean that there's no TimeSpan interval between them? {0}",
+(DateTime.Now.Date - DateTime.UtcNow.Date) == TimeSpan.Zero);
+DateTime localTime = DateTime.Now;
+DateTime utcTime = DateTime.UtcNow;
+TimeSpan interval = (localTime - utcTime);
+Console.WriteLine("\nDifference between the {0} Time and {1} Time: {2}:{3} hours",
+    localTime.Kind.ToString(),
+    utcTime.Kind.ToString(),
+    interval.Hours,
+    interval.Minutes);
+Console.Write("\nIf we jump two days to the future on {0} we'll be on {1}",
+    new DateTime(2020, 12, 31).ToShortDateString(),
+    new DateTime(2020, 12, 31).AddDays(2).ToShortDateString());
+```
 
 在前面的代码片段中，您首先检查了当前本地日期和 UTC 日期是否相等。然后，您使用`TimeSpan`方法检查它们之间的间隔（如果有的话）。接下来，它打印了本地和 UTC 时间之间的差异，并打印了比当前日期提前两天的日期（在本例中为`31/12/2020`）。
 
 1.  保存文件。在命令行上，键入以下内容：
 
 ```cpp
-    dotnet run --project Exercise1_05
-    ```
+dotnet run --project Exercise1_05
+```
 
 您应该看到类似以下的输出：
 
@@ -673,22 +673,22 @@ var now = DateTime.Now.Date == DateTime.UtcNow.Date;
 +   分配检查`a`是否大于`b`的比较结果：
 
 ```cpp
-    var basicComparison = a > b;
-    ```
+var basicComparison = a > b;
+```
 
 +   分配检查`b`是否大于或等于`a`的比较结果：
 
 ```cpp
-    bool anotherBasicComparison = b >= a; 
-    ```
+bool anotherBasicComparison = b >= a; 
+```
 
 +   检查两个字符串是否相等，并将此比较的结果分配给一个变量：
 
 ```cpp
-    var animal1 = "Leopard";
-    var animal2 = "Lion";
-    bool areTheseAnimalsSame = animal1 == animal2;
-    ```
+var animal1 = "Leopard";
+var animal2 = "Lion";
+bool areTheseAnimalsSame = animal1 == animal2;
+```
 
 显然，先前比较的结果将是`false`，并且此值将分配给`areTheseAnimalsSame`变量。
 
@@ -697,24 +697,24 @@ var now = DateTime.Now.Date == DateTime.UtcNow.Date;
 +   `&&`（AND）运算符：此运算符将执行相等比较。如果两者相等，则返回`true`，如果它们不相等，则返回`false`。考虑以下示例，在这个示例中，您检查两个字符串的长度是否为`0`：
 
 ```cpp
-    bool areTheseStringsWithZeroLength = "".Length == 0 && " ".Length == 0; 
-    Console.WriteLine(areTheseStringsWithZeroLength);// will return false
-    ```
+bool areTheseStringsWithZeroLength = "".Length == 0 && " ".Length == 0; 
+Console.WriteLine(areTheseStringsWithZeroLength);// will return false
+```
 
 +   `||`（OR）运算符：此运算符将检查要比较的值中是否有一个为`true`。例如，在这里，您正在检查至少一个字符串的长度是否为零：
 
 ```cpp
-    bool isOneOfTheseStringsWithZeroLength = "".Length == 0 || " ".Length == 0;
-    Console.WriteLine(isOneOfTheseStringsWithZeroLength); // will return true
-    ```
+bool isOneOfTheseStringsWithZeroLength = "".Length == 0 || " ".Length == 0;
+Console.WriteLine(isOneOfTheseStringsWithZeroLength); // will return true
+```
 
 +   `！`（NOT）运算符：此运算符获取布尔表达式或值并对其取反；也就是说，它返回相反的值。例如，考虑以下示例，在这个示例中，您对检查一个字符串是否为零长度的比较结果取反：
 
 ```cpp
-    bool isOneOfTheseStringsWithZeroLength = "".Length == 0 || " ".Length == 0; 
-    bool areYouReallySure = !isOneOfTheseStringsWithZeroLength;
-    Console.WriteLine(areYouReallySure); // will return false
-    ```
+bool isOneOfTheseStringsWithZeroLength = "".Length == 0 || " ".Length == 0; 
+bool areYouReallySure = !isOneOfTheseStringsWithZeroLength;
+Console.WriteLine(areYouReallySure); // will return false
+```
 
 ## 使用 if-else 语句
 
@@ -733,48 +733,48 @@ var now = DateTime.Now.Date == DateTime.UtcNow.Date;
 1.  在 VS Code 集成终端中，创建一个名为`Exercise1_06`的新控制台项目：
 
 ```cpp
-    dotnet new console -n Exercise1_06
-    ```
+dotnet new console -n Exercise1_06
+```
 
 1.  在`Main`方法中，添加以下代码来询问用户用户名，并将值赋给一个变量：
 
 ```cpp
-    Console.WriteLine("Please type a username. It must have at least 6 characters: ");
-    var username = Console.ReadLine();
-    ```
+Console.WriteLine("Please type a username. It must have at least 6 characters: ");
+var username = Console.ReadLine();
+```
 
 1.  接下来，程序需要检查用户名是否有超过六个字符，如果没有，就在控制台上写一个错误消息：
 
 ```cpp
-    if (username.Length < 6)
-    {
-    Console.WriteLine($"The username {username} is not valid.");
-    }
-    ```
+if (username.Length < 6)
+{
+Console.WriteLine($"The username {username} is not valid.");
+}
+```
 
 1.  现在，在一个`else`子句中，你将继续验证并要求用户输入一个密码。一旦用户输入了密码，需要检查三个点。第一个条件是检查密码是否至少有六个字符，然后检查是否至少有一个数字。然后，如果这些条件中的任何一个失败，控制台应该显示一个错误消息；否则，它应该显示一个成功消息。添加以下代码来实现这一点：
 
 ```cpp
-    else
-    {
-    Console.WriteLine("Now type a 
-    password. It must have a length of at least 6 characters and also contain a number.");
-    var password = Console.ReadLine();
+else
+{
+Console.WriteLine("Now type a 
+password. It must have a length of at least 6 characters and also contain a number.");
+var password = Console.ReadLine();
 
-    if (password.Length < 6)
-         {
-         		Console.WriteLine("The password must have at least 6 characters.");
-    }
-         else if (!password.Any(c => char.IsDigit©))
-         {
-         		Console.WriteLine("The password must contain at least one number.");
-    }
-    else
-         {
-                 Console.WriteLine("User successfully registered.");
-    }
-    }
-    ```
+if (password.Length < 6)
+     {
+     		Console.WriteLine("The password must have at least 6 characters.");
+}
+     else if (!password.Any(c => char.IsDigit©))
+     {
+     		Console.WriteLine("The password must contain at least one number.");
+}
+else
+     {
+             Console.WriteLine("User successfully registered.");
+}
+}
+```
 
 从上面的片段中，你可以看到如果用户输入少于六个字符，就会显示一个错误消息`The password must have at least 6 characters.`。如果密码不包含一个数字但满足前面的条件，就会显示另一个错误消息`The password must contain at least one number.`。
 
@@ -783,12 +783,12 @@ var now = DateTime.Now.Date == DateTime.UtcNow.Date;
 1.  使用`dotnet run`运行程序。你应该会看到如下输出：
 
 ```cpp
-    Please type a username. It must have at least 6 characters:
-    thekingjames
-    Now type a password. It must have at least 6 characters and a number.
-    James123!"#
-    User successfully registered
-    ```
+Please type a username. It must have at least 6 characters:
+thekingjames
+Now type a password. It must have at least 6 characters and a number.
+James123!"#
+User successfully registered
+```
 
 注意
 
@@ -891,80 +891,80 @@ You have upgraded your car Super Brand New Car for the GearType Automatic
 1.  在 VS Code 中，打开集成终端并输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_07
-    ```
+dotnet new console -n Exercise1_07
+```
 
 1.  打开`Program.cs`文件。在同一个文件中，创建一个名为`GoldenRetriever`的结构，具有一个`Name`属性，如下所示：
 
 ```cpp
-    struct GoldenRetriever
-    {
-        public string Name { get; set; }
-    }
-    ```
+struct GoldenRetriever
+{
+    public string Name { get; set; }
+}
+```
 
 1.  仍然在同一个文件中，创建另一个名为`BorderCollie`的类，具有类似的`Name`属性：
 
 ```cpp
-    class BorderCollie
-    {
-        public string Name { get; set; }
-    }
-    ```
+class BorderCollie
+{
+    public string Name { get; set; }
+}
+```
 
 1.  还必须创建一个名为`Bernese`的类，也具有`Name`属性，但还有一个重写本地`Equals`方法：
 
 ```cpp
-    class Bernese
-    {
-        public string Name { get; set; }
-        public override bool Equals(object obj)
-        {
-            if (obj is Bernese borderCollie && obj != null)
-            {
-                return this.Name == borderCollie.Name;
-            }
-            return false;
-        }
-    }
-    ```
+class Bernese
+{
+    public string Name { get; set; }
+    public override bool Equals(object obj)
+    {
+        if (obj is Bernese borderCollie && obj != null)
+        {
+            return this.Name == borderCollie.Name;
+        }
+        return false;
+    }
+}
+```
 
 在这里，`this`关键字用于引用当前的`borderCollie`类。
 
 1.  最后，在`Program.cs`文件中，你将为这些类型创建一些对象。请注意，由于你使用了**顶级语句**，这些声明应该在类和结构声明之上：
 
 ```cpp
-            var aGolden = new GoldenRetriever() { Name = "Aspen" };
-            var anotherGolden = new GoldenRetriever() { Name = "Aspen" };
-            var aBorder = new BorderCollie() { Name = "Aspen" };
-            var anotherBorder = new BorderCollie() { Name = "Aspen" };
-            var aBernese = new Bernese() { Name = "Aspen" };
-            var anotherBernese = new Bernese() { Name = "Aspen" };
-    ```
+        var aGolden = new GoldenRetriever() { Name = "Aspen" };
+        var anotherGolden = new GoldenRetriever() { Name = "Aspen" };
+        var aBorder = new BorderCollie() { Name = "Aspen" };
+        var anotherBorder = new BorderCollie() { Name = "Aspen" };
+        var aBernese = new Bernese() { Name = "Aspen" };
+        var anotherBernese = new Bernese() { Name = "Aspen" };
+```
 
 1.  现在，在之前的声明之后，使用`Equals`方法比较这些值，并将结果分配给一些变量：
 
 ```cpp
-    var goldenComparison = aGolden.Equals(anotherGolden) ? "These Golden Retrievers have the same name." : "These Goldens have different names.";
-    var borderComparison = aBorder.Equals(anotherBorder) ? "These Border Collies have the same name." : "These Border Collies have different names.";
-    var berneseComparison = aBernese.Equals(anotherBernese) ? "These Bernese dogs have the same name." : "These Bernese dogs have different names.";
-    ```
+var goldenComparison = aGolden.Equals(anotherGolden) ? "These Golden Retrievers have the same name." : "These Goldens have different names.";
+var borderComparison = aBorder.Equals(anotherBorder) ? "These Border Collies have the same name." : "These Border Collies have different names.";
+var berneseComparison = aBernese.Equals(anotherBernese) ? "These Bernese dogs have the same name." : "These Bernese dogs have different names.";
+```
 
 1.  最后，使用以下内容将比较结果打印到控制台：
 
 ```cpp
-              Console.WriteLine(goldenComparison);
-              Console.WriteLine(borderComparison);
-              Console.WriteLine(berneseComparison);
-    ```
+          Console.WriteLine(goldenComparison);
+          Console.WriteLine(borderComparison);
+          Console.WriteLine(berneseComparison);
+```
 
 1.  使用`dotnet run`命令行运行程序，你将看到以下输出：
 
 ```cpp
-    These Golden Retrievers have the same name.
-    These Border Collies have different names.
-    These Bernese dogs have the same name.
-    ```
+These Golden Retrievers have the same name.
+These Border Collies have different names.
+These Bernese dogs have the same name.
+```
 
 注意
 
@@ -1037,49 +1037,49 @@ switch (matchingExpression)
 1.  现在，创建一个`System.Text.StringBuilder`。这是一个帮助以多种方式构建字符串的类。在这里，您正在逐行构建字符串，以便它们可以在控制台上正确显示：
 
 ```cpp
-    var menuBuilder = new System.Text.StringBuilder();
-    menuBuilder.AppendLine("Welcome to the Burger Joint. ");
-    menuBuilder.AppendLine(string.Empty);
-    menuBuilder.AppendLine("1) Burgers and Fries - 5 USD");
-    menuBuilder.AppendLine("2) Cheeseburger - 7 USD");
-    menuBuilder.AppendLine("3) Double-cheeseburger - 9 USD");
-    menuBuilder.AppendLine("4) Coke - 2 USD");
-    menuBuilder.AppendLine(string.Empty);
-    menuBuilder.AppendLine("Note that every burger option comes with fries and ketchup!");
-    ```
+var menuBuilder = new System.Text.StringBuilder();
+menuBuilder.AppendLine("Welcome to the Burger Joint. ");
+menuBuilder.AppendLine(string.Empty);
+menuBuilder.AppendLine("1) Burgers and Fries - 5 USD");
+menuBuilder.AppendLine("2) Cheeseburger - 7 USD");
+menuBuilder.AppendLine("3) Double-cheeseburger - 9 USD");
+menuBuilder.AppendLine("4) Coke - 2 USD");
+menuBuilder.AppendLine(string.Empty);
+menuBuilder.AppendLine("Note that every burger option comes with fries and ketchup!");
+```
 
 1.  在控制台上显示菜单，并要求用户选择其中一个选项：
 
 ```cpp
-    Console.WriteLine(menuBuilder.ToString());
-    Console.WriteLine("Please type one of the following options to order:");
-    ```
+Console.WriteLine(menuBuilder.ToString());
+Console.WriteLine("Please type one of the following options to order:");
+```
 
 1.  读取用户按下的键，并使用`Console.ReadKey()`方法将其赋值给一个变量。此方法与之前使用的`ReadLine()`类似，不同之处在于它读取调用方法后立即按下的键。添加以下代码：
 
 ```cpp
-    var option = Console.ReadKey();
-    ```
+var option = Console.ReadKey();
+```
 
 1.  现在是使用`switch`语句的时候了。在这里，将`option.KeyChar.ToString()`用作`switch`子句的匹配表达式。按键`1`、`2`、`3`和`4`应该分别接受`汉堡`、`芝士汉堡`、`双层芝士汉堡`和`可乐`的订单：
 
 ```cpp
-    switch (option.KeyChar.ToString())
-    {
-        case "1":
-            {
-                Console.WriteLine("\nAlright, some burgers on the go. Please pay the cashier.");
-                break;
-            }
-        case "2":
-            {
-                Console.WriteLine("\nThank you for ordering cheeseburgers. Please pay the cashier.");
-                break;
-            }
-        case "3":
-            {
-                Console.WriteLine("\nThank you for ordering double cheeseburgers, hope you enjoy them. Please pay the cashier!");
-    ```
+switch (option.KeyChar.ToString())
+{
+    case "1":
+        {
+            Console.WriteLine("\nAlright, some burgers on the go. Please pay the cashier.");
+            break;
+        }
+    case "2":
+        {
+            Console.WriteLine("\nThank you for ordering cheeseburgers. Please pay the cashier.");
+            break;
+        }
+    case "3":
+        {
+            Console.WriteLine("\nThank you for ordering double cheeseburgers, hope you enjoy them. Please pay the cashier!");
+```
 
 但是，任何其他输入都应被视为无效，并显示一条消息，让您知道您选择了一个无效的选项：
 
@@ -1102,16 +1102,16 @@ switch (matchingExpression)
 1.  最后，使用`dotnet run --project Exercise1_08`运行程序，并与控制台交互以查看可能的输出。例如，如果您输入`1`，您应该看到以下输出：
 
 ```cpp
-    Welcome to the Burger Joint. 
-    1) Burgers and Fries – 5 USD
-    2) Cheeseburger – 7 USD
-    3) Double-cheeseburger – 9 USD
-    4) Coke – 2 USD
-    Note that every burger option comes with fries and ketchup!
-    Please type one of the follow options to order:
-    1
-    Alright, some burgers on the go! Please pay on the following cashier!
-    ```
+Welcome to the Burger Joint. 
+1) Burgers and Fries – 5 USD
+2) Cheeseburger – 7 USD
+3) Double-cheeseburger – 9 USD
+4) Coke – 2 USD
+Note that every burger option comes with fries and ketchup!
+Please type one of the follow options to order:
+1
+Alright, some burgers on the go! Please pay on the following cashier!
+```
 
 注意
 
@@ -1151,44 +1151,44 @@ i = i +1;
 1.  在`Program.cs`文件中创建以下方法，该方法将执行你在练习开始时介绍的逻辑：
 
 ```cpp
-    static bool IsPrime(int number)
-    {
-    if (number ==0 || number ==1) return false;
-    bool isPrime = true;
-    int counter = 2;
-    while (counter <= Math.Sqrt(number))
-         {
-         		if (number % counter == 0)
-               {
-               	isPrime = false;
-                    break;
-    }
-    counter++;
-    }
-         return isPrime;
-    }
-    ```
+static bool IsPrime(int number)
+{
+if (number ==0 || number ==1) return false;
+bool isPrime = true;
+int counter = 2;
+while (counter <= Math.Sqrt(number))
+     {
+     		if (number % counter == 0)
+           {
+           	isPrime = false;
+                break;
+}
+counter++;
+}
+     return isPrime;
+}
+```
 
 1.  现在输入一个数字，这样你就可以检查它是否是质数：
 
 ```cpp
-    Console.Write("Enter a number to check whether it is Prime: ");
-    var input = int.Parse(Console.ReadLine());
-    ```
+Console.Write("Enter a number to check whether it is Prime: ");
+var input = int.Parse(Console.ReadLine());
+```
 
 1.  现在，检查数字是否是质数并打印结果：
 
 ```cpp
-    Console.WriteLine($"{input} is prime? {IsPrime(input)}.");
-    ```
+Console.WriteLine($"{input} is prime? {IsPrime(input)}.");
+```
 
 1.  最后，在 VS Code 集成终端中，调用`dotnet run --project Exercise1_09`并与程序交互。例如，尝试输入`29`作为输入：
 
 ```cpp
-    Enter a number to check whether it is Prime:
-    29
-    29 is prime? True
-    ```
+Enter a number to check whether it is Prime:
+29
+29 is prime? True
+```
 
 如预期的那样，`29`的结果是`true`，因为它是一个质数。
 
@@ -1350,61 +1350,61 @@ C#还允许使用嵌套循环，即循环内的循环，正如您将在下一个
 1.  使用以下命令创建一个新的控制台项目：
 
 ```cpp
-    dotnet new console -n Exercise1_10
-    ```
+dotnet new console -n Exercise1_10
+```
 
 1.  在`Program.cs`文件中，创建实现排序算法的方法。添加以下代码：
 
 ```cpp
-    static int[] BubbleSort(int[] array)
-    {
-        int temp;
-        // Iterate over the array
-        for (int j = 0; j < array.Length - 1; j++)
-        {
-            // If the last j elements are already ordered, skip them
-            for (int i = 0; i < array.Length - j - 1; i++)
-            {
-                if (array[i] > array[i + 1])
-                {
-                    temp = array[i + 1];
-                    array[i + 1] = array[i];
-                    array[i] = temp;
-                }
-            }
-        }
-        return array;
-    }
-    ```
+static int[] BubbleSort(int[] array)
+{
+    int temp;
+    // Iterate over the array
+    for (int j = 0; j < array.Length - 1; j++)
+    {
+        // If the last j elements are already ordered, skip them
+        for (int i = 0; i < array.Length - j - 1; i++)
+        {
+            if (array[i] > array[i + 1])
+            {
+                temp = array[i + 1];
+                array[i + 1] = array[i];
+                array[i] = temp;
+            }
+        }
+    }
+    return array;
+}
+```
 
 1.  现在创建一个带有一些数字的**数组**，如下所示：
 
 ```cpp
-    int[] randomNumbers = { 123, 22, 53, 91, 787, 0, -23, 5 };
-    ```
+int[] randomNumbers = { 123, 22, 53, 91, 787, 0, -23, 5 };
+```
 
 1.  调用`BubbleSort`方法，将数组作为参数传递，并将结果分配给一个变量，如下所示：
 
 ```cpp
-    int[] sortedArray = BubbleSort(randomNumbers);
-    ```
+int[] sortedArray = BubbleSort(randomNumbers);
+```
 
 1.  最后，您需要打印数组已排序的消息。为此，遍历它，打印数组元素：
 
 ```cpp
-    Console.WriteLine("Sorted:");
-    for (int i = 0; i < sortedArray.Length; i++)
-    {
-        Console.Write(sortedArray[i] + " ");
-    }
-    ```
+Console.WriteLine("Sorted:");
+for (int i = 0; i < sortedArray.Length; i++)
+{
+    Console.Write(sortedArray[i] + " ");
+}
+```
 
 1.  使用`dotnet run --project Exercise1_10`命令运行程序。您应该在屏幕上看到以下输出：
 
 ```cpp
-    Sorted:
-    -23 0 5 22 53 91 123 787
-    ```
+Sorted:
+-23 0 5 22 53 91 123 787
+```
 
 注意
 
@@ -1483,46 +1483,46 @@ C#有几个类可帮助您执行 I/O 操作。其中一些如下：
 1.  打开命令提示符并输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_11
-    ```
+dotnet new console -n Exercise1_11
+```
 
 1.  在您计算机上的`Exercise1_11`项目文件夹位置，创建一个名为`products.csv`的文件，并将以下内容粘贴到其中：
 
 ```cpp
-    Model;Memory;Storage;USB Ports;Screen;Condition;Price USD
-    Macbook Pro Mid 2012;8GB;500GB HDD;USB 2.0x2;13" screen;Refurbished;400
-    Macbook Pro Mid 2014;8GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;750
-    Macbook Pro Late 2019;16GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;1250
-    ```
+Model;Memory;Storage;USB Ports;Screen;Condition;Price USD
+Macbook Pro Mid 2012;8GB;500GB HDD;USB 2.0x2;13" screen;Refurbished;400
+Macbook Pro Mid 2014;8GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;750
+Macbook Pro Late 2019;16GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;1250
+```
 
 1.  打开`Program.cs`文件，并用以下内容替换它的内容：
 
 ```cpp
-    using System;
-    using System.IO;
-    using System.Threading.Tasks;
-    namespace Exercise1_11
-    {
-        public class Program
-        {
-            public static async Task Main()
-            {
-            using (var fileStream = new FileStream("products.csv", FileMode.Open, FileAccess.Read))
-            {
-                using (var reader = new StreamReader(fileStream))
-                {
-                    var content = await reader.ReadToEndAsync();
-                    var lines = content.Split(Environment.NewLine);
-                    foreach (var line in lines)
-                    {
-                        Console.WriteLine(line);
-                    }
-                }
-            }
-            }
-        }
-    }
-    ```
+using System;
+using System.IO;
+using System.Threading.Tasks;
+namespace Exercise1_11
+{
+    public class Program
+    {
+        public static async Task Main()
+        {
+        using (var fileStream = new FileStream("products.csv", FileMode.Open, FileAccess.Read))
+        {
+            using (var reader = new StreamReader(fileStream))
+            {
+                var content = await reader.ReadToEndAsync();
+                var lines = content.Split(Environment.NewLine);
+                foreach (var line in lines)
+                {
+                    Console.WriteLine(line);
+                }
+            }
+        }
+        }
+    }
+}
+```
 
 1.  在命令提示符中调用`dotnet run`，你将得到一个与你创建的 CSV 文件内容相同的输出。
 
@@ -1553,56 +1553,56 @@ C#中对象使用的内存由一个叫做垃圾收集器的东西处理。默认
 1.  打开 VS Code 集成终端，输入以下内容：
 
 ```cpp
-    dotnet new console -n Exercise1_12
-    ```
+dotnet new console -n Exercise1_12
+```
 
 1.  在你电脑上的一个首选位置，从上一个练习中复制`products.csv`文件，并将其粘贴到这个练习的文件夹中。
 
 1.  在`Program.cs`中，创建一个名为`ReadFile`的方法，该方法将接收一个`FileStream`文件，并迭代文件行以将结果输出到控制台：
 
 ```cpp
-    static async Task ReadFile(FileStream fileStream)
-        {
-            using (var reader = new StreamReader(fileStream))
-            {
-                var content = await reader.ReadToEndAsync();
-                var lines = content.Split(Environment.NewLine);
-                foreach (var line in lines)
-                {
-                    Console.WriteLine(line);
-                }
-            }
-        }
-    ```
+static async Task ReadFile(FileStream fileStream)
+    {
+        using (var reader = new StreamReader(fileStream))
+        {
+            var content = await reader.ReadToEndAsync();
+            var lines = content.Split(Environment.NewLine);
+            foreach (var line in lines)
+            {
+                Console.WriteLine(line);
+            }
+        }
+    }
+```
 
 1.  现在，在你的程序中，用`StreamWriter`打开`products.csv`文件，并添加一些更多的信息，如下所示：
 
 ```cpp
-            using (var file = new StreamWriter("products.csv", append: true))
-            {
-                file.Write("\nOne more macbook without details.");
-            }
-    ```
+        using (var file = new StreamWriter("products.csv", append: true))
+        {
+            file.Write("\nOne more macbook without details.");
+        }
+```
 
 1.  最后，修改文件后读取文件的内容：
 
 ```cpp
-    using (var fileStream = new FileStream("products.csv", FileMode.Open,
-                FileAccess.Read))
-            {
-                await ReadFile(fileStream);
-            }
-    ```
+using (var fileStream = new FileStream("products.csv", FileMode.Open,
+            FileAccess.Read))
+        {
+            await ReadFile(fileStream);
+        }
+```
 
 1.  在 VS Code 集成终端中调用`dotnet run --project Exercise1_12`，你将能够看到你刚刚创建的 CSV 文件的内容，以及你刚刚追加的行：
 
 ```cpp
-    Model;Memory;Storage;USB Ports;Screen;Condition;Price USD
-    Macbook Pro Mid 2012;8GB;500GB HDD;USB 2.0x2;13" screen;Refurbished;400
-    Macbook Pro Mid 2014;8GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;750
-    Macbook Pro Late 2019;16GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;1250
-    One more macbook without details.
-    ```
+Model;Memory;Storage;USB Ports;Screen;Condition;Price USD
+Macbook Pro Mid 2012;8GB;500GB HDD;USB 2.0x2;13" screen;Refurbished;400
+Macbook Pro Mid 2014;8GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;750
+Macbook Pro Late 2019;16GB;512GB SSD;USB 3.0x3;15" screen;Refurbished;1250
+One more macbook without details.
+```
 
 注意，每次运行，程序都会追加一行新的内容，所以你会看到添加了更多的行。
 
@@ -1646,65 +1646,65 @@ double Divide(int a, int b) => a/b;
 1.  在`Program.cs`文件中创建以下方法：
 
 ```cpp
-    static double Divide(int a, int b)
-    {
-        return a / b;
-    }
-    ```
+static double Divide(int a, int b)
+{
+    return a / b;
+}
+```
 
 1.  现在，创建一个布尔变量来指示除法是否被正确执行。将`false`赋给它作为初始值：
 
 ```cpp
-    bool divisionExecuted = false;
-    ```
+bool divisionExecuted = false;
+```
 
 1.  编写一个`while`循环，检查除法是否成功进行。如果成功，程序应该终止。如果没有，程序应该提示你输入有效数据，并再次执行除法。添加以下代码来实现这一点：
 
 ```cpp
-    while (!divisionExecuted)
-    {
-        try
-        {
-            Console.WriteLine("Please input a number");
-            var a = int.Parse(Console.ReadLine());
-            Console.WriteLine("Please input another number");
-            var b = int.Parse(Console.ReadLine());
-            var result = Divide(a, b);
-            Console.WriteLine($"Result: {result}");
-            divisionExecuted = true;
-        }
-        catch (System.FormatException)
-        {
-            Console.WriteLine("You did not input a number. Let's start again ... \n");
-            continue;
-        }
-        catch (System.DivideByZeroException)
-        {
-            Console.WriteLine("Tried to divide by zero. Let's start again ... \n");
-            continue;
-        }
-    }
-    ```
+while (!divisionExecuted)
+{
+    try
+    {
+        Console.WriteLine("Please input a number");
+        var a = int.Parse(Console.ReadLine());
+        Console.WriteLine("Please input another number");
+        var b = int.Parse(Console.ReadLine());
+        var result = Divide(a, b);
+        Console.WriteLine($"Result: {result}");
+        divisionExecuted = true;
+    }
+    catch (System.FormatException)
+    {
+        Console.WriteLine("You did not input a number. Let's start again ... \n");
+        continue;
+    }
+    catch (System.DivideByZeroException)
+    {
+        Console.WriteLine("Tried to divide by zero. Let's start again ... \n");
+        continue;
+    }
+}
+```
 
 1.  最后，使用`dotnet run`命令执行程序并与控制台交互。尝试插入字符串而不是数字，看看你得到什么输出。看下面的输出作为一个例子：
 
 ```cpp
-    Please input a number
-    5
-    Please input another number
-    0
-    Tried to divide by zero. Let's start again …
-    Please input a number
-    5
-    Please input another number
-    s
-    You did not input a number. Let's start again …
-    Please input a number
-    5
-    Please input another number
-    1
-    Result: 5
-    ```
+Please input a number
+5
+Please input another number
+0
+Tried to divide by zero. Let's start again …
+Please input a number
+5
+Please input another number
+s
+You did not input a number. Let's start again …
+Please input a number
+5
+Please input another number
+1
+Result: 5
+```
 
 注意
 
@@ -1753,8 +1753,8 @@ Name = name;
 1.  创建一个名为`numberToBeGuessed`的变量，它被赋予 C#中的一个随机数。你可以使用以下代码片段来实现：
 
 ```cpp
-    new Random().Next(0, 10)
-    ```
+new Random().Next(0, 10)
+```
 
 这会为你生成一个在`0`和`10`之间的随机数。如果你想让游戏变得更难一些，你可以用一个更大的数字来替换`10`，或者用一个更小的数字来让它变得更容易，但是在这个活动中，你将使用`10`作为最大值。
 

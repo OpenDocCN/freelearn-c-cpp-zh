@@ -45,41 +45,41 @@ void Blend(Pose& output,Pose& a,Pose& b,float t,int root);
 1.  要检查一个关节是否是另一个关节的后代，沿着后代关节一直向上遍历层次结构，直到根节点。如果在这个层次结构中遇到的任何节点都是您要检查的节点，则返回`true`：
 
 ```cpp
-    bool IsInHierarchy(Pose& pose, unsigned int parent, 
-                       unsigned int search) {
-        if (search == parent) {
-            return true;
-        }
-        int p = pose.GetParent(search);
-        while (p >= 0) {
-            if (p == (int)parent) {
-                return true;
-            }
-            p = pose.GetParent(p);
-        }
-        return false;
-    }
-    ```
+bool IsInHierarchy(Pose& pose, unsigned int parent, 
+                   unsigned int search) {
+    if (search == parent) {
+        return true;
+    }
+    int p = pose.GetParent(search);
+    while (p >= 0) {
+        if (p == (int)parent) {
+            return true;
+        }
+        p = pose.GetParent(p);
+    }
+    return false;
+}
+```
 
 1.  为了将两个姿势混合在一起，循环遍历每个姿势的关节。如果当前关节不在混合根的层次结构中，则不进行混合。否则，使用您在*第五章*中编写的`mix`函数来混合`Transform`对象。`mix`函数考虑四元数邻域：
 
 ```cpp
-    void Blend(Pose& output, Pose& a, Pose& b, 
-               float t, int root) {
-        unsigned int numJoints = output.Size();
-        for (unsigned int i = 0; i < numJoints; ++i) {
-            if (root >= 0) {
-                if (!IsInHierarchy(output, root, i)) {
-                    continue;
-                }
-            }
-            output.SetLocalTransform(i, mix(
-                  a.GetLocalTransform(i), 
-                  b.GetLocalTransform(i), t)
-            );
-        }
-    }
-    ```
+void Blend(Pose& output, Pose& a, Pose& b, 
+           float t, int root) {
+    unsigned int numJoints = output.Size();
+    for (unsigned int i = 0; i < numJoints; ++i) {
+        if (root >= 0) {
+            if (!IsInHierarchy(output, root, i)) {
+                continue;
+            }
+        }
+        output.SetLocalTransform(i, mix(
+              a.GetLocalTransform(i), 
+              b.GetLocalTransform(i), t)
+        );
+    }
+}
+```
 
 如果使用整个层次结构混合两个动画，则`Blend`的根参数将为负数。对于混合根的负关节，`Blend`函数会跳过`IsInHierarchy`检查。在接下来的部分，您将探索如何在两个动画之间进行淡入淡出以实现平滑过渡。
 
@@ -157,118 +157,118 @@ public:
 1.  在默认构造函数中，为当前剪辑和时间设置默认值`0`，并将骨骼标记为未设置。还有一个方便的构造函数，它接受一个骨骼引用。方便的构造函数应调用`SetSkeleton`函数：
 
 ```cpp
-    CrossFadeController::CrossFadeController() {
-        mClip = 0;
-        mTime = 0.0f;
-        mWasSkeletonSet = false;
-    }
-    CrossFadeController::CrossFadeController(Skeleton& skeleton) {
-        mClip = 0;
-        mTime = 0.0f;
-        SetSkeleton(skeleton);
-    }
-    ```
+CrossFadeController::CrossFadeController() {
+    mClip = 0;
+    mTime = 0.0f;
+    mWasSkeletonSet = false;
+}
+CrossFadeController::CrossFadeController(Skeleton& skeleton) {
+    mClip = 0;
+    mTime = 0.0f;
+    SetSkeleton(skeleton);
+}
+```
 
 1.  实现`SetSkeleton`函数，将提供的骨骼复制到`CrossFadeController`中。它标记该类的骨骼已设置，并将静止姿势复制到交叉淡出控制器的内部姿势中：
 
 ```cpp
-    void CrossFadeController::SetSkeleton(
-                              Skeleton& skeleton) {
-        mSkeleton = skeleton;
-        mPose = mSkeleton.GetRestPose();
-        mWasSkeletonSet = true;
-    }
-    ```
+void CrossFadeController::SetSkeleton(
+                          Skeleton& skeleton) {
+    mSkeleton = skeleton;
+    mPose = mSkeleton.GetRestPose();
+    mWasSkeletonSet = true;
+}
+```
 
 1.  实现`Play`函数。此函数应清除任何活动的交叉淡出。它应设置剪辑和播放时间，但还需要将当前姿势重置为骨骼的静止姿势：
 
 ```cpp
-    void CrossFadeController::Play(Clip* target) {
-        mTargets.clear();
-        mClip = target;
-        mPose = mSkeleton.GetRestPose();
-        mTime = target->GetStartTime();
-    }
-    ```
+void CrossFadeController::Play(Clip* target) {
+    mTargets.clear();
+    mClip = target;
+    mPose = mSkeleton.GetRestPose();
+    mTime = target->GetStartTime();
+}
+```
 
 1.  实现`FadeTo`函数，该函数应检查请求的淡出目标是否有效。淡出目标仅在不是淡出列表中的第一个或最后一个项目时才有效。假设满足这些条件，`FadeTo`函数将提供的动画剪辑和持续时间添加到淡出列表中：
 
 ```cpp
-    void CrossFadeController::FadeTo(Clip* target, 
-                                     float fadeTime) {
-        if (mClip == 0) {
-            Play(target);
-            return;
-        }
-        if (mTargets.size() >= 1) {
-            Clip* clip=mTargets[mTargets.size()-1].mClip;
-            if (clip == target) {
-                return;
-            }
-        }
-        else {
-            if (mClip == target) {
-                return;
-            }
-        }
-        mTargets.push_back(CrossFadeTarget(target, 
-               mSkeleton.GetRestPose(), fadeTime));
-    }
-    ```
+void CrossFadeController::FadeTo(Clip* target, 
+                                 float fadeTime) {
+    if (mClip == 0) {
+        Play(target);
+        return;
+    }
+    if (mTargets.size() >= 1) {
+        Clip* clip=mTargets[mTargets.size()-1].mClip;
+        if (clip == target) {
+            return;
+        }
+    }
+    else {
+        if (mClip == target) {
+            return;
+        }
+    }
+    mTargets.push_back(CrossFadeTarget(target, 
+           mSkeleton.GetRestPose(), fadeTime));
+}
+```
 
 1.  实现`Update`函数以播放活动动画并混合任何在淡出列表中的其他动画：
 
 ```cpp
-    void CrossFadeController::Update(float dt) {
-        if (mClip == 0 || !mWasSkeletonSet) {
-            return;
-        }
-    ```
+void CrossFadeController::Update(float dt) {
+    if (mClip == 0 || !mWasSkeletonSet) {
+        return;
+    }
+```
 
 1.  将当前动画设置为目标动画，并在动画淡出完成时移除淡出对象。每帧只移除一个目标。如果要移除所有已淡出的目标，请将循环改为反向：
 
 ```cpp
-        unsigned int numTargets = mTargets.size();
-        for (unsigned int i = 0; i < numTargets; ++i) {
-            float duration = mTargets[i].mDuration;
-            if (mTargets[i].mElapsed >= duration) {
-                mClip = mTargets[i].mClip;
-                mTime = mTargets[i].mTime;
-                mPose = mTargets[i].mPose;
-                mTargets.erase(mTargets.begin() + i);
-                break;
-            }
-        }
-    ```
+    unsigned int numTargets = mTargets.size();
+    for (unsigned int i = 0; i < numTargets; ++i) {
+        float duration = mTargets[i].mDuration;
+        if (mTargets[i].mElapsed >= duration) {
+            mClip = mTargets[i].mClip;
+            mTime = mTargets[i].mTime;
+            mPose = mTargets[i].mPose;
+            mTargets.erase(mTargets.begin() + i);
+            break;
+        }
+    }
+```
 
 1.  将淡出列表与当前动画混合。需要对当前动画和淡出列表中的所有动画进行采样：
 
 ```cpp
-        numTargets = mTargets.size();
-        mPose = mSkeleton.GetRestPose();
-        mTime = mClip->Sample(mPose, mTime + dt);
-        for (unsigned int i = 0; i < numTargets; ++i) {
-            CrossFadeTarget& target = mTargets[i];
-            target.mTime = target.mClip->Sample(
-                         target.mPose, target.mTime + dt);
-            target.mElapsed += dt;
-            float t = target.mElapsed / target.mDuration;
-            if (t > 1.0f) { t = 1.0f; }
-            Blend(mPose, mPose, target.mPose, t, -1);
-        }
-    }
-    ```
+    numTargets = mTargets.size();
+    mPose = mSkeleton.GetRestPose();
+    mTime = mClip->Sample(mPose, mTime + dt);
+    for (unsigned int i = 0; i < numTargets; ++i) {
+        CrossFadeTarget& target = mTargets[i];
+        target.mTime = target.mClip->Sample(
+                     target.mPose, target.mTime + dt);
+        target.mElapsed += dt;
+        float t = target.mElapsed / target.mDuration;
+        if (t > 1.0f) { t = 1.0f; }
+        Blend(mPose, mPose, target.mPose, t, -1);
+    }
+}
+```
 
 1.  使用`GetCurrentPose`和`GetCurrentclip`辅助函数完成`CrossFadeController`类的实现。这些都是简单的 getter 函数：
 
 ```cpp
-    Pose& CrossFadeController::GetCurrentPose() {
-        return mPose;
-    }
-    Clip* CrossFadeController::GetcurrentClip() {
-        return mClip;
-    }
-    ```
+Pose& CrossFadeController::GetCurrentPose() {
+    return mPose;
+}
+Clip* CrossFadeController::GetcurrentClip() {
+    return mClip;
+}
+```
 
 现在，您可以创建`CrossFadeController`的实例来控制动画播放，而不是手动控制正在播放的动画。`CrossFadeController`类在开始播放新动画时会自动淡出到新动画。在下一部分中，您将探索加法动画混合。
 

@@ -49,9 +49,9 @@ Qt 支持多种不同类型的 SQL 驱动程序，以插件/附加组件的形�
 1.  在`config.inc.php`中搜索以下行，并将单词`config`更改为`cookie`：
 
 ```cpp
-    $cfg['Servers'][$i]['auth_type'] = 'config';
-    $cfg['Servers'][$i]['auth_type'] = 'cookie';
-    ```
+$cfg['Servers'][$i]['auth_type'] = 'config';
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+```
 
 1.  之后，通过单击**启动**按钮再次启动 Apache 和 MySQL。这样，我们强制 phpMyAdmin 重新加载其配置并应用更改。再次从 Web 浏览器转到 phpmyAdmin，这次应该会在屏幕上显示登录界面：![操作方法…](img/B02820_08_04.jpg)
 
@@ -94,64 +94,64 @@ Qt 为我们提供了 SQL 驱动程序，以便我们可以轻松地连接到不
 1.  打开你的项目文件（`.pro`）并将 SQL 模块添加到你的项目中，就像这样：
 
 ```cpp
-    QT += core gui sql
-    ```
+QT += core gui sql
+```
 
 1.  接下来，打开`mainwindow.ui`并将七个标签小部件、一个组合框和一个复选框拖到画布上。将四个标签的文本属性设置为`Name:`，`Age:`，`Gender:`和`Married:`。然后，将其余的`objectName`属性设置为`name`，`age`，`gender`和`married`。对于前四个标签，不需要设置对象名称，因为它们仅用于显示目的：![如何做...](img/B02820_08_09.jpg)
 
 1.  之后，打开`mainwindow.h`并在`QMainWindow`头文件下添加以下头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QtSql>
-    #include <QSqlDatabase>
-    #include <QSqlQuery>
-    #include <QDebug>
+#include <QMainWindow>
+#include <QtSql>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QDebug>
 
-    ```
+```
 
 1.  然后，打开`mainwindow.cpp`并在类构造函数中插入以下代码：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-     QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL");
-     db.setHostName("127.0.0.1");
-     db.setUserName("yourusername");
-     db.setPassword("yourpassword");
-     db.setDatabaseName("databasename");
+ QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL");
+ db.setHostName("127.0.0.1");
+ db.setUserName("yourusername");
+ db.setPassword("yourpassword");
+ db.setDatabaseName("databasename");
 
-     if (db.open())
-     {
-     QSqlQuery query;
-     if (query.exec("SELECT name, age, gender, married FROM employee"))
-     {
-     while (query.next())
-     {
-     qDebug() << query.value(0) << query.value(1) << query.value(2) << query.value(3);
+ if (db.open())
+ {
+ QSqlQuery query;
+ if (query.exec("SELECT name, age, gender, married FROM employee"))
+ {
+ while (query.next())
+ {
+ qDebug() << query.value(0) << query.value(1) << query.value(2) << query.value(3);
 
-     ui->name->setText(query.value(0).toString());
-     ui->age->setText(query.value(1).toString());
-     ui->gender->setCurrentIndex(query.value(2).toInt());
-     ui->married->setChecked(query.value(3).toBool());
-     }
-     }
-     else
-     {
-     qDebug() << query.lastError().text();
-     }
+ ui->name->setText(query.value(0).toString());
+ ui->age->setText(query.value(1).toString());
+ ui->gender->setCurrentIndex(query.value(2).toInt());
+ ui->married->setChecked(query.value(3).toBool());
+ }
+ }
+ else
+ {
+ qDebug() << query.lastError().text();
+ }
 
-     db.close();
-     }
-     else
-     {
-     qDebug() << "Failed to connect to database.";
-     }
-    }
-    ```
+ db.close();
+ }
+ else
+ {
+ qDebug() << "Failed to connect to database.";
+ }
+}
+```
 
 1.  现在编译和运行你的项目，你应该会得到类似以下的结果：![如何做...](img/B02820_08_10.jpg)
 
@@ -180,179 +180,179 @@ Qt 为我们提供了 SQL 驱动程序，以便我们可以轻松地连接到不
 1.  之后，打开`mainwindow.h`并在私有继承下添加以下变量：
 
 ```cpp
-    private:
-      Ui::MainWindow *ui;
-     QSqlDatabase db;
-     bool connected;
-     int currentID;
+private:
+  Ui::MainWindow *ui;
+ QSqlDatabase db;
+ bool connected;
+ int currentID;
 
-    ```
+```
 
 1.  接下来，打开`mainwindow.cpp`并转到类构造函数。它与上一个例子基本相同，只是我们将数据库连接状态存储在名为`connected`的布尔变量中，并且还获取来自数据库的数据的 ID 并将其存储到名为`currentID`的整数变量中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
+
+  db = QSqlDatabase::addDatabase("QMYSQL");
+  db.setHostName("127.0.0.1");
+  db.setUserName("yourusername");
+  db.setPassword("yourpassword");
+  db.setDatabaseName("databasename");
+
+  connected = db.open();
+
+  if (connected)
+  {
+    QSqlQuery query;
+    if (query.exec("SELECT id, name, age, gender, married FROM employee"))
     {
-      ui->setupUi(this);
-
-      db = QSqlDatabase::addDatabase("QMYSQL");
-      db.setHostName("127.0.0.1");
-      db.setUserName("yourusername");
-      db.setPassword("yourpassword");
-      db.setDatabaseName("databasename");
-
-      connected = db.open();
-
-      if (connected)
+      while (query.next())
       {
-        QSqlQuery query;
-        if (query.exec("SELECT id, name, age, gender, married FROM employee"))
-        {
-          while (query.next())
-          {
-            currentID = query.value(0).toInt();
-            ui->name->setText(query.value(1).toString());
-            ui->age->setText(query.value(2).toString());
-            ui->gender->setCurrentIndex(query.value(3).toInt());
-            ui->married->setChecked(query.value(4).toBool());
-          }
-        }
-        else
-        {
-          qDebug() << query.lastError().text();
-        }
-      }
-      else
-      {
-        qDebug() << "Failed to connect to database.";
+        currentID = query.value(0).toInt();
+        ui->name->setText(query.value(1).toString());
+        ui->age->setText(query.value(2).toString());
+        ui->gender->setCurrentIndex(query.value(3).toInt());
+        ui->married->setChecked(query.value(4).toBool());
       }
     }
-    ```
+    else
+    {
+      qDebug() << query.lastError().text();
+    }
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
+}
+```
 
 1.  然后，转到`mainwindow.ui`，右键单击我们在步骤 1 中添加到画布上的一个按钮。选择**转到槽...**，然后单击**确定**。在另一个按钮上重复这些步骤，现在你应该看到三个槽函数被添加到你的`mainwindow.h`和`mainwindow.cpp`中：
 
 ```cpp
-    private slots:
-      void on_updateButton_clicked();
-      void on_insertButton_clicked();
-      void on_deleteButton_clicked();
-    ```
+private slots:
+  void on_updateButton_clicked();
+  void on_insertButton_clicked();
+  void on_deleteButton_clicked();
+```
 
 1.  之后，打开`mainwindow.cpp`，我们将声明当点击**更新**按钮时程序将做什么：
 
 ```cpp
-    void MainWindow::on_updateButton_clicked()
+void MainWindow::on_updateButton_clicked()
+{
+  if (connected)
+  {
+    if (currentID == 0)
     {
-      if (connected)
+      qDebug() << "Nothing to update.";
+    }
+    else
+    {
+      QString id = QString::number(currentID);
+      QString name = ui->name->text();
+      QString age = ui->age->text();
+      QString gender = QString::number(ui->gender->currentIndex());
+      QString married = QString::number(ui->married->isChecked());
+
+      qDebug() << "UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = " + gender + ", married = " + married + " WHERE id = " + id;
+
+      QSqlQuery query;
+      if (query.exec("UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = " + gender + ", married = " + married + " WHERE id = " + id))
       {
-        if (currentID == 0)
-        {
-          qDebug() << "Nothing to update.";
-        }
-        else
-        {
-          QString id = QString::number(currentID);
-          QString name = ui->name->text();
-          QString age = ui->age->text();
-          QString gender = QString::number(ui->gender->currentIndex());
-          QString married = QString::number(ui->married->isChecked());
-
-          qDebug() << "UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = " + gender + ", married = " + married + " WHERE id = " + id;
-
-          QSqlQuery query;
-          if (query.exec("UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = " + gender + ", married = " + married + " WHERE id = " + id))
-          {
-            qDebug() << "Update success.";
-          }
-          else
-          {
-            qDebug() << query.lastError().text();
-          }
-        }
+        qDebug() << "Update success.";
       }
       else
       {
-        qDebug() << "Failed to connect to database.";
+        qDebug() << query.lastError().text();
       }
     }
-    ```
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
+}
+```
 
 1.  完成后，我们将继续声明**插入**按钮被点击时会发生什么：
 
 ```cpp
-    void MainWindow::on_insertButton_clicked()
+void MainWindow::on_insertButton_clicked()
+{
+  if (connected)
+  {
+    QString name = ui->name->text();
+    QString age = ui->age->text();
+    QString gender = QString::number(ui->gender->currentIndex());
+    QString married = QString::number(ui->married->isChecked());
+
+    qDebug() << "INSERT INTO employee (name, age, gender, married) VALUES ('" + name + "','" + age + "'," + gender + "," + married + ")";
+
+    QSqlQuery query;
+    if (query.exec("INSERT INTO employee (name, age, gender, married) VALUES ('" + name + "','" + age + "'," + gender + "," + married + ")"))
     {
-      if (connected)
-      {
-        QString name = ui->name->text();
-        QString age = ui->age->text();
-        QString gender = QString::number(ui->gender->currentIndex());
-        QString married = QString::number(ui->married->isChecked());
-
-        qDebug() << "INSERT INTO employee (name, age, gender, married) VALUES ('" + name + "','" + age + "'," + gender + "," + married + ")";
-
-        QSqlQuery query;
-        if (query.exec("INSERT INTO employee (name, age, gender, married) VALUES ('" + name + "','" + age + "'," + gender + "," + married + ")"))
-        {
-          currentID = query.lastInsertId().toInt();
-          qDebug() << "Insert success.";
-        }
-        else
-        {
-          qDebug() << query.lastError().text();
-        }
-      }
-      else
-      {
-        qDebug() << "Failed to connect to database.";
-      }
+      currentID = query.lastInsertId().toInt();
+      qDebug() << "Insert success.";
     }
-    ```
+    else
+    {
+      qDebug() << query.lastError().text();
+    }
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
+}
+```
 
 1.  之后，我们还声明了**删除**按钮被点击时会发生什么：
 
 ```cpp
-    void MainWindow::on_deleteButton_clicked()
+void MainWindow::on_deleteButton_clicked()
+{
+  if (connected)
+  {
+    if (currentID == 0)
     {
-      if (connected)
+      qDebug() << "Nothing to delete.";
+    }
+    else
+    {
+      QString id = QString::number(currentID);
+      qDebug() << "DELETE FROM employee WHERE id = " + id;
+      QSqlQuery query;
+      if (query.exec("DELETE FROM employee WHERE id = " + id))
       {
-        if (currentID == 0)
-        {
-          qDebug() << "Nothing to delete.";
-        }
-        else
-        {
-          QString id = QString::number(currentID);
-          qDebug() << "DELETE FROM employee WHERE id = " + id;
-          QSqlQuery query;
-          if (query.exec("DELETE FROM employee WHERE id = " + id))
-          {
-            currentID = 0;
-            qDebug() << "Delete success.";
-          }
-          else
-          {
-            qDebug() << query.lastError().text();
-          }
-        }
+        currentID = 0;
+        qDebug() << "Delete success.";
       }
       else
       {
-        qDebug() << "Failed to connect to database.";
+        qDebug() << query.lastError().text();
       }
     }
-    ```
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
+}
+```
 
 1.  最后，在类析构函数中调用`QSqlDatabase::close()`以正确终止程序退出前的 SQL 连接：
 
 ```cpp
-    MainWindow::~MainWindow()
-    {
-     db.close();
-      delete ui;
-    }
-    ```
+MainWindow::~MainWindow()
+{
+ db.close();
+  delete ui;
+}
+```
 
 1.  现在编译并运行程序，您应该能够从数据库中选择默认数据；然后您可以选择更新或从数据库中删除它。您还可以通过单击**插入**按钮将新数据插入到数据库中。您可以使用 phpMyAdmin 来检查数据是否被正确修改：![操作步骤…](img/B02820_08_12.jpg)
 
@@ -389,120 +389,120 @@ Qt 为我们提供了 SQL 驱动程序，以便我们可以轻松地连接到不
 1.  然后，打开`mainwindow.h`，在`#include <QMainWindow>`后添加以下头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QtSql>
-    #include <QSqlDatabase>
-    #include <QSqlQuery>
-    #include <QMessageBox>
-    #include <QDebug>
+#include <QMainWindow>
+#include <QtSql>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QMessageBox>
+#include <QDebug>
 
-    ```
+```
 
 1.  之后，在`mainwindow.h`中添加以下变量：
 
 ```cpp
-    private:
-      Ui::MainWindow *ui;
-     QSqlDatabase db;
+private:
+  Ui::MainWindow *ui;
+ QSqlDatabase db;
 
-    ```
+```
 
 1.  完成后，让我们打开`mainwindow.cpp`，并将以下代码放入类构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
-     ui->stackedWidget->setCurrentIndex(0);
-     db = QSqlDatabase::addDatabase("QMYSQL");
-     db.setHostName("127.0.0.1");
-     db.setUserName("yourusername");
-     db.setPassword("yourpassword");
-     db.setDatabaseName("databasename");
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
+ ui->stackedWidget->setCurrentIndex(0);
+ db = QSqlDatabase::addDatabase("QMYSQL");
+ db.setHostName("127.0.0.1");
+ db.setUserName("yourusername");
+ db.setPassword("yourpassword");
+ db.setDatabaseName("databasename");
 
-     if (!db.open())
-     {
-     qDebug() << "Failed to connect to database.";
-     }
-    }
-    ```
+ if (!db.open())
+ {
+ qDebug() << "Failed to connect to database.";
+ }
+}
+```
 
 1.  之后，我们将定义**Login**按钮被点击时会发生什么：
 
 ```cpp
-    void MainWindow::on_loginButton_clicked()
+void MainWindow::on_loginButton_clicked()
+{
+  QString username = ui->username->text();
+  QString password = ui->password->text();
+
+  QSqlQuery query;
+  if (query.exec("SELECT employeeID from user WHERE username = '" + username + "' AND password = '" + password + "'"))
+  {
+    if (query.size() > 0)
     {
-      QString username = ui->username->text();
-      QString password = ui->password->text();
-
-      QSqlQuery query;
-      if (query.exec("SELECT employeeID from user WHERE username = '" + username + "' AND password = '" + password + "'"))
+      while (query.next())
       {
-        if (query.size() > 0)
+        QString employeeID = query.value(0).toString();
+        QSqlQuery query2;
+        if (query2.exec("SELECT name, age, gender, married FROM employee WHERE id = " + employeeID))
         {
-          while (query.next())
+          while (query2.next())
           {
-            QString employeeID = query.value(0).toString();
-            QSqlQuery query2;
-            if (query2.exec("SELECT name, age, gender, married FROM employee WHERE id = " + employeeID))
-            {
-              while (query2.next())
-              {
-                QString name = query2.value(0).toString();
-                QString age = query2.value(1).toString();
-                int gender = query2.value(2).toInt();
-                bool married = query2.value(3).toBool();
-                ui->name->setText(name);
-                ui->age->setText(age);
+            QString name = query2.value(0).toString();
+            QString age = query2.value(1).toString();
+            int gender = query2.value(2).toInt();
+            bool married = query2.value(3).toBool();
+            ui->name->setText(name);
+            ui->age->setText(age);
 
-                if (gender == 0)
-                  ui->gender->setText("Male");
-                else
-                  ui->gender->setText("Female");
+            if (gender == 0)
+              ui->gender->setText("Male");
+            else
+              ui->gender->setText("Female");
 
-                if (married)
-                  ui->married->setText("Yes");
-                else
-                  ui->married->setText("No");
+            if (married)
+              ui->married->setText("Yes");
+            else
+              ui->married->setText("No");
 
-                ui->stackedWidget->setCurrentIndex(1);
-              }
-            }
+            ui->stackedWidget->setCurrentIndex(1);
           }
         }
-        else
-        {
-          QMessageBox::warning(this, "Login failed", "Invalid username or password.");
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
       }
     }
-    ```
+    else
+    {
+      QMessageBox::warning(this, "Login failed", "Invalid username or password.");
+    }
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+}
+```
 
 1.  然后，我们还定义了**Log Out**按钮被点击时会发生什么：
 
 ```cpp
-    void MainWindow::on_logoutButton_clicked()
-    {
-      ui->stackedWidget->setCurrentIndex(0);
-    }
-    ```
+void MainWindow::on_logoutButton_clicked()
+{
+  ui->stackedWidget->setCurrentIndex(0);
+}
+```
 
 1.  最后，在主窗口关闭时关闭数据库：
 
 ```cpp
-    MainWindow::~MainWindow()
-    {
-      db.close();
+MainWindow::~MainWindow()
+{
+  db.close();
 
-      delete ui;
-    }
-    ```
+  delete ui;
+}
+```
 
 1.  现在编译并运行程序，您应该能够使用虚拟帐户登录。登录后，您应该能够看到与用户帐户关联的虚拟员工信息。您也可以通过单击**Log Out**按钮注销：![操作方法…](img/B02820_08_18.jpg)
 
@@ -535,155 +535,155 @@ Qt 为我们提供了 SQL 驱动程序，以便我们可以轻松地连接到不
 1.  打开`mainwindow.h`并将这些私有变量添加到我们的`MainWindow`类中：
 
 ```cpp
-    private:
-      Ui::MainWindow *ui;
-     bool hasInit;
-     QSqlDatabase db;
+private:
+  Ui::MainWindow *ui;
+ bool hasInit;
+ QSqlDatabase db;
 
-    ```
+```
 
 1.  我们还将以下类头文件添加到`mainwindow.h`中：
 
 ```cpp
-    #include <QtSql>
-    #include <QSqlDatabase>
-    #include <QSqlQuery>
-    #include <QMessageBox>
-    #include <QDebug>
-    #include <QTableWidgetItem>
-    ```
+#include <QtSql>
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QMessageBox>
+#include <QDebug>
+#include <QTableWidgetItem>
+```
 
 1.  完成后，打开`mainwindow.cpp`，我们将在那里编写大量代码。首先，我们需要声明程序启动时会发生什么。将以下代码添加到`MainWindow`类的构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  hasInit = false;
+
+  ui->setupUi(this);
+
+  db = QSqlDatabase::addDatabase("QMYSQL");
+  db.setHostName("127.0.0.1");
+  db.setUserName("yourusername");
+  db.setPassword("yourpassword");
+  db.setDatabaseName("databasename");
+
+  ui->tableWidget->setColumnHidden(0, true);
+
+  if (db.open())
+  {
+    QSqlQuery query;
+    if (query.exec("SELECT id, name, age, gender, married FROM employee"))
     {
-      hasInit = false;
-
-      ui->setupUi(this);
-
-      db = QSqlDatabase::addDatabase("QMYSQL");
-      db.setHostName("127.0.0.1");
-      db.setUserName("yourusername");
-      db.setPassword("yourpassword");
-      db.setDatabaseName("databasename");
-
-      ui->tableWidget->setColumnHidden(0, true);
-
-      if (db.open())
+      while (query.next())
       {
-        QSqlQuery query;
-        if (query.exec("SELECT id, name, age, gender, married FROM employee"))
-        {
-          while (query.next())
-          {
-            qDebug() << query.value(0) << query.value(1) << query.value(2) << query.value(3) << query.value(4);
+        qDebug() << query.value(0) << query.value(1) << query.value(2) << query.value(3) << query.value(4);
 
-            QString id = query.value(0).toString();
-            QString name = query.value(1).toString();
-            QString age = query.value(2).toString();
-            int gender = query.value(3).toInt();
-            bool married = query.value(4).toBool();
+        QString id = query.value(0).toString();
+        QString name = query.value(1).toString();
+        QString age = query.value(2).toString();
+        int gender = query.value(3).toInt();
+        bool married = query.value(4).toBool();
 
-            ui->tableWidget->setRowCount(ui->tableWidget->rowCount() + 1);
+        ui->tableWidget->setRowCount(ui->tableWidget->rowCount() + 1);
 
-            QTableWidgetItem* idItem = new QTableWidgetItem(id);
-            QTableWidgetItem* nameItem = new QTableWidgetItem(name);
-            QTableWidgetItem* ageItem = new QTableWidgetItem(age);
-            QTableWidgetItem* genderItem = new QTableWidgetItem();
+        QTableWidgetItem* idItem = new QTableWidgetItem(id);
+        QTableWidgetItem* nameItem = new QTableWidgetItem(name);
+        QTableWidgetItem* ageItem = new QTableWidgetItem(age);
+        QTableWidgetItem* genderItem = new QTableWidgetItem();
 
-            if (gender == 0)
-              genderItem->setData(0, "Male");
-            else
-              genderItem->setData(0, "Female");
-
-            QTableWidgetItem* marriedItem = new QTableWidgetItem();
-
-            if (married)
-              marriedItem->setData(0, "Yes");
-            else
-              marriedItem->setData(0, "No");
-
-            ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 0, idItem);
-            ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 1, nameItem);
-            ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 2, ageItem);
-            ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 3, genderItem);
-            ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 4, marriedItem);
-          }
-
-          hasInit = true;
-        }
+        if (gender == 0)
+          genderItem->setData(0, "Male");
         else
-        {
-          qDebug() << query.lastError().text();
-        }
+          genderItem->setData(0, "Female");
+
+        QTableWidgetItem* marriedItem = new QTableWidgetItem();
+
+        if (married)
+          marriedItem->setData(0, "Yes");
+        else
+          marriedItem->setData(0, "No");
+
+        ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 0, idItem);
+        ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 1, nameItem);
+        ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 2, ageItem);
+        ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 3, genderItem);
+        ui->tableWidget->setItem(ui->tableWidget->rowCount() - 1, 4, marriedItem);
       }
-      else
-      {
-        qDebug() << "Failed to connect to database.";
-      }
+
+      hasInit = true;
     }
-    ```
+    else
+    {
+      qDebug() << query.lastError().text();
+    }
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
+}
+```
 
 1.  之后，声明当表格小部件的项目被编辑时会发生什么。将以下代码添加到名为`on_tableWidget_itemChanged()`的槽函数中：
 
 ```cpp
-    void MainWindow::on_tableWidget_itemChanged(QTableWidgetItem *item)
+void MainWindow::on_tableWidget_itemChanged(QTableWidgetItem *item)
+{
+  if (hasInit)
+  {
+    QString id = ui->tableWidget->item(item->row(), 0)->data(0).toString();
+    QString name = ui->tableWidget->item(item->row(), 1)->data(0).toString();
+    QString age = QString::number(ui->tableWidget->item(item->row(), 2)->data(0).toInt());
+    ui->tableWidget->item(item->row(), 2)->setData(0, age);
+
+    QString gender;
+    if (ui->tableWidget->item(item->row(), 3)->data(0).toString() == "Male")
     {
-      if (hasInit)
-      {
-        QString id = ui->tableWidget->item(item->row(), 0)->data(0).toString();
-        QString name = ui->tableWidget->item(item->row(), 1)->data(0).toString();
-        QString age = QString::number(ui->tableWidget->item(item->row(), 2)->data(0).toInt());
-        ui->tableWidget->item(item->row(), 2)->setData(0, age);
-
-        QString gender;
-        if (ui->tableWidget->item(item->row(), 3)->data(0).toString() == "Male")
-        {
-          gender = "0";
-        }
-        else
-        {
-          ui->tableWidget->item(item->row(), 3)->setData(0, "Female");
-          gender = "1";
-        }
-
-        QString married;
-        if (ui->tableWidget->item(item->row(), 4)->data(0).toString() == "No")
-        {
-          married = "0";
-        }
-        else
-        {
-          ui->tableWidget->item(item->row(), 4)->setData(0, "Yes");
-          married = "1";
-        }
-
-        qDebug() << id << name << age << gender << married;
-        QSqlQuery query;
-        if (query.exec("UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = '" + gender + "', married = '" + married + "' WHERE id = " + id))
-        {
-          QMessageBox::information(this, "Update Success", "Data updated to database.");
-        }
-        else
-        {
-          qDebug() << query.lastError().text();
-        }
-      }
+      gender = "0";
     }
-    ```
+    else
+    {
+      ui->tableWidget->item(item->row(), 3)->setData(0, "Female");
+      gender = "1";
+    }
+
+    QString married;
+    if (ui->tableWidget->item(item->row(), 4)->data(0).toString() == "No")
+    {
+      married = "0";
+    }
+    else
+    {
+      ui->tableWidget->item(item->row(), 4)->setData(0, "Yes");
+      married = "1";
+    }
+
+    qDebug() << id << name << age << gender << married;
+    QSqlQuery query;
+    if (query.exec("UPDATE employee SET name = '" + name + "', age = '" + age + "', gender = '" + gender + "', married = '" + married + "' WHERE id = " + id))
+    {
+      QMessageBox::information(this, "Update Success", "Data updated to database.");
+    }
+    else
+    {
+      qDebug() << query.lastError().text();
+    }
+  }
+}
+```
 
 1.  最后，在类析构函数中关闭数据库：
 
 ```cpp
-    MainWindow::~MainWindow()
-    {
-     db.close();
-      delete ui;
-    }
-    ```
+MainWindow::~MainWindow()
+{
+ db.close();
+  delete ui;
+}
+```
 
 1.  现在编译并运行示例，你应该会得到类似这样的结果：![How to do it…](img/B02820_08_22.jpg)
 
@@ -726,220 +726,220 @@ Qt 为我们提供了 SQL 驱动程序，以便我们可以轻松地连接到不
 1.  创建完控制台项目后，打开项目文件（`.pro`）并将 SQL 模块添加到项目中：
 
 ```cpp
-    QT += core sql
-    QT -= gui
-    ```
+QT += core sql
+QT -= gui
+```
 
 1.  接下来，打开`main.cpp`并在源文件顶部添加以下头文件：
 
 ```cpp
-    #include <QSqlDatabase>
-    #include <QSqlQuery>
-    #include <QSqlError>
-    #include <QDate>
-    #include <QDebug>
-    ```
+#include <QSqlDatabase>
+#include <QSqlQuery>
+#include <QSqlError>
+#include <QDate>
+#include <QDebug>
+```
 
 1.  然后，添加以下函数来显示年龄超过 30 岁的员工：
 
 ```cpp
-    void filterAge()
+void filterAge()
+{
+  qDebug() << "== Employees above 30 year old =============";
+  QSqlQuery query;
+  if (query.exec("SELECT name, age FROM employee WHERE age > 30"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Employees above 30 year old =============";
-      QSqlQuery query;
-      if (query.exec("SELECT name, age FROM employee WHERE age > 30"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString() << query.value(1).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString() << query.value(1).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  之后，添加这个函数来显示每个员工的部门和分支信息：
 
 ```cpp
-    void getDepartmentAndBranch()
+void getDepartmentAndBranch()
+{
+  qDebug() << "== Get employees' department and branch =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT myEmployee.name, department.name, branch.name FROM (SELECT name, departmentID FROM employee) AS myEmployee INNER JOIN department ON department.id = myEmployee.departmentID INNER JOIN branch ON branch.id = department.branchID"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Get employees' department and branch =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT myEmployee.name, department.name, branch.name FROM (SELECT name, departmentID FROM employee) AS myEmployee INNER JOIN department ON department.id = myEmployee.departmentID INNER JOIN branch ON branch.id = department.branchID"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString() << query.value(1).toString() << query.value(2).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString() << query.value(1).toString() << query.value(2).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  接下来，添加这个函数，显示在`纽约`分支工作且年龄不到 30 岁的员工：
 
 ```cpp
-    void filterBranchAndAge()
+void filterBranchAndAge()
+{
+  qDebug() << "== Employees from New York and age below 30 =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT myEmployee.name, myEmployee.age, department.name, branch.name FROM (SELECT name, age, departmentID FROM employee) AS myEmployee INNER JOIN department ON department.id = myEmployee.departmentID INNER JOIN branch ON branch.id = department.branchID WHERE branch.name = 'New York' AND age < 30"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Employees from New York and age below 30 =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT myEmployee.name, myEmployee.age, department.name, branch.name FROM (SELECT name, age, departmentID FROM employee) AS myEmployee INNER JOIN department ON department.id = myEmployee.departmentID INNER JOIN branch ON branch.id = department.branchID WHERE branch.name = 'New York' AND age < 30"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString() << query.value(1).toString() << query.value(2).toString() << query.value(3).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString() << query.value(1).toString() << query.value(2).toString() << query.value(3).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  然后，添加这个函数来计算虚拟公司中女性员工的总数：
 
 ```cpp
-    void countFemale()
+void countFemale()
+{
+  qDebug() << "== Count female employees =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT COUNT(gender) FROM employee WHERE gender = 1"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Count female employees =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT COUNT(gender) FROM employee WHERE gender = 1"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  完成后，我们将添加另一个函数，过滤员工列表，并仅显示以`Ja`开头的员工：
 
 ```cpp
-    void filterName()
+void filterName()
+{
+  qDebug() << "== Employees name start with 'Ja' =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT name FROM employee WHERE name LIKE '%Ja%'"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Employees name start with 'Ja' =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT name FROM employee WHERE name LIKE '%Ja%'"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  接下来，我们还添加另一个函数，显示在`8 月`份生日的员工：
 
 ```cpp
-    void filterBirthday()
+void filterBirthday()
+{
+  qDebug() << "== Employees birthday in August =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT name, birthday FROM employee WHERE MONTH(birthday) = 8"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Employees birthday in August =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT name, birthday FROM employee WHERE MONTH(birthday) = 8"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString() << query.value(1).toDate().toString("d-MMMM-yyyy");
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString() << query.value(1).toDate().toString("d-MMMM-yyyy");
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  然后，我们添加最后一个函数，检查谁在`2016 年 4 月 27 日`登录到虚拟系统，并在终端上显示他们的名字：
 
 ```cpp
-    void checkLog()
+void checkLog()
+{
+  qDebug() << "== Employees who logged in on 27 April 2016 =============";
+
+  QSqlQuery query;
+  if (query.exec("SELECT DISTINCT myEmployee.name, FROM (SELECT id, name FROM employee) AS myEmployee INNER JOIN user ON user.employeeID = myEmployee.id INNER JOIN log ON log.userID = user.id WHERE DATE(log.loginTime) = '2016-04-27'"))
+  {
+    while (query.next())
     {
-      qDebug() << "== Employees who logged in on 27 April 2016 =============";
-
-      QSqlQuery query;
-      if (query.exec("SELECT DISTINCT myEmployee.name, FROM (SELECT id, name FROM employee) AS myEmployee INNER JOIN user ON user.employeeID = myEmployee.id INNER JOIN log ON log.userID = user.id WHERE DATE(log.loginTime) = '2016-04-27'"))
-      {
-        while (query.next())
-        {
-          qDebug() << query.value(0).toString();
-        }
-      }
-      else
-      {
-        qDebug() << query.lastError().text();
-      }
-
-      qDebug() << "\n";
+      qDebug() << query.value(0).toString();
     }
-    ```
+  }
+  else
+  {
+    qDebug() << query.lastError().text();
+  }
+
+  qDebug() << "\n";
+}
+```
 
 1.  最后，在我们的`main()`函数中，连接我们的程序到 MySQL 数据库，并调用我们在前面步骤中定义的所有函数。之后，关闭数据库连接，我们就完成了：
 
 ```cpp
-    int main(int argc, char *argv[])
-    {
-      QCoreApplication a(argc, argv);
+int main(int argc, char *argv[])
+{
+  QCoreApplication a(argc, argv);
 
-      QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL");
-      db.setHostName("127.0.0.1");
-      db.setUserName("reonyx");
-      db.setPassword("reonyx");
-      db.setDatabaseName("testing");
+  QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL");
+  db.setHostName("127.0.0.1");
+  db.setUserName("reonyx");
+  db.setPassword("reonyx");
+  db.setDatabaseName("testing");
 
-      if (db.open())
-      {
-        filterAge();
-        getDepartmentAndBranch();
-        filterBranchAndAge();
-        countFemale();
-        filterName();
-        filterBirthday();
-        checkLog();
+  if (db.open())
+  {
+    filterAge();
+    getDepartmentAndBranch();
+    filterBranchAndAge();
+    countFemale();
+    filterName();
+    filterBirthday();
+    checkLog();
 
-        db.close();
-      }
-      else
-      {
-        qDebug() << "Failed to connect to database.";
-      }
+    db.close();
+  }
+  else
+  {
+    qDebug() << "Failed to connect to database.";
+  }
 
-      return a.exec();
-    }
-    ```
+  return a.exec();
+}
+```
 
 1.  现在编译并运行项目，您应该看到一个终端窗口，显示了之前定义的数据库中的过滤结果：![操作步骤...](img/B02820_08_30.jpg)
 

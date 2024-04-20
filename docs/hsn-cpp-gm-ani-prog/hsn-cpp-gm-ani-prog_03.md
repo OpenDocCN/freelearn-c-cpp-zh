@@ -79,91 +79,91 @@
 1.  将以下结构声明添加到`mat4.h`，它通过声明一个由 16 个元素组成的平面数组作为联合的第一个成员来开始一个联合：
 
 ```cpp
-    struct mat4 {
-        union {
-            float v[16];
-    ```
+struct mat4 {
+    union {
+        float v[16];
+```
 
 1.  联合的下一个成员是`vec4`变量的结构。每个`vec4`变量代表矩阵的一列；它们以存储在这些列中的基向量命名：
 
 ```cpp
-            struct {
-                vec4 right;
-                vec4 up;
-                vec4 forward;
-                vec4 position;
-            };
-    ```
+        struct {
+            vec4 right;
+            vec4 up;
+            vec4 forward;
+            vec4 position;
+        };
+```
 
 1.  根据基向量的元素访问成员可能是有用的。以下结构包含了命名对；第一个字母代表基向量，第二个字母代表该向量的分量：
 
 ```cpp
-            struct { 
-            //         row 1    row 2    row 3    row 4
-            /*col 1*/float xx;float xy;float xz;float xw;
-            /*col 2*/float yx;float yy;float yz;float yw;
-            /*col 3*/float zx;float zy;float zz;float zw;
-            /*col 4*/float tx;float ty;float tz;float tw;
-            };
-    ```
+        struct { 
+        //         row 1    row 2    row 3    row 4
+        /*col 1*/float xx;float xy;float xz;float xw;
+        /*col 2*/float yx;float yy;float yz;float yw;
+        /*col 3*/float zx;float zy;float zz;float zw;
+        /*col 4*/float tx;float ty;float tz;float tw;
+        };
+```
 
 1.  下一个结构将允许您使用列-行表示法访问矩阵：
 
 ```cpp
-            struct {
-               float c0r0;float c0r1;float c0r2;float c0r3;
-               float c1r0;float c1r1;float c1r2;float c1r3;
-               float c2r0;float c2r1;float c2r2;float c2r3;
-               float c3r0;float c3r1;float c3r2;float c3r3;
-            };
-    ```
+        struct {
+           float c0r0;float c0r1;float c0r2;float c0r3;
+           float c1r0;float c1r1;float c1r2;float c1r3;
+           float c2r0;float c2r1;float c2r2;float c2r3;
+           float c3r0;float c3r1;float c3r2;float c3r3;
+        };
+```
 
 1.  最后的结构将允许您使用行-列表示法访问矩阵：
 
 ```cpp
-            struct {
-               float r0c0;float r1c0;float r2c0;float r3c0;
-               float r0c1;float r1c1;float r2c1;float r3c1;
-               float r0c2;float r1c2;float r2c2;float r3c2;
-               float r0c3;float r1c3;float r2c3;float r3c3;
-            };
-        }; // End union
-    ```
+        struct {
+           float r0c0;float r1c0;float r2c0;float r3c0;
+           float r0c1;float r1c1;float r2c1;float r3c1;
+           float r0c2;float r1c2;float r2c2;float r3c2;
+           float r0c3;float r1c3;float r2c3;float r3c3;
+        };
+    }; // End union
+```
 
 1.  添加一个`inline`构造函数，可以创建单位矩阵：
 
 ```cpp
-        inline mat4() :
-           xx(1), xy(0), xz(0), xw(0),
-           yx(0), yy(1), yz(0), yw(0),
-           zx(0), zy(0), zz(1), zw(0),
-           tx(0), ty(0), tz(0), tw(1) {}
-    ```
+    inline mat4() :
+       xx(1), xy(0), xz(0), xw(0),
+       yx(0), yy(1), yz(0), yw(0),
+       zx(0), zy(0), zz(1), zw(0),
+       tx(0), ty(0), tz(0), tw(1) {}
+```
 
 1.  添加一个`inline`构造函数，可以从一个浮点数组创建矩阵：
 
 ```cpp
-        inline mat4(float *fv) :
-           xx( fv[0]), xy( fv[1]), xz( fv[2]), xw( fv[3]),
-           yx( fv[4]), yy( fv[5]), yz( fv[6]), yw( fv[7]),
-           zx( fv[8]), zy( fv[9]), zz(fv[10]), zw(fv[11]),
-           tx(fv[12]), ty(fv[13]), tz(fv[14]), tw(fv[15]) { }
-    ```
+    inline mat4(float *fv) :
+       xx( fv[0]), xy( fv[1]), xz( fv[2]), xw( fv[3]),
+       yx( fv[4]), yy( fv[5]), yz( fv[6]), yw( fv[7]),
+       zx( fv[8]), zy( fv[9]), zz(fv[10]), zw(fv[11]),
+       tx(fv[12]), ty(fv[13]), tz(fv[14]), tw(fv[15]) { }
+```
 
 1.  添加一个`inline`构造函数，可以通过指定矩阵中的每个元素来创建矩阵：
 
 ```cpp
-        inline mat4(
-            float _00, float _01, float _02, float _03,
-            float _10, float _11, float _12, float _13,
-            float _20, float _21, float _22, float _23,
-            float _30, float _31, float _32, float _33) :
-            xx(_00), xy(_01), xz(_02), xw(_03),
-            yx(_10), yy(_11), yz(_12), yw(_13),
-            zx(_20), zy(_21), zz(_22), zw(_23),
-            tx(_30), ty(_31), tz(_32), tw(_33) { }
-    }; // end mat4 struct
-    ```
+    inline mat4(
+        float _00, float _01, float _02, float _03,
+        float _10, float _11, float _12, float _13,
+        float _20, float _21, float _22, float _23,
+        float _30, float _31, float _32, float _33) :
+        xx(_00), xy(_01), xz(_02), xw(_03),
+        yx(_10), yy(_11), yz(_12), yw(_13),
+        zx(_20), zy(_21), zz(_22), zw(_23),
+        tx(_30), ty(_31), tz(_32), tw(_33) { }
+}; // end mat4 struct
+```
 
 您刚刚声明的矩阵结构是最终的`mat4`结构；匿名联合提供了访问矩阵数据的五种不同方式。矩阵数据可以作为一个平面数组访问，作为四个列分别存储为`vec4`，或作为三个助记符之一访问。这三个助记符使用它们的基向量、它们的行然后列，或它们的列然后行来命名元素。
 
@@ -276,25 +276,25 @@ mat4 operator*(const mat4& m, float f) {
 1.  为了使矩阵相乘的代码保持简洁，您需要创建一个辅助宏。该宏将假定有两个矩阵`a`和`b`。该宏将取两个数字，`a`的行和`b`的列，进行点乘，结果将是这两者的点积。在`mat4.cpp`中定义`M4D`宏：
 
 ```cpp
-    #define M4D(aRow, bCol) \
-        a.v[0 * 4 + aRow] * b.v[bCol * 4 + 0] + \
-        a.v[1 * 4 + aRow] * b.v[bCol * 4 + 1] + \
-        a.v[2 * 4 + aRow] * b.v[bCol * 4 + 2] + \
-        a.v[3 * 4 + aRow] * b.v[bCol * 4 + 3]
-    ```
+#define M4D(aRow, bCol) \
+    a.v[0 * 4 + aRow] * b.v[bCol * 4 + 0] + \
+    a.v[1 * 4 + aRow] * b.v[bCol * 4 + 1] + \
+    a.v[2 * 4 + aRow] * b.v[bCol * 4 + 2] + \
+    a.v[3 * 4 + aRow] * b.v[bCol * 4 + 3]
+```
 
 1.  在`mat4.cpp`中放置了`M4D`宏后，实现矩阵乘法函数。不要忘记将函数声明添加到`mat4.h`中。记住，例如`(2, 1)`元素应该取矩阵`a`的第 2 行和矩阵`b`的第 1 列进行点乘：
 
 ```cpp
-    mat4 operator*(const mat4 &a, const mat4 &b) {
-       return mat4(
-          M4D(0,0), M4D(1,0), M4D(2,0), M4D(3,0),//Col 0
-          M4D(0,1), M4D(1,1), M4D(2,1), M4D(3,1),//Col 1
-          M4D(0,2), M4D(1,2), M4D(2,2), M4D(3,2),//Col 2
-          M4D(0,3), M4D(1,3), M4D(2,3), M4D(3,3) //Col 3
-       );
-    }
-    ```
+mat4 operator*(const mat4 &a, const mat4 &b) {
+   return mat4(
+      M4D(0,0), M4D(1,0), M4D(2,0), M4D(3,0),//Col 0
+      M4D(0,1), M4D(1,1), M4D(2,1), M4D(3,1),//Col 1
+      M4D(0,2), M4D(1,2), M4D(2,2), M4D(3,2),//Col 2
+      M4D(0,3), M4D(1,3), M4D(2,3), M4D(3,3) //Col 3
+   );
+}
+```
 
 矩阵相乘最重要的特性是将编码在两个矩阵中的变换合并为一个单独的矩阵。这很有用，因为您可以预先乘以某些矩阵，以执行更少的每帧乘法。接下来，您将了解矩阵如何将其变换数据应用于向量和点。
 
@@ -307,65 +307,65 @@ mat4 operator*(const mat4& m, float f) {
 1.  为了使矩阵-向量乘法更易于阅读，您需要再次创建一个宏。该宏将取矩阵的行并对该行与提供的列向量进行点积。在`mat4.cpp`中实现`M4VD`宏：
 
 ```cpp
-    #define M4V4D(mRow, x, y, z, w) \
-        x * m.v[0 * 4 + mRow] + \
-        y * m.v[1 * 4 + mRow] + \
-        z * m.v[2 * 4 + mRow] + \
-        w * m.v[3 * 4 + mRow]
-    ```
+#define M4V4D(mRow, x, y, z, w) \
+    x * m.v[0 * 4 + mRow] + \
+    y * m.v[1 * 4 + mRow] + \
+    z * m.v[2 * 4 + mRow] + \
+    w * m.v[3 * 4 + mRow]
+```
 
 1.  在`mat4.cpp`中放置了`M4V4D`宏后，实现矩阵-向量乘法函数。不要忘记将函数定义添加到`mat4.h`中：
 
 ```cpp
-    vec4 operator*(const mat4& m, const vec4& v) {
-        return vec4(
-            M4V4D(0, v.x, v.y, v.z, v.w),
-            M4V4D(1, v.x, v.y, v.z, v.w),
-            M4V4D(2, v.x, v.y, v.z, v.w),
-            M4V4D(3, v.x, v.y, v.z, v.w) 
-        );
-    }
-    ```
+vec4 operator*(const mat4& m, const vec4& v) {
+    return vec4(
+        M4V4D(0, v.x, v.y, v.z, v.w),
+        M4V4D(1, v.x, v.y, v.z, v.w),
+        M4V4D(2, v.x, v.y, v.z, v.w),
+        M4V4D(3, v.x, v.y, v.z, v.w) 
+    );
+}
+```
 
 1.  本书中的大部分数据将被存储为三分量向量，而不是四分量。每次需要通过矩阵进行变换时，都无需创建一个新的四分量向量；相反，您将为此创建一个专门的函数。
 
 1.  在`mat4.cpp`中定义一个新函数：`transformVector`。不要忘记将函数声明添加到`mat4.h`中。该函数将使用提供的矩阵对`vec3`进行变换，假设该向量表示方向和大小：
 
 ```cpp
-    vec3 transformVector(const mat4& m, const vec3& v) {
-        return vec3(
-            M4V4D(0, v.x, v.y, v.z, 0.0f),
-            M4V4D(1, v.x, v.y, v.z, 0.0f),
-            M4V4D(2, v.x, v.y, v.z, 0.0f) 
-        );
-    }
-    ```
+vec3 transformVector(const mat4& m, const vec3& v) {
+    return vec3(
+        M4V4D(0, v.x, v.y, v.z, 0.0f),
+        M4V4D(1, v.x, v.y, v.z, 0.0f),
+        M4V4D(2, v.x, v.y, v.z, 0.0f) 
+    );
+}
+```
 
 1.  接下来，在`mat4.cpp`中定义`transformPoint`函数。它应该将向量和矩阵相乘，假设向量的 W 分量为 1：
 
 ```cpp
-    vec3 transformPoint(const mat4& m, const vec3& v) {
-        return vec3(
-            M4V4D(0, v.x, v.y, v.z, 1.0f),
-            M4V4D(1, v.x, v.y, v.z, 1.0f),
-            M4V4D(2, v.x, v.y, v.z, 1.0f)
-        );
-    }
-    ```
+vec3 transformPoint(const mat4& m, const vec3& v) {
+    return vec3(
+        M4V4D(0, v.x, v.y, v.z, 1.0f),
+        M4V4D(1, v.x, v.y, v.z, 1.0f),
+        M4V4D(2, v.x, v.y, v.z, 1.0f)
+    );
+}
+```
 
 1.  为`transformPoint`定义一个重载，它带有额外的*W*分量。*W*分量是一个引用——它是可读写的。函数执行后，*w*分量将保存*W*的值，如果输入向量是`vec4`的话：
 
 ```cpp
-    vec3 transformPoint(const mat4& m, const vec3& v, float& w) {
-        float _w = w;
-        w = M4V4D(3, v.x, v.y, v.z, _w);
-        return vec3(
-            M4V4D(0, v.x, v.y, v.z, _w),
-            M4V4D(1, v.x, v.y, v.z, _w),
-            M4V4D(2, v.x, v.y, v.z, _w)
-        );
-    }
-    ```
+vec3 transformPoint(const mat4& m, const vec3& v, float& w) {
+    float _w = w;
+    w = M4V4D(3, v.x, v.y, v.z, _w);
+    return vec3(
+        M4V4D(0, v.x, v.y, v.z, _w),
+        M4V4D(1, v.x, v.y, v.z, _w),
+        M4V4D(2, v.x, v.y, v.z, _w)
+    );
+}
+```
 
 在本书的其余部分，大多数数据都存储在`vec3`结构中。这意味着将使用`transformVector`和`transformPoint`，而不是重载的乘法运算符。这应有助于减少对被转换数据的歧义。接下来，您将学习如何求矩阵的逆。
 
@@ -384,30 +384,30 @@ mat4 operator*(const mat4& m, float f) {
 1.  在`mat4.cpp`中实现`transpose`函数。不要忘记将函数声明添加到`mat4.h`中：
 
 ```cpp
-    #define M4SWAP(x, y) \
-        {float t = x; x = y; y = t; }
-    void transpose(mat4 &m) {
-        M4SWAP(m.yx, m.xy);
-        M4SWAP(m.zx, m.xz);
-        M4SWAP(m.tx, m.xw);
-        M4SWAP(m.zy, m.yz);
-        M4SWAP(m.ty, m.yw);
-        M4SWAP(m.tz, m.zw);
-    }
-    ```
+#define M4SWAP(x, y) \
+    {float t = x; x = y; y = t; }
+void transpose(mat4 &m) {
+    M4SWAP(m.yx, m.xy);
+    M4SWAP(m.zx, m.xz);
+    M4SWAP(m.tx, m.xw);
+    M4SWAP(m.zy, m.yz);
+    M4SWAP(m.ty, m.yw);
+    M4SWAP(m.tz, m.zw);
+}
+```
 
 1.  在`mat4.cpp`中创建一个`transposed`函数。`transposed`函数修改传入的矩阵。不要忘记将函数声明添加到`mat4.h`中：
 
 ```cpp
-    mat4 transposed(const mat4 &m) {
-        return mat4(
-            m.xx, m.yx, m.zx, m.tx,
-            m.xy, m.yy, m.zy, m.ty,
-            m.xz, m.yz, m.zz, m.tz,
-            m.xw, m.yw, m.zw, m.tw
-        );
-    }
-    ```
+mat4 transposed(const mat4 &m) {
+    return mat4(
+        m.xx, m.yx, m.zx, m.tx,
+        m.xy, m.yy, m.zy, m.ty,
+        m.xz, m.yz, m.zz, m.tz,
+        m.xw, m.yw, m.zw, m.tw
+    );
+}
+```
 
 如果需要将矩阵从行优先顺序转换为列优先顺序，或者反之，则转置矩阵是有用的。在下一节中，您将学习如何计算方阵的行列式。
 
@@ -472,78 +472,78 @@ mat4 operator*(const mat4& m, float f) {
 1.  在`mat4.cpp`中创建一个新的宏。该宏将找到矩阵中一个元素的余子式，给定一个浮点数数组，以及从矩阵中切割的三行和三列：
 
 ```cpp
-    #define M4_3X3MINOR(x, c0, c1, c2, r0, r1, r2) \
-       (x[c0*4+r0]*(x[c1*4+r1]*x[c2*4+r2]-x[c1*4+r2]* \
-       x[c2*4+r1])-x[c1*4+r0]*(x[c0*4+r1]*x[c2*4+r2]- \
-       x[c0*4+r2]*x[c2*4+r1])+x[c2*4+r0]*(x[c0*4+r1]* \
-       x[c1*4+r2]-x[c0*4+r2]*x[c1*4+r1]))
-    ```
+#define M4_3X3MINOR(x, c0, c1, c2, r0, r1, r2) \
+   (x[c0*4+r0]*(x[c1*4+r1]*x[c2*4+r2]-x[c1*4+r2]* \
+   x[c2*4+r1])-x[c1*4+r0]*(x[c0*4+r1]*x[c2*4+r2]- \
+   x[c0*4+r2]*x[c2*4+r1])+x[c2*4+r0]*(x[c0*4+r1]* \
+   x[c1*4+r2]-x[c0*4+r2]*x[c1*4+r1]))
+```
 
 1.  使用定义的`M4_3X3MINOR`宏，在`mat4.cpp`中实现`determinant`函数。由于行列式将每个元素乘以余子式，因此需要对一些值进行取反。不要忘记将函数声明添加到`mat4.h`中：
 
 ```cpp
-    float determinant(const mat4& m) {
-       return  m.v[0] *M4_3X3MINOR(m.v, 1, 2, 3, 1, 2, 3)  
-             - m.v[4] *M4_3X3MINOR(m.v, 0, 2, 3, 1, 2, 3)  
-             + m.v[8] *M4_3X3MINOR(m.v, 0, 1, 3, 1, 2, 3)  
-             - m.v[12]*M4_3X3MINOR(m.v, 0, 1, 2, 1, 2, 3); 
-    }
-    ```
+float determinant(const mat4& m) {
+   return  m.v[0] *M4_3X3MINOR(m.v, 1, 2, 3, 1, 2, 3)  
+         - m.v[4] *M4_3X3MINOR(m.v, 0, 2, 3, 1, 2, 3)  
+         + m.v[8] *M4_3X3MINOR(m.v, 0, 1, 3, 1, 2, 3)  
+         - m.v[12]*M4_3X3MINOR(m.v, 0, 1, 2, 1, 2, 3); 
+}
+```
 
 1.  接下来，在`mat4.cpp`中实现`adjugate`函数。不要忘记将函数声明添加到`mat4.h`中。使用`M4_3X3MINOR`宏找到余子式矩阵，然后对适当的元素取反以创建余子式矩阵。最后，返回余子式矩阵的转置：
 
 ```cpp
-    mat4 adjugate(const mat4& m) {
-       //Cof (M[i, j]) = Minor(M[i, j]] * pow(-1, i + j)
-       mat4 cofactor;
-       cofactor.v[0] = M4_3X3MINOR(m.v, 1, 2, 3, 1, 2, 3);
-       cofactor.v[1] =-M4_3X3MINOR(m.v, 1, 2, 3, 0, 2, 3);
-       cofactor.v[2] = M4_3X3MINOR(m.v, 1, 2, 3, 0, 1, 3);
-       cofactor.v[3] =-M4_3X3MINOR(m.v, 1, 2, 3, 0, 1, 2);
-       cofactor.v[4] =-M4_3X3MINOR(m.v, 0, 2, 3, 1, 2, 3);
-       cofactor.v[5] = M4_3X3MINOR(m.v, 0, 2, 3, 0, 2, 3);
-       cofactor.v[6] =-M4_3X3MINOR(m.v, 0, 2, 3, 0, 1, 3);
-       cofactor.v[7] = M4_3X3MINOR(m.v, 0, 2, 3, 0, 1, 2);
-       cofactor.v[8] = M4_3X3MINOR(m.v, 0, 1, 3, 1, 2, 3);
-       cofactor.v[9] =-M4_3X3MINOR(m.v, 0, 1, 3, 0, 2, 3);
-       cofactor.v[10]= M4_3X3MINOR(m.v, 0, 1, 3, 0, 1, 3);
-       cofactor.v[11]=-M4_3X3MINOR(m.v, 0, 1, 3, 0, 1, 2);
-       cofactor.v[12]=-M4_3X3MINOR(m.v, 0, 1, 2, 1, 2, 3);
-       cofactor.v[13]= M4_3X3MINOR(m.v, 0, 1, 2, 0, 2, 3);
-       cofactor.v[14]=-M4_3X3MINOR(m.v, 0, 1, 2, 0, 1, 3);
-       cofactor.v[15]= M4_3X3MINOR(m.v, 0, 1, 2, 0, 1, 2);
-       return transposed(cofactor);
-    }
-    ```
+mat4 adjugate(const mat4& m) {
+   //Cof (M[i, j]) = Minor(M[i, j]] * pow(-1, i + j)
+   mat4 cofactor;
+   cofactor.v[0] = M4_3X3MINOR(m.v, 1, 2, 3, 1, 2, 3);
+   cofactor.v[1] =-M4_3X3MINOR(m.v, 1, 2, 3, 0, 2, 3);
+   cofactor.v[2] = M4_3X3MINOR(m.v, 1, 2, 3, 0, 1, 3);
+   cofactor.v[3] =-M4_3X3MINOR(m.v, 1, 2, 3, 0, 1, 2);
+   cofactor.v[4] =-M4_3X3MINOR(m.v, 0, 2, 3, 1, 2, 3);
+   cofactor.v[5] = M4_3X3MINOR(m.v, 0, 2, 3, 0, 2, 3);
+   cofactor.v[6] =-M4_3X3MINOR(m.v, 0, 2, 3, 0, 1, 3);
+   cofactor.v[7] = M4_3X3MINOR(m.v, 0, 2, 3, 0, 1, 2);
+   cofactor.v[8] = M4_3X3MINOR(m.v, 0, 1, 3, 1, 2, 3);
+   cofactor.v[9] =-M4_3X3MINOR(m.v, 0, 1, 3, 0, 2, 3);
+   cofactor.v[10]= M4_3X3MINOR(m.v, 0, 1, 3, 0, 1, 3);
+   cofactor.v[11]=-M4_3X3MINOR(m.v, 0, 1, 3, 0, 1, 2);
+   cofactor.v[12]=-M4_3X3MINOR(m.v, 0, 1, 2, 1, 2, 3);
+   cofactor.v[13]= M4_3X3MINOR(m.v, 0, 1, 2, 0, 2, 3);
+   cofactor.v[14]=-M4_3X3MINOR(m.v, 0, 1, 2, 0, 1, 3);
+   cofactor.v[15]= M4_3X3MINOR(m.v, 0, 1, 2, 0, 1, 2);
+   return transposed(cofactor);
+}
+```
 
 1.  现在`determinant`和`adjugate`函数已经完成，实现 4x4 矩阵的`inverse`函数应该很简单。在`mat4.cpp`中实现`inverse`函数。不要忘记将函数声明添加到`mat4.h`中：
 
 ```cpp
-    mat4 inverse(const mat4& m) {
-        float det = determinant(m);
+mat4 inverse(const mat4& m) {
+    float det = determinant(m);
 
-        if (det == 0.0f) {
-            cout << " Matrix determinant is 0\n";
-            return mat4();
-        }
-        mat4 adj = adjugate(m);
-        return adj * (1.0f / det);
-    }
-    ```
+    if (det == 0.0f) {
+        cout << " Matrix determinant is 0\n";
+        return mat4();
+    }
+    mat4 adj = adjugate(m);
+    return adj * (1.0f / det);
+}
+```
 
 1.  `inverse`函数接受一个常量矩阵引用，并返回一个新的矩阵，该矩阵是提供矩阵的逆矩阵。在`mat4.cpp`中实现一个`invert`便利函数。这个便利函数将内联地反转矩阵，修改参数。不要忘记将函数声明添加到`mat4.h`中：
 
 ```cpp
-    void invert(mat4& m) {
-        float det = determinant(m);
-        if (det == 0.0f) {
-            std::cout << "Matrix determinant is 0\n";
-            m = mat4();
-            return;
-        }
-        m = adjugate(m) * (1.0f / det);
-    }
-    ```
+void invert(mat4& m) {
+    float det = determinant(m);
+    if (det == 0.0f) {
+        std::cout << "Matrix determinant is 0\n";
+        m = mat4();
+        return;
+    }
+    m = adjugate(m) * (1.0f / det);
+}
+```
 
 矩阵的求逆是一个相对昂贵的函数。只编码位置和旋转的矩阵可以更快地求逆，因为 3x3 旋转矩阵的逆矩阵与其转置矩阵相同。
 

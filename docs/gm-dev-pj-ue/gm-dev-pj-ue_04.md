@@ -176,16 +176,16 @@
 1.  在 Visual Studio 中打开`MyThirdPersonChar`类头文件，并确保有一个名为`SetupPlayerInputComponent`的`protected`函数的声明，它返回空，并接收一个`class UInputComponent* PlayerInputComponent`属性作为参数。这个函数应该被标记为`virtual`和`override`：
 
 ```cpp
-    virtual void SetupPlayerInputComponent(class UInputComponent*   PlayerInputComponent) override;
-    ```
+virtual void SetupPlayerInputComponent(class UInputComponent*   PlayerInputComponent) override;
+```
 
 1.  打开这个类的源文件，并确保这个函数有一个实现：
 
 ```cpp
-    void AMyThirdPersonChar::SetupPlayerInputComponent(class   UInputComponent* PlayerInputComponent)
-    {
-    }
-    ```
+void AMyThirdPersonChar::SetupPlayerInputComponent(class   UInputComponent* PlayerInputComponent)
+{
+}
+```
 
 1.  在其实现中，首先调用`PlayerInputComponent`属性的`BindAction`函数。这个函数允许这个类监听特定的动作，这种情况下是`Jump`动作。它接收以下参数：
 
@@ -198,8 +198,8 @@
 +   `FInputActionHandlerSignature::TUObjectMethodDelegate< UserClass >::FMethodPtr Func` - 这个属性有点啰嗦，但本质上是一个指向当事件发生时将被调用的函数的指针，我们可以通过输入`&`后跟类名，后跟`::`，后跟函数名来指定。在我们的情况下，我们希望这是属于`Character`类的现有`Jump`函数，所以我们将用`&ACharacter::Jump`来指定它。
 
 ```cpp
-        PlayerInputComponent->BindAction("Jump", IE_Pressed, this,   &ACharacter::Jump);
-        ```
+PlayerInputComponent->BindAction("Jump", IE_Pressed, this,   &ACharacter::Jump);
+```
 
 注意
 
@@ -208,59 +208,59 @@
 1.  为了让角色停止跳跃，您需要复制这一行，然后将新行的输入事件更改为`IE_Released`，被调用的函数更改为`Character`类的`StopJumping`函数。
 
 ```cpp
-    PlayerInputComponent->BindAction("Jump", IE_Released, this,   &ACharacter::StopJumping);
-    ```
+PlayerInputComponent->BindAction("Jump", IE_Released, this,   &ACharacter::StopJumping);
+```
 
 1.  因为我们将使用`InputComponent`类，所以我们需要在源文件的顶部包含它：
 
 ```cpp
-    #include "Components/InputComponent.h"
-    ```
+#include "Components/InputComponent.h"
+```
 
 1.  现在我们正在监听`Jump`动作，并且在执行该动作时使角色跳跃，让我们继续进行其移动。在类的头文件中，添加一个名为`MoveRight`的`protected`函数的声明，它不返回任何内容，并接收一个`float Value`参数。这个函数将在`MoveRight`轴的值更新时被调用。
 
 ```cpp
-    void MoveRight(float Value);
-    ```
+void MoveRight(float Value);
+```
 
 1.  在类的源文件中，添加这个函数的实现，我们将首先检查`Controller`属性是否有效（不是`nullptr`），以及`Value`属性是否不等于`0`：
 
 ```cpp
-    void AMyThirdPersonChar::MoveRight(float Value)
-    {
-      if (Controller != nullptr && Value != 0.0f)
-      {
-      }
-    }
-    ```
+void AMyThirdPersonChar::MoveRight(float Value)
+{
+  if (Controller != nullptr && Value != 0.0f)
+  {
+  }
+}
+```
 
 1.  如果这两个条件都为真，我们将使用`AddMovementInput`函数来移动我们的角色。这个函数的一个参数是角色移动的方向。为了计算这个方向，我们需要做两件事：
 
 +   获取摄像机在*z*轴（偏航）上的旋转，以便我们根据摄像机的朝向移动角色。为了实现这一点，我们可以创建一个新的`FRotator`属性，俯仰（*y*轴上的旋转）和翻滚（*x*轴上的旋转）的值为`0`，属性的偏航值为摄像机当前的偏航值。要获取摄像机的偏航值，我们可以调用玩家控制器的`GetControlRotation`函数，然后访问它的`Yaw`属性。
 
 ```cpp
-        const FRotator YawRotation(0, Controller->  GetControlRotation().Yaw, 0);
-        const FVector Direction =   UKismetMathLibrary::GetRightVector(YawRotation);
-        ```
+const FRotator YawRotation(0, Controller->  GetControlRotation().Yaw, 0);
+const FVector Direction =   UKismetMathLibrary::GetRightVector(YawRotation);
+```
 
 现在我们可以调用`AddMovementInput`函数，传递`Direction`和`Value`属性作为参数。
 
 ```cpp
-        AddMovementInput(Direction, Value);
-        ```
+AddMovementInput(Direction, Value);
+```
 
 1.  因为我们将同时使用`KismetMathLibrary`和`Controller`对象，所以我们需要在这个源文件的顶部包含它们：
 
 ```cpp
-    #include "Kismet/KismetMathLibrary.h"
-    #include "GameFramework/Controller.h"
-    ```
+#include "Kismet/KismetMathLibrary.h"
+#include "GameFramework/Controller.h"
+```
 
 1.  在这个类的`SetupPlayerInputComponent`函数中监听`MoveRight`轴，通过调用`PlayerInputComponent`属性的`BindAxis`函数。这个函数用于监听轴而不是动作，其参数与`BindAction`函数的参数之间唯一的区别是它不需要接收`EInputState`参数。将`"MoveRight"`、`this`指针和这个类的`MoveRight`函数作为参数传递给这个函数。
 
 ```cpp
-    PlayerInputComponent->BindAxis("MoveRight", this,   &AMyThirdPersonChar::MoveRight);
-    ```
+PlayerInputComponent->BindAxis("MoveRight", this,   &AMyThirdPersonChar::MoveRight);
+```
 
 注意
 
@@ -271,28 +271,28 @@
 1.  在类的头文件中，添加一个类似于`MoveRight`函数的声明，但将其命名为`MoveForward`：
 
 ```cpp
-    void MoveForward(float Value);
-    ```
+void MoveForward(float Value);
+```
 
 1.  在类的源文件中，为这个新的`MoveForward`函数添加一个实现。将`MoveRight`函数的实现复制到这个新的实现中，但用其`GetForwardVector`函数的调用替换`KismetMathLibrary`对象的`GetRightVector`函数的调用。这将使用表示摄像头面向方向的向量，而不是其右向量，其面向右侧：
 
 ```cpp
-    void AMyThirdPersonChar::MoveForward(float Value)
-    {
-      if (Controller != nullptr && Value != 0.0f)
-      {
-        const FRotator YawRotation(0, Controller->  GetControlRotation().Yaw, 0);
-        const FVector Direction = UKismetMathLibrary::GetForwardVector(YawRotation);
-        AddMovementInput(Direction, Value);
-      }
-    }
-    ```
+void AMyThirdPersonChar::MoveForward(float Value)
+{
+  if (Controller != nullptr && Value != 0.0f)
+  {
+    const FRotator YawRotation(0, Controller->  GetControlRotation().Yaw, 0);
+    const FVector Direction = UKismetMathLibrary::GetForwardVector(YawRotation);
+    AddMovementInput(Direction, Value);
+  }
+}
+```
 
 1.  在`SetupPlayerInputComponent`函数的实现中，复制监听`MoveRight`轴的代码行，并将第一个参数替换为`"MoveForward"`，将最后一个参数替换为指向`MoveForward`函数的指针：
 
 ```cpp
-    PlayerInputComponent->BindAxis("MoveForward", this,   &AMyThirdPersonChar::MoveForward);
-    ```
+PlayerInputComponent->BindAxis("MoveForward", this,   &AMyThirdPersonChar::MoveForward);
+```
 
 1.  现在编译您的代码，打开编辑器，并打开您的`BP_MyTPS`蓝图资产。删除`InputAction Jump`事件，以及与之连接的节点。对于`InputAxis MoveForward`和`InputAxis MoveRight`事件也做同样的操作。我们将在 C++中复制这个逻辑，并需要删除其蓝图功能，以便在处理输入时不会发生冲突。
 
@@ -398,29 +398,29 @@ PlayerInputComponent->BindAxis("LookUp", this,   &APawn::AddControllerPitchInput
 1.  转到`MyThirdPersonChar`类的头文件，并添加两个声明受保护的函数，这两个函数返回空，并接收`ETouchIndex::Type FingerIndex`和`FVector Location`参数，第一个参数表示触摸屏幕的手指的索引（无论是第一个、第二个还是第三个手指），第二个参数表示触摸屏幕的位置。将其中一个函数命名为`TouchBegin`，另一个命名为`TouchEnd`：
 
 ```cpp
-    void TouchBegin(ETouchIndex::Type FingerIndex, FVector Location);
-    void TouchEnd(ETouchIndex::Type FingerIndex, FVector Location);
-    ```
+void TouchBegin(ETouchIndex::Type FingerIndex, FVector Location);
+void TouchEnd(ETouchIndex::Type FingerIndex, FVector Location);
+```
 
 1.  在`MyThirdPersonChar`类的源文件中，添加这两个函数的实现，其中`TouchBegin`函数将调用`Jump`函数，而`TouchEnd`函数将调用`StopJumping`函数。这将导致我们的角色在玩家触摸屏幕时开始跳跃，并在他们停止触摸屏幕时停止跳跃：
 
 ```cpp
-    void AMyThirdPersonChar::TouchBegin(ETouchIndex::Type   FingerIndex, FVector Location)
-    {
-      Jump();
-    }
-    void AMyThirdPersonChar::TouchEnd(ETouchIndex::Type   FingerIndex, FVector Location)
-    {
-      StopJumping();
-    }
-    ```
+void AMyThirdPersonChar::TouchBegin(ETouchIndex::Type   FingerIndex, FVector Location)
+{
+  Jump();
+}
+void AMyThirdPersonChar::TouchEnd(ETouchIndex::Type   FingerIndex, FVector Location)
+{
+  StopJumping();
+}
+```
 
 1.  转到`SetupPlayerInputComponent`函数的实现，并在`PlayerInputComponent`的`BindTouch`函数中添加两个调用，这将把屏幕被触摸的事件绑定到一个函数。这个函数接收与`BindAction`函数相同的参数，除了第一个参数`ActionName`。在第一个函数调用中，将输入事件`IE_Pressed`、`this`指针和这个类的`TouchBegin`函数作为参数传递，而在第二个调用中，将输入事件`IE_Released`、`this`指针和这个类的`TouchEnd`函数作为参数传递：
 
 ```cpp
-    PlayerInputComponent->BindTouch(IE_Pressed, this,   &AMyThirdPersonChar::TouchBegin);
-    PlayerInputComponent->BindTouch(IE_Released, this,   &AMyThirdPersonChar::TouchEnd);
-    ```
+PlayerInputComponent->BindTouch(IE_Pressed, this,   &AMyThirdPersonChar::TouchBegin);
+PlayerInputComponent->BindTouch(IE_Released, this,   &AMyThirdPersonChar::TouchEnd);
+```
 
 1.  使用`Mobile Preview`预览游戏，就像我们在上一个练习中所做的那样。如果你用左鼠标按钮点击屏幕中间，玩家角色应该会跳跃：![图 4.19：点击屏幕中间后角色跳跃](img/B16183_04_19.jpg)
 

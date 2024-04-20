@@ -63,8 +63,8 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  在终端窗口中，输入以下命令，将`CxxTemplate`仓库从 GitHub 下载到本地系统：
 
 ```cpp
-    git clone https://github.com/TrainingByPackt/Advanced-CPlusPlus/tree/master/Lesson1/Exercise01/project
-    ```
+git clone https://github.com/TrainingByPackt/Advanced-CPlusPlus/tree/master/Lesson1/Exercise01/project
+```
 
 上一个命令的输出类似于以下内容：
 
@@ -77,20 +77,20 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  通过在终端中输入以下命令，进入`CxxTemplate`文件夹：
 
 ```cpp
-    cd CxxTemplate
-    ```
+cd CxxTemplate
+```
 
 1.  现在你可以通过在终端中输入以下命令来列出项目中的所有文件：
 
 ```cpp
-    find .
-    ```
+find .
+```
 
 1.  在`CxxTemplate`文件夹中使用`cmake`命令生成我们的 Ninja 构建文件。为此，输入以下命令：
 
 ```cpp
-    cmake -Bbuild -H. -GNinja
-    ```
+cmake -Bbuild -H. -GNinja
+```
 
 上一个命令的输出如下：
 
@@ -103,9 +103,9 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  运行以下命令来列出项目文件并检查在`build`文件夹中创建的文件：
 
 ```cpp
-    ls
-    ls build
-    ```
+ls
+ls build
+```
 
 上一个命令将在终端中显示以下输出：
 
@@ -122,9 +122,9 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  现在，进入`build`文件夹，并通过在终端中输入以下命令来构建我们的项目：
 
 ```cpp
-    cd build
-    ninja
-    ```
+cd build
+ninja
+```
 
 你应该看到最终输出如下：
 
@@ -135,8 +135,8 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  在`CxxTemplate`可执行文件中键入`ls`或不键入：
 
 ```cpp
-    ls
-    ```
+ls
+```
 
 上一个命令在终端中产生以下输出：
 
@@ -149,8 +149,8 @@ GitHub 仓库的链接可以在这里找到：[`github.com/TrainingByPackt/Advan
 1.  在终端中，输入以下命令来运行`CxxTemplate`可执行文件：
 
 ```cpp
-    ./CxxTemplate
-    ```
+./CxxTemplate
+```
 
 终端中的上一个命令将提供以下输出：
 
@@ -231,38 +231,38 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  现在，让我们在`ANewClass`类中写一些代码，并从`ANewClass.cpp`中访问它，并更改文件的开头以匹配以下内容，然后保存文件：
 
 ```cpp
-    #include "ANewClass.h"
-    #include <iostream>
-    void ANewClass::run() {
-        std::cout << "Hello from ANewClass." << std::endl;
-    }
-    ```
+#include "ANewClass.h"
+#include <iostream>
+void ANewClass::run() {
+    std::cout << "Hello from ANewClass." << std::endl;
+}
+```
 
 你会看到 Eclipse 用`ANewClass.h`文件警告我们。这些警告是由 IDE 中的分析器实现的，非常有用，因为它们可以在你输入代码时帮助你修复代码，而无需运行编译器。
 
 1.  打开`ANewClass.h`文件，添加以下代码，并保存文件：
 
 ```cpp
-    public:
-        void run(); // we added this line
-        ANewClass();
-    ```
+public:
+    void run(); // we added this line
+    ANewClass();
+```
 
 你应该看到`.cpp`文件中的错误消失了。如果没有消失，可能是因为你可能忘记保存其中一个文件。你应该养成按*Ctrl + S*保存当前文件的习惯，或者按*Shift + Ctrl + S*保存你编辑过的所有文件。
 
 1.  现在，让我们从我们的另一个类`CxxTemplate.cpp`中使用这个类。打开该文件，进行以下修改，并保存文件。在这里，我们首先导入头文件，在`CxxApplication`的构造函数中，我们向控制台打印文本。然后，我们创建了`ANewClass`的一个新实例，并调用了它的`run`方法：
 
 ```cpp
-    #include "CxxTemplate.h"
-    #include "ANewClass.h"
-    #include <string>
-    ...
-    CxxApplication::CxxApplication( int argc, char *argv[] ) {
-      std::cout << "Hello CMake." << std::endl;
-      ::ANewClass anew;
-      anew.run();
-    }
-    ```
+#include "CxxTemplate.h"
+#include "ANewClass.h"
+#include <string>
+...
+CxxApplication::CxxApplication( int argc, char *argv[] ) {
+  std::cout << "Hello CMake." << std::endl;
+  ::ANewClass anew;
+  anew.run();
+}
+```
 
 #### 注意
 
@@ -271,11 +271,11 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  尝试通过点击`CMakeLists.txt`文件来构建项目，进行以下修改，并保存文件：
 
 ```cpp
-    add_executable(CxxTemplate
-      src/CxxTemplate.cpp  
-      src/ANewClass.cpp
-    )
-    ```
+add_executable(CxxTemplate
+  src/CxxTemplate.cpp  
+  src/ANewClass.cpp
+)
+```
 
 尝试再次构建项目。这次你不应该看到任何错误。
 
@@ -332,17 +332,17 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  编辑我们的基本`CMakeLists.txt`文件，以允许在`GTest`包中进行测试，该包为 CMake 带来了`GoogleTest`功能。我们将在此之后添加我们的新行：
 
 ```cpp
-    find_package(GTest)
-    if(GTEST_FOUND)
-    set(Gtest_FOUND TRUE)
-    endif()
-    if(GTest_FOUND)
-    include(GoogleTest)
-    endif()
-    # add these two lines below
-    enable_testing()
-    add_subdirectory(tests)
-    ```
+find_package(GTest)
+if(GTEST_FOUND)
+set(Gtest_FOUND TRUE)
+endif()
+if(GTest_FOUND)
+include(GoogleTest)
+endif()
+# add these two lines below
+enable_testing()
+add_subdirectory(tests)
+```
 
 这就是我们需要添加到我们主要的`CMakeLists.txt`文件中的所有内容。
 
@@ -351,29 +351,29 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  在`tests/CMakeLists.txt`文件中添加以下代码：
 
 ```cpp
-    include(GoogleTest)
-    add_executable(tests CanTest.cpp)
-    target_link_libraries(tests GTest::GTest)
-    gtest_discover_tests(tests)
-    ```
+include(GoogleTest)
+add_executable(tests CanTest.cpp)
+target_link_libraries(tests GTest::GTest)
+gtest_discover_tests(tests)
+```
 
 让我们逐行解析这段代码。第一行引入了 Google Test 功能。第二行创建了`tests`可执行文件，其中将包括所有我们的测试源文件。在这种情况下，我们只有一个`CanTest.cpp`文件，它将验证测试是否有效。之后，我们将`GTest`库链接到`tests`可执行文件。最后一行标识了`tests`可执行文件中的所有单独测试，并将它们添加到`CMake`作为一个测试。这样，各种测试工具将能够告诉我们哪些单独的测试失败了，哪些通过了。
 
 1.  创建一个`tests/CanTest.cpp`文件。添加这段代码来简单验证测试是否运行，而不实际测试我们实际项目中的任何内容：
 
 ```cpp
-    #include "gtest/gtest.h"
-    namespace {
-    class CanTest: public ::testing::Test {};
-    TEST_F(CanTest, CanReallyTest) {
-      EXPECT_EQ(0, 0);
-    }
-    }  
-    int main(int argc, char **argv) {
-      ::testing::InitGoogleTest(&argc, argv);
-      return RUN_ALL_TESTS();
-    }
-    ```
+#include "gtest/gtest.h"
+namespace {
+class CanTest: public ::testing::Test {};
+TEST_F(CanTest, CanReallyTest) {
+  EXPECT_EQ(0, 0);
+}
+}  
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
+```
 
 `TEST_F`行是一个单独的测试。现在，`EXPECT_EQ(0, 0)`正在测试零是否等于零，如果我们实际运行测试，它将始终成功。稍后，我们将在这里添加我们自己类的结果，以便对各种值进行测试。现在我们的项目中已经具备了 Google Test 的必要设置。接下来，我们将构建和运行这些测试。
 
@@ -404,8 +404,8 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  我们之前运行了`CxxTemplate`，现在不会看到任何额外的输出。通过在项目文件夹中输入以下命令，我们可以运行其他可执行文件：
 
 ```cpp
-    ./build/Debug/tests/tests
-    ```
+./build/Debug/tests/tests
+```
 
 前面的代码在终端中生成了以下输出：
 
@@ -418,10 +418,10 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 1.  您可以通过使用`ctest`命令之一来运行测试。在项目文件夹中的终端中输入以下命令。我们进入`tests`可执行文件所在的文件夹，运行`ctest`，然后返回：
 
 ```cpp
-    cd build/Debug/tests
-    ctest
-    cd ../../..
-    ```
+cd build/Debug/tests
+ctest
+cd ../../..
+```
 
 以下是您将看到的输出：
 
@@ -472,31 +472,31 @@ Ninja 构建文件对于在 Linux 中构建我们的项目非常有用。但是�
 +   `src/SumFunc.h`：
 
 ```cpp
-    #ifndef SRC_SUMFUNC_H_
-    #define SRC_SUMFUNC_H_
-    int sum(int a, int b);
-    #endif /* SRC_SUMFUNC_H_ */
-    ```
+#ifndef SRC_SUMFUNC_H_
+#define SRC_SUMFUNC_H_
+int sum(int a, int b);
+#endif /* SRC_SUMFUNC_H_ */
+```
 
 +   `src/SumFunc.cpp`：
 
 ```cpp
-    #include "SumFunc.h"
-    #include <iostream>
-    int sum(int a, int b) {
-      return a + b;
-    }
-    ```
+#include "SumFunc.h"
+#include <iostream>
+int sum(int a, int b) {
+  return a + b;
+}
+```
 
 +   `CMakeLists.txt`的相关行：
 
 ```cpp
-    add_executable(CxxTemplate
-      src/CxxTemplate.cpp  
-      src/ANewClass.cpp
-      src/SumFunc.cpp
-    )
-    ```
+add_executable(CxxTemplate
+  src/CxxTemplate.cpp  
+  src/ANewClass.cpp
+  src/SumFunc.cpp
+)
+```
 
 另外，让我们回顾一下我们的`CantTest.cpp`文件，它包含了我们单元测试的`main()`函数：
 
@@ -521,26 +521,26 @@ int main(int argc, char **argv) {
 1.  添加一个新的测试源文件（`tests/SumFuncTest.cpp`），内容如下：
 
 ```cpp
-    #include "gtest/gtest.h"
-    #include "../src/SumFunc.h"
-    namespace {
-      class SumFuncTest: public ::testing::Test {};
-      TEST_F(SumFuncTest, CanSumCorrectly) {
-        EXPECT_EQ(7, sum(3, 4));
-      }
-    }
-    ```
+#include "gtest/gtest.h"
+#include "../src/SumFunc.h"
+namespace {
+  class SumFuncTest: public ::testing::Test {};
+  TEST_F(SumFuncTest, CanSumCorrectly) {
+    EXPECT_EQ(7, sum(3, 4));
+  }
+}
+```
 
 请注意，这里没有`main()`函数，因为`CanTest.cpp`有一个，它们将被链接在一起。其次，请注意，这包括`SumFunc.h`，它在测试中使用了`sum(3, 4)`。这是我们在测试中使用项目代码的方式。
 
 1.  在`tests/CMakeLists.txt`文件中进行以下更改以构建测试：
 
 ```cpp
-    include(GoogleTest)
-    add_executable(tests CanTest.cpp SumFuncTest.cpp ../src/SumFunc.cpp) # added files here
-    target_link_libraries(tests GTest::GTest)
-    gtest_discover_tests(tests)
-    ```
+include(GoogleTest)
+add_executable(tests CanTest.cpp SumFuncTest.cpp ../src/SumFunc.cpp) # added files here
+target_link_libraries(tests GTest::GTest)
+gtest_discover_tests(tests)
+```
 
 请注意，我们将测试（`SumFuncTest.cpp`）和它测试的代码（`../src/SumFunc.cpp`）都添加到可执行文件中，因为我们的测试代码正在使用实际项目中的代码。
 
@@ -553,14 +553,14 @@ int main(int argc, char **argv) {
 1.  现在，让我们添加一个实际失败的测试。在`tests/SumFuncTest.cpp`文件中，进行以下更改：
 
 ```cpp
-    TEST_F(SumFuncTest, CanSumCorrectly) {
-      EXPECT_EQ(7, sum(3, 4));
-    }
-    // add this test
-    TEST_F(SumFuncTest, CanSumAbsoluteValues) {
-      EXPECT_EQ(6, sum(3, -3));
-    }
-    ```
+TEST_F(SumFuncTest, CanSumCorrectly) {
+  EXPECT_EQ(7, sum(3, 4));
+}
+// add this test
+TEST_F(SumFuncTest, CanSumAbsoluteValues) {
+  EXPECT_EQ(6, sum(3, -3));
+}
+```
 
 请注意，此测试假定输入的绝对值被求和，这是不正确的。这次调用的结果是`0`，但在这个例子中预期是`6`。这是我们在项目中必须做的唯一更改，以添加这个测试。
 
@@ -573,14 +573,14 @@ int main(int argc, char **argv) {
 1.  让我们改变测试并修复它。修改测试，使我们期望`-3`和`3`的和为`0`。重命名测试以反映这个测试实际上做了什么：
 
 ```cpp
-    TEST_F(SumFuncTest, CanSumCorrectly) {
-      EXPECT_EQ(7, sum(3, 4));
-    }
-    // change this part
-    TEST_F(SumFuncTest, CanUseNegativeValues) {
-      EXPECT_EQ(0, sum(3, -3));
-    }
-    ```
+TEST_F(SumFuncTest, CanSumCorrectly) {
+  EXPECT_EQ(7, sum(3, 4));
+}
+// change this part
+TEST_F(SumFuncTest, CanUseNegativeValues) {
+  EXPECT_EQ(0, sum(3, -3));
+}
+```
 
 1.  现在运行它，并观察报告中所有测试是否都通过了：
 
@@ -635,15 +635,15 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  通过输入以下命令导航到`build`文件夹，其中我们的`Makefile`文件位于其中：
 
 ```cpp
-    cd build/Debug
-    ```
+cd build/Debug
+```
 
 1.  使用以下命令清理项目并以`VERBOSE`模式运行构建：
 
 ```cpp
-    make clean 
-    make VERBOSE=1 all
-    ```
+make clean 
+make VERBOSE=1 all
+```
 
 您将在终端中获得构建过程的详细输出，可能会显得有点拥挤：
 
@@ -662,18 +662,18 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 以下是此输出中的一些行。以下行是与主可执行文件的编译和链接相关的重要行：
 
 ```cpp
-    /usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/CxxTemplate.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/CxxTemplate.cpp
-    /usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/ANewClass.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/ANewClass.cpp
-    /usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/SumFunc.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/SumFunc.cpp
-    /usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/LinearMotion1D.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/LinearMotion1D.cpp
-    /usr/bin/c++  -g   CMakeFiles/CxxTemplate.dir/src/CxxTemplate.cpp.o CMakeFiles/CxxTemplate.dir/src/ANewClass.cpp.o CMakeFiles/CxxTemplate.dir/src/SumFunc.cpp.o CMakeFiles/CxxTemplate.dir/src/LinearMotion1D.cpp.o  -o CxxTemplate -pthread 
-    ```
+/usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/CxxTemplate.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/CxxTemplate.cpp
+/usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/ANewClass.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/ANewClass.cpp
+/usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/SumFunc.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/SumFunc.cpp
+/usr/bin/c++    -g   -pthread -std=gnu++1z -o CMakeFiles/CxxTemplate.dir/src/LinearMotion1D.cpp.o -c /home/username/Packt/Cpp2019/CxxTemplate/src/LinearMotion1D.cpp
+/usr/bin/c++  -g   CMakeFiles/CxxTemplate.dir/src/CxxTemplate.cpp.o CMakeFiles/CxxTemplate.dir/src/ANewClass.cpp.o CMakeFiles/CxxTemplate.dir/src/SumFunc.cpp.o CMakeFiles/CxxTemplate.dir/src/LinearMotion1D.cpp.o  -o CxxTemplate -pthread 
+```
 
 1.  这里的`c++`命令只是`g++`编译器的符号链接。要查看它实际上是一系列符号链接，输入以下命令：
 
 ```cpp
-    namei /usr/bin/c++
-    ```
+namei /usr/bin/c++
+```
 
 您将看到以下输出：
 
@@ -692,25 +692,25 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  为了进一步了解这个过程，让我们自己执行编译步骤。在终端中，转到项目文件夹并使用以下命令创建一个名为`mybuild`的新文件夹：
 
 ```cpp
-    cd ~/CxxTemplate
-    mkdir mybuild
-    ```
+cd ~/CxxTemplate
+mkdir mybuild
+```
 
 1.  然后，运行以下命令将 CPP 源文件编译为对象文件：
 
 ```cpp
-    /usr/bin/c++ src/CxxTemplate.cpp -o mybuild/CxxTemplate.o -c 
-    /usr/bin/c++ src/ANewClass.cpp -o mybuild/ANewClass.o -c 
-    /usr/bin/c++ src/SumFunc.cpp -o mybuild/SumFunc.o -c 
-    /usr/bin/c++ src/LinearMotion1D.cpp -o mybuild/LinearMotion1D.o -c 
-    ```
+/usr/bin/c++ src/CxxTemplate.cpp -o mybuild/CxxTemplate.o -c 
+/usr/bin/c++ src/ANewClass.cpp -o mybuild/ANewClass.o -c 
+/usr/bin/c++ src/SumFunc.cpp -o mybuild/SumFunc.o -c 
+/usr/bin/c++ src/LinearMotion1D.cpp -o mybuild/LinearMotion1D.o -c 
+```
 
 1.  进入`mybuild`目录，并使用以下命令查看其中的内容：
 
 ```cpp
-    cd mybuild
-    ls 
-    ```
+cd mybuild
+ls 
+```
 
 我们看到了预期的以下输出。这些是我们的目标文件：
 
@@ -721,14 +721,14 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  在下一步中，将目标文件链接在一起形成我们的可执行文件。输入以下命令：
 
 ```cpp
-    /usr/bin/c++  CxxTemplate.o ANewClass.o SumFunc.o LinearMotion1D.o  -o CxxTemplate 
-    ```
+/usr/bin/c++  CxxTemplate.o ANewClass.o SumFunc.o LinearMotion1D.o  -o CxxTemplate 
+```
 
 1.  现在，通过输入以下命令，让我们在文件列表中看到我们的可执行文件：
 
 ```cpp
-    ls 
-    ```
+ls 
+```
 
 这显示了以下图中的新`CxxTemplate`文件：
 
@@ -739,8 +739,8 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  现在，通过输入以下命令运行我们的可执行文件：
 
 ```cpp
-    ./CxxTemplate
-    ```
+./CxxTemplate
+```
 
 然后看看我们之前的输出：
 
@@ -789,24 +789,24 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  现在，让我们看看类是如何编译的。将以下代码添加到**Compiler Explorer**的现有代码下：
 
 ```cpp
-    class MyClass {
-    private:
-        int a = 5;
-        int myPrivateFunc(int i) {
-            a = 4;
-            return i + a;
-        }
-    public:
-        int b = 6;
-        int myFunc(){ 
-            return sum(1, myPrivateFunc(b));
-        }
-    };
-    MyClass myObject;
-    int main() {
-        myObject.myFunc();
-    }
-    ```
+class MyClass {
+private:
+    int a = 5;
+    int myPrivateFunc(int i) {
+        a = 4;
+        return i + a;
+    }
+public:
+    int b = 6;
+    int myFunc(){ 
+        return sum(1, myPrivateFunc(b));
+    }
+};
+MyClass myObject;
+int main() {
+    myObject.myFunc();
+}
+```
 
 这是这些添加行的编译版本：
 
@@ -855,12 +855,12 @@ C++项目是一组源代码文件和项目配置文件，用于组织源文件�
 1.  通过添加以下代码编辑我们的`main`函数：
 
 ```cpp
-    int i = 1, t = 0;
-    do {
-      t += i++;
-    } while (i <= 3);
-    std::cout << t << std::endl;
-    ```
+int i = 1, t = 0;
+do {
+  t += i++;
+} while (i <= 3);
+std::cout << t << std::endl;
+```
 
 后增量运算符与偶尔的`do-while`循环对一些人来说可能是一个难题。这是因为我们试图在脑海中执行算法。然而，我们的调试器完全能够逐步运行它，并显示在执行过程中到底发生了什么。
 
@@ -1063,85 +1063,85 @@ void arrayPlay(int *a, int Len) {
 1.  更新后的代码将如下所示。请注意，由于参数名是不言自明的，我们不再需要注释：
 
 ```cpp
-    void arrayPlay(int *input, int inputLength) {
-        int S = 0;
-        int M = 0;
-        int Lim_value = 100;
-        bool flag = true;
-        for (int i = 0; i < inputLength; ++i) {
-            S += input[i];
-            if (i == 0 || M > input[i]) {
-                M = input[i];
-            }
-            if (input[i] >= Lim_value) {
-                flag = true;
-            }
-            if (input[i] < 0) {
-                input[i] *= 2;
-            }
-        }
-    }
-    ```
+void arrayPlay(int *input, int inputLength) {
+    int S = 0;
+    int M = 0;
+    int Lim_value = 100;
+    bool flag = true;
+    for (int i = 0; i < inputLength; ++i) {
+        S += input[i];
+        if (i == 0 || M > input[i]) {
+            M = input[i];
+        }
+        if (input[i] >= Lim_value) {
+            flag = true;
+        }
+        if (input[i] < 0) {
+            input[i] *= 2;
+        }
+    }
+}
+```
 
 1.  在循环之前我们定义了一些其他变量。让我们试着理解它们。它似乎只是将每个元素添加到`S`中。因此，`S`必须是`sum`。另一方面，`M`似乎是最小的元素——让我们称它为`smallest`。
 
 1.  `Lim_value`似乎是一个阈值，我们只是想知道它是否被越过。让我们将其重命名为`topThreshold`。如果越过了这个阈值，`flag`变量被设置为 true。让我们将其重命名为`isTopThresholdCrossed`。在这些更改后，代码的状态如下所示：**重构** | **重命名**：
 
 ```cpp
-    void arrayPlay(int *input, int inputLength) {
-        int sum = 0;
-        int smallest = 0;
-        int topThreshold = 100;
-        bool isTopThresholdCrossed = true;
-        for (int i = 0; i < inputLength; ++i) {
-            sum += input[i];
-            if (i == 0 || smallest > input[i]) {
-                smallest = input[i];
-            }
-            if (input[i] >= topThreshold) {
-                isTopThresholdCrossed = true;
-            }
-            if (input[i] < 0) {
-                input[i] *= 2;
-            }
-        }
-    }
-    ```
+void arrayPlay(int *input, int inputLength) {
+    int sum = 0;
+    int smallest = 0;
+    int topThreshold = 100;
+    bool isTopThresholdCrossed = true;
+    for (int i = 0; i < inputLength; ++i) {
+        sum += input[i];
+        if (i == 0 || smallest > input[i]) {
+            smallest = input[i];
+        }
+        if (input[i] >= topThreshold) {
+            isTopThresholdCrossed = true;
+        }
+        if (input[i] < 0) {
+            input[i] *= 2;
+        }
+    }
+}
+```
 
 现在，让我们看看如何使这段代码更简单、更易理解。前面的代码正在做这些事情：计算输入元素的总和，找到最小的元素，确定是否越过了顶部阈值，并将每个元素乘以 2。
 
 1.  由于所有这些都是在同一个循环中完成的，现在算法不太清晰。修复这个问题，将其分为四个独立的循环：
 
 ```cpp
-    void arrayPlay(int *input, int inputLength) {
-        // find the sum of the input
-        int sum = 0;
-        for (int i = 0; i < inputLength; ++i) {
-            sum += input[i];
-        }
-        // find the smallest element
-        int smallest = 0;
-        for (int i = 0; i < inputLength; ++i) {
-            if (i == 0 || smallest > input[i]) {
-                smallest = input[i];
-            }
-        }
-        // determine whether top threshold is crossed
-        int topThreshold = 100;
-        bool isTopThresholdCrossed = true;
-        for (int i = 0; i < inputLength; ++i) {
-            if (input[i] >= topThreshold) {
-                isTopThresholdCrossed = true;
-            }
-        }
-        // multiply each element by 2
-        for (int i = 0; i < inputLength; ++i) {
-            if (input[i] < 0) {
-                input[i] *= 2;
-            }
-        }
-    }
-    ```
+void arrayPlay(int *input, int inputLength) {
+    // find the sum of the input
+    int sum = 0;
+    for (int i = 0; i < inputLength; ++i) {
+        sum += input[i];
+    }
+    // find the smallest element
+    int smallest = 0;
+    for (int i = 0; i < inputLength; ++i) {
+        if (i == 0 || smallest > input[i]) {
+            smallest = input[i];
+        }
+    }
+    // determine whether top threshold is crossed
+    int topThreshold = 100;
+    bool isTopThresholdCrossed = true;
+    for (int i = 0; i < inputLength; ++i) {
+        if (input[i] >= topThreshold) {
+            isTopThresholdCrossed = true;
+        }
+    }
+    // multiply each element by 2
+    for (int i = 0; i < inputLength; ++i) {
+        if (input[i] < 0) {
+            input[i] *= 2;
+        }
+    }
+}
+```
 
 现在代码清晰多了。虽然很容易理解每个块在做什么，但我们还添加了注释以使其更清晰。在这一部分，我们更好地理解了我们的代码是如何转换为可执行文件的。然后，我们讨论了识别和解决可能的代码错误的方法。我们最后讨论了如何编写可读性更强、更不容易出现问题的代码。在下一部分，我们将解决一个活动，我们将使代码更易读。
 

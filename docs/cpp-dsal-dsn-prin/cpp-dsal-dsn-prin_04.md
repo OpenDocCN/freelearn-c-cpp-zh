@@ -110,119 +110,119 @@ bool linear_search(int N, std::vector<int>& sequence)
 1.  首先添加以下头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <chrono>
-    #include <random>
-    #include <algorithm>
-    #include <numeric>
-    ```
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+```
 
 1.  添加线性搜索代码如下：
 
 ```cpp
-    bool linear_search(int N, std::vector<int>& S)
-    {
-            for (auto i : S)
-            {
-                if (i == N)
-                    return true;       // Element found!
-            }
+bool linear_search(int N, std::vector<int>& S)
+{
+        for (auto i : S)
+        {
+            if (i == N)
+                return true;       // Element found!
+        }
 
-            return false;
-    }
-    ```
+        return false;
+}
+```
 
 1.  添加此处显示的二分搜索代码：
 
 ```cpp
-    bool binary_search(int N, std::vector<int>& S)
-    {
-        auto first = S.begin();
-        auto last = S.end();
-        while (true)
-        {
-            // Get the middle element of current range
-            auto range_length = std::distance(first, last);
-            auto mid_element_index = first + std::floor(range_length / 2);
-            auto mid_element = *(first + mid_element_index);
-            // Compare the middle element of current range with N
-            if (mid_element == N)
-                return true;
-            else if (mid_element > N)
-                std::advance(last, -mid_element_index);
-            if (mid_element < N)
-                std::advance(first, mid_element_index);
-            // If only one element left in the current range
-            if (range_length == 1)
-                return false;
-        }
-    }
-    ```
+bool binary_search(int N, std::vector<int>& S)
+{
+    auto first = S.begin();
+    auto last = S.end();
+    while (true)
+    {
+        // Get the middle element of current range
+        auto range_length = std::distance(first, last);
+        auto mid_element_index = first + std::floor(range_length / 2);
+        auto mid_element = *(first + mid_element_index);
+        // Compare the middle element of current range with N
+        if (mid_element == N)
+            return true;
+        else if (mid_element > N)
+            std::advance(last, -mid_element_index);
+        if (mid_element < N)
+            std::advance(first, mid_element_index);
+        // If only one element left in the current range
+        if (range_length == 1)
+            return false;
+    }
+}
+```
 
 1.  为了评估二分搜索的性能，我们将实现两个函数。首先，编写小测试：
 
 ```cpp
-    void run_small_search_test()
-    {
-        auto N = 2;
-        std::vector<int> S{ 1, 3, 2, 4, 5, 7, 9, 8, 6 };
-        std::sort(S.begin(), S.end());
-        if (linear_search(N, S))
-            std::cout << "Element found in set by linear search!" << std::endl;
-        else
-            std::cout << "Element not found." << std::endl;
-        if (binary_search(N, S))
-            std::cout << "Element found in set by binary search!" << std::endl;
-        else
-            std::cout << "Element not found." << std::endl;
-    }
-    ```
+void run_small_search_test()
+{
+    auto N = 2;
+    std::vector<int> S{ 1, 3, 2, 4, 5, 7, 9, 8, 6 };
+    std::sort(S.begin(), S.end());
+    if (linear_search(N, S))
+        std::cout << "Element found in set by linear search!" << std::endl;
+    else
+        std::cout << "Element not found." << std::endl;
+    if (binary_search(N, S))
+        std::cout << "Element found in set by binary search!" << std::endl;
+    else
+        std::cout << "Element not found." << std::endl;
+}
+```
 
 1.  现在，添加大型测试函数，如下所示：
 
 ```cpp
-    void run_large_search_test(int size, int N)
-    {
-        std::vector<int> S;
-        std::random_device rd;
-        std::mt19937 rand(rd());
-          // distribution in range [1, size]
-        std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size); 
-        // Insert random elements
-        for (auto i=0;i<size;i++)
-            S.push_back(uniform_dist(rand));
-        std::sort(S.begin(), S.end());
-        // To measure the time taken, start the clock
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+void run_large_search_test(int size, int N)
+{
+    std::vector<int> S;
+    std::random_device rd;
+    std::mt19937 rand(rd());
+      // distribution in range [1, size]
+    std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size); 
+    // Insert random elements
+    for (auto i=0;i<size;i++)
+        S.push_back(uniform_dist(rand));
+    std::sort(S.begin(), S.end());
+    // To measure the time taken, start the clock
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 
-        bool search_result = binary_search(111, S);
-        // Stop the clock
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    bool search_result = binary_search(111, S);
+    // Stop the clock
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
-        std::cout << "Time taken by binary search = " << 
-    std::chrono::duration_cast<std::chrono::microseconds>
-    (end - begin).count() << std::endl;
+    std::cout << "Time taken by binary search = " << 
+std::chrono::duration_cast<std::chrono::microseconds>
+(end - begin).count() << std::endl;
 
-        if (search_result)
-            std::cout << "Element found in set!" << std::endl;
-        else
-            std::cout << "Element not found." << std::endl;
-    }
-    ```
+    if (search_result)
+        std::cout << "Element found in set!" << std::endl;
+    else
+        std::cout << "Element not found." << std::endl;
+}
+```
 
 1.  最后，添加以下驱动程序代码，用于在不同大小的随机生成向量中搜索数字`36543`：
 
 ```cpp
-    int main()
-    {
-        run_small_search_test();
-        run_large_search_test(100000, 36543);
-        run_large_search_test(1000000, 36543);
-        run_large_search_test(10000000, 36543);
-        return 0;
-    }
-    ```
+int main()
+{
+    run_small_search_test();
+    run_large_search_test(100000, 36543);
+    run_large_search_test(1000000, 36543);
+    run_large_search_test(10000000, 36543);
+    return 0;
+}
+```
 
 1.  以 x64-Debug 模式编译程序并运行。输出应如下所示：
 
@@ -278,12 +278,12 @@ bool binary_search(float N, std::vector<float>& S)
 1.  将每个学生表示为`Student`类的对象，可以定义如下：
 
 ```cpp
-     class Student
-    {
-        std::pair<int, int> name;
-        bool vaccinated;
-    }
-    ```
+ class Student
+{
+    std::pair<int, int> name;
+    bool vaccinated;
+}
+```
 
 1.  重载`Student`类的必要运算符，以便可以使用标准库的`std::sort()`函数对学生向量进行排序。
 
@@ -344,116 +344,116 @@ bool binary_search(float N, std::vector<float>& S)
 1.  导入以下头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <chrono>
-    #include <random>
-    #include <algorithm>
-    #include <numeric>
-    ```
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+```
 
 1.  对两个向量进行合并操作的 C++代码如下。编写`merge()`函数如下：
 
 ```cpp
-    template <typename T>
-    std::vector<T> merge(std::vector<T>& arr1, std::vector<T>& arr2)
-    {
-        std::vector<T> merged;
-        auto iter1 = arr1.begin();
-        auto iter2 = arr2.begin();
-        while (iter1 != arr1.end() && iter2 != arr2.end())
-        {
-            if (*iter1 < *iter2)
-            {
-                merged.emplace_back(*iter1);
-                iter1++;
-            }
-            else
-            {
-                merged.emplace_back(*iter2);
-                iter2++;
-            }
-        }
-        if (iter1 != arr1.end())
-        {
-            for (; iter1 != arr1.end(); iter1++)
-                merged.emplace_back(*iter1);
-        }
-        else
-        {
-            for (; iter2 != arr2.end(); iter2++)
-                merged.emplace_back(*iter2);
-        }
-        return merged;
-    }
-    ```
+template <typename T>
+std::vector<T> merge(std::vector<T>& arr1, std::vector<T>& arr2)
+{
+    std::vector<T> merged;
+    auto iter1 = arr1.begin();
+    auto iter2 = arr2.begin();
+    while (iter1 != arr1.end() && iter2 != arr2.end())
+    {
+        if (*iter1 < *iter2)
+        {
+            merged.emplace_back(*iter1);
+            iter1++;
+        }
+        else
+        {
+            merged.emplace_back(*iter2);
+            iter2++;
+        }
+    }
+    if (iter1 != arr1.end())
+    {
+        for (; iter1 != arr1.end(); iter1++)
+            merged.emplace_back(*iter1);
+    }
+    else
+    {
+        for (; iter2 != arr2.end(); iter2++)
+            merged.emplace_back(*iter2);
+    }
+    return merged;
+}
+```
 
 模板化的`merge()`函数接受类型为`T`的两个向量的引用，并返回一个包含输入数组中元素的新向量，但按递增顺序排序。
 
 1.  现在我们可以使用合并操作来编写递归的归并排序实现，如下所示：
 
 ```cpp
-    template <typename T>
-    std::vector<T> merge_sort(std::vector<T> arr)
-    {
-        if (arr.size() > 1)
-        {
-            auto mid = size_t(arr.size() / 2);
-            auto left_half = merge_sort<T>(std::vector<T>(arr.begin(), arr.begin() + mid));
-            auto right_half = merge_sort<T>(std::vector<T>(arr.begin() + mid, arr.end()));
-            return merge<T>(left_half, right_half);
-        }
+template <typename T>
+std::vector<T> merge_sort(std::vector<T> arr)
+{
+    if (arr.size() > 1)
+    {
+        auto mid = size_t(arr.size() / 2);
+        auto left_half = merge_sort<T>(std::vector<T>(arr.begin(), arr.begin() + mid));
+        auto right_half = merge_sort<T>(std::vector<T>(arr.begin() + mid, arr.end()));
+        return merge<T>(left_half, right_half);
+    }
 
-        return arr;
-    }
-    ```
+    return arr;
+}
+```
 
 1.  添加以下函数以打印向量：
 
 ```cpp
-    template <typename T>
-    void print_vector(std::vector<T> arr)
-    {
-        for (auto i : arr)
-            std::cout << i << " ";
+template <typename T>
+void print_vector(std::vector<T> arr)
+{
+    for (auto i : arr)
+        std::cout << i << " ";
 
-        std::cout << std::endl;
-    }
-    ```
+    std::cout << std::endl;
+}
+```
 
 1.  以下函数允许我们测试归并排序算法的实现：
 
 ```cpp
-    void run_merge_sort_test()
-    {
-        std::vector<int>    S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
-        std::vector<float>  S2{ 45.6f, 1.0f, 3.8f, 1.01f, 2.2f, 3.9f, 45.3f, 5.5f, 1.0f, 2.0f, 44.0f, 5.0f, 7.0f };
-        std::vector<double> S3{ 45.6, 1.0, 3.8, 1.01, 2.2, 3.9, 45.3, 5.5, 1.0, 2.0,  44.0, 5.0, 7.0 };
-        std::vector<char>   C{ 'b','z','a','e','f','t','q','u','y' };
-        std::cout << "Unsorted arrays:" << std::endl;
-        print_vector<int>(S1);
-        print_vector<float>(S2);
-        print_vector<double>(S3);
-        print_vector<char>(C);
-        std::cout << std::endl;
-        auto sorted_S1 = merge_sort<int>(S1);
-        auto sorted_S2 = merge_sort<float>(S2);
-        auto sorted_S3 = merge_sort<double>(S3);
-        auto sorted_C = merge_sort<char>(C);
-        std::cout << "Arrays sorted using merge sort:" 
-                    << std::endl;
-        print_vector<int>(sorted_S1);
-        print_vector<float>(sorted_S2);
-        print_vector<double>(sorted_S3);
-        print_vector<char>(sorted_C);
-        std::cout << std::endl;
-    }
-    int main()
-    {
-        run_merge_sort_test();
-        return 0;
-    }
-    ```
+void run_merge_sort_test()
+{
+    std::vector<int>    S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
+    std::vector<float>  S2{ 45.6f, 1.0f, 3.8f, 1.01f, 2.2f, 3.9f, 45.3f, 5.5f, 1.0f, 2.0f, 44.0f, 5.0f, 7.0f };
+    std::vector<double> S3{ 45.6, 1.0, 3.8, 1.01, 2.2, 3.9, 45.3, 5.5, 1.0, 2.0,  44.0, 5.0, 7.0 };
+    std::vector<char>   C{ 'b','z','a','e','f','t','q','u','y' };
+    std::cout << "Unsorted arrays:" << std::endl;
+    print_vector<int>(S1);
+    print_vector<float>(S2);
+    print_vector<double>(S3);
+    print_vector<char>(C);
+    std::cout << std::endl;
+    auto sorted_S1 = merge_sort<int>(S1);
+    auto sorted_S2 = merge_sort<float>(S2);
+    auto sorted_S3 = merge_sort<double>(S3);
+    auto sorted_C = merge_sort<char>(C);
+    std::cout << "Arrays sorted using merge sort:" 
+                << std::endl;
+    print_vector<int>(sorted_S1);
+    print_vector<float>(sorted_S2);
+    print_vector<double>(sorted_S3);
+    print_vector<char>(sorted_C);
+    std::cout << std::endl;
+}
+int main()
+{
+    run_merge_sort_test();
+    return 0;
+}
+```
 
 1.  编译并运行程序。输出应该如下所示：
 
@@ -506,122 +506,122 @@ bool binary_search(float N, std::vector<float>& S)
 1.  导入以下标头：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <chrono>
-    #include <random>
-    #include <algorithm>
-    #include <numeric>
-    ```
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+```
 
 1.  分区操作的 C++代码如下。按照以下所示编写`partition()`函数：
 
 ```cpp
-    template <typename T>
-    auto partition(typename std::vector<T>::iterator begin,
-                typename std::vector<T>::iterator last)
-    {
-          // Create 3 iterators, 
-          // one pointing to the pivot, one to the first element and 
-          // one to the last element of the vector.
-        auto pivot_val = *begin;
-        auto left_iter = begin+1;
-        auto right_iter = last;
-        while (true)
-        {
-            // Starting from the first element of vector, find an element that is greater than pivot.
-            while (*left_iter <= pivot_val && 
-                       std::distance(left_iter, right_iter) > 0)
-                left_iter++;
-            // Starting from the end of vector moving to the beginning, find an element that is lesser than the pivot.
-            while (*right_iter > pivot_val && 
-                       std::distance(left_iter, right_iter) > 0)
-                right_iter--;
-            // If left and right iterators meet, there are no elements left to swap. Else, swap the elements pointed to by the left and right iterators
-            if (left_iter == right_iter)
-                break;
-            else
-                std::iter_swap(left_iter, right_iter);
-        }
-        if (pivot_val > *right_iter)
-            std::iter_swap(begin, right_iter);
+template <typename T>
+auto partition(typename std::vector<T>::iterator begin,
+            typename std::vector<T>::iterator last)
+{
+      // Create 3 iterators, 
+      // one pointing to the pivot, one to the first element and 
+      // one to the last element of the vector.
+    auto pivot_val = *begin;
+    auto left_iter = begin+1;
+    auto right_iter = last;
+    while (true)
+    {
+        // Starting from the first element of vector, find an element that is greater than pivot.
+        while (*left_iter <= pivot_val && 
+                   std::distance(left_iter, right_iter) > 0)
+            left_iter++;
+        // Starting from the end of vector moving to the beginning, find an element that is lesser than the pivot.
+        while (*right_iter > pivot_val && 
+                   std::distance(left_iter, right_iter) > 0)
+            right_iter--;
+        // If left and right iterators meet, there are no elements left to swap. Else, swap the elements pointed to by the left and right iterators
+        if (left_iter == right_iter)
+            break;
+        else
+            std::iter_swap(left_iter, right_iter);
+    }
+    if (pivot_val > *right_iter)
+        std::iter_swap(begin, right_iter);
 
-        return right_iter;
-    }
-    ```
+    return right_iter;
+}
+```
 
 此处显示的实现仅接受底层容器对象上的迭代器，并返回指向数组中分区索引的另一个迭代器。这意味着向量的所有元素都大于右分区中的枢轴，而小于或等于枢轴的所有元素都在左分区中。
 
 1.  快速排序算法递归使用分区操作，如下所示：
 
 ```cpp
-    template <typename T>
-    void quick_sort(typename std::vector<T>::iterator begin, 
-            typename std::vector<T>::iterator last)
-    {
-        // If there are more than 1 elements in the vector
-        if (std::distance(begin, last) >= 1)
-        {
-            // Apply the partition operation
-            auto partition_iter = partition<T>(begin, last);
+template <typename T>
+void quick_sort(typename std::vector<T>::iterator begin, 
+        typename std::vector<T>::iterator last)
+{
+    // If there are more than 1 elements in the vector
+    if (std::distance(begin, last) >= 1)
+    {
+        // Apply the partition operation
+        auto partition_iter = partition<T>(begin, last);
 
-            // Recursively sort the vectors created by the partition operation
-            quick_sort<T>(begin, partition_iter-1);
-            quick_sort<T>(partition_iter, last);
-        }
-    }
-    ```
+        // Recursively sort the vectors created by the partition operation
+        quick_sort<T>(begin, partition_iter-1);
+        quick_sort<T>(partition_iter, last);
+    }
+}
+```
 
 1.  `print_vector()`用于将向量打印到控制台，并实现如下：
 
 ```cpp
-    template <typename T>
-    void print_vector(std::vector<T> arr)
-    {
-        for (auto i : arr)
-            std::cout << i << " ";
+template <typename T>
+void print_vector(std::vector<T> arr)
+{
+    for (auto i : arr)
+        std::cout << i << " ";
 
-        std::cout << std::endl;
-    }
-    ```
+    std::cout << std::endl;
+}
+```
 
 1.  根据*练习 19*，*归并排序*中的驱动程序代码进行调整：
 
 ```cpp
-    void run_quick_sort_test()
-    {
-        std::vector<int> S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
-        std::vector<float>  S2{ 45.6f, 1.0f, 3.8f, 1.01f, 2.2f, 3.9f, 45.3f, 5.5f, 1.0f, 2.0f, 44.0f, 5.0f, 7.0f };
-        std::vector<double> S3{ 45.6, 1.0, 3.8, 1.01, 2.2, 3.9, 45.3, 5.5, 1.0, 2.0,  44.0, 5.0, 7.0 };
-        std::vector<char> C{ 'b','z','a','e','f','t','q','u','y'};
-        std::cout << "Unsorted arrays:" << std::endl;
-        print_vector<int>(S1);
-        print_vector<float>(S2);
-        print_vector<double>(S3);
-        print_vector<char>(C);
-        std::cout << std::endl;
-        quick_sort<int>(S1.begin(), S1.end() - 1);
-        quick_sort<float>(S2.begin(), S2.end() - 1);
-        quick_sort<double>(S3.begin(), S3.end() - 1);
-        quick_sort<char>(C.begin(), C.end() - 1);
-        std::cout << "Arrays sorted using quick sort:" << std::endl;
-        print_vector<int>(S1);
-        print_vector<float>(S2);
-        print_vector<double>(S3);
-        print_vector<char>(C);
-        std::cout << std::endl;
-    }
-    ```
+void run_quick_sort_test()
+{
+    std::vector<int> S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
+    std::vector<float>  S2{ 45.6f, 1.0f, 3.8f, 1.01f, 2.2f, 3.9f, 45.3f, 5.5f, 1.0f, 2.0f, 44.0f, 5.0f, 7.0f };
+    std::vector<double> S3{ 45.6, 1.0, 3.8, 1.01, 2.2, 3.9, 45.3, 5.5, 1.0, 2.0,  44.0, 5.0, 7.0 };
+    std::vector<char> C{ 'b','z','a','e','f','t','q','u','y'};
+    std::cout << "Unsorted arrays:" << std::endl;
+    print_vector<int>(S1);
+    print_vector<float>(S2);
+    print_vector<double>(S3);
+    print_vector<char>(C);
+    std::cout << std::endl;
+    quick_sort<int>(S1.begin(), S1.end() - 1);
+    quick_sort<float>(S2.begin(), S2.end() - 1);
+    quick_sort<double>(S3.begin(), S3.end() - 1);
+    quick_sort<char>(C.begin(), C.end() - 1);
+    std::cout << "Arrays sorted using quick sort:" << std::endl;
+    print_vector<int>(S1);
+    print_vector<float>(S2);
+    print_vector<double>(S3);
+    print_vector<char>(C);
+    std::cout << std::endl;
+}
+```
 
 1.  编写一个`main()`函数，调用`run_quick_sort_test()`：
 
 ```cpp
-    int main()
-    {
-        run_quick_sort_test();
-        return 0;
-    }
-    ```
+int main()
+{
+    run_quick_sort_test();
+    return 0;
+}
+```
 
 1.  您的最终输出应如下所示：
 
@@ -708,184 +708,184 @@ bool binary_search(float N, std::vector<float>& S)
 1.  导入以下头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <chrono>
-    #include <random>
-    #include <algorithm>
-    #include <numeric>
-    ```
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+```
 
 1.  编写如下所示的辅助函数：
 
 ```cpp
-    template<typename T>
-    auto find_median(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator last)
-    {
-        // Sort the array
-        quick_sort<T>(begin, last);
+template<typename T>
+auto find_median(typename std::vector<T>::iterator begin, typename std::vector<T>::iterator last)
+{
+    // Sort the array
+    quick_sort<T>(begin, last);
 
-        // Return the middle element, i.e. median
-        return begin + (std::distance(begin, last)/2); 
-    }
-    ```
+    // Return the middle element, i.e. median
+    return begin + (std::distance(begin, last)/2); 
+}
+```
 
 1.  在*练习 20*中，*快速排序*，我们的分区函数假设给定向量中的第一个元素始终是要使用的枢轴。现在我们需要一个更一般的分区操作形式，可以与任何枢轴元素一起使用：
 
 ```cpp
-    template <typename T>
-    auto partition_using_given_pivot(
-    typename std::vector<T>::iterator begin, 
-    typename std::vector<T>::iterator end, 
-    typename std::vector<T>::iterator pivot)
-    {
-            // Since the pivot is already given,
-            // Create two iterators pointing to the first and last element of the vector respectively
-        auto left_iter = begin;
-        auto right_iter = end;
-        while (true)
-        {
-            // Starting from the first element of vector, find an element that is greater than pivot.
-            while (*left_iter < *pivot && left_iter != right_iter)
-                left_iter++;
-            // Starting from the end of vector moving to the beginning, find an element that is lesser than the pivot.
-            while (*right_iter >= *pivot && 
-                      left_iter != right_iter)
-                right_iter--;
-            // If left and right iterators meet, there are no elements left to swap. Else, swap the elements pointed to by the left and right iterators.
-            if (left_iter == right_iter)
-                break;
-            else
-                std::iter_swap(left_iter, right_iter);
-        }
-        if (*pivot > *right_iter)
-            std::iter_swap(pivot, right_iter);
-        return right_iter;
-    }
-    ```
+template <typename T>
+auto partition_using_given_pivot(
+typename std::vector<T>::iterator begin, 
+typename std::vector<T>::iterator end, 
+typename std::vector<T>::iterator pivot)
+{
+        // Since the pivot is already given,
+        // Create two iterators pointing to the first and last element of the vector respectively
+    auto left_iter = begin;
+    auto right_iter = end;
+    while (true)
+    {
+        // Starting from the first element of vector, find an element that is greater than pivot.
+        while (*left_iter < *pivot && left_iter != right_iter)
+            left_iter++;
+        // Starting from the end of vector moving to the beginning, find an element that is lesser than the pivot.
+        while (*right_iter >= *pivot && 
+                  left_iter != right_iter)
+            right_iter--;
+        // If left and right iterators meet, there are no elements left to swap. Else, swap the elements pointed to by the left and right iterators.
+        if (left_iter == right_iter)
+            break;
+        else
+            std::iter_swap(left_iter, right_iter);
+    }
+    if (*pivot > *right_iter)
+        std::iter_swap(pivot, right_iter);
+    return right_iter;
+}
+```
 
 1.  使用以下代码来实现我们的线性时间搜索算法：
 
 ```cpp
-    // Finds ith smallest element in vector V
-    template<typename T>
-    typename std::vector<T>::iterator linear_time_select(
-    typename std::vector<T>::iterator begin,
-    typename std::vector<T>::iterator last, size_t i)
-    {
-        auto size = std::distance(begin, last);
-        if (size > 0 && i < size) {
-            // Get the number of V_i groups of 5 elements each
-            auto num_Vi = (size+4) / 5; 
-            size_t j = 0;
-            // For each V_i, find the median and store in vector M
-            std::vector<T> M;
-            for (; j < size/5; j++)
-            {
-                auto b = begin + (j * 5);
-                auto l = begin + (j * 5) + 5;
-                M.push_back(*find_median<T>(b, l));
-            }
-            if (j * 5 < size)
-            {
-                auto b = begin + (j * 5);
-                auto l = begin + (j * 5) + (size % 5);
-                M.push_back(*find_median<T>(b, l));
-            }
-            // Find the middle element ('q' as discussed)
-               auto median_of_medians = (M.size() == 1)? M.begin():
-          linear_time_select<T>(M.begin(), 
-                                M.end()-1, M.size() / 2);
+// Finds ith smallest element in vector V
+template<typename T>
+typename std::vector<T>::iterator linear_time_select(
+typename std::vector<T>::iterator begin,
+typename std::vector<T>::iterator last, size_t i)
+{
+    auto size = std::distance(begin, last);
+    if (size > 0 && i < size) {
+        // Get the number of V_i groups of 5 elements each
+        auto num_Vi = (size+4) / 5; 
+        size_t j = 0;
+        // For each V_i, find the median and store in vector M
+        std::vector<T> M;
+        for (; j < size/5; j++)
+        {
+            auto b = begin + (j * 5);
+            auto l = begin + (j * 5) + 5;
+            M.push_back(*find_median<T>(b, l));
+        }
+        if (j * 5 < size)
+        {
+            auto b = begin + (j * 5);
+            auto l = begin + (j * 5) + (size % 5);
+            M.push_back(*find_median<T>(b, l));
+        }
+        // Find the middle element ('q' as discussed)
+           auto median_of_medians = (M.size() == 1)? M.begin():
+      linear_time_select<T>(M.begin(), 
+                            M.end()-1, M.size() / 2);
 
-             // Apply the partition operation and find correct position 'k' of pivot 'q'.
-            auto partition_iter = partition_using_given_pivot<T>(begin, last, median_of_medians);
-            auto k = std::distance(begin, partition_iter)+1;
-            if (i == k)
-                return partition_iter;
-            else if (i < k)
-                return linear_time_select<T>(begin, partition_iter - 1, i);
-            else if (i > k)
-                return linear_time_select<T>(partition_iter + 1, last, i-k);
-        }
-        else {
-            return begin;
-        }
-    }
-    ```
+         // Apply the partition operation and find correct position 'k' of pivot 'q'.
+        auto partition_iter = partition_using_given_pivot<T>(begin, last, median_of_medians);
+        auto k = std::distance(begin, partition_iter)+1;
+        if (i == k)
+            return partition_iter;
+        else if (i < k)
+            return linear_time_select<T>(begin, partition_iter - 1, i);
+        else if (i > k)
+            return linear_time_select<T>(partition_iter + 1, last, i-k);
+    }
+    else {
+        return begin;
+    }
+}
+```
 
 1.  添加合并排序实现，如下所示的代码。我们将使用排序算法来证明我们实现的正确性：
 
 ```cpp
-    template <typename T>
-    std::vector<T> merge(std::vector<T>& arr1, std::vector<T>& arr2)
-    {
-        std::vector<T> merged;
-        auto iter1 = arr1.begin();
-        auto iter2 = arr2.begin();
-        while (iter1 != arr1.end() && iter2 != arr2.end())
-        {
-            if (*iter1 < *iter2)
-            {
-                merged.emplace_back(*iter1);
-                iter1++;
-            }
-            else
-            {
-                merged.emplace_back(*iter2);
-                iter2++;
-            }
-        }
-        if (iter1 != arr1.end())
-        {
-            for (; iter1 != arr1.end(); iter1++)
-                merged.emplace_back(*iter1);
-        }
-        else
-        {
-            for (; iter2 != arr2.end(); iter2++)
-                merged.emplace_back(*iter2);
-        }
-        return merged;
-    }
-    template <typename T>
-    std::vector<T> merge_sort(std::vector<T> arr)
-    {
-        if (arr.size() > 1)
-        {
-            auto mid = size_t(arr.size() / 2);
-            auto left_half = merge_sort(std::vector<T>(arr.begin(),
-                arr.begin() + mid));
-            auto right_half = merge_sort(std::vector<T>(arr.begin() + mid,
-                arr.end()));
-            return merge<T>(left_half, right_half);
-        }
-        return arr;
-    }
-    ```
+template <typename T>
+std::vector<T> merge(std::vector<T>& arr1, std::vector<T>& arr2)
+{
+    std::vector<T> merged;
+    auto iter1 = arr1.begin();
+    auto iter2 = arr2.begin();
+    while (iter1 != arr1.end() && iter2 != arr2.end())
+    {
+        if (*iter1 < *iter2)
+        {
+            merged.emplace_back(*iter1);
+            iter1++;
+        }
+        else
+        {
+            merged.emplace_back(*iter2);
+            iter2++;
+        }
+    }
+    if (iter1 != arr1.end())
+    {
+        for (; iter1 != arr1.end(); iter1++)
+            merged.emplace_back(*iter1);
+    }
+    else
+    {
+        for (; iter2 != arr2.end(); iter2++)
+            merged.emplace_back(*iter2);
+    }
+    return merged;
+}
+template <typename T>
+std::vector<T> merge_sort(std::vector<T> arr)
+{
+    if (arr.size() > 1)
+    {
+        auto mid = size_t(arr.size() / 2);
+        auto left_half = merge_sort(std::vector<T>(arr.begin(),
+            arr.begin() + mid));
+        auto right_half = merge_sort(std::vector<T>(arr.begin() + mid,
+            arr.end()));
+        return merge<T>(left_half, right_half);
+    }
+    return arr;
+}
+```
 
 1.  最后，添加以下驱动程序和测试函数：
 
 ```cpp
-    void run_linear_select_test()
-    {
-        std::vector<int> S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
-        std::cout << "Original vector:" << std::endl;
-        print_vector<int> (S1);
-        std::cout << "Sorted vector:" << std::endl;
-        print_vector<int>(merge_sort<int>(S1));
-        std::cout << "3rd element: " 
-                     << *linear_time_select<int>(S1.begin(), S1.end() - 1, 3) << std::endl;
-        std::cout << "5th element: " 
-                     << *linear_time_select<int>(S1.begin(), S1.end() - 1, 5) << std::endl;
-        std::cout << "11th element: " 
-                     << *linear_time_select<int>(S1.begin(), S1.end() - 1, 11) << std::endl;
-    }
-    int main()
-    {
-        run_linear_select_test();
-        return 0;
-    }
-    ```
+void run_linear_select_test()
+{
+    std::vector<int> S1{ 45, 1, 3, 1, 2, 3, 45, 5, 1, 2, 44, 5, 7 };
+    std::cout << "Original vector:" << std::endl;
+    print_vector<int> (S1);
+    std::cout << "Sorted vector:" << std::endl;
+    print_vector<int>(merge_sort<int>(S1));
+    std::cout << "3rd element: " 
+                 << *linear_time_select<int>(S1.begin(), S1.end() - 1, 3) << std::endl;
+    std::cout << "5th element: " 
+                 << *linear_time_select<int>(S1.begin(), S1.end() - 1, 5) << std::endl;
+    std::cout << "11th element: " 
+                 << *linear_time_select<int>(S1.begin(), S1.end() - 1, 11) << std::endl;
+}
+int main()
+{
+    run_linear_select_test();
+    return 0;
+}
+```
 
 1.  编译并运行代码。你的最终输出应该如下所示：
 
@@ -954,79 +954,79 @@ C++标准库包含映射和减少操作，即`std::transform()`和`std::accumula
 1.  导入以下头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <chrono>
-    #include <random>
-    #include <algorithm>
-    #include <numeric>
-    ```
+#include <iostream>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+```
 
 1.  首先创建一个具有随机元素的数组：
 
 ```cpp
-    void transform_test(size_t size)
-    {
-        std::vector<int> S, Tr;
-        std::random_device rd;
-        std::mt19937 rand(rd());
-        std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
-        // Insert random elements
-        for (auto i = 0; i < size; i++)
-            S.push_back(uniform_dist(rand));
-        std::cout << "Original array, S: ";
-        for (auto i : S)
-            std::cout << i << " ";
-        std::cout << std::endl;
-        std::transform(S.begin(), S.end(), std::back_inserter(Tr), 
-                          [](int x) {return std::pow(x, 2.0); });
-        std::cout << "Transformed array, Tr: ";
-        for (auto i : Tr)
-            std::cout << i << " ";
-        std::cout << std::endl;
-        // For_each
-        std::for_each(S.begin(), S.end(), [](int &x) {x = std::pow(x, 2.0); });
-        std::cout << "After applying for_each to S: ";
-        for (auto i : S)
-                std::cout << i << " ";
-        std::cout << std::endl;
-    }
-    ```
+void transform_test(size_t size)
+{
+    std::vector<int> S, Tr;
+    std::random_device rd;
+    std::mt19937 rand(rd());
+    std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
+    // Insert random elements
+    for (auto i = 0; i < size; i++)
+        S.push_back(uniform_dist(rand));
+    std::cout << "Original array, S: ";
+    for (auto i : S)
+        std::cout << i << " ";
+    std::cout << std::endl;
+    std::transform(S.begin(), S.end(), std::back_inserter(Tr), 
+                      [](int x) {return std::pow(x, 2.0); });
+    std::cout << "Transformed array, Tr: ";
+    for (auto i : Tr)
+        std::cout << i << " ";
+    std::cout << std::endl;
+    // For_each
+    std::for_each(S.begin(), S.end(), [](int &x) {x = std::pow(x, 2.0); });
+    std::cout << "After applying for_each to S: ";
+    for (auto i : S)
+            std::cout << i << " ";
+    std::cout << std::endl;
+}
+```
 
 1.  `transform_test()`函数随机生成给定大小的向量，并将变换*f(x) = x**2*应用于向量。
 
 #### 注意
 
 ```cpp
-    void reduce_test(size_t size)
-    {
-        std::vector<int> S;
-        std::random_device rd;
-        std::mt19937 rand(rd());
-        std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
-        // Insert random elements
-        for (auto i = 0; i < size; i++)
-            S.push_back(uniform_dist(rand));
-        std::cout << std::endl << "Reduce test== " << std::endl << "Original array, S: ";
-        for (auto i : S)
-            std::cout << i << " ";
-        std::cout << std::endl;
-        // Accumulate
-        std::cout<<"std::accumulate() = " << std::accumulate(S.begin(), S.end(), 0, [](int acc, int x) {return acc+x; });
-        std::cout << std::endl;
-    }
-    ```
+void reduce_test(size_t size)
+{
+    std::vector<int> S;
+    std::random_device rd;
+    std::mt19937 rand(rd());
+    std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
+    // Insert random elements
+    for (auto i = 0; i < size; i++)
+        S.push_back(uniform_dist(rand));
+    std::cout << std::endl << "Reduce test== " << std::endl << "Original array, S: ";
+    for (auto i : S)
+        std::cout << i << " ";
+    std::cout << std::endl;
+    // Accumulate
+    std::cout<<"std::accumulate() = " << std::accumulate(S.begin(), S.end(), 0, [](int acc, int x) {return acc+x; });
+    std::cout << std::endl;
+}
+```
 
 1.  添加以下驱动程序代码：
 
 ```cpp
-    int main() 
-    {
-        transform_test(10);
-        reduce_test(10);
-        return 0;
-    }
-    ```
+int main() 
+{
+    transform_test(10);
+    reduce_test(10);
+    return 0;
+}
+```
 
 1.  编译并运行代码。您的输出应该如下所示：
 
@@ -1061,134 +1061,134 @@ Linux/macOS：[`www.boost.org/doc/libs/1_71_0/more/getting_started/unix-variants
 1.  让我们首先包括所需的库，并定义一个使用质因数分解检查给定数字是否为质数的函数：
 
 ```cpp
-    #include <iostream>
-    #include "mapreduce.hpp"
-    namespace prime_calculator {
-        bool const is_prime(long const number)
-        {
-            if (number > 2)
-            {
-                if (number % 2 == 0)
-                    return false;
-                long const n = std::abs(number);
-                long const sqrt_number = static_cast<long>(std::sqrt(
-    static_cast<double>(n)));
-                for (long i = 3; i <= sqrt_number; i += 2)
-                {
-                    if (n % i == 0)
-                        return false;
-                }
-            }
-            else if (number == 0 || number == 1)
-                return false;
-            return true;
-        }
-    ```
+#include <iostream>
+#include "mapreduce.hpp"
+namespace prime_calculator {
+    bool const is_prime(long const number)
+    {
+        if (number > 2)
+        {
+            if (number % 2 == 0)
+                return false;
+            long const n = std::abs(number);
+            long const sqrt_number = static_cast<long>(std::sqrt(
+static_cast<double>(n)));
+            for (long i = 3; i <= sqrt_number; i += 2)
+            {
+                if (n % i == 0)
+                    return false;
+            }
+        }
+        else if (number == 0 || number == 1)
+            return false;
+        return true;
+    }
+```
 
 1.  以下类用于生成具有给定差值的一系列数字（也称为**步长**）：
 
 ```cpp
-        template<typename MapTask>
-        class number_source : mapreduce::detail::noncopyable
-        {
-        public:
-            number_source(long first, long last, long step)
-                : sequence_(0), first_(first), last_(last), step_(step)
-            {
-            }
-            bool const setup_key(typename MapTask::key_type& key)
-            {
-                key = sequence_++;
-                return (key * step_ <= last_);
-            }
-            bool const get_data(typename MapTask::key_type const& key, typename MapTask::value_type& value)
-            {
-                typename MapTask::value_type val;
-                val.first = first_ + (key * step_);
-                val.second = std::min(val.first + step_ - 1, last_);
-                std::swap(val, value);
-                return true;
-            }
-        private:
-            long sequence_;
-            long const step_;
-            long const last_;
-            long const first_;
-        };
-    ```
+    template<typename MapTask>
+    class number_source : mapreduce::detail::noncopyable
+    {
+    public:
+        number_source(long first, long last, long step)
+            : sequence_(0), first_(first), last_(last), step_(step)
+        {
+        }
+        bool const setup_key(typename MapTask::key_type& key)
+        {
+            key = sequence_++;
+            return (key * step_ <= last_);
+        }
+        bool const get_data(typename MapTask::key_type const& key, typename MapTask::value_type& value)
+        {
+            typename MapTask::value_type val;
+            val.first = first_ + (key * step_);
+            val.second = std::min(val.first + step_ - 1, last_);
+            std::swap(val, value);
+            return true;
+        }
+    private:
+        long sequence_;
+        long const step_;
+        long const last_;
+        long const first_;
+    };
+```
 
 1.  以下函数定义了映射阶段要执行的步骤：
 
 ```cpp
-        struct map_task : public mapreduce::map_task<long, std::pair<long, long> >
-        {
-            template<typename Runtime>
-            void operator()(Runtime& runtime, key_type const& key, 
-    value_type const& value) const
-            {
-                for (key_type loop = value.first; 
-                    loop <= value.second; loop++)
-                runtime.emit_intermediate(is_prime(loop), loop);
-            }
-        };
-    ```
+    struct map_task : public mapreduce::map_task<long, std::pair<long, long> >
+    {
+        template<typename Runtime>
+        void operator()(Runtime& runtime, key_type const& key, 
+value_type const& value) const
+        {
+            for (key_type loop = value.first; 
+                loop <= value.second; loop++)
+            runtime.emit_intermediate(is_prime(loop), loop);
+        }
+    };
+```
 
 1.  现在，让我们实现减少阶段：
 
 ```cpp
-        struct reduce_task : public mapreduce::reduce_task<bool, long>
-        {
-            template<typename Runtime, typename It>
-            void operator()(Runtime& runtime, key_type const& key, It it, It ite) const
-            {
-                if (key)
-                    std::for_each(it, ite, std::bind(&Runtime::emit, 
-    &runtime, true, std::placeholders::_1));
-            }
-        };
-        typedef
-            mapreduce::job<
-                prime_calculator::map_task,
-                prime_calculator::reduce_task,
-                mapreduce::null_combiner,
-                prime_calculator::number_source<prime_calculator::map_task>> job;
-    } // namespace prime_calculator
-    ```
+    struct reduce_task : public mapreduce::reduce_task<bool, long>
+    {
+        template<typename Runtime, typename It>
+        void operator()(Runtime& runtime, key_type const& key, It it, It ite) const
+        {
+            if (key)
+                std::for_each(it, ite, std::bind(&Runtime::emit, 
+&runtime, true, std::placeholders::_1));
+        }
+    };
+    typedef
+        mapreduce::job<
+            prime_calculator::map_task,
+            prime_calculator::reduce_task,
+            mapreduce::null_combiner,
+            prime_calculator::number_source<prime_calculator::map_task>> job;
+} // namespace prime_calculator
+```
 
 前面的命名空间有三个函数：首先，它定义了一个检查给定数字是否为质数的函数；其次，它定义了一个在给定范围内生成一系列数字的函数；第三，它定义了映射和减少任务。如前所述，映射函数发出*< k, v >*对，其中*k*和*v*都是`long`类型，其中*k*如果*v*是质数，则为*1*，如果*v*不是质数，则为*0*。然后，减少函数充当过滤器，仅在*k = 1*时输出*< k, v >*对。
 
 1.  接下来的驱动代码设置了相关参数并启动了 MapReduce 计算：
 
 ```cpp
-    int main()
-    {
-        mapreduce::specification spec;
-        int prime_limit = 1000;
-        // Set number of threads to be used
-        spec.map_tasks = std::max(1U, std::thread::hardware_concurrency());
-        spec.reduce_tasks = std::max(1U, std::thread::hardware_concurrency());
-        // Set the source of numbers in given range
-        prime_calculator::job::datasource_type datasource(0, prime_limit, prime_limit / spec.reduce_tasks);
-        std::cout << "\nCalculating Prime Numbers in the range 0 .. " << prime_limit << " ..." << std::endl;
+int main()
+{
+    mapreduce::specification spec;
+    int prime_limit = 1000;
+    // Set number of threads to be used
+    spec.map_tasks = std::max(1U, std::thread::hardware_concurrency());
+    spec.reduce_tasks = std::max(1U, std::thread::hardware_concurrency());
+    // Set the source of numbers in given range
+    prime_calculator::job::datasource_type datasource(0, prime_limit, prime_limit / spec.reduce_tasks);
+    std::cout << "\nCalculating Prime Numbers in the range 0 .. " << prime_limit << " ..." << std::endl;
 
-    std::cout << std::endl << "Using "
-            << std::max(1U, std::thread::hardware_concurrency()) << " CPU cores";
-        // Run mapreduce
-        prime_calculator::job job(datasource, spec);
-        mapreduce::results result;
-        job.run<mapreduce::schedule_policy::cpu_parallel<prime_calculator::job> >(result);
+std::cout << std::endl << "Using "
+        << std::max(1U, std::thread::hardware_concurrency()) << " CPU cores";
+    // Run mapreduce
+    prime_calculator::job job(datasource, spec);
+    mapreduce::results result;
+    job.run<mapreduce::schedule_policy::cpu_parallel<prime_calculator::job> >(result);
 
-        std::cout << "\nMapReduce finished in " 
-    << result.job_runtime.count() << " with " 
-    << std::distance(job.begin_results(), job.end_results()) 
-    << " results" << std::endl;
+    std::cout << "\nMapReduce finished in " 
+<< result.job_runtime.count() << " with " 
+<< std::distance(job.begin_results(), job.end_results()) 
+<< " results" << std::endl;
 
-    // Print results
-        for (auto it = job.begin_results(); it != job.end_results(); ++it)
-            std::cout << it->second << " ";
-        return 0;
-    }
-    ```
+// Print results
+    for (auto it = job.begin_results(); it != job.end_results(); ++it)
+        std::cout << it->second << " ";
+    return 0;
+}
+```
 
 驱动代码设置了 MapReduce 框架所需的参数，运行计算，从减少函数收集结果，最后输出结果。
 
@@ -1249,20 +1249,20 @@ won         1
 1.  地图阶段的骨架代码如下：
 
 ```cpp
-    struct map_task : public mapreduce::map_task<
-        std::string,                            // MapKey (filename)
-        std::pair<char const*, std::uintmax_t>> // MapValue (memory mapped file               
-                                                   // contents)
-    {
-    template<typename Runtime>
-        void operator()(Runtime& runtime, key_type const& key, 
-                                             value_type& value) const
-        {
-            // Write your code here.
-            // Use runtime.emit_intermediate() to emit <k,v> pairs
-        }
-    };
-    ```
+struct map_task : public mapreduce::map_task<
+    std::string,                            // MapKey (filename)
+    std::pair<char const*, std::uintmax_t>> // MapValue (memory mapped file               
+                                               // contents)
+{
+template<typename Runtime>
+    void operator()(Runtime& runtime, key_type const& key, 
+                                         value_type& value) const
+    {
+        // Write your code here.
+        // Use runtime.emit_intermediate() to emit <k,v> pairs
+    }
+};
+```
 
 1.  由于问题的地图阶段生成了*< k, 1 >*对，我们的程序的减少任务现在应该组合具有匹配*k*值的对，如下所示：![图 4.27：减少阶段](img/C14498_04_27.jpg)
 
@@ -1271,18 +1271,18 @@ won         1
 1.  在给定的代码中，减少任务接受两个迭代器，这些迭代器可用于迭代具有相同键的元素，即，`it`和`ite`之间的所有元素都保证具有相同的键。然后，您的减少阶段应创建一个新的*< k, v >*对，其中*k*设置为输入对的键，*v*等于输入对的数量：
 
 ```cpp
-    template<typename KeyType>
-    struct reduce_task : public mapreduce::reduce_task<KeyType, unsigned>
-    {
-        using typename mapreduce::reduce_task<KeyType, unsigned>::key_type;
-        template<typename Runtime, typename It>
-        void operator()(Runtime& runtime, key_type const& key, It it, It const ite) const
-        {
-            // Write your code here.
-            // Use runtime.emit() to emit the resulting <k,v> pairs
-        }
-    };
-    ```
+template<typename KeyType>
+struct reduce_task : public mapreduce::reduce_task<KeyType, unsigned>
+{
+    using typename mapreduce::reduce_task<KeyType, unsigned>::key_type;
+    template<typename Runtime, typename It>
+    void operator()(Runtime& runtime, key_type const& key, It it, It const ite) const
+    {
+        // Write your code here.
+        // Use runtime.emit() to emit the resulting <k,v> pairs
+    }
+};
+```
 
 1.  您将在`testdata/`中获得一组测试数据。编译并运行您的代码。输出应如下所示：
 

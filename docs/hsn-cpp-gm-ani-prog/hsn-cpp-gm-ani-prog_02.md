@@ -246,22 +246,22 @@ float dot(const vec3 &l, const vec3 &r) {
 1.  要实现平方长度函数，求出向量的每个分量的平方的和。在`vec3.cpp`中实现`lenSq`函数。不要忘记将函数声明添加到`vec3.h`中：
 
 ```cpp
-    float lenSq(const vec3& v) {
-        return v.x * v.x + v.y * v.y + v.z * v.z;
-    }
-    ```
+float lenSq(const vec3& v) {
+    return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+```
 
 1.  要实现长度函数，取平方长度函数的结果的平方根。注意不要用`sqrtf`调用`0`。在`vec3.cpp`中实现`lenSq`函数。不要忘记将函数声明添加到`vec3.h`中：
 
 ```cpp
-    float len(const vec3 &v) {
-        float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
-        if (lenSq < VEC3_EPSILON) {
-            return 0.0f;
-        }
-        return sqrtf(lenSq);
-    }
-    ```
+float len(const vec3 &v) {
+    float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (lenSq < VEC3_EPSILON) {
+        return 0.0f;
+    }
+    return sqrtf(lenSq);
+}
+```
 
 重要说明：
 
@@ -276,30 +276,30 @@ float dot(const vec3 &l, const vec3 &r) {
 1.  在`vec3.cpp`中实现`normalize`函数。不要忘记将函数声明添加到`vec3.h`中：
 
 ```cpp
-    void normalize(vec3 &v) {
-        float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
-        if (lenSq < VEC3_EPSILON) { return; }
-        float invLen = 1.0f / sqrtf(lenSq);    
-        v.x *= invLen;
-        v.y *= invLen;
-        v.z *= invLen;
-    }
-    ```
+void normalize(vec3 &v) {
+    float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (lenSq < VEC3_EPSILON) { return; }
+    float invLen = 1.0f / sqrtf(lenSq);    
+    v.x *= invLen;
+    v.y *= invLen;
+    v.z *= invLen;
+}
+```
 
 1.  在`vec3.cpp`中实现`normalized`函数。不要忘记将函数声明添加到`vec3.h`中：
 
 ```cpp
-    vec3 normalized(const vec3 &v) {
-        float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
-        if (lenSq < VEC3_EPSILON) { return v; }
-        float invLen = 1.0f / sqrtf(lenSq);
-        return vec3(
-            v.x * invLen,
-            v.y * invLen,
-            v.z * invLen
-        );
-    }
-    ```
+vec3 normalized(const vec3 &v) {
+    float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (lenSq < VEC3_EPSILON) { return v; }
+    float invLen = 1.0f / sqrtf(lenSq);
+    return vec3(
+        v.x * invLen,
+        v.y * invLen,
+        v.z * invLen
+    );
+}
+```
 
 `normalize`函数接受一个向量的引用并就地对其进行归一化。另一方面，`normalized`函数接受一个常量引用并不修改输入向量。相反，它返回一个新的向量。
 
@@ -359,24 +359,24 @@ float angle(const vec3 &l, const vec3 &r) {
 1.  在`vec3.cpp`中实现`project`函数。不要忘记将函数声明添加到`vec3.h`中：
 
 ```cpp
-    vec3 project(const vec3 &a, const vec3 &b) {
-        float magBSq = len(b);
-        if (magBSq < VEC3_EPSILON) {
-            return vec3();
-        }
-        float scale = dot(a, b) / magBSq;
-        return b * scale;
-    }
-    ```
+vec3 project(const vec3 &a, const vec3 &b) {
+    float magBSq = len(b);
+    if (magBSq < VEC3_EPSILON) {
+        return vec3();
+    }
+    float scale = dot(a, b) / magBSq;
+    return b * scale;
+}
+```
 
 1.  在`vec3.cpp`中实现`reject`函数。不要忘记在`vec3.h`中声明这个函数：
 
 ```cpp
-    vec3 reject(const vec3 &a, const vec3 &b) {
-        vec3 projection = project(a, b);
-        return a - projection;
-    }
-    ```
+vec3 reject(const vec3 &a, const vec3 &b) {
+    vec3 projection = project(a, b);
+    return a - projection;
+}
+```
 
 向量投影和拒绝通常用于游戏编程。重要的是它们在一个健壮的向量库中得到实现。
 
@@ -555,49 +555,49 @@ bool operator!=(const vec3 &l, const vec3 &r) {
 1.  创建一个新文件`vec2.h`，并添加`vec2`结构的定义。所有`vec2`构造函数都是内联的；不需要`cpp`文件。`TVec2`结构是模板化的，使用`typedef`声明`vec2`和`ivec2`：
 
 ```cpp
-    template<typename T>
-    struct TVec2 {
-        union {
-            struct {
-                T x;
-                T y;
-            };
-            T v[2];
-        };
-        inline TVec2() : x(T(0)), y(T(0)) { }
-        inline TVec2(T _x, T _y) :
-            x(_x), y(_y) { }
-        inline TVec2(T* fv) :
-            x(fv[0]), y(fv[1]) { }
-    };
-    typedef TVec2<float> vec2;
-    typedef TVec2<int> ivec2;
-    ```
+template<typename T>
+struct TVec2 {
+    union {
+        struct {
+            T x;
+            T y;
+        };
+        T v[2];
+    };
+    inline TVec2() : x(T(0)), y(T(0)) { }
+    inline TVec2(T _x, T _y) :
+        x(_x), y(_y) { }
+    inline TVec2(T* fv) :
+        x(fv[0]), y(fv[1]) { }
+};
+typedef TVec2<float> vec2;
+typedef TVec2<int> ivec2;
+```
 
 1.  同样地，创建一个`vec4.h`文件，其中将保存`vec4`结构：
 
 ```cpp
-    template<typename T>
-    struct TVec4 {
-        union {
-            struct {
-                T x;
-                T y;
-                T z;
-                T w;
-            };
-            T v[4];
-        };
-        inline TVec4<T>(): x((T)0),y((T)0),z((T)0),w((T)0){}
-        inline TVec4<T>(T _x, T _y, T _z, T _w) :
-            x(_x), y(_y), z(_z), w(_w) { }
-        inline TVec4<T>(T* fv) :
-            x(fv[0]), y(fv[ ]), z(fv[2]), w(fv[3]) { }
-    };
-    typedef TVec4<float> vec4;
-    typedef TVec4<int> ivec4;
-    typedef TVec4<unsigned int> uivec4;
-    ```
+template<typename T>
+struct TVec4 {
+    union {
+        struct {
+            T x;
+            T y;
+            T z;
+            T w;
+        };
+        T v[4];
+    };
+    inline TVec4<T>(): x((T)0),y((T)0),z((T)0),w((T)0){}
+    inline TVec4<T>(T _x, T _y, T _z, T _w) :
+        x(_x), y(_y), z(_z), w(_w) { }
+    inline TVec4<T>(T* fv) :
+        x(fv[0]), y(fv[ ]), z(fv[2]), w(fv[3]) { }
+};
+typedef TVec4<float> vec4;
+typedef TVec4<int> ivec4;
+typedef TVec4<unsigned int> uivec4;
+```
 
 `vec2`，`ivec2`，`vec4`和`ivec4`结构的声明与`vec3`结构的声明非常相似。所有这些结构都可以使用组件下标或作为线性内存数组的指针来访问。它们的构造函数也非常相似。
 

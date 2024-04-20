@@ -27,100 +27,100 @@ Qt 提供了一组类和函数，用于轻松地在不同类型的数据之间�
 1.  接下来，打开`main.cpp`并添加以下头文件：
 
 ```cpp
-    #include <QCoreApplication>
-    #include <QDebug>
-    #include <QtMath>
-    #include <QDateTime>
-    #include <QTextCodec>
-    #include <iostream>
-    ```
+#include <QCoreApplication>
+#include <QDebug>
+#include <QtMath>
+#include <QDateTime>
+#include <QTextCodec>
+#include <iostream>
+```
 
 1.  然后，在`main()`函数中，添加以下代码将字符串转换为数字：
 
 ```cpp
-    int numberA = 2;
-    QString numberB = "5";
-    qDebug() << "1) " << "2 + 5 =" << numberA + numberB.toInt();
-    ```
+int numberA = 2;
+QString numberB = "5";
+qDebug() << "1) " << "2 + 5 =" << numberA + numberB.toInt();
+```
 
 1.  之后，我们将把一个数字转换回字符串：
 
 ```cpp
-    float numberC = 10.25;
-    float numberD = 2;
-    QString result = QString::number(numberC * numberD);
-    qDebug() << "2) " <<  "10.25 * 2 =" << result;
-    ```
+float numberC = 10.25;
+float numberD = 2;
+QString result = QString::number(numberC * numberD);
+qDebug() << "2) " <<  "10.25 * 2 =" << result;
+```
 
 1.  我们还学习了如何使用`qFloor()`将值向下舍入：
 
 ```cpp
-    float numberE = 10.3;
-    float numberF = qFloor(numberE);
-    qDebug() << "3) " << "Floor of 10.3 is" << numberF;
-    ```
+float numberE = 10.3;
+float numberF = qFloor(numberE);
+qDebug() << "3) " << "Floor of 10.3 is" << numberF;
+```
 
 1.  然后，通过使用`qCeil()`，我们能够将数字舍入到不小于其初始值的最小整数值：
 
 ```cpp
-    float numberG = 10.3;
-    float numberH = qCeil(numberG);
-    qDebug() << "4) " << "Ceil of 10.3 is" << numberH;
-    ```
+float numberG = 10.3;
+float numberH = qCeil(numberG);
+qDebug() << "4) " << "Ceil of 10.3 is" << numberH;
+```
 
 1.  之后，我们将通过从字符串转换来创建一个日期时间变量：
 
 ```cpp
-    QString dateTimeAString = "2016-05-04 12:24:00";
-    QDateTime dateTimeA = QDateTime::fromString(dateTimeAString, "yyyy-MM-dd hh:mm:ss");
-    qDebug() << "5) " << dateTimeA;
-    ```
+QString dateTimeAString = "2016-05-04 12:24:00";
+QDateTime dateTimeA = QDateTime::fromString(dateTimeAString, "yyyy-MM-dd hh:mm:ss");
+qDebug() << "5) " << dateTimeA;
+```
 
 1.  随后，我们还可以将日期时间变量转换为具有自定义格式的字符串：
 
 ```cpp
-    QDateTime dateTimeB = QDateTime::currentDateTime();
-    QString dateTimeBString = dateTimeB.toString("dd/MM/yy hh:mm");
-    qDebug() << "6) " << dateTimeBString;
-    ```
+QDateTime dateTimeB = QDateTime::currentDateTime();
+QString dateTimeBString = dateTimeB.toString("dd/MM/yy hh:mm");
+qDebug() << "6) " << dateTimeBString;
+```
 
 1.  我们可以调用`QString::toUpper()`函数将字符串变量转换为全大写字母：
 
 ```cpp
-    QString hello1 = "hello world!";
-    qDebug() << "7) " << hello1.toUpper();
-    ```
+QString hello1 = "hello world!";
+qDebug() << "7) " << hello1.toUpper();
+```
 
 1.  另一方面，调用`QString::toLower()`将把字符串转换为全小写：
 
 ```cpp
-    QString hello2 = "HELLO WORLD!";
-    qDebug() << "8) " << hello2.toLower();
-    ```
+QString hello2 = "HELLO WORLD!";
+qDebug() << "8) " << hello2.toLower();
+```
 
 1.  Qt 提供的`QVariant`类是一种非常强大的数据类型，可以轻松转换为其他类型，程序员无需任何努力：
 
 ```cpp
-    QVariant aNumber = QVariant(3.14159);
-    double aResult = 12.5 * aNumber.toDouble();
-    qDebug() << "9) 12.5 * 3.14159 =" << aResult;
-    ```
+QVariant aNumber = QVariant(3.14159);
+double aResult = 12.5 * aNumber.toDouble();
+qDebug() << "9) 12.5 * 3.14159 =" << aResult;
+```
 
 1.  这演示了如何将单个`QVariant`变量同时转换为多个数据类型，而程序员无需任何努力：
 
 ```cpp
-    qDebug() << "10) ";
-    QVariant myData = QVariant(10);
-    qDebug() << myData;
-    myData = myData.toFloat() / 2.135;
-    qDebug() << myData;
-    myData = true;
-    qDebug() << myData;
-    myData = QDateTime::currentDateTime();
-    qDebug() << myData;
-    myData = "Good bye!";
-    qDebug() << myData;
-    ```
+qDebug() << "10) ";
+QVariant myData = QVariant(10);
+qDebug() << myData;
+myData = myData.toFloat() / 2.135;
+qDebug() << myData;
+myData = true;
+qDebug() << myData;
+myData = QDateTime::currentDateTime();
+qDebug() << myData;
+myData = "Good bye!";
+qDebug() << myData;
+```
 
 `main.cpp`中的完整源代码现在看起来是这样的：
 
@@ -161,21 +161,21 @@ Qt 内置的图像库使图像转换变得非常简单：
 1.  完成 UI 后，让我们转到源代码。打开`mainwindow.h`，并添加以下头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QFileDialog>
-    #include <QMessageBox>
-    #include <QDebug>
-    ```
+#include <QMainWindow>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QDebug>
+```
 
 1.  然后，打开`mainwindow.cpp`并定义单击**浏览**按钮时会发生什么，即打开文件对话框以选择图像文件：
 
 ```cpp
-    void MainWindow::on_browseButton_clicked()
-    {
-      QString fileName = QFileDialog::getOpenFileName(this, "Open Image", "", "Image Files (*.png *.jpg *.bmp)");
-      ui->filePath->setText(fileName);
-    }
-    ```
+void MainWindow::on_browseButton_clicked()
+{
+  QString fileName = QFileDialog::getOpenFileName(this, "Open Image", "", "Image Files (*.png *.jpg *.bmp)");
+  ui->filePath->setText(fileName);
+}
+```
 
 1.  最后，我们还定义了单击**转换**按钮时会发生什么：![如何操作...](img/B02820_07_17.jpg)
 
@@ -214,114 +214,114 @@ Qt 内置的图像库使图像转换变得非常简单：
 1.  之后，打开`mainwindow.h`，并在顶部添加以下头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QFileDialog>
-    #include <QProcess>
-    #include <QMessageBox>
-    #include <QScrollBar>
-    #include <QDebug>
-    ```
+#include <QMainWindow>
+#include <QFileDialog>
+#include <QProcess>
+#include <QMessageBox>
+#include <QScrollBar>
+#include <QDebug>
+```
 
 1.  然后，在`public`关键字下添加以下指针：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-     QProcess* process;
-     QString outputText;
-     QString fileName;
-     QString outputFileName;
+ QProcess* process;
+ QString outputText;
+ QString fileName;
+ QString outputFileName;
 
-    ```
+```
 
 1.  除此之外，我们还需要在 Qt 为我们之前创建的两个函数下添加三个额外的槽函数：
 
 ```cpp
-    private slots:
-      void on_browseButton_clicked();
-      void on_convertButton_clicked();
+private slots:
+  void on_browseButton_clicked();
+  void on_convertButton_clicked();
 
-     void processStarted();
-     void readyReadStandardOutput();
-     void processFinished();
+ void processStarted();
+ void readyReadStandardOutput();
+ void processFinished();
 
-    ```
+```
 
 1.  接下来，打开`mainwindow.cpp`，并将以下代码添加到类构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-     process = new QProcess(this);
-     connect(process, SIGNAL(started()), this, SLOT(processStarted()));
-     connect(process,SIGNAL(readyReadStandardOutput()), this,SLOT(readyReadStandardOutput()));
-     connect(process, SIGNAL(finished(int)), this, SLOT(processFinished()));
-    }
-    ```
+ process = new QProcess(this);
+ connect(process, SIGNAL(started()), this, SLOT(processStarted()));
+ connect(process,SIGNAL(readyReadStandardOutput()), this,SLOT(readyReadStandardOutput()));
+ connect(process, SIGNAL(finished(int)), this, SLOT(processFinished()));
+}
+```
 
 1.  之后，我们定义了**浏览**按钮点击时会发生什么，这种情况下将打开文件对话框以选择视频文件：
 
 ```cpp
-    void MainWindow::on_browseButton_clicked()
-    {
-      QString fileName = QFileDialog::getOpenFileName(this, "Open Video", "", "Video Files (*.avi *.mp4 *.mov)");
-      ui->filePath->setText(fileName);
-    }
-    ```
+void MainWindow::on_browseButton_clicked()
+{
+  QString fileName = QFileDialog::getOpenFileName(this, "Open Video", "", "Video Files (*.avi *.mp4 *.mov)");
+  ui->filePath->setText(fileName);
+}
+```
 
 1.  然后，我们还定义了**转换**按钮点击时会发生什么。我们在这里做的是将文件名和参数传递给 FFmpeg，然后转换过程将由 FFmpeg 在外部处理：![如何做…](img/B02820_07_18.jpg)
 
 1.  完成后，我们将告诉我们的程序在转换过程开始时要做什么：
 
 ```cpp
-    void MainWindow::processStarted()
-    {
-      qDebug() << "Process started.";
+void MainWindow::processStarted()
+{
+  qDebug() << "Process started.";
 
-      ui->browseButton->setEnabled(false);
-      ui->fileFormat->setEditable(false);
-      ui->convertButton->setEnabled(false);
-    }
-    ```
+  ui->browseButton->setEnabled(false);
+  ui->fileFormat->setEditable(false);
+  ui->convertButton->setEnabled(false);
+}
+```
 
 1.  接下来，我们将编写在转换过程中由 FFmpeg 返回程序输出时调用的槽函数：
 
 ```cpp
-    void MainWindow::readyReadStandardOutput()
-    {
-      outputText += process->readAllStandardOutput();
-      ui->outputDisplay->setText(outputText);
+void MainWindow::readyReadStandardOutput()
+{
+  outputText += process->readAllStandardOutput();
+  ui->outputDisplay->setText(outputText);
 
-      ui->outputDisplay->verticalScrollBar()->setSliderPosition(ui->outputDisplay->verticalScrollBar()->maximum());
-    }
-    ```
+  ui->outputDisplay->verticalScrollBar()->setSliderPosition(ui->outputDisplay->verticalScrollBar()->maximum());
+}
+```
 
 1.  最后，我们定义了在整个转换过程完成时调用的槽函数：
 
 ```cpp
-    void MainWindow::processFinished()
-    {
-      qDebug() << "Process finished.";
+void MainWindow::processFinished()
+{
+  qDebug() << "Process finished.";
 
-      if (QFile::exists(outputFileName))
-      {
-        QMessageBox::information(this, "Success", "Video successfully converted.");
-      }
-      else
-      {
-        QMessageBox::information(this, "Failed", "Failed to convert video.");
-      }
+  if (QFile::exists(outputFileName))
+  {
+    QMessageBox::information(this, "Success", "Video successfully converted.");
+  }
+  else
+  {
+    QMessageBox::information(this, "Failed", "Failed to convert video.");
+  }
 
-      ui->browseButton->setEnabled(true);
-      ui->fileFormat->setEditable(true);
-      ui->convertButton->setEnabled(true);
-    }
-    ```
+  ui->browseButton->setEnabled(true);
+  ui->fileFormat->setEditable(true);
+  ui->convertButton->setEnabled(true);
+}
+```
 
 1.  现在构建和运行项目，您应该得到一个简单但可用的视频转换器：![如何做…](img/B02820_07_09.jpg)
 
@@ -350,8 +350,8 @@ FFmpeg 不仅可以转换视频文件。您还可以使用它来转换音频文�
 1.  接下来，打开项目文件（`.pro`）并将网络模块添加到我们的项目中：
 
 ```cpp
-    QT += core gui network
-    ```
+QT += core gui network
+```
 
 1.  之后，打开`mainwindow.ui`并从 UI 中删除菜单栏、工具栏和状态栏。
 
@@ -370,103 +370,103 @@ FFmpeg 不仅可以转换视频文件。您还可以使用它来转换音频文�
 1.  接下来，打开`mainwindow.h`，确保以下头文件被添加到源文件的顶部：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QDoubleValidator>
-    #include <QNetworkAccessManager>
-    #include <QNetworkRequest>
-    #include <QNetworkReply>
-    #include <QJsonDocument>
-    #include <QJsonObject>
-    #include <QDebug>
-    #include <QMessageBox>
-    ```
+#include <QMainWindow>
+#include <QDoubleValidator>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDebug>
+#include <QMessageBox>
+```
 
 1.  然后，我们需要添加另一个名为`finished()`的槽函数：
 
 ```cpp
-    private slots:
-      void on_convertButton_clicked();
-     void finished(QNetworkReply* reply);
+private slots:
+  void on_convertButton_clicked();
+ void finished(QNetworkReply* reply);
 
-    ```
+```
 
 1.  除此之外，我们还需要在`private`标签下添加两个变量：
 
 ```cpp
-    private:
-      Ui::MainWindow *ui;
-     QNetworkAccessManager* manager;
-     QString targetCurrency;
+private:
+  Ui::MainWindow *ui;
+ QNetworkAccessManager* manager;
+ QString targetCurrency;
 
-    ```
+```
 
 1.  完成后，让我们这次打开`mainwindow.cpp`。我们将在类构造函数中的两个组合框中添加几个货币简码。我们还为左侧的行编辑小部件设置了验证器，以便它只能接受数字输入。最后，我们还初始化了网络访问管理器，并将其`finished()`信号连接到我们的`finished()`槽函数。
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-      QStringList currencies;
-      currencies.push_back("EUR");
-      currencies.push_back("USD");
-      currencies.push_back("CAD");
-      currencies.push_back("MYR");
-      currencies.push_back("GBP");
+  QStringList currencies;
+  currencies.push_back("EUR");
+  currencies.push_back("USD");
+  currencies.push_back("CAD");
+  currencies.push_back("MYR");
+  currencies.push_back("GBP");
 
-      ui->currencyFrom->insertItems(0, currencies);
-      ui->currencyTo->insertItems(0, currencies);
+  ui->currencyFrom->insertItems(0, currencies);
+  ui->currencyTo->insertItems(0, currencies);
 
-      QValidator *inputRange = new QDoubleValidator(this);
-      ui->amountFrom->setValidator(inputRange);
+  QValidator *inputRange = new QDoubleValidator(this);
+  ui->amountFrom->setValidator(inputRange);
 
-      manager = new QNetworkAccessManager(this);
-      connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(finished(QNetworkReply*)));
-    }
-    ```
+  manager = new QNetworkAccessManager(this);
+  connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(finished(QNetworkReply*)));
+}
+```
 
 1.  之后，我们定义了当用户点击**转换**按钮时会发生什么：
 
 ```cpp
-    void MainWindow::on_convertButton_clicked()
-    {
-      if (ui->amountFrom->text() != "")
-      {
-        ui->convertButton->setEnabled(false);
-        QString from = ui->currencyFrom->currentText();
-        QString to = ui->currencyTo->currentText();
-        targetCurrency = to;
-        QString url = "http://api.fixer.io/latest?base=" + from + "&symbols=" + to;
-        QNetworkRequest request= QNetworkRequest(QUrl(url));
-        manager->get(request);
-      }
-      else
-      {
-        QMessageBox::warning(this, "Error", "Please insert a value.");
-      }
-    }
-    ```
+void MainWindow::on_convertButton_clicked()
+{
+  if (ui->amountFrom->text() != "")
+  {
+    ui->convertButton->setEnabled(false);
+    QString from = ui->currencyFrom->currentText();
+    QString to = ui->currencyTo->currentText();
+    targetCurrency = to;
+    QString url = "http://api.fixer.io/latest?base=" + from + "&symbols=" + to;
+    QNetworkRequest request= QNetworkRequest(QUrl(url));
+    manager->get(request);
+  }
+  else
+  {
+    QMessageBox::warning(this, "Error", "Please insert a value.");
+  }
+}
+```
 
 1.  最后，定义`finished()`信号被触发时会发生什么：
 
 ```cpp
-    void MainWindow::finished(QNetworkReply* reply)
-    {
-      QByteArray response = reply->readAll();
-      qDebug() << response;
-      QJsonDocument jsonResponse = QJsonDocument::fromJson(response);
-      QJsonObject jsonObj = jsonResponse.object();
-      QJsonObject jsonObj2 = jsonObj.value("rates").toObject();
-      double rate = jsonObj2.value(targetCurrency).toDouble();
-      if (rate == 0)
-        rate = 1;
-      double amount = ui->amountFrom->text().toDouble();
-      double result = amount * rate;
-      ui->amountTo->setText(QString::number(result));
-      ui->convertButton->setEnabled(true);
-    }
-    ```
+void MainWindow::finished(QNetworkReply* reply)
+{
+  QByteArray response = reply->readAll();
+  qDebug() << response;
+  QJsonDocument jsonResponse = QJsonDocument::fromJson(response);
+  QJsonObject jsonObj = jsonResponse.object();
+  QJsonObject jsonObj2 = jsonObj.value("rates").toObject();
+  double rate = jsonObj2.value(targetCurrency).toDouble();
+  if (rate == 0)
+    rate = 1;
+  double amount = ui->amountFrom->text().toDouble();
+  double result = amount * rate;
+  ui->amountTo->setText(QString::number(result));
+  ui->convertButton->setEnabled(true);
+}
+```
 
 1.  现在编译并运行项目，您应该能够获得一个简单的货币转换器，看起来像这样：![如何做…](img/B02820_07_15.jpg)
 

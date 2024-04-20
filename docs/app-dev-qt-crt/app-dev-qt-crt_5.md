@@ -238,9 +238,9 @@ void MainWindow::leakPressed()
 1.  对于参数，输入以下内容：
 
 ```cpp
-    -q --tool=memcheck --leak-check=full --leak-resolution=low ./<your-app-target-name>
+-q --tool=memcheck --leak-check=full --leak-resolution=low ./<your-app-target-name>
 
-    ```
+```
 
 1.  对于**工作目录**，输入`$BUILDDIR`。
 

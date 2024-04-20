@@ -29,37 +29,37 @@ XML 是一种名为**可扩展标记语言**的文件格式的文件扩展名，
 1.  接下来，打开任何文本编辑器，创建一个看起来像下面这样的 XML 文件，然后将其保存为`scene.xml`：
 
 ```cpp
-    <?xml version="1.0" encoding="UTF-8"?> 
-    <scene>
-      <object tag="building">
-        <name>Library</name>
-        <position>120.0,0.0,50.68</position>
-        <rotation>0.0,0.0,0.0</rotation>
-        <scale>1.0,1.0,1.0</scale>
-      </object>
-      <object tag="building">
-        <name>Town Hall</name>
-        <position>80.2,0.0,20.5</position>
-        <rotation>0.0,0.0,0.0</rotation>
-        <scale>1.0,1.0,1.0</scale>
-      </object>
-      <object tag="prop">
-        <name>Tree</name>
-        <position>10.46,-0.2,80.2</position>
-        <rotation>0.0,0.0,0.0</rotation>
-        <scale>1.0,1.0,1.0</scale>
-      </object>
-    </scene>
-    ```
+<?xml version="1.0" encoding="UTF-8"?> 
+<scene>
+  <object tag="building">
+    <name>Library</name>
+    <position>120.0,0.0,50.68</position>
+    <rotation>0.0,0.0,0.0</rotation>
+    <scale>1.0,1.0,1.0</scale>
+  </object>
+  <object tag="building">
+    <name>Town Hall</name>
+    <position>80.2,0.0,20.5</position>
+    <rotation>0.0,0.0,0.0</rotation>
+    <scale>1.0,1.0,1.0</scale>
+  </object>
+  <object tag="prop">
+    <name>Tree</name>
+    <position>10.46,-0.2,80.2</position>
+    <rotation>0.0,0.0,0.0</rotation>
+    <scale>1.0,1.0,1.0</scale>
+  </object>
+</scene>
+```
 
 1.  接下来，返回到 Qt Creator 并打开`mainwindow.h`。在脚本顶部添加以下头文件，就在`#include <QMainWindow>`之后：
 
 ```cpp
-    #include <QXmlStreamReader>
-    #include <QDebug>
-    #include <QFile>
-    #include <QFileDialog>
-    ```
+#include <QXmlStreamReader>
+#include <QDebug>
+#include <QFile>
+#include <QFileDialog>
+```
 
 1.  然后，打开`mainwindow.ui`，从左侧的小部件框中拖动一个**Push Button**到 UI 编辑器中。将按钮的对象名称更改为`loadXmlButton`，显示文本更改为**加载 XML**：![操作方法…](img/B02820_06_01.jpg)
 
@@ -152,35 +152,35 @@ XML 是一种名为**可扩展标记语言**的文件格式的文件扩展名，
 1.  在`on_saveXmlButton_clicked()`函数中添加以下代码：
 
 ```cpp
-    QXmlStreamWriter xml;
+QXmlStreamWriter xml;
 
-    QString filename = QFileDialog::getSaveFileName(this, "Save Xml", ".", "Xml files (*.xml)");
-    QFile file(filename);
-    if (!file.open(QFile::WriteOnly | QFile::Text))
-      qDebug() << "Error saving XML file.";
-    xml.setDevice(&file);
+QString filename = QFileDialog::getSaveFileName(this, "Save Xml", ".", "Xml files (*.xml)");
+QFile file(filename);
+if (!file.open(QFile::WriteOnly | QFile::Text))
+  qDebug() << "Error saving XML file.";
+xml.setDevice(&file);
 
-    xml.setAutoFormatting(true);
-    xml.writeStartDocument();
+xml.setAutoFormatting(true);
+xml.writeStartDocument();
 
-    xml.writeStartElement("contact");
-    xml.writeAttribute("category", "Friend");
-    xml.writeTextElement("name", "John Doe");
-    xml.writeTextElement("age", "32");
-    xml.writeTextElement("address", "114B, 2nd Floor, Sterling Apartment, Morrison Town");
-    xml.writeTextElement("phone", "0221743566");
-    xml.writeEndElement();
+xml.writeStartElement("contact");
+xml.writeAttribute("category", "Friend");
+xml.writeTextElement("name", "John Doe");
+xml.writeTextElement("age", "32");
+xml.writeTextElement("address", "114B, 2nd Floor, Sterling Apartment, Morrison Town");
+xml.writeTextElement("phone", "0221743566");
+xml.writeEndElement();
 
-    xml.writeStartElement("contact");
-    xml.writeAttribute("category", "Family");
-    xml.writeTextElement("name", "Jane Smith");
-    xml.writeTextElement("age", "24");
-    xml.writeTextElement("address", "13, Ave Park, Alexandria");
-    xml.writeTextElement("phone", "0025728396");
-    xml.writeEndElement();
+xml.writeStartElement("contact");
+xml.writeAttribute("category", "Family");
+xml.writeTextElement("name", "Jane Smith");
+xml.writeTextElement("age", "24");
+xml.writeTextElement("address", "13, Ave Park, Alexandria");
+xml.writeTextElement("phone", "0025728396");
+xml.writeEndElement();
 
-    xml.writeEndDocument();
-    ```
+xml.writeEndDocument();
+```
 
 1.  构建并运行程序，你应该会在程序界面上看到一个额外的按钮：![操作步骤…](img/B02820_06_07.jpg)
 
@@ -189,20 +189,20 @@ XML 是一种名为**可扩展标记语言**的文件格式的文件扩展名，
 1.  用任何文本编辑器打开你刚保存的 XML 文件。文件的内容应该是这样的：
 
 ```cpp
-    <?xml version="1.0" encoding="UTF-8"?>
-    <contact category="Friend">
-      <name>John Doe</name>
-      <age>32</age>
-      <address>114B, 2nd Floor, Sterling Apartment, Morrison Town</address>
-      <phone>0221743566</phone>
-    </contact>
-    <contact category="Family">
-      <name>Jane Smith</name>
-      <age>24</age>
-      <address>13, Ave Park, Alexandria</address>
-      <phone>0025728396</phone>
-    </contact>
-    ```
+<?xml version="1.0" encoding="UTF-8"?>
+<contact category="Friend">
+  <name>John Doe</name>
+  <age>32</age>
+  <address>114B, 2nd Floor, Sterling Apartment, Morrison Town</address>
+  <phone>0221743566</phone>
+</contact>
+<contact category="Family">
+  <name>Jane Smith</name>
+  <age>24</age>
+  <address>13, Ave Park, Alexandria</address>
+  <phone>0025728396</phone>
+</contact>
+```
 
 ## 工作原理…
 
@@ -231,8 +231,8 @@ Qt 允许多种方式解析 XML 数据，包括我们在前面示例中介绍的
 1.  首先，我们需要通过打开项目（`.pro`）文件并在`core`和`gui`后面添加文本`xml`来将 XML 模块添加到我们的项目中，如下所示：
 
 ```cpp
-    QT += core gui xml
-    ```
+QT += core gui xml
+```
 
 1.  然后，就像我们在本章的第一个示例中所做的那样，创建一个用户界面，上面有一个按钮，上面写着**加载 XML**：![操作步骤…](img/B02820_06_08.jpg)
 
@@ -241,11 +241,11 @@ Qt 允许多种方式解析 XML 数据，包括我们在前面示例中介绍的
 1.  转到`mainwindow.h`并添加以下头文件，以便我们可以使用这些类：
 
 ```cpp
-    #include <QDomDocument>
-    #include <QDebug>
-    #include <QFile>
-    #include <QFileDialog>
-    ```
+#include <QDomDocument>
+#include <QDebug>
+#include <QFile>
+#include <QFileDialog>
+```
 
 1.  接下来，转到`mainwindow.cpp`并插入以下代码到按钮的`clicked()`槽函数中：![操作步骤…](img/B02820_06_09.jpg)
 
@@ -282,20 +282,20 @@ Qt 允许多种方式解析 XML 数据，包括我们在前面示例中介绍的
 1.  使用任何文本编辑器打开您在第 4 步中保存的 XML 文件，您应该会看到类似于以下内容：
 
 ```cpp
-    <!DOCTYPE contact>
-    <contact category="Family">
-      <name>John Doe</name>
-      <age>32</age>
-      <address>114B, 2nd Floor, Sterling Apartment, Morrisontown</address>
-      <phone>0221743566</phone>
-    </contact>
-    <contact category="Friend">
-      <name>John Doe</name>
-      <age>32</age>
-      <address>114B, 2nd Floor, Sterling Apartment, Morrisontown</address>
-      <phone>0221743566</phone>
-    </contact>
-    ```
+<!DOCTYPE contact>
+<contact category="Family">
+  <name>John Doe</name>
+  <age>32</age>
+  <address>114B, 2nd Floor, Sterling Apartment, Morrisontown</address>
+  <phone>0221743566</phone>
+</contact>
+<contact category="Friend">
+  <name>John Doe</name>
+  <age>32</age>
+  <address>114B, 2nd Floor, Sterling Apartment, Morrisontown</address>
+  <phone>0221743566</phone>
+</contact>
+```
 
 ## 它是如何工作的…
 
@@ -324,109 +324,109 @@ Qt 允许多种方式解析 XML 数据，包括我们在前面示例中介绍的
 1.  之后，打开您的项目（`.pro`）文件，并将网络模块添加到您的项目中。您只需在`core`和`gui`之后添加`network`文本即可完成此操作，如下所示：
 
 ```cpp
-    QT += core gui network
-    ```
+QT += core gui network
+```
 
 1.  然后，打开`mainwindow.h`并在`#include <QMainWindow>`之后的源代码中添加以下头文件：
 
 ```cpp
-    #include <QDebug>
-    #include <QtNetwork/QNetworkAccessManager>
-    #include <QtNetwork/QNetworkReply>
-    #include <QXmlStreamReader>
-    ```
+#include <QDebug>
+#include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#include <QXmlStreamReader>
+```
 
 1.  接下来，手动声明一个槽函数并将其命名为`getAddressFinished()`：
 
 ```cpp
-    private slots:
-      void getAddressFinished(QNetworkReply* reply);
-    ```
+private slots:
+  void getAddressFinished(QNetworkReply* reply);
+```
 
 1.  在那之后，声明一个名为`addressRequest`的`private`变量：
 
 ```cpp
-    private:
-      QNetworkAccessManager* addressRequest;
-    ```
+private:
+  QNetworkAccessManager* addressRequest;
+```
 
 1.  完成后，再次打开`mainwindow.ui`，右键单击**获取地址**按钮，然后选择**转到槽…**。然后选择**clicked()**选项并按**确定**。槽函数现在将添加到`mainwindow.h`和`mainwindow.cpp`源文件中。
 
 1.  现在，打开`mainwindow.cpp`并将以下代码添加到类构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-      addressRequest = new QNetworkAccessManager();
-      connect(addressRequest, SIGNAL(finished(QNetworkReply*)),   SLOT(getAddressFinished(QNetworkReply*)));
-    }
-    ```
+  addressRequest = new QNetworkAccessManager();
+  connect(addressRequest, SIGNAL(finished(QNetworkReply*)),   SLOT(getAddressFinished(QNetworkReply*)));
+}
+```
 
 1.  然后，我们将以下代码添加到我们刚刚手动声明的`getAddressFinished()`槽函数中：
 
 ```cpp
-    void MainWindow::getAddressFinished(QNetworkReply* reply)
+void MainWindow::getAddressFinished(QNetworkReply* reply)
+{
+  QByteArray bytes = reply->readAll();
+
+  //qDebug() << QString::fromUtf8(bytes.data(), bytes.size());
+
+  QXmlStreamReader xml;
+  xml.addData(bytes);
+
+  while(!xml.atEnd())
+  {
+    if (xml.isStartElement())
     {
-      QByteArray bytes = reply->readAll();
+      QString name = xml.name().toString();
+      //qDebug() << name;
 
-      //qDebug() << QString::fromUtf8(bytes.data(), bytes.size());
-
-      QXmlStreamReader xml;
-      xml.addData(bytes);
-
-      while(!xml.atEnd())
+      if (name == "formatted_address")
       {
-        if (xml.isStartElement())
-        {
-          QString name = xml.name().toString();
-          //qDebug() << name;
-
-          if (name == "formatted_address")
-          {
-            QString text = xml.readElementText();
-            qDebug() << "Address:" << text;
-            return;
-          }
-        }
-
-        xml.readNext();
-      }
-
-      if (xml.hasError())
-      {
-        qDebug() << "Error loading XML:" << xml.errorString();
+        QString text = xml.readElementText();
+        qDebug() << "Address:" << text;
         return;
       }
-
-      qDebug() << "No result.";
     }
-    ```
+
+    xml.readNext();
+  }
+
+  if (xml.hasError())
+  {
+    qDebug() << "Error loading XML:" << xml.errorString();
+    return;
+  }
+
+  qDebug() << "No result.";
+}
+```
 
 1.  最后，将以下代码添加到 Qt 创建的`clicked()`槽函数中：
 
 ```cpp
-    void MainWindow::on_getAddressButton_clicked()
-    {
-      QString latitude = ui->latitude->text();
-      QString longitude = ui->longitude->text();
+void MainWindow::on_getAddressButton_clicked()
+{
+  QString latitude = ui->latitude->text();
+  QString longitude = ui->longitude->text();
 
-      QNetworkRequest request;
-      request.setUrl(QUrl("http://maps.googleapis.com/maps/api/geocode/xml?latlng=" + latitude + "," + longitude + "&sensor=false"));
-      addressRequest->get(request);
-    }
-    ```
+  QNetworkRequest request;
+  request.setUrl(QUrl("http://maps.googleapis.com/maps/api/geocode/xml?latlng=" + latitude + "," + longitude + "&sensor=false"));
+  addressRequest->get(request);
+}
+```
 
 1.  现在构建并运行程序，您应该能够通过插入经度和纬度值并单击**获取地址**按钮来获取地址：![如何做…](img/B02820_06_14.jpg)
 
 1.  让我们尝试使用经度`-73.9780838`和纬度`40.6712957`。单击**获取地址**按钮，您将在应用程序输出窗口中看到以下结果：
 
 ```cpp
-    Address: "180-190 7th Ave, Brooklyn, NY 11215, USA"
-    ```
+Address: "180-190 7th Ave, Brooklyn, NY 11215, USA"
+```
 
 ## 它是如何工作的…
 

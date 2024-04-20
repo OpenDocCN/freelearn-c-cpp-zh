@@ -27,29 +27,29 @@
 1.  在这个新文件中声明`Transform`结构。从变换的属性—`position`、`rotation`和`scale`开始：
 
 ```cpp
-    struct Transform {
-        vec3 position;
-        quat rotation;
-        vec3 scale;
-    ```
+struct Transform {
+    vec3 position;
+    quat rotation;
+    vec3 scale;
+```
 
 1.  创建一个构造函数，它接受一个位置、旋转和缩放。这个构造函数应该将这些值分配给`Transform`结构的适当成员：
 
 ```cpp
-    Transform(const vec3& p, const quat& r, const vec3& s) :
-        position(p), rotation(r), scale(s) {}
-    ```
+Transform(const vec3& p, const quat& r, const vec3& s) :
+    position(p), rotation(r), scale(s) {}
+```
 
 1.  空变换不应该有位置或旋转，缩放为 1。默认情况下，`scale`组件将被创建为`(0, 0, 0)`。为了解决这个问题，`Transform`结构的默认构造函数需要将`scale`初始化为正确的值：
 
 ```cpp
-        Transform() :
-            position(vec3(0, 0, 0)),
-            rotation(quat(0, 0, 0, 1)),
-            scale(vec3(1, 1, 1))
-        {}
-    }; // End of transform struct
-    ```
+    Transform() :
+        position(vec3(0, 0, 0)),
+        rotation(quat(0, 0, 0, 1)),
+        scale(vec3(1, 1, 1))
+    {}
+}; // End of transform struct
+```
 
 `Transform`结构非常简单；它的所有成员都是公共的。一个变换有一个位置、旋转和缩放。默认构造函数将位置向量设置为*0*，将旋转四元数设置为单位，将缩放向量设置为*1*。默认构造函数创建的变换没有效果。
 
@@ -218,23 +218,23 @@ Transform mat4ToTransform(const mat4& m) {
 1.  在`Transform.cpp`中实现`transformPoint`函数。不要忘记将函数声明添加到`Transform.h`中：
 
 ```cpp
-    vec3 transformPoint(const Transform& a, const vec3& b) {
-        vec3 out;
-        out = a.rotation * (a.scale * b);
-        out = a.position + out;
-        return out;
-    }
-    ```
+vec3 transformPoint(const Transform& a, const vec3& b) {
+    vec3 out;
+    out = a.rotation * (a.scale * b);
+    out = a.position + out;
+    return out;
+}
+```
 
 1.  在`Transform.cpp`中实现`transformVector`函数。不要忘记将函数声明添加到`Transform.h`中：
 
 ```cpp
-    vec3 transformVector(const Transform& a, const vec3& b) {
-        vec3 out;
-        out = a.rotation * (a.scale * b);
-        return out;
-    }
-    ```
+vec3 transformVector(const Transform& a, const vec3& b) {
+    vec3 out;
+    out = a.rotation * (a.scale * b);
+    return out;
+}
+```
 
 `transformPoint`函数做的就是一个一个步骤地将矩阵和点相乘。首先应用`scale`，然后是`rotation`，最后是`translation`。当处理向量而不是点时，同样的顺序适用，只是忽略了平移。
 

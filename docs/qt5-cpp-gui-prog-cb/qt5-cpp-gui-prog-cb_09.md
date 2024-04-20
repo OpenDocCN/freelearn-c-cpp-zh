@@ -33,9 +33,9 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  之后，打开项目文件（.pro）并将以下模块添加到您的项目中：
 
 ```cpp
-    QT += core gui webengine webenginewidgets
+QT += core gui webengine webenginewidgets
 
-    ```
+```
 
 1.  打开`mainwindow.ui`并删除`menuBar`，`mainToolBar`和`statusBar`对象，因为在这个项目中我们不需要它们：![操作方法…](img/B02820_09_03.jpg)
 
@@ -54,104 +54,104 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  现在我们完成了 UI 设计，让我们转到`mainwindow.h`。我们需要做的第一件事是在`mainwindow.h`中添加以下头文件：
 
 ```cpp
-    #include <QtWebEngineWidgets/QtWebEngineWidgets>
-    ```
+#include <QtWebEngineWidgets/QtWebEngineWidgets>
+```
 
 1.  然后，在类析构函数下声明`loadUrl()`函数：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-      void loadUrl();
+  void loadUrl();
 
-    ```
+```
 
 1.  之后，在`mainwindow.h`中添加一个名为`loading()`的自定义槽函数，因为我们很快就会用到它：
 
 ```cpp
-    private slots:
-      void on_goButton_clicked();
-      void on_address_returnPressed();
-      void on_backButton_clicked();
-      void on_forwardButton_clicked();
-      void loading(int progress);
+private slots:
+  void on_goButton_clicked();
+  void on_address_returnPressed();
+  void on_backButton_clicked();
+  void on_forwardButton_clicked();
+  void loading(int progress);
 
-    ```
+```
 
 1.  最后，声明一个`QWebEngineView`对象并将其命名为`webview`：
 
 ```cpp
-    private:
-      Ui::MainWindow *ui;
-      QWebEngineView* webview;
+private:
+  Ui::MainWindow *ui;
+  QWebEngineView* webview;
 
-    ```
+```
 
 1.  完成后，打开`mainwindow.cpp`并初始化 web 引擎视图。然后，将其添加到第二个水平布局中，并将其`loadProgress()`信号连接到我们刚刚添加到`mainwindow.h`的`loading()`槽函数：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-      webview = new QWebEngineView;
-      ui->horizontalLayout_2->addWidget(webview);
+  webview = new QWebEngineView;
+  ui->horizontalLayout_2->addWidget(webview);
 
-      connect(webview, SIGNAL(loadProgress(int)), SLOT(loading(int)));
-    }
-    ```
+  connect(webview, SIGNAL(loadProgress(int)), SLOT(loading(int)));
+}
+```
 
 1.  之后，声明`loadUrl()`函数被调用时会发生什么：
 
 ```cpp
-    void MainWindow::loadUrl()
-    {
-      QUrl url = QUrl(ui->address->text());
-      url.setScheme("http");
-      webview->page()->load(url);
-    }
-    ```
+void MainWindow::loadUrl()
+{
+  QUrl url = QUrl(ui->address->text());
+  url.setScheme("http");
+  webview->page()->load(url);
+}
+```
 
 1.  接下来，当单击**Go**按钮或单击`Return/Enter`键时，调用`loadUrl()`函数：
 
 ```cpp
-    void MainWindow::on_goButton_clicked()
-    {
-      loadUrl();
-    }
+void MainWindow::on_goButton_clicked()
+{
+  loadUrl();
+}
 
-    void MainWindow::on_address_returnPressed()
-    {
-      loadUrl();
-    }
-    ```
+void MainWindow::on_address_returnPressed()
+{
+  loadUrl();
+}
+```
 
 1.  至于另外两个按钮，如果在历史堆栈中可用，我们将要求 web 视图加载上一页或下一页：
 
 ```cpp
-    void MainWindow::on_backButton_clicked()
-    {
-      webview->back();
-    }
+void MainWindow::on_backButton_clicked()
+{
+  webview->back();
+}
 
-    void MainWindow::on_forwardButton_clicked()
-    {
-      webview->forward();
-    }
-    ```
+void MainWindow::on_forwardButton_clicked()
+{
+  webview->forward();
+}
+```
 
 1.  最后，在加载网页时更改`progressBar`的值：
 
 ```cpp
-    void MainWindow::loading(int progress)
-    {
-      ui->progressBar->setValue(progress);
-    }
-    ```
+void MainWindow::loading(int progress)
+{
+  ui->progressBar->setValue(progress);
+}
+```
 
 1.  现在构建并运行程序，您将获得一个非常基本但功能齐全的网页浏览器！![如何做…](img/B02820_09_09.jpg)
 
@@ -180,12 +180,12 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  首先，打开`mainwindow.ui`并在进度条下添加一个垂直布局。然后，在垂直布局中添加一个**纯文本编辑**小部件（在输入小部件类别下），以及一个推送按钮。将推送按钮的显示更改为**加载 HTML**，并将纯文本编辑小部件的`plaintext`属性设置为以下内容：
 
 ```cpp
-    <Img src="img/googlelogo_color_272x92dp.png"></img>
-    <h1>Hello World!</h1>
-    <h3>This is our custom HTML page.</h3>
+<Img src="img/googlelogo_color_272x92dp.png"></img>
+<h1>Hello World!</h1>
+<h3>This is our custom HTML page.</h3>
 
-    <script>alert("Hello!");</script>
-    ```
+<script>alert("Hello!");</script>
+```
 
 ![如何做…](img/B02820_09_07.jpg)
 
@@ -196,138 +196,138 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  接下来，打开`mainwindow.h`并添加以下头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QtWebEngineWidgets/QtWebEngineWidgets>
-    #include <QDebug>
-    #include <QFile>
+#include <QMainWindow>
+#include <QtWebEngineWidgets/QtWebEngineWidgets>
+#include <QDebug>
+#include <QFile>
 
-    ```
+```
 
 1.  然后，确保以下函数和指针已在`mainwindow.h`中声明：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
-      void loadUrl();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
+  void loadUrl();
 
-    private slots:
-      void on_goButton_clicked();
-      void on_address_returnPressed();
-      void on_backButton_clicked();
-      void on_forwardButton_clicked();
+private slots:
+  void on_goButton_clicked();
+  void on_address_returnPressed();
+  void on_backButton_clicked();
+  void on_forwardButton_clicked();
 
-      void startLoading();
-      void loading(int progress);
-      void loaded(bool ok);
+  void startLoading();
+  void loading(int progress);
+  void loaded(bool ok);
 
-     void on_loadHtml_clicked();
-    private:
-      Ui::MainWindow *ui;
-      QWebEngineView* webview;
+ void on_loadHtml_clicked();
+private:
+  Ui::MainWindow *ui;
+  QWebEngineView* webview;
 
-    ```
+```
 
 1.  完成后，打开`mainwindow.cpp`并将以下代码添加到类构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-      webview = new QWebEngineView;
-      ui->horizontalLayout_2->addWidget(webview);
+  webview = new QWebEngineView;
+  ui->horizontalLayout_2->addWidget(webview);
 
-      //webview->page()->settings()>setAttribute(QWebEngineSettings::JavascriptEnabled, false);
-      //webview->page()->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, false);
+  //webview->page()->settings()>setAttribute(QWebEngineSettings::JavascriptEnabled, false);
+  //webview->page()->settings()->setAttribute(QWebEngineSettings::AutoLoadImages, false);
 
-      //QString fontFamily = webview->page()->settings()->fontFamily(QWebEngineSettings::SerifFont);
-      QString fontFamily = webview->page()->settings()->fontFamily(QWebEngineSettings::SansSerifFont);
-      int fontSize = webview->page()->settings()->fontSize(QWebEngineSettings::MinimumFontSize);
-      QFont myFont = QFont(fontFamily, fontSize);
-      webview->page()->settings()->setFontFamily(QWebEngineSettings::StandardFont, myFont.family());
+  //QString fontFamily = webview->page()->settings()->fontFamily(QWebEngineSettings::SerifFont);
+  QString fontFamily = webview->page()->settings()->fontFamily(QWebEngineSettings::SansSerifFont);
+  int fontSize = webview->page()->settings()->fontSize(QWebEngineSettings::MinimumFontSize);
+  QFont myFont = QFont(fontFamily, fontSize);
+  webview->page()->settings()->setFontFamily(QWebEngineSettings::StandardFont, myFont.family());
 
-      QFile file("://tux.png");
-      if (file.open(QFile::ReadOnly))
-      {
-        QByteArray data = file.readAll();
-        webview->page()->setContent(data, "image/png");
-      }
-      else
-      {
-        qDebug() << "File cannot be opened.";
-      }
+  QFile file("://tux.png");
+  if (file.open(QFile::ReadOnly))
+  {
+    QByteArray data = file.readAll();
+    webview->page()->setContent(data, "image/png");
+  }
+  else
+  {
+    qDebug() << "File cannot be opened.";
+  }
 
-      connect(webview, SIGNAL(loadStarted()), SLOT(startLoading()));
-      connect(webview, SIGNAL(loadProgress(int)), SLOT(loading(int)));
-      connect(webview, SIGNAL(loadFinished(bool)), SLOT(loaded(bool)));
-    }
-    ```
+  connect(webview, SIGNAL(loadStarted()), SLOT(startLoading()));
+  connect(webview, SIGNAL(loadProgress(int)), SLOT(loading(int)));
+  connect(webview, SIGNAL(loadFinished(bool)), SLOT(loaded(bool)));
+}
+```
 
 1.  `MainWindow::loadUrl()`函数仍然与之前的例子相同，它在加载页面之前将 URL 方案设置为`http`：
 
 ```cpp
-    void MainWindow::loadUrl()
-    {
-      QUrl url = QUrl(ui->address->text());
-      url.setScheme("http");
-      webview->page()->load(url);
-    }
-    ```
+void MainWindow::loadUrl()
+{
+  QUrl url = QUrl(ui->address->text());
+  url.setScheme("http");
+  webview->page()->load(url);
+}
+```
 
 1.  对于以下函数，情况也是一样的：
 
 ```cpp
-    void MainWindow::on_goButton_clicked()
-    {
-      loadUrl();
-    }
+void MainWindow::on_goButton_clicked()
+{
+  loadUrl();
+}
 
-    void MainWindow::on_address_returnPressed()
-    {
-      loadUrl();
-    }
+void MainWindow::on_address_returnPressed()
+{
+  loadUrl();
+}
 
-    void MainWindow::on_backButton_clicked()
-    {
-      webview->back();
-    }
+void MainWindow::on_backButton_clicked()
+{
+  webview->back();
+}
 
-    void MainWindow::on_forwardButton_clicked()
-    {
-      webview->forward();
-    }
-    ```
+void MainWindow::on_forwardButton_clicked()
+{
+  webview->forward();
+}
+```
 
 1.  在之前的例子中，我们只有`MainWindow::loading()`，它在网页加载时设置进度条的值。这次，我们还添加了`MainWindow::startLoading()`和`MainWindow::loaded()`槽函数，它们将被`loadStarted()`和`loadFinished()`信号调用。这两个函数的作用基本上是在页面开始加载时显示进度条，在页面加载完成时隐藏进度条：
 
 ```cpp
-    void MainWindow::startLoading()
-    {
-      ui->progressBar->show();
-    }
+void MainWindow::startLoading()
+{
+  ui->progressBar->show();
+}
 
-    void MainWindow::loading(int progress)
-    {
-      ui->progressBar->setValue(progress);
-    }
+void MainWindow::loading(int progress)
+{
+  ui->progressBar->setValue(progress);
+}
 
-    void MainWindow::loaded(bool ok)
-    {
-      ui->progressBar->hide();
-    }
-    ```
+void MainWindow::loaded(bool ok)
+{
+  ui->progressBar->hide();
+}
+```
 
 1.  最后，当点击**加载 HTML**按钮时，我们调用`webview->loadHtml()`将纯文本转换为 HTML 内容：
 
 ```cpp
-    void MainWindow::on_loadHtml_clicked()
-    {
-      webview->setHtml(ui->source->toPlainText());
-    }
-    ```
+void MainWindow::on_loadHtml_clicked()
+{
+  webview->setHtml(ui->source->toPlainText());
+}
+```
 
 1.  现在构建并运行程序，你应该会看到类似这样的东西：![操作步骤...](img/B02820_09_12.jpg)
 
@@ -356,34 +356,34 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  然后，打开项目文件（`.pro`）并将以下模块添加到你的项目中：
 
 ```cpp
-    QT += core gui webengine webenginewidgets
+QT += core gui webengine webenginewidgets
 
-    ```
+```
 
 1.  然后，打开`mainwindow.ui`并为画布添加一个垂直布局。然后，选择画布并点击画布顶部的**垂直布局**按钮。你会得到类似这样的东西：![操作步骤...](img/B02820_09_14.jpg)
 
 1.  然后，打开`mainwindow.cpp`并在源代码顶部添加以下头文件：
 
 ```cpp
-    #include <QtWebEngineWidgets/QWebEngineView>
-    #include <QtWebEngineWidgets/QWebEnginePage>
-    #include <QtWebEngineWidgets/QWebEngineSettings>
-    ```
+#include <QtWebEngineWidgets/QWebEngineView>
+#include <QtWebEngineWidgets/QWebEnginePage>
+#include <QtWebEngineWidgets/QWebEngineSettings>
+```
 
 1.  之后，将以下代码添加到`MainWindow`构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
-      QWebEngineView* webview = new QWebEngineView;
-      QUrl url = QUrl("qrc:/map.html");
-      webview->page()->load(url);
-      ui->verticalLayout->addWidget(webview);
-    }
-    ```
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
+  QWebEngineView* webview = new QWebEngineView;
+  QUrl url = QUrl("qrc:/map.html");
+  webview->page()->load(url);
+  ui->verticalLayout->addWidget(webview);
+}
+```
 
 1.  然后，转到**文件** | **新建文件或项目**并创建一个 Qt 资源文件（.qrc）。我们将在项目中添加一个名为`map.html`的 HTML 文件：![如何操作...](img/B02820_09_15.jpg)
 
@@ -392,103 +392,103 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  之后，我们将开始编写 HTML 代码，声明重要的标签，如`<html>`、`<head>`和`<body>`，如下所示：
 
 ```cpp
-    <!DOCTYPE html>
-    <html>
-      <head>
-      </head>
-      <body ondragstart="return false">
-      </body>
-    </html>
-    ```
+<!DOCTYPE html>
+<html>
+  <head>
+  </head>
+  <body ondragstart="return false">
+  </body>
+</html>
+```
 
 1.  然后，在 body 中添加一个`<div>`标签，并将其 ID 设置为`map-canvas`：
 
 ```cpp
-    <body ondragstart="return false">
-      <div id="map-canvas" />
-    </body>
-    ```
+<body ondragstart="return false">
+  <div id="map-canvas" />
+</body>
+```
 
 1.  之后，将以下代码添加到 HTML 文档的头部：
 
 ```cpp
-    <meta name="viewport" content="initial-scale=1.0,user-scalable=no" />
-    <style type="text/css">
-      html { height: 100% }
-      body { height: 100%; margin: 0; padding: 0 }
-      #map-canvas { height: 100% }
-    </style>
-    <script type="text/javascript" src="img/js?key=YOUR_KEY_HERE&libraries=drawing"></script>
-    ```
+<meta name="viewport" content="initial-scale=1.0,user-scalable=no" />
+<style type="text/css">
+  html { height: 100% }
+  body { height: 100%; margin: 0; padding: 0 }
+  #map-canvas { height: 100% }
+</style>
+<script type="text/javascript" src="img/js?key=YOUR_KEY_HERE&libraries=drawing"></script>
+```
 
 1.  然后，将以下代码添加到 HTML 文档的头部，就在我们在上一步中插入的代码的底部：
 
 ```cpp
-    <script type="text/javascript">
-      var map;
-      function initialize()
-      {
-        // Add map
-        var mapOptions =
-        {
-          center: new google.maps.LatLng(40.705311, -74.2581939),
-            zoom: 6
-        };
+<script type="text/javascript">
+  var map;
+  function initialize()
+  {
+    // Add map
+    var mapOptions =
+    {
+      center: new google.maps.LatLng(40.705311, -74.2581939),
+        zoom: 6
+    };
 
-        map = new google.maps.Map(document.getElementById("map-canvas"),mapOptions);
+    map = new google.maps.Map(document.getElementById("map-canvas"),mapOptions);
 
-        // Add event listener
-        google.maps.event.addListener(map, 'zoom_changed', function()
-        {
-          //alert(map.getZoom());
-        });
+    // Add event listener
+    google.maps.event.addListener(map, 'zoom_changed', function()
+    {
+      //alert(map.getZoom());
+    });
 
-        // Add marker
-        var marker = new google.maps.Marker(
-        {
-          position: new google.maps.LatLng(40.705311, -74.2581939),
-            map: map,
-            title: "Marker A",
-        });
-        google.maps.event.addListener(marker, 'click', function()
-        {
-          map.panTo(marker.getPosition());
-        });
-        marker.setMap(map);
+    // Add marker
+    var marker = new google.maps.Marker(
+    {
+      position: new google.maps.LatLng(40.705311, -74.2581939),
+        map: map,
+        title: "Marker A",
+    });
+    google.maps.event.addListener(marker, 'click', function()
+    {
+      map.panTo(marker.getPosition());
+    });
+    marker.setMap(map);
 
-        // Add polyline
-        var points = [ new google.maps.LatLng(39.8543, -73.2183), new google.maps.LatLng(41.705311, -75.2581939), new google.maps.LatLng(40.62388, -75.5483) ];
-        var polyOptions =
-        {
-          path: points,
-          strokeColor: '#FF0000',
-          strokeOpacity: 1.0,
-          strokeWeight: 2
-        };
-        historyPolyline = new google.maps.Polyline(polyOptions);
-        historyPolyline.setMap(map);
+    // Add polyline
+    var points = [ new google.maps.LatLng(39.8543, -73.2183), new google.maps.LatLng(41.705311, -75.2581939), new google.maps.LatLng(40.62388, -75.5483) ];
+    var polyOptions =
+    {
+      path: points,
+      strokeColor: '#FF0000',
+      strokeOpacity: 1.0,
+      strokeWeight: 2
+    };
+    historyPolyline = new google.maps.Polyline(polyOptions);
+    historyPolyline.setMap(map);
 
-        // Add polygon
-        var points = [ new google.maps.LatLng(37.314166, -75.432),new google.maps.LatLng(40.2653, -74.4325), new google.maps.LatLng(38.8288, -76.5483) ];
-          var polygon = new google.maps.Polygon(
-        {
-          paths: points,
-          fillColor:  '#000000',
-          fillOpacity: 0.2,
-          strokeWeight: 3,
-          strokeColor: '#fff000',
-        });
-        polygon.setMap(map);
+    // Add polygon
+    var points = [ new google.maps.LatLng(37.314166, -75.432),new google.maps.LatLng(40.2653, -74.4325), new google.maps.LatLng(38.8288, -76.5483) ];
+      var polygon = new google.maps.Polygon(
+    {
+      paths: points,
+      fillColor:  '#000000',
+      fillOpacity: 0.2,
+      strokeWeight: 3,
+      strokeColor: '#fff000',
+    });
+    polygon.setMap(map);
 
-        // Setup drawing manager
-        var drawingManager = new google.maps.drawing.DrawingManager();
-        drawingManager.setMap(map);
-      }
+    // Setup drawing manager
+    var drawingManager = new google.maps.drawing.DrawingManager();
+    drawingManager.setMap(map);
+  }
 
-      google.maps.event.addDomListener(window, 'load', initialize);
+  google.maps.event.addDomListener(window, 'load', initialize);
 
-    </script>
-    ```
+</script>
+```
 
 1.  完成后，编译并运行项目。您应该看到类似于这样的东西：![如何操作...](img/B02820_09_16.jpg)
 
@@ -519,17 +519,17 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  首先，创建一个**Qt Widgets 应用程序**项目，完成后，打开项目文件（.pro）并将以下模块添加到项目中：
 
 ```cpp
-    QT += core gui webengine webenginewidgets
+QT += core gui webengine webenginewidgets
 
-    ```
+```
 
 1.  然后，打开`mainwindow.ui`并删除工具栏、菜单栏和状态栏，因为在这个示例程序中我们不需要这些。
 
 1.  之后，向画布添加一个垂直布局，然后选择画布并单击画布顶部的**垂直布局**按钮。然后，在垂直布局的顶部添加一个文本标签，并将其文本设置为**Hello!**。还可以通过设置其`stylesheet`属性使其字体变大：
 
 ```cpp
-    font: 75 26pt "MS Shell Dlg 2";
-    ```
+font: 75 26pt "MS Shell Dlg 2";
+```
 
 ![如何操作...](img/B02820_09_17.jpg)
 
@@ -538,133 +538,133 @@ Qt 包括一个名为**Qt WebEngine**的模块，允许我们将 Web 浏览器�
 1.  之后，打开 HTML 文件，这里称为`test.html`。首先，将所有必要的 JavaScript 和 CSS 文件链接到 HTML 源代码中，放在`<head>`标签之间：
 
 ```cpp
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <script src="img/qwebchannel.js"></script>
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="img/qwebchannel.js"></script>
 
-        <script src="img/jquery.min.js"></script>
-        <script src="img/bootstrap.js"></script>
+    <script src="img/jquery.min.js"></script>
+    <script src="img/bootstrap.js"></script>
 
-        <link rel="stylesheet" type="text/css"       href="css/bootstrap.css">
-        <link rel="stylesheet" type="text/css" href="css/font-      awesome.css">
-      </head>
-      <body>
-      </body>
-    </html>
-    ```
+    <link rel="stylesheet" type="text/css"       href="css/bootstrap.css">
+    <link rel="stylesheet" type="text/css" href="css/font-      awesome.css">
+  </head>
+  <body>
+  </body>
+</html>
+```
 
 1.  然后，将以下 JavaScript 添加到`<head>`元素中，放在`<script>`标签之间：
 
 ```cpp
-    <script>
-      $(document).ready(function()
+<script>
+  $(document).ready(function()
+  {
+    new QWebChannel(qt.webChannelTransport, function(channel)
       {
-        new QWebChannel(qt.webChannelTransport, function(channel)
-          {
-            mainWindow = channel.objects.mainWindow;
-          });
-
-          $("#login").click(function(e)
-          {
-            e.preventDefault();
-
-            var user = $("#username").val();
-            var pass = $("#password").val();
-            mainWindow.showLoginInfo(user, pass);
-          });
-
-          $("#changeText").click(function(e)
-          {
-            e.preventDefault();
-
-            mainWindow.changeQtText("Good bye!");
-          });
+        mainWindow = channel.objects.mainWindow;
       });
-    </script>
-    ```
+
+      $("#login").click(function(e)
+      {
+        e.preventDefault();
+
+        var user = $("#username").val();
+        var pass = $("#password").val();
+        mainWindow.showLoginInfo(user, pass);
+      });
+
+      $("#changeText").click(function(e)
+      {
+        e.preventDefault();
+
+        mainWindow.changeQtText("Good bye!");
+      });
+  });
+</script>
+```
 
 1.  然后，将以下代码添加到`<body>`元素中：
 
 ```cpp
-    <div class="container-fluid">
-      <form id="example-form" action="#" class="container-fluid">
-        <div class="form-group">
-          <div class="col-md-12"><h3>Call C++ Function from Javascript</h3></div>
+<div class="container-fluid">
+  <form id="example-form" action="#" class="container-fluid">
+    <div class="form-group">
+      <div class="col-md-12"><h3>Call C++ Function from Javascript</h3></div>
 
-          <div class="col-md-12"><div class="alert alert-info" role="alert"><i class="fa fa-info-circle"></i> <span id="infotext">Click "Login" to send username and password variables to C++.Click "Change Cpp Text" to change the text label on Qt GUI.</span></div></div>
+      <div class="col-md-12"><div class="alert alert-info" role="alert"><i class="fa fa-info-circle"></i> <span id="infotext">Click "Login" to send username and password variables to C++.Click "Change Cpp Text" to change the text label on Qt GUI.</span></div></div>
 
-          <div class="col-md-12">
-            <label>Username:</label> <input id="username" type="text"><p />
-          </div>
+      <div class="col-md-12">
+        <label>Username:</label> <input id="username" type="text"><p />
+      </div>
 
-          <div class="col-md-12">
-            <label>Password:</label> <input id="password" type="password"><p />
-          </div>
+      <div class="col-md-12">
+        <label>Password:</label> <input id="password" type="password"><p />
+      </div>
 
-          <div class="col-md-12">
-            <button id="login" class="btn btn-success" type="button"><i class="fa fa-check"></i> Login</button> <button id="changeText" class="btn btn-primary" type="button"><i class="fa fa-pencil"></i> Change Cpp Text</button>
-          </div>
-        </div>
-      </form>
+      <div class="col-md-12">
+        <button id="login" class="btn btn-success" type="button"><i class="fa fa-check"></i> Login</button> <button id="changeText" class="btn btn-primary" type="button"><i class="fa fa-pencil"></i> Change Cpp Text</button>
+      </div>
     </div>
-    ```
+  </form>
+</div>
+```
 
 1.  完成后，让我们打开`mainwindow.h`并向`MainWindow`类添加以下公共函数：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-      Q_INVOKABLE void changeQtText(QString newText);
-      Q_INVOKABLE void showLoginInfo(QString user, QString pass);
+  Q_INVOKABLE void changeQtText(QString newText);
+  Q_INVOKABLE void showLoginInfo(QString user, QString pass);
 
-    ```
+```
 
 1.  之后，打开`mainwindow.cpp`并将以下头文件添加到源代码顶部：
 
 ```cpp
-    #include <QtWebEngineWidgets/QWebEngineView>
-    #include <QtWebChannel/QWebChannel>
-    #include <QMessageBox>
-    ```
+#include <QtWebEngineWidgets/QWebEngineView>
+#include <QtWebChannel/QWebChannel>
+#include <QMessageBox>
+```
 
 1.  然后，将以下代码添加到`MainWindow`构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "1234");
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "1234");
 
-      ui->setupUi(this);
+  ui->setupUi(this);
 
-      QWebEngineView* webview = new QWebEngineView();
-      ui->verticalLayout->addWidget(webview);
+  QWebEngineView* webview = new QWebEngineView();
+  ui->verticalLayout->addWidget(webview);
 
-      QWebChannel* webChannel = new QWebChannel();
-      webChannel->registerObject("mainWindow", this);
-      webview->page()->setWebChannel(webChannel);
+  QWebChannel* webChannel = new QWebChannel();
+  webChannel->registerObject("mainWindow", this);
+  webview->page()->setWebChannel(webChannel);
 
-      webview->page()->load(QUrl("qrc:///html/test.html"));
-    }
-    ```
+  webview->page()->load(QUrl("qrc:///html/test.html"));
+}
+```
 
 1.  之后，我们将声明`changeQtText()`和`showLoginInfo()`被调用时发生的事情：
 
 ```cpp
-    void MainWindow::changeQtText(QString newText)
-    {
-      ui->label->setText(newText);
-    }
+void MainWindow::changeQtText(QString newText)
+{
+  ui->label->setText(newText);
+}
 
-    void MainWindow::showLoginInfo(QString user, QString pass)
-    {
-      QMessageBox::information(this, "Login info", "Username is " + user + " and password is " + pass);
-    }
-    ```
+void MainWindow::showLoginInfo(QString user, QString pass)
+{
+  QMessageBox::information(this, "Login info", "Username is " + user + " and password is " + pass);
+}
+```
 
 1.  现在让我们编译并运行程序；您应该会看到类似以下截图的内容。如果单击**Change Cpp Text**按钮，顶部的**Hello!**将变为**Goodbye!**如果单击**Login**按钮，将会出现一个消息框，显示您在**Username**和**Password**输入字段中输入的内容：![操作步骤…](img/B02820_09_19.jpg)
 
@@ -734,57 +734,57 @@ Q_INVOKABLE void changeQtText(QString newText);
 1.  现在，打开`mainwindow.h`并向其中添加以下头文件：
 
 ```cpp
-    #include <QtWebEngineWidgets/QWebEngineView>
-    #include <QtWebChannel/QWebChannel>
-    #include <QMessageBox>
-    ```
+#include <QtWebEngineWidgets/QWebEngineView>
+#include <QtWebChannel/QWebChannel>
+#include <QMessageBox>
+```
 
 1.  然后，声明一个名为`webview`的`QWebEngineView`对象的类指针：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-      QWebEngineView* webview;
+  QWebEngineView* webview;
 
-    ```
+```
 
 1.  在此之后，打开`mainwindow.cpp`并将以下代码添加到`MainWindow`构造函数中：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    {
-      //qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "1234");
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+{
+  //qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "1234");
 
-      ui->setupUi(this);
+  ui->setupUi(this);
 
-      webview = new QWebEngineView();
-      ui->verticalLayout->addWidget(webview);
+  webview = new QWebEngineView();
+  ui->verticalLayout->addWidget(webview);
 
-      QWebChannel* webChannel = new QWebChannel();
-      webChannel->registerObject("mainWindow", this);
-      webview->page()->setWebChannel(webChannel);
+  QWebChannel* webChannel = new QWebChannel();
+  webChannel->registerObject("mainWindow", this);
+  webview->page()->setWebChannel(webChannel);
 
-      webview->page()->load(QUrl("qrc:///html/test.html"));
-    }
-    ```
+  webview->page()->load(QUrl("qrc:///html/test.html"));
+}
+```
 
 1.  然后，定义当单击`changeHtmlText`按钮和`playUIAnimation`按钮时会发生什么：
 
 ```cpp
-    void MainWindow::on_changeHtmlTextButton_clicked()
-    {
-      webview->page()->runJavaScript("changeHtmlText('Text has been replaced by C++!');");
-    }
+void MainWindow::on_changeHtmlTextButton_clicked()
+{
+  webview->page()->runJavaScript("changeHtmlText('Text has been replaced by C++!');");
+}
 
-    void MainWindow::on_playUIAnimationButton_clicked()
-    {
-      webview->page()->runJavaScript("startAnim();");
-    }
-    ```
+void MainWindow::on_playUIAnimationButton_clicked()
+{
+  webview->page()->runJavaScript("startAnim();");
+}
+```
 
 1.  完成后，让我们通过转到**文件** | **新建文件或项目**来为我们的项目创建一个资源文件。然后，在**Qt**类别下选择**Qt 资源文件**，并单击**选择**。然后，插入你想要的文件名，然后单击**下一步**，接着单击**完成**。
 
@@ -793,106 +793,106 @@ Q_INVOKABLE void changeQtText(QString newText);
 1.  在此之后，打开我们刚创建的 HTML 文件并将其添加到项目资源中，在我们的例子中，它叫做`test.html`。然后，将以下 HTML 代码添加到文件中：
 
 ```cpp
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <script src="img/qwebchannel.js"></script>
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="img/qwebchannel.js"></script>
 
-        <script src="img/jquery.min.js"></script>
-        <script src="img/bootstrap.js"></script>
+    <script src="img/jquery.min.js"></script>
+    <script src="img/bootstrap.js"></script>
 
-        <link rel="stylesheet" type="text/css" href="css/bootstrap.css">
-        <link rel="stylesheet" type="text/css" href="css/font-awesome.css">
-      </head>
-      <body>
-      </body>
-    </html>
-    ```
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.css">
+    <link rel="stylesheet" type="text/css" href="css/font-awesome.css">
+  </head>
+  <body>
+  </body>
+</html>
+```
 
 1.  将以下 JavaScript 代码添加到我们的 HTML 文件的`<head>`元素中，该代码被包裹在`<script>`标签中：
 
 ```cpp
-    <script>
-      $(document).ready(function()
-      {
-        $("#tux").css({ opacity:0, width:"0%", height:"0%" });
-        $("#listgroup").hide();
-        $("#listgroup2").hide();
+<script>
+  $(document).ready(function()
+  {
+    $("#tux").css({ opacity:0, width:"0%", height:"0%" });
+    $("#listgroup").hide();
+    $("#listgroup2").hide();
 
-        new QWebChannel(qt.webChannelTransport, function(channel)
-        {
-          mainWindow = channel.objects.mainWindow;
-        });
+    new QWebChannel(qt.webChannelTransport, function(channel)
+    {
+      mainWindow = channel.objects.mainWindow;
+    });
+  });
+
+  function changeHtmlText(newText)
+  {
+    $("#infotext").html(newText);
+  }
+
+  function startAnim()
+  {
+    // Reset
+    $("#tux").css({ opacity:0, width:"0%", height:"0%" });
+    $("#listgroup").hide();
+    $("#listgroup2").hide();
+
+    $("#tux").animate({ opacity:1.0, width:"100%", height:"100%" }, 1000, function()
+    {
+      // tux animation complete
+      $("#listgroup").slideDown(1000, function()
+      {
+        // listgroup animation complete
+        $("#listgroup2").fadeIn(1500);
       });
-
-      function changeHtmlText(newText)
-      {
-        $("#infotext").html(newText);
-      }
-
-      function startAnim()
-      {
-        // Reset
-        $("#tux").css({ opacity:0, width:"0%", height:"0%" });
-        $("#listgroup").hide();
-        $("#listgroup2").hide();
-
-        $("#tux").animate({ opacity:1.0, width:"100%", height:"100%" }, 1000, function()
-        {
-          // tux animation complete
-          $("#listgroup").slideDown(1000, function()
-          {
-            // listgroup animation complete
-            $("#listgroup2").fadeIn(1500);
-          });
-        });
-      }
-    </script>
-    ```
+    });
+  }
+</script>
+```
 
 1.  最后，将以下代码添加到我们的 HTML 文件的`<body>`元素中：
 
 ```cpp
-    <div class="container-fluid">
-      <form id="example-form" action="#" class="container-fluid">
-        <div class="form-group">
-          <div class="col-md-12"><h3>Call Javascript Function from C++</h3></div>
+<div class="container-fluid">
+  <form id="example-form" action="#" class="container-fluid">
+    <div class="form-group">
+      <div class="col-md-12"><h3>Call Javascript Function from C++</h3></div>
 
-          <div class="col-md-12"><div class="alert alert-info" role="alert"><i class="fa fa-info-circle"></i> <span id="infotext">Change this text using C++.</span></div></div>
+      <div class="col-md-12"><div class="alert alert-info" role="alert"><i class="fa fa-info-circle"></i> <span id="infotext">Change this text using C++.</span></div></div>
 
-          <div class="col-md-2">
-            <img id="tux" src="img/tux.png"></img>
-          </div>
+      <div class="col-md-2">
+        <img id="tux" src="img/tux.png"></img>
+      </div>
 
-          <div class="col-md-5">
-            <ul id="listgroup" class="list-group">
-              <li class="list-group-item">Cras justo odio</li>
-               <li class="list-group-item">Dapibus ac facilisis in</li>
-               <li class="list-group-item">Morbi leo risus</li>
-               <li class="list-group-item">Porta ac consectetur ac</li>
-               <li class="list-group-item">Vestibulum at eros</li>
-            </ul>
-          </div>
+      <div class="col-md-5">
+        <ul id="listgroup" class="list-group">
+          <li class="list-group-item">Cras justo odio</li>
+           <li class="list-group-item">Dapibus ac facilisis in</li>
+           <li class="list-group-item">Morbi leo risus</li>
+           <li class="list-group-item">Porta ac consectetur ac</li>
+           <li class="list-group-item">Vestibulum at eros</li>
+        </ul>
+      </div>
 
-          <div id="listgroup2" class="col-md-5">
-            <a href="#" class="list-group-item active">
-              <h4 class="list-group-item-heading">Item heading</h4>
-              <p class="list-group-item-text">Cras justo odio</p>
-            </a>
-            <a href="#" class="list-group-item">
-              <h4 class="list-group-item-heading">Item heading</h4>
-              <p class="list-group-item-text">Dapibus ac facilisis in</p>
-            </a>
-            <a href="#" class="list-group-item">
-              <h4 class="list-group-item-heading">Item heading</h4>
-              <p class="list-group-item-text">Morbi leo risus</p>
-            </a>
-          </div>
+      <div id="listgroup2" class="col-md-5">
+        <a href="#" class="list-group-item active">
+          <h4 class="list-group-item-heading">Item heading</h4>
+          <p class="list-group-item-text">Cras justo odio</p>
+        </a>
+        <a href="#" class="list-group-item">
+          <h4 class="list-group-item-heading">Item heading</h4>
+          <p class="list-group-item-text">Dapibus ac facilisis in</p>
+        </a>
+        <a href="#" class="list-group-item">
+          <h4 class="list-group-item-heading">Item heading</h4>
+          <p class="list-group-item-text">Morbi leo risus</p>
+        </a>
+      </div>
 
-        </div>
-      </form>
     </div>
-    ```
+  </form>
+</div>
+```
 
 1.  现在构建并运行程序；你应该会得到与以下截图中显示的类似的结果。当你单击**更改 HTML 文本**按钮时，信息文本位于顶部面板中。如果你单击**播放 UI 动画**按钮，企鹅图像以及两组小部件将依次出现，具有不同的动画效果：![操作步骤…](img/B02820_09_22.jpg)
 

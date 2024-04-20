@@ -147,36 +147,36 @@ public:
 1.  将以下代码添加到文件开头。它创建了`#define`常量，减少了通过包含`<windows.h>`引入的代码量：
 
 ```cpp
-    #define _CRT_SECURE_NO_WARNINGS
-    #define WIN32_LEAN_AND_MEAN
-    #define WIN32_EXTRA_LEAN
-    #include "glad.h"
-    #include <windows.h>
-    #include <iostream>
-    #include "Application.h"
-    ```
+#define _CRT_SECURE_NO_WARNINGS
+#define WIN32_LEAN_AND_MEAN
+#define WIN32_EXTRA_LEAN
+#include "glad.h"
+#include <windows.h>
+#include <iostream>
+#include "Application.h"
+```
 
 1.  需要提前声明窗口入口函数和窗口事件处理函数。这是我们需要打开一个新窗口的两个 Win32 函数：
 
 ```cpp
-    int WINAPI WinMain(HINSTANCE, HINSTANCE, PSTR, int);
-    LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-    ```
+int WINAPI WinMain(HINSTANCE, HINSTANCE, PSTR, int);
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+```
 
 1.  使用`#pragma`注释在代码中链接到`OpenGL32.lib`，而不是通过项目的属性窗口。将以下代码添加到`WinMain.cpp`中：
 
 ```cpp
-    #if _DEBUG
-        #pragma comment( linker, "/subsystem:console" )
-        int main(int argc, const char** argv) {
-            return WinMain(GetModuleHandle(NULL), NULL,
-                    GetCommandLineA(), SW_SHOWDEFAULT);
-        }
-    #else
-        #pragma comment( linker, "/subsystem:windows" )
-    #endif
-    #pragma comment(lib, "opengl32.lib")
-    ```
+#if _DEBUG
+    #pragma comment( linker, "/subsystem:console" )
+    int main(int argc, const char** argv) {
+        return WinMain(GetModuleHandle(NULL), NULL,
+                GetCommandLineA(), SW_SHOWDEFAULT);
+    }
+#else
+    #pragma comment( linker, "/subsystem:windows" )
+#endif
+#pragma comment(lib, "opengl32.lib")
+```
 
 现在需要声明一些 OpenGL 函数。通过`wglCreateContextAttribsARB`创建现代 OpenGL 上下文，但是没有引用此函数。这是需要通过`wglGetProcAddress`加载的函数之一，因为它是一个扩展函数。
 
@@ -229,252 +229,252 @@ GLuint gVertexArrayObject = 0;
 1.  通过创建`Application`类的新实例并将其存储在全局指针中来开始定义`WinMain`的定义：
 
 ```cpp
-    int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE 
-                       hPrevInstance, PSTR szCmdLine, 
-                       int iCmdShow) {
-    gApplication = new Application();
-    ```
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE 
+                   hPrevInstance, PSTR szCmdLine, 
+                   int iCmdShow) {
+gApplication = new Application();
+```
 
 1.  接下来，需要填写`WNDCLASSEX`的一个实例。这里没有什么特别的，它只是一个标准的窗口定义。唯一需要注意的是`WndProc`函数是否设置正确：
 
 ```cpp
-        WNDCLASSEX wndclass;
-        wndclass.cbSize = sizeof(WNDCLASSEX);
-        wndclass.style = CS_HREDRAW | CS_VREDRAW;
-        wndclass.lpfnWndProc = WndProc;
-        wndclass.cbClsExtra = 0;
-        wndclass.cbWndExtra = 0;
-        wndclass.hInstance = hInstance;
-        wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-        wndclass.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-        wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
-        wndclass.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-        wndclass.lpszMenuName = 0;
-        wndclass.lpszClassName = "Win32 Game Window";
-        RegisterClassEx(&wndclass);
-    ```
+    WNDCLASSEX wndclass;
+    wndclass.cbSize = sizeof(WNDCLASSEX);
+    wndclass.style = CS_HREDRAW | CS_VREDRAW;
+    wndclass.lpfnWndProc = WndProc;
+    wndclass.cbClsExtra = 0;
+    wndclass.cbWndExtra = 0;
+    wndclass.hInstance = hInstance;
+    wndclass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wndclass.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+    wndclass.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wndclass.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wndclass.lpszMenuName = 0;
+    wndclass.lpszClassName = "Win32 Game Window";
+    RegisterClassEx(&wndclass);
+```
 
 1.  一个新的应用程序窗口应该在监视器的中心启动。为此，使用`GetSystemMetrics`来找到屏幕的宽度和高度。然后，调整`windowRect`到屏幕中心的所需大小：
 
 ```cpp
-        int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-        int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-        int clientWidth = 800;
-        int clientHeight = 600;
-        RECT windowRect;
-        SetRect(&windowRect, 
-                (screenWidth / 2) - (clientWidth / 2), 
-                (screenHeight / 2) - (clientHeight / 2), 
-                (screenWidth / 2) + (clientWidth / 2), 
-                (screenHeight / 2) + (clientHeight / 2));
-    ```
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int clientWidth = 800;
+    int clientHeight = 600;
+    RECT windowRect;
+    SetRect(&windowRect, 
+            (screenWidth / 2) - (clientWidth / 2), 
+            (screenHeight / 2) - (clientHeight / 2), 
+            (screenWidth / 2) + (clientWidth / 2), 
+            (screenHeight / 2) + (clientHeight / 2));
+```
 
 1.  要确定窗口的大小，不仅仅是客户区域，需要知道窗口的样式。以下代码示例创建了一个可以最小化或最大化但不能调整大小的窗口。要调整窗口的大小，使用位或(`|`)运算符与`WS_THICKFRAME`定义：
 
 ```cpp
-        DWORD style = (WS_OVERLAPPED | WS_CAPTION | 
-            WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX); 
-        // | WS_THICKFRAME to resize
-    ```
+    DWORD style = (WS_OVERLAPPED | WS_CAPTION | 
+        WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX); 
+    // | WS_THICKFRAME to resize
+```
 
 1.  一旦定义了所需的窗口样式，调用`AdjustWindowRectEx`函数来调整客户区矩形的大小，以包括所有窗口装饰在其大小中。当最终大小已知时，可以使用`CreateWindowEx`来创建实际的窗口。窗口创建完成后，存储对其设备上下文的引用：
 
 ```cpp
-        AdjustWindowRectEx(&windowRect, style, FALSE, 0);
-        HWND hwnd = CreateWindowEx(0, wndclass.lpszClassName, 
-                    "Game Window", style, windowRect.left, 
-                    windowRect.top, windowRect.right - 
-                    windowRect.left, windowRect.bottom - 
-                    windowRect.top, NULL, NULL, 
-                    hInstance, szCmdLine);
-        HDC hdc = GetDC(hwnd);
-    ```
+    AdjustWindowRectEx(&windowRect, style, FALSE, 0);
+    HWND hwnd = CreateWindowEx(0, wndclass.lpszClassName, 
+                "Game Window", style, windowRect.left, 
+                windowRect.top, windowRect.right - 
+                windowRect.left, windowRect.bottom - 
+                windowRect.top, NULL, NULL, 
+                hInstance, szCmdLine);
+    HDC hdc = GetDC(hwnd);
+```
 
 1.  现在窗口已经创建，接下来你将创建一个 OpenGL 上下文。为此，你首先需要找到正确的像素格式，然后将其应用到窗口的设备上下文中。以下代码向你展示了如何做到这一点：
 
 ```cpp
-        PIXELFORMATDESCRIPTOR pfd;
-        memset(&pfd, 0, sizeof(PIXELFORMATDESCRIPTOR));
-        pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
-        pfd.nVersion = 1;
-        pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW 
-                      | PFD_DOUBLEBUFFER;
-        pfd.iPixelType = PFD_TYPE_RGBA;
-        pfd.cColorBits = 24;
-        pfd.cDepthBits = 32;
-        pfd.cStencilBits = 8;
-        pfd.iLayerType = PFD_MAIN_PLANE;
-        int pixelFormat = ChoosePixelFormat(hdc, &pfd);
-        SetPixelFormat(hdc, pixelFormat, &pfd);
-    ```
+    PIXELFORMATDESCRIPTOR pfd;
+    memset(&pfd, 0, sizeof(PIXELFORMATDESCRIPTOR));
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW 
+                  | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 24;
+    pfd.cDepthBits = 32;
+    pfd.cStencilBits = 8;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+    int pixelFormat = ChoosePixelFormat(hdc, &pfd);
+    SetPixelFormat(hdc, pixelFormat, &pfd);
+```
 
 1.  设置了像素格式后，使用`wglCreateContext`创建一个临时的 OpenGL 上下文。这个临时上下文只是用来获取指向`wglCreateContextAttribsARB`的指针，它将用于创建一个现代上下文：
 
 ```cpp
-        HGLRC tempRC = wglCreateContext(hdc);
-        wglMakeCurrent(hdc, tempRC);
-        PFNWGLCREATECONTEXTATTRIBSARBPROC
-           wglCreateContextAttribsARB = NULL;
-        wglCreateContextAttribsARB =
-           (PFNWGLCREATECONTEXTATTRIBSARBPROC)
-           wglGetProcAddress("wglCreateContextAttribsARB");
-    ```
+    HGLRC tempRC = wglCreateContext(hdc);
+    wglMakeCurrent(hdc, tempRC);
+    PFNWGLCREATECONTEXTATTRIBSARBPROC
+       wglCreateContextAttribsARB = NULL;
+    wglCreateContextAttribsARB =
+       (PFNWGLCREATECONTEXTATTRIBSARBPROC)
+       wglGetProcAddress("wglCreateContextAttribsARB");
+```
 
 1.  存在并绑定了一个临时的 OpenGL 上下文，所以下一步是调用`wglCreateContextAttribsARB`函数。这个函数将返回一个 OpenGL 3.3 Core 上下文配置文件，绑定它，并删除旧的上下文：
 
 ```cpp
-        const int attribList[] = {
-            WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-            WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-            WGL_CONTEXT_FLAGS_ARB, 0,
-            WGL_CONTEXT_PROFILE_MASK_ARB,
-            WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-            0, };
-        HGLRC hglrc = wglCreateContextAttribsARB(
-                           hdc, 0, attribList);
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(tempRC);
-        wglMakeCurrent(hdc, hglrc);
-    ```
+    const int attribList[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_FLAGS_ARB, 0,
+        WGL_CONTEXT_PROFILE_MASK_ARB,
+        WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0, };
+    HGLRC hglrc = wglCreateContextAttribsARB(
+                       hdc, 0, attribList);
+    wglMakeCurrent(NULL, NULL);
+    wglDeleteContext(tempRC);
+    wglMakeCurrent(hdc, hglrc);
+```
 
 1.  在激活 OpenGL 3.3 Core 上下文后，可以使用`glad`来加载所有 OpenGL 3.3 Core 函数。调用`gladLoadGL`来实现这一点：
 
 ```cpp
-        if (!gladLoadGL()) {
-            std::cout << "Could not initialize GLAD\n";
-        }
-        else {
-            std::cout << "OpenGL Version " << 
-            GLVersion.major << "." << GLVersion.minor <<
-              "\n";
-        }
-    ```
+    if (!gladLoadGL()) {
+        std::cout << "Could not initialize GLAD\n";
+    }
+    else {
+        std::cout << "OpenGL Version " << 
+        GLVersion.major << "." << GLVersion.minor <<
+          "\n";
+    }
+```
 
 1.  现在应该已经初始化了一个 OpenGL 3.3 Core 上下文，并加载了所有核心 OpenGL 函数。接下来，你将在窗口上启用`vsynch`。`vsynch`不是一个内置函数；它是一个扩展，因此需要使用`wglGetExtensionStringEXT`来查询对它的支持。`vsynch`的扩展字符串是`WGL_EXT_swap_control`。检查它是否在扩展字符串列表中：
 
 ```cpp
-        PFNWGLGETEXTENSIONSSTRINGEXTPROC
-           _wglGetExtensionsStringEXT =
-           (PFNWGLGETEXTENSIONSSTRINGEXTPROC)
-           wglGetProcAddress("wglGetExtensionsStringEXT");
-        bool swapControlSupported = strstr(
-             _wglGetExtensionsStringEXT(), 
-             "WGL_EXT_swap_control") != 0;
-    ```
+    PFNWGLGETEXTENSIONSSTRINGEXTPROC
+       _wglGetExtensionsStringEXT =
+       (PFNWGLGETEXTENSIONSSTRINGEXTPROC)
+       wglGetProcAddress("wglGetExtensionsStringEXT");
+    bool swapControlSupported = strstr(
+         _wglGetExtensionsStringEXT(), 
+         "WGL_EXT_swap_control") != 0;
+```
 
 1.  如果`WGL_EXT_swap_control`扩展可用，需要加载它。实际的函数是`wglSwapIntervalEXT`，可以在`wgl.h`中找到。向`wglSwapIntervalEXT`传递参数可以打开`vsynch`：
 
 ```cpp
-        int vsynch = 0;
-        if (swapControlSupported) {
-            PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = 
-                (PFNWGLSWAPINTERVALEXTPROC)
-                wglGetProcAddress("wglSwapIntervalEXT");
-            PFNWGLGETSWAPINTERVALEXTPROC 
-                wglGetSwapIntervalEXT =
-                (PFNWGLGETSWAPINTERVALEXTPROC)
-                wglGetProcAddress("wglGetSwapIntervalEXT");
-            if (wglSwapIntervalEXT(1)) {
-                std::cout << "Enabled vsynch\n";
-                vsynch = wglGetSwapIntervalEXT();
-            }
-            else {
-                std::cout << "Could not enable vsynch\n";
-            }
-        }
-        else { // !swapControlSupported
-            cout << "WGL_EXT_swap_control not supported\n";
-        }
-    ```
+    int vsynch = 0;
+    if (swapControlSupported) {
+        PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = 
+            (PFNWGLSWAPINTERVALEXTPROC)
+            wglGetProcAddress("wglSwapIntervalEXT");
+        PFNWGLGETSWAPINTERVALEXTPROC 
+            wglGetSwapIntervalEXT =
+            (PFNWGLGETSWAPINTERVALEXTPROC)
+            wglGetProcAddress("wglGetSwapIntervalEXT");
+        if (wglSwapIntervalEXT(1)) {
+            std::cout << "Enabled vsynch\n";
+            vsynch = wglGetSwapIntervalEXT();
+        }
+        else {
+            std::cout << "Could not enable vsynch\n";
+        }
+    }
+    else { // !swapControlSupported
+        cout << "WGL_EXT_swap_control not supported\n";
+    }
+```
 
 1.  还有一点小事情要做，以完成 OpenGL 启用窗口的设置。OpenGL 3.3 Core 要求在所有绘制调用中绑定一个 VAO。你将创建一个全局 VAO，在`WinMain`中绑定它，并在窗口被销毁之前永远不解绑。以下代码创建了这个 VAO 并绑定它：
 
 ```cpp
-        glGenVertexArrays(1, &gVertexArrayObject);
-        glBindVertexArray(gVertexArrayObject);
-    ```
+    glGenVertexArrays(1, &gVertexArrayObject);
+    glBindVertexArray(gVertexArrayObject);
+```
 
 1.  调用`ShowWindow`和`UpdateWindow`函数来显示当前窗口；这也是初始化全局应用程序的好地方。根据应用程序的`Initialize`函数所做的工作量，窗口可能会在一小段时间内出现冻结：
 
 ```cpp
-        ShowWindow(hwnd, SW_SHOW);
-        UpdateWindow(hwnd);
-        gApplication->Initialize();
-    ```
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    gApplication->Initialize();
+```
 
 1.  现在你已经准备好实现实际的游戏循环了。你需要跟踪上一帧的时间，以计算帧之间的时间差。除了游戏逻辑，循环还需要处理窗口事件，通过查看当前消息堆栈并相应地分派消息：
 
 ```cpp
-        DWORD lastTick = GetTickCount();
-        MSG msg;
-        while (true) {
-            if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-                if (msg.message == WM_QUIT) {
-                    break;
-                }
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-            }
-    ```
+    DWORD lastTick = GetTickCount();
+    MSG msg;
+    while (true) {
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                break;
+            }
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+```
 
 1.  处理完窗口事件后，`Application`实例需要更新和渲染。首先，找到上一帧和当前帧之间的时间差，将其转换为秒。例如，以 60 FPS 运行的游戏应该有 16.6 毫秒或 0.0166 秒的时间差：
 
 ```cpp
-            DWORD thisTick = GetTickCount();
-            float dt = float(thisTick - lastTick) * 0.001f;
-            lastTick = thisTick;
-            if (gApplication != 0) {
-                gApplication->Update(dt);
-            }
-    ```
+        DWORD thisTick = GetTickCount();
+        float dt = float(thisTick - lastTick) * 0.001f;
+        lastTick = thisTick;
+        if (gApplication != 0) {
+            gApplication->Update(dt);
+        }
+```
 
 1.  渲染当前运行的应用程序只需要更多的维护工作。每帧都要用`glViewport`设置 OpenGL 视口，并清除颜色、深度和模板缓冲区。除此之外，确保在渲染之前所有的 OpenGL 状态都是正确的。这意味着正确的 VAO 被绑定，深度测试和面剔除被启用，并且设置了适当的点大小：
 
 ```cpp
-            if (gApplication != 0) {
-                RECT clientRect;
-                GetClientRect(hwnd, &clientRect);
-                clientWidth = clientRect.right - 
-                              clientRect.left;
-                clientHeight = clientRect.bottom - 
-                               clientRect.top;
-                glViewport(0, 0, clientWidth, clientHeight);
-                glEnable(GL_DEPTH_TEST);
-                glEnable(GL_CULL_FACE);
-                glPointSize(5.0f);
-                glBindVertexArray(gVertexArrayObject);
-                glClearColor(0.5f, 0.6f, 0.7f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT | 
-                GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-                float aspect = (float)clientWidth / 
-                               (float)clientHeight;
-                gApplication->Render(aspect);
-            }
-    ```
+        if (gApplication != 0) {
+            RECT clientRect;
+            GetClientRect(hwnd, &clientRect);
+            clientWidth = clientRect.right - 
+                          clientRect.left;
+            clientHeight = clientRect.bottom - 
+                           clientRect.top;
+            glViewport(0, 0, clientWidth, clientHeight);
+            glEnable(GL_DEPTH_TEST);
+            glEnable(GL_CULL_FACE);
+            glPointSize(5.0f);
+            glBindVertexArray(gVertexArrayObject);
+            glClearColor(0.5f, 0.6f, 0.7f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | 
+            GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            float aspect = (float)clientWidth / 
+                           (float)clientHeight;
+            gApplication->Render(aspect);
+        }
+```
 
 1.  当前`Application`实例更新和渲染后，需要呈现后备缓冲区。这是通过调用`SwapBuffers`来完成的。如果启用了`vsynch`，则需要在`SwapBuffers`之后立即调用`glFinish`：
 
 ```cpp
-            if (gApplication != 0) {
-                SwapBuffers(hdc);
-                if (vsynch != 0) {
-                    glFinish();
-                }
-            }
-    ```
+        if (gApplication != 0) {
+            SwapBuffers(hdc);
+            if (vsynch != 0) {
+                glFinish();
+            }
+        }
+```
 
 1.  窗口循环到此结束。窗口循环退出后，可以安全地从`WinMain`函数返回：
 
 ```cpp
-        } // End of game loop
-        if (gApplication != 0) {
-            std::cout << "Expected application to 
-                          be null on exit\n";
-            delete gApplication;
-        }
-        return (int)msg.wParam;
-    }
-    ```
+    } // End of game loop
+    if (gApplication != 0) {
+        std::cout << "Expected application to 
+                      be null on exit\n";
+        delete gApplication;
+    }
+    return (int)msg.wParam;
+}
+```
 
 如果要使用 OpenGL 的其他版本而不是 3.3，调整 Step 8 中`attribList`变量中的主要和次要值。即使`WinMain`函数已经编写，你仍然无法编译这个文件；因为`WndProc`从未被定义过。`WndProc`函数处理诸如鼠标移动或窗口调整大小等事件。在下一节中，你将实现`WndProc`函数。
 
@@ -485,58 +485,58 @@ GLuint gVertexArrayObject = 0;
 1.  在`WinMain.cpp`中开始实现`WndProc`函数：
 
 ```cpp
-    LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, 
-                        WPARAM wParam, LPARAM lParam) {
-        switch (iMsg) {
-    ```
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, 
+                    WPARAM wParam, LPARAM lParam) {
+    switch (iMsg) {
+```
 
 1.  当接收到`WM_CLOSE`消息时，需要关闭`Application`类并发出销毁窗口消息。应用程序关闭后，不要忘记删除它：
 
 ```cpp
-        case WM_CLOSE:
-            if (gApplication != 0) {
-                gApplication->Shutdown();
-                delete gApplication;
-                gApplication = 0;
-                DestroyWindow(hwnd);
-            }
-            else {
-                std::cout << "Already shut down!\n";
-            }
-            break;
-    ```
+    case WM_CLOSE:
+        if (gApplication != 0) {
+            gApplication->Shutdown();
+            delete gApplication;
+            gApplication = 0;
+            DestroyWindow(hwnd);
+        }
+        else {
+            std::cout << "Already shut down!\n";
+        }
+        break;
+```
 
 1.  当接收到销毁消息时，窗口的 OpenGL 资源需要被释放。这意味着删除全局顶点数组对象，然后删除 OpenGL 上下文：
 
 ```cpp
-        case WM_DESTROY:
-            if (gVertexArrayObject != 0) {
-                HDC hdc = GetDC(hwnd);
-                HGLRC hglrc = wglGetCurrentContext();
-                glBindVertexArray(0);
-                glDeleteVertexArrays(1, &gVertexArrayObject);
-                gVertexArrayObject = 0;
-                wglMakeCurrent(NULL, NULL);
-                wglDeleteContext(hglrc);
-                ReleaseDC(hwnd, hdc);
-                PostQuitMessage(0);
-            }
-            else {
-                std::cout << "Multiple destroy messages\n";
-            }
-            break;
-    ```
+    case WM_DESTROY:
+        if (gVertexArrayObject != 0) {
+            HDC hdc = GetDC(hwnd);
+            HGLRC hglrc = wglGetCurrentContext();
+            glBindVertexArray(0);
+            glDeleteVertexArrays(1, &gVertexArrayObject);
+            gVertexArrayObject = 0;
+            wglMakeCurrent(NULL, NULL);
+            wglDeleteContext(hglrc);
+            ReleaseDC(hwnd, hdc);
+            PostQuitMessage(0);
+        }
+        else {
+            std::cout << "Multiple destroy messages\n";
+        }
+        break;
+```
 
 1.  绘制和擦除背景消息是安全忽略的，因为 OpenGL 正在管理对窗口的渲染。如果收到的消息不是已经处理的消息之一，将其转发到默认的窗口消息函数：
 
 ```cpp
-        case WM_PAINT:
-        case WM_ERASEBKGND:
-            return 0;
-        }
-        return DefWindowProc(hwnd, iMsg, wParam, lParam);
-    }
-    ```
+    case WM_PAINT:
+    case WM_ERASEBKGND:
+        return 0;
+    }
+    return DefWindowProc(hwnd, iMsg, wParam, lParam);
+}
+```
 
 现在你已经编写了窗口事件循环，应该能够编译和运行一个空白窗口。在接下来的部分，你将探索本书的可下载示例。
 

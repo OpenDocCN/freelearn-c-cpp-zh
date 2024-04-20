@@ -189,9 +189,9 @@ AI 控制器现在已分配给敌人，这意味着您几乎可以开始为这�
 1.  您将更新 `Cell Size` 和 `Agent Height`，使其适应您的角色的需求和 Nav Mesh 所需的精度：
 
 ```cpp
-    Cell Size: 5.0f
-    Agent Height: 192.0f
-    ```
+Cell Size: 5.0f
+Agent Height: 192.0f
+```
 
 以下截图显示了由于我们对 `Cell Size` 进行的更改，上层平台现在是可导航的：
 

@@ -63,52 +63,52 @@
 1.  将`CameraBoom`的属性`TargetArmLength`更改为`900.0f`，以在相机和玩家之间增加一些距离：
 
 ```cpp
-    // The camera follows at this distance behind the character
-    CameraBoom->TargetArmLength = 900.0f;
-    ```
+// The camera follows at this distance behind the character
+CameraBoom->TargetArmLength = 900.0f;
+```
 
 1.  接下来，添加一行代码，使用`SetRelativeRotation`函数将相对俯仰设置为`-70`º，以便相机向下看玩家。`FRotator`构造函数的参数分别是*俯仰*、*偏航*和*翻滚*：
 
 ```cpp
-    //The camera looks down at the player
-    CameraBoom->SetRelativeRotation(FRotator(-70.f, 0.f, 0.f));
-    ```
+//The camera looks down at the player
+CameraBoom->SetRelativeRotation(FRotator(-70.f, 0.f, 0.f));
+```
 
 1.  将`bUsePawnControlRotation`更改为`false`，以便相机的旋转不受玩家的移动输入影响：
 
 ```cpp
-    // Don't rotate the arm based on the controller
-    CameraBoom->bUsePawnControlRotation = false;
-    ```
+// Don't rotate the arm based on the controller
+CameraBoom->bUsePawnControlRotation = false;
+```
 
 1.  添加一行代码，将`bInheritPitch`、`bInheritYaw`和`bInheritRoll`设置为`false`，以便相机的旋转不受角色方向的影响：
 
 ```cpp
-    // Ignore pawn's pitch, yaw and roll
-    CameraBoom->bInheritPitch = false;
-    CameraBoom->bInheritYaw = false;
-    CameraBoom->bInheritRoll = false;
-    ```
+// Ignore pawn's pitch, yaw and roll
+CameraBoom->bInheritPitch = false;
+CameraBoom->bInheritYaw = false;
+CameraBoom->bInheritRoll = false;
+```
 
 在我们进行了这些修改之后，我们将删除角色跳跃的能力（我们不希望玩家那么容易就躲开躲避球），以及根据玩家的旋转输入旋转相机的能力。
 
 1.  转到`DodgeballCharacter`源文件中的`SetupPlayerInputComponent`函数，并删除以下代码行以删除跳跃的能力：
 
 ```cpp
-    // REMOVE THESE LINES
-    PlayerInputComponent->BindAction("Jump", IE_Pressed, this,   &ACharacter::Jump);
-    PlayerInputComponent->BindAction("Jump", IE_Released, this,   Acharacter::StopJumping);
-    ```
+// REMOVE THESE LINES
+PlayerInputComponent->BindAction("Jump", IE_Pressed, this,   &ACharacter::Jump);
+PlayerInputComponent->BindAction("Jump", IE_Released, this,   Acharacter::StopJumping);
+```
 
 1.  接下来，添加以下行以删除玩家的旋转输入：
 
 ```cpp
-    // REMOVE THESE LINES
-    PlayerInputComponent->BindAxis("Turn", this,   &APawn::AddControllerYawInput);
-    PlayerInputComponent->BindAxis("TurnRate", this,   &ADodgeballCharacter::TurnAtRate);
-    PlayerInputComponent->BindAxis("LookUp", this,   &APawn::AddControllerPitchInput);
-    PlayerInputComponent->BindAxis("LookUpRate", this,   &ADodgeballCharacter::LookUpAtRate);
-    ```
+// REMOVE THESE LINES
+PlayerInputComponent->BindAxis("Turn", this,   &APawn::AddControllerYawInput);
+PlayerInputComponent->BindAxis("TurnRate", this,   &ADodgeballCharacter::TurnAtRate);
+PlayerInputComponent->BindAxis("LookUp", this,   &APawn::AddControllerPitchInput);
+PlayerInputComponent->BindAxis("LookUpRate", this,   &ADodgeballCharacter::LookUpAtRate);
+```
 
 这一步是可选的，但为了保持代码整洁，您应该删除`TurnAtRate`和`LookUpAtRate`函数的声明和实现。
 
@@ -206,9 +206,9 @@ void LookAtActor(AActor* TargetActor);
 1.  在`EnemyCharacter`类的头文件中创建`CanSeeActor`函数的声明，该函数将返回一个`bool`，并接收一个`const Actor* TargetActor`参数，这是我们想要看的 Actor。这个函数将是一个`const`函数，因为它不会改变类的任何属性，参数也将是`const`，因为我们不需要修改它的任何属性；我们只需要访问它们：
 
 ```cpp
-    // Can we see the given actor
-    bool CanSeeActor(const AActor* TargetActor) const;
-    ```
+// Can we see the given actor
+bool CanSeeActor(const AActor* TargetActor) const;
+```
 
 现在，让我们来到有趣的部分，即执行线性跟踪。
 
@@ -221,61 +221,61 @@ void LookAtActor(AActor* TargetActor);
 1.  打开`EnemyCharacter`源文件，并找到以下代码行：
 
 ```cpp
-    #include "EnemyCharacter.h"
-    ```
+#include "EnemyCharacter.h"
+```
 
 在上一行代码的后面添加以下行：
 
 ```cpp
-    #include "Engine/World.h"
-    ```
+#include "Engine/World.h"
+```
 
 1.  接下来，在`EnemyCharacter`源文件中创建`CanSeeActor`函数的实现，你将首先检查我们的`TargetActor`是否为`nullptr`。如果是，我们将返回`false`，因为我们没有有效的 Actor 来检查我们的视线：
 
 ```cpp
-    bool AEnemyCharacter::CanSeeActor(const AActor * TargetActor)   const
-    {
-      if (TargetActor == nullptr)
-      {
-        return false;
-      }
-    }
-    ```
+bool AEnemyCharacter::CanSeeActor(const AActor * TargetActor)   const
+{
+  if (TargetActor == nullptr)
+  {
+    return false;
+  }
+}
+```
 
 接下来，在添加线性跟踪函数调用之前，我们需要设置一些必要的参数；我们将在接下来的步骤中实现这些参数。
 
 1.  在前面的`if`语句之后，创建一个变量来存储与线性跟踪结果相关的所有必要数据。Unreal 已经为此提供了一个内置类型，称为`FHitResult`类型：
 
 ```cpp
-    // Store the results of the Line Trace
-    FHitResult Hit;
-    ```
+// Store the results of the Line Trace
+FHitResult Hit;
+```
 
 这是我们将发送到线性跟踪函数的变量，该函数将用执行的线性跟踪的相关信息填充它。
 
 1.  创建两个`FVector`变量，用于我们线性跟踪的`Start`和`End`位置，并将它们分别设置为我们敌人当前的位置和我们目标当前的位置：
 
 ```cpp
-    // Where the Line Trace starts and ends
-    FVector Start = GetActorLocation();
-    FVector End = TargetActor->GetActorLocation();
-    ```
+// Where the Line Trace starts and ends
+FVector Start = GetActorLocation();
+FVector End = TargetActor->GetActorLocation();
+```
 
 1.  接下来，设置我们希望进行比较的跟踪通道。在我们的情况下，我们希望有一个`Visibility`跟踪通道，专门用于指示一个物体是否阻挡另一个物体的视图。幸运的是，对于我们来说，UE4 中已经存在这样一个跟踪通道，如下面的代码片段所示：
 
 ```cpp
-    // The trace channel we want to compare against
-    ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
-    ```
+// The trace channel we want to compare against
+ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
+```
 
 `ECollisionChannel`枚举代表了所有可能的跟踪通道，我们将使用`ECC_Visibility`值，该值代表`Visibility`跟踪通道。
 
 1.  现在我们已经设置好所有必要的参数，我们最终可以调用`LineTrace`函数，`LineTraceSingleByChannel`：
 
 ```cpp
-    // Execute the Line Trace
-    GetWorld()->LineTraceSingleByChannel(Hit, Start, End,   Channel);
-    ```
+// Execute the Line Trace
+GetWorld()->LineTraceSingleByChannel(Hit, Start, End,   Channel);
+```
 
 此函数将考虑我们发送的参数，执行线性跟踪，并通过修改我们的`Hit`变量返回其结果。
 
@@ -286,37 +286,37 @@ void LookAtActor(AActor* TargetActor);
 1.  使用内置的`FCollisionQueryParams`类型，可以为我们的线性跟踪提供更多选项：
 
 ```cpp
-    FCollisionQueryParams QueryParams;
-    ```
+FCollisionQueryParams QueryParams;
+```
 
 1.  现在，更新线性跟踪以忽略我们的敌人，通过将自身添加到要忽略的 Actor 列表中：
 
 ```cpp
-    // Ignore the actor that's executing this Line Trace
-    QueryParams.AddIgnoredActor(this);
-    ```
+// Ignore the actor that's executing this Line Trace
+QueryParams.AddIgnoredActor(this);
+```
 
 我们还应将我们的目标添加到要忽略的 Actor 列表中，因为我们不想知道它是否阻塞了`EnemySight`通道；我们只是想知道敌人和玩家角色之间是否有东西阻塞了该通道。
 
 1.  将目标 Actor 添加到要忽略的 Actor 列表中，如下面的代码片段所示：
 
 ```cpp
-    // Ignore the target we're checking for
-    QueryParams.AddIgnoredActor(TargetActor);
-    ```
+// Ignore the target we're checking for
+QueryParams.AddIgnoredActor(TargetActor);
+```
 
 1.  接下来，通过将其作为`LineTraceSingleByChannel`函数的最后一个参数发送我们的`FCollisionQueryParams`：
 
 ```cpp
-    // Execute the Line Trace
-    GetWorld()->LineTraceSingleByChannel(Hit, Start, End, Channel,   QueryParams);
-    ```
+// Execute the Line Trace
+GetWorld()->LineTraceSingleByChannel(Hit, Start, End, Channel,   QueryParams);
+```
 
 1.  通过返回线性跟踪是否击中任何东西来完成我们的`CanSeeActor`函数。我们可以通过访问我们的`Hit`变量并检查是否有阻塞命中来实现这一点，使用`bBlockingHit`属性。如果有，这意味着我们看不到我们的`TargetActor`。可以通过以下代码片段实现：
 
 ```cpp
-    return !Hit.bBlockingHit;
-    ```
+return !Hit.bBlockingHit;
+```
 
 注意
 
@@ -384,46 +384,46 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 1.  首先检查我们的`TargetActor`是否为`nullptr`，如果是，则立即返回空（因为它无效），如下面的代码片段所示：
 
 ```cpp
-    void AEnemyCharacter::LookAtActor(AActor * TargetActor)
-    {
-      if (TargetActor == nullptr)
-      {
-        return;
-      }
-    }
-    ```
+void AEnemyCharacter::LookAtActor(AActor * TargetActor)
+{
+  if (TargetActor == nullptr)
+  {
+    return;
+  }
+}
+```
 
 1.  接下来，我们要检查是否能看到我们的目标角色，使用我们的`CanSeeActor`函数：
 
 ```cpp
-    if (CanSeeActor(TargetActor))
-    {
-    }
-    ```
+if (CanSeeActor(TargetActor))
+{
+}
+```
 
 如果这个`if`语句为真，那意味着我们能看到这个角色，并且我们将设置我们的旋转，以便面向该角色。幸运的是，UE4 中已经有一个允许我们这样做的函数：`FindLookAtRotation`函数。这个函数将接收级别中的两个点作为输入，点 A（`Start`点）和点 B（`End`点），并返回起始点的对象必须具有的旋转，以便面向结束点的对象。
 
 1.  为了使用这个函数，包括`KismetMathLibrary`，如下面的代码片段所示：
 
 ```cpp
-    #include "Kismet/KismetMathLibrary.h"
-    ```
+#include "Kismet/KismetMathLibrary.h"
+```
 
 1.  `FindLookAtRotation`函数必须接收一个`Start`和`End`点，这将是我们的敌人位置和我们的目标角色位置，分别：
 
 ```cpp
-    FVector Start = GetActorLocation();
-    FVector End = TargetActor->GetActorLocation();
-    // Calculate the necessary rotation for the Start point to   face the End point
-    FRotator LookAtRotation =   UKismetMathLibrary::FindLookAtRotation(Start, End);
-    ```
+FVector Start = GetActorLocation();
+FVector End = TargetActor->GetActorLocation();
+// Calculate the necessary rotation for the Start point to   face the End point
+FRotator LookAtRotation =   UKismetMathLibrary::FindLookAtRotation(Start, End);
+```
 
 1.  最后，将敌人角色的旋转设置为与我们的`LookAtRotation`相同的值：
 
 ```cpp
-    //Set the enemy's rotation to that rotation
-    SetActorRotation(LookAtRotation);
-    ```
+//Set the enemy's rotation to that rotation
+SetActorRotation(LookAtRotation);
+```
 
 这就是`LookAtActor`函数的全部内容。
 
@@ -432,15 +432,15 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 1.  为了获取当前由玩家控制的角色，我们可以使用`GameplayStatics`对象。与其他 UE4 对象一样，我们必须首先包含它们：
 
 ```cpp
-    #include "Kismet/GameplayStatics.h"
-    ```
+#include "Kismet/GameplayStatics.h"
+```
 
 1.  接下来，转到您的 Tick 函数的主体，并从`GameplayStatics`中调用`GetPlayerCharacter`函数：
 
 ```cpp
-    // Fetch the character currently being controlled by the   player
-    ACharacter* PlayerCharacter =   UGameplayStatics::GetPlayerCharacter(this, 0);
-    ```
+// Fetch the character currently being controlled by the   player
+ACharacter* PlayerCharacter =   UGameplayStatics::GetPlayerCharacter(this, 0);
+```
 
 此函数接收以下输入：
 
@@ -451,9 +451,9 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 1.  接下来，调用`LookAtActor`函数，发送我们刚刚获取的玩家角色：
 
 ```cpp
-    // Look at the player character every frame
-    LookAtActor(PlayerCharacter);
-    ```
+// Look at the player character every frame
+LookAtActor(PlayerCharacter);
+```
 
 1.  这个练习的最后一步是在 Visual Studio 中编译您的更改。
 
@@ -536,49 +536,49 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 一个`FHitResult`类型，用于存储扫描的结果（我们已经有了一个，所以不需要再创建另一个这种类型的变量）：
 
 ```cpp
-    // Store the results of the Line Trace
-    FHitResult Hit;
-    ```
+// Store the results of the Line Trace
+FHitResult Hit;
+```
 
 扫描的“起点”和“终点”（我们已经有了这两个，所以不需要再创建另一个这种类型的变量）：
 
 ```cpp
-    // Where the Sweep Trace starts and ends
-    FVector Start = GetActorLocation();
-    FVector End = TargetActor->GetActorLocation();
-    ```
+// Where the Sweep Trace starts and ends
+FVector Start = GetActorLocation();
+FVector End = TargetActor->GetActorLocation();
+```
 
 1.  使用形状的预期旋转，它是一个`FQuat`类型（表示四元数）。在这种情况下，它被设置为在所有轴上的旋转为`0`，通过访问`FQuat`的`Identity`属性来实现： 
 
 ```cpp
-    // Rotation of the shape used in the Sweep Trace
-    FQuat Rotation = FQuat::Identity; 
-    ```
+// Rotation of the shape used in the Sweep Trace
+FQuat Rotation = FQuat::Identity; 
+```
 
 1.  现在，使用预期的跟踪通道进行比较（我们已经有了一个这样的变量，所以不需要再创建另一个这种类型的变量）：
 
 ```cpp
-    // The trace channel we want to compare against
-    ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
-    ```
+// The trace channel we want to compare against
+ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
+```
 
 1.  最后，通过调用`FcollisionShape`的`MakeBox`函数并提供盒形形状在三个轴上的半径来使用盒形的形状进行扫描跟踪。这在下面的代码片段中显示：
 
 ```cpp
-    // Shape of the object used in the Sweep Trace
-    FCollisionShape Shape = FCollisionShape::MakeBox(FVector(20.f,   20.f, 20.f));
-    ```
+// Shape of the object used in the Sweep Trace
+FCollisionShape Shape = FCollisionShape::MakeBox(FVector(20.f,   20.f, 20.f));
+```
 
 1.  接下来，调用`SweepSingleByChannel`函数：
 
 ```cpp
-    GetWorld()->SweepSingleByChannel(Hit,
-                                     Start,
-                                     End,
-                                     Rotation,
-                                     Channel,
-                                     Shape);
-    ```
+GetWorld()->SweepSingleByChannel(Hit,
+                                 Start,
+                                 End,
+                                 Rotation,
+                                 Channel,
+                                 Shape);
+```
 
 完成了这些步骤后，我们完成了有关扫描跟踪的练习。鉴于我们不会在项目中使用扫描跟踪，你应该注释掉`SweepSingleByChannel`函数，这样我们的`Hit`变量就不会被修改，也不会丢失我们线性跟踪的结果。
 
@@ -697,9 +697,9 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 1.  创建新的 Trace 通道后，我们必须回到我们的`EnemyCharacter` C++类中，并更改我们在 Line Trace 中比较的 Trace：
 
 ```cpp
-    // The trace channel we want to compare against
-    ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
-    ```
+// The trace channel we want to compare against
+ECollisionChannel Channel = ECollisionChannel::ECC_Visibility;
+```
 
 鉴于我们不再使用`Visibility`通道，我们必须引用我们的新通道，但我们该如何做呢？
 
@@ -708,10 +708,10 @@ DrawDebugLine(GetWorld(), Start, End, FColor::Red);
 1.  当我们创建了我们的`EnemySight`通道时，项目的`DefaultEngine.ini`文件将被更新为我们的新 Trace 通道。在那个文件的某个地方，您会找到这一行：
 
 ```cpp
-    +DefaultChannelResponses=(Channel=ECC_GameTraceChannel1,  DefaultResponse=ECR_Block,bTraceType=True,bStaticObject=False,  Name="EnemySight")
-    // The trace channel we want to compare against
-    ECollisionChannel Channel =   ECollisionChannel::ECC_GameTraceChannel1;
-    ```
++DefaultChannelResponses=(Channel=ECC_GameTraceChannel1,  DefaultResponse=ECR_Block,bTraceType=True,bStaticObject=False,  Name="EnemySight")
+// The trace channel we want to compare against
+ECollisionChannel Channel =   ECollisionChannel::ECC_GameTraceChannel1;
+```
 
 1.  验证我们的敌人在我们所做的所有更改之后行为是否保持不变。这意味着只要玩家角色在敌人的视野范围内，敌人就必须面对玩家角色。
 

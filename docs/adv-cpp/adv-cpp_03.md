@@ -235,24 +235,24 @@ virtual void Drive() = 0;
 1.  直接打开`speak()`和`act()`。对于一个小程序来说这是可以的。但是当游戏扩大到几十甚至上百个角色时，就会变得难以管理。因此，我们需要将所有角色抽象出来。在文件顶部添加以下接口声明：
 
 ```cpp
-    class ICharacter
-    {
-    public:
-        ~ICharacter() {
-            std::cout << "Destroying Character\n";
-        }
-        virtual void speak() = 0;
-        virtual void act() = 0;
-    };
-    ```
+class ICharacter
+{
+public:
+    ~ICharacter() {
+        std::cout << "Destroying Character\n";
+    }
+    virtual void speak() = 0;
+    virtual void act() = 0;
+};
+```
 
 通常，析构函数将是空的，但在这里，它有日志来显示行为。
 
 1.  从这个接口类派生`Wizard`、`Healer`和`Warrior`类，并在每个类的`speak()`和`act()`函数声明末尾添加`override`关键字：
 
 ```cpp
-    class Wizard : public Icharacter { ...
-    ```
+class Wizard : public Icharacter { ...
+```
 
 1.  点击**运行**按钮重新构建和运行练习。现在我们将看到在派生类的析构函数之后也调用了基类的析构函数：![图 2B.7：修改后程序的输出](img/C14583_02B_07.jpg)
 
@@ -261,43 +261,43 @@ virtual void Drive() = 0;
 1.  创建角色并在容器中管理它们，比如`vector`。在`main()`函数之前在文件中创建以下两个方法：
 
 ```cpp
-    void createCharacters(std::vector<ICharacter*>& cast)
-    {
-        cast.push_back(new Wizard("Gandalf"));
-        cast.push_back(new Healer("Glenda"));
-        cast.push_back(new Warrior("Ben Grimm"));
-    }
-    void freeCharacters(std::vector<ICharacter*>& cast)
-    {
-        for(auto* character : cast)
-        {
-            delete character;
-        }
-        cast.clear();
-    }
-    ```
+void createCharacters(std::vector<ICharacter*>& cast)
+{
+    cast.push_back(new Wizard("Gandalf"));
+    cast.push_back(new Healer("Glenda"));
+    cast.push_back(new Warrior("Ben Grimm"));
+}
+void freeCharacters(std::vector<ICharacter*>& cast)
+{
+    for(auto* character : cast)
+    {
+        delete character;
+    }
+    cast.clear();
+}
+```
 
 1.  用以下代码替换`main()`的内容：
 
 ```cpp
-    int main(int argc, char**argv)
-    {
-        std::cout << "\n------ Exercise 1 ------\n";
-        std::vector<ICharacter*> cast;
-        createCharacters(cast);
-        for(auto* character : cast)
-        {
-            character->speak();
-        }
-        for(auto* character : cast)
-        {
-            character->act();
-        }
-        freeCharacters(cast);
-        std::cout << "Complete.\n";
-        return 0;
-    }
-    ```
+int main(int argc, char**argv)
+{
+    std::cout << "\n------ Exercise 1 ------\n";
+    std::vector<ICharacter*> cast;
+    createCharacters(cast);
+    for(auto* character : cast)
+    {
+        character->speak();
+    }
+    for(auto* character : cast)
+    {
+        character->act();
+    }
+    freeCharacters(cast);
+    std::cout << "Complete.\n";
+    return 0;
+}
+```
 
 1.  点击**运行**按钮重新构建和运行练习。以下是生成的输出：![图 2B.8：多态版本的输出](img/C14583_02B_08.jpg)
 
@@ -308,8 +308,8 @@ virtual void Drive() = 0;
 1.  为了解决这个问题，只需将`ICharacter`的析构函数声明为虚函数：
 
 ```cpp
-    virtual ~ICharacter() {
-    ```
+virtual ~ICharacter() {
+```
 
 1.  点击**运行**按钮重新构建和运行练习。输出现在如下所示：
 
@@ -441,8 +441,8 @@ namespace name_of_namespace {  // put declarations in here }
 +   `std::sort()`是标准库中提供的一个函数，其中一个签名如下：
 
 ```cpp
-    template< class RandomIt > void sort( RandomIt first, RandomIt last );
-    ```
+template< class RandomIt > void sort( RandomIt first, RandomIt last );
+```
 
 在这种情况下，类型的细节被捕获在名为`RandomIt`的迭代器类型中，并在编译时传递给方法。
 
@@ -565,8 +565,8 @@ namespace std {
 +   减少声明变量所需的输入量。这是一个简单的情况，但是当你声明一个指向字符串到对象的映射的唯一指针时，可能会变得非常长，你会犯错误：
 
 ```cpp
-    typedef std::unique_ptr<std::map<std::string,myClass>> UptrMapStrToClass;
-    ```
+typedef std::unique_ptr<std::map<std::string,myClass>> UptrMapStrToClass;
+```
 
 +   提高了可读性，因为现在你在概念上将其视为一个字符串，不需要担心细节。
 
@@ -842,17 +842,17 @@ T sum(T (&data)[size])
 1.  我们现在将再次为布尔类型“特化”模板。在其他`#includes`中添加`#include <type_traits>`指令，并修改模板，使其如下所示：
 
 ```cpp
-    template<typename T> std::string stringify(const T& x)
-    {
-      std::ostringstream out;
-      if constexpr (std::is_same_v<T, bool>)
-      {
-          out << std::boolalpha;
-      }
-      out << x;
-      return out.str();
-    }
-    ```
+template<typename T> std::string stringify(const T& x)
+{
+  std::ostringstream out;
+  if constexpr (std::is_same_v<T, bool>)
+  {
+      out << std::boolalpha;
+  }
+  out << x;
+  return out.str();
+}
+```
 
 1.  单击**运行**按钮。布尔型的 stringify 输出与以前一样：![图 2B.20：针对布尔型定制的 stringify](img/C14583_02B_20.jpg)
 
@@ -861,22 +861,22 @@ T sum(T (&data)[size])
 1.  我们现在将再次为浮点类型（`float`、`double`、`long double`）“特化”模板。修改模板，使其如下所示：
 
 ```cpp
-    template<typename T> std::string stringify(const T& x)
-    {
-      std::ostringstream out;
-      if constexpr (std::is_same_v<T, bool>)
-      {
-          out << std::boolalpha;
-      }
-      else if constexpr (std::is_floating_point_v<T>)
-      {
-          const int sigdigits = std::numeric_limits<T>::digits10;
-          out << std::setprecision(sigdigits);
-      }
-      out << x;
-      return out.str();
-    }
-    ```
+template<typename T> std::string stringify(const T& x)
+{
+  std::ostringstream out;
+  if constexpr (std::is_same_v<T, bool>)
+  {
+      out << std::boolalpha;
+  }
+  else if constexpr (std::is_floating_point_v<T>)
+  {
+      const int sigdigits = std::numeric_limits<T>::digits10;
+      out << std::setprecision(sigdigits);
+  }
+  out << x;
+  return out.str();
+}
+```
 
 1.  单击**运行**按钮。输出恢复为原始状态：![图 2B.21：constexpr if 版本模板输出](img/C14583_02B_21.jpg)
 
@@ -1287,11 +1287,11 @@ class MyClass {
 1.  在编辑器中，在`Stack`类的`public`部分中添加以下声明：
 
 ```cpp
-    bool empty() const
-    {
-      return m_stack.empty();
-    }
-    ```
+bool empty() const
+{
+  return m_stack.empty();
+}
+```
 
 1.  在文件顶部，将**EXERCISE4_STEP**更改为值**10**。单击**运行**按钮。练习 4 的测试应该运行并失败：![图 2B.33：跳转到失败的测试](img/C14583_02B_33.jpg)
 
@@ -1304,59 +1304,59 @@ class MyClass {
 1.  我们接下来要做的是添加一些类型别名，以便在接下来的几个方法中使用。在编辑器中，在`empty()`方法的上面添加以下行：
 
 ```cpp
-    using value_type = T;
-    using reference = value_type&;
-    using const_reference = const value_type&;
-    using size_type = std::size_t;
-    ```
+using value_type = T;
+using reference = value_type&;
+using const_reference = const value_type&;
+using size_type = std::size_t;
+```
 
 1.  单击**运行**按钮重新运行测试。它们应该通过。在进行测试驱动开发时，口头禅是编写一个小测试并看到它失败，然后编写足够的代码使其通过。在这种情况下，我们实际上测试了我们是否正确获取了别名的定义，因为编译失败是一种测试失败的形式。我们现在准备添加 push 函数。
 
 1.  在编辑器中，通过在**empty()**方法的下面添加以下代码来更改**Stack.hpp**：
 
 ```cpp
-    void push(const value_type& value)
-    {
-        m_stack.push_back(value);
-    }
-    ```
+void push(const value_type& value)
+{
+    m_stack.push_back(value);
+}
+```
 
 1.  在文件顶部，将`EXERCISE4_STEP`更改为值`15`。单击**PushOntoStackNotEmpty**，在**StackTests.cpp**中证明了 push 对使堆栈不再为空做了一些事情。我们需要添加更多方法来确保它已经完成了预期的工作。
 
 1.  在编辑器中，更改`push()`方法并将`EXERCISE4_STEP`更改为值`16`：
 
 ```cpp
-    size_type size() const
-    {
-        return m_stack.size();
-    }
-    ```
+size_type size() const
+{
+    return m_stack.size();
+}
+```
 
 1.  单击**运行**按钮运行测试。现在应该有三个通过的测试。
 
 1.  在编辑器中，更改`push()`方法并将`EXERCISE4_STEP`更改为`18`的值：
 
 ```cpp
-    void pop()
-    {
-        m_stack.pop_back();
-    }
-    ```
+void pop()
+{
+    m_stack.pop_back();
+}
+```
 
 1.  单击**运行**按钮运行测试。现在应该有四个通过的测试。
 
 1.  在编辑器中，更改`pop()`方法并将`EXERCISE4_STEP`更改为`20`的值：
 
 ```cpp
-    reference top()
-    {
-        m_stack.back();
-    }
-    const_reference top() const
-    {
-        m_stack.back();
-    }
-    ```
+reference top()
+{
+    m_stack.back();
+}
+const_reference top() const
+{
+    m_stack.back();
+}
+```
 
 1.  单击**运行**按钮运行测试。现在有五个通过的测试，我们已经实现了一个堆栈。
 

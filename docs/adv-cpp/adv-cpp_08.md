@@ -45,55 +45,55 @@
 1.  打开文件并写入以下代码以包括头文件：
 
 ```cpp
-    #include<iostream>
-    #include<cassert>
-    #include<cstring>
-    using std::cout;
-    using std::endl;
-    ```
+#include<iostream>
+#include<cassert>
+#include<cstring>
+using std::cout;
+using std::endl;
+```
 
 在上述代码中，`#include<cassert>`显示我们需要包括定义 assert 的 cassert 文件。
 
 1.  创建一个名为 checkValidIp（）的函数，它将以 IP 地址作为输入，并在 IP 地址满足我们的要求时返回 true 值。编写以下代码来定义该函数：
 
 ```cpp
-    bool checkValidIp(const char * ip){
-        assert(ip != NULL);
-        assert(strlen(ip) < 16);
-        cout << "strlen: " << strlen(ip) << endl;
-        return true;
-    }
-    ```
+bool checkValidIp(const char * ip){
+    assert(ip != NULL);
+    assert(strlen(ip) < 16);
+    cout << "strlen: " << strlen(ip) << endl;
+    return true;
+}
+```
 
 在这里，“assert（ip！= NULL）”显示 assert 宏用于检查传递的`ip`变量是否不为`NULL`。如果是`NULL`，那么它将中止并显示错误消息。另外，“assert（strlen（ip）<16）”显示 assert 用于检查`ip`是否为 16 个字符或更少。如果不是，则中止并显示错误消息。
 
 1.  现在，创建一个 main 函数，向我们的 checkValidIp（）函数传递一个不同的字符串文字，并确保可以适当地进行测试。编写以下代码以实现 main 函数：
 
 ```cpp
-    int main(){
-        const char * ip;
-        ip = NULL;
-        bool check = checkValidIp(ip);
-        cout << " IP address is validated as :" << (check ? "true" : "false") << endl;
-        return 0;
-    }
-    ```
+int main(){
+    const char * ip;
+    ip = NULL;
+    bool check = checkValidIp(ip);
+    cout << " IP address is validated as :" << (check ? "true" : "false") << endl;
+    return 0;
+}
+```
 
 在上述代码中，我们故意将 NULL 传递给 ip 变量，以确保调用 assert。
 
 1.  打开命令提示符并转到 g++编译器的位置，方法是键入以下命令：
 
 ```cpp
-    g++ AssertSample.cpp
-    ```
+g++ AssertSample.cpp
+```
 
 使用此命令生成 a.out 二进制文件。
 
 1.  通过在编译器中键入以下命令来运行 a.out 二进制文件：
 
 ```cpp
-    ./a.out
-    ```
+./a.out
+```
 
 您将看到以下输出：
 
@@ -106,30 +106,30 @@
 1.  现在，在 main 函数中，我们将传递长度大于 16 的 ip，并检查这里是否也调用了 assert。编写以下代码来实现这一点：
 
 ```cpp
-    ip = "111.111.111.11111";
-    ```
+ip = "111.111.111.11111";
+```
 
 再次打开编译器，编译传递的 ip 长度大于 16。
 
 1.  现在，为了满足 assert 条件，使二进制文件正常运行，我们需要在 main 函数中更新 ip 的值。编写以下代码来实现这一点：
 
 ```cpp
-    ip = "111.111.111.111"; 
-    ```
+ip = "111.111.111.111"; 
+```
 
 再次打开编译器，在这里编译 assert，我们没有向 checkValidIP（）函数添加任何额外的功能。但是，在*异常处理*和*单元测试*部分中，我们将使用相同的示例添加更多功能到我们的函数中。
 
 1.  如果我们不希望可执行文件因为生产或发布环境中的断言而中止，就从代码中删除`assert`宏调用。首先，我们将更新`ip`的值，其长度大于`16`。将以下代码添加到文件中：
 
 ```cpp
-    ip = "111.111.111.11111";
-    ```
+ip = "111.111.111.11111";
+```
 
 1.  现在，在编译时，传递`-DNDEBUG`宏。这将确保断言在二进制文件中不被调用。在终端中写入以下命令来编译我们的`.cpp`文件：
 
 ```cpp
-    g++ -DNDEBUG AssertSample.cpp
-    ```
+g++ -DNDEBUG AssertSample.cpp
+```
 
 在这之后，当我们执行二进制文件时，会生成以下输出：
 
@@ -166,10 +166,10 @@
 1.  现在，为了正确编译程序，删除`ProgramLibrary`的软链接，并创建一个指向`version2`的新链接，然后再次编译。这次，它将编译成功。在终端中输入以下命令以删除软链接：
 
 ```cpp
-    rm PersonLibrary.h 
-    ln -s PersonLibrary_ver2.h PersonLibrary.h
-    g++ StaticAssertionSample.cpp
-    ```
+rm PersonLibrary.h 
+ln -s PersonLibrary_ver2.h PersonLibrary.h
+g++ StaticAssertionSample.cpp
+```
 
 以下是相同的屏幕截图：
 
@@ -202,34 +202,34 @@
 1.  添加以下代码以添加头文件：
 
 ```cpp
-    #include<iostream>
-    #include<cstring>
-    using std::cout;
-    using std::endl; 
-    ```
+#include<iostream>
+#include<cstring>
+using std::cout;
+using std::endl; 
+```
 
 1.  创建一个`checkValidIp()`函数，在其中有一个 try-catch 块。如果 try 块中的条件不满足，将抛出异常，并打印 catch 块中的消息。添加以下代码来完成这个操作：
 
 ```cpp
-    bool checkValidIp(const char * ip){
-        try{
-            if(ip == NULL)
-                throw ("ip is NULL");
-            if(strlen(ip) > 15)
-                throw int(strlen(ip));
-        }
-        catch(const char * str){
-            cout << "Error in checkValidIp :"<< str << endl;
-            return false;
-        }
-        catch(int len){
-            cout << "Error in checkValidIp, ip len:" << len <<" greater than 15 characters, condition fail" << endl;
-            return false;
-        }
-        cout << "strlen: " << strlen(ip) << endl;
-        return true;
-    }
-    ```
+bool checkValidIp(const char * ip){
+    try{
+        if(ip == NULL)
+            throw ("ip is NULL");
+        if(strlen(ip) > 15)
+            throw int(strlen(ip));
+    }
+    catch(const char * str){
+        cout << "Error in checkValidIp :"<< str << endl;
+        return false;
+    }
+    catch(int len){
+        cout << "Error in checkValidIp, ip len:" << len <<" greater than 15 characters, condition fail" << endl;
+        return false;
+    }
+    cout << "strlen: " << strlen(ip) << endl;
+    return true;
+}
+```
 
 在前面的代码中，您可以看到 try 块，其中检查条件。在 try 块内，如果`ip`是`NULL`，那么它将抛出(`const char *`)类型的异常。在下一个条件中，如果`ip`大于 15，则它将抛出带有 int 参数类型的异常。这个抛出被正确的 catch 捕获，匹配参数（`int`或`const char *`）。两个异常都返回带有一些错误消息的`false`。或者，在`catch`块中，如果需要进行任何清理或使用在异常中用于比较的变量的默认值，可以执行额外的步骤。
 
@@ -240,19 +240,19 @@
 1.  创建`main()`函数，并在其中写入以下代码：
 
 ```cpp
-    int main(){
-        const char * ip;
-        ip = NULL;
-        if (checkValidIp(ip)) 
-            cout << "IP address is correctly validated" << endl;
-        else {
-            /// work on error condition 
-            // if needed exit program gracefully.
-            return -1;
-        }
-        return 0;
-    }
-    ```
+int main(){
+    const char * ip;
+    ip = NULL;
+    if (checkValidIp(ip)) 
+        cout << "IP address is correctly validated" << endl;
+    else {
+        /// work on error condition 
+        // if needed exit program gracefully.
+        return -1;
+    }
+    return 0;
+}
+```
 
 1.  打开终端，编译我们的文件，并运行二进制文件。您将看到以下输出：![图 7.8：带有异常处理的示例执行代码](img/C14583_07_08.jpg)
 
@@ -263,8 +263,8 @@
 1.  现在，在`main`函数中修改`ip`的值，提供超过 15 个字符。编写以下代码来执行此操作：
 
 ```cpp
-    ip = "111.111.111.11111";
-    ```
+ip = "111.111.111.11111";
+```
 
 1.  打开终端，编译我们的文件，然后运行二进制文件。您将看到以下输出：![图 7.9：异常处理的另一个例子](img/C14583_07_09.jpg)
 
@@ -275,8 +275,8 @@
 1.  再次修改`main`函数中`ip`的值，提供少于`15`个字符。编写以下代码来实现这一点：
 
 ```cpp
-    ip = "111.111.111.111";
-    ```
+ip = "111.111.111.111";
+```
 
 1.  打开终端，编译我们的文件，然后运行二进制文件。您将看到以下输出：
 
@@ -311,61 +311,61 @@
 1.  创建一个`ip`不为空，并且长度小于`16`：
 
 ```cpp
-    #include "CheckIp.h"
-    #include<string>
-    #include<sstream>
-    bool checkValidIp(const char * ip){
-        if(ip == NULL){
-            cout << "Error : IP passes is NULL " << endl;
-            return false;
-        }
-        if(strlen(ip) > 15){
-            cout << "Error: IP size is greater than 15" << endl;
-            return false;
-        }
-        cout << "strlen: " << strlen(ip) << endl;
-        return true;
-    } 
-    ```
+#include "CheckIp.h"
+#include<string>
+#include<sstream>
+bool checkValidIp(const char * ip){
+    if(ip == NULL){
+        cout << "Error : IP passes is NULL " << endl;
+        return false;
+    }
+    if(strlen(ip) > 15){
+        cout << "Error: IP size is greater than 15" << endl;
+        return false;
+    }
+    cout << "strlen: " << strlen(ip) << endl;
+    return true;
+} 
+```
 
 在前面的代码中，如果两个条件都失败，函数将返回`false`。
 
 1.  调用`checkValidIp()`函数来创建一个名为`checkValidIP()`函数的新文件。在其中添加以下代码：
 
 ```cpp
-    #include"CheckIp.h"
-    int main(){
-        const char * ip;
-        //ip = "111.111.111.111";
-        ip = "111.111.111.11111";
-        if (checkValidIp(ip)) 
-            cout << "IP address is correctly validated" << endl;
-        else {
-            /// work on error condition 
-            // if needed exit program gracefully.
-            cout << " Got error in valid ip " << endl;
-            return -1;
-        }
-        return 0;
-    } 
-    ```
+#include"CheckIp.h"
+int main(){
+    const char * ip;
+    //ip = "111.111.111.111";
+    ip = "111.111.111.11111";
+    if (checkValidIp(ip)) 
+        cout << "IP address is correctly validated" << endl;
+    else {
+        /// work on error condition 
+        // if needed exit program gracefully.
+        cout << " Got error in valid ip " << endl;
+        return -1;
+    }
+    return 0;
+} 
+```
 
 1.  要创建测试代码，我们将创建我们的第一个`checkValidIp`函数。在其中写入以下代码：
 
 ```cpp
-    #include"CheckIp.h"
-    #include<gtest/gtest.h>
-    using namespace std;
-    const char * testIp;
-    TEST(CheckIp, testNull){
-        testIp=NULL;
-        ASSERT_FALSE(checkValidIp(testIp));
-    }
-    TEST(CheckIp, BadLength){
-        testIp = "232.13.1231.1321.123";
-        ASSERT_FALSE(checkValidIp(testIp));
-    }
-    ```
+#include"CheckIp.h"
+#include<gtest/gtest.h>
+using namespace std;
+const char * testIp;
+TEST(CheckIp, testNull){
+    testIp=NULL;
+    ASSERT_FALSE(checkValidIp(testIp));
+}
+TEST(CheckIp, BadLength){
+    testIp = "232.13.1231.1321.123";
+    ASSERT_FALSE(checkValidIp(testIp));
+}
+```
 
 在前面代码的第二行，我们包含了`TEST`函数，它接受两个参数：第一个是`testsuite`名称，第二个是`testcase`名称。对于我们的情况，我们创建了`TestSuite` `CheckIp`。在`TEST`块中，您将看到我们有`Google 测试`定义了一个名为`ASSERT_FALSE`的`assert`，它将检查条件是否为`false`。如果不是，它将使测试用例失败，并在结果中显示相同的内容。
 
@@ -376,22 +376,22 @@
 1.  现在，要运行测试用例，我们将创建主`RUN_ALL_TESTS`宏。或者，我们可以创建一个可执行文件，链接`Google Test 库`，并调用`RUN_ALL_TESTS`。对于我们的情况，我们将选择后者。打开终端并运行以下命令以创建一个测试运行二进制文件：
 
 ```cpp
-    g++ -c CheckIp.cpp
-    ```
+g++ -c CheckIp.cpp
+```
 
 这将包括`CheckValidIp`函数的对象文件在其中定义。
 
 1.  现在，输入以下命令以添加必要的库，这些库将被链接以创建一个二进制文件：
 
 ```cpp
-    g++ CheckIp.o TestCases.cpp -lgtest -lgtest_main -pthread -o TestRun 
-    ```
+g++ CheckIp.o TestCases.cpp -lgtest -lgtest_main -pthread -o TestRun 
+```
 
 1.  现在，使用以下命令运行二进制文件：
 
 ```cpp
-    ./TestRun
-    ```
+./TestRun
+```
 
 这显示了通过`CheckIp` `testsuite`的两个测试用例。第一个测试用例`CheckIp.testNull`被调用并通过了。第二个测试用例`CheckIp.BadLength`也被调用并通过了。这个结果在以下截图中可见：
 
@@ -408,49 +408,49 @@
 1.  现在，在**CheckIp.cpp**文件的`CheckValidIp()`函数中添加以下代码。这段代码是处理新测试用例所必需的：
 
 ```cpp
-    if(ip[strlen(ip)-1] == '.'){
-        cout<<"ERROR : Incorrect token at end"<<endl;
-        return false;
-    }
-    isstringstream istrstr(ip);
-    vector<string> tokens;
-    string token;
-    regex expression("[⁰-9]");
-    smatch m;
-    while(getline(istrstr, token, '.')){
-        if(token.empty()){
-            cout<<"ERROR : Got empty token"<<endl;
-            return false;
-        }
-        if(token.find(' ') != string::npos){
-            cout<<"ERROR : Space character in token"<<endl;
-            return false;
-        }
-        if(regex_search(token,m,expression)){
-            cout<<"ERROR : NonDigit character in token"<<endl;
-            return false;
-        }
-        int val = atoi(token.c_str());
-        if(val<0 || val>255){
-            cout<<"ERROR : Invalid digit in token"<<endl;
-            return false;
-        }
-        tokens.push_back(token);
-    }
-    if(tokens.size()!=4){
-        cout<<"ERROR : Incorrect IP tokens used"<<endl;
-        return false;
-    }
-    cout<<"strlen: "<<strlen(ip)<<endl;
-    return true;
-    }
-    ```
+if(ip[strlen(ip)-1] == '.'){
+    cout<<"ERROR : Incorrect token at end"<<endl;
+    return false;
+}
+isstringstream istrstr(ip);
+vector<string> tokens;
+string token;
+regex expression("[⁰-9]");
+smatch m;
+while(getline(istrstr, token, '.')){
+    if(token.empty()){
+        cout<<"ERROR : Got empty token"<<endl;
+        return false;
+    }
+    if(token.find(' ') != string::npos){
+        cout<<"ERROR : Space character in token"<<endl;
+        return false;
+    }
+    if(regex_search(token,m,expression)){
+        cout<<"ERROR : NonDigit character in token"<<endl;
+        return false;
+    }
+    int val = atoi(token.c_str());
+    if(val<0 || val>255){
+        cout<<"ERROR : Invalid digit in token"<<endl;
+        return false;
+    }
+    tokens.push_back(token);
+}
+if(tokens.size()!=4){
+    cout<<"ERROR : Incorrect IP tokens used"<<endl;
+    return false;
+}
+cout<<"strlen: "<<strlen(ip)<<endl;
+return true;
+}
+```
 
 1.  打开终端并输入以下命令以运行二进制文件：
 
 ```cpp
-    ./TestRun
-    ```
+./TestRun
+```
 
 所有测试用例都已执行，如下截图所示：
 
@@ -473,45 +473,45 @@
 1.  创建一个名为**Misc.h**的头文件，并包含必要的库：
 
 ```cpp
-    #include<iostream>
-    #include<string>
-    #include<sstream>
-    #include<vector>
-    #include<iterator>
-    #include<regex>
-    using namespace std;
-    ```
+#include<iostream>
+#include<string>
+#include<sstream>
+#include<vector>
+#include<iterator>
+#include<regex>
+using namespace std;
+```
 
 1.  创建一个名为`ConnectDatabase`的类，它将连接到数据库并返回查询结果。在类内部，声明`Dbname`，user 和 passwd 变量。还声明一个构造函数和两个虚函数。在这两个虚函数中，第一个必须是析构函数，第二个必须是`getResult()`函数，它从数据库返回查询结果。添加以下代码来实现这一点：
 
 ```cpp
-    class ConnectDatabase{
-        string DBname;
-        string user;
-        string passwd;
-        public:
-            ConnectDatabase() {} 
-            ConnectDatabase(string _dbname, string _uname, string _passwd) :
-                DBname(_dbname), user(_uname), passwd(_passwd) { }
-            virtual ~ConnectDatabase() {} 
-            virtual string getResult(string query);
-    };
-    ```
+class ConnectDatabase{
+    string DBname;
+    string user;
+    string passwd;
+    public:
+        ConnectDatabase() {} 
+        ConnectDatabase(string _dbname, string _uname, string _passwd) :
+            DBname(_dbname), user(_uname), passwd(_passwd) { }
+        virtual ~ConnectDatabase() {} 
+        virtual string getResult(string query);
+};
+```
 
 1.  创建另一个名为`WebServerConnect`的类。在`class`内部声明三个`string`变量，分别是`Webserver`，`uname`和`passwd`。创建构造函数和两个虚函数。在这两个虚函数中，第一个必须是析构函数，第二个必须是`getRequest()`函数。添加以下代码来实现这一点：
 
 ```cpp
-    class WebServerConnect{
-        string Webserver;
-        string uname;
-        string passwd;
-        public :
-        WebServerConnect(string _sname, string _uname, string _passwd) :
-                Webserver(_sname), uname(_uname), passwd(_passwd) { }
-            virtual ~WebServerConnect() {}
-            virtual string getRequest(string req);
-    };
-    ```
+class WebServerConnect{
+    string Webserver;
+    string uname;
+    string passwd;
+    public :
+    WebServerConnect(string _sname, string _uname, string _passwd) :
+            Webserver(_sname), uname(_uname), passwd(_passwd) { }
+        virtual ~WebServerConnect() {}
+        virtual string getRequest(string req);
+};
+```
 
 #### 注意
 
@@ -520,24 +520,24 @@
 1.  创建一个名为`App`的类。创建构造函数和析构函数并调用所有函数。添加以下代码来实现这一点：
 
 ```cpp
-    class App {
-        ConnectDatabase *DB;
-        WebServerConnect *WB;
-        public : 
-            App():DB(NULL), WB(NULL) {} 
-            ~App() { 
-                if ( DB )  delete DB;
-                if ( WB )  delete WB;
-            }
-            bool checkValidIp(string ip);
-            string getDBResult(string query);
-            string getWebResult(string query);
-            void connectDB(string, string, string);
-            void connectDB(ConnectDatabase *db);
-            void connectWeb(string, string, string);
-            void run();
-    };
-    ```
+class App {
+    ConnectDatabase *DB;
+    WebServerConnect *WB;
+    public : 
+        App():DB(NULL), WB(NULL) {} 
+        ~App() { 
+            if ( DB )  delete DB;
+            if ( WB )  delete WB;
+        }
+        bool checkValidIp(string ip);
+        string getDBResult(string query);
+        string getWebResult(string query);
+        void connectDB(string, string, string);
+        void connectDB(ConnectDatabase *db);
+        void connectWeb(string, string, string);
+        void run();
+};
+```
 
 在前面的代码中，应用程序将首先查询数据库并获取`IP 地址`。然后，它使用必要的信息连接到 Web 服务器并查询以获取所需的信息。
 
@@ -550,16 +550,16 @@
 1.  保存所有文件并打开终端。为了获得执行项目所需的基本功能，我们将构建二进制文件并执行它以查看结果。在终端中运行以下命令：
 
 ```cpp
-    g++ Misc.cpp RunApp.cpp -o RunApp
-    ```
+g++ Misc.cpp RunApp.cpp -o RunApp
+```
 
 上述代码将在当前文件夹中创建一个名为`RunApp`的二进制文件。
 
 1.  现在，编写以下命令来运行可执行文件：
 
 ```cpp
-    ./RunApp
-    ```
+./RunApp
+```
 
 上述命令在终端中生成以下输出：
 
@@ -572,55 +572,55 @@
 1.  使用相同的基础设施，开始对每个功能进行单元测试。在我们的练习中，我们假设`DB 连接`已经完成，并已查询以获取`IP 地址`。之后，我们可以开始单元测试`IP 地址`的有效性。因此，在我们的测试用例中，需要模拟数据库类，并且`getDBResult`函数必须返回`IP 地址`。稍后，这个`IP 地址`将传递给`checkValidIP`函数进行测试。为了实现这一点，创建一个名为`checkValidIP`的类：
 
 ```cpp
-    #include"MockMisc.h"
-    using ::testing::_;
-    using ::testing::Return;
-    class TestApp : public ::testing::Test {
-        protected : 
-            App testApp;
-            MockDB *mdb;
-            void SetUp(){
-                mdb = new MockDB();
-                testApp.connectDB(mdb);
-            }
-            void TearDown(){
-            }
-    };
-    TEST_F(TestApp, NullIP){
-        EXPECT_CALL(*mdb, getResult(_)).
-                     WillOnce(Return(""));
-        ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
-    }
-    TEST_F(TestApp, SpaceTokenIP){
-        EXPECT_CALL(*mdb, getResult(_)).
-                     WillOnce(Return("13\. 21.31.68"));
-        ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
-    }
-    TEST_F(TestApp, NonValidDigitIP){
-        EXPECT_CALL(*mdb, getResult(_)).
-                     WillOnce(Return("13.521.31.68"));
-        ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
-    }
-    TEST_F(TestApp, CorrectIP){
-        EXPECT_CALL(*mdb, getResult(_)).
-                     WillOnce(Return("212.121.21.45"));
-        ASSERT_TRUE(testApp.checkValidIp(testApp.getDBResult("")));
-    }
-    ```
+#include"MockMisc.h"
+using ::testing::_;
+using ::testing::Return;
+class TestApp : public ::testing::Test {
+    protected : 
+        App testApp;
+        MockDB *mdb;
+        void SetUp(){
+            mdb = new MockDB();
+            testApp.connectDB(mdb);
+        }
+        void TearDown(){
+        }
+};
+TEST_F(TestApp, NullIP){
+    EXPECT_CALL(*mdb, getResult(_)).
+                 WillOnce(Return(""));
+    ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
+}
+TEST_F(TestApp, SpaceTokenIP){
+    EXPECT_CALL(*mdb, getResult(_)).
+                 WillOnce(Return("13\. 21.31.68"));
+    ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
+}
+TEST_F(TestApp, NonValidDigitIP){
+    EXPECT_CALL(*mdb, getResult(_)).
+                 WillOnce(Return("13.521.31.68"));
+    ASSERT_FALSE(testApp.checkValidIp(testApp.getDBResult("")));
+}
+TEST_F(TestApp, CorrectIP){
+    EXPECT_CALL(*mdb, getResult(_)).
+                 WillOnce(Return("212.121.21.45"));
+    ASSERT_TRUE(testApp.checkValidIp(testApp.getDBResult("")));
+}
+```
 
 在这里，我们使用了测试和`testing::Return`命名空间来调用模拟类接口，并返回用于测试用例的用户定义的值。在`TEST_F`函数中，我们使用了`EXPECT_CALL`函数，其中我们将模拟对象的实例作为第一个参数传递，并将`getResult()`函数作为第二个参数传递。`WillOnce(Return(""))`行表示需要调用接口一次，并将返回""和一个空字符串。这是需要传递给`checkValidIP`函数以测试空字符串的值。这通过`ASSERT_FALSE`宏进行检查。类似地，可以使用 DB 的模拟对象创建其他测试用例，并将 IP 地址传递给`checkValidIP`函数。为了创建各种测试用例，`TestApp`类从`testing::Test`类继承，其中包含 App 实例和 Database 的模拟对象。在`TestApp`类中，我们定义了两个函数，即`SetUp()`和`TearDown()`。在`SetUp()`函数中，我们创建了一个`MockDB`实例并将其标记为 testApp 实例。由于`TearDown()`函数不需要执行任何操作，我们将其保持为空。它的析构函数在`App`类的析构函数中被调用。此外，我们在`TEST_F`函数中传递了两个参数。第一个参数是测试类，而第二个参数是测试用例的名称。
 
 1.  保存所有文件并打开终端。运行以下命令：
 
 ```cpp
-    g++ Misc.cpp TestApp.cpp -lgtest -lgmock -lgtest_main -pthread -o TestApp
-    ```
+g++ Misc.cpp TestApp.cpp -lgtest -lgmock -lgtest_main -pthread -o TestApp
+```
 
 在前面的命令中，我们还链接了`gmock 库`。现在，输入以下命令来运行测试用例：
 
 ```cpp
-    ./TestApp
-    ```
+./TestApp
+```
 
 前面的命令生成了以下输出：
 

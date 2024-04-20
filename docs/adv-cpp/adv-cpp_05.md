@@ -331,65 +331,65 @@ Dialog& Dialog::operator=(const Dialog& rhs)
 1.  在`#include <memory>`指令中获得对`unique_ptr`的访问。添加析构函数`~Kitchen();`的声明，然后将以下两行添加到私有部分的顶部：
 
 ```cpp
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
-    ```
+struct Impl;
+std::unique_ptr<Impl> m_impl;
+```
 
 1.  打开`#include`指令：
 
 ```cpp
-    struct Kitchen::Impl
-    {
-    };
-    Kitchen::~Kitchen() = default;
-    ```
+struct Kitchen::Impl
+{
+};
+Kitchen::~Kitchen() = default;
+```
 
 1.  单击**Run**按钮重新构建程序。您会看到输出仍然与以前相同。
 
 1.  从`Kitchen`类中的`Kitchen::Impl`声明中删除除两个新成员之外的所有私有成员。`#include <vector>`，`#include "recipe.hpp"`和`#include "dessert.hpp"`：
 
 ```cpp
-    #pragma once
-    #include <string>
-    #include <memory>
-    class Kitchen
-    {
-    public:
-        Kitchen(std::string chef);
-        ~Kitchen();
-        std::string processOrder(std::string order);
-    private:
-        struct Impl;
-        std::unique_ptr<Impl> m_impl;
-    };
-    ```
+#pragma once
+#include <string>
+#include <memory>
+class Kitchen
+{
+public:
+    Kitchen(std::string chef);
+    ~Kitchen();
+    std::string processOrder(std::string order);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
+```
 
 1.  在`Kitchen::Impl`构造函数中：
 
 ```cpp
-    Kitchen::Impl::Impl(std::string chef) : m_chef{chef}
-    ```
+Kitchen::Impl::Impl(std::string chef) : m_chef{chef}
+```
 
 1.  对于原始方法的其余部分，将它们更改为作用域为`Kitchen::Impl`而不是`Kitchen::`。例如，`std::string Kitchen::processOrder(std::string order)`变为`std::string Kitchen::Impl::processOrder(std::string order)`。
 
 1.  在`Kitchen::Impl`中，添加一个带有`std::string`参数和`processOrder()`方法的构造函数。`Kitchen::Impl`声明现在应如下所示：
 
 ```cpp
-    struct Kitchen::Impl
-    {
-        Impl(std::string chef);
-        std::string processOrder(std::string order);
-        std::string searchForRecipe(std::string order);
-        std::string searchForDessert(std::string order);
-        std::string cookRecipe(std::string recipe);
-        std::string serveDessert(std::string dessert);
-        std::vector<Recipe>::iterator getRecipe(std::string recipe);
-        std::vector<Dessert>::iterator getDessert(std::string recipe);
-        std::string m_chef;
-        std::vector<Recipe> m_recipes;
-        std::vector<Dessert> m_desserts;
-    };
-    ```
+struct Kitchen::Impl
+{
+    Impl(std::string chef);
+    std::string processOrder(std::string order);
+    std::string searchForRecipe(std::string order);
+    std::string searchForDessert(std::string order);
+    std::string cookRecipe(std::string recipe);
+    std::string serveDessert(std::string dessert);
+    std::vector<Recipe>::iterator getRecipe(std::string recipe);
+    std::vector<Dessert>::iterator getDessert(std::string recipe);
+    std::string m_chef;
+    std::vector<Recipe> m_recipes;
+    std::vector<Dessert> m_desserts;
+};
+```
 
 1.  在`#include <vector>`，`#include "recipe.hpp"`和`#include "dessert.hpp"`添加到文件顶部。
 
@@ -398,14 +398,14 @@ Dialog& Dialog::operator=(const Dialog& rhs)
 1.  在`Kitchen::Impl`方法定义中，添加以下两个方法：
 
 ```cpp
-    Kitchen::Kitchen(std::string chef) : m_impl(std::make_unique<Kitchen::Impl>(chef))
-    {
-    }
-    std::string Kitchen::processOrder(std::string order)
-    {
-        return m_impl->processOrder(order);
-    }
-    ```
+Kitchen::Kitchen(std::string chef) : m_impl(std::make_unique<Kitchen::Impl>(chef))
+{
+}
+std::string Kitchen::processOrder(std::string order)
+{
+    return m_impl->processOrder(order);
+}
+```
 
 1.  单击**Run**按钮重新构建程序。程序将再次运行以产生原始输出。
 
@@ -608,33 +608,33 @@ int main()
 1.  在编辑器中，在`main()`函数定义之前添加以下类定义：
 
 ```cpp
-    struct Printer
-    {
-        void operator()(int n)
-        {
-            std::cout << m_sep << n;
-            m_sep = ", ";
-        }
-        const char* m_sep = "";
-    };
-    ```
+struct Printer
+{
+    void operator()(int n)
+    {
+        std::cout << m_sep << n;
+        m_sep = ", ";
+    }
+    const char* m_sep = "";
+};
+```
 
 1.  在**main()**方法中替换以下代码
 
 ```cpp
-    std::cout << "Average of [";
-    for( auto n : values )
-        std::cout << n << ", ";
-    std::cout << "] = ";
-    ```
+std::cout << "Average of [";
+for( auto n : values )
+    std::cout << n << ", ";
+std::cout << "] = ";
+```
 
 **带有**
 
 ```cpp
-    std::cout << "Average of [";
-    std::for_each(values.begin(), values.end(), Printer());
-    std::cout << "] = ";
-    ```
+std::cout << "Average of [";
+std::for_each(values.begin(), values.end(), Printer());
+std::cout << "] = ";
+```
 
 1.  点击**运行**按钮。练习将运行并产生以下输出：![图 4.13：改进的输出格式的练习 2](img/C14583_04_13.jpg)
 
@@ -643,39 +643,39 @@ int main()
 1.  `Printer`类的内部状态允许我们修复格式。现在，引入一个`aggregator`类，它将允许我们计算`average`。在文件顶部添加以下类定义：
 
 ```cpp
-    struct Averager
-    {
-        void operator()(int n)
-        {
-            m_sum += n;
-            m_count++;
-        }
-        float operator()() const
-        {
-            return static_cast<float>(m_sum)/(m_count==0?1:m_count);
-        }
-        int m_count{0};
-        int m_sum{0};
-    };
-    ```
+struct Averager
+{
+    void operator()(int n)
+    {
+        m_sum += n;
+        m_count++;
+    }
+    float operator()() const
+    {
+        return static_cast<float>(m_sum)/(m_count==0?1:m_count);
+    }
+    int m_count{0};
+    int m_sum{0};
+};
+```
 
 1.  修改`main()`方法以使用`Averager`类如下：
 
 ```cpp
-    int main(int argc, char**argv)
-    {
-        std::cout << "\n------ Exercise 2 ------\n";
-        std::vector<int> values {1,2,3,4,5,6,7,8,9,10};
-        Averager averager = std::for_each(values.begin(), values.end(), 
-        Averager());
-        std::cout << "Average of [";
-        std::for_each(values.begin(), values.end(), Printer());
-        std::cout << "] = ";
-        std::cout << averager() << "\n";
-        std::cout << "Complete.\n";
-        return 0;
-    }
-    ```
+int main(int argc, char**argv)
+{
+    std::cout << "\n------ Exercise 2 ------\n";
+    std::vector<int> values {1,2,3,4,5,6,7,8,9,10};
+    Averager averager = std::for_each(values.begin(), values.end(), 
+    Averager());
+    std::cout << "Average of [";
+    std::for_each(values.begin(), values.end(), Printer());
+    std::cout << "] = ";
+    std::cout << averager() << "\n";
+    std::cout << "Complete.\n";
+    return 0;
+}
+```
 
 1.  点击**运行**按钮。练习将运行并产生以下输出：
 
@@ -779,15 +779,15 @@ C++11 引入了一些称为 lambda 表达式的语法糖，使得更容易定义
 1.  我们要做的第一件事是防止调用空的`TestFunctionTemplate()`行`func(42);`，并用以下代码替换它：
 
 ```cpp
-    if (func)
-    {
-        func(42);
-    }
-    else
-    {
-        std::cout << "Not calling an empty func()\n";
-    }
-    ```
+if (func)
+{
+    func(42);
+}
+else
+{
+    std::cout << "Not calling an empty func()\n";
+}
+```
 
 1.  单击**运行**按钮。练习将运行并产生以下输出：![图 4.18：练习 3 输出（防止调用空的 std::function）](img/C14583_04_18.jpg)
 
@@ -796,17 +796,17 @@ C++11 引入了一些称为 lambda 表达式的语法糖，使得更容易定义
 1.  在函数`TestFunctionTemplate()`之前的文件中添加`FreeFunction()`方法：
 
 ```cpp
-    void FreeFunction(int n)
-    {
-        std::cout << "FreeFunction(" << n << ")\n";
-    }
-    ```
+void FreeFunction(int n)
+{
+    std::cout << "FreeFunction(" << n << ")\n";
+}
+```
 
 1.  在`TestFunctionTemplate()`函数中，在`if (func)`之前立即添加以下行：
 
 ```cpp
-    func = FreeFunction;
-    ```
+func = FreeFunction;
+```
 
 1.  单击**运行**按钮。练习将运行并产生以下输出：![图 4.19：练习 3 输出（FreeMethod）](img/C14583_04_19.jpg)
 
@@ -815,25 +815,25 @@ C++11 引入了一些称为 lambda 表达式的语法糖，使得更容易定义
 1.  在`TestFunctionTemplate()`函数之前添加新的类定义：
 
 ```cpp
-    struct FuncClass
-    {
-        void member(int n)
-        {
-            std::cout << "FuncClass::member(" << n << ")\n";
-        }
-        void operator()(int n)
-        {
-        std::cout << "FuncClass object(" << n << ")\n";
-        }
-    };
-    ```
+struct FuncClass
+{
+    void member(int n)
+    {
+        std::cout << "FuncClass::member(" << n << ")\n";
+    }
+    void operator()(int n)
+    {
+    std::cout << "FuncClass object(" << n << ")\n";
+    }
+};
+```
 
 1.  用以下代码替换行`func = FreeFunction;`：
 
 ```cpp
-    FuncClass funcClass;
-    func = funcClass;
-    ```
+FuncClass funcClass;
+func = funcClass;
+```
 
 1.  单击**运行**按钮。练习将运行并产生以下输出：![4.20：练习 3 输出（对象函数调用覆盖）](img/C14583_04_20.jpg)
 
@@ -842,8 +842,8 @@ C++11 引入了一些称为 lambda 表达式的语法糖，使得更容易定义
 1.  用以下代码替换行`func = funcClass;`：
 
 ```cpp
-    func = std::bind(&FuncClass::member, &funcClass, std::placeholders::_1);
-    ```
+func = std::bind(&FuncClass::member, &funcClass, std::placeholders::_1);
+```
 
 1.  单击**运行**按钮。练习将运行并产生以下输出：![图 4.21：练习 3 输出（成员函数）](img/C14583_04_21.jpg)
 
@@ -852,8 +852,8 @@ C++11 引入了一些称为 lambda 表达式的语法糖，使得更容易定义
 1.  用以下代码替换行`func = std::bind(…);`：
 
 ```cpp
-    func = [](int n) {std::cout << "lambda function(" << n << ")\n";};
-    ```
+func = [](int n) {std::cout << "lambda function(" << n << ")\n";};
+```
 
 1.  单击**运行**按钮。练习将运行并产生以下输出：
 
@@ -988,20 +988,20 @@ struct LambdaCapture
 1.  程序`PrintVector()`和`main()`。`PrintVector()`与我们在*什么是函数对象？*中介绍的版本相同。现在修改它以使用`std::for_each()`库函数和 lambda，而不是范围 for 循环。更新`PrintVector()`如下：
 
 ```cpp
-    void PrintVector(const char* prefix, std::vector<int>& values)
-    {
-        const char* sep = "";
-        std::cout << prefix << " = [";
-        std::for_each(values.begin(), values.end(),
-                [&sep] (int n)
-                {
-                    std::cout << sep << n;
-                    sep = ", ";
-                }
-        );
-        std::cout << "]\n";
-    }
-    ```
+void PrintVector(const char* prefix, std::vector<int>& values)
+{
+    const char* sep = "";
+    std::cout << prefix << " = [";
+    std::for_each(values.begin(), values.end(),
+            [&sep] (int n)
+            {
+                std::cout << sep << n;
+                sep = ", ";
+            }
+    );
+    std::cout << "]\n";
+}
+```
 
 1.  单击**运行**按钮，我们得到与之前相同的输出。
 
@@ -1012,43 +1012,43 @@ struct LambdaCapture
 1.  更改 lambda 声明以包括`mutable`修饰符：
 
 ```cpp
-    [sep] (int n) mutable
-    {
-        std::cout << sep << n;
-        sep = ", ";
-    }
-    ```
+[sep] (int n) mutable
+{
+    std::cout << sep << n;
+    sep = ", ";
+}
+```
 
 1.  单击**运行**按钮，我们得到与之前相同的输出。
 
 1.  但我们可以再进一步。从函数`PrintVector()`的声明中删除`sep`，并再次更改 lambda 以包括 init 捕获。编写以下代码来实现这一点：
 
 ```cpp
-    [sep = ""] (int n) mutable
-    {
-        std::cout << sep << n;
-        sep = ", ";
-    }
-    ```
+[sep = ""] (int n) mutable
+{
+    std::cout << sep << n;
+    sep = ", ";
+}
+```
 
 1.  单击`PrintVector()`，现在看起来更紧凑：
 
 ```cpp
-    void PrintVector(const char* prefix, std::vector<int>& values)
-    {
-        std::cout << prefix << " = [";
-        std::for_each(values.begin(), values.end(), [sep = ""] (int n) mutable
-                                      { std::cout << sep << n; sep = ", ";} );
-        std::cout << "]\n";
-    }
-    ```
+void PrintVector(const char* prefix, std::vector<int>& values)
+{
+    std::cout << prefix << " = [";
+    std::for_each(values.begin(), values.end(), [sep = ""] (int n) mutable
+                                  { std::cout << sep << n; sep = ", ";} );
+    std::cout << "]\n";
+}
+```
 
 1.  在`main()`方法中调用`PrintVector()`之后，添加以下行：
 
 ```cpp
-    std::sort(values.begin(), values.end(), [](int a, int b) {return b<a;} );
-    PrintVector("After sort", values);
-    ```
+std::sort(values.begin(), values.end(), [](int a, int b) {return b<a;} );
+PrintVector("After sort", values);
+```
 
 1.  单击**运行**按钮，现在的输出添加了按降序排序的值列表：![图 4.28：按降序排序 lambda 的程序输出](img/C14583_04_28.jpg)
 
@@ -1061,11 +1061,11 @@ struct LambdaCapture
 1.  在调用`PrintVector()`函数之后，添加以下代码行：
 
 ```cpp
-    int threshold{25};
-    auto pred = [threshold] (int a) { return a > threshold; };
-    auto count = std::count_if(values.begin(), values.end(), pred);
-    std::cout << "There are " << count << " values > " << threshold << "\n";
-    ```
+int threshold{25};
+auto pred = [threshold] (int a) { return a > threshold; };
+auto count = std::count_if(values.begin(), values.end(), pred);
+std::cout << "There are " << count << " values > " << threshold << "\n";
+```
 
 1.  单击`值> 25`：![图 4.30：存储在变量中的 count_if lambda 的输出](img/C14583_04_30.jpg)
 
@@ -1074,10 +1074,10 @@ struct LambdaCapture
 1.  在上述行之后添加以下行，并单击**运行**按钮：
 
 ```cpp
-    threshold = 40;
-    count = std::count_if(values.begin(), values.end(), pred);
-    std::cout << "There are " << count << " values > " << threshold << "\n";
-    ```
+threshold = 40;
+count = std::count_if(values.begin(), values.end(), pred);
+std::cout << "There are " << count << " values > " << threshold << "\n";
+```
 
 以下输出将被生成：
 
@@ -1088,8 +1088,8 @@ struct LambdaCapture
 1.  程序错误地报告有`七（7）个值> 40`；应该是`三（3）`。问题在于当创建 lambda 并将其存储在变量`pred`中时，它捕获了阈值的当前值，即`25`。将定义`pred`的行更改为以下内容：
 
 ```cpp
-    auto pred = [&threshold] (int a) { return a > threshold; };
-    ```
+auto pred = [&threshold] (int a) { return a > threshold; };
+```
 
 1.  单击**运行**按钮，现在输出正确报告计数：
 

@@ -81,27 +81,27 @@
 1.  `UAnimNotify`基类有一个函数需要在您的类中实现：
 
 ```cpp
-    virtual void Notify(USkeletalMeshComponent* MeshComp,   UAnimSequenceBase* Animation); 
-    ```
+virtual void Notify(USkeletalMeshComponent* MeshComp,   UAnimSequenceBase* Animation); 
+```
 
 当时间轴上的通知被击中时，此函数将自动调用。通过覆盖此函数，您将能够向通知添加自己的逻辑。此函数还使您能够访问拥有通知的`骨骼网格`组件以及当前正在播放的动画序列。
 
 1.  接下来，让我们在头文件中添加此函数的覆盖声明。在头文件`Anim_ProjectileNotify.h`中，在`GENERATED_BODY()`下面添加以下代码：
 
 ```cpp
-    public:  virtual void Notify(USkeletalMeshComponent*   MeshComp,UAnimSequenceBase* Animation) override;
-    ```
+public:  virtual void Notify(USkeletalMeshComponent*   MeshComp,UAnimSequenceBase* Animation) override;
+```
 
 现在您已经将函数添加到头文件中，是时候在`Anim_ProjectileNotify`源文件中定义该函数了。
 
 1.  在`Anim_ProjectileNotify.cpp`源文件中，定义该函数并添加一个`UE_LOG()`调用，打印文本`"Throw Notify"`，如下所示：
 
 ```cpp
-    void UAnim_ProjectileNotify::Notify(USkeletalMeshComponent*   MeshComp, UAnimSequenceBase* Animation)
-    {
-      UE_LOG(LogTemp, Warning, TEXT("Throw Notify"));
-    }
-    ```
+void UAnim_ProjectileNotify::Notify(USkeletalMeshComponent*   MeshComp, UAnimSequenceBase* Animation)
+{
+  UE_LOG(LogTemp, Warning, TEXT("Throw Notify"));
+}
+```
 
 目前，您将仅使用此`UE_LOG()`调试工具，以便知道在下一个练习中将此通知添加到`Throw`动画蒙太奇时，该函数是否被正确调用。
 
@@ -230,39 +230,39 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 1.  你需要做的第一件事是创建一个新的变量，用于玩家角色的`Throw`动画。在`Private`访问修饰符下添加以下代码：
 
 ```cpp
-    UPROPERTY(EditAnywhere)
-    class UAnimMontage* ThrowMontage;
-    ```
+UPROPERTY(EditAnywhere)
+class UAnimMontage* ThrowMontage;
+```
 
 现在你有一个变量，它将代表“投掷”动画蒙太奇，是时候在`SuperSideScroller_Player.cpp`文件中添加播放蒙太奇的逻辑了。
 
 1.  在你调用`UAnimInstance::Montage_Play()`之前，你需要在源文件顶部的现有列表中添加以下`include`目录，以便访问这个函数：
 
 ```cpp
-    #include "Animation/AnimInstance.h"
-    ```
+#include "Animation/AnimInstance.h"
+```
 
 正如我们从*第九章*，*音频-视觉元素*中知道的，玩家角色已经有一个名为`ThrowProjectile`的函数，每当按下*左鼠标按钮*时就会调用。作为提醒，在 C++中绑定发生在这里：
 
 ```cpp
-    //Bind pressed action ThrowProjectile to your ThrowProjectile   function
-    PlayerInputComponent->BindAction("ThrowProjectile", IE_Pressed,   this, &ASuperSideScroller_Player::ThrowProjectile);
-    ```
+//Bind pressed action ThrowProjectile to your ThrowProjectile   function
+PlayerInputComponent->BindAction("ThrowProjectile", IE_Pressed,   this, &ASuperSideScroller_Player::ThrowProjectile);
+```
 
 1.  更新`ThrowProjectile`，使其播放你在这个练习中设置的`ThrowMontage`。将以下代码添加到`ThrowProjectile()`函数中。然后，我们可以讨论这里发生了什么：
 
 ```cpp
-    void ASuperSideScroller_Player::ThrowProjectile()
-    {
-      if (ThrowMontage)
-      {
-        bool bIsMontagePlaying = GetMesh()->GetAnimInstance()->      Montage_IsPlaying(ThrowMontage);
-        if (!bIsMontagePlaying)
-        {
-          GetMesh()->GetAnimInstance()->Montage_Play(ThrowMontage,         2.0f);
-        }
-        }    }
-    ```
+void ASuperSideScroller_Player::ThrowProjectile()
+{
+  if (ThrowMontage)
+  {
+    bool bIsMontagePlaying = GetMesh()->GetAnimInstance()->      Montage_IsPlaying(ThrowMontage);
+    if (!bIsMontagePlaying)
+    {
+      GetMesh()->GetAnimInstance()->Montage_Play(ThrowMontage,         2.0f);
+    }
+    }    }
+```
 
 第一行是检查`ThrowMontage`是否有效；如果我们没有分配有效的动画蒙太奇，继续逻辑就没有意义，而且在后续函数调用中使用 NULL 对象可能会导致崩溃，这也是很危险的。接下来，我们声明一个新的布尔变量，称为`bIsMontagePlaying`，用于确定`ThrowMontage`是否已经在玩家角色的骨骼网格上播放。这个检查是因为`Throw`动画蒙太奇在已经播放时不应该再次播放；如果玩家反复按下*左鼠标按钮*，这将导致动画中断。
 
@@ -357,8 +357,8 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 1.  选择`ProjectileSocket`，使用`Transform`小部件小部件将此`Socket`定位到以下位置：
 
 ```cpp
-    Location = (X=12.961717,Y=25.448450,Z=-7.120584)
-    ```
+Location = (X=12.961717,Y=25.448450,Z=-7.120584)
+```
 
 最终结果应该如下所示：
 
@@ -387,93 +387,93 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 1.  你需要一个指向`PlayerProjectile`类的类引用变量。你可以使用名为`TSubclassOf`的变量模板类类型来实现这一点。在`Private`访问修饰符下，将以下代码添加到头文件中：
 
 ```cpp
-    UPROPERTY(EditAnywhere)
-    TSubclassOf<class APlayerProjectile> PlayerProjectile;
-    ```
+UPROPERTY(EditAnywhere)
+TSubclassOf<class APlayerProjectile> PlayerProjectile;
+```
 
 现在你已经准备好变量，是时候声明你将用来生成抛射物的函数了。
 
 1.  在`ThrowProjectile()`函数的声明和`Public`访问修饰符下添加以下函数声明：
 
 ```cpp
-    void SpawnProjectile();
-    ```
+void SpawnProjectile();
+```
 
 1.  在准备`SpawnProjectile()`函数的定义之前，将以下`include`目录添加到`SuperSideScroller_Player.cpp`源文件的包含列表中：
 
 ```cpp
-    #include "PlayerProjectile.h"
-    #include "Engine/World.h"
-    #include "Components/SphereComponent.h"
-    ```
+#include "PlayerProjectile.h"
+#include "Engine/World.h"
+#include "Components/SphereComponent.h"
+```
 
 你需要包含`PlayerProjectile.h`，因为这是为了引用抛射物类的碰撞组件而必需的。接下来，使用`Engine/World.h`的包含是为了使用`SpawnActor()`函数和访问`FActorSpawnParameters`结构。最后，你需要使用`Components/SphereComponent.h`的包含，以便更新玩家抛射物的碰撞组件，使其忽略玩家。
 
 1.  接下来，在`SuperSideScroller_Player.cpp`源文件的底部创建`SpawnProjectile()`函数的定义，如下所示：
 
 ```cpp
-    void ASuperSideScroller_Player::SpawnProjectile()
-    {
-    }
-    ```
+void ASuperSideScroller_Player::SpawnProjectile()
+{
+}
+```
 
 这个函数需要做的第一件事是检查`PlayerProjectile`类变量是否有效。如果这个对象无效，继续尝试生成它就没有意义了。
 
 1.  更新`SpawnProjectile()`函数如下：
 
 ```cpp
-    void ASuperSideScroller_Player::SpawnProjectile()
-    {
-      if(PlayerProjectile)
-        {
-        }
-    }
-    ```
+void ASuperSideScroller_Player::SpawnProjectile()
+{
+  if(PlayerProjectile)
+    {
+    }
+}
+```
 
 现在，如果`PlayerProjectile`对象有效，你将想要获取玩家当前存在的`UWorld`对象，并确保这个世界在继续之前是有效的。
 
 1.  更新`SpawnProjectile()`函数如下：
 
 ```cpp
-    void ASuperSideScroller_Player::SpawnProjectile()
-    {
-      if(PlayerProjectile)
-        {
-          UWorld* World = GetWorld();
-          if (World)
-            {
-            }
-        }
-    }
-    ```
+void ASuperSideScroller_Player::SpawnProjectile()
+{
+  if(PlayerProjectile)
+    {
+      UWorld* World = GetWorld();
+      if (World)
+        {
+        }
+    }
+}
+```
 
 此时，你已经进行了安全检查，以确保`PlayerProjectile`和`UWorld`都是有效的，所以现在可以安全地尝试生成抛射物了。首先要做的是声明一个新的`FactorSpawnParameters`类型的变量，并将玩家指定为所有者。
 
 1.  在最近的`if`语句中添加以下代码，使`SpawnProjectile()`函数看起来像这样：
 
 ```cpp
-    void ASuperSideScroller_Player::SpawnProjectile()
-    {
-      if(PlayerProjectile)
-        {
-          UWorld* World = GetWorld();
-          if (World)
-            {
-              FActorSpawnParameters SpawnParams;
-              SpawnParams.Owner = this; 
-            }
-        }
-    }
-    ```
+void ASuperSideScroller_Player::SpawnProjectile()
+{
+  if(PlayerProjectile)
+    {
+      UWorld* World = GetWorld();
+      if (World)
+        {
+          FActorSpawnParameters SpawnParams;
+          SpawnParams.Owner = this; 
+        }
+    }
+}
+```
 
 正如你之前学到的，`UWorld`对象的`SpawnActor()`函数调用将需要`FActorSpawnParameters`结构作为生成对象的初始化的一部分。对于玩家投射物，你可以使用`this`关键字作为玩家角色类的引用，作为投射物的所有者。这在以后在这个函数中更新投射物的碰撞时会派上用场。
 
 1.  接下来，你需要处理`SpawnActor()`函数的`Location`和`Rotation`参数。在最新的一行下面添加以下行：
 
 ```cpp
-    FVector SpawnLocation = this->GetMesh()-  >GetSocketLocation(FName("ProjectileSocket"));
-    FRotator Rotation = GetActorForwardVector().Rotation();
-    ```
+FVector SpawnLocation = this->GetMesh()-  >GetSocketLocation(FName("ProjectileSocket"));
+FRotator Rotation = GetActorForwardVector().Rotation();
+```
 
 在第一行中，声明一个名为`SpawnLocation`的新`FVector`变量。这个向量使用你在上一个练习中创建的`ProjectileSocket`插座的`Socket`位置。从`GetMesh()`函数返回的`Skeletal Mesh`组件包含一个名为`GetSocketLocation()`的函数，它将返回传入的`FName`的插座位置；在这种情况下，是名为`ProjectileSocket`。
 
@@ -484,19 +484,19 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 1.  在上一步的代码下面添加以下行：
 
 ```cpp
-    APlayerProjectile* Projectile = World-  >SpawnActor<APlayerProjectile>(PlayerProjectile, SpawnLocation,   Rotation, SpawnParams);
-    ```
+APlayerProjectile* Projectile = World-  >SpawnActor<APlayerProjectile>(PlayerProjectile, SpawnLocation,   Rotation, SpawnParams);
+```
 
 `World->SpawnActor()`函数将返回你尝试生成的类的对象；在这种情况下是`APlayerProjectile`。这就是为什么在实际生成之前要添加`APlayerProjectile* Projectile`。然后，你要传入`SpawnLocation`、`Rotation`和`SpawnParams`参数，以确保项目生成在你想要的位置和方式。
 
 1.  最后，你可以通过添加以下代码行将玩家角色添加到要忽略的演员数组中：
 
 ```cpp
-    if (Projectile)
-    {
-      Projectile->CollisionComp->    MoveIgnoreActors.Add(SpawnParams.Owner);
-    }
-    ```
+if (Projectile)
+{
+  Projectile->CollisionComp->    MoveIgnoreActors.Add(SpawnParams.Owner);
+}
+```
 
 现在你有了投射物的引用，这一行正在更新`CollisionComp`组件，以便将玩家或`SpawnParams.Owner`添加到`MoveIgnoreActors`数组中。这个演员数组将被投射物的碰撞忽略，因为这个投射物不应该与投掷它的玩家发生碰撞。
 
@@ -521,21 +521,21 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 在源文件中，您有以下代码：
 
 ```cpp
-    #include "Anim_ProjectileNotify.h"
-    void UAnim_ProjectileNotify::Notify(USkeletalMeshComponent*   MeshComp, UAnimSequenceBase* Animation)
-    {
-      UE_LOG(LogTemp, Warning, TEXT("Throw Notify"));
-    }
-    ```
+#include "Anim_ProjectileNotify.h"
+void UAnim_ProjectileNotify::Notify(USkeletalMeshComponent*   MeshComp, UAnimSequenceBase* Animation)
+{
+  UE_LOG(LogTemp, Warning, TEXT("Throw Notify"));
+}
+```
 
 1.  从`Notify()`函数中删除`UE_LOG()`行。
 
 1.  接下来，在`Anim_ProjectileNotify.h`下面添加以下`include`行：
 
 ```cpp
-    #include "Components/SkeletalMeshComponent.h"
-    #include "SuperSideScroller/SuperSideScroller_Player.h"
-    ```
+#include "Components/SkeletalMeshComponent.h"
+#include "SuperSideScroller/SuperSideScroller_Player.h"
+```
 
 您需要包含`SuperSideScroller_Player.h`头文件，因为这是在调用您在上一个练习中创建的`SpawnProjectile()`函数时所需的。我们还包括了`SkeletalMeshComponent.h`，因为我们将在`Notify()`函数中引用此组件，所以最好也在这里包含它。
 
@@ -544,17 +544,17 @@ Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 1.  在`Notify()`函数中，添加以下代码行：
 
 ```cpp
-    ASuperSideScroller_Player* Player =   Cast<ASuperSideScroller_Player>(MeshComp->GetOwner());
-    ```
+ASuperSideScroller_Player* Player =   Cast<ASuperSideScroller_Player>(MeshComp->GetOwner());
+```
 
 1.  现在您已经有了对玩家的引用，您需要在调用`SpawnProjectile()`函数之前对`Player`变量进行有效性检查。在上一步的行之后添加以下代码行：
 
 ```cpp
-    if (Player)
-    {
-      Player->SpawnProjectile();
-    }
-    ```
+if (Player)
+{
+  Player->SpawnProjectile();
+}
+```
 
 1.  现在`SpawnProjectile()`函数从`Notify()`函数中被调用，返回编辑器重新编译和热重载您所做的代码更改。
 
@@ -611,9 +611,9 @@ World->DestroyActor( this, bNetForce, bShouldModifyLevel );
 1.  在头文件中，在`Public`访问修饰符下创建一个名为`DestroyEnemy()`的新函数声明，如下所示：
 
 ```cpp
-    public:
-      void DestroyEnemy();
-    ```
+public:
+  void DestroyEnemy();
+```
 
 确保这个函数定义写在`GENERATED_BODY()`下面，在类定义内部。
 
@@ -622,21 +622,21 @@ World->DestroyActor( this, bNetForce, bShouldModifyLevel );
 1.  在`#include`行下面，添加以下函数定义：
 
 ```cpp
-    void AEnemyBase::DestroyEnemy()
-    {
-    }
-    ```
+void AEnemyBase::DestroyEnemy()
+{
+}
+```
 
 目前，这个函数将非常简单。你只需要调用基类`Actor`的继承`Destroy()`函数。
 
 1.  更新`DestroyEnemy()`函数，使其看起来像这样：
 
 ```cpp
-    void AEnemyBase::DestroyEnemy()
-    {
-      Destroy();
-    }
-    ```
+void AEnemyBase::DestroyEnemy()
+{
+  Destroy();
+}
+```
 
 1.  完成这个函数后，保存源文件并返回编辑器，这样你就可以重新编译和热重载代码了。
 
@@ -659,29 +659,29 @@ World->DestroyActor( this, bNetForce, bShouldModifyLevel );
 1.  在`Public`访问修饰符下，添加以下函数声明：
 
 ```cpp
-    void ExplodeProjectile();
-    ```
+void ExplodeProjectile();
+```
 
 1.  接下来，打开玩家投射物的源文件；也就是`PlayerProjectile.cpp`。
 
 1.  在`APlayerProjectile::OnHit`函数下面，添加`ExplodeProjectile()`函数的定义：
 
 ```cpp
-    void APlayerProjectile::ExplodeProjectile()
-    {
-    }
-    ```
+void APlayerProjectile::ExplodeProjectile()
+{
+}
+```
 
 目前，这个函数将与上一个练习中的`DestroyEnemy()`函数完全相同。
 
 1.  将继承的`Destroy()`函数添加到新的`ExplodeProjectile()`函数中，如下所示：
 
 ```cpp
-    void APlayerProjectile::ExplodeProjectile()
-    {
-      Destroy();
-    }
-    ```
+void APlayerProjectile::ExplodeProjectile()
+{
+  Destroy();
+}
+```
 
 1.  完成这个函数后，保存源文件并返回编辑器，这样你就可以重新编译和热重载代码了。
 
@@ -821,9 +821,9 @@ UGameplayStatics:SpawnSoundAtLocation
 1.  对`P_Goblin_Death` VFX 资产执行相同的迁移步骤。您要添加到项目中的两个主要资产如下：
 
 ```cpp
-    A_Guardian_Death_Cue
-    P_Goblin_Death
-    ```
+A_Guardian_Death_Cue
+P_Goblin_Death
+```
 
 `P_Goblin_Death`粒子系统资产引用了`Effects`目录中包含的材质和纹理等其他资产，而`A_Guardian_Death_Cue`引用了`Assets`目录中包含的其他声音波资产。
 
@@ -836,69 +836,69 @@ UGameplayStatics:SpawnSoundAtLocation
 1.  添加以下`UPROPERTY()`变量。这将代表敌人被销毁时的粒子系统。确保这是在`Public`访问修饰符下声明的：
 
 ```cpp
-    UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    class UParticleSystem* DeathEffect;
-    ```
+UPROPERTY(EditAnywhere, BlueprintReadOnly)
+class UParticleSystem* DeathEffect;
+```
 
 1.  添加以下`UPROPERTY()`变量。这将代表敌人被销毁时的声音。确保这是在`Public`访问修饰符下声明的：
 
 ```cpp
-    UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    class USoundBase* DeathSound;
-    ```
+UPROPERTY(EditAnywhere, BlueprintReadOnly)
+class USoundBase* DeathSound;
+```
 
 有了这两个属性的定义，让我们继续添加所需的逻辑，以便在敌人被摧毁时生成和使用这些效果。
 
 1.  在敌人基类的源文件`EnemyBase.cpp`中，添加以下包含`UGameplayStatics`和`UWorld`类：
 
 ```cpp
-    #include "Kismet/GameplayStatics.h"
-    #include "Engine/World.h"
-    ```
+#include "Kismet/GameplayStatics.h"
+#include "Engine/World.h"
+```
 
 当敌人被摧毁时，您将使用`UGameplayStatics`和`UWorld`类将声音和粒子系统生成到世界中。
 
 1.  在`AEnemyBase::DestroyEnemy()`函数中，您有一行代码：
 
 ```cpp
-    Destroy();
-    ```
+Destroy();
+```
 
 1.  在`Destroy()`函数调用之前添加以下代码行：
 
 ```cpp
-    UWorld* World = GetWorld();
-    ```
+UWorld* World = GetWorld();
+```
 
 在尝试生成粒子系统或声音之前，有必要定义`UWorld`对象，因为需要一个`World`上下文对象。
 
 1.  接下来，使用`if()`语句检查您刚刚定义的`World`对象的有效性：
 
 ```cpp
-    if(World)
-    {
-    }
-    ```
+if(World)
+{
+}
+```
 
 1.  在`if()`块内，添加以下代码来检查`DeathEffect`属性的有效性，然后使用`UGameplayStatics`的`SpawnEmitterAtLocation`函数生成这个效果：
 
 ```cpp
-    if(DeathEffect)
-    {
-        UGameplayStatics::SpawnEmitterAtLocation(World,       DeathEffect, GetActorTransform());
-    }
-    ```
+if(DeathEffect)
+{
+    UGameplayStatics::SpawnEmitterAtLocation(World,       DeathEffect, GetActorTransform());
+}
+```
 
 无法再次强调，在尝试生成或操作对象之前，您应该确保对象是有效的。这样做可以避免引擎崩溃。
 
 1.  在`if(DeathEffect)`块之后，执行`DeathSound`属性的相同有效性检查，然后使用`UGameplayStatics::SpawnSoundAtLocation`函数生成声音：
 
 ```cpp
-    if(DeathSound)
-    {
-        UGameplayStatics::SpawnSoundAtLocation(World,       DeathSound, GetActorLocation());
-    }
-    ```
+if(DeathSound)
+{
+    UGameplayStatics::SpawnSoundAtLocation(World,       DeathSound, GetActorLocation());
+}
+```
 
 在调用`Destroy()`函数之前，您需要检查`DeathEffect`和`DeathSound`属性是否都有效，如果是，则使用适当的`UGameplayStatics`函数生成这些效果。这样无论这两个属性是否有效，敌人角色都将被摧毁。
 
@@ -933,9 +933,9 @@ UGameplayStatics:SpawnSoundAtLocation
 您要添加到项目中的两个主要资产如下：
 
 ```cpp
-    P_Env_Fire_Grate_01
-    A_Ambient_Fire01_Cue
-    ```
+P_Env_Fire_Grate_01
+A_Ambient_Fire01_Cue
+```
 
 `P_Env_Fire_Grate_01`粒子系统资产引用了其他资产，例如包含在`Effects`目录中的材质和纹理，而`A_Ambient_Fire01_Cue`引用了包含在`Assets`目录中的其他声音波和声音衰减资产。
 
@@ -952,41 +952,41 @@ UGameplayStatics:SpawnSoundAtLocation
 1.  在`Private`访问修饰符下，在`UStaticMeshComponent* MeshComp`类组件声明下面，添加以下代码以声明玩家投射物的新音频组件：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = Sound)
-    class UAudioComponent* ProjectileMovementSound;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = Sound)
+class UAudioComponent* ProjectileMovementSound;
+```
 
 1.  接下来，在音频组件声明下面添加以下代码，以声明一个新的粒子系统组件：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = Projectile)
-    class UParticleSystemComponent* ProjectileEffect;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = Projectile)
+class UParticleSystemComponent* ProjectileEffect;
+```
 
 与在蓝图中可以定义的属性不同，例如在敌人角色类中，这些效果将成为玩家投射物的组件。这是因为这些效果应该附加到投射物的碰撞组件上，以便它们随着投射物在关卡中移动时移动。
 
 1.  在头文件中声明这两个组件后，打开玩家投射物的源文件，并将以下包含添加到文件顶部的`include`行列表中：
 
 ```cpp
-    #include "Components/AudioComponent.h"
-    #include "Engine/Classes/Particles/ParticleSystemComponent.h"
-    ```
+#include "Components/AudioComponent.h"
+#include "Engine/Classes/Particles/ParticleSystemComponent.h"
+```
 
 您需要引用音频组件和粒子系统类，以便使用`CreateDefaultSubobject`函数创建这些子对象，并将这些组件附加到`RootComponent`。
 
 1.  添加以下行以创建`ProjectileMovementSound`组件的默认子对象，并将此组件附加到`RootComponent`：
 
 ```cpp
-    ProjectileMovementSound = CreateDefaultSubobject<UAudioComponent>  (TEXT("ProjectileMovementSound"));
-      ProjectileMovementSound->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
-    ```
+ProjectileMovementSound = CreateDefaultSubobject<UAudioComponent>  (TEXT("ProjectileMovementSound"));
+  ProjectileMovementSound->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
+```
 
 1.  接下来，添加以下行以创建`ProjectileEffect`组件的默认子对象，并将此组件附加到`RootComponent`：
 
 ```cpp
-    ProjectileEffect = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Projectile   Effect"));
-    ProjectileEffect->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
-    ```
+ProjectileEffect = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Projectile   Effect"));
+ProjectileEffect->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
+```
 
 1.  现在，您已经创建、初始化并将这两个组件附加到`RootComponent`，返回到 Unreal Engine 4 编辑器中重新编译并热重载这些代码更改。
 
@@ -1029,9 +1029,9 @@ UGameplayStatics:SpawnSoundAtLocation
 你添加到项目中的两个主要资产如下：
 
 ```cpp
-    P_Skill_001
-    A_Ability_FireballCast_Cue
-    ```
+P_Skill_001
+A_Ability_FireballCast_Cue
+```
 
 `P_Skill_001`粒子系统资产引用了`Effects`目录中包含的*材质*和*纹理*等其他资产，而`A_Ability_FireballCast_Cue`引用了`Assets`目录中包含的其他*声音波*资产。
 
@@ -1070,8 +1070,8 @@ UGameplayStatics:SpawnSoundAtLocation
 1.  *左键单击*从骨骼层次结构中选择此插座，以查看其当前位置。默认情况下，其位置设置为与`Hips`骨骼相同的位置。以下屏幕截图显示了此位置：![图 14.27：此插座的默认位置位于玩家骨架的中心](img/B16183_14_27.jpg)
 
 ```cpp
-    (X=0.000000,Y=100.000000,Z=0.000000)
-    ```
+(X=0.000000,Y=100.000000,Z=0.000000)
+```
 
 这个位置将更靠近地面和玩家角色的脚。最终位置如下图所示：
 
@@ -1092,8 +1092,8 @@ UGameplayStatics:SpawnSoundAtLocation
 1.  最后，粒子效果的比例有点太大，因此调整投影物的比例，使其值如下：
 
 ```cpp
-    (X=0.500000,Y=0.500000,Z=0.500000)
-    ```
+(X=0.500000,Y=0.500000,Z=0.500000)
+```
 
 现在，当通过此通知播放粒子效果时，其位置和比例将是正确的，如下所示：
 

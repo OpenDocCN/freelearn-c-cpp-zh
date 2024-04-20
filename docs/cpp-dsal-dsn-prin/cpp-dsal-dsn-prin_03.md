@@ -61,113 +61,113 @@
 1.  首先，让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    ```
+#include <iostream>
+#include <vector>
+```
 
 1.  现在，让我们添加`hash_map`类。我们将别名`unsigned int`以避免编写一个很长的名称：
 
 ```cpp
-    using uint = unsigned int;
-    class hash_map
-    {
-        std::vector<int> data;
-    ```
+using uint = unsigned int;
+class hash_map
+{
+    std::vector<int> data;
+```
 
 1.  现在，让我们为此添加一个构造函数，它将接受数据或哈希映射的大小：
 
 ```cpp
-    public:
-    hash_map(size_t n)
-    {
-        data = std::vector<int>(n, -1);
-    }
-    ```
+public:
+hash_map(size_t n)
+{
+    data = std::vector<int>(n, -1);
+}
+```
 
 如图所示，我们使用“-1”来表示元素的缺失。这是我们作为数据使用的唯一负值。
 
 1.  让我们添加`insert`函数：
 
 ```cpp
-    void insert(uint value)
-    {
-        int n = data.size();
-        data[value % n] = value;
-        std::cout << "Inserted " << value << std::endl;
-    }
-    ```
+void insert(uint value)
+{
+    int n = data.size();
+    data[value % n] = value;
+    std::cout << "Inserted " << value << std::endl;
+}
+```
 
 正如我们所看到的，我们并没有真正检查是否已经存在具有相同哈希值的值。我们只是覆盖了已经存在的任何值。因此，对于给定的哈希值，只有最新插入的值将被存储。
 
 1.  让我们编写一个查找函数，看看元素是否存在于映射中：
 
 ```cpp
-    bool find(uint value)
-    {
-        int n = data.size();
-        return (data[value % n] == value);
-    }
-    ```
+bool find(uint value)
+{
+    int n = data.size();
+    return (data[value % n] == value);
+}
+```
 
 我们将简单地检查值是否存在于根据哈希值计算的索引处。
 
 1.  让我们实现一个`remove`函数：
 
 ```cpp
-    void erase(uint value)
-    {
-        int n = data.size();
-        if(data[value % n] == value)
-        {
-    data[value % n] = -1;
-            std::cout << "Removed " << value << std::endl;
-    }
-    }
-    };
-    ```
+void erase(uint value)
+{
+    int n = data.size();
+    if(data[value % n] == value)
+    {
+data[value % n] = -1;
+        std::cout << "Removed " << value << std::endl;
+}
+}
+};
+```
 
 1.  让我们在`main`中编写一个小的 lambda 函数来打印查找的状态：
 
 ```cpp
-    int main()
-    {
-        hash_map map(7);
-        auto print = &
-            {
-                if(map.find(value))
-                    std::cout << value << " found in the hash map";
-                else
-                    std::cout << value << " NOT found in the hash map";
-                std::cout << std::endl;
-            };
-    ```
+int main()
+{
+    hash_map map(7);
+    auto print = &
+        {
+            if(map.find(value))
+                std::cout << value << " found in the hash map";
+            else
+                std::cout << value << " NOT found in the hash map";
+            std::cout << std::endl;
+        };
+```
 
 1.  让我们在地图上使用`insert`和`erase`函数：
 
 ```cpp
-        map.insert(2);
-        map.insert(25);
-        map.insert(290);
-        print(25);
-        print(100);
-        map.insert(100);
-        print(100);
-        map.erase(25);
-    }
-    ```
+    map.insert(2);
+    map.insert(25);
+    map.insert(290);
+    print(25);
+    print(100);
+    map.insert(100);
+    print(100);
+    map.erase(25);
+}
+```
 
 1.  这是程序的输出：
 
 ```cpp
-    Inserted 2
-    Inserted 25
-    Inserted 290
-    25 found in the hash map
-    100 NOT found in the hash map
-    Inserted 100
-    100 found in the hash map
-    Removed 25
-    ```
+Inserted 2
+Inserted 25
+Inserted 290
+25 found in the hash map
+100 NOT found in the hash map
+Inserted 100
+100 found in the hash map
+Removed 25
+```
 
 正如我们所看到的，我们能够找到我们之前插入的大多数值，如预期的那样，除了最后一种情况，其中`100`被`0`覆盖，因为它们具有相同的哈希值。这被称为碰撞，正如我们之前所描述的。在接下来的章节中，我们将看到如何避免这种问题，使我们的结果更准确。
 
@@ -200,115 +200,115 @@
 1.  首先，让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <list>
-    #include <algorithm>
-    ```
+#include <iostream>
+#include <vector>
+#include <list>
+#include <algorithm>
+```
 
 1.  现在，让我们添加`hash_map`类。我们将别名`unsigned int`以避免编写一个很长的名称：
 
 ```cpp
-    using uint = unsigned int;
-    class hash_map
-    {
-        std::vector<std::list<int>> data;
-    ```
+using uint = unsigned int;
+class hash_map
+{
+    std::vector<std::list<int>> data;
+```
 
 1.  现在，让我们为`hash_map`添加一个构造函数，该构造函数将接受数据或哈希映射的大小：
 
 ```cpp
-    public:
-    hash_map(size_t n)
-    {
-        data.resize(n);
-    }
-    ```
+public:
+hash_map(size_t n)
+{
+    data.resize(n);
+}
+```
 
 1.  让我们添加一个`insert`函数：
 
 ```cpp
-    void insert(uint value)
-    {
-        int n = data.size();
-        data[value % n].push_back(value);
-        std::cout << "Inserted " << value << std::endl;
-    }
-    ```
+void insert(uint value)
+{
+    int n = data.size();
+    data[value % n].push_back(value);
+    std::cout << "Inserted " << value << std::endl;
+}
+```
 
 正如我们所看到的，我们总是在数据中插入值。一个替代方法是搜索该值，并仅在该值不存在时插入。
 
 1.  让我们编写查找函数，以查看地图中是否存在元素：
 
 ```cpp
-    bool find(uint value)
-    {
-        int n = data.size();
-        auto& entries = data[value % n];
-        return std::find(entries.begin(), entries.end(), value) != entries.end();
-    }
-    ```
+bool find(uint value)
+{
+    int n = data.size();
+    auto& entries = data[value % n];
+    return std::find(entries.begin(), entries.end(), value) != entries.end();
+}
+```
 
 正如我们所看到的，我们的查找似乎比传统方法更快，但不像之前那样快。这是因为现在它也依赖于数据，以及`n`的值。在这个练习之后，我们将再次回到这一点。
 
 1.  让我们实现一个函数来删除元素：
 
 ```cpp
-    void erase(uint value)
-    {
-        int n = data.size();
-        auto& entries = data[value % n];
-        auto iter = std::find(entries.begin(), entries.end(), value);
+void erase(uint value)
+{
+    int n = data.size();
+    auto& entries = data[value % n];
+    auto iter = std::find(entries.begin(), entries.end(), value);
 
-        if(iter != entries.end())
-        {
-    entries.erase(iter);
-            std::cout << "Removed " << value << std::endl;
-    }
-    }
-    };
-    ```
+    if(iter != entries.end())
+    {
+entries.erase(iter);
+        std::cout << "Removed " << value << std::endl;
+}
+}
+};
+```
 
 1.  让我们编写与上一个练习中相同的`main`函数，并查看其中的区别：
 
 ```cpp
-    int main()
-    {
-        hash_map map(7);
-        auto print = &
-            {
-                if(map.find(value))
-                    std::cout << value << " found in the hash map";
-                else
-                    std::cout << value << " NOT found in the hash map";
-                std::cout << std::endl;
-            };
-    ```
+int main()
+{
+    hash_map map(7);
+    auto print = &
+        {
+            if(map.find(value))
+                std::cout << value << " found in the hash map";
+            else
+                std::cout << value << " NOT found in the hash map";
+            std::cout << std::endl;
+        };
+```
 
 1.  让我们在`map`上使用`insert`和`erase`函数：
 
 ```cpp
-        map.insert(2);
-        map.insert(25);
-        map.insert(290);
-        map.insert(100);
-        map.insert(55);
-        print(100);
-        map.erase(2);
-    }
-    ```
+    map.insert(2);
+    map.insert(25);
+    map.insert(290);
+    map.insert(100);
+    map.insert(55);
+    print(100);
+    map.erase(2);
+}
+```
 
 这是我们程序的输出：
 
 ```cpp
-    Inserted 2
-    Inserted 25
-    Inserted 290
-    Inserted 100
-    Inserted 55
-    100 found in the hash map
-    Removed 2
-    ```
+Inserted 2
+Inserted 25
+Inserted 290
+Inserted 100
+Inserted 55
+100 found in the hash map
+Removed 2
+```
 
 正如我们所看到的，值没有被覆盖，因为我们可以在列表中存储任意数量的值。因此，我们的输出是完全准确和可靠的。
 
@@ -415,228 +415,228 @@
 1.  让我们像往常一样包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    ```
+#include <iostream>
+#include <vector>
+```
 
 1.  让我们为哈希映射添加一个类。这次我们也将单独存储大小：
 
 ```cpp
-    class hash_map
-    {
-        std::vector<int> data1;
-        std::vector<int> data2;
-        int size;
-    ```
+class hash_map
+{
+    std::vector<int> data1;
+    std::vector<int> data2;
+    int size;
+```
 
 正如我们所看到的，我们使用了两个表。
 
 1.  现在，让我们添加相应的哈希函数：
 
 ```cpp
-    int hash1(int key) const
-    {
-        return key % size;
-    }
-    int hash2(int key) const
-    {
-        return (key / size) % size;
-    }
-    ```
+int hash1(int key) const
+{
+    return key % size;
+}
+int hash2(int key) const
+{
+    return (key / size) % size;
+}
+```
 
 在这里，我们将两个函数都保持得非常简单，但这些函数可以根据需求进行调整。
 
 1.  现在，让我们添加一个构造函数，用于设置我们的数据进行初始化：
 
 ```cpp
-    public:
-    hash_map(int n) : size(n)
-    {
-        data1 = std::vector<int>(size, -1);
-        data2 = std::vector<int>(size, -1);
-    }
-    ```
+public:
+hash_map(int n) : size(n)
+{
+    data1 = std::vector<int>(size, -1);
+    data2 = std::vector<int>(size, -1);
+}
+```
 
 正如我们所看到的，我们只是将两个数据表都初始化为空（用 `–1` 表示）。
 
 1.  让我们首先编写一个 `lookup` 函数：
 
 ```cpp
-    std::vector<int>::iterator lookup(int key)
-    {
-        auto hash_value1 = hash1(key);
-        if(data1[hash_value1] == key)
-        {
-            std::cout << "Found " << key << " in first table" << std::endl;
-            return data1.begin() + hash_value1;
-        }
-        auto hash_value2 = hash2(key);
-        if(data2[hash_value2] == key)
-        {
-            std::cout << "Found " << key << " in second table" << std::endl;
-            return data2.begin() + hash_value2;
-        }
-        return data2.end();
-    }
-    ```
+std::vector<int>::iterator lookup(int key)
+{
+    auto hash_value1 = hash1(key);
+    if(data1[hash_value1] == key)
+    {
+        std::cout << "Found " << key << " in first table" << std::endl;
+        return data1.begin() + hash_value1;
+    }
+    auto hash_value2 = hash2(key);
+    if(data2[hash_value2] == key)
+    {
+        std::cout << "Found " << key << " in second table" << std::endl;
+        return data2.begin() + hash_value2;
+    }
+    return data2.end();
+}
+```
 
 我们试图在两个表中找到键，并在找到时返回相关的迭代器。我们并不总是需要迭代器，但我们将在删除函数中使用它以简化事情。如果未找到元素，我们将返回`data2`表的末尾。正如我们所看到的，查找将具有*O(1)*的时间复杂度，并且将被执行得非常快速。
 
 1.  让我们实现一个删除函数：
 
 ```cpp
-    void erase(int key)
-    {
-        auto position = lookup(key);
-        if(position != data2.end())
-        {
-            *position = -1;
-            std::cout << "Removed the element " << key << std::endl;
-        }
-        else
-        {
-            std::cout << "Key " << key << " not found." << std::endl;
-        }
-    }
-    ```
+void erase(int key)
+{
+    auto position = lookup(key);
+    if(position != data2.end())
+    {
+        *position = -1;
+        std::cout << "Removed the element " << key << std::endl;
+    }
+    else
+    {
+        std::cout << "Key " << key << " not found." << std::endl;
+    }
+}
+```
 
 正如我们所看到的，大部分工作是通过调用`lookup`函数完成的。我们只需要验证结果并重置值以将其从表中移除。
 
 1.  对于插入，我们将在不同的函数中实现实际逻辑，因为它将是递归的。我们还想要避免循环。然而，保留所有访问过的值的记录可能代价高昂。为了避免这种情况，我们将简单地在函数被调用超过 n 次时停止函数。由于递归深度 n 的阈值取决于我们的内存（或哈希表大小），这样可以获得良好的性能：
 
 ```cpp
-    void insert(int key)
-    {
-        insert_impl(key, 0, 1);
-    }
-    void insert_impl(int key, int cnt, int table)
-    {
-        if(cnt >= size)
-        {
-            std::cout << "Cycle detected, while inserting " << key << ". Rehashing required." << std::endl;
-            return;
-        }
-        if(table == 1)
-        {
-    int hash = hash1(key);
-            if(data1[hash] == -1)
-            {
-                std::cout << "Inserted key " << key << " in table " << table << std::endl;
-                data1[hash] = key;
-            }
-            else
-            {
-                int old = data1[hash];
-                data1[hash] = key;
-                std::cout << "Inserted key " << key << " in table " << table << " by replacing " << old << std::endl;
-                insert_impl(old, cnt + 1, 2);
-            }
-        }
-        else
-        {
-    int hash = hash2(key);
-            if(data2[hash] == -1)
-            {
-                std::cout << "Inserted key " << key << " in table " << table << std::endl;
-                data2[hash] = key;
-            }
-            else
-            {
-                int old = data2[hash];
-                data2[hash] = key;
-                std::cout << "Inserted key " << key << " in table " << table << " by replacing " << old << std::endl;
-                insert_impl(old, cnt + 1, 2);
-            }
-        }
-    }
-    ```
+void insert(int key)
+{
+    insert_impl(key, 0, 1);
+}
+void insert_impl(int key, int cnt, int table)
+{
+    if(cnt >= size)
+    {
+        std::cout << "Cycle detected, while inserting " << key << ". Rehashing required." << std::endl;
+        return;
+    }
+    if(table == 1)
+    {
+int hash = hash1(key);
+        if(data1[hash] == -1)
+        {
+            std::cout << "Inserted key " << key << " in table " << table << std::endl;
+            data1[hash] = key;
+        }
+        else
+        {
+            int old = data1[hash];
+            data1[hash] = key;
+            std::cout << "Inserted key " << key << " in table " << table << " by replacing " << old << std::endl;
+            insert_impl(old, cnt + 1, 2);
+        }
+    }
+    else
+    {
+int hash = hash2(key);
+        if(data2[hash] == -1)
+        {
+            std::cout << "Inserted key " << key << " in table " << table << std::endl;
+            data2[hash] = key;
+        }
+        else
+        {
+            int old = data2[hash];
+            data2[hash] = key;
+            std::cout << "Inserted key " << key << " in table " << table << " by replacing " << old << std::endl;
+            insert_impl(old, cnt + 1, 2);
+        }
+    }
+}
+```
 
 正如我们所看到的，实现需要三个参数-键、我们要插入键的表以及递归调用堆栈的计数，以跟踪我们已经改变位置的元素数量。
 
 1.  现在，让我们编写一个实用函数来打印哈希表中的数据。虽然这并不是真正必要的，也不应该暴露，但我们将这样做，以便更好地了解我们的插入函数如何在内部管理数据：
 
 ```cpp
-    void print()
-    {
-        std::cout << "Index: ";
-        for(int i = 0; i < size; i++)
-            std::cout << i << '\t';
-        std::cout << std::endl;
-        std::cout << "Data1: ";
-        for(auto i: data1)
-            std::cout << i << '\t';
-        std::cout << std::endl;
-        std::cout << "Data2: ";
-        for(auto i: data2)
-            std::cout << i << '\t';
-        std::cout << std::endl;
-    }
-    };
-    ```
+void print()
+{
+    std::cout << "Index: ";
+    for(int i = 0; i < size; i++)
+        std::cout << i << '\t';
+    std::cout << std::endl;
+    std::cout << "Data1: ";
+    for(auto i: data1)
+        std::cout << i << '\t';
+    std::cout << std::endl;
+    std::cout << "Data2: ";
+    for(auto i: data2)
+        std::cout << i << '\t';
+    std::cout << std::endl;
+}
+};
+```
 
 1.  现在，让我们编写`main`函数，以便我们可以使用这个哈希映射：
 
 ```cpp
-    int main()
-    {
-        hash_map map(7);
-        map.print();
-        map.insert(10);
-        map.insert(20);
-        map.insert(30);
-        std::cout << std::endl;
-        map.insert(104);
-        map.insert(2);
-        map.insert(70);
-        map.insert(9);
-        map.insert(90);
-        map.insert(2);
-        map.insert(7);
-        std::cout << std::endl;
-        map.print();
-        std::cout << std::endl;
-        map.insert(14);  // This will cause cycle.
-    }
-    ```
+int main()
+{
+    hash_map map(7);
+    map.print();
+    map.insert(10);
+    map.insert(20);
+    map.insert(30);
+    std::cout << std::endl;
+    map.insert(104);
+    map.insert(2);
+    map.insert(70);
+    map.insert(9);
+    map.insert(90);
+    map.insert(2);
+    map.insert(7);
+    std::cout << std::endl;
+    map.print();
+    std::cout << std::endl;
+    map.insert(14);  // This will cause cycle.
+}
+```
 
 1.  您应该看到以下输出：
 
 ```cpp
-    Index: 0    1    2    3    4    5    6    
-    Data1: -1    -1    -1    -1    -1    -1    -1    
-    Data2: -1    -1    -1    -1    -1    -1    -1    
-    Inserted key 10 in table 1
-    Inserted key 20 in table 1
-    Inserted key 30 in table 1
-    Inserted key 104 in table 1 by replacing 20
-    Inserted key 20 in table 2
-    Inserted key 2 in table 1 by replacing 30
-    Inserted key 30 in table 2
-    Inserted key 70 in table 1
-    Inserted key 9 in table 1 by replacing 2
-    Inserted key 2 in table 2
-    Inserted key 90 in table 1 by replacing 104
-    Inserted key 104 in table 2 by replacing 2
-    Inserted key 2 in table 1 by replacing 9
-    Inserted key 9 in table 2
-    Inserted key 2 in table 1 by replacing 2
-    Inserted key 2 in table 2 by replacing 104
-    Inserted key 104 in table 1 by replacing 90
-    Inserted key 90 in table 2
-    Inserted key 7 in table 1 by replacing 70
-    Inserted key 70 in table 2
-    Index: 0    1    2    3    4    5     6
-    Data1: 7   -1    2    10  -1   -1     104
-    Data2: 2    9    20   70   30   90   -1
-    Inserted key 14 in table 1 by replacing 7
-    Inserted key 7 in table 2 by replacing 9
-    Inserted key 9 in table 1 by replacing 2
-    Inserted key 2 in table 2 by replacing 2
-    Inserted key 2 in table 1 by replacing 9
-    Inserted key 9 in table 2 by replacing 7
-    Inserted key 7 in table 1 by replacing 14
-    Cycle detected, while inserting 14\. Rehashing required.
-    ```
+Index: 0    1    2    3    4    5    6    
+Data1: -1    -1    -1    -1    -1    -1    -1    
+Data2: -1    -1    -1    -1    -1    -1    -1    
+Inserted key 10 in table 1
+Inserted key 20 in table 1
+Inserted key 30 in table 1
+Inserted key 104 in table 1 by replacing 20
+Inserted key 20 in table 2
+Inserted key 2 in table 1 by replacing 30
+Inserted key 30 in table 2
+Inserted key 70 in table 1
+Inserted key 9 in table 1 by replacing 2
+Inserted key 2 in table 2
+Inserted key 90 in table 1 by replacing 104
+Inserted key 104 in table 2 by replacing 2
+Inserted key 2 in table 1 by replacing 9
+Inserted key 9 in table 2
+Inserted key 2 in table 1 by replacing 2
+Inserted key 2 in table 2 by replacing 104
+Inserted key 104 in table 1 by replacing 90
+Inserted key 90 in table 2
+Inserted key 7 in table 1 by replacing 70
+Inserted key 70 in table 2
+Index: 0    1    2    3    4    5     6
+Data1: 7   -1    2    10  -1   -1     104
+Data2: 2    9    20   70   30   90   -1
+Inserted key 14 in table 1 by replacing 7
+Inserted key 7 in table 2 by replacing 9
+Inserted key 9 in table 1 by replacing 2
+Inserted key 2 in table 2 by replacing 2
+Inserted key 2 in table 1 by replacing 9
+Inserted key 9 in table 2 by replacing 7
+Inserted key 7 in table 1 by replacing 14
+Cycle detected, while inserting 14\. Rehashing required.
+```
 
 正如我们所看到的，输出显示了内部维护两个表的完整跟踪。我们打印了内部步骤，因为一些值正在移动。我们可以从跟踪中看到，`14`的最后插入导致了一个循环。插入的深度已经超过了`7`。同时，我们还可以看到两个表几乎已经满了。我们已经填充了`14`中的`11`个元素，因此在每一步替换值的机会都在增加。我们还在循环之前打印了表。
 
@@ -691,105 +691,105 @@ C++提供了一个名为`std::hash<std::string>(std::string)`的函数，我们�
 1.  包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <unordered_map>
-    #include <unordered_set>
-    ```
+#include <iostream>
+#include <unordered_map>
+#include <unordered_set>
+```
 
 1.  现在，让我们编写一些简单的`print`函数，以使我们的`main`函数更易读：
 
 ```cpp
-    void print(const std::unordered_set<int>& container)
-    {
-        for(const auto& element: container)
-            std::cout << element << " ";
-        std::cout << std::endl;
-    }
-    void print(const std::unordered_map<int, int>& container)
-    {
-        for(const auto& element: container)
-            std::cout << element.first << ": " << element.second << ", ";
-        std::cout << std::endl;
-    }
-    ```
+void print(const std::unordered_set<int>& container)
+{
+    for(const auto& element: container)
+        std::cout << element << " ";
+    std::cout << std::endl;
+}
+void print(const std::unordered_map<int, int>& container)
+{
+    for(const auto& element: container)
+        std::cout << element.first << ": " << element.second << ", ";
+    std::cout << std::endl;
+}
+```
 
 1.  同样，添加对`find`函数的包装器，以保持代码整洁：
 
 ```cpp
-    void find(const std::unordered_set<int>& container, const auto& element)
-    {
-        if(container.find(element) == container.end())
-            std::cout << element << " not found" << std::endl;
-        else
-            std::cout << element << " found" << std::endl;
-    }
-    void find(const std::unordered_map<int, int>& container, const auto& element)
-    {
-        auto it = container.find(element);
-        if(it == container.end())
-            std::cout << element << " not found" << std::endl;
-        else
-            std::cout << element << " found with value=" << it->second << std::endl;
-    }
-    ```
+void find(const std::unordered_set<int>& container, const auto& element)
+{
+    if(container.find(element) == container.end())
+        std::cout << element << " not found" << std::endl;
+    else
+        std::cout << element << " found" << std::endl;
+}
+void find(const std::unordered_map<int, int>& container, const auto& element)
+{
+    auto it = container.find(element);
+    if(it == container.end())
+        std::cout << element << " not found" << std::endl;
+    else
+        std::cout << element << " found with value=" << it->second << std::endl;
+}
+```
 
 1.  现在，编写`main`函数，以便我们可以使用`unordered_set`和`unordered_map`，然后对其执行各种操作。我们将查找、插入和删除元素：
 
 ```cpp
-    int main()
-    {
-        std::cout << "Set example: " << std::endl;
-        std::unordered_set<int> set1 = {1, 2, 3, 4, 5};
-        std::cout << "Initial set1: ";
-        print(set1);
-        set1.insert(2);
-        std::cout << "After inserting 2: ";
-        print(set1);
-        set1.insert(10);
-        set1.insert(351);
-        std::cout << "After inserting 10 and 351: ";
-        print(set1);
-        find(set1, 4);
-        find(set1, 100);
-        set1.erase(2);
-        std::cout << "Erased 2 from set1" << std::endl;
-        find(set1, 2);
-        std::cout << "Map example: " << std::endl;
-        std::unordered_map<int, int> squareMap;
-        squareMap.insert({2, 4});
-        squareMap[3] = 9;
-        std::cout << "After inserting squares of 2 and 3: ";
-        print(squareMap);
-        squareMap[30] = 900;
-        squareMap[20] = 400;
-        std::cout << "After inserting squares of 20 and 30: ";
-        print(squareMap);
-        find(squareMap, 10);
-        find(squareMap, 20);
-        std::cout << "Value of map[3]=" << squareMap[3] << std::endl;
-        std::cout << "Value of map[100]=" << squareMap[100] << std::endl;
-    }
-    ```
+int main()
+{
+    std::cout << "Set example: " << std::endl;
+    std::unordered_set<int> set1 = {1, 2, 3, 4, 5};
+    std::cout << "Initial set1: ";
+    print(set1);
+    set1.insert(2);
+    std::cout << "After inserting 2: ";
+    print(set1);
+    set1.insert(10);
+    set1.insert(351);
+    std::cout << "After inserting 10 and 351: ";
+    print(set1);
+    find(set1, 4);
+    find(set1, 100);
+    set1.erase(2);
+    std::cout << "Erased 2 from set1" << std::endl;
+    find(set1, 2);
+    std::cout << "Map example: " << std::endl;
+    std::unordered_map<int, int> squareMap;
+    squareMap.insert({2, 4});
+    squareMap[3] = 9;
+    std::cout << "After inserting squares of 2 and 3: ";
+    print(squareMap);
+    squareMap[30] = 900;
+    squareMap[20] = 400;
+    std::cout << "After inserting squares of 20 and 30: ";
+    print(squareMap);
+    find(squareMap, 10);
+    find(squareMap, 20);
+    std::cout << "Value of map[3]=" << squareMap[3] << std::endl;
+    std::cout << "Value of map[100]=" << squareMap[100] << std::endl;
+}
+```
 
 1.  这个程序的可能输出之一如下。集合和映射中元素的顺序可能不同，因此被称为*无序*集合/映射：
 
 ```cpp
-    Set example: 
-    Initial set1: 5 4 3 2 1 
-    After inserting 2: 5 4 3 2 1 
-    After inserting 10 and 351: 351 10 1 2 3 4 5 
-    4 found
-    100 not found
-    Erased 2 from set1
-    2 not found
-    Map example: 
-    After inserting squares of 2 and 3: 3: 9, 2: 4, 
-    After inserting squares of 20 and 30: 20: 400, 30: 900, 2: 4, 3: 9, 
-    10 not found
-    20 found with value=400
-    Value of map[3]=9
-    Value of map[100]=0
-    ```
+Set example: 
+Initial set1: 5 4 3 2 1 
+After inserting 2: 5 4 3 2 1 
+After inserting 10 and 351: 351 10 1 2 3 4 5 
+4 found
+100 not found
+Erased 2 from set1
+2 not found
+Map example: 
+After inserting squares of 2 and 3: 3: 9, 2: 4, 
+After inserting squares of 20 and 30: 20: 400, 30: 900, 2: 4, 3: 9, 
+10 not found
+20 found with value=400
+Value of map[3]=9
+Value of map[100]=0
+```
 
 正如我们所看到的，我们可以向这两个容器插入、查找和删除元素。这些操作都按预期工作。如果我们将这些操作与其他容器（如 vector、list、array、deque 等）进行基准测试，性能会更快。
 
@@ -902,112 +902,112 @@ std::unordered_map<Car, std::string, CarHasher, CarComparator> carDescriptionMap
 1.  让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    ```
+#include <iostream>
+#include <vector>
+```
 
 1.  现在，让我们为我们的 Bloom 过滤器创建一个类，并添加所需的数据成员：
 
 ```cpp
-    class bloom_filter
-    {
-        std::vector<bool> data;
-        int nBits;
-    ```
+class bloom_filter
+{
+    std::vector<bool> data;
+    int nBits;
+```
 
 1.  现在，让我们添加所需的哈希函数。同样，我们将使用非常基本的哈希函数：
 
 ```cpp
-    int hash(int num, int key)
-    {
-        switch(num)
-        {
-        case 0:
-            return key % nBits;
-        case 1:
-            return (key / 7) % nBits;
-        case 2:
-            return (key / 11) % nBits;
-        }
-        return 0;
-    }
-    ```
+int hash(int num, int key)
+{
+    switch(num)
+    {
+    case 0:
+        return key % nBits;
+    case 1:
+        return (key / 7) % nBits;
+    case 2:
+        return (key / 11) % nBits;
+    }
+    return 0;
+}
+```
 
 如您所见，我们使用单个函数，参数称为`num`，确定哈希函数，以避免其他函数中不必要的`if`-`else`块。这也很容易扩展；我们只需要为每个哈希函数添加一个情况。
 
 1.  让我们为 Bloom 过滤器添加一个构造函数：
 
 ```cpp
-    public:
-    bloom_filter(int n) : nBits(n)
-    {
-        data = std::vector<bool>(nBits, false);
-    }
-    ```
+public:
+bloom_filter(int n) : nBits(n)
+{
+    data = std::vector<bool>(nBits, false);
+}
+```
 
 1.  现在，让我们添加一个`lookup`函数：
 
 ```cpp
-    void lookup(int key)
-    {
-        bool result = data[hash(0, key)] & data[hash(1, key)] & data[hash(2, key)];
-        if(result)
-        {
-            std::cout << key << " may be present." << std::endl;
-        }
-        else
-        {
-            std::cout << key << " is not present." << std::endl;
-        }
-    }
-    ```
+void lookup(int key)
+{
+    bool result = data[hash(0, key)] & data[hash(1, key)] & data[hash(2, key)];
+    if(result)
+    {
+        std::cout << key << " may be present." << std::endl;
+    }
+    else
+    {
+        std::cout << key << " is not present." << std::endl;
+    }
+}
+```
 
 如预期的那样，`lookup`函数非常简单。它检查所有必需的位是否都设置为`1`。如果有可变数量的哈希函数，我们总是可以循环遍历所有这些函数，以检查所有相应的位是否都设置为`1`。为了使我们的话更准确，我们还说由于误报的可能性，一个键*可能存在*。另一方面，如果`lookup`返回负数，我们完全确定一个键不存在。
 
 1.  甚至插入函数同样简单：
 
 ```cpp
-    void insert(int key)
-    {
-        data[hash(0, key)] = true;
-        data[hash(1, key)] = true;
-        data[hash(2, key)] = true;
-        std::cout << key << " inserted." << std::endl;
-    }
-    };
-    ```
+void insert(int key)
+{
+    data[hash(0, key)] = true;
+    data[hash(1, key)] = true;
+    data[hash(2, key)] = true;
+    std::cout << key << " inserted." << std::endl;
+}
+};
+```
 
 1.  现在，让我们添加`main`函数，以便我们可以使用这个类：
 
 ```cpp
-    int main()
-    {
-    bloom_filter bf(11);
-    bf.insert(100);
-    bf.insert(54);
-    bf.insert(82);
-    bf.lookup(5);
-    bf.lookup(50);
-    bf.lookup(2);
-    bf.lookup(100);
-    bf.lookup(8);
-    bf.lookup(65);
-    }
-    ```
+int main()
+{
+bloom_filter bf(11);
+bf.insert(100);
+bf.insert(54);
+bf.insert(82);
+bf.lookup(5);
+bf.lookup(50);
+bf.lookup(2);
+bf.lookup(100);
+bf.lookup(8);
+bf.lookup(65);
+}
+```
 
 1.  您应该看到以下输出：
 
 ```cpp
-    100 inserted.
-    54 inserted.
-    82 inserted.
-    5 may be present.
-    50 is not present.
-    2 is not present.
-    100 may be present.
-    8 is not present.
-    65 may be present.
-    ```
+100 inserted.
+54 inserted.
+82 inserted.
+5 may be present.
+50 is not present.
+2 is not present.
+100 may be present.
+8 is not present.
+65 may be present.
+```
 
 正如我们所看到的，有一些误报，但没有错误的否定。
 

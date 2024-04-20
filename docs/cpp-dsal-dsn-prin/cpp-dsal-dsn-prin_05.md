@@ -59,69 +59,69 @@
 1.  首先添加所需的头文件并创建用于计算等待时间和输入/输出的函数：
 
 ```cpp
-    #include <iostream>
-    #include <algorithm>
-    #include <vector>
-    #include <random>
-    #include <numeric>
-    // Given a set of service times, computes the service times for all users
-    template<typename T>
-    auto compute_waiting_times(std::vector<T>& service_times)
-    {
-        std::vector<T> W(service_times.size());
-        W[0] = 0;
+#include <iostream>
+#include <algorithm>
+#include <vector>
+#include <random>
+#include <numeric>
+// Given a set of service times, computes the service times for all users
+template<typename T>
+auto compute_waiting_times(std::vector<T>& service_times)
+{
+    std::vector<T> W(service_times.size());
+    W[0] = 0;
 
-        for (auto i = 1; i < service_times.size(); i++)
-            W[i] = W[i - 1] + service_times[i - 1];
-        return W;
-    }
-    // Generic function to print a vector
-    template<typename T>
-    void print_vector(std::vector<T>& V)
-    {
-        for (auto& i : V)
-            std::cout << i << " ";
-        std::cout << std::endl;
-    }
-    template<typename T>
-    void compute_and_print_waiting_times(std::vector<T>& service_times)
-    {
-        auto waiting_times = compute_waiting_times<int>(service_times);
+    for (auto i = 1; i < service_times.size(); i++)
+        W[i] = W[i - 1] + service_times[i - 1];
+    return W;
+}
+// Generic function to print a vector
+template<typename T>
+void print_vector(std::vector<T>& V)
+{
+    for (auto& i : V)
+        std::cout << i << " ";
+    std::cout << std::endl;
+}
+template<typename T>
+void compute_and_print_waiting_times(std::vector<T>& service_times)
+{
+    auto waiting_times = compute_waiting_times<int>(service_times);
 
-        std::cout << "Service times: " << std::endl;
-        print_vector<T>(service_times);
-        std::cout << "Waiting times: " << std::endl;
-        print_vector<T>(waiting_times);
-        std::cout << "Average waiting time = "
-            << std::accumulate(waiting_times.begin(),            waiting_times.end(), 0.0) /
-            waiting_times.size();
-        std::cout<< std::endl;
-    }
-    ```
+    std::cout << "Service times: " << std::endl;
+    print_vector<T>(service_times);
+    std::cout << "Waiting times: " << std::endl;
+    print_vector<T>(waiting_times);
+    std::cout << "Average waiting time = "
+        << std::accumulate(waiting_times.begin(),            waiting_times.end(), 0.0) /
+        waiting_times.size();
+    std::cout<< std::endl;
+}
+```
 
 1.  添加主求解器和驱动代码，如下所示：
 
 ```cpp
-    void shortest_job_first(size_t size)
-    {
-        std::vector<int> service_times;
-        std::random_device rd;
-        std::mt19937 rand(rd());
-        std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
-        // Insert random elements as service times
-        service_times.reserve(size);
-        for (auto i = 0; i < size; i++)
-            service_times.push_back(uniform_dist(rand));
-        compute_and_print_waiting_times<int>(service_times);
-        // Reorder the elements in the queue
-        std::sort(service_times.begin(), service_times.end());
-        compute_and_print_waiting_times<int>(service_times);
-    }
-    int main(int argc, char* argv[])
-    {
-        shortest_job_first(10);
-    }
-    ```
+void shortest_job_first(size_t size)
+{
+    std::vector<int> service_times;
+    std::random_device rd;
+    std::mt19937 rand(rd());
+    std::uniform_int_distribution<std::mt19937::result_type> uniform_dist(1, size);
+    // Insert random elements as service times
+    service_times.reserve(size);
+    for (auto i = 0; i < size; i++)
+        service_times.push_back(uniform_dist(rand));
+    compute_and_print_waiting_times<int>(service_times);
+    // Reorder the elements in the queue
+    std::sort(service_times.begin(), service_times.end());
+    compute_and_print_waiting_times<int>(service_times);
+}
+int main(int argc, char* argv[])
+{
+    shortest_job_first(10);
+}
+```
 
 1.  编译并运行代码！你的输出应该如下所示：
 
@@ -166,143 +166,143 @@
 1.  首先，我们将添加所需的头文件并定义一个`Object`结构，它将代表我们解决方案中的一个物品：
 
 ```cpp
-    #include <iostream>
-    #include <algorithm>
-    #include <vector>
-    #include <random>
-    #include <numeric>
-    template <typename weight_type, 
-        typename value_type, 
-        typename fractional_type>
-    struct Object
-    {
-        using Wtype = weight_type;
-        using Vtype = value_type;
-        using Ftype = fractional_type;
-        Wtype weight;
-        Vtype value;
-        Ftype value_per_unit_weight;
-        // NOTE: The following overloads are to be used for std::sort() and I/O
-        inline bool operator< (const Object<Wtype,Vtype,Ftype>& obj) const
-        {
-            // An object is better or worse than another object only on the
-            // basis of its value per unit weight
-            return this->value_per_unit_weight < obj.value_per_unit_weight;
-        }
-        inline bool operator== (const Object<Wtype, Vtype, Ftype>& obj) const
-        {
-            // An object is equivalent to another object only if 
-            // its value per unit weight is equal
-            return this->value_per_unit_weight == obj.value_per_unit_weight;
-        }
-        // Overloads the << operator so an object can be written directly to a stream
-        // e.g. Can be used as std::cout << obj << std::endl;
-        template <typename Wtype,
-            typename Vtype,
-            typename Ftype>
-        friend std::ostream& operator<<(std::ostream& os, 
-                             const Object<Wtype,Vtype,Ftype>& obj);
-    };
-    template <typename Wtype,
-        typename Vtype,
-        typename Ftype>
-    std::ostream& operator<<(std::ostream& os, const Object<Wtype,Vtype,Ftype>& obj)
-    {
-        os << "Value: "<<obj.value 
-        << "\t Weight: " << obj.weight
-            <<"\t Value/Unit Weight: " << obj.value_per_unit_weight;
-        return os;
-    }
-    ```
+#include <iostream>
+#include <algorithm>
+#include <vector>
+#include <random>
+#include <numeric>
+template <typename weight_type, 
+    typename value_type, 
+    typename fractional_type>
+struct Object
+{
+    using Wtype = weight_type;
+    using Vtype = value_type;
+    using Ftype = fractional_type;
+    Wtype weight;
+    Vtype value;
+    Ftype value_per_unit_weight;
+    // NOTE: The following overloads are to be used for std::sort() and I/O
+    inline bool operator< (const Object<Wtype,Vtype,Ftype>& obj) const
+    {
+        // An object is better or worse than another object only on the
+        // basis of its value per unit weight
+        return this->value_per_unit_weight < obj.value_per_unit_weight;
+    }
+    inline bool operator== (const Object<Wtype, Vtype, Ftype>& obj) const
+    {
+        // An object is equivalent to another object only if 
+        // its value per unit weight is equal
+        return this->value_per_unit_weight == obj.value_per_unit_weight;
+    }
+    // Overloads the << operator so an object can be written directly to a stream
+    // e.g. Can be used as std::cout << obj << std::endl;
+    template <typename Wtype,
+        typename Vtype,
+        typename Ftype>
+    friend std::ostream& operator<<(std::ostream& os, 
+                         const Object<Wtype,Vtype,Ftype>& obj);
+};
+template <typename Wtype,
+    typename Vtype,
+    typename Ftype>
+std::ostream& operator<<(std::ostream& os, const Object<Wtype,Vtype,Ftype>& obj)
+{
+    os << "Value: "<<obj.value 
+    << "\t Weight: " << obj.weight
+        <<"\t Value/Unit Weight: " << obj.value_per_unit_weight;
+    return os;
+}
+```
 
 请注意，我们已经重载了`<`和`==`运算符，因为我们将在`objects`的向量上使用`std::sort()`。
 
 1.  分数背包求解器的代码如下：
 
 ```cpp
-    template<typename weight_type, 
-        typename value_type, 
-        typename fractional_type>
-    auto fill_knapsack(std::vector<Object<weight_type, value_type,fractional_type>>& objects, 
-                        weight_type knapsack_capacity)
-    {
+template<typename weight_type, 
+    typename value_type, 
+    typename fractional_type>
+auto fill_knapsack(std::vector<Object<weight_type, value_type,fractional_type>>& objects, 
+                    weight_type knapsack_capacity)
+{
 
-        std::vector<Object<weight_type, value_type, fractional_type>> knapsack_contents;
-        knapsack_contents.reserve(objects.size());
+    std::vector<Object<weight_type, value_type, fractional_type>> knapsack_contents;
+    knapsack_contents.reserve(objects.size());
 
-        // Sort objects in the decreasing order
-        std::sort(objects.begin(), objects.end());
-        std::reverse(objects.begin(), objects.end());
-        // Add the 'best' objects to the knapsack
-        auto current_object = objects.begin();
-        weight_type current_total_weight = 0;
-        while (current_total_weight <= knapsack_capacity && 
-    current_object != objects.end())
-        {
-            knapsack_contents.push_back(*current_object);
+    // Sort objects in the decreasing order
+    std::sort(objects.begin(), objects.end());
+    std::reverse(objects.begin(), objects.end());
+    // Add the 'best' objects to the knapsack
+    auto current_object = objects.begin();
+    weight_type current_total_weight = 0;
+    while (current_total_weight <= knapsack_capacity && 
+current_object != objects.end())
+    {
+        knapsack_contents.push_back(*current_object);
 
-            current_total_weight += current_object->weight;
-            current_object++;
-        }
-        // Since the last object overflows the knapsack, adjust weight
-        auto weight_of_last_obj_to_remove = current_total_weight - knapsack_capacity;
-        knapsack_contents.back().weight -= weight_of_last_obj_to_remove;
-        knapsack_contents.back().value -= knapsack_contents.back().value_per_unit_weight * 
-                            weight_of_last_obj_to_remove;
-        return knapsack_contents;
-    }
-    ```
+        current_total_weight += current_object->weight;
+        current_object++;
+    }
+    // Since the last object overflows the knapsack, adjust weight
+    auto weight_of_last_obj_to_remove = current_total_weight - knapsack_capacity;
+    knapsack_contents.back().weight -= weight_of_last_obj_to_remove;
+    knapsack_contents.back().value -= knapsack_contents.back().value_per_unit_weight * 
+                        weight_of_last_obj_to_remove;
+    return knapsack_contents;
+}
+```
 
 前面的函数按照价值/重量比的递减顺序对物品进行排序，然后选择所有可以放入背包的物品的分数，直到背包装满为止。
 
 1.  最后，为了测试我们的实现，添加以下测试和驱动代码：
 
 ```cpp
-    void test_fractional_knapsack(unsigned num_objects, unsigned knapsack_capacity)
-    {
-        using weight_type = unsigned;
-        using value_type = double;
-        using fractional_type = double;
-        // Initialize the Random Number Generator
-        std::random_device rd;
-        std::mt19937 rand(rd());
-        std::uniform_int_distribution<std::mt19937::result_type> 
-    uniform_dist(1, num_objects);
+void test_fractional_knapsack(unsigned num_objects, unsigned knapsack_capacity)
+{
+    using weight_type = unsigned;
+    using value_type = double;
+    using fractional_type = double;
+    // Initialize the Random Number Generator
+    std::random_device rd;
+    std::mt19937 rand(rd());
+    std::uniform_int_distribution<std::mt19937::result_type> 
+uniform_dist(1, num_objects);
 
-        // Create a vector of objects
-        std::vector<Object<weight_type, value_type, fractional_type>> objects;
-        objects.reserve(num_objects);
-        for (auto i = 0; i < num_objects; i++)
-        {
-            // Every object is initialized with a random weight and value
-            auto weight = uniform_dist(rand);
-            auto value = uniform_dist(rand);
-            auto obj = Object<weight_type, value_type, fractional_type> { 
-                static_cast<weight_type>(weight), 
-                static_cast<value_type>(value), 
-                static_cast<fractional_type>(value) / weight 
-            };
-            objects.push_back(obj);
-        }
-        // Display the set of objects
-        std::cout << "Objects available: " << std::endl;
-        for (auto& o : objects)
-            std::cout << o << std::endl;
-        std::cout << std::endl;
-        // Arbitrarily assuming that the total knapsack capacity is 25 units
-        auto solution = fill_knapsack(objects, knapsack_capacity);
-        // Display items selected to be in the knapsack
-        std::cout << "Objects selected to be in the knapsack (max capacity = "
-            << knapsack_capacity<< "):" << std::endl;
-        for (auto& o : solution)
-            std::cout << o << std::endl;
-        std::cout << std::endl;
-    }
-    int main(int argc, char* argv[])
-    {
-        test_fractional_knapsack(10, 25);
-    }
-    ```
+    // Create a vector of objects
+    std::vector<Object<weight_type, value_type, fractional_type>> objects;
+    objects.reserve(num_objects);
+    for (auto i = 0; i < num_objects; i++)
+    {
+        // Every object is initialized with a random weight and value
+        auto weight = uniform_dist(rand);
+        auto value = uniform_dist(rand);
+        auto obj = Object<weight_type, value_type, fractional_type> { 
+            static_cast<weight_type>(weight), 
+            static_cast<value_type>(value), 
+            static_cast<fractional_type>(value) / weight 
+        };
+        objects.push_back(obj);
+    }
+    // Display the set of objects
+    std::cout << "Objects available: " << std::endl;
+    for (auto& o : objects)
+        std::cout << o << std::endl;
+    std::cout << std::endl;
+    // Arbitrarily assuming that the total knapsack capacity is 25 units
+    auto solution = fill_knapsack(objects, knapsack_capacity);
+    // Display items selected to be in the knapsack
+    std::cout << "Objects selected to be in the knapsack (max capacity = "
+        << knapsack_capacity<< "):" << std::endl;
+    for (auto& o : solution)
+        std::cout << o << std::endl;
+    std::cout << std::endl;
+}
+int main(int argc, char* argv[])
+{
+    test_fractional_knapsack(10, 25);
+}
+```
 
 前面的函数创建物品并使用 STL 随机数生成器中的随机数据对其进行初始化。接下来，它调用我们的分数背包求解器的实现，然后显示结果。
 
@@ -485,192 +485,192 @@ MST 问题的一个现实应用是设计供水和交通网络，因为设计者�
 1.  开始添加以下头文件并声明`Graph`数据结构：
 
 ```cpp
-    #include<iostream>
-    #include<vector>
-    #include<algorithm>
-    #include<queue>
-    #include<map>
-    template <typename T> class Graph;
-    ```
+#include<iostream>
+#include<vector>
+#include<algorithm>
+#include<queue>
+#include<map>
+template <typename T> class Graph;
+```
 
 1.  首先，我们将实现不相交集：
 
 ```cpp
-    template<typename T>
-    class SimpleDisjointSet
-    {
-    private:
-        struct Node
-        {
-            T data;
-            Node(T _data) : data(_data)
-            {}
-            bool operator!=(const Node& n) const
-            {
-                return this->data != n.data;
-            }
-        };
-        // Store the forest
-        std::vector<Node> nodes;
-        std::vector<size_t> parent;
-        std::vector<size_t> rank;
-    ```
+template<typename T>
+class SimpleDisjointSet
+{
+private:
+    struct Node
+    {
+        T data;
+        Node(T _data) : data(_data)
+        {}
+        bool operator!=(const Node& n) const
+        {
+            return this->data != n.data;
+        }
+    };
+    // Store the forest
+    std::vector<Node> nodes;
+    std::vector<size_t> parent;
+    std::vector<size_t> rank;
+```
 
 1.  添加类的构造函数并实现`Make-set`和`Find`操作，如下所示：
 
 ```cpp
-    public:
-        SimpleDisjointSet(size_t N)
-        {
-            nodes.reserve(N);
-            parent.reserve(N);
-            rank.reserve(N);
-        }
-        void add_set(const T& x)
-        {
-            nodes.emplace_back(x);
-            parent.emplace_back(nodes.size() - 1);    // the parent is the node itself
-            rank.emplace_back(0);        // the initial rank for all nodes is 0
-        }
-        auto find(T x)
-        {
-            // Find the node that contains element 'x'
-            auto node_it = std::find_if(nodes.begin(), nodes.end(), 
-                x 
-                {return n.data == x; });
-            auto node_idx = std::distance(nodes.begin(), node_it);
-            auto parent_idx = parent[node_idx];
-            // Traverse the tree till we reach the root
-            while (parent_idx != node_idx)
-            {
-                node_idx = parent_idx;
-                parent_idx = parent[node_idx];
-            }
-            return parent_idx;
-        }
-    ```
+public:
+    SimpleDisjointSet(size_t N)
+    {
+        nodes.reserve(N);
+        parent.reserve(N);
+        rank.reserve(N);
+    }
+    void add_set(const T& x)
+    {
+        nodes.emplace_back(x);
+        parent.emplace_back(nodes.size() - 1);    // the parent is the node itself
+        rank.emplace_back(0);        // the initial rank for all nodes is 0
+    }
+    auto find(T x)
+    {
+        // Find the node that contains element 'x'
+        auto node_it = std::find_if(nodes.begin(), nodes.end(), 
+            x 
+            {return n.data == x; });
+        auto node_idx = std::distance(nodes.begin(), node_it);
+        auto parent_idx = parent[node_idx];
+        // Traverse the tree till we reach the root
+        while (parent_idx != node_idx)
+        {
+            node_idx = parent_idx;
+            parent_idx = parent[node_idx];
+        }
+        return parent_idx;
+    }
+```
 
 1.  接下来，我们将实现不相交集中两棵树之间的`Union`操作，如下所示：
 
 ```cpp
-        // Union the sets X and Y belong to
-        void union_sets(T x, T y)
-        {
-            auto root_x = find(x);
-            auto root_y = find(y);
-            // If both X and Y are in the same set, do nothing and return
-            if (root_x == root_y)
-            {
-                return;
-            }
-            // If X and Y are in different sets, merge the set with lower rank 
-            // into the set with higher rank
-            else if (rank[root_x] > rank[root_y]) 
-            {
-                parent[root_y] = parent[root_x];
-                rank[root_x]++;
-            }
-            else 
-            {
-                parent[root_x] = parent[root_y];
-                rank[root_y]++;
-            }
-        }
-    };
-    ```
+    // Union the sets X and Y belong to
+    void union_sets(T x, T y)
+    {
+        auto root_x = find(x);
+        auto root_y = find(y);
+        // If both X and Y are in the same set, do nothing and return
+        if (root_x == root_y)
+        {
+            return;
+        }
+        // If X and Y are in different sets, merge the set with lower rank 
+        // into the set with higher rank
+        else if (rank[root_x] > rank[root_y]) 
+        {
+            parent[root_y] = parent[root_x];
+            rank[root_x]++;
+        }
+        else 
+        {
+            parent[root_x] = parent[root_y];
+            rank[root_y]++;
+        }
+    }
+};
+```
 
 1.  现在我们的不相交集的实现已经完成，让我们开始实现图。我们将使用边列表表示。`edge`结构定义如下：
 
 ```cpp
-    template<typename T>
-    struct Edge 
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T>
+struct Edge 
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 由于我们的边的实现是模板化的，边的权重允许是实现了`<`和`>`操作的任何数据类型。
 
 1.  以下函数允许图被序列化并输出到流中：
 
 ```cpp
-    template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i <<":\t";
-            auto edges = G.edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i <<":\t";
+        auto edges = G.edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
 
-            os << std::endl;
-        }
+        os << std::endl;
+    }
 
-        return os;
-    }
-    ```
+    return os;
+}
+```
 
 1.  现在可以使用以下代码实现图数据结构：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N): V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V && e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for(auto& e:edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
-    private: 
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N): V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V && e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for(auto& e:edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
+private: 
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 #### 注意
 
@@ -679,70 +679,70 @@ MST 问题的一个现实应用是设计供水和交通网络，因为设计者�
 1.  现在，我们可以这样实现 Kruskal 算法：
 
 ```cpp
-    // Since a tree is also a graph, we can reuse the Graph class
-    // However, the result graph should have no cycles
-    template<typename T>
-    Graph<T> minimum_spanning_tree(const Graph<T>& G)
-    {
-        // Create a min-heap for the edges
-        std::priority_queue<Edge<T>, 
-            std::vector<Edge<T>>, 
-            std::greater<Edge<T>>> edge_min_heap;
-        // Add all edges in the min-heap
-        for (auto& e : G.edges()) 
-            edge_min_heap.push(e);
-        // First step: add all elements to their own sets
-        auto N = G.vertices();
-        SimpleDisjointSet<size_t> dset(N);
-        for (auto i = 0; i < N; i++)
-            dset.add_set(i);
+// Since a tree is also a graph, we can reuse the Graph class
+// However, the result graph should have no cycles
+template<typename T>
+Graph<T> minimum_spanning_tree(const Graph<T>& G)
+{
+    // Create a min-heap for the edges
+    std::priority_queue<Edge<T>, 
+        std::vector<Edge<T>>, 
+        std::greater<Edge<T>>> edge_min_heap;
+    // Add all edges in the min-heap
+    for (auto& e : G.edges()) 
+        edge_min_heap.push(e);
+    // First step: add all elements to their own sets
+    auto N = G.vertices();
+    SimpleDisjointSet<size_t> dset(N);
+    for (auto i = 0; i < N; i++)
+        dset.add_set(i);
 
-        // Second step: start merging sets
-        Graph<T> MST(N);
-        while (!edge_min_heap.empty())
-        {
-            auto e = edge_min_heap.top();
-            edge_min_heap.pop();
-    // Merge the two trees and add edge to the MST only if the two vertices of the edge belong to different trees in the MST
-            if (dset.find(e.src) != dset.find(e.dest))
-            {
-                MST.add_edge(Edge <T>{e.src, e.dest, e.weight});
-                dset.union_sets(e.src, e.dest); 
-            }
-        }
-        return MST;
-    }
-    ```
+    // Second step: start merging sets
+    Graph<T> MST(N);
+    while (!edge_min_heap.empty())
+    {
+        auto e = edge_min_heap.top();
+        edge_min_heap.pop();
+// Merge the two trees and add edge to the MST only if the two vertices of the edge belong to different trees in the MST
+        if (dset.find(e.src) != dset.find(e.dest))
+        {
+            MST.add_edge(Edge <T>{e.src, e.dest, e.weight});
+            dset.union_sets(e.src, e.dest); 
+        }
+    }
+    return MST;
+}
+```
 
 1.  最后，添加以下驱动代码：
 
 ```cpp
-     int main()
-    {
-        using T = unsigned;
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 2}, {5, 3} };
-        edges[2] = { {1, 2}, {5, 5}, {4, 1} };
-        edges[3] = { {4, 2}, {7, 3} };
-        edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
-        edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
-        edges[6] = { {4, 4}, {7, 4}, {8, 1} };
-        edges[7] = { {3, 3}, {6, 4} };
-        edges[8] = { {4, 5}, {5, 3}, {6, 1} };
+ int main()
+{
+    using T = unsigned;
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 2}, {5, 3} };
+    edges[2] = { {1, 2}, {5, 5}, {4, 1} };
+    edges[3] = { {4, 2}, {7, 3} };
+    edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
+    edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
+    edges[6] = { {4, 4}, {7, 4}, {8, 1} };
+    edges[7] = { {3, 3}, {6, 4} };
+    edges[8] = { {4, 5}, {5, 3}, {6, 1} };
 
-        for (auto& i : edges)
-            for(auto& j: i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    for (auto& i : edges)
+        for(auto& j: i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
 
-        std::cout << "Original Graph" << std::endl;
-        std::cout << G;
-        auto MST = minimum_spanning_tree(G);
-        std::cout << std::endl << "Minimum Spanning Tree" << std::endl;
-        std::cout << MST;
-        return 0;
-    }
-    ```
+    std::cout << "Original Graph" << std::endl;
+    std::cout << G;
+    auto MST = minimum_spanning_tree(G);
+    std::cout << std::endl << "Minimum Spanning Tree" << std::endl;
+    std::cout << MST;
+    return 0;
+}
+```
 
 1.  最后，运行程序！您的输出应如下所示：
 
@@ -791,194 +791,194 @@ Kruskal 算法的复杂度，如果不使用不相交集，为*O(E log E)*，其
 1.  首先，包括所需的头文件并声明`Graph`数据结构，稍后我们将在本练习中实现：
 
 ```cpp
-    #include <unordered_map>
-    #include <set>
-    #include <map>
-    #include <string>
-    #include <vector>
-    #include <iostream>
-    template <typename T> class Graph;
-    ```
+#include <unordered_map>
+#include <set>
+#include <map>
+#include <string>
+#include <vector>
+#include <iostream>
+template <typename T> class Graph;
+```
 
 1.  以下结构实现了我们图中的一条边：
 
 ```cpp
-    template<typename T>
-    struct Edge
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T>
+struct Edge
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 1.  以下函数允许我们将图直接写入输出流：
 
 ```cpp
-    template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i << ":\t";
-            auto edges = G.outgoing_edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
-            os << std::endl;
-        }
-        return os;
-    }
-    ```
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i << ":\t";
+        auto edges = G.outgoing_edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
+        os << std::endl;
+    }
+    return os;
+}
+```
 
 1.  将图实现为边列表，如下所示：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N) : V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V &&
-                e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto outgoing_edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for (auto& e : edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
-    private:
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N) : V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V &&
+            e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto outgoing_edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for (auto& e : edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
+private:
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 1.  以下哈希映射存储了我们的着色算法将使用的颜色列表：
 
 ```cpp
-    // Initialize the colors that will be used to color the vertices
-    std::unordered_map<size_t, std::string> color_map = {
-        {1, "Red"},
-        {2, "Blue"},
-        {3, "Green"},
-        {4, "Yellow"},
-        {5, "Black"},
-        {6, "White"}
-    };
-    ```
+// Initialize the colors that will be used to color the vertices
+std::unordered_map<size_t, std::string> color_map = {
+    {1, "Red"},
+    {2, "Blue"},
+    {3, "Green"},
+    {4, "Yellow"},
+    {5, "Black"},
+    {6, "White"}
+};
+```
 
 1.  接下来，让我们实现一个辅助函数，打印已分配给每个顶点的颜色：
 
 ```cpp
-    void print_colors(std::vector<size_t>& colors)
-    {
-        for (auto i=1; i<colors.size(); i++)
-        {
-            std::cout << i << ": " << color_map[colors[i]] << std::endl;
-        }
-    }
-    ```
+void print_colors(std::vector<size_t>& colors)
+{
+    for (auto i=1; i<colors.size(); i++)
+    {
+        std::cout << i << ": " << color_map[colors[i]] << std::endl;
+    }
+}
+```
 
 1.  以下函数实现了我们的着色算法：
 
 ```cpp
-    template<typename T>
-    auto greedy_coloring(const Graph<T>& G)
-    {
-        auto size = G.vertices();
-        std::vector<size_t> assigned_colors(size);
-        // Let us start coloring with vertex number 1\. 
-        // Note that this choice is arbirary.
-        for (auto i = 1; i < size; i++)
-        {
-            auto outgoing_edges = G.outgoing_edges(i);
-            std::set<size_t> neighbour_colors;
-            for (auto e : outgoing_edges)
-            {
-                auto dest_color = assigned_colors[e.dest];
-                neighbour_colors.insert(dest_color);
-            }
-            // Find the smallest unassigned color 
-            // that is not currently used by any neighbor
-            auto smallest_unassigned_color = 1;
-            for (; 
-                smallest_unassigned_color <= color_map.size();
-                smallest_unassigned_color++)
-            {
-              if (neighbour_colors.find(smallest_unassigned_color) == 
-                  neighbour_colors.end())
-                  break;
-            }
-            assigned_colors[i] = smallest_unassigned_color;
-        }
-        return assigned_colors;
-    }
-    ```
+template<typename T>
+auto greedy_coloring(const Graph<T>& G)
+{
+    auto size = G.vertices();
+    std::vector<size_t> assigned_colors(size);
+    // Let us start coloring with vertex number 1\. 
+    // Note that this choice is arbirary.
+    for (auto i = 1; i < size; i++)
+    {
+        auto outgoing_edges = G.outgoing_edges(i);
+        std::set<size_t> neighbour_colors;
+        for (auto e : outgoing_edges)
+        {
+            auto dest_color = assigned_colors[e.dest];
+            neighbour_colors.insert(dest_color);
+        }
+        // Find the smallest unassigned color 
+        // that is not currently used by any neighbor
+        auto smallest_unassigned_color = 1;
+        for (; 
+            smallest_unassigned_color <= color_map.size();
+            smallest_unassigned_color++)
+        {
+          if (neighbour_colors.find(smallest_unassigned_color) == 
+              neighbour_colors.end())
+              break;
+        }
+        assigned_colors[i] = smallest_unassigned_color;
+    }
+    return assigned_colors;
+}
+```
 
 1.  最后，添加驱动代码，如下所示：
 
 ```cpp
-    int main()
-    {
-        using T = size_t;
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 2}, {5, 3} };
-        edges[2] = { {1, 2}, {5, 5}, {4, 1} };
-        edges[3] = { {4, 2}, {7, 3} };
-        edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
-        edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
-        edges[6] = { {4, 4}, {7, 4}, {8, 1} };
-        edges[7] = { {3, 3}, {6, 4} };
-        edges[8] = { {4, 5}, {5, 3}, {6, 1} };
-        for (auto& i : edges)
-            for (auto& j : i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
-        std::cout << "Original Graph: " << std::endl;
-        std::cout << G << std::endl;
-        auto colors = greedy_coloring<T>(G);
-        std::cout << "Vertex Colors: " << std::endl;
-        print_colors(colors);
-        return 0;
-    }
-    ```
+int main()
+{
+    using T = size_t;
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 2}, {5, 3} };
+    edges[2] = { {1, 2}, {5, 5}, {4, 1} };
+    edges[3] = { {4, 2}, {7, 3} };
+    edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
+    edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
+    edges[6] = { {4, 4}, {7, 4}, {8, 1} };
+    edges[7] = { {3, 3}, {6, 4} };
+    edges[8] = { {4, 5}, {5, 3}, {6, 1} };
+    for (auto& i : edges)
+        for (auto& j : i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    std::cout << "Original Graph: " << std::endl;
+    std::cout << G << std::endl;
+    auto colors = greedy_coloring<T>(G);
+    std::cout << "Vertex Colors: " << std::endl;
+    print_colors(colors);
+    return 0;
+}
+```
 
 1.  运行实现！您的输出应如下所示：
 

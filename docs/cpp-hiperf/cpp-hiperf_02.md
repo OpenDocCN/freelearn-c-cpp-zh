@@ -453,36 +453,36 @@ auto button = Button{};
 +   **Case 1**：`Button::title_`被移动赋值，因为`string`对象通过`std::move()`传递：
 
 ```cpp
-    auto str = std::string{"OK"};
-    button.set_title(str);              // copy-assigned 
-    ```
+auto str = std::string{"OK"};
+button.set_title(str);              // copy-assigned 
+```
 
 +   **Case 2**：`Button::title_`被移动赋值，因为`str`通过`std::move()`传递：
 
 ```cpp
-    auto str = std::string{"OK"};
-    button.set_title(std::move(str));   // move-assigned 
-    ```
+auto str = std::string{"OK"};
+button.set_title(std::move(str));   // move-assigned 
+```
 
 +   **Case 3**：`Button::title_`被移动赋值，因为新的`std::string`对象直接来自函数：
 
 ```cpp
-    button.set_title(get_ok());        // move-assigned 
-    ```
+button.set_title(get_ok());        // move-assigned 
+```
 
 +   **Case 4**：`Button::title_`被复制赋值，因为`string`对象与`s`绑定（这与*Case 1*相同）：
 
 ```cpp
-    auto str = get_ok();
-    button.set_title(str);             // copy-assigned 
-    ```
+auto str = get_ok();
+button.set_title(str);             // copy-assigned 
+```
 
 +   **Case 5**：`Button::title_`被复制赋值，因为`str`被声明为`const`，因此不允许改变：
 
 ```cpp
-    const auto str = get_ok();
-    button.set_title(std::move(str));  // copy-assigned 
-    ```
+const auto str = get_ok();
+button.set_title(std::move(str));  // copy-assigned 
+```
 
 如您所见，确定对象是移动还是复制非常简单。如果它有一个变量名，它就会被复制；否则，它就会被移动。如果您正在使用`std::move()`来移动一个命名对象，那么该对象就不能被声明为`const`。
 

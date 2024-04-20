@@ -102,82 +102,82 @@ std::cout << "Your name is " << name << ", your age is " << age << ", your sex i
 1.  包括所需的头文件：`<iostream>` 用于在控制台输出和 `<string>` 用于字符串支持：
 
 ```cpp
-    #include <iostream>
-    #include <string>
-    ```
+#include <iostream>
+#include <string>
+```
 
 1.  声明`Track`类，并添加私有部分变量以保存有关`track`的信息，即`m_Name`，`m_Singer`，`m_Date`和`m_LengthInSeconds`。在公共部分，添加一个带参数的构造函数，初始化所有私有变量。还要为所有类成员添加`public`部分的 getter：
 
 ```cpp
-    class Track
-    {
-    public:
-         Track(const std::string& name,
-               const std::string& singer,
-               const std::string& date,
-               const unsigned int& lengthInSeconds)
-               : m_Name(name)
-               , m_Singer(singer)
-               , m_Date(date)
-               , m_LengthInSeconds(lengthInSeconds)
-    {
-    }
-         std::string getName() const { return m_Name; }
-         std::string getSinger() const { return m_Singer; }
-         std::string getDate() const { return m_Date; }
-         unsigned int getLength() const { return m_LengthInSeconds; }
-    private:
-         std::string m_Name;
-         std::string m_Singer;
-         std::string m_Date;
-         unsigned int m_LengthInSeconds;
-    };
-    ```
+class Track
+{
+public:
+     Track(const std::string& name,
+           const std::string& singer,
+           const std::string& date,
+           const unsigned int& lengthInSeconds)
+           : m_Name(name)
+           , m_Singer(singer)
+           , m_Date(date)
+           , m_LengthInSeconds(lengthInSeconds)
+{
+}
+     std::string getName() const { return m_Name; }
+     std::string getSinger() const { return m_Singer; }
+     std::string getDate() const { return m_Date; }
+     unsigned int getLength() const { return m_LengthInSeconds; }
+private:
+     std::string m_Name;
+     std::string m_Singer;
+     std::string m_Date;
+     unsigned int m_LengthInSeconds;
+};
+```
 
 1.  现在是练习中最困难的部分：为`Track`类型编写重载函数。这是一个具有两个类型参数`charT`和`Traits`的`template`函数：
 
 ```cpp
-    template <typename charT, typename Traits>
-    ```
+template <typename charT, typename Traits>
+```
 
 1.  我们将此函数设置为内联函数，以便让编译器知道我们希望它对此函数进行优化。此函数的返回类型是对`std::basic_ostream<charT, Traits>`类的引用。此函数的名称是`operator <<`。此函数接受两个参数：第一个是对`std::basic_ostream<charT, Traits>`类的引用，第二个是`Track`变量的副本。完整的函数声明如下：
 
 ```cpp
-    template <typename charT, typename Traits>
-    inline std::basic_ostream<charT, Traits>&
-    operator<<(std::basic_ostream<charT, Traits>& os, Track trackItem);
-    ```
+template <typename charT, typename Traits>
+inline std::basic_ostream<charT, Traits>&
+operator<<(std::basic_ostream<charT, Traits>& os, Track trackItem);
+```
 
 1.  现在，添加函数定义。使用`os`变量，就像我们使用`std::cout`对象一样，并根据需要格式化输出。然后，从函数返回`os`变量。重载操作符`<<`的完整代码如下：
 
 ```cpp
-    template <typename charT, typename Traits>
-    inline std::basic_ostream<charT, Traits>&
-    operator<<(std::basic_ostream<charT, Traits>& os, Track trackItem)
-    {
-          os << "Track information: ["
-             << "Name: " << trackItem.getName()
-             << ", Singer: " << trackItem.getSinger()
-             << ", Date of creation: " << trackItem.getDate()
-             << ", Length in seconds: " << trackItem.getLength()
-             << "]";
-          return os;
-    }
-    ```
+template <typename charT, typename Traits>
+inline std::basic_ostream<charT, Traits>&
+operator<<(std::basic_ostream<charT, Traits>& os, Track trackItem)
+{
+      os << "Track information: ["
+         << "Name: " << trackItem.getName()
+         << ", Singer: " << trackItem.getSinger()
+         << ", Date of creation: " << trackItem.getDate()
+         << ", Length in seconds: " << trackItem.getLength()
+         << "]";
+      return os;
+}
+```
 
 1.  现在，进入`main`函数，并创建并初始化`Track`类型的实例`track_001`。最后，使用`std::cout`打印`track_001`的值：
 
 ```cpp
-    int main()
-    {
-         Track track_001("Summer night city",
-                         "ABBA",
-                         "1979",
-                          213);
-         std::cout << track_001 << std::endl;
-         return 0;
-    }
-    ```
+int main()
+{
+     Track track_001("Summer night city",
+                     "ABBA",
+                     "1979",
+                      213);
+     std::cout << track_001 << std::endl;
+     return 0;
+}
+```
 
 1.  编译并执行应用程序。运行它。您将获得以下输出：
 
@@ -287,68 +287,68 @@ inFile >> str >> num >> floatNum;
 1.  包括所需的头文件：`<iostream>`用于输出到控制台，`<string>`用于字符串支持，`<fstream>`用于 I/O 文件库支持：
 
 ```cpp
-    #include <fstream>
-    #include <iostream>
-    #include <string>
-    ```
+#include <fstream>
+#include <iostream>
+#include <string>
+```
 
 1.  实现`Book`类，它代表书店中的书。在私有部分，使用不言自明的名称定义四个变量：`m_Name`，`m_Author`，`m_Year`和`m_Price`。在公共部分，定义带参数的构造函数，初始化所有类成员。此外，在`public`部分，为所有类成员定义 getter：
 
 ```cpp
-    class Book
-    {
-    public:
-          Book(const std::string& name,
-               const std::string& author,
-               const int year,
-               const float price)
-         : m_Name(name)
-         , m_Author(author)
-         , m_Year(year)
-         , m_Price(price) {}
-         std::string getName() const { return m_Name; }
-         std::string getAuthor() const { return m_Author; }
-         int getYear() const { return m_Year; }
-         float getPrice() const { return m_Price; }
-    private:
-         std::string m_Name;
-         std::string m_Author;
-         int m_Year;
-         float m_Price;
-    };
-    ```
+class Book
+{
+public:
+      Book(const std::string& name,
+           const std::string& author,
+           const int year,
+           const float price)
+     : m_Name(name)
+     , m_Author(author)
+     , m_Year(year)
+     , m_Price(price) {}
+     std::string getName() const { return m_Name; }
+     std::string getAuthor() const { return m_Author; }
+     int getYear() const { return m_Year; }
+     float getPrice() const { return m_Price; }
+private:
+     std::string m_Name;
+     std::string m_Author;
+     int m_Year;
+     float m_Price;
+};
+```
 
 1.  进入`main`函数并声明`pricesFile`变量，该变量保存文件名：
 
 ```cpp
-    std::string pricesFile("prices.txt");
-    ```
+std::string pricesFile("prices.txt");
+```
 
 1.  接下来，创建`book`类的实例，并用`book name`，`author name`，`year`和`price`进行初始化：
 
 ```cpp
-    Book book_001("Brave", "Olena Lizina", 2017, 33.57);
-    ```
+Book book_001("Brave", "Olena Lizina", 2017, 33.57);
+```
 
 1.  将此类实例写入文件。创建`std::ofstream`类的实例。使用`pricesFile`变量名打开我们的文件。检查流是否成功打开，如果没有，则打印错误消息：
 
 ```cpp
-    std::ofstream outFile(pricesFile);
-    if (outFile.fail())
-    {
-          std::cerr << "Failed to open file " << pricesFile << std::endl;
-          return 1;
-    }
-    ```
+std::ofstream outFile(pricesFile);
+if (outFile.fail())
+{
+      std::cerr << "Failed to open file " << pricesFile << std::endl;
+      return 1;
+}
+```
 
 1.  然后，使用 getter 将有关`book_001`书籍的所有信息写入文件，每个项目之间用空格分隔，并在末尾加上换行符:
 
 ```cpp
-    outFile << book_001.getName() << " "
-            << book_001.getAuthor() << " "
-            << book_001.getYear() << " "
-            << book_001.getPrice() << std::endl;
-    ```
+outFile << book_001.getName() << " "
+        << book_001.getAuthor() << " "
+        << book_001.getYear() << " "
+        << book_001.getPrice() << std::endl;
+```
 
 1.  编译并执行应用程序。现在，转到项目文件夹，并找到'**prices.txt**'文件的位置。在下面的屏幕截图中，您可以看到在项目目录中创建的文件的位置:![](img/C14583_06_05.jpg)
 
@@ -361,44 +361,44 @@ inFile >> str >> num >> floatNum;
 1.  现在，让我们将这些数据读取到变量中。创建`std::ifstream`类的实例。打开名为`pricesFile`的文件。检查流是否成功打开，如果没有，则打印错误消息：
 
 ```cpp
-    std::ifstream inFile(pricesFile);
-    if (inFile.fail())
-    {
-         std::cerr << "Failed to open file " << pricesFile << std::endl;
-         return 1;
-    }
-    ```
+std::ifstream inFile(pricesFile);
+if (inFile.fail())
+{
+     std::cerr << "Failed to open file " << pricesFile << std::endl;
+     return 1;
+}
+```
 
 1.  创建将用于从文件输入的本地变量，即`name`，`authorName`，`authorSurname`，`year`和`price`。它们的名称不言自明：
 
 ```cpp
-    std::string name;
-    std::string authorName;
-    std::string authorSurname;
-    int year;
-    float price;
-    ```
+std::string name;
+std::string authorName;
+std::string authorSurname;
+int year;
+float price;
+```
 
 1.  现在，按照文件中的顺序将数据读入变量中：
 
 ```cpp
-    inFile >> name >> authorName >> authorSurname >> year >> price;
-    ```
+inFile >> name >> authorName >> authorSurname >> year >> price;
+```
 
 1.  创建一个名为`book_002`的`Book`实例，并用这些读取的值进行初始化：
 
 ```cpp
-    Book book_002(name, std::string(authorName + " " + authorSurname), year, price);
-    ```
+Book book_002(name, std::string(authorName + " " + authorSurname), year, price);
+```
 
 1.  要检查读取操作是否成功执行，请将`book_002`变量打印到控制台：
 
 ```cpp
-    std::cout  << "Book name: " << book_002.getName() << std::endl
-               << "Author name: " << book_002.getAuthor() << std::endl
-               << "Year: " << book_002.getYear() << std::endl
-               << "Price: " << book_002.getPrice() << std::endl;
-    ```
+std::cout  << "Book name: " << book_002.getName() << std::endl
+           << "Author name: " << book_002.getAuthor() << std::endl
+           << "Year: " << book_002.getYear() << std::endl
+           << "Price: " << book_002.getPrice() << std::endl;
+```
 
 1.  再次编译和执行应用程序。在控制台中，您将看到以下输出：
 
@@ -503,71 +503,71 @@ ss >> name >> surname >> age;
 1.  包括所需的头文件：`<iostream>`用于输出到终端，`<sstream>`用于 I/O 字符串支持：
 
 ```cpp
-    #include <sstream>
-    #include <iostream>
-    ```
+#include <sstream>
+#include <iostream>
+```
 
 1.  实现名为`Replacer`的可调用类。它只有一个函数 - 重载的括号运算符，即()，它返回一个字符串，并接受三个参数：原始字符串、要替换的单词和用于替换的单词。函数声明如下：
 
 ```cpp
-    std::string operator()(const std::string& originalString,
-                           const std::string& wordToBeReplaced,
-                           const std::string& wordReplaceBy);
-    ```
+std::string operator()(const std::string& originalString,
+                       const std::string& wordToBeReplaced,
+                       const std::string& wordReplaceBy);
+```
 
 1.  接下来，创建`istringstream`对象，即`iss`，并将`originalString`变量设置为输入源：
 
 ```cpp
-    std::istringstream iss(originalString);
-    ```
+std::istringstream iss(originalString);
+```
 
 1.  创建`ostringstream`对象，即`oss`，它将保存转换后的字符串：
 
 ```cpp
-    std::ostringstream oss;
-    ```
+std::ostringstream oss;
+```
 
 1.  然后，在循环中，当可能有输入时，执行对单词变量的读取。检查这个单词是否等于`wordToBeReplaced`变量。如果是，用`wordReplaceBy`变量替换它，并写入`oss`流。如果它们不相等，将原始单词写入`oss`流。在每个单词后，添加一个空格字符，因为`iss`流会截断它们。最后，返回结果。完整的类如下：
 
 ```cpp
-    class Replacer
-    {
-    public:
-          std::string operator()(const std::string& originalString,
-                                 const std::string& wordToBeReplaced,
-                                 const std::string& wordReplaceBy)
-         {
-               std::istringstream iss(originalString);
-               std::ostringstream oss;
-               std::string word;
-               while (iss >> word)
-               {
-                    if (0 == word.compare(wordToBeReplaced))
-                    {
-                         oss << wordReplaceBy << " ";
-                    }
-                    else
-                    {
-                         oss << word << " ";
-                    }
-               }
-               return oss.str();
-         }
-    };
-    ```
+class Replacer
+{
+public:
+      std::string operator()(const std::string& originalString,
+                             const std::string& wordToBeReplaced,
+                             const std::string& wordReplaceBy)
+     {
+           std::istringstream iss(originalString);
+           std::ostringstream oss;
+           std::string word;
+           while (iss >> word)
+           {
+                if (0 == word.compare(wordToBeReplaced))
+                {
+                     oss << wordReplaceBy << " ";
+                }
+                else
+                {
+                     oss << word << " ";
+                }
+           }
+           return oss.str();
+     }
+};
+```
 
 1.  进入`main`函数。创建一个名为 worker 的`Replacer`类的实例。定义`foodList`变量，并将其初始化为包含食物列表的字符串；一些项目应该重复。定义`changedList`字符串变量，并将其初始化为`worker()`函数的返回值。使用`std::cout`在终端上显示结果：
 
 ```cpp
-    int main()
-    {
-          Replacer worker;
-          std::string foodList("coffee tomatoes coffee cucumbers sugar");
-          std::string changedList(worker(foodList, "coffee", "chocolate"));
-          std::cout << changedList;
-          return 0;
-    }
-    ```
+int main()
+{
+      Replacer worker;
+      std::string foodList("coffee tomatoes coffee cucumbers sugar");
+      std::string changedList(worker(foodList, "coffee", "chocolate"));
+      std::cout << changedList;
+      return 0;
+}
+```
 
 1.  编译、构建并运行练习。结果将如下所示：
 
@@ -594,83 +594,83 @@ ss >> name >> surname >> age;
 1.  包括`<iostream>`头文件以支持流。声明名为`BASE`的枚举并定义三个值：`DECIMAL`、`OCTAL`和`HEXADECIMAL`：
 
 ```cpp
-    #include <iostream>
-    enum BASE
-    {
-          DECIMAL,
-          OCTAL,
-          HEXADECIMAL
-    };
-    ```
+#include <iostream>
+enum BASE
+{
+      DECIMAL,
+      OCTAL,
+      HEXADECIMAL
+};
+```
 
 1.  声明一个名为`displayInBases`的函数，它接受两个参数 - 整数和基数。接下来，定义 switch 语句，测试接收到的数字基数，并以其他两种数字表示显示给定的整数：
 
 ```cpp
-    void displayInBases(const int number, const BASE numberBase)
-    {
-      switch(numberBase)
-      {
-      case DECIMAL:
-        std::cout << "Your input in octal with base: "
-              << std::showbase << std::oct << number
-              << ", without base: " 
-              << std::noshowbase << std::oct << number << std::endl;
-        std::cout << "Your input in hexadecimal with base: "
-              << std::showbase << std::hex << number
-              << ", without base: " 
-              << std::noshowbase << std::hex << number << std::endl;
-        break;
-      case OCTAL:
-        std::cout << "Your input in hexadecimal with base: "
-              << std::showbase << std::hex << number
-              << ", without base: " 
-              << std::noshowbase << std::hex << number << std::endl;
-        std::cout << "Your input in decimal with base: "
-              << std::showbase << std::dec << number
-              << ", without base: " 
-              << std::noshowbase << std::dec << number << std::endl;
-        break;
-      case HEXADECIMAL:
-        std::cout << "Your input in octal with base: "
-              << std::showbase << std::oct << number
-              << ", without base: " 
-              << std::noshowbase << std::oct << number << std::endl;
-        std::cout << "Your input in decimal with base: "
-              << std::showbase << std::dec << number
-              << ", without base: " 
-              << std::noshowbase << std::dec << number << std::endl;
-        break;
-      }
-    }
-    ```
+void displayInBases(const int number, const BASE numberBase)
+{
+  switch(numberBase)
+  {
+  case DECIMAL:
+    std::cout << "Your input in octal with base: "
+          << std::showbase << std::oct << number
+          << ", without base: " 
+          << std::noshowbase << std::oct << number << std::endl;
+    std::cout << "Your input in hexadecimal with base: "
+          << std::showbase << std::hex << number
+          << ", without base: " 
+          << std::noshowbase << std::hex << number << std::endl;
+    break;
+  case OCTAL:
+    std::cout << "Your input in hexadecimal with base: "
+          << std::showbase << std::hex << number
+          << ", without base: " 
+          << std::noshowbase << std::hex << number << std::endl;
+    std::cout << "Your input in decimal with base: "
+          << std::showbase << std::dec << number
+          << ", without base: " 
+          << std::noshowbase << std::dec << number << std::endl;
+    break;
+  case HEXADECIMAL:
+    std::cout << "Your input in octal with base: "
+          << std::showbase << std::oct << number
+          << ", without base: " 
+          << std::noshowbase << std::oct << number << std::endl;
+    std::cout << "Your input in decimal with base: "
+          << std::showbase << std::dec << number
+          << ", without base: " 
+          << std::noshowbase << std::dec << number << std::endl;
+    break;
+  }
+}
+```
 
 1.  进入`main`函数并定义将用于读取用户输入的整数变量：
 
 ```cpp
-    int integer; 
-    ```
+int integer; 
+```
 
 1.  创建一个无限循环。在循环内部，要求用户输入一个十进制值。将输入读取为十进制整数。将其传递给`displayInBases`函数。接下来，要求用户输入一个十六进制值。将输入读取为十六进制整数。将其传递给`displayInBases`函数。最后，要求用户输入一个八进制值。将输入读取为八进制整数。将其传递给`displayInBases`函数：
 
 ```cpp
-    int main(int argc, char **argv)
-    {
-      int integer;
-      while(true)
-      {
-        std::cout << "Enter the decimal value: ";
-        std::cin >> std::dec >> integer;
-        displayInBases(integer, BASE::DECIMAL);
-        std::cout << "Enter the hexadecimal value: ";
-        std::cin >> std::hex >> integer;
-        displayInBases(integer, BASE::HEXADECIMAL);
-        std::cout << "Enter the octal value: ";
-        std::cin >> std::oct >> integer;
-        displayInBases(integer, BASE::OCTAL);
-      }
-      return 0;
-    }
-    ```
+int main(int argc, char **argv)
+{
+  int integer;
+  while(true)
+  {
+    std::cout << "Enter the decimal value: ";
+    std::cin >> std::dec >> integer;
+    displayInBases(integer, BASE::DECIMAL);
+    std::cout << "Enter the hexadecimal value: ";
+    std::cin >> std::hex >> integer;
+    displayInBases(integer, BASE::HEXADECIMAL);
+    std::cout << "Enter the octal value: ";
+    std::cin >> std::oct >> integer;
+    displayInBases(integer, BASE::OCTAL);
+  }
+  return 0;
+}
+```
 
 1.  构建并运行应用程序。跟随输出并输入，例如，在不同的数字表示中输入 12。输出应该如下所示：![图 6.9：执行练习 4，第 1 部分的结果](img/C14583_06_09.jpg)
 
@@ -679,24 +679,24 @@ ss >> name >> surname >> age;
 1.  现在，让我们将`std::dec`、`std::oct`和`std::hex`在`std::setbase()`函数中更改，以检查输出是否相同。首先，添加`<iomanip>`头文件以支持`std::setbase()`。接下来，在主函数中的循环中，将`std::dec`替换为`std::setbase(10)`，将`std::hex`替换为`std::setbase(16)`，将`std::oct`替换为`std::setbase(8)`：
 
 ```cpp
-    int main(int argc, char **argv)
-    {
-      int integer;
-      while(true)
-      {
-        std::cout << "Enter the decimal value: ";
-        std::cin >> std::setbase(10) >> integer;
-        displayInBases(integer, BASE::DECIMAL);
-        std::cout << "Enter the hexadecimal value: ";
-        std::cin >> std::setbase(16) >> integer;
-        displayInBases(integer, BASE::HEXADECIMAL);
-        std::cout << "Enter the octal value: ";
-        std::cin >> std::setbase(8) >> integer;
-        displayInBases(integer, BASE::OCTAL);
-      }
-      return 0;
-    }
-    ```
+int main(int argc, char **argv)
+{
+  int integer;
+  while(true)
+  {
+    std::cout << "Enter the decimal value: ";
+    std::cin >> std::setbase(10) >> integer;
+    displayInBases(integer, BASE::DECIMAL);
+    std::cout << "Enter the hexadecimal value: ";
+    std::cin >> std::setbase(16) >> integer;
+    displayInBases(integer, BASE::HEXADECIMAL);
+    std::cout << "Enter the octal value: ";
+    std::cin >> std::setbase(8) >> integer;
+    displayInBases(integer, BASE::OCTAL);
+  }
+  return 0;
+}
+```
 
 1.  再次构建并运行应用程序。跟随输出并在不同的数字表示中输入相同的整数（12）。输出应该如下所示：
 
@@ -731,63 +731,63 @@ ss >> name >> surname >> age;
 1.  包括`<iostream>`头文件以支持流和`<iomanip>`以支持`std::setprecision`：
 
 ```cpp
-    #include <iostream>
-    #include <iomanip>
-    ```
+#include <iostream>
+#include <iomanip>
+```
 
 1.  接下来，声明一个模板`formattingPrint`函数，它有一个名为`FloatingPoint`的模板参数，并接受一个此类型的参数变量。接下来，通过调用`std::cout`对象中的`precision()`函数，将先前的精度存储在一个 auto 变量中。然后，在终端中以不同的格式显示给定的数字：带小数点，不带小数点，以及固定、科学、十六进制浮点和默认浮点格式。接下来，在 for 循环中，从 0 到 22，显示给定的数字的精度和循环计数器的大小。循环退出后，使用我们之前存储的值重新设置精度：
 
 ```cpp
-    template< typename FloatingPoint >
-    void formattingPrint(const FloatingPoint number)
-    {
-         auto precision = std::cout.precision();
-         std::cout << "Default formatting with point: "
-                   << std::showpoint << number << std::endl
-                   << "Default formatting without point: "
-                   << std::noshowpoint << number << std::endl
-                   << "Fixed formatting: "
-                   << std::fixed << number << std::endl
-                   << "Scientific formatting: "
-                   << std::scientific << number << std::endl
-                   << "Hexfloat formatting: "
-                   << std::hexfloat << number << std::endl
-                   << "Defaultfloat formatting: "
-                   << std::defaultfloat << number << std::endl;
-         for (int i = 0; i < 22; i++)
-         {
-              std::cout << "Precision: " << i 
-                        << ", number: " << std::setprecision(i) 
-                        << number << std::endl;
-         }
-         std::cout << std::setprecision(precision);
-    }
-    ```
+template< typename FloatingPoint >
+void formattingPrint(const FloatingPoint number)
+{
+     auto precision = std::cout.precision();
+     std::cout << "Default formatting with point: "
+               << std::showpoint << number << std::endl
+               << "Default formatting without point: "
+               << std::noshowpoint << number << std::endl
+               << "Fixed formatting: "
+               << std::fixed << number << std::endl
+               << "Scientific formatting: "
+               << std::scientific << number << std::endl
+               << "Hexfloat formatting: "
+               << std::hexfloat << number << std::endl
+               << "Defaultfloat formatting: "
+               << std::defaultfloat << number << std::endl;
+     for (int i = 0; i < 22; i++)
+     {
+          std::cout << "Precision: " << i 
+                    << ", number: " << std::setprecision(i) 
+                    << number << std::endl;
+     }
+     std::cout << std::setprecision(precision);
+}
+```
 
 1.  输入`main`函数。声明一个名为`floatNum`的`float`变量，一个名为`doubleNum`的双精度变量，以及一个名为`longDoubleNum`的长双精度变量。然后，在无限循环中，要求用户输入一个浮点数，读取输入到`longDoubleNum`，并将其传递给`formattingPrint`函数。接下来，通过使用`longDoubleNum`的值初始化`doubleNum`并将其传递给`formattingPrint`函数。接下来，通过使用`longDoubleNum`的值初始化`floatNum`并将其传递给`formattingPrint`函数：
 
 ```cpp
-    int main(int argc, char **argv)
-    {
-         float floatNum;
-         double doubleNum;
-         long double longDoubleNum;
-         while(true)
-         {
-              std::cout << "Enter the floating-point digit: ";
-              std::cin >> std::setprecision(36) >> longDoubleNum;
-              std::cout << "long double output" << std::endl;
-              formattingPrint(longDoubleNum);
-              doubleNum = longDoubleNum;
-              std::cout << "double output" << std::endl;
-              formattingPrint(doubleNum);
-              floatNum = longDoubleNum;
-              std::cout << "float output" << std::endl;
-              formattingPrint(floatNum);
-         }
-         return 0;
-    }
-    ```
+int main(int argc, char **argv)
+{
+     float floatNum;
+     double doubleNum;
+     long double longDoubleNum;
+     while(true)
+     {
+          std::cout << "Enter the floating-point digit: ";
+          std::cin >> std::setprecision(36) >> longDoubleNum;
+          std::cout << "long double output" << std::endl;
+          formattingPrint(longDoubleNum);
+          doubleNum = longDoubleNum;
+          std::cout << "double output" << std::endl;
+          formattingPrint(doubleNum);
+          floatNum = longDoubleNum;
+          std::cout << "float output" << std::endl;
+          formattingPrint(floatNum);
+     }
+     return 0;
+}
+```
 
 1.  构建并运行应用程序。跟踪输出并输入具有`22`个有效数字的浮点值，例如`0.2222222222222222222222`。我们将得到一个很长的输出。现在，我们需要将其拆分进行分析。这是长双精度值输出的一部分的屏幕截图：
 
@@ -1078,119 +1078,119 @@ std::cout << "[" << quote(str2) << "]" << std::endl;
 #### 注意
 
 ```cpp
-    #include <iostream>
-    #include <sstream>
-    #include <thread>
-    #include <chrono>
-    #include <ctime>
-    ```
+#include <iostream>
+#include <sstream>
+#include <thread>
+#include <chrono>
+#include <ctime>
+```
 
 1.  接下来，声明`extendedOstream`类。声明名为`m_oss`的`std::ostream`变量和名为`writeAdditionalInfo`的 bool 变量。这个 bool 变量将用于指示是否应该打印扩展数据：
 
 ```cpp
-    class extendedOstream
-    {
-    private:
-         std::ostream& m_oss;
-         bool writeAdditionalInfo;
-    };
-    ```
+class extendedOstream
+{
+private:
+     std::ostream& m_oss;
+     bool writeAdditionalInfo;
+};
+```
 
 1.  接下来，在公共部分，定义一个默认构造函数，并用`std::cout`初始化`m_oss`以将输出重定向到终端。用`true`初始化`writeAdditionalInfo`：
 
 ```cpp
-    extendedOstream()
-         : m_oss(std::cout)
-         , writeAdditionalInfo(true)
-    {
-    }
-    ```
+extendedOstream()
+     : m_oss(std::cout)
+     , writeAdditionalInfo(true)
+{
+}
+```
 
 1.  定义一个模板重载的左移操作符`<<`，它返回对`extendedOstream`的引用，并带有名为 value 的模板参数。然后，如果`writeAdditionalInfo`为`true`，输出时间、线程 ID 和给定的值，然后将`writeAdditionalInfo`设置为`false`。如果`writeAdditionalInfo`为`false`，只输出给定的值。这个函数将用于所有内置类型的输出：
 
 ```cpp
-    template<typename T>
-    extendedOstream& operator<<(const T& value)
-    {
-         if (writeAdditionalInfo)
-         {
-              std::string time = fTime();
-              auto id = threadId();
-              m_oss << time << id << value;
-              writeAdditionalInfo = false;
-         }
-         else
-         {
-              m_oss << value;
-         }
-         return *this;
-    }
-    ```
+template<typename T>
+extendedOstream& operator<<(const T& value)
+{
+     if (writeAdditionalInfo)
+     {
+          std::string time = fTime();
+          auto id = threadId();
+          m_oss << time << id << value;
+          writeAdditionalInfo = false;
+     }
+     else
+     {
+          m_oss << value;
+     }
+     return *this;
+}
+```
 
 1.  定义另一个重载的左移操作符，它以函数指针作为参数并返回对`std::ostream`的引用。在函数体中，将`writeAdditionalInfo`设置为`true`，调用给定的函数，并将`m_oss`作为参数传递。这个重载的操作符将用于预定义函数，如`std::endl`：
 
 ```cpp
-    extendedOstream&
-    operator<<(std::ostream& (*pfn)(std::ostream&))
-    {
-         writeAdditionalInfo = true;
-         pfn(m_oss);
-         return *this;
-    }
-    ```
+extendedOstream&
+operator<<(std::ostream& (*pfn)(std::ostream&))
+{
+     writeAdditionalInfo = true;
+     pfn(m_oss);
+     return *this;
+}
+```
 
 1.  在私有部分，定义`fTime`函数，返回 std::string。它获取系统时间。将其格式化为可读表示，并返回它：
 
 ```cpp
-    std::string fTime()
-    {
-         auto now = std::chrono::system_clock::now();
-         std::time_t time = std::chrono::system_clock::to_time_t(now);
-         std::ostringstream oss;
-         std::string strTime(std::ctime(&time));
-         strTime.pop_back();
-         oss << "[" << strTime << "]";
-         return oss.str();
-    }
-    ```
+std::string fTime()
+{
+     auto now = std::chrono::system_clock::now();
+     std::time_t time = std::chrono::system_clock::to_time_t(now);
+     std::ostringstream oss;
+     std::string strTime(std::ctime(&time));
+     strTime.pop_back();
+     oss << "[" << strTime << "]";
+     return oss.str();
+}
+```
 
 1.  在私有部分，定义`threadId()`函数，返回一个字符串。获取当前线程的`id`，格式化它，并返回它：
 
 ```cpp
-    std::string threadId()
-    {
-         auto id = std::this_thread::get_id();
-         std::ostringstream oss;
-         oss << "[" << std::dec << id << "]";
-         return oss.str();
-    }
-    ```
+std::string threadId()
+{
+     auto id = std::this_thread::get_id();
+     std::ostringstream oss;
+     oss << "[" << std::dec << id << "]";
+     return oss.str();
+}
+```
 
 1.  进入`main`函数。为了测试我们的流对象如何工作，创建一个名为`oss`的`extendedOstream`类型的对象。输出不同的数据，例如整数、浮点数、十六进制和布尔值：
 
 ```cpp
-    extendedOstream oss;
-    oss << "Integer: " << 156 << std::endl;
-    oss << "Float: " << 156.12 << std::endl;
-    oss << "Hexadecimal: " << std::hex << std::showbase 
-        << std::uppercase << 0x2a << std::endl;
-    oss << "Bool: " << std::boolalpha << false << std::endl;
-    ```
+extendedOstream oss;
+oss << "Integer: " << 156 << std::endl;
+oss << "Float: " << 156.12 << std::endl;
+oss << "Hexadecimal: " << std::hex << std::showbase 
+    << std::uppercase << 0x2a << std::endl;
+oss << "Bool: " << std::boolalpha << false << std::endl;
+```
 
 1.  然后，创建一个线程，用 lambda 函数初始化它，并在 lambda 内部放置相同的输出。不要忘记加入线程：
 
 ```cpp
-    std::thread thr1([]()
-         {
-              extendedOstream oss;
-              oss << "Integer: " << 156 << std::endl;
-              oss << "Float: " << 156.12 << std::endl;
-              oss << "Hexadecimal: " << std::hex << std::showbase
-                  << std::uppercase << 0x2a << std::endl;
-              oss << "Bool: " << std::boolalpha << false << std::endl;
-         });
-    thr1.join();
-    ```
+std::thread thr1([]()
+     {
+          extendedOstream oss;
+          oss << "Integer: " << 156 << std::endl;
+          oss << "Float: " << 156.12 << std::endl;
+          oss << "Hexadecimal: " << std::hex << std::showbase
+              << std::uppercase << 0x2a << std::endl;
+          oss << "Bool: " << std::boolalpha << false << std::endl;
+     });
+thr1.join();
+```
 
 1.  现在，构建并运行应用程序。你将得到以下输出：
 
@@ -1271,100 +1271,100 @@ std::cout << "[" << quote(str2) << "]" << std::endl;
 1.  创建一个名为`extended_streambuf`的模板类，它继承自`std::basic_streambuf`类。重写一个名为`overflow()`的公共成员，该成员将字符写入输出流并返回 EOF 或已写入的字符：
 
 ```cpp
-    template< class CharT, class Traits = std::char_traits<CharT> >
-    class extended_streambuf : public std::basic_streambuf< CharT, Traits >
-    {
-    public:
-        int overflow( int c = EOF ) override
-        {
-            if (!Traits::eq_int_type(c, EOF))
-            {
-                return fputc(c, stdout);
-            }
-            return Traits::not_eof(c);
-        }
-    };
-    ```
+template< class CharT, class Traits = std::char_traits<CharT> >
+class extended_streambuf : public std::basic_streambuf< CharT, Traits >
+{
+public:
+    int overflow( int c = EOF ) override
+    {
+        if (!Traits::eq_int_type(c, EOF))
+        {
+            return fputc(c, stdout);
+        }
+        return Traits::not_eof(c);
+    }
+};
+```
 
 1.  接下来，创建一个名为`extended_ostream`的模板类，它是从`std::basic_ostream`类派生而来的。在私有部分，定义一个`extended_streambuf`类的成员，即缓冲区。用缓冲区成员初始化`std::basic_ostream`父类。然后，在构造函数体中，使用缓冲区作为参数调用父类的`init()`函数。还要重载`rdbuf()`函数，该函数返回指向缓冲区变量的指针：
 
 ```cpp
-    template< class CharT, class Traits = std::char_traits<CharT> >
-    class extended_ostream : public std::basic_ostream< CharT, Traits >
-    {
-    public:
-        extended_ostream()
-            : std::basic_ostream< CharT, Traits >::basic_ostream(&buffer)
-            , buffer()
-        {
-            this->init(&buffer);
-        }
-        extended_streambuf< CharT, Traits >* rdbuf () const
-        {
-            return (extended_streambuf< CharT, Traits >*)&buffer;
-        }
-    private:
-        extended_streambuf< CharT, Traits > buffer;
-    };
-    ```
+template< class CharT, class Traits = std::char_traits<CharT> >
+class extended_ostream : public std::basic_ostream< CharT, Traits >
+{
+public:
+    extended_ostream()
+        : std::basic_ostream< CharT, Traits >::basic_ostream(&buffer)
+        , buffer()
+    {
+        this->init(&buffer);
+    }
+    extended_streambuf< CharT, Traits >* rdbuf () const
+    {
+        return (extended_streambuf< CharT, Traits >*)&buffer;
+    }
+private:
+    extended_streambuf< CharT, Traits > buffer;
+};
+```
 
 1.  将`extendedOstream`类重命名为 logger，以避免与类似名称的误解。保持现有接口不变，但用我们自己的流替换`std::ostream&`成员，即`object - extended_ostream`。完整的类如下所示：
 
 ```cpp
-    class logger
-    {
-    public:
-         logger()
-              : m_log()
-              , writeAdditionalInfo(true)
-         {
-         }
-         template<typename T>
-         logger& operator<<(const T& value)
-         {
-              if (writeAdditionalInfo)
-              {
-                   std::string time = fTime();
-                   auto id = threadId();
-                   m_log << time << id << value;
-                   writeAdditionalInfo = false;
-              }
-              else
-              {
-                   m_log << value;
-              }
-              return *this;
-         }
-         logger&
-         operator<<(std::ostream& (*pfn)(std::ostream&))
-         {
-              writeAdditionalInfo = true;
-              pfn(m_log);
-              return *this;
-         }
-    private:
-         std::string fTime()
-         {
-              auto now = std::chrono::system_clock::now();
-              std::time_t time = std::chrono::system_clock::to_time_t(now);
-              std::ostringstream log;
-              std::string strTime(std::ctime(&time));
-              strTime.pop_back();
-              log << "[" << strTime << "]";
-              return log.str();
-         }
-         std::string threadId()
-         {
-              auto id = std::this_thread::get_id();
-              std::ostringstream log;
-              log << "[" << std::dec << id << "]";
-              return log.str();
-         }
-    private:
-         extended_ostream<char> m_log;
-         bool writeAdditionalInfo;
-    };
-    ```
+class logger
+{
+public:
+     logger()
+          : m_log()
+          , writeAdditionalInfo(true)
+     {
+     }
+     template<typename T>
+     logger& operator<<(const T& value)
+     {
+          if (writeAdditionalInfo)
+          {
+               std::string time = fTime();
+               auto id = threadId();
+               m_log << time << id << value;
+               writeAdditionalInfo = false;
+          }
+          else
+          {
+               m_log << value;
+          }
+          return *this;
+     }
+     logger&
+     operator<<(std::ostream& (*pfn)(std::ostream&))
+     {
+          writeAdditionalInfo = true;
+          pfn(m_log);
+          return *this;
+     }
+private:
+     std::string fTime()
+     {
+          auto now = std::chrono::system_clock::now();
+          std::time_t time = std::chrono::system_clock::to_time_t(now);
+          std::ostringstream log;
+          std::string strTime(std::ctime(&time));
+          strTime.pop_back();
+          log << "[" << strTime << "]";
+          return log.str();
+     }
+     std::string threadId()
+     {
+          auto id = std::this_thread::get_id();
+          std::ostringstream log;
+          log << "[" << std::dec << id << "]";
+          return log.str();
+     }
+private:
+     extended_ostream<char> m_log;
+     bool writeAdditionalInfo;
+};
+```
 
 1.  进入`main`函数并将`extendedOstream`对象更改为`logger`对象。将其余代码保持不变。现在，构建并运行练习。您将看到在上一个练习中给出的输出，但在这种情况下，我们使用了自己的流缓冲区，自己的流对象和一个包装类，为输出添加了额外的信息。查看下面截图中显示的执行结果，并将其与先前的结果进行比较。确保它们是相似的。如果是这样，那就意味着我们做得很好，我们的继承类按预期工作：
 
@@ -1713,159 +1713,159 @@ aiocbObj.aio_sigevent.sigev_value.sival_ptr = &aiocbObj;
 1.  包括所有必需的头文件：`<aio.h>`用于异步读写支持，`<signal.h>`用于信号支持，`<fcntl.h>`用于文件操作，`<unistd.h>`用于符号常量支持，`<iostream>`用于输出到终端，`<chrono>`用于时间选项，`<thread>`用于线程支持：
 
 ```cpp
-    #include <aio.h>
-    #include <signal.h>
-    #include <fcntl.h>
-    #include <unistd.h>
-    #include <iostream>
-    #include <chrono>
-    #include <thread>
-    ```
+#include <aio.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <iostream>
+#include <chrono>
+#include <thread>
+```
 
 1.  创建一个名为`isDone`的 bool 变量，用于指示操作何时已完成：
 
 ```cpp
-    bool isDone{};
-    ```
+bool isDone{};
+```
 
 1.  定义将作为我们的信号处理程序的函数，即`aioSigHandler`。当异步操作完成时将调用它。信号处理程序应具有以下签名：
 
 ```cpp
-    void name(int number, siginfo_t* si, void* additional)
-    ```
+void name(int number, siginfo_t* si, void* additional)
+```
 
 1.  第一个参数是信号编号，第二个参数是一个包含有关信号生成原因的信息的结构，最后一个参数是附加信息。它可以转换为`ucontext_t`结构的指针，以便我们可以接收到被该信号中断的线程上下文。在`aioSigHandler`中，检查异步 I/O 操作相关的信号是否是常量，使用`SI_ASYNCIO`。如果是，输出一条消息。接下来，将`isDone`设置为`true`：
 
 ```cpp
-    void
-    aioSigHandler(int no, siginfo_t* si, void*)
-    {
-         std::cout << "Signo: " << no << std::endl;
-         if (si->si_code == SI_ASYNCIO)
-         {
-              std::cout << "I/O completion signal received" << std::endl;
-         }
-         isDone = true;
-    }
-    ```
+void
+aioSigHandler(int no, siginfo_t* si, void*)
+{
+     std::cout << "Signo: " << no << std::endl;
+     if (si->si_code == SI_ASYNCIO)
+     {
+          std::cout << "I/O completion signal received" << std::endl;
+     }
+     isDone = true;
+}
+```
 
 1.  定义另一个辅助函数，名为`initSigAct`。它将初始化`sigaction`结构。该结构定义了在 I/O 操作完成时将发送哪个信号以及应调用哪个处理程序。在这里，我们选择了`SIGUSR1` - 一个用户定义的信号。在`sa_flags`中，设置我们希望在操作重新启动或接收到信息时传递此信号：
 
 ```cpp
-    bool 
-    initSigAct(struct sigaction& item)
-    {
-         item.sa_flags = SA_RESTART | SA_SIGINFO;
-         item.sa_sigaction = aioSigHandler;
-         if (-1 == sigaction(SIGUSR1, &item, NULL))
-         {
-              std::cerr << "sigaction usr1 failed" << std::endl;
-              return false;
-         }
-         std::cout << "Successfully set up a async IO handler to SIGUSR1 action" << std::endl;
-         return true;
-    }
-    ```
+bool 
+initSigAct(struct sigaction& item)
+{
+     item.sa_flags = SA_RESTART | SA_SIGINFO;
+     item.sa_sigaction = aioSigHandler;
+     if (-1 == sigaction(SIGUSR1, &item, NULL))
+     {
+          std::cerr << "sigaction usr1 failed" << std::endl;
+          return false;
+     }
+     std::cout << "Successfully set up a async IO handler to SIGUSR1 action" << std::endl;
+     return true;
+}
+```
 
 1.  定义名为`fillAiocb`的辅助函数，它将使用给定的参数填充`aiocb`结构。它将以 aiocb 结构的引用、文件描述符、缓冲区指针和缓冲区大小作为参数。在`sigev_signo`中设置`SIGUSR1`，这是我们之前初始化的：
 
 ```cpp
-    void 
-    fillAiocb(aiocb& item, const int& fileDescriptor,
-              char* buffer, const int& bufSize)
-    {
-         item.aio_fildes = fileDescriptor;
-         item.aio_buf = static_cast<void*>(buffer);
-         item.aio_nbytes = bufSize;
-         item.aio_reqprio = 0;
-         item.aio_offset = 0;
-         item.aio_sigevent.sigev_notify = SIGEV_SIGNAL;
-         item.aio_sigevent.sigev_signo = SIGUSR1;
-         item.aio_sigevent.sigev_value.sival_ptr = &item;
-    }
-    ```
+void 
+fillAiocb(aiocb& item, const int& fileDescriptor,
+          char* buffer, const int& bufSize)
+{
+     item.aio_fildes = fileDescriptor;
+     item.aio_buf = static_cast<void*>(buffer);
+     item.aio_nbytes = bufSize;
+     item.aio_reqprio = 0;
+     item.aio_offset = 0;
+     item.aio_sigevent.sigev_notify = SIGEV_SIGNAL;
+     item.aio_sigevent.sigev_signo = SIGUSR1;
+     item.aio_sigevent.sigev_value.sival_ptr = &item;
+}
+```
 
 1.  进入`main`函数。定义名为`buf_size`的变量，其中包含缓冲区大小。创建一个该大小的缓冲区：
 
 ```cpp
-    constexpr int bufSize = 100;
-    char* buffer = new char(bufSize);
-    if (!buffer)
-    {
-         std::cerr << "Failed to allocate buffer" << std::endl;
-         return -1;
-    }
-    ```
+constexpr int bufSize = 100;
+char* buffer = new char(bufSize);
+if (!buffer)
+{
+     std::cerr << "Failed to allocate buffer" << std::endl;
+     return -1;
+}
+```
 
 1.  创建一个名为`fileName`的变量，其中包含一个名为"`Test.txt`"的文件。然后，以只读方式打开此文件：
 
 ```cpp
-    const std::string fileName("Test.txt");
-    int descriptor = open(fileName.c_str(), O_RDONLY);
-    if (-1 == descriptor)
-    {
-         std::cerr << "Failed to opene file for reading" << std::endl;
-         return -1;
-    }
-    std::cout << "Successfully opened file for reading" << std::endl;
-    ```
+const std::string fileName("Test.txt");
+int descriptor = open(fileName.c_str(), O_RDONLY);
+if (-1 == descriptor)
+{
+     std::cerr << "Failed to opene file for reading" << std::endl;
+     return -1;
+}
+std::cout << "Successfully opened file for reading" << std::endl;
+```
 
 1.  创建一个`sigaction`结构并使用`initSigAct`函数进行初始化：
 
 ```cpp
-    struct sigaction sa;
-    if (!initSigAct(sa))
-    {
-         std::cerr << "failed registering signal" << std::endl;
-         return -1;
-    }
-    ```
+struct sigaction sa;
+if (!initSigAct(sa))
+{
+     std::cerr << "failed registering signal" << std::endl;
+     return -1;
+}
+```
 
 1.  创建一个`aiocb`结构并使用`fillAiocb`函数进行初始化：
 
 ```cpp
-    aiocb aiocbObj;
-    fillAiocb(aiocbObj, descriptor, buffer, bufSize);
-    ```
+aiocb aiocbObj;
+fillAiocb(aiocbObj, descriptor, buffer, bufSize);
+```
 
 1.  使用`aio_read`函数执行`read`操作：
 
 ```cpp
-    if (-1 == aio_read(&aiocbObj))
-    {
-         std::cerr << "aio_read failed" << std::endl;
-    }
-    ```
+if (-1 == aio_read(&aiocbObj))
+{
+     std::cerr << "aio_read failed" << std::endl;
+}
+```
 
 1.  接下来，在循环中，评估`isDone`变量。如果它为 false，则使线程休眠`3ms`。通过这样做，我们将等待 I/O 操作完成：
 
 ```cpp
-    while (!isDone)
-    {
-         using namespace std::chrono_literals;
-         std::this_thread::sleep_for(3ms);
-    }
-    std::cout << "Successfully finished read operation. Buffer: " << std::endl << buffer; 
-    ```
+while (!isDone)
+{
+     using namespace std::chrono_literals;
+     std::this_thread::sleep_for(3ms);
+}
+std::cout << "Successfully finished read operation. Buffer: " << std::endl << buffer; 
+```
 
 1.  在运行此练习之前，在项目目录中创建一个`Test.txt`文件，并写入不同的符号。例如，我们的文件包含以下数据：
 
 ```cpp
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1 
-    a1a"1 a1\a1 a1	a1
-    ```
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1 
+a1a"1 a1\a1 a1	a1
+```
 
 这里有字母字符、数字字符、特殊符号、空格、制表符和换行符。
 
@@ -2014,77 +2014,77 @@ std::cout << ss.str();
 1.  包括所有必需的头文件：
 
 ```cpp
-    #include <iostream> // for std::cout
-    #include <thread>   // for std::thread
-    #include <mutex>    // for std::mutex
-    #include <sstream>  // for std::ostringstream
-    ```
+#include <iostream> // for std::cout
+#include <thread>   // for std::thread
+#include <mutex>    // for std::mutex
+#include <sstream>  // for std::ostringstream
+```
 
 现在，让我们考虑一下我们的包装器。我们可以在某个地方创建这个类的变量，并将其传递给每个创建的线程。然而，这是一个不好的决定，因为在复杂的应用程序中，这将需要大量的工作。我们也可以将其作为单例来做，这样我们就可以从任何地方访问它。接下来，我们必须考虑我们的类的内容。实际上，我们可以使用我们在*练习 7*中创建的类，*继承标准流对象*。在那个练习中，我们重载了`std::basic_streambuf`和`std::basic_ostream`，并将`std::cout`设置为输出设备。我们可以在重载函数中添加一个互斥锁并直接使用它。请注意，我们不需要任何额外的逻辑-只需使用`std::cout`输出数据。为此，我们可以创建一个更简单的类。如果我们没有设置输出设备，应用左移运算符将不会生效，并且将存储要输出的数据到内部缓冲区。太好了！现在，我们需要考虑如何将这个缓冲区输出到`std::cout`。
 
 1.  实现一个诸如`write()`的函数，它将锁定互斥锁并从内部缓冲区输出到`std::cout`。使用这个函数的方式将如下所示：
 
 ```cpp
-    mtcout cout;
-    cout << msg << std::endl;
-    cout.write();
-    ```
+mtcout cout;
+cout << msg << std::endl;
+cout.write();
+```
 
 1.  我们有一个函数将始终自动调用，并且我们可以将写函数的代码放入其中。这是一个析构函数。在这种情况下，我们将创建和销毁合并为一行。这样一个对象的使用将如下所示：
 
 ```cpp
-    mtcout{} << msg << std::endl; 
-    ```
+mtcout{} << msg << std::endl; 
+```
 
 1.  现在，让我们定义我们的`mtcout`（多线程 cout）类。它有一个公共默认构造函数。在私有部分，它有一个静态互斥变量。正如你可能记得的那样，静态变量在类的所有实例之间是共享的。在析构函数中，我们锁定互斥锁并使用 cout 输出。在输出中添加一个前缀-当前线程的 ID 和一个空格字符：
 
 ```cpp
-    class mtcout : public std::ostringstream
-    {
-    public:
-         mtcout() = default;
-         ~mtcout()
-         {
-         std::lock_guard<std::mutex> lock(m_mux);
-              std::cout << std::this_thread::get_id() << " " << this->str();
-         }
-    private:
-         static std::mutex m_mux;
-    };
-    ```
+class mtcout : public std::ostringstream
+{
+public:
+     mtcout() = default;
+     ~mtcout()
+     {
+     std::lock_guard<std::mutex> lock(m_mux);
+          std::cout << std::this_thread::get_id() << " " << this->str();
+     }
+private:
+     static std::mutex m_mux;
+};
+```
 
 1.  接下来，在类外声明`mutex`变量。我们这样做是因为我们必须在任何源文件中声明一个静态变量：
 
 ```cpp
-    std::mutex mtcout::m_mux; 
-    ```
+std::mutex mtcout::m_mux; 
+```
 
 1.  输入主函数。创建一个名为`func`的 lambda。它将测试我们的`mtcout`类。它以字符串作为参数，并在循环中使用`mtcout`从`0`到`1000`输出这个字符串。使用`std::cout`添加相同的输出并将其注释掉。比较两种情况下的输出：
 
 ```cpp
-    auto func = [](const std::string msg)
-    {
-         using namespace std::chrono_literals;
-         for (int i = 0; i < 1000; ++i)
-         {
-              mtcout{} << msg << std::endl;
-    //          std::cout << std::this_thread::get_id() << " " << msg << std::endl;
-         }
-    };
-    ```
+auto func = [](const std::string msg)
+{
+     using namespace std::chrono_literals;
+     for (int i = 0; i < 1000; ++i)
+     {
+          mtcout{} << msg << std::endl;
+//          std::cout << std::this_thread::get_id() << " " << msg << std::endl;
+     }
+};
+```
 
 1.  创建四个线程并将 lambda 函数作为参数传递。将不同的字符串传递给每个线程。最后，加入所有四个线程：
 
 ```cpp
-    std::thread thr1(func, "111111111");
-    std::thread thr2(func, "222222222");
-    std::thread thr3(func, "333333333");
-    std::thread thr4(func, "444444444");
-    thr1.join();
-    thr2.join();
-    thr3.join();
-    thr4.join();
-    ```
+std::thread thr1(func, "111111111");
+std::thread thr2(func, "222222222");
+std::thread thr3(func, "333333333");
+std::thread thr4(func, "444444444");
+thr1.join();
+thr2.join();
+thr3.join();
+thr4.join();
+```
 
 1.  首次构建和运行练习。您将获得以下输出：![图 6.18：执行练习 9，第 1 部分的结果](img/C14583_06_18.jpg)
 
@@ -2220,8 +2220,8 @@ a < b ? b : a
 1.  定义并实现`StreamLogger`类，为终端提供线程安全的输出接口。它应该格式化输出如下：
 
 ```cpp
-    [dateTtime][threadId][logLevel][file:line: ][function] | message
-    ```
+[dateTtime][threadId][logLevel][file:line: ][function] | message
+```
 
 1.  在一个单独的头文件中，声明不同日志级别的宏定义，返回`StreamLogger`类的临时对象。
 

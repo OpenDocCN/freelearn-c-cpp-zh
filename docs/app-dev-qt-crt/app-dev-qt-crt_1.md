@@ -159,26 +159,26 @@ Qt Creator 的设计视图
 1.  Qt Creator 返回到`mainindow.cpp`文件的**编辑**视图。将其更改为：
 
 ```cpp
-    #include "mainwindow.h"
-    #include "ui_mainwindow.h"
-    #include <QApplication>
-    MainWindow::MainWindow(QWidget *parent) :
-        QMainWindow(parent),
-        ui(new Ui::MainWindow)
-    {
-        ui->setupUi(this);
-    }
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include <QApplication>
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+}
 
-    MainWindow::~MainWindow()
-    {
-        delete ui;
-    }
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
 
-    void MainWindow::on_pushButton_clicked()
-    {
-        QApplication::exit();
-    }
-    ```
+void MainWindow::on_pushButton_clicked()
+{
+    QApplication::exit();
+}
+```
 
 在运行应用程序之前，让我们确保我们了解`MainWindow`类的实现。`MainWindow`类的构造函数加载了主窗口用户界面的描述，并使用 Qt Creator 生成的`Ui::MainWindow`类进行设置。析构函数删除了代码布局的实现，`on_pushButton_clicked`方法通过调用`QApplication`类实现的静态方法`exit`简单地终止了应用程序。
 
@@ -281,39 +281,39 @@ Qt Quick 设计师
 1.  返回**编辑**视图并修改`main.qml`，使其看起来像下面这样：
 
 ```cpp
-    import QtQuick 2.0
+import QtQuick 2.0
 
-    Rectangle {
-        width: 360
-        height: 360
-        Text {
-     id: text
-            text: qsTr("Hello World")
-            anchors.centerIn: parent
+Rectangle {
+    width: 360
+    height: 360
+    Text {
+ id: text
+        text: qsTr("Hello World")
+        anchors.centerIn: parent
+    }
+    MouseArea {
+        anchors.fill: parent
+        onClicked: {
+            Qt.quit();
         }
-        MouseArea {
-            anchors.fill: parent
-            onClicked: {
-                Qt.quit();
-            }
 
-            Rectangle {
-                id: rectangle1
-                x: 80
-                y: 7
-                width: 200
-                height: 124
-                color: "#777777"
+        Rectangle {
+            id: rectangle1
+            x: 80
+            y: 7
+            width: 200
+            height: 124
+            color: "#777777"
 
-                MouseArea {
-                    id: mousearea1
-                    anchors.fill: parent
-     onClicked: text.text = qsTr("Hi there!")
-                }
+            MouseArea {
+                id: mousearea1
+                anchors.fill: parent
+ onClicked: text.text = qsTr("Hi there!")
             }
         }
     }
-    ```
+}
+```
 
 您应该看到大部分更改是由**设计**视图进行的；它在原始**MouseArea**对象内添加了一个矩形，以及另一个**MouseArea**。您应该需要添加一行，将`text`元素的 ID 设置为 text，并将`onClicked`处理程序添加到您在**设计**视图中拖出的新**MouseArea**对象。`id`属性允许其他 QML 通过名称访问文本字段（在本例中，它的名称只是 text），而`onClicked`处理程序将文本项的`text`属性的内容更改为文本`Hi there!`。
 

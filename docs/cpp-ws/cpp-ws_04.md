@@ -105,9 +105,9 @@ LINQ 是一种技术，它提供了一种用于查询对象的表达性和简洁
 1.  切换到`Chapter04`文件夹并使用以下.NET 命令创建一个新的控制台应用程序，名为`Chapter04`：
 
 ```cpp
-    source\Chapter04>dotnet new console -o Chapter04
-    The template "Console Application" was created successfully.
-    ```
+source\Chapter04>dotnet new console -o Chapter04
+The template "Console Application" was created successfully.
+```
 
 1.  删除`Class1.cs`文件。
 
@@ -118,32 +118,32 @@ LINQ 是一种技术，它提供了一种用于查询对象的表达性和简洁
 1.  添加`System.Collections.Generic`命名空间以访问`List<T>`类，并声明一个名为`colors`的新变量：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Examples
-    {
-        class ListExamples
-        {     
-            public static void Main()
-            {
-                var colors = new List<string> {"red", "green"};
-                colors.Add("orange");
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Examples
+{
+    class ListExamples
+    {     
+        public static void Main()
+        {
+            var colors = new List<string> {"red", "green"};
+            colors.Add("orange");
+```
 
 代码声明了新的`colors`变量，可以将多个颜色名称存储为`strings`。在这里，使用集合初始化语法，以便在变量的初始化中添加`red`和`green`。调用`Add`方法，将`orange`添加到列表中。
 
 1.  同样，`AddRange`将`yellow`和`pink`添加到列表的末尾：
 
 ```cpp
-                colors.AddRange(new [] {"yellow", "pink"});
-    ```
+            colors.AddRange(new [] {"yellow", "pink"});
+```
 
 1.  此时，列表中有五种颜色，`red`位于索引位置`0`，`green`位于位置`1`。您可以使用以下代码验证这一点：
 
 ```cpp
-                Console.WriteLine($"Colors has {colors.Count} items");
-                Console.WriteLine($"Item at index 1 is {colors[1]}");
-    ```
+            Console.WriteLine($"Colors has {colors.Count} items");
+            Console.WriteLine($"Item at index 1 is {colors[1]}");
+```
 
 运行代码会产生以下输出：
 
@@ -155,10 +155,10 @@ Item at index 1 is green
 1.  使用`Insert`，可以将`blue`插入到列表的开头，即索引`0`处，如下面的代码所示。请注意，这将`red`从索引`0`移动到`1`，并且所有其他颜色的索引都将增加一个：
 
 ```cpp
-                Console.WriteLine("Inserting blue at 0");
-                colors.Insert(0, "blue");
-                Console.WriteLine($"Item at index 1 is now {colors[1]}");
-    ```
+            Console.WriteLine("Inserting blue at 0");
+            colors.Insert(0, "blue");
+            Console.WriteLine($"Item at index 1 is now {colors[1]}");
+```
 
 运行此代码时，您应该看到以下输出：
 
@@ -170,11 +170,11 @@ Item at index 1 is now red
 1.  使用`foreach`，您可以遍历列表中的字符串，将每个字符串写入控制台，如下所示：
 
 ```cpp
-                Console.WriteLine("foreach");
-                foreach (var color in colors)
-                    Console.Write($"{color}|");
-                Console.WriteLine();
-    ```
+            Console.WriteLine("foreach");
+            foreach (var color in colors)
+                Console.Write($"{color}|");
+            Console.WriteLine();
+```
 
 您应该得到以下输出：
 
@@ -186,45 +186,45 @@ blue|red|green|orange|yellow|pink|
 1.  现在，添加以下代码来反转数组。在这里，每个`color`字符串都使用`ToCharArray`转换为`char`类型的数组：
 
 ```cpp
-                Console.WriteLine("ForEach Action:");
-                colors.ForEach(color =>
-                {
-                    var characters = color.ToCharArray();
-                    Array.Reverse(characters);
-                    var reversed = new string(characters);
-                    Console.Write($"{reversed}|");
-                });
-                Console.WriteLine();
-    ```
+            Console.WriteLine("ForEach Action:");
+            colors.ForEach(color =>
+            {
+                var characters = color.ToCharArray();
+                Array.Reverse(characters);
+                var reversed = new string(characters);
+                Console.Write($"{reversed}|");
+            });
+            Console.WriteLine();
+```
 
 这不会影响`colors`列表中的任何值，因为`characters`指的是一个不同的对象。请注意，`foreach`会遍历每个字符串，而`ForEach`则定义了一个 Action 委托，用于使用每个字符串进行调用（回想一下，在*第三章*，*委托、事件和 Lambda*中，您看到了如何使用 lambda 语句来创建`Action`委托）。
 
 1.  运行代码会产生这个输出：
 
 ```cpp
-    ForEach Action:
-    eulb|der|neerg|egnaro|wolley|knip|
-    ```
+ForEach Action:
+eulb|der|neerg|egnaro|wolley|knip|
+```
 
 1.  在下一个片段中，`List`构造函数接受一个源集合。这将创建一个新列表，其中包含`colors`字符串的副本，在这种情况下，使用默认的`Sort`实现进行排序：
 
 ```cpp
-                var backupColors = new List<string>(colors);
-                backupColors.Sort();
-    ```
+            var backupColors = new List<string>(colors);
+            backupColors.Sort();
+```
 
 字符串类型使用值类型语义，这意味着`backupColors`列表中填充了每个源字符串值的**副本**。更新一个列表中的字符串**不会**影响另一个列表。相反，类被定义为引用类型，因此将类实例列表传递给构造函数仍将创建一个新列表，具有独立的元素索引，但每个元素将指向内存中相同的共享引用，而不是独立的副本。
 
 1.  在删除所有颜色之前（使用`colors.Clear`），在以下片段中将每个值写入控制台（列表将很快重新填充）：
 
 ```cpp
-                Console.WriteLine("Foreach before clearing:");
-                foreach (var color in colors)
-                    Console.Write($"{color}|");
-                Console.WriteLine();
-                colors.Clear();
-                Console.WriteLine($"Colors has {colors.Count} items");
-    ```
+            Console.WriteLine("Foreach before clearing:");
+            foreach (var color in colors)
+                Console.Write($"{color}|");
+            Console.WriteLine();
+            colors.Clear();
+            Console.WriteLine($"Colors has {colors.Count} items");
+```
 
 运行代码会产生这个输出：
 
@@ -237,12 +237,12 @@ Colors has 0 items
 1.  然后，再次使用`AddRange`，将颜色的完整列表添加回`colors`列表，使用排序后的`backupColors`项目作为源：
 
 ```cpp
-                colors.AddRange(backupColors);
-                Console.WriteLine("foreach after addrange (sorted items):");
-                foreach (var color in colors)
-                    Console.Write($"{color}|");
-                Console.WriteLine();
-    ```
+            colors.AddRange(backupColors);
+            Console.WriteLine("foreach after addrange (sorted items):");
+            foreach (var color in colors)
+                Console.Write($"{color}|");
+            Console.WriteLine();
+```
 
 您应该看到以下输出：
 
@@ -254,10 +254,10 @@ blue|green|orange|pink|red|yellow|
 1.  `ConvertAll`方法传递了一个委托，该委托可用于返回任何类型的新列表：
 
 ```cpp
-                var indexes = colors.ConvertAll(color =>                      $"{color} is at index {colors.IndexOf(color)}");
-                Console.WriteLine("ConvertAll:");
-                Console.WriteLine(string.Join(Environment.NewLine, indexes));
-    ```
+            var indexes = colors.ConvertAll(color =>                      $"{color} is at index {colors.IndexOf(color)}");
+            Console.WriteLine("ConvertAll:");
+            Console.WriteLine(string.Join(Environment.NewLine, indexes));
+```
 
 在这里，返回一个新的`List<string>`，其中每个项目都使用其值和列表中的索引进行格式化。预期地，运行代码会产生这个输出：
 
@@ -274,9 +274,9 @@ yellow is at index 5
 1.  在下一个片段中，使用两个`Contains()`方法来展示字符串值相等的情况：
 
 ```cpp
-                Console.WriteLine($"Contains RED: {colors.Contains("RED")}");
-                Console.WriteLine($"Contains red: {colors.Contains("red")}");
-    ```
+            Console.WriteLine($"Contains RED: {colors.Contains("RED")}");
+            Console.WriteLine($"Contains red: {colors.Contains("red")}");
+```
 
 请注意，大写的`RED`是`red`。运行代码会产生这个输出：
 
@@ -288,9 +288,9 @@ Contains red: True
 1.  现在，添加以下片段：
 
 ```cpp
-                var existsInk = colors.Exists(color => color.EndsWith("ink"));
-                Console.WriteLine($"Exists *ink: {existsInk}");
-    ```
+            var existsInk = colors.Exists(color => color.EndsWith("ink"));
+            Console.WriteLine($"Exists *ink: {existsInk}");
+```
 
 在这里，`Exists`方法传递了一个 Predicate 委托，如果测试条件满足，则返回`True`或`False`。Predicate 是一个内置的委托，它返回一个布尔值。在这种情况下，如果存在任何以字母`ink`结尾的字符串值（例如`pink`），则将返回`True`。
 
@@ -303,12 +303,12 @@ Exists *ink: True
 1.  您知道已经有一个`red`颜色，但如果您再次在列表的开头插入`red`两次，会很有趣看看会发生什么：
 
 ```cpp
-                Console.WriteLine("Inserting reds");
-                colors.InsertRange(0, new [] {"red", "red"});
-                foreach (var color in colors)
-                    Console.Write($"{color}|");
-                Console.WriteLine();
-    ```
+            Console.WriteLine("Inserting reds");
+            colors.InsertRange(0, new [] {"red", "red"});
+            foreach (var color in colors)
+                Console.Write($"{color}|");
+            Console.WriteLine();
+```
 
 您将获得以下输出：
 
@@ -322,9 +322,9 @@ red|red|blue|green|orange|pink|red|yellow|
 1.  下一个片段向您展示了如何使用`FindAll`方法。`FindAll`类似于`Exists`方法，因为它传递了一个`Predicate`条件。所有符合该规则的项目都将被返回。添加以下代码：
 
 ```cpp
-                var allReds = colors.FindAll(color => color == "red");
-                Console.WriteLine($"Found {allReds.Count} red");
-    ```
+            var allReds = colors.FindAll(color => color == "red");
+            Console.WriteLine($"Found {allReds.Count} red");
+```
 
 您应该得到以下输出。预期地，返回了三个`red`项：
 
@@ -335,14 +335,14 @@ Found 3 red
 1.  完成示例后，使用`Remove`方法从列表中删除第一个`red`。仍然有两个`FindLastIndex`来获取最后一个`red`项的索引：
 
 ```cpp
-                colors.Remove("red");
-                var lastRedIndex = colors.FindLastIndex(color => color == "red");
-                Console.WriteLine($"Last red found at index {lastRedIndex}");
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+            colors.Remove("red");
+            var lastRedIndex = colors.FindLastIndex(color => color == "red");
+            Console.WriteLine($"Last red found at index {lastRedIndex}");
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 运行代码会产生以下输出：
 
@@ -371,83 +371,83 @@ Last red found at index 5
 1.  打开`Exercise01.cs`，并定义一个带有字符串 URL 构造函数参数的`Tab`类，如下所示：
 
 ```cpp
-    using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    namespace Chapter04.Exercises.Exercise01
-    {
-        public class Tab 
-        {
-            public Tab()
-            {}
-            public Tab(string url) => (Url) = (url);
-            public string Url { get; set; }
-            public override string ToString() => Url;
-        }   
-    ```
+using System;
+using System.Collections;
+using System.Collections.Generic;
+namespace Chapter04.Exercises.Exercise01
+{
+    public class Tab 
+    {
+        public Tab()
+        {}
+        public Tab(string url) => (Url) = (url);
+        public string Url { get; set; }
+        public override string ToString() => Url;
+    }   
+```
 
 在这里，`ToString`方法已被重写以返回当前的 URL，以帮助在控制台中记录详细信息。
 
 1.  创建`TabController`类如下：
 
 ```cpp
-        public class TabController : IEnumerable<Tab>
-        {
-            private readonly List<Tab> _tabs = new();
-    ```
+    public class TabController : IEnumerable<Tab>
+    {
+        private readonly List<Tab> _tabs = new();
+```
 
 `TabController`类包含一个选项卡列表。请注意类如何从`IEnumerable`接口继承。此接口用于使类提供一种通过`foreach`语句迭代其项目的方法。您将提供打开、移动和关闭选项卡的方法，这些方法将直接控制`_tabs`列表中项目的顺序，在接下来的步骤中。请注意，您可以直接向调用者公开`_tabs`列表的，但最好通过自己的方法限制对选项卡的访问。因此，它被定义为`readonly`列表。
 
 1.  接下来，定义`OpenNew`方法，将新选项卡添加到列表的末尾：
 
 ```cpp
-            public Tab OpenNew(string url)
-            {
-                var tab = new Tab(url);
-                _tabs.Add(tab);
-                Console.WriteLine($"OpenNew {tab}");
-                return tab;
-            }
-    ```
+        public Tab OpenNew(string url)
+        {
+            var tab = new Tab(url);
+            _tabs.Add(tab);
+            Console.WriteLine($"OpenNew {tab}");
+            return tab;
+        }
+```
 
 1.  定义另一个方法`Close`，如果存在，则从列表中删除选项卡。添加以下代码：
 
 ```cpp
-            public void Close(Tab tab)
-            {
-                if (_tabs.Remove(tab))
-                {
-                    Console.WriteLine($"Removed {tab}");
-                }
-            }
-    ```
+        public void Close(Tab tab)
+        {
+            if (_tabs.Remove(tab))
+            {
+                Console.WriteLine($"Removed {tab}");
+            }
+        }
+```
 
 1.  要将选项卡移动到列表的开头，请添加以下代码：
 
 ```cpp
-            public void MoveToStart(Tab tab)
-            {
-                if (_tabs.Remove(tab))
-                {
-                    _tabs.Insert(0, tab);
-                    Console.WriteLine($"Moved {tab} to start");
-                }
-    ```
+        public void MoveToStart(Tab tab)
+        {
+            if (_tabs.Remove(tab))
+            {
+                _tabs.Insert(0, tab);
+                Console.WriteLine($"Moved {tab} to start");
+            }
+```
 
 在这里，`MoveToStart`将尝试删除选项卡，然后将其插入到索引`0`。
 
 1.  同样，添加以下代码将选项卡移动到末尾：
 
 ```cpp
-            public void MoveToEnd(Tab tab)
-            {
-                if (_tabs.Remove(tab))
-                {
-                    _tabs.Add(tab);
-                    Console.WriteLine($"Moved {tab} to end. Index={_tabs.IndexOf(tab)}");
-                }
-            }
-    ```
+        public void MoveToEnd(Tab tab)
+        {
+            if (_tabs.Remove(tab))
+            {
+                _tabs.Add(tab);
+                Console.WriteLine($"Moved {tab} to end. Index={_tabs.IndexOf(tab)}");
+            }
+        }
+```
 
 在这里，调用`MoveToEnd`首先删除选项卡，然后将其添加到末尾，并将新的索引位置记录到控制台。
 
@@ -456,77 +456,77 @@ Last red found at index 5
 1.  对于这两种方法的实际结果，可以使用`_tab`列表的`GetEnumerator`方法，因为它包含列表形式的选项卡。添加以下代码来执行此操作：
 
 ```cpp
-            public IEnumerator<Tab> GetEnumerator() => _tabs.GetEnumerator();
-            IEnumerator IEnumerable.GetEnumerator() => _tabs.GetEnumerator();
-        }
-    ```
+        public IEnumerator<Tab> GetEnumerator() => _tabs.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => _tabs.GetEnumerator();
+    }
+```
 
 1.  您现在可以创建一个控制台应用程序来测试控制器的行为。首先打开三个新选项卡，并通过`LogTabs`记录选项卡的详细信息（稍后将定义）：
 
 ```cpp
-        static class Program
-        {
-            public static void Main()
-            {
-                var controller = new TabController();
-                Console.WriteLine("Opening tabs...");
-                var packt = controller.OpenNew("packtpub.com");
-                var msoft = controller.OpenNew("microsoft.com");
-                var amazon = controller.OpenNew("amazon.com");
-                controller.LogTabs();
-    ```
+    static class Program
+    {
+        public static void Main()
+        {
+            var controller = new TabController();
+            Console.WriteLine("Opening tabs...");
+            var packt = controller.OpenNew("packtpub.com");
+            var msoft = controller.OpenNew("microsoft.com");
+            var amazon = controller.OpenNew("amazon.com");
+            controller.LogTabs();
+```
 
 1.  现在，将`amazon`移到开头，将`packt`移到末尾，并记录选项卡的详细信息：
 
 ```cpp
-                Console.WriteLine("Moving...");
-                controller.MoveToStart(amazon);
-                controller.MoveToEnd(packt);
-                controller.LogTabs();
-    ```
+            Console.WriteLine("Moving...");
+            controller.MoveToStart(amazon);
+            controller.MoveToEnd(packt);
+            controller.LogTabs();
+```
 
 1.  关闭`msoft`选项卡并再次记录详细信息：
 
 ```cpp
-                Console.WriteLine("Closing tab...");
-                controller.Close(msoft);
-                controller.LogTabs();
-                Console.ReadLine();
-            }
-    ```
+            Console.WriteLine("Closing tab...");
+            controller.Close(msoft);
+            controller.LogTabs();
+            Console.ReadLine();
+        }
+```
 
 1.  最后，添加一个扩展方法，帮助记录`TabController`中每个选项卡的 URL。将其定义为`IEnumerable<Tab>`的扩展方法，而不是`TabController`，因为您只需要一个迭代器来使用`foreach`循环遍历选项卡。
 
 1.  使用`PadRight`将每个 URL 左对齐，如下所示：
 
 ```cpp
-            private static void LogTabs(this IEnumerable<Tab> tabs)
-            {
-                Console.Write("TABS: |");
-                foreach(var tab in tabs)
-                    Console.Write($"{tab.Url.PadRight(15)}|");
-                Console.WriteLine();
-            }    
-       } 
-    }
-    ```
+        private static void LogTabs(this IEnumerable<Tab> tabs)
+        {
+            Console.Write("TABS: |");
+            foreach(var tab in tabs)
+                Console.Write($"{tab.Url.PadRight(15)}|");
+            Console.WriteLine();
+        }    
+   } 
+}
+```
 
 1.  运行代码会产生以下输出：
 
 ```cpp
-    Opening tabs...
-    OpenNew packtpub.com
-    OpenNew microsoft.com
-    OpenNew amazon.com
-    TABS: |packtpub.com   |microsoft.com  |amazon.com     |
-    Moving...
-    Moved amazon.com to start
-    Moved packtpub.com to end. Index=2
-    TABS: |amazon.com     |microsoft.com  |packtpub.com   |
-    Closing tab...
-    Removed microsoft.com
-    TABS: |amazon.com     |packtpub.com   |
-    ```
+Opening tabs...
+OpenNew packtpub.com
+OpenNew microsoft.com
+OpenNew amazon.com
+TABS: |packtpub.com   |microsoft.com  |amazon.com     |
+Moving...
+Moved amazon.com to start
+Moved packtpub.com to end. Index=2
+TABS: |amazon.com     |microsoft.com  |packtpub.com   |
+Closing tab...
+Removed microsoft.com
+TABS: |amazon.com     |packtpub.com   |
+```
 
 注意
 
@@ -557,63 +557,63 @@ Last red found at index 5
 1.  在`Chapter04`源文件夹的`Examples`文件夹中，添加一个名为`QueueExamples.cs`的新类，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Examples
-    {
-        class QueueExamples
-        {      
-            record CustomerOrder (string Name, int TicketsRequested)
-            {}
-            public static void Main()
-            {
-                var ticketsAvailable = 10;
-                var customers = new Queue<CustomerOrder>();
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Examples
+{
+    class QueueExamples
+    {      
+        record CustomerOrder (string Name, int TicketsRequested)
+        {}
+        public static void Main()
+        {
+            var ticketsAvailable = 10;
+            var customers = new Queue<CustomerOrder>();
+```
 
 1.  使用`Enqueue`方法将五个订单添加到队列中，如下所示：
 
 ```cpp
-                customers.Enqueue(new CustomerOrder("Dave", 2));
-                customers.Enqueue(new CustomerOrder("Siva", 4));
-                customers.Enqueue(new CustomerOrder("Julien", 3));
-                customers.Enqueue(new CustomerOrder("Kane", 2));
-                customers.Enqueue(new CustomerOrder("Ann", 1));
-    ```
+            customers.Enqueue(new CustomerOrder("Dave", 2));
+            customers.Enqueue(new CustomerOrder("Siva", 4));
+            customers.Enqueue(new CustomerOrder("Julien", 3));
+            customers.Enqueue(new CustomerOrder("Kane", 2));
+            customers.Enqueue(new CustomerOrder("Ann", 1));
+```
 
 1.  现在，使用`while`循环，直到`TryDequeue`返回`false`，表示所有当前订单都已处理：
 
 ```cpp
-                // Start processing orders...
-                while(customers.TryDequeue(out CustomerOrder nextOrder))
-                {
-                    if (nextOrder.TicketsRequested <= ticketsAvailable)
-                    {
-                        ticketsAvailable -= nextOrder.TicketsRequested;   
-                        Console.WriteLine($"Congratulations {nextOrder.Name}, you've purchased {nextOrder.TicketsRequested} ticket(s)");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Sorry {nextOrder.Name}, cannot fulfil {nextOrder.TicketsRequested} ticket(s)");
-                    }
-                }
-                Console.WriteLine($"Finished. Available={ticketsAvailable}");
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+            // Start processing orders...
+            while(customers.TryDequeue(out CustomerOrder nextOrder))
+            {
+                if (nextOrder.TicketsRequested <= ticketsAvailable)
+                {
+                    ticketsAvailable -= nextOrder.TicketsRequested;   
+                    Console.WriteLine($"Congratulations {nextOrder.Name}, you've purchased {nextOrder.TicketsRequested} ticket(s)");
+                }
+                else
+                {
+                    Console.WriteLine($"Sorry {nextOrder.Name}, cannot fulfil {nextOrder.TicketsRequested} ticket(s)");
+                }
+            }
+            Console.WriteLine($"Finished. Available={ticketsAvailable}");
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 1.  运行示例代码会产生以下输出：
 
 ```cpp
-    Congratulations Dave, you've purchased 2 ticket(s)
-    Congratulations Siva, you've purchased 4 ticket(s)
-    Congratulations Julien, you've purchased 3 ticket(s)
-    Sorry Kane, cannot fulfil 2 ticket(s)
-    Congratulations Ann, you've purchased 1 ticket(s)
-    Finished. Available=0
-    ```
+Congratulations Dave, you've purchased 2 ticket(s)
+Congratulations Siva, you've purchased 4 ticket(s)
+Congratulations Julien, you've purchased 3 ticket(s)
+Sorry Kane, cannot fulfil 2 ticket(s)
+Congratulations Ann, you've purchased 1 ticket(s)
+Finished. Available=0
+```
 
 注意
 
@@ -644,111 +644,111 @@ Last red found at index 5
 1.  在你的 `Chapter04\Examples` 文件夹中，添加一个名为 `StackExamples.cs` 的新类，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Examples
-    {
-        class UndoStack
-        {
-            private readonly Stack<Action> _undoStack = new Stack<Action>();
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Examples
+{
+    class UndoStack
+    {
+        private readonly Stack<Action> _undoStack = new Stack<Action>();
+```
 
 1.  当用户完成某些操作时，可以撤消相同的操作。因此，将一个 `Action` 推送到 `_undoStack` 的前面：
 
 ```cpp
-            public void Do(Action action)
-            {
-                _undoStack.Push(action);
-            }
-    ```
+        public void Do(Action action)
+        {
+            _undoStack.Push(action);
+        }
+```
 
 1.  `Undo` 方法检查是否有任何要撤消的项目，然后调用 `Pop` 来移除最近的 `Action` 并调用它，从而撤消刚刚应用的更改。可以将此代码添加如下：
 
 ```cpp
-            public void Undo()
-            {
-                if (_undoStack.Count > 0)
-                {
-                    var undo = _undoStack.Pop();
-                    undo?.Invoke();
-                }
-            }
-        }
-    ```
+        public void Undo()
+        {
+            if (_undoStack.Count > 0)
+            {
+                var undo = _undoStack.Pop();
+                undo?.Invoke();
+            }
+        }
+    }
+```
 
 1.  现在，你可以创建一个 `TextEditor` 类，允许编辑添加到 `UndoStack`。这个构造函数传递了 `UndoStack`，因为可能有多个编辑器需要将各种 `Action` 委托添加到堆栈中：
 
 ```cpp
-        class TextEditor
-        {
-            private readonly UndoStack _undoStack;
-            public TextEditor(UndoStack undoStack)
-            {
-                _undoStack = undoStack;
-            }
-            public string Text {get; private set; }
-    ```
+    class TextEditor
+    {
+        private readonly UndoStack _undoStack;
+        public TextEditor(UndoStack undoStack)
+        {
+            _undoStack = undoStack;
+        }
+        public string Text {get; private set; }
+```
 
 1.  接下来，添加 `EditText` 命令，它获取 `previousText` 值的副本，并创建一个 `Action` 委托，如果调用，可以将文本恢复到其先前的值：
 
 ```cpp
-            public void EditText(string newText)
-            {
-                var previousText = Text;
-                _undoStack.Do( () =>
-                {
-                    Text = previousText;
-                    Console.Write($"Undo:'{newText}'".PadRight(40));
-                    Console.WriteLine($"Text='{Text}'");
-                });
-    ```
+        public void EditText(string newText)
+        {
+            var previousText = Text;
+            _undoStack.Do( () =>
+            {
+                Text = previousText;
+                Console.Write($"Undo:'{newText}'".PadRight(40));
+                Console.WriteLine($"Text='{Text}'");
+            });
+```
 
 1.  现在，应该使用 `+=` 运算符将 `newText` 值附加到 `Text` 属性。使用 `PadRight` 将此详细信息记录到控制台，以改善格式：
 
 ```cpp
-                Text += newText;
-                Console.Write($"Edit:'{newText}'".PadRight(40));
-                Console.WriteLine($"Text='{Text}'");
-            }
-        }
-    ```
+            Text += newText;
+            Console.Write($"Edit:'{newText}'".PadRight(40));
+            Console.WriteLine($"Text='{Text}'");
+        }
+    }
+```
 
 1.  最后，是时候创建一个测试 `TextEditor` 和 `UndoStack` 的控制台应用程序。首先进行四次编辑，然后进行两次**撤消操作**，最后进行两次文本编辑：
 
 ```cpp
-        class StackExamples
-        {
+    class StackExamples
+    {
 
-            public static void Main()
-            {
-                var undoStack = new UndoStack();
-                var editor = new TextEditor(undoStack);
-                editor.EditText("One day, ");
-                editor.EditText("in a ");
-                editor.EditText("city ");
-                editor.EditText("near by ");
-                undoStack.Undo(); // remove 'near by'
-                undoStack.Undo(); // remove 'city'
-                editor.EditText("land ");
-                editor.EditText("far far away ");
-                Console.ReadLine();
-            }
-        }    
-    }
-    ```
+        public static void Main()
+        {
+            var undoStack = new UndoStack();
+            var editor = new TextEditor(undoStack);
+            editor.EditText("One day, ");
+            editor.EditText("in a ");
+            editor.EditText("city ");
+            editor.EditText("near by ");
+            undoStack.Undo(); // remove 'near by'
+            undoStack.Undo(); // remove 'city'
+            editor.EditText("land ");
+            editor.EditText("far far away ");
+            Console.ReadLine();
+        }
+    }    
+}
+```
 
 1.  运行控制台应用程序会产生以下输出：
 
 ```cpp
-    Edit:'One day, '                        Text='One day, '
-    Edit:'in a '                            Text='One day, in a '
-    Edit:'city '                            Text='One day, in a city '
-    Edit:'near by '                         Text='One day, in a city near by '
-    Undo:'near by '                         Text='One day, in a city '
-    Undo:'city '                            Text='One day, in a '
-    Edit:'land '                            Text='One day, in a land '
-    Edit:'far far away '                    Text='One day, in a land far far away '
-    ```
+Edit:'One day, '                        Text='One day, '
+Edit:'in a '                            Text='One day, in a '
+Edit:'city '                            Text='One day, in a city '
+Edit:'near by '                         Text='One day, in a city near by '
+Undo:'near by '                         Text='One day, in a city '
+Undo:'city '                            Text='One day, in a '
+Edit:'land '                            Text='One day, in a land '
+Edit:'far far away '                    Text='One day, in a land far far away '
+```
 
 注意
 
@@ -785,56 +785,56 @@ Last red found at index 5
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`HashSetExamples.cs`的新类，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Examples
-    {
-        class HashSetExamples
-        {
-            public static void Main()
-            {
-                var actors = new List<string> {"Harrison Ford", "Will Smith", 
-                                               "Sigourney Weaver"};
-                var singers = new List<string> {"Will Smith", "Adele"};
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Examples
+{
+    class HashSetExamples
+    {
+        public static void Main()
+        {
+            var actors = new List<string> {"Harrison Ford", "Will Smith", 
+                                           "Sigourney Weaver"};
+            var singers = new List<string> {"Will Smith", "Adele"};
+```
 
 1.  现在，创建一个最初只包含歌手的新`HashSet`实例，然后使用`UnionWith`修改集合以包含那些可以扮演**或者**唱歌的不同集合：
 
 ```cpp
-                var actingOrSinging = new HashSet<string>(singers);
-                actingOrSinging.UnionWith(actors);
-                Console.WriteLine($"Acting or Singing: {string.Join(", ", 
-                                  actingOrSinging)}");
-    ```
+            var actingOrSinging = new HashSet<string>(singers);
+            actingOrSinging.UnionWith(actors);
+            Console.WriteLine($"Acting or Singing: {string.Join(", ", 
+                              actingOrSinging)}");
+```
 
 1.  对于那些可以扮演`singers`的`HashSet`实例，并使用`IntersectWith`修改`HashSet`实例以包含两个集合中都存在的不同列表：
 
 ```cpp
-                var actingAndSinging = new HashSet<string>(singers);
-                actingAndSinging.IntersectWith(actors);
-                Console.WriteLine($"Acting and Singing: {string.Join(", ", 
-                                  actingAndSinging)}");
-    ```
+            var actingAndSinging = new HashSet<string>(singers);
+            actingAndSinging.IntersectWith(actors);
+            Console.WriteLine($"Acting and Singing: {string.Join(", ", 
+                              actingAndSinging)}");
+```
 
 1.  最后，对于那些可以使用`ExceptWith`从`HashSet`实例中移除那些也可以唱歌的人：
 
 ```cpp
-                var actingOnly = new HashSet<string>(actors);
-                actingOnly.ExceptWith(singers);
-                Console.WriteLine($"Acting Only: {string.Join(", ", actingOnly)}");
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+            var actingOnly = new HashSet<string>(actors);
+            actingOnly.ExceptWith(singers);
+            Console.WriteLine($"Acting Only: {string.Join(", ", actingOnly)}");
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 1.  运行控制台应用程序会产生以下输出：
 
 ```cpp
-    Acting or Singing: Will Smith, Adele, Harrison Ford, Sigourney Weaver
-    Acting and Singing: Will Smith
-    Acting Only: Harrison Ford, Sigourney Weaver
-    ```
+Acting or Singing: Will Smith, Adele, Harrison Ford, Sigourney Weaver
+Acting and Singing: Will Smith
+Acting Only: Harrison Ford, Sigourney Weaver
+```
 
 从输出中，您可以看到在给定的演员和歌手名单中，只有`Will Smith`既可以扮演又可以唱歌。
 
@@ -885,128 +885,128 @@ Last red found at index 5
 1.  首先定义一个`Country`记录，该记录传入一个`Name`参数：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Examples
-    {
-        public record Country(string Name)
-        {}
-        class DictionaryExamples
-        {
-            public static void Main()
-            {
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Examples
+{
+    public record Country(string Name)
+    {}
+    class DictionaryExamples
+    {
+        public static void Main()
+        {
+```
 
 1.  使用`Dictionary`初始化语法创建一个包含五个国家的`Dictionary`，如下所示：
 
 ```cpp
-                var countries = new Dictionary<string, Country>
-                {
-                    {"AFG", new Country("Afghanistan")},
-                    {"ALB", new Country("Albania")},
-                    {"DZA", new Country("Algeria")},
-                    {"ASM", new Country("American Samoa")},
-                    {"AND", new Country("Andorra")}
-                };
-    ```
+            var countries = new Dictionary<string, Country>
+            {
+                {"AFG", new Country("Afghanistan")},
+                {"ALB", new Country("Albania")},
+                {"DZA", new Country("Algeria")},
+                {"ASM", new Country("American Samoa")},
+                {"AND", new Country("Andorra")}
+            };
+```
 
 1.  在下一个代码片段中，`Dictionary`实现了`IEnumerable`接口，这允许您检索表示`Dictionary`中的键和值项的键值对：
 
 ```cpp
-                Console.WriteLine("Enumerate foreach KeyValuePair");
-                foreach (var kvp in countries)
-                {
-                    Console.WriteLine($"\t{kvp.Key} = {kvp.Value.Name}");
-                }
-    ```
+            Console.WriteLine("Enumerate foreach KeyValuePair");
+            foreach (var kvp in countries)
+            {
+                Console.WriteLine($"\t{kvp.Key} = {kvp.Value.Name}");
+            }
+```
 
 1.  运行示例代码会产生以下输出。通过迭代`countries`中的每个项目，您可以看到五个国家代码及其名称：
 
 ```cpp
-    Enumerate foreach KeyValuePair
-            AFG = Afghanistan
-            ALB = Albania
-            DZA = Algeria
-            ASM = American Samoa
-            AND = Andorra
-    ```
+Enumerate foreach KeyValuePair
+        AFG = Afghanistan
+        ALB = Albania
+        DZA = Algeria
+        ASM = American Samoa
+        AND = Andorra
+```
 
 1.  有一个带有`AFG`键的条目，因此使用`set 索引器`传入`AFG`作为键允许设置一个新的`Country`记录，该记录将替换具有`AGF`键的先前项目。您可以添加以下代码来实现这一点：
 
 ```cpp
-                Console.WriteLine("set indexor AFG to new value");
-                countries["AFG"] = new Country("AFGHANISTAN");
-                Console.WriteLine($"get indexor AFG: {countries["AFG"].Name}");
-    ```
+            Console.WriteLine("set indexor AFG to new value");
+            countries["AFG"] = new Country("AFGHANISTAN");
+            Console.WriteLine($"get indexor AFG: {countries["AFG"].Name}");
+```
 
 1.  当您运行代码时，添加一个`AFG`键可以让您使用该键获取一个值：
 
 ```cpp
-    set indexor AFG to new value
-    get indexor AFG: AFGHANISTAN
-    ContainsKey AGO: False
-    ContainsKey and: False
-    ```
+set indexor AFG to new value
+get indexor AFG: AFGHANISTAN
+ContainsKey AGO: False
+ContainsKey and: False
+```
 
 1.  字符串键的键比较是区分大小写的，所以`AGO`是存在的，但`and`不是，因为相应的国家（`Andorra`）是用大写的`AND`键定义的。您可以添加以下代码来检查这一点：
 
 ```cpp
-                Console.WriteLine($"ContainsKey {"AGO"}:                          {countries.ContainsKey("AGO")}");
-                Console.WriteLine($"ContainsKey {"and"}:                          {countries.ContainsKey("and")}"); // Case sensitive
-    ```
+            Console.WriteLine($"ContainsKey {"AGO"}:                          {countries.ContainsKey("AGO")}");
+            Console.WriteLine($"ContainsKey {"and"}:                          {countries.ContainsKey("and")}"); // Case sensitive
+```
 
 1.  使用`Add`添加新条目时，如果键已经存在，将会抛出异常。可以通过添加以下代码来看到这一点：
 
 ```cpp
-                var anguilla = new Country("Anguilla");
-                Console.WriteLine($"Add {anguilla}...");
-                countries.Add("AIA", anguilla);
-                try
-                {
-                    var anguillaCopy = new Country("Anguilla");
-                    Console.WriteLine($"Adding {anguillaCopy}...");
-                    countries.Add("AIA", anguillaCopy);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Caught {e.Message}");
-                }
-    ```
+            var anguilla = new Country("Anguilla");
+            Console.WriteLine($"Add {anguilla}...");
+            countries.Add("AIA", anguilla);
+            try
+            {
+                var anguillaCopy = new Country("Anguilla");
+                Console.WriteLine($"Adding {anguillaCopy}...");
+                countries.Add("AIA", anguillaCopy);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Caught {e.Message}");
+            }
+```
 
 1.  相反，`TryAdd`执行`AIA`键，因此使用`TryAdd`只会返回一个`false`值，而不是抛出异常：
 
 ```cpp
-                var addedAIA = countries.TryAdd("AIA", new Country("Anguilla"));
-                Console.WriteLine($"TryAdd AIA: {addedAIA}");
-    ```
+            var addedAIA = countries.TryAdd("AIA", new Country("Anguilla"));
+            Console.WriteLine($"TryAdd AIA: {addedAIA}");
+```
 
 1.  如下输出所示，使用`AIA`键一次添加`Anguilla`是有效的，但尝试再次使用`AIA`键添加会导致捕获异常：
 
 ```cpp
-    Add Country { Name = Anguilla }...
-    Adding Country { Name = Anguilla }...
-    Caught An item with the same key has already been added. Key: AIA
-    TryAdd AIA: False
-    ```
+Add Country { Name = Anguilla }...
+Adding Country { Name = Anguilla }...
+Caught An item with the same key has already been added. Key: AIA
+TryAdd AIA: False
+```
 
 1.  `TryGetValue`允许您尝试通过键获取值。您传入一个可能在`Dictionary`中缺失的键。请求一个其键在`Dictionary`中缺失的对象将确保不会抛出异常。如果您不确定是否已为指定的键添加了值，则这很有用：
 
 ```cpp
-                var tryGet = countries.TryGetValue("ALB", out Country albania1);
-                Console.WriteLine($"TryGetValue for ALB: {albania1}                              Result={tryGet}");
-                countries.TryGetValue("alb", out Country albania2);
-                Console.WriteLine($"TryGetValue for ALB: {albania2}");
-            }
-        }
-    }
-    ```
+            var tryGet = countries.TryGetValue("ALB", out Country albania1);
+            Console.WriteLine($"TryGetValue for ALB: {albania1}                              Result={tryGet}");
+            countries.TryGetValue("alb", out Country albania2);
+            Console.WriteLine($"TryGetValue for ALB: {albania2}");
+        }
+    }
+}
+```
 
 1.  运行此代码后，您应该看到以下输出：
 
 ```cpp
-    TryGetValue for ALB: Country { Name = Albania } Result=True
-    TryGetValue for ALB:
-    ```
+TryGetValue for ALB: Country { Name = Albania } Result=True
+TryGetValue for ALB:
+```
 
 注意
 
@@ -1035,21 +1035,21 @@ Visual Studio 可能会报告以下警告：`Warning CS8600: Converting null lit
 1.  首先定义一个名为`WordCounter`的新类。这可以标记为`static`，以便无需创建实例即可使用：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    namespace Chapter04.Exercises.Exercise02
-    {
-        static class WordCounter 
-        {
-    ```
+using System;
+using System.Collections.Generic;
+namespace Chapter04.Exercises.Exercise02
+{
+    static class WordCounter 
+    {
+```
 
 1.  定义一个名为`Process`的`static`方法：
 
 ```cpp
-            public static IEnumerable<KeyValuePair<string, int>> Process(            string phrase)
-            {
-                var wordCounts = new Dictionary<string, int>();
-    ```
+        public static IEnumerable<KeyValuePair<string, int>> Process(            string phrase)
+        {
+            var wordCounts = new Dictionary<string, int>();
+```
 
 这是传递一个短语并返回`IEnumerable<KeyValuePair>`的方法，允许调用者枚举结果的`Dictionary`。在此定义之后，使用`string`（找到的每个单词）和`int`（单词出现的次数）对`wordCounts`的`Dictionary`进行键控。
 
@@ -1058,60 +1058,60 @@ Visual Studio 可能会报告以下警告：`Warning CS8600: Converting null lit
 1.  然后，您可以使用`RemoveEmptyEntries`选项来删除任何空字符串值。添加以下代码：
 
 ```cpp
-                 var words = phrase.ToLower().Split(' ',                        StringSplitOptions.RemoveEmptyEntries);
-    ```
+             var words = phrase.ToLower().Split(' ',                        StringSplitOptions.RemoveEmptyEntries);
+```
 
 1.  使用简单的`foreach`循环来遍历短语中找到的单词：
 
 ```cpp
-                foreach(var word in words)
-                {
-                    var key = word;
-                    if (char.IsPunctuation(key[key.Length-1]))
-                    {
-                        key = key.Remove(key.Length-1);
-                    }
-    ```
+            foreach(var word in words)
+            {
+                var key = word;
+                if (char.IsPunctuation(key[key.Length-1]))
+                {
+                    key = key.Remove(key.Length-1);
+                }
+```
 
 使用`char.IsPunctuation`方法从单词的末尾删除标点符号。
 
 1.  使用`TryGetValue`方法检查当前单词是否有`Dictionary`条目。如果有，将`count`更新为 1：
 
 ```cpp
-                    if (wordCounts.TryGetValue(key, out var count))
-                    {
-                        wordCounts[key] = count + 1;
-                    }
-                    else
-                    {
-                        wordCounts.Add(key, 1);
-                    }
-                }
-    ```
+                if (wordCounts.TryGetValue(key, out var count))
+                {
+                    wordCounts[key] = count + 1;
+                }
+                else
+                {
+                    wordCounts.Add(key, 1);
+                }
+            }
+```
 
 如果单词不存在，则添加一个新的单词键，其起始值为`1`。
 
 1.  一旦短语中的所有单词都被处理，返回`wordCounts Dictionary`：
 
 ```cpp
-                return wordCounts;
-            }
-        }
-    ```
+            return wordCounts;
+        }
+    }
+```
 
 1.  现在，编写控制台应用程序，允许用户输入短语：
 
 ```cpp
-        class Program
-        {
-            public static void Main()
-            {
-                string input;
-                do
-                {
-                    Console.Write("Enter a phrase:");
-                    input = Console.ReadLine();
-    ```
+    class Program
+    {
+        public static void Main()
+        {
+            string input;
+            do
+            {
+                Console.Write("Enter a phrase:");
+                input = Console.ReadLine();
+```
 
 一旦用户输入空字符串，`do`循环将结束；您将在即将到来的步骤中添加此代码。
 
@@ -1120,54 +1120,54 @@ Visual Studio 可能会报告以下警告：`Warning CS8600: Converting null lit
 1.  对于每个`key`和`value`，写入单词及其计数，将每个单词向右填充：
 
 ```cpp
-                    if (!string.IsNullOrEmpty(input))
-                    {
-                        var countsByWord = WordCounter.Process(input);
-                        var i = 0;
-                        foreach (var (key, value) in countsByWord)
-                        {
-                            Console.Write($"{key.PadLeft(20)}={value}\t");
-                            i++;
-                            if (i % 3 == 0)
-                            {
-                                Console.WriteLine();
-                            }
-                        }
-                        Console.WriteLine();
-    ```
+                if (!string.IsNullOrEmpty(input))
+                {
+                    var countsByWord = WordCounter.Process(input);
+                    var i = 0;
+                    foreach (var (key, value) in countsByWord)
+                    {
+                        Console.Write($"{key.PadLeft(20)}={value}\t");
+                        i++;
+                        if (i % 3 == 0)
+                        {
+                            Console.WriteLine();
+                        }
+                    }
+                    Console.WriteLine();
+```
 
 在每第三个单词之后（使用`i % 3 = 0`）开始新的一行，以改善输出格式。
 
 1.  完成`do-while`循环：
 
 ```cpp
-                        }
-                } while (input != string.Empty);
-            }
-        }
-    }
-    ```
+                    }
+            } while (input != string.Empty);
+        }
+    }
+}
+```
 
 1.  使用 1863 年《葛底斯堡演说》的开场文本运行控制台会产生以下输出：
 
 ```cpp
-    Enter a phrase: Four score and seven years ago our fathers brought forth, upon this continent, a new nation, conceived in liberty, and dedicated to the proposition that all men are created equal. Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived, and so dedicated, can long endure.
-                    four=1                 score=1                 and=3
-                   seven=1                 years=1                 ago=1
-                     our=1               fathers=1             brought=1
-                   forth=1                  upon=1                this=1
-               continent=1                     a=2                 new=1
-                  nation=3             conceived=2                  in=2
-                 liberty=1             dedicated=2                  to=1
-                     the=1           proposition=1                that=2
-                     all=1                   men=1                 are=2
-                 created=1                 equal=1                 now=1
-                      we=1               engaged=1               great=1
-                   civil=1                   war=1             testing=1
-                 whether=1                    or=1                 any=1
-                      so=2                   can=1                 long=1
-                  endure=1
-    ```
+Enter a phrase: Four score and seven years ago our fathers brought forth, upon this continent, a new nation, conceived in liberty, and dedicated to the proposition that all men are created equal. Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived, and so dedicated, can long endure.
+                four=1                 score=1                 and=3
+               seven=1                 years=1                 ago=1
+                 our=1               fathers=1             brought=1
+               forth=1                  upon=1                this=1
+           continent=1                     a=2                 new=1
+              nation=3             conceived=2                  in=2
+             liberty=1             dedicated=2                  to=1
+                 the=1           proposition=1                that=2
+                 all=1                   men=1                 are=2
+             created=1                 equal=1                 now=1
+                  we=1               engaged=1               great=1
+               civil=1                   war=1             testing=1
+             whether=1                    or=1                 any=1
+                  so=2                   can=1                 long=1
+              endure=1
+```
 
 注意
 
@@ -1393,27 +1393,27 @@ Query5: Index=2 : Wednes
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`LinqSelectManyExamples.cs`的新文件，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        record City (string Name, IEnumerable<string> Stations);
-        class LinqSelectManyExamples
-        {
-            public static void Main()
-            {
-                var cities = new List<City>
-                {
-                    new City("London", new[] {"Kings Cross KGX",                                           "Liverpool Street LVS",                                           "Euston EUS"}),
-                    new City("Birmingham", new[] {"New Street NST"})
-                };
-                Console.WriteLine("All Stations: ");
-                foreach (var station in cities.SelectMany(city => city.Stations))
-                {
-                    Console.WriteLine(station);
-                }
-    ```
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    record City (string Name, IEnumerable<string> Stations);
+    class LinqSelectManyExamples
+    {
+        public static void Main()
+        {
+            var cities = new List<City>
+            {
+                new City("London", new[] {"Kings Cross KGX",                                           "Liverpool Street LVS",                                           "Euston EUS"}),
+                new City("Birmingham", new[] {"New Street NST"})
+            };
+            Console.WriteLine("All Stations: ");
+            foreach (var station in cities.SelectMany(city => city.Stations))
+            {
+                Console.WriteLine(station);
+            }
+```
 
 传递给`SelectMany`的`Func`参数需要您指定一个可枚举的属性，即`City`类的`Stations`属性，其中包含一个字符串名称列表（请参阅突出显示的代码）。
 
@@ -1424,37 +1424,37 @@ Query5: Index=2 : Wednes
 1.  运行示例会产生以下输出：
 
 ```cpp
-    All Stations:
-    Kings Cross KGX
-    Liverpool Street LVS
-    Euston EUS
-    New Street NST
-    ```
+All Stations:
+Kings Cross KGX
+Liverpool Street LVS
+Euston EUS
+New Street NST
+```
 
 1.  作为替代方案，请考虑以下代码片段。在这里，您可以重新使用查询变量`stations`，以使代码更易于理解：
 
 ```cpp
-                Console.Write("All Station Codes: ");
-                var stations = cities
-                    .SelectMany(city => city.Stations.Select(s => s[³..]));
-                foreach (var station in stations)
-                {
-                    Console.Write($"{station} ");
-                }
-                Console.WriteLine();
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+            Console.Write("All Station Codes: ");
+            var stations = cities
+                .SelectMany(city => city.Stations.Select(s => s[³..]));
+            foreach (var station in stations)
+            {
+                Console.Write($"{station} ");
+            }
+            Console.WriteLine();
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 与其只返回每个`Station`字符串，此示例使用了嵌套的`Select`方法和`Range`运算符，使用`s[³..]`从站点名称中提取最后三个字符，其中`s`是每个站点名称的字符串，`³`表示`Range`运算符应该提取从字符串中的最后三个字符开始的字符串。
 
 1.  运行示例会产生以下输出：
 
 ```cpp
-    All Station Codes: KGX LVS EUS NST
-    ```
+All Station Codes: KGX LVS EUS NST
+```
 
 您可以看到每个站点名称的最后三个字符显示在输出中。
 
@@ -1471,23 +1471,23 @@ Query5: Index=2 : Wednes
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`LinqWhereExample.cs`的新文件，并编辑如下：
 
 ```cpp
-    LinqWhereExamples.cs
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        record Order (string Product, int Quantity, double Price);
-        class LinqWhereExamples
-        {
-            public static void Main()
-            {
-                var orders = new List<Order>
-                {
-                    new Order("Pen", 2, 1.99),
-                    new Order("Pencil", 5, 1.50),
-                    new Order("Note Pad", 1, 2.99),
-    ```
+LinqWhereExamples.cs
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    record Order (string Product, int Quantity, double Price);
+    class LinqWhereExamples
+    {
+        public static void Main()
+        {
+            var orders = new List<Order>
+            {
+                new Order("Pen", 2, 1.99),
+                new Order("Pencil", 5, 1.50),
+                new Order("Note Pad", 1, 2.99),
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/ZJpb5.
@@ -1498,57 +1498,57 @@ You can find the complete code here: https://packt.link/ZJpb5.
 1.  为此，您可以添加以下代码：
 
 ```cpp
-                Console.WriteLine("Orders with quantity over 5:");
-                foreach (var order in orders.Where(o => o.Quantity > 5))
-                {
-                    Console.WriteLine(order);
-                }
-    ```
+            Console.WriteLine("Orders with quantity over 5:");
+            foreach (var order in orders.Where(o => o.Quantity > 5))
+            {
+                Console.WriteLine(order);
+            }
+```
 
 1.  现在，假设您扩展条件以查找产品为`Pen`或`Pencil`的所有产品。您可以将该结果链接到`Select`方法中，该方法将返回每个订单的总价值；请记住，`Select`可以从源返回任何东西，甚至是像这样的简单额外计算：
 
 ```cpp
-                Console.WriteLine("Pens or Pencils:");
-                foreach (var orderValue in orders
-                    .Where(o => o.Product == "Pen"  || o.Product == "Pencil")
-                    .Select( o => o.Quantity * o.Price))
-                {
-                    Console.WriteLine(orderValue);
-                }
-    ```
+            Console.WriteLine("Pens or Pencils:");
+            foreach (var orderValue in orders
+                .Where(o => o.Product == "Pen"  || o.Product == "Pencil")
+                .Select( o => o.Quantity * o.Price))
+            {
+                Console.WriteLine(orderValue);
+            }
+```
 
 1.  接下来，以下代码片段中的查询表达式使用`where`子句来查找价格小于或等于`3.99`的订单。它将它们投影到一个具有`Name`和`Value`属性的匿名类型中，然后您可以使用`foreach`语句对其进行枚举：
 
 ```cpp
-                var query = from order in orders
-                   where order.Price <= 3.99
-                   select new {Name=order.Product, Value=order.Quantity*order.Price};
-                Console.WriteLine("Cheapest Orders:");
-                foreach(var order in query)
-                {
-                    Console.WriteLine($"{order.Name}: {order.Value}");
-                }
-            }
-        }
-    }
-    ```
+            var query = from order in orders
+               where order.Price <= 3.99
+               select new {Name=order.Product, Value=order.Quantity*order.Price};
+            Console.WriteLine("Cheapest Orders:");
+            foreach(var order in query)
+            {
+                Console.WriteLine($"{order.Name}: {order.Value}");
+            }
+        }
+    }
+}
+```
 
 1.  运行完整示例会产生以下结果：
 
 ```cpp
-    Orders with quantity over 5:
-    Order { Product = Ruler, Quantity = 10, Price = 0.5 }
-    Order { Product = USB Memory Stick, Quantity = 6, Price = 20 }
-    Pens or Pencils:
-    3.98
-    7.5
-    Cheapest Orders:
-    Pen: 3.98
-    Pencil: 7.5
-    Note Pad: 2.99
-    Stapler: 3.99
-    Ruler: 5
-    ```
+Orders with quantity over 5:
+Order { Product = Ruler, Quantity = 10, Price = 0.5 }
+Order { Product = USB Memory Stick, Quantity = 6, Price = 20 }
+Pens or Pencils:
+3.98
+7.5
+Cheapest Orders:
+Pen: 3.98
+Pencil: 7.5
+Note Pad: 2.99
+Stapler: 3.99
+Ruler: 5
+```
 
 现在您已经看到查询运算符的作用，值得回顾延迟执行，看看这如何影响多次枚举的查询。
 
@@ -1557,123 +1557,123 @@ You can find the complete code here: https://packt.link/ZJpb5.
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`LinqMultipleEnumerationExample.cs`的新文件，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        record TravelLog (string Name, int Distance, int Duration)
-        {
-            public double AverageSpeed()
-            {
-                Console.WriteLine($"AverageSpeed() called for '{Name}'");
-                return Distance / Duration;
-            }
-        }
-        class LinqMultipleEnumerationExample
-        {
-    ```
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    record TravelLog (string Name, int Distance, int Duration)
+    {
+        public double AverageSpeed()
+        {
+            Console.WriteLine($"AverageSpeed() called for '{Name}'");
+            return Distance / Duration;
+        }
+    }
+    class LinqMultipleEnumerationExample
+    {
+```
 
 1.  接下来，定义控制台应用程序的`Main`方法，该方法使用四个`TravelLog`记录填充了一个`travelLogs`列表。您将为此添加以下代码：
 
 ```cpp
-            public static void Main()
-            {
-                var travelLogs = new List<TravelLog>
-                {
-                    new TravelLog("London to Brighton", 50, 4),
-                    new TravelLog("Newcastle to London", 300, 24),
-                    new TravelLog("New York to Florida", 1146, 19),
-                    new TravelLog("Paris to Berlin", 546, 10)
-                };
-    ```
+        public static void Main()
+        {
+            var travelLogs = new List<TravelLog>
+            {
+                new TravelLog("London to Brighton", 50, 4),
+                new TravelLog("Newcastle to London", 300, 24),
+                new TravelLog("New York to Florida", 1146, 19),
+                new TravelLog("Paris to Berlin", 546, 10)
+            };
+```
 
 1.  现在，您将创建一个`fastestJourneys`查询变量，其中包括一个`Where`子句。当枚举时，此`Where`子句将调用每个旅程的`AverageSpeed`方法。
 
 1.  然后，使用`foreach`循环，枚举`fastestJourneys`中的项目，并将名称和距离写入控制台（注意，在`foreach`循环中执行`AverageSpeed`方法）：
 
 ```cpp
-                var fastestJourneys = travelLogs.Where(tl => tl.AverageSpeed() > 50);
-                Console.WriteLine("Fastest Distances:");
-                foreach (var item in fastestJourneys)
-                {
-                    Console.WriteLine($"{item.Name}: {item.Distance} miles");
-                }
-                Console.WriteLine();
-    ```
+            var fastestJourneys = travelLogs.Where(tl => tl.AverageSpeed() > 50);
+            Console.WriteLine("Fastest Distances:");
+            foreach (var item in fastestJourneys)
+            {
+                Console.WriteLine($"{item.Name}: {item.Distance} miles");
+            }
+            Console.WriteLine();
+```
 
 1.  运行代码块将产生以下输出，每次旅程的`Name`和`Distance`：
 
 ```cpp
-    Fastest Distances:
-    AverageSpeed() called for 'London to Brighton'
-    AverageSpeed() called for 'Newcastle to London'
-    AverageSpeed() called for 'New York to Florida'
-    New York to Florida: 1146 miles
-    AverageSpeed() called for 'Paris to Berlin'
-    Paris to Berlin: 546 miles
-    ```
+Fastest Distances:
+AverageSpeed() called for 'London to Brighton'
+AverageSpeed() called for 'Newcastle to London'
+AverageSpeed() called for 'New York to Florida'
+New York to Florida: 1146 miles
+AverageSpeed() called for 'Paris to Berlin'
+Paris to Berlin: 546 miles
+```
 
 1.  您可以看到`AverageSpeed`被称为`Where`条件。到目前为止，这是预期的，但现在，您可以重用相同的查询来输出`Name`和/或`Duration`：
 
 ```cpp
-                Console.WriteLine("Fastest Duration:");
-                foreach (var item in fastestJourneys)
-                {
-                    Console.WriteLine($"{item.Name}: {item.Duration} hours");
-                }
-                Console.WriteLine();
-    ```
+            Console.WriteLine("Fastest Duration:");
+            foreach (var item in fastestJourneys)
+            {
+                Console.WriteLine($"{item.Name}: {item.Duration} hours");
+            }
+            Console.WriteLine();
+```
 
 1.  运行此块将产生相同的`AverageSpeed`方法：
 
 ```cpp
-    Fastest Duration:
-    AverageSpeed() called for 'London to Brighton'
-    AverageSpeed() called for 'Newcastle to London'
-    AverageSpeed() called for 'New York to Florida'
-    New York to Florida: 19 hours
-    AverageSpeed() called for 'Paris to Berlin'
-    Paris to Berlin: 10 hours
-    ```
+Fastest Duration:
+AverageSpeed() called for 'London to Brighton'
+AverageSpeed() called for 'Newcastle to London'
+AverageSpeed() called for 'New York to Florida'
+New York to Florida: 19 hours
+AverageSpeed() called for 'Paris to Berlin'
+Paris to Berlin: 10 hours
+```
 
 这表明每当查询被枚举时，完整的查询都是`AverageSpeed`，但是如果一个方法需要访问数据库来提取一些数据呢？这将导致多次数据库调用，可能会导致应用程序运行非常缓慢。
 
 1.  您可以使用`ToList`、`ToArray`、`ToDictionary`、`ToLookup`或`ToHashSet`等方法，以确保可以多次枚举的查询是`Where`子句，但包括额外的`ToList`调用以立即执行查询并确保它不会被重新评估：
 
 ```cpp
-                Console.WriteLine("Fastest Duration Multiple loops:");
-                var fastestJourneysList = travelLogs
-                      .Where(tl => tl.AverageSpeed() > 50)
-                      .ToList();
-                for (var i = 0; i < 2; i++)
-                {
-                    Console.WriteLine($"Fastest Duration Multiple loop iteration {i+1}:");
-                    foreach (var item in fastestJourneysList)
-                    {
-                        Console.WriteLine($"{item.Name}: {item.Distance} in {item.Duration} hours");
-                    }
-                }
-            }
-        }
-    }
-    ```
+            Console.WriteLine("Fastest Duration Multiple loops:");
+            var fastestJourneysList = travelLogs
+                  .Where(tl => tl.AverageSpeed() > 50)
+                  .ToList();
+            for (var i = 0; i < 2; i++)
+            {
+                Console.WriteLine($"Fastest Duration Multiple loop iteration {i+1}:");
+                foreach (var item in fastestJourneysList)
+                {
+                    Console.WriteLine($"{item.Name}: {item.Distance} in {item.Duration} hours");
+                }
+            }
+        }
+    }
+}
+```
 
 1.  运行该块将产生以下输出。请注意`AverageSpeed`被称为`Fastest Duration Multiple loop iteration`消息：
 
 ```cpp
-    Fastest Duration Multiple loops:
-    AverageSpeed() called for 'London to Brighton'
-    AverageSpeed() called for 'Newcastle to London'
-    AverageSpeed() called for 'New York to Florida'
-    AverageSpeed() called for 'Paris to Berlin'
-    Fastest Duration Multiple loop iteration 1:
-    New York to Florida: 1146 in 19 hours
-    Paris to Berlin: 546 in 10 hours
-    Fastest Duration Multiple loop iteration 2:
-    New York to Florida: 1146 in 19 hours
-    Paris to Berlin: 546 in 10 hours
-    ```
+Fastest Duration Multiple loops:
+AverageSpeed() called for 'London to Brighton'
+AverageSpeed() called for 'Newcastle to London'
+AverageSpeed() called for 'New York to Florida'
+AverageSpeed() called for 'Paris to Berlin'
+Fastest Duration Multiple loop iteration 1:
+New York to Florida: 1146 in 19 hours
+Paris to Berlin: 546 in 10 hours
+Fastest Duration Multiple loop iteration 2:
+New York to Florida: 1146 in 19 hours
+Paris to Berlin: 546 in 10 hours
+```
 
 请注意，从车辆进行的旅程集合中，代码返回了车辆在旅程中的平均速度。
 
@@ -1704,83 +1704,83 @@ You can find the complete code here: https://packt.link/ZJpb5.
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`LinqOrderByExamples.cs`的新文件，并编辑如下：
 
 ```cpp
-    using System;
-    using System.IO;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        class LinqOrderByExamples
-        {
-            public static void Main()
-            {
-    ```
+using System;
+using System.IO;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    class LinqOrderByExamples
+    {
+        public static void Main()
+        {
+```
 
 1.  使用`Directory.EnumerateFiles`方法在`temp`文件夹中查找所有带有`.tmp`扩展名的文件名：
 
 ```cpp
-                var fileInfos = Directory.EnumerateFiles(Path.GetTempPath(), "*.tmp")
-                    .Select(filename => new FileInfo(filename))
-                    .ToList();
-    ```
+            var fileInfos = Directory.EnumerateFiles(Path.GetTempPath(), "*.tmp")
+                .Select(filename => new FileInfo(filename))
+                .ToList();
+```
 
 在这里，每个文件名都被投影到一个`FileInfo`实例中，并使用`ToList`链接到一个填充的集合中，这允许您进一步查询生成的`fileInfos`的详细信息。
 
 1.  接下来，使用`OrderBy`方法来通过比较文件的`CreationTime`属性对最早的文件进行排序：
 
 ```cpp
-                Console.WriteLine("Earliest Files");
-                foreach (var fileInfo in fileInfos.OrderBy(fi => fi.CreationTime))
-                {
-                    Console.WriteLine($"{fileInfo.CreationTime:dd MMM yy}: {fileInfo.Name}");
-                }
-    ```
+            Console.WriteLine("Earliest Files");
+            foreach (var fileInfo in fileInfos.OrderBy(fi => fi.CreationTime))
+            {
+                Console.WriteLine($"{fileInfo.CreationTime:dd MMM yy}: {fileInfo.Name}");
+            }
+```
 
 1.  要查找最大的文件，请重新查询`fileInfos`并使用`OrderByDescending`按其`Length`属性对每个文件进行排序：
 
 ```cpp
-                Console.WriteLine("Largest Files");
-                foreach (var fileInfo in fileInfos                                        .OrderByDescending(fi => fi.Length))
-                {
-                    Console.WriteLine($"{fileInfo.Length:N0} bytes: \t{fileInfo.Name}");
-                }
-    ```
+            Console.WriteLine("Largest Files");
+            foreach (var fileInfo in fileInfos                                        .OrderByDescending(fi => fi.Length))
+            {
+                Console.WriteLine($"{fileInfo.Length:N0} bytes: \t{fileInfo.Name}");
+            }
+```
 
 1.  最后，使用`where`和`orderby`降序表达式来查找长度小于`1,000`字节的最大文件：
 
 ```cpp
-                Console.WriteLine("Largest smaller files");
-                foreach (var fileInfo in
-                    from fi in fileInfos
-                    where fi.Length < 1000
-                    orderby fi.Length descending
-                    select fi)
-                {
-                    Console.WriteLine($"{fileInfo.Length:N0} bytes: \t{fileInfo.Name}");
-                }
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+            Console.WriteLine("Largest smaller files");
+            foreach (var fileInfo in
+                from fi in fileInfos
+                where fi.Length < 1000
+                orderby fi.Length descending
+                select fi)
+            {
+                Console.WriteLine($"{fileInfo.Length:N0} bytes: \t{fileInfo.Name}");
+            }
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 1.  根据您的`temp`文件夹中的文件，您应该看到类似于这样的输出：
 
 ```cpp
-    Earliest Files
-    05 Jan 21: wct63C3.tmp
-    05 Jan 21: wctD308.tmp
-    05 Jan 21: wctFE7.tmp
-    04 Feb 21: wctE092.tmp
-    Largest Files
-    38,997,896 bytes:       wctE092.tmp
-    4,824,572 bytes:        cb6dfb76-4dc9-494d-9683-ce31eab43612.tmp
-    4,014,036 bytes:        492f224c-c811-41d6-8c5d-371359d520db.tmp
-    Largest smaller files
-    726 bytes:      wct38BC.tmp
-    726 bytes:      wctE239.tmp
-    512 bytes:      ~DF8CE3ED20D298A9EC.TMP
-    416 bytes:      TFR14D8.tmp
-    ```
+Earliest Files
+05 Jan 21: wct63C3.tmp
+05 Jan 21: wctD308.tmp
+05 Jan 21: wctFE7.tmp
+04 Feb 21: wctE092.tmp
+Largest Files
+38,997,896 bytes:       wctE092.tmp
+4,824,572 bytes:        cb6dfb76-4dc9-494d-9683-ce31eab43612.tmp
+4,014,036 bytes:        492f224c-c811-41d6-8c5d-371359d520db.tmp
+Largest smaller files
+726 bytes:      wct38BC.tmp
+726 bytes:      wctE239.tmp
+512 bytes:      ~DF8CE3ED20D298A9EC.TMP
+416 bytes:      TFR14D8.tmp
+```
 
 使用这个例子，你已经查询了主机机器的`temp`文件夹中的文件，而不是从列表中创建小对象。
 
@@ -1885,72 +1885,72 @@ foreach(var item in query)        
 1.  首先添加一个`Country`记录，该记录将传递国家的`Name`，它所属的`Continent`，以及它的`Area`（以平方英里计）：
 
 ```cpp
-    using System;
-    using System.Linq;
-    namespace Chapter04.Exercises.Exercise03
-    {
-        class Program
-        {
-            record Country (string Name, string Continent, int Area);
-            public static void Main()
-            {
-    ```
+using System;
+using System.Linq;
+namespace Chapter04.Exercises.Exercise03
+{
+    class Program
+    {
+        record Country (string Name, string Continent, int Area);
+        public static void Main()
+        {
+```
 
 1.  现在创建一个由数组定义的国家数据的小子集，如下所示：
 
 ```cpp
-                var countries = new[]
-                {
-                    new Country("Seychelles", "Africa", 176),
-                    new Country("India", "Asia", 1_269_219),
-                    new Country("Brazil", "South America",3_287_956),
-                    new Country("Argentina", "South America", 1_073_500),
-                    new Country("Mexico", "South America",750_561),
-                    new Country("Peru", "South America",494_209),
-                    new Country("Algeria", "Africa", 919_595),
-                    new Country("Sudan", "Africa", 668_602)
-                };
-    ```
+            var countries = new[]
+            {
+                new Country("Seychelles", "Africa", 176),
+                new Country("India", "Asia", 1_269_219),
+                new Country("Brazil", "South America",3_287_956),
+                new Country("Argentina", "South America", 1_073_500),
+                new Country("Mexico", "South America",750_561),
+                new Country("Peru", "South America",494_209),
+                new Country("Algeria", "Africa", 919_595),
+                new Country("Sudan", "Africa", 668_602)
+            };
+```
 
 数组包含一个国家的名称，它所属的大陆，以及它的地理面积（以平方英里计）。
 
 1.  您的搜索条件必须包括`南美洲`或`非洲`。因此，将它们定义为一个数组，而不是在`where`子句中硬编码两个特定的字符串：
 
 ```cpp
-                var requiredContinents = new[] {"South America", "Africa"};
-    ```
+            var requiredContinents = new[] {"South America", "Africa"};
+```
 
 这样做可以提供额外的代码灵活性，以便在需要时进行更改。
 
 1.  通过过滤和按大陆排序，按面积排序，并使用`.Select`扩展方法来构建查询，该方法返回`Index`和`item`值：
 
 ```cpp
-                var filteredCountries = countries
-                    .Where(c => requiredContinents.Contains(c.Continent))
-                    .OrderBy(c => c.Continent)
-                    .ThenByDescending(c => c.Area)
-                    .Select( (cty, i) => new {Index = i, Country = cty});
+            var filteredCountries = countries
+                .Where(c => requiredContinents.Contains(c.Continent))
+                .OrderBy(c => c.Continent)
+                .ThenByDescending(c => c.Area)
+                .Select( (cty, i) => new {Index = i, Country = cty});
 
-                foreach(var item in filteredCountries)
-                    Console.WriteLine($"{item.Index+1}: {item.Country.Continent}, {item.Country.Name} = {item.Country.Area:N0} sq mi");
-            }
-        }
-    }
-    ```
+            foreach(var item in filteredCountries)
+                Console.WriteLine($"{item.Index+1}: {item.Country.Continent}, {item.Country.Name} = {item.Country.Area:N0} sq mi");
+        }
+    }
+}
+```
 
 最后，将每个项目投影到一个新的匿名类型中，以便写入控制台。
 
 1.  运行代码块会产生以下结果：
 
 ```cpp
-    1: Africa, Algeria = 919,595 sq mi
-    2: Africa, Sudan = 668,602 sq mi
-    3: Africa, Seychelles = 176 sq mi
-    4: South America, Brazil = 3,287,956 sq mi
-    5: South America, Argentina = 1,073,500 sq mi
-    6: South America, Mexico = 750,561 sq mi
-    7: South America, Peru = 494,209 sq mi
-    ```
+1: Africa, Algeria = 919,595 sq mi
+2: Africa, Sudan = 668,602 sq mi
+3: Africa, Seychelles = 176 sq mi
+4: South America, Brazil = 3,287,956 sq mi
+5: South America, Argentina = 1,073,500 sq mi
+6: South America, Mexico = 750,561 sq mi
+7: South America, Peru = 494,209 sq mi
+```
 
 注意`阿尔及利亚`在`非洲`拥有最大的面积，`巴西`在`南美洲`拥有最大的面积（基于这个小数据子集）。注意如何为可读性向每个`Index`添加`1`（因为从零开始不够用户友好）。
 
@@ -1985,74 +1985,74 @@ foreach(var item in query)        
 1.  在您的`Chapter04\Examples`文件夹中，添加一个名为`LinqSkipTakeExamples.cs`的新文件，并编辑如下：
 
 ```cpp
-    using System;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        class LinqSkipTakeExamples
-        {
-            public static void Main()
-            {
-                var grades = new[] {25, 95, 75, 40, 54, 9, 99};
-                Console.Write("Skip: Highest Grades (skipping first):");
-                foreach (var grade in grades
-                    .OrderByDescending(g => g)
-                    .Skip(1))
-                {
-                    Console.Write($"{grade} ");
-                }
-                Console.WriteLine();
-    ```
+using System;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    class LinqSkipTakeExamples
+    {
+        public static void Main()
+        {
+            var grades = new[] {25, 95, 75, 40, 54, 9, 99};
+            Console.Write("Skip: Highest Grades (skipping first):");
+            foreach (var grade in grades
+                .OrderByDescending(g => g)
+                .Skip(1))
+            {
+                Console.Write($"{grade} ");
+            }
+            Console.WriteLine();
+```
 
 1.  接下来，关系`is`运算符用于排除小于`25`或大于`75`的值：
 
 ```cpp
-                Console.Write("SkipWhile@ Middle Grades (excluding 25 or 75):");
-                foreach (var grade in grades
-                    .OrderByDescending(g => g)
-                    .SkipWhile(g => g is <= 25 or >=75))
-                {
-                    Console.Write($"{grade} ");
-                }
-                Console.WriteLine();
-    ```
+            Console.Write("SkipWhile@ Middle Grades (excluding 25 or 75):");
+            foreach (var grade in grades
+                .OrderByDescending(g => g)
+                .SkipWhile(g => g is <= 25 or >=75))
+            {
+                Console.Write($"{grade} ");
+            }
+            Console.WriteLine();
+```
 
 1.  通过使用`SkipLast`，您可以显示结果的后一半。添加以下代码：
 
 ```cpp
-                Console.Write("SkipLast: Bottom Half Grades:");
-                foreach (var grade in grades
-                    .OrderBy(g => g)
-                    .SkipLast(grades.Length / 2))
-                {
-                    Console.Write($"{grade} ");
-                }
-                Console.WriteLine();
-    ```
+            Console.Write("SkipLast: Bottom Half Grades:");
+            foreach (var grade in grades
+                .OrderBy(g => g)
+                .SkipLast(grades.Length / 2))
+            {
+                Console.Write($"{grade} ");
+            }
+            Console.WriteLine();
+```
 
 1.  最后，这里使用`Take(2)`来显示最高的两个成绩：
 
 ```cpp
-                Console.Write("Take: Two Highest Grades:");
-                foreach (var grade in grades
-                    .OrderByDescending(g => g)
-                    .Take(2))
-                {
-                    Console.Write($"{grade} ");
-                }
-            }
-        }
-    }
-    ```
+            Console.Write("Take: Two Highest Grades:");
+            foreach (var grade in grades
+                .OrderByDescending(g => g)
+                .Take(2))
+            {
+                Console.Write($"{grade} ");
+            }
+        }
+    }
+}
+```
 
 1.  运行示例会产生预期的输出：
 
 ```cpp
-    Skip: Highest Grades (skipping first):95 75 54 40 25 9
-    SkipWhile Middle Grades (excluding 25 or 75):54 40 25 9
-    SkipLast: Bottom Half Grades:9 25 40 54
-    Take: Two Highest Grades:99 95
-    ```
+Skip: Highest Grades (skipping first):95 75 54 40 25 9
+SkipWhile Middle Grades (excluding 25 or 75):54 40 25 9
+SkipLast: Bottom Half Grades:9 25 40 54
+Take: Two Highest Grades:99 95
+```
 
 此示例演示了对未排序的考试成绩列表进行各种`Skip`和`Take`操作。
 
@@ -2159,29 +2159,29 @@ Project Gutenberg 是一个拥有 6 万本免费电子书的图书馆。您可�
 1.  首先，定义`TextCounter`类。这将传递文件路径，稍后将添加文件。这应该包含常见的英语停用词：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.Linq;
-    using System.Net;
-    using System.Text;
-    using System.Text.RegularExpressions;
-    namespace Chapter04.Exercises.Exercise04
-    {
-        class TextCounter
-        {
-            private readonly HashSet<string> _stopWords;
-            public TextCounter(string stopWordPath)
-            {
-                Console.WriteLine($"Reading stop word file: {stopWordPath}");
-    ```
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text;
+using System.Text.RegularExpressions;
+namespace Chapter04.Exercises.Exercise04
+{
+    class TextCounter
+    {
+        private readonly HashSet<string> _stopWords;
+        public TextCounter(string stopWordPath)
+        {
+            Console.WriteLine($"Reading stop word file: {stopWordPath}");
+```
 
 1.  使用`File.ReadAllLines`，将每个单词添加到`_stopWords`的`HashSet`中。
 
 ```cpp
-              _stopWords = new HashSet<string>(File.ReadAllLines(stopWordPath));
-            }
-    ```
+          _stopWords = new HashSet<string>(File.ReadAllLines(stopWordPath));
+        }
+```
 
 您使用了`HashSet`，因为每个停用词都是唯一的。
 
@@ -2190,9 +2190,9 @@ Project Gutenberg 是一个拥有 6 万本免费电子书的图书馆。您可�
 1.  将结果作为`Tuple<string, int>`集合返回，这样您就不必创建一个类或记录来保存结果：
 
 ```cpp
-            public IEnumerable<Tuple<string, int>> Process(string text,                                                        int maximumWords)
-            {
-    ```
+        public IEnumerable<Tuple<string, int>> Process(string text,                                                        int maximumWords)
+        {
+```
 
 1.  现在执行查询部分。使用模式`@"\s+"`和`Regex.Split`来拆分所有单词。
 
@@ -2201,32 +2201,32 @@ Project Gutenberg 是一个拥有 6 万本免费电子书的图书馆。您可�
 1.  最后，按`Item2`排序，对于这个`Tuple`来说，它是单词计数，然后只取所需数量的单词：
 
 ```cpp
-                var words = Regex.Split(text.ToLower(), @"\s+")
-                    .Where(t => !_stopWords.Contains(t))
-                    .GroupBy(t => t)
-                    .Select(grp => Tuple.Create(grp.Key, grp.Count()))
-                    .OrderByDescending(tup => tup.Item2) //int
-                    .Take(maximumWords);
-                return words;
-            }
-        }
-    ```
+            var words = Regex.Split(text.ToLower(), @"\s+")
+                .Where(t => !_stopWords.Contains(t))
+                .GroupBy(t => t)
+                .Select(grp => Tuple.Create(grp.Key, grp.Count()))
+                .OrderByDescending(tup => tup.Item2) //int
+                .Take(maximumWords);
+            return words;
+        }
+    }
+```
 
 1.  现在开始创建主控制台应用程序：
 
 ```cpp
-        class Program
-        {
-            public static void Main()
-            {
-    ```
+    class Program
+    {
+        public static void Main()
+        {
+```
 
 1.  在`Chapter04`源文件夹中包含一个名为`StopWords.txt`的文本文件：
 
 ```cpp
-                const string StopWordFile = "StopWords.txt";
-                var counter = new TextCounter(StopWordFile);
-    ```
+            const string StopWordFile = "StopWords.txt";
+            var counter = new TextCounter(StopWordFile);
+```
 
 注意
 
@@ -2235,26 +2235,26 @@ Project Gutenberg 是一个拥有 6 万本免费电子书的图书馆。您可�
 1.  一旦创建了`TextCounter`，就提示用户输入 URL：
 
 ```cpp
-                string address;
-                do
-                {
-                    //https://www.gutenberg.org/files/64333/64333-0.txt
-                    Console.Write("Enter a Gutenberg book URL: ");
-                    address = Console.ReadLine();
-                    if (string.IsNullOrEmpty(address)) 
-                        continue;
-    ```
+            string address;
+            do
+            {
+                //https://www.gutenberg.org/files/64333/64333-0.txt
+                Console.Write("Enter a Gutenberg book URL: ");
+                address = Console.ReadLine();
+                if (string.IsNullOrEmpty(address)) 
+                    continue;
+```
 
 1.  输入有效地址并创建一个新的`WebClient`实例，将数据文件下载到临时文件中。
 
 1.  在将其内容传递给`TextCounter`之前，对文本文件进行额外处理：
 
 ```cpp
-                    using var client = new WebClient();
-                    var tempFile = Path.GetTempFileName();
-                    Console.WriteLine("Downloading...");
-                    client.DownloadFile(address, tempFile);
-    ```
+                using var client = new WebClient();
+                var tempFile = Path.GetTempFileName();
+                Console.WriteLine("Downloading...");
+                client.DownloadFile(address, tempFile);
+```
 
 古腾堡文本文件包含额外的细节，比如作者和标题。这些可以通过读取文件中的每一行来读取。直到找到以`*** START OF THE PROJECT GUTENBERG EBOOK`开头的行为止，书籍的实际文本才开始，因此您需要读取每一行以寻找这个开始消息：
 
@@ -2270,95 +2270,95 @@ Project Gutenberg 是一个拥有 6 万本免费电子书的图书馆。您可�
 1.  接下来，将每一行读取到一个`StringBuilder`实例中，这对于这样的字符串操作非常高效：
 
 ```cpp
-                    var bookText = new StringBuilder();
-                    var isReadingBookText = false;
-                    var bookTextLineCount = 0;
-    ```
+                var bookText = new StringBuilder();
+                var isReadingBookText = false;
+                var bookTextLineCount = 0;
+```
 
 1.  在`tempFile`中解析每一行，寻找`Author`、`Title`或`StartIndicator`：
 
 ```cpp
-                    foreach (var line in File.ReadAllLines(tempFile))
-                    {
-                        if (line.StartsWith("Title"))
-                        {
-                            title = line;
-                        }
-                        else if (line.StartsWith("Author"))
-                        {
-                            author = line;
-                        }
-                        else if (line.StartsWith(StartIndicator))
-                        {
-                            isReadingBookText = true;
-                        }
-                        else if (isReadingBookText)
-                        {
-                            bookText.Append(line);
-                            bookTextLineCount++;
-                        }
-                    }
-    ```
+                foreach (var line in File.ReadAllLines(tempFile))
+                {
+                    if (line.StartsWith("Title"))
+                    {
+                        title = line;
+                    }
+                    else if (line.StartsWith("Author"))
+                    {
+                        author = line;
+                    }
+                    else if (line.StartsWith(StartIndicator))
+                    {
+                        isReadingBookText = true;
+                    }
+                    else if (isReadingBookText)
+                    {
+                        bookText.Append(line);
+                        bookTextLineCount++;
+                    }
+                }
+```
 
 1.  如果找到书籍文本，提供在调用`counter.Process`方法之前读取的行数和字符数的摘要。在这里，您需要前 50 个单词：
 
 ```cpp
-                    if (bookTextLineCount > 0)
-                    {
-                        Console.WriteLine($"Processing {bookTextLineCount:N0} lines ({bookText.Length:N0} characters)..");
-                      var wordCounts = counter.Process(bookText.ToString(), 50);
-                      Console.WriteLine(title);
-                      Console.WriteLine(author);
-    ```
+                if (bookTextLineCount > 0)
+                {
+                    Console.WriteLine($"Processing {bookTextLineCount:N0} lines ({bookText.Length:N0} characters)..");
+                  var wordCounts = counter.Process(bookText.ToString(), 50);
+                  Console.WriteLine(title);
+                  Console.WriteLine(author);
+```
 
 1.  获得结果后，使用`foreach`循环输出单词计数的详细信息，在每三个单词后添加一个空行：
 
 ```cpp
-                        var i = 0;
-                        //deconstruction
-                        foreach (var (word, count) in wordCounts)
-                        {
-                            Console.Write($"'{word}'={count}\t\t");
-                            i++;
-                            if (i % 3 == 0)
-                            {
-                                Console.WriteLine();
-                            }
-                        }
-                        Console.WriteLine();
-                    }
-                    else
-                    {
-    ```
+                    var i = 0;
+                    //deconstruction
+                    foreach (var (word, count) in wordCounts)
+                    {
+                        Console.Write($"'{word}'={count}\t\t");
+                        i++;
+                        if (i % 3 == 0)
+                        {
+                            Console.WriteLine();
+                        }
+                    }
+                    Console.WriteLine();
+                }
+                else
+                {
+```
 
 1.  运行控制台应用程序，使用`https://www.gutenberg.org/files/64333/64333-0.txt`作为示例 URL，会产生以下输出：
 
 ```cpp
-    Reading stop word file: StopWords.txt
-    Enter a Gutenberg book URL: https://www.gutenberg.org/files/64333/64333-0.txt
-    Downloading...
-    Processing file C:\Temp\tmpB0A3.tmp
-    Processing 4,063 lines (201,216 characters)..
-    Title: The Little Review, October 1914 (Vol. 1, No. 7)
-    Author: Various
-    'one'=108               'new'=95                'project'=62
-    'man'=56                'little'=54             'life'=52
-    'would'=51              'work'=50               'book'=42
-    'must'=42               'people'=39             'great'=37
-    'love'=37               'like'=36               'gutenberg-tm'=36
-    'may'=35                'men'=35                'us'=32
-    'could'=30              'every'=30              'first'=29
-    'full'=29               'world'=28              'mr.'=28
-    'old'=27                'never'=26              'without'=26
-    'make'=26               'young'=24              'among'=24
-    'modern'=23             'good'=23               'it.'=23
-    'even'=22               'war'=22                'might'=22
-    'long'=22               'cannot'=22             '_the'=22
-    'many'=21               'works'=21              'electronic'=21
-    'always'=20             'way'=20                'thing'=20
-    'day'=20                'upon'=20               'art'=20
-    'terms'=20              'made'=19
-    ```
+Reading stop word file: StopWords.txt
+Enter a Gutenberg book URL: https://www.gutenberg.org/files/64333/64333-0.txt
+Downloading...
+Processing file C:\Temp\tmpB0A3.tmp
+Processing 4,063 lines (201,216 characters)..
+Title: The Little Review, October 1914 (Vol. 1, No. 7)
+Author: Various
+'one'=108               'new'=95                'project'=62
+'man'=56                'little'=54             'life'=52
+'would'=51              'work'=50               'book'=42
+'must'=42               'people'=39             'great'=37
+'love'=37               'like'=36               'gutenberg-tm'=36
+'may'=35                'men'=35                'us'=32
+'could'=30              'every'=30              'first'=29
+'full'=29               'world'=28              'mr.'=28
+'old'=27                'never'=26              'without'=26
+'make'=26               'young'=24              'among'=24
+'modern'=23             'good'=23               'it.'=23
+'even'=22               'war'=22                'might'=22
+'long'=22               'cannot'=22             '_the'=22
+'many'=21               'works'=21              'electronic'=21
+'always'=20             'way'=20                'thing'=20
+'day'=20                'upon'=20               'art'=20
+'terms'=20              'made'=19
+```
 
 注意
 
@@ -2498,132 +2498,132 @@ Small Count: 5
 1.  首先，声明一个`enum`，代表一副扑克牌中的四种花色，以及定义一张扑克牌的`record`类：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        enum PlayingCardSuit
-        {
-            Hearts,
-            Clubs,
-            Spades,
-            Diamonds
-        }
-        record PlayingCard (int Number, PlayingCardSuit Suit)
-        {
-    ```
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    enum PlayingCardSuit
+    {
+        Hearts,
+        Clubs,
+        Spades,
+        Diamonds
+    }
+    record PlayingCard (int Number, PlayingCardSuit Suit)
+    {
+```
 
 1.  重写`ToString`方法以提供一种用户友好的方式来描述对象在运行时的状态是一种常见做法。在这里，卡的号码和花色以字符串形式返回：
 
 ```cpp
-            public override string ToString()
-            {
-                return $"{Number} of {Suit}";
-            }
-        }
-    ```
+        public override string ToString()
+        {
+            return $"{Number} of {Suit}";
+        }
+    }
+```
 
 1.  现在创建一个代表一副牌的类（为了方便，只创建编号为 1 到 10 的牌）。该牌的构造函数将使用`10`张牌填充`_cards`集合，每种花色都有`10`张牌：
 
 ```cpp
-        class Deck
-        {
-            private readonly List<PlayingCard> _cards = new();
-            private readonly Random _random = new();
-            public Deck()
-            {
-                for (var i = 1; i <= 10; i++)
-                {
-                    _cards.Add(new PlayingCard(i, PlayingCardSuit.Hearts));
-                    _cards.Add(new PlayingCard(i, PlayingCardSuit.Clubs));
-                    _cards.Add(new PlayingCard(i, PlayingCardSuit.Spades));
-                    _cards.Add(new PlayingCard(i, PlayingCardSuit.Diamonds));
-                }
-            }
-    ```
+    class Deck
+    {
+        private readonly List<PlayingCard> _cards = new();
+        private readonly Random _random = new();
+        public Deck()
+        {
+            for (var i = 1; i <= 10; i++)
+            {
+                _cards.Add(new PlayingCard(i, PlayingCardSuit.Hearts));
+                _cards.Add(new PlayingCard(i, PlayingCardSuit.Clubs));
+                _cards.Add(new PlayingCard(i, PlayingCardSuit.Spades));
+                _cards.Add(new PlayingCard(i, PlayingCardSuit.Diamonds));
+            }
+        }
+```
 
 1.  接下来，`Draw`方法从`_cards`列表中随机选择一张卡，并在返回给调用者之前将其移除：
 
 ```cpp
-            public PlayingCard Draw()
-            {
-                var index = _random.Next(_cards.Count);
-                var drawnCard = _cards.ElementAt(index);
-                _cards.Remove(drawnCard);
-                return drawnCard;
-            }
-        }
-    ```
+        public PlayingCard Draw()
+        {
+            var index = _random.Next(_cards.Count);
+            var drawnCard = _cards.ElementAt(index);
+            _cards.Remove(drawnCard);
+            return drawnCard;
+        }
+    }
+```
 
 1.  控制台应用程序使用牌组的`Draw`方法选择三张牌。将代码添加如下：
 
 ```cpp
-        class LinqAllAnyExamples
-        {
-            public static void Main()
-            {
-                var deck = new Deck();
-                var hand = new List<PlayingCard>();
+    class LinqAllAnyExamples
+    {
+        public static void Main()
+        {
+            var deck = new Deck();
+            var hand = new List<PlayingCard>();
 
-                for (var i = 0; i < 3; i++)
-                {
-                    hand.Add(deck.Draw());
-                }
-    ```
+            for (var i = 0; i < 3; i++)
+            {
+                hand.Add(deck.Draw());
+            }
+```
 
 1.  要显示摘要，使用`OrderByDescending`和`Select`操作提取每个`PlayingCard`的用户友好的`ToString`描述。然后将其连接成一个单个的分隔字符串，如下所示：
 
 ```cpp
-                var summary = string.Join(" | ", 
-                    hand.OrderByDescending(c => c.Number)
-                        .Select(c => c.ToString()));
-                Console.WriteLine($"Hand: {summary}");
-    ```
+            var summary = string.Join(" | ", 
+                hand.OrderByDescending(c => c.Number)
+                    .Select(c => c.ToString()));
+            Console.WriteLine($"Hand: {summary}");
+```
 
 1.  使用`All`或`Any`，您可以使用卡片号码的`Sum`来提供卡片及其得分的概述。通过使用`Any`，您可以确定是否`PlayingCardSuit.Clubs`：
 
 ```cpp
-                Console.WriteLine($"Any Clubs: {hand.Any(card => card.Suit == PlayingCardSuit.Clubs)}");
-    ```
+            Console.WriteLine($"Any Clubs: {hand.Any(card => card.Suit == PlayingCardSuit.Clubs)}");
+```
 
 1.  同样，`Any`用于查看`Hearts`或`Diamonds`花色，因此是`Red`：
 
 ```cpp
-                Console.WriteLine($"Any Red: {hand.Any(card => card.Suit == PlayingCardSuit.Hearts || card.Suit == PlayingCardSuit.Diamonds)}");
-    ```
+            Console.WriteLine($"Any Red: {hand.Any(card => card.Suit == PlayingCardSuit.Hearts || card.Suit == PlayingCardSuit.Diamonds)}");
+```
 
 1.  在下一个片段中，`All`扩展查看集合中的每个项目，并在这种情况下返回`true`，如果是`Diamonds`：
 
 ```cpp
-                Console.WriteLine($"All Diamonds: {hand.All(card => card.Suit == PlayingCardSuit.Diamonds)}");
-    ```
+            Console.WriteLine($"All Diamonds: {hand.All(card => card.Suit == PlayingCardSuit.Diamonds)}");
+```
 
 1.  再次使用`All`来查看所有卡片号码是否可以被 2 整除，即它们是否是偶数：
 
 ```cpp
-                Console.WriteLine($"All Even: {hand.All(card => card.Number % 2 == 0)}");
-    ```
+            Console.WriteLine($"All Even: {hand.All(card => card.Number % 2 == 0)}");
+```
 
 1.  最后，使用`Sum`聚合方法来计算手中卡片的价值：
 
 ```cpp
-                Console.WriteLine($"Score :{hand.Sum(card => card.Number)}");
-            }
-        }
-    }
-    ```
+            Console.WriteLine($"Score :{hand.Sum(card => card.Number)}");
+        }
+    }
+}
+```
 
 1.  运行控制台应用程序会产生如下输出：
 
 ```cpp
-    Hand: 8 of Spades | 7 of Diamonds | 6 of Diamonds
-    Any Clubs: False
-    Any Red: True
-    All Diamonds: False
-    All Even: False
-    Score :21
-    ```
+Hand: 8 of Spades | 7 of Diamonds | 6 of Diamonds
+Any Clubs: False
+Any Red: True
+All Diamonds: False
+All Even: False
+Score :21
+```
 
 卡片是随机选择的，因此每次运行程序时都会有不同的手牌。在这个例子中，得分是`21`，这在纸牌游戏中通常是一手赢牌。
 
@@ -2650,35 +2650,35 @@ Small Count: 5
 1.  首先，声明`Manufacturer`和`Car`记录如下：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    namespace Chapter04.Examples
-    {
-        record Manufacturer(int ManufacturerId, string Name);
-        record Car (string Name, int ManufacturerId);
-    ```
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Chapter04.Examples
+{
+    record Manufacturer(int ManufacturerId, string Name);
+    record Car (string Name, int ManufacturerId);
+```
 
 1.  在`Main`入口点内，创建两个列表，一个用于制造商，另一个用于代表`cars`：
 
 ```cpp
-    LinqJoinExamples.cs
-        class LinqJoinExamples
-        {
-            public static void Main()
-            {
-                var manufacturers = new List<Manufacturer>
-                {
-                    new(1, "Ford"),
-                    new(2, "BMW"),
-                    new(3, "VW")
-                };
-                var cars = new List<Car>
-                {
-                    new("Focus", 1),
-                    new("Galaxy", 1),
-                    new("GT40", 1),
-    ```
+LinqJoinExamples.cs
+    class LinqJoinExamples
+    {
+        public static void Main()
+        {
+            var manufacturers = new List<Manufacturer>
+            {
+                new(1, "Ford"),
+                new(2, "BMW"),
+                new(3, "VW")
+            };
+            var cars = new List<Car>
+            {
+                new("Focus", 1),
+                new("Galaxy", 1),
+                new("GT40", 1),
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/Ue7Fj.
@@ -2687,19 +2687,19 @@ You can find the complete code here: https://packt.link/Ue7Fj.
 1.  此时，没有直接的引用，但是您可以使用`ManufacturerId`来使用`int`ID 将两者连接起来。您可以为此添加以下代码：
 
 ```cpp
-                var joinedQuery = manufacturers.Join(
-                    cars,
-                    manufacturer => manufacturer.ManufacturerId,
-                    car => car.ManufacturerId,
-                    (manufacturer, car) => new                        {ManufacturerName = manufacturer.Name,                         CarName = car.Name});
-                foreach (var item in joinedQuery)
-                {
-                    Console.WriteLine($"{item}");
-                }
-            }
-        }
-    }
-    ```
+            var joinedQuery = manufacturers.Join(
+                cars,
+                manufacturer => manufacturer.ManufacturerId,
+                car => car.ManufacturerId,
+                (manufacturer, car) => new                        {ManufacturerName = manufacturer.Name,                         CarName = car.Name});
+            foreach (var item in joinedQuery)
+            {
+                Console.WriteLine($"{item}");
+            }
+        }
+    }
+}
+```
 
 在上面的片段中，`Join`操作有各种参数。您传入`cars`列表，并定义`manufacturer`和`car`类中应该用于创建连接的属性。在这种情况下，`manufacturer.ManufacturerId = car.ManufacturerId`确定了正确的连接。
 
@@ -2708,32 +2708,32 @@ You can find the complete code here: https://packt.link/Ue7Fj.
 1.  运行控制台应用程序会产生以下输出：
 
 ```cpp
-    { ManufacturerName = Ford, CarName = Focus }
-    { ManufacturerName = Ford, CarName = Galaxy }
-    { ManufacturerName = Ford, CarName = GT40 }
-    { ManufacturerName = BMW, CarName = 1 Series }
-    { ManufacturerName = BMW, CarName = 2 Series }
-    { ManufacturerName = VW, CarName = Golf }
-    { ManufacturerName = VW, CarName = Polo }
-    ```
+{ ManufacturerName = Ford, CarName = Focus }
+{ ManufacturerName = Ford, CarName = Galaxy }
+{ ManufacturerName = Ford, CarName = GT40 }
+{ ManufacturerName = BMW, CarName = 1 Series }
+{ ManufacturerName = BMW, CarName = 2 Series }
+{ ManufacturerName = VW, CarName = Golf }
+{ ManufacturerName = VW, CarName = Polo }
+```
 
 正如你所看到的，每个`Car`和`Manufacturer`实例都已经使用`ManufacturerId`正确连接。
 
 1.  等效的查询表达式如下（请注意，在这种情况下，它比查询运算符语法更简洁）：
 
 ```cpp
-    var query = from manufacturer in manufacturers
-                join car in cars
-                  on manufacturer.ManufacturerId equals car.ManufacturerId
-                  select new
-                  {
-                    ManufacturerName = manufacturer.Name, CarName = car.Name
-                  };
-    foreach (var item in query)
-    {
-      Console.WriteLine($"{item}");
-    }
-    ```
+var query = from manufacturer in manufacturers
+            join car in cars
+              on manufacturer.ManufacturerId equals car.ManufacturerId
+              select new
+              {
+                ManufacturerName = manufacturer.Name, CarName = car.Name
+              };
+foreach (var item in query)
+{
+  Console.WriteLine($"{item}");
+}
+```
 
 注意
 
@@ -2870,9 +2870,9 @@ record FilterCriteria(FilterCriteriaType Filter, string Operand)
 1.  添加一个名为`FlightLoader.cs`的新类文件。这个类将用于下载或导入数据。`FlightLoader`应该包括一个字段索引位置的列表，用于在读取每行数据并将内容拆分为字符串数组时使用，例如：
 
 ```cpp
-    public const int Agency = 0;
-    public const int PaidFare = 1; 
-    ```
+public const int Agency = 0;
+public const int PaidFare = 1; 
+```
 
 1.  现在对于`FlightLoader`的实现，使用一个`static`类来定义数据文件中已知字段位置的索引。这将使处理数据布局的任何未来更改变得更容易。
 
@@ -2925,35 +2925,35 @@ Commands: go | clear | class value | origin value | destination value
 1.  用户应能够添加两个类过滤器，用于 `economy` 或 `商务舱`（所有字符串比较应不区分大小写），如下段代码所示：
 
 ```cpp
-    Enter a command:class economy
-    Added filter: Class=economy
-    Enter a command:class Business Class
-    Added filter: Class=business class
-    ```
+Enter a command:class economy
+Added filter: Class=economy
+Enter a command:class Business Class
+Added filter: Class=business class
+```
 
 1.  类似地，用户应能够添加原始过滤器，如下所示（此示例是为 `london`）：
 
 ```cpp
-    Enter a command:origin london
-    Added filter: Origin=london
-    ```
+Enter a command:origin london
+Added filter: Origin=london
+```
 
 1.  添加目的地过滤器应如下所示（此示例是为 `zurich`）：
 
 ```cpp
-    Enter a command:destination zurich
-    Added filter: Destination=zurich
-    ```
+Enter a command:destination zurich
+Added filter: Destination=zurich
+```
 
 1.  输入 `go` 应显示指定的所有过滤器摘要，然后显示与过滤器匹配的航班结果：
 
 ```cpp
-    Enter a command:go
-    Classes: economy OR business class
-    Destinations: zurich
-    Origins: london
-    Results: Count=16, Avg=266.92, Min=-74.71, Max=443.49
-    ```
+Enter a command:go
+Classes: economy OR business class
+Destinations: zurich
+Origins: london
+Results: Count=16, Avg=266.92, Min=-74.71, Max=443.49
+```
 
 注意
 

@@ -39,15 +39,15 @@
 1.  在管理员模式下的命令提示符中键入以下命令：
 
 ```cpp
-    rundll32.exe sysdm.cpl,EditEnvironmentVariables
+rundll32.exe sysdm.cpl,EditEnvironmentVariables
 
-    ```
+```
 
 1.  按下*Enter*键，命令提示符将立即运行**环境变量**窗口。然后，转到**系统变量**，选择名为**Path**的变量，单击**编辑**按钮打开**编辑系统变量**对话框，然后在最后的**变量值**参数中添加以下字符串：
 
 ```cpp
-    ;C:\MinGW-w64\mingw64\bin
-    ```
+;C:\MinGW-w64\mingw64\bin
+```
 
 （否则，如果您使用默认位置，安装向导中给出的安装目录路径将需要进行调整）
 

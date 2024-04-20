@@ -55,182 +55,182 @@
 1.  首先，您需要定义什么是 Bézier 样条。创建一个包含两个点和两个控制点的新模板类：
 
 ```cpp
-    template<typename T>
-    class Bezier {
-    public:
-        T P1; // Point 1
-        T C1; // Control 1
-        T P2; // Point 2
-        T C2; // Control 2
-    };
-    ```
+template<typename T>
+class Bezier {
+public:
+    T P1; // Point 1
+    T C1; // Control 1
+    T P2; // Point 2
+    T C2; // Control 2
+};
+```
 
 1.  接下来，实现`Interpolate`函数。该函数接受一个 Bézier 样条引用和一个值`t`，用于插值样条。假设`t`大于或等于`0`且小于或等于`1`：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(Bezier<T>& curve, float t) {
-        T A = lerp(curve.P1, curve.C1, t);
-        T B = lerp(curve.C2, curve.P2, t);
-        T C = lerp(curve.C1, curve.C2, t);
-        T D = lerp(A, C, t);
-        T E = lerp(C, B, t);
-        T R = lerp(D, E, t);
-        return R;
-    }
-    ```
+template<typename T>
+inline T Interpolate(Bezier<T>& curve, float t) {
+    T A = lerp(curve.P1, curve.C1, t);
+    T B = lerp(curve.C2, curve.P2, t);
+    T C = lerp(curve.C1, curve.C2, t);
+    T D = lerp(A, C, t);
+    T E = lerp(C, B, t);
+    T R = lerp(D, E, t);
+    return R;
+}
+```
 
 以下代码示例演示了如何使用 Bezier 类和`Interpolate`函数来绘制 Bézier 样条：
 
 1.  首先，您需要创建将要绘制的数据：
 
 ```cpp
-    Bezier<vec3> curve;
-    curve.P1 = vec3(-5, 0, 0);
-    curve.P2 = vec3(5, 0, 0);
-    curve.C1 = vec3(-2, 1, 0);
-    curve.C2 = vec3(2, 1, 0);
+Bezier<vec3> curve;
+curve.P1 = vec3(-5, 0, 0);
+curve.P2 = vec3(5, 0, 0);
+curve.C1 = vec3(-2, 1, 0);
+curve.C2 = vec3(2, 1, 0);
 
-    vec3 red = vec3(1, 0, 0);
-    vec3 green = vec3(0, 1, 0);
-    vec3 blue = vec3(0, 0, 1);
-    vec3 magenta = vec3(1, 0, 1);
-    ```
+vec3 red = vec3(1, 0, 0);
+vec3 green = vec3(0, 1, 0);
+vec3 blue = vec3(0, 0, 1);
+vec3 magenta = vec3(1, 0, 1);
+```
 
 1.  接下来，绘制点和控制点：
 
 ```cpp
-    // Draw all relevant points
-    DrawPoint(curve.P1, red);
-    DrawPoint(curve.C1, green);
-    DrawPoint(curve.P2, red);
-    DrawPoint(curve.C2, green);
-    // Draw handles
-    DrawLine(curve.P1, curve.C1, blue);
-    DrawLine(curve.P2, curve.C2, blue);
-    ```
+// Draw all relevant points
+DrawPoint(curve.P1, red);
+DrawPoint(curve.C1, green);
+DrawPoint(curve.P2, red);
+DrawPoint(curve.C2, green);
+// Draw handles
+DrawLine(curve.P1, curve.C1, blue);
+DrawLine(curve.P2, curve.C2, blue);
+```
 
 1.  最后，绘制样条线：
 
 ```cpp
-    // Draw the actual curve
-    // Resolution is 200 steps since last point is i + 1
-    for (int i = 0; i < 199; ++i) {
-        float t0 = (float)i / 199.0f;
-        float t1 = (float)(i + 1) / 199.0f;
-        vec3 thisPoint = Interpolate(curve, t0);
-        vec3 nextPoint = Interpolate(curve, t1);
-        DrawLine(thisPoint, nextPoint, magenta);
-    }
-    ```
+// Draw the actual curve
+// Resolution is 200 steps since last point is i + 1
+for (int i = 0; i < 199; ++i) {
+    float t0 = (float)i / 199.0f;
+    float t1 = (float)(i + 1) / 199.0f;
+    vec3 thisPoint = Interpolate(curve, t0);
+    vec3 nextPoint = Interpolate(curve, t1);
+    DrawLine(thisPoint, nextPoint, magenta);
+}
+```
 
 在前面的示例代码中，您可以看到可以通过使用六次线性插值来实现 Bézier`Interpolate`函数。要理解 Bézier 样条的工作原理，您需要将`lerp`函数扩展到实际情况。线性插值，`lerp(a, b, t)`，扩展为`(1-t) * a + t * b`：
 
 1.  重写`Interpolate`函数，以便展开所有的`lerp`调用：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(const Bezier<T>& curve, float t) {
-        T A = curve.P1 * (1.0f - t) + curve.C1 * t;
-        T B = curve.C2 * (1.0f - t) + curve.P2 * t;
-        T C = curve.C1 * (1.0f - t) + curve.C2 * t;
-        T D = A * (1.0f - t) + C * t;
-        T E = C * (1.0f - t) + B * t;
-        T R = D * (1.0f - t) + E * t;
-        return R;
-    }
-    ```
+template<typename T>
+inline T Interpolate(const Bezier<T>& curve, float t) {
+    T A = curve.P1 * (1.0f - t) + curve.C1 * t;
+    T B = curve.C2 * (1.0f - t) + curve.P2 * t;
+    T C = curve.C1 * (1.0f - t) + curve.C2 * t;
+    T D = A * (1.0f - t) + C * t;
+    T E = C * (1.0f - t) + B * t;
+    T R = D * (1.0f - t) + E * t;
+    return R;
+}
+```
 
 1.  没有改变，但您不再需要调用`lerp`函数。只要定义了`T operator*(const T& t, float f)`，这对于任何数据类型`T`都适用。让我们试着在数学上简化这个。不要使用`A`、`B`、`C`、`D`、`E`和`R`变量，将这些方程展开为以下形式：
 
 ```cpp
-    ((P1 * (1 - t) + C1 * t) * (1 - t) + (C1 * (1 - t) 
-    + C2 * t) * t) * (1 - t) + ((C1 * (1 - t) + C2 * t) 
-    * (1 - t) + (C2 * (1 - t) + P2 * t) * t) * t
-    ```
+((P1 * (1 - t) + C1 * t) * (1 - t) + (C1 * (1 - t) 
++ C2 * t) * t) * (1 - t) + ((C1 * (1 - t) + C2 * t) 
+* (1 - t) + (C2 * (1 - t) + P2 * t) * t) * t
+```
 
 1.  这相当于手动内联所有的`lerp`函数。结果代码有点难以阅读：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(const Bezier<T>& c, float t) {
-       return 
-         ((c.P1 * (1.0f - t) + c.C1 * t) * (1.0f - t) + 
-         (c.C1 * (1.0f - t) + c.C2 * t) * t) * (1.0f - t) 
-         + ((c.C1 * (1.0f - t) + c.C2 * t) * (1.0f - t) + 
-         (c.C2 * (1.0f - t) + c.P2 * t) * t) * t;
-    }
-    ```
+template<typename T>
+inline T Interpolate(const Bezier<T>& c, float t) {
+   return 
+     ((c.P1 * (1.0f - t) + c.C1 * t) * (1.0f - t) + 
+     (c.C1 * (1.0f - t) + c.C2 * t) * t) * (1.0f - t) 
+     + ((c.C1 * (1.0f - t) + c.C2 * t) * (1.0f - t) + 
+     (c.C2 * (1.0f - t) + c.P2 * t) * t) * t;
+}
+```
 
 1.  为什么要费这么大劲？为了开始简化数学，让我们从合并类似项开始：
 
 ```cpp
-    -P1t3 + 3P1t2 - 3P1t + P1 + 3C1t3 - 6C1t2 + 3C1t - 3C2t3 + 3C2t2 + P2t3
-    ```
+-P1t3 + 3P1t2 - 3P1t + P1 + 3C1t3 - 6C1t2 + 3C1t - 3C2t3 + 3C2t2 + P2t3
+```
 
 1.  现在这开始看起来像一个方程了！这个简化的方程也可以用代码表示：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(const Bezier<T>& curve, float t) {
-        return
-            curve.P1 * (t * t * t) * -1.0f +
-            curve.P1 * 3.0f * (t * t) -
-            curve.P1 * 3.0f * t +
-            curve.P1 +
-            curve.C1 * 3.0f * (t * t * t) -
-            curve.C1 * 6.0f * (t * t) +
-            curve.C1 * 3.0f * t -
-            curve.C2 * 3.0f * (t * t * t) +
-            curve.C2 * 3.0f * (t * t) +
-            curve.P2 * (t * t * t);
-    }
-    ```
+template<typename T>
+inline T Interpolate(const Bezier<T>& curve, float t) {
+    return
+        curve.P1 * (t * t * t) * -1.0f +
+        curve.P1 * 3.0f * (t * t) -
+        curve.P1 * 3.0f * t +
+        curve.P1 +
+        curve.C1 * 3.0f * (t * t * t) -
+        curve.C1 * 6.0f * (t * t) +
+        curve.C1 * 3.0f * t -
+        curve.C2 * 3.0f * (t * t * t) +
+        curve.C2 * 3.0f * (t * t) +
+        curve.P2 * (t * t * t);
+}
+```
 
 1.  通过隔离一些项来进一步简化这个简化：
 
 ```cpp
-    P1( -t3 + 3t2 - 3t + 1) +
-    C1( 3t3 - 6t2 + 3t)+
-    C2(-3t3 + 3t2)+
-    P2(  t3)
-    ```
+P1( -t3 + 3t2 - 3t + 1) +
+C1( 3t3 - 6t2 + 3t)+
+C2(-3t3 + 3t2)+
+P2(  t3)
+```
 
 1.  在代码中，这表示为：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(const Bezier<T>& c, float t) {
-        float ttt = t * t * t;
-        float tt = t * t;
-        return 
-        c.P1 * (-1.0f * ttt + 3.0f * tt - 3.0f * t + 1.0f) +
-        c.C1 * (3.0f * ttt - 6.0f * tt + 3.0f * t) +
-        c.C2 * (-3.0f * ttt + 3.0f * tt) +
-        c.P2 * ttt;
-    }
-    ```
+template<typename T>
+inline T Interpolate(const Bezier<T>& c, float t) {
+    float ttt = t * t * t;
+    float tt = t * t;
+    return 
+    c.P1 * (-1.0f * ttt + 3.0f * tt - 3.0f * t + 1.0f) +
+    c.C1 * (3.0f * ttt - 6.0f * tt + 3.0f * t) +
+    c.C2 * (-3.0f * ttt + 3.0f * tt) +
+    c.P2 * ttt;
+}
+```
 
 1.  再次简化函数：
 
 ```cpp
-    P1((1-t)3) +
-    C1(3(1-t)2t) +
-    C2(3(1-t)t2) +
-    P2(t3)
-    ```
+P1((1-t)3) +
+C1(3(1-t)2t) +
+C2(3(1-t)t2) +
+P2(t3)
+```
 
 1.  最终简化的代码如下所示：
 
 ```cpp
-    template<typename T>
-    inline T Interpolate(const Bezier<T>& curve, float t) {
-        return curve.P1 * ((1 - t) * (1 - t) * (1 - t)) +
-                curve.C1 * (3.0f * ((1 - t) * (1 - t)) * t) +
-                curve.C2 * (3.0f * (1 - t) * (t * t)) +
-                curve.P2 *(t * t * t);
-    }
-    ```
+template<typename T>
+inline T Interpolate(const Bezier<T>& curve, float t) {
+    return curve.P1 * ((1 - t) * (1 - t) * (1 - t)) +
+            curve.C1 * (3.0f * ((1 - t) * (1 - t)) * t) +
+            curve.C2 * (3.0f * (1 - t) * (t * t)) +
+            curve.P2 *(t * t * t);
+}
+```
 
 如果将这些最终方程用*t*从`0`到`1`绘制出来，您将得到以下图形：
 
@@ -328,23 +328,23 @@ Hermite 曲线是通过连接 Hermite 样条线制成的。每个控制点由时
 1.  创建一个新文件`Frame.h`。将`Frame`类的声明添加到这个新文件中。`Frame`类需要值和入射和出射切线的数组，以及一个时间标量。使用模板来指定每个帧的大小：
 
 ```cpp
-    template<unsigned int N>
-    class Frame {
-    public:
-        float mValue[N];
-        float mIn[N];
-        float mOut[N];
-        float mTime;
-    };
-    ```
+template<unsigned int N>
+class Frame {
+public:
+    float mValue[N];
+    float mIn[N];
+    float mOut[N];
+    float mTime;
+};
+```
 
 1.  为常见的帧类型创建`typedef`数据类型：
 
 ```cpp
-    typedef Frame<1> ScalarFrame;
-    typedef Frame<3> VectorFrame;
-    typedef Frame<4> QuaternionFrame;
-    ```
+typedef Frame<1> ScalarFrame;
+typedef Frame<3> VectorFrame;
+typedef Frame<4> QuaternionFrame;
+```
 
 你刚刚实现的`Frame`类用于存储动画轨迹中的关键帧。动画轨迹是关键帧的集合。在下一节中，你将学习如何实现`Track`类。
 
@@ -371,75 +371,75 @@ Hermite 曲线是通过连接 Hermite 样条线制成的。每个控制点由时
 1.  `Track`类只需要两个成员——帧的向量和插值类型。创建一个新文件`Track.h`，并将`Track`类的声明添加到这个文件中：
 
 ```cpp
-    template<typename T, int N>
-    class Track {
-    protected:
-        std::vector<Frame<N>> mFrames;
-        Interpolation mInterpolation;
-    ```
+template<typename T, int N>
+class Track {
+protected:
+    std::vector<Frame<N>> mFrames;
+    Interpolation mInterpolation;
+```
 
 1.  `Track`类只需要一个默认构造函数来初始化`mInterpolation`变量。生成的复制构造函数、赋值运算符和析构函数都很好：
 
 ```cpp
-    public:
-        Track();
-    ```
+public:
+    Track();
+```
 
 1.  为轨迹的帧数、插值类型以及起始和结束时间创建获取器和设置器函数：
 
 ```cpp
-        void Resize(unsigned int size);
-        unsigned int Size();
-        Interpolation GetInterpolation();
-        void SetInterpolation(Interpolation interp);
-        float GetStartTime();
-        float GetEndTime();
-    ```
+    void Resize(unsigned int size);
+    unsigned int Size();
+    Interpolation GetInterpolation();
+    void SetInterpolation(Interpolation interp);
+    float GetStartTime();
+    float GetEndTime();
+```
 
 1.  `Track`类需要一种在给定时间采样轨迹的方法。这个`Sample`方法应该接受一个时间值和轨迹是否循环的参数。重载`[]运算符`以检索帧的引用：
 
 ```cpp
-        T Sample(float time, bool looping);
-        Frame<N>& operator[](unsigned int index);
-    ```
+    T Sample(float time, bool looping);
+    Frame<N>& operator[](unsigned int index);
+```
 
 1.  接下来，你需要声明一些辅助函数。轨迹可以是常量、线性或立方体。只需要一个`Sample`函数来处理这三种情况。不要创建一个庞大、难以阅读的函数，为每种插值类型创建一个辅助函数：
 
 ```cpp
-    protected:
-        T SampleConstant(float time, bool looping);
-        T SampleLinear(float time, bool looping);
-        T SampleCubic(float time, bool looping);
-    ```
+protected:
+    T SampleConstant(float time, bool looping);
+    T SampleLinear(float time, bool looping);
+    T SampleCubic(float time, bool looping);
+```
 
 1.  添加一个辅助函数来评估 Hermite 样条：
 
 ```cpp
-        T Hermite(float time, const T& p1, const T& s1, 
-                  const T& p2, const T& s2);
-    ```
+    T Hermite(float time, const T& p1, const T& s1, 
+              const T& p2, const T& s2);
+```
 
 1.  添加一个函数来检索给定时间的帧索引。这是请求的时间之前的最后一帧。另外，添加一个辅助函数，该函数接受轨道范围之外的输入时间，并将其调整为轨道上的有效时间：
 
 ```cpp
-        int FrameIndex(float time, bool looping);
-        float AdjustTimeToFitTrack(float t, bool loop);
-    ```
+    int FrameIndex(float time, bool looping);
+    float AdjustTimeToFitTrack(float t, bool loop);
+```
 
 1.  您需要一种将浮点数组（帧内的数据）转换为轨道模板类型的方法。该函数针对每种类型的轨道进行了专门化：
 
 ```cpp
-        T Cast(float* value); // Will be specialized
-    };
-    ```
+    T Cast(float* value); // Will be specialized
+};
+```
 
 1.  与`Frame`类一样，为常见的`Track`类型添加`typedef`数据类型：
 
 ```cpp
-    typedef Track<float, 1> ScalarTrack;
-    typedef Track<vec3, 3> VectorTrack;
-    typedef Track<quat, 4> QuaternionTrack;
-    ```
+typedef Track<float, 1> ScalarTrack;
+typedef Track<vec3, 3> VectorTrack;
+typedef Track<quat, 4> QuaternionTrack;
+```
 
 `Track`类的 API 很小，这使得该类易于使用。但是，`Track`类存在许多隐藏的复杂性；毕竟，这个类是您正在构建的动画系统的核心。在下一节中，您将开始实现实际的`Track`类。
 
@@ -464,50 +464,50 @@ template Track<quat, 4>;
 1.  要使轨道进行线性插值，您需要为每种轨道类型创建插值函数。在`Track.cpp`中添加以下辅助函数，为轨道可能包含的每种数据类型提供正确的插值方法。这些函数属于`TrackHelpers`命名空间。
 
 ```cpp
-    namespace TrackHelpers {
-       inline float Interpolate(float a, float b, float t) {
-           return a + (b - a) * t;
-       }
-       inline vec3 Interpolate(const vec3& a, const vec3& b,
-                               float t) {
-           return lerp(a, b, t);
-       }
-       inline quat Interpolate(const quat& a, const quat& b,
-                               float t) {
-           quat result = mix(a, b, t);
-           if (dot(a, b) < 0) { // Neighborhood
-               result = mix(a, -b, t);
-           }
-           return normalized(result); //NLerp, not slerp
-       }
-    ```
+namespace TrackHelpers {
+   inline float Interpolate(float a, float b, float t) {
+       return a + (b - a) * t;
+   }
+   inline vec3 Interpolate(const vec3& a, const vec3& b,
+                           float t) {
+       return lerp(a, b, t);
+   }
+   inline quat Interpolate(const quat& a, const quat& b,
+                           float t) {
+       quat result = mix(a, b, t);
+       if (dot(a, b) < 0) { // Neighborhood
+           result = mix(a, -b, t);
+       }
+       return normalized(result); //NLerp, not slerp
+   }
+```
 
 1.  当插值 Hermite 样条时，如果输入类型是四元数，则结果需要被归一化。您可以创建仅归一化四元数的辅助函数，而不是提供 Hermite 函数的四元数规范：
 
 ```cpp
-       inline float AdjustHermiteResult(float f) {
-          return f;
-       }
-       inline vec3 AdjustHermiteResult(const vec3& v) {
-          return v;
-       }
-       inline quat AdjustHermiteResult(const quat& q) {
-          return normalized(q);
-       }
-    ```
+   inline float AdjustHermiteResult(float f) {
+      return f;
+   }
+   inline vec3 AdjustHermiteResult(const vec3& v) {
+      return v;
+   }
+   inline quat AdjustHermiteResult(const quat& q) {
+      return normalized(q);
+   }
+```
 
 1.  还需要一个常见的`Neighborhood`操作，以确保两个四元数处于正确的邻域。该函数对其他数据类型应该不做任何操作：
 
 ```cpp
-       inline void Neighborhood(const float& a, float& b){}
-       inline void Neighborhood(const vec3& a, vec3& b){}
-       inline void Neighborhood(const quat& a, quat& b) {
-          if (dot(a, b) < 0) {
-             b = -b;
-          }
-       }
-    }; // End Track Helpers namespace
-    ```
+   inline void Neighborhood(const float& a, float& b){}
+   inline void Neighborhood(const vec3& a, vec3& b){}
+   inline void Neighborhood(const quat& a, quat& b) {
+      if (dot(a, b) < 0) {
+         b = -b;
+      }
+   }
+}; // End Track Helpers namespace
+```
 
 这些辅助函数存在的原因是为了避免制作插值函数的专门版本。相反，通用插值函数调用这些辅助方法，并且函数重载确保调用正确的函数。这意味着如果添加新类型的轨道，则需要添加新的辅助函数。在下一节中，您将开始实现一些`Track`函数。
 
@@ -518,83 +518,83 @@ template Track<quat, 4>;
 1.  `Track`构造函数需要设置轨道的插值类型。轨道的开始和结束时间的获取器和设置器函数很简单：
 
 ```cpp
-    template<typename T, int N>
-    Track<T, N>::Track() {
-        mInterpolation = Interpolation::Linear;
-    }
-    template<typename T, int N>
-    float Track<T, N>::GetStartTime() {
-        return mFrames[0].mTime;
-    }
-    template<typename T, int N>
-    float Track<T, N>::GetEndTime() {
-        return mFrames[mFrames.size() - 1].mTime;
-    }
-    ```
+template<typename T, int N>
+Track<T, N>::Track() {
+    mInterpolation = Interpolation::Linear;
+}
+template<typename T, int N>
+float Track<T, N>::GetStartTime() {
+    return mFrames[0].mTime;
+}
+template<typename T, int N>
+float Track<T, N>::GetEndTime() {
+    return mFrames[mFrames.size() - 1].mTime;
+}
+```
 
 1.  `Sample`函数需要调用`SampleConstant`、`SampleLinear`或`SampleCubic`，具体取决于轨道类型。`[]` `operator`返回对指定帧的引用：
 
 ```cpp
-    template<typename T, int N>
-    T Track<T, N>::Sample(float time, bool looping) {
-        if (mInterpolation == Interpolation::Constant) {
-            return SampleConstant(time, looping);
-        }
-        else if (mInterpolation == Interpolation::Linear) {
-            return SampleLinear(time, looping);
-        }
-        return SampleCubic(time, looping);
-    }
-    template<typename T, int N>
-    Frame<N>& Track<T, N>::operator[](unsigned int index) {
-        return mFrames[index];
-    }
-    ```
+template<typename T, int N>
+T Track<T, N>::Sample(float time, bool looping) {
+    if (mInterpolation == Interpolation::Constant) {
+        return SampleConstant(time, looping);
+    }
+    else if (mInterpolation == Interpolation::Linear) {
+        return SampleLinear(time, looping);
+    }
+    return SampleCubic(time, looping);
+}
+template<typename T, int N>
+Frame<N>& Track<T, N>::operator[](unsigned int index) {
+    return mFrames[index];
+}
+```
 
 1.  `Resize`和`Size`函数是围绕帧向量的大小的简单获取器和设置器：
 
 ```cpp
-    template<typename T, int N>
-    void Track<T, N>::Resize(unsigned int size) {
-        mFrames.resize(size);
-    }
-    template<typename T, int N>
-    unsigned int Track<T, N>::Size() {
-        return mFrames.size();
-    }
-    ```
+template<typename T, int N>
+void Track<T, N>::Resize(unsigned int size) {
+    mFrames.resize(size);
+}
+template<typename T, int N>
+unsigned int Track<T, N>::Size() {
+    return mFrames.size();
+}
+```
 
 1.  轨道的插值类型也有简单的获取器和设置器函数：
 
 ```cpp
-    template<typename T, int N>
-    Interpolation Track<T, N>::GetInterpolation() {
-        return mInterpolation;
-    }
-    template<typename T, int N>
-    void Track<T, N>::SetInterpolation(Interpolation interpolation) {
-        mInterpolation = interpolation;
-    }
-    ```
+template<typename T, int N>
+Interpolation Track<T, N>::GetInterpolation() {
+    return mInterpolation;
+}
+template<typename T, int N>
+void Track<T, N>::SetInterpolation(Interpolation interpolation) {
+    mInterpolation = interpolation;
+}
+```
 
 1.  `Hermite`函数实现了本章*理解三次 Hermite 样条*部分涵盖的基本函数。第二点可能需要通过`Neighborhood`辅助函数取反。四元数也需要被归一化。邻域化和归一化都是由辅助函数执行的：
 
 ```cpp
-    template<typename T, int N>
-    T Track<T, N>::Hermite(float t, const T& p1, const T& s1,
-                           const T& _p2, const T& s2) {
-        float tt = t * t;
-        float ttt = tt * t;
-        T p2 = _p2;
-        TrackHelpers::Neighborhood(p1, p2);
-        float h1 = 2.0f * ttt - 3.0f * tt + 1.0f;
-        float h2 = -2.0f * ttt + 3.0f * tt;
-        float h3 = ttt - 2.0f * tt + t;
-        float h4 = ttt - tt;
-        T result = p1 * h1 + p2 * h2 + s1 * h3 + s2 * h4;
-        return TrackHelpers::AdjustHermiteResult(result);
-    }
-    ```
+template<typename T, int N>
+T Track<T, N>::Hermite(float t, const T& p1, const T& s1,
+                       const T& _p2, const T& s2) {
+    float tt = t * t;
+    float ttt = tt * t;
+    T p2 = _p2;
+    TrackHelpers::Neighborhood(p1, p2);
+    float h1 = 2.0f * ttt - 3.0f * tt + 1.0f;
+    float h2 = -2.0f * ttt + 3.0f * tt;
+    float h3 = ttt - 2.0f * tt + t;
+    float h4 = ttt - tt;
+    T result = p1 * h1 + p2 * h2 + s1 * h3 + s2 * h4;
+    return TrackHelpers::AdjustHermiteResult(result);
+}
+```
 
 在接下来的几节中，您将实现`Track`类的一些更难的函数，从`FrameIndex`函数开始。
 
@@ -605,60 +605,60 @@ template Track<quat, 4>;
 1.  如果轨道只有一帧或更少，那么它是无效的。如果遇到无效的轨道，返回`-1`：
 
 ```cpp
-    template<typename T, int N>
-    int Track<T, N>::FrameIndex(float time, bool looping) {
-        unsigned int size = (unsigned int)mFrames.size();
-        if (size <= 1) {
-            return -1;
-        }
-    ```
+template<typename T, int N>
+int Track<T, N>::FrameIndex(float time, bool looping) {
+    unsigned int size = (unsigned int)mFrames.size();
+    if (size <= 1) {
+        return -1;
+    }
+```
 
 1.  如果轨道被循环采样，输入时间需要调整，使其落在起始和结束帧之间。这意味着您需要知道轨道第一帧的时间、轨道帧的时间和轨道的持续时间：
 
 ```cpp
-        if (looping) {
-            float startTime = mFrames[0].mTime;
-            float endTime = mFrames[size - 1].mTime;
-            float duration = endTime - startTime;
-    ```
+    if (looping) {
+        float startTime = mFrames[0].mTime;
+        float endTime = mFrames[size - 1].mTime;
+        float duration = endTime - startTime;
+```
 
 1.  由于轨道循环，`time`需要调整，使其在有效范围内。为此，通过从起始时间中减去`time`并将结果与持续时间取模来使`time`相对于持续时间。如果`time`为负数，则加上持续时间。不要忘记将起始时间加回`time`中：
 
 ```cpp
-            time = fmodf(time - startTime, 
-                         endTime - startTime);
-            if (time < 0.0f) {
-                time += endTime - startTime;
-            }
-            time = time + startTime;
-        }
-    ```
+        time = fmodf(time - startTime, 
+                     endTime - startTime);
+        if (time < 0.0f) {
+            time += endTime - startTime;
+        }
+        time = time + startTime;
+    }
+```
 
 1.  如果轨道不循环，任何小于起始帧的`time`值应该被夹到`0`，任何大于倒数第二帧的`time`值应该被夹到倒数第二帧的索引：
 
 ```cpp
-        else {
-            if (time <= mFrames[0].mTime) {
-                return 0;
-            }
-            if (time >= mFrames[size - 2].mTime) {
-                return (int)size - 2;
-            }
-        }
-    ```
+    else {
+        if (time <= mFrames[0].mTime) {
+            return 0;
+        }
+        if (time >= mFrames[size - 2].mTime) {
+            return (int)size - 2;
+        }
+    }
+```
 
 1.  现在时间在有效范围内，循环遍历每一帧。最接近时间的帧（但仍然较小）是应该返回的帧的索引。可以通过向后循环遍历轨道的帧并返回第一个时间小于查找时间的索引来找到这一帧：
 
 ```cpp
-        for (int i = (int)size - 1; i >= 0; --i) {
-            if (time >= mFrames[i].mTime) {
-                return i;
-            }
-        }
-        // Invalid code, we should not reach here!
-        return -1;
-    } // End of FrameIndex
-    ```
+    for (int i = (int)size - 1; i >= 0; --i) {
+        if (time >= mFrames[i].mTime) {
+            return i;
+        }
+    }
+    // Invalid code, we should not reach here!
+    return -1;
+} // End of FrameIndex
+```
 
 如果一个轨道不循环并且时间大于最后一帧的时间，则使用倒数第二帧的索引。为什么使用倒数第二帧而不是最后一帧？`Sample`函数总是需要当前帧和下一帧，下一帧是通过将`FrameIndex`函数的结果加`1`来找到的。当`time`等于最后一帧的时间时，需要插值的两帧仍然是倒数第二帧和最后一帧。
 
@@ -671,53 +671,53 @@ template Track<quat, 4>;
 1.  如果一个轨道少于一帧，那么这个轨道是无效的。如果使用了无效的轨道，返回`0`：
 
 ```cpp
-    template<typename T, int N>
-    float Track<T, N>::AdjustTimeToFitTrack(float time, 
-                                            bool looping) {
-        unsigned int size = (unsigned int)mFrames.size();
-        if (size <= 1) { 
-            return 0.0f; 
-        }
-    ```
+template<typename T, int N>
+float Track<T, N>::AdjustTimeToFitTrack(float time, 
+                                        bool looping) {
+    unsigned int size = (unsigned int)mFrames.size();
+    if (size <= 1) { 
+        return 0.0f; 
+    }
+```
 
 1.  找到轨道的起始时间、结束时间和持续时间。起始时间是第一帧的时间，结束时间是最后一帧的时间，持续时间是两者之间的差异。如果轨道持续时间为`0`，则无效——返回`0`：
 
 ```cpp
-        float startTime = mFrames[0].mTime;
-        float endTime = mFrames[size - 1].mTime;
-        float duration = endTime - startTime;
-        if (duration <= 0.0f) { 
-            return 0.0f; 
-        }
-    ```
+    float startTime = mFrames[0].mTime;
+    float endTime = mFrames[size - 1].mTime;
+    float duration = endTime - startTime;
+    if (duration <= 0.0f) { 
+        return 0.0f; 
+    }
+```
 
 1.  如果轨道循环，通过轨道的持续时间调整时间：
 
 ```cpp
-        if (looping) {
-            time = fmodf(time - startTime, 
-                         endTime - startTime);
-            if (time < 0.0f) {
-                time += endTime - startTime;
-            }
-            time = time + startTime;
-        }
-    ```
+    if (looping) {
+        time = fmodf(time - startTime, 
+                     endTime - startTime);
+        if (time < 0.0f) {
+            time += endTime - startTime;
+        }
+        time = time + startTime;
+    }
+```
 
 1.  如果轨道不循环，将时间夹到第一帧或最后一帧。返回调整后的时间：
 
 ```cpp
-        else {
-            if (time <= mFrames[0].mTime) { 
-                time = startTime;  
-            }
-            if (time >= mFrames[size - 1].mTime) { 
-                time = endTime; 
-            }
-        }
-        return time;
-    }
-    ```
+    else {
+        if (time <= mFrames[0].mTime) { 
+            time = startTime;  
+        }
+        if (time >= mFrames[size - 1].mTime) { 
+            time = endTime; 
+        }
+    }
+    return time;
+}
+```
 
 `AdjustTimeToFitTrack`函数很有用，因为它保持了动画采样时间在范围内。这个函数旨在在动画播放时间改变时调用。考虑以下例子：
 
@@ -863,30 +863,30 @@ T Track<T, N>::SampleCubic(float time, bool looping) {
 1.  创建一个新文件`TransformTrack.h`，并开始通过定义成员变量来添加`TransformTrack`的定义：
 
 ```cpp
-    class TransformTrack {
-    protected:
-        unsigned int mId;
-        VectorTrack mPosition;
-        QuaternionTrack mRotation;
-        VectorTrack mScale;
-    ```
+class TransformTrack {
+protected:
+    unsigned int mId;
+    VectorTrack mPosition;
+    QuaternionTrack mRotation;
+    VectorTrack mScale;
+```
 
 1.  公共 API 很简单。您需要默认构造函数来为轨道的关节 ID 分配默认值。您还需要获取 ID、组件轨道、开始/结束时间、持续时间和有效性的函数，以及 ID 需要一个设置函数；组件获取函数返回可变引用：
 
 ```cpp
-    public:
-        TransformTrack();
-        unsigned int GetId();
-        void SetId(unsigned int id);
-        VectorTrack& GetPositionTrack();
-        QuaternionTrack& GetRotationTrack();
-        VectorTrack& GetScaleTrack();
-        float GetStartTime();
-        float GetEndTime();
-        bool IsValid();
-        Transform Sample(const Transform& ref, float time, bool looping);
-    };
-    ```
+public:
+    TransformTrack();
+    unsigned int GetId();
+    void SetId(unsigned int id);
+    VectorTrack& GetPositionTrack();
+    QuaternionTrack& GetRotationTrack();
+    VectorTrack& GetScaleTrack();
+    float GetStartTime();
+    float GetEndTime();
+    bool IsValid();
+    Transform Sample(const Transform& ref, float time, bool looping);
+};
+```
 
 在下一节中，您将开始实现`TransfromTrack`的函数。
 
@@ -897,115 +897,115 @@ T Track<T, N>::SampleCubic(float time, bool looping) {
 1.  创建一个新文件`TransformTrack.cpp`，以实现`TransformTrack`类。`TransformTrack`类的构造函数并不重要；为变换轨道表示的关节分配一个默认值。轨道 ID 的获取和设置函数也很简单：
 
 ```cpp
-    TransformTrack::TransformTrack() {
-        mId = 0;
-    }
-    unsigned int TransformTrack::GetId() {
-        return mId;
-    }
-    void TransformTrack::SetId(unsigned int id) {
-        mId = id;
-    }
-    ```
+TransformTrack::TransformTrack() {
+    mId = 0;
+}
+unsigned int TransformTrack::GetId() {
+    return mId;
+}
+void TransformTrack::SetId(unsigned int id) {
+    mId = id;
+}
+```
 
 1.  接下来，实现函数来访问存储在变换轨道中的不同组件轨道。这些函数需要返回一个引用，以便您可以改变返回的轨道：
 
 ```cpp
-    VectorTrack& TransformTrack::GetPositionTrack() {
-        return mPosition;
-    }
-    QuaternionTrack& TransformTrack::GetRotationTrack() {
-        return mRotation;
-    }
-    VectorTrack& TransformTrack::GetScaleTrack() {
-        return mScale;
-    }
-    ```
+VectorTrack& TransformTrack::GetPositionTrack() {
+    return mPosition;
+}
+QuaternionTrack& TransformTrack::GetRotationTrack() {
+    return mRotation;
+}
+VectorTrack& TransformTrack::GetScaleTrack() {
+    return mScale;
+}
+```
 
 1.  `IsValid`辅助函数只有在存储在`TransformTrack`类中的组件轨道中至少有一个有效时才应返回`true`。要使轨道有效，需要有两个或更多帧：
 
 ```cpp
-    bool TransformTrack::IsValid() {
-        return mPosition.Size() > 1 || 
-               mRotation.Size() > 1 || 
-               mScale.Size() > 1;
-    }
-    ```
+bool TransformTrack::IsValid() {
+    return mPosition.Size() > 1 || 
+           mRotation.Size() > 1 || 
+           mScale.Size() > 1;
+}
+```
 
 1.  `GetStartTime`函数应该返回三个组件轨道中最小的开始时间。如果没有一个组件是有效的（即它们都只有一个或没有帧），那么`TransformTrack`就无效。在这种情况下，只需返回`0`：
 
 ```cpp
-    float TransformTrack::GetStartTime() {
-        float result = 0.0f;
-        bool isSet = false;
-        if (mPosition.Size() > 1) {
-            result = mPosition.GetStartTime();
-            isSet = true;
-        }
-        if (mRotation.Size() > 1) {
-            float rotationStart = mRotation.GetStartTime();
-            if (rotationStart < result || !isSet) {
-                result = rotationStart;
-                isSet = true;
-            }
-        }
-        if (mScale.Size() > 1) {
-            float scaleStart = mScale.GetStartTime();
-            if (scaleStart < result || !isSet) {
-                result = scaleStart;
-                isSet = true;
-            }
-        }
-        return result;
-    }
-    ```
+float TransformTrack::GetStartTime() {
+    float result = 0.0f;
+    bool isSet = false;
+    if (mPosition.Size() > 1) {
+        result = mPosition.GetStartTime();
+        isSet = true;
+    }
+    if (mRotation.Size() > 1) {
+        float rotationStart = mRotation.GetStartTime();
+        if (rotationStart < result || !isSet) {
+            result = rotationStart;
+            isSet = true;
+        }
+    }
+    if (mScale.Size() > 1) {
+        float scaleStart = mScale.GetStartTime();
+        if (scaleStart < result || !isSet) {
+            result = scaleStart;
+            isSet = true;
+        }
+    }
+    return result;
+}
+```
 
 1.  `GetEndTime`函数类似于`GetStartTime`函数。唯一的区别是这个函数寻找最大的轨道结束时间：
 
 ```cpp
-    float TransformTrack::GetEndTime() {
-        float result = 0.0f;
-        bool isSet = false;
-        if (mPosition.Size() > 1) {
-            result = mPosition.GetEndTime();
-            isSet = true;
-        }
-        if (mRotation.Size() > 1) {
-            float rotationEnd = mRotation.GetEndTime();
-            if (rotationEnd > result || !isSet) {
-                result = rotationEnd;
-                isSet = true;
-            }
-        }
-        if (mScale.Size() > 1) {
-            float scaleEnd = mScale.GetEndTime();
-            if (scaleEnd > result || !isSet) {
-                result = scaleEnd;
-                isSet = true;
-            }
-        }
-        return result;
-    }
-    ```
+float TransformTrack::GetEndTime() {
+    float result = 0.0f;
+    bool isSet = false;
+    if (mPosition.Size() > 1) {
+        result = mPosition.GetEndTime();
+        isSet = true;
+    }
+    if (mRotation.Size() > 1) {
+        float rotationEnd = mRotation.GetEndTime();
+        if (rotationEnd > result || !isSet) {
+            result = rotationEnd;
+            isSet = true;
+        }
+    }
+    if (mScale.Size() > 1) {
+        float scaleEnd = mScale.GetEndTime();
+        if (scaleEnd > result || !isSet) {
+            result = scaleEnd;
+            isSet = true;
+        }
+    }
+    return result;
+}
+```
 
 1.  `Sample`函数只在其组件轨道有两个或更多帧时对其进行采样。由于`TransformTrack`类只能对一个组件进行动画，比如位置，因此这个函数需要将一个参考变换作为参数。如果变换轨道没有对其中一个变换组件进行动画，那么将使用参考变换的值：
 
 ```cpp
-    Transform TransformTrack::Sample(const Transform& ref,
-                                  float time, bool loop) {
-        Transform result = ref; // Assign default values
-        if (mPosition.Size() > 1) { // Only if valid
-           result.position = mPosition.Sample(time, loop);
-        }
-        if (mRotation.Size() > 1) { // Only if valid
-           result.rotation = mRotation.Sample(time, loop);
-        }
-        if (mScale.Size() > 1) { // Only if valid
-           result.scale = mScale.Sample(time, loop);
-        }
-        return result;
-    }
-    ```
+Transform TransformTrack::Sample(const Transform& ref,
+                              float time, bool loop) {
+    Transform result = ref; // Assign default values
+    if (mPosition.Size() > 1) { // Only if valid
+       result.position = mPosition.Sample(time, loop);
+    }
+    if (mRotation.Size() > 1) { // Only if valid
+       result.rotation = mRotation.Sample(time, loop);
+    }
+    if (mScale.Size() > 1) { // Only if valid
+       result.scale = mScale.Sample(time, loop);
+    }
+    return result;
+}
+```
 
 因为并非所有动画都包含相同的轨道，重置正在采样的姿势是很重要的。这可以确保参考变换始终是正确的。要重置姿势，将其分配为与休息姿势相同。
 

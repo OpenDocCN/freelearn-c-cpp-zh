@@ -39,58 +39,58 @@
 1.  创建一个新文件来声明`Shader`类，命名为`Shader.h`。`Shader`类应该有一个指向 OpenGL 着色器对象的句柄，以及属性和统一索引的映射。这些字典有一个字符串作为键（属性或统一的名称）和一个`unsigned int`作为值（统一或属性的索引）：
 
 ```cpp
-    class Shader {
-    private:
-        unsigned int mHandle;
-        std::map<std::string, unsigned int> mAttributes;
-        std::map<std::string, unsigned int> mUniforms;
-    ```
+class Shader {
+private:
+    unsigned int mHandle;
+    std::map<std::string, unsigned int> mAttributes;
+    std::map<std::string, unsigned int> mUniforms;
+```
 
 1.  `Shader`类的复制构造函数和赋值运算符应该被禁用。`Shader`类不打算通过值进行复制，因为它持有一个 GPU 资源的句柄：
 
 ```cpp
-    private:
-        Shader(const Shader&);
-        Shader& operator=(const Shader&);
-    ```
+private:
+    Shader(const Shader&);
+    Shader& operator=(const Shader&);
+```
 
 1.  接下来，您需要在`Shader`类中声明辅助函数。`ReadFile`函数将文件内容读入`std::string`中。`CompileVertexShader`和`CompileFragmentShader`函数编译着色器源代码并返回 OpenGL 句柄。`LinkShader`函数将两个着色器链接成一个着色器程序。`PopulateAttribute`和`PopulateUniform`函数将填充属性和统一字典：
 
 ```cpp
-    private:
-        std::string ReadFile(const std::string& path);
-        unsigned int CompileVertexShader(
-                         const std::string& vertex);
-        unsigned int CompileFragmentShader(
-                         const std::string& fragment);
-        bool LinkShaders(unsigned int vertex, 
-                         unsigned int fragment);
-        void PopulateAttributes();
-        void PopulateUniforms();
-    ```
+private:
+    std::string ReadFile(const std::string& path);
+    unsigned int CompileVertexShader(
+                     const std::string& vertex);
+    unsigned int CompileFragmentShader(
+                     const std::string& fragment);
+    bool LinkShaders(unsigned int vertex, 
+                     unsigned int fragment);
+    void PopulateAttributes();
+    void PopulateUniforms();
+```
 
 1.  类的默认构造函数将创建一个空的`Shader`对象。重载构造函数将调用`Load`方法，从文件加载着色器并编译它们。析构函数将释放`Shader`类持有的 OpenGL 着色器句柄：
 
 ```cpp
-    public:
-        Shader();
-        Shader(const std::string& vertex, 
-               const std::string& fragment);
-        ~Shader();
-        void Load(const std::string& vertex, 
-                  const std::string& fragment);
-    ```
+public:
+    Shader();
+    Shader(const std::string& vertex, 
+           const std::string& fragment);
+    ~Shader();
+    void Load(const std::string& vertex, 
+              const std::string& fragment);
+```
 
 1.  在使用着色器之前，需要使用`Bind`函数绑定它。同样，在不再使用时，可以使用`UnBind`函数解绑它。`GetAttribute`和`GetUniform`函数在适当的字典中执行查找。`GetHandle`函数返回着色器的 OpenGL 句柄：
 
 ```cpp
-        void Bind();
-        void UnBind();
-        unsigned int GetAttribute(const std::string& name);
-        unsigned int GetUniform(const std::string& name);
-        unsigned int GetHandle();
-    };
-    ```
+    void Bind();
+    void UnBind();
+    unsigned int GetAttribute(const std::string& name);
+    unsigned int GetUniform(const std::string& name);
+    unsigned int GetHandle();
+};
+```
 
 现在`Shader`类声明完成后，您将在下一节中实现它。
 
@@ -103,259 +103,259 @@
 1.  两个`Shader`构造函数必须通过调用`glCreateProgram`创建一个新的着色器程序句柄。接受两个字符串的构造函数变体调用`Load`函数处理这些字符串。由于`mHandle`始终是一个程序句柄，析构函数需要删除该句柄：
 
 ```cpp
-    Shader::Shader() {
-        mHandle = glCreateProgram();
-    }
-    Shader::Shader(const std::string& vertex, 
-                   const std::string& fragment) {
-        mHandle = glCreateProgram();
-        Load(vertex, fragment);
-    }
-    Shader::~Shader() {
-        glDeleteProgram(mHandle);
-    }
-    ```
+Shader::Shader() {
+    mHandle = glCreateProgram();
+}
+Shader::Shader(const std::string& vertex, 
+               const std::string& fragment) {
+    mHandle = glCreateProgram();
+    Load(vertex, fragment);
+}
+Shader::~Shader() {
+    glDeleteProgram(mHandle);
+}
+```
 
 1.  `ReadFile`辅助函数使用`std::ifstream`将文件转换为字符串，以读取文件的内容到`std::stringstream`中。字符串流可用于将文件内容作为字符串返回：
 
 ```cpp
-    std::string Shader::ReadFile(const std::string& path) {
-        std::ifstream file;
-        file.open(path);
-        std::stringstream contents;
-        contents << file.rdbuf();
-        file.close();
-        return contents.str();
-    }
-    ```
+std::string Shader::ReadFile(const std::string& path) {
+    std::ifstream file;
+    file.open(path);
+    std::stringstream contents;
+    contents << file.rdbuf();
+    file.close();
+    return contents.str();
+}
+```
 
 1.  `CompileVertexShader`函数是用于编译 OpenGL 顶点着色器的样板代码。首先，使用`glCreateShader`创建着色器对象，然后使用`glShaderSource`为着色器设置源。最后，使用`glCompileShader`编译着色器。使用`glGetShaderiv`检查错误：
 
 ```cpp
-    unsigned int Shader::CompileVertexShader(
-                                   const string& vertex) {
-        unsigned int v = glCreateShader(GL_VERTEX_SHADER);
-        const char* v_source = vertex.c_str();
-        glShaderSource(v, 1, &v_source, NULL);
-        glCompileShader(v);
-        int success = 0;
-        glGetShaderiv(v, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            char infoLog[512];
-            glGetShaderInfoLog(v, 512, NULL, infoLog);
-            std::cout << "Vertex compilation failed.\n";
-            std::cout << "\t" << infoLog << "\n";
-            glDeleteShader(v);
-            return 0;
-        };
-        return v;
-    }
-    ```
+unsigned int Shader::CompileVertexShader(
+                               const string& vertex) {
+    unsigned int v = glCreateShader(GL_VERTEX_SHADER);
+    const char* v_source = vertex.c_str();
+    glShaderSource(v, 1, &v_source, NULL);
+    glCompileShader(v);
+    int success = 0;
+    glGetShaderiv(v, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(v, 512, NULL, infoLog);
+        std::cout << "Vertex compilation failed.\n";
+        std::cout << "\t" << infoLog << "\n";
+        glDeleteShader(v);
+        return 0;
+    };
+    return v;
+}
+```
 
 1.  `CompileFragmentShader`函数与`CompileVertexShader`函数几乎完全相同。唯一的真正区别是`glCreateShader`的参数，表明您正在创建一个片段着色器，而不是顶点着色器：
 
 ```cpp
-    unsigned int Shader::CompileFragmentShader(
-                              const std::string& fragment) {
-        unsigned int f = glCreateShader(GL_FRAGMENT_SHADER);
-        const char* f_source = fragment.c_str();
-        glShaderSource(f, 1, &f_source, NULL);
-        glCompileShader(f);
-        int success = 0;
-        glGetShaderiv(f, GL_COMPILE_STATUS, &success);
-        if (!success) {
-            char infoLog[512];
-            glGetShaderInfoLog(f, 512, NULL, infoLog);
-            std::cout << "Fragment compilation failed.\n";
-            std::cout << "\t" << infoLog << "\n";
-            glDeleteShader(f);
-            return 0;
-        };
-        return f;
-    }
-    ```
+unsigned int Shader::CompileFragmentShader(
+                          const std::string& fragment) {
+    unsigned int f = glCreateShader(GL_FRAGMENT_SHADER);
+    const char* f_source = fragment.c_str();
+    glShaderSource(f, 1, &f_source, NULL);
+    glCompileShader(f);
+    int success = 0;
+    glGetShaderiv(f, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetShaderInfoLog(f, 512, NULL, infoLog);
+        std::cout << "Fragment compilation failed.\n";
+        std::cout << "\t" << infoLog << "\n";
+        glDeleteShader(f);
+        return 0;
+    };
+    return f;
+}
+```
 
 1.  `LinkShaders`辅助函数也是样板。将着色器附加到构造函数创建的着色器程序句柄。通过调用`glLinkProgram`链接着色器，并使用`glGetProgramiv`检查错误。一旦着色器被链接，您只需要程序；可以使用`glDeleteShader`删除各个着色器对象：
 
 ```cpp
-    bool Shader::LinkShaders(unsigned int vertex, 
-                             unsigned int fragment) {
-        glAttachShader(mHandle, vertex);
-        glAttachShader(mHandle, fragment);
-        glLinkProgram(mHandle);
-        int success = 0;
-        glGetProgramiv(mHandle, GL_LINK_STATUS, &success);
-        if (!success) {
-            char infoLog[512];
-            glGetProgramInfoLog(mHandle, 512, NULL, infoLog);
-            std::cout << "ERROR: Shader linking failed.\n";
-            std::cout << "\t" << infoLog << "\n";
-            glDeleteShader(vertex);
-            glDeleteShader(fragment);
-            return false;
-        }
-        glDeleteShader(vertex);
-        glDeleteShader(fragment);
-        return true;
-    }
-    ```
+bool Shader::LinkShaders(unsigned int vertex, 
+                         unsigned int fragment) {
+    glAttachShader(mHandle, vertex);
+    glAttachShader(mHandle, fragment);
+    glLinkProgram(mHandle);
+    int success = 0;
+    glGetProgramiv(mHandle, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(mHandle, 512, NULL, infoLog);
+        std::cout << "ERROR: Shader linking failed.\n";
+        std::cout << "\t" << infoLog << "\n";
+        glDeleteShader(vertex);
+        glDeleteShader(fragment);
+        return false;
+    }
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+    return true;
+}
+```
 
 1.  `PopulateAttributes`函数枚举存储在着色器程序中的所有属性，然后将它们存储为键值对，其中键是属性的名称，值是其位置。您可以使用`glGetProgramiv`函数计算着色器程序中活动属性的数量，将`GL_ACTIVE_ATTRIBUTES`作为参数名称传递。然后，通过索引循环遍历所有属性，并使用`glGetActiveAttrib`获取每个属性的名称。最后，调用`glGetAttribLocation`获取每个属性的位置：
 
 ```cpp
-    void Shader::PopulateAttributes() {
-        int count = -1;
-        int length;
-        char name[128];
-        int size;
-        GLenum type;
-        glUseProgram(mHandle);
-        glGetProgramiv(mHandle, GL_ACTIVE_ATTRIBUTES, 
-                       &count);
-        for (int i = 0; i < count; ++i) {
-            memset(name, 0, sizeof(char) * 128);
-            glGetActiveAttrib(mHandle, (GLuint)i, 128, 
-                              &length, &size, &type, name);
-            int attrib = glGetAttribLocation(mHandle, name);
-            if (attrib >= 0) {
-                mAttributes[name] = attrib;
-            }
-        }
-        glUseProgram(0);
-    }
-    ```
+void Shader::PopulateAttributes() {
+    int count = -1;
+    int length;
+    char name[128];
+    int size;
+    GLenum type;
+    glUseProgram(mHandle);
+    glGetProgramiv(mHandle, GL_ACTIVE_ATTRIBUTES, 
+                   &count);
+    for (int i = 0; i < count; ++i) {
+        memset(name, 0, sizeof(char) * 128);
+        glGetActiveAttrib(mHandle, (GLuint)i, 128, 
+                          &length, &size, &type, name);
+        int attrib = glGetAttribLocation(mHandle, name);
+        if (attrib >= 0) {
+            mAttributes[name] = attrib;
+        }
+    }
+    glUseProgram(0);
+}
+```
 
 1.  `PopulateUniforms`辅助函数与`PopulateAttributes`辅助函数非常相似。`glGetProgramiv`需要以`GL_ACTIVE_UNIFORMS`作为参数名称，并且您需要调用`glGetActiveUniform`和`glGetUniformLocation`：
 
 ```cpp
-    void Shader::PopulateUniforms() {
-        int count = -1;
-        int length;
-        char name[128];
-        int size;
-        GLenum type;
-        char testName[256];
-        glUseProgram(mHandle);
-        glGetProgramiv(mHandle, GL_ACTIVE_UNIFORMS, &count);
-        for (int i = 0; i < count; ++i) {
-            memset(name, 0, sizeof(char) * 128);
-            glGetActiveUniform(mHandle, (GLuint)i, 128, 
-                               &length, &size, &type, name);
-            int uniform=glGetUniformLocation(mHandle, name);
-            if (uniform >= 0) { // Is uniform valid?
-    ```
+void Shader::PopulateUniforms() {
+    int count = -1;
+    int length;
+    char name[128];
+    int size;
+    GLenum type;
+    char testName[256];
+    glUseProgram(mHandle);
+    glGetProgramiv(mHandle, GL_ACTIVE_UNIFORMS, &count);
+    for (int i = 0; i < count; ++i) {
+        memset(name, 0, sizeof(char) * 128);
+        glGetActiveUniform(mHandle, (GLuint)i, 128, 
+                           &length, &size, &type, name);
+        int uniform=glGetUniformLocation(mHandle, name);
+        if (uniform >= 0) { // Is uniform valid?
+```
 
 1.  当遇到有效的统一时，您需要确定该统一是否是一个数组。为此，在统一名称中搜索数组括号（`[`）。如果找到括号，则该统一是一个数组：
 
 ```cpp
-    std::string uniformName = name;
-    // if name contains [, uniform is array
-    std::size_t found = uniformName.find('[');
-    if (found != std::string::npos) {
-    ```
+std::string uniformName = name;
+// if name contains [, uniform is array
+std::size_t found = uniformName.find('[');
+if (found != std::string::npos) {
+```
 
 1.  如果遇到一个统一数组，从`[`开始擦除字符串中的所有内容。这将使您只剩下统一的名称。然后，进入一个循环，尝试通过将`[ + index + ]`附加到统一名称来检索数组中的每个索引。一旦找到第一个无效的索引，就打破循环：
 
 ```cpp
-    uniformName.erase(uniformName.begin() + 
-         found, uniformName.end());
-         unsigned int uniformIndex = 0;
-         while (true) {
-               memset(testName,0,sizeof(char)*256);
-                   sprintf(testName, "%s[%d]", 
-                               uniformName.c_str(), 
-                               uniformIndex++);
-                       int uniformLocation = 
-                               glGetUniformLocation(
-                               mHandle, testName);
-                       if (uniformLocation < 0) {
-                          break;
-                       }
-                       mUniforms[testName]=uniformLocation;
-                    }
-                }
-    ```
+uniformName.erase(uniformName.begin() + 
+     found, uniformName.end());
+     unsigned int uniformIndex = 0;
+     while (true) {
+           memset(testName,0,sizeof(char)*256);
+               sprintf(testName, "%s[%d]", 
+                           uniformName.c_str(), 
+                           uniformIndex++);
+                   int uniformLocation = 
+                           glGetUniformLocation(
+                           mHandle, testName);
+                   if (uniformLocation < 0) {
+                      break;
+                   }
+                   mUniforms[testName]=uniformLocation;
+                }
+            }
+```
 
 1.  此时，`uniformName`包含统一的名称。如果该统一是一个数组，则名称的`[0]`部分已被移除。按名称将统一索引存储在`mUniforms`中：
 
 ```cpp
-                mUniforms[uniformName] = uniform;
-            }
-        }
-        glUseProgram(0);
-    }
-    ```
+            mUniforms[uniformName] = uniform;
+        }
+    }
+    glUseProgram(0);
+}
+```
 
 1.  最后一个辅助函数是`Load`函数，负责加载实际的着色器。此函数接受两个字符串，可以是文件名或内联着色器定义。一旦读取了着色器，调用`Compile`、`Link`和`Populate`辅助函数来加载着色器：
 
 ```cpp
-    void Shader::Load(const std::string& vertex, 
-                      const std::string& fragment) {
-        std::ifstream f(vertex.c_str());
-        bool vertFile = f.good();
-        f.close();
-        f = std::ifstream(vertex.c_str());
-        bool fragFile = f.good();
-        f.close();
-        std::string v_source = vertex;
-        if (vertFile) {
-            v_source = ReadFile(vertex);
-        }
-        std::string f_source = fragment;
-        if (fragFile) {
-            f_source = ReadFile(fragment);
-        }
-        unsigned int vert = CompileVertexShader(v_source);
-        unsigned int f = CompileFragmentShader(f_source);
-        if (LinkShaders(vert, frag)) {
-            PopulateAttributes();
-            PopulateUniforms();
-        }
-    }
-    ```
+void Shader::Load(const std::string& vertex, 
+                  const std::string& fragment) {
+    std::ifstream f(vertex.c_str());
+    bool vertFile = f.good();
+    f.close();
+    f = std::ifstream(vertex.c_str());
+    bool fragFile = f.good();
+    f.close();
+    std::string v_source = vertex;
+    if (vertFile) {
+        v_source = ReadFile(vertex);
+    }
+    std::string f_source = fragment;
+    if (fragFile) {
+        f_source = ReadFile(fragment);
+    }
+    unsigned int vert = CompileVertexShader(v_source);
+    unsigned int f = CompileFragmentShader(f_source);
+    if (LinkShaders(vert, frag)) {
+        PopulateAttributes();
+        PopulateUniforms();
+    }
+}
+```
 
 1.  `Bind`函数需要将当前着色器程序设置为活动状态，而`UnBind`应确保没有活动的`Shader`对象。`GetHandle`辅助函数返回`Shader`对象的 OpenGL 句柄：
 
 ```cpp
-    void Shader::Bind() {
-        glUseProgram(mHandle);
-    }
-    void Shader::UnBind() {
-        glUseProgram(0);
-    }
-    unsigned int Shader::GetHandle() {
-        return mHandle;
-    }
-    ```
+void Shader::Bind() {
+    glUseProgram(mHandle);
+}
+void Shader::UnBind() {
+    glUseProgram(0);
+}
+unsigned int Shader::GetHandle() {
+    return mHandle;
+}
+```
 
 1.  最后，您需要一种方法来检索属性和统一的绑定槽。`GetAttribute`函数将检查给定的属性名称是否存在于属性映射中。如果存在，则返回表示它的整数。如果没有，则返回`0`。`0`是有效的属性索引，因此在出现错误的情况下，还会记录错误消息：
 
 ```cpp
-    unsigned int Shader::GetAttribute(
-                            const std::string& name) {
-        std::map<std::string, unsigned int>::iterator it =
-                                    mAttributes.find(name);
-        if (it == mAttributes.end()) {
-            cout << "Bad attrib index: " << name << "\n";
-            return 0;
-        }
-        return it->second;
-    }
-    ```
+unsigned int Shader::GetAttribute(
+                        const std::string& name) {
+    std::map<std::string, unsigned int>::iterator it =
+                                mAttributes.find(name);
+    if (it == mAttributes.end()) {
+        cout << "Bad attrib index: " << name << "\n";
+        return 0;
+    }
+    return it->second;
+}
+```
 
 1.  `GetUniform`函数的实现几乎与`GetAttribute`函数相同，只是它不是在属性映射上工作，而是在统一映射上工作：
 
 ```cpp
-    unsigned int Shader::GetUniform(const std::string& name){
-        std::map<std::string, unsigned int>::iterator it =
-                                      mUniforms.find(name);
-        if (it == mUniforms.end()) {
-            cout << "Bad uniform index: " << name << "\n";
-            return 0;
-        }
-        return it->second;
-    }
-    ```
+unsigned int Shader::GetUniform(const std::string& name){
+    std::map<std::string, unsigned int>::iterator it =
+                                  mUniforms.find(name);
+    if (it == mUniforms.end()) {
+        cout << "Bad uniform index: " << name << "\n";
+        return 0;
+    }
+    return it->second;
+}
+```
 
 `Shader`类有方法来检索统一和属性的索引。在下一节中，您将开始实现一个`Attribute`类来保存传递给着色器的顶点数据。
 
@@ -380,41 +380,41 @@
 1.  属性类将包含两个成员变量，一个用于 OpenGL 属性句柄，一个用于计算`Attribute`类包含的数据量。由于属性数据存储在 GPU 上，您不希望有多个句柄指向相同的数据，因此应禁用复制构造函数和`赋值运算符`：
 
 ```cpp
-    template<typename T>
-    class Attribute {
-    protected:
-        unsigned int mHandle;
-        unsigned int mCount;
-    private:
-        Attribute(const Attribute& other);
-        Attribute& operator=(const Attribute& other);
-    ```
+template<typename T>
+class Attribute {
+protected:
+    unsigned int mHandle;
+    unsigned int mCount;
+private:
+    Attribute(const Attribute& other);
+    Attribute& operator=(const Attribute& other);
+```
 
 1.  `SetAttribPointer`函数很特殊，因为它需要为每种支持的属性类型实现一次。这将在`.cpp`文件中明确完成：
 
 ```cpp
-    void SetAttribPointer(unsigned int slot);
-    ```
+void SetAttribPointer(unsigned int slot);
+```
 
 1.  将`Attribute`类的构造函数和析构函数声明为公共函数：
 
 ```cpp
-    public:
-        Attribute();
-        ~Attribute();
-    ```
+public:
+    Attribute();
+    ~Attribute();
+```
 
 1.  `Attribute`类需要一个`Set`函数，它将数组数据上传到 GPU。数组中的每个元素表示一个顶点的属性。我们需要一种从着色器定义的绑定槽中绑定和解绑属性的方法，以及属性的计数和句柄的访问器：
 
 ```cpp
-        void Set(T* inputArray, unsigned int arrayLength);
-        void Set(std::vector<T>& input);
-        void BindTo(unsigned int slot);
-        void UnBindFrom(unsigned int slot);
-        unsigned int Count();
-        unsigned int GetHandle();
-    };
-    ```
+    void Set(T* inputArray, unsigned int arrayLength);
+    void Set(std::vector<T>& input);
+    void BindTo(unsigned int slot);
+    void UnBindFrom(unsigned int slot);
+    unsigned int Count();
+    unsigned int GetHandle();
+};
+```
 
 现在您已经声明了`Attribute`类，您将在下一节中实现它。
 
@@ -425,111 +425,111 @@
 1.  `Attribute`类是模板的，但它的函数都没有标记为内联。每种属性类型的模板特化将存在于`Attribute.cpp`文件中。为整数、浮点数、`vec2`、`vec3`、`vec4`和`ivec4`类型添加特化：
 
 ```cpp
-    template Attribute<int>;
-    template Attribute<float>;
-    template Attribute<vec2>;
-    template Attribute<vec3>;
-    template Attribute<vec4>;
-    template Attribute<ivec4>;
-    ```
+template Attribute<int>;
+template Attribute<float>;
+template Attribute<vec2>;
+template Attribute<vec3>;
+template Attribute<vec4>;
+template Attribute<ivec4>;
+```
 
 1.  构造函数应生成一个 OpenGL 缓冲区并将其存储在`Attribute`类的句柄中。析构函数负责释放`Attribute`类持有的句柄：
 
 ```cpp
-    template<typename T>
-    Attribute<T>::Attribute() {
-        glGenBuffers(1, &mHandle);
-        mCount = 0;
-    }
-    template<typename T>
-    Attribute<T>::~Attribute() {
-        glDeleteBuffers(1, &mHandle);
-    }
-    ```
+template<typename T>
+Attribute<T>::Attribute() {
+    glGenBuffers(1, &mHandle);
+    mCount = 0;
+}
+template<typename T>
+Attribute<T>::~Attribute() {
+    glDeleteBuffers(1, &mHandle);
+}
+```
 
 1.  `Attribute`类有两个简单的 getter，一个用于检索计数，一个用于检索 OpenGL 句柄。计数表示总共有多少个属性：
 
 ```cpp
-    template<typename T>
-    unsigned int Attribute<T>::Count() {
-        return mCount;
-    }
-    template<typename T>
-    unsigned int Attribute<T>::GetHandle() {
-        return mHandle;
-    }
-    ```
+template<typename T>
+unsigned int Attribute<T>::Count() {
+    return mCount;
+}
+template<typename T>
+unsigned int Attribute<T>::GetHandle() {
+    return mHandle;
+}
+```
 
 1.  `Set`函数接受一个数组和一个长度。然后绑定`Attribute`类持有的缓冲区，并使用`glBufferData`填充缓冲区数据。有一个方便的`Set`函数，它接受一个向量引用而不是数组。它调用实际的`Set`函数：
 
 ```cpp
-    template<typename T>
-    void Attribute<T>::Set(T* inputArray, 
-                           unsigned int arrayLength) {
-        mCount = arrayLength;
-        unsigned int size = sizeof(T);
-        glBindBuffer(GL_ARRAY_BUFFER, mHandle);
-        glBufferData(GL_ARRAY_BUFFER, size * mCount, 
-                     inputArray, GL_STREAM_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    template<typename T>
-    void Attribute<T>::Set(std::vector<T>& input) {
-        Set(&input[0], (unsigned int)input.size());
-    }
-    ```
+template<typename T>
+void Attribute<T>::Set(T* inputArray, 
+                       unsigned int arrayLength) {
+    mCount = arrayLength;
+    unsigned int size = sizeof(T);
+    glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+    glBufferData(GL_ARRAY_BUFFER, size * mCount, 
+                 inputArray, GL_STREAM_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+template<typename T>
+void Attribute<T>::Set(std::vector<T>& input) {
+    Set(&input[0], (unsigned int)input.size());
+}
+```
 
 1.  `SetAttribPointer`函数包装了`glVertesAttribPointer`或`glVertesAttribIPointer`。根据`Attribute`类的类型，参数和要调用的函数是不同的。为了消除任何歧义，为所有支持的模板类型提供显式实现。首先实现`int`、`ivec4`和`float`类型：
 
 ```cpp
-    template<>
-    void Attribute<int>::SetAttribPointer(unsigned int s) {
-       glVertexAttribIPointer(s, 1, GL_INT, 0, (void*)0);
-    }
-    template<>
-    void Attribute<ivec4>::SetAttribPointer(unsigned int s){
-       glVertexAttribIPointer(s, 4, GL_INT, 0, (void*)0);
-    }
-    template<>
-    void Attribute<float>::SetAttribPointer(unsigned int s){
-       glVertexAttribPointer(s,1,GL_FLOAT,GL_FALSE,0,0);
-    }
-    ```
+template<>
+void Attribute<int>::SetAttribPointer(unsigned int s) {
+   glVertexAttribIPointer(s, 1, GL_INT, 0, (void*)0);
+}
+template<>
+void Attribute<ivec4>::SetAttribPointer(unsigned int s){
+   glVertexAttribIPointer(s, 4, GL_INT, 0, (void*)0);
+}
+template<>
+void Attribute<float>::SetAttribPointer(unsigned int s){
+   glVertexAttribPointer(s,1,GL_FLOAT,GL_FALSE,0,0);
+}
+```
 
 1.  接下来实现`vec2`、`vec3`和`vec4`类型。这些都与`float`类型非常相似。唯一的区别是`glVertexAttribPointer`的第二个参数：
 
 ```cpp
-    template<>
-    void Attribute<vec2>::SetAttribPointer(unsigned int s) {
-       glVertexAttribPointer(s,2,GL_FLOAT,GL_FALSE,0,0);
-    }
-    template<>
-    void Attribute<vec3>::SetAttribPointer(unsigned int s){
-       glVertexAttribPointer(s,3,GL_FLOAT,GL_FALSE,0,0);
-    }
-    template<>
-    void Attribute<vec4>::SetAttribPointer(unsigned int s){
-       glVertexAttribPointer(s,4,GL_FLOAT,GL_FALSE,0,0);
-    }
-    ```
+template<>
+void Attribute<vec2>::SetAttribPointer(unsigned int s) {
+   glVertexAttribPointer(s,2,GL_FLOAT,GL_FALSE,0,0);
+}
+template<>
+void Attribute<vec3>::SetAttribPointer(unsigned int s){
+   glVertexAttribPointer(s,3,GL_FLOAT,GL_FALSE,0,0);
+}
+template<>
+void Attribute<vec4>::SetAttribPointer(unsigned int s){
+   glVertexAttribPointer(s,4,GL_FLOAT,GL_FALSE,0,0);
+}
+```
 
 1.  `Attribute`类的最后两个函数需要将属性绑定到`Shader`类中指定的槽位，并解除绑定。由于`Attribute`类的模板类型不同，`Bind`将调用`SetAttribPointer`辅助函数：
 
 ```cpp
-    template<typename T>
-    void Attribute<T>::BindTo(unsigned int slot) {
-        glBindBuffer(GL_ARRAY_BUFFER, mHandle);
-        glEnableVertexAttribArray(slot);
-        SetAttribPointer(slot);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    template<typename T>
-    void Attribute<T>::UnBindFrom(unsigned int slot) {
-        glBindBuffer(GL_ARRAY_BUFFER, mHandle);
-        glDisableVertexAttribArray(slot);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    ```
+template<typename T>
+void Attribute<T>::BindTo(unsigned int slot) {
+    glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+    glEnableVertexAttribArray(slot);
+    SetAttribPointer(slot);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+template<typename T>
+void Attribute<T>::UnBindFrom(unsigned int slot) {
+    glBindBuffer(GL_ARRAY_BUFFER, mHandle);
+    glDisableVertexAttribArray(slot);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+```
 
 `Attribute`数据每个顶点都会发生变化。您需要设置另一种类型的数据：uniforms。与属性不同，uniforms 在着色器程序执行期间保持不变。您将在下一节中实现 uniforms。
 
@@ -571,62 +571,62 @@ public:
 1.  添加以下代码以定义支持的 uniform 类型的模板规范：
 
 ```cpp
-    template Uniform<int>;
-    template Uniform<ivec4>;
-    template Uniform<ivec2>;
-    template Uniform<float>;
-    template Uniform<vec2>;
-    template Uniform<vec3>;
-    template Uniform<vec4>;
-    template Uniform<quat>;
-    template Uniform<mat4>;
-    ```
+template Uniform<int>;
+template Uniform<ivec4>;
+template Uniform<ivec2>;
+template Uniform<float>;
+template Uniform<vec2>;
+template Uniform<vec3>;
+template Uniform<vec4>;
+template Uniform<quat>;
+template Uniform<mat4>;
+```
 
 1.  您只需要为每种类型实现一个`Set`方法，即接受数组和长度的方法。其他`Set`方法重载是为了方便起见。实现两个便利重载——一个用于设置单个 uniform，另一个用于设置向量。两个重载应该只调用`Set`函数：
 
 ```cpp
-    template <typename T>
-    void Uniform<T>::Set(unsigned int slot,const T& value){
-        Set(slot, (T*)&value, 1);
-    }
-    template <typename T>
-    void Uniform<T>::Set(unsigned int s,std::vector<T>& v){
-        Set(s, &v[0], (unsigned int)v.size());
-    }
-    ```
+template <typename T>
+void Uniform<T>::Set(unsigned int slot,const T& value){
+    Set(slot, (T*)&value, 1);
+}
+template <typename T>
+void Uniform<T>::Set(unsigned int s,std::vector<T>& v){
+    Set(s, &v[0], (unsigned int)v.size());
+}
+```
 
 1.  创建一个`UNIFORM_IMPL`宏。第一个参数是要调用的 OpenGL 函数，第二个是正在使用的结构类型，最后一个参数是相同结构的数据类型。`UNIFORM_IMPL`宏将这些信息组装成一个函数声明：
 
 ```cpp
-    #define UNIFORM_IMPL(gl_func, tType, dType) \
-    template<> void Uniform<tType>::Set(unsigned int slot,\
-                       tType* data, unsigned int length) {\
-        gl_func(slot, (GLsizei)length, (dType*)&data[0]); \
-    }
-    ```
+#define UNIFORM_IMPL(gl_func, tType, dType) \
+template<> void Uniform<tType>::Set(unsigned int slot,\
+                   tType* data, unsigned int length) {\
+    gl_func(slot, (GLsizei)length, (dType*)&data[0]); \
+}
+```
 
 1.  为每种 uniform 数据类型调用`UNIFORM_IMPL`宏以生成适当的`Set`函数。这种方法无法适用于`mat4`数据类型：
 
 ```cpp
-    UNIFORM_IMPL(glUniform1iv, int, int)
-    UNIFORM_IMPL(glUniform4iv, ivec4, int)
-    UNIFORM_IMPL(glUniform2iv, ivec2, int)
-    UNIFORM_IMPL(glUniform1fv, float, float)
-    UNIFORM_IMPL(glUniform2fv, vec2, float)
-    UNIFORM_IMPL(glUniform3fv, vec3, float)
-    UNIFORM_IMPL(glUniform4fv, vec4, float)
-    UNIFORM_IMPL(glUniform4fv, quat, float)
-    ```
+UNIFORM_IMPL(glUniform1iv, int, int)
+UNIFORM_IMPL(glUniform4iv, ivec4, int)
+UNIFORM_IMPL(glUniform2iv, ivec2, int)
+UNIFORM_IMPL(glUniform1fv, float, float)
+UNIFORM_IMPL(glUniform2fv, vec2, float)
+UNIFORM_IMPL(glUniform3fv, vec3, float)
+UNIFORM_IMPL(glUniform4fv, vec4, float)
+UNIFORM_IMPL(glUniform4fv, quat, float)
+```
 
 1.  矩阵的`Set`函数需要手动指定；否则，`UNIFORM_IMPL`宏将无法工作。这是因为`glUniformMatrix4fv`函数需要一个额外的布尔参数，询问矩阵是否应该被转置。将转置布尔值设置为`false`：
 
 ```cpp
-    template<> void Uniform<mat4>::Set(unsigned int slot, 
-            mat4* inputArray, unsigned int arrayLength) {
-        glUniformMatrix4fv(slot, (GLsizei)arrayLength, 
-                           false, (float*)&inputArray[0]);
-    }
-    ```
+template<> void Uniform<mat4>::Set(unsigned int slot, 
+        mat4* inputArray, unsigned int arrayLength) {
+    glUniformMatrix4fv(slot, (GLsizei)arrayLength, 
+                       false, (float*)&inputArray[0]);
+}
+```
 
 在本节中，你在统一的概念上构建了一个抽象层。在下一节中，你将实现类似属性的索引缓冲区。
 
@@ -667,40 +667,40 @@ public:
 1.  创建一个新文件，`IndexBuffer.cpp`。你将在这个文件中实现`IndexBuffer`类。构造函数需要生成一个新的 OpenGL 缓冲区，析构函数需要删除该缓冲区：
 
 ```cpp
-    IndexBuffer::IndexBuffer() {
-        glGenBuffers(1, &mHandle);
-        mCount = 0;
-    }
-    IndexBuffer::~IndexBuffer() {
-        glDeleteBuffers(1, &mHandle);
-    }
-    ```
+IndexBuffer::IndexBuffer() {
+    glGenBuffers(1, &mHandle);
+    mCount = 0;
+}
+IndexBuffer::~IndexBuffer() {
+    glDeleteBuffers(1, &mHandle);
+}
+```
 
 1.  `IndexBuffer`对象内部的计数和 OpenGL 句柄的 getter 函数是微不足道的：
 
 ```cpp
-    unsigned int IndexBuffer::Count() {
-        return mCount;
-    }
-    unsigned int IndexBuffer::GetHandle() {
-        return mHandle;
-    }
-    ```
+unsigned int IndexBuffer::Count() {
+    return mCount;
+}
+unsigned int IndexBuffer::GetHandle() {
+    return mHandle;
+}
+```
 
 1.  `IndexBuffer`类的`Set`函数需要绑定`GL_ELEMENT_ARRAY_BUFFER`。除此之外，逻辑与属性的逻辑相同：
 
 ```cpp
-    void IndexBuffer::Set(unsigned int* inputArray, unsigned int arrayLengt) {
-        mCount = arrayLengt;
-        unsigned int size = sizeof(unsigned int);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, size * mCount, inputArray, GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-    void IndexBuffer::Set(std::vector<unsigned int>& input) {
-        Set(&input[0], (unsigned int)input.size());
-    }
-    ```
+void IndexBuffer::Set(unsigned int* inputArray, unsigned int arrayLengt) {
+    mCount = arrayLengt;
+    unsigned int size = sizeof(unsigned int);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mHandle);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, size * mCount, inputArray, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+void IndexBuffer::Set(std::vector<unsigned int>& input) {
+    Set(&input[0], (unsigned int)input.size());
+}
+```
 
 在本节中，你围绕索引缓冲区构建了一个抽象。在下一节中，你将学习如何使用索引缓冲区和属性来渲染几何体。
 
@@ -713,89 +713,89 @@ public:
 1.  声明一个`enum`类，定义绘制时应该使用的基本图元。大多数情况下，你只需要线、点或三角形，但有些额外的类型可能也会有用：
 
 ```cpp
-    enum class DrawMode {
-        Points,
-        LineStrip,
-        LineLoop,
-        Lines,
-        Triangles,
-        TriangleStrip,
-        TriangleFan
-    };
-    ```
+enum class DrawMode {
+    Points,
+    LineStrip,
+    LineLoop,
+    Lines,
+    Triangles,
+    TriangleStrip,
+    TriangleFan
+};
+```
 
 1.  接下来，声明`Draw`函数。`Draw`函数有两个重载——一个接受索引缓冲区和绘制模式，另一个接受顶点数量和绘制模式：
 
 ```cpp
-    void Draw(IndexBuffer& inIndexBuffer, DrawMode mode);
-    void Draw(unsigned int vertexCount, DrawMode mode);
-    ```
+void Draw(IndexBuffer& inIndexBuffer, DrawMode mode);
+void Draw(unsigned int vertexCount, DrawMode mode);
+```
 
 1.  像`Draw`一样，声明两个`DrawInstanced`函数。这些函数具有类似的签名，但多了一个参数——`instanceCount`。这个`instanceCount`变量控制着几何体的实例数量将被渲染：
 
 ```cpp
-    void DrawInstanced(IndexBuffer& inIndexBuffer, 
-             DrawMode mode, unsigned int instanceCount);
-    void DrawInstanced(unsigned int vertexCount, 
-             DrawMode mode, unsigned int numInstances);
-    ```
+void DrawInstanced(IndexBuffer& inIndexBuffer, 
+         DrawMode mode, unsigned int instanceCount);
+void DrawInstanced(unsigned int vertexCount, 
+         DrawMode mode, unsigned int numInstances);
+```
 
 创建一个新文件，`Draw.cpp`。你将在这个文件中实现与绘制相关的功能，如下所示：
 
 1.  你需要能够将`DrawMode`枚举转换为`GLenum`。我们将使用一个静态辅助函数来实现这一点。这个函数唯一需要做的事情就是弄清楚输入的绘制模式是什么，并返回适当的`GLenum`值：
 
 ```cpp
-    static GLenum DrawModeToGLEnum(DrawMode input) {
-        switch (input) {
-            case DrawMode::Points: return  GL_POINTS;
-            case DrawMode::LineStrip: return GL_LINE_STRIP;
-            case DrawMode::LineLoop: return  GL_LINE_LOOP;
-            case DrawMode::Lines: return  GL_LINES;
-            case DrawMode::Triangles: return  GL_TRIANGLES;
-            case DrawMode::TriangleStrip: 
-                           return  GL_TRIANGLE_STRIP;
-            case DrawMode::TriangleFan: 
-                           return   GL_TRIANGLE_FAN;
-        }
-        cout << "DrawModeToGLEnum unreachable code hit\n";
-        return 0;
-    }
-    ```
+static GLenum DrawModeToGLEnum(DrawMode input) {
+    switch (input) {
+        case DrawMode::Points: return  GL_POINTS;
+        case DrawMode::LineStrip: return GL_LINE_STRIP;
+        case DrawMode::LineLoop: return  GL_LINE_LOOP;
+        case DrawMode::Lines: return  GL_LINES;
+        case DrawMode::Triangles: return  GL_TRIANGLES;
+        case DrawMode::TriangleStrip: 
+                       return  GL_TRIANGLE_STRIP;
+        case DrawMode::TriangleFan: 
+                       return   GL_TRIANGLE_FAN;
+    }
+    cout << "DrawModeToGLEnum unreachable code hit\n";
+    return 0;
+}
+```
 
 1.  接受顶点数的`Draw`和`DrawInstanced`函数很容易实现。`Draw`需要调用`glDrawArrays`，而`DrawInstanced`需要调用`glDrawArraysInstanced`：
 
 ```cpp
-    void Draw(unsigned int vertexCount, DrawMode mode) {
-        glDrawArrays(DrawModeToGLEnum(mode), 0, vertexCount);
-    }
-    void DrawInstanced(unsigned int vertexCount, 
-         DrawMode mode, unsigned int numInstances) {
-        glDrawArraysInstanced(DrawModeToGLEnum(mode), 
-                              0, vertexCount, numInstances);
-    }
-    ```
+void Draw(unsigned int vertexCount, DrawMode mode) {
+    glDrawArrays(DrawModeToGLEnum(mode), 0, vertexCount);
+}
+void DrawInstanced(unsigned int vertexCount, 
+     DrawMode mode, unsigned int numInstances) {
+    glDrawArraysInstanced(DrawModeToGLEnum(mode), 
+                          0, vertexCount, numInstances);
+}
+```
 
 1.  接受索引缓冲区的`Draw`和`Drawinstanced`函数需要将索引缓冲区绑定到`GL_ELEMENT_ARRAY_BUFFER`，然后调用`glDrawElements`和`glDrawElementsInstanced`：
 
 ```cpp
-    void Draw(IndexBuffer& inIndexBuffer, DrawMode mode) {
-        unsigned int handle = inIndexBuffer.GetHandle();
-        unsigned int numIndices = inIndexBuffer.Count();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
-        glDrawElements(DrawModeToGLEnum(mode), 
-                       numIndices, GL_UNSIGNED_INT, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-    void DrawInstanced(IndexBuffer& inIndexBuffer, 
-             DrawMode mode, unsigned int instanceCount) {
-        unsigned int handle = inIndexBuffer.GetHandle();
-        unsigned int numIndices = inIndexBuffer.Count();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
-        glDrawElementsInstanced(DrawModeToGLEnum(mode),
-            numIndices, GL_UNSIGNED_INT, 0, instanceCount);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    }
-    ```
+void Draw(IndexBuffer& inIndexBuffer, DrawMode mode) {
+    unsigned int handle = inIndexBuffer.GetHandle();
+    unsigned int numIndices = inIndexBuffer.Count();
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
+    glDrawElements(DrawModeToGLEnum(mode), 
+                   numIndices, GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+void DrawInstanced(IndexBuffer& inIndexBuffer, 
+         DrawMode mode, unsigned int instanceCount) {
+    unsigned int handle = inIndexBuffer.GetHandle();
+    unsigned int numIndices = inIndexBuffer.Count();
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
+    glDrawElementsInstanced(DrawModeToGLEnum(mode),
+        numIndices, GL_UNSIGNED_INT, 0, instanceCount);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+```
 
 到目前为止，您已经编写了加载着色器、创建和绑定 GPU 缓冲区以及将统一变量传递给着色器的代码。现在绘图代码也已实现，您可以开始显示几何图形了。
 
@@ -854,72 +854,72 @@ public:
 1.  方便的构造函数生成一个新的句柄，然后调用`Load`函数，该函数将初始化`Texture`类的其余成员变量，因为`Texture`类的每个实例都持有一个有效的纹理句柄：
 
 ```cpp
-    Texture::Texture() {
-        mWidth = 0;
-        mHeight = 0;
-        mChannels = 0;
-        glGenTextures(1, &mHandle);
-    }
-    Texture::Texture(const char* path) {
-        glGenTextures(1, &mHandle);
-        Load(path);
-    }
-    Texture::~Texture() {
-        glDeleteTextures(1, &mHandle);
-    }
-    ```
+Texture::Texture() {
+    mWidth = 0;
+    mHeight = 0;
+    mChannels = 0;
+    glGenTextures(1, &mHandle);
+}
+Texture::Texture(const char* path) {
+    glGenTextures(1, &mHandle);
+    Load(path);
+}
+Texture::~Texture() {
+    glDeleteTextures(1, &mHandle);
+}
+```
 
 1.  `stbi_load`需要一个图像文件的路径以及图像的宽度、高度和通道数的引用。最后一个参数指定每个像素的组件数。通过将其设置为`4`，所有纹理都将以 RGBA 通道加载。接下来，使用`glTexImage2D`将纹理上传到 GPU，并使用`glGenerateMipmap`生成图像的适当 mipmap。将包装模式设置为重复：
 
 ```cpp
-    void Texture::Load(const char* path) {
-        glBindTexture(GL_TEXTURE_2D, mHandle);
-        int width, height, channels;
-        unsigned char* data = stbi_load(path, &width, 
-                                        &height, 
-                                        &channels, 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, 
-           height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        stbi_image_free(data);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, 
-                        GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, 
-                        GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,
-                        GL_NEAREST_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,
-                        GL_LINEAR);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        mWidth = width;
-        mHeight = height;
-        mChannels = channels;
-    }
-    ```
+void Texture::Load(const char* path) {
+    glBindTexture(GL_TEXTURE_2D, mHandle);
+    int width, height, channels;
+    unsigned char* data = stbi_load(path, &width, 
+                                    &height, 
+                                    &channels, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, 
+       height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, 
+                    GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, 
+                    GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,
+                    GL_NEAREST_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,
+                    GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    mWidth = width;
+    mHeight = height;
+    mChannels = channels;
+}
+```
 
 1.  `Set`函数需要激活一个纹理单元，将`Texture`类包含的句柄绑定到该纹理单元，然后将指定的统一索引设置为当前绑定的纹理单元。`Unset`函数取消绑定指定纹理单元的当前纹理：
 
 ```cpp
-    void Texture::Set(unsigned int uniformIndex, 
-                      unsigned int textureIndex) {
-        glActiveTexture(GL_TEXTURE0 + textureIndex);
-        glBindTexture(GL_TEXTURE_2D, mHandle);
-        glUniform1i(uniformIndex, textureIndex);
-    }
-    void Texture::UnSet(unsigned int textureIndex) {
-        glActiveTexture(GL_TEXTURE0 + textureIndex);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE0);
-    }
-    ```
+void Texture::Set(unsigned int uniformIndex, 
+                  unsigned int textureIndex) {
+    glActiveTexture(GL_TEXTURE0 + textureIndex);
+    glBindTexture(GL_TEXTURE_2D, mHandle);
+    glUniform1i(uniformIndex, textureIndex);
+}
+void Texture::UnSet(unsigned int textureIndex) {
+    glActiveTexture(GL_TEXTURE0 + textureIndex);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+}
+```
 
 1.  `GetHandle`获取函数很简单：
 
 ```cpp
-    unsigned int Texture::GetHandle() {
-        return mHandle;
-    }
-    ```
+unsigned int Texture::GetHandle() {
+    return mHandle;
+}
+```
 
 `Texture`类将始终使用相同的 mipmap 级别和包装参数加载纹理。对于本书中的示例，这应该足够了。您可能希望尝试为这些属性添加 getter 和 setter。
 

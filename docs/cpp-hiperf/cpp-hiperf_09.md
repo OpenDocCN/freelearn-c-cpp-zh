@@ -847,36 +847,36 @@ std::reverse(container.begin(), container.end());
 1.  **构造异构变体容器**：在这里，我们构造了一个包含不同类型的`std::vector`。请注意，初始化列表包含不同的类型：
 
 ```cpp
-    using VariantType = std::variant<int, std::string, bool>;
-    auto v = std::vector<VariantType>{ 42, "needle"s, true }; 
-    ```
+using VariantType = std::variant<int, std::string, bool>;
+auto v = std::vector<VariantType>{ 42, "needle"s, true }; 
+```
 
 1.  **使用常规 for 循环迭代打印内容**：要使用常规`for`循环迭代容器，我们利用`std::visit()`和一个通用 lambda。全局函数`std::visit()`负责类型转换。该示例将每个值打印到`std::cout`，而不考虑类型：
 
 ```cpp
-    for (const auto& item : v) { 
-      std::visit([](const auto& x) { std::cout << x << '\n';}, item);
-    } 
-    ```
+for (const auto& item : v) { 
+  std::visit([](const auto& x) { std::cout << x << '\n';}, item);
+} 
+```
 
 1.  **检查容器中的类型**：在这里，我们通过类型检查容器的每个元素。这是通过使用全局函数`std::holds_alternative<type>`实现的，该函数在变体当前持有所要求的类型时返回`true`。以下示例计算当前容器中包含的布尔值的数量：
 
 ```cpp
-    auto num_bools = std::count_if(v.begin(), v.end(),
-                                   [](auto&& item) {
-      return std::holds_alternative<bool>(item);
-    }); 
-    ```
+auto num_bools = std::count_if(v.begin(), v.end(),
+                               [](auto&& item) {
+  return std::holds_alternative<bool>(item);
+}); 
+```
 
 1.  **通过包含的类型和值查找内容**：在此示例中，我们通过结合`std::holds_alternative()`和`std::get()`来检查容器的类型和值。此示例检查容器是否包含值为`"needle"`的`std::string`：
 
 ```cpp
-    auto contains = std::any_of(v.begin(), v.end(),
-                                [](auto&& item) {
-      return std::holds_alternative<std::string>(item) &&
-        std::get<std::string>(item) == "needle";
-    }); 
-    ```
+auto contains = std::any_of(v.begin(), v.end(),
+                            [](auto&& item) {
+  return std::holds_alternative<std::string>(item) &&
+    std::get<std::string>(item) == "needle";
+}); 
+```
 
 ### 全局函数 std::get()
 

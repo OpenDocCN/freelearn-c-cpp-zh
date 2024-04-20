@@ -35,113 +35,113 @@
 1.  之后，打开您的项目文件（`.pro`），并通过在`QT +=`后面添加`opengl`关键字来将 OpenGL 模块添加到您的项目中，如下所示：
 
 ```cpp
-    QT += core gui opengl
-    ```
+QT += core gui opengl
+```
 
 1.  您还需要在项目文件中添加另一行，以便在启动时加载 OpenGL 和**GLu**（**OpenGL 实用程序**）库。没有这两个库，您的程序将无法运行：
 
 ```cpp
-    LIBS += -lopengl32 -lglu32
-    ```
+LIBS += -lopengl32 -lglu32
+```
 
 1.  然后，打开`mainwindow.h`并从中删除一些内容：
 
 ```cpp
-    #ifndef MAINWINDOW_H
-    #define MAINWINDOW_H
-    #include <QMainWindow>
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+#include <QMainWindow>
 
-    namespace Ui {
-      class MainWindow;
-    }
-    class MainWindow : public QMainWindow
-    {
-      Q_OBJECT
-      public:
-        explicit MainWindow(QWidget *parent = 0);
-        ~MainWindow();
-      private:
-        Ui::MainWindow *ui;
-    };
-    #endif // MAINWINDOW_H
-    ```
+namespace Ui {
+  class MainWindow;
+}
+class MainWindow : public QMainWindow
+{
+  Q_OBJECT
+  public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
+  private:
+    Ui::MainWindow *ui;
+};
+#endif // MAINWINDOW_H
+```
 
 1.  接下来，将以下代码添加到您的`mainwindow.h`中：
 
 ```cpp
-    #ifndef MAINWINDOW_H
-    #define MAINWINDOW_H
-    #include <QOpenGLWindow>
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+#include <QOpenGLWindow>
 
-    class MainWindow : public QOpenGLWindow
-    {
-      Q_OBJECT
-      public:
-        explicit MainWindow(QWidget *parent = 0);
-        ~MainWindow();
+class MainWindow : public QOpenGLWindow
+{
+  Q_OBJECT
+  public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
 
-      protected:
-        virtual void initializeGL();
-        virtual void resizeGL(int w, int h);
-        virtual void paintGL();
-        void paintEvent(QPaintEvent *event);
-        void resizeEvent(QResizeEvent *event);
-    };
+  protected:
+    virtual void initializeGL();
+    virtual void resizeGL(int w, int h);
+    virtual void paintGL();
+    void paintEvent(QPaintEvent *event);
+    void resizeEvent(QResizeEvent *event);
+};
 
-    #endif // MAINWINDOW_H
-    ```
+#endif // MAINWINDOW_H
+```
 
 1.  完成后，我们将继续进行源文件，即`mainwindow.cpp`。我们刚刚添加到头文件中的函数，如`initializeGL()`、`resizeGL()`等，现在可以暂时留空；我们将在下一节中使用这些函数：
 
 ```cpp
-    #include "mainwindow.h"
-    #include "ui_mainwindow.h"
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
 
-    MainWindow::MainWindow(QWidget *parent):
-      QMainWindow(parent),
-      ui(new Ui::MainWindow)
-    MainWindow::MainWindow(QWidget *parent)
-    {
-      ui->setupUi(this);
-      setSurfaceType(QWindow::OpenGLSurface);
-    }
+MainWindow::MainWindow(QWidget *parent):
+  QMainWindow(parent),
+  ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent)
+{
+  ui->setupUi(this);
+  setSurfaceType(QWindow::OpenGLSurface);
+}
 
-    MainWindow::~MainWindow()
-    {
-      delete ui;
-    }
-    void MainWindow::initializeGL()
-    {
-      void MainWindow::resizeGL(int w, int h)
-    {
-    }
-    void MainWindow::paintGL()
-    {
-    }
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-    }
-    void MainWindow::resizeEvent(QResizeEvent *event)
-    {
-    }
-    ```
+MainWindow::~MainWindow()
+{
+  delete ui;
+}
+void MainWindow::initializeGL()
+{
+  void MainWindow::resizeGL(int w, int h)
+{
+}
+void MainWindow::paintGL()
+{
+}
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+}
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+}
+```
 
 1.  最后，通过将以下代码添加到您的`main.cpp`文件中，为主窗口设置标题并将其调整大小为 640x480：
 
 ```cpp
-    #include "mainwindow.h"
-    #include <QApplication>
+#include "mainwindow.h"
+#include <QApplication>
 
-    int main(int argc, char *argv[])
-    {
-      QApplication a(argc, argv);
-      MainWindow w;
-      w.setTitle("OpenGL Hello World!");
-      w.resize(640, 480);
-      w.show();
-      return a.exec();
-    }
-    ```
+int main(int argc, char *argv[])
+{
+  QApplication a(argc, argv);
+  MainWindow w;
+  w.setTitle("OpenGL Hello World!");
+  w.resize(640, 480);
+  w.show();
+  return a.exec();
+}
+```
 
 1.  如果您现在编译并运行项目，您将看到一个带有黑色背景的空窗口。不要担心，您的程序现在正在使用 OpenGL 运行！操作方法…
 
@@ -168,71 +168,71 @@ Qt 在适当时候内部使用 OpenGL。此外，新的 Qt Quick 2 渲染器基�
 1.  首先，转到`mainwindow.h`并在源代码顶部添加以下头文件：
 
 ```cpp
-    #include <QSurfaceFormat>
-    #include <QOpenGLFunctions>
-    #include <QtOpenGL>
-    #include <GL/glu.h>
-    ```
+#include <QSurfaceFormat>
+#include <QOpenGLFunctions>
+#include <QtOpenGL>
+#include <GL/glu.h>
+```
 
 1.  接下来，在`mainwindow.h`中声明两个私有变量：
 
 ```cpp
-    private:
-      QOpenGLContext* context;
-      QOpenGLFunctions* openGLFunctions;
-    ```
+private:
+  QOpenGLContext* context;
+  QOpenGLFunctions* openGLFunctions;
+```
 
 1.  之后，转到`mainwindow.cpp`并将表面格式设置为兼容性配置文件。我们还将 OpenGL 版本设置为 2.1，并使用我们刚刚声明的格式创建 OpenGL 上下文。然后，使用我们刚刚创建的上下文来访问仅与我们刚刚设置的 OpenGL 版本相关的 OpenGL 函数，通过调用`context->functions()`：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent)
-    {
-     setSurfaceType(QWindow::OpenGLSurface);
-     QSurfaceFormat format;
-     format.setProfile(QSurfaceFormat::CompatibilityProfile);
-     format.setVersion(2, 1); // OpenGL 2.1
-     setFormat(format);
+MainWindow::MainWindow(QWidget *parent)
+{
+ setSurfaceType(QWindow::OpenGLSurface);
+ QSurfaceFormat format;
+ format.setProfile(QSurfaceFormat::CompatibilityProfile);
+ format.setVersion(2, 1); // OpenGL 2.1
+ setFormat(format);
 
-     context = new QOpenGLContext;
-     context->setFormat(format);
-     context->create();
-     context->makeCurrent(this);
+ context = new QOpenGLContext;
+ context->setFormat(format);
+ context->create();
+ context->makeCurrent(this);
 
-     openGLFunctions = context->functions();
-    }
-    ```
+ openGLFunctions = context->functions();
+}
+```
 
 1.  接下来，我们将开始向`paintGL()`函数中添加一些代码：
 
 ```cpp
-    void MainWindow::paintGL()
-    {
-     // Initialize clear color (cornflower blue)
-     glClearColor(0.39f, 0.58f, 0.93f, 1.f);
+void MainWindow::paintGL()
+{
+ // Initialize clear color (cornflower blue)
+ glClearColor(0.39f, 0.58f, 0.93f, 1.f);
 
-     // Clear color buffer
-     glClear(GL_COLOR_BUFFER_BIT);
+ // Clear color buffer
+ glClear(GL_COLOR_BUFFER_BIT);
 
-     // Render quad
-     glBegin(GL_QUADS);
-     glVertex2f(-0.5f, -0.5f);
-     glVertex2f(0.5f, -0.5f);
-     glVertex2f(0.5f, 0.5f);
-     glVertex2f(-0.5f, 0.5f);
-     glEnd();
+ // Render quad
+ glBegin(GL_QUADS);
+ glVertex2f(-0.5f, -0.5f);
+ glVertex2f(0.5f, -0.5f);
+ glVertex2f(0.5f, 0.5f);
+ glVertex2f(-0.5f, 0.5f);
+ glEnd();
 
-     glFlush();
-    }
-    ```
+ glFlush();
+}
+```
 
 1.  在`paintEvent()`函数中调用`paintGL()`之前，屏幕上不会出现任何内容：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-     paintGL();
-    }
-    ```
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+ paintGL();
+}
+```
 
 1.  如果现在编译并运行项目，您应该能够看到一个白色矩形在蓝色背景前被绘制出来：![操作步骤…](img/B02820_04_02.jpg)
 
@@ -255,72 +255,72 @@ Qt 在适当时候内部使用 OpenGL。此外，新的 Qt Quick 2 渲染器基�
 1.  首先，转到`mainwindow.cpp`中的`paintGL()`函数，并用新代码替换上一个示例中的四边形。这次，我们画了一个四边形和一个三角形：
 
 ```cpp
-    void MainWindow::paintGL()
-    {
-      // Initialize clear color (cornflower blue)
-      glClearColor(0.39f, 0.58f, 0.93f, 1.f);
+void MainWindow::paintGL()
+{
+  // Initialize clear color (cornflower blue)
+  glClearColor(0.39f, 0.58f, 0.93f, 1.f);
 
-      // Clear color buffer
-      glClear(GL_COLOR_BUFFER_BIT);
+  // Clear color buffer
+  glClear(GL_COLOR_BUFFER_BIT);
 
-     glBegin(GL_QUADS);
-     glVertex2f(-0.5f, -0.5f);
-     glVertex2f(0.5f, -0.5f);
-     glVertex2f(0.5f, 0.5f);
-     glVertex2f(-0.5f, 0.5f);
-     glEnd();
+ glBegin(GL_QUADS);
+ glVertex2f(-0.5f, -0.5f);
+ glVertex2f(0.5f, -0.5f);
+ glVertex2f(0.5f, 0.5f);
+ glVertex2f(-0.5f, 0.5f);
+ glEnd();
 
-     glBegin(GL_QUADS);
-     glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.8f, -0.8f);
-     glColor3f(1.f, 1.f, 0.f); glVertex2f(0.3f, -0.8f);
-     glColor3f(0.f, 1.f, 0.f); glVertex2f(0.3f, 0.3f);
-     glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.8f, 0.3f);
-     glEnd();
+ glBegin(GL_QUADS);
+ glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.8f, -0.8f);
+ glColor3f(1.f, 1.f, 0.f); glVertex2f(0.3f, -0.8f);
+ glColor3f(0.f, 1.f, 0.f); glVertex2f(0.3f, 0.3f);
+ glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.8f, 0.3f);
+ glEnd();
 
-     glBegin(GL_TRIANGLES);
-     glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.4f, -0.4f);
-     glColor3f(0.f, 1.f, 0.f); glVertex2f(0.8f, -0.1f);
-     glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.1f, 0.8f);
-     glEnd();
+ glBegin(GL_TRIANGLES);
+ glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.4f, -0.4f);
+ glColor3f(0.f, 1.f, 0.f); glVertex2f(0.8f, -0.1f);
+ glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.1f, 0.8f);
+ glEnd();
 
-      glFlush();
-    }
-    ```
+  glFlush();
+}
+```
 
 1.  接下来，在`resizeGL()`函数中，添加以下代码来调整视口和正交视图，以便渲染的图像正确地遵循窗口的纵横比：
 
 ```cpp
-    void MainWindow::resizeGL(int w, int h)
-    {
-      // Initialize Projection Matrix
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
+void MainWindow::resizeGL(int w, int h)
+{
+  // Initialize Projection Matrix
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
 
-      glViewport(0, 0, w, h);
+  glViewport(0, 0, w, h);
 
-      qreal aspectRatio = qreal(w) / qreal(h);
-      glOrtho(-1 * aspectRatio, 1 * aspectRatio, -1, 1, 1, -1);
-    }
-    ```
+  qreal aspectRatio = qreal(w) / qreal(h);
+  glOrtho(-1 * aspectRatio, 1 * aspectRatio, -1, 1, 1, -1);
+}
+```
 
 1.  然后，在`resizeEvent()`函数中，调用`resize()`函数并强制主窗口刷新屏幕：
 
 ```cpp
-    void MainWindow::resizeEvent(QResizeEvent *event)
-    {
-     resizeGL(this->width(), this->height());
-     this->update();
-    }
-    ```
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+ resizeGL(this->width(), this->height());
+ this->update();
+}
+```
 
 1.  之后，在`initializeGL()`函数中，我们调用`resizeGL()`一次，以便第一个渲染的图像的纵横比是正确的（在任何窗口调整大小事件触发之前）：
 
 ```cpp
-    void MainWindow::initializeGL()
-    {
-     resizeGL(this->width(), this->height());
-    }
-    ```
+void MainWindow::initializeGL()
+{
+ resizeGL(this->width(), this->height());
+}
+```
 
 1.  完成后，编译并运行程序。你应该会看到类似这样的东西：![如何做...](img/B02820_04_03.jpg)
 
@@ -345,177 +345,177 @@ OpenGL 支持的几何基元类型包括点、线、线条、线环、多边形�
 1.  首先，在你的`mainwindow.h`中添加`QTimer`头文件：
 
 ```cpp
-    #include <QTimer>
-    ```
+#include <QTimer>
+```
 
 1.  然后，在你的`MainWindow`类中添加一个私有变量：
 
 ```cpp
-    private:
-      QOpenGLContext* context;
-      QOpenGLFunctions* openGLFunctions;
-     float rotation;
+private:
+  QOpenGLContext* context;
+  QOpenGLFunctions* openGLFunctions;
+ float rotation;
 
-    ```
+```
 
 1.  我们还在`mainwindow.h`中添加了一个公共槽，以备后用：
 
 ```cpp
-    public slots:
-      void updateAnimation();
-    ```
+public slots:
+  void updateAnimation();
+```
 
 1.  之后，在`mainwindow.cpp`的`initializeGL()`函数中添加`glEnable(GL_DEPTH_TEST)`以启用深度测试：
 
 ```cpp
-    void MainWindow::initializeGL()
-    {
-     //  Enable Z-buffer depth test
-     glEnable(GL_DEPTH_TEST);
-      resizeGL(this->width(), this->height());
-    }
-    ```
+void MainWindow::initializeGL()
+{
+ //  Enable Z-buffer depth test
+ glEnable(GL_DEPTH_TEST);
+  resizeGL(this->width(), this->height());
+}
+```
 
 1.  接下来，我们将修改`resizeGL()`函数，以便使用透视视图而不是正交视图：
 
 ```cpp
-    void MainWindow::resizeGL(int w, int h)
-    {
-      // Set the viewport
-      glViewport(0, 0, w, h);
-      qreal aspectRatio = qreal(w) / qreal(h);
+void MainWindow::resizeGL(int w, int h)
+{
+  // Set the viewport
+  glViewport(0, 0, w, h);
+  qreal aspectRatio = qreal(w) / qreal(h);
 
-      // Initialize Projection Matrix
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
+  // Initialize Projection Matrix
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
 
-     glOrtho(-1 * aspectRatio, 1 * aspectRatio, -1, 1, 1, -1);
-     gluPerspective(75, aspectRatio, 0.1, 400000000);
+ glOrtho(-1 * aspectRatio, 1 * aspectRatio, -1, 1, 1, -1);
+ gluPerspective(75, aspectRatio, 0.1, 400000000);
 
-     // Initialize Modelview Matrix
-     glMatrixMode(GL_MODELVIEW);
-     glLoadIdentity();
-    }
-    ```
+ // Initialize Modelview Matrix
+ glMatrixMode(GL_MODELVIEW);
+ glLoadIdentity();
+}
+```
 
 1.  之后，我们还需要修改`paintGL()`函数。首先，将`GL_DEPTH_BUFFER_BIT`添加到`glClear()`函数中，因为我们还需要清除上一帧的深度信息，然后再渲染下一帧。然后，删除我们在之前示例中使用的代码，该代码在屏幕上渲染了一个四边形和一个三角形：
 
 ```cpp
-    void MainWindow::paintGL()
-    {
-      // Initialize clear color (cornflower blue)
-      glClearColor(0.39f, 0.58f, 0.93f, 1.f);
+void MainWindow::paintGL()
+{
+  // Initialize clear color (cornflower blue)
+  glClearColor(0.39f, 0.58f, 0.93f, 1.f);
 
-     // Clear color buffer
-     glClear(GL_COLOR_BUFFER_BIT);
-     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+ // Clear color buffer
+ glClear(GL_COLOR_BUFFER_BIT);
+ glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-     glBegin(GL_QUADS);
-     glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.8f, -0.8f);
-     glColor3f(1.f, 1.f, 0.f); glVertex2f(0.3f, -0.8f);
-     glColor3f(0.f, 1.f, 0.f); glVertex2f(0.3f, 0.3f);
-     glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.8f, 0.3f);
-     glEnd();
+ glBegin(GL_QUADS);
+ glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.8f, -0.8f);
+ glColor3f(1.f, 1.f, 0.f); glVertex2f(0.3f, -0.8f);
+ glColor3f(0.f, 1.f, 0.f); glVertex2f(0.3f, 0.3f);
+ glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.8f, 0.3f);
+ glEnd();
 
-     glBegin(GL_TRIANGLES);
-     glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.4f, -0.4f);
-     glColor3f(0.f, 1.f, 0.f); glVertex2f(0.8f, -0.1f);
-     glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.1f, 0.8f);
-     glEnd();
+ glBegin(GL_TRIANGLES);
+ glColor3f(1.f, 0.f, 0.f); glVertex2f(-0.4f, -0.4f);
+ glColor3f(0.f, 1.f, 0.f); glVertex2f(0.8f, -0.1f);
+ glColor3f(0.f, 0.f, 1.f); glVertex2f(-0.1f, 0.8f);
+ glEnd();
 
-      glFlush();
-    }
-    ```
+  glFlush();
+}
+```
 
 1.  然后，在调用`glFlush()`之前，我们将添加以下代码来绘制一个 3D 立方体：
 
 ```cpp
-    // Reset modelview matrix
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+// Reset modelview matrix
+glMatrixMode(GL_MODELVIEW);
+glLoadIdentity();
 
-    // Transformations
-    glTranslatef(0.0, 0.0, -3.0);
-    glRotatef(rotation, 1.0, 1.0, 1.0);
+// Transformations
+glTranslatef(0.0, 0.0, -3.0);
+glRotatef(rotation, 1.0, 1.0, 1.0);
 
-    // FRONT
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 0.0, 0.0);
-      glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, 0.5, -0.5);
-      glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// FRONT
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 0.0, 0.0);
+  glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, 0.5, -0.5);
+  glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // BACK
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 1.0, 0.0);
-      glVertex3f(0.5, -0.5, 0.5); glVertex3f(0.5, 0.5, 0.5);
-      glVertex3f(-0.5, 0.5, 0.5); glVertex3f(-0.5, -0.5, 0.5);
-    glEnd();
+// BACK
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 1.0, 0.0);
+  glVertex3f(0.5, -0.5, 0.5); glVertex3f(0.5, 0.5, 0.5);
+  glVertex3f(-0.5, 0.5, 0.5); glVertex3f(-0.5, -0.5, 0.5);
+glEnd();
 
-    // RIGHT
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 0.0, 1.0);
-      glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, 0.5, -0.5);
-      glVertex3f(0.5, 0.5, 0.5); glVertex3f(0.5, -0.5, 0.5);
-    glEnd();
+// RIGHT
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 0.0, 1.0);
+  glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, 0.5, -0.5);
+  glVertex3f(0.5, 0.5, 0.5); glVertex3f(0.5, -0.5, 0.5);
+glEnd();
 
-    // LEFT
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 1.0, 0.0);
-      glVertex3f(-0.5, -0.5, 0.5); glVertex3f(-0.5, 0.5, 0.5);
-      glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// LEFT
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 1.0, 0.0);
+  glVertex3f(-0.5, -0.5, 0.5); glVertex3f(-0.5, 0.5, 0.5);
+  glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // TOP
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 0.0, 1.0);
-      glVertex3f(0.5, 0.5, 0.5); glVertex3f(0.5, 0.5, -0.5);
-      glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, 0.5, 0.5);
-    glEnd();
+// TOP
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 0.0, 1.0);
+  glVertex3f(0.5, 0.5, 0.5); glVertex3f(0.5, 0.5, -0.5);
+  glVertex3f(-0.5, 0.5, -0.5); glVertex3f(-0.5, 0.5, 0.5);
+glEnd();
 
-    // BOTTOM
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 0.0, 0.0);
-      glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, -0.5, 0.5);
-      glVertex3f(-0.5, -0.5, 0.5); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
-    ```
+// BOTTOM
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 0.0, 0.0);
+  glVertex3f(0.5, -0.5, -0.5); glVertex3f(0.5, -0.5, 0.5);
+  glVertex3f(-0.5, -0.5, 0.5); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
+```
 
 1.  完成后，向`MainWindow`类的构造函数中添加一个定时器，如下所示：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent)
-    {
-      setSurfaceType(QWindow::OpenGLSurface);
-      QSurfaceFormat format;
-      format.setProfile(QSurfaceFormat::CompatibilityProfile);
-      format.setVersion(2, 1); // OpenGL 2.1
-      setFormat(format);
+MainWindow::MainWindow(QWidget *parent)
+{
+  setSurfaceType(QWindow::OpenGLSurface);
+  QSurfaceFormat format;
+  format.setProfile(QSurfaceFormat::CompatibilityProfile);
+  format.setVersion(2, 1); // OpenGL 2.1
+  setFormat(format);
 
-      context = new QOpenGLContext;
-      context->setFormat(format);
-      context->create();
-      context->makeCurrent(this);
+  context = new QOpenGLContext;
+  context->setFormat(format);
+  context->create();
+  context->makeCurrent(this);
 
-      openGLFunctions = context->functions();
+  openGLFunctions = context->functions();
 
-     QTimer *timer = new QTimer(this);
-     connect(timer, SIGNAL(timeout()), this, SLOT(updateAnimation()));
-     timer->start(100);
+ QTimer *timer = new QTimer(this);
+ connect(timer, SIGNAL(timeout()), this, SLOT(updateAnimation()));
+ timer->start(100);
 
-     rotation = 0;
-    }
-    ```
+ rotation = 0;
+}
+```
 
 1.  最后，每当定时器调用`updateAnimation()`槽时，我们将旋转变量增加 10。我们还手动调用`update()`函数来更新屏幕：
 
 ```cpp
-    void MainWindow::updateAnimation()
-    {
-      rotation += 10;
-      this->update();
-    }
-    ```
+void MainWindow::updateAnimation()
+{
+  rotation += 10;
+  this->update();
+}
+```
 
 1.  如果现在编译并运行程序，您应该会在主窗口中看到一个旋转的立方体！如何做...
 
@@ -540,110 +540,110 @@ OpenGL 允许我们将图像（也称为纹理）映射到 3D 形状或多边形
 1.  首先，打开`mainwindow.h`并将以下标题添加到其中：
 
 ```cpp
-    #include <QGLWidget>
-    ```
+#include <QGLWidget>
+```
 
 1.  接下来，声明一个数组，用于存储由 OpenGL 创建的纹理 ID。在渲染时我们将使用它：
 
 ```cpp
-    private:
-      QOpenGLContext* context;
-      QOpenGLFunctions* openGLFunctions;
+private:
+  QOpenGLContext* context;
+  QOpenGLFunctions* openGLFunctions;
 
-      float rotation;
-     GLuint texID[1];
+  float rotation;
+ GLuint texID[1];
 
-    ```
+```
 
 1.  之后，打开`mainwindow.cpp`并将以下代码添加到`initializeGL()`中以加载纹理文件：
 
 ```cpp
-    void MainWindow::initializeGL()
-    {
-      // Enable Z-buffer depth test
-      glEnable(GL_DEPTH_TEST);
+void MainWindow::initializeGL()
+{
+  // Enable Z-buffer depth test
+  glEnable(GL_DEPTH_TEST);
 
-     // Enable texturing
-     glEnable(GL_TEXTURE_2D);
+ // Enable texturing
+ glEnable(GL_TEXTURE_2D);
 
-     QImage image("bricks");
-     QImage texture = QGLWidget::convertToGLFormat(image);
+ QImage image("bricks");
+ QImage texture = QGLWidget::convertToGLFormat(image);
 
-     glGenTextures(1, &texID[0]);
-     glBindTexture(GL_TEXTURE_2D, texID[0]);
+ glGenTextures(1, &texID[0]);
+ glBindTexture(GL_TEXTURE_2D, texID[0]);
 
-     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width(), texture.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.bits());
+ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width(), texture.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.bits());
 
-      // Make sure render at the correct aspect ratio
-      resizeGL(this->width(), this->height());
-    }
-    ```
+  // Make sure render at the correct aspect ratio
+  resizeGL(this->width(), this->height());
+}
+```
 
 1.  然后，将以下代码添加到`paintGL()`函数中，将纹理应用到 3D 立方体上：
 
 ```cpp
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, texID[0]);
+glEnable(GL_TEXTURE_2D);
+glBindTexture(GL_TEXTURE_2D, texID[0]);
 
-    // FRONT
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 0.0, 0.0);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// FRONT
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 0.0, 0.0);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // BACK
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 1.0, 0.0);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, -0.5, 0.5);
-    glEnd();
+// BACK
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 1.0, 0.0);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, -0.5, 0.5);
+glEnd();
 
-    // RIGHT
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 0.0, 1.0);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(0.5, -0.5, -0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, -0.5, 0.5);
-    glEnd();
+// RIGHT
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 0.0, 1.0);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(0.5, -0.5, -0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, -0.5, 0.5);
+glEnd();
 
-    // LEFT
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 1.0, 0.0);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// LEFT
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 1.0, 0.0);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // TOP
-    glBegin(GL_POLYGON);
-      glColor3f(0.0, 0.0, 1.0);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, 0.5);
-    glEnd();
+// TOP
+glBegin(GL_POLYGON);
+  glColor3f(0.0, 0.0, 1.0);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, 0.5);
+glEnd();
 
-    // Red side - BOTTOM
-    glBegin(GL_POLYGON);
-      glColor3f(1.0, 0.0, 0.0);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f( 0.5, -0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f( 0.5, -0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// Red side - BOTTOM
+glBegin(GL_POLYGON);
+  glColor3f(1.0, 0.0, 0.0);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f( 0.5, -0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f( 0.5, -0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    glDisable(GL_TEXTURE_2D);
-    ```
+glDisable(GL_TEXTURE_2D);
+```
 
 1.  如果现在编译并运行程序，您应该会看到一个围绕屏幕旋转的砖块立方体！如何做...
 
@@ -664,91 +664,91 @@ OpenGL 允许我们将图像（也称为纹理）映射到 3D 形状或多边形
 1.  再次，我们将使用之前的示例，并在旋转的立方体附近添加一个光源。打开`mainwindow.cpp`并将以下代码添加到`initializeGL()`函数中：
 
 ```cpp
-    // Trilinear interpolation
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+// Trilinear interpolation
+glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width(), texture.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.bits());
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texture.width(), texture.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, texture.bits());
 
-    // Enable smooth shading
-    glShadeModel(GL_SMOOTH);
+// Enable smooth shading
+glShadeModel(GL_SMOOTH);
 
-    // Lighting
-    glEnable(GL_LIGHT1);
-    GLfloat lightAmbient[]= { 0.5f, 0.5f, 0.5f, 1.0f };
-    GLfloat lightDiffuse[]= { 1.0f, 1.0f, 1.0f, 1.0f };
-    GLfloat lightPosition[]= { 3.0f, 3.0f, -5.0f, 1.0f };
-    glLightfv(GL_LIGHT1, GL_AMBIENT, lightAmbient);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, lightDiffuse);
-    glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
+// Lighting
+glEnable(GL_LIGHT1);
+GLfloat lightAmbient[]= { 0.5f, 0.5f, 0.5f, 1.0f };
+GLfloat lightDiffuse[]= { 1.0f, 1.0f, 1.0f, 1.0f };
+GLfloat lightPosition[]= { 3.0f, 3.0f, -5.0f, 1.0f };
+glLightfv(GL_LIGHT1, GL_AMBIENT, lightAmbient);
+glLightfv(GL_LIGHT1, GL_DIFFUSE, lightDiffuse);
+glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
 
-    // Make sure render at the correct aspect ratio
-    resizeGL(this->width(), this->height());
-    ```
+// Make sure render at the correct aspect ratio
+resizeGL(this->width(), this->height());
+```
 
 1.  接下来，转到`paintGL()`函数并添加以下代码：
 
 ```cpp
-    glEnable(GL_LIGHTING);
+glEnable(GL_LIGHTING);
 
-    // FRONT
-    glBegin(GL_POLYGON);
-      glNormal3f(0.0f, 0.0f, 1.0f);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// FRONT
+glBegin(GL_POLYGON);
+  glNormal3f(0.0f, 0.0f, 1.0f);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // BACK
-    glBegin(GL_POLYGON);
-      glNormal3f(0.0f, 0.0f,-1.0f);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, -0.5, 0.5);
-    glEnd();
+// BACK
+glBegin(GL_POLYGON);
+  glNormal3f(0.0f, 0.0f,-1.0f);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, -0.5, 0.5);
+glEnd();
 
-    // RIGHT
-    glBegin(GL_POLYGON);
-      glNormal3f(0.0f, 1.0f, 0.0f);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(0.5, -0.5, -0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, -0.5, 0.5);
-    glEnd();
+// RIGHT
+glBegin(GL_POLYGON);
+  glNormal3f(0.0f, 1.0f, 0.0f);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(0.5, -0.5, -0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, -0.5, 0.5);
+glEnd();
 
-    // LEFT
-    glBegin(GL_POLYGON);
-      glNormal3f(0.0f,-1.0f, 0.0f);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// LEFT
+glBegin(GL_POLYGON);
+  glNormal3f(0.0f,-1.0f, 0.0f);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, 0.5);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    // TOP
-    glBegin(GL_POLYGON);
-      glNormal3f(1.0f, 0.0f, 0.0f);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
-      glTexCoord2f(0.0f, 0.0f);glVertex3f(-0.5, 0.5, 0.5);
-    glEnd();
+// TOP
+glBegin(GL_POLYGON);
+  glNormal3f(1.0f, 0.0f, 0.0f);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, 0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, 0.5, -0.5);
+  glTexCoord2f(0.0f, 0.0f);glVertex3f(-0.5, 0.5, 0.5);
+glEnd();
 
-    // Red side - BOTTOM
-    glBegin(GL_POLYGON);
-      glNormal3f(-1.0f, 0.0f, 0.0f);
-      glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
-      glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
-      glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
-      glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
-    glEnd();
+// Red side - BOTTOM
+glBegin(GL_POLYGON);
+  glNormal3f(-1.0f, 0.0f, 0.0f);
+  glTexCoord2f(0.0f, 0.0f); glVertex3f(0.5, -0.5, -0.5);
+  glTexCoord2f(1.0f, 0.0f); glVertex3f(0.5, -0.5, 0.5);
+  glTexCoord2f(1.0f, 1.0f); glVertex3f(-0.5, -0.5, 0.5);
+  glTexCoord2f(0.0f, 1.0f); glVertex3f(-0.5, -0.5, -0.5);
+glEnd();
 
-    glDisable(GL_LIGHTING);
-    ```
+glDisable(GL_LIGHTING);
+```
 
 1.  如果现在编译并运行程序，您应该看到照明效果的应用！![如何做...](img/B02820_04_07.jpg)
 
@@ -787,100 +787,100 @@ OpenGL 允许我们将图像（也称为纹理）映射到 3D 形状或多边形
 1.  打开`mainwindow.h`并声明两个名为`moveX`和`moveZ`的浮点数：
 
 ```cpp
-    private:
-      QOpenGLContext* context;
-      QOpenGLFunctions* openGLFunctions;
+private:
+  QOpenGLContext* context;
+  QOpenGLFunctions* openGLFunctions;
 
-      float rotation;
-      GLuint texID[1];
+  float rotation;
+  GLuint texID[1];
 
-     float moveX;
-     float moveZ;
+ float moveX;
+ float moveZ;
 
-    ```
+```
 
 1.  之后，声明`keyPressEvent()`函数，如下所示：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-      void keyPressEvent(QKeyEvent *event);
+  void keyPressEvent(QKeyEvent *event);
 
-    ```
+```
 
 1.  然后，打开`mainwindow.cpp`并设置我们刚刚声明的两个变量的默认值：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent)
-    {
-      setSurfaceType(QWindow::OpenGLSurface);
+MainWindow::MainWindow(QWidget *parent)
+{
+  setSurfaceType(QWindow::OpenGLSurface);
 
-      QSurfaceFormat format;
-      format.setProfile(QSurfaceFormat::CompatibilityProfile);
-      format.setVersion(2, 1); // OpenGL 2.1
-      setFormat(format);
+  QSurfaceFormat format;
+  format.setProfile(QSurfaceFormat::CompatibilityProfile);
+  format.setVersion(2, 1); // OpenGL 2.1
+  setFormat(format);
 
-      context = new QOpenGLContext;
-      context->setFormat(format);
-      context->create();
-      context->makeCurrent(this);
+  context = new QOpenGLContext;
+  context->setFormat(format);
+  context->create();
+  context->makeCurrent(this);
 
-      openGLFunctions = context->functions();
+  openGLFunctions = context->functions();
 
-      QTimer *timer = new QTimer(this);
-      connect(timer, SIGNAL(timeout()), this, SLOT(updateAnimation()));
-      timer->start(100);
+  QTimer *timer = new QTimer(this);
+  connect(timer, SIGNAL(timeout()), this, SLOT(updateAnimation()));
+  timer->start(100);
 
-      rotation = 0;
+  rotation = 0;
 
-     moveX = 0;
-     moveZ = 0;
-    }
-    ```
+ moveX = 0;
+ moveZ = 0;
+}
+```
 
 1.  接下来，我们将实现`keyPressEvent()`函数：
 
 ```cpp
-    void MainWindow::keyPressEvent(QKeyEvent *event)
-    {
-      if (event->key() == Qt::Key_W)
-      {
-        moveZ -= 0.2;
-      }
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+  if (event->key() == Qt::Key_W)
+  {
+    moveZ -= 0.2;
+  }
 
-      if (event->key() == Qt::Key_S)
-      {
-        moveZ += 0.2;
-      }
+  if (event->key() == Qt::Key_S)
+  {
+    moveZ += 0.2;
+  }
 
-      if (event->key() == Qt::Key_A)
-      {
-        moveX -= 0.2;
-      }
+  if (event->key() == Qt::Key_A)
+  {
+    moveX -= 0.2;
+  }
 
-      if (event->key() == Qt::Key_D)
-      {
-        moveX += 0.2;
-      }
-    }
-    ```
+  if (event->key() == Qt::Key_D)
+  {
+    moveX += 0.2;
+  }
+}
+```
 
 1.  之后，在绘制 3D 立方体之前调用`glTranslatef()`，并将`moveX`和`moveZ`都放入函数中。此外，我们禁用了旋转，以便更容易看到移动：
 
 ```cpp
-    // Transformations
-    glTranslatef(0.0, 0.0, -3.0);
-    glRotatef(rotation, 1.0, 1.0, 1.0);
-    glTranslatef(moveX, 0.0, moveZ);
+// Transformations
+glTranslatef(0.0, 0.0, -3.0);
+glRotatef(rotation, 1.0, 1.0, 1.0);
+glTranslatef(moveX, 0.0, moveZ);
 
-    // Texture mapping
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, texID[0]);
+// Texture mapping
+glEnable(GL_TEXTURE_2D);
+glBindTexture(GL_TEXTURE_2D, texID[0]);
 
-    glEnable(GL_LIGHTING);
-    ```
+glEnable(GL_LIGHTING);
+```
 
 1.  如果现在编译并运行程序，您应该能够通过按*W*、*A*、*S*和*D*来移动立方体：![如何做…](img/B02820_04_10.jpg)
 
@@ -909,71 +909,71 @@ OpenGL 允许我们将图像（也称为纹理）映射到 3D 形状或多边形
 1.  在`initializeGL（）`函数中，我们将向场景添加一个定向光，加载刚刚添加到项目资源中的纹理文件，然后将纹理应用于定义 3D 立方体表面属性的材质。此外，我们将通过将其在所有维度上的比例设置为`3`，使立方体的比例略微变大：
 
 ```cpp
-    function initializeGL(canvas) {
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000);
-      camera.position.z = 5;
+function initializeGL(canvas) {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000);
+  camera.position.z = 5;
 
-     var directionalLight = new THREE.DirectionalLight(0xffffff);
-     directionalLight.position.set(1, 1, 1).normalize();
-     scene.add(directionalLight);
+ var directionalLight = new THREE.DirectionalLight(0xffffff);
+ directionalLight.position.set(1, 1, 1).normalize();
+ scene.add(directionalLight);
 
-     var texture = THREE.ImageUtils.loadTexture('bricks.jpg');
+ var texture = THREE.ImageUtils.loadTexture('bricks.jpg');
 
-     var material = new THREE.MeshBasicMaterial({ map: texture });
-     var cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
-      cube = new THREE.Mesh(cubeGeometry, material);
-      cube.rotation.set(0.785, 0.785, 0.0);
-      scene.add(cube);
+ var material = new THREE.MeshBasicMaterial({ map: texture });
+ var cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
+  cube = new THREE.Mesh(cubeGeometry, material);
+  cube.rotation.set(0.785, 0.785, 0.0);
+  scene.add(cube);
 
-      renderer = new THREE.Canvas3DRenderer(
-        { canvas: canvas, antialias: true, devicePixelRatio: canvas.devicePixelRatio });
-      renderer.setSize(canvas.width, canvas.height);
-    }
-    ```
+  renderer = new THREE.Canvas3DRenderer(
+    { canvas: canvas, antialias: true, devicePixelRatio: canvas.devicePixelRatio });
+  renderer.setSize(canvas.width, canvas.height);
+}
+```
 
 1.  然后，在`paintGL（）`函数中，添加一行额外的代码来在渲染场景之前旋转 3D 立方体：
 
 ```cpp
-    function paintGL(canvas) {
-      cube.rotation.y -= 0.005;
-      renderer.render(scene, camera);
-    }
-    ```
+function paintGL(canvas) {
+  cube.rotation.y -= 0.005;
+  renderer.render(scene, camera);
+}
+```
 
 1.  我个人觉得窗口大小有点太大，所以我还在`main.qml`文件中更改了窗口的宽度和高度：
 
 ```cpp
-    import QtQuick 2.4
-    import QtCanvas3D 1.0
-    import QtQuick.Window 2.2
-    import "glcode.js" as GLCode
+import QtQuick 2.4
+import QtCanvas3D 1.0
+import QtQuick.Window 2.2
+import "glcode.js" as GLCode
 
-    Window {
-      title: qsTr("Qt_Canvas_3D")
-     width: 480
-     height: 320
-      visible: true
+Window {
+  title: qsTr("Qt_Canvas_3D")
+ width: 480
+ height: 320
+  visible: true
 
-      Canvas3D {
-        id: canvas3d
-        anchors.fill: parent
-        focus: true
+  Canvas3D {
+    id: canvas3d
+    anchors.fill: parent
+    focus: true
 
-        onInitializeGL: {
-          GLCode.initializeGL(canvas3d);
-        }
-
-        onPaintGL: {
-          GLCode.paintGL(canvas3d);
-        }
-
-        onResizeGL: {
-          GLCode.resizeGL(canvas3d);
-        }
-      }
+    onInitializeGL: {
+      GLCode.initializeGL(canvas3d);
     }
-    ```
+
+    onPaintGL: {
+      GLCode.paintGL(canvas3d);
+    }
+
+    onResizeGL: {
+      GLCode.resizeGL(canvas3d);
+    }
+  }
+}
+```
 
 1.  完成后，让我们构建并运行项目。您应该能够在屏幕上看到一个带有砖纹理的 3D 立方体，缓慢旋转：![如何做…](img/B02820_04_15.jpg)
 

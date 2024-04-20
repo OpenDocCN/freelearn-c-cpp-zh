@@ -316,8 +316,8 @@ VS Code 是免费且开源的。它支持多种语言，需要为 C#语言进行
 1.  为了检查安装是否成功，请打开您的终端应用程序并键入：
 
 ```cpp
-     dotnet –list-sdks 
-    ```
+ dotnet –list-sdks 
+```
 
 这将检查您计算机上安装的.NET 版本。*图 0.7*显示了您安装的 SDK 的列表：
 
@@ -685,14 +685,14 @@ PostgreSQL 服务器密码是连接到 PostgreSQL 服务器并使用`postgres`�
 1.  请确保使用以下命令更新您的存储库：
 
 ```cpp
-    $ sudo apt update
-    ```
+$ sudo apt update
+```
 
 1.  使用以下命令安装 PostgreSQL 软件以及额外的包（推荐）：
 
 ```cpp
-    $ sudo apt install postgresql postgresql-contrib
-    ```
+$ sudo apt install postgresql postgresql-contrib
+```
 
 注意
 
@@ -709,14 +709,14 @@ PostgreSQL 服务器密码是连接到 PostgreSQL 服务器并使用`postgres`�
 1.  要以 postgres 用户身份登录，请使用以下命令：
 
 ```cpp
-    $ sudo -i -u postgres
-    ```
+$ sudo -i -u postgres
+```
 
 1.  使用以下命令访问 CLI：
 
 ```cpp
-    $ psql
-    ```
+$ psql
+```
 
 注意
 
@@ -725,32 +725,32 @@ PostgreSQL 服务器密码是连接到 PostgreSQL 服务器并使用`postgres`�
 1.  要退出 CLI，请使用以下命令：
 
 ```cpp
-    $ \q
-    ```
+$ \q
+```
 
 选项 2 如下：
 
 1.  要以 postgres 用户身份登录，请使用以下命令：
 
 ```cpp
-    $ sudo -u postgres psql
-    ```
+$ sudo -u postgres psql
+```
 
 1.  要退出 CLI，请使用以下命令：
 
 ```cpp
-    $ \q
-    ```
+$ \q
+```
 
 ### 验证 postgres 用户账户作为 postgres 用户角色
 
 1.  要验证用户账户，请登录并使用`conninfo`命令：
 
 ```cpp
-    $ sudo -u postgres psql
-    $ \conninfo
-    $ \q
-    ```
+$ sudo -u postgres psql
+$ \conninfo
+$ \q
+```
 
 使用此命令，您可以确保以端口`5432`连接到`postgres`数据库，作为`postgres`用户。如果您不想使用默认用户`postgres`，可以为自己创建一个新用户。
 
@@ -759,8 +759,8 @@ PostgreSQL 服务器密码是连接到 PostgreSQL 服务器并使用`postgres`�
 1.  使用以下命令并按`Enter`键创建一个新用户：
 
 ```cpp
-    $ sudo -u postgres createuser –interactive
-    ```
+$ sudo -u postgres createuser –interactive
+```
 
 上述命令将要求用户添加角色的名称及其类型。
 
@@ -769,36 +769,36 @@ PostgreSQL 服务器密码是连接到 PostgreSQL 服务器并使用`postgres`�
 1.  然后，在提示时输入`y`以设置新角色为超级用户：
 
 ```cpp
-    Prompt:
-    Enter the name of the role to add: testUser
-    Shall the new role be a superuser? (y/n) y
-    ```
+Prompt:
+Enter the name of the role to add: testUser
+Shall the new role be a superuser? (y/n) y
+```
 
 这将创建一个名为`testUser`的新用户。
 
 1.  使用以下命令创建名为`testdb`的新数据库：
 
 ```cpp
-    $ sudo -u postgres createdb testdb
-    ```
+$ sudo -u postgres createdb testdb
+```
 
 1.  使用以下命令登录到新创建的用户账户：
 
 ```cpp
-    $ sudo -u testUser psql -d testdb
-    ```
+$ sudo -u testUser psql -d testdb
+```
 
 1.  使用以下命令检查连接详细信息：
 
 ```cpp
-    $ \conninfo
-    ```
+$ \conninfo
+```
 
 1.  要退出 CLI，请使用以下命令：
 
 ```cpp
-    $ \q
-    ```
+$ \q
+```
 
 使用此命令，您可以确保以端口`5432`连接到`testdb`数据库，作为`testUser`用户。
 

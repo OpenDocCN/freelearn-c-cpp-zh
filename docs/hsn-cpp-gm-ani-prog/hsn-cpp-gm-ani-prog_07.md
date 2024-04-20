@@ -178,55 +178,55 @@ CGLTF 现在已经集成到项目中。在本章中，您将实现解析 glTF �
 1.  创建一个新文件`GLTFLoader.h`，其中包括`cgltf.h`。为`LoadGLTFFile`和`FreeGLTFFile`函数添加函数声明：
 
 ```cpp
-    #ifndef _H_GLTFLOADER_
-    #define _H_GLTFLOADER_
-    #include "cgltf.h"
-    cgltf_data* LoadGLTFFile(const char* path);
-    void FreeGLTFFile(cgltf_data* handle);
-    #endif
-    ```
+#ifndef _H_GLTFLOADER_
+#define _H_GLTFLOADER_
+#include "cgltf.h"
+cgltf_data* LoadGLTFFile(const char* path);
+void FreeGLTFFile(cgltf_data* handle);
+#endif
+```
 
 1.  创建一个新文件`GLTFLoader.cpp`。这个函数接受一个路径并返回一个`cgltf_data`指针。在内部，该函数调用`cgltf_parse_file`从文件中加载 glTF 数据。`cgltf_load_buffers`用于加载任何外部缓冲区数据。最后，`cgltf_validate`确保刚刚加载的 glTF 文件是有效的：
 
 ```cpp
-    cgltf_data* LoadGLTFFile(const char* path) {
-        cgltf_options options;
-        memset(&options, 0, sizeof(cgltf_options));
-        cgltf_data* data = NULL;
-        cgltf_result result = cgltf_parse_file(&options, 
-                                            path, &data);
-        if (result != cgltf_result_success) {
-            cout << "Could not load: " << path << "\n";
-            return 0;
-        }
-        result = cgltf_load_buffers(&options, data, path);
-        if (result != cgltf_result_success) {
-            cgltf_free(data);
-            cout << "Could not load: " << path << "\n";
-            return 0;
-        }
-        result = cgltf_validate(data);
-        if (result != cgltf_result_success) {
-            cgltf_free(data);
-            cout << "Invalid file: " << path << "\n";
-            return 0;
-        }
-        return data;
-    }
-    ```
+cgltf_data* LoadGLTFFile(const char* path) {
+    cgltf_options options;
+    memset(&options, 0, sizeof(cgltf_options));
+    cgltf_data* data = NULL;
+    cgltf_result result = cgltf_parse_file(&options, 
+                                        path, &data);
+    if (result != cgltf_result_success) {
+        cout << "Could not load: " << path << "\n";
+        return 0;
+    }
+    result = cgltf_load_buffers(&options, data, path);
+    if (result != cgltf_result_success) {
+        cgltf_free(data);
+        cout << "Could not load: " << path << "\n";
+        return 0;
+    }
+    result = cgltf_validate(data);
+    if (result != cgltf_result_success) {
+        cgltf_free(data);
+        cout << "Invalid file: " << path << "\n";
+        return 0;
+    }
+    return data;
+}
+```
 
 1.  在`GLTFLoader.cpp`中实现`FreeGLTFFile`函数。这个函数很简单；如果输入指针不是`null`，它需要调用`cgltf_free`：
 
 ```cpp
-    void FreeGLTFFile(cgltf_data* data) {
-        if (data == 0) {
-            cout << "WARNING: Can't free null data\n";
-        }
-        else {
-            cgltf_free(data);
-        }
-    }
-    ```
+void FreeGLTFFile(cgltf_data* data) {
+    if (data == 0) {
+        cout << "WARNING: Can't free null data\n";
+    }
+    else {
+        cgltf_free(data);
+    }
+}
+```
 
 在后面的章节中，你将通过引入加载网格、姿势和动画的函数来扩展 glTF `Loader`函数。在下一节中，你将探索如何从 Blender3D 导出 glTF 文件。
 

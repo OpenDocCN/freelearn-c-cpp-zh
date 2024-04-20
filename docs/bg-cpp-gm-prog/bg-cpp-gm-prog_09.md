@@ -1299,30 +1299,30 @@ for (int i = 0; i < 100; i++)
 1.  使用以下代码检查当前子弹是否在飞行中，当前僵尸是否仍然活着：
 
 ```cpp
-        if (bullets[i].isInFlight() && zombies[j].isAlive())
-    ```
+    if (bullets[i].isInFlight() && zombies[j].isAlive())
+```
 
 1.  假设僵尸还活着，子弹正在飞行，我们使用以下代码测试矩形相交：
 
 ```cpp
-        if (bullets[i].getPosition().intersects (zombies[j].getPosition()))
-    ```
+    if (bullets[i].getPosition().intersects (zombies[j].getPosition()))
+```
 
 如果当前子弹和僵尸发生了碰撞，那么我们会采取一些步骤。
 
 1.  使用以下代码停止子弹：
 
 ```cpp
-        // Stop the bullet
-        bullets[i].stop();
-    ```
+    // Stop the bullet
+    bullets[i].stop();
+```
 
 1.  通过调用其`hit`函数向当前僵尸注册一次命中。请注意，`hit`函数返回一个`Boolean`，让调用代码知道僵尸是否已经死亡。这显示在以下代码行中：
 
 ```cpp
-        // Register the hit and see if it was a kill 
-        if (zombies[j].hit()) {
-    ```
+    // Register the hit and see if it was a kill 
+    if (zombies[j].hit()) {
+```
 
 在此`if`块内，检测僵尸是否死亡而不仅仅是受伤时，我们执行以下操作：
 

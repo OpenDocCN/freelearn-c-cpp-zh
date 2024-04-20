@@ -325,15 +325,15 @@
 1.  在 Visual Studio 中打开`DodgeballProjectile`类文件。我们首先要做的是添加躲避球的碰撞组件，所以我们将在我们的类头文件中添加一个`SphereComponent`（*actor 组件属性通常是私有的*）：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   Dodgeball, meta = (AllowPrivateAccess = "true"))
-    class USphereComponent* SphereComponent;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   Dodgeball, meta = (AllowPrivateAccess = "true"))
+class USphereComponent* SphereComponent;
+```
 
 1.  接下来，在我们的源文件顶部包含`SphereComponent`类：
 
 ```cpp
-    #include "Components/SphereComponent.h"
-    ```
+#include "Components/SphereComponent.h"
+```
 
 注意
 
@@ -344,33 +344,33 @@
 1.  创建`SphereComponent`对象：
 
 ```cpp
-    SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere   Collision"));
-    ```
+SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere   Collision"));
+```
 
 1.  将其`半径`设置为`35`个单位：
 
 ```cpp
-    SphereComponent->SetSphereRadius(35.f);
-    ```
+SphereComponent->SetSphereRadius(35.f);
+```
 
 1.  将其`碰撞预设`设置为我们创建的`Dodgeball`预设：
 
 ```cpp
-    SphereComponent->SetCollisionProfileName(FName("Dodgeball"));
-    ```
+SphereComponent->SetCollisionProfileName(FName("Dodgeball"));
+```
 
 1.  我们希望`Dodgeball`模拟物理，因此通知组件进行如下所示的设置：
 
 ```cpp
-    SphereComponent->SetSimulatePhysics(true);
-    ```
+SphereComponent->SetSimulatePhysics(true);
+```
 
 1.  我们希望`Dodgeball`在模拟物理时调用`OnHit`事件，因此调用`SetNotifyRigidBodyCollision`函数以将其设置为`true`（这与我们在对象属性的`Collision`部分看到的`SimulationGeneratesHitEvents`属性相同）：
 
 ```cpp
-    //Simulation generates Hit events
-    SphereComponent->SetNotifyRigidBodyCollision(true);
-    ```
+//Simulation generates Hit events
+SphereComponent->SetNotifyRigidBodyCollision(true);
+```
 
 我们还希望监听`SphereComponent`的`OnHit`事件。
 
@@ -387,29 +387,29 @@
 +   `FHitResult& Hit`：碰撞结果的数据，包括此对象与其他对象之间的碰撞。正如我们在上一章中看到的，它包含诸如`Hit`位置、法线、击中的组件和演员等属性。大部分相关信息已经通过其他参数可用，但如果需要更详细的信息，可以访问此参数：
 
 ```cpp
-        UFUNCTION()
-        void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,   UPrimitiveComponent* OtherComp, FVector NormalImpulse, const   FHitResult& Hit);
-        ```
+UFUNCTION()
+void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,   UPrimitiveComponent* OtherComp, FVector NormalImpulse, const   FHitResult& Hit);
+```
 
 将`OnHit`函数的实现添加到类的源文件中，并在该函数中，至少暂时，当它击中玩家时销毁躲避球。
 
 1.  将`OtherActor`参数转换为我们的`DodgeballCharacter`类，并检查该值是否不是`nullptr`。如果不是，则表示我们击中的其他演员是`DodgeballCharacter`，我们将销毁此`DodgeballProjectile`演员：
 
 ```cpp
-    void ADodgeballProjectile::OnHit(UPrimitiveComponent *   HitComp, AActor * OtherActor, UPrimitiveComponent *   OtherComp, FVector NormalImpulse, const FHitResult & Hit)
-    {
-      if (Cast<ADodgeballCharacter>(OtherActor) != nullptr)
-      {
-        Destroy();
-      }
-    }
-    ```
+void ADodgeballProjectile::OnHit(UPrimitiveComponent *   HitComp, AActor * OtherActor, UPrimitiveComponent *   OtherComp, FVector NormalImpulse, const FHitResult & Hit)
+{
+  if (Cast<ADodgeballCharacter>(OtherActor) != nullptr)
+  {
+    Destroy();
+  }
+}
+```
 
 鉴于我们正在引用`DodgebalCharacter`类，我们需要在此类的源文件顶部包含它：
 
 ```cpp
-    #include "DodgeballCharacter.h"
-    ```
+#include "DodgeballCharacter.h"
+```
 
 注意
 
@@ -418,19 +418,19 @@
 1.  返回`DodgeballProjectile`类的构造函数，并在末尾添加以下行，以便监听`SphereComponent`的`OnHit`事件：
 
 ```cpp
-    // Listen to the OnComponentHit event by binding it to our   function
-    SphereComponent->OnComponentHit.AddDynamic(this,   &ADodgeballProjectile::OnHit);
-    ```
+// Listen to the OnComponentHit event by binding it to our   function
+SphereComponent->OnComponentHit.AddDynamic(this,   &ADodgeballProjectile::OnHit);
+```
 
 这将绑定我们创建的`OnHit`函数到这个`SphereComponent`的`OnHit`事件（因为这是一个演员组件，此事件称为`OnComponentHit`），这意味着我们的函数将与该事件一起被调用。
 
 1.  最后，将`SphereComponent`设置为该演员的`RootComponent`，如下面的代码片段所示：
 
 ```cpp
-    // Set this Sphere Component as the root component,
-    // otherwise collision won't behave properly
-    RootComponent = SphereComponent;
-    ```
+// Set this Sphere Component as the root component,
+// otherwise collision won't behave properly
+RootComponent = SphereComponent;
+```
 
 注意
 
@@ -533,27 +533,27 @@
 1.  在`DodgeballProjectile`类的头文件中添加一个`ProjectileMovementComponent`属性：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   Dodgeball, meta = (AllowPrivateAccess = "true"))
-    class UProjectileMovementComponent* ProjectileMovement;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   Dodgeball, meta = (AllowPrivateAccess = "true"))
+class UProjectileMovementComponent* ProjectileMovement;
+```
 
 1.  在类的源文件顶部包含`ProjectileMovementComponent`类：
 
 ```cpp
-    #include "GameFramework/ProjectileMovementComponent.h"
-    ```
+#include "GameFramework/ProjectileMovementComponent.h"
+```
 
 1.  在类的构造函数末尾，创建`ProjectileMovementComponent`对象：
 
 ```cpp
-    ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Pro   jectile Movement"));
-    ```
+ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Pro   jectile Movement"));
+```
 
 1.  然后，将其`InitialSpeed`设置为`1500`单位：
 
 ```cpp
-    ProjectileMovement->InitialSpeed = 1500.f;
-    ```
+ProjectileMovement->InitialSpeed = 1500.f;
+```
 
 完成此操作后，编译您的项目并打开编辑器。为了演示躲避球的初始速度，将其在*Z*轴上降低，并将其放在玩家后面（*这个放置在高度为 200 单位的位置*）：
 
@@ -618,118 +618,118 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 1.  在`EnemyCharacter`类的头文件中，将`LookAtActor`函数的返回类型从`void`更改为`bool`：
 
 ```cpp
-    // Change the rotation of the character to face the given   actor
-    // Returns whether the given actor can be seen
-    bool LookAtActor(AActor* TargetActor);
-    ```
+// Change the rotation of the character to face the given   actor
+// Returns whether the given actor can be seen
+bool LookAtActor(AActor* TargetActor);
+```
 
 1.  在函数的实现中做同样的事情，在类的源文件中，同时在我们调用`CanSeeActor`函数的`if`语句结束时返回`true`。还在我们检查`TargetActor`是否为`nullptr`的第一个`if`语句中返回`false`，并在函数的结尾返回`false`：
 
 ```cpp
-    bool AEnemyCharacter::LookAtActor(AActor * TargetActor)
-    {
-      if (TargetActor == nullptr) return false;
-      if (CanSeeActor(TargetActor))
-      {
-        FVector Start = GetActorLocation();
-        FVector End = TargetActor->GetActorLocation();
-        // Calculate the necessary rotation for the Start point to   face the End point
-        FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(Start, End);
-        //Set the enemy's rotation to that rotation
-        SetActorRotation(LookAtRotation);
-        return true;
-      }
-      return false;
-    }
-    ```
+bool AEnemyCharacter::LookAtActor(AActor * TargetActor)
+{
+  if (TargetActor == nullptr) return false;
+  if (CanSeeActor(TargetActor))
+  {
+    FVector Start = GetActorLocation();
+    FVector End = TargetActor->GetActorLocation();
+    // Calculate the necessary rotation for the Start point to   face the End point
+    FRotator LookAtRotation = UKismetMathLibrary::FindLookAtRotation(Start, End);
+    //Set the enemy's rotation to that rotation
+    SetActorRotation(LookAtRotation);
+    return true;
+  }
+  return false;
+}
+```
 
 1.  接下来，在你的类头文件中添加两个`bool`属性，`bCanSeePlayer`和`bPreviousCanSeePlayer`，设置为`protected`，它们将表示敌人角色在这一帧中是否能看到玩家，以及上一帧中玩家是否能被看到：
 
 ```cpp
-    //Whether the enemy can see the player this frame
-    bool bCanSeePlayer = false;
-    //Whether the enemy could see the player last frame
-    bool bPreviousCanSeePlayer = false;
-    ```
+//Whether the enemy can see the player this frame
+bool bCanSeePlayer = false;
+//Whether the enemy could see the player last frame
+bool bPreviousCanSeePlayer = false;
+```
 
 1.  然后，转到你的类的`Tick`函数实现，并将`bCanSeePlayer`的值设置为`LookAtActor`函数的返回值。这将替换对`LookAtActor`函数的先前调用：
 
 ```cpp
-    // Look at the player character every frame
-    bCanSeePlayer = LookAtActor(PlayerCharacter);
-    ```
+// Look at the player character every frame
+bCanSeePlayer = LookAtActor(PlayerCharacter);
+```
 
 1.  然后，将`bPreviousCanSeePlayer`的值设置为`bCanSeePlayer`的值：
 
 ```cpp
-    bPreviousCanSeePlayer = bCanSeePlayer;
-    ```
+bPreviousCanSeePlayer = bCanSeePlayer;
+```
 
 1.  在前两行之间添加一个`if`语句，检查`bCanSeePlayer`和`bPreviousCanSeePlayer`的值是否不同。这意味着我们上一帧看不到玩家，现在可以看到，或者我们上一帧看到玩家，现在看不到：
 
 ```cpp
-    bCanSeePlayer = LookAtActor(PlayerCharacter);
-    if (bCanSeePlayer != bPreviousCanSeePlayer)
-    {
-    }
-    bPreviousCanSeePlayer = bCanSeePlayer;
-    ```
+bCanSeePlayer = LookAtActor(PlayerCharacter);
+if (bCanSeePlayer != bPreviousCanSeePlayer)
+{
+}
+bPreviousCanSeePlayer = bCanSeePlayer;
+```
 
 1.  在这个`if`语句中，如果我们能看到玩家，我们希望启动一个定时器，如果我们不能再看到玩家，就停止定时器：
 
 ```cpp
-    if (bCanSeePlayer != bPreviousCanSeePlayer)
-    {
-      if (bCanSeePlayer)
-      {
-        //Start throwing dodgeballs
-      }
-      else
-      {
-        //Stop throwing dodgeballs
-      }
-    }
-    ```
+if (bCanSeePlayer != bPreviousCanSeePlayer)
+{
+  if (bCanSeePlayer)
+  {
+    //Start throwing dodgeballs
+  }
+  else
+  {
+    //Stop throwing dodgeballs
+  }
+}
+```
 
 1.  为了启动一个定时器，我们需要在类的头文件中添加以下属性，它们都可以是`protected`：
 
 +   一个`FTimerHandle`属性，负责标识我们要启动的定时器。它基本上作为特定定时器的标识符：
 
 ```cpp
-        FTimerHandle ThrowTimerHandle;
-        ```
+FTimerHandle ThrowTimerHandle;
+```
 
 +   一个`float`属性，表示投掷 dodgeball 之间等待的时间（间隔），以便我们可以循环定时器。我们给它一个默认值`2`秒：
 
 ```cpp
-        float ThrowingInterval = 2.f;
-        ```
+float ThrowingInterval = 2.f;
+```
 
 +   另一个`float`属性，表示定时器开始循环之前的初始延迟。让我们给它一个默认值`0.5`秒：
 
 ```cpp
-        float ThrowingDelay = 0.5f;
-        ```
+float ThrowingDelay = 0.5f;
+```
 
 +   一个在定时器结束时调用的函数，我们将创建并命名为`ThrowDodgeball`。这个函数不返回任何值，也不接收任何参数：
 
 ```cpp
-        void ThrowDodgeball();
-        ```
+void ThrowDodgeball();
+```
 
 在我们的源文件中，为了调用适当的函数启动定时器，我们需要添加一个`#include`到负责这个的对象`FTimerManager`。
 
 每个`World`都有一个定时器管理器，它可以启动和停止定时器，并访问与它们相关的相关函数，比如它们是否仍然活动，它们运行了多长时间等等：
 
 ```cpp
-        #include "TimerManager.h"
-        ```
+#include "TimerManager.h"
+```
 
 1.  现在，使用`GetWorldTimerManager`函数访问当前世界的定时器管理器：
 
 ```cpp
-    GetWorldTimerManager()
-    ```
+GetWorldTimerManager()
+```
 
 1.  接下来，如果我们能看到玩家角色，就调用定时器管理器的`SetTimer`函数，以启动负责投掷躲避球的计时器。`SetTimer`函数接收以下参数：
 
@@ -748,60 +748,60 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 以下代码片段包括这些参数：
 
 ```cpp
-        if (bCanSeePlayer)
-        {
-          //Start throwing dodgeballs
-          GetWorldTimerManager().SetTimer(ThrowTimerHandle,this,  &AEnemyCharacter::ThrowDodgeball,ThrowingInterval,true,  ThrowingDelay);
-        }
-        ```
+if (bCanSeePlayer)
+{
+  //Start throwing dodgeballs
+  GetWorldTimerManager().SetTimer(ThrowTimerHandle,this,  &AEnemyCharacter::ThrowDodgeball,ThrowingInterval,true,  ThrowingDelay);
+}
+```
 
 1.  如果我们看不到玩家并且想要停止计时器，可以使用`ClearTimer`函数来实现。这个函数只需要接收一个`FTimerHandle`属性作为参数：
 
 ```cpp
-    else
-    {
-      //Stop throwing dodgeballs
-      GetWorldTimerManager().ClearTimer(ThrowTimerHandle);
-    }
-    ```
+else
+{
+  //Stop throwing dodgeballs
+  GetWorldTimerManager().ClearTimer(ThrowTimerHandle);
+}
+```
 
 现在唯一剩下的就是实现`ThrowDodgeball`函数。这个函数将负责生成一个新的`DodgeballProjectile`角色。为了做到这一点，我们需要一个引用要生成的类，它必须继承自`DodgeballProjectile`，所以下一步我们需要使用`TSubclassOf`对象创建适当的属性。
 
 1.  在`EnemyCharacter`头文件中创建`TSubclassOf`属性，可以是`public`：
 
 ```cpp
-    //The class used to spawn a dodgeball object
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   Dodgeball)
-    TSubclassOf<class ADodgeballProjectile> DodgeballClass;
-    ```
+//The class used to spawn a dodgeball object
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   Dodgeball)
+TSubclassOf<class ADodgeballProjectile> DodgeballClass;
+```
 
 1.  因为我们将使用`DodgeballProjectile`类，所以我们还需要在`EnemyCharacter`源文件中包含它：
 
 ```cpp
-    #include "DodgeballProjectile.h"
-    ```
+#include "DodgeballProjectile.h"
+```
 
 1.  然后，在源文件中`ThrowDodgeball`函数的实现中，首先检查这个属性是否为`nullptr`。如果是，我们立即`return`：
 
 ```cpp
-    void AEnemyCharacter::ThrowDodgeball()
-    {
-      if (DodgeballClass == nullptr)
-      {
-        return;
-      }
-    }
-    ```
+void AEnemyCharacter::ThrowDodgeball()
+{
+  if (DodgeballClass == nullptr)
+  {
+    return;
+  }
+}
+```
 
 1.  接下来，我们将从该类中生成一个新的角色。它的位置将在敌人前方`40`个单位，旋转角度与敌人相同。为了在敌人前方生成躲避球，我们需要访问敌人的`ForwardVector`属性，这是一个单位`FVector`（*意味着它的长度为 1*），表示角色面对的方向，并将其乘以我们想要生成躲避球的距离，即`40`个单位：
 
 ```cpp
-    FVector ForwardVector = GetActorForwardVector();
-    float SpawnDistance = 40.f;
-    FVector SpawnLocation = GetActorLocation() + (ForwardVector *   SpawnDistance);
-    //Spawn new dodgeball
-    GetWorld()->SpawnActor<ADodgeballProjectile>(DodgeballClass,   SpawnLocation, GetActorRotation());
-    ```
+FVector ForwardVector = GetActorForwardVector();
+float SpawnDistance = 40.f;
+FVector SpawnLocation = GetActorLocation() + (ForwardVector *   SpawnDistance);
+//Spawn new dodgeball
+GetWorld()->SpawnActor<ADodgeballProjectile>(DodgeballClass,   SpawnLocation, GetActorRotation());
+```
 
 这完成了我们需要对`EnemyCharacter`类进行的修改。在完成设置此逻辑的蓝图之前，让我们快速修改一下我们的`DodgeballProjectile`类。
 
@@ -810,13 +810,13 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 1.  在其`BeginPlay`事件中，将其`LifeSpan`设置为`5`秒。这个属性属于所有角色，规定了它们在游戏中还会存在多久才会被销毁。通过在`BeginPlay`事件中将我们的躲避球的`LifeSpan`设置为`5`秒，我们告诉 UE4 在它生成后 5 秒后销毁该对象（*或者，如果它已经放置在关卡中，在游戏开始后 5 秒*）。我们这样做是为了避免在一定时间后地板上充满了躲避球，这会让游戏对玩家来说变得意外困难：
 
 ```cpp
-    void ADodgeballProjectile::BeginPlay()
-    {
-      Super::BeginPlay();
+void ADodgeballProjectile::BeginPlay()
+{
+  Super::BeginPlay();
 
-      SetLifeSpan(5.f);
-    }
-    ```
+  SetLifeSpan(5.f);
+}
+```
 
 现在我们已经完成了与`EnemyCharacter`类的躲避球投掷逻辑相关的 C++逻辑，让我们编译我们的更改，打开编辑器，然后打开我们的`BP_EnemyCharacter`蓝图。在那里，转到`Class Defaults`面板，并将`DodgeballClass`属性的值更改为`BP_DodgeballProjectile`：
 
@@ -867,22 +867,22 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 +   `Header`文件将如下所示：
 
 ```cpp
-        private:
-        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Wall,   meta = (AllowPrivateAccess = "true"))
-        class USceneComponent* RootScene;
-        ```
+private:
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Wall,   meta = (AllowPrivateAccess = "true"))
+class USceneComponent* RootScene;
+```
 
 +   `Source`文件将如下所示：
 
 ```cpp
-        AWall::AWall()
-        {
-          // Set this actor to call Tick() every frame.  You can turn   this off to improve performance if you don't need it.
-          PrimaryActorTick.bCanEverTick = true;
-          RootScene = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-          RootComponent = RootScene;
-        }
-        ```
+AWall::AWall()
+{
+  // Set this actor to call Tick() every frame.  You can turn   this off to improve performance if you don't need it.
+  PrimaryActorTick.bCanEverTick = true;
+  RootScene = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+  RootComponent = RootScene;
+}
+```
 
 1.  编译您的代码并打开编辑器。
 
@@ -967,68 +967,68 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 +   `Header`文件：
 
 ```cpp
-        private:
-        UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   VictoryBox, meta = (AllowPrivateAccess = "true"))
-        class USceneComponent* RootScene;
-        ```
+private:
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   VictoryBox, meta = (AllowPrivateAccess = "true"))
+class USceneComponent* RootScene;
+```
 
 +   `源`文件：
 
 ```cpp
-        AVictoryBox::AVictoryBox()
-        {
-          // Set this actor to call Tick() every frame.  You can turn   this off to improve performance if you don't need it.
-          PrimaryActorTick.bCanEverTick = true;
-          RootScene =   CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-          RootComponent = RootScene;
-        }
-        ```
+AVictoryBox::AVictoryBox()
+{
+  // Set this actor to call Tick() every frame.  You can turn   this off to improve performance if you don't need it.
+  PrimaryActorTick.bCanEverTick = true;
+  RootScene =   CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+  RootComponent = RootScene;
+}
+```
 
 1.  在头文件中声明一个`BoxComponent`，它将检查与玩家角色的重叠事件，也应该是`private`：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   VictoryBox, meta = (AllowPrivateAccess = "true"))
-    class UBoxComponent* CollisionBox;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   VictoryBox, meta = (AllowPrivateAccess = "true"))
+class UBoxComponent* CollisionBox;
+```
 
 1.  在类的源文件中包含`BoxComponent`文件：
 
 ```cpp
-    #include "Components/BoxComponent.h"
-    ```
+#include "Components/BoxComponent.h"
+```
 
 1.  创建`RootScene`组件后，创建`BoxComponent`，它也应该是`private`：
 
 ```cpp
-    RootScene = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-    RootComponent = RootScene;
-    CollisionBox =   CreateDefaultSubobject<UBoxComponent>(TEXT("Collision Box"));
-    ```
+RootScene = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+RootComponent = RootScene;
+CollisionBox =   CreateDefaultSubobject<UBoxComponent>(TEXT("Collision Box"));
+```
 
 1.  使用`SetupAttachment`函数将其附加到`RootComponent`：
 
 ```cpp
-    CollisionBox->SetupAttachment(RootComponent);
-    ```
+CollisionBox->SetupAttachment(RootComponent);
+```
 
 1.  将其`BoxExtent`属性设置为所有轴上的`60`单位。这将使`BoxComponent`的大小加倍为`(120 x 120 x 120)`：
 
 ```cpp
-    CollisionBox->SetBoxExtent(FVector(60.0f, 60.0f, 60.0f));
-    ```
+CollisionBox->SetBoxExtent(FVector(60.0f, 60.0f, 60.0f));
+```
 
 1.  使用`SetRelativeLocation`函数将其相对位置在*Z*轴上偏移`120`单位：
 
 ```cpp
-    CollisionBox->SetRelativeLocation(FVector(0.0f, 0.0f,   120.0f));
-    ```
+CollisionBox->SetRelativeLocation(FVector(0.0f, 0.0f,   120.0f));
+```
 
 1.  现在，你需要一个函数来监听`BoxComponent`的`OnBeginOverlap`事件。每当一个对象进入`BoxComponent`时，这个事件将被调用。这个函数必须在`UFUNCTION`宏之前，是`public`的，不返回任何内容，并具有以下参数：
 
 ```cpp
-    UFUNCTION()
-    void OnBeginOverlap(UPrimitiveComponent* OverlappedComp,   AActor* OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult&   SweepResult);
-    ```
+UFUNCTION()
+void OnBeginOverlap(UPrimitiveComponent* OverlappedComp,   AActor* OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult&   SweepResult);
+```
 
 参数如下：
 
@@ -1055,37 +1055,37 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 1.  接下来，我们需要将这个函数绑定到`BoxComponent`的`OnComponentBeginOverlap`事件上：
 
 ```cpp
-    CollisionBox->OnComponentBeginOverlap.AddDynamic(this,   &AVictoryBox::OnBeginOverlap);
-    ```
+CollisionBox->OnComponentBeginOverlap.AddDynamic(this,   &AVictoryBox::OnBeginOverlap);
+```
 
 1.  在我们的`OnBeginOverlap`函数实现中，我们将检查我们重叠的角色是否是`DodgeballCharacter`。因为我们将引用这个类，所以我们也需要包括它：
 
 ```cpp
-    #include "DodgeballCharacter.h" 
-    void AVictoryBox::OnBeginOverlap(UPrimitiveComponent *   OverlappedComp, AActor * OtherActor, UPrimitiveComponent *   OtherComp, int32 OtherBodyIndex, bool bFromSweep, const   FHitResult & SweepResult)
-    {
-      if (Cast<ADodgeballCharacter>(OtherActor))
-      {
-      }
-    }
-    ```
+#include "DodgeballCharacter.h" 
+void AVictoryBox::OnBeginOverlap(UPrimitiveComponent *   OverlappedComp, AActor * OtherActor, UPrimitiveComponent *   OtherComp, int32 OtherBodyIndex, bool bFromSweep, const   FHitResult & SweepResult)
+{
+  if (Cast<ADodgeballCharacter>(OtherActor))
+  {
+  }
+}
+```
 
 如果我们重叠的角色是`DodgeballCharacter`，我们想要退出游戏。
 
 1.  我们将使用`KismetSystemLibrary`来实现这个目的。`KismetSystemLibrary`类包含了在项目中通用使用的有用函数：
 
 ```cpp
-    #include "Kismet/KismetSystemLibrary.h"
-    ```
+#include "Kismet/KismetSystemLibrary.h"
+```
 
 1.  为了退出游戏，我们将调用`KismetSystemLibrary`的`QuitGame`函数。这个函数接收以下内容：
 
 ```cpp
-    UKismetSystemLibrary::QuitGame(GetWorld(),
-      nullptr,
-      EQuitPreference::Quit,
-      true);
-    ```
+UKismetSystemLibrary::QuitGame(GetWorld(),
+  nullptr,
+  EQuitPreference::Quit,
+  true);
+```
 
 前面代码片段中的重要参数解释如下：
 
@@ -1142,11 +1142,11 @@ GetWorld()->SpawnActor<NameOfC++Class>(ClassReference,   SpawnLocation, SpawnRot
 1.  添加一个名为`GetProjectileMovementComponent`的新`public`函数。这个函数将是一个内联函数，在 UE4 的 C++版本中用`FORCEINLINE`宏替换。该函数还应返回一个`UProjectileMovementComponent*`并且是一个`const`函数：
 
 ```cpp
-    FORCEINLINE class UProjectileMovementComponent*   GetProjectileMovementComponent() const
-    {
-      return ProjectileMovement;
-    }
-    ```
+FORCEINLINE class UProjectileMovementComponent*   GetProjectileMovementComponent() const
+{
+  return ProjectileMovement;
+}
+```
 
 注意
 

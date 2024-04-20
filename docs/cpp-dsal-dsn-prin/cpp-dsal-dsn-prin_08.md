@@ -272,168 +272,168 @@ x = 25 —> False
 1.  让我们首先包括以下标头（以及`std`命名空间以方便起见）：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <algorithm>
-    using namespace std;
-    ```
+#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+```
 
 1.  此外，让我们定义一个名为`DEBUG`的预处理器常量和一个名为`PRINT`的宏，它将仅在`DEBUG`不为零时打印到`stderr`：
 
 ```cpp
-    #define DEBUG 0
-    #if DEBUG
-    #define PRINT(x) cerr << x
-    #else
-    #define PRINT(x) 
-    #endif
-    ```
+#define DEBUG 0
+#if DEBUG
+#define PRINT(x) cerr << x
+#else
+#define PRINT(x) 
+#endif
+```
 
 1.  现在，我们将声明一个新函数`SubsetSum_BruteForce（）`，它接受两个参数 - 一个整数数组`set`和一个整数`sum` - 并返回一个布尔值：
 
 ```cpp
-    bool SubsetSum_BruteForce(vector<int> set, int sum)
-    {
-        ……
-    }
-    ```
+bool SubsetSum_BruteForce(vector<int> set, int sum)
+{
+    ……
+}
+```
 
 1.  现在，让我们声明另一个函数`GetAllSubsets（）`，它接受四个参数 - 两个整数向量`set`和`subset`；一个整数`index`；和一个名为`allSubsets`的三维整数向量（通过引用传递）。我们将使用此函数递归地生成*S*的所有子集：
 
 ```cpp
-    void GetAllSubsets(vector<int> set, vector<int> subset, int index, vector<vector<vector<int>>> &allSubsets)
-    {    
-        // Terminate if the end of the set is reached
-        if(index == set.size()) 
-        {
-            // Add the accumulated subset to the results, indexed by size
-            allSubsets[subset.size()].push_back(subset);
-            return;
-        }
-        // Continue without adding element to subset
-        GetAllSubsets(set, subset, index + 1, allSubsets);
-        // Add element to subset
-        subset.push_back(set[index]);
-        GetAllSubsets(set, subset, index + 1, allSubsets);
-    }
-    ```
+void GetAllSubsets(vector<int> set, vector<int> subset, int index, vector<vector<vector<int>>> &allSubsets)
+{    
+    // Terminate if the end of the set is reached
+    if(index == set.size()) 
+    {
+        // Add the accumulated subset to the results, indexed by size
+        allSubsets[subset.size()].push_back(subset);
+        return;
+    }
+    // Continue without adding element to subset
+    GetAllSubsets(set, subset, index + 1, allSubsets);
+    // Add element to subset
+    subset.push_back(set[index]);
+    GetAllSubsets(set, subset, index + 1, allSubsets);
+}
+```
 
 1.  回到我们的`SubsetSum_BruteForce（）`函数，我们现在可以声明`allSubsets`并调用该函数：
 
 ```cpp
-    bool SubsetSum_BruteForce(vector<int> set, int target)
-    {
-        vector<vector<vector<int>>> allSubsets(set.size() + 1);
+bool SubsetSum_BruteForce(vector<int> set, int target)
+{
+    vector<vector<vector<int>>> allSubsets(set.size() + 1);
 
-        GetAllSubsets(set, {}, 0, allSubsets);
+    GetAllSubsets(set, {}, 0, allSubsets);
 
-        ……
-    ```
+    ……
+```
 
 1.  现在，我们可以遍历每个子集并将其总和与`target`进行比较，如果找到匹配，则返回`true`：
 
 ```cpp
-    for(int size = 0; size <= set.size(); size++)
-    {
-        PRINT("SIZE = " << size << endl);
-        for(auto subset : allSubsets[size])
-        {
-            int sum = 0;
-            PRINT("\t{ ");
-            for(auto number : subset)
-            {
-                    PRINT(number << " ");
-                    sum += number;
-            }
-            PRINT("} = " << sum << endl);
-            if(sum == target) return true;
-        }
-    }
-    ```
+for(int size = 0; size <= set.size(); size++)
+{
+    PRINT("SIZE = " << size << endl);
+    for(auto subset : allSubsets[size])
+    {
+        int sum = 0;
+        PRINT("\t{ ");
+        for(auto number : subset)
+        {
+                PRINT(number << " ");
+                sum += number;
+        }
+        PRINT("} = " << sum << endl);
+        if(sum == target) return true;
+    }
+}
+```
 
 1.  如果在检查每个子集后找不到匹配的和，我们返回`false`：
 
 ```cpp
-        ……
-        return false;
-    }
-    ```
+    ……
+    return false;
+}
+```
 
 1.  现在，在`main（）`函数中，让我们定义我们的集合和目标如下：
 
 ```cpp
-    int main()
-    {
-        vector<int> set = { 13, 79, 45, 29 };
-        int target = 58;
-        ……
-    }
-    ```
+int main()
+{
+    vector<int> set = { 13, 79, 45, 29 };
+    int target = 58;
+    ……
+}
+```
 
 1.  我们现在可以这样调用`SubsetSum_BruteForce（）`与这些输入：
 
 ```cpp
-    bool found = SubsetSum_BruteForce(set, target);
-    if(found)
-    {
-        cout << "Subset with sum " << target << " was found in the set." << endl;
-    }
-    else 
-    {
-        cout << "Subset with sum " << target << " was not found in the set." << endl;
-    }
-    ```
+bool found = SubsetSum_BruteForce(set, target);
+if(found)
+{
+    cout << "Subset with sum " << target << " was found in the set." << endl;
+}
+else 
+{
+    cout << "Subset with sum " << target << " was not found in the set." << endl;
+}
+```
 
 1.  运行上述代码后，您应该看到以下输出：
 
 ```cpp
-    Subset with sum 58 was found in the set.
-    ```
+Subset with sum 58 was found in the set.
+```
 
 1.  现在，让我们将`target`设置为一个集合中找不到的和：
 
 ```cpp
-    int target = 1000000;
-    ```
+int target = 1000000;
+```
 
 1.  再次运行程序应该产生以下输出：
 
 ```cpp
-    Subset with sum 1000000 was not found in the set.
-    ```
+Subset with sum 1000000 was not found in the set.
+```
 
 1.  最后，让我们将我们的`DEBUG`常量重新定义为 1：
 
 ```cpp
-    #define DEBUG 1
-    ```
+#define DEBUG 1
+```
 
 1.  现在运行程序将产生以下输出：
 
 ```cpp
-    SIZE = 0
-        { } = 0
-    SIZE = 1
-        { 29 } = 29
-        { 45 } = 45
-        { 79 } = 79
-        { 13 } = 13
-    SIZE = 2
-        { 45 29 } = 74
-        { 79 29 } = 108
-        { 79 45 } = 124
-        { 13 29 } = 42
-        { 13 45 } = 58
-        { 13 79 } = 92
-    SIZE = 3
-        { 79 45 29 } = 153
-        { 13 45 29 } = 87
-        { 13 79 29 } = 121
-        { 13 79 45 } = 137
-    SIZE = 4
-        { 13 79 45 29 } = 166
-    Subset with sum 1000000 was not found in the set.
-    ```
+SIZE = 0
+    { } = 0
+SIZE = 1
+    { 29 } = 29
+    { 45 } = 45
+    { 79 } = 79
+    { 13 } = 13
+SIZE = 2
+    { 45 29 } = 74
+    { 79 29 } = 108
+    { 79 45 } = 124
+    { 13 29 } = 42
+    { 13 45 } = 58
+    { 13 79 } = 92
+SIZE = 3
+    { 79 45 29 } = 153
+    { 13 45 29 } = 87
+    { 13 79 29 } = 121
+    { 13 79 45 } = 137
+SIZE = 4
+    { 13 79 45 29 } = 166
+Subset with sum 1000000 was not found in the set.
+```
 
 因此，我们能够使用蛮力方法找到所需的子集。请注意，我们基本上是尝试找到解决方案的每种可能性。在下一节中，我们将对其进行一层优化。
 
@@ -544,131 +544,131 @@ for element of set at index i and its sum as sum:
 1.  为了实现子集和问题的回溯解决方案，我们定义一个名为`SubsetSum_Backtracking()`的函数，如下所示：
 
 ```cpp
-    bool SubsetSum_Backtracking(vector<int> &set, int sum, int i) 
-    {
-        ……
-    }
-    ```
+bool SubsetSum_Backtracking(vector<int> &set, int sum, int i) 
+{
+    ……
+}
+```
 
 1.  在递归函数中经常这样，我们在一开始就定义了基本情况：
 
 ```cpp
-    // The sum has been found
-    if(sum == 0)
-    {
-        return true;
-    }
-    // End of set is reached, or sum would be exceeded beyond this point
-    if(i == set.size() || set[i] > sum)
-    {
-        return false;
-    }
-    ```
+// The sum has been found
+if(sum == 0)
+{
+    return true;
+}
+// End of set is reached, or sum would be exceeded beyond this point
+if(i == set.size() || set[i] > sum)
+{
+    return false;
+}
+```
 
 1.  在每一步，我们的选择是将当前元素的值加到总和中，或者保持总和不变。我们可以将这个逻辑压缩成一行，如下所示：
 
 ```cpp
-    // Case 1: Add to sum
-    // Case 2: Leave as-is 
-    return SubsetSum_Backtracking(set, sum – set[i], i + 1) 
-        || SubsetSum_Backtracking(set, sum, i + 1); 
-    ```
+// Case 1: Add to sum
+// Case 2: Leave as-is 
+return SubsetSum_Backtracking(set, sum – set[i], i + 1) 
+    || SubsetSum_Backtracking(set, sum, i + 1); 
+```
 
 1.  回到`main`，让我们对集合进行排序，并在调用`SubsetSum_BruteForce()`之后添加我们对`SubsetSum_Backtracking()`的调用：
 
 ```cpp
-    sort(set.begin(), set.end());
-    bool found;
+sort(set.begin(), set.end());
+bool found;
 
-    found = SubsetSum_BruteForce(set, target);
-    found = SubsetSum_Backtracking(set, target, 0); 
-    ```
+found = SubsetSum_BruteForce(set, target);
+found = SubsetSum_Backtracking(set, target, 0); 
+```
 
 1.  为了测试，我们将实现一个函数，它将显示每种方法找到解决方案所花费的时间。首先，我们需要包含`<time.h>`和`<iomanip>`头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <algorithm> 
-    #include <time.h>
-    #include <iomanip>
-    ```
+#include <iostream>
+#include <vector>
+#include <algorithm> 
+#include <time.h>
+#include <iomanip>
+```
 
 1.  我们还将定义一个名为`types`的字符串数组，我们将用它来标记每种方法的结果：
 
 ```cpp
-    vector<string> types = 
-    {
-        "BRUTE FORCE",
-        "BACKTRACKING",
-        "MEMOIZATION",
-        "TABULATION"
-    };
-    const int UNKNOWN = INT_MAX;
-    ```
+vector<string> types = 
+{
+    "BRUTE FORCE",
+    "BACKTRACKING",
+    "MEMOIZATION",
+    "TABULATION"
+};
+const int UNKNOWN = INT_MAX;
+```
 
 1.  现在，我们将编写另一个函数`GetTime()`，它接受一个名为`timer`的`clock_t`对象的引用和一个`string`类型，然后返回`void`：
 
 ```cpp
-    void GetTime(clock_t &timer, string type)
-    {
-        // Subtract timer value from current time to get time elapsed
-        timer = clock() - timer;
-        // Display seconds elapsed
-        cout << "TIME TAKEN USING " << type << ": " << fixed << setprecision(5) << (float)timer / CLOCKS_PER_SEC << endl; 
+void GetTime(clock_t &timer, string type)
+{
+    // Subtract timer value from current time to get time elapsed
+    timer = clock() - timer;
+    // Display seconds elapsed
+    cout << "TIME TAKEN USING " << type << ": " << fixed << setprecision(5) << (float)timer / CLOCKS_PER_SEC << endl; 
 
-        timer = clock(); // Reset timer 
-    }
-    ```
+    timer = clock(); // Reset timer 
+}
+```
 
 1.  现在，让我们重写`main()`函数，以便我们可以依次执行每个函数调用并比较每种方法所花费的时间：
 
 ```cpp
-    int main()
-    {
-        vector<int> set = { 13, 79, 45, 29 };
-        int target = 58;
-        int tests = 2;
-        clock timer = clock();
-        sort(set.begin(), set.end());
-        for(int i = 0; i < tests; i++)
-        {
-            bool found;
-            switch(i)
-            {
-                case 0: found = SubsetSum_BruteForce(set, target); break;
-                case 1: found = SubsetSum_Backtracking(set, target, 0); break;
-            }
-            if(found)
-            {
-                cout << "Subset with sum " << target << " was found in the set." << endl;
-            }
-            else 
-            {
-                cout << "Subset with sum " << target << " was not found in the set." << endl;
-            }    
-            GetTime(timer, types[i]);
-            cout << endl;
-        }
-        return 0;
-    }
-    ```
+int main()
+{
+    vector<int> set = { 13, 79, 45, 29 };
+    int target = 58;
+    int tests = 2;
+    clock timer = clock();
+    sort(set.begin(), set.end());
+    for(int i = 0; i < tests; i++)
+    {
+        bool found;
+        switch(i)
+        {
+            case 0: found = SubsetSum_BruteForce(set, target); break;
+            case 1: found = SubsetSum_Backtracking(set, target, 0); break;
+        }
+        if(found)
+        {
+            cout << "Subset with sum " << target << " was found in the set." << endl;
+        }
+        else 
+        {
+            cout << "Subset with sum " << target << " was not found in the set." << endl;
+        }    
+        GetTime(timer, types[i]);
+        cout << endl;
+    }
+    return 0;
+}
+```
 
 1.  最后，让我们重新定义我们的输入，以突出两种方法之间效率的差异：
 
 ```cpp
-    vector<int> set = { 16, 1058, 22, 13, 46, 55, 3, 92, 47, 7, 98, 367, 807, 106, 333, 85, 577, 9, 3059 };
-    int target = 6076;
-    ```
+vector<int> set = { 16, 1058, 22, 13, 46, 55, 3, 92, 47, 7, 98, 367, 807, 106, 333, 85, 577, 9, 3059 };
+int target = 6076;
+```
 
 1.  您的输出将产生类似以下内容的东西：
 
 ```cpp
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING BRUTE FORCE: 0.89987
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING BACKTRACKING: 0.00078
-    ```
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING BRUTE FORCE: 0.89987
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING BACKTRACKING: 0.00078
+```
 
 #### 注意
 
@@ -734,83 +734,83 @@ Sum of { 1 2 3 } = 6
 1.  我们现在将创建另一个名为`SubsetSum_Memoization()`的函数。这个函数的定义将与`SubsetSub_Backtracking()`完全相同，只是它将包括对名为`memo`的二维整数向量的引用：
 
 ```cpp
-    bool SubsetSum_Memoization(vector<int> &set, int sum, int         i, vector<vector<int>> &memo)
-    {
-        ……
-    }
-    ```
+bool SubsetSum_Memoization(vector<int> &set, int sum, int         i, vector<vector<int>> &memo)
+{
+    ……
+}
+```
 
 1.  这个函数的大部分代码看起来与回溯法的方法非常相似。例如，我们的基本情况将与以前定义的完全相同：
 
 ```cpp
-    if(sum == 0)
-    {
-        return true;
-    }
-    if(i == set.size() || set[i] > sum)
-    {
-        return false;
-    }
-    ```
+if(sum == 0)
+{
+    return true;
+}
+if(i == set.size() || set[i] > sum)
+{
+    return false;
+}
+```
 
 1.  现在，关键的区别在于，在基本情况之后，我们不是立即调查下两种状态，而是检查`memo`表以获取缓存的结果：
 
 ```cpp
-    // Is this state's solution cached?
-    if(memo[i][sum] == UNKNOWN)
-    {
-        // If not, find the solution for this state and cache it
-        bool append = SubsetSum_Memoization(set, sum - set[i], i + 1, memo);
-        bool ignore = SubsetSum_Memoization(set, sum, i + 1, memo);
-        memo[i][sum] = append || ignore;
-    }
-    // Return cached value
-    return memo[i][sum];
-    ```
+// Is this state's solution cached?
+if(memo[i][sum] == UNKNOWN)
+{
+    // If not, find the solution for this state and cache it
+    bool append = SubsetSum_Memoization(set, sum - set[i], i + 1, memo);
+    bool ignore = SubsetSum_Memoization(set, sum, i + 1, memo);
+    memo[i][sum] = append || ignore;
+}
+// Return cached value
+return memo[i][sum];
+```
 
 1.  现在，我们应该在`main()`函数中插入对`SubsetSum_Memoization()`的调用：
 
 ```cpp
-    int tests = 3;
-    for(int i = 0; i < tests; i++)
-    {
-        bool found;
-        switch(i)
-        {
-            case 0: found = SubsetSum_BruteForce(set, target); break;
-            case 1: found = SubsetSum_Backtracking(set, target, 0); break;
-            case 2:
-            {
-                // Initialize memoization table
-                vector<vector<int>> memo(set.size(), vector<int>(7000, UNKNOWN));
-                found = SubsetSum_Memoization(set, target, 0, memo);
-                break;
-            }
-        }
+int tests = 3;
+for(int i = 0; i < tests; i++)
+{
+    bool found;
+    switch(i)
+    {
+        case 0: found = SubsetSum_BruteForce(set, target); break;
+        case 1: found = SubsetSum_Backtracking(set, target, 0); break;
+        case 2:
+        {
+            // Initialize memoization table
+            vector<vector<int>> memo(set.size(), vector<int>(7000, UNKNOWN));
+            found = SubsetSum_Memoization(set, target, 0, memo);
+            break;
+        }
+    }
 
-        if(found)
-        {
-            cout << "Subset with sum " << target << " was found in the set." << endl;
-        }
-        else
-        {
-            cout << "Subset with sum " << target << " was not found in the set." << endl;
-        }
-        GetTime(timer, types[i]);
-        cout << endl;
-    }
-    ```
+    if(found)
+    {
+        cout << "Subset with sum " << target << " was found in the set." << endl;
+    }
+    else
+    {
+        cout << "Subset with sum " << target << " was not found in the set." << endl;
+    }
+    GetTime(timer, types[i]);
+    cout << endl;
+}
+```
 
 1.  现在，让我们将`target`定义为`6799`并运行我们的代码。您应该看到类似于这样的输出：
 
 ```cpp
-    Subset with sum 6799 was not found in the set.
-    TIME TAKEN USING BRUTE FORCE: 1.00100
-    Subset with sum 6799 was not found in the set.
-    TIME TAKEN USING BACKTRACKING: 0.26454
-    Subset with sum 6799 was not found in the set.
-    TIME TAKEN USING MEMOIZATION: 0.00127
-    ```
+Subset with sum 6799 was not found in the set.
+TIME TAKEN USING BRUTE FORCE: 1.00100
+Subset with sum 6799 was not found in the set.
+TIME TAKEN USING BACKTRACKING: 0.26454
+Subset with sum 6799 was not found in the set.
+TIME TAKEN USING MEMOIZATION: 0.00127
+```
 
 #### 注意
 
@@ -913,101 +913,101 @@ factorial[n] = factorial[n – 1] * n;
 1.  我们将定义一个名为`SubsetSum_Tabulation()`的新函数，该函数以整数向量`set`作为参数并返回一个二维布尔向量：
 
 ```cpp
-    vector<vector<bool>> SubsetSum_Tabulation(vector<int> set)
-    {
-        ……
-    }
-    ```
+vector<vector<bool>> SubsetSum_Tabulation(vector<int> set)
+{
+    ……
+}
+```
 
 1.  我们声明一个名为`DP`的二维布尔向量。第一维的大小应该等于`set`的长度，第二维的大小应该等于集合中可能的最高子集和（即所有元素的总和）加一。DP 的每个值都应初始化为`false`，除了基本情况（即总和等于零）：
 
 ```cpp
-    int maxSum = 0;
-    for(auto num : set) 
-    {
-        maxSum += num;
-    }
-    vector<vector<bool>> DP(set.size() + 1, vector<bool>(maxSum + 1, false));
-    for(int i = 0; i < set.size(); i++)
-    {
-        // Base case — a subset sum of 0 can be found at any index
-        DP[i][0] = true;
-    }
-    ```
+int maxSum = 0;
+for(auto num : set) 
+{
+    maxSum += num;
+}
+vector<vector<bool>> DP(set.size() + 1, vector<bool>(maxSum + 1, false));
+for(int i = 0; i < set.size(); i++)
+{
+    // Base case — a subset sum of 0 can be found at any index
+    DP[i][0] = true;
+}
+```
 
 1.  现在，我们遍历两个嵌套的`for`循环，对应于`DP`表的第一维和第二维：
 
 ```cpp
-    for(int i = 1; i <= set.size(); i++)
-    {
-        for(int sum = 1; sum <= maxSum; sum++)
-        {
-            ……
-        }
-    }
-    ```
+for(int i = 1; i <= set.size(); i++)
+{
+    for(int sum = 1; sum <= maxSum; sum++)
+    {
+        ……
+    }
+}
+```
 
 1.  现在，使用以下代码填充表：
 
 ```cpp
-    for(int i = 1; i <= set.size(); i++)
-    {
-        for(int sum = 1; sum <= maxSum; sum++)
-        {
-            if(sum < set[i-1])
-            {
-                DP[i][sum] = DP[i-1][sum];
-            }
-            else
-            {
-                DP[i][sum] = DP[i-1][sum]
-                        || DP[i-1][sum – set[i-1]];
-            }
-        }
-    }
-    return DP;
-    ```
+for(int i = 1; i <= set.size(); i++)
+{
+    for(int sum = 1; sum <= maxSum; sum++)
+    {
+        if(sum < set[i-1])
+        {
+            DP[i][sum] = DP[i-1][sum];
+        }
+        else
+        {
+            DP[i][sum] = DP[i-1][sum]
+                    || DP[i-1][sum – set[i-1]];
+        }
+    }
+}
+return DP;
+```
 
 1.  现在，我们再次修改`main()`函数以包括我们的表格化解决方案：
 
 ```cpp
-    int main()
-    {
-        vector<int> set = { 16, 1058, 22, 13, 46, 55, 3, 92, 47, 7, 98, 367, 807, 106, 333, 85, 577, 9, 3059 };
-        int target = 6076
-        int tests = 4;
-        clock_t timer = clock();
-        sort(set.begin(), set.end());
-        for(int i = 0; i < tests; i++)
-        {
-            bool found;
-            switch(i)
-            {
-                ……
-                case 3:
-                {
-                    vector<vector<bool>> DP = SubsetSum_Tabulation(set);
-                    found = DP[set.size()][target];
-                    break;
-                }
-            }
-        }
-        ……
-    }
-    ```
+int main()
+{
+    vector<int> set = { 16, 1058, 22, 13, 46, 55, 3, 92, 47, 7, 98, 367, 807, 106, 333, 85, 577, 9, 3059 };
+    int target = 6076
+    int tests = 4;
+    clock_t timer = clock();
+    sort(set.begin(), set.end());
+    for(int i = 0; i < tests; i++)
+    {
+        bool found;
+        switch(i)
+        {
+            ……
+            case 3:
+            {
+                vector<vector<bool>> DP = SubsetSum_Tabulation(set);
+                found = DP[set.size()][target];
+                break;
+            }
+        }
+    }
+    ……
+}
+```
 
 1.  您应该看到类似于这里显示的输出：
 
 ```cpp
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING BRUTE FORCE: 0.95602
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING BACKTRACKING: 0.00082
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING MEMOIZATION: 0.00058
-    Subset with sum 6076 was found in the set.
-    TIME TAKEN USING TABULATION: 0.00605
-    ```
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING BRUTE FORCE: 0.95602
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING BACKTRACKING: 0.00082
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING MEMOIZATION: 0.00058
+Subset with sum 6076 was found in the set.
+TIME TAKEN USING TABULATION: 0.00605
+```
 
 #### 注意
 
@@ -1016,33 +1016,33 @@ factorial[n] = factorial[n – 1] * n;
 1.  正如我们所看到的，表格化解决方案所花费的时间比备忘录和回溯解决方案都要长。然而，使用`SubsetSum_Tabulation()`返回的 DP 表，我们可以使用以下代码找到每个可能的子集和：
 
 ```cpp
-    int total = 0;
-    for(auto num : set) 
-    {
-        total += num;
-    }
-    vector<vector<bool>> DP = SubsetSum_Tabulation(set);
-    vector<int> subsetSums;
-    for(int sum = 1; sum <= total; sum++)
-    {
-        if(DP[set.size()][sum])
-        {
-            subsetSums.push_back(sum);
-        }
-    }
-    cout << "The set contains the following " << subsetSums.size() << " subset sums: ";
-    for(auto sum : subsetSums) 
-    {
-        cout << sum << " ";
-    }
-    cout << endl; 
-    ```
+int total = 0;
+for(auto num : set) 
+{
+    total += num;
+}
+vector<vector<bool>> DP = SubsetSum_Tabulation(set);
+vector<int> subsetSums;
+for(int sum = 1; sum <= total; sum++)
+{
+    if(DP[set.size()][sum])
+    {
+        subsetSums.push_back(sum);
+    }
+}
+cout << "The set contains the following " << subsetSums.size() << " subset sums: ";
+for(auto sum : subsetSums) 
+{
+    cout << sum << " ";
+}
+cout << endl; 
+```
 
 1.  这个输出应该以这样开始和结束：
 
 ```cpp
-    The set contains the following 6760 subset sums: 3 7 9 10 12 13 16 19 20 22 …… 6790 6791 6793 6797 6800
-    ```
+The set contains the following 6760 subset sums: 3 7 9 10 12 13 16 19 20 22 …… 6790 6791 6793 6797 6800
+```
 
 因此，我们已经优化了解决方案，并且还获得了所有状态的总和值。
 
@@ -1365,140 +1365,140 @@ Otherwise:
 1.  首先包括以下头文件，并定义我们在上一章中使用的`DEBUG`和`PRINT`宏：
 
 ```cpp
-    #include <iostream>
-    #include <time.h>
-    #include <iomanip>
-    #include <algorithm>
-    #include <utility>
-    #include <vector>
-    #include <strings.h>
-    #define DEBUG 1
-    #if DEBUG
-    #define PRINT(x) cerr << x
-    #else 
-    #define PRINT(x)
-    #endif
-    using namespace std;
-    ```
+#include <iostream>
+#include <time.h>
+#include <iomanip>
+#include <algorithm>
+#include <utility>
+#include <vector>
+#include <strings.h>
+#define DEBUG 1
+#if DEBUG
+#define PRINT(x) cerr << x
+#else 
+#define PRINT(x)
+#endif
+using namespace std;
+```
 
 1.  定义一个名为`LCS_BruteForce()`的函数，该函数接受以下参数 - 两个字符串`A`和`B`，两个整数`i`和`j`，以及一个整数对的向量`subsequence` - 并返回一个整数。在这个函数之上，我们还将声明一个具有全局范围的二维整数对向量，即`found`：
 
 ```cpp
-    vector<vector<pair<int, int>>> found;
-    int LCS_BruteForce(string A, string B, int i, int j, vector<pair<int, int>> subsequence)
-    {
-        ……
-    }
-    ```
+vector<vector<pair<int, int>>> found;
+int LCS_BruteForce(string A, string B, int i, int j, vector<pair<int, int>> subsequence)
+{
+    ……
+}
+```
 
 1.  `A`和`B`当然是我们要比较的字符串，`i`和`j`分别表示我们在`A`和`B`中的当前位置，`subsequence`是形成每个公共子序列的索引对的集合，它将在`found`中收集以进行输出。
 
 由于我们已经有了伪代码可以使用，我们可以通过简单地将伪代码的每一行插入到我们的函数中作为注释，并在其下面将其翻译成 C++代码来相对容易地实现我们的函数：
 
 ```cpp
-    // If i exceeds length of A, or j exceeds length of B:
-    if(i >= A.size() || j >= B.size())
-    {
-        found.push_back(subsequence);
-        //Terminate recursion and return length of subsequence
-        return subsequence.size();
-    }
-    // if A[i] = B[j]:
-    if(A[i] == B[j])
-    {
-        // Increase length of subsequence by 1
-        subsequence.push_back({ i, j });
-        // Increment both i and j by 1 
-        return LCS_BruteForce(A, B, i + 1, j + 1, subsequence);
-    }    
-    /*
-        Option 1) Explore further possibilities with i + 1, and j        
-        Option 2) Explore further possibilities with i, and j + 1
-        LCS from this state is equal to maximum value of Option 1 and Option 2
-    */
-    return max(LCS_BruteForce(A, B, i + 1, j, subsequence),
-             LCS_BruteForce(A, B, i, j + 1, subsequence));
-    ```
+// If i exceeds length of A, or j exceeds length of B:
+if(i >= A.size() || j >= B.size())
+{
+    found.push_back(subsequence);
+    //Terminate recursion and return length of subsequence
+    return subsequence.size();
+}
+// if A[i] = B[j]:
+if(A[i] == B[j])
+{
+    // Increase length of subsequence by 1
+    subsequence.push_back({ i, j });
+    // Increment both i and j by 1 
+    return LCS_BruteForce(A, B, i + 1, j + 1, subsequence);
+}    
+/*
+    Option 1) Explore further possibilities with i + 1, and j        
+    Option 2) Explore further possibilities with i, and j + 1
+    LCS from this state is equal to maximum value of Option 1 and Option 2
+*/
+return max(LCS_BruteForce(A, B, i + 1, j, subsequence),
+         LCS_BruteForce(A, B, i, j + 1, subsequence));
+```
 
 1.  在`main()`中，我们将以两个字符串的形式接收输入，然后调用我们的函数：
 
 ```cpp
-    int main() 
-    {
-        string A, B;
-        cin >> A >> B;
-        int LCS = LCS_BruteForce(A, B, 0, 0, {}); 
-        cout << "Length of the longest common subsequence of " << A << " and " << B << " is: " << LCS << endl;
-        …    
-    }
-    ```
+int main() 
+{
+    string A, B;
+    cin >> A >> B;
+    int LCS = LCS_BruteForce(A, B, 0, 0, {}); 
+    cout << "Length of the longest common subsequence of " << A << " and " << B << " is: " << LCS << endl;
+    …    
+}
+```
 
 1.  就像我们在上一章中所做的那样，如果`DEBUG`没有设置为`0`，我们还将输出找到的子序列到`stderr`。然而，由于这个问题的复杂性更大，我们将把这个输出放在一个单独的函数`PrintSubsequences()`中：
 
 ```cpp
-    void PrintSubsequences(string A, string B)
-    {
-        // Lambda function for custom sorting logic
-        sort(found.begin(), found.end(), [](auto a, auto b)
-        {
-            // First sort subsequences by length
-            if(a.size() != b.size())
-            {
-                return a.size() < b.size();
-            }
-            // Sort subsequences of same size by lexicographical order of index
-            return a < b;
-        });
-        // Remove duplicates 
-        found.erase(unique(found.begin(), found.end()), found.end());
-        int previousSize = 0;
-        for(auto subsequence : found)
-        {
-            if(subsequence.size() != previousSize)
-            {
-                previousSize = subsequence.size();
-                PRINT("SIZE = " << previousSize << endl);
-            }
-            // Fill with underscores as placeholder characters
-            string a_seq(A.size(), '_');
-            string b_seq(B.size(), '_');
-            for(auto pair : subsequence)
-            {
-                // Fill in the blanks with the characters of each string that are part of the subsequence
-                a_seq[pair.first] = A[pair.first];
-                b_seq[pair.second] = B[pair.second];
-            }
-            PRINT("\t" << a_seq << " | " << b_seq << endl);
-        }
-    }
-    ```
+void PrintSubsequences(string A, string B)
+{
+    // Lambda function for custom sorting logic
+    sort(found.begin(), found.end(), [](auto a, auto b)
+    {
+        // First sort subsequences by length
+        if(a.size() != b.size())
+        {
+            return a.size() < b.size();
+        }
+        // Sort subsequences of same size by lexicographical order of index
+        return a < b;
+    });
+    // Remove duplicates 
+    found.erase(unique(found.begin(), found.end()), found.end());
+    int previousSize = 0;
+    for(auto subsequence : found)
+    {
+        if(subsequence.size() != previousSize)
+        {
+            previousSize = subsequence.size();
+            PRINT("SIZE = " << previousSize << endl);
+        }
+        // Fill with underscores as placeholder characters
+        string a_seq(A.size(), '_');
+        string b_seq(B.size(), '_');
+        for(auto pair : subsequence)
+        {
+            // Fill in the blanks with the characters of each string that are part of the subsequence
+            a_seq[pair.first] = A[pair.first];
+            b_seq[pair.second] = B[pair.second];
+        }
+        PRINT("\t" << a_seq << " | " << b_seq << endl);
+    }
+}
+```
 
 1.  然后我们可以在`main()`中调用这个函数，指定只有在`DEBUG`设置为`1`时才应该被忽略：
 
 ```cpp
-    int main()
-    {
-        ……
-    #if DEBUG
-        PrintSubsequences();
-    #endif
-        return 0;
-    }
-    ```
+int main()
+{
+    ……
+#if DEBUG
+    PrintSubsequences();
+#endif
+    return 0;
+}
+```
 
 1.  将`DEBUG`设置为`1`，并使用`ABCX`和`ACYXB`作为输入应该产生以下输出：
 
 ```cpp
-    Length of the longest common subsequence of ABCX and ACYXB is: 3
-    SIZE = 1
-        A___ A____
-    SIZE = 2
-        AB__ A___B
-        A_C_ AC___
-        A__X A__X_
-    SIZE = 3
-        A_CX AC_X_
-    ```
+Length of the longest common subsequence of ABCX and ACYXB is: 3
+SIZE = 1
+    A___ A____
+SIZE = 2
+    AB__ A___B
+    A_C_ AC___
+    A__X A__X_
+SIZE = 3
+    A_CX AC_X_
+```
 
 这个输出显示了所有可能的子序列对的组合。让我们在下一节中分析这个输出，并努力优化我们的解决方案。
 

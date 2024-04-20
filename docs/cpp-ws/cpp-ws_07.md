@@ -19,8 +19,8 @@
 1.  要创建一个新的 Razor Pages 应用程序，在 CLI 中输入以下命令：
 
 ```cpp
-    dotnet new razor -n ToDoListApp dotnet new sln -n ToDoList dotnet sln add ./ToDoListApp
-    ```
+dotnet new razor -n ToDoListApp dotnet new sln -n ToDoList dotnet sln add ./ToDoListApp
+```
 
 在这里，您将使用 Razor Pages 创建一个待办事项列表应用程序。一旦执行了前面的命令，您将看到一个具有以下结构的文件夹：
 
@@ -196,20 +196,20 @@ ASP.NET 提供了一个本地的 DI 容器，它存储有关如何解析类型�
 1.  创建一个名为`RequestDelegate`的新私有只读字段，并在构造函数中初始化该字段：
 
 ```cpp
-    private readonly RequestDelegate _next;
-    public RequestLoggingMiddleware(RequestDelegate next)
-    {
-        _next = next; 
-    }
-    ```
+private readonly RequestDelegate _next;
+public RequestLoggingMiddleware(RequestDelegate next)
+{
+    _next = next; 
+}
+```
 
 这是 ASP.NET 收集的作为 HTTP 管道上要执行的下一个中间件的引用。通过初始化此字段，您可以调用下一个注册的中间件。
 
 1.  添加一个`using`语句到`System.Diagnostics`命名空间，以便可以添加一个名为`Stopwatch`的特殊类，它将用于测量请求的时间长度：
 
 ```cpp
-    using System.Diagnostics;
-    ```
+using System.Diagnostics;
+```
 
 1.  创建一个私有的`readonly ILogger`字段。`ILogger`接口是.NET 提供的手动记录信息的默认接口。
 
@@ -218,73 +218,73 @@ ASP.NET 提供了一个本地的 DI 容器，它存储有关如何解析类型�
 1.  使用此工厂的`CreateLogger<T>`方法创建一个记录器对象：
 
 ```cpp
-    private readonly ILogger _logger;
-    private readonly RequestDelegate _next;
-    public RequestLoggingMiddleware(RequestDelegate next, ILoggerFactory loggerFactory)
-    {
-        _next = next; 
-        _logger = loggerFactory.CreateLogger<RequestLoggingMiddleware>();
-    }
-    ```
+private readonly ILogger _logger;
+private readonly RequestDelegate _next;
+public RequestLoggingMiddleware(RequestDelegate next, ILoggerFactory loggerFactory)
+{
+    _next = next; 
+    _logger = loggerFactory.CreateLogger<RequestLoggingMiddleware>();
+}
+```
 
 在这里，`T`是一个泛型参数，指的是日志类别，如*Logging*部分所示。在这种情况下，类别将是进行日志记录的类的类型，即`RequestLoggingMiddleware`类。
 
 1.  字段初始化完成后，创建一个具有以下签名的新方法：
 
 ```cpp
-    public async Task InvokeAsync(HttpContext context) { }
-    ```
+public async Task InvokeAsync(HttpContext context) { }
+```
 
 1.  在此方法中，声明一个名为`Stopwatch`的变量，并将`Stopwatch.StartNew()`的值赋给它：
 
 ```cpp
-    var stopwatch = Stopwatch.StartNew();
-    ```
+var stopwatch = Stopwatch.StartNew();
+```
 
 `Stopwatch`类是一个辅助类，用于测量从调用`.StartNew()`方法开始的执行时间。
 
 1.  在此变量之后，编写一个带有代码的`try-catch`块，用于调用下一个请求，以及调用`stopwatch`的`.Stop()`方法来测量`_next()`调用所花费的时间：
 
 ```cpp
-    using System.Diagnostics;
-    namespace ToDoListApp.Middlewares;
-    public class RequestLoggingMiddleware
-    {
-        private readonly ILogger _logger;
-        private readonly RequestDelegate _next;
-        public RequestLoggingMiddleware(RequestDelegate next, ILoggerFactory loggerFactory)
-        {
-            _next = next;
-            _logger = loggerFactory.CreateLogger<RequestLoggingMiddleware>();
-        }
-    ```
+using System.Diagnostics;
+namespace ToDoListApp.Middlewares;
+public class RequestLoggingMiddleware
+{
+    private readonly ILogger _logger;
+    private readonly RequestDelegate _next;
+    public RequestLoggingMiddleware(RequestDelegate next, ILoggerFactory loggerFactory)
+    {
+        _next = next;
+        _logger = loggerFactory.CreateLogger<RequestLoggingMiddleware>();
+    }
+```
 
 您还可以在这里处理可能的异常。因此，最好将这两个调用包装在`try-catch`方法中。
 
 1.  在`Program.cs`文件中，通过以下方式放置声明来调用自定义中间件：
 
 ```cpp
-    var app = builder.Build();
-    // Configure the HTTP request pipeline.app.UseMiddleware<RequestLoggingMiddleware>();
-    ```
+var app = builder.Build();
+// Configure the HTTP request pipeline.app.UseMiddleware<RequestLoggingMiddleware>();
+```
 
 将其写在分配`app`变量的下一行。
 
 1.  最后，在`Program.cs`文件中，添加一个`using`语句到`ToDoListApp.Middlewares`：
 
 ```cpp
-    Program.cs
-    using ToDoListApp.Middlewares;
-    var builder = WebApplication.CreateBuilder(args);
-    // Add services to the container.
-    builder.Services.AddRazorPages();
-    var app = builder.Build();
-    // Configure the HTTP request pipeline.
-    app.UseMiddleware<RequestLoggingMiddleware>();
-    if (!app.Environment.IsDevelopment())
-    {
-        app.UseExceptionHandler("/Error");
-    ```
+Program.cs
+using ToDoListApp.Middlewares;
+var builder = WebApplication.CreateBuilder(args);
+// Add services to the container.
+builder.Services.AddRazorPages();
+var app = builder.Build();
+// Configure the HTTP request pipeline.
+app.UseMiddleware<RequestLoggingMiddleware>();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error");
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/tX9iK.
@@ -293,8 +293,8 @@ The complete code can be found here: https://packt.link/tX9iK.
 1.  要在 Web 浏览器上看到应用程序运行和在 Visual Studio Code 中看到其输出，可以在地址栏中输入以下命令：
 
 ```cpp
-    localhost:####
-    ```
+localhost:####
+```
 
 在这里`####`代表端口号。这对于不同的系统来说是不同的。
 
@@ -311,15 +311,15 @@ The complete code can be found here: https://packt.link/tX9iK.
 1.  在浏览器中执行应用程序后，您将在 Visual Studio Code 终端中看到类似的输出：
 
 ```cpp
-    info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
-          HTTP GET request for path / with status 200 executed in 301 ms
-    info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
-          HTTP GET request for path /lib/bootstrap/dist/css/bootstrap.min.css with status 200 executed in 18 ms
-    info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
-          HTTP GET request for path /css/site.css with status 200 executed in 1 ms
-    info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
-          HTTP GET request for path /favicon.ico with status 200 executed in 1 ms
-    ```
+info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
+      HTTP GET request for path / with status 200 executed in 301 ms
+info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
+      HTTP GET request for path /lib/bootstrap/dist/css/bootstrap.min.css with status 200 executed in 18 ms
+info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
+      HTTP GET request for path /css/site.css with status 200 executed in 1 ms
+info: ToDoListApp.Middlewares.RequestLoggingMiddleware[0]
+      HTTP GET request for path /favicon.ico with status 200 executed in 1 ms
+```
 
 您会注意到控制台上的输出记录了中间件管道中 HTTP 请求的经过时间。由于您已经在方法中声明了它，它应该考虑所有管道链的执行时间。
 
@@ -338,14 +338,14 @@ The complete code can be found here: https://packt.link/tX9iK.
 +   另一种方式是通过注入`ILogger<CategoryType>`。在这种情况下，类别类型通常是您注入记录器的类的类型，就像在上一个练习中看到的那样。在上一个练习中，您可以用`ILogger<RequestLoggingMiddleware>`替换`ILoggerFactory`的注入，并将这个新注入的依赖直接分配给`ILogger`私有字段，如下所示：
 
 ```cpp
-    private readonly ILogger _logger;
-    private readonly RequestDelegate _next;
-    public RequestLoggingMiddleware(RequestDelegate next, ILogger< RequestLoggingMiddleware> logger)
-    {
-        _next = next; 
-        _logger = logger;
-    }
-    ```
+private readonly ILogger _logger;
+private readonly RequestDelegate _next;
+public RequestLoggingMiddleware(RequestDelegate next, ILogger< RequestLoggingMiddleware> logger)
+{
+    _next = next; 
+    _logger = logger;
+}
+```
 
 您现在知道日志记录和 DI 是强大的机制，允许您为应用程序创建非常详细的日志。在转向 Razor 页面之前，了解应用程序中对象的生命周期是很重要的。这被称为依赖生命周期。
 
@@ -484,46 +484,46 @@ The complete code can be found here: https://packt.link/2Hb8r.
 1.  在`Models`文件夹中，创建一个名为`ETaskStatus`的新枚举，其中包括`ToDo`，`Doing`和`Done`选项：
 
 ```cpp
-    public enum ETaskStatus {
-    ToDo,
-    Doing,
-    Done
-    }
-    ```
+public enum ETaskStatus {
+ToDo,
+Doing,
+Done
+}
+```
 
 1.  再次，在 `Models` 文件夹中创建一个名为 `ToDoTask` 的新类，该类将用于为您的待办事项列表创建一个新任务，具有以下属性：
 
 ```cpp
-    namespace ToDoListApp.Models;
-    public class ToDoTask
-    {
-        public Guid Id { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public DateTime? DueTo { get; set; }
-        public string Title { get; set; }
-        public string? Description { get; set; }
-        public ETaskStatus Status { get; set; }
-    }
-    ```
+namespace ToDoListApp.Models;
+public class ToDoTask
+{
+    public Guid Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? DueTo { get; set; }
+    public string Title { get; set; }
+    public string? Description { get; set; }
+    public ETaskStatus Status { get; set; }
+}
+```
 
 1.  按照以下方式为 `ToDoTask` 类创建两个构造函数：
 
 ```cpp
-    ToDoTask.cs
-    namespace ToDoListApp.Models;
-    public class ToDoTask
-    {
-        public ToDoTask()
-        {
-            CreatedAt = DateTime.UtcNow;
-            Id = Guid.NewGuid();
-        }
-        public ToDoTask(string title, ETaskStatus status) : this()
-        {
-            Title = title;
-            Status = status;
-        }
-    ```
+ToDoTask.cs
+namespace ToDoListApp.Models;
+public class ToDoTask
+{
+    public ToDoTask()
+    {
+        CreatedAt = DateTime.UtcNow;
+        Id = Guid.NewGuid();
+    }
+    public ToDoTask(string title, ETaskStatus status) : this()
+    {
+        Title = title;
+        Status = status;
+    }
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/nFk00.
@@ -536,18 +536,18 @@ The complete code can be found here: https://packt.link/nFk00.
 1.  现在，通过编辑 `Pages`/ `Index.cshtml.cs` 文件并用以下代码替换样板代码来自定义它：
 
 ```cpp
-    Index.cshtml.cs
-    using System.Collections.Generic;
-    using Microsoft.AspNetCore.Mvc.RazorPages;
-    using ToDoListApp.Models;
-    namespace ToDoListApp.Pages;
-    public class IndexModel : PageModel
-    {
-        public IList<ToDoTask> Tasks { get; set; } = new List<ToDoTask>();
-        public IndexModel()
-        {
-        }
-    ```
+Index.cshtml.cs
+using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using ToDoListApp.Models;
+namespace ToDoListApp.Pages;
+public class IndexModel : PageModel
+{
+    public IList<ToDoTask> Tasks { get; set; } = new List<ToDoTask>();
+    public IndexModel()
+    {
+    }
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/h8mni.
@@ -558,22 +558,22 @@ The complete code can be found here: https://packt.link/h8mni.
 1.  用以下代码替换`Pages`/ `Index.cshtml`中的代码，以创建您的看板并添加任务卡：
 
 ```cpp
-    Index.cshtml
-    @page
-    @using ToDoListApp.Models
-    @model IndexModel
-    @{
-        ViewData["Title"] = "My To Do List";
-    }
-    <div class="text-center">
-        <h1 class="display-4">@ViewData["Title"]</h1>
-        <div class="row">
-            <div class="col-4">
-                <div class="card bg-light">
-                    <div class="card-body">
-                        <h6 class="card-title text-uppercase text-truncate py-2">To Do</h6>
-                        <div class="border border-light">
-    ```
+Index.cshtml
+@page
+@using ToDoListApp.Models
+@model IndexModel
+@{
+    ViewData["Title"] = "My To Do List";
+}
+<div class="text-center">
+    <h1 class="display-4">@ViewData["Title"]</h1>
+    <div class="row">
+        <div class="col-4">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h6 class="card-title text-uppercase text-truncate py-2">To Do</h6>
+                    <div class="border border-light">
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/IhELU.
@@ -658,9 +658,9 @@ On + {VERB} + {HANDLER}
 1.  在末尾添加以下行来定义自定义标签助手的内容`@addTagHelper`指令：
 
 ```cpp
-    @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
-    @addTagHelper *, ToDoListApp 
-    ```
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@addTagHelper *, ToDoListApp 
+```
 
 在上述代码中，您使用星号（`*`）添加了此命名空间中存在的所有自定义标签助手。
 
@@ -671,49 +671,49 @@ On + {VERB} + {HANDLER}
 1.  使这个类继承自`TagHelper`类：
 
 ```cpp
-    namespace ToDoListApp.TagHelpers;
-    ```
+namespace ToDoListApp.TagHelpers;
+```
 
 1.  这种继承是 ASP.NET 识别内置和自定义标签助手的关键。
 
 1.  现在为`Microsoft.AspNetCore.Razor.TagHelpers`命名空间添加一个`using`语句：
 
 ```cpp
-    using Microsoft.AspNetCore.Razor.TagHelpers;
-    namespace ToDoListApp.TagHelpers;
-    public class KanbanListTagHelper : TagHelper
-    {
-    }
-    ```
+using Microsoft.AspNetCore.Razor.TagHelpers;
+namespace ToDoListApp.TagHelpers;
+public class KanbanListTagHelper : TagHelper
+{
+}
+```
 
 1.  对于`KanbanListTagHelper`类，创建两个名为`Name`和`Size`的字符串属性，带有 getter 和 setter：
 
 ```cpp
-    using Microsoft.AspNetCore.Razor.TagHelpers;
-    namespace ToDoListApp.TagHelpers;
-    public class KanbanListTagHelper : TagHelper
-    {
-        public string? Name { get; set; }
-        public string? Size { get; set; }
-    }
-    ```
+using Microsoft.AspNetCore.Razor.TagHelpers;
+namespace ToDoListApp.TagHelpers;
+public class KanbanListTagHelper : TagHelper
+{
+    public string? Name { get; set; }
+    public string? Size { get; set; }
+}
+```
 
 1.  用以下代码覆盖基本的异步`ProcessAsync（TagHelperContext context`，`TagHelperOutput）`输出方法：
 
 ```cpp
-    KanbanListTagHelper.cs
-    public override async Task ProcessAsync(TagHelperContext context, TagHelperOutput output)
-    {
-         output.TagName = "div";
-         output.Attributes.SetAttribute("class", $"col-{Size}");
-         output.PreContent.SetHtmlContent(
-         $"<div class=\"card bg-light\">"
-              + "<div class=\"card-body\">"
-              + $"<h6 class=\"card-title text-uppercase text-truncate py-     2\">{Name}</h6>"
-              + "<div class \"border border-light\">");
-         var childContent = await output.GetChildContentAsync();
-         output.Content.SetHtmlContent(childContent.GetContent());
-    ```
+KanbanListTagHelper.cs
+public override async Task ProcessAsync(TagHelperContext context, TagHelperOutput output)
+{
+     output.TagName = "div";
+     output.Attributes.SetAttribute("class", $"col-{Size}");
+     output.PreContent.SetHtmlContent(
+     $"<div class=\"card bg-light\">"
+          + "<div class=\"card-body\">"
+          + $"<h6 class=\"card-title text-uppercase text-truncate py-     2\">{Name}</h6>"
+          + "<div class \"border border-light\">");
+     var childContent = await output.GetChildContentAsync();
+     output.Content.SetHtmlContent(childContent.GetContent());
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/bjFIk.
@@ -724,34 +724,34 @@ The complete code can be found here: https://packt.link/bjFIk.
 1.  现在，创建另一个名为`KanbanCardTagHelper.cs`的类，使用相同的继承和命名空间，使用类似于之前的语句：
 
 ```cpp
-    namespace ToDoListApp.TagHelpers;
-    using Microsoft.AspNetCore.Razor.TagHelpers;
-    public class KanbanCardTagHelper: TagHelper
-    {
-        public string? Task { get; set; }
-    }
-    ```
+namespace ToDoListApp.TagHelpers;
+using Microsoft.AspNetCore.Razor.TagHelpers;
+public class KanbanCardTagHelper: TagHelper
+{
+    public string? Task { get; set; }
+}
+```
 
 对于这个类，创建一个具有公共 getter 和 setter 的`string`属性，名为`Task`。
 
 1.  在这个新类中，重写基本的同步`Process(TagHelperContext context, TagHelperOutput output)`方法。在这个方法中，编写以下代码：
 
 ```cpp
-    public override void Process(TagHelperContext context, TagHelperOutput output)
-    {
-         output.TagName = "div";
-         output.Attributes.SetAttribute("class", "card");
-         output.PreContent.SetHtmlContent(
-         "<div class=\"card-body p-2\">"
-              + "<div class=\"card-title\">");
-         output.Content.SetContent(Task);
-         output.PostContent.SetHtmlContent(
-         "</div>"
-              + "<button class=\"btn btn-primary btn-sm\">View</button>"
-              + "</div>");
-    output.TagMode = TagMode.StartTagAndEndTag;
-    }
-    ```
+public override void Process(TagHelperContext context, TagHelperOutput output)
+{
+     output.TagName = "div";
+     output.Attributes.SetAttribute("class", "card");
+     output.PreContent.SetHtmlContent(
+     "<div class=\"card-body p-2\">"
+          + "<div class=\"card-title\">");
+     output.Content.SetContent(Task);
+     output.PostContent.SetHtmlContent(
+     "</div>"
+          + "<button class=\"btn btn-primary btn-sm\">View</button>"
+          + "</div>");
+output.TagMode = TagMode.StartTagAndEndTag;
+}
+```
 
 一个重要的概念是要知道 HTML 内容如何放置在标签助手中。正如你所看到的，代码使用了`TagHelperOutput`对象的三个不同属性来放置内容：
 
@@ -768,22 +768,22 @@ The complete code can be found here: https://packt.link/bjFIk.
 1.  最后，转到 Pages 文件夹下的`Index.cshtml`文件，并用标签助手替换*练习 7.02*中创建的 HTML，使您的代码更加简洁：
 
 ```cpp
-    Index.cshtml 
-    @page
-    @using ToDoListApp.Models
-    @model IndexModel
-    @{
-        ViewData["Title"] = "My To Do List";
-    }
-    <div class="text-center">
-        <h1 class="display-4">@ViewData["Title"]</h1>
-        <div class="row">
-            <kanban-list name="To Do" size="4">
-                @foreach (var task in Model.Tasks.Where(t => t.Status == ETaskStatus.ToDo))
-                {
-                    <kanban-card task="@task.Description">
-                    </kanban-card>
-    ```
+Index.cshtml 
+@page
+@using ToDoListApp.Models
+@model IndexModel
+@{
+    ViewData["Title"] = "My To Do List";
+}
+<div class="text-center">
+    <h1 class="display-4">@ViewData["Title"]</h1>
+    <div class="row">
+        <kanban-list name="To Do" size="4">
+            @foreach (var task in Model.Tasks.Where(t => t.Status == ETaskStatus.ToDo))
+            {
+                <kanban-card task="@task.Description">
+                </kanban-card>
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/YIgdp.
@@ -792,8 +792,8 @@ The complete code can be found here: https://packt.link/YIgdp.
 1.  现在使用以下命令运行应用程序：
 
 ```cpp
-    dotnet run
-    ```
+dotnet run
+```
 
 1.  在浏览器中，导航到 Visual Studio 控制台输出提供的 localhost:####地址，就像您在上一个练习中所做的那样：
 
@@ -830,41 +830,41 @@ The complete code can be found here: https://packt.link/YIgdp.
 1.  在项目根文件夹中，运行以下命令：
 
 ```cpp
-    dotnet add package Microsoft.EntityFrameworkCore
-    dotnet add package Microsoft.EntityFrameworkCore.Sqlite
-    dotnet add package Microsoft.EntityFrameworkCore.Design
-    ```
+dotnet add package Microsoft.EntityFrameworkCore
+dotnet add package Microsoft.EntityFrameworkCore.Sqlite
+dotnet add package Microsoft.EntityFrameworkCore.Design
+```
 
 1.  在项目的根目录下，创建一个名为`Data`的新文件夹，并在其中放置一个`ToDoDbContext`类。这个类将继承自 Entity Framework 的`DbContext`，并将用于访问数据库。
 
 1.  现在在其中添加以下代码：
 
 ```cpp
-    using Microsoft.EntityFrameworkCore;
-    using ToDoListApp.Models;
-    namespace ToDoListApp.Data;
-    public class ToDoDbContext : DbContext
-    {
-        public ToDoDbContext(DbContextOptions<ToDoDbContext> options) : base(options)
-        {
-        }
-        public DbSet<ToDoTask> Tasks { get; set; } 
-    }
-    ```
+using Microsoft.EntityFrameworkCore;
+using ToDoListApp.Models;
+namespace ToDoListApp.Data;
+public class ToDoDbContext : DbContext
+{
+    public ToDoDbContext(DbContextOptions<ToDoDbContext> options) : base(options)
+    {
+    }
+    public DbSet<ToDoTask> Tasks { get; set; } 
+}
+```
 
 1.  更新您的`Program.cs`文件以匹配以下内容：
 
 ```cpp
-    Program.cs
-    using Microsoft.EntityFrameworkCore;
-    using ToDoListApp.Data;
-    using ToDoListApp.Middlewares;
-    var builder = WebApplication.CreateBuilder(args);
-    // Add services to the container.builder.Services.AddRazorPages();
-    builder.Services.AddDbContext<ToDoDbContext>(opt => opt.UseSqlite("Data Source=Data/ToDoList.db")); 
-    var app = builder.Build();
-    // Configure the HTTP request pipeline.app.UseMiddleware<RequestLoggingMiddleware>();
-    ```
+Program.cs
+using Microsoft.EntityFrameworkCore;
+using ToDoListApp.Data;
+using ToDoListApp.Middlewares;
+var builder = WebApplication.CreateBuilder(args);
+// Add services to the container.builder.Services.AddRazorPages();
+builder.Services.AddDbContext<ToDoDbContext>(opt => opt.UseSqlite("Data Source=Data/ToDoList.db")); 
+var app = builder.Build();
+// Configure the HTTP request pipeline.app.UseMiddleware<RequestLoggingMiddleware>();
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/D4M8o.
@@ -875,15 +875,15 @@ The complete code can be found here: https://packt.link/D4M8o.
 1.  在终端上运行以下命令以安装`dotnet ef`工具。这是一个 CLI 工具，将帮助您与数据库助手进行迭代，例如模式创建和更新：
 
 ```cpp
-    dotnet tool install --global dotnet-ef
-    ```
+dotnet tool install --global dotnet-ef
+```
 
 1.  现在，构建应用程序并在终端上运行以下命令：
 
 ```cpp
-    dotnet ef migrations add 'FirstMigration'
-    dotnet ef database update
-    ```
+dotnet ef migrations add 'FirstMigration'
+dotnet ef database update
+```
 
 这些命令将创建一个新的迁移，该迁移将从您的数据库创建模式，并将此迁移应用到您的数据库。
 
@@ -894,55 +894,55 @@ The complete code can be found here: https://packt.link/D4M8o.
 1.  接下来，在`Program.cs`中用以下调用替换`AddRazorPages`调用：
 
 ```cpp
-    builder.Services.AddRazorPages(opt =>{    opt.Conventions.AddPageRoute("/Tasks/Index", ""); });
-    ```
+builder.Services.AddRazorPages(opt =>{    opt.Conventions.AddPageRoute("/Tasks/Index", ""); });
+```
 
 这将添加一个页面路由的约定。
 
 1.  替换`_Layout.cshtml`文件（在`Pages/Shared/`下）中的标题标签，以创建应用程序的共享`navbar`：
 
 ```cpp
-    <header>
-            <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-                <div class="container">
-                    <a class="navbar-brand" asp-area="" asp-page="/Index">MyToDos</a>
-                    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                            aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
-                        <ul class="navbar-nav flex-grow-1">
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-page="/tasks/create">Create Task</a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </nav>
-        </header>
-    ```
+<header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-area="" asp-page="/Index">MyToDos</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-page="/tasks/create">Create Task</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+```
 
 这个`navbar`将允许您访问新创建的页面。
 
 1.  创建`Create.cshtml`页面（在`Pages/Tasks/`下）并添加以下代码：
 
 ```cpp
-    Create.cshtml
-    @page "/tasks/create"
-    @model CreateModel
-    @{
-        ViewData["Title"] = "Task";
-    }
-    <h2>Create</h2>
-    <div>
-        <h4>@ViewData["Title"]</h4>
-        <hr />
-        <dl class="row">
-            <form method="post" class="col-6">
-                <div class="form-group">
-                    <label asp-for="Task.Title"></label>
-                    <input asp-for="Task.Title" class="form-control" />
-    ```
+Create.cshtml
+@page "/tasks/create"
+@model CreateModel
+@{
+    ViewData["Title"] = "Task";
+}
+<h2>Create</h2>
+<div>
+    <h4>@ViewData["Title"]</h4>
+    <hr />
+    <dl class="row">
+        <form method="post" class="col-6">
+            <div class="form-group">
+                <label asp-for="Task.Title"></label>
+                <input asp-for="Task.Title" class="form-control" />
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/2NjdN.
@@ -961,19 +961,19 @@ The complete code can be found here: https://packt.link/2NjdN.
 1.  现在，创建名为`CreateModel.cshtml.cs`的代码后台页面（放在`Pages/Tasks/`中）：
 
 ```cpp
-    Create.cshtml.cs
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.AspNetCore.Mvc.RazorPages;
-    using ToDoListApp.Data;
-    using ToDoListApp.Models;
-    namespace ToDoListApp.Pages.Tasks;
-    public class CreateModel : PageModel {
-        private readonly ToDoDbContext _context;
-        public CreateModel(ToDoDbContext context)
-        {
-            _context = context;
-        }
-    ```
+Create.cshtml.cs
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using ToDoListApp.Data;
+using ToDoListApp.Models;
+namespace ToDoListApp.Pages.Tasks;
+public class CreateModel : PageModel {
+    private readonly ToDoDbContext _context;
+    public CreateModel(ToDoDbContext context)
+    {
+        _context = context;
+    }
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/06ciR.
@@ -984,22 +984,22 @@ The complete code can be found here: https://packt.link/06ciR.
 1.  现在，用以下代码替换`Index.cshtml`（在`Pages/Tasks/`下）的代码：
 
 ```cpp
-    Index.cshtml
-    @page
-    @using ToDoListApp.Models
-    @model IndexModel
-    @{
-        ViewData["Title"] = "My To Do List";
-    }
-    <div class="text-center">
-        @if (TempData["SuccessMessage"] != null)
-        {
-            <div class="alert alert-success" role="alert">
-                @TempData["SuccessMessage"]
-            </div>
-        }
-        <h1 class="display-4">@ViewData["Title"]</h1>
-    ```
+Index.cshtml
+@page
+@using ToDoListApp.Models
+@model IndexModel
+@{
+    ViewData["Title"] = "My To Do List";
+}
+<div class="text-center">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success" role="alert">
+            @TempData["SuccessMessage"]
+        </div>
+    }
+    <h1 class="display-4">@ViewData["Title"]</h1>
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/hNOTx.
@@ -1010,20 +1010,20 @@ The complete code can be found here: https://packt.link/hNOTx.
 1.  最后，通过数据注释为`Models/ToDoTask.cs`类的属性添加一些显示和验证规则：
 
 ```cpp
-    ToDoTask.cs
-    using System.ComponentModel;
-    using System.ComponentModel.DataAnnotations;
-    namespace ToDoListApp.Models;
-    public class ToDoTask
-    {
-        public ToDoTask()
-        {
-            CreatedAt = DateTime.UtcNow;
-            Id = Guid.NewGuid();
-        }
-        public ToDoTask(string title, ETaskStatus status) : this()
-        {
-    ```
+ToDoTask.cs
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+namespace ToDoListApp.Models;
+public class ToDoTask
+{
+    public ToDoTask()
+    {
+        CreatedAt = DateTime.UtcNow;
+        Id = Guid.NewGuid();
+    }
+    public ToDoTask(string title, ETaskStatus status) : this()
+    {
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/yau4p.
@@ -1036,8 +1036,8 @@ The complete code can be found here: https://packt.link/yau4p.
 1.  要在 Web 浏览器中查看输出，请在地址栏中键入以下命令：
 
 ```cpp
-    Localhost:####
-    ```
+Localhost:####
+```
 
 这里`####`代表端口号。这对不同的系统来说是不同的。
 
@@ -1082,21 +1082,21 @@ The complete code can be found here: https://packt.link/yau4p.
 1.  在`Pages/Tasks`文件夹中，创建一个名为`_TaskItem.cshtml`的新文件，内容如下：
 
 ```cpp
-    _TaskItem.cshtml
-    @model ToDoListApp.Models.ToDoTask
-    <form method="post">
-        <div class="card">
-            <div class="card-body p-2">
-                <div class="card-title">
-                    @Model.Title
-                </div>
-                <a class="btn btn-primary btn-sm" href="/tasks/@Model.Id">View</a>
-                @if (Model.Status == Models.ETaskStatus.ToDo)
-                {
-                    <button type="submit" class="btn btn-warning btn-sm" href="@Model.Id" asp-page-handler="StartTask" asp-route-id="@Model.Id">
-                        Start 
-                    </button>
-    ```
+_TaskItem.cshtml
+@model ToDoListApp.Models.ToDoTask
+<form method="post">
+    <div class="card">
+        <div class="card-body p-2">
+            <div class="card-title">
+                @Model.Title
+            </div>
+            <a class="btn btn-primary btn-sm" href="/tasks/@Model.Id">View</a>
+            @if (Model.Status == Models.ETaskStatus.ToDo)
+            {
+                <button type="submit" class="btn btn-warning btn-sm" href="@Model.Id" asp-page-handler="StartTask" asp-route-id="@Model.Id">
+                    Start 
+                </button>
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/aUOcj.
@@ -1107,21 +1107,21 @@ The complete code can be found here: https://packt.link/aUOcj.
 1.  现在，使用以下代码替换`Index.cshtml.cs`文件中的代码，该代码可以从数据库中读取保存的任务，并将您在部分页面上创建的操作放置在其中：
 
 ```cpp
-    Index.cshtml.cs
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.AspNetCore.Mvc.RazorPages;
-    using ToDoListApp.Data;
-    using ToDoListApp.Models;
-    namespace ToDoListApp.Pages
-    {
-        public class IndexModel : PageModel
-        {
-            private readonly ToDoDbContext _context;
-            public IndexModel(ToDoDbContext context)
-    ```
+Index.cshtml.cs
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+using ToDoListApp.Data;
+using ToDoListApp.Models;
+namespace ToDoListApp.Pages
+{
+    public class IndexModel : PageModel
+    {
+        private readonly ToDoDbContext _context;
+        public IndexModel(ToDoDbContext context)
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/Tqgup.
@@ -1132,21 +1132,21 @@ The complete code can be found here: https://packt.link/Tqgup.
 1.  最后，使用以下代码更新`Index.cshtml`页面，以替换标记助手的使用，使用您的看板卡的部分 Razor 页面：
 
 ```cpp
-    Index.cshtml
-    @page
-    @using ToDoListApp.Models
-    @model IndexModel
-    @{
-        ViewData["Title"] = "MyToDos";
-    }
-    <div class="text-center">
+Index.cshtml
+@page
+@using ToDoListApp.Models
+@model IndexModel
+@{
+    ViewData["Title"] = "MyToDos";
+}
+<div class="text-center">
 
-        @if(TempData["SuccessMessage"] != null)
-        {
-            <div class="alert alert-success" role="alert">
-                @TempData["SuccessMessage"]
-            </div>
-    ```
+    @if(TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success" role="alert">
+            @TempData["SuccessMessage"]
+        </div>
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/9SRsY.
@@ -1157,8 +1157,8 @@ The complete code can be found here: https://packt.link/9SRsY.
 1.  现在使用以下命令运行应用程序：
 
 ```cpp
-    dotnet run
-    ```
+dotnet run
+```
 
 1.  接下来点击“创建任务”按钮并填写表单。创建任务后，您将看到确认消息，如*图 7.7*所示。
 
@@ -1235,61 +1235,61 @@ The complete code can be found here: https://packt.link/9SRsY.
 1.  在这个文件夹内，创建一个名为`StatsViewComponent`的新类：
 
 ```cpp
-    namespace ToDoListApp.ViewComponents;
-    public class StatsViewComponent
-    {
-    }
-    ```
+namespace ToDoListApp.ViewComponents;
+public class StatsViewComponent
+{
+}
+```
 
 1.  再次，在`ViewComponents`文件夹内，创建一个名为`StatsViewModel`的新类，具有两个名为`Delayed`和`DueToday`的公共`int`属性。
 
 ```cpp
-    namespace ToDoListApp.ViewComponents;
-    public class StatsViewModel
-    {
-        public int Delayed { get; set; }
-        public int DueToday { get; set; }
-    }
-    ```
+namespace ToDoListApp.ViewComponents;
+public class StatsViewModel
+{
+    public int Delayed { get; set; }
+    public int DueToday { get; set; }
+}
+```
 
 1.  编辑`StatsViewComponent`类，使其继承自`Microsoft.AspNetCore.Mvc`命名空间中包含的`ViewComponent`类：
 
 ```cpp
-    using Microsoft.AspNetCore.Mvc;
-    public class StatsViewComponent : ViewComponent
-    {
-    }
-    ```
+using Microsoft.AspNetCore.Mvc;
+public class StatsViewComponent : ViewComponent
+{
+}
+```
 
 1.  通过构造函数注入`ToDoDbContext`，初始化一个`private readonly`字段：
 
 ```cpp
-    public class StatsViewComponent : ViewComponent
-    {
-        private readonly ToDoDbContext _context;
-        public StatsViewComponent(ToDoDbContext context) => _context = context;
-    }
-    ```
+public class StatsViewComponent : ViewComponent
+{
+    private readonly ToDoDbContext _context;
+    public StatsViewComponent(ToDoDbContext context) => _context = context;
+}
+```
 
 放置正确的`using`命名空间。
 
 1.  创建一个名为`InvokeAsync`的方法，具有以下签名和内容：
 
 ```cpp
-    StatsViewComponent.cs
-    using ToDoListApp.Data;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.EntityFrameworkCore;
-    using System.Linq;
-    namespace ToDoListApp.ViewComponents;
-    public class StatsViewComponent : ViewComponent
-    {
-        private readonly ToDoDbContext _context;
-        public StatsViewComponent(ToDoDbContext context) => _context = context;
-        public async Task<IViewComponentResult> InvokeAsync()
-        {
-            var delayedTasks = await _context.Tasks.Where(t =>
-    ```
+StatsViewComponent.cs
+using ToDoListApp.Data;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+namespace ToDoListApp.ViewComponents;
+public class StatsViewComponent : ViewComponent
+{
+    private readonly ToDoDbContext _context;
+    public StatsViewComponent(ToDoDbContext context) => _context = context;
+    public async Task<IViewComponentResult> InvokeAsync()
+    {
+        var delayedTasks = await _context.Tasks.Where(t =>
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/jl2Ue.
@@ -1304,43 +1304,43 @@ The complete code can be found here: https://packt.link/jl2Ue.
 1.  然后，在`Stats`文件夹内，创建一个名为`default.cshtml`的新文件，内容如下：
 
 ```cpp
-    @model ToDoListApp.ViewComponents.StatsViewModel
-    <form class="form-inline my-2 my-lg-0">
-        @{
-             var delayedEmoji = Model.Delayed > 0 ? "" : "";
-             var delayedClass = Model.Delayed > 0 ? "btn-warning" : "btn-success";
-             var dueClass = Model.DueToday > 0 ? "btn-warning" : "btn-success";
-         }
-        <button type="button" class="btn @delayedClass my-2 my-sm-0">
-            <span class="badge badge-light">@Model.Delayed</span> Delayed Tasks @delayedEmoji
-        </button>
-        &nbsp;
-        <button type="button" class="btn @dueClass my-2 my-sm-0">
-            <span class="badge badge-light">@Model.DueToday</span> Tasks Due Today 
-        </button>
-    </form>
-    ```
+@model ToDoListApp.ViewComponents.StatsViewModel
+<form class="form-inline my-2 my-lg-0">
+    @{
+         var delayedEmoji = Model.Delayed > 0 ? "" : "";
+         var delayedClass = Model.Delayed > 0 ? "btn-warning" : "btn-success";
+         var dueClass = Model.DueToday > 0 ? "btn-warning" : "btn-success";
+     }
+    <button type="button" class="btn @delayedClass my-2 my-sm-0">
+        <span class="badge badge-light">@Model.Delayed</span> Delayed Tasks @delayedEmoji
+    </button>
+    &nbsp;
+    <button type="button" class="btn @dueClass my-2 my-sm-0">
+        <span class="badge badge-light">@Model.DueToday</span> Tasks Due Today 
+    </button>
+</form>
+```
 
 `default.cshtml`将包含视图组件类的视图部分。在这里，您基本上是根据指定的模型创建了一个`.cshtml`文件。
 
 1.  最后，在`_Layout.cshtml`（在`Pages/Shared/`下），通过在导航栏内添加`<vc:stats></vc:stats>`标签来调用`ViewComponent`。用以下代码替换页面代码：
 
 ```cpp
-    _Layout.cshtml
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>@ViewData["Title"] - ToDoListApp</title>
-        <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-        <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-        <link rel="stylesheet" href="~/ToDoListApp.styles.css" asp-append-version="true" />
-    </head>
-    <body>
-        <header>
-            <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-    ```
+_Layout.cshtml
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - ToDoListApp</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/ToDoListApp.styles.css" asp-append-version="true" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/DNUBC.

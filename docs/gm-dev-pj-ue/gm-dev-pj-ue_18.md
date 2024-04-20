@@ -85,114 +85,114 @@
 1.  打开`GFInstancesCharacter.h`文件，并声明`Tick`函数的受保护覆盖：
 
 ```cpp
-    virtual void Tick(float DeltaSeconds) override;
-    ```
+virtual void Tick(float DeltaSeconds) override;
+```
 
 1.  打开`GFInstancesCharacter.cpp`文件，并包括`DrawDebugHelpers.h`和`PlayerController.h`：
 
 ```cpp
-    #include "DrawDebugHelpers.h"
-    #include "GameFramework/PlayerController.h"
-    ```
+#include "DrawDebugHelpers.h"
+#include "GameFramework/PlayerController.h"
+```
 
 1.  实现`Tick`函数：
 
 ```cpp
-    void AGFInstancesCharacter::Tick(float DeltaSeconds)
-    {
-      Super::Tick(DeltaSeconds);
-    }
-    ```
+void AGFInstancesCharacter::Tick(float DeltaSeconds)
+{
+  Super::Tick(DeltaSeconds);
+}
+```
 
 1.  获取游戏模式、游戏状态、玩家控制器和 HUD 的实例：
 
 ```cpp
-    AGameModeBase* GameMode = GetWorld()->GetAuthGameMode();
-    AGameStateBase* GameState = GetWorld()->GetGameState();
-    APlayerController* PlayerController =   Cast<APlayerController>(GetController());
-    AHUD* HUD = PlayerController != nullptr ? PlayerController-  >GetHUD() : nullptr;
-    ```
+AGameModeBase* GameMode = GetWorld()->GetAuthGameMode();
+AGameStateBase* GameState = GetWorld()->GetGameState();
+APlayerController* PlayerController =   Cast<APlayerController>(GetController());
+AHUD* HUD = PlayerController != nullptr ? PlayerController-  >GetHUD() : nullptr;
+```
 
 在前面的代码片段中，我们将游戏模式、游戏状态、玩家控制器和 HUD 的实例存储在单独的变量中，以便我们可以检查它们是否有效。
 
 1.  为每个游戏框架类创建一个字符串：
 
 ```cpp
-    const FString GameModeString = GameMode != nullptr ?   TEXT("Valid") : TEXT("Invalid");
-    const FString GameStateString = GameState != nullptr ?   TEXT("Valid") : TEXT("Invalid");
-    const FString PlayerStateString = GetPlayerState() != nullptr ?   TEXT("Valid") : TEXT("Invalid");
-    const FString PawnString = GetName();
-    const FString PlayerControllerString = PlayerController !=   nullptr ? TEXT("Valid") : TEXT("Invalid");
-    const FString HUDString = HUD != nullptr ? TEXT("Valid") :   TEXT("Invalid");
-    ```
+const FString GameModeString = GameMode != nullptr ?   TEXT("Valid") : TEXT("Invalid");
+const FString GameStateString = GameState != nullptr ?   TEXT("Valid") : TEXT("Invalid");
+const FString PlayerStateString = GetPlayerState() != nullptr ?   TEXT("Valid") : TEXT("Invalid");
+const FString PawnString = GetName();
+const FString PlayerControllerString = PlayerController !=   nullptr ? TEXT("Valid") : TEXT("Invalid");
+const FString HUDString = HUD != nullptr ? TEXT("Valid") :   TEXT("Invalid");
+```
 
 在这里，我们创建字符串来存储角色的名称以及其他游戏框架实例是否有效。
 
 1.  在屏幕上显示每个字符串：
 
 ```cpp
-    const FString String = FString::Printf(TEXT("Game Mode = %s\nGame   State = %s\nPlayerState = %s\nPawn = %s\nPlayer Controller =   %s\nHUD = %s"), *GameModeString, *GameStateString,   *PlayerStateString, *PawnString, *PlayerControllerString,   *HUDString);
-    DrawDebugString(GetWorld(), GetActorLocation(), String, nullptr,   FColor::White, 0.0f, true);
-    ```
+const FString String = FString::Printf(TEXT("Game Mode = %s\nGame   State = %s\nPlayerState = %s\nPawn = %s\nPlayer Controller =   %s\nHUD = %s"), *GameModeString, *GameStateString,   *PlayerStateString, *PawnString, *PlayerControllerString,   *HUDString);
+DrawDebugString(GetWorld(), GetActorLocation(), String, nullptr,   FColor::White, 0.0f, true);
+```
 
 在此代码片段中，我们打印了在前面的代码中创建的字符串，这些字符串指示了角色的名称以及其他游戏框架实例是否有效。
 
 1.  在我们可以继续使用`AGFInstancesPlayerController`类之前，我们需要告诉虚幻引擎我们想要使用 UMG 功能，以便能够使用`UUserWidget`类。为此，我们需要打开`GFInstances.Build.cs`并将`UMG`添加到`PublicDependencyModuleNames`字符串数组中，如下所示：
 
 ```cpp
-    PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG" });
-    ```
+PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG" });
+```
 
 如果尝试编译并从添加新模块中获得错误，则清理并重新编译项目。如果这样不起作用，请尝试重新启动您的 IDE。
 
 1.  打开`GFInstancesPlayerController.h`并添加保护变量以创建 UMG 小部件：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GF   Instance Player Controller")
-    TSubclassOf<UUserWidget> MenuClass;
-    UPROPERTY()
-    UUserWidget* Menu;
-    ```
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GF   Instance Player Controller")
+TSubclassOf<UUserWidget> MenuClass;
+UPROPERTY()
+UUserWidget* Menu;
+```
 
 1.  声明`BeginPlay`函数的受保护覆盖：
 
 ```cpp
-    virtual void BeginPlay() override;
-    ```
+virtual void BeginPlay() override;
+```
 
 1.  打开`GFInstancesPlayerController.cpp`并包括`UserWidget.h`：
 
 ```cpp
-    #include "Blueprint/UserWidget.h"
-    ```
+#include "Blueprint/UserWidget.h"
+```
 
 1.  实现`BeginPlay`函数：
 
 ```cpp
-    void AGFInstancePlayerController::BeginPlay()
-    {
-      Super::BeginPlay();
-    }
-    ```
+void AGFInstancePlayerController::BeginPlay()
+{
+  Super::BeginPlay();
+}
+```
 
 1.  如果不是拥有客户端或菜单类无效，则中止函数：
 
 ```cpp
-    if (!IsLocalController() || MenuClass == nullptr)
-    {
-      return;
-    }
-    ```
+if (!IsLocalController() || MenuClass == nullptr)
+{
+  return;
+}
+```
 
 1.  创建小部件并将其添加到视口：
 
 ```cpp
-    Menu = CreateWidget<UUserWidget>(this, MenuClass);
-    if (Menu != nullptr)
-    {
-      Menu->AddToViewport(0);
-    }
-    ```
+Menu = CreateWidget<UUserWidget>(this, MenuClass);
+if (Menu != nullptr)
+{
+  Menu->AddToViewport(0);
+}
+```
 
 1.  编译并运行代码。
 
@@ -684,508 +684,508 @@ RotatingMovement->RotationRate = FRotator(0.0, 90.0f, 0);
 1.  声明受保护的`Static Mesh`组件称为`Mesh`：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Pickup")
-    UStaticMeshComponent* Mesh;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Pickup")
+UStaticMeshComponent* Mesh;
+```
 
 1.  声明受保护的旋转运动组件称为`RotatingMovement`：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Pickup")
-    class URotatingMovementComponent* RotatingMovement;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Pickup")
+class URotatingMovementComponent* RotatingMovement;
+```
 
 1.  声明受保护的`PickupSound`变量：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickup")
-    USoundBase* PickupSound;
-    ```
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickup")
+USoundBase* PickupSound;
+```
 
 1.  声明受保护的构造函数和`BeginPlay`重写：
 
 ```cpp
-    APickup();
-    virtual void BeginPlay() override;
-    ```
+APickup();
+virtual void BeginPlay() override;
+```
 
 1.  声明受保护的`OnBeginOverlap`函数：
 
 ```cpp
-    UFUNCTION()
-    void OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor*   OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult& Hit);
-    ```
+UFUNCTION()
+void OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor*   OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult& Hit);
+```
 
 1.  打开`Pickup.cpp`并包括`PickupsCharacter.h`、`PickupsGameState.h`、`StaticMeshComponent.h`和`RotatingMovementComponent.h`：
 
 ```cpp
-    #include "PickupsCharacter.h"
-    #include "PickupsGameState.h"
-    #include "Components/StaticMeshComponent.h"
-    #include "GameFramework/RotatingMovementComponent.h"
-    ```
+#include "PickupsCharacter.h"
+#include "PickupsGameState.h"
+#include "Components/StaticMeshComponent.h"
+#include "GameFramework/RotatingMovementComponent.h"
+```
 
 1.  在构造函数中，将“静态网格”组件初始化为与所有内容重叠，并在重叠时调用`OnBeginOverlap`函数：
 
 ```cpp
-    Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
-    Mesh->SetCollisionProfileName("OverlapAll");
-    RootComponent = Mesh;
-    ```
+Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
+Mesh->SetCollisionProfileName("OverlapAll");
+RootComponent = Mesh;
+```
 
 1.  仍然在构造函数中，初始化旋转运动组件，使其在“偏航”轴上每秒旋转`90`度：
 
 ```cpp
-    RotatingMovement = CreateDefaultSubobject   <URotatingMovementComponent>("Rotating Movement");
-    RotatingMovement->RotationRate = FRotator(0.0, 90.0f, 0);
-    ```
+RotatingMovement = CreateDefaultSubobject   <URotatingMovementComponent>("Rotating Movement");
+RotatingMovement->RotationRate = FRotator(0.0, 90.0f, 0);
+```
 
 1.  为了完成构造函数，启用复制并禁用`Tick`函数：
 
 ```cpp
-    bReplicates = true;
-    PrimaryActorTick.bCanEverTick = false;
-    ```
+bReplicates = true;
+PrimaryActorTick.bCanEverTick = false;
+```
 
 1.  实现`BeginPlay`函数，将开始重叠事件绑定到`OnBeginOverlap`函数：
 
 ```cpp
-    void APickup::BeginPlay()
-    {
-      Super::BeginPlay();
-      Mesh->OnComponentBeginOverlap.AddDynamic(this,     &APickup::OnBeginOverlap);
-    }
-    ```
+void APickup::BeginPlay()
+{
+  Super::BeginPlay();
+  Mesh->OnComponentBeginOverlap.AddDynamic(this,     &APickup::OnBeginOverlap);
+}
+```
 
 1.  实现`OnBeginOverlap`函数，检查角色是否有效并具有权限，在游戏状态上移除拾取物，在拥有客户端上播放拾取声音，添加`10`分和拾取物给角色。完成所有这些后，拾取物将销毁自身。
 
 ```cpp
-    void APickup::OnBeginOverlap(UPrimitiveComponent* OverlappedComp,   AActor* OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult& Hit)
-    {
-      APickupsCharacter* Character =     Cast<APickupsCharacter>(OtherActor);
-      if (Character == nullptr || !HasAuthority())
-      {
-        return;
-      }
-      APickupsGameState* GameState =     Cast<APickupsGameState>(GetWorld()->GetGameState());
-      if (GameState != nullptr)
-      {
-        GameState->RemovePickup();
-      }
-      Character->ClientPlaySound2D(PickupSound);
-      Character->AddScore(10);
-      Character->AddPickup();
-      Destroy();
-    }
-    ```
+void APickup::OnBeginOverlap(UPrimitiveComponent* OverlappedComp,   AActor* OtherActor, UPrimitiveComponent* OtherComp, int32   OtherBodyIndex, bool bFromSweep, const FHitResult& Hit)
+{
+  APickupsCharacter* Character =     Cast<APickupsCharacter>(OtherActor);
+  if (Character == nullptr || !HasAuthority())
+  {
+    return;
+  }
+  APickupsGameState* GameState =     Cast<APickupsGameState>(GetWorld()->GetGameState());
+  if (GameState != nullptr)
+  {
+    GameState->RemovePickup();
+  }
+  Character->ClientPlaySound2D(PickupSound);
+  Character->AddScore(10);
+  Character->AddPickup();
+  Destroy();
+}
+```
 
 接下来，我们将处理`PickupsGameState`类。
 
 1.  打开`PickupsGameState.h`并声明受保护的复制整数变量`PickupsRemaining`，告诉所有客户端关卡中剩余多少拾取物：
 
 ```cpp
-    UPROPERTY(Replicated, BlueprintReadOnly)
-    int32 PickupsRemaining;
-    ```
+UPROPERTY(Replicated, BlueprintReadOnly)
+int32 PickupsRemaining;
+```
 
 1.  声明受保护的`BeginPlay`函数的重写：
 
 ```cpp
-    virtual void BeginPlay() override;
-    ```
+virtual void BeginPlay() override;
+```
 
 1.  声明受保护的`GetPlayerStatesOrderedByScore`函数：
 
 ```cpp
-    UFUNCTION(BlueprintCallable)
-    TArray<APlayerState*> GetPlayerStatesOrderedByScore() const;
-    ```
+UFUNCTION(BlueprintCallable)
+TArray<APlayerState*> GetPlayerStatesOrderedByScore() const;
+```
 
 1.  实现公共的`RemovePickup`函数，该函数从`PickupsRemaining`变量中移除一个道具：
 
 ```cpp
-    void RemovePickup() { PickupsRemaining--; }
-    ```
+void RemovePickup() { PickupsRemaining--; }
+```
 
 1.  实现公共的`HasPickups`函数，该函数返回是否仍有剩余的道具：
 
 ```cpp
-    bool HasPickups() const { return PickupsRemaining > 0; }
-    ```
+bool HasPickups() const { return PickupsRemaining > 0; }
+```
 
 1.  打开`PickupsGameState.cpp`并包括`Pickup.h`，`GameplayStatics.h`，`UnrealNetwork.h`和`PlayerState.h`：
 
 ```cpp
-    #include "Pickup.h"
-    #include "Kismet/GameplayStatics.h"
-    #include "Net/UnrealNetwork.h"
-    #include "GameFramework/PlayerState.h"
-    ```
+#include "Pickup.h"
+#include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
+#include "GameFramework/PlayerState.h"
+```
 
 1.  实现`GetLifetimeReplicatedProps`函数，并使`PickupRemaining`变量复制到所有客户端：
 
 ```cpp
-    void APickupsGameState::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
-    {
-      Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-      DOREPLIFETIME(APickupsGameState, PickupsRemaining);
-    }
-    ```
+void APickupsGameState::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
+{
+  Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+  DOREPLIFETIME(APickupsGameState, PickupsRemaining);
+}
+```
 
 1.  实现`BeginPlay`覆盖函数，并通过获取世界中的所有道具来设置`PickupsRemaining`的值：
 
 ```cpp
-    void APickupsGameState::BeginPlay()
-    {
-      Super::BeginPlay();
-      TArray<AActor*> Pickups;
-      UGameplayStatics::GetAllActorsOfClass(this,     APickup::StaticClass(), Pickups);
-      PickupsRemaining = Pickups.Num();
-    }
-    ```
+void APickupsGameState::BeginPlay()
+{
+  Super::BeginPlay();
+  TArray<AActor*> Pickups;
+  UGameplayStatics::GetAllActorsOfClass(this,     APickup::StaticClass(), Pickups);
+  PickupsRemaining = Pickups.Num();
+}
+```
 
 1.  实现`GetPlayerStatesOrderedByScore`函数，该函数复制`PlayerArray`变量并对其进行排序，以便得分最高的玩家首先出现：
 
 ```cpp
-    TArray<APlayerState*> APickupsGameState::GetPlayerStatesOrderedByScore() const
-    {
-      TArray<APlayerState*> PlayerStates(PlayerArray);
-      PlayerStates.Sort([](const APlayerState& A, const APlayerState&     B) { return A.Score > B.Score; });
-      return PlayerStates;
-    }
-    ```
+TArray<APlayerState*> APickupsGameState::GetPlayerStatesOrderedByScore() const
+{
+  TArray<APlayerState*> PlayerStates(PlayerArray);
+  PlayerStates.Sort([](const APlayerState& A, const APlayerState&     B) { return A.Score > B.Score; });
+  return PlayerStates;
+}
+```
 
 接下来，让我们来处理`PickupsPlayerState`类。
 
 1.  打开`PickupsPlayerState.h`，并声明受保护的复制整数变量`Pickups`，该变量表示玩家收集了多少个道具：
 
 ```cpp
-    UPROPERTY(Replicated, BlueprintReadOnly)
-    int32 Pickups;
-    ```
+UPROPERTY(Replicated, BlueprintReadOnly)
+int32 Pickups;
+```
 
 1.  实现公共的`AddPickup`函数，该函数将一个道具添加到`Pickups`变量：
 
 ```cpp
-    void AddPickup() { Pickups++; }
-    ```
+void AddPickup() { Pickups++; }
+```
 
 1.  打开`PickupsPlayerState.cpp`并包括`UnrealNetwork.h`：
 
 ```cpp
-    #include "Net/UnrealNetwork.h"
-    ```
+#include "Net/UnrealNetwork.h"
+```
 
 1.  实现`GetLifetimeReplicatedProps`函数，并使`Pickups`变量复制到所有客户端：
 
 ```cpp
-    void APickupsPlayerState::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
-    {
-      Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-      DOREPLIFETIME(APickupsPlayerState, Pickups);
-    }
-    ```
+void APickupsPlayerState::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
+{
+  Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+  DOREPLIFETIME(APickupsPlayerState, Pickups);
+}
+```
 
 接下来，让我们来处理`PickupsPlayerController`类。
 
 1.  打开`PickupsPlayerController.h`并声明受保护的`ScoreboardMenuClass`变量，该变量允许我们选择用于记分牌的 UMG 小部件：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pickup   Player Controller")
-    TSubclassOf<class UUserWidget> ScoreboardMenuClass;
-    ```
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Pickup   Player Controller")
+TSubclassOf<class UUserWidget> ScoreboardMenuClass;
+```
 
 1.  声明受保护的`ScoreboardMenu`变量，该变量存储我们在`BeginPlay`函数中创建的记分牌 UMG 小部件实例：
 
 ```cpp
-    UPROPERTY()
-    class UUserWidget* ScoreboardMenu;
-    ```
+UPROPERTY()
+class UUserWidget* ScoreboardMenu;
+```
 
 1.  声明`BeginPlay`函数的受保护覆盖：
 
 ```cpp
-    virtual void BeginPlay() override;
-    ```
+virtual void BeginPlay() override;
+```
 
 1.  打开`PickupsPlayerController.cpp`并包括`UserWidget.h`：
 
 ```cpp
-    #include "Blueprint/UserWidget.h"
-    ```
+#include "Blueprint/UserWidget.h"
+```
 
 1.  实现`BeginPlay`覆盖函数，对于拥有的客户端，创建并将记分牌 UMG 小部件添加到视口：
 
 ```cpp
-    void APickupsPlayerController::BeginPlay()
-    {
-      Super::BeginPlay();
-      if (!IsLocalController() || ScoreboardMenuClass == nullptr)
-      {
-        return;
-      }
-      ScoreboardMenu = CreateWidget<UUserWidget>(this,     ScoreboardMenuClass);
-      if (ScoreboardMenu != nullptr)
-      {
-        ScoreboardMenu->AddToViewport(0);
-      }
-    }
-    ```
+void APickupsPlayerController::BeginPlay()
+{
+  Super::BeginPlay();
+  if (!IsLocalController() || ScoreboardMenuClass == nullptr)
+  {
+    return;
+  }
+  ScoreboardMenu = CreateWidget<UUserWidget>(this,     ScoreboardMenuClass);
+  if (ScoreboardMenu != nullptr)
+  {
+    ScoreboardMenu->AddToViewport(0);
+  }
+}
+```
 
 现在，让我们编辑`PickupsGameMode`类。
 
 1.  打开`PickupsGameMode.h`并用`GameMode.h`替换`GameModeBase.h`的`include`：
 
 ```cpp
-    #include "GameFramework/GameMode.h"
-    ```
+#include "GameFramework/GameMode.h"
+```
 
 1.  使该类从`AGameMode`派生而不是`AGameModeBase`：
 
 ```cpp
-    class APickupsGameMode : public AGameMode
-    ```
+class APickupsGameMode : public AGameMode
+```
 
 1.  声明受保护的游戏状态变量`MyGameState`，该变量保存`APickupsGameState`类的实例：
 
 ```cpp
-    UPROPERTY()
-    class APickupsGameState* MyGameState;
-    ```
+UPROPERTY()
+class APickupsGameState* MyGameState;
+```
 
 1.  将构造函数移动到受保护区域。
 
 1.  声明`BeginPlay`函数的受保护覆盖：
 
 ```cpp
-    virtual void BeginPlay() override;
-    ```
+virtual void BeginPlay() override;
+```
 
 1.  声明`ShouldSpawnAtStartSpot`函数的受保护覆盖：
 
 ```cpp
-    virtual bool ShouldSpawnAtStartSpot(AController* Player)   override;
-    ```
+virtual bool ShouldSpawnAtStartSpot(AController* Player)   override;
+```
 
 1.  声明游戏模式的比赛状态函数的受保护覆盖：
 
 ```cpp
-    virtual void HandleMatchHasStarted() override;
-    virtual void HandleMatchHasEnded() override;
-    virtual bool ReadyToStartMatch_Implementation() override;
-    virtual bool ReadyToEndMatch_Implementation() override;
-    ```
+virtual void HandleMatchHasStarted() override;
+virtual void HandleMatchHasEnded() override;
+virtual bool ReadyToStartMatch_Implementation() override;
+virtual bool ReadyToEndMatch_Implementation() override;
+```
 
 1.  声明受保护的`RestartMap`函数：
 
 ```cpp
-    void RestartMap();
-    ```
+void RestartMap();
+```
 
 1.  打开`PickupsGameMode.cpp`并包括`GameplayStatics.h`，`PickupGameState.h`，`Engine/World.h`，`TimerManager.h`和`Engine.h`：
 
 ```cpp
-    #include "Kismet/GameplayStatics.h"
-    #include "PickupsGameState.h"
-    #include "Engine/World.h"
-    #include "Engine/Public/TimerManager.h"
-    #include "Engine/Engine.h"
-    ```
+#include "Kismet/GameplayStatics.h"
+#include "PickupsGameState.h"
+#include "Engine/World.h"
+#include "Engine/Public/TimerManager.h"
+#include "Engine/Engine.h"
+```
 
 1.  实现`BeginPlay`覆盖函数，该函数存储`APickupGameState`实例：
 
 ```cpp
-    void APickupsGameMode::BeginPlay()
-    {
-      Super::BeginPlay();
-      MyGameState = GetGameState<APickupsGameState>();
-    }
-    ```
+void APickupsGameMode::BeginPlay()
+{
+  Super::BeginPlay();
+  MyGameState = GetGameState<APickupsGameState>();
+}
+```
 
 1.  实现`ShouldSpawnAtStartSpot`覆盖函数，该函数指示我们希望玩家重新生成在一个随机的玩家起始点上，而不总是在同一个上：
 
 ```cpp
-    bool APickupsGameMode::ShouldSpawnAtStartSpot   (AController* Player)
-    {
-      return false;
-    }
-    ```
+bool APickupsGameMode::ShouldSpawnAtStartSpot   (AController* Player)
+{
+  return false;
+}
+```
 
 1.  实现`HandleMatchHasStarted`覆盖函数，该函数向屏幕打印信息，通知玩家比赛已经开始：
 
 ```cpp
-    void APickupsGameMode::HandleMatchHasStarted()
-    {
-      Super::HandleMatchHasStarted();
-      GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, "The     game has started!");
-    }
-    ```
+void APickupsGameMode::HandleMatchHasStarted()
+{
+  Super::HandleMatchHasStarted();
+  GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, "The     game has started!");
+}
+```
 
 1.  实现`HandleMatchHasEnded`覆盖函数，该函数向屏幕打印信息，通知玩家比赛已经结束，销毁所有角色，并安排一个计时器来重新开始地图：
 
 ```cpp
-    void APickupsGameMode::HandleMatchHasEnded()
-    {
-      Super::HandleMatchHasEnded();
-      GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, "The     game has ended!");
-      TArray<AActor*> Characters;
-        UGameplayStatics::GetAllActorsOfClass(this,     APickupsCharacter::StaticClass(), Characters);
-      for (AActor* Character : Characters)
-      {
-        Character->Destroy();
-      }
-      FTimerHandle TimerHandle;
-      GetWorldTimerManager().SetTimer(TimerHandle, this,     &APickupsGameMode::RestartMap, 5.0f);
-    }
-    ```
+void APickupsGameMode::HandleMatchHasEnded()
+{
+  Super::HandleMatchHasEnded();
+  GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, "The     game has ended!");
+  TArray<AActor*> Characters;
+    UGameplayStatics::GetAllActorsOfClass(this,     APickupsCharacter::StaticClass(), Characters);
+  for (AActor* Character : Characters)
+  {
+    Character->Destroy();
+  }
+  FTimerHandle TimerHandle;
+  GetWorldTimerManager().SetTimer(TimerHandle, this,     &APickupsGameMode::RestartMap, 5.0f);
+}
+```
 
 1.  实现`ReadyToStartMatch_Implementation`覆盖函数，该函数指示比赛可以立即开始：
 
 ```cpp
-    bool APickupsGameMode::ReadyToStartMatch_Implementation()
-    {
-      return true;
-    }
-    ```
+bool APickupsGameMode::ReadyToStartMatch_Implementation()
+{
+  return true;
+}
+```
 
 1.  实现`ReadyToEndMatch_Implementation`覆盖函数，该函数指示当游戏状态没有剩余道具时比赛结束：
 
 ```cpp
-    bool APickupsGameMode::ReadyToEndMatch_Implementation()
-    {
-      return MyGameState != nullptr && !MyGameState->HasPickups();
-    }
-    ```
+bool APickupsGameMode::ReadyToEndMatch_Implementation()
+{
+  return MyGameState != nullptr && !MyGameState->HasPickups();
+}
+```
 
 1.  实现`RestartMap`函数，该函数指示服务器前往相同的级别并带着所有客户端一起（*仅在打包版本中*）：
 
 ```cpp
-    void APickupsGameMode::RestartMap()
-    {
-      GetWorld()->ServerTravel(GetWorld()->GetName(), false, false);
-    }
-    ```
+void APickupsGameMode::RestartMap()
+{
+  GetWorld()->ServerTravel(GetWorld()->GetName(), false, false);
+}
+```
 
 现在，让我们编辑`PickupsCharacter`类。
 
 1.  打开`PickupsCharacter.h`并声明下落和着陆的受保护声音变量：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickups Character")
-    USoundBase* FallSound;
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickups Character")
-    USoundBase* LandSound;
-    ```
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickups Character")
+USoundBase* FallSound;
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Pickups Character")
+USoundBase* LandSound;
+```
 
 1.  声明受保护的`override`函数：
 
 ```cpp
-    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason)   override;
-    virtual void Landed(const FHitResult& Hit) override;
-    virtual void FellOutOfWorld(const UDamageType& DmgType) override;
-    ```
+virtual void EndPlay(const EEndPlayReason::Type EndPlayReason)   override;
+virtual void Landed(const FHitResult& Hit) override;
+virtual void FellOutOfWorld(const UDamageType& DmgType) override;
+```
 
 1.  声明添加分数和道具到玩家状态的公共函数：
 
 ```cpp
-    void AddScore(const float Score);
-    void AddPickup();
-    ```
+void AddScore(const float Score);
+void AddPickup();
+```
 
 1.  声明在拥有的客户端上播放声音的公共客户端 RPC：
 
 ```cpp
-    UFUNCTION(Client, Unreliable)
-    void ClientPlaySound2D(USoundBase* Sound);
-    ```
+UFUNCTION(Client, Unreliable)
+void ClientPlaySound2D(USoundBase* Sound);
+```
 
 1.  打开`PickupsCharacter.cpp`并包括`PickupsPlayerState.h`，`GameMode.h`和`GameplayStatics.h`：
 
 ```cpp
-    #include "PickupsPlayerState.h"
-    #include "GameFramework/GameMode.h"
-    #include "Kismet/GameplayStatics.h"
-    ```
+#include "PickupsPlayerState.h"
+#include "GameFramework/GameMode.h"
+#include "Kismet/GameplayStatics.h"
+```
 
 1.  实现`EndPlay`覆盖函数，如果角色被销毁，则播放跌落声音：
 
 ```cpp
-    void APickupsCharacter::EndPlay(const EEndPlayReason::Type   EndPlayReason)
-    {
-      Super::EndPlay(EndPlayReason);
-      if (EndPlayReason == EEndPlayReason::Destroyed)
-      {
-        UGameplayStatics::PlaySound2D(GetWorld(), FallSound);
-      }
-    }
-    ```
+void APickupsCharacter::EndPlay(const EEndPlayReason::Type   EndPlayReason)
+{
+  Super::EndPlay(EndPlayReason);
+  if (EndPlayReason == EEndPlayReason::Destroyed)
+  {
+    UGameplayStatics::PlaySound2D(GetWorld(), FallSound);
+  }
+}
+```
 
 1.  实现`Landed`覆盖函数，该函数播放着陆声音：
 
 ```cpp
-    void APickupsCharacter::Landed(const FHitResult& Hit)
-    {
-      Super::Landed(Hit);
-      UGameplayStatics::PlaySound2D(GetWorld(), LandSound);
-    }
-    ```
+void APickupsCharacter::Landed(const FHitResult& Hit)
+{
+  Super::Landed(Hit);
+  UGameplayStatics::PlaySound2D(GetWorld(), LandSound);
+}
+```
 
 1.  实现`FellOutOfWorld`覆盖函数，该函数存储控制器，从分数中减去`10`分，销毁角色（使控制器无效），并告诉游戏模式使用先前的控制器重新启动玩家：
 
 ```cpp
-    void APickupsCharacter::FellOutOfWorld(const UDamageType&   DmgType)
-    {
-      AController* PreviousController = Controller;
-      AddScore(-10);
-      Destroy();
-      AGameMode* GameMode = GetWorld()->GetAuthGameMode<AGameMode>();
-      if (GameMode != nullptr)
-      {
-        GameMode->RestartPlayer(PreviousController);
-      }
-    }
-    ```
+void APickupsCharacter::FellOutOfWorld(const UDamageType&   DmgType)
+{
+  AController* PreviousController = Controller;
+  AddScore(-10);
+  Destroy();
+  AGameMode* GameMode = GetWorld()->GetAuthGameMode<AGameMode>();
+  if (GameMode != nullptr)
+  {
+    GameMode->RestartPlayer(PreviousController);
+  }
+}
+```
 
 1.  实现`AddScore`函数，该函数将分数添加到玩家状态中的`Score`变量中：
 
 ```cpp
-    void APickupsCharacter::AddScore(const float Score)
-    {
-      APlayerState* MyPlayerState = GetPlayerState();
-      if (MyPlayerState != nullptr)
-      {
-        MyPlayerState->Score += Score;
-      }
-    }
-    ```
+void APickupsCharacter::AddScore(const float Score)
+{
+  APlayerState* MyPlayerState = GetPlayerState();
+  if (MyPlayerState != nullptr)
+  {
+    MyPlayerState->Score += Score;
+  }
+}
+```
 
 1.  实现`AddPickup`函数，将拾取物品添加到我们自定义玩家状态中的`Pickup`变量中：
 
 ```cpp
-    void APickupsCharacter::AddPickup()
-    {
-      APickupsPlayerState* MyPlayerState =     GetPlayerState<APickupsPlayerState>();
-      if (MyPlayerState != nullptr)
-      {
-        MyPlayerState->AddPickup();
-      }
-    }
-    ```
+void APickupsCharacter::AddPickup()
+{
+  APickupsPlayerState* MyPlayerState =     GetPlayerState<APickupsPlayerState>();
+  if (MyPlayerState != nullptr)
+  {
+    MyPlayerState->AddPickup();
+  }
+}
+```
 
 1.  实现`ClientPlaySound2D_Implementation`函数，该函数在拥有客户端上播放声音：
 
 ```cpp
-    void APickupsCharacter::ClientPlaySound2D_Implementation(USoundBase*   Sound)
-    {
-      UGameplayStatics::PlaySound2D(GetWorld(), Sound);
-    }
-    ```
+void APickupsCharacter::ClientPlaySound2D_Implementation(USoundBase*   Sound)
+{
+  UGameplayStatics::PlaySound2D(GetWorld(), Sound);
+}
+```
 
 1.  打开`Pickups.Build.cs`并将`UMG`模块添加到`PublicDependencyModuleNames`中，如下所示：
 
 ```cpp
-    PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG" });
-    ```
+PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG" });
+```
 
 如果尝试编译并从添加新模块中获得错误，则清理并重新编译您的项目。如果这样不起作用，请尝试重新启动您的 IDE。
 
@@ -1228,10 +1228,10 @@ RotatingMovement->RotationRate = FRotator(0.0, 90.0f, 0);
 1.  以以下方式配置`Static Mesh`组件：
 
 ```cpp
-    Scale = 0.5, 0.5, 0.5	
-    Static Mesh = Engine\BasicShapes\Cube
-    Material Element 0 = CubeMaterial
-    ```
+Scale = 0.5, 0.5, 0.5	
+Static Mesh = Engine\BasicShapes\Cube
+Material Element 0 = CubeMaterial
+```
 
 注意
 
@@ -1372,10 +1372,10 @@ RotatingMovement->RotationRate = FRotator(0.0, 90.0f, 0);
 1.  转到“内容\蓝图”并创建一个名为`BP_GameMode`的新蓝图，该蓝图派生自`PickupGameMode`类，打开它，并更改以下变量：
 
 ```cpp
-    Game State Class = PickupsGameState
-    Player Controller Class = BP_PlayerController
-    Player State Class = PickupsPlayerState
-    ```
+Game State Class = PickupsGameState
+Player Controller Class = BP_PlayerController
+Player State Class = PickupsPlayerState
+```
 
 接下来，让我们配置“项目设置”以使用新的游戏模式。
 

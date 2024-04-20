@@ -305,8 +305,8 @@ Azure Text Analytics 只是另一个 REST API。再次向其发出 HTTP 调用�
 1.  安装`Azure.AI.TextAnalytics` NuGet 包，以获取 Azure Text Analytics API 客户端，如下所示：
 
 ```cpp
-    dotnet add package Azure.AI.TextAnalytics
-    ```
+dotnet add package Azure.AI.TextAnalytics
+```
 
 1.  添加`TextAnalysisApiKey`环境变量。
 
@@ -315,105 +315,105 @@ Azure Text Analytics 只是另一个 REST API。再次向其发出 HTTP 调用�
 1.  创建一个`Demo`类，并添加对您最近添加的两个环境变量的引用：
 
 ```cpp
-    public class Demo
-    {
-        private static string TextAnalysisApiKey { get; } = EnvironmentVariable.GetOrThrow("TextAnalysisApiKey");
-        private static string TextAnalysisEndpoint { get; } = EnvironmentVariable.GetOrThrow("TextAnalysisEndpoint");
-    ```
+public class Demo
+{
+    private static string TextAnalysisApiKey { get; } = EnvironmentVariable.GetOrThrow("TextAnalysisApiKey");
+    private static string TextAnalysisEndpoint { get; } = EnvironmentVariable.GetOrThrow("TextAnalysisEndpoint");
+```
 
 这些属性用于隐藏 API 密钥和端点的敏感值。
 
 1.  创建一个新的`BuildClient`方法来构建 API 客户端：
 
 ```cpp
-    static TextAnalyticsClient BuildClient()
-    {
-        var credentials = new AzureKeyCredential(TextAnalysisApiKey);
-        var endpoint = new Uri(TextAnalysisEndpoint);
-        var client = new TextAnalyticsClient(endpoint, credentials);
-        return client;
-    }
-    ```
+static TextAnalyticsClient BuildClient()
+{
+    var credentials = new AzureKeyCredential(TextAnalysisApiKey);
+    var endpoint = new Uri(TextAnalysisEndpoint);
+    var client = new TextAnalyticsClient(endpoint, credentials);
+    return client;
+}
+```
 
 API 客户端在初始化期间需要基本 URL（一种统一资源标识符（URI））和 API 密钥，这两者都将在初始化期间传递给它。
 
 1.  使用客户端，创建`PerformSentimentalAnalysis`方法来分析文本：
 
 ```cpp
-    private static async Task<DocumentSentiment> PerformSentimentalAnalysis(TextAnalyticsClient client, string text)
-    {
-        var options = new AnalyzeSentimentOptions { IncludeOpinionMining = true };
-        DocumentSentiment documentSentiment = await client.AnalyzeSentimentAsync(text, options: options);
-        return documentSentiment;
-    }
-    ```
+private static async Task<DocumentSentiment> PerformSentimentalAnalysis(TextAnalyticsClient client, string text)
+{
+    var options = new AnalyzeSentimentOptions { IncludeOpinionMining = true };
+    DocumentSentiment documentSentiment = await client.AnalyzeSentimentAsync(text, options: options);
+    return documentSentiment;
+}
+```
 
 在这里，您正在使用配置对象`AnalyzeSentimentOptions`来提取目标和对它们的意见。客户端具有`AnalyzeSentimentAsync`和`AnalyzeSentiment`方法。对于公共客户端库，公开同一方法的异步和非异步版本是非常常见的情况。毕竟，并不是每个人都会对异步 API 感到舒适。但是，当调用另一个机器（数据库、API 等）时，最好使用异步 API。这是因为异步调用不会阻塞进行调用的线程，而是在等待 API 响应时。
 
 1.  现在创建`DisplaySentenceSymmary`函数来显示句子的整体评估：
 
 ```cpp
-    private static void DisplaySentenceSummary(SentenceSentiment sentence)
-    {
-        Console.WriteLine($"Text: \"{sentence.Text}\"");
-        Console.WriteLine($"Sentence sentiment: {sentence.Sentiment}");
-        Console.WriteLine($"Positive score: {sentence.ConfidenceScores.Positive:0.00}");
-        Console.WriteLine($"Negative score: {sentence.ConfidenceScores.Negative:0.00}");
-        Console.WriteLine($"Neutral score: {sentence.ConfidenceScores.Neutral:0.00}{Environment.NewLine}");
-    }
-    ```
+private static void DisplaySentenceSummary(SentenceSentiment sentence)
+{
+    Console.WriteLine($"Text: \"{sentence.Text}\"");
+    Console.WriteLine($"Sentence sentiment: {sentence.Sentiment}");
+    Console.WriteLine($"Positive score: {sentence.ConfidenceScores.Positive:0.00}");
+    Console.WriteLine($"Negative score: {sentence.ConfidenceScores.Negative:0.00}");
+    Console.WriteLine($"Neutral score: {sentence.ConfidenceScores.Neutral:0.00}{Environment.NewLine}");
+}
+```
 
 1.  创建`DisplaySentenceOpinions`函数，以显示句子中每个目标的`Opinions`消息：
 
 ```cpp
-    private static void DisplaySentenceOpinions(SentenceSentiment sentence)
-    {
-        if (sentence.Opinions.Any())
-        {
-            Console.WriteLine("Opinions: ");
-            foreach (var sentenceOpinion in sentence.Opinions)
-            {
-                Console.Write($"{sentenceOpinion.Target.Text}");
-                var assessments = sentenceOpinion
-                    .Assessments
-                    .Select(a => a.Text);
-                Console.WriteLine($" is {string.Join(',', assessments)}");
-                Console.WriteLine();
-            }
-        }
-    }
-    ```
+private static void DisplaySentenceOpinions(SentenceSentiment sentence)
+{
+    if (sentence.Opinions.Any())
+    {
+        Console.WriteLine("Opinions: ");
+        foreach (var sentenceOpinion in sentence.Opinions)
+        {
+            Console.Write($"{sentenceOpinion.Target.Text}");
+            var assessments = sentenceOpinion
+                .Assessments
+                .Select(a => a.Text);
+            Console.WriteLine($" is {string.Join(',', assessments)}");
+            Console.WriteLine();
+        }
+    }
+}
+```
 
 句子的目标是具有应用于它的意见（语法修饰语）的主题。例如，对于句子**a beautiful day**，**day**将是一个目标，**beautiful**是一个意见。
 
 1.  要在控制台中对文本进行情感分析，请创建一个`SentimentAnalysisExample`方法：
 
 ```cpp
-    static async Task SentimentAnalysisExample(TextAnalyticsClient client, string text)
-    {
-        DocumentSentiment documentSentiment = await PerformSentimentalAnalysis(client, text);
-        Console.WriteLine($"Document sentiment: {documentSentiment.Sentiment}\n");
-        foreach (var sentence in documentSentiment.Sentences)
-        {
-            DisplaySentenceSummary(sentence);
-            DisplaySentenceOpinions(sentence);
-        }
-    }
-    ```
+static async Task SentimentAnalysisExample(TextAnalyticsClient client, string text)
+{
+    DocumentSentiment documentSentiment = await PerformSentimentalAnalysis(client, text);
+    Console.WriteLine($"Document sentiment: {documentSentiment.Sentiment}\n");
+    foreach (var sentence in documentSentiment.Sentences)
+    {
+        DisplaySentenceSummary(sentence);
+        DisplaySentenceOpinions(sentence);
+    }
+}
+```
 
 在上述代码片段中，分析文本评估了整体文本的情绪，然后将其分解为句子，并对每个句子进行评估。
 
 1.  为了演示您的代码如何工作，创建一个静态的`Demo.Run`方法：
 
 ```cpp
-    public static Task Run()
-    {
-        var client = BuildClient();
-        string text = "Today is a great day. " +
-                           "I had a wonderful dinner with my family!";
-        return SentimentAnalysisExample(client, text);
-    }
-    ```
+public static Task Run()
+{
+    var client = BuildClient();
+    string text = "Today is a great day. " +
+                       "I had a wonderful dinner with my family!";
+    return SentimentAnalysisExample(client, text);
+}
+```
 
 正确设置环境变量后，应显示以下输出：
 
@@ -456,41 +456,41 @@ dinner is wonderful
 1.  在`GitHttp`静态类中，创建`GetUser`方法：
 
 ```cpp
-    public static async Task GetUser()
-    ```
+public static async Task GetUser()
+```
 
 1.  在`GitExamples`方法中，首先创建一个客户端：
 
 ```cpp
-    client = new HttpClient { BaseAddress = new Uri("https://api.github.com") };
-    client.DefaultRequestHeaders.Add("User-Agent", "Packt");
-    ```
+client = new HttpClient { BaseAddress = new Uri("https://api.github.com") };
+client.DefaultRequestHeaders.Add("User-Agent", "Packt");
+```
 
 几乎总是需要指定特定基本 URL 来创建客户端。通常，Web API 要求传递强制性标头，否则它们将使请求无效（`400 Bad Request`）。对于 GitHub，你需要发送`User-Agent`标头来标识调用 API 的客户端。将`Packt`用户代理标头添加到默认标头将在每个请求发送到客户端时发送该标头。
 
 1.  然后，你可以按以下方式创建一个请求：
 
 ```cpp
-    const string username = "github-user"; //replace with your own
-    var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"users/{username}", UriKind.Relative));
-    ```
+const string username = "github-user"; //replace with your own
+var request = new HttpRequestMessage(HttpMethod.Get, new Uri($"users/{username}", UriKind.Relative));
+```
 
 记得用你自己的 GitHub 用户名替换`github-user`。在这里，你指定要创建一个`GET`请求。你没有指定完整的路径，而是只指定了你要访问的端点；因此，你必须将`UriKind`标记为`Relative`。
 
 1.  接下来，使用客户端发送请求：
 
 ```cpp
-    var response = await client.SendAsync(request);
-    ```
+var response = await client.SendAsync(request);
+```
 
 只有一个发送 HTTP 请求消息的异步版本，所以你需要等待它。发送`HttpRequestMessage`的结果是`HttpResponseMessage`。
 
 1.  然后，按以下方式将内容反序列化为可用对象：
 
 ```cpp
-    var content = await response.Content.ReadAsStringAsync();
-    var user = JsonConvert.DeserializeObject<User>(content);
-    ```
+var content = await response.Content.ReadAsStringAsync();
+var user = JsonConvert.DeserializeObject<User>(content);
+```
 
 反序列化是将结构化文本（如 JSON）转换为内存对象的行为。为此，你需要将内容转换为字符串，然后进行反序列化。你可以使用 Octokit NuGet 中的用户模型。由于你已经在进行自定义调用，那么你可能也会使用自定义模型。对于最基本的（只使用的字段），你的模型可能如下所示：
 
@@ -510,15 +510,15 @@ public class User
 1.  使用 Postman 中的先前调用的消息从 GitHub 用户响应主体生成要反序列化的模型。在这种情况下，响应消息如下（为了清晰起见，消息已截断）：
 
 ```cpp
-    {
-       "login":"github-user",
-       "id":40486932,
-       "node_id":"MDQ6VXNlcjQwNDg2OTMy",
-       "name":"Kaisinel",
-       "created_at":"2018-06-22T07:51:56Z",
-       "updated_at":"2021-08-12T14:55:29Z"
-    }
-    ```
+{
+   "login":"github-user",
+   "id":40486932,
+   "node_id":"MDQ6VXNlcjQwNDg2OTMy",
+   "name":"Kaisinel",
+   "created_at":"2018-06-22T07:51:56Z",
+   "updated_at":"2021-08-12T14:55:29Z"
+}
+```
 
 有许多可用的工具可以将 JSON 转换为 C#模型。
 
@@ -537,16 +537,16 @@ public class User
 1.  复制右侧的内容并粘贴到您的代码中：
 
 ```cpp
-    public class Root
-    {
-        public string login { get; set; }
-        public int id { get; set; }
-        public string node_id { get; set; }
-        public string name { get; set; }
-        public DateTime created_at { get; set; }
-        public DateTime updated_at { get; set; }
-    }
-    ```
+public class Root
+{
+    public string login { get; set; }
+    public int id { get; set; }
+    public string node_id { get; set; }
+    public string name { get; set; }
+    public DateTime created_at { get; set; }
+    public DateTime updated_at { get; set; }
+}
+```
 
 这是您的模型。请注意，在上述代码中，`Root`是一个不可读的类名。这是因为转换器无法知道 JSON 代表什么类。`Root`类代表一个用户；因此，请将其重命名为`User`。
 
@@ -563,14 +563,14 @@ public class User
 1.  将（`Root`更名为`User`）并将类型从`class`更改为`record`。代码行看起来像这样，不需要更改属性：
 
 ```cpp
-    public record User
-    ```
+public record User
+```
 
 1.  最后，运行以下代码行：
 
 ```cpp
-    Console.WriteLine($"{user.Name} created profile at {user.CreatedAt}");
-    ```
+Console.WriteLine($"{user.Name} created profile at {user.CreatedAt}");
+```
 
 输出显示如下：
 
@@ -683,9 +683,9 @@ OAuth 通常涉及两个客户端应用程序：
 1.  然后通过`Demo.cs`中的静态属性公开这两个值（前面已经解释过）：
 
 ```cpp
-    private static string GitHubClientId { get; } = Environment.GetEnvironmentVariable("GithubClientId", EnvironmentVariableTarget.User);
-    private static string GitHubSecret { get; } = Environment.GetEnvironmentVariable("GithubSecret", EnvironmentVariableTarget.User);
-    ```
+private static string GitHubClientId { get; } = Environment.GetEnvironmentVariable("GithubClientId", EnvironmentVariableTarget.User);
+private static string GitHubSecret { get; } = Environment.GetEnvironmentVariable("GithubSecret", EnvironmentVariableTarget.User);
+```
 
 本节介绍了在 GitHub 中设置 OAuth 应用程序的步骤，该应用程序可用于请求访问 GitHub 的安全功能，例如更改个人数据。有了这些知识，您现在可以使用客户端 ID 和客户端密钥来创建 GitHub API 上的授权调用，如下一节所示。
 
@@ -832,14 +832,14 @@ await GitExamples.GetUser61Times(basicToken);
 1.  将个人访问令牌添加到`Demo.cs`：
 
 ```cpp
-    private static string GitHubPersonAccessToken { get; } = Environment.GetEnvironmentVariable("GitHubPersonalAccess", EnvironmentVariableTarget.User);
-    ```
+private static string GitHubPersonAccessToken { get; } = Environment.GetEnvironmentVariable("GitHubPersonalAccess", EnvironmentVariableTarget.User);
+```
 
 1.  运行以下代码：
 
 ```cpp
-    await GetUser61Times(GitHubPersonAccessToken);
-    ```
+await GetUser61Times(GitHubPersonAccessToken);
+```
 
 您将注意到调用`GetUser61Times`方法不会失败。
 
@@ -856,8 +856,8 @@ GitHub 是授权服务器的一个示例。它允许以所有者的名义访问�
 1.  导航到此 URL 或发送 HTTP `GET`请求：
 
 ```cpp
-    https://github.com/login/oauth/authorize?client_id={{ClientId}}&redirect_uri={{RedirectUrl}}
-    ```
+https://github.com/login/oauth/authorize?client_id={{ClientId}}&redirect_uri={{RedirectUrl}}
+```
 
 在这里，`{{ClientId}}`和`{{RedirectUrl}}`是您在 OAuth2 GitHub 应用程序中设置的值。
 
@@ -880,8 +880,8 @@ GitHub 是授权服务器的一个示例。它允许以所有者的名义访问�
 1.  通过向以下格式的 URI 发送 HTTP `POST`请求来为令牌创建请求：
 
 ```cpp
-    {tokenUrl}?client_id={clientId}&redirect_uri={redirectUri}&client_secret={secret}&code={code}:
-    ```
+{tokenUrl}?client_id={clientId}&redirect_uri={redirectUri}&client_secret={secret}&code={code}:
+```
 
 其代码如下：
 
@@ -906,32 +906,32 @@ access_token=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&scope=user&token_type=bear
 1.  在此令牌可以使用之前，您需要从响应中解析它。因此，创建一个函数来解析令牌响应：
 
 ```cpp
-    private static Dictionary<string, string> ConvertToDictionary(string content)
-    {
-        return content
-            .Split('&')
-            .Select(kvp => kvp.Split('='))
-            .Where(kvp => kvp.Length > 1)
-            .ToDictionary(kvp => kvp[0], kvp => kvp[1]);
-    }
-    ```
+private static Dictionary<string, string> ConvertToDictionary(string content)
+{
+    return content
+        .Split('&')
+        .Select(kvp => kvp.Split('='))
+        .Where(kvp => kvp.Length > 1)
+        .ToDictionary(kvp => kvp[0], kvp => kvp[1]);
+}
+```
 
 这将每个`=`属性放入字典中。`=`之前的字符串是键，`=`之后的字符串是值。
 
 1.  使用`GetToken`函数创建并发送请求并解析响应，然后格式化令牌并返回它：
 
 ```cpp
-    private static async Task<string> GetToken()
-    {
-        HttpRequestMessage request = CreateGetAccessTokenRequest();
-        var response = await client.SendAsync(request);
-        var content = await response.Content.ReadAsStringAsync();
-        Dictionary<string, string> tokenResponse = ConvertToDictionary(content);
-        // ValidateNoError(tokenResponse);
-        var token = $"{tokenResponse["token_type"]} {tokenResponse["access_token"]}";
-        return token;
-    }
-    ```
+private static async Task<string> GetToken()
+{
+    HttpRequestMessage request = CreateGetAccessTokenRequest();
+    var response = await client.SendAsync(request);
+    var content = await response.Content.ReadAsStringAsync();
+    Dictionary<string, string> tokenResponse = ConvertToDictionary(content);
+    // ValidateNoError(tokenResponse);
+    var token = $"{tokenResponse["token_type"]} {tokenResponse["access_token"]}";
+    return token;
+}
+```
 
 在这里，您创建了一个请求，将其发送给客户端，将响应解析为令牌，然后返回。`ValidateNoError`现在被注释掉了。您稍后会回来处理它。返回的令牌应该看起来像这样：
 
@@ -944,21 +944,21 @@ bearer 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
 1.  要更新用户的就业状态，使用`UpdateEmploymentStatus`函数：
 
 ```cpp
-    public static async Task UpdateEmploymentStatus(bool isHireable, string authToken)
-    {
-        var user = new UserFromWeb
-        {
-            hireable = isHireable
-        };
-        var request = new HttpRequestMessage(HttpMethod.Patch, new Uri("/user", UriKind.Relative));
-        request.Headers.Add("Authorization", authToken);
-        var requestContent = JsonConvert.SerializeObject(user, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        request.Content = new StringContent(requestContent, Encoding.UTF8, "application/json");
-        var response = await client.SendAsync(request);
-        var responseContent = await response.Content.ReadAsStringAsync();
-        Console.WriteLine(responseContent);
-    }
-    ```
+public static async Task UpdateEmploymentStatus(bool isHireable, string authToken)
+{
+    var user = new UserFromWeb
+    {
+        hireable = isHireable
+    };
+    var request = new HttpRequestMessage(HttpMethod.Patch, new Uri("/user", UriKind.Relative));
+    request.Headers.Add("Authorization", authToken);
+    var requestContent = JsonConvert.SerializeObject(user, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+    request.Content = new StringContent(requestContent, Encoding.UTF8, "application/json");
+    var response = await client.SendAsync(request);
+    var responseContent = await response.Content.ReadAsStringAsync();
+    Console.WriteLine(responseContent);
+}
+```
 
 此代码块将用户的属性`isHireable`设置为`true`并打印更新后的用户信息。这里重要的部分是内容；当发送`PUT`、`PATCH`或`POST`请求时，通常需要一个请求体（或者换句话说，内容）。
 
@@ -1041,14 +1041,14 @@ bad verification code. The code passed is incorrect or expired.
 1.  创建一个新的类来保存带有基本 URL 的`HttpClient`：
 
 ```cpp
-    public class StarWarsClient
-        {
-            private readonly HttpClient _client;
-            public StarWarsClient()
-            {
-                _client = new HttpClient {BaseAddress = new Uri("https://swapi.dev/api/")};
-            }
-    ```
+public class StarWarsClient
+    {
+        private readonly HttpClient _client;
+        public StarWarsClient()
+        {
+            _client = new HttpClient {BaseAddress = new Uri("https://swapi.dev/api/")};
+        }
+```
 
 这将作为一个强类型的 API 客户端。
 
@@ -1059,23 +1059,23 @@ URI 末尾的`/`表示 URI 将被附加更多文本（在`api`之后而不是在
 1.  创建一个用于表示电影的类型：
 
 ```cpp
-    Film.cs
-    public record Film
-    {
-        public string Title { get; set; }
-        public int EpisodeId { get; set; }
-        public string OpeningCrawl { get; set; }
-        public string Director { get; set; }
-        public string Producer { get; set; }
-        [JsonProperty("release_date")]
-        public string ReleaseDate { get; set; }
-        public string[] Characters { get; set; }
-        public string[] Planets { get; set; }
-        public string[] Starships { get; set; }
-        public string[] Vehicles { get; set; }
-        public string[] Species { get; set; }
-        public DateTime Created { get; set; }
-    ```
+Film.cs
+public record Film
+{
+    public string Title { get; set; }
+    public int EpisodeId { get; set; }
+    public string OpeningCrawl { get; set; }
+    public string Director { get; set; }
+    public string Producer { get; set; }
+    [JsonProperty("release_date")]
+    public string ReleaseDate { get; set; }
+    public string[] Characters { get; set; }
+    public string[] Planets { get; set; }
+    public string[] Starships { get; set; }
+    public string[] Vehicles { get; set; }
+    public string[] Species { get; set; }
+    public DateTime Created { get; set; }
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/tjHLa.
@@ -1086,15 +1086,15 @@ The complete code can be found here: https://packt.link/tjHLa.
 1.  创建一个用于存储结果的类型：
 
 ```cpp
-    public record ApiResult<T>
-    {
-        public int Count { get; set; }
-        public string Next { get; set; }
-        public string Previous { get; set; }
-        [JsonProperty("results")]
-        public T Data { get; set; }
-    }
-    ```
+public record ApiResult<T>
+{
+    public int Count { get; set; }
+    public string Next { get; set; }
+    public string Previous { get; set; }
+    [JsonProperty("results")]
+    public T Data { get; set; }
+}
+```
 
 这也是一种用于反序列化电影响应的类型；但是，星球大战 API 以分页格式返回结果。它包含指向上一页和下一页的`Previous`和`Next`属性。例如，如果您没有提供要获取的页面，它将返回一个`null`值。但是，如果还有剩余元素，下一个属性将指向下一页（否则它也将是`null`）。使用下一个或上一个作为 URI 查询 API 将返回该页面的资源。您在`T Data`上方使用`JsonProperty`属性来提供 JSON 到属性的映射，因为属性和 JSON 名称不匹配（JSON 字段名为`results`，而`Data`是属性名）。
 
@@ -1105,65 +1105,65 @@ The complete code can be found here: https://packt.link/tjHLa.
 1.  现在，创建一个获取多部电影的方法：
 
 ```cpp
-    public async Task<ApiResult<IEnumerable<Film>>> GetFilms()
-    {
-    ```
+public async Task<ApiResult<IEnumerable<Film>>> GetFilms()
+{
+```
 
 您返回了一个任务，以便其他人可以等待此方法。几乎所有的 HTTP 调用都将是`async Task`。
 
 1.  创建一个 HTTP 请求以获取所有电影：
 
 ```cpp
-    var request = new HttpRequestMessage(HttpMethod.Get, new Uri("films", UriKind.Relative));
-    ```
+var request = new HttpRequestMessage(HttpMethod.Get, new Uri("films", UriKind.Relative));
+```
 
 URI 是相对的，因为您是从已经设置了基本 URI 的`HttpClient`中调用它。
 
 1.  要查询星球大战 API 的电影，请发送此请求：
 
 ```cpp
-    var response = await _client.SendAsync(request);
-    ```
+var response = await _client.SendAsync(request);
+```
 
 1.  它返回`HttpResponseMessage`。这有两个重要部分：状态码和响应体。C#有一个方法可以根据状态码确定是否有任何错误。要处理错误，请使用以下代码：
 
 ```cpp
-    if (!response.IsSuccessStatusCode)
-    {
-          throw new HttpRequestException(response.ReasonPhrase);
-    }
-    ```
+if (!response.IsSuccessStatusCode)
+{
+      throw new HttpRequestException(response.ReasonPhrase);
+}
+```
 
 错误处理很重要，因为失败的 HTTP 请求通常会导致错误状态码而不是异常。建议在尝试反序列化响应体之前执行类似的操作，因为如果失败，您可能会得到一个意外的响应体。
 
 1.  现在，调用`ReadAsStringAsync`方法：
 
 ```cpp
-    var content = await response.Content.ReadAsStringAsync();
-    var films = JsonConvert.DeserializeObject<ApiResult<Film>>(content);
-        return films;
-    }
-    ```
+var content = await response.Content.ReadAsStringAsync();
+var films = JsonConvert.DeserializeObject<ApiResult<Film>>(content);
+    return films;
+}
+```
 
 响应的内容更可能是一种流的形式。要将`HttpContent`转换为字符串，请调用`ReadAsStringAsync`方法。这将返回一个字符串（JSON），允许您将 JSON 转换为 C#对象并反序列化结果。最后，通过反序列化响应内容体并将其全部转换为`ApiResult<Film>`来获取结果。
 
 1.  为了演示，创建客户端并使用它获取所有星球大战电影，然后打印它们：
 
 ```cpp
-    public static class Demo
-    {
-        public static async Task Run()
-        {
-            var client = new StarWarsClient();
-            var filmsResponse = await client.GetFilms();
-            var films = filmsResponse.Data;
-            foreach (var film in films)
-            {
-                Console.WriteLine($"{film.ReleaseDate} {film.Title}");
-            }
-        }
-    }
-    ```
+public static class Demo
+{
+    public static async Task Run()
+    {
+        var client = new StarWarsClient();
+        var filmsResponse = await client.GetFilms();
+        var films = filmsResponse.Data;
+        foreach (var film in films)
+        {
+            Console.WriteLine($"{film.ReleaseDate} {film.Title}");
+        }
+    }
+}
+```
 
 如果一切正常，您应该看到以下结果：
 
@@ -1217,13 +1217,13 @@ URI 是相对的，因为您是从已经设置了基本 URI 的`HttpClient`中�
 1.  如果您使用新的`StarWarsClient`再次运行演示，您应该会看到相同的电影返回：
 
 ```cpp
-    1977-05-25 A New Hope
-    1980-05-17 The Empire Strikes Back
-    1983-05-25 Return of the Jedi
-    1999-05-19 The Phantom Menace
-    2002-05-16 Attack of the Clones
-    2005-05-19 Revenge of the Sith
-    ```
+1977-05-25 A New Hope
+1980-05-17 The Empire Strikes Back
+1983-05-25 Return of the Jedi
+1999-05-19 The Phantom Menace
+2002-05-16 Attack of the Clones
+2005-05-19 Revenge of the Sith
+```
 
 要运行此活动，请转到[`packt.link/GR27A`](https://packt.link/GR27A)，并在`static void` `Main(string[] args)`主体中注释所有行，除了`await Activities.Activity01.Demo.Run();`。
 
@@ -1355,26 +1355,26 @@ Refit 是最聪明的客户端抽象，因为它从接口生成客户端。您�
 1.  要使用`Refit`库，首先安装`Refit` NuGet：
 
 ```cpp
-    dotnet add package Refit
-    ```
+dotnet add package Refit
+```
 
 1.  要在 Refit 中创建客户端，首先创建一个带有 HTTP 方法的接口：
 
 ```cpp
-    public interface IStarWarsClient
-    {
-        [Get("/films")]
-        public Task<ApiResult<IEnumerable<Film>>> GetFilms();
-    }
-    ```
+public interface IStarWarsClient
+{
+    [Get("/films")]
+    public Task<ApiResult<IEnumerable<Film>>> GetFilms();
+}
+```
 
 请注意，此处的端点是`/films`而不是`films`。如果您使用`films`运行代码，将会收到一个异常，建议您使用前导`/`更改端点。
 
 1.  要解析客户端，只需运行以下代码：
 
 ```cpp
-    var client = RestService.For<IStarWarsClient>("https://swapi.dev/api/");
-    ```
+var client = RestService.For<IStarWarsClient>("https://swapi.dev/api/");
+```
 
 运行演示后，将显示以下输出：
 
@@ -1508,9 +1508,9 @@ PayPal 沙箱是免费的。
 1.  在一个新的空类`Exercise03.AuthHeaderHandler.cs`中创建用于访问 PayPal 客户端 ID 和秘钥的属性：
 
 ```cpp
-    public static string PayPalClientId { get; } = EnvironmentVariable.GetOrThrow("PayPalClientId");
-    public static string PayPalSecret { get; } = EnvironmentVariable.GetOrThrow("PayPalSecret");
-    ```
+public static string PayPalClientId { get; } = EnvironmentVariable.GetOrThrow("PayPalClientId");
+public static string PayPalSecret { get; } = EnvironmentVariable.GetOrThrow("PayPalSecret");
+```
 
 这里使用`EnvironmentVariable.GetOrThrow`辅助方法来获取用户的环境变量，如果不存在则抛出。您将使用这些属性来连接到沙箱 PayPal API。
 
@@ -1521,22 +1521,22 @@ PayPal 沙箱是免费的。
 1.  在`Demo.cs`类中，添加一个用于 PayPal 沙箱的`BaseAddress`的`const`变量：
 
 ```cpp
-    public const string BaseAddress = "https://api.sandbox.paypal.com/";
-    ```
+public const string BaseAddress = "https://api.sandbox.paypal.com/";
+```
 
 `BaseAddress`将用于使用 PayPal URL 初始化不同的客户端（RestSharp 和 Refit）。
 
 1.  使用`Refit`创建一个带有`CreateOrder`和`GetOrder`方法的客户端：
 
 ```cpp
-    public interface IPayPalClient
-    {
-        [Post("/v2/checkout/orders")]
-        public Task<CreatedOrderResponse> CreateOrder(Order order);
-        [Get("/v2/checkout/orders/{id}")]
-        public Task<Order> GetOrder(string id);
-    }
-    ```
+public interface IPayPalClient
+{
+    [Post("/v2/checkout/orders")]
+    public Task<CreatedOrderResponse> CreateOrder(Order order);
+    [Get("/v2/checkout/orders/{id}")]
+    public Task<Order> GetOrder(string id);
+}
+```
 
 要获取示例请求，请参考您想要调用的 API 的文档。通常，它们会有一个示例请求。在这种情况下，PayPal 的`CreateOrder`请求可以在[`developer.paypal.com/docs/api/orders/v2/`](https://developer.paypal.com/docs/api/orders/v2/)找到：
 
@@ -1565,21 +1565,21 @@ PayPal 沙箱是免费的。
 1.  将`RootObject`重命名为`Order`，并将所有类更改为`record`类型，因为它是 DTO 的更合适的类型：
 
 ```cpp
-    IPayPalClient.cs
-    public record Order
-    {
-        public string intent { get; set; }
-        public Purchase_Units[] purchase_units { get; set; }
-    }
-    public record Name
-    {
-        public string name { get; set; }
-    }
-    public record Purchase_Units
-    {
-        public Amount amount { get; set; }
-        public Payee payee { get; set; }
-    ```
+IPayPalClient.cs
+public record Order
+{
+    public string intent { get; set; }
+    public Purchase_Units[] purchase_units { get; set; }
+}
+public record Name
+{
+    public string name { get; set; }
+}
+public record Purchase_Units
+{
+    public Amount amount { get; set; }
+    public Payee payee { get; set; }
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/GvEZ8.
@@ -1588,49 +1588,49 @@ The complete code can be found here: https://packt.link/GvEZ8.
 1.  使用相同的 PayPal 文档([`developer.paypal.com/docs/api/orders/v2/`](https://developer.paypal.com/docs/api/orders/v2/))，复制示例响应：
 
 ```cpp
-    {
-        "id": "7XS70547FW3652617",
-        "intent": "CAPTURE",
-        "status": "CREATED",
-        "purchase_units": [
-            {
-                "reference_id": "default",
-                "amount": {
-                    "currency_code": "USD",
-                    "value": "100.00"
-                },
-                "payee": {
-                    "email_address": "sb-emttb7510335@business.example.com",
-                    "merchant_id": "7LSF4RYZLRB96"
-                }
-            }
-        ],
-        "create_time": "2021-09-04T13:01:34Z",
-        "links": [
-            {
-                "href": "https://api.sandbox.paypal.com/v2/checkout/orders/7XS70547FW3652617",
-                "rel": "self",
-                "method": "GET"
-            }
-         ]
-    }
-    ```
+{
+    "id": "7XS70547FW3652617",
+    "intent": "CAPTURE",
+    "status": "CREATED",
+    "purchase_units": [
+        {
+            "reference_id": "default",
+            "amount": {
+                "currency_code": "USD",
+                "value": "100.00"
+            },
+            "payee": {
+                "email_address": "sb-emttb7510335@business.example.com",
+                "merchant_id": "7LSF4RYZLRB96"
+            }
+        }
+    ],
+    "create_time": "2021-09-04T13:01:34Z",
+    "links": [
+        {
+            "href": "https://api.sandbox.paypal.com/v2/checkout/orders/7XS70547FW3652617",
+            "rel": "self",
+            "method": "GET"
+        }
+     ]
+}
+```
 
 1.  使用[`json2csharp.com/`](https://json2csharp.com/)并从 JSON 生成 C#类。在这里，您将获得与请求 JSON 非常相似的类。唯一的区别是响应（为简洁起见进行了简化）：
 
 ```cpp
-    public class CreateOrderResponse
-    {
-        public string id { get; set; }
-    }
-    ```
+public class CreateOrderResponse
+{
+    public string id { get; set; }
+}
+```
 
 1.  使用`AuthHeaderHandler`在发出请求时获取访问令牌，并确保它继承`DelegatingHandler`：
 
 ```cpp
-    public class AuthHeaderHandler : DelegatingHandler
-    {
-    ```
+public class AuthHeaderHandler : DelegatingHandler
+{
+```
 
 要调用 PayPal，您需要在每个请求中使用`auth`标头。`auth`标头的值是从另一个端点检索的。Refit 不能随意添加标头。但是，您可以使用自定义`HttpClient`和自定义`HttpMessageHandler`设置 Refit，每当发出请求时都会获取访问令牌。出于这个原因使用`AuthHeaderHandler`。
 
@@ -1639,24 +1639,24 @@ The complete code can be found here: https://packt.link/GvEZ8.
 1.  现在，通过向`AuthenticationHeader`添加一个令牌来重写`SendRequest`：
 
 ```cpp
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-                    var accessToken = await GetAccessToken(CreateBasicAuthToken());
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                    return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
-    }
-    ```
+protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+{
+                var accessToken = await GetAccessToken(CreateBasicAuthToken());
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+}
+```
 
 1.  要获取访问令牌，您首先需要使用基本的`auth`（客户端 ID 和密钥）获取 OAuth 令牌：
 
 ```cpp
-     private static string CreateBasicAuthToken()
-          {
-                    var credentials = Encoding.GetEncoding("ISO-8859-1").GetBytes(PayPalClientId + ":" + PayPalSecret);
-                    var authHeader = Convert.ToBase64String(credentials);
-                    return "Basic " + authHeader;
-          }
-    ```
+ private static string CreateBasicAuthToken()
+      {
+                var credentials = Encoding.GetEncoding("ISO-8859-1").GetBytes(PayPalClientId + ":" + PayPalSecret);
+                var authHeader = Convert.ToBase64String(credentials);
+                return "Basic " + authHeader;
+      }
+```
 
 1.  获取访问令牌将需要一个`auth`令牌。使用`RestSharp`客户端并向请求添加`Authorization`标头。
 
@@ -1665,83 +1665,83 @@ The complete code can be found here: https://packt.link/GvEZ8.
 1.  将`grant_type=client_credentials`作为请求正文内容添加：
 
 ```cpp
-                private static async Task<string> GetAccessToken(string authToken)
-                {
-                    var request = new RestRequest("v1/oauth2/token");
-                    request.AddHeader("Authorization", authToken);
-                    request.AddHeader("content-type", "application/x-www-form-urlencoded");
-                    request.AddParameter("application/x-www-form-urlencoded", "grant_type=client_credentials", ParameterType.RequestBody);
-    ```
+            private static async Task<string> GetAccessToken(string authToken)
+            {
+                var request = new RestRequest("v1/oauth2/token");
+                request.AddHeader("Authorization", authToken);
+                request.AddHeader("content-type", "application/x-www-form-urlencoded");
+                request.AddParameter("application/x-www-form-urlencoded", "grant_type=client_credentials", ParameterType.RequestBody);
+```
 
 1.  执行上述请求并使用私有嵌套类`Response`返回响应，以简化您的工作：
 
 ```cpp
-                    var response = await RestClient.ExecuteAsync<Response>(request, Method.POST);
-                    return response.Data.access_token;
-                }
-            private class Response
-            {
-                public string access_token { get; set; }
-            }
-          }
-    ```
+                var response = await RestClient.ExecuteAsync<Response>(request, Method.POST);
+                return response.Data.access_token;
+            }
+        private class Response
+        {
+            public string access_token { get; set; }
+        }
+      }
+```
 
 为什么需要嵌套类？在这里，访问令牌嵌套在响应中。它不仅仅是一个字符串，而是一个对象。从 JSON 中自行解析会有点复杂。但是，您已经知道如何反序列化对象。因此，即使只是一个属性，反序列化仍然有所帮助。
 
 1.  现在，在`AuthHandler`类中为`GetAccessToken`方法创建`RestClient`：
 
 ```cpp
-    private static readonly RestClient RestClient = new RestClient(baseAddress);
-    ```
+private static readonly RestClient RestClient = new RestClient(baseAddress);
+```
 
 1.  在`Demo`类中，创建`Run`方法：
 
 ```cpp
-    public static async Task Run()
-            	{
-    ```
+public static async Task Run()
+        	{
+```
 
 1.  使用自定义`AuthHeaderHandler`提供程序解析`Refit`客户端：
 
 ```cpp
-                var authHandler = new AuthHeaderHandler {InnerHandler = new HttpClientHandler() };
-                var payPalClient = RestService.For<IPayPalClient>(new HttpClient(authHandler)
-                    {
-                        BaseAddress = new Uri(baseAddress)
-                    });
-    ```
+            var authHandler = new AuthHeaderHandler {InnerHandler = new HttpClientHandler() };
+            var payPalClient = RestService.For<IPayPalClient>(new HttpClient(authHandler)
+                {
+                    BaseAddress = new Uri(baseAddress)
+                });
+```
 
 1.  假设通过创建`Order`对象进行了付款，运行以下代码：
 
 ```cpp
-    var order = new Order
-                {
-                    intent = "CAPTURE",
-                    purchase_units = new[]
-                    {
-                        new Purchase_Units
-                        {
-                            amount = new Amount
-                            {
-                                currency_code = "EUR", value = "100.00"
-                            }
-                        }
-                    }
-                };
-    ```
+var order = new Order
+            {
+                intent = "CAPTURE",
+                purchase_units = new[]
+                {
+                    new Purchase_Units
+                    {
+                        amount = new Amount
+                        {
+                            currency_code = "EUR", value = "100.00"
+                        }
+                    }
+                }
+            };
+```
 
 1.  现在，调用 PayPal API 并创建一个刚刚创建的订单的订单端点。
 
 1.  获取创建的订单以查看是否有效，并打印检索到的订单支付信息：
 
 ```cpp
-    var createOrderResponse = await payPalClient.CreateOrder(order);
-    var payment = await payPalClient.GetOrder(createOrderResponse.id);
-    var pay = payment.purchase_units.First();
-    Console.WriteLine($"{pay.payee.email_address} - " +
-                                  $"{pay.amount.value}" +
-                                  $"{pay.amount.currency_code}");
-    ```
+var createOrderResponse = await payPalClient.CreateOrder(order);
+var payment = await payPalClient.GetOrder(createOrderResponse.id);
+var pay = payment.purchase_units.First();
+Console.WriteLine($"{pay.payee.email_address} - " +
+                              $"{pay.amount.value}" +
+                              $"{pay.amount.currency_code}");
+```
 
 如果环境变量设置正确，您应该会看到以下输出：
 

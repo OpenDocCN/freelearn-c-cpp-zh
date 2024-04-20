@@ -33,25 +33,25 @@ Qt 不仅是 PC 平台的跨平台软件开发工具包，还支持 iOS 和 Andr
 1.  创建项目后，Qt Creator 将自动打开项目中的一个文件，名为`main.qml`。您将在屏幕上看到类似于这样的东西，与您通常的 C/C++项目非常不同：
 
 ```cpp
-    import QtQuick 2.3
-    import QtQuick.Window 2.2
+import QtQuick 2.3
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
+Window {
+  visible: true
 
-      MouseArea {
-        anchors.fill: parent
-        onClicked: {
-          Qt.quit();
-        }
-      }
-
-      Text {
-        text: qsTr("Hello World")
-        anchors.centerIn: parent
-      }
+  MouseArea {
+    anchors.fill: parent
+    onClicked: {
+      Qt.quit();
     }
-    ```
+  }
+
+  Text {
+    text: qsTr("Hello World")
+    anchors.centerIn: parent
+  }
+}
+```
 
 1.  现在通过单击 Qt Creator 左下角的绿色箭头按钮构建和运行项目。如果将默认工具设置为**桌面**，将弹出一个窗口，看起来像这样：![操作步骤...](img/B02820_05_03.jpg)
 
@@ -122,38 +122,38 @@ Qt Quick 应用程序项目与表单应用程序项目有很大不同。您将�
 1.  在脚本顶部，添加第三行以导入对话框模块到`main.qml`，如下所示：
 
 ```cpp
-    import QtQuick 2.5
-    import QtQuick.Window 2.2
-    import QtQuick.Dialogs 1.2
-    ```
+import QtQuick 2.5
+import QtQuick.Window 2.2
+import QtQuick.Dialogs 1.2
+```
 
 1.  接下来，用以下代码替换下面的代码：
 
 ```cpp
-    Window {
-      visible: true
-      width: 360
-      height: 360
+Window {
+  visible: true
+  width: 360
+  height: 360
 
-      MainForm {
-        anchors.fill: parent
-        loginButton.onClicked: {
-          messageDialog.text = "Username is " + userInput.text + " and password is " + passInput.text
-            messageDialog.visible = true
-        }
-      }
-
-      MessageDialog {
-        id: messageDialog
-        title: "Fake login"
-        text: ""
-        onAccepted: {
-          console.log("You have clicked the login button")
-          Qt.quit()
-        }
-      }
+  MainForm {
+    anchors.fill: parent
+    loginButton.onClicked: {
+      messageDialog.text = "Username is " + userInput.text + " and password is " + passInput.text
+        messageDialog.visible = true
     }
-    ```
+  }
+
+  MessageDialog {
+    id: messageDialog
+    title: "Fake login"
+    text: ""
+    onAccepted: {
+      console.log("You have clicked the login button")
+      Qt.quit()
+    }
+  }
+}
+```
 
 1.  在 PC 上构建并运行此程序，当您单击**登录**按钮时，应该会显示一个消息框的简单程序：![操作步骤…](img/B02820_05_11.jpg)
 
@@ -188,29 +188,29 @@ Qt Quick 应用程序项目与表单应用程序项目有很大不同。您将�
 1.  在那之后，通过单击编辑器左侧边栏上的**编辑**按钮切换到脚本编辑器。我们需要将鼠标区域小部件更改为多点触摸区域小部件，如下所示：
 
 ```cpp
-    MultiPointTouchArea {
-      id: touchArea
-      anchors.fill: parent
-      touchPoints: [
-        TouchPoint { id: point1 },
-        TouchPoint { id: point2 }
-      ]
-    }
-    ```
+MultiPointTouchArea {
+  id: touchArea
+  anchors.fill: parent
+  touchPoints: [
+    TouchPoint { id: point1 },
+    TouchPoint { id: point2 }
+  ]
+}
+```
 
 1.  我们还将`Image`小部件设置为默认自动放置在窗口中心：
 
 ```cpp
-    Image {
-      id: tux
-      x: (window.width / 2) - (tux.width / 2)
-      y: (window.height / 2) - (tux.height / 2)
-      width: 200
-      height: 220
-      fillMode: Image.PreserveAspectFit
-      source: "tux.png"
-    }
-    ```
+Image {
+  id: tux
+  x: (window.width / 2) - (tux.width / 2)
+  y: (window.height / 2) - (tux.height / 2)
+  width: 200
+  height: 220
+  fillMode: Image.PreserveAspectFit
+  source: "tux.png"
+}
+```
 
 最终的 UI 应该看起来像这样：
 
@@ -219,57 +219,57 @@ Qt Quick 应用程序项目与表单应用程序项目有很大不同。您将�
 1.  完成后，让我们打开`main.qml`。首先清除`MainForm`对象中除`anchors.fill: parent`之外的所有内容，如下所示：
 
 ```cpp
-    import QtQuick 2.5
-    import QtQuick.Window 2.2
+import QtQuick 2.5
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
+Window {
+  visible: true
 
-      MainForm {
-        anchors.fill: parent
-      }
-    }
-    ```
+  MainForm {
+    anchors.fill: parent
+  }
+}
+```
 
 1.  在`MainForm`对象中声明几个变量，这些变量将用于重新调整图像小部件。如果您想了解以下代码中使用的`property`关键字的更多信息，请查看本示例末尾的*还有更多…*部分：
 
 ```cpp
-    property int prevPointX: 0
-    property int prevPointY: 0
-    property int curPointX: 0
-    property int curPointY: 0
+property int prevPointX: 0
+property int prevPointY: 0
+property int curPointX: 0
+property int curPointY: 0
 
-    property int prevDistX: 0
-    property int prevDistY: 0
-    property int curDistX: 0
-    property int curDistY: 0
+property int prevDistX: 0
+property int prevDistY: 0
+property int curDistX: 0
+property int curDistY: 0
 
-    property int tuxWidth: tux.width
-    property int tuxHeight: tux.height
-    ```
+property int tuxWidth: tux.width
+property int tuxHeight: tux.height
+```
 
 1.  接下来，我们将定义当手指触摸多点区域小部件时会发生什么。在这种情况下，如果多个手指触摸到多点触摸区域，我们将保存第一个和第二个触摸点的位置。我们还保存图像小部件的宽度和高度，以便以后可以使用这些变量来计算手指开始移动时图像的比例：
 
 ```cpp
-    touchArea.onPressed:
-    {
-      if (touchArea.touchPoints[1].pressed)
-      {
-        if (touchArea.touchPoints[1].x < touchArea.touchPoints[0].x)
-          prevDistX = touchArea.touchPoints[1].x - touchArea.touchPoints[0].x
-        else
-          prevDistX = touchArea.touchPoints[0].x - touchArea.touchPoints[1].x
+touchArea.onPressed:
+{
+  if (touchArea.touchPoints[1].pressed)
+  {
+    if (touchArea.touchPoints[1].x < touchArea.touchPoints[0].x)
+      prevDistX = touchArea.touchPoints[1].x - touchArea.touchPoints[0].x
+    else
+      prevDistX = touchArea.touchPoints[0].x - touchArea.touchPoints[1].x
 
-        if (touchArea.touchPoints[1].y < touchArea.touchPoints[0].y)
-          prevDistY = touchArea.touchPoints[1].y - touchArea.touchPoints[0].y
-        else
-          prevDistY = touchArea.touchPoints[0].y - touchArea.touchPoints[1].y
+    if (touchArea.touchPoints[1].y < touchArea.touchPoints[0].y)
+      prevDistY = touchArea.touchPoints[1].y - touchArea.touchPoints[0].y
+    else
+      prevDistY = touchArea.touchPoints[0].y - touchArea.touchPoints[1].y
 
-        tuxWidth = tux.width
-        tuxHeight = tux.height
-      }
-    }
-    ```
+    tuxWidth = tux.width
+    tuxHeight = tux.height
+  }
+}
+```
 
 以下图像显示了当两根手指触摸屏幕时，在触摸区域边界内注册的触摸点的示例。`touchArea`.`touchPoints[0]`是第一个注册的触摸点，`touchArea.touchPoints[1]`是第二个。然后我们计算两个触摸点之间的 X 和 Y 距离，并将它们保存为`prevDistX`和`prevDistY`：
 
@@ -278,29 +278,29 @@ Qt Quick 应用程序项目与表单应用程序项目有很大不同。您将�
 1.  在那之后，我们将定义当我们的手指在屏幕上移动时会发生什么，同时仍然保持与触摸区域的边界接触。在这一点上，我们将使用我们在上一步中保存的变量来计算图像的比例。同时，如果我们检测到只有一个触摸点，那么我们将移动图像而不是改变其比例：
 
 ```cpp
-    touchArea.onUpdated:{
-      if (!touchArea.touchPoints[1].pressed)
-      {
-        tux.x += touchArea.touchPoints[0].x - touchArea.touchPoints[0].previousX
-        tux.y += touchArea.touchPoints[0].y - touchArea.touchPoints[0].previousY
-      }
-      else
-      {
-        if (touchArea.touchPoints[1].x < touchArea.touchPoints[0].x)
-        curDistX = touchArea.touchPoints[1].x - touchArea.touchPoints[0].x
-        else
-          curDistX = touchArea.touchPoints[0].x - touchArea.touchPoints[1].x
+touchArea.onUpdated:{
+  if (!touchArea.touchPoints[1].pressed)
+  {
+    tux.x += touchArea.touchPoints[0].x - touchArea.touchPoints[0].previousX
+    tux.y += touchArea.touchPoints[0].y - touchArea.touchPoints[0].previousY
+  }
+  else
+  {
+    if (touchArea.touchPoints[1].x < touchArea.touchPoints[0].x)
+    curDistX = touchArea.touchPoints[1].x - touchArea.touchPoints[0].x
+    else
+      curDistX = touchArea.touchPoints[0].x - touchArea.touchPoints[1].x
 
-        if (touchArea.touchPoints[1].y < touchArea.touchPoints[0].y)
-          curDistY = touchArea.touchPoints[1].y - touchArea.touchPoints[0].y
-        else
-          curDistY = touchArea.touchPoints[0].y - touchArea.touchPoints[1].y
+    if (touchArea.touchPoints[1].y < touchArea.touchPoints[0].y)
+      curDistY = touchArea.touchPoints[1].y - touchArea.touchPoints[0].y
+    else
+      curDistY = touchArea.touchPoints[0].y - touchArea.touchPoints[1].y
 
-          tux.width = tuxWidth + prevDistX - curDistX
-          tux.height = tuxHeight + prevDistY - curDistY
-      }
-    }
-    ```
+      tux.width = tuxWidth + prevDistX - curDistX
+      tux.height = tuxHeight + prevDistY - curDistY
+  }
+}
+```
 
 以下图像显示了移动触摸点的示例 - `touchArea.touchPoints[0]`从点 A 移动到点 B，而`touchArea.touchPoints[1]`从点 C 移动到点 D。然后，我们可以通过查看先前的 X、Y 变量与当前变量之间的差异来确定触摸点移动了多少单位：
 
@@ -363,70 +363,70 @@ Qt 允许我们在不编写大量代码的情况下轻松地为 UI 组件添加�
 1.  在`main.qml`中，删除鼠标区域的默认代码，并为窗口添加宽度和高度，以便我们有更多的空间进行预览：
 
 ```cpp
-    import QtQuick 2.5
-    import QtQuick.Window 2.2
+import QtQuick 2.5
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
-      width: 480
-      height: 550
+Window {
+  visible: true
+  width: 480
+  height: 550
 
-      MainForm {
-        anchors.fill: parent
-      }
-    }
-    ```
+  MainForm {
+    anchors.fill: parent
+  }
+}
+```
 
 1.  之后，在`MainForm`小部件中添加定义按钮行为的代码：
 
 ```cpp
-    button1 {
-      Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
+button1 {
+  Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
 
-      onClicked: {
-        button1.y = button1.y + (45 * 3)
-      }
-    }
+  onClicked: {
+    button1.y = button1.y + (45 * 3)
+  }
+}
 
-    button2 {
-      Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
+button2 {
+  Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
 
-      onClicked: {
-        button2.y = button2.y + (45 * 3)
-      }
-    }
+  onClicked: {
+    button2.y = button2.y + (45 * 3)
+  }
+}
 
-    button3 {
-      Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
+button3 {
+  Behavior on y { SpringAnimation { spring: 2; damping: 0.2 } }
 
-      onClicked: {
-        button3.y = button3.y + (45 * 3)
-      }
-    }
-    ```
+  onClicked: {
+    button3.y = button3.y + (45 * 3)
+  }
+}
+```
 
 1.  然后，按照`fan`图像和其附加的鼠标区域小部件的行为：
 
 ```cpp
-    fan {
-      RotationAnimation on rotation {
-        id: anim01
-        loops: Animation.Infinite
-        from: 0
-        to: -360
-        duration: 1000
-      }
-    }
+fan {
+  RotationAnimation on rotation {
+    id: anim01
+    loops: Animation.Infinite
+    from: 0
+    to: -360
+    duration: 1000
+  }
+}
 
-    mouseArea1 {
-      onPressed: {
-        if (anim01.paused)
-          anim01.resume()
-        else
-          anim01.pause()
-      }
-    }
-    ```
+mouseArea1 {
+  onPressed: {
+    if (anim01.paused)
+      anim01.resume()
+    else
+      anim01.pause()
+  }
+}
+```
 
 1.  最后但并非最不重要的是，添加矩形和鼠标区域小部件的行为：![操作步骤…](img/B02820_05_21.jpg)
 
@@ -457,24 +457,24 @@ Qt 包括一个模型视图框架，它保持数据组织和管理方式与向�
 1.  之后，打开`main.qml`并用以下代码替换原代码：
 
 ```cpp
-    import QtQuick 2.4
-    import QtQuick.Window 2.2
+import QtQuick 2.4
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
-      width: 480
-      height: 480
+Window {
+  visible: true
+  width: 480
+  height: 480
 
-      MainForm {
-        anchors.fill: parent
+  MainForm {
+    anchors.fill: parent
 
-        MouseArea {
-          onPressed: row1.opacity = 0.5
-          onReleased: row1.opacity = 1.0
-        }
-      }
+    MouseArea {
+      onPressed: row1.opacity = 0.5
+      onReleased: row1.opacity = 1.0
     }
-    ```
+  }
+}
+```
 
 1.  构建并运行程序，现在您的程序应该是这个样子：![操作步骤…](img/B02820_05_25.jpg)
 
@@ -509,110 +509,110 @@ Qt 支持在 C++类和 QML 引擎之间进行桥接。这种组合允许开发�
 1.  现在，打开`myclass.h`并在类构造函数下方添加变量和函数，如下所示：
 
 ```cpp
-    #ifndef MYCLASS_H
-    #define MYCLASS_H
-    #include <QObject>
+#ifndef MYCLASS_H
+#define MYCLASS_H
+#include <QObject>
 
-    class MyClass : public QObject
-    {
-      Q_OBJECT
-      public:
-        explicit MyClass(QObject *parent = 0);
+class MyClass : public QObject
+{
+  Q_OBJECT
+  public:
+    explicit MyClass(QObject *parent = 0);
 
-        // Object pointer
-        QObject* myObject;
+    // Object pointer
+    QObject* myObject;
 
-        // Must call Q_INVOKABLE so that this function can be used in QML
-        Q_INVOKABLE void setMyObject(QObject* obj);
+    // Must call Q_INVOKABLE so that this function can be used in QML
+    Q_INVOKABLE void setMyObject(QObject* obj);
 
-      signals:
+  signals:
 
-      public slots:
-    };
+  public slots:
+};
 
-    #endif // MYCLASS_H
-    ```
+#endif // MYCLASS_H
+```
 
 1.  之后，打开`myclass.cpp`并定义`setMyObject()`函数：
 
 ```cpp
-    #include "myclass.h"
+#include "myclass.h"
 
-    MyClass::MyClass(QObject *parent) : QObject(parent)
-    {
-    }
+MyClass::MyClass(QObject *parent) : QObject(parent)
+{
+}
 
-    void MyClass::setMyObject(QObject* obj)
-    {
-      // Set the object pointer
-      myObject = obj;
-    }
-    ```
+void MyClass::setMyObject(QObject* obj)
+{
+  // Set the object pointer
+  myObject = obj;
+}
+```
 
 1.  现在可以关闭`myclass.cpp`并打开`main.qml`。在文件顶部添加第三行，导入我们刚在 C++中创建的自定义库：
 
 ```cpp
-    import QtQuick 2.4
-    import QtQuick.Window 2.2
-    import MyClassLib 1.0
-    ```
+import QtQuick 2.4
+import QtQuick.Window 2.2
+import MyClassLib 1.0
+```
 
 1.  然后，在`Window`对象中定义`MyClass`并在`MainForm`对象中调用其函数`setMyObject()`，如下所示：
 
 ```cpp
-    Window {
-      visible: true
-      width: 480
-      height: 320
+Window {
+  visible: true
+  width: 480
+  height: 320
 
-      MyClass
-      {
-        id: myclass
-      }
+  MyClass
+  {
+    id: myclass
+  }
 
-      MainForm {
-        anchors.fill: parent
-        mouseArea.onClicked: {
-          Qt.quit();
-        }
-        Component.onCompleted:       myclass.setMyObject(messageText);
-      }
+  MainForm {
+    anchors.fill: parent
+    mouseArea.onClicked: {
+      Qt.quit();
     }
-    ```
+    Component.onCompleted:       myclass.setMyObject(messageText);
+  }
+}
+```
 
 1.  最后，打开`main.cpp`并将自定义类注册到 QML 引擎。我们还在这里使用 C++代码更改文本小部件和矩形的属性：
 
 ```cpp
-    #include <QGuiApplication>
-    #include <QQmlApplicationEngine>
-    #include <QtQml>
-    #include <QQuickView>
-    #include <QQuickItem>
-    #include <QQuickView>
-    #include "myclass.h"
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QtQml>
+#include <QQuickView>
+#include <QQuickItem>
+#include <QQuickView>
+#include "myclass.h"
 
-    int main(int argc, char *argv[])
-    {
-      // Register your class to QML
-      qmlRegisterType<MyClass>("MyClassLib", 1, 0, "MyClass");
+int main(int argc, char *argv[])
+{
+  // Register your class to QML
+  qmlRegisterType<MyClass>("MyClassLib", 1, 0, "MyClass");
 
-      QGuiApplication app(argc, argv);
+  QGuiApplication app(argc, argv);
 
-      QQmlApplicationEngine engine;
-      engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
+  QQmlApplicationEngine engine;
+  engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
 
-      QObject* root = engine.rootObjects().value(0);
+  QObject* root = engine.rootObjects().value(0);
 
-      QObject* messageText =     root->findChild<QObject*>("messageText");
-      messageText->setProperty("text", QVariant("C++ is now in     control!"));
-      messageText->setProperty("color", QVariant("green"));
+  QObject* messageText =     root->findChild<QObject*>("messageText");
+  messageText->setProperty("text", QVariant("C++ is now in     control!"));
+  messageText->setProperty("color", QVariant("green"));
 
-      QObject* square = root->findChild<QObject*>("square");
-      square->setProperty("color", QVariant("blue"));
+  QObject* square = root->findChild<QObject*>("square");
+  square->setProperty("color", QVariant("blue"));
 
-      return app.exec();
-    }
-    ```
+  return app.exec();
+}
+```
 
 1.  现在构建和运行程序，您应该看到矩形和文本的颜色与您在 Qt Quick 中定义的完全不同。这是因为它们的属性已被 C++代码更改：![如何做…](img/B02820_05_30.jpg)
 

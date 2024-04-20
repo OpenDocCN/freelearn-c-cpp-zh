@@ -33,18 +33,18 @@ Qt 提供了一种简单的方法来为继承`QObject`类的小部件或其他�
 1.  接下来，打开`mainwindow.cpp`并在源代码开头添加以下行代码：
 
 ```cpp
-    #include <QPropertyAnimation>
-    ```
+#include <QPropertyAnimation>
+```
 
 1.  之后，打开`mainwindow.cpp`并在构造函数中添加以下代码：
 
 ```cpp
-    QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation->setDuration(10000);
-    animation->setStartValue(ui->pushButton->geometry());
-    animation->setEndValue(QRect(200, 200, 100, 50));
-    animation->start();
-    ```
+QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
+animation->setDuration(10000);
+animation->setStartValue(ui->pushButton->geometry());
+animation->setEndValue(QRect(200, 200, 100, 50));
+animation->start();
+```
 
 ## 它是如何工作的...
 
@@ -87,41 +87,41 @@ Qt 为我们提供了几种不同的子系统来为我们的 GUI 创建动画，
 1.  在调用`start()`函数之前，定义一个缓动曲线并将其添加到属性动画中：
 
 ```cpp
-    QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation->setDuration(3000);
-    animation->setStartValue(ui->pushButton->geometry());
-    animation->setEndValue(QRect(200, 200, 100, 50));
-    QEasingCurve curve;
-    curve.setType(QEasingCurve::OutBounce);
-    animation->setEasingCurve(curve);
-    animation->start();
-    ```
+QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
+animation->setDuration(3000);
+animation->setStartValue(ui->pushButton->geometry());
+animation->setEndValue(QRect(200, 200, 100, 50));
+QEasingCurve curve;
+curve.setType(QEasingCurve::OutBounce);
+animation->setEasingCurve(curve);
+animation->start();
+```
 
 1.  调用`setLoopCount()`函数来设置要重复多少次循环：
 
 ```cpp
-    QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation->setDuration(3000);
-    animation->setStartValue(ui->pushButton->geometry());
-    animation->setEndValue(QRect(200, 200, 100, 50));
-    QEasingCurve curve;
-    Curve.setType(EasingCurve::OutBounce);
-    animation->setEasingCurve(curve);
-    animation->setLoopCount(2);
-    animation->start();
-    ```
+QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
+animation->setDuration(3000);
+animation->setStartValue(ui->pushButton->geometry());
+animation->setEndValue(QRect(200, 200, 100, 50));
+QEasingCurve curve;
+Curve.setType(EasingCurve::OutBounce);
+animation->setEasingCurve(curve);
+animation->setLoopCount(2);
+animation->start();
+```
 
 1.  在应用缓动曲线到动画之前，调用`setAmplitude()`、`setOvershoot()`和`setPeriod()`：
 
 ```cpp
-    QEasingCurve curve;
-    curve.setType(QEasingCurve::OutBounce);
-    curve.setAmplitude(1.00);
-    curve.setOvershoot(1.70);
-    curve.setPeriod(0.30);
-    animation->setEasingCurve(curve);
-    animation->start();
-    ```
+QEasingCurve curve;
+curve.setType(QEasingCurve::OutBounce);
+curve.setAmplitude(1.00);
+curve.setOvershoot(1.70);
+curve.setPeriod(0.30);
+animation->setEasingCurve(curve);
+animation->start();
+```
 
 ## 它是如何工作的...
 
@@ -170,49 +170,49 @@ animation->setLoopCount(-1);
 1.  接下来，在主窗口的构造函数中为每个按钮定义动画：
 
 ```cpp
-    QPropertyAnimation *animation1 = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation1->setDuration(3000);
-    animation1->setStartValue(ui->pushButton->geometry());
-    animation1->setEndValue(QRect(50, 200, 100, 50));
+QPropertyAnimation *animation1 = new QPropertyAnimation(ui->pushButton, "geometry");
+animation1->setDuration(3000);
+animation1->setStartValue(ui->pushButton->geometry());
+animation1->setEndValue(QRect(50, 200, 100, 50));
 
-    QPropertyAnimation *animation2 = new QPropertyAnimation(ui->pushButton_2, "geometry");
-    animation2->setDuration(3000);
-    animation2->setStartValue(ui->pushButton_2->geometry());
-    animation2->setEndValue(QRect(150, 200, 100, 50));
+QPropertyAnimation *animation2 = new QPropertyAnimation(ui->pushButton_2, "geometry");
+animation2->setDuration(3000);
+animation2->setStartValue(ui->pushButton_2->geometry());
+animation2->setEndValue(QRect(150, 200, 100, 50));
 
-    QPropertyAnimation *animation3 = new QPropertyAnimation(ui->pushButton_3, "geometry");
-    animation3->setDuration(3000);
-    animation3->setStartValue(ui->pushButton_3->geometry());
-    animation3->setEndValue(QRect(250, 200, 100, 50));
-    ```
+QPropertyAnimation *animation3 = new QPropertyAnimation(ui->pushButton_3, "geometry");
+animation3->setDuration(3000);
+animation3->setStartValue(ui->pushButton_3->geometry());
+animation3->setEndValue(QRect(250, 200, 100, 50));
+```
 
 1.  之后，创建一个缓动曲线并将相同的曲线应用于所有三个动画：
 
 ```cpp
-    QEasingCurve curve;
-    curve.setType(QEasingCurve::OutBounce);
-    curve.setAmplitude(1.00);
-    curve.setOvershoot(1.70);
-    curve.setPeriod(0.30);
+QEasingCurve curve;
+curve.setType(QEasingCurve::OutBounce);
+curve.setAmplitude(1.00);
+curve.setOvershoot(1.70);
+curve.setPeriod(0.30);
 
-    animation1->setEasingCurve(curve);
-    animation2->setEasingCurve(curve);
-    animation3->setEasingCurve(curve);
-    ```
+animation1->setEasingCurve(curve);
+animation2->setEasingCurve(curve);
+animation3->setEasingCurve(curve);
+```
 
 1.  一旦您将缓动曲线应用于所有三个动画，我们将创建一个动画组并将所有三个动画添加到组中：
 
 ```cpp
-    QParallelAnimationGroup *group = new QParallelAnimationGroup;group->addAnimation(animation1);
-    group->addAnimation(animation2);
-    group->addAnimation(animation3);
-    ```
+QParallelAnimationGroup *group = new QParallelAnimationGroup;group->addAnimation(animation1);
+group->addAnimation(animation2);
+group->addAnimation(animation3);
+```
 
 1.  从刚刚创建的动画组中调用`start()`函数：
 
 ```cpp
-    group->start();
-    ```
+group->start();
+```
 
 ## 工作原理...
 
@@ -255,72 +255,72 @@ Qt 允许我们创建多个动画并将它们分组成一个动画组。一个�
 1.  首先，为所有按钮创建动画，然后创建一个缓动曲线并将其应用于所有动画：
 
 ```cpp
-    QPropertyAnimation *animation1 = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation1->setDuration(3000);
-    animation1->setStartValue(ui->pushButton->geometry());
-    animation1->setEndValue(QRect(50, 50, 100, 50));
+QPropertyAnimation *animation1 = new QPropertyAnimation(ui->pushButton, "geometry");
+animation1->setDuration(3000);
+animation1->setStartValue(ui->pushButton->geometry());
+animation1->setEndValue(QRect(50, 50, 100, 50));
 
-    QPropertyAnimation *animation2 = new QPropertyAnimation(ui->pushButton_2, "geometry");
-    animation2->setDuration(3000);
-    animation2->setStartValue(ui->pushButton_2->geometry());
-    animation2->setEndValue(QRect(150, 50, 100, 50));
+QPropertyAnimation *animation2 = new QPropertyAnimation(ui->pushButton_2, "geometry");
+animation2->setDuration(3000);
+animation2->setStartValue(ui->pushButton_2->geometry());
+animation2->setEndValue(QRect(150, 50, 100, 50));
 
-    QPropertyAnimation *animation3 = new QPropertyAnimation(ui->pushButton_3, "geometry");
-    animation3->setDuration(3000);
-    animation3->setStartValue(ui->pushButton_3->geometry());
-    animation3->setEndValue(QRect(250, 50, 100, 50));
+QPropertyAnimation *animation3 = new QPropertyAnimation(ui->pushButton_3, "geometry");
+animation3->setDuration(3000);
+animation3->setStartValue(ui->pushButton_3->geometry());
+animation3->setEndValue(QRect(250, 50, 100, 50));
 
-    QPropertyAnimation *animation4 = new QPropertyAnimation(ui->pushButton_4, "geometry");
-    animation4->setDuration(3000);
-    animation4->setStartValue(ui->pushButton_4->geometry());
-    animation4->setEndValue(QRect(50, 200, 100, 50));
+QPropertyAnimation *animation4 = new QPropertyAnimation(ui->pushButton_4, "geometry");
+animation4->setDuration(3000);
+animation4->setStartValue(ui->pushButton_4->geometry());
+animation4->setEndValue(QRect(50, 200, 100, 50));
 
-    QPropertyAnimation *animation5 = new QPropertyAnimation(ui->pushButton_5, "geometry");
-    animation5->setDuration(3000);
-    animation5->setStartValue(ui->pushButton_5->geometry());
-    animation5->setEndValue(QRect(150, 200, 100, 50));
+QPropertyAnimation *animation5 = new QPropertyAnimation(ui->pushButton_5, "geometry");
+animation5->setDuration(3000);
+animation5->setStartValue(ui->pushButton_5->geometry());
+animation5->setEndValue(QRect(150, 200, 100, 50));
 
-    QPropertyAnimation *animation6 = new QPropertyAnimation(ui->pushButton_6, "geometry");
-    animation6->setDuration(3000);
-    animation6->setStartValue(ui->pushButton_6->geometry());
-    animation6->setEndValue(QRect(250, 200, 100, 50));
+QPropertyAnimation *animation6 = new QPropertyAnimation(ui->pushButton_6, "geometry");
+animation6->setDuration(3000);
+animation6->setStartValue(ui->pushButton_6->geometry());
+animation6->setEndValue(QRect(250, 200, 100, 50));
 
-    QEasingCurve curve;
-    curve.setType(QEasingCurve::OutBounce);
-    curve.setAmplitude(1.00);
-    curve.setOvershoot(1.70);
-    curve.setPeriod(0.30);
+QEasingCurve curve;
+curve.setType(QEasingCurve::OutBounce);
+curve.setAmplitude(1.00);
+curve.setOvershoot(1.70);
+curve.setPeriod(0.30);
 
-    animation1->setEasingCurve(curve);
-    animation2->setEasingCurve(curve);
-    animation3->setEasingCurve(curve);
-    animation4->setEasingCurve(curve);
-    animation5->setEasingCurve(curve);
-    animation6->setEasingCurve(curve);
-    ```
+animation1->setEasingCurve(curve);
+animation2->setEasingCurve(curve);
+animation3->setEasingCurve(curve);
+animation4->setEasingCurve(curve);
+animation5->setEasingCurve(curve);
+animation6->setEasingCurve(curve);
+```
 
 1.  创建两个动画组，一个用于上列按钮，另一个用于下列按钮：
 
 ```cpp
-    QParallelAnimationGroup *group1 = new QParallelAnimationGroup;
-    group1->addAnimation(animation1);
-    group1->addAnimation(animation2);
-    group1->addAnimation(animation3);
+QParallelAnimationGroup *group1 = new QParallelAnimationGroup;
+group1->addAnimation(animation1);
+group1->addAnimation(animation2);
+group1->addAnimation(animation3);
 
-    QParallelAnimationGroup *group2 = new QParallelAnimationGroup;
-    group2->addAnimation(animation4);
-    group2->addAnimation(animation5);
-    group2->addAnimation(animation6);
-    ```
+QParallelAnimationGroup *group2 = new QParallelAnimationGroup;
+group2->addAnimation(animation4);
+group2->addAnimation(animation5);
+group2->addAnimation(animation6);
+```
 
 1.  我们将创建另一个动画组，用于存储我们之前创建的两个动画组：
 
 ```cpp
-    QSequentialAnimationGroup *groupAll = new QSequentialAnimationGroup;
-    groupAll->addAnimation(group1);
-    groupAll->addAnimation(group2);
-    groupAll->start();
-    ```
+QSequentialAnimationGroup *groupAll = new QSequentialAnimationGroup;
+groupAll->addAnimation(group1);
+groupAll->addAnimation(group2);
+groupAll->start();
+```
 
 ## 工作原理...
 
@@ -343,85 +343,85 @@ Qt 允许我们创建多个动画并将它们分组成一个动画组。一个�
 1.  接下来，我们将在源代码中包含一些头文件：
 
 ```cpp
-    #include <QStateMachine>
-    #include <QPropertyAnimation>
-    #include <QEventTransition>
-    ```
+#include <QStateMachine>
+#include <QPropertyAnimation>
+#include <QEventTransition>
+```
 
 1.  在我们的主窗口构造函数中，添加以下代码来创建一个新的状态机和两个状态，我们稍后会使用它们：
 
 ```cpp
-    QStateMachine *machine = new QStateMachine(this);
-    QState *s1 = new QState();
-    QState *s2 = new QState();
-    ```
+QStateMachine *machine = new QStateMachine(this);
+QState *s1 = new QState();
+QState *s2 = new QState();
+```
 
 1.  然后，我们将定义在每个状态中应该做什么，这种情况下将是更改标签的文本，以及按钮的位置和大小：
 
 ```cpp
-    QState *s1 = new QState();
-    s1->assignProperty(ui->stateLabel, "text", "Current state: 1");
-    s1->assignProperty(ui->pushButton, "geometry", QRect(50, 200, 100, 50));
+QState *s1 = new QState();
+s1->assignProperty(ui->stateLabel, "text", "Current state: 1");
+s1->assignProperty(ui->pushButton, "geometry", QRect(50, 200, 100, 50));
 
-    QState *s2 = new QState();
-    s2->assignProperty(ui->stateLabel, "text", "Current state: 2");
-    s2->assignProperty(ui->pushButton, "geometry", QRect(200, 50, 140, 100));
+QState *s2 = new QState();
+s2->assignProperty(ui->stateLabel, "text", "Current state: 2");
+s2->assignProperty(ui->pushButton, "geometry", QRect(200, 50, 140, 100));
 
-    ```
+```
 
 1.  完成后，让我们通过向源代码添加事件转换类来继续：
 
 ```cpp
-    QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    t1->setTargetState(s2);
-    s1->addTransition(t1);
+QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+t1->setTargetState(s2);
+s1->addTransition(t1);
 
-    QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    T2->setTargetState(s1);
-    s2->addTransition(t2);
-    ```
+QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+T2->setTargetState(s1);
+s2->addTransition(t2);
+```
 
 1.  接下来，将我们刚刚创建的所有状态添加到状态机中，并将状态 1 定义为初始状态。然后，调用`machine->start()`来启动状态机运行：
 
 ```cpp
-    machine->addState(s1);
-    machine->addState(s2);
+machine->addState(s1);
+machine->addState(s2);
 
-    machine->setInitialState(s1);
-    machine->start();
-    ```
+machine->setInitialState(s1);
+machine->start();
+```
 
 1.  如果你现在运行示例程序，你会注意到一切都运行正常，除了按钮没有经历平滑的过渡，它只是立即跳到我们之前设置的位置和大小。这是因为我们没有使用属性动画来创建平滑的过渡。
 
 1.  返回到事件转换步骤，添加以下代码行：
 
 ```cpp
-    QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    t1->setTargetState(s2);
-    t1->addAnimation(new QPropertyAnimation(ui->pushButton, "geometry"));
-    s1->addTransition(t1);
+QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+t1->setTargetState(s2);
+t1->addAnimation(new QPropertyAnimation(ui->pushButton, "geometry"));
+s1->addTransition(t1);
 
-    QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    t2->setTargetState(s1);
-    t2->addAnimation(new QPropertyAnimation(ui->pushButton, "geometry"));
-    s2->addTransition(t2);
-    ```
+QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+t2->setTargetState(s1);
+t2->addAnimation(new QPropertyAnimation(ui->pushButton, "geometry"));
+s2->addTransition(t2);
+```
 
 1.  你也可以为动画添加一个缓动曲线，使其看起来更有趣：
 
 ```cpp
-    QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
-    animation->setEasingCurve(QEasingCurve::OutBounce);
-    QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    t1->setTargetState(s2);
-    t1->addAnimation(animation);
-    s1->addTransition(t1);
+QPropertyAnimation *animation = new QPropertyAnimation(ui->pushButton, "geometry");
+animation->setEasingCurve(QEasingCurve::OutBounce);
+QEventTransition *t1 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+t1->setTargetState(s2);
+t1->addAnimation(animation);
+s1->addTransition(t1);
 
-    QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
-    t2->setTargetState(s1);
-    t2->addAnimation(animation);
-    s2->addTransition(t2);
-    ```
+QEventTransition *t2 = new QEventTransition(ui->changeState, QEvent::MouseButtonPress);
+t2->setTargetState(s1);
+t2->addAnimation(animation);
+s2->addTransition(t2);
+```
 
 ## 它是如何工作的...
 
@@ -454,131 +454,131 @@ Qt 中的状态机框架提供了用于创建和执行状态图的类。Qt 的�
 1.  这是我的`main.qml`文件的样子：
 
 ```cpp
-    import QtQuick 2.3
-    import QtQuick.Window 2.2
+import QtQuick 2.3
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
-      width: 480;
-      height: 320;
+Window {
+  visible: true
+  width: 480;
+  height: 320;
 
-      Rectangle {
-        id: background;
-        anchors.fill: parent;
-        color: "blue";
-      }
+  Rectangle {
+    id: background;
+    anchors.fill: parent;
+    color: "blue";
+  }
 
-      Text {
-        text: qsTr("Hello World");
-        anchors.centerIn: parent;
-        color: "white";
-        font.pointSize: 15;
-      }
-    }
-    ```
+  Text {
+    text: qsTr("Hello World");
+    anchors.centerIn: parent;
+    color: "white";
+    font.pointSize: 15;
+  }
+}
+```
 
 1.  将颜色动画添加到`Rectangle`对象中：
 
 ```cpp
-    Rectangle {
-      id: background;
-      anchors.fill: parent;
-      color: "blue";
-      SequentialAnimation on color
-      {
-        ColorAnimation { to: "yellow"; duration: 1000 }
-        ColorAnimation { to: "red"; duration: 1000 }
-        ColorAnimation { to: "blue"; duration: 1000 }
-        loops: Animation.Infinite;
-      }
-    }
-    ```
+Rectangle {
+  id: background;
+  anchors.fill: parent;
+  color: "blue";
+  SequentialAnimation on color
+  {
+    ColorAnimation { to: "yellow"; duration: 1000 }
+    ColorAnimation { to: "red"; duration: 1000 }
+    ColorAnimation { to: "blue"; duration: 1000 }
+    loops: Animation.Infinite;
+  }
+}
+```
 
 1.  然后，将数字动画添加到文本对象中：
 
 ```cpp
-    Text {
-      text: qsTr("Hello World");
-      anchors.centerIn: parent;
-      color: "white";
-      font.pointSize: 15;
-      SequentialAnimation on opacity {
-     NumberAnimation { to: 0.0; duration: 200}
-     NumberAnimation { to: 1.0; duration: 200}
-     loops: Animation.Infinite;
-     }
-    }
-    ```
+Text {
+  text: qsTr("Hello World");
+  anchors.centerIn: parent;
+  color: "white";
+  font.pointSize: 15;
+  SequentialAnimation on opacity {
+ NumberAnimation { to: 0.0; duration: 200}
+ NumberAnimation { to: 1.0; duration: 200}
+ loops: Animation.Infinite;
+ }
+}
+```
 
 1.  接下来，为其添加另一个数字动画：
 
 ```cpp
-    Text {
-      text: qsTr("Hello World");
-      anchors.centerIn: parent;
-      color: "white";
-      font.pointSize: 15;
-      SequentialAnimation on opacity {
-        NumberAnimation { to: 0.0; duration: 200}
-        NumberAnimation { to: 1.0; duration: 200}
-        loops: Animation.Infinite;
-      }
-     NumberAnimation on rotation {
-     from: 0;
-     to: 360;
-     duration: 2000;
-     loops: Animation.Infinite;
-     }
-    }
-    ```
+Text {
+  text: qsTr("Hello World");
+  anchors.centerIn: parent;
+  color: "white";
+  font.pointSize: 15;
+  SequentialAnimation on opacity {
+    NumberAnimation { to: 0.0; duration: 200}
+    NumberAnimation { to: 1.0; duration: 200}
+    loops: Animation.Infinite;
+  }
+ NumberAnimation on rotation {
+ from: 0;
+ to: 360;
+ duration: 2000;
+ loops: Animation.Infinite;
+ }
+}
+```
 
 1.  定义两种状态，一种称为`PRESSED`状态，另一种称为`RELEASED`状态。然后，将默认状态设置为`RELEASED`：
 
 ```cpp
-    Rectangle {
-      id: background;
-      anchors.fill: parent;
+Rectangle {
+  id: background;
+  anchors.fill: parent;
 
-     state: "RELEASED";
-     states: [
-     State {
-     name: "PRESSED"
-     PropertyChanges { target: background; color: "blue"}
-     },
-     State {
-     name: "RELEASED"
-     PropertyChanges { target: background; color: "red"}
-     }
-     ]
-    }
-    ```
+ state: "RELEASED";
+ states: [
+ State {
+ name: "PRESSED"
+ PropertyChanges { target: background; color: "blue"}
+ },
+ State {
+ name: "RELEASED"
+ PropertyChanges { target: background; color: "red"}
+ }
+ ]
+}
+```
 
 1.  之后，在`Rectangle`对象内创建一个鼠标区域，以便我们可以单击它：
 
 ```cpp
-    MouseArea {
-      anchors.fill: parent;
-      onPressed: background.state = "PRESSED";
-      onReleased: background.state = "RELEASED";
-    }
-    ```
+MouseArea {
+  anchors.fill: parent;
+  onPressed: background.state = "PRESSED";
+  onReleased: background.state = "RELEASED";
+}
+```
 
 1.  给`Rectangle`对象添加一些过渡效果：
 
 ```cpp
-    transitions: [
-      Transition {
-        from: "PRESSED"
-        to: "RELEASED"
-        ColorAnimation { target: background; duration: 200}
-      },
-      Transition {
-        from: "RELEASED"
-        to: "PRESSED"
-        ColorAnimation { target: background; duration: 200}
-      }
-    ]
-    ```
+transitions: [
+  Transition {
+    from: "PRESSED"
+    to: "RELEASED"
+    ColorAnimation { target: background; duration: 200}
+  },
+  Transition {
+    from: "RELEASED"
+    to: "PRESSED"
+    ColorAnimation { target: background; duration: 200}
+  }
+]
+```
 
 ## 它是如何工作的...
 
@@ -627,58 +627,58 @@ Qt 中的状态机框架提供了用于创建和执行状态图的类。Qt 的�
 1.  创建一个矩形对象，并为其添加一个比例动画器：
 
 ```cpp
-    Rectangle {
-      id: myBox;
-      width: 50;
-      height: 50;
-      anchors.horizontalCenter: parent.horizontalCenter;
-      anchors.verticalCenter: parent.verticalCenter;
-      color: "blue";
+Rectangle {
+  id: myBox;
+  width: 50;
+  height: 50;
+  anchors.horizontalCenter: parent.horizontalCenter;
+  anchors.verticalCenter: parent.verticalCenter;
+  color: "blue";
 
-      ScaleAnimator {
-        target: myBox;
-        from: 5;
-        to: 1;
-        duration: 2000;
-        running: true;
-      }
-    }
-    ```
+  ScaleAnimator {
+    target: myBox;
+    from: 5;
+    to: 1;
+    duration: 2000;
+    running: true;
+  }
+}
+```
 
 1.  添加一个旋转动画器，并将运行值设置为并行动画组中，但不是任何单独的动画器中。
 
 ```cpp
-    ParallelAnimation {
-      ScaleAnimator {
-        target: myBox;
-        from: 5;
-        to: 1;
-        duration: 2000;
-      }
-      RotationAnimator {
-        target: myBox;
-        from: 0;
-        to: 360;
-        duration: 1000;
-      }
-      running: true;
-    }
-    ```
+ParallelAnimation {
+  ScaleAnimator {
+    target: myBox;
+    from: 5;
+    to: 1;
+    duration: 2000;
+  }
+  RotationAnimator {
+    target: myBox;
+    from: 0;
+    to: 360;
+    duration: 1000;
+  }
+  running: true;
+}
+```
 
 1.  为比例动画器添加一个缓动曲线：
 
 ```cpp
-    ScaleAnimator {
-      target: myBox;
-      from: 5;
-      to: 1;
-      duration: 2000;
-      easing.type: Easing.InOutElastic;
-     easing.amplitude: 2.0;
-     asing.period: 1.5;
-      running: true;
-    }
-    ```
+ScaleAnimator {
+  target: myBox;
+  from: 5;
+  to: 1;
+  duration: 2000;
+  easing.type: Easing.InOutElastic;
+ easing.amplitude: 2.0;
+ asing.period: 1.5;
+  running: true;
+}
+```
 
 ## 它是如何工作的...
 
@@ -709,64 +709,64 @@ QML 属性的值将在动画完成后更新。然而，在动画运行时，属�
 1.  之后，在`main.qml`中创建一个新的空窗口：
 
 ```cpp
-    import QtQuick 2.3
-    import QtQuick.Window 2.2
+import QtQuick 2.3
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
-      width: 420
-      height: 380
-      Rectangle {
-        anchors.fill: parent
-        color: "white"
-      }
-    }
-    ```
+Window {
+  visible: true
+  width: 420
+  height: 380
+  Rectangle {
+    anchors.fill: parent
+    color: "white"
+  }
+}
+```
 
 1.  完成后，我们将在 QML 中开始创建一个`AnimatedSprite`对象：
 
 ```cpp
-    import QtQuick 2.3
-    import QtQuick.Window 2.2
+import QtQuick 2.3
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true;
-      width: 420;
-      height: 380;
-      Rectangle {
-        anchors.fill: parent;
-        color: "white";
-      }
+Window {
+  visible: true;
+  width: 420;
+  height: 380;
+  Rectangle {
+    anchors.fill: parent;
+    color: "white";
+  }
 
-     AnimatedSprite {
-     id: sprite;
-     width: 128;
-     height: 128;
-     anchors.centerIn: parent;
-     source: "qrc:///horse_1.png";
-     frameCount: 11;
-     frameWidth: 128;
-     frameHeight: 128;
-     frameRate: 25;
-     loops: Animation.Infinite;
-     running: true;
-     }
-    }
-    ```
+ AnimatedSprite {
+ id: sprite;
+ width: 128;
+ height: 128;
+ anchors.centerIn: parent;
+ source: "qrc:///horse_1.png";
+ frameCount: 11;
+ frameWidth: 128;
+ frameHeight: 128;
+ frameRate: 25;
+ loops: Animation.Infinite;
+ running: true;
+ }
+}
+```
 
 1.  在窗口中添加一个鼠标区域并检查`onClicked`事件：
 
 ```cpp
-    MouseArea {
-      anchors.fill: parent;
-      onClicked: {
-        if (sprite.paused)
-          sprite.resume();
-        else
-          sprite.pause();
-      }
-    }
-    ```
+MouseArea {
+  anchors.fill: parent;
+  onClicked: {
+    if (sprite.paused)
+      sprite.resume();
+    else
+      sprite.pause();
+  }
+}
+```
 
 1.  如果现在编译和运行示例程序，你会看到一个小马在窗口中间奔跑。多有趣啊！如何做…
 
@@ -775,35 +775,35 @@ QML 属性的值将在动画完成后更新。然而，在动画运行时，属�
 首先，我们需要从 QML 中删除`anchors.centerIn:` parent，并用`x`和`y`值替换它：
 
 ```cpp
-    AnimatedSprite {
-      id: sprite;
-      width: 128;
-      height: 128;
-      x: -128;
-      y: parent.height / 2;
-      source: "qrc:///horse_1.png";
-      frameCount: 11;
-      frameWidth: 128;
-      frameHeight: 128;
-      frameRate: 25;
-      loops: Animation.Infinite;
-      running: true;
-    }
-    ```
+AnimatedSprite {
+  id: sprite;
+  width: 128;
+  height: 128;
+  x: -128;
+  y: parent.height / 2;
+  source: "qrc:///horse_1.png";
+  frameCount: 11;
+  frameWidth: 128;
+  frameHeight: 128;
+  frameRate: 25;
+  loops: Animation.Infinite;
+  running: true;
+}
+```
 
 1.  之后，向精灵对象添加一个数字动画，并设置其属性如下：
 
 ```cpp
-    NumberAnimation {
-      target: sprite;
-      property: "x";
-      from: -128;
-      to: 512;
-      duration: 3000;
-      loops: Animation.Infinite;
-      running: true;
-    }
-    ```
+NumberAnimation {
+  target: sprite;
+  property: "x";
+  from: -128;
+  to: 512;
+  duration: 3000;
+  loops: Animation.Infinite;
+  running: true;
+}
+```
 
 1.  现在编译和运行示例程序，你会看到小马疯狂地在窗口中奔跑！
 

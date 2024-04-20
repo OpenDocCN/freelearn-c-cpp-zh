@@ -59,133 +59,133 @@
 1.  首先，通过包括必要的库（以及为了方便起见，`namespace std`）来设置您的代码：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <climits>
-    using namespace std;
-    ```
+#include <iostream>
+#include <vector>
+#include <climits>
+using namespace std;
+```
 
 1.  让我们首先定义图中边的表示，这将需要三个变量：源节点的索引、目的节点的索引和它们之间的遍历成本：
 
 ```cpp
-    struct Edge
-    {
-        int start;    // The starting vertex
-        int end;      // The destination vertex
-        int weight;   // The edge weight
-        // Constructor
-        Edge(int s, int e, int w) : start(s), end(e), weight(w) {}
-    };
-    ```
+struct Edge
+{
+    int start;    // The starting vertex
+    int end;      // The destination vertex
+    int weight;   // The edge weight
+    // Constructor
+    Edge(int s, int e, int w) : start(s), end(e), weight(w) {}
+};
+```
 
 1.  要实现 Bellman-Ford 算法，我们需要对图进行一些表示。为了简单起见，让我们假设我们的图可以用一个整数`V`来表示，表示图中顶点的总数，以及一个向量`edges`（指向定义图的邻接的'edge'对象的指针集合）。让我们还定义一个整数常量`UNKNOWN`，我们可以将其设置为某个始终大于图中任何边权子集的总和的任意高值（在`climits`中定义的`INT_MAX`常量很适合这个目的）：
 
 ```cpp
-    const int UNKNOWN = INT_MAX;
-    vector<Edge*> edges;   // Collection of edge pointers
-    int V;                 // Total number of vertices in the graph
-    int E;                 // Total number of edges in the graph
-    ```
+const int UNKNOWN = INT_MAX;
+vector<Edge*> edges;   // Collection of edge pointers
+int V;                 // Total number of vertices in the graph
+int E;                 // Total number of edges in the graph
+```
 
 1.  让我们也编写一些代码来收集图的数据作为用户输入：
 
 ```cpp
-    int main()
-    {
-        cin >> V >> E;
-        for(int i = 0; i < E; i++)
-        {
-            int node_a, node_b, weight;
-            cin >> node_a >> node_b >> weight;
-            // Add a new edge using the defined constructor
-            edges.push_back(new Edge(node_a, node_b, weight));
-        }
-        // Choose a starting node
-        int start;
-        cin >> start;
-        // Run the Bellman-Ford algorithm on the graph for 
-        // the chosen starting vertex 
-        BellmanFord(start);
-        return 0;
-    }
-    ```
+int main()
+{
+    cin >> V >> E;
+    for(int i = 0; i < E; i++)
+    {
+        int node_a, node_b, weight;
+        cin >> node_a >> node_b >> weight;
+        // Add a new edge using the defined constructor
+        edges.push_back(new Edge(node_a, node_b, weight));
+    }
+    // Choose a starting node
+    int start;
+    cin >> start;
+    // Run the Bellman-Ford algorithm on the graph for 
+    // the chosen starting vertex 
+    BellmanFord(start);
+    return 0;
+}
+```
 
 1.  现在，我们可以开始实现贝尔曼-福特算法本身。为了我们的目的，让我们创建一个名为`BellmanFord()`的函数，它接受一个参数`start`（我们要在图中找到最短路径的起始节点）并返回`void`。然后，我们将定义一个大小为`V`的距离数组，其中每个元素都初始化为`UNKNOWN`，除了起始节点，其索引初始化为`0`：
 
 ```cpp
-        void BellmanFord(int start)
-        {
-            vector<int> distance(V, UNKNOWN);
-            distance[start] = 0;
-    ```
+    void BellmanFord(int start)
+    {
+        vector<int> distance(V, UNKNOWN);
+        distance[start] = 0;
+```
 
 1.  大部分工作是在下一步完成的，在那里我们定义一个持续`V-1`次迭代并在每次重复中遍历整个边集的循环。对于每条边，我们检查其源节点的当前距离值是否不等于`UNKNOWN`（在第一次迭代中，这仅适用于起始节点）。假设这是真的，然后我们将其目标节点的当前距离值与边的权重与源节点的距离的总和进行比较。如果将边权重添加到当前节点的距离的结果小于目标节点的存储距离，则用新的总和替换距离数组中的值：
 
 ```cpp
-    // Perform V - 1 iterations
-    for(int i = 0; i < V; i++)
-    {
-        // Iterate over entire set of edges
-        for(auto edge : edges)
-        {
-            int u = edge->start;
-            int v = edge->end;
-            int w = edge->weight;
-            // Skip nodes which have not yet been considered
-            if(distance[u] == UNKNOWN)
-            {
-                continue;
-            }
-            // If the current distance value for the destination
-            // node is greater than the sum of the source node's
-            // distance and the edge's weight, change its distance
-            // to the lesser value.
-            if(distance[u] + w < distance[v])
-            {
-                distance[v] = distance[u] + w;
-            }
-        }
-    }
-    ```
+// Perform V - 1 iterations
+for(int i = 0; i < V; i++)
+{
+    // Iterate over entire set of edges
+    for(auto edge : edges)
+    {
+        int u = edge->start;
+        int v = edge->end;
+        int w = edge->weight;
+        // Skip nodes which have not yet been considered
+        if(distance[u] == UNKNOWN)
+        {
+            continue;
+        }
+        // If the current distance value for the destination
+        // node is greater than the sum of the source node's
+        // distance and the edge's weight, change its distance
+        // to the lesser value.
+        if(distance[u] + w < distance[v])
+        {
+            distance[v] = distance[u] + w;
+        }
+    }
+}
+```
 
 1.  在我们的函数结束时，我们现在可以遍历`distance`数组并输出从源到图中每个其他节点的最短距离：
 
 ```cpp
-    cout << "DISTANCE FROM VERTEX " << start << ":\n"
-    for(int i = 0; i < V; i++)
-    {
-        cout << "\t" << i << ": ";
-        if(distance[i] == UNKNOWN)
-        {
-            cout << "Unvisited" << endl;
-            continue;
-        }
-        cout << distance[i] << endl;
-    }
-    ```
+cout << "DISTANCE FROM VERTEX " << start << ":\n"
+for(int i = 0; i < V; i++)
+{
+    cout << "\t" << i << ": ";
+    if(distance[i] == UNKNOWN)
+    {
+        cout << "Unvisited" << endl;
+        continue;
+    }
+    cout << distance[i] << endl;
+}
+```
 
 1.  现在，我们可以返回到我们的`main()`方法，并调用我们新实现的`BellmanFord()`函数。让我们在*图 7.1*中的示例图上测试我们的实现。为此，我们应该运行我们的代码并输入以下输入：
 
 ```cpp
-    5 5
-    0 1 3
-    1 2 5
-    1 3 10
-    3 2 -7
-    2 4 2
-    0
-    ```
+5 5
+0 1 3
+1 2 5
+1 3 10
+3 2 -7
+2 4 2
+0
+```
 
 1.  我们的程序应该输出以下内容：
 
 ```cpp
-    DISTANCE FROM VERTEX 0:
-        0: 0
-        1: 3
-        2: 6
-        3: 13
-        4: 8
-    ```
+DISTANCE FROM VERTEX 0:
+    0: 0
+    1: 3
+    2: 6
+    3: 13
+    4: 8
+```
 
 正如我们所看到的，贝尔曼-福特避免了导致狄克斯特拉算法错误评估最短路径的陷阱。然而，仍然存在另一个重要的问题需要解决，我们将在下一节中讨论。
 
@@ -214,103 +214,103 @@
 1.  我们基本上可以直接从上一步复制我们的代码。但是，这次，我们将用某种输出替换在确定是否找到了更短路径的条件下的代码，指示图包含负循环，从而使其无效：
 
 ```cpp
-        // Iterate through edges one last time
-        for(auto edge : edges)
-        {
-            int u = edge->start;
-            int v = edge->end;
-            int w = edge->weight;
+    // Iterate through edges one last time
+    for(auto edge : edges)
+    {
+        int u = edge->start;
+        int v = edge->end;
+        int w = edge->weight;
 
-            if(distance[u] == UNKNOWN)
-            {
-                continue;
-            }
-    ```
+        if(distance[u] == UNKNOWN)
+        {
+            continue;
+        }
+```
 
 1.  如果我们仍然可以找到比我们已经找到的路径更短的路径，则图必须包含负循环。让我们用以下`if`语句检查负权重循环：
 
 ```cpp
-            if(distance[u] + w < distance[v])
-            {
-                cout << "NEGATIVE CYCLE FOUND" << endl;
-                return;
-            }
-        }
-    ```
+        if(distance[u] + w < distance[v])
+        {
+            cout << "NEGATIVE CYCLE FOUND" << endl;
+            return;
+        }
+    }
+```
 
 1.  现在，让我们将这段代码块插入到第一个`for`循环结束和第一行输出之间：
 
 ```cpp
-    void BellmanFord(int start)
-    {
-        vector<int> distance(V, UNKNOWN);
-        distance[start] = 0;
-        for(int i = 1; i < V; i++)
-        {
-            for(auto edge : edges)
-            {
-                int u = edge->start;
-                int v = edge->end;
-                int w = edge->weight;
-                if(distance[u] == UNKNOWN)
-                {
-                    continue;
-                } 
-                if(distance[u] + w < distance[v])
-                {
-                    distance[v] = distance[u] + w;
-                }
-            }
-        }
-        for(auto edge : edges)
-        {
-            int u = edge->start;
-            int v = edge->end;
-            int w = edge->weight;
-            if(distance[u] == UNKNOWN)
-            {
-                continue;
-            }
-            if(distance[u] + w < distance[v])
-            {
-                cout << "NEGATIVE CYCLE FOUND" << endl;
-                return;
-            }
-        }
-        cout << "DISTANCE FROM VERTEX " << start << ":\n";
-        for(int i = 0; i < V; i++)
-        {
-            cout << "\t" << i << ": ";
-            if(distance[i] == UNKNOWN)
-            {
-                cout << "Unvisited" << endl;
-                continue;
-            }
-            cout << distance[i] << endl;
-        }
-    }
-    ```
+void BellmanFord(int start)
+{
+    vector<int> distance(V, UNKNOWN);
+    distance[start] = 0;
+    for(int i = 1; i < V; i++)
+    {
+        for(auto edge : edges)
+        {
+            int u = edge->start;
+            int v = edge->end;
+            int w = edge->weight;
+            if(distance[u] == UNKNOWN)
+            {
+                continue;
+            } 
+            if(distance[u] + w < distance[v])
+            {
+                distance[v] = distance[u] + w;
+            }
+        }
+    }
+    for(auto edge : edges)
+    {
+        int u = edge->start;
+        int v = edge->end;
+        int w = edge->weight;
+        if(distance[u] == UNKNOWN)
+        {
+            continue;
+        }
+        if(distance[u] + w < distance[v])
+        {
+            cout << "NEGATIVE CYCLE FOUND" << endl;
+            return;
+        }
+    }
+    cout << "DISTANCE FROM VERTEX " << start << ":\n";
+    for(int i = 0; i < V; i++)
+    {
+        cout << "\t" << i << ": ";
+        if(distance[i] == UNKNOWN)
+        {
+            cout << "Unvisited" << endl;
+            continue;
+        }
+        cout << distance[i] << endl;
+    }
+}
+```
 
 1.  为了测试我们添加的逻辑，让我们在以下输入上运行算法：
 
 ```cpp
-    6 8
-    0 1 3
-    1 3 -8
-    2 1 3
-    2 5 5
-    3 2 3
-    2 4 2
-    4 5 -1
-    5 1 8
-    0
-    ```
+6 8
+0 1 3
+1 3 -8
+2 1 3
+2 5 5
+3 2 3
+2 4 2
+4 5 -1
+5 1 8
+0
+```
 
 1.  我们的程序应输出以下内容：
 
 ```cpp
-    NEGATIVE CYCLE FOUND
-    ```
+NEGATIVE CYCLE FOUND
+```
 
 ### 活动 15：贪婪机器人
 
@@ -471,296 +471,296 @@ DE —>   4  + (-5) – (-1) = 0
 1.  我们可以重用前一个练习中的大部分代码，包括我们的`Edge`结构，`UNKNOWN`常量和图数据：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <climits>
-    using namespace std;
-    struct Edge
-    {
-        int start;
-        int end;   
-        int weight;
-        Edge(int s, int e, int w) : start(s), end(e), weight(w) {}
-    };
-    const int UNKNOWN = INT_MAX;
-    vector<Edge*> edges;
-    int V;             
-    int E;             
-    ```
+#include <iostream>
+#include <vector>
+#include <climits>
+using namespace std;
+struct Edge
+{
+    int start;
+    int end;   
+    int weight;
+    Edge(int s, int e, int w) : start(s), end(e), weight(w) {}
+};
+const int UNKNOWN = INT_MAX;
+vector<Edge*> edges;
+int V;             
+int E;             
+```
 
 1.  我们应该修改 Bellman-Ford 的函数声明，使其接受两个参数（一个整数`V`和一个`Edge`指针的向量`edges`），并返回一个整数向量。我们还可以删除`start`参数：
 
 ```cpp
-    vector<int> BellmanFord(int V, vector<Edge*> edges)
-    ```
+vector<int> BellmanFord(int V, vector<Edge*> edges)
+```
 
 1.  我们将首先向图中添加虚拟顶点`S`。因为`S`实际上对图的其余部分没有影响，所以这只是简单地增加距离数组的大小到*| V + 1 |*并在`S`和每个其他节点之间添加一条边：
 
 ```cpp
-    vector<int> distance(V + 1, UNKNOWN);
-    int s = V;
-    for(int i = 0; i < V; i++)
-    {
-        edges.push_back(new Edge(s, i, 0));
-    }
-    distance[s] = 0;
-    ```
+vector<int> distance(V + 1, UNKNOWN);
+int s = V;
+for(int i = 0; i < V; i++)
+{
+    edges.push_back(new Edge(s, i, 0));
+}
+distance[s] = 0;
+```
 
 1.  我们继续将 Bellman-Ford 的标准实现应用于修改后的图，使用`S`作为源节点：
 
 ```cpp
-    for(int i = 1; i < V; i++)
-    {
-        for(auto edge : edges)
-        {
-            int u = edge->start;
-            int v = edge->end;
-            int w = edge->weight;
-            if(distance[u] == UNKNOWN)
-            {
-                continue;
-            }
-            if(distance[u] + w < distance[v])
-            {
-                distance[v] = distance[u] + w;
-            }
-        }
-    }
-    ```
+for(int i = 1; i < V; i++)
+{
+    for(auto edge : edges)
+    {
+        int u = edge->start;
+        int v = edge->end;
+        int w = edge->weight;
+        if(distance[u] == UNKNOWN)
+        {
+            continue;
+        }
+        if(distance[u] + w < distance[v])
+        {
+            distance[v] = distance[u] + w;
+        }
+    }
+}
+```
 
 1.  这次，让我们将负循环的最终检查移到自己的函数中：
 
 ```cpp
-    bool HasNegativeCycle(vector<int> distance, vector<Edge*> edges)
-    {
-        for(auto edge : edges)
-        {
-            int u = edge->start;
-            int v = edge->end;
-            int w = edge->weight;
-            if(distance[u] == UNKNOWN) continue;
-            if(distance[u] + w < distance[v])
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    ```
+bool HasNegativeCycle(vector<int> distance, vector<Edge*> edges)
+{
+    for(auto edge : edges)
+    {
+        int u = edge->start;
+        int v = edge->end;
+        int w = edge->weight;
+        if(distance[u] == UNKNOWN) continue;
+        if(distance[u] + w < distance[v])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+```
 
 1.  现在，我们可以在原始函数的末尾调用它，如果发现负循环，则返回一个空数组：
 
 ```cpp
-    if(HasNegativeCycle(distance, edges))
-    {
-        cout << "NEGATIVE CYCLE FOUND" << endl;
-        return {};
-    }
-    ```
+if(HasNegativeCycle(distance, edges))
+{
+    cout << "NEGATIVE CYCLE FOUND" << endl;
+    return {};
+}
+```
 
 1.  在确保图中没有负循环之后，我们可以将结果距离值集返回给调用函数，并对图中的每条边应用重新加权公式。但首先，让我们实现 Dijkstra 的算法：
 
 ```cpp
-    vector<int> Dijkstra(int V, int start, vector<Edge*> edges)
-    ```
+vector<int> Dijkstra(int V, int start, vector<Edge*> edges)
+```
 
 1.  现在，让我们声明一个整数向量`distance`和一个布尔向量`visited`。通常情况下，`distance`的每个索引都将初始化为`UNKNOWN`（除了起始顶点），`visited`的每个索引都将初始化为 false：
 
 ```cpp
-    vector<int> distance(V, UNKNOWN);
-    vector<bool> visited(V, false);
-    distance[start] = 0;
-    ```
+vector<int> distance(V, UNKNOWN);
+vector<bool> visited(V, false);
+distance[start] = 0;
+```
 
 1.  我们的 Dijkstra 算法实现将利用一个简单的迭代方法，使用`for`循环。正如你可能还记得的，Dijkstra 算法需要在遍历的每一步中找到具有最小距离值的节点。虽然通常是通过优先队列来实现这一点，但我们将通过编写另一个短函数`GetMinDistance()`来实现这一点，该函数将以距离和访问数组作为参数，并返回具有最短路径值的节点的索引：
 
 ```cpp
-    // Find vertex with shortest distance from current position and
-    // return its index
-    int GetMinDistance(vector<int> &distance, vector<bool> &visited)
-    {
-        int minDistance = UNKNOWN;
-        int result;
-        for(int v = 0; v < distance.size(); v++)
-        {            
-            if(!visited[v] && distance[v] <= minDistance)
-            {
-                minDistance = distance[v];
-                result = v;
-            }
-        }
-        return result;
-    }
-    ```
+// Find vertex with shortest distance from current position and
+// return its index
+int GetMinDistance(vector<int> &distance, vector<bool> &visited)
+{
+    int minDistance = UNKNOWN;
+    int result;
+    for(int v = 0; v < distance.size(); v++)
+    {            
+        if(!visited[v] && distance[v] <= minDistance)
+        {
+            minDistance = distance[v];
+            result = v;
+        }
+    }
+    return result;
+}
+```
 
 1.  现在我们可以完成实现 Dijkstra 算法：
 
 ```cpp
-    for(int i = 0; i < V - 1; i++)
-    {
-        // Find index of unvisited node with shortest distance
-        int curr = GetMinDistance(distance, visited);
-        visited[curr] = true;
-        // Iterate through edges
-        for(auto edge : edges)
-        {
-            // Only consider neighboring nodes
-            if(edge->start != curr) continue;
-            // Disregard if already visited
-            if(visited[edge->end]) continue;
-            if(distance[curr] != UNKNOWN && distance[curr] + edge->weight < distance[edge->end])
-            {
-            distance[edge->end] = distance[curr] + edge->weight;
-            }
-        }
-    }
-    return distance;
-    ```
+for(int i = 0; i < V - 1; i++)
+{
+    // Find index of unvisited node with shortest distance
+    int curr = GetMinDistance(distance, visited);
+    visited[curr] = true;
+    // Iterate through edges
+    for(auto edge : edges)
+    {
+        // Only consider neighboring nodes
+        if(edge->start != curr) continue;
+        // Disregard if already visited
+        if(visited[edge->end]) continue;
+        if(distance[curr] != UNKNOWN && distance[curr] + edge->weight < distance[edge->end])
+        {
+        distance[edge->end] = distance[curr] + edge->weight;
+        }
+    }
+}
+return distance;
+```
 
 1.  现在我们已经有了执行 Johnson 算法所需的一切。让我们声明一个新函数`Johnson()`，它也将以`V`和`edges`作为参数：
 
 ```cpp
-    void Johnson(int V, vector<Edge*> edges)
-    ```
+void Johnson(int V, vector<Edge*> edges)
+```
 
 1.  我们首先创建一个整数向量`h`，并将其设置为`BellmanFord()`的输出：
 
 ```cpp
-    // Get distance array from modified graph
-    vector<int> h = BellmanFord(V, edges);
-    ```
+// Get distance array from modified graph
+vector<int> h = BellmanFord(V, edges);
+```
 
 1.  我们检查`h`是否为空。如果是，我们终止函数：
 
 ```cpp
-    if(h.empty()) return; 
-    ```
+if(h.empty()) return; 
+```
 
 1.  否则，我们应用重新加权公式：
 
 ```cpp
-    for(int i = 0; i < edges.size(); i++)
-    {
-        edges[i]->weight += (h[edges[i]->start] - h[edges[i]->end]);
-    }
-    ```
+for(int i = 0; i < edges.size(); i++)
+{
+    edges[i]->weight += (h[edges[i]->start] - h[edges[i]->end]);
+}
+```
 
 1.  为了存储每对节点的最短路径距离，我们初始化一个具有`V`行的矩阵（这样每对二维索引`[i, j]`表示顶点`i`和顶点`j`之间的最短路径）。然后我们对 Dijkstra 算法进行`V`次调用，它返回每个起始节点的`distance`数组：
 
 ```cpp
-    // Create a matrix for storing distance values
-    vector<vector<int>> shortest(V);
-    // Retrieve shortest distances for each vertex
-    for(int i = 0; i < V; i++)
-    {
-        shortest[i] = Dijkstra(V, i, edges);
-    }
-    ```
+// Create a matrix for storing distance values
+vector<vector<int>> shortest(V);
+// Retrieve shortest distances for each vertex
+for(int i = 0; i < V; i++)
+{
+    shortest[i] = Dijkstra(V, i, edges);
+}
+```
 
 1.  毫不奇怪，我们在这一步积累的结果相当不准确。由于我们的重新加权操作，现在每个距离值都是正的。然而，这可以通过将相同的公式逆向应用于每个结果来很简单地纠正：
 
 ```cpp
-    // Reweight again in reverse to get original values
-    for(int i = 0; i < V; i++)
-    {
-        cout << i << ":\n";
-        for(int j = 0; j < V; j++)
-        {
-            if(shortest[i][j] != UNKNOWN)
-            {
-                shortest[i][j] += h[j] - h[i];
-                cout << "\t" << j << ": " << shortest[i][j] << endl;
-            }
-        }
-    }
-    ```
+// Reweight again in reverse to get original values
+for(int i = 0; i < V; i++)
+{
+    cout << i << ":\n";
+    for(int j = 0; j < V; j++)
+    {
+        if(shortest[i][j] != UNKNOWN)
+        {
+            shortest[i][j] += h[j] - h[i];
+            cout << "\t" << j << ": " << shortest[i][j] << endl;
+        }
+    }
+}
+```
 
 1.  现在，让我们回到我们的`main()`函数并实现处理输入的代码。在我们收集了输入图的边之后，我们只需要对`Johnson()`进行一次调用，我们的工作就完成了：
 
 ```cpp
-    int main()
-    {
-        int V, E;
-        cin >> V >> E;
-        vector<Edge*> edges;
-        for(int i = 0; i < E; i++)
-        {
-            int node_a, node_b, weight;
-            cin >> node_a >> node_b >> weight;
-            edges.push_back(new Edge(node_a, node_b, weight));
-        }
-        Johnson(V, edges);
-        return 0;
-    }
-    ```
+int main()
+{
+    int V, E;
+    cin >> V >> E;
+    vector<Edge*> edges;
+    for(int i = 0; i < E; i++)
+    {
+        int node_a, node_b, weight;
+        cin >> node_a >> node_b >> weight;
+        edges.push_back(new Edge(node_a, node_b, weight));
+    }
+    Johnson(V, edges);
+    return 0;
+}
+```
 
 1.  让我们使用以下输入来测试我们的算法：
 
 ```cpp
-    7 9
-    0 1 3
-    1 2 5
-    1 3 10
-    1 5 -4
-    2 4 2
-    3 2 -7
-    4 1 -3
-    5 6 -8
-    6 0 12
-    ```
+7 9
+0 1 3
+1 2 5
+1 3 10
+1 5 -4
+2 4 2
+3 2 -7
+4 1 -3
+5 6 -8
+6 0 12
+```
 
 1.  输出应该如下：
 
 ```cpp
-    0:
-        0: 0
-        1: 3
-        2: 6
-        3: 13
-        4: 8
-        5: -1
-        6: -9
-    1:
-        0: 0
-        1: 0
-        2: 3
-        3: 10
-        4: 5
-        5: -4
-        6: -12
-    2:
-        0: -1
-        1: -1
-        2: 0
-        3: 9
-        4: 2
-        5: -5
-        6: -13
-    4:
-        0: -3
-        1: -3
-        2: 0
-        3: 7
-        4: 0
-        5: -7
-        6: -15
-    5:
-        0: 4
-        1: 7
-        2: 10
-        3: 17
-        4: 12
-        5: 0
-        6: -8
-    6:
-        0: 12
-        1: 15
-        2: 18
-        3: 25
-        4: 20
-        5: 11
-        6: 0
-    ```
+0:
+    0: 0
+    1: 3
+    2: 6
+    3: 13
+    4: 8
+    5: -1
+    6: -9
+1:
+    0: 0
+    1: 0
+    2: 3
+    3: 10
+    4: 5
+    5: -4
+    6: -12
+2:
+    0: -1
+    1: -1
+    2: 0
+    3: 9
+    4: 2
+    5: -5
+    6: -13
+4:
+    0: -3
+    1: -3
+    2: 0
+    3: 7
+    4: 0
+    5: -7
+    6: -15
+5:
+    0: 4
+    1: 7
+    2: 10
+    3: 17
+    4: 12
+    5: 0
+    6: -8
+6:
+    0: 12
+    1: 15
+    2: 18
+    3: 25
+    4: 20
+    5: 11
+    6: 0
+```
 
 从前面的输出中可以看出，我们已成功打印了从每个节点到其他每个节点的最短距离。
 
@@ -924,130 +924,130 @@ Kosaraju 算法在直观上简化了一个潜在复杂的问题，将其简化�
 1.  对于我们实现 Kosaraju 算法，我们需要包括以下头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <stack>
-    ```
+#include <iostream>
+#include <vector>
+#include <stack>
+```
 
 1.  让我们定义一个名为`Kosaraju()`的函数，它接受两个参数 - 一个整数`V`（顶点的数量），一个整数向量的向量`adj`（图的邻接表表示） - 并返回一个整数向量的向量，表示输入图的每个强连通分量中的节点索引集合：
 
 ```cpp
-    vector<vector<int>> Kosaraju(int V, vector<vector<int>> adj)
-    ```
+vector<vector<int>> Kosaraju(int V, vector<vector<int>> adj)
+```
 
 1.  我们的第一步是声明我们的堆栈容器和访问数组（每个索引都初始化为`false`）。然后我们遍历图的每个节点，从尚未标记为`visited`的每个索引开始我们的 DFS 遍历：
 
 ```cpp
-    vector<bool> visited(V, false);
-    stack<int> stack;
-    for(int i = 0; i < V; i++)
-    {
-        if(!visited[i])    
-        {
-            FillStack(i, visited, adj, stack);
-        }
-    }
-    ```
+vector<bool> visited(V, false);
+stack<int> stack;
+for(int i = 0; i < V; i++)
+{
+    if(!visited[i])    
+    {
+        FillStack(i, visited, adj, stack);
+    }
+}
+```
 
 1.  我们的第一个 DFS 函数`FillStack()`接受四个参数：一个整数节点（遍历中当前点的顶点索引），一个名为`visited`的布尔向量（先前遍历的节点集），以及两个整数向量`adj`（图的邻接表）和`stack`（按照探索顺序排列的已访问节点索引列表）。最后三个参数将从调用函数中传递引用。DFS 是以标准方式实现的，除了在每个函数调用结束时将当前节点的索引推送到堆栈的附加步骤：
 
 ```cpp
-    void FillStack(int node, vector<bool> &visited,
-    vector<vector<int>> &adj, stack<int> &stack)
-    {
-        visited[node] = true;
-        for(auto next : adj[node])
-        {
-            if(!visited[next])
-            {
-                FillStack(next, visited, adj, stack);
-            }
-        }
-        stack.push(node);
-    }
-    ```
+void FillStack(int node, vector<bool> &visited,
+vector<vector<int>> &adj, stack<int> &stack)
+{
+    visited[node] = true;
+    for(auto next : adj[node])
+    {
+        if(!visited[next])
+        {
+            FillStack(next, visited, adj, stack);
+        }
+    }
+    stack.push(node);
+}
+```
 
 1.  现在，让我们定义另一个名为`Transpose()`的函数，它接受原始图的参数，并返回其转置的邻接表：
 
 ```cpp
-    vector<vector<int>> Transpose(int V, vector<vector<int>> adj)
-    {
-        vector<vector<int>> transpose(V);
-        for(int i = 0; i < V; i++)
-        {
-            for(auto next : adj[i])
-            {
-                transpose[next].push_back(i);
-            }
-        }
-        return transpose;
-    }
-    ```
+vector<vector<int>> Transpose(int V, vector<vector<int>> adj)
+{
+    vector<vector<int>> transpose(V);
+    for(int i = 0; i < V; i++)
+    {
+        for(auto next : adj[i])
+        {
+            transpose[next].push_back(i);
+        }
+    }
+    return transpose;
+}
+```
 
 1.  为了准备下一组遍历，我们声明了邻接表转置（初始化为我们的`Transpose()`函数的输出），并重新将我们的访问数组初始化为`false`：
 
 ```cpp
-        vector<vector<int>> transpose = Transpose(V, adj);
+    vector<vector<int>> transpose = Transpose(V, adj);
 
-        fill(visited.begin(), visited.end(), false);
-    ```
+    fill(visited.begin(), visited.end(), false);
+```
 
 1.  我们的算法的第二部分，我们需要定义我们的第二个 DFS 函数`CollectConnectedComponents()`，它与`FillStack()`接受相同的参数，除了第四个参数现在被替换为整数向量组件的引用。这个向量组件是我们将在图中存储每个强连通分量的节点索引的地方。遍历的实现也几乎与`FillStack()`函数相同，除了我们删除将节点推入堆栈的行。相反，我们在函数的开头包含一行，将遍历的节点收集到组件向量中：
 
 ```cpp
-    void CollectConnectedComponents(int node, vector<bool> &visited,
-    vector<vector<int>> &adj, vector<int> &component)
-    {
-        visited[node] = true;
-        component.push_back(node);
-        for(auto next : adj[node])
-        {
-            if(!visited[next])
-            {
-                CollectConnectedComponents(next, visited, adj, component);
-            }
-        }
-    }
-    ```
+void CollectConnectedComponents(int node, vector<bool> &visited,
+vector<vector<int>> &adj, vector<int> &component)
+{
+    visited[node] = true;
+    component.push_back(node);
+    for(auto next : adj[node])
+    {
+        if(!visited[next])
+        {
+            CollectConnectedComponents(next, visited, adj, component);
+        }
+    }
+}
+```
 
 1.  回到我们的`Kosaraju()`函数，我们定义了一个称为`connectedComponents`的整数向量的向量，这是我们将存储在转置上执行的每次遍历的结果的地方。然后，我们在`while`循环中迭代地从堆栈中弹出元素，再次从未访问的节点开始每次 DFS 遍历。在每次调用 DFS 函数之前，我们声明由`CollectConnectedComponents()`引用的组件向量，然后在遍历完成后将其推送到`connectedComponents`。当堆栈为空时，算法完成，之后我们返回`connectedComponents`：
 
 ```cpp
-    vector<vector<int>> connectedComponents;
-    while(!stack.empty())
-    {
-        int node = stack.top();
-        stack.pop();
-        if(!visited[node])
-        {
-            vector<int> component;
-            CollectConnectedComponents(node, visited, transpose, component);
-            connectedComponents.push_back(component);
-        }
-    }
-    return connectedComponents;
-    ```
+vector<vector<int>> connectedComponents;
+while(!stack.empty())
+{
+    int node = stack.top();
+    stack.pop();
+    if(!visited[node])
+    {
+        vector<int> component;
+        CollectConnectedComponents(node, visited, transpose, component);
+        connectedComponents.push_back(component);
+    }
+}
+return connectedComponents;
+```
 
 1.  从我们的`main()`函数中，我们现在可以通过在单独的行上打印每个向量的值来输出每个强连通分量的结果：
 
 ```cpp
-    int main()
-    {
-        int V;
-        vector<vector<int>> adj;
-        auto connectedComponents = Kosaraju(V, adj);
-        cout << "Graph contains " << connectedComponents.size() << " strongly connected components." << endl;
-        for(auto component : connectedComponents)
-        {
-            cout << "\t";
-            for(auto node : component)
-            {
-                cout << node << " ";
-            }
-            cout << endl;
-        }
-    }
-    ```
+int main()
+{
+    int V;
+    vector<vector<int>> adj;
+    auto connectedComponents = Kosaraju(V, adj);
+    cout << "Graph contains " << connectedComponents.size() << " strongly connected components." << endl;
+    for(auto component : connectedComponents)
+    {
+        cout << "\t";
+        for(auto node : component)
+        {
+            cout << node << " ";
+        }
+        cout << endl;
+    }
+}
+```
 
 1.  为了测试我们新实现的算法的功能，让我们基于以下图创建一个邻接表表示：![图 7.17：示例输入数据的图形表示](img/C14498_07_17.jpg)
 
@@ -1056,30 +1056,30 @@ Kosaraju 算法在直观上简化了一个潜在复杂的问题，将其简化�
 1.  在`main()`中，`V`和`adj`将被定义如下：
 
 ```cpp
-    int V = 9;
-    vector<vector<int>> adj =
-    {
-        { 1, 3 },
-        { 2, 4 },
-        { 3, 5 },
-        { 7 },
-        { 2 },
-        { 4, 6 },
-        { 7, 2 },
-        { 8 },
-        { 3 } 
-    };
-    ```
+int V = 9;
+vector<vector<int>> adj =
+{
+    { 1, 3 },
+    { 2, 4 },
+    { 3, 5 },
+    { 7 },
+    { 2 },
+    { 4, 6 },
+    { 7, 2 },
+    { 8 },
+    { 3 } 
+};
+```
 
 1.  执行我们的程序后，应该显示以下输出：
 
 ```cpp
-    Graph contains 4 strongly connected components.
-        0 
-        1 
-        2 4 5 6 
-        3 8 7
-    ```
+Graph contains 4 strongly connected components.
+    0 
+    1 
+    2 4 5 6 
+    3 8 7
+```
 
 ### 活动 17：迷宫传送游戏
 

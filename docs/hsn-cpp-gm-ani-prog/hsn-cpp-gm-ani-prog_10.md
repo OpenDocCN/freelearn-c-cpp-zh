@@ -193,37 +193,37 @@ glTF 支持将蒙皮网格附加到任意节点，并且这些节点可以进行
 1.  创建一个新文件`Skeleton.h`。在这个文件中声明`Skeleton`类。在`Skeleton`类中添加当前动画模型的静止姿势、绑定姿势、逆绑定姿势和关节名称。逆绑定姿势应该实现为一个矩阵的向量：
 
 ```cpp
-    class Skeleton {
-    protected:
-        Pose mRestPose;
-        Pose mBindPose;
-        std::vector<mat4> mInvBindPose;
-        std::vector<std::string> mJointNames;
-    ```
+class Skeleton {
+protected:
+    Pose mRestPose;
+    Pose mBindPose;
+    std::vector<mat4> mInvBindPose;
+    std::vector<std::string> mJointNames;
+```
 
 1.  添加一个辅助函数`UpdateInverseBindPose`。这个函数在设置绑定姿势时更新逆绑定姿势矩阵：
 
 ```cpp
-    protected:
-        void UpdateInverseBindPose();
-    ```
+protected:
+    void UpdateInverseBindPose();
+```
 
 1.  声明一个默认构造函数和一个便利构造函数。还要声明方法来设置骨骼的静止姿势、绑定姿势和关节名称，以及辅助函数来检索骨骼的所有变量的引用：
 
 ```cpp
-    public:
-        Skeleton();
-        Skeleton(const Pose& rest, const Pose& bind, 
-                 const std::vector<std::string>& names);
-        void Set(const Pose& rest, const Pose& bind, 
-                 const std::vector<std::string>& names);
-        Pose& GetBindPose();
-        Pose& GetRestPose();
-        std::vector<mat4>& GetInvBindPose();
-        std::vector<std::string>& GetJointNames();
-        std::string& GetJointName(unsigned int index);
-    }; // End Skeleton class
-    ```
+public:
+    Skeleton();
+    Skeleton(const Pose& rest, const Pose& bind, 
+             const std::vector<std::string>& names);
+    void Set(const Pose& rest, const Pose& bind, 
+             const std::vector<std::string>& names);
+    Pose& GetBindPose();
+    Pose& GetRestPose();
+    std::vector<mat4>& GetInvBindPose();
+    std::vector<std::string>& GetJointNames();
+    std::string& GetJointName(unsigned int index);
+}; // End Skeleton class
+```
 
 将`Skeleton`类视为一个辅助类——它将绑定姿势、逆绑定姿势、静止姿势和关节名称放入一个易于管理的对象中。骨骼是共享的；你可以有许多角色，每个角色都有一个独特的动画姿势，但它们都可以共享相同的骨骼。在接下来的部分，你将实现`Skeleton`类。
 
@@ -234,57 +234,57 @@ glTF 支持将蒙皮网格附加到任意节点，并且这些节点可以进行
 1.  创建两个构造函数——默认构造函数不执行任何操作。另一个便利构造函数接受一个静止姿势、一个绑定姿势和关节名称。它调用`Set`方法：
 
 ```cpp
-    Skeleton::Skeleton() { }
-    Skeleton::Skeleton(const Pose& rest, const Pose& bind,
-                    const std::vector<std::string>& names) {
-        Set(rest, bind, names);
-    }
-    ```
+Skeleton::Skeleton() { }
+Skeleton::Skeleton(const Pose& rest, const Pose& bind,
+                const std::vector<std::string>& names) {
+    Set(rest, bind, names);
+}
+```
 
 1.  创建`Set`方法，应该设置骨骼的内部姿势、绑定姿势和关节名称。一旦绑定姿势设置好，调用`UpdateInverseBindPose`函数来填充逆绑定姿势矩阵调色板：
 
 ```cpp
-    void Skeleton::Set(const Pose& rest, const Pose& bind, 
-                     const std::vector<std::string>& names) {
-        mRestPose = rest;
-        mBindPose = bind;
-        mJointNames = names;
-        UpdateInverseBindPose();
-    }
-    ```
+void Skeleton::Set(const Pose& rest, const Pose& bind, 
+                 const std::vector<std::string>& names) {
+    mRestPose = rest;
+    mBindPose = bind;
+    mJointNames = names;
+    UpdateInverseBindPose();
+}
+```
 
 1.  接下来实现`UpdateInverseBindPose`函数。确保矩阵向量的大小正确，然后循环遍历绑定姿势中的所有关节。获取每个关节的世界空间变换，将其转换为矩阵，并对矩阵进行反转。这个反转的矩阵就是关节的逆绑定姿势矩阵：
 
 ```cpp
-    void Skeleton::UpdateInverseBindPose() {
-      unsigned int size = mBindPose.Size();
-      mInvBindPose.resize(size);
-      for (unsigned int i = 0; i < size; ++i) {
-        Transform world = mBindPose.GetGlobalTransform(i);
-        mInvBindPose[i] = inverse(transformToMat4(world));
-      }
-    }
-    ```
+void Skeleton::UpdateInverseBindPose() {
+  unsigned int size = mBindPose.Size();
+  mInvBindPose.resize(size);
+  for (unsigned int i = 0; i < size; ++i) {
+    Transform world = mBindPose.GetGlobalTransform(i);
+    mInvBindPose[i] = inverse(transformToMat4(world));
+  }
+}
+```
 
 1.  在`Skeleton`类中实现简单的 getter 和 setter 函数：
 
 ```cpp
-    Pose& Skeleton::GetBindPose() {
-        return mBindPose;
-    }
-    Pose& Skeleton::GetRestPose() {
-        return mRestPose;
-    }
-    std::vector<mat4>& Skeleton::GetInvBindPose() {
-        return mInvBindPose;
-    }
-    std::vector<std::string>& Skeleton::GetJointNames() {
-        return mJointNames;
-    }
-    std::string& Skeleton::GetJointName(unsigned int idx) {
-        return mJointNames[idx];
-    }
-    ```
+Pose& Skeleton::GetBindPose() {
+    return mBindPose;
+}
+Pose& Skeleton::GetRestPose() {
+    return mRestPose;
+}
+std::vector<mat4>& Skeleton::GetInvBindPose() {
+    return mInvBindPose;
+}
+std::vector<std::string>& Skeleton::GetJointNames() {
+    return mJointNames;
+}
+std::string& Skeleton::GetJointName(unsigned int idx) {
+    return mJointNames[idx];
+}
+```
 
 通过提供显式的 getter 函数来避免返回引用是可能的，比如`Transform GetBindPoseTransform(unsigned int index)`。在你学习如何优化动画数据的下一章之后再这样做更有意义。现在，能够访问这些引用并且不修改它们更有价值。
 
@@ -307,64 +307,64 @@ glTF 支持将蒙皮网格附加到任意节点，并且这些节点可以进行
 1.  通过构建一个变换向量来开始实现`LoadBindPose`函数。用休息姿势中每个关节的全局变换填充变换向量：
 
 ```cpp
-    Pose LoadBindPose(cgltf_data* data) {
-        Pose restPose = LoadRestPose(data);
-        unsigned int numBones = restPose.Size();
-        std::vector<Transform> worldBindPose(numBones);
-        for (unsigned int i = 0; i < numBones; ++i) {
-          worldBindPose[i] = restPose.GetGlobalTransform(i);
-        }
-    ```
+Pose LoadBindPose(cgltf_data* data) {
+    Pose restPose = LoadRestPose(data);
+    unsigned int numBones = restPose.Size();
+    std::vector<Transform> worldBindPose(numBones);
+    for (unsigned int i = 0; i < numBones; ++i) {
+      worldBindPose[i] = restPose.GetGlobalTransform(i);
+    }
+```
 
 1.  循环遍历 glTF 文件中的每个蒙皮网格。将`inverse_bind_matrices`访问器读入一个大的浮点值向量中。该向量需要包含`contain numJoints * 16`个元素，因为每个矩阵都是一个 4x4 矩阵：
 
 ```cpp
-        unsigned int numSkins = data->skins_count;
-        for (unsigned int i = 0; i < numSkins; ++i) {
-            cgltf_skin* skin = &(data->skins[i]);
-            std::vector<float> invBindAccessor;
-            GLTFHelpers::GetScalarValues(invBindAccessor, 
-                         16, *skin->inverse_bind_matrices);
-    ```
+    unsigned int numSkins = data->skins_count;
+    for (unsigned int i = 0; i < numSkins; ++i) {
+        cgltf_skin* skin = &(data->skins[i]);
+        std::vector<float> invBindAccessor;
+        GLTFHelpers::GetScalarValues(invBindAccessor, 
+                     16, *skin->inverse_bind_matrices);
+```
 
 1.  对于蒙皮中的每个关节，获取逆绑定矩阵。反转逆绑定姿势矩阵以获得绑定姿势矩阵。将绑定姿势矩阵转换为变换。将这个世界空间变换存储在`worldBindPose`向量中：
 
 ```cpp
-            unsigned int numJoints = skin->joints_count;
-            for (int j = 0; j < numJoints; ++j) { 
-                // Read the ivnerse bind matrix of the joint
-                float* matrix = &(invBindAccessor[j * 16]);
-                mat4 invBindMatrix = mat4(matrix);
-                // invert, convert to transform
-                mat4 bindMatrix = inverse(invBindMatrix);
-                Transform bindTransform = 
-                                mat4ToTransform(bindMatrix);
-                // Set that transform in the worldBindPose.
-                cgltf_node* jointNode = skin->joints[j];
-                int jointIndex = GLTFHelpers::GetNodeIndex(
-                           jointNode, data->nodes, numBones);
-                worldBindPose[jointIndex] = bindTransform;
-            } // end for each joint
-        } // end for each skin
-    ```
+        unsigned int numJoints = skin->joints_count;
+        for (int j = 0; j < numJoints; ++j) { 
+            // Read the ivnerse bind matrix of the joint
+            float* matrix = &(invBindAccessor[j * 16]);
+            mat4 invBindMatrix = mat4(matrix);
+            // invert, convert to transform
+            mat4 bindMatrix = inverse(invBindMatrix);
+            Transform bindTransform = 
+                            mat4ToTransform(bindMatrix);
+            // Set that transform in the worldBindPose.
+            cgltf_node* jointNode = skin->joints[j];
+            int jointIndex = GLTFHelpers::GetNodeIndex(
+                       jointNode, data->nodes, numBones);
+            worldBindPose[jointIndex] = bindTransform;
+        } // end for each joint
+    } // end for each skin
+```
 
 1.  将每个关节转换为相对于其父级的位置。将一个关节移动到另一个关节的空间中，即使它相对于另一个关节，将关节的世界变换与其父级的逆世界变换相结合：
 
 ```cpp
-        //Convert the world bind pose to a regular bind pose
-        Pose bindPose = restPose;
-        for (unsigned int i = 0; i < numBones; ++i) {
-            Transform current = worldBindPose[i];
-            int p = bindPose.GetParent(i);
-            if (p >= 0) { // Bring into parent space
-                Transform parent = worldBindPose[p];
-                current = combine(inverse(parent), current);
-            }
-            bindPose.SetLocalTransform(i, current);
-        }
-        return bindPose;
-    } // End LoadBindPose function
-    ```
+    //Convert the world bind pose to a regular bind pose
+    Pose bindPose = restPose;
+    for (unsigned int i = 0; i < numBones; ++i) {
+        Transform current = worldBindPose[i];
+        int p = bindPose.GetParent(i);
+        if (p >= 0) { // Bring into parent space
+            Transform parent = worldBindPose[p];
+            current = combine(inverse(parent), current);
+        }
+        bindPose.SetLocalTransform(i, current);
+    }
+    return bindPose;
+} // End LoadBindPose function
+```
 
 重建绑定姿势并不理想，但这是 glTF 的一个怪癖，你必须处理它。通过使用休息姿势作为默认关节值，任何没有逆绑定姿势矩阵的关节仍然具有有效的默认方向和大小。
 
@@ -403,76 +403,76 @@ Skeleton LoadSkeleton(cgltf_data* data) {
 1.  开始声明`Mesh`类。它应该在 CPU 和 GPU 上都维护网格数据的副本。存储位置、法线、纹理坐标、权重和影响力的向量来定义每个顶点。包括一个可选的索引向量：
 
 ```cpp
-    class Mesh {
-    protected:
-        std::vector<vec3> mPosition;
-        std::vector<vec3> mNormal;
-        std::vector<vec2> mTexCoord;
-        std::vector<vec4> mWeights;
-        std::vector<ivec4> mInfluences;
-        std::vector<unsigned int> mIndices;
-    ```
+class Mesh {
+protected:
+    std::vector<vec3> mPosition;
+    std::vector<vec3> mNormal;
+    std::vector<vec2> mTexCoord;
+    std::vector<vec4> mWeights;
+    std::vector<ivec4> mInfluences;
+    std::vector<unsigned int> mIndices;
+```
 
 1.  前面代码中列出的每个向量也需要设置适当的属性。为每个创建`Attribute`指针，以及一个索引缓冲区指针：
 
 ```cpp
-    protected:
-        Attribute<vec3>* mPosAttrib;
-        Attribute<vec3>* mNormAttrib;
-        Attribute<vec2>* mUvAttrib;
-        Attribute<vec4>* mWeightAttrib;
-        Attribute<ivec4>* mInfluenceAttrib;
-        IndexBuffer* mIndexBuffer;
-    ```
+protected:
+    Attribute<vec3>* mPosAttrib;
+    Attribute<vec3>* mNormAttrib;
+    Attribute<vec2>* mUvAttrib;
+    Attribute<vec4>* mWeightAttrib;
+    Attribute<ivec4>* mInfluenceAttrib;
+    IndexBuffer* mIndexBuffer;
+```
 
 1.  添加一个额外的姿势和法线数据的副本，以及一个用于 CPU 蒙皮的矩阵调色板：
 
 ```cpp
-    protected:
-        std::vector<vec3> mSkinnedPosition;
-        std::vector<vec3> mSkinnedNormal;
-        std::vector<mat4> mPosePalette;
-    ```
+protected:
+    std::vector<vec3> mSkinnedPosition;
+    std::vector<vec3> mSkinnedNormal;
+    std::vector<mat4> mPosePalette;
+```
 
 1.  为构造函数、拷贝构造函数和赋值运算符以及析构函数添加声明：
 
 ```cpp
-    public:
-        Mesh();
-        Mesh(const Mesh&);
-        Mesh& operator=(const Mesh&);
-        ~Mesh();
-    ```
+public:
+    Mesh();
+    Mesh(const Mesh&);
+    Mesh& operator=(const Mesh&);
+    ~Mesh();
+```
 
 1.  为网格包含的所有属性声明 getter 函数。这些函数返回向量引用。向量引用不是只读的；在加载网格时使用这些引用来填充网格数据：
 
 ```cpp
-        std::vector<vec3>& GetPosition();
-        std::vector<vec3>& GetNormal();
-        std::vector<vec2>& GetTexCoord();
-        std::vector<vec4>& GetWeights();
-        std::vector<ivec4>& GetInfluences();
-        std::vector<unsigned int>& GetIndices();
-    ```
+    std::vector<vec3>& GetPosition();
+    std::vector<vec3>& GetNormal();
+    std::vector<vec2>& GetTexCoord();
+    std::vector<vec4>& GetWeights();
+    std::vector<ivec4>& GetInfluences();
+    std::vector<unsigned int>& GetIndices();
+```
 
 1.  声明`CPUSkin`函数，应用 CPU 网格蒙皮。要对网格进行蒙皮，您需要骨架和动画姿势。声明`UpdateOpenGLBuffers`函数，将持有数据的向量同步到 GPU：
 
 ```cpp
-        void CPUSkin(Skeleton& skeleton, Pose& pose);
-        void UpdateOpenGLBuffers();
-        void Bind(int position, int normal, int texCoord, 
-                  int weight, int influence);
-    ```
+    void CPUSkin(Skeleton& skeleton, Pose& pose);
+    void UpdateOpenGLBuffers();
+    void Bind(int position, int normal, int texCoord, 
+              int weight, int influence);
+```
 
 1.  声明绑定、绘制和解绑网格的函数：
 
 ```cpp
-        void Draw();
-        void DrawInstanced(unsigned int numInstances);
-        void UnBind(int position, int normal, int texCoord, 
-                    int weight, int influence);
-    };
-    ```
+    void Draw();
+    void DrawInstanced(unsigned int numInstances);
+    void UnBind(int position, int normal, int texCoord, 
+                int weight, int influence);
+};
+```
 
 这个`Mesh`类还不是生产就绪的，但它很容易使用，并且将在本书的其余部分中使用。在下一节中，您将开始实现`Mesh`类。
 
@@ -485,177 +485,177 @@ Skeleton LoadSkeleton(cgltf_data* data) {
 1.  实现默认构造函数，需要确保所有属性（和索引缓冲区）都被分配：
 
 ```cpp
-    Mesh::Mesh() {
-        mPosAttrib = new Attribute<vec3>();
-        mNormAttrib = new Attribute<vec3>();
-        mUvAttrib = new Attribute<vec2>();
-        mWeightAttrib = new Attribute<vec4>();
-        mInfluenceAttrib = new Attribute<ivec4>();
-        mIndexBuffer = new IndexBuffer();
-    }
-    ```
+Mesh::Mesh() {
+    mPosAttrib = new Attribute<vec3>();
+    mNormAttrib = new Attribute<vec3>();
+    mUvAttrib = new Attribute<vec2>();
+    mWeightAttrib = new Attribute<vec4>();
+    mInfluenceAttrib = new Attribute<ivec4>();
+    mIndexBuffer = new IndexBuffer();
+}
+```
 
 1.  实现拷贝构造函数。以与构造函数相同的方式创建缓冲区，然后调用赋值运算符：
 
 ```cpp
-    Mesh::Mesh(const Mesh& other) {
-        mPosAttrib = new Attribute<vec3>();
-        mNormAttrib = new Attribute<vec3>();
-        mUvAttrib = new Attribute<vec2>();
-        mWeightAttrib = new Attribute<vec4>();
-        mInfluenceAttrib = new Attribute<ivec4>();
-        mIndexBuffer = new IndexBuffer();
-        *this = other;
-    }
-    ```
+Mesh::Mesh(const Mesh& other) {
+    mPosAttrib = new Attribute<vec3>();
+    mNormAttrib = new Attribute<vec3>();
+    mUvAttrib = new Attribute<vec2>();
+    mWeightAttrib = new Attribute<vec4>();
+    mInfluenceAttrib = new Attribute<ivec4>();
+    mIndexBuffer = new IndexBuffer();
+    *this = other;
+}
+```
 
 1.  实现赋值运算符，它将复制 CPU 端的成员（所有向量），然后调用`UpdateOpenGLBuffers`函数将属性数据上传到 GPU：
 
 ```cpp
-    Mesh& Mesh::operator=(const Mesh& other) {
-        if (this == &other) {
-            return *this;
-        }
-        mPosition = other.mPosition;
-        mNormal = other.mNormal;
-        mTexCoord = other.mTexCoord;
-        mWeights = other.mWeights;
-        mInfluences = other.mInfluences;
-        mIndices = other.mIndices;
-        UpdateOpenGLBuffers();
-        return *this;
-    }
-    ```
+Mesh& Mesh::operator=(const Mesh& other) {
+    if (this == &other) {
+        return *this;
+    }
+    mPosition = other.mPosition;
+    mNormal = other.mNormal;
+    mTexCoord = other.mTexCoord;
+    mWeights = other.mWeights;
+    mInfluences = other.mInfluences;
+    mIndices = other.mIndices;
+    UpdateOpenGLBuffers();
+    return *this;
+}
+```
 
 1.  实现析构函数，确保删除构造函数分配的所有数据：
 
 ```cpp
-    Mesh::~Mesh() {
-        delete mPosAttrib;
-        delete mNormAttrib;
-        delete mUvAttrib;
-        delete mWeightAttrib;
-        delete mInfluenceAttrib;
-        delete mIndexBuffer;
-    }
-    ```
+Mesh::~Mesh() {
+    delete mPosAttrib;
+    delete mNormAttrib;
+    delete mUvAttrib;
+    delete mWeightAttrib;
+    delete mInfluenceAttrib;
+    delete mIndexBuffer;
+}
+```
 
 1.  实现`Mesh`获取函数。这些函数返回向量的引用。预期在返回后对这些引用进行编辑：
 
 ```cpp
-    std::vector<vec3>& Mesh::GetPosition() {
-        return mPosition;
-    }
-    std::vector<vec3>& Mesh::GetNormal() {
-        return mNormal;
-    }
-    std::vector<vec2>& Mesh::GetTexCoord() {
-        return mTexCoord;
-    }
-    std::vector<vec4>& Mesh::GetWeights() {
-        return mWeights;
-    }
-    std::vector<ivec4>& Mesh::GetInfluences() {
-        return mInfluences;
-    }
-    std::vector<unsigned int>& Mesh::GetIndices() {
-        return mIndices;
-    }
-    ```
+std::vector<vec3>& Mesh::GetPosition() {
+    return mPosition;
+}
+std::vector<vec3>& Mesh::GetNormal() {
+    return mNormal;
+}
+std::vector<vec2>& Mesh::GetTexCoord() {
+    return mTexCoord;
+}
+std::vector<vec4>& Mesh::GetWeights() {
+    return mWeights;
+}
+std::vector<ivec4>& Mesh::GetInfluences() {
+    return mInfluences;
+}
+std::vector<unsigned int>& Mesh::GetIndices() {
+    return mIndices;
+}
+```
 
 1.  通过在每个属性对象上调用`Set`函数来实现`UpdateOpenGLBuffers`函数。如果 CPU 端的向量之一的大小为`0`，则没有需要设置的内容：
 
 ```cpp
-    void Mesh::UpdateOpenGLBuffers() {
-        if (mPosition.size() > 0) {
-            mPosAttrib->Set(mPosition);
-        }
-        if (mNormal.size() > 0) {
-            mNormAttrib->Set(mNormal);
-        }
-        if (mTexCoord.size() > 0) {
-            mUvAttrib->Set(mTexCoord);
-        }
-        if (mWeights.size() > 0) {
-            mWeightAttrib->Set(mWeights);
-        }
-        if (mInfluences.size() > 0) {
-            mInfluenceAttrib->Set(mInfluences);
-        }
-        if (mIndices.size() > 0) {
-            mIndexBuffer->Set(mIndices);
-        }
-    }
-    ```
+void Mesh::UpdateOpenGLBuffers() {
+    if (mPosition.size() > 0) {
+        mPosAttrib->Set(mPosition);
+    }
+    if (mNormal.size() > 0) {
+        mNormAttrib->Set(mNormal);
+    }
+    if (mTexCoord.size() > 0) {
+        mUvAttrib->Set(mTexCoord);
+    }
+    if (mWeights.size() > 0) {
+        mWeightAttrib->Set(mWeights);
+    }
+    if (mInfluences.size() > 0) {
+        mInfluenceAttrib->Set(mInfluences);
+    }
+    if (mIndices.size() > 0) {
+        mIndexBuffer->Set(mIndices);
+    }
+}
+```
 
 1.  实现`Bind`函数。这需要绑定槽索引的整数。如果绑定槽有效（即为`0`或更大），则调用属性的`BindTo`函数：
 
 ```cpp
-    void Mesh::Bind(int position, int normal, int texCoord, 
-                    int weight, int influcence) {
-        if (position >= 0) {
-            mPosAttrib->BindTo(position);
-        }
-        if (normal >= 0) {
-            mNormAttrib->BindTo(normal);
-        }
-        if (texCoord >= 0) {
-            mUvAttrib->BindTo(texCoord);
-        }
-        if (weight >= 0) {
-            mWeightAttrib->BindTo(weight);
-        }
-        if (influcence >= 0) {
-            mInfluenceAttrib->BindTo(influcence);
-        }
-    }
-    ```
+void Mesh::Bind(int position, int normal, int texCoord, 
+                int weight, int influcence) {
+    if (position >= 0) {
+        mPosAttrib->BindTo(position);
+    }
+    if (normal >= 0) {
+        mNormAttrib->BindTo(normal);
+    }
+    if (texCoord >= 0) {
+        mUvAttrib->BindTo(texCoord);
+    }
+    if (weight >= 0) {
+        mWeightAttrib->BindTo(weight);
+    }
+    if (influcence >= 0) {
+        mInfluenceAttrib->BindTo(influcence);
+    }
+}
+```
 
 1.  实现`Draw`和`DrawInstanced`函数，这些函数调用适当的全局`::Draw`和`::DrawInstanced`函数：
 
 ```cpp
-    void Mesh::Draw() {
-        if (mIndices.size() > 0) {
-            ::Draw(*mIndexBuffer, DrawMode::Triangles);
-        }
-        else {
-            ::Draw(mPosition.size(), DrawMode::Triangles);
-        }
-    }
-    void Mesh::DrawInstanced(unsigned int numInstances) {
-        if (mIndices.size() > 0) {
-            ::DrawInstanced(*mIndexBuffer, 
-              DrawMode::Triangles, numInstances);
-        }
-        else {
-            ::DrawInstanced(mPosition.size(), 
-              DrawMode::Triangles, numInstances);
-        }
-    }
-    ```
+void Mesh::Draw() {
+    if (mIndices.size() > 0) {
+        ::Draw(*mIndexBuffer, DrawMode::Triangles);
+    }
+    else {
+        ::Draw(mPosition.size(), DrawMode::Triangles);
+    }
+}
+void Mesh::DrawInstanced(unsigned int numInstances) {
+    if (mIndices.size() > 0) {
+        ::DrawInstanced(*mIndexBuffer, 
+          DrawMode::Triangles, numInstances);
+    }
+    else {
+        ::DrawInstanced(mPosition.size(), 
+          DrawMode::Triangles, numInstances);
+    }
+}
+```
 
 1.  实现`UnBind`函数，该函数还接受整数绑定槽作为参数，但在属性对象上调用`UnBindFrom`：
 
 ```cpp
-    void Mesh::UnBind(int position, int normal, int texCoord, 
-                      int weight, int influence) {
-        if (position >= 0) {
-            mPosAttrib->UnBindFrom(position);
-        }
-        if (normal >= 0) {
-            mNormAttrib->UnBindFrom(normal);
-        }
-        if (texCoord >= 0) {
-            mUvAttrib->UnBindFrom(texCoord);
-        }
-        if (weight >= 0) {
-            mWeightAttrib->UnBindFrom(weight);
-        }
-        if (influcence >= 0) {
-            mInfluenceAttrib->UnBindFrom(influence);
-        }
-    }
-    ```
+void Mesh::UnBind(int position, int normal, int texCoord, 
+                  int weight, int influence) {
+    if (position >= 0) {
+        mPosAttrib->UnBindFrom(position);
+    }
+    if (normal >= 0) {
+        mNormAttrib->UnBindFrom(normal);
+    }
+    if (texCoord >= 0) {
+        mUvAttrib->UnBindFrom(texCoord);
+    }
+    if (weight >= 0) {
+        mWeightAttrib->UnBindFrom(weight);
+    }
+    if (influcence >= 0) {
+        mInfluenceAttrib->UnBindFrom(influence);
+    }
+}
+```
 
 `Mesh`类包含用于保存 CPU 数据的向量和用于将数据复制到 GPU 的属性。它提供了一个简单的接口来渲染整个网格。在接下来的部分中，您将学习如何实现 CPU 蒙皮以对网格进行动画处理。
 
@@ -682,63 +682,63 @@ Skeleton LoadSkeleton(cgltf_data* data) {
 1.  开始实现`CPUSkin`函数。确保蒙皮向量有足够的存储空间，并从骨骼获取绑定姿势。接下来，循环遍历每个顶点：
 
 ```cpp
-    void Mesh::CPUSkin(Skeleton& skeleton, Pose& pose) {
-        unsigned int numVerts = mPosition.size();
-        if (numVerts == 0) { return;  }
-        mSkinnedPosition.resize(numVerts);
-        mSkinnedNormal.resize(numVerts);
-        Pose& bindPose = skeleton.GetBindPose();
-        for (unsigned int i = 0; i < numVerts; ++i) {
-            ivec4& joint = mInfluences[i];
-            vec4& weight = mWeights[i];
-    ```
+void Mesh::CPUSkin(Skeleton& skeleton, Pose& pose) {
+    unsigned int numVerts = mPosition.size();
+    if (numVerts == 0) { return;  }
+    mSkinnedPosition.resize(numVerts);
+    mSkinnedNormal.resize(numVerts);
+    Pose& bindPose = skeleton.GetBindPose();
+    for (unsigned int i = 0; i < numVerts; ++i) {
+        ivec4& joint = mInfluences[i];
+        vec4& weight = mWeights[i];
+```
 
 1.  计算蒙皮变换。对第一个顶点和法线影响进行变换：
 
 ```cpp
-            Transform skin0 = combine(pose[joint.x], 
-                              inverse(bindPose[joint.x]));
-            vec3 p0 = transformPoint(skin0, mPosition[i]);
-            vec3 n0 = transformVector(skin0, mNormal[i]);
-    ```
+        Transform skin0 = combine(pose[joint.x], 
+                          inverse(bindPose[joint.x]));
+        vec3 p0 = transformPoint(skin0, mPosition[i]);
+        vec3 n0 = transformVector(skin0, mNormal[i]);
+```
 
 1.  对可能影响当前顶点的其他三个关节重复此过程：
 
 ```cpp
-            Transform skin1 = combine(pose[joint.y], 
-                              inverse(bindPose[joint.y]));
-            vec3 p1 = transformPoint(skin1, mPosition[i]);
-            vec3 n1 = transformVector(skin1, mNormal[i]);
+        Transform skin1 = combine(pose[joint.y], 
+                          inverse(bindPose[joint.y]));
+        vec3 p1 = transformPoint(skin1, mPosition[i]);
+        vec3 n1 = transformVector(skin1, mNormal[i]);
 
-            Transform skin2 = combine(pose[joint.z], 
-                              inverse(bindPose[joint.z]));
-            vec3 p2 = transformPoint(skin2, mPosition[i]);
-            vec3 n2 = transformVector(skin2, mNormal[i]);
+        Transform skin2 = combine(pose[joint.z], 
+                          inverse(bindPose[joint.z]));
+        vec3 p2 = transformPoint(skin2, mPosition[i]);
+        vec3 n2 = transformVector(skin2, mNormal[i]);
 
-            Transform skin3 = combine(pose[joint.w], 
-                              inverse(bindPose[joint.w]));
-            vec3 p3 = transformPoint(skin3, mPosition[i]);
-            vec3 n3 = transformVector(skin3, mNormal[i]);
-    ```
+        Transform skin3 = combine(pose[joint.w], 
+                          inverse(bindPose[joint.w]));
+        vec3 p3 = transformPoint(skin3, mPosition[i]);
+        vec3 n3 = transformVector(skin3, mNormal[i]);
+```
 
 1.  到这一步，您已经对顶点进行了四次蒙皮——分别对每个影响它的骨骼进行一次。接下来，您需要将这些合并成最终的顶点。
 
 1.  使用`mWeights`混合蒙皮位置和法线。将位置和法线属性设置为新更新的蒙皮位置和法线：
 
 ```cpp
-            mSkinnedPosition[i] = p0 * weight.x + 
-                                  p1 * weight.y + 
-                                  p2 * weight.z + 
-                                  p3 * weight.w;
-            mSkinnedNormal[i] = n0 * weight.x + 
-                                n1 * weight.y + 
-                                n2 * weight.z + 
-                                n3 * weight.w;
-        }
-        mPosAttrib->Set(mSkinnedPosition);
-        mNormAttrib->Set(mSkinnedNormal);
-    }
-    ```
+        mSkinnedPosition[i] = p0 * weight.x + 
+                              p1 * weight.y + 
+                              p2 * weight.z + 
+                              p3 * weight.w;
+        mSkinnedNormal[i] = n0 * weight.x + 
+                            n1 * weight.y + 
+                            n2 * weight.z + 
+                            n3 * weight.w;
+    }
+    mPosAttrib->Set(mSkinnedPosition);
+    mNormAttrib->Set(mSkinnedNormal);
+}
+```
 
 让我们解释一下这里发生了什么。这是基本的蒙皮算法。每个顶点都有一个名为权重的`vec4`值和一个名为影响的`ivec4`值。每个顶点有四个影响它的关节和四个权重。如果关节对顶点没有影响，权重可能是`0`。
 
@@ -817,126 +817,126 @@ gLTF 将影响关节的索引存储为相对于正在解析的皮肤的关节数
 1.  在`GLTFHelpers`命名空间中实现`MeshFromAttribute`函数。通过确定当前组件具有多少属性来开始实现：
 
 ```cpp
-    // In the GLTFHelpers namespace
-    void GLTFHelpers::MeshFromAttribute(Mesh& outMesh, 
-                      cgltf_attribute& attribute, 
-                      cgltf_skin* skin, cgltf_node* nodes, 
-                      unsigned int nodeCount) {
-        cgltf_attribute_type attribType = attribute.type;
-        cgltf_accessor& accessor = *attribute.data;
-        unsigned int componentCount = 0;
-        if (accessor.type == cgltf_type_vec2) {
-            componentCount = 2;
-        }
-        else if (accessor.type == cgltf_type_vec3) {
-            componentCount = 3;
-        }
-        else if (accessor.type == cgltf_type_vec4) {
-            componentCount = 4;
-        }
-    ```
+// In the GLTFHelpers namespace
+void GLTFHelpers::MeshFromAttribute(Mesh& outMesh, 
+                  cgltf_attribute& attribute, 
+                  cgltf_skin* skin, cgltf_node* nodes, 
+                  unsigned int nodeCount) {
+    cgltf_attribute_type attribType = attribute.type;
+    cgltf_accessor& accessor = *attribute.data;
+    unsigned int componentCount = 0;
+    if (accessor.type == cgltf_type_vec2) {
+        componentCount = 2;
+    }
+    else if (accessor.type == cgltf_type_vec3) {
+        componentCount = 3;
+    }
+    else if (accessor.type == cgltf_type_vec4) {
+        componentCount = 4;
+    }
+```
 
 1.  使用`GetScalarValues`辅助函数从提供的访问器中解析数据。创建对网格的位置、法线、纹理坐标、影响和权重向量的引用；`MeshFromAttribute`函数将写入这些引用：
 
 ```cpp
-        std::vector<float> values;
-        GetScalarValues(values, componentCount, accessor);
-        unsigned int acessorCount = accessor.count;
-        std::vector<vec3>& positions = outMesh.GetPosition();
-        std::vector<vec3>& normals = outMesh.GetNormal();
-        std::vector<vec2>& texCoords = outMesh.GetTexCoord();
-        std::vector<ivec4>& influences = 
-                                 outMesh.GetInfluences();
-        std::vector<vec4>& weights = outMesh.GetWeights();
-    ```
+    std::vector<float> values;
+    GetScalarValues(values, componentCount, accessor);
+    unsigned int acessorCount = accessor.count;
+    std::vector<vec3>& positions = outMesh.GetPosition();
+    std::vector<vec3>& normals = outMesh.GetNormal();
+    std::vector<vec2>& texCoords = outMesh.GetTexCoord();
+    std::vector<ivec4>& influences = 
+                             outMesh.GetInfluences();
+    std::vector<vec4>& weights = outMesh.GetWeights();
+```
 
 1.  循环遍历当前访问器中的所有值，并根据访问器类型将它们分配到适当的向量中。通过从值向量中读取数据并直接将其分配到网格中的适当向量中，可以找到位置、纹理坐标和权重分量：
 
 ```cpp
-        for (unsigned int i = 0; i < acessorCount; ++i) {
-            int index = i * componentCount;
-            switch (attribType) {
-            case cgltf_attribute_type_position:
-                positions.push_back(vec3(values[index + 0], 
-                                        values[index + 1],
-                                        values[index + 2]));
-                break;
-            case cgltf_attribute_type_texcoord:
-                texCoords.push_back(vec2(values[index + 0], 
-                                        values[index + 1]));
-                break;
-            case cgltf_attribute_type_weights:
-                weights.push_back(vec4(values[index + 0], 
-                                       values[index + 1], 
-                                       values[index + 2], 
-                                       values[index + 3]));
-                break;
-    ```
+    for (unsigned int i = 0; i < acessorCount; ++i) {
+        int index = i * componentCount;
+        switch (attribType) {
+        case cgltf_attribute_type_position:
+            positions.push_back(vec3(values[index + 0], 
+                                    values[index + 1],
+                                    values[index + 2]));
+            break;
+        case cgltf_attribute_type_texcoord:
+            texCoords.push_back(vec2(values[index + 0], 
+                                    values[index + 1]));
+            break;
+        case cgltf_attribute_type_weights:
+            weights.push_back(vec4(values[index + 0], 
+                                   values[index + 1], 
+                                   values[index + 2], 
+                                   values[index + 3]));
+            break;
+```
 
 1.  在读取法线后，检查其平方长度。如果法线无效，则返回有效向量并考虑记录错误。如果法线有效，则在将其推入法线向量之前对其进行归一化：
 
 ```cpp
-            case cgltf_attribute_type_normal:
-            {
-                vec3 normal = vec3(values[index + 0], 
-                                   values[index + 1], 
-                                   values[index + 2]);
-                if (lenSq(normal) < 0.000001f) {
-                    normal = vec3(0, 1, 0);
-                }
-                normals.push_back(normalized(normal));
-            }
-            break;
-    ```
+        case cgltf_attribute_type_normal:
+        {
+            vec3 normal = vec3(values[index + 0], 
+                               values[index + 1], 
+                               values[index + 2]);
+            if (lenSq(normal) < 0.000001f) {
+                normal = vec3(0, 1, 0);
+            }
+            normals.push_back(normalized(normal));
+        }
+        break;
+```
 
 1.  读取影响当前顶点的关节。这些关节存储为浮点数。将它们转换为整数：
 
 ```cpp
-            case cgltf_attribute_type_joints:
-            {
-                // These indices are skin relative.  This 
-                // function has no information about the
-                // skin that is being parsed. Add +0.5f to 
-                // round, since we can't read integers
-                ivec4 joints(
-                    (int)(values[index + 0] + 0.5f),
-                    (int)(values[index + 1] + 0.5f),
-                    (int)(values[index + 2] + 0.5f),
-                    (int)(values[index + 3] + 0.5f)
-                );
-    ```
+        case cgltf_attribute_type_joints:
+        {
+            // These indices are skin relative.  This 
+            // function has no information about the
+            // skin that is being parsed. Add +0.5f to 
+            // round, since we can't read integers
+            ivec4 joints(
+                (int)(values[index + 0] + 0.5f),
+                (int)(values[index + 1] + 0.5f),
+                (int)(values[index + 2] + 0.5f),
+                (int)(values[index + 3] + 0.5f)
+            );
+```
 
 1.  使用`GetNodeIndex`辅助函数将关节索引转换，使其从相对于“关节”数组变为相对于骨骼层次结构：
 
 ```cpp
-                    joints.x = GetNodeIndex(
-                               skin->joints[joints.x], 
-                               nodes, nodeCount);
-                    joints.y = GetNodeIndex(
-                               skin->joints[joints.y], 
-                               nodes, nodeCount);
-                    joints.z = GetNodeIndex(
-                               skin->joints[joints.z], 
-                               nodes, nodeCount);
-                    joints.w = GetNodeIndex(
-                               skin->joints[joints.w], 
-                               nodes, nodeCount);
-    ```
+                joints.x = GetNodeIndex(
+                           skin->joints[joints.x], 
+                           nodes, nodeCount);
+                joints.y = GetNodeIndex(
+                           skin->joints[joints.y], 
+                           nodes, nodeCount);
+                joints.z = GetNodeIndex(
+                           skin->joints[joints.z], 
+                           nodes, nodeCount);
+                joints.w = GetNodeIndex(
+                           skin->joints[joints.w], 
+                           nodes, nodeCount);
+```
 
 1.  确保即使无效节点也具有`0`的值。任何负关节索引都会破坏蒙皮实现：
 
 ```cpp
-                    joints.x = std::max(0, joints.x);
-                    joints.y = std::max(0, joints.y);
-                    joints.z = std::max(0, joints.z);
-                    joints.w = std::max(0, joints.w);
-                influences.push_back(joints);
-            }
-            break;
-            }
-        }
-    }// End of MeshFromAttribute function
-    ```
+                joints.x = std::max(0, joints.x);
+                joints.y = std::max(0, joints.y);
+                joints.z = std::max(0, joints.z);
+                joints.w = std::max(0, joints.w);
+            influences.push_back(joints);
+        }
+        break;
+        }
+    }
+}// End of MeshFromAttribute function
+```
 
 gLTF 中的**网格**由**原始**组成。原始包含诸如位置和法线之类的属性。自从迄今为止创建的框架中没有子网格的概念，因此 glTF 中的每个原始都表示为网格。
 
@@ -945,60 +945,60 @@ gLTF 中的**网格**由**原始**组成。原始包含诸如位置和法线之�
 1.  要实现`LoadMeshes`函数，首先循环遍历 glTF 文件中的所有节点。只处理具有网格和皮肤的节点；应跳过任何其他节点：
 
 ```cpp
-    std::vector<Mesh> LoadMeshes(cgltf_data* data) {
-        std::vector<Mesh> result;
-        cgltf_node* nodes = data->nodes;
-        unsigned int nodeCount = data->nodes_count;
-        for (unsigned int i = 0; i < nodeCount; ++i) {
-            cgltf_node* node = &nodes[i];
-            if (node->mesh == 0 || node->skin == 0) {
-                continue;
-            }
-    ```
+std::vector<Mesh> LoadMeshes(cgltf_data* data) {
+    std::vector<Mesh> result;
+    cgltf_node* nodes = data->nodes;
+    unsigned int nodeCount = data->nodes_count;
+    for (unsigned int i = 0; i < nodeCount; ++i) {
+        cgltf_node* node = &nodes[i];
+        if (node->mesh == 0 || node->skin == 0) {
+            continue;
+        }
+```
 
 1.  循环遍历 glTF 文件中的所有原始。为每个原始创建一个新网格。通过调用`MeshFromAttribute`辅助函数循环遍历原始中的所有属性，并通过调用`MeshFromAttribute`辅助函数填充网格数据：
 
 ```cpp
-            int numPrims = node->mesh->primitives_count;
-            for (int j = 0; j < numPrims; ++j) {
-                result.push_back(Mesh());
-                Mesh& mesh = result[result.size() - 1];
-                cgltf_primitive* primitive = 
-                           &node->mesh->primitives[j];
-                unsigned int ac=primitive->attributes_count;
-                for (unsigned int k = 0; k < ac; ++k) {
-                    cgltf_attribute* attribute = 
-                             &primitive->attributes[k];
-                    GLTFHelpers::MeshFromAttribute(mesh,
-                               *attribute, node->skin, 
-                               nodes, nodeCount);
-                }
-    ```
+        int numPrims = node->mesh->primitives_count;
+        for (int j = 0; j < numPrims; ++j) {
+            result.push_back(Mesh());
+            Mesh& mesh = result[result.size() - 1];
+            cgltf_primitive* primitive = 
+                       &node->mesh->primitives[j];
+            unsigned int ac=primitive->attributes_count;
+            for (unsigned int k = 0; k < ac; ++k) {
+                cgltf_attribute* attribute = 
+                         &primitive->attributes[k];
+                GLTFHelpers::MeshFromAttribute(mesh,
+                           *attribute, node->skin, 
+                           nodes, nodeCount);
+            }
+```
 
 1.  检查原始是否包含索引。如果是，网格的索引缓冲区也需要填充：
 
 ```cpp
-                if (primitive->indices != 0) {
-                    int ic = primitive->indices->count;
-                    std::vector<unsigned int>& indices = 
-                                       mesh.GetIndices();
-                    indices.resize(ic);
-                    for (unsigned int k = 0; k < ic; ++k) {
-                       indices[k]=cgltf_accessor_read_index(
-                                  primitive->indices, k);
-                    }
-                }
-    ```
+            if (primitive->indices != 0) {
+                int ic = primitive->indices->count;
+                std::vector<unsigned int>& indices = 
+                                   mesh.GetIndices();
+                indices.resize(ic);
+                for (unsigned int k = 0; k < ic; ++k) {
+                   indices[k]=cgltf_accessor_read_index(
+                              primitive->indices, k);
+                }
+            }
+```
 
 1.  网格已完成。调用`UpdateOpenGLBuffers`函数以确保网格可以呈现，并返回结果网格的向量：
 
 ```cpp
-                mesh.UpdateOpenGLBuffers();
-            }
-        }
-        return result;
-    } // End of the LoadMeshes function
-    ```
+            mesh.UpdateOpenGLBuffers();
+        }
+    }
+    return result;
+} // End of the LoadMeshes function
+```
 
 由于 glTF 存储整个场景，而不仅仅是一个网格，它支持多个网格——每个网格由原语组成，原语是实际的三角形。在 glTF 中，原语可以被视为子网格。这里介绍的 glTF 加载器假设一个文件只包含一个模型。在下一节中，您将学习如何使用着色器将网格蒙皮从 CPU 移动到 GPU。
 
@@ -1011,52 +1011,52 @@ gLTF 中的**网格**由**原始**组成。原始包含诸如位置和法线之�
 1.  每个顶点都会得到两个新的分量——影响顶点的关节索引和每个关节的权重。这些新的分量可以存储在`ivec4`和`vec4`中：
 
 ```cpp
-    #version 330 core
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
-    in vec3 position;
-    in vec3 normal;
-    in vec2 texCoord;
-    in vec4 weights;
-    in ivec4 joints;
-    ```
+#version 330 core
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+in vec3 position;
+in vec3 normal;
+in vec2 texCoord;
+in vec4 weights;
+in ivec4 joints;
+```
 
 1.  接下来，在着色器中添加两个矩阵数组——每个数组的长度为`120`。这个长度是任意的；着色器只需要与蒙皮网格的关节数量一样多的新统一矩阵。您可以通过在代码中每次加载具有新骨骼数量的骨架时生成新的着色器字符串来自动配置这一点：
 
 ```cpp
-    uniform mat4 pose[120];
-    uniform mat4 invBindPose[120];
-    out vec3 norm;
-    out vec3 fragPos;
-    out vec2 uv;
-    ```
+uniform mat4 pose[120];
+uniform mat4 invBindPose[120];
+out vec3 norm;
+out vec3 fragPos;
+out vec2 uv;
+```
 
 1.  当着色器的主函数运行时，计算一个蒙皮矩阵。蒙皮矩阵的生成方式与 CPU 蒙皮示例的蒙皮矩阵相同。它使用相同的逻辑，只是在 GPU 上执行的着色器中：
 
 ```cpp
-    void main() {
-    mat4 skin =(pose[joints.x]* invBindPose[joints.x]) 
-                      * weights.x;
-    skin+=(pose[joints.y] * invBindPose[joints.y]) 
-                      * weights.y;
-             skin+=(pose[joints.z] * invBindPose[joints.z])
-                      * weights.z;
-    skin+=(pose[joints.w] * invBindPose[joints.w]) 
-                      * weights.w;
-    ```
+void main() {
+mat4 skin =(pose[joints.x]* invBindPose[joints.x]) 
+                  * weights.x;
+skin+=(pose[joints.y] * invBindPose[joints.y]) 
+                  * weights.y;
+         skin+=(pose[joints.z] * invBindPose[joints.z])
+                  * weights.z;
+skin+=(pose[joints.w] * invBindPose[joints.w]) 
+                  * weights.w;
+```
 
 1.  网格在放置在世界之前应该发生变形。在应用模型矩阵之前，将顶点位置和法线乘以蒙皮矩阵。所有相关的代码都在这里突出显示：
 
 ```cpp
-        gl_Position= projection * view * model * 
-                     skin * vec4(position,1.0);
+    gl_Position= projection * view * model * 
+                 skin * vec4(position,1.0);
 
-        fragPos = vec3(model * skin * vec4(position, 1.0));
-        norm = vec3(model * skin * vec4(normal, 0.0f));
-        uv = texCoord;
-    }
-    ```
+    fragPos = vec3(model * skin * vec4(position, 1.0));
+    norm = vec3(model * skin * vec4(normal, 0.0f));
+    uv = texCoord;
+}
+```
 
 要将蒙皮支持添加到顶点着色器中，您需要为每个顶点添加两个新属性，表示最多四个可以影响顶点的关节。通过使用关节和权重属性，构建一个蒙皮矩阵。要对网格进行蒙皮，需要在应用顶点变换管线的其余部分之前，将顶点或法线乘以蒙皮矩阵。
 

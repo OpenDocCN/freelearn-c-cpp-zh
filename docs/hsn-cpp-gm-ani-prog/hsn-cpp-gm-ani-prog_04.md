@@ -128,38 +128,38 @@ quat angleAxis(float angle, const vec3& axis) {
 1.  开始在`quat.cpp`中实现`fromTo`函数，并在`quat.h`中添加函数声明。首先对`from`和`to`向量进行归一化，确保它们不是相同的向量：
 
 ```cpp
-    quat fromTo(const vec3& from, const vec3& to) {
-       vec3 f = normalized(from);
-       vec3 t = normalized(to);
-       if (f == t) {
-          return quat();
-       }
-    ```
+quat fromTo(const vec3& from, const vec3& to) {
+   vec3 f = normalized(from);
+   vec3 t = normalized(to);
+   if (f == t) {
+      return quat();
+   }
+```
 
 1.  接下来，检查两个向量是否互为相反。如果是的话，`from`向量的最正交轴可以用来创建一个纯四元数：
 
 ```cpp
-       else if (f == t * -1.0f) {
-          vec3 ortho = vec3(1, 0, 0);
-          if (fabsf(f.y) <fabsf(f.x)) {
-             ortho = vec3(0, 1, 0);
-          }
-          if (fabsf(f.z)<fabs(f.y) && fabs(f.z)<fabsf(f.x)){
-             ortho = vec3(0, 0, 1);
-          }
-          vec3 axis = normalized(cross(f, ortho));
-          return quat(axis.x, axis.y, axis.z, 0);
-       }
-    ```
+   else if (f == t * -1.0f) {
+      vec3 ortho = vec3(1, 0, 0);
+      if (fabsf(f.y) <fabsf(f.x)) {
+         ortho = vec3(0, 1, 0);
+      }
+      if (fabsf(f.z)<fabs(f.y) && fabs(f.z)<fabsf(f.x)){
+         ortho = vec3(0, 0, 1);
+      }
+      vec3 axis = normalized(cross(f, ortho));
+      return quat(axis.x, axis.y, axis.z, 0);
+   }
+```
 
 1.  最后，创建一个`from`和`to`向量之间的半向量。使用半向量和起始向量的叉积来计算旋转轴，使用两者的点积来找到旋转角度：
 
 ```cpp
-       vec3 half = normalized(f + t); 
-       vec3 axis = cross(f, half);
-       return quat(axis.x, axis.y, axis.z, dot(f, half));
-    }
-    ```
+   vec3 half = normalized(f + t); 
+   vec3 axis = cross(f, half);
+   return quat(axis.x, axis.y, axis.z, dot(f, half));
+}
+```
 
 `fromTo`函数是创建四元数的最直观方式之一。接下来，你将学习如何检索定义四元数的角度和轴。
 
@@ -218,31 +218,31 @@ quat operator-(const quat& q) {
 1.  在`quat.cpp`中重载`==`和`!=`运算符。将这些函数的声明添加到`quat.h`中：
 
 ```cpp
-    bool operator==(const quat& left, const quat& right) {
-        return (fabsf(left.x - right.x) <= QUAT_EPSILON &&
-                fabsf(left.y - right.y) <= QUAT_EPSILON &&
-                fabsf(left.z - right.z) <= QUAT_EPSILON &&
-                fabsf(left.w - right.w) <= QUAT_EPSILON);
-    }
-    bool operator!=(const quat& a, const quat& b) {
-        return !(a == b);
-    }
-    ```
+bool operator==(const quat& left, const quat& right) {
+    return (fabsf(left.x - right.x) <= QUAT_EPSILON &&
+            fabsf(left.y - right.y) <= QUAT_EPSILON &&
+            fabsf(left.z - right.z) <= QUAT_EPSILON &&
+            fabsf(left.w - right.w) <= QUAT_EPSILON);
+}
+bool operator!=(const quat& a, const quat& b) {
+    return !(a == b);
+}
+```
 
 1.  要测试两个四元数是否代表相同的旋转，需要测试两者之间的绝对差异。在`quat.cpp`中实现`sameOrientation`函数。将函数声明添加到`quat.h`中：
 
 ```cpp
-    bool sameOrientation(const quat&l, const quat&r) {
-        return (fabsf(l.x - r.x) <= QUAT_EPSILON  &&
-                fabsf(l.y - r.y) <= QUAT_EPSILON  &&
-                fabsf(l.z - r.z) <= QUAT_EPSILON  &&
-                fabsf(l.w - r.w) <= QUAT_EPSILON) ||
-               (fabsf(l.x + r.x) <= QUAT_EPSILON  &&
-                fabsf(l.y + r.y) <= QUAT_EPSILON  &&
-                fabsf(l.z + r.z) <= QUAT_EPSILON  &&
-                fabsf(l.w + r.w) <= QUAT_EPSILON);
-    }
-    ```
+bool sameOrientation(const quat&l, const quat&r) {
+    return (fabsf(l.x - r.x) <= QUAT_EPSILON  &&
+            fabsf(l.y - r.y) <= QUAT_EPSILON  &&
+            fabsf(l.z - r.z) <= QUAT_EPSILON  &&
+            fabsf(l.w - r.w) <= QUAT_EPSILON) ||
+           (fabsf(l.x + r.x) <= QUAT_EPSILON  &&
+            fabsf(l.y + r.y) <= QUAT_EPSILON  &&
+            fabsf(l.z + r.z) <= QUAT_EPSILON  &&
+            fabsf(l.w + r.w) <= QUAT_EPSILON);
+}
+```
 
 大多数情况下，您将希望使用相等运算符来比较四元数。`sameOrientation`函数不太有用，因为四元数的旋转可以在四元数被反转时发生变化。
 
@@ -269,22 +269,22 @@ float dot(const quat& a, const quat& b) {
 1.  在`quat.cpp`中实现`lenSq`函数，并在`quat.h`中声明该函数：
 
 ```cpp
-    float lenSq(const quat& q) {
-      return q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
-    }
-    ```
+float lenSq(const quat& q) {
+  return q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+}
+```
 
 1.  在`quat.cpp`中实现`len`函数。不要忘记将函数声明添加到`quat.h`中：
 
 ```cpp
-    float len(const quat& q) {
-      float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
-      if (lenSq< QUAT_EPSILON) {
-         return 0.0f;
-      }
-      return sqrtf(lenSq);
-    }
-    ```
+float len(const quat& q) {
+  float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+  if (lenSq< QUAT_EPSILON) {
+     return 0.0f;
+  }
+  return sqrtf(lenSq);
+}
+```
 
 代表旋转的四元数应始终具有*1*的长度。在下一节中，您将了解始终具有*1*长度的单位四元数。
 
@@ -297,31 +297,31 @@ float dot(const quat& a, const quat& b) {
 1.  在`quat.cpp`中实现`normalize`函数，并在`quat.h`中声明它：
 
 ```cpp
-    void normalize(quat& q) {
-       float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
-       if (lenSq < QUAT_EPSILON) { 
-          return; 
-       }
-       float i_len = 1.0f / sqrtf(lenSq);
-       q.x *= i_len;
-       q.y *= i_len;
-       q.z *= i_len;
-       q.w *= i_len;
-    }
-    ```
+void normalize(quat& q) {
+   float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+   if (lenSq < QUAT_EPSILON) { 
+      return; 
+   }
+   float i_len = 1.0f / sqrtf(lenSq);
+   q.x *= i_len;
+   q.y *= i_len;
+   q.z *= i_len;
+   q.w *= i_len;
+}
+```
 
 1.  在`quat.cpp`中实现`normalized`函数，并在`quat.h`中声明它：
 
 ```cpp
-    quat normalized(const quat& q) {
-       float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
-       if (lenSq < QUAT_EPSILON) {
-          return quat();
-       }
-       float il = 1.0f / sqrtf(lenSq); // il: inverse length
-       return quat(q.x * il, q.y * il, q.z * il,q.w * il);
-    }
-    ```
+quat normalized(const quat& q) {
+   float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+   if (lenSq < QUAT_EPSILON) {
+      return quat();
+   }
+   float il = 1.0f / sqrtf(lenSq); // il: inverse length
+   return quat(q.x * il, q.y * il, q.z * il,q.w * il);
+}
+```
 
 有一种快速的方法可以求任意单位四元数的倒数。在下一节中，您将学习如何找到四元数的共轭和倒数，以及它们在单位四元数方面的关系。
 
@@ -334,32 +334,32 @@ float dot(const quat& a, const quat& b) {
 1.  在`quat.cpp`中实现`conjugate`函数，并记得在`quat.h`中声明该函数：
 
 ```cpp
-    quat conjugate(const quat& q) {
-        return quat(
-            -q.x,
-            -q.y,
-            -q.z,
-             q.w
-        );
-    }
-    ```
+quat conjugate(const quat& q) {
+    return quat(
+        -q.x,
+        -q.y,
+        -q.z,
+         q.w
+    );
+}
+```
 
 1.  四元数的逆是四元数的共轭除以四元数的平方长度。在`quat.cpp`中实现四元数`inverse`函数。将函数声明添加到`quat.h`中：
 
 ```cpp
-    quat inverse(const quat& q) {
-       float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
-       if (lenSq < QUAT_EPSILON) { 
-          return quat(); 
-       }
-       float recip = 1.0f / lenSq;
-       return quat(-q.x * recip,
-                   -q.y * recip,
-                   -q.z * recip,
-                    q.w * recip
-       );
-    }
-    ```
+quat inverse(const quat& q) {
+   float lenSq = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+   if (lenSq < QUAT_EPSILON) { 
+      return quat(); 
+   }
+   float recip = 1.0f / lenSq;
+   return quat(-q.x * recip,
+               -q.y * recip,
+               -q.z * recip,
+                q.w * recip
+   );
+}
+```
 
 如果您需要找出一个四元数是否已经归一化，可以检查平方长度。归一化四元数的平方长度始终为*1*。如果四元数已经归一化，其共轭和逆将是相同的。这意味着您可以使用更快的`conjugate`函数，而不是`inverse`函数。在下一节中，您将学习如何将两个四元数相乘。
 
@@ -670,30 +670,30 @@ quat lookRotation(const vec3& direction, const vec3& up) {
 1.  在`quat.cpp`中实现`quatToMat4`函数。不要忘记将函数声明添加到`quat.h`中：
 
 ```cpp
-    mat4 quatToMat4(const quat& q) {
-        vec3 r = q * vec3(1, 0, 0);
-        vec3 u = q * vec3(0, 1, 0);
-        vec3 f = q * vec3(0, 0, 1);
-        return mat4(r.x, r.y, r.z, 0,
-                    u.x, u.y, u.z, 0,
-                    f.x, f.y, f.z, 0,
-                    0  , 0  , 0  , 1
-        );
-    }
-    ```
+mat4 quatToMat4(const quat& q) {
+    vec3 r = q * vec3(1, 0, 0);
+    vec3 u = q * vec3(0, 1, 0);
+    vec3 f = q * vec3(0, 0, 1);
+    return mat4(r.x, r.y, r.z, 0,
+                u.x, u.y, u.z, 0,
+                f.x, f.y, f.z, 0,
+                0  , 0  , 0  , 1
+    );
+}
+```
 
 1.  矩阵使用相同的组件存储旋转和缩放数据。为了解决这个问题，基向量需要被归一化，并且需要使用叉积来确保结果向量是正交的。在`quat.cpp`中实现`mat4ToQuat`函数，不要忘记将函数声明添加到`quat.h`中：
 
 ```cpp
-    quat mat4ToQuat(const mat4& m) {
-        vec3 up = normalized(vec3(m.up.x, m.up.y, m.up.z));
-        vec3 forward = normalized(
-             vec3(m.forward.x, m.forward.y, m.forward.z));
-        vec3 right = cross(up, forward);
-        up = cross(forward, right);
-        return lookRotation(forward, up);
-    }
-    ```
+quat mat4ToQuat(const mat4& m) {
+    vec3 up = normalized(vec3(m.up.x, m.up.y, m.up.z));
+    vec3 forward = normalized(
+         vec3(m.forward.x, m.forward.y, m.forward.z));
+    vec3 right = cross(up, forward);
+    up = cross(forward, right);
+    return lookRotation(forward, up);
+}
+```
 
 能够将四元数转换为矩阵将在以后需要将旋转数据传递给着色器时非常有用。着色器不知道四元数是什么，但它们内置了处理矩阵的功能。将矩阵转换为四元数对于调试和在外部数据源只提供矩阵旋转的情况下也将非常有用。
 

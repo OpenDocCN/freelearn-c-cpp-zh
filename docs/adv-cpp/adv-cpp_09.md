@@ -322,53 +322,53 @@ time <your program and arguments here>
 1.  定义一个名为`sumVector`的函数，它在循环中对每个元素求和：
 
 ```cpp
-    int sumVector(std::vector<int> &v)
-    {
-      int ret = 0;
-      for(int i: v)
-      {
-        ret += i;
-      }
+int sumVector(std::vector<int> &v)
+{
+  int ret = 0;
+  for(int i: v)
+  {
+    ret += i;
+  }
 
-      return ret;
-    }
-    ```
+  return ret;
+}
+```
 
 1.  定义`main`函数。使用 C++11 的随机数生成工具初始化一个包含`10,000`个元素的向量，然后调用`sumVector`函数`1,000`次。编写以下代码来实现这一点：
 
 ```cpp
-    #include <random>
-    #include <iostream>
-    int main()
-    {
-      // Initialize a random number generator
-      std::random_device dev;
-      std::mt19937 rng(dev());
-      // Create a distribution range from 0 to 1000
-      std::uniform_int_distribution<std::mt19937::result_type> dist(0,1000); 
-      // Fill 10000 numbers in a vector
-      std::vector<int> v;
-      v.reserve(10000);
-      for(int i = 0; i < 10000; ++i)
-      {
-        v.push_back(dist(rng));
-      }
-      // Call out function 1000 times, accumulating to a total sum
-      double total = 0.0;
-      for(int i = 0; i < 1000; ++i)
-      {
-        total += sumVector(v);
-      }
-      std::cout << "Total: " << total << std::endl;
-    }
-    ```
+#include <random>
+#include <iostream>
+int main()
+{
+  // Initialize a random number generator
+  std::random_device dev;
+  std::mt19937 rng(dev());
+  // Create a distribution range from 0 to 1000
+  std::uniform_int_distribution<std::mt19937::result_type> dist(0,1000); 
+  // Fill 10000 numbers in a vector
+  std::vector<int> v;
+  v.reserve(10000);
+  for(int i = 0; i < 10000; ++i)
+  {
+    v.push_back(dist(rng));
+  }
+  // Call out function 1000 times, accumulating to a total sum
+  double total = 0.0;
+  for(int i = 0; i < 1000; ++i)
+  {
+    total += sumVector(v);
+  }
+  std::cout << "Total: " << total << std::endl;
+}
+```
 
 1.  使用以下命令在 Linux 终端上编译、运行和计时此程序：
 
 ```cpp
-    $ g++ Snippet1.cpp
-    $ time ./a.out
-    ```
+$ g++ Snippet1.cpp
+$ time ./a.out
+```
 
 上一个命令的输出如下：
 
@@ -381,9 +381,9 @@ time <your program and arguments here>
 1.  使用以下命令来探索使用编译器优化标志的效果：
 
 ```cpp
-    $ g++ -O3 Snippet1.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 Snippet1.cpp
+$ time ./a.out
+```
 
 输出如下：
 
@@ -396,19 +396,19 @@ time <your program and arguments here>
 1.  将代码更改为执行循环`100,000`次而不是`1,000`次：
 
 ```cpp
-    // Call out function 100000 times
-    for(int i = 0; i < 100000; ++i)
-    {
-      total += sumVector(v);
-    }
-    ```
+// Call out function 100000 times
+for(int i = 0; i < 100000; ++i)
+{
+  total += sumVector(v);
+}
+```
 
 1.  重新编译并使用以下命令再次计时：
 
 ```cpp
-    $ g++ -O3 Snippet1.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 Snippet1.cpp
+$ time ./a.out
+```
 
 执行上一个命令后的输出如下：
 
@@ -427,15 +427,15 @@ time <your program and arguments here>
 1.  更改代码以确保求和必须通过打印依赖于计算的值来执行以下行：
 
 ```cpp
-    std::cout<<"Total:"<<total<<std::endl;
-    ```
+std::cout<<"Total:"<<total<<std::endl;
+```
 
 1.  在这里，我们只是将`sumVector()`的结果加到一个虚拟的双精度值中，并打印它。在更改代码后，打开终端并输入以下命令：
 
 ```cpp
-    $ g++ -O3 Snippet1.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 Snippet1.cpp
+$ time ./a.out
+```
 
 前面命令的输出如下：
 
@@ -470,138 +470,138 @@ time <your program and arguments here>
 1.  包括以下头文件：
 
 ```cpp
-    #include <map>
-    #include <string>
-    #include <chrono>
-    #include <iostream>
-    #include <cstdint> 
-    using std::map;
-    using std::string;
-    using std::cerr;
-    using std::endl;
-    ```
+#include <map>
+#include <string>
+#include <chrono>
+#include <iostream>
+#include <cstdint> 
+using std::map;
+using std::string;
+using std::cerr;
+using std::endl;
+```
 
 1.  通过编写以下代码来定义`Timer`类和类成员函数：
 
 ```cpp
-    class Timer
-    {
-      static map<string, int64_t> ms_Counts;
-      static map<string, int64_t> ms_Times;
-      const string &m_sName;
-      std::chrono::time_point<std::chrono::high_resolution_clock> m_tmStart;
-    ```
+class Timer
+{
+  static map<string, int64_t> ms_Counts;
+  static map<string, int64_t> ms_Times;
+  const string &m_sName;
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_tmStart;
+```
 
 从上述代码中可以看出，类成员包括名称、起始时间戳和两个`static map`。这个类的每个实例都用于计时某个代码块。该代码块可以是函数作用域或由花括号分隔的任何其他块。使用模式是在块的顶部定义一个`Timer`类的实例，同时传入一个名称（可以是函数名或其他方便的标签）。实例化时，记录当前时间戳，当块退出时，该类的析构函数记录了该块的累积经过时间，以及该块执行的次数。时间和次数分别存储在`ms_Times`和`ms_Counts`这两个`static map`中。
 
 1.  通过编写以下代码来定义`Timer`类的构造函数：
 
 ```cpp
-    public:
-      // When constructed, save the name and current clock time
-      Timer(const string &sName): m_sName(sName)
-      {
-        m_tmStart = std::chrono::high_resolution_clock::now();
-      }
-    ```
+public:
+  // When constructed, save the name and current clock time
+  Timer(const string &sName): m_sName(sName)
+  {
+    m_tmStart = std::chrono::high_resolution_clock::now();
+  }
+```
 
 1.  定义`Timer`类的析构函数，编写以下代码：
 
 ```cpp
-      // When destroyed, add the time elapsed and also increment the count under this name
-      ~Timer()
-      {
-        auto tmNow = std::chrono::high_resolution_clock::now();
-        auto msElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tmNow - m_tmStart);
-        ms_Counts[m_sName]++;
-        ms_Times[m_sName] += msElapsed.count();
-      }
-    ```
+  // When destroyed, add the time elapsed and also increment the count under this name
+  ~Timer()
+  {
+    auto tmNow = std::chrono::high_resolution_clock::now();
+    auto msElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tmNow - m_tmStart);
+    ms_Counts[m_sName]++;
+    ms_Times[m_sName] += msElapsed.count();
+  }
+```
 
 在上述代码中，经过时间以毫秒计算。然后，我们将其加到此块名称的累积经过时间中，并增加此块执行的次数。
 
 1.  定义一个名为`dump()`的`static`函数，打印出定时结果的摘要：
 
 ```cpp
-      // Print out the stats for each measured block/function
-      static void dump()
-      {
-        cerr << "Name\t\t\tCount\t\t\tTime(ms)\t\tAverage(ms)\n";
-        cerr << "-----------------------------------------------------------------------------------\n";
-        for(const auto& it: ms_Times)
-        {
-          auto iCount = ms_Counts[it.first];
-          cerr << it.first << "\t\t\t" << iCount << "\t\t\t" << it.second << "\t\t\t" << it.second / iCount << "\n";
-        }
-      }
-    };
-    ```
+  // Print out the stats for each measured block/function
+  static void dump()
+  {
+    cerr << "Name\t\t\tCount\t\t\tTime(ms)\t\tAverage(ms)\n";
+    cerr << "-----------------------------------------------------------------------------------\n";
+    for(const auto& it: ms_Times)
+    {
+      auto iCount = ms_Counts[it.first];
+      cerr << it.first << "\t\t\t" << iCount << "\t\t\t" << it.second << "\t\t\t" << it.second / iCount << "\n";
+    }
+  }
+};
+```
 
 在上述代码中，以表格形式打印名称、执行次数、总时间和平均时间。我们在字段名称和字段值之间使用多个制表符，使它们在控制台上垂直对齐。这个函数可以根据我们的需要进行修改。例如，我们可以修改这段代码，将输出转储为 CSV 文件，以便可以将其导入电子表格进行进一步分析。
 
 1.  最后，定义`static`成员以完成这个类：
 
 ```cpp
-    // Define static members
-    map<string, int64_t> Timer::ms_Counts;
-    map<string, int64_t> Timer::ms_Times;
-    const int64_t N = 1'000'000'000;
-    ```
+// Define static members
+map<string, int64_t> Timer::ms_Counts;
+map<string, int64_t> Timer::ms_Times;
+const int64_t N = 1'000'000'000;
+```
 
 1.  现在我们已经定义了`Timer`类，定义两个简单的函数作为示例进行计时。一个函数将进行加法，另一个函数将进行乘法。由于这些操作很简单，我们将循环`10 亿次`，以便可以得到一些可测量的结果。
 
 #### 注意
 
 ```cpp
-    unsigned int testMul()
-    {
-      Timer t("Mul");
+unsigned int testMul()
+{
+  Timer t("Mul");
 
-      unsigned int x = 1;
-      for(int i = 0; i < N; ++i)
-      {
-        x *= i;
-      }
+  unsigned int x = 1;
+  for(int i = 0; i < N; ++i)
+  {
+    x *= i;
+  }
 
-      return x;
-    }
-    unsigned int testAdd()
-    {
-      Timer t("Add");
+  return x;
+}
+unsigned int testAdd()
+{
+  Timer t("Add");
 
-      unsigned int x = 1;
-      for(int i = 0; i < N; ++i)
-      {
-        x += i;
-      }
+  unsigned int x = 1;
+  for(int i = 0; i < N; ++i)
+  {
+    x += i;
+  }
 
-      return x;
-    }
-    ```
+  return x;
+}
+```
 
 在上述代码中，我们使用`unsigned int`作为我们重复进行`add`/`multiply`的变量。我们使用无符号类型，以便在算术运算期间不会发生溢出导致未定义行为。如果我们使用了有符号类型，程序将具有未定义行为，并且不能保证以任何方式工作。其次，我们从`testAdd()`和`testMul()`函数返回计算的值，以便确保编译器不会删除代码（因为缺乏副作用）。为了计时这两个函数中的每一个，我们只需要在函数开始时声明一个带有合适标签的`Timer`类的实例。当`Timer`对象实例化时，计时开始，当该对象超出范围时，计时停止。
 
 1.  编写`main`函数，在其中我们将分别调用两个测试函数`10`次：
 
 ```cpp
-    int main()
-    {
-      volatile unsigned int dummy;
-      for(int i = 0; i < 10; ++i)
-        dummy = testAdd();
-      for(int i = 0; i < 10; ++i)
-        dummy = testMul();
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  volatile unsigned int dummy;
+  for(int i = 0; i < 10; ++i)
+    dummy = testAdd();
+  for(int i = 0; i < 10; ++i)
+    dummy = testMul();
+  Timer::dump();
+}
+```
 
 如上述代码所示，我们分别调用每个函数`10`次，以便演示`Timer`类计时函数的多次运行。将函数的结果赋给一个`volatile`变量会迫使编译器假定存在全局副作用。因此，它不会删除我们测试函数中的代码。在退出之前，调用`Timer::dump`静态函数显示结果。
 
 1.  保存程序并打开终端。使用不同的优化级别编译和运行程序-在`gcc`和`clang`编译器上，这是通过`-ON`编译器标志指定的，其中`N`是从`1`到`3`的数字。首先添加`-O1`编译器标志：
 
 ```cpp
-    $ g++ -O1 Snippet2.cpp && ./a.out
-    ```
+$ g++ -O1 Snippet2.cpp && ./a.out
+```
 
 这段代码生成以下输出：
 
@@ -612,8 +612,8 @@ time <your program and arguments here>
 1.  现在，在终端中添加`-O2`编译器标志并执行程序：
 
 ```cpp
-    $ g++ -O2 Snippet2.cpp && ./a.out
-    ```
+$ g++ -O2 Snippet2.cpp && ./a.out
+```
 
 这将生成以下输出：
 
@@ -624,8 +624,8 @@ time <your program and arguments here>
 1.  在终端中添加`-O3`编译器标志并执行程序：
 
 ```cpp
-    $ g++ -O3 Snippet2.cpp && ./a.out
-    ```
+$ g++ -O3 Snippet2.cpp && ./a.out
+```
 
 这将生成以下输出：
 
@@ -638,25 +638,25 @@ time <your program and arguments here>
 1.  为了更容易使用我们的`Timer`类来计时单个函数，我们可以编写一个宏。C++ 11 及以上版本支持一个特殊的编译器内置宏，称为`__func__`，它始终包含当前执行函数的名称作为`const char*`。使用这个来定义一个宏，这样我们就不需要为我们的`Timer`实例指定标签，如下所示：
 
 ```cpp
-    #define TIME_IT Timer t(__func__)
-    ```
+#define TIME_IT Timer t(__func__)
+```
 
 1.  将`TIME_IT`宏添加到两个函数的开头，更改创建 Timer 对象的现有行：
 
 ```cpp
-    unsigned int testMul()
-    {
-      TIME_IT;
-    unsigned int testAdd()
-    {
-      TIME_IT;
-    ```
+unsigned int testMul()
+{
+  TIME_IT;
+unsigned int testAdd()
+{
+  TIME_IT;
+```
 
 1.  保存程序并打开终端。使用以下命令再次编译和运行它：
 
 ```cpp
-    $ g++ -O3 Snippet2.cpp && ./a.out
-    ```
+$ g++ -O3 Snippet2.cpp && ./a.out
+```
 
 前一个命令的输出如下：
 
@@ -685,9 +685,9 @@ apt-get install linux-tools-common linux-tools-generic
 1.  打开终端，使用`-O3`标志重新编译代码，然后使用`perf`创建一个配置文件数据样本，如下所示：
 
 ```cpp
-    $ g++ -O3 Snippet2.cpp
-    $ perf record ./a.out
-    ```
+$ g++ -O3 Snippet2.cpp
+$ perf record ./a.out
+```
 
 前一个命令的输出如下：
 
@@ -700,8 +700,8 @@ apt-get install linux-tools-common linux-tools-generic
 1.  现在，使用以下命令可视化记录的数据：
 
 ```cpp
-    $ perf report
-    ```
+$ perf report
+```
 
 执行前一个命令后，控制台基于 GUI 将显示以下数据：
 
@@ -756,31 +756,31 @@ apt-get install linux-tools-common linux-tools-generic
 1.  编写一个程序，取前`10,000`个数字，并打印出这些数字中有多少个是彼此的因子（完整代码可以在**Snippet3.cpp**中找到）：
 
 ```cpp
-    # include <iostream>
-    int main()
-    {
-      int ret = 0;
-      for(size_t i = 1; i < 10000; ++i)
-      {
-        for(size_t j = 1; j < 10000; ++j)
-        {
-          if(i % j == 0)
-          {
-            ++ret;
-          }
-        }
-      }
+# include <iostream>
+int main()
+{
+  int ret = 0;
+  for(size_t i = 1; i < 10000; ++i)
+  {
+    for(size_t j = 1; j < 10000; ++j)
+    {
+      if(i % j == 0)
+      {
+        ++ret;
+      }
+    }
+  }
 
-      std::cout << "Result: " << ret << std::endl;
-    }
-    ```
+  std::cout << "Result: " << ret << std::endl;
+}
+```
 
 1.  保存程序并打开终端。首先使用`-O3`标志编译程序，并使用以下命令计时：
 
 ```cpp
-    $ g++ -O3 Snippet3.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 Snippet3.cpp
+$ time ./a.out
+```
 
 前一个命令的输出如下：
 
@@ -791,9 +791,9 @@ apt-get install linux-tools-common linux-tools-generic
 1.  现在，启用循环展开编译相同的代码并再次计时：
 
 ```cpp
-    $ g++ -O3 -funroll-loops Snippet3.cpp 
-    $ time ./a.out 
-    ```
+$ g++ -O3 -funroll-loops Snippet3.cpp 
+$ time ./a.out 
+```
 
 前一个命令的输出如下：
 
@@ -830,30 +830,30 @@ apt-get install linux-tools-common linux-tools-generic
 1.  打开终端，并使用启用了 profiling 的前一个练习的代码进行编译。包括我们需要的任何其他优化标志（在本例中为`-O3`）。编写以下代码来实现这一点：
 
 ```cpp
-    $ g++ -O3 -fprofile-generate Snippet3.cpp
-    ```
+$ g++ -O3 -fprofile-generate Snippet3.cpp
+```
 
 1.  现在，通过编写以下命令运行代码的 profiled 版本：
 
 ```cpp
-    $ ./a.out
-    ```
+$ ./a.out
+```
 
 程序正常运行并打印结果，没有看到其他输出 - 但它生成了一个包含数据的文件，这将帮助编译器进行下一步。请注意，启用了性能分析后，程序的执行速度会比正常情况下慢几倍。这是在处理大型程序时需要牢记的事情。执行前一个命令后，将生成一个名为`Snippet3.gcda`的文件，其中包含性能分析数据。在处理大型、复杂的应用程序时，重要的是使用它在生产环境中最常遇到的数据集和工作流来运行程序。通过在这里正确选择数据，最终的性能提升将更高。
 
 1.  重新编译使用 PGO 优化标志，即`-fprofile-use`和`-fprofile-correction`，如下所示：
 
 ```cpp
-    $ g++ -O3 -fprofile-use -fprofile-correction Snippet3.cpp
-    ```
+$ g++ -O3 -fprofile-use -fprofile-correction Snippet3.cpp
+```
 
 请注意，除了与之前编译步骤中的与性能相关的编译器选项外，其他选项必须完全相同。
 
 1.  现在，如果我们计时可执行文件，我们将看到性能大幅提升：
 
 ```cpp
-    $ time ./a.out
-    ```
+$ time ./a.out
+```
 
 前一个命令的输出如下：
 
@@ -882,34 +882,34 @@ apt-get install linux-tools-common linux-tools-generic
 1.  编写一个简单的程序，使用`std::accumulate`来对初始化的数组进行求和。添加以下代码来实现这一点：
 
 ```cpp
-    #include <vector>
-    #include <string>
-    #include <iostream>
-    #include <algorithm>
-    #include <numeric>
-    #include <cstdint> 
-    using std::cerr;
-    using std::endl;
-    int main()
-    {
-      // Fill 100,000,000 1s in a vector
-      std::vector<int> v( 100'000'000, 1);
-      // Call accumulate 100 times, accumulating to a total sum
-      uint64_t total = 0;
-      for(int i = 0; i < 100; ++i)
-      {
-        total += std::accumulate(v.begin(), v.end(), 0);
-      }
-      std::cout << "Total: " << total << std::endl;
-    }
-    ```
+#include <vector>
+#include <string>
+#include <iostream>
+#include <algorithm>
+#include <numeric>
+#include <cstdint> 
+using std::cerr;
+using std::endl;
+int main()
+{
+  // Fill 100,000,000 1s in a vector
+  std::vector<int> v( 100'000'000, 1);
+  // Call accumulate 100 times, accumulating to a total sum
+  uint64_t total = 0;
+  for(int i = 0; i < 100; ++i)
+  {
+    total += std::accumulate(v.begin(), v.end(), 0);
+  }
+  std::cout << "Total: " << total << std::endl;
+}
+```
 
 1.  保存程序并打开终端。正常编译程序并使用以下命令计时执行：
 
 ```cpp
-    $ g++ -O3 Snippet4.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 Snippet4.cpp
+$ time ./a.out
+```
 
 前一个命令的输出如下：
 
@@ -920,9 +920,9 @@ apt-get install linux-tools-common linux-tools-generic
 1.  现在，使用并行化选项编译代码，即`-O3 -fopenmp`和`-D_GLIBCXX_PARALLEL`：
 
 ```cpp
-    $ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet4.cpp
-    $ time ./a.out
-    ```
+$ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet4.cpp
+$ time ./a.out
+```
 
 输出如下：
 
@@ -955,139 +955,139 @@ apt-get install linux-tools-common linux-tools-generic
 1.  包括必要的头文件：
 
 ```cpp
-    #include <map>
-    #include <string>
-    #include <chrono>
-    #include <cstdint>
-    ```
+#include <map>
+#include <string>
+#include <chrono>
+#include <cstdint>
+```
 
 1.  创建一个名为`Timer`的类。在`Timer`类中，声明四个变量，分别是`ms_Counts`、`ms_Times`、`m_tmStart`和`m_sName`。声明一个构造函数、析构函数和`dump()`方法。添加以下代码来实现这一点：
 
 ```cpp
-    class Timer
-    {
-      static std::map<std::string, int64_t> ms_Counts;
-      static std::map<std::string, int64_t> ms_Times;
-      std::string m_sName;
-      std::chrono::time_point<std::chrono::high_resolution_clock> m_tmStart;
-      public:
-        // When constructed, save the name and current clock time
-        Timer(std::string sName);
-        // When destroyed, add the time elapsed and also increment the count under this name
-        ~Timer();
-        // Print out the stats for each measured block/function
-        static void dump();
-    };
-    ```
+class Timer
+{
+  static std::map<std::string, int64_t> ms_Counts;
+  static std::map<std::string, int64_t> ms_Times;
+  std::string m_sName;
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_tmStart;
+  public:
+    // When constructed, save the name and current clock time
+    Timer(std::string sName);
+    // When destroyed, add the time elapsed and also increment the count under this name
+    ~Timer();
+    // Print out the stats for each measured block/function
+    static void dump();
+};
+```
 
 1.  定义一个名为`TIME_IT`的辅助宏，通过编写以下代码来计时函数：
 
 ```cpp
-    // Helper macro to time functions
-    #define TIME_IT Timer t(__func__)
-    ```
+// Helper macro to time functions
+#define TIME_IT Timer t(__func__)
+```
 
 1.  一旦创建了头文件，就在**Timer.cpp**文件中创建一个名为`dump()`的新文件。编写以下代码来实现这一点：
 
 ```cpp
-    #include <string>
-    #include <iostream>
-    #include <cstdint> 
-    #include "Timer.h"
-    using std::map;
-    using std::string;
-    using std::cerr;
-    using std::endl;
-    // When constructed, save the name and current clock time
-    Timer::Timer(string sName): m_sName(sName)
-    {
-      m_tmStart = std::chrono::high_resolution_clock::now();
-    }
-    // When destroyed, add the time elapsed and also increment the count under this name
-    Timer::~Timer()
-    {
-      auto tmNow = std::chrono::high_resolution_clock::now();
-      auto msElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tmNow - m_tmStart);
-      ms_Counts[m_sName]++;
-      ms_Times[m_sName] += msElapsed.count();
-    }
-    // Print out the stats for each measured block/function
-    void Timer::dump()
-    {
-      cerr << "Name\t\t\tCount\t\t\tTime(ms)\t\tAverage(ms)\n";
-      cerr << "-----------------------------------------------------------------------------------\n";
-      for(const auto& it: ms_Times)
-      {
-        auto iCount = ms_Counts[it.first];
-        cerr << it.first << "\t\t\t" << iCount << "\t\t\t" << it.second << "\t\t\t" << it.second / iCount << "\n";
-      }
-    }
-    // Define static members
-    map<string, int64_t> Timer::ms_Counts;
-    map<string, int64_t> Timer::ms_Times;
-    ```
+#include <string>
+#include <iostream>
+#include <cstdint> 
+#include "Timer.h"
+using std::map;
+using std::string;
+using std::cerr;
+using std::endl;
+// When constructed, save the name and current clock time
+Timer::Timer(string sName): m_sName(sName)
+{
+  m_tmStart = std::chrono::high_resolution_clock::now();
+}
+// When destroyed, add the time elapsed and also increment the count under this name
+Timer::~Timer()
+{
+  auto tmNow = std::chrono::high_resolution_clock::now();
+  auto msElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tmNow - m_tmStart);
+  ms_Counts[m_sName]++;
+  ms_Times[m_sName] += msElapsed.count();
+}
+// Print out the stats for each measured block/function
+void Timer::dump()
+{
+  cerr << "Name\t\t\tCount\t\t\tTime(ms)\t\tAverage(ms)\n";
+  cerr << "-----------------------------------------------------------------------------------\n";
+  for(const auto& it: ms_Times)
+  {
+    auto iCount = ms_Counts[it.first];
+    cerr << it.first << "\t\t\t" << iCount << "\t\t\t" << it.second << "\t\t\t" << it.second / iCount << "\n";
+  }
+}
+// Define static members
+map<string, int64_t> Timer::ms_Counts;
+map<string, int64_t> Timer::ms_Times;
+```
 
 1.  现在，使用`push_back()`方法创建一个名为`1,000,000`的新文件。第二个函数在之前调用了`reserve()`方法，但第一个函数没有。编写以下代码来实现这一点：
 
 ```cpp
-    #include <vector>
-    #include <string>
-    #include <iostream>
-    #include "Timer.h"
-    using std::vector;
-    using std::cerr;
-    using std::endl;
-    const int N = 1000000;
-    void withoutReserve(vector<int> &v)
-    {
-      TIME_IT;
-      for(int i = 0; i < N; ++i)
-      {
-        v.push_back(i);
-      }
-    }
-    void withReserve(vector<int> &v)
-    {
-      TIME_IT;
-      v.reserve(N);
-      for(int i = 0; i < N; ++i)
-      {
-        v.push_back(i);
-      }
-    }
-    ```
+#include <vector>
+#include <string>
+#include <iostream>
+#include "Timer.h"
+using std::vector;
+using std::cerr;
+using std::endl;
+const int N = 1000000;
+void withoutReserve(vector<int> &v)
+{
+  TIME_IT;
+  for(int i = 0; i < N; ++i)
+  {
+    v.push_back(i);
+  }
+}
+void withReserve(vector<int> &v)
+{
+  TIME_IT;
+  v.reserve(N);
+  for(int i = 0; i < N; ++i)
+  {
+    v.push_back(i);
+  }
+}
+```
 
 1.  现在，编写`main`函数。请注意使用多余的大括号以确保在循环的每次迭代后销毁`v1`和`v2`向量：
 
 ```cpp
-    int main()
-    {
-      {
-        vector<int> v1;
-        for(int i = 0; i < 100; ++i)
-        {
-          withoutReserve(v1);
-        }
-      }
-      {
-        vector<int> v2;
-        for(int i = 0; i < 100; ++i)
-        {
-          withReserve(v2);
-        }
-      }
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  {
+    vector<int> v1;
+    for(int i = 0; i < 100; ++i)
+    {
+      withoutReserve(v1);
+    }
+  }
+  {
+    vector<int> v2;
+    for(int i = 0; i < 100; ++i)
+    {
+      withReserve(v2);
+    }
+  }
+  Timer::dump();
+}
+```
 
 我们通过引用传递向量的原因是为了防止编译器优化掉两个函数中的整个代码。如果我们通过值传递向量，函数将没有可见的副作用，编译器可能会完全省略这些函数。
 
 1.  保存程序并打开终端。编译**Timer.cpp**和**Snippet5.cpp**文件，并按以下方式运行它们：
 
 ```cpp
-    $ g++ -O3 Snippet5.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet5.cpp Timer.cpp
+$ ./a.out
+```
 
 输出如下：
 
@@ -1116,81 +1116,81 @@ apt-get install linux-tools-common linux-tools-generic
 1.  通过编写以下代码，包括我们在上一个练习中创建的必要库和 Timer.h 文件：
 
 ```cpp
-    #include <vector>
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::vector;
-    using std::cerr;
-    using std::endl;
-    ```
+#include <vector>
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::vector;
+using std::cerr;
+using std::endl;
+```
 
 1.  定义一个名为`sum1()`的函数，计算介于`0`和`N`之间的整数的和。只有当满足两个特定条件中的一个时，才对每个数字求和。第一个条件是数字必须小于`N/2`。第二个条件是当数字除以 3 时，必须返回 2 作为余数。在这里，我们将`N`设置为`100,000,000`，以便代码花费一些可测量的时间。编写以下代码来实现这一点：
 
 ```cpp
-    const uint64_t N = 100000000;
-    uint64_t sum1()
-    {
-      TIME_IT;
-      uint64_t ret = 0;
-      for(uint64_t b=0; b < N; ++b)
-      {
-        if(b % 3 == 2 || b < N/2)
-        {
-          ret += b;
-        }
-      }
+const uint64_t N = 100000000;
+uint64_t sum1()
+{
+  TIME_IT;
+  uint64_t ret = 0;
+  for(uint64_t b=0; b < N; ++b)
+  {
+    if(b % 3 == 2 || b < N/2)
+    {
+      ret += b;
+    }
+  }
 
-      return ret;
-    }
-    ```
+  return ret;
+}
+```
 
 1.  现在，定义另一个名为`sum2()`的函数。它必须包含我们为上一个函数`sum1()`编写的相同逻辑。这里唯一的变化是我们颠倒了`if`语句的条件表达式的顺序。编写以下代码来实现这一点：
 
 ```cpp
-    uint64_t sum2()
-    {
-      TIME_IT;
-      uint64_t ret = 0;
-      for(uint64_t b=0; b < N; ++b)
-      {
-        if(b < N/2 || b % 3 == 2)
-        {
-        ret += b;
-        }
-      }
+uint64_t sum2()
+{
+  TIME_IT;
+  uint64_t ret = 0;
+  for(uint64_t b=0; b < N; ++b)
+  {
+    if(b < N/2 || b % 3 == 2)
+    {
+    ret += b;
+    }
+  }
 
-      return ret;
-    }
-    ```
+  return ret;
+}
+```
 
 请注意，在`sum2`函数中，`b < N/2`条件将一半的时间评估为 true。因此，第二个条件，即`b % 3 == 2`，只有一半的迭代会被评估。如果我们简单地假设两个条件都需要 1 个单位的时间，那么`sum2()`所需的总时间将是`N/2 + (2 * N/2) = N * 3/2`。在`sum1()`函数的情况下，左侧的条件只有 33%的时间评估为`true`，剩下的 66%的时间，两个条件都会被评估。因此，预计所需的时间将是`N/3 + (2 * N * 2/3) = N * 5/3`。我们预计`sum1`和`sum2`函数之间的时间比率将是`5/3`到`3/2` - 也就是说，`sum1`慢了`11%`。
 
 1.  在主函数中添加以下代码：
 
 ```cpp
-    int main()
-    {
-      volatile uint64_t dummy = 0;
-      for(int i = 0; i < 100; ++i)
-      {
-        dummy = sum1();
-      }
-      for(int i = 0; i < 100; ++i)
-      {
-        dummy = sum2();
-      }
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  volatile uint64_t dummy = 0;
+  for(int i = 0; i < 100; ++i)
+  {
+    dummy = sum1();
+  }
+  for(int i = 0; i < 100; ++i)
+  {
+    dummy = sum2();
+  }
+  Timer::dump();
+}
+```
 
 1.  保存文件并打开终端。通过编写以下命令，编译并计时前面的程序以及**Timer.cpp**文件：
 
 ```cpp
-    $ g++ -O3 Snippet6.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet6.cpp Timer.cpp
+$ ./a.out
+```
 
 输出如下：
 
@@ -1223,75 +1223,75 @@ apt-get install linux-tools-common linux-tools-generic
 1.  创建一个名为**Snippet7.cpp**的文件，并包含必要的库：
 
 ```cpp
-    #include <vector>
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::vector;
-    using std::cerr;
-    using std::endl;
-    ```
+#include <vector>
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::vector;
+using std::cerr;
+using std::endl;
+```
 
 1.  定义一个名为`sum1()`的函数，其中包含一个嵌套循环。外部的`for`循环应该循环`N`次，而内部的循环应该迭代`100`次。将`N`的值设置为`100000000`。编写以下代码来实现这一点：
 
 ```cpp
-    const uint64_t N = 100000000;
-    uint64_t sum1()
-    {
-      TIME_IT;
-      uint64_t ret = 0;
-      for(int i = 0; i < N; ++i)
-      {
-        for(int j = 0; j < 100; ++j)
-        {
-          ret += i ^ j;
-        }
-      }
-      return ret;
-    }
-    ```
+const uint64_t N = 100000000;
+uint64_t sum1()
+{
+  TIME_IT;
+  uint64_t ret = 0;
+  for(int i = 0; i < N; ++i)
+  {
+    for(int j = 0; j < 100; ++j)
+    {
+      ret += i ^ j;
+    }
+  }
+  return ret;
+}
+```
 
 如果我们假设处理器在循环中预测分支（统计上，循环末尾的分支指令更有可能跳转到循环的开头），那么当 j 达到`100`时，它将每次都预测错误，换句话说，预测错误了`N`次。
 
 1.  定义一个名为`sum2()`的新函数，其中包含一个嵌套循环。唯一的变化是，我们必须将内部循环计数设置为`N`，外部循环计数设置为`100`。添加以下代码来实现这一点：
 
 ```cpp
-    uint64_t sum2()
-    {
-      TIME_IT;
-      uint64_t ret = 0;
-      for(int i = 0; i < 100; ++i)
-      {
-        for(int j = 0; j < N; ++j)
-        {
-          ret += i ^ j;
-        }
-      }
-      return ret;
-    }
-    ```
+uint64_t sum2()
+{
+  TIME_IT;
+  uint64_t ret = 0;
+  for(int i = 0; i < 100; ++i)
+  {
+    for(int j = 0; j < N; ++j)
+    {
+      ret += i ^ j;
+    }
+  }
+  return ret;
+}
+```
 
 现在，我们的推理是分支预测只会发生`100`次。
 
 1.  在主函数中添加以下代码：
 
 ```cpp
-    int main()
-    {
-      volatile uint64_t dummy;
-      dummy = sum1();
-      dummy = sum2();
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  volatile uint64_t dummy;
+  dummy = sum1();
+  dummy = sum2();
+  Timer::dump();
+}
+```
 
 1.  保存文件并打开终端。使用以下命令编译前面的程序，以及**Timer.cpp**文件，并使用以下命令计时。请记住，您需要在同一个目录中拥有您之前创建的 Timer.cpp 和 Timer.h 文件：
 
 ```cpp
-    $ g++ -O3 Snippet7.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet7.cpp Timer.cpp
+$ ./a.out
+```
 
 执行前面的命令的输出如下：
 
@@ -1332,120 +1332,120 @@ apt-get install linux-tools-common linux-tools-generic
 1.  包括必要的库，以及**Timer.h**头文件。编写以下代码来实现这一点：
 
 ```cpp
-    #include <vector>
-    #include <list>
-    #include <algorithm>
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::vector;
-    using std::list;
-    using std::cerr;
-    using std::endl;
-    ```
+#include <vector>
+#include <list>
+#include <algorithm>
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::vector;
+using std::list;
+using std::cerr;
+using std::endl;
+```
 
 1.  创建一个名为`N`的常量整数变量，并将其值设置为`100000`：
 
 ```cpp
-    const int N = 100000;
-    ```
+const int N = 100000;
+```
 
 1.  初始化一个随机数生成器，并创建一个范围从`0`到`1000`的分布。添加以下代码来实现这一点：
 
 ```cpp
-    std::random_device dev;
-    std::mt19937 rng(dev());
-    std::uniform_int_distribution<std::mt19937::result_type> dist(0,N);
-    ```
+std::random_device dev;
+std::mt19937 rng(dev());
+std::uniform_int_distribution<std::mt19937::result_type> dist(0,N);
+```
 
 1.  创建一个名为`insertRandom()`的方法，并将从`0`到`N`的元素插入到容器的随机位置。添加以下代码来实现这一点：
 
 ```cpp
-    template<class C> void insertRandom(C &l)
-    {
-      // insert one element to initialize
-      l.insert(l.end(), 0);
-      for(int i = 0; i < N; ++i)
-      {
-        int pos = dist(rng) % l.size();
-        auto it = l.begin();
-        advance(it, pos);
-        l.insert(it, i);
-      }
-    }
-    ```
+template<class C> void insertRandom(C &l)
+{
+  // insert one element to initialize
+  l.insert(l.end(), 0);
+  for(int i = 0; i < N; ++i)
+  {
+    int pos = dist(rng) % l.size();
+    auto it = l.begin();
+    advance(it, pos);
+    l.insert(it, i);
+  }
+}
+```
 
 1.  创建一个名为`insertStart()`的方法，并将从`0`到`N`的元素插入到容器的开头。添加以下代码来实现这一点：
 
 ```cpp
-    template<class C> void insertStart(C &l)
-    {
-      for(int i = 0; i < N; ++i)
-      {
-        l.insert(l.begin(), i);
-      }
-    }
-    ```
+template<class C> void insertStart(C &l)
+{
+  for(int i = 0; i < N; ++i)
+  {
+    l.insert(l.begin(), i);
+  }
+}
+```
 
 1.  创建一个名为`insertEnd()`的方法，并将从`0`到`N`的元素插入到容器的末尾。添加以下代码来实现这一点：
 
 ```cpp
-    template<class C> void insertEnd(C &l)
-    {
-      for(int i = 0; i < N; ++i)
-      {
-        l.insert(l.end(), i);
-      }
-    }
-    ```
+template<class C> void insertEnd(C &l)
+{
+  for(int i = 0; i < N; ++i)
+  {
+    l.insert(l.end(), i);
+  }
+}
+```
 
 1.  在`main`方法中编写以下代码：
 
 ```cpp
-    int main()
-    {
-      std::list<int> l;
-      std::vector<int> v;
-      // list
-      {
-        Timer t("list random");
-        insertRandom(l);
-      }
+int main()
+{
+  std::list<int> l;
+  std::vector<int> v;
+  // list
+  {
+    Timer t("list random");
+    insertRandom(l);
+  }
 
-      {
-        Timer t("list end");
-        insertEnd(l);    
-      }
-      {
-        Timer t("list start");
-        insertStart(l);
-      }
-      // vector
-      {
-        Timer t("vect random");
-        insertRandom(v);
-      }
+  {
+    Timer t("list end");
+    insertEnd(l);    
+  }
+  {
+    Timer t("list start");
+    insertStart(l);
+  }
+  // vector
+  {
+    Timer t("vect random");
+    insertRandom(v);
+  }
 
-      {
-        Timer t("vect end");
-        insertEnd(v);    
-      }
-      {
-        Timer t("vect start");
-        insertStart(v);
-      }
-      cerr << endl << l.size() << endl << v.size() << endl;
-      Timer::dump();
-    }
-    ```
+  {
+    Timer t("vect end");
+    insertEnd(v);    
+  }
+  {
+    Timer t("vect start");
+    insertStart(v);
+  }
+  cerr << endl << l.size() << endl << v.size() << endl;
+  Timer::dump();
+}
+```
 
 1.  保存文件并打开终端。通过编写以下命令，编译前面的程序以及**Timer.cpp**文件：
 
 ```cpp
-    $ g++ -O3 Snippet8.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet8.cpp Timer.cpp
+$ ./a.out
+```
 
 前面的命令生成以下输出：
 
@@ -1470,89 +1470,89 @@ apt-get install linux-tools-common linux-tools-generic
 1.  包括必要的库，以及`SIZE`和`N`，并将它们的值设置为`100000000`。还要创建一个随机数生成器和一个范围分布从`0`到`N-1`。编写以下代码来实现这一点：
 
 ```cpp
-    #include <vector>
-    #include <list>
-    #include <algorithm>
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::vector;
-    using std::list;
-    using std::cerr;
-    using std::endl;
-    const int SIZE = 100'000'000;
-    const int N = 100'000'000;
-    std::random_device dev;
-    std::mt19937 rng(dev());
-    std::uniform_int_distribution<std::mt19937::result_type> dist(0,SIZE-1);
-    ```
+#include <vector>
+#include <list>
+#include <algorithm>
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::vector;
+using std::list;
+using std::cerr;
+using std::endl;
+const int SIZE = 100'000'000;
+const int N = 100'000'000;
+std::random_device dev;
+std::mt19937 rng(dev());
+std::uniform_int_distribution<std::mt19937::result_type> dist(0,SIZE-1);
+```
 
 1.  创建`getPRIndex()`函数，返回一个在`0`和`SIZE-1`之间的伪随机索引，其中`SIZE`是数组中元素的数量。编写以下代码来实现这一点：
 
 #### 注意
 
 ```cpp
-    uint64_t getPRIndex(uint64_t i)
-    {
-      return (15485863 * i) % SIZE;
-    }
-    ```
+uint64_t getPRIndex(uint64_t i)
+{
+  return (15485863 * i) % SIZE;
+}
+```
 
 1.  编写一个名为`sum1()`的函数，它随机访问大量数据的数组并对这些元素求和：
 
 ```cpp
-    uint64_t sum1(vector<int> &v)
-    {
-      TIME_IT;
-      uint64_t sum = 0;
-      for(int i = 0; i < N; ++i)
-      {
-        sum += v[getPRIndex(i)];
-      }
-      return sum;
-    }
-    ```
+uint64_t sum1(vector<int> &v)
+{
+  TIME_IT;
+  uint64_t sum = 0;
+  for(int i = 0; i < N; ++i)
+  {
+    sum += v[getPRIndex(i)];
+  }
+  return sum;
+}
+```
 
 1.  编写一个名为`sum2()`的函数，对随机数进行求和而不进行任何内存访问：
 
 ```cpp
-    uint64_t sum2()
-    {
-      TIME_IT;
-      uint64_t sum = 0;
-      for(int i = 0; i < N; ++i)
-      {
-        sum += getPRIndex(i);
-      }
-      return sum;
-    }
-    ```
+uint64_t sum2()
+{
+  TIME_IT;
+  uint64_t sum = 0;
+  for(int i = 0; i < N; ++i)
+  {
+    sum += getPRIndex(i);
+  }
+  return sum;
+}
+```
 
 1.  在主函数中，初始化向量，使得`v[i] == i`，因此，`sum1()`和`sum2()`之间唯一的区别是`sum1()`访问内存，而`sum2()`只进行计算。像往常一样，我们使用`volatile`来防止编译器删除所有代码，因为它没有副作用。在`main()`函数中编写以下代码：
 
 ```cpp
-    int main()
-    {
-      // Allocate SIZE integers
-      std::vector<int> v(SIZE, 0);
-      // Fill 0 to SIZE-1 values into the vector
-      for(int i = 0; i < v.size(); ++i)
-      {
-        v[i] = i;
-      }
-      volatile uint64_t asum1 = sum1(v);
-      volatile uint64_t asum2 = sum2();
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  // Allocate SIZE integers
+  std::vector<int> v(SIZE, 0);
+  // Fill 0 to SIZE-1 values into the vector
+  for(int i = 0; i < v.size(); ++i)
+  {
+    v[i] = i;
+  }
+  volatile uint64_t asum1 = sum1(v);
+  volatile uint64_t asum2 = sum2();
+  Timer::dump();
+}
+```
 
 1.  保存程序并打开终端。通过编写以下命令编译和运行程序：
 
 ```cpp
-    $ g++ -O3 Snippet9.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet9.cpp Timer.cpp
+$ ./a.out
+```
 
 前面的代码生成了以下输出：
 
@@ -1565,39 +1565,39 @@ apt-get install linux-tools-common linux-tools-generic
 1.  创建一个名为`sum3()`的新文件，它线性访问内存而不是随机访问。还要编辑主函数。更新后的代码如下：
 
 ```cpp
-    uint64_t sum3(vector<int> &v)
-    {
-      TIME_IT;
-      uint64_t sum = 0;
-      for(int i = 0; i < N; ++i)
-      {
-        sum += v[i];
-      }
-      return sum;
-    }
-    int main()
-    {
-      // Allocate SIZE integers
-      std::vector<int> v(SIZE, 0);
+uint64_t sum3(vector<int> &v)
+{
+  TIME_IT;
+  uint64_t sum = 0;
+  for(int i = 0; i < N; ++i)
+  {
+    sum += v[i];
+  }
+  return sum;
+}
+int main()
+{
+  // Allocate SIZE integers
+  std::vector<int> v(SIZE, 0);
 
-      // Fill 0 to SIZE-1 values into the vector
-      for(int i = 0; i < v.size(); ++i)
-      {
-        v[i] = i;
-      }
-      volatile uint64_t asum1 = sum1(v);
-      volatile uint64_t asum2 = sum2();
-      volatile uint64_t asum3 = sum3(v);  
-      Timer::dump();
-    }
-    ```
+  // Fill 0 to SIZE-1 values into the vector
+  for(int i = 0; i < v.size(); ++i)
+  {
+    v[i] = i;
+  }
+  volatile uint64_t asum1 = sum1(v);
+  volatile uint64_t asum2 = sum2();
+  volatile uint64_t asum3 = sum3(v);  
+  Timer::dump();
+}
+```
 
 1.  保存文件并打开终端。编译并运行程序：
 
 ```cpp
-    $ g++ -O3 Snippet10.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet10.cpp Timer.cpp
+$ ./a.out
+```
 
 前面的命令生成了以下输出：
 
@@ -1686,80 +1686,80 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  添加以下代码以包含必要的库：
 
 ```cpp
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::string;
-    using std::cerr;
-    using std::endl;
-    ```
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::string;
+using std::cerr;
+using std::endl;
+```
 
 1.  声明一个常量变量 N 和一个名为 fruits 的字符数组。为它们赋值：
 
 ```cpp
-    const int N = 10'000'000;
-    const char* fruits[] = 
-      {"apple", "banana", "cherry", "durian", "guava", "jackfruit", "kumquat", "mango", "orange", "pear"};
-    ```
+const int N = 10'000'000;
+const char* fruits[] = 
+  {"apple", "banana", "cherry", "durian", "guava", "jackfruit", "kumquat", "mango", "orange", "pear"};
+```
 
 1.  创建一个名为`fun1()`的函数，只是循环遍历 fruits 中的每个字符串，将其复制到一个字符串中，并计算该字符串的字符总和：
 
 ```cpp
-    uint64_t fun1()
-    {
-      TIME_IT;
-      uint64_t sum = 0;
-      string s1;
-      for(uint64_t i = 0; i < N; ++i)
-      {
-        s1 = fruits[i % 10];
-        for(int k = 0; k < s1.size(); ++k) sum += s1[k];
-      }
-      return sum;
-    }
-    ```
+uint64_t fun1()
+{
+  TIME_IT;
+  uint64_t sum = 0;
+  string s1;
+  for(uint64_t i = 0; i < N; ++i)
+  {
+    s1 = fruits[i % 10];
+    for(int k = 0; k < s1.size(); ++k) sum += s1[k];
+  }
+  return sum;
+}
+```
 
 1.  创建另一个名为`sum2()`的函数，该函数使用本地声明的字符数组而不是字符串和循环进行复制：
 
 ```cpp
-    uint64_t fun2()
-    {
-      TIME_IT;
-      uint64_t sum = 0;
-      char s1[32];
+uint64_t fun2()
+{
+  TIME_IT;
+  uint64_t sum = 0;
+  char s1[32];
 
-      for(uint64_t i = 0; i < N; ++i)
-      {
-        char *ps1 = s1;
-        const char *p1 = fruits[i % 10];
-        do { *ps1++ = *p1; } while(*p1++);
-        for(ps1 = s1; *ps1; ++ps1) sum += *ps1;
-      }
-      return sum;
-    }
-    ```
+  for(uint64_t i = 0; i < N; ++i)
+  {
+    char *ps1 = s1;
+    const char *p1 = fruits[i % 10];
+    do { *ps1++ = *p1; } while(*p1++);
+    for(ps1 = s1; *ps1; ++ps1) sum += *ps1;
+  }
+  return sum;
+}
+```
 
 1.  在`main()`函数内写入以下代码：
 
 ```cpp
-    int main()
-    {
-      for(int i = 0; i < 10; ++i)
-      {
-        volatile uint64_t asum1 = fun1();
-        volatile uint64_t asum2 = fun2();  
-      }
-      Timer::dump();
-    }
-    ```
+int main()
+{
+  for(int i = 0; i < 10; ++i)
+  {
+    volatile uint64_t asum1 = fun1();
+    volatile uint64_t asum2 = fun2();  
+  }
+  Timer::dump();
+}
+```
 
 1.  保存文件并打开终端。编译并运行程序：
 
 ```cpp
-    $ g++ -O3 Snippet11.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet11.cpp Timer.cpp
+$ ./a.out
+```
 
 上述命令生成以下输出：
 
@@ -1772,8 +1772,8 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  现在，使用`perf`命令进行性能分析：
 
 ```cpp
-    $ perf record ./a.out
-    ```
+$ perf record ./a.out
+```
 
 上述命令生成以下输出：
 
@@ -1784,8 +1784,8 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  现在，我们可以使用以下代码检查性能报告：
 
 ```cpp
-    $ perf report
-    ```
+$ perf report
+```
 
 我们收到以下输出：
 
@@ -1810,119 +1810,119 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  包括必要的库，以及`Timer.h`头文件。初始化一个随机数生成器，并创建一个从 1 到 N-1 的分布范围。创建一个名为 N 的常量整数变量，并将其初始化为 100,000,000。添加以下代码来实现这一点：
 
 ```cpp
-    #include <vector>
-    #include <list>
-    #include <algorithm>
-    #include <string>
-    #include <iostream>
-    #include <random>
-    #include "Timer.h"
-    using std::vector;
-    using std::list;
-    using std::cerr;
-    using std::endl;
-    const int N = 100'000'000;
-    std::random_device dev;
-    std::mt19937 rng(dev());
-    std::uniform_int_distribution<std::mt19937::result_type> dist(1,N-1);
-    ```
+#include <vector>
+#include <list>
+#include <algorithm>
+#include <string>
+#include <iostream>
+#include <random>
+#include "Timer.h"
+using std::vector;
+using std::list;
+using std::cerr;
+using std::endl;
+const int N = 100'000'000;
+std::random_device dev;
+std::mt19937 rng(dev());
+std::uniform_int_distribution<std::mt19937::result_type> dist(1,N-1);
+```
 
 1.  写两种不同的数据表示方式 - 结构体数组和数组结构。使用六个`uint64_t`字段，以便我们可以模拟一个更具代表性的大型结构，这更符合实际程序的情况：
 
 ```cpp
-    struct Data1
-    {
-      uint64_t field1;
-      uint64_t field2;
-      uint64_t field3;
-      uint64_t field4;
-      uint64_t field5;
-      uint64_t field6;
-    };
-    struct Data2
-    {
-      vector<uint64_t> field1;
-      vector<uint64_t> field2;
-      vector<uint64_t> field3;
-      vector<uint64_t> field4;
-      vector<uint64_t> field5;
-      vector<uint64_t> field6;
-    };
-    struct Sum
-    {
-      uint64_t field1;
-      uint64_t field2;
-      uint64_t field3;
-      Sum(): field1(), field2(), field3() {}
-    };
-    ```
+struct Data1
+{
+  uint64_t field1;
+  uint64_t field2;
+  uint64_t field3;
+  uint64_t field4;
+  uint64_t field5;
+  uint64_t field6;
+};
+struct Data2
+{
+  vector<uint64_t> field1;
+  vector<uint64_t> field2;
+  vector<uint64_t> field3;
+  vector<uint64_t> field4;
+  vector<uint64_t> field5;
+  vector<uint64_t> field6;
+};
+struct Sum
+{
+  uint64_t field1;
+  uint64_t field2;
+  uint64_t field3;
+  Sum(): field1(), field2(), field3() {}
+};
+```
 
 1.  定义两个函数，即`sumAOS`和`sumSOA`，对前面两种数据结构中的`field1`、`field2`和`field3`的值进行求和。编写以下代码来实现这一点：
 
 ```cpp
-    Sum sumAOS(vector<Data1> &aos)
-    {
-      TIME_IT;
-      Sum ret;
-      for(int i = 0; i < N; ++i)
-      {
-        ret.field1 += aos[i].field1;
-        ret.field2 += aos[i].field2;
-        ret.field3 += aos[i].field3;
-      }
-      return ret;
-    }
-    Sum sumSOA(Data2 &soa)
-    {
-      TIME_IT;
-      Sum ret;
-      for(int i = 0; i < N; ++i) 
-      {
-        ret.field1 += soa.field1[i];
-        ret.field2 += soa.field2[i];
-        ret.field3 += soa.field3[i];
-      }
-      return ret;
-    }
-    ```
+Sum sumAOS(vector<Data1> &aos)
+{
+  TIME_IT;
+  Sum ret;
+  for(int i = 0; i < N; ++i)
+  {
+    ret.field1 += aos[i].field1;
+    ret.field2 += aos[i].field2;
+    ret.field3 += aos[i].field3;
+  }
+  return ret;
+}
+Sum sumSOA(Data2 &soa)
+{
+  TIME_IT;
+  Sum ret;
+  for(int i = 0; i < N; ++i) 
+  {
+    ret.field1 += soa.field1[i];
+    ret.field2 += soa.field2[i];
+    ret.field3 += soa.field3[i];
+  }
+  return ret;
+}
+```
 
 1.  在`main`函数中编写以下代码：
 
 ```cpp
-    int main()
-    {
-       vector<Data1> arrOfStruct;
-       Data2 structOfArr;
+int main()
+{
+   vector<Data1> arrOfStruct;
+   Data2 structOfArr;
 
-       // Reserve space
-       structOfArr.field1.reserve(N);
-       structOfArr.field2.reserve(N);
-       structOfArr.field3.reserve(N);
-       arrOfStruct.reserve(N);
-       // Fill random values
-       for(int i = 0; i < N; ++i)
-       {
-         Data1 temp;
-         temp.field1 = dist(rng);
-         temp.field2  = dist(rng);
-         temp.field3 = dist(rng);
-         arrOfStruct.push_back(temp);
-         structOfArr.field1.push_back(temp.field1);
-         structOfArr.field2.push_back(temp.field2);
-         structOfArr.field3.push_back(temp.field3);
-       }
-      Sum s1 = sumAOS(arrOfStruct);
-      Sum s2 = sumSOA(structOfArr);
-      Timer::dump();
-    }
-    ```
+   // Reserve space
+   structOfArr.field1.reserve(N);
+   structOfArr.field2.reserve(N);
+   structOfArr.field3.reserve(N);
+   arrOfStruct.reserve(N);
+   // Fill random values
+   for(int i = 0; i < N; ++i)
+   {
+     Data1 temp;
+     temp.field1 = dist(rng);
+     temp.field2  = dist(rng);
+     temp.field3 = dist(rng);
+     arrOfStruct.push_back(temp);
+     structOfArr.field1.push_back(temp.field1);
+     structOfArr.field2.push_back(temp.field2);
+     structOfArr.field3.push_back(temp.field3);
+   }
+  Sum s1 = sumAOS(arrOfStruct);
+  Sum s2 = sumSOA(structOfArr);
+  Timer::dump();
+}
+```
 
 1.  保存程序并打开终端。运行程序以计时，添加以下命令：
 
 ```cpp
-    $ g++ -O3 Snippet12.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Snippet12.cpp Timer.cpp
+$ ./a.out
+```
 
 上述代码生成以下输出：
 
@@ -1963,26 +1963,26 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  编写一个基本的词频统计函数。逻辑非常简单-对于字符串中的每个字符，如果字符不是空格且后面是空格，则这是一个单词的结尾，应该计数。由于我们的样板代码在末尾添加了一个空格，任何最终单词都将被计数。此函数在**Snippet13.cpp**中定义：
 
 ```cpp
-    int wordCount(const std::string &s)
-    {
-      int count = 0;
-      for(int i = 0, j = 1; i < s.size() - 1; ++i, ++j)
-      {
-        if(!isspace(s[i]) && isspace(s[j]))
-        {
-          ++count;
-        }
-      }
-      return count;
-    }
-    ```
+int wordCount(const std::string &s)
+{
+  int count = 0;
+  for(int i = 0, j = 1; i < s.size() - 1; ++i, ++j)
+  {
+    if(!isspace(s[i]) && isspace(s[j]))
+    {
+      ++count;
+    }
+  }
+  return count;
+}
+```
 
 1.  让我们编译、运行，并对性能有一个概念。我们将通过比较我们代码的结果与标准`wc`程序提供的结果来验证它是否正确：
 
 ```cpp
-    $ g++ -O3 Snippet13.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet13.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -1993,8 +1993,8 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 让我们计时 wc 程序：
 
 ```cpp
-    $ time wc -w data.txt
-    ```
+$ time wc -w data.txt
+```
 
 我们收到以下输出：
 
@@ -2007,44 +2007,44 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  我们优化的第一个策略是看看是否有更好的方法来实现`isspace()`。我们可以使用一个查找表来判断一个字符是否为空格（可以在**Snippet14.cpp**中找到代码）：
 
 ```cpp
-    int wordCount(const std::string &s)
-    {
-      // Create a lookup table
-      bool isSpace[256];
-      for(int i = 0; i < 256; ++i)
-      {
-        isSpace[i] = isspace((unsigned char)i);
-      }
-      int count = 0;
-      int len = s.size() - 1;
-      for(int i = 0, j = 1; i < len; ++i, ++j)
-      {
-        count += !isSpace[s[i]] & isSpace[s[j]];
-      }
-      return count;
-    }
-    ```
+int wordCount(const std::string &s)
+{
+  // Create a lookup table
+  bool isSpace[256];
+  for(int i = 0; i < 256; ++i)
+  {
+    isSpace[i] = isspace((unsigned char)i);
+  }
+  int count = 0;
+  int len = s.size() - 1;
+  for(int i = 0, j = 1; i < len; ++i, ++j)
+  {
+    count += !isSpace[s[i]] & isSpace[s[j]];
+  }
+  return count;
+}
+```
 
 请记住，C/C++中的布尔变量取整数值 0 或 1，因此我们可以直接写如下内容：
 
 ```cpp
-    !isSpace[s[i]] & isSpace[s[j]]
-    ```
+!isSpace[s[i]] & isSpace[s[j]]
+```
 
 这意味着我们不必写这个：
 
 ```cpp
-    (!isSpace[s[i]] && isSpace[s[j]]) ? 1 : 0
-    ```
+(!isSpace[s[i]] && isSpace[s[j]]) ? 1 : 0
+```
 
 直接使用布尔值作为数字有时可能会导致更快的代码，因为我们避免了条件逻辑运算符&&和||，这可能会导致分支指令。
 
 1.  现在编译并测试性能：
 
 ```cpp
-    $ g++ -O3 Snippet14.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet14.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2061,26 +2061,26 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  编写以下代码创建表：
 
 ```cpp
-    // Create a lookup table for every pair of chars
-    bool table[65536];
-    for(int i = 0; i < 256; ++i)
-    {
-      for(int j = 0; j < 256; ++j)
-      {
-        int idx = j + i * 256;
-        table[idx] = !isspace(j) && isspace(i);
-      }
-    }
-    ```
+// Create a lookup table for every pair of chars
+bool table[65536];
+for(int i = 0; i < 256; ++i)
+{
+  for(int j = 0; j < 256; ++j)
+  {
+    int idx = j + i * 256;
+    table[idx] = !isspace(j) && isspace(i);
+  }
+}
+```
 
 计算单词的循环变成了以下形式（完整代码可以在`memcpy()`中找到。编译器足够聪明，可以使用 CPU 内存访问指令，而不是实际调用`memcpy()`来处理 2 个字节。我们最终得到的循环不包含条件语句，这应该会使它更快。请记住，X86 架构是*小端*的 - 因此从字符数组中读取的 16 位值将具有第一个字符作为其 LSB，第二个字符作为 MSB。
 
 1.  现在，计时我们写的代码：
 
 ```cpp
-    $ g++ -O3 Snippet15.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet15.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 ![图 8.44：Snippet15.cpp 中代码的输出](img/C14583_08_44.jpg)
 
@@ -2091,8 +2091,8 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 让我们重写使用查找表来进行`isspace`的程序版本。如果我们看一下计算单词的主循环，我们正在取 2 个字符，并根据一些逻辑，将 1 或 0 累积到`count`变量中。这是许多代码中常见的模式：
 
 ```cpp
-    X OP (a[0] OP2 b[0]) OP (a[1] OP2 b[1]) OP (a[2] OP2 b[2]) ... OP (a[N] OP2 b[N])  
-    ```
+X OP (a[0] OP2 b[0]) OP (a[1] OP2 b[1]) OP (a[2] OP2 b[2]) ... OP (a[N] OP2 b[N])  
+```
 
 这里，`a`和`b`是大小为`N`的数组，`X`是初始值，`OP`和`OP2`是运算符。有一个标准算法封装了这种模式，叫做`std::inner_product` - 它接受两个序列，在每对元素之间应用一个运算符（OP2），并在这些元素之间应用另一个运算符（OP），从初始值 X 开始。
 
@@ -2105,9 +2105,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  编译和计时执行这个版本：
 
 ```cpp
-    $ g++ -O3 Snippet16.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet16.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2122,9 +2122,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  编译和计时代码：
 
 ```cpp
-    $ g++ -O3 Snippet17.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet17.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2137,9 +2137,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  现在我们有了大部分工作由标准库函数完成的代码，我们现在可以免费获得自动并行化-编译和测试如下：
 
 ```cpp
-    $ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet17.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet17.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2150,9 +2150,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 显然，它不能完全并行化，所以我们在速度方面只获得了大约 2.5 倍的改进，但我们在不对代码做任何修改的情况下获得了这一点。我们是否可以以同样的方式使基于循环的代码可并行化？理论上是的-我们可以手动使用**OpenMP**指令来实现这一点；然而，这将需要对代码进行更改并且需要知道如何使用 OpenMP。**Snippet16.cpp**中的版本呢？
 
 ```cpp
-    $ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet16.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet16.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2165,22 +2165,22 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  让我们基于我们之前的想法实现代码（完整代码可以在**Snippet18.cpp**中找到）：
 
 ```cpp
-    int wordCount(const std::string &s)
-    {
-      auto isWordEnd = & 
-      {
-        return a > 32 & b < 33; 
-      };
-      return std::inner_product(s.begin(), s.end()-1, s.begin()+1, 0, std::plus<int>(), isWordEnd);
-    }
-    ```
+int wordCount(const std::string &s)
+{
+  auto isWordEnd = & 
+  {
+    return a > 32 & b < 33; 
+  };
+  return std::inner_product(s.begin(), s.end()-1, s.begin()+1, 0, std::plus<int>(), isWordEnd);
+}
+```
 
 1.  编译并运行程序：
 
 ```cpp
-    $ g++ -O3 Snippet18.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet18.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2191,9 +2191,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 这个版本比并行化的版本快两倍，而且只是几行代码。使用并行化会使它变得更好吗？
 
 ```cpp
-    $ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet18.cpp SnippetWC.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 -fopenmp -D_GLIBCXX_PARALLEL Snippet18.cpp SnippetWC.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2206,31 +2206,31 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  让我们修改`main()`函数以计时其各个部分（完整代码可以在**SnippetWC2.cpp**中找到）：
 
 ```cpp
-        {
-          Timer t("File read");
-          buf << ifs.rdbuf(); 
-        }
-        {
-          Timer t("String copy");
-          sContent = buf.str();
-        }
-        {
-          Timer t("String push");
-          sContent.push_back(' ');
-        }
-        int wc;
-        {
-          Timer t("Word count");
-          wc = wordCount(sContent);
-        }
-    ```
+    {
+      Timer t("File read");
+      buf << ifs.rdbuf(); 
+    }
+    {
+      Timer t("String copy");
+      sContent = buf.str();
+    }
+    {
+      Timer t("String push");
+      sContent.push_back(' ');
+    }
+    int wc;
+    {
+      Timer t("Word count");
+      wc = wordCount(sContent);
+    }
+```
 
 1.  编译并运行上述代码：
 
 ```cpp
-    $ g++ -O3 Snippet18.cpp SnippetWC2.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet18.cpp SnippetWC2.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2243,57 +2243,57 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  首先，编写不使用`push_back`的主函数（完整代码可以在**SnippetWC3.cpp**中找到）：
 
 ```cpp
-    {
-      Timer t("File read");
-      buf << ifs.rdbuf(); 
-    } 
-    {
-      Timer t("String copy");
-      sContent = buf.str();
-    }
-    int wc;
-    {
-      Timer t("Word count");
-      wc = wordCount(sContent);
-    }
-    ```
+{
+  Timer t("File read");
+  buf << ifs.rdbuf(); 
+} 
+{
+  Timer t("String copy");
+  sContent = buf.str();
+}
+int wc;
+{
+  Timer t("Word count");
+  wc = wordCount(sContent);
+}
+```
 
 1.  通过将 wordCount()中的代码更改为将`isWordEnd()`重命名为`isWordStart()`并反转逻辑来更改代码。如果当前字符是空格且后续字符不是空格，则将单词视为开始。此外，如果字符串以非空格开头，则额外计算一个单词（完整代码可以在**Snippet19.cpp**中找到）：
 
 ```cpp
-    int wordCount(const std::string &s)
-    {
-      auto isWordStart = & 
-      {
-        return a < 33 & b > 32; 
-      };
-      // Count the first word if any
-      int count = s[0] > 32;
-      // count the remaining
-      return std::inner_product(s.begin(), s.end()-1, s.begin()+1, count, std::plus<int>(), isWordStart);
-    }
-    ```
+int wordCount(const std::string &s)
+{
+  auto isWordStart = & 
+  {
+    return a < 33 & b > 32; 
+  };
+  // Count the first word if any
+  int count = s[0] > 32;
+  // count the remaining
+  return std::inner_product(s.begin(), s.end()-1, s.begin()+1, count, std::plus<int>(), isWordStart);
+}
+```
 
 1.  现在，编写第二种替代方案-计算最后一个单词（如果有的话）。代码与**Snippet18.cpp**版本几乎相同，只是我们检查最后一个单词（完整代码可以在**Snippet20.cpp**中找到）：
 
 ```cpp
-    int count = std::inner_product(s.begin(), s.end()-1, s.begin()+1, 0, std::plus<int>(), isWordEnd);
-    // count the last word if any
-    if(s.back() > 32) 
-    {
-      ++count;
-    }
-    return count;
-    ```
+int count = std::inner_product(s.begin(), s.end()-1, s.begin()+1, 0, std::plus<int>(), isWordEnd);
+// count the last word if any
+if(s.back() > 32) 
+{
+  ++count;
+}
+return count;
+```
 
 1.  编写使用`c_str()`的第三个版本-我们只需要改变`inner_product()`的参数（完整代码可以在`c_str()`末尾有一个`NUL`，它的工作方式与以前相同。
 
 1.  编译和计时所有三个版本：
 
 ```cpp
-    $ g++ -O3 Snippet19.cpp SnippetWC3.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet19.cpp SnippetWC3.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2304,9 +2304,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 现在输入以下命令：
 
 ```cpp
-    $ g++ -O3 Snippet20.cpp SnippetWC3.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet20.cpp SnippetWC3.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2317,9 +2317,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 现在输入以下命令：
 
 ```cpp
-    $ g++ -O3 Snippet21.cpp SnippetWC3.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 Snippet21.cpp SnippetWC3.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2332,31 +2332,31 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  现在，我们可以解决字符串复制所花费的时间-我们将直接将文件读入字符串缓冲区，而不是使用`std::stringstream`（完整代码可以在**SnippetWC4.cpp**中找到）：
 
 ```cpp
-    string sContent;
-    {
-      Timer t("String Alloc");
-      // Seek to end and reserve memory
-      ifs.seekg(0, std::ios::end);   
-      sContent.resize(ifs.tellg());
-    }
-    {
-      Timer t("File read");
-      // Seek back to start and read data
-      ifs.seekg(0, std::ios::beg);
-      ifs.read(&sContent[0], sContent.size());
-    }
-    int wc;
-    {
-      Timer t("Word count");
-      wc = wordCount(sContent);
-    }  
-    ```
+string sContent;
+{
+  Timer t("String Alloc");
+  // Seek to end and reserve memory
+  ifs.seekg(0, std::ios::end);   
+  sContent.resize(ifs.tellg());
+}
+{
+  Timer t("File read");
+  // Seek back to start and read data
+  ifs.seekg(0, std::ios::beg);
+  ifs.read(&sContent[0], sContent.size());
+}
+int wc;
+{
+  Timer t("Word count");
+  wc = wordCount(sContent);
+}  
+```
 
 1.  编译并运行此版本：
 
 ```cpp
-    $ g++ -O3 Snippet21.cpp SnippetWC4.cpp Timer.cpp
-    ```
+$ g++ -O3 Snippet21.cpp SnippetWC4.cpp Timer.cpp
+```
 
 我们收到以下输出：
 
@@ -2369,9 +2369,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  不过，对于好奇的学生，提供了`AVX2`（256 位 SIMD）版本的`wordCount()`（Snippet23.cpp）。这个版本需要输入字符串的长度是 32 的倍数，并且末尾有一个空格。这意味着主函数必须重新编写（SnippetWC5.cpp）：
 
 ```cpp
-    $ g++ -O3 -march=native Snippet22.cpp SnippetWC5.cpp Timer.cpp
-    $ ./a.out data.txt
-    ```
+$ g++ -O3 -march=native Snippet22.cpp SnippetWC5.cpp Timer.cpp
+$ ./a.out data.txt
+```
 
 我们收到以下输出：
 
@@ -2408,9 +2408,9 @@ CPU 非常聪明，可以检测到正向和反向的规律访问模式，并且�
 1.  对于前面的每个步骤，编译程序并按如下方式运行（根据需要更改输入文件名）：
 
 ```cpp
-    $ g++ -O3 Speller1.cpp Timer.cpp
-    $ ./a.out
-    ```
+$ g++ -O3 Speller1.cpp Timer.cpp
+$ ./a.out
+```
 
 #### 注意
 

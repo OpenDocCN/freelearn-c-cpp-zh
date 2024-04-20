@@ -69,61 +69,61 @@ void Sample::Update(float deltaTime) {
 1.  通过确保网格有效来开始实现`CPUSkin`函数。有效的网格至少有一个顶点。确保`mSkinnedPosition`和`mSkinnedNormal`向量足够大，可以容纳所有顶点：
 
 ```cpp
-    void Mesh::CPUSkin(std::vector<mat4>& animatedPose) {
-        unsigned int numVerts = mPosition.size();
-        if (numVerts == 0) { 
-            return; 
-        }
-        mSkinnedPosition.resize(numVerts);
-        mSkinnedNormal.resize(numVerts);
-    ```
+void Mesh::CPUSkin(std::vector<mat4>& animatedPose) {
+    unsigned int numVerts = mPosition.size();
+    if (numVerts == 0) { 
+        return; 
+    }
+    mSkinnedPosition.resize(numVerts);
+    mSkinnedNormal.resize(numVerts);
+```
 
 1.  接下来，循环遍历网格中的每个顶点：
 
 ```cpp
-        for (unsigned int i = 0; i < numVerts; ++i) {
-            ivec4& j = mInfluences[i];
-            vec4& w = mWeights[i];
-    ```
+    for (unsigned int i = 0; i < numVerts; ++i) {
+        ivec4& j = mInfluences[i];
+        vec4& w = mWeights[i];
+```
 
 1.  将每个顶点按动画姿势变换四次，即每个影响顶点的关节变换一次。要找到经过处理的顶点，请将每个变换后的顶点按适当的权重进行缩放并将结果相加：
 
 ```cpp
-            vec3 p0 = transformPoint(animatedPose[j.x], 
-                                     mPosition[i]);
-            vec3 p1 = transformPoint(animatedPose[j.y], 
-                                     mPosition[i]);
-            vec3 p2 = transformPoint(animatedPose[j.z], 
-                                     mPosition[i]);
-            vec3 p3 = transformPoint(animatedPose[j.w],
-                                     mPosition[i]);
-            mSkinnedPosition[i] = p0 * w.x + p1 * w.y + 
-                                  p2 * w.z + p3 * w.w;
-    ```
+        vec3 p0 = transformPoint(animatedPose[j.x], 
+                                 mPosition[i]);
+        vec3 p1 = transformPoint(animatedPose[j.y], 
+                                 mPosition[i]);
+        vec3 p2 = transformPoint(animatedPose[j.z], 
+                                 mPosition[i]);
+        vec3 p3 = transformPoint(animatedPose[j.w],
+                                 mPosition[i]);
+        mSkinnedPosition[i] = p0 * w.x + p1 * w.y + 
+                              p2 * w.z + p3 * w.w;
+```
 
 1.  以相同的方式找到顶点的经过处理的法线：
 
 ```cpp
-            vec3 n0 = transformVector(animatedPose[j.x], 
-                                      mNormal[i]);
-            vec3 n1 = transformVector(animatedPose[j.y], 
-                                      mNormal[i]);
-            vec3 n2 = transformVector(animatedPose[j.z], 
-                                      mNormal[i]);
-            vec3 n3 = transformVector(animatedPose[j.w], 
-                                      mNormal[i]);
-            mSkinnedNormal[i] = n0 * w.x + n1 * w.y + 
-                                n2 * w.z + n3 * w.w;
-        }
-    ```
+        vec3 n0 = transformVector(animatedPose[j.x], 
+                                  mNormal[i]);
+        vec3 n1 = transformVector(animatedPose[j.y], 
+                                  mNormal[i]);
+        vec3 n2 = transformVector(animatedPose[j.z], 
+                                  mNormal[i]);
+        vec3 n3 = transformVector(animatedPose[j.w], 
+                                  mNormal[i]);
+        mSkinnedNormal[i] = n0 * w.x + n1 * w.y + 
+                            n2 * w.z + n3 * w.w;
+    }
+```
 
 1.  通过将经过处理的顶点位置和经过处理的顶点法线上传到位置和法线属性来完成函数：
 
 ```cpp
-        mPosAttrib->Set(mSkinnedPosition);
-        mNormAttrib->Set(mSkinnedNormal);
-    }
-    ```
+    mPosAttrib->Set(mSkinnedPosition);
+    mNormAttrib->Set(mSkinnedNormal);
+}
+```
 
 核心的皮肤算法保持不变；唯一改变的是如何生成变换后的位置。现在，这个函数可以直接使用已经组合好的矩阵，而不必再组合动画姿势和逆绑定姿势。
 
@@ -138,37 +138,37 @@ void Sample::Update(float deltaTime) {
 1.  旧的皮肤顶点着色器具有姿势和逆绑定姿势的统一变量。这两个统一变量都是矩阵数组。删除这些统一变量：
 
 ```cpp
-    uniform mat4 pose[120];
-    uniform mat4 invBindPose[120];
-    ```
+uniform mat4 pose[120];
+uniform mat4 invBindPose[120];
+```
 
 1.  用新的`animated`统一替换它们。这是一个矩阵数组，数组中的每个元素都包含`animated`姿势和逆绑定姿势矩阵相乘的结果。
 
 ```cpp
-    uniform mat4 animated[120];
-    ```
+uniform mat4 animated[120];
+```
 
 1.  接下来，找到生成皮肤矩阵的位置。生成皮肤矩阵的代码如下：
 
 ```cpp
-    mat4 skin = (pose[joints.x] * invBindPose[joints.x]) *
-                 weights.x;
-        skin += (pose[joints.y] * invBindPose[joints.y]) * 
-                 weights.y;
-        skin += (pose[joints.z] * invBindPose[joints.z]) * 
-                 weights.z;
-        skin += (pose[joints.w] * invBindPose[joints.w]) * 
-                 weights.w;
-    ```
+mat4 skin = (pose[joints.x] * invBindPose[joints.x]) *
+             weights.x;
+    skin += (pose[joints.y] * invBindPose[joints.y]) * 
+             weights.y;
+    skin += (pose[joints.z] * invBindPose[joints.z]) * 
+             weights.z;
+    skin += (pose[joints.w] * invBindPose[joints.w]) * 
+             weights.w;
+```
 
 1.  用新的`animated`统一替换这个。对于影响顶点的每个关节，按适当的权重缩放`animated`统一矩阵并求和结果：
 
 ```cpp
-    mat4 skin = animated[joints.x] * weights.x +
-                animated[joints.y] * weights.y +
-                animated[joints.z] * weights.z +
-                animated[joints.w] * weights.w;
-    ```
+mat4 skin = animated[joints.x] * weights.x +
+            animated[joints.y] * weights.y +
+            animated[joints.z] * weights.z +
+            animated[joints.w] * weights.w;
+```
 
 着色器的其余部分保持不变。您需要更新的唯一内容是着色器接受的统一变量以及如何生成`skin`矩阵。在渲染时，`animated`矩阵可以设置如下：
 
@@ -225,41 +225,41 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  找到`Track`类的`FrameIndex`成员函数，并将其标记为`virtual`。这个改变允许新的子类重新实现`FrameIndex`函数。更新后的声明应该是这样的：
 
 ```cpp
-    template<typename T, int N>
-    class Track {
-    // ...
-            virtual int FrameIndex(float time, bool looping);
-    // ...
-    ```
+template<typename T, int N>
+class Track {
+// ...
+        virtual int FrameIndex(float time, bool looping);
+// ...
+```
 
 1.  创建一个新类`FastTrack`，它继承自`Track`。`FastTrack`类包含一个无符号整数向量，重载的`FrameIndex`函数和一个用于填充无符号整数向量的函数：
 
 ```cpp
-    template<typename T, int N>
-    class FastTrack : public Track<T, N> {
-    protected:
-        std::vector<unsigned int> mSampledFrames;
-        virtual int FrameIndex(float time, bool looping);
-    public:
-        void UpdateIndexLookupTable();
-    };
-    ```
+template<typename T, int N>
+class FastTrack : public Track<T, N> {
+protected:
+    std::vector<unsigned int> mSampledFrames;
+    virtual int FrameIndex(float time, bool looping);
+public:
+    void UpdateIndexLookupTable();
+};
+```
 
 1.  为了使`FastTrack`类更易于使用，使用 typedef 为标量、向量和四元数类型创建别名：
 
 ```cpp
-    typedef FastTrack<float, 1> FastScalarTrack;
-    typedef FastTrack<vec3, 3> FastVectorTrack;
-    typedef FastTrack<quat, 4> FastQuaternionTrack;
-    ```
+typedef FastTrack<float, 1> FastScalarTrack;
+typedef FastTrack<vec3, 3> FastVectorTrack;
+typedef FastTrack<quat, 4> FastQuaternionTrack;
+```
 
 1.  在`.cpp`文件中，为标量、向量和四元数的快速轨道添加模板声明：
 
 ```cpp
-    template FastTrack<float, 1>;
-    template FastTrack<vec3, 3>;
-    template FastTrack<quat, 4>;
-    ```
+template FastTrack<float, 1>;
+template FastTrack<vec3, 3>;
+template FastTrack<quat, 4>;
+```
 
 由于`FastTrack`类是`Track`的子类，现有的 API 都可以不变地工作。通过以这种方式实现轨道采样，当涉及的动画帧数更多时，性能提升更大。在下一节中，你将学习如何构建索引查找表。
 
@@ -272,48 +272,48 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  通过确保轨道有效来开始实现`UpdateIndexLookupTable`函数。有效的轨道至少有两帧：
 
 ```cpp
-    template<typename T, int N>
-    void FastTrack<T, N>::UpdateIndexLookupTable() {
-        int numFrames = (int)this->mFrames.size();
-        if (numFrames <= 1) {
-            return;
-        }
-    ```
+template<typename T, int N>
+void FastTrack<T, N>::UpdateIndexLookupTable() {
+    int numFrames = (int)this->mFrames.size();
+    if (numFrames <= 1) {
+        return;
+    }
+```
 
 1.  接下来，找到所需的样本数。由于每秒动画类有`60`个样本，将持续时间乘以`60`：
 
 ```cpp
-        float duration = this->GetEndTime() - 
-                         this->GetStartTime();
-        unsigned int numSamples = duration * 60.0f;
-        mSampledFrames.resize(numSamples);
-    ```
+    float duration = this->GetEndTime() - 
+                     this->GetStartTime();
+    unsigned int numSamples = duration * 60.0f;
+    mSampledFrames.resize(numSamples);
+```
 
 1.  对于每个样本，找到沿着轨道的样本时间。要找到时间，将标准化迭代器乘以动画持续时间，并将动画的起始时间加上去：
 
 ```cpp
-        for (unsigned int i = 0; i < numSamples; ++i) {
-            float t = (float)i / (float)(numSamples - 1);
-            float time = t*duration+this->GetStartTime();
-    ```
+    for (unsigned int i = 0; i < numSamples; ++i) {
+        float t = (float)i / (float)(numSamples - 1);
+        float time = t*duration+this->GetStartTime();
+```
 
 1.  最后，是时候为每个给定的时间找到帧索引了。找到在此迭代中采样时间之前的帧，并将其记录在`mSampledFrames`向量中。如果采样帧是最后一帧，则返回最后一个索引之前的索引。请记住，`FrameIndex`函数永远不应返回最后一帧：
 
 ```cpp
-            unsigned int frameIndex = 0;
-            for (int j = numFrames - 1; j >= 0; --j) {
-                if (time >= this->mFrames[j].mTime) {
-                    frameIndex = (unsigned int)j;
-                    if ((int)frameIndex >= numFrames - 2) {
-                        frameIndex = numFrames - 2;
-                    }
-                    break;
-                }
-            }
-            mSampledFrames[i] = frameIndex;
-        }
-    }
-    ```
+        unsigned int frameIndex = 0;
+        for (int j = numFrames - 1; j >= 0; --j) {
+            if (time >= this->mFrames[j].mTime) {
+                frameIndex = (unsigned int)j;
+                if ((int)frameIndex >= numFrames - 2) {
+                    frameIndex = numFrames - 2;
+                }
+                break;
+            }
+        }
+        mSampledFrames[i] = frameIndex;
+    }
+}
+```
 
 `UpdateIndexLookupTable`函数旨在在加载时调用。通过记住内部`j`循环的上次使用的索引，可以优化它，因为在每次`i`迭代时，帧索引只会增加。在下一节中，您将学习如何实现`FrameIndex`以使用`mSampledFrames`向量。
 
@@ -324,58 +324,58 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  通过确保轨道有效来开始实现`FrameIndex`函数。有效的轨道必须至少有两帧或更多：
 
 ```cpp
-    template<typename T, int N>
-    int FastTrack<T,N>::FrameIndex(float time,bool loop){
-        std::vector<Frame<N>>& frames = this->mFrames;
-        unsigned int size = (unsigned int)frames.size();
-        if (size <= 1) { 
-            return -1; 
-    }
-    ```
+template<typename T, int N>
+int FastTrack<T,N>::FrameIndex(float time,bool loop){
+    std::vector<Frame<N>>& frames = this->mFrames;
+    unsigned int size = (unsigned int)frames.size();
+    if (size <= 1) { 
+        return -1; 
+}
+```
 
 1.  接下来，确保请求的采样时间落在轨道的起始时间和结束时间之间。如果轨道循环，使用`fmodf`来保持在有效范围内：
 
 ```cpp
-        if (loop) {
-            float startTime = this->mFrames[0].mTime;
-            float endTime = this->mFrames[size - 1].mTime;
-            float duration = endTime - startTime;
-            time = fmodf(time - startTime, 
-                         endTime - startTime);
-            if (time < 0.0f) {
-                time += endTime - startTime;
-            }
-            time = time + startTime;
-        }
-    ```
+    if (loop) {
+        float startTime = this->mFrames[0].mTime;
+        float endTime = this->mFrames[size - 1].mTime;
+        float duration = endTime - startTime;
+        time = fmodf(time - startTime, 
+                     endTime - startTime);
+        if (time < 0.0f) {
+            time += endTime - startTime;
+        }
+        time = time + startTime;
+    }
+```
 
 1.  如果轨道不循环，将其夹紧到第一帧或倒数第二帧：
 
 ```cpp
-        else {
-            if (time <= frames[0].mTime) {
-                return 0;
-            }
-            if (time >= frames[size - 2].mTime) {
-                return (int)size - 2;
-            }
-        }
-    ```
+    else {
+        if (time <= frames[0].mTime) {
+            return 0;
+        }
+        if (time >= frames[size - 2].mTime) {
+            return (int)size - 2;
+        }
+    }
+```
 
 1.  找到标准化的采样时间和帧索引。帧索引是标准化的采样时间乘以样本数。如果索引无效，则返回`-1`；否则返回索引指向的帧：
 
 ```cpp
-        float duration = this->GetEndTime() - 
-                         this->GetStartTime();
-        float t = time / duration;
-        unsigned int numSamples = (duration * 60.0f);
-        unsigned int index = (t * (float)numSamples);
-        if (index >= mSampledFrames.size()) {
-            return -1;
-        }
-        return (int)mSampledFrames[index];
-    }
-    ```
+    float duration = this->GetEndTime() - 
+                     this->GetStartTime();
+    float t = time / duration;
+    unsigned int numSamples = (duration * 60.0f);
+    unsigned int index = (t * (float)numSamples);
+    if (index >= mSampledFrames.size()) {
+        return -1;
+    }
+    return (int)mSampledFrames[index];
+}
+```
 
 `FrameIndex`函数几乎总是在有效时间调用，因为它是一个受保护的辅助函数。这意味着找到帧索引所需的时间是均匀的，不管轨道中有多少帧。在下一节中，您将学习如何将未优化的`Track`类转换为优化的`FastTrack`类。
 
@@ -386,37 +386,37 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  在`FastTrack.h`中声明`OptimizeTrack`函数。该函数是模板化的。它接受与`Track`相同的模板类型：
 
 ```cpp
-    template<typename T, int N>
-    FastTrack<T, N> OptimizeTrack(Track<T, N>& input);
-    ```
+template<typename T, int N>
+FastTrack<T, N> OptimizeTrack(Track<T, N>& input);
+```
 
 1.  在`FastTrack.cpp`中声明`OptimizeTrack`函数的模板特化，以适用于跟踪到`FastTrack`的所有三种类型。这意味着声明适用于标量、三维向量和四元数轨道的特化：
 
 ```cpp
-    template FastTrack<float, 1> 
-    OptimizeTrack(Track<float, 1>& input);
-    template FastTrack<vec3, 3> 
-    OptimizeTrack(Track<vec3, 3>& input);
-    template FastTrack<quat, 4> 
-    OptimizeTrack(Track<quat, 4>& input);
-    ```
+template FastTrack<float, 1> 
+OptimizeTrack(Track<float, 1>& input);
+template FastTrack<vec3, 3> 
+OptimizeTrack(Track<vec3, 3>& input);
+template FastTrack<quat, 4> 
+OptimizeTrack(Track<quat, 4>& input);
+```
 
 1.  要实现`OptimizeTrack`函数，调整结果轨道的大小，使其与输入轨道的大小相同并匹配插值。可以使用重载的`[]`运算符函数来复制每帧的数据：
 
 ```cpp
-    template<typename T, int N>
-    FastTrack<T, N> OptimizeTrack(Track<T, N>& input) {
-        FastTrack<T, N> result;
-        result.SetInterpolation(input.GetInterpolation());
-        unsigned int size = input.Size();
-        result.Resize(size);
-        for (unsigned int i = 0; i < size; ++i) {
-            result[i] = input[i];
-        }
-        result.UpdateIndexLookupTable();
-        return result;
-    }
-    ```
+template<typename T, int N>
+FastTrack<T, N> OptimizeTrack(Track<T, N>& input) {
+    FastTrack<T, N> result;
+    result.SetInterpolation(input.GetInterpolation());
+    unsigned int size = input.Size();
+    result.Resize(size);
+    for (unsigned int i = 0; i < size; ++i) {
+        result[i] = input[i];
+    }
+    result.UpdateIndexLookupTable();
+    return result;
+}
+```
 
 仅仅将`Track`类优化为`FastTrack`还不够。`TransformTrack`类也需要改变。它需要包含新的、优化的`FastTrack`类。在下一节中，您将更改`TransformTrack`类，使其成为模板，并且可以包含`Track`或`FastTrack`。
 
@@ -429,67 +429,67 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  将`TransformTrack`类的名称更改为`TTransformTrack`并对类进行模板化。模板接受两个参数——要使用的矢量轨迹的类型和四元数轨迹的类型。更新`mPosition`、`mRotation`和`mScale`轨迹以使用新的模板类型：
 
 ```cpp
-    template <typename VTRACK, typename QTRACK>
-    class TTransformTrack {
-    protected:
-       unsigned int mId;
-       VTRACK mPosition;
-       QTRACK mRotation;
-       VTRACK mScale;
-    public:
-       TTransformTrack();
-       unsigned int GetId();
-       void SetId(unsigned int id);
-       VTRACK& GetPositionTrack();
-       QTRACK& GetRotationTrack();
-       VTRACK& GetScaleTrack();
-       float GetStartTime();
-       float GetEndTime();
-       bool IsValid();
-       Transform Sample(const Transform& r,float t,bool l);
-    };
-    ```
+template <typename VTRACK, typename QTRACK>
+class TTransformTrack {
+protected:
+   unsigned int mId;
+   VTRACK mPosition;
+   QTRACK mRotation;
+   VTRACK mScale;
+public:
+   TTransformTrack();
+   unsigned int GetId();
+   void SetId(unsigned int id);
+   VTRACK& GetPositionTrack();
+   QTRACK& GetRotationTrack();
+   VTRACK& GetScaleTrack();
+   float GetStartTime();
+   float GetEndTime();
+   bool IsValid();
+   Transform Sample(const Transform& r,float t,bool l);
+};
+```
 
 1.  将这个类 typedef 为`TransformTrack`，使用`VectorTrack`和`QuaternionTrack`作为参数。再次将其 typedef 为`FastTransformTrack`，使用`FastVectorTrack`和`FastQuaternionTrack`作为模板参数：
 
 ```cpp
-    typedef TTransformTrack<VectorTrack, 
-        QuaternionTrack> TransformTrack;
-    typedef TTransformTrack<FastVectorTrack, 
-        FastQuaternionTrack> FastTransformTrack;
-    ```
+typedef TTransformTrack<VectorTrack, 
+    QuaternionTrack> TransformTrack;
+typedef TTransformTrack<FastVectorTrack, 
+    FastQuaternionTrack> FastTransformTrack;
+```
 
 1.  声明将`TransformTrack`转换为`FastTransformTrack`的优化函数：
 
 ```cpp
-    FastTransformTrack OptimizeTransformTrack(
-                       TransformTrack& input);
-    ```
+FastTransformTrack OptimizeTransformTrack(
+                   TransformTrack& input);
+```
 
 1.  在`TransformTrack.cpp`中为`typedef`函数添加模板规范：
 
 ```cpp
-    template TTransformTrack<VectorTrack, QuaternionTrack>;
-    template TTransformTrack<FastVectorTrack, 
-                             FastQuaternionTrack>;
-    ```
+template TTransformTrack<VectorTrack, QuaternionTrack>;
+template TTransformTrack<FastVectorTrack, 
+                         FastQuaternionTrack>;
+```
 
 1.  实现`OptimizeTransformTrack`函数。复制轨迹 ID，然后通过值复制各个轨迹：
 
 ```cpp
-    FastTransformTrack OptimizeTransformTrack(
-                       TransformTrack& input) {
-        FastTransformTrack result;
-        result.SetId(input.GetId());
-        result.GetPositionTrack()= OptimizeTrack<vec3, 3> (
-                                 input.GetPositionTrack());
-        result.GetRotationTrack() = OptimizeTrack<quat, 4>(
-                                 input.GetRotationTrack());
-        result.GetScaleTrack()  =  OptimizeTrack<vec3, 3> (
-                                    input.GetScaleTrack());
-        return result;
-    }
-    ```
+FastTransformTrack OptimizeTransformTrack(
+                   TransformTrack& input) {
+    FastTransformTrack result;
+    result.SetId(input.GetId());
+    result.GetPositionTrack()= OptimizeTrack<vec3, 3> (
+                             input.GetPositionTrack());
+    result.GetRotationTrack() = OptimizeTrack<quat, 4>(
+                             input.GetRotationTrack());
+    result.GetScaleTrack()  =  OptimizeTrack<vec3, 3> (
+                                input.GetScaleTrack());
+    return result;
+}
+```
 
 因为`OptimizeTransformTrack`通过值复制实际轨迹数据，所以它可能会有点慢。这个函数打算在初始化时调用。在下一节中，您将对`Clip`类进行模板化，类似于您对`Transform`类的操作，以创建`FastClip`。
 
@@ -500,57 +500,57 @@ Uniform<mat4>::Set(animated, mPosePalette);
 1.  将`Clip`类的名称更改为`TClip`并对类进行模板化。模板只接受一种类型——`TClip`类包含的变换轨迹的类型。更改`mTracks`的类型和`[] operator`的返回类型，使其成为模板类型：
 
 ```cpp
-    template <typename TRACK>
-    class TClip {
-    protected:
-        std::vector<TRACK> mTracks;
-        std::string mName;
-        float mStartTime;
-        float mEndTime;
-        bool mLooping;
-    public:
-        TClip();
-        TRACK& operator[](unsigned int index);
-    // ...
-    ```
+template <typename TRACK>
+class TClip {
+protected:
+    std::vector<TRACK> mTracks;
+    std::string mName;
+    float mStartTime;
+    float mEndTime;
+    bool mLooping;
+public:
+    TClip();
+    TRACK& operator[](unsigned int index);
+// ...
+```
 
 1.  使用`TransformTrack`类型将`TClip`typedef 为`Clip`。使用`FastTransformTrack`类型将`TClip`typedef 为`FastClip`。这样，`Clip`类不会改变，而`FastClip`类可以重用所有现有的代码：
 
 ```cpp
-    typedef TClip<TransformTrack> Clip;
-    typedef TClip<FastTransformTrack> FastClip;
-    ```
+typedef TClip<TransformTrack> Clip;
+typedef TClip<FastTransformTrack> FastClip;
+```
 
 1.  声明一个将`Clip`对象转换为`FastClip`对象的函数：
 
 ```cpp
-    FastClip OptimizeClip(Clip& input);
-    ```
+FastClip OptimizeClip(Clip& input);
+```
 
 1.  在`Clip.cpp`中声明这些 typedef 类的模板特化：
 
 ```cpp
-    template TClip<TransformTrack>;
-    template TClip<FastTransformTrack>;
-    ```
+template TClip<TransformTrack>;
+template TClip<FastTransformTrack>;
+```
 
 1.  要实现`OptimizeClip`函数，复制输入剪辑的名称和循环值。对于剪辑中的每个关节，调用其轨迹上的`OptimizeTransformTrack`函数。在返回副本之前，不要忘记计算新的`FastClip`对象的持续时间：
 
 ```cpp
-    FastClip OptimizeClip(Clip& input) {
-        FastClip result;
-        result.SetName(input.GetName());
-        result.SetLooping(input.GetLooping());
-        unsigned int size = input.Size();
-        for (unsigned int i = 0; i < size; ++i) {
-            unsigned int joint = input.GetIdAtIndex(i);
-            result[joint] = 
-                  OptimizeTransformTrack(input[joint]);
-        }
-        result.RecalculateDuration();
-        return result;
-    }
-    ```
+FastClip OptimizeClip(Clip& input) {
+    FastClip result;
+    result.SetName(input.GetName());
+    result.SetLooping(input.GetLooping());
+    unsigned int size = input.Size();
+    for (unsigned int i = 0; i < size; ++i) {
+        unsigned int joint = input.GetIdAtIndex(i);
+        result[joint] = 
+              OptimizeTransformTrack(input[joint]);
+    }
+    result.RecalculateDuration();
+    return result;
+}
+```
 
 与其他转换函数一样，`OptimizeClip`只打算在初始化时调用。在接下来的部分，您将探讨如何优化`Pose`调色板的生成。
 
@@ -621,108 +621,108 @@ void Pose::GetMatrixPalette(std::vector<mat4>& out) {
 1.  将以下函数声明添加到`RearrangeBones.h`文件中：
 
 ```cpp
-    typedef std::map<int, int> BoneMap;
-    BoneMap RearrangeSkeleton(Skeleton& skeleton);
-    void RearrangeMesh(Mesh& mesh, BoneMap& boneMap);
-    void RearrangeClip(Clip& clip, BoneMap& boneMap);
-    void RearrangeFastclip(FastClip& clip, BoneMap& boneMap);
-    ```
+typedef std::map<int, int> BoneMap;
+BoneMap RearrangeSkeleton(Skeleton& skeleton);
+void RearrangeMesh(Mesh& mesh, BoneMap& boneMap);
+void RearrangeClip(Clip& clip, BoneMap& boneMap);
+void RearrangeFastclip(FastClip& clip, BoneMap& boneMap);
+```
 
 1.  在一个新文件`ReearrangeBones.cpp`中开始实现`RearrangeSkeleton`函数。首先，创建对静止和绑定姿势的引用，然后确保你要重新排列的骨骼不是空的。如果是空的，就返回一个空的字典：
 
 ```cpp
-    BoneMap RearrangeSkeleton(Skeleton& skeleton) {
-        Pose& restPose = skeleton.GetRestPose();
-        Pose& bindPose = skeleton.GetBindPose();
-        unsigned int size = restPose.Size();
-        if (size == 0) { return BoneMap(); }
-    ```
+BoneMap RearrangeSkeleton(Skeleton& skeleton) {
+    Pose& restPose = skeleton.GetRestPose();
+    Pose& bindPose = skeleton.GetBindPose();
+    unsigned int size = restPose.Size();
+    if (size == 0) { return BoneMap(); }
+```
 
 1.  接下来，创建一个二维整数数组（整数向量的向量）。外部向量的每个元素代表一个骨骼，该向量和绑定或静止姿势中的`mJoints`数组的索引是平行的。内部向量表示外部向量索引处的关节包含的所有子节点。循环遍历静止姿势中的每个关节：
 
 ```cpp
-        std::vector<std::vector<int>> hierarchy(size);
-        std::list<int> process;
-        for (unsigned int i = 0; i < size; ++i) {
-            int parent = restPose.GetParent(i);
-    ```
+    std::vector<std::vector<int>> hierarchy(size);
+    std::list<int> process;
+    for (unsigned int i = 0; i < size; ++i) {
+        int parent = restPose.GetParent(i);
+```
 
 1.  如果一个关节有父节点，将该关节的索引添加到父节点的子节点向量中。如果一个节点是根节点（没有父节点），直接将其添加到处理列表中。稍后将使用该列表来遍历地图深度：
 
 ```cpp
-            if (parent >= 0) {
-                hierarchy[parent].push_back((int)i);
-            }
-            else {
-                process.push_back((int)i);
-            }
-        }
-    ```
+        if (parent >= 0) {
+            hierarchy[parent].push_back((int)i);
+        }
+        else {
+            process.push_back((int)i);
+        }
+    }
+```
 
 1.  要弄清楚如何重新排序骨骼，你需要保留两个映射——一个从旧配置映射到新配置，另一个从新配置映射回旧配置：
 
 ```cpp
-        BoneMap mapForward;
-        BoneMap mapBackward;
-    ```
+    BoneMap mapForward;
+    BoneMap mapBackward;
+```
 
 1.  对于每个元素，如果它包含子元素，则将子元素添加到处理列表中。这样，所有的关节都被处理，层次结构中较高的关节首先被处理：
 
 ```cpp
-        int index = 0;
-        while (process.size() > 0) {
-            int current = *process.begin();
-            process.pop_front();
-            std::vector<int>& children = hierarchy[current];
-            unsigned int numChildren = children.size();
-            for (unsigned int i = 0; i < numChildren; ++i) {
-                process.push_back(children[i]);
-            }
-    ```
+    int index = 0;
+    while (process.size() > 0) {
+        int current = *process.begin();
+        process.pop_front();
+        std::vector<int>& children = hierarchy[current];
+        unsigned int numChildren = children.size();
+        for (unsigned int i = 0; i < numChildren; ++i) {
+            process.push_back(children[i]);
+        }
+```
 
 1.  将正向映射的当前索引设置为正在处理的关节的索引。正向映射的当前索引是一个原子计数器。对于反向映射也是同样的操作，但是要交换键值对。不要忘记将空节点（`-1`）添加到两个映射中：
 
 ```cpp
-            mapForward[index] = current;
-            mapBackward[current] = index;
-            index += 1;
-        }
-        mapForward[-1] = -1;
-        mapBackward[-1] = -1;
-    ```
+        mapForward[index] = current;
+        mapBackward[current] = index;
+        index += 1;
+    }
+    mapForward[-1] = -1;
+    mapBackward[-1] = -1;
+```
 
 1.  现在映射已经填充，您需要构建新的静止和绑定姿势，使其骨骼按正确的顺序排列。循环遍历原始静止和绑定姿势中的每个关节，并将它们的本地变换复制到新的姿势中。对于关节名称也是同样的操作：
 
 ```cpp
-        Pose newRestPose(size);
-        Pose newBindPose(size);
-        std::vector<std::string> newNames(size);
-        for (unsigned int i = 0; i < size; ++i) {
-            int thisBone = mapForward[i];
-            newRestPose.SetLocalTransform(i, 
-                    restPose.GetLocalTransform(thisBone));
-            newBindPose.SetLocalTransform(i, 
-                    bindPose.GetLocalTransform(thisBone));
-            newNames[i] = skeleton.GetJointName(thisBone);
-    ```
+    Pose newRestPose(size);
+    Pose newBindPose(size);
+    std::vector<std::string> newNames(size);
+    for (unsigned int i = 0; i < size; ++i) {
+        int thisBone = mapForward[i];
+        newRestPose.SetLocalTransform(i, 
+                restPose.GetLocalTransform(thisBone));
+        newBindPose.SetLocalTransform(i, 
+                bindPose.GetLocalTransform(thisBone));
+        newNames[i] = skeleton.GetJointName(thisBone);
+```
 
 1.  为每个关节找到新的父关节 ID 需要两个映射步骤。首先，将当前索引映射到原始骨架中的骨骼。这将返回原始骨架的父关节。将此父索引映射回新骨架。这就是为什么有两个字典，以便进行快速映射：
 
 ```cpp
-            int parent = mapBackward[bindPose.GetParent(
-                                             thisBone)];
-            newRestPose.SetParent(i, parent);
-            newBindPose.SetParent(i, parent);
-        }
-    ```
+        int parent = mapBackward[bindPose.GetParent(
+                                         thisBone)];
+        newRestPose.SetParent(i, parent);
+        newBindPose.SetParent(i, parent);
+    }
+```
 
 1.  一旦找到新的静止和绑定姿势，并且关节名称已经相应地重新排列，通过调用公共的`Set`方法将这些数据写回骨架。骨架的`Set`方法还会计算逆绑定姿势矩阵调色板：
 
 ```cpp
-        skeleton.Set(newRestPose, newBindPose, newNames);
-        return mapBackward;
-    } // End of RearrangeSkeleton function
-    ```
+    skeleton.Set(newRestPose, newBindPose, newNames);
+    return mapBackward;
+} // End of RearrangeSkeleton function
+```
 
 `RearrangeSkeleton`函数重新排列骨架中的骨骼，以便骨架可以利用`GetMatrixPalette`的优化版本。重新排列骨架是不够的。由于关节索引移动，引用该骨架的任何剪辑或网格现在都是损坏的。在下一节中，您将实现辅助函数来重新排列剪辑中的关节。
 

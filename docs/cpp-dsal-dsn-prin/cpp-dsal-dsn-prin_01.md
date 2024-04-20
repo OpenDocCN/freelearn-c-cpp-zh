@@ -254,184 +254,184 @@ C 风格数组也支持所有关系运算符，但这些运算符实际上并不
 1.  首先，包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <sstream>
-    #include <algorithm>
-    ```
+#include <iostream>
+#include <sstream>
+#include <algorithm>
+```
 
 1.  现在，让我们编写一个名为`dynamic_array`的基本模板结构，以及主要数据成员：
 
 ```cpp
-    template <typename T>
-    class dynamic_array
-    {
-        T* data;
-        size_t n;
-    ```
+template <typename T>
+class dynamic_array
+{
+    T* data;
+    size_t n;
+```
 
 1.  现在，让我们添加一个接受数组大小并复制它的构造函数：
 
 ```cpp
-    public:
-    dynamic_array(int n)
-    {
-        this->n = n;
-        data = new T[n];
-    }
-        dynamic_array(const dynamic_array<T>& other)
-      {
-        n = other.n;
-        data = new T[n];
-        for(int i = 0; i < n; i++)
-        data[i] = other[i];
-      }
-    ```
+public:
+dynamic_array(int n)
+{
+    this->n = n;
+    data = new T[n];
+}
+    dynamic_array(const dynamic_array<T>& other)
+  {
+    n = other.n;
+    data = new T[n];
+    for(int i = 0; i < n; i++)
+    data[i] = other[i];
+  }
+```
 
 1.  现在，让我们在`public`访问器中添加`operator[]`和`function()`来支持直接访问数据，类似于`std::array`：
 
 ```cpp
-    T& operator[](int index)
-    {
-        return data[index];
-    }
-    const T& operator[](int index) const
-    {
-        return data[index];
-    }
-    T& at(int index)
-    {
-        if(index < n)
-        return data[index];
-        throw "Index out of range";
-    }
-    ```
+T& operator[](int index)
+{
+    return data[index];
+}
+const T& operator[](int index) const
+{
+    return data[index];
+}
+T& at(int index)
+{
+    if(index < n)
+    return data[index];
+    throw "Index out of range";
+}
+```
 
 1.  现在，让我们添加一个名为`size()`的函数来返回数组的大小，以及一个析构函数来避免内存泄漏：
 
 ```cpp
-    size_t size() const
-    {
-        return n;
-    }
-    ~dynamic_array()
-    {
-        delete[] data;   // A destructor to prevent memory leak
-    }
-    ```
+size_t size() const
+{
+    return n;
+}
+~dynamic_array()
+{
+    delete[] data;   // A destructor to prevent memory leak
+}
+```
 
 1.  现在，让我们添加迭代器函数来支持基于范围的循环，以便遍历`dynamic_array`：
 
 ```cpp
-    T* begin()
-    {
-        return data;
-    }
-    const T* begin() const
-    {
-        return data;
-    }
-    T* end()
-    {
-        return data + n;
-    }
-    const T* end() const
-    {
-        return data + n;
-    }
-    ```
+T* begin()
+{
+    return data;
+}
+const T* begin() const
+{
+    return data;
+}
+T* end()
+{
+    return data + n;
+}
+const T* end() const
+{
+    return data + n;
+}
+```
 
 1.  现在，让我们添加一个函数，使用`+`运算符将一个数组追加到另一个数组中。让我们将其保持为`friend`函数以提高可用性：
 
 ```cpp
-    friend dynamic_array<T> operator+(const dynamic_array<T>& arr1, dynamic_array<T>& arr2)
-    {
-        dynamic_array<T> result(arr1.size() + arr2.size());
-        std::copy(arr1.begin(), arr1.end(), result.begin());
-        std::copy(arr2.begin(), arr2.end(), result.begin() + arr1.size());
-        return result;
-    }
-    ```
+friend dynamic_array<T> operator+(const dynamic_array<T>& arr1, dynamic_array<T>& arr2)
+{
+    dynamic_array<T> result(arr1.size() + arr2.size());
+    std::copy(arr1.begin(), arr1.end(), result.begin());
+    std::copy(arr2.begin(), arr2.end(), result.begin() + arr1.size());
+    return result;
+}
+```
 
 1.  现在，让我们添加一个名为`to_string`的函数，它接受一个分隔符作为参数，默认值为“`,`”：
 
 ```cpp
-    std::string to_string(const std::string& sep = ", ")
-    {
-      if(n == 0)
-        return "";
-      std::ostringstream os;
-      os << data[0];
-      for(int i = 1; i < n; i++)
-        os << sep << data[i];
-      return os.str();
-    }
-    };
-    ```
+std::string to_string(const std::string& sep = ", ")
+{
+  if(n == 0)
+    return "";
+  std::ostringstream os;
+  os << data[0];
+  for(int i = 1; i < n; i++)
+    os << sep << data[i];
+  return os.str();
+}
+};
+```
 
 1.  现在，让我们为学生添加一个`struct`。我们将只保留姓名和标准（即学生所在的年级/班级）以简化，并添加`operator<<`以正确打印它：
 
 ```cpp
-    struct student
-    {
-        std::string name;
-        int standard;
-    };
-    std::ostream& operator<<(std::ostream& os, const student& s)
-    {
-        return (os << "[Name: " << s.name << ", Standard: " << s.standard << "]");
-    }
-    ```
+struct student
+{
+    std::string name;
+    int standard;
+};
+std::ostream& operator<<(std::ostream& os, const student& s)
+{
+    return (os << "[Name: " << s.name << ", Standard: " << s.standard << "]");
+}
+```
 
 1.  现在，让我们添加一个`main`函数来使用这个数组：
 
 ```cpp
-    int main()
-    {
-        int nStudents;
-        std::cout << "Enter number of students in class 1: ";
-        std::cin >> nStudents;
-    dynamic_array<student> class1(nStudents);
-    for(int i = 0; i < nStudents; i++)
-    {
-        std::cout << "Enter name and class of student " << i + 1 << ": ";
-        std::string name;
-        int standard;
-        std::cin >> name >> standard;
-        class1[i] = student{name, standard};
-    }
-    // Now, let's try to access the student out of range in the array
-    try
-    {
-        class1[nStudents] = student{"John", 8};  // No exception, undefined behavior
-        std::cout << "class1 student set out of range without exception" << std::endl;
-        class1.at(nStudents) = student{"John", 8};  // Will throw exception
-    }
-    catch(...)
-    {
-    std::cout << "Exception caught" << std::endl;
-    }
-    auto class2 = class1;  // Deep copy
-        std::cout << "Second class after initialized using first array: " << class2.to_string() << std::endl;
-        auto class3 = class1 + class2;
-        // Combines both classes and creates a bigger one
-        std::cout << "Combined class: ";
-        std::cout << class3.to_string() << std::endl;
-        return 0;
-    }
-    ```
+int main()
+{
+    int nStudents;
+    std::cout << "Enter number of students in class 1: ";
+    std::cin >> nStudents;
+dynamic_array<student> class1(nStudents);
+for(int i = 0; i < nStudents; i++)
+{
+    std::cout << "Enter name and class of student " << i + 1 << ": ";
+    std::string name;
+    int standard;
+    std::cin >> name >> standard;
+    class1[i] = student{name, standard};
+}
+// Now, let's try to access the student out of range in the array
+try
+{
+    class1[nStudents] = student{"John", 8};  // No exception, undefined behavior
+    std::cout << "class1 student set out of range without exception" << std::endl;
+    class1.at(nStudents) = student{"John", 8};  // Will throw exception
+}
+catch(...)
+{
+std::cout << "Exception caught" << std::endl;
+}
+auto class2 = class1;  // Deep copy
+    std::cout << "Second class after initialized using first array: " << class2.to_string() << std::endl;
+    auto class3 = class1 + class2;
+    // Combines both classes and creates a bigger one
+    std::cout << "Combined class: ";
+    std::cout << class3.to_string() << std::endl;
+    return 0;
+}
+```
 
 1.  使用三个学生`Raj(8)`，`Rahul(10)`，和`Viraj(6)`作为输入执行上述代码。在控制台中输出如下：
 
 ```cpp
-    Enter number of students in class 1 : 3
-    Enter name and class of student 1: Raj 8
-    Enter name and class of student 2: Rahul 10
-    Enter name and class of student 3: Viraj 6
-    class1 student set out of range without exception
-    Exception caught
-    Second class after initialized using first array : [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6]
-    Combined class : [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6], [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6]
-    ```
+Enter number of students in class 1 : 3
+Enter name and class of student 1: Raj 8
+Enter name and class of student 2: Rahul 10
+Enter name and class of student 3: Viraj 6
+class1 student set out of range without exception
+Exception caught
+Second class after initialized using first array : [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6]
+Combined class : [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6], [Name: Raj, Standard: 8], [Name: Rahul, Standard: 10], [Name: Viraj, Standard: 6]
+```
 
 这里提到的大多数函数都有类似于`std::array`的实现。
 
@@ -444,67 +444,67 @@ C 风格数组也支持所有关系运算符，但这些运算符实际上并不
 1.  让我们首先包括所需的库：
 
 ```cpp
-    #include <iostream>
-    #include <array>
-    #include <type_traits>
-    ```
+#include <iostream>
+#include <array>
+#include <type_traits>
+```
 
 1.  首先，我们将尝试构建函数的签名。由于返回类型是一个快速遍历的容器，我们将使用`std::array`。为了允许任意数量的参数，我们将使用可变模板：
 
 ```cpp
-    template<typename ... Args>
-    std::array<?,?> build_array(Args&&... args)
-    ```
+template<typename ... Args>
+std::array<?,?> build_array(Args&&... args)
+```
 
 考虑到返回类型的容器应该是快速遍历的要求，我们可以选择数组或向量。由于元素的数量在编译时基于函数的参数数量是已知的，我们可以继续使用`std::array`。
 
 1.  现在，我们必须为`std::array`提供元素的类型和元素的数量。我们可以使用`std::common_type`模板来找出`std::array`内部元素的类型。由于这取决于参数，我们将函数的返回类型作为尾随类型提供：
 
 ```cpp
-    template<typename ... Args>
-    auto build_array(Args&&... args) -> std::array<typename std::common_type<Args...>::type, ?>
-    {
-        using commonType = typename std::common_type<Args...>::type;
-        // Create array
-    }
-    ```
+template<typename ... Args>
+auto build_array(Args&&... args) -> std::array<typename std::common_type<Args...>::type, ?>
+{
+    using commonType = typename std::common_type<Args...>::type;
+    // Create array
+}
+```
 
 1.  如前面的代码所示，我们现在需要弄清楚两件事——元素的数量，以及如何使用`commonType`创建数组：
 
 ```cpp
-    template< typename ... Args>
-    auto build_array(Args&&... args) -> std::array<typename std::common_type<Args...>::type, sizeof...(args)>
-    {
-        using commonType = typename std::common_type<Args...>::type;
-        return {std::forward<commonType>(args)...};
-    }
-    ```
+template< typename ... Args>
+auto build_array(Args&&... args) -> std::array<typename std::common_type<Args...>::type, sizeof...(args)>
+{
+    using commonType = typename std::common_type<Args...>::type;
+    return {std::forward<commonType>(args)...};
+}
+```
 
 1.  现在，让我们编写`main`函数来看看我们的函数如何工作：
 
 ```cpp
-    int main()
-    {
-        auto data = build_array(1, 0u, 'a', 3.2f, false);
-        for(auto i: data)
-            std::cout << i << " ";
-        std::cout << std::endl;
-    }
-    ```
+int main()
+{
+    auto data = build_array(1, 0u, 'a', 3.2f, false);
+    for(auto i: data)
+        std::cout << i << " ";
+    std::cout << std::endl;
+}
+```
 
 1.  运行代码应该得到以下输出：
 
 ```cpp
-    1 0 97 3.2 0
-    ```
+1 0 97 3.2 0
+```
 
 正如我们所看到的，所有最终输出都是浮点数形式，因为一切都可以转换为浮点数。
 
 1.  为了进一步测试，我们可以在`main`函数中添加以下内容并测试输出：
 
 ```cpp
-    auto data2 = build_array(1, "Packt", 2.0);
-    ```
+auto data2 = build_array(1, "Packt", 2.0);
+```
 
 通过这种修改，我们应该会得到一个错误，说所有类型都无法转换为通用类型。确切的错误消息应该提到模板推导失败。这是因为没有单一类型可以将字符串和数字都转换为。
 
@@ -696,73 +696,73 @@ fwd_list.erase_after(it, fwd_list.end());
 1.  让我们首先包含所需的头文件并添加`struct citizen`：
 
 ```cpp
-    #include <iostream>
-    #include <forward_list>
-    struct citizen
-    {
-        std::string name;
-        int age;
-    };
-    std::ostream& operator<<(std::ostream& os, const citizen& c)
-    {
-        return (os << "[Name: " << c.name << ", Age: " << c.age << "]");
-    }
-    ```
+#include <iostream>
+#include <forward_list>
+struct citizen
+{
+    std::string name;
+    int age;
+};
+std::ostream& operator<<(std::ostream& os, const citizen& c)
+{
+    return (os << "[Name: " << c.name << ", Age: " << c.age << "]");
+}
+```
 
 1.  现在，让我们编写一个`main`函数，并在`std::forward_list`中初始化一些公民。我们还将对其进行复制，以避免再次初始化：
 
 ```cpp
-    int main()
-    {
-      std::forward_list<citizen> citizens = {{"Raj", 22}, {"Rohit", 25}, {"Rohan", 17}, {"Sachin", 16}};
-      auto citizens_copy = citizens;
-      std::cout << "All the citizens: ";
-      for (const auto &c : citizens)
-          std::cout << c << " ";
-      std::cout << std::endl;
-    ```
+int main()
+{
+  std::forward_list<citizen> citizens = {{"Raj", 22}, {"Rohit", 25}, {"Rohan", 17}, {"Sachin", 16}};
+  auto citizens_copy = citizens;
+  std::cout << "All the citizens: ";
+  for (const auto &c : citizens)
+      std::cout << c << " ";
+  std::cout << std::endl;
+```
 
 1.  现在，让我们从列表中删除所有不合格的公民：
 
 ```cpp
-    citizens.remove_if(
-        [](const citizen& c)
-        {
-            return (c.age < 18);
-        });
-    std::cout << "Eligible citizens for voting: ";
-    for(const auto& c: citizens)
-        std::cout << c << " ";
-    std::cout << std::endl;
-    ```
+citizens.remove_if(
+    [](const citizen& c)
+    {
+        return (c.age < 18);
+    });
+std::cout << "Eligible citizens for voting: ";
+for(const auto& c: citizens)
+    std::cout << c << " ";
+std::cout << std::endl;
+```
 
 `remove_if`函数会删除所有满足给定条件的元素。在这里，我们提供了一个 lambda，因为条件非常简单。如果条件很复杂，我们也可以编写一个接受链表底层类型的参数并返回布尔值的普通函数。
 
 1.  现在，让我们找出明年有资格投票的人：
 
 ```cpp
-    citizens_copy.remove_if(
-        [](const citizen& c)
-        {
-        // Returns true if age is less than 18
-            return (c.age != 17);
-        });
-    std::cout << "Citizens that will be eligible for voting next year: ";
-    for(const auto& c: citizens_copy)
-        std::cout << c << " ";
-    std::cout << std::endl;
-    }
-    ```
+citizens_copy.remove_if(
+    [](const citizen& c)
+    {
+    // Returns true if age is less than 18
+        return (c.age != 17);
+    });
+std::cout << "Citizens that will be eligible for voting next year: ";
+for(const auto& c: citizens_copy)
+    std::cout << c << " ";
+std::cout << std::endl;
+}
+```
 
 正如你所看到的，我们只保留那些年龄为 17 岁的公民。
 
 1.  运行练习。你应该会得到这样的输出：
 
 ```cpp
-    All the citizens: [Name: Raj, Age: 22] [Name: Rohit, Age: 25] [Name: Rohan, Age: 17] [Name: Sachin, Age: 16] 
-    Eligible citizens for voting: [Name: Raj, Age: 22] [Name: Rohit, Age: 25] 
-    Citizens that will be eligible for voting next year: [Name: Rohan, Age: 17] 
-    ```
+All the citizens: [Name: Raj, Age: 22] [Name: Rohit, Age: 25] [Name: Rohan, Age: 17] [Name: Sachin, Age: 16] 
+Eligible citizens for voting: [Name: Raj, Age: 22] [Name: Rohit, Age: 25] 
+Citizens that will be eligible for voting next year: [Name: Rohan, Age: 17] 
+```
 
 `remove_if`函数的时间复杂度为*O(n)*，因为它只需遍历列表一次，同时根据需要删除所有元素。如果我们想要删除具有特定值的元素，我们可以使用`remove`的另一个版本，它只需要一个对象的参数，并删除列表中与给定值匹配的所有对象。它还要求我们为给定类型实现`==`运算符。
 
@@ -824,59 +824,59 @@ list1.unique([](int a, int b) { return (b - a) < 2; });
 1.  让我们首先包含头文件：
 
 ```cpp
-    #include <iostream>
-    #include <forward_list>
-    #include <vector>
-    int main()
-    {
-    ```
+#include <iostream>
+#include <forward_list>
+#include <vector>
+int main()
+{
+```
 
 1.  让我们写一个包含获奖者名单的向量：
 
 ```cpp
-    std::vector<std::string> vec = {"Lewis Hamilton", "Lewis Hamilton", "Nico Roseberg", "Sebastian Vettel", "Lewis Hamilton", "Sebastian Vettel", "Sebastian Vettel", "Sebastian Vettel", "Fernando Alonso"};
-    auto it = vec.begin();       // Constant time
-    std::cout << "Latest winner is: " << *it << std::endl;
-    it += 8;                    // Constant time
-    std::cout << "Winner before 8 years was: " << *it << std::endl;
-    advance(it, -3);            // Constant time
-    std::cout << "Winner before 3 years of that was: " << *it << std::endl;
-    ```
+std::vector<std::string> vec = {"Lewis Hamilton", "Lewis Hamilton", "Nico Roseberg", "Sebastian Vettel", "Lewis Hamilton", "Sebastian Vettel", "Sebastian Vettel", "Sebastian Vettel", "Fernando Alonso"};
+auto it = vec.begin();       // Constant time
+std::cout << "Latest winner is: " << *it << std::endl;
+it += 8;                    // Constant time
+std::cout << "Winner before 8 years was: " << *it << std::endl;
+advance(it, -3);            // Constant time
+std::cout << "Winner before 3 years of that was: " << *it << std::endl;
+```
 
 1.  让我们尝试使用`forward_list`迭代器做同样的事情，并看看它们与向量迭代器有何不同：
 
 ```cpp
-    std::forward_list<std::string> fwd(vec.begin(), vec.end());
-    auto it1 = fwd.begin();
-    std::cout << "Latest winner is: " << *it << std::endl;
-    advance(it1, 5);   // Time taken is proportional to the number of elements
-    std::cout << "Winner before 5 years was: " << *it << std::endl;
-    // Going back will result in compile time error as forward_list only allows us to move towards the end.
-    // advance(it1, -2);      // Compiler error
-    }
-    ```
+std::forward_list<std::string> fwd(vec.begin(), vec.end());
+auto it1 = fwd.begin();
+std::cout << "Latest winner is: " << *it << std::endl;
+advance(it1, 5);   // Time taken is proportional to the number of elements
+std::cout << "Winner before 5 years was: " << *it << std::endl;
+// Going back will result in compile time error as forward_list only allows us to move towards the end.
+// advance(it1, -2);      // Compiler error
+}
+```
 
 1.  运行这个练习应该产生以下输出：
 
 ```cpp
-    Latest winner is : Lewis Hamilton
-    Winner before 8 years was : Fernando Alonso
-    Winner before 3 years of that was : Sebastian Vettel
-    Latest winner is : Sebastian Vettel
-    Winner before 5 years was : Sebastian Vettel
-    ```
+Latest winner is : Lewis Hamilton
+Winner before 8 years was : Fernando Alonso
+Winner before 3 years of that was : Sebastian Vettel
+Latest winner is : Sebastian Vettel
+Winner before 5 years was : Sebastian Vettel
+```
 
 1.  现在，让我们看看如果我们在`main`函数的末尾放入以下行会发生什么：
 
 ```cpp
-    it1 += 2;
-    ```
+it1 += 2;
+```
 
 我们将得到类似于这样的错误消息：
 
 ```cpp
-    no match for 'operator+=' (operand types are std::_Fwd_list_iterator<int>' and 'int')
-    ```
+no match for 'operator+=' (operand types are std::_Fwd_list_iterator<int>' and 'int')
+```
 
 我们在这个练习中探索的各种迭代器对于轻松获取数据集中的任何数据非常有用。
 
@@ -893,187 +893,187 @@ list1.unique([](int a, int b) { return (b - a) < 2; });
 1.  让我们添加所需的头文件，然后从一个单节点开始基本实现`singly_ll`：
 
 ```cpp
-    #include <iostream>
-    #include <algorithm>
-    struct singly_ll_node
-    {
-        int data;
-        singly_ll_node* next;
-    };
-    ```
+#include <iostream>
+#include <algorithm>
+struct singly_ll_node
+{
+    int data;
+    singly_ll_node* next;
+};
+```
 
 1.  现在，我们将实现实际的`singly_ll`类，它将节点包装起来以便更好地进行接口设计。
 
 ```cpp
-    class singly_ll
-    {
-    public:
-        using node = singly_ll_node;
-        using node_ptr = node*;
-    private:
-        node_ptr head;
-    ```
+class singly_ll
+{
+public:
+    using node = singly_ll_node;
+    using node_ptr = node*;
+private:
+    node_ptr head;
+```
 
 1.  现在，让我们添加`push_front`和`pop_front`，就像在`forward_list`中一样：
 
 ```cpp
-    public:
-    void push_front(int val)
-    {
-        auto new_node = new node{val, NULL};
-        if(head != NULL)
-            new_node->next = head;
-        head = new_node;
-    }
-    void pop_front()
-    {
-        auto first = head;
-        if(head)
-        {
-            head = head->next;
-            delete first;
-        }
-        else
-            throw "Empty ";
-    }
-    ```
+public:
+void push_front(int val)
+{
+    auto new_node = new node{val, NULL};
+    if(head != NULL)
+        new_node->next = head;
+    head = new_node;
+}
+void pop_front()
+{
+    auto first = head;
+    if(head)
+    {
+        head = head->next;
+        delete first;
+    }
+    else
+        throw "Empty ";
+}
+```
 
 1.  现在让我们为我们的`singly_ll`类实现一个基本的迭代器，包括构造函数和访问器：
 
 ```cpp
-    struct singly_ll_iterator
-    {
-    private:
-        node_ptr ptr;
-    public:
-        singly_ll_iterator(node_ptr p) : ptr(p)
-        {
-    }
-    int& operator*()
-    {
-        return ptr->data;
-    }
-    node_ptr get()
-    {
-        return ptr;
-    }
-    ```
+struct singly_ll_iterator
+{
+private:
+    node_ptr ptr;
+public:
+    singly_ll_iterator(node_ptr p) : ptr(p)
+    {
+}
+int& operator*()
+{
+    return ptr->data;
+}
+node_ptr get()
+{
+    return ptr;
+}
+```
 
 1.  让我们为前置和后置递增添加`operator++`函数：
 
 ```cpp
-    singly_ll_iterator& operator++()     // pre-increment
-    {
-            ptr = ptr->next;
-            return *this;
-    }
-    singly_ll_iterator operator++(int)    // post-increment
-    {
-        singly_ll_iterator result = *this;
-    ++(*this);
-    return result;
-    }
-    ```
+singly_ll_iterator& operator++()     // pre-increment
+{
+        ptr = ptr->next;
+        return *this;
+}
+singly_ll_iterator operator++(int)    // post-increment
+{
+    singly_ll_iterator result = *this;
+++(*this);
+return result;
+}
+```
 
 1.  让我们添加等式操作作为`friend`函数：
 
 ```cpp
-        friend bool operator==(const singly_ll_iterator& left, const singly_ll_iterator& right)
-        {
-            return left.ptr == right.ptr;
-        }
-        friend bool operator!=(const singly_ll_iterator& left, const singly_ll_iterator& right)
-        {
-            return left.ptr != right.ptr;
-        }
-    };
-    ```
+    friend bool operator==(const singly_ll_iterator& left, const singly_ll_iterator& right)
+    {
+        return left.ptr == right.ptr;
+    }
+    friend bool operator!=(const singly_ll_iterator& left, const singly_ll_iterator& right)
+    {
+        return left.ptr != right.ptr;
+    }
+};
+```
 
 1.  让我们回到我们的链表类。现在我们已经有了迭代器类，让我们实现`begin`和`end`函数来方便遍历。我们还将为两者添加`const`版本：
 
 ```cpp
-    singly_ll_iterator begin()
-    {
-        return singly_ll_iterator(head);
-    }
-    singly_ll_iterator end()
-    {
-        return singly_ll_iterator(NULL);
-    }
-    singly_ll_iterator begin() const
-    {
-        return singly_ll_iterator(head);
-    }
-    singly_ll_iterator end() const
-    {
-        return singly_ll_iterator(NULL);
-    }
-    ```
+singly_ll_iterator begin()
+{
+    return singly_ll_iterator(head);
+}
+singly_ll_iterator end()
+{
+    return singly_ll_iterator(NULL);
+}
+singly_ll_iterator begin() const
+{
+    return singly_ll_iterator(head);
+}
+singly_ll_iterator end() const
+{
+    return singly_ll_iterator(NULL);
+}
+```
 
 1.  让我们实现一个默认构造函数，一个用于深度复制的复制构造函数，以及一个带有`initializer_list`的构造函数：
 
 ```cpp
-    singly_ll() = default;
-    singly_ll(const singly_ll& other) : head(NULL)
-    {
-        if(other.head)
-            {
-                head = new node;
-                auto cur = head;
-                auto it = other.begin();
-                while(true)
-                {
-                    cur->data = *it;
-                    auto tmp = it;
-                    ++tmp;
-                    if(tmp == other.end())
-                        break;
-                    cur->next = new node;
-                    cur = cur->next;
-                    it = tmp;
-                }
-            }
-    }
-    singly_ll(const std::initializer_list<int>& ilist) : head(NULL)
-    {
-        for(auto it = std::rbegin(ilist); it != std::rend(ilist); it++)
-                push_front(*it);
-    }
-    };
-    ```
+singly_ll() = default;
+singly_ll(const singly_ll& other) : head(NULL)
+{
+    if(other.head)
+        {
+            head = new node;
+            auto cur = head;
+            auto it = other.begin();
+            while(true)
+            {
+                cur->data = *it;
+                auto tmp = it;
+                ++tmp;
+                if(tmp == other.end())
+                    break;
+                cur->next = new node;
+                cur = cur->next;
+                it = tmp;
+            }
+        }
+}
+singly_ll(const std::initializer_list<int>& ilist) : head(NULL)
+{
+    for(auto it = std::rbegin(ilist); it != std::rend(ilist); it++)
+            push_front(*it);
+}
+};
+```
 
 1.  让我们编写一个`main`函数来使用前面的函数：
 
 ```cpp
-    int main()
-    {
-        singly_ll sll = {1, 2, 3};
-        sll.push_front(0);
-        std::cout << "First list: ";
-        for(auto i: sll)
-            std::cout << i << " ";
-        std::cout << std::endl;
+int main()
+{
+    singly_ll sll = {1, 2, 3};
+    sll.push_front(0);
+    std::cout << "First list: ";
+    for(auto i: sll)
+        std::cout << i << " ";
+    std::cout << std::endl;
 
-        auto sll2 = sll;
-        sll2.push_front(-1);
-        std::cout << "Second list after copying from first list and inserting -1 in front: ";
-        for(auto i: sll2)
-            std::cout << i << ' ';  // Prints -1 0 1 2 3
-        std::cout << std::endl;
-        std::cout << "First list after copying - deep copy: ";
-    for(auto i: sll)
-            std::cout << i << ' ';  // Prints 0 1 2 3
-        std::cout << std::endl;
-    }
-    ```
+    auto sll2 = sll;
+    sll2.push_front(-1);
+    std::cout << "Second list after copying from first list and inserting -1 in front: ";
+    for(auto i: sll2)
+        std::cout << i << ' ';  // Prints -1 0 1 2 3
+    std::cout << std::endl;
+    std::cout << "First list after copying - deep copy: ";
+for(auto i: sll)
+        std::cout << i << ' ';  // Prints 0 1 2 3
+    std::cout << std::endl;
+}
+```
 
 1.  运行这个练习应该产生以下输出：
 
 ```cpp
-    First list: 0 1 2 3
-    Second list after copying from first list and inserting -1 in front: -1 0 1 2 3 
-    First list after copying - deep copy: 0 1 2 3
-    ```
+First list: 0 1 2 3
+Second list after copying from first list and inserting -1 in front: -1 0 1 2 3 
+First list after copying - deep copy: 0 1 2 3
+```
 
 正如我们在前面的例子中看到的，我们能够使用`std::initializer_list`初始化我们的列表。我们可以调用`push`、`pop_front`和`back`函数。正如我们所看到的，`sll2.pop_back`只从`sll2`中删除了元素，而不是`sll`。`sll`仍然保持完整，有五个元素。因此，我们也可以执行深度复制。
 
@@ -1140,42 +1140,42 @@ struct doubly_linked_list
 1.  首先，让我们包含所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <list>
-    int main()
-    {
-    ```
+#include <iostream>
+#include <list>
+int main()
+{
+```
 
 1.  然后，用一些元素初始化一个列表，并用各种插入函数进行实验：
 
 ```cpp
-    std::list<int> list1 = {1, 2, 3, 4, 5};
-    list1.push_back(6);
-    // list becomes {1, 2, 3, 4, 5, 6}
-    list1.insert(next(list1.begin()), 0);
-    // list becomes {1, 0, 2, 3, 4, 5, 6}
-    list1.insert(list1.end(), 7);
-    // list becomes {1, 0, 2, 3, 4, 5, 6, 7}
-    ```
+std::list<int> list1 = {1, 2, 3, 4, 5};
+list1.push_back(6);
+// list becomes {1, 2, 3, 4, 5, 6}
+list1.insert(next(list1.begin()), 0);
+// list becomes {1, 0, 2, 3, 4, 5, 6}
+list1.insert(list1.end(), 7);
+// list becomes {1, 0, 2, 3, 4, 5, 6, 7}
+```
 
 正如你所看到的，`push_back`函数在末尾插入一个元素。`insert`函数在第一个元素后插入`0`，这由`next(list1.begin())`表示。之后，我们在最后一个元素后插入`7`，这由`list1.end()`表示。
 
 1.  现在，让我们来看看`pop_back`这个删除函数，它在`forward_list`中不存在：
 
 ```cpp
-    list1.pop_back();
-    // list becomes {1, 0, 2, 3, 4, 5, 6}
-    std::cout << "List after insertion & deletion functions: ";
-    for(auto i: list1)
-        std::cout << i << " ";
-    }
-    ```
+list1.pop_back();
+// list becomes {1, 0, 2, 3, 4, 5, 6}
+std::cout << "List after insertion & deletion functions: ";
+for(auto i: list1)
+    std::cout << i << " ";
+}
+```
 
 1.  运行这个练习应该会得到以下输出：
 
 ```cpp
-    List after insertion & deletion functions: 1 0 2 3 4 5 6
-    ```
+List after insertion & deletion functions: 1 0 2 3 4 5 6
+```
 
 在这里，我们正在删除刚刚插入的最后一个元素。
 

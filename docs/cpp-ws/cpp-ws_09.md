@@ -29,16 +29,16 @@ ASP.NET Core 是.NET Core 框架的一部分，旨在创建 Web 应用程序。�
 1.  在命令行中执行以下操作：
 
 ```cpp
-    dotnet new webapi
-    ```
+dotnet new webapi
+```
 
 这就是开始所需的全部。
 
 1.  要查看是否按预期执行，请运行以下命令并查看您的应用程序启动（*图 9.1*）：
 
 ```cpp
-    dotnet run --urls=https://localhost:7021/
-    ```
+dotnet run --urls=https://localhost:7021/
+```
 
 ![图 9.1：终端窗口显示应用程序托管的端口](img/B16835_09_01.jpg)
 
@@ -145,12 +145,12 @@ dotnet run --urls=https://localhost:7021/
 1.  创建一个名为`GetError`的新端点，如果程序运行时出现罕见情况，则会引发异常：
 
 ```cpp
-            [HttpGet("error")]
-            public IEnumerable<WeatherForecast> GetError()
-            {
-                throw new Exception("Something went wrong");
-            }
-    ```
+        [HttpGet("error")]
+        public IEnumerable<WeatherForecast> GetError()
+        {
+            throw new Exception("Something went wrong");
+        }
+```
 
 1.  现在，调用`https://localhost:7021/weatherforecast/error`。它响应状态码为`500`：
 
@@ -199,35 +199,35 @@ public IActionResult GetWeekday(int day)
 1.  创建一个名为`TimeController`的新控制器，以获取本地时间，并进一步添加用于测试目的的功能：
 
 ```cpp
-        [ApiController]
-        [Route("[controller]")]
-        public class TimeController : ControllerBase
-        {
-    ```
+    [ApiController]
+    [Route("[controller]")]
+    public class TimeController : ControllerBase
+    {
+```
 
 这里显示的控制器不仅用于测试；它也充当业务逻辑。
 
 1.  添加一个名为`GetCurrentTime`的 HTTP GET 端点，指向`time/current`路由。您将用它来获取当前时间：
 
 ```cpp
-            [HttpGet("current")]
-            public IActionResult GetCurrentTime()
-            {
-    ```
+        [HttpGet("current")]
+        public IActionResult GetCurrentTime()
+        {
+```
 
 1.  返回当前的`DateTime`转换为 ISO 格式的字符串：
 
 ```cpp
-                return Ok(DateTime.Now.ToString("o"));
-            }
-        }
-    ```
+            return Ok(DateTime.Now.ToString("o"));
+        }
+    }
+```
 
 1.  导航到`https://localhost:7021/time/current`，您应该看到以下响应：
 
 ```cpp
-    2022-07-30T15:06:28.4924356+03:00
-    ```
+2022-07-30T15:06:28.4924356+03:00
+```
 
 如*Web API 项目结构*部分所述，您可以使用端点来确定服务是否正在运行。如果正在运行，那么您将获得`DateTime`值，就像您在前面的输出中看到的那样。如果没有运行，那么您将获得一个带有`404 - 未找到`状态代码的响应。如果正在运行但出现问题，那么您将获得`500`状态代码。
 
@@ -476,59 +476,59 @@ builder.Services.AddSingleton<IWeatherForecastService, WeatherForecastService>()
 1.  注入一个`logger`：
 
 ```cpp
-            private readonly ILogger<WeatherForecastService> _logger;
-            public WeatherForecastService(ILogger<WeatherForecastService> logger)
-            {
-                _logger = logger;
-            }
-    ```
+        private readonly ILogger<WeatherForecastService> _logger;
+        public WeatherForecastService(ILogger<WeatherForecastService> logger)
+        {
+            _logger = logger;
+        }
+```
 
 1.  当服务初始化时，记录一个随机的`Guid`，将构造函数修改为如下所示：
 
 ```cpp
-            public WeatherForecastService(ILogger<WeatherForecastService> logger)
-            {
-                _logger = logger;
-                _logger.LogInformation(Guid.NewGuid().ToString());
-            }
-    ```
+        public WeatherForecastService(ILogger<WeatherForecastService> logger)
+        {
+            _logger = logger;
+            _logger.LogInformation(Guid.NewGuid().ToString());
+        }
+```
 
 在`WeatherForecastController`中，执行以下操作：
 
 1.  注入`WeatherForecastService`的第二个实例：
 
 ```cpp
-        public class WeatherForecastController : ControllerBase
-        {
-            private readonly IWeatherForecastService _weatherForecastService1;
-            private readonly IWeatherForecastService _weatherForecastService2;
-            private readonly ILogger _logger;
-            public WeatherForecastController(ILoggerFactory logger, IWeatherForecastService weatherForecastService1, IWeatherForecastService weatherForecastService2)
-            {
-                _weatherForecastService1 = weatherForecastService1;
-                _weatherForecastService2 = weatherForecastService2;
-                _logger = logger.CreateLogger(typeof(WeatherForecastController).FullName);
-            }
-    ```
+    public class WeatherForecastController : ControllerBase
+    {
+        private readonly IWeatherForecastService _weatherForecastService1;
+        private readonly IWeatherForecastService _weatherForecastService2;
+        private readonly ILogger _logger;
+        public WeatherForecastController(ILoggerFactory logger, IWeatherForecastService weatherForecastService1, IWeatherForecastService weatherForecastService2)
+        {
+            _weatherForecastService1 = weatherForecastService1;
+            _weatherForecastService2 = weatherForecastService2;
+            _logger = logger.CreateLogger(typeof(WeatherForecastController).FullName);
+        }
+```
 
 1.  在获取工作日时同时调用两个实例：
 
 ```cpp
-            [HttpGet("weekday/{day}")]
-            public IActionResult GetWeekday(int day)
-            {
-                try
-                {
-                    var result = _weatherForecastService1.GetWeekday(day);
-                    result = _weatherForecastService1.GetWeekday(day);
-                    return Ok(result);
-                }
-                catch (NoSuchWeekdayException exception)
-                {
-                    return NotFound(exception.Message);
-                }
-            }
-    ```
+        [HttpGet("weekday/{day}")]
+        public IActionResult GetWeekday(int day)
+        {
+            try
+            {
+                var result = _weatherForecastService1.GetWeekday(day);
+                result = _weatherForecastService1.GetWeekday(day);
+                return Ok(result);
+            }
+            catch (NoSuchWeekdayException exception)
+            {
+                return NotFound(exception.Message);
+            }
+        }
+```
 
 `GetWeekday`方法被调用两次，因为它将有助于更好地说明 DI 的生命周期。现在是时候探索不同的 DI 生命周期了。
 
@@ -708,64 +708,64 @@ static WeatherForecastServiceV2 BuildWeatherForecastService(IServiceProvider _)
 1.  创建一个名为`ICurrentTimeProvider`的接口，其中包含一个名为`DateTime GetTime(string timezone)`的方法：
 
 ```cpp
-    public interface ICurrentTimeProvider
-    {
-        DateTime GetTime(string timezoneId);
-    }
-    ```
+public interface ICurrentTimeProvider
+{
+    DateTime GetTime(string timezoneId);
+}
+```
 
 1.  创建一个名为`CurrentTimeUtcProvider`的类，实现`ICurrentTimeProvider`接口，以实现应用程序所需的逻辑：
 
 ```cpp
-    public class CurrentTimeUtcProvider : ICurrentTimeProvider
-    {
-    ```
+public class CurrentTimeUtcProvider : ICurrentTimeProvider
+{
+```
 
 1.  实现将当前`DateTime`转换为`Utc`，然后根据传递的时区进行偏移的方法：
 
 ```cpp
-        public DateTime GetTime(string timezoneId)
-        {
-            var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
-            var time = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezoneInfo);
-            return time;
-        }
-    }
-    ```
+    public DateTime GetTime(string timezoneId)
+    {
+        var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+        var time = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezoneInfo);
+        return time;
+    }
+}
+```
 
 1.  创建一个`CurrentTimeProviderController`控制器，以确保它在构造函数中接受`ICurrentTimeProvider`：
 
 ```cpp
-    [ApiController]
-    [Route("[controller]")]
-    public class CurrentTimeController : ControllerBase
-    {
-        private readonly ICurrentTimeProvider _currentTimeProvider;
-        public CurrentTimeController(ICurrentTimeProvider currentTimeProvider)
-        {
-            _currentTimeProvider = currentTimeProvider;
-        }
-    ```
+[ApiController]
+[Route("[controller]")]
+public class CurrentTimeController : ControllerBase
+{
+    private readonly ICurrentTimeProvider _currentTimeProvider;
+    public CurrentTimeController(ICurrentTimeProvider currentTimeProvider)
+    {
+        _currentTimeProvider = currentTimeProvider;
+    }
+```
 
 1.  创建一个名为`IActionResult Get(string timezoneId)`的`HttpGet`端点，该端点调用当前时间提供程序并返回当前时间：
 
 ```cpp
-        [HttpGet]
-        public IActionResult Get(string timezoneId)
-        {
-            var time = _currentTimeProvider.GetTime(timezoneId);
-            return Ok(time);
-        }
-    }
-    ```
+    [HttpGet]
+    public IActionResult Get(string timezoneId)
+    {
+        var time = _currentTimeProvider.GetTime(timezoneId);
+        return Ok(time);
+    }
+}
+```
 
 请注意，`{timezoneId}`没有在`HttpGet`属性中指定。这是因为该模式用于端点上的 REST 部分；但是，在这种情况下，它作为查询字符串的参数传递。如果字符串包含空格或其他特殊字符，则应在传递之前对其进行编码。您可以使用此工具对字符串进行 URL 编码：[`meyerweb.com/eric/tools/dencoder/`](https://meyerweb.com/eric/tools/dencoder/)。
 
 1.  在`Program`类中注入服务：
 
 ```cpp
-    builder.Services.AddSingleton<ICurrentTimeProvider, CurrentTimeUtcProvider>();
-    ```
+builder.Services.AddSingleton<ICurrentTimeProvider, CurrentTimeUtcProvider>();
+```
 
 在这里，您将服务作为单例注入，因为它是无状态的。
 
@@ -1531,8 +1531,8 @@ RapidAPI 是一个支持许多 API 的平台。该网站[`rapidapi.com/visual-cr
 1.  在做所有这些之前，您需要准备一些东西。首先，更新`appsettings.json`文件，包括 API 的基本 URL：
 
 ```cpp
-    "WeatherForecastProviderUrl": "https://visual-crossing-weather.p.rapidapi.com/"
-    ```
+"WeatherForecastProviderUrl": "https://visual-crossing-weather.p.rapidapi.com/"
+```
 
 接下来，您需要为从所述 API 获取天气详情创建另一个类。为此，您将需要一个 API 密钥。您可以在 API 网站的示例代码片段中找到它：
 
@@ -1573,21 +1573,21 @@ RapidAPI 是一个支持许多 API 的平台。该网站[`rapidapi.com/visual-cr
 1.  删除与已存在的`WeatherForecast`模型无关的部分。清理后的模型将如下所示：
 
 ```cpp
-    public class WeatherForecast
-    {
-        public DateTime Datetime { get; set; }
-        public string Temperature { get; set; }
-        public string Conditions { get; set; }
-    }
-    ```
+public class WeatherForecast
+{
+    public DateTime Datetime { get; set; }
+    public string Temperature { get; set; }
+    public string Conditions { get; set; }
+}
+```
 
 您应该知道，`WeatherForecastClassMap`是一个特殊的类。它被`CsvHelper`库使用，该库用于解析 CSV 文件。您可以自己解析 CSV 文件；但是，`CsvHelper`使解析变得更加容易。
 
 1.  要使用`CsvHelper`，请安装其 NuGet 包：
 
 ```cpp
-    dotnet add package CsvHelper
-    ```
+dotnet add package CsvHelper
+```
 
 `WeatherForecastCsv`表示从 CSV 到 C#对象的映射。
 
@@ -1596,16 +1596,16 @@ RapidAPI 是一个支持许多 API 的平台。该网站[`rapidapi.com/visual-cr
 1.  仅保留与*步骤 17*中编辑的`WeatherForecast`类匹配的映射：
 
 ```cpp
-    public class WeatherForecastClassMap : ClassMap<WeatherForecast>
-    {
-        public WeatherForecastClassMap()
-        {
-            Map(m => m.Datetime).Name("Date time");
-            Map(m => m.Temperature).Name("Temperature");
-            Map(m => m.Conditions).Name("Conditions");
-        }
-    }
-    ```
+public class WeatherForecastClassMap : ClassMap<WeatherForecast>
+{
+    public WeatherForecastClassMap()
+    {
+        Map(m => m.Datetime).Name("Date time");
+        Map(m => m.Temperature).Name("Temperature");
+        Map(m => m.Conditions).Name("Conditions");
+    }
+}
+```
 
 注意
 
@@ -1877,14 +1877,14 @@ Web API 的一个常见任务是对文件执行各种操作，如下载、上传
 1.  为`FilesClient`提取一个接口，并将其命名为`IFilesService`：
 
 ```cpp
-    public interface IFilesService
-        {
-            Task Delete(string name);
-            Task Upload(string name, Stream content);
-            Task<byte[]> Download(string filename);
-            Uri GetDownloadLink(string filename);
-        }
-    ```
+public interface IFilesService
+    {
+        Task Delete(string name);
+        Task Upload(string name, Stream content);
+        Task<byte[]> Download(string filename);
+        Uri GetDownloadLink(string filename);
+    }
+```
 
 新接口简化了，因为你将在一个单一的容器上工作。但是，根据要求，你已经添加了一些新方法：`Delete`、`Upload`、`Download`和`GetDownloadLink`。`Download`方法用于以原始形式下载文件，即字节。
 
@@ -1897,23 +1897,23 @@ Web API 的一个常见任务是对文件执行各种操作，如下载、上传
 1.  还要将`Exercise04`的引用（在*第八章*，*构建高质量的面向对象的代码*中使用）更改为`Exercise03`（在本章中要使用的新引用）：
 
 ```cpp
-    FilesService.cs
-    public class FilesService : IFilesService
-        {
-            private readonly BlobServiceClient _blobServiceClient;
-            private readonly BlobContainerClient _defaultContainerClient;
-            public FilesClient()
-            {
-                var endpoint = "https://packtstorage2.blob.core.windows.net/";
-                var account = "packtstorage2";
-                var key = Environment.GetEnvironmentVariable("BlobStorageKey", EnvironmentVariableTarget.User);
-                var storageEndpoint = new Uri(endpoint);
-                var storageCredentials = new StorageSharedKeyCredential(account, key);
-                _blobServiceClient = new BlobServiceClient(storageEndpoint, storageCredentials);
-                _defaultContainerClient = CreateContainerIfNotExists("Exercise03).Result;
-            }
-            private async Task<BlobContainerClient> CreateContainerIfNotExists(string container)
-    ```
+FilesService.cs
+public class FilesService : IFilesService
+    {
+        private readonly BlobServiceClient _blobServiceClient;
+        private readonly BlobContainerClient _defaultContainerClient;
+        public FilesClient()
+        {
+            var endpoint = "https://packtstorage2.blob.core.windows.net/";
+            var account = "packtstorage2";
+            var key = Environment.GetEnvironmentVariable("BlobStorageKey", EnvironmentVariableTarget.User);
+            var storageEndpoint = new Uri(endpoint);
+            var storageCredentials = new StorageSharedKeyCredential(account, key);
+            _blobServiceClient = new BlobServiceClient(storageEndpoint, storageCredentials);
+            _defaultContainerClient = CreateContainerIfNotExists("Exercise03).Result;
+        }
+        private async Task<BlobContainerClient> CreateContainerIfNotExists(string container)
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/fNQAX.
@@ -1940,51 +1940,51 @@ You can find the complete code here: https://packt.link/fNQAX.
 1.  创建`ValidateFileExists`方法来验证存储中是否存在文件，否则抛出异常（一个之前不存在的小帮助方法）：
 
 ```cpp
-    private static void ValidateFileExists(BlobClient blobClient)
-    {
-        if (!blobClient.Exists())
-        {
-            throw new FileNotFoundException($"File {blobClient.Name} in default blob storage not found.");
-        }
-    }
-    ```
+private static void ValidateFileExists(BlobClient blobClient)
+{
+    if (!blobClient.Exists())
+    {
+        throw new FileNotFoundException($"File {blobClient.Name} in default blob storage not found.");
+    }
+}
+```
 
 1.  现在，创建`Delete`方法来删除文件：
 
 ```cpp
-    public Task Delete(string name)
-    {
-        var blobClient = _defaultContainerClient.GetBlobClient(name);
-        ValidateFileExists(blobClient);
-        return blobClient.DeleteAsync();
-    }
-    ```
+public Task Delete(string name)
+{
+    var blobClient = _defaultContainerClient.GetBlobClient(name);
+    ValidateFileExists(blobClient);
+    return blobClient.DeleteAsync();
+}
+```
 
 在这里，你首先会得到一个文件的客户端，然后检查文件是否存在。如果不存在，那么你将抛出一个`FileNotFoundException`异常。如果文件存在，那么你将删除文件。
 
 1.  创建`UploadFile`方法来上传文件：
 
 ```cpp
-    public Task UploadFile(string name, Stream content)
-    {
-        var blobClient = _defaultContainerClient.GetBlobClient(name);
-        return blobClient.UploadAsync(content, headers);
-    }
-    ```
+public Task UploadFile(string name, Stream content)
+{
+    var blobClient = _defaultContainerClient.GetBlobClient(name);
+    return blobClient.UploadAsync(content, headers);
+}
+```
 
 再次，首先获取一个允许您对文件执行操作的客户端。然后，将内容和标头提供给它以上传。
 
 1.  创建`Download`方法以字节形式下载文件：
 
 ```cpp
-            public async Task<byte[]> Download(string filename)
-            {
-                var blobClient = _defaultContainerClient.GetBlobClient(filename);
-                var stream = new MemoryStream();
-                await blobClient.DownloadToAsync(stream);
-                return stream.ToArray();
-            }
-    ```
+        public async Task<byte[]> Download(string filename)
+        {
+            var blobClient = _defaultContainerClient.GetBlobClient(filename);
+            var stream = new MemoryStream();
+            await blobClient.DownloadToAsync(stream);
+            return stream.ToArray();
+        }
+```
 
 这个方法创建一个内存流并将文件下载到其中。请注意，这不适用于大文件。
 
@@ -1997,125 +1997,125 @@ You can find the complete code here: https://packt.link/fNQAX.
 1.  创建一个`GetUri`方法来获取`blobClient`的 URI：
 
 ```cpp
-            private Uri GetUri(BlobClient blobClient)
-            {
-                var sasBuilder = new BlobSasBuilder
-                {
-                    BlobContainerName = _defaultContainerClient.Name,
-                    BlobName = blobClient.Name,
-                    Resource = "b",
-                    ExpiresOn = DateTimeOffset.UtcNow.AddHours(1)
-                };
-                sasBuilder.SetPermissions(BlobSasPermissions.Read);
-                var sasUri = blobClient.GenerateSasUri(sasBuilder);
-                return sasUri;
-            }
-    ```
+        private Uri GetUri(BlobClient blobClient)
+        {
+            var sasBuilder = new BlobSasBuilder
+            {
+                BlobContainerName = _defaultContainerClient.Name,
+                BlobName = blobClient.Name,
+                Resource = "b",
+                ExpiresOn = DateTimeOffset.UtcNow.AddHours(1)
+            };
+            sasBuilder.SetPermissions(BlobSasPermissions.Read);
+            var sasUri = blobClient.GenerateSasUri(sasBuilder);
+            return sasUri;
+        }
+```
 
 获取 URI 需要使用`BlobSasBuilder`，通过它可以生成一个可共享的 blob URL。通过构建器，指定您要共享的资源类型（`"b"`代表 blob）和过期时间。您需要设置权限（读取）并将`sasBuilder`构建器传递给`blobClient`客户端以生成`sasUri`。
 
 1.  现在，使用文件名创建一个文件下载链接：
 
 ```cpp
-            public Uri GetDownloadLink(string filename)
-            {
-                var blobClient = _defaultContainerClient.GetBlobClient(filename);
-                var url = GetUri(blobClient);
-                return url;
-            }
-    ```
+        public Uri GetDownloadLink(string filename)
+        {
+            var blobClient = _defaultContainerClient.GetBlobClient(filename);
+            var url = GetUri(blobClient);
+            return url;
+        }
+```
 
 1.  在`ExceptionMappingSetup`类和`AddExceptionMappings`方法中，添加以下映射：
 
 ```cpp
-    opt.MapToStatusCode<FileNotFoundException>(404);
-    ```
+opt.MapToStatusCode<FileNotFoundException>(404);
+```
 
 1.  创建一个扩展方法来注入`FileUploadService`模块：
 
 ```cpp
-    public static class FileUploadServiceSetup
-    {
-        public static IServiceCollection AddFileUploadService(this IServiceCollection services)
-        {
-            services.AddScoped<IFilesService, FilesService>();
-            return services;
-        }
-    }
-    ```
+public static class FileUploadServiceSetup
+{
+    public static IServiceCollection AddFileUploadService(this IServiceCollection services)
+    {
+        services.AddScoped<IFilesService, FilesService>();
+        return services;
+    }
+}
+```
 
 扩展方法是向现有接口展示新方法的简化方式。
 
 1.  将其附加到`Program.cs`中的`services`中，以使用`FileUploadService`模块：
 
 ```cpp
-    .AddFileUploadService();
-    ```
+.AddFileUploadService();
+```
 
 1.  现在，为文件创建一个控制器：
 
 ```cpp
-        [Route("api/[controller]")]
-        [ApiController]
-        public class FileController : ControllerBase
-        {
-    ```
+    [Route("api/[controller]")]
+    [ApiController]
+    public class FileController : ControllerBase
+    {
+```
 
 控制器的创建在 MVC 架构上是标准的，这允许用户通过 HTTP 请求访问`FileService`。
 
 1.  然后，注入`IFilesService`以提供一个接口，通过该接口可以访问与文件相关的功能：
 
 ```cpp
-            private readonly IFilesService _filesService;
-            public FileController(IFilesService filesService)
-            {
-                _filesService = filesService;
-            }
-    ```
+        private readonly IFilesService _filesService;
+        public FileController(IFilesService filesService)
+        {
+            _filesService = filesService;
+        }
+```
 
 1.  接下来，创建一个端点来删除文件：
 
 ```cpp
-            [HttpDelete("{file}")]
-            public async Task<IActionResult> Delete(string file)
-            {
-                await _filesService.Delete(file);
-                return Ok();
-            }
-    ```
+        [HttpDelete("{file}")]
+        public async Task<IActionResult> Delete(string file)
+        {
+            await _filesService.Delete(file);
+            return Ok();
+        }
+```
 
 1.  创建一个端点来下载文件：
 
 ```cpp
-      [HttpGet("Download/{file}")]
-            public async Task<IActionResult> Download(string file)
-            {
-                var content = await _filesService.Download(file);
-                return new FileContentResult(content, "application/octet-stream ");
-            }
-    ```
+  [HttpGet("Download/{file}")]
+        public async Task<IActionResult> Download(string file)
+        {
+            var content = await _filesService.Download(file);
+            return new FileContentResult(content, "application/octet-stream ");
+        }
+```
 
 1.  创建一个端点来获取可共享的文件下载链接：
 
 ```cpp
-            [HttpGet("Link")]
-            public IActionResult GetDownloadLink(string file)
-            {
-                var link = _filesService.GetDownloadLink(file);
-                return Ok(link);
-            }
-    ```
+        [HttpGet("Link")]
+        public IActionResult GetDownloadLink(string file)
+        {
+            var link = _filesService.GetDownloadLink(file);
+            return Ok(link);
+        }
+```
 
 1.  创建一个端点来上传文件：
 
 ```cpp
-            [HttpPost("upload")]
-            public async Task<IActionResult> Upload(IFormFile file)
-            {
-                await _filesService.UploadFile(file.FileName, file.OpenReadStream());
-                return Ok();
-            }
-    ```
+        [HttpPost("upload")]
+        public async Task<IActionResult> Upload(IFormFile file)
+        {
+            await _filesService.UploadFile(file.FileName, file.OpenReadStream());
+            return Ok();
+        }
+```
 
 `IFormFile`是将小文件传递给控制器的常用方式。但是，从`IFormFile`中，您需要文件内容作为流。您可以使用`OpenReadStream`方法来获取这个。Swagger 允许您使用文件资源管理器窗口选择要上传的文件。
 
@@ -2349,27 +2349,27 @@ dotnet add package Microsoft.Identity.Web
 1.  通过运行以下命令添加`Microsoft.Identity.Client`：
 
 ```cpp
-    dotnet add package Microsoft.Identity.Client
-    ```
+dotnet add package Microsoft.Identity.Client
+```
 
 这将允许您以后请求令牌。
 
 1.  接下来，在`Program.cs`中创建一个方法来初始化 AAD 应用程序客户端。这将用于提示浏览器登录，就好像您要登录到 Azure 门户一样：
 
 ```cpp
-    static IPublicClientApplication BuildAadClientApplication()
-    {
-        const string clientId = "2d8834d3-6a27-47c9-84f1-0c9db3eeb4bb"; // Service
-        const string tenantId = "ddd0fd18-f056-4b33-88cc-088c47b81f3e";
-        const string redirectUri = "http://localhost:7022/token";
-        string authority = string.Concat("https://login.microsoftonline.com/", tenantId);
-        var application = PublicClientApplicationBuilder.Create(clientId)
-            .WithAuthority(authority)
-            .WithRedirectUri(redirectUri)
-            .Build();
-        return application;
-    }
-    ```
+static IPublicClientApplication BuildAadClientApplication()
+{
+    const string clientId = "2d8834d3-6a27-47c9-84f1-0c9db3eeb4bb"; // Service
+    const string tenantId = "ddd0fd18-f056-4b33-88cc-088c47b81f3e";
+    const string redirectUri = "http://localhost:7022/token";
+    string authority = string.Concat("https://login.microsoftonline.com/", tenantId);
+    var application = PublicClientApplicationBuilder.Create(clientId)
+        .WithAuthority(authority)
+        .WithRedirectUri(redirectUri)
+        .Build();
+    return application;
+}
+```
 
 注意
 
@@ -2380,28 +2380,28 @@ dotnet add package Microsoft.Identity.Web
 1.  创建另一个方法来使用需要在 Azure 上进行用户登录以获取身份验证令牌的应用程序：
 
 ```cpp
-    static async Task<string> GetTokenUsingAzurePortalAuth(IPublicClientApplication application)
-    {
-    ```
+static async Task<string> GetTokenUsingAzurePortalAuth(IPublicClientApplication application)
+{
+```
 
 1.  现在，定义您需要的范围：
 
 ```cpp
-                var scopes = new[] { $"api://{clientId}/{scope}" };
-    ```
+            var scopes = new[] { $"api://{clientId}/{scope}" };
+```
 
 用您自己的应用程序 ID URI 替换`api://{clientId}/{scope}`，如果您没有使用默认值。
 
 1.  然后，尝试获取缓存的令牌：
 
 ```cpp
-                AuthenticationResult result;
-                try
-                {
-                    var accounts = await application.GetAccountsAsync();
-                    result = await application.AcquireTokenSilent(scopes, accounts.FirstOrDefault()).ExecuteAsync();
-                }
-    ```
+            AuthenticationResult result;
+            try
+            {
+                var accounts = await application.GetAccountsAsync();
+                result = await application.AcquireTokenSilent(scopes, accounts.FirstOrDefault()).ExecuteAsync();
+            }
+```
 
 如果之前已经登录，则需要缓存令牌检索。如果您以前没有登录以获取令牌，您将需要登录到 Azure AD：
 
@@ -2417,16 +2417,16 @@ dotnet add package Microsoft.Identity.Web
 1.  将访问令牌作为已登录用户的结果返回，以便以后可以使用它来访问您的 API：
 
 ```cpp
-                return result.AccessToken;
-    ```
+            return result.AccessToken;
+```
 
 1.  现在，调用这两个方法并打印结果（使用最小 API）：
 
 ```cpp
-    var application = BuildAadClientApplication();
-    var token = await GetTokenUsingAzurePortalAuth(application);
-    Console.WriteLine($"Bearer {token}");
-    ```
+var application = BuildAadClientApplication();
+var token = await GetTokenUsingAzurePortalAuth(application);
+Console.WriteLine($"Bearer {token}");
+```
 
 1.  最后，当您运行令牌应用程序时，它会要求您登录：
 
@@ -2467,35 +2467,35 @@ Authentication complete. You can return to the application. Feel free to close t
 1.  为了呈现授权按钮，请在`SwaggerSetup`类、`AddSwagger`方法和`services.AddSwaggerGen(cfg =>`部分内添加以下代码块：
 
 ```cpp
-                    cfg.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
-                    {
-                        Name = "Authorization",
-                        Type = SecuritySchemeType.ApiKey,
-                        Scheme = "Bearer",
-                        BearerFormat = "JWT",
-                        In = ParameterLocation.Header,
-                        Description = $"Example: \"Bearer YOUR_TOKEN>\"",
-                    });
-    ```
+                cfg.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = $"Example: \"Bearer YOUR_TOKEN>\"",
+                });
+```
 
 1.  为了通过授权标头转发令牌的值，请添加以下代码片段：
 
 ```cpp
-                    cfg.AddSecurityRequirement(new OpenApiSecurityRequirement
-                    {
-                        {
-                            new OpenApiSecurityScheme
-                            {
-                                Reference = new OpenApiReference
-                                {
-                                    Type = ReferenceType.SecurityScheme,
-                                    Id = "Bearer"
-                                }
-                            },
-                            new string[] {}
-                        }
-                    });
-    ```
+                cfg.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        new string[] {}
+                    }
+                });
+```
 
 1.  当您导航到[`localhost:7021/index.html`](https://localhost:7021/index.html)时，您会看到它现在包含`授权`按钮：
 
@@ -2726,14 +2726,14 @@ Audience validation failed. Audiences: 'api://2d8834d3-6a27-47c9-84f1-0c9db3eeb4
 1.  请注意，在*练习 9.01*中，您使用了`GetCurrentTime`代码。您将在这里重用相同的代码：
 
 ```cpp
-    namespace Pact.Function
-    {
-        public static class GetCurrentTime
-        {
-            [Function("GetCurrentTime")]
-            public static HttpResponseData Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequestData request,
-                FunctionContext executionContext)
-    ```
+namespace Pact.Function
+{
+    public static class GetCurrentTime
+    {
+        [Function("GetCurrentTime")]
+        public static HttpResponseData Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequestData request,
+            FunctionContext executionContext)
+```
 
 模板名称是根据之前的配置生成的。Azure Function 通过`[Function("GetCurrentTime")]`属性绑定到 HTTP 端点。
 
@@ -2742,26 +2742,26 @@ Audience validation failed. Audiences: 'api://2d8834d3-6a27-47c9-84f1-0c9db3eeb4
 1.  使用`timezoneId`变量获取特定时区的当前时间：
 
 ```cpp
-            {
-                var timezoneId = HttpUtility.ParseQueryString(request.Url.Query).Get("timezoneId");
-    ```
+        {
+            var timezoneId = HttpUtility.ParseQueryString(request.Url.Query).Get("timezoneId");
+```
 
 1.  接下来是业务逻辑。因此，使用`timezoneId`变量获取指定时区的当前时间：
 
 ```cpp
-    var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
-                var time = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezoneInfo);
-    ```
+var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            var time = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timezoneInfo);
+```
 
 1.  最后，将结果序列化为`HTTP 200 Ok`，内容类型为`text/plain`：
 
 ```cpp
-    var response = request.CreateResponse(HttpStatusCode.OK);
-                response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-                response.WriteString(time.ToString());
-                return response;
-    }
-    ```
+var response = request.CreateResponse(HttpStatusCode.OK);
+            response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
+            response.WriteString(time.ToString());
+            return response;
+}
+```
 
 1.  运行此代码，并导航至`http://localhost:7071/api/GetCurrentTime?timezoneId=Central%20European%20Standard%20Time`。
 

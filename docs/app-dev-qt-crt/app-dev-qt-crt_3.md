@@ -298,54 +298,54 @@ MainWindow::MainWindow(QWidget *parent) :
 1.  在 `mainwindow.h` 中添加一个 `public slots` 声明，以及一个名为 `aboutClicked` 的槽。现在应该是这样的：
 
 ```cpp
-    class MainWindow : public QMainWindow
-    {
-        Q_OBJECT
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
 
-    public:
-        explicit MainWindow(QWidget *parent = 0);
-        ~MainWindow();
+public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
 
-    public slots:
-        void aboutClicked();
+public slots:
+    void aboutClicked();
 
-    private:
-        Ui::MainWindow *ui;
-    };
-    ```
+private:
+    Ui::MainWindow *ui;
+};
+```
 
 1.  将 `aboutClicked` 槽的实现添加到 `mainwindow.cpp`。此代码在堆栈上构造了一个 `QMessageBox` 对象，并将其图标设置为您之前添加的图标，对话框的文本设置为 `"Lorem ipsum"`，消息框的标题设置为 `"About"`。`QMessageBox` 调用的 `exec` 方法打开消息框并阻塞应用程序流，直到您关闭消息框。它应该是这样的：
 
 ```cpp
-    void MainWindow::aboutClicked()
-    {
-        QMessageBox messageBox;
-        messageBox.setIconPixmap(QPixmap(":/icon.png"));
-        messageBox.setText("Lorem ipsum.");
-        messageBox.setWindowTitle("About");
-        messageBox.exec();
-    }
-    ```
+void MainWindow::aboutClicked()
+{
+    QMessageBox messageBox;
+    messageBox.setIconPixmap(QPixmap(":/icon.png"));
+    messageBox.setText("Lorem ipsum.");
+    messageBox.setWindowTitle("About");
+    messageBox.exec();
+}
+```
 
 1.  在 `mainwindow.cpp` 的顶部，为 `QMessageBox` 类添加一个 `include` 语句：
 
 ```cpp
-    #include <QMessageBox>
-    ```
+#include <QMessageBox>
+```
 
 1.  在 `MainWindow` 构造函数中，将关于按钮的信号连接到刚刚创建的槽。您的构造函数现在应该是这样的：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-        QMainWindow(parent),
-        ui(new Ui::MainWindow),
-        results(0)
-    {
-        ui->setupUi(this);
-        QObject::connect(ui->aboutButton, SIGNAL(clicked()),
-                         this, SLOT(aboutClicked()));
-    }
-    ```
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow),
+    results(0)
+{
+    ui->setupUi(this);
+    QObject::connect(ui->aboutButton, SIGNAL(clicked()),
+                     this, SLOT(aboutClicked()));
+}
+```
 
 如果我们构建应用程序，现在我们有一个完全功能的关于框，包括您选择的应用程序图标。`connect` 调用就像我们之前看到的信号槽连接一样；它将 `aboutButton` 的 `clicked` 信号连接到主窗口 UI 中的 `aboutClicked` 槽。
 

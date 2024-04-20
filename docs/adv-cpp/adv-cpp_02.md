@@ -173,40 +173,40 @@ type-specifier ary3d[countX][countY][countZ];
 1.  在“项目资源管理器”中，展开“Lesson2A”，然后展开“Exercise01”，双击“Exercise1.cpp”以在编辑器中打开此练习的文件：
 
 ```cpp
-    int main(int argc, char**argv)
-    {
-        std::cout << "\n\n------ Exercise 1 ------\n";
-        int value = 42;     // declare value to be an integer & initialize to 42
-        short a_value{64};  // declare a_value to be a short integer & 
-                            // initialize to 64
-        int bad_idea;       // declare bad_idea to be an integer and DO NOT 
-                            // initialize it. Use of this variable before 
-                            // setting it is UNDEFINED BEHAVIOUR.
-        float pi = 3.1415F; // declare pi to be a single precision floating 
-                            // point number and initialize it to pi.
+int main(int argc, char**argv)
+{
+    std::cout << "\n\n------ Exercise 1 ------\n";
+    int value = 42;     // declare value to be an integer & initialize to 42
+    short a_value{64};  // declare a_value to be a short integer & 
+                        // initialize to 64
+    int bad_idea;       // declare bad_idea to be an integer and DO NOT 
+                        // initialize it. Use of this variable before 
+                        // setting it is UNDEFINED BEHAVIOUR.
+    float pi = 3.1415F; // declare pi to be a single precision floating 
+                        // point number and initialize it to pi.
 
-        double e{2.71828};  // declare e to be a double precision floating point
-                            // number and initialize it to natural number e.
-        auto title = "Sir Robin of Loxley"; 
-                            // Let the compiler determine the type
-        int ary[15]{};      // array of 15 integers - zero initialized
-        // double pi = 3.14159;  // step 24 - remove comment at front
-        // auto speed;           // step 25 - remove comment at front
-        // value = "Hello world";// step 26 - remove comment at front
-        // title = 123456789;    // step 27 - remove comment at front
-        // short sh_int{32768};  // step 28 - remove comment at front
-        std::cout << "sizeof(int) = " << sizeof(int) << "\n";
-        std::cout << "sizeof(short) = " << sizeof(short) << "\n";
-        std::cout << "sizeof(float) = " << sizeof(float) << "\n";
-        std::cout << "sizeof(double) = " << sizeof(double) << "\n";
-        std::cout << "sizeof(title) = " << sizeof(title) << "\n";
-        std::cout << "sizeof(ary) = " << sizeof(ary)
-                  << " = " << sizeof(ary)/sizeof(ary[0]) 
-                  << " * " << sizeof(ary[0]) << "\n";
-        std::cout << "Complete.\n";
-        return 0;
-    }
-    ```
+    double e{2.71828};  // declare e to be a double precision floating point
+                        // number and initialize it to natural number e.
+    auto title = "Sir Robin of Loxley"; 
+                        // Let the compiler determine the type
+    int ary[15]{};      // array of 15 integers - zero initialized
+    // double pi = 3.14159;  // step 24 - remove comment at front
+    // auto speed;           // step 25 - remove comment at front
+    // value = "Hello world";// step 26 - remove comment at front
+    // title = 123456789;    // step 27 - remove comment at front
+    // short sh_int{32768};  // step 28 - remove comment at front
+    std::cout << "sizeof(int) = " << sizeof(int) << "\n";
+    std::cout << "sizeof(short) = " << sizeof(short) << "\n";
+    std::cout << "sizeof(float) = " << sizeof(float) << "\n";
+    std::cout << "sizeof(double) = " << sizeof(double) << "\n";
+    std::cout << "sizeof(title) = " << sizeof(title) << "\n";
+    std::cout << "sizeof(ary) = " << sizeof(ary)
+              << " = " << sizeof(ary)/sizeof(ary[0]) 
+              << " * " << sizeof(ary[0]) << "\n";
+    std::cout << "Complete.\n";
+    return 0;
+}
+```
 
 关于前面的程序，需要注意的一点是，主函数的第一条语句实际上是可执行语句，而不是声明。 C++允许您几乎可以在任何地方声明变量。 它的前身 C 最初要求所有变量必须在任何可执行语句之前声明。
 
@@ -217,12 +217,12 @@ type-specifier ary3d[countX][countY][countZ];
 1.  在编辑器中，通过删除行开头的分隔符（//）取消注释标记为“步骤 24”的行：
 
 ```cpp
-    double pi = 3.14159;  // step 24 - remove comment at front    
-    // auto speed;           // step 25 - remove comment at front
-    // value = "Hello world";// step 26 - remove comment at front
-    // title = 123456789;    // step 27 - remove comment at front
-    // short sh_int{32768};  // step 28 - remove comment at front
-    ```
+double pi = 3.14159;  // step 24 - remove comment at front    
+// auto speed;           // step 25 - remove comment at front
+// value = "Hello world";// step 26 - remove comment at front
+// title = 123456789;    // step 27 - remove comment at front
+// short sh_int{32768};  // step 28 - remove comment at front
+```
 
 1.  再次单击“运行”按钮。 这将导致再次构建程序。 这一次，构建将失败，并显示错误：![图 2A.9：工作区中的错误对话框](img/C14583_02A_09.jpg)
 
@@ -237,12 +237,12 @@ type-specifier ary3d[countX][countY][countZ];
 1.  将注释分隔符恢复到行的开头。 在编辑器中，通过删除行开头的分隔符（//）取消注释标记为“步骤 25”的行：
 
 ```cpp
-    // double pi = 3.14159;  // step 24 - remove comment at front    
-    auto speed;           // step 25 - remove comment at front
-    // value = "Hello world";// step 26 - remove comment at front
-    // title = 123456789;    // step 27 - remove comment at front
-    // short sh_int{32768};  // step 28 - remove comment at front
-    ```
+// double pi = 3.14159;  // step 24 - remove comment at front    
+auto speed;           // step 25 - remove comment at front
+// value = "Hello world";// step 26 - remove comment at front
+// title = 123456789;    // step 27 - remove comment at front
+// short sh_int{32768};  // step 28 - remove comment at front
+```
 
 1.  再次单击“运行”按钮。 当“工作区中的错误”对话框出现时，单击“取消”：![图 2A.11：自动声明错误-无初始化](img/C14583_02A_11.jpg)
 
@@ -253,36 +253,36 @@ type-specifier ary3d[countX][countY][countZ];
 1.  将注释分隔符恢复到行的开头。 在编辑器中，通过删除注释起始分隔符（//）取消注释标记为“步骤 26”的行：
 
 ```cpp
-    // double pi = 3.14159;  // step 24 - remove comment at front    
-    // auto speed;           // step 25 - remove comment at front
-    value = "Hello world";// step 26 - remove comment at front
-    // title = 123456789;    // step 27 - remove comment at front
-    // short sh_int{32768};  // step 28 - remove comment at front
-    ```
+// double pi = 3.14159;  // step 24 - remove comment at front    
+// auto speed;           // step 25 - remove comment at front
+value = "Hello world";// step 26 - remove comment at front
+// title = 123456789;    // step 27 - remove comment at front
+// short sh_int{32768};  // step 28 - remove comment at front
+```
 
 1.  单击“值”。
 
 1.  将注释分隔符恢复到行的开头。 在编辑器中，通过删除行开头的分隔符（//）取消注释标记为“步骤 27”的行：
 
 ```cpp
-    // double pi = 3.14159;  // step 24 - remove comment at front    
-    // auto speed;           // step 25 - remove comment at front
-    // value = "Hello world";// step 26 - remove comment at front
-    title = 123456789;    // step 27 - remove comment at front
-    // short sh_int{32768};  // step 28 - remove comment at front
-    ```
+// double pi = 3.14159;  // step 24 - remove comment at front    
+// auto speed;           // step 25 - remove comment at front
+// value = "Hello world";// step 26 - remove comment at front
+title = 123456789;    // step 27 - remove comment at front
+// short sh_int{32768};  // step 28 - remove comment at front
+```
 
 1.  单击`int`，以标题，这是一个`const char*`。 这里非常重要的一点是，`title`是用`auto`类型声明的。 编译器生成的错误消息告诉我们，`title`被推断为`const char*`类型。
 
 1.  将注释分隔符恢复到行的开头。 在编辑器中，通过删除行开头的分隔符（//）取消注释标记为“步骤 28”的行：
 
 ```cpp
-    // double pi = 3.14159;  // step 24 - remove comment at front    
-    // auto speed;           // step 25 - remove comment at front
-    // value = "Hello world";// step 26 - remove comment at front
-    // title = 123456789;    // step 27 - remove comment at front
-    short sh_int{32768};  // step 28 - remove comment at front
-    ```
+// double pi = 3.14159;  // step 24 - remove comment at front    
+// auto speed;           // step 25 - remove comment at front
+// value = "Hello world";// step 26 - remove comment at front
+// title = 123456789;    // step 27 - remove comment at front
+short sh_int{32768};  // step 28 - remove comment at front
+```
 
 1.  单击`sh_int`与（`short`类型。 短占用两个字节的内存，被认为是 16 位的有符号数量。 这意味着可以存储在短中的值的范围是`-2^(16-1)`到`2^(16-1)-1`，或**-32768**到**32767**。
 
@@ -372,32 +372,32 @@ int main(int, char**);
 1.  进入编辑器，通过将`gcd`函数移动到`main`之后来更改代码。它应该如下所示：
 
 ```cpp
-    int main(int argc, char**argv)
-    {
-        std::cout << "\n\n------ Exercise 2 ------\n";
-        std::cout << "The greatest common divisor of 44 and 121 is " << gcd(44, 121) << "\n";
-        std::cout << "Complete.\n";
-        return 0;
-    }
-    int gcd(int x, int y)
-    {
-        while(y!=0)
-        {
-            auto c{x%y};
-            x = y;
-            y = c;
-        }
-        return x;
-    }
-    ```
+int main(int argc, char**argv)
+{
+    std::cout << "\n\n------ Exercise 2 ------\n";
+    std::cout << "The greatest common divisor of 44 and 121 is " << gcd(44, 121) << "\n";
+    std::cout << "Complete.\n";
+    return 0;
+}
+int gcd(int x, int y)
+{
+    while(y!=0)
+    {
+        auto c{x%y};
+        x = y;
+        y = c;
+    }
+    return x;
+}
+```
 
 1.  点击`gcd()`函数。在需要调用它的时候，它对该函数没有任何了解，即使它在相同的文件中定义，但是在调用之后。
 
 1.  在编辑器中，将前向声明放在主函数定义之前。同时在末尾添加一个分号（;）：
 
 ```cpp
-    int gcd(int x, int y);
-    ```
+int gcd(int x, int y);
+```
 
 1.  再次点击**运行**按钮。这次，程序编译并恢复原始输出。
 
@@ -543,14 +543,14 @@ void printMyClasses(MyClass objects[12], size_t number)
 1.  在编辑器中，找到 main()中声明 ary 的行，并将其更改为以下内容：
 
 ```cpp
-    int ary[15]{};
-    ```
+int ary[15]{};
+```
 
 1.  点击`int ary[15]`会导致错误或至少警告，因为参数原型不匹配。正如我们之前所述，编译器将参数视为`int* ary`，因此函数也可以声明如下：
 
 ```cpp
-    void print_array_size2(int* ary)
-    ```
+void print_array_size2(int* ary)
+```
 
 1.  在编辑器中，将`print_array_size2`的名称全部更改为`print_array_size`。点击`int* ary`和`int ary[10]`。这是确认，当作为函数参数使用时，`int ary[10]`生成的结果与声明`int*` ary 时相同。
 
@@ -561,14 +561,14 @@ void printMyClasses(MyClass objects[12], size_t number)
 1.  看一下以下行：
 
 ```cpp
-    p = title; 
-    ```
+p = title; 
+```
 
 将其更改为以下内容：
 
 ```cpp
-    title = p;
-    ```
+title = p;
+```
 
 1.  点击**Run**按钮。这次，它构建并正确运行。将非 const 指针分配给 const 指针是可以的。
 
@@ -756,8 +756,8 @@ int value = static_cast<int>(Option::Play);
 1.  检查编辑器中的代码。目前，我们可以比较苹果和橙子。在`printOrange()`的定义处，将参数更改为`Orange`：
 
 ```cpp
-    void printOrange(Orange orange)
-    ```
+void printOrange(Orange orange)
+```
 
 1.  单击**运行**按钮。当出现工作区中的错误对话框时，单击**取消**：![图 2A.26：无法转换错误](img/C14583_02A_26.jpg)
 
@@ -768,17 +768,17 @@ int value = static_cast<int>(Option::Play);
 1.  通过在初始调用中传递`orange` `enum`变量并在第二次调用中传递`apple`变量，两次调用`printOrange()`函数：
 
 ```cpp
-    printOrange(orange);
-    printOrange(apple);
-    ```
+printOrange(orange);
+printOrange(apple);
+```
 
 这表明编译器会将橙色和苹果隐式转换为`int`，以便调用该函数。还要注意关于比较`Apple`和`Orange`的警告。
 
 1.  通过采用 int 参数并将`orange` `enum`的定义更改为以下内容来恢复`printOrange()`函数：
 
 ```cpp
-    enum class Orange;
-    ```
+enum class Orange;
+```
 
 1.  单击**运行**按钮。当出现工作区中的错误对话框时，单击**取消**：![图 2A.27：作用域枚举更改的多个错误](img/C14583_02A_27.jpg)
 
@@ -791,16 +791,16 @@ int value = static_cast<int>(Option::Play);
 1.  关于作用域枚举的第一件事是，当您引用枚举器时，它们必须具有作用域限定符。因此，在编辑器中，转到并更改此行如下：
 
 ```cpp
-    Orange orange{Orange::Hamlin};
-    ```
+Orange orange{Orange::Hamlin};
+```
 
 1.  单击`Orange`类型。因为这涉及基于模板的类（我们稍后会讨论），错误消息变得非常冗长。花一分钟时间查看从此错误到下一个错误（红线）出现的所有消息。它向您展示了编译器试图做什么以能够编译该行。
 
 1.  更改指定的行以读取如下内容：
 
 ```cpp
-    std::cout << "orange = " << static_cast<int>(orange) << "\n";
-    ```
+std::cout << "orange = " << static_cast<int>(orange) << "\n";
+```
 
 1.  单击`Orange::`作用域限定符。
 
@@ -1100,10 +1100,10 @@ Fraction::Fraction(int numerator, int denominator) : Fraction(numerator)
 1.  在编辑器中，将构造函数更改为如下所示：
 
 ```cpp
-    Fraction() : m_numerator{0}, m_denominator{1}
-    {
-    }
-    ```
+Fraction() : m_numerator{0}, m_denominator{1}
+{
+}
+```
 
 1.  单击**运行**按钮并观察输出：![](img/C14583_02A_36.jpg)
 
@@ -1114,22 +1114,22 @@ Fraction::Fraction(int numerator, int denominator) : Fraction(numerator)
 1.  在编辑器中，添加以下两个`构造函数`：
 
 ```cpp
-    Fraction(int numerator) : m_numerator(numerator), m_denominator(1)
-    {
-    }
-    Fraction(int numerator, int denominator) : Fraction(numerator)
-    {
-      auto factor = std::gcd(numerator, denominator);
-      m_numerator /= factor;
-      m_denominator = denominator / factor;
-    }
-    ```
+Fraction(int numerator) : m_numerator(numerator), m_denominator(1)
+{
+}
+Fraction(int numerator, int denominator) : Fraction(numerator)
+{
+  auto factor = std::gcd(numerator, denominator);
+  m_numerator /= factor;
+  m_denominator = denominator / factor;
+}
+```
 
 1.  在主函数中，更改`fraction`的声明以包括初始化：
 
 ```cpp
-    Fraction fraction{3,2};
-    ```
+Fraction fraction{3,2};
+```
 
 1.  点击**运行**按钮并观察输出：![](img/C14583_02A_37.jpg)
 
@@ -1235,8 +1235,8 @@ title = "Maid Marian";
 1.  在编辑器中，更改 swap 函数的函数定义：
 
 ```cpp
-    void swap(const int& lhs, const int& rhs)
-    ```
+void swap(const int& lhs, const int& rhs)
+```
 
 1.  点击**Run**按钮。当出现工作区中的错误对话框时，点击**Cancel**。编译器报告的第一个错误如下所示：
 
@@ -1327,13 +1327,13 @@ inline std::ostream& operator<< (std::ostream &out, const Fraction &rhs)
 1.  打开`operator*=`函数。更新它的代码如下：
 
 ```cpp
-    Fraction& Fraction::operator*=(const Fraction& rhs)
-    {
-      Fraction tmp(m_numerator*rhs.m_numerator, m_denominator*rhs.m_denominator);
-      *this = tmp;
-      return *this;
-    }
-    ```
+Fraction& Fraction::operator*=(const Fraction& rhs)
+{
+  Fraction tmp(m_numerator*rhs.m_numerator, m_denominator*rhs.m_denominator);
+  *this = tmp;
+  return *this;
+}
+```
 
 1.  点击**运行**按钮重新运行测试。这次，所有的测试都通过了：![图 2A.41：通过测试](img/C14583_02A_41.jpg)
 
@@ -1344,8 +1344,8 @@ inline std::ostream& operator<< (std::ostream &out, const Fraction &rhs)
 1.  在编辑器中打开**Fraction.hpp**，并将文件顶部的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE7_STEP  11
-    ```
+#define EXERCISE7_STEP  11
+```
 
 1.  点击**AddFractions**和**AddFractions2**：![图 2A.42：额外的失败测试](img/C14583_02A_42.jpg)
 
@@ -1358,8 +1358,8 @@ inline std::ostream& operator<< (std::ostream &out, const Fraction &rhs)
 1.  在编辑器中打开**Fraction.hpp**，并将文件顶部的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE7_STEP  15
-    ```
+#define EXERCISE7_STEP  15
+```
 
 1.  点击**SubtractFractions**和**SubtractFractions2**。
 
@@ -1370,8 +1370,8 @@ inline std::ostream& operator<< (std::ostream &out, const Fraction &rhs)
 1.  在编辑器中打开**Fraction.hpp**，并将文件顶部的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE7_STEP  19
-    ```
+#define EXERCISE7_STEP  19
+```
 
 1.  点击**运行**按钮重新运行测试 - 这次，我们添加了两个失败的测试 - **DivideFractions**和**DivideFractions2**。
 
@@ -1382,8 +1382,8 @@ inline std::ostream& operator<< (std::ostream &out, const Fraction &rhs)
 1.  在编辑器中打开**Fraction.hpp**，并将文件顶部的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE7_STEP  23
-    ```
+#define EXERCISE7_STEP  23
+```
 
 1.  点击**插入运算符**。
 

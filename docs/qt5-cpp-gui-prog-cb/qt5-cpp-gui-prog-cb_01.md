@@ -101,16 +101,16 @@ Qt 样式表和 CSS 之间的相似之处如下：
 +   在 Qt 中，可以通过在 C++代码中调用`QObject::setStyleSheet()`函数将样式表应用于单个小部件，例如：
 
 ```cpp
-    myPushButton->setStyleSheet("color : blue");
-    ```
+myPushButton->setStyleSheet("color : blue");
+```
 
 +   上述代码将将变量名为`myPushButton`的按钮的文本颜色更改为`蓝色`。您也可以通过在 Qt Designer 的样式表属性字段中编写声明来实现相同的结果。我们将在下一节中更多地讨论 Qt Designer。
 
 +   Qt 样式表还支持 CSS2 标准中定义的所有不同类型的选择器，包括通用选择器、类型选择器、类选择器、ID 选择器等，这使我们能够将样式应用于非常具体的单个或一组小部件。例如，如果我们想要更改具有对象名称`usernameEdit`的特定行编辑小部件的背景颜色，我们可以使用 ID 选择器来引用它：
 
 ```cpp
-    QLineEdit#usernameEdit { background-color: blue }
-    ```
+QLineEdit#usernameEdit { background-color: blue }
+```
 
 ### 注意
 
@@ -133,63 +133,63 @@ Qt 样式表和 CSS 之间的相似之处如下：
 插入以下样式表：
 
 ```cpp
-    border: 2px solid gray;
-    border-radius: 10px;
-    padding: 0 8px;
-    background: yellow;
-    ```
+border: 2px solid gray;
+border-radius: 10px;
+padding: 0 8px;
+background: yellow;
+```
 
 1.  现在您将看到一个完全奇异的 UI，所有内容都被涂成黄色，带有厚厚的边框。这是因为前面的样式表没有选择器，这意味着样式将应用于主窗口的所有子小部件，一直到层次结构的底部。为了改变这一点，让我们尝试一些不同的东西：
 
 ```cpp
-    QPushButton
-    {
-      border: 2px solid gray;
-      border-radius: 10px;
-      padding: 0 8px;
-      background: yellow;
-    }
-    ```
+QPushButton
+{
+  border: 2px solid gray;
+  border-radius: 10px;
+  padding: 0 8px;
+  background: yellow;
+}
+```
 
 1.  这一次，只有按钮将获得前面代码中描述的样式，所有其他小部件将返回到默认样式。您可以尝试向您的 UI 添加几个按钮，它们将看起来都一样：![如何做...](img/B02820_01_04.jpg)
 
 1.  这是因为我们明确告诉选择器将样式应用于所有具有名为`QPushButton`的类的小部件。我们还可以通过在样式表中提及其名称来仅将样式应用于其中一个按钮，如下所示：
 
 ```cpp
-    QPushButton#pushButton_3
-    {
-      border: 2px solid gray;
-      border-radius: 10px;
-      padding: 0 8px;
-      background: yellow;
-    }
-    ```
+QPushButton#pushButton_3
+{
+  border: 2px solid gray;
+  border-radius: 10px;
+  padding: 0 8px;
+  background: yellow;
+}
+```
 
 1.  一旦您理解了这种方法，我们可以将以下代码添加到样式表中：
 
 ```cpp
-    QPushButton
-    {
-     color: red;
-     border: 0px;
-     padding: 0 8px;
-     background: white;
-    }
+QPushButton
+{
+ color: red;
+ border: 0px;
+ padding: 0 8px;
+ background: white;
+}
 
-    QPushButton#pushButton_2
-    {
-     border: 1px solid red;
-     border-radius: 10px;
-    }
+QPushButton#pushButton_2
+{
+ border: 1px solid red;
+ border-radius: 10px;
+}
 
-    QPushButton#pushButton_3
-    {
-      border: 2px solid gray;
-      border-radius: 10px;
-      padding: 0 8px;
-      background: yellow;
-    }
-    ```
+QPushButton#pushButton_3
+{
+  border: 2px solid gray;
+  border-radius: 10px;
+  padding: 0 8px;
+  background: yellow;
+}
+```
 
 1.  它的作用基本上是更改所有按钮的样式，以及更改名为`pushButton_2`的特定按钮的一些属性。我们保留`pushButton_3`的样式表。现在按钮将看起来像这样：![如何做...](img/B02820_01_05.jpg)
 
@@ -198,13 +198,13 @@ Qt 样式表和 CSS 之间的相似之处如下：
 1.  之后，使用通用选择器创建另一组样式，如下所示：
 
 ```cpp
-    *
-    {
-      background: qradialgradient(cx: 0.3, cy: -0.4, fx: 0.3, fy: -0.4, radius: 1.35, stop: 0 #fff, stop: 1 #888);
-      color: rgb(255, 255, 255);
-      border: 1px solid #ffffff;
-    }
-    ```
+*
+{
+  background: qradialgradient(cx: 0.3, cy: -0.4, fx: 0.3, fy: -0.4, radius: 1.35, stop: 0 #fff, stop: 1 #888);
+  color: rgb(255, 255, 255);
+  border: 1px solid #ffffff;
+}
+```
 
 1.  通用选择器将影响所有小部件，而不考虑它们的类型。因此，前面的样式表将为所有小部件的背景应用漂亮的渐变颜色，并将它们的文本设置为白色，并给它们一个白色的一像素实线轮廓。我们可以使用`rgb`函数（`rgb(255, 255, 255)`）或十六进制代码（`#ffffff`）来描述颜色值，而不是写颜色的名称（即白色）。
 
@@ -265,8 +265,8 @@ Qt 样式表和 CSS 之间的相似之处如下：
 1.  现在徽标看起来是不可见的，因此我们将添加一个临时样式表使其可见，直到在下一节中为其添加图像。样式表非常简单：
 
 ```cpp
-    border: 1px solid;
-    ```
+border: 1px solid;
+```
 
 1.  现在您的 UI 应该看起来类似于这样：![操作步骤…](img/B02820_01_09.jpg)
 
@@ -285,8 +285,8 @@ Qt 样式表和 CSS 之间的相似之处如下：
 1.  将与徽标相同的样式表添加到`loginForm`小部件中，以使其暂时可见，但这次我们需要在前面添加一个 ID 选择器，以便仅将样式应用于`loginForm`，而不是其子小部件：
 
 ```cpp
-    #loginForm { border: 1px solid; }
-    ```
+#loginForm { border: 1px solid; }
+```
 
 1.  现在您的 UI 应该看起来类似于这样：![操作步骤…](img/B02820_01_10.jpg)
 
@@ -325,8 +325,8 @@ Qt 样式表和 CSS 之间的相似之处如下：
 1.  将以下代码添加到样式表中：
 
 ```cpp
-    #centralWidget { background: rgba(32, 80, 96, 100); }
-    ```
+#centralWidget { background: rgba(32, 80, 96, 100); }
+```
 
 1.  现在您会看到主窗口的背景颜色发生了变化。我们将在下一节中学习如何使用图像作为背景，因此颜色只是临时的。
 
@@ -335,47 +335,47 @@ Qt 样式表和 CSS 之间的相似之处如下：
 1.  然后，我们将为顶部面板添加一个漂亮的渐变颜色：
 
 ```cpp
-    #topPanel { background-color: qlineargradient(spread:reflect, x1:0.5, y1:0, x2:0, y2:0, stop:0 rgba(91, 204, 233, 100), stop:1 rgba(32, 80, 96, 100)); }
-    ```
+#topPanel { background-color: qlineargradient(spread:reflect, x1:0.5, y1:0, x2:0, y2:0, stop:0 rgba(91, 204, 233, 100), stop:1 rgba(32, 80, 96, 100)); }
+```
 
 1.  之后，我们将为登录表单应用黑色，并使其看起来半透明。之后，我们还将通过设置`border-radius`属性使登录表单容器的角略微圆润：
 
 ```cpp
-    #loginForm
-    {
-      background: rgba(0, 0, 0, 80);
-      border-radius: 8px;
-    }
-    ```
+#loginForm
+{
+  background: rgba(0, 0, 0, 80);
+  border-radius: 8px;
+}
+```
 
 1.  在我们完成对特定小部件应用样式之后，我们将对一般类型的小部件应用样式：
 
 ```cpp
-    QLabel { color: white; }
-    QLineEdit { border-radius: 3px; }
-    ```
+QLabel { color: white; }
+QLineEdit { border-radius: 3px; }
+```
 
 1.  上述样式表将把所有标签的文本更改为白色，这包括小部件上的文本，因为在内部，Qt 使用相同类型的标签来标记带有文本的小部件。此外，我们使线编辑小部件的角稍微圆润。
 
 1.  接下来，我们将为用户界面上的所有推按钮应用样式表：
 
 ```cpp
-    QPushButton
-    {
-      color: white;
-      background-color: #27a9e3;
-      border-width: 0px;
-      border-radius: 3px;
-    }
-    ```
+QPushButton
+{
+  color: white;
+  background-color: #27a9e3;
+  border-width: 0px;
+  border-radius: 3px;
+}
+```
 
 1.  上述样式表将把所有按钮的文本更改为白色，然后将其背景颜色设置为蓝色，并且还使其角稍微圆润。
 
 1.  为了更进一步推动事情，我们将使用关键字`hover`来在鼠标悬停时更改推按钮的颜色。
 
 ```cpp
-    QPushButton:hover { background-color: #66c011; }
-    ```
+QPushButton:hover { background-color: #66c011; }
+```
 
 1.  上述样式表将在鼠标悬停时将推按钮的背景颜色更改为绿色。我们将在下一节中详细讨论这个问题。
 
@@ -438,20 +438,20 @@ Qt 为我们提供了一个平台无关的资源系统，允许我们将任何�
 1.  如果您想对标志的尺寸有更多控制，可以从`pixmap`属性中删除图像，并改用样式表。您可以使用以下代码将图像应用到图标容器：
 
 ```cpp
-    border-image: url(:/images/logo.png);
-    ```
+border-image: url(:/images/logo.png);
+```
 
 1.  要获取图像的路径，请右键单击文件列表窗口上的图像名称，然后选择**复制路径**。路径将保存到您的操作系统剪贴板中，现在您可以将其粘贴到前面的样式表中。使用这种方法将确保图像完全适合您应用样式的小部件的尺寸。您的标志现在应该看起来像这样：![如何做](img/B02820_01_16.jpg)
 
 1.  最后，我们将使用样式表将壁纸图像应用到背景上。由于背景尺寸会根据窗口大小而改变，所以在这种情况下我们不能使用`pixmap`。相反，我们将使用样式表中的`border-image`属性来实现这一点。右键单击主窗口，选择**更改样式表**以打开**编辑样式表**窗口。我们将在中央小部件的样式表下添加一行新的样式表：
 
 ```cpp
-    #centralWidget
-    {
-      background: rgba(32, 80, 96, 100);
-     border-image: url(:/images/login_bg.png);
-    }
-    ```
+#centralWidget
+{
+  background: rgba(32, 80, 96, 100);
+ border-image: url(:/images/login_bg.png);
+}
+```
 
 1.  这真的很简单和容易！您的登录界面现在应该看起来像这样：![如何做](img/B02820_01_17.jpg)
 
@@ -485,94 +485,94 @@ Qt 的样式表系统使我们能够轻松创建令人惊叹和专业的 UI。�
 1.  三个按钮是蓝色的，因为我已将以下样式表添加到主窗口（而不是单独的按钮）：
 
 ```cpp
-    QPushButton
-    {
-      color: white;
-      background-color: #27a9e3;
-      border-width: 0px;
-      border-radius: 3px;
-    }
-    ```
+QPushButton
+{
+  color: white;
+  background-color: #27a9e3;
+  border-width: 0px;
+  border-radius: 3px;
+}
+```
 
 1.  接下来，我将通过向主窗口添加以下样式表来向您解释 Qt 中的伪状态，您可能已经熟悉：
 
 ```cpp
-    QPushButton:hover
-    {
-      color: white;
-      background-color: #66c011;
-      border-width: 0px;
-      border-radius: 3px;
-    }
-    ```
+QPushButton:hover
+{
+  color: white;
+  background-color: #66c011;
+  border-width: 0px;
+  border-radius: 3px;
+}
+```
 
 1.  我们在上一个教程中使用了前面的样式表，使按钮在鼠标悬停时更改颜色。这是由 Qt 样式表的伪状态实现的，在这种情况下，是单词`hover`与`QPushButton`类之间用冒号分隔。每个小部件都有一组通用伪状态，例如`active`、`disabled`、`enabled`等，还有一组适用于其小部件类型的伪状态。例如，`QPushButton`可用`open`和`flat`等状态，但`QLineEdit`不行。让我们添加`pressed`伪状态以在用户单击时将按钮的颜色更改为黄色：
 
 ```cpp
-    QPushButton:pressed
-    {
-      color: white;
-      background-color: yellow;
-      border-width: 0px;
-      border-radius: 3px;
-    }
-    ```
+QPushButton:pressed
+{
+  color: white;
+  background-color: yellow;
+  border-width: 0px;
+  border-radius: 3px;
+}
+```
 
 1.  伪状态允许用户根据适用于它的条件加载不同的样式表。Qt 通过在 Qt 样式表中实现动态属性进一步推动了这一概念。这使我们能够在满足自定义条件时更改小部件的样式表。我们可以利用此功能根据 Qt 中的自定义属性设置来更改按钮的样式表。
 
 首先，我们将向我们的主窗口添加此样式表：
 
 ```cpp
-    QPushButton[pagematches=true]
-    {
-      color: white;
-      background-color: red;
-      border-width: 0px;
-      border-radius: 3px;
-    }
-    ```
+QPushButton[pagematches=true]
+{
+  color: white;
+  background-color: red;
+  border-width: 0px;
+  border-radius: 3px;
+}
+```
 
 1.  它的基本作用是，如果名为`pagematches`的属性返回`true`，则将推按钮的背景颜色更改为红色。显然，`QPushButton`类中不存在此属性。但是，我们可以通过使用`QObject::setProperty()`将其添加到我们的按钮中：
 
 +   在您的`MainWindow.cpp`源代码中，在`ui->setupUi(this)`之后添加以下代码：
 
 ```cpp
-        ui->button1->setProperty("pagematches", true);
-        ```
+ui->button1->setProperty("pagematches", true);
+```
 
 +   前面的代码将向第一个按钮添加一个名为`pagematches`的自定义属性，并将其值设置为`true`。这将使第一个按钮默认变为红色。
 
 +   然后，在选项卡小部件上右键单击，选择**转到槽**。然后会弹出一个窗口；从列表中选择**currentChanged(int)**选项，然后单击**确定**。Qt 将为您生成一个`slot`函数，看起来像这样：
 
 ```cpp
-        private slots:
-        void on_tabWidget_currentChanged(int index);
-        ```
+private slots:
+void on_tabWidget_currentChanged(int index);
+```
 
 +   每当我们更改选项卡小部件的页面时，将调用`slot`函数。然后，我们可以通过将代码添加到`slot`函数中来决定我们希望它执行的操作。要做到这一点，请打开`mainwindow.cpp`，您将在那里看到函数的声明。让我们向函数添加一些代码：
 
 ```cpp
-        void MainWindow::on_tabWidget_currentChanged(int index)
-        {
-          // Set all buttons to false
-          ui->button1->setProperty("pagematches", false);
-          ui->button2->setProperty("pagematches", false);
-          ui->button3->setProperty("pagematches", false);
+void MainWindow::on_tabWidget_currentChanged(int index)
+{
+  // Set all buttons to false
+  ui->button1->setProperty("pagematches", false);
+  ui->button2->setProperty("pagematches", false);
+  ui->button3->setProperty("pagematches", false);
 
-          // Set one of the buttons to true
-          if (index == 0)
-            ui->button1->setProperty("pagematches", true);
-          else if (index == 1)
-            ui->button2->setProperty("pagematches", true);
-          else
-            ui->button3->setProperty("pagematches", true);
+  // Set one of the buttons to true
+  if (index == 0)
+    ui->button1->setProperty("pagematches", true);
+  else if (index == 1)
+    ui->button2->setProperty("pagematches", true);
+  else
+    ui->button3->setProperty("pagematches", true);
 
-          // Update buttons style
-          ui->button1->style()->polish(ui->button1);
-          ui->button2->style()->polish(ui->button2);
-          ui->button3->style()->polish(ui->button3);
-        }
-        ```
+  // Update buttons style
+  ui->button1->style()->polish(ui->button1);
+  ui->button2->style()->polish(ui->button2);
+  ui->button3->style()->polish(ui->button3);
+}
+```
 
 1.  前面的代码基本上是这样的：当选项卡小部件切换到当前页面时，它将所有三个按钮的`pagematches`属性设置为`false`。在我们决定哪个按钮应该变为红色之前，请确保重置所有内容。
 
@@ -630,19 +630,19 @@ QSpinBox::down-button
 1.  项目创建后，您会发现与 C++ Qt 项目相比有一些不同。您会在项目资源中看到两个`.qml`文件，分别是`main.qml`和`MainForm.ui.qml`。这两个文件是使用 QML 标记语言的 UI 描述文件。如果您双击`main.qml`文件，Qt Creator 将打开脚本编辑器，您会看到类似于这样的内容：
 
 ```cpp
-    import QtQuick 2.5
-    import QtQuick.Window 2.2
+import QtQuick 2.5
+import QtQuick.Window 2.2
 
-    Window {
-      visible: true
-      MainForm {
-        anchors.fill: parent
-        mouseArea.onClicked: {
-          Qt.quit();
-        }
-      }
+Window {
+  visible: true
+  MainForm {
+    anchors.fill: parent
+    mouseArea.onClicked: {
+      Qt.quit();
     }
-    ```
+  }
+}
+```
 
 1.  这个文件基本上告诉 Qt 创建一个窗口，并插入一个名为`MainForm`的 UI 集，实际上是来自另一个名为`MainForm.ui.qml`的`.qml`文件。它还告诉 Qt，当用户点击**mouseArea**小部件时，整个程序应该被终止。
 
@@ -651,9 +651,9 @@ QSpinBox::down-button
 1.  如果你在项目中打开`main.cpp`文件，你会看到这行代码：
 
 ```cpp
-    QQmlApplicationEngine engine;
-    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
-    ```
+QQmlApplicationEngine engine;
+engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
+```
 
 1.  前面的代码基本上告诉 Qt 的 QML 引擎在程序启动时加载`main.qml`文件。如果你想加载其他`.qml`文件而不是`main.qml`，你知道在哪里找代码了。
 
@@ -678,18 +678,18 @@ QSpinBox::down-button
 1.  打开`main.qml`并删除以下代码：
 
 ```cpp
-    mouseArea.onClicked: {
-      Qt.quit();
-    }
-    ```
+mouseArea.onClicked: {
+  Qt.quit();
+}
+```
 
 这是因为**mouseArea**项目不再存在，当编译时会导致错误。
 
 1.  之后，从`MainForm.ui.qml`中删除以下代码：
 
 ```cpp
-    property alias mouseArea: mousearea
-    ```
+property alias mouseArea: mousearea
+```
 
 1.  由于**mouseArea**项目不再存在，因此出于相同的原因，此内容已被删除。
 

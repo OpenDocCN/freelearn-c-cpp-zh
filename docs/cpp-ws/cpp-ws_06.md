@@ -35,8 +35,8 @@
 1.  打开命令行并创建一个目录，您将在其中调用`AdventureWorks`数据库，并移动到该目录：
 
 ```cpp
-    C:\<change-with-your-download-path-to-The-C-Sharp-Workshop>\Chapter06\AdventureWorks\>
-    ```
+C:\<change-with-your-download-path-to-The-C-Sharp-Workshop>\Chapter06\AdventureWorks\>
+```
 
 注意
 
@@ -45,8 +45,8 @@
 1.  通过在控制台中运行以下命令创建一个空的`Adventureworks`数据库：
 
 ```cpp
-    psql -U postgres -c "CREATE DATABASE \"Adventureworks\";"
-    ```
+psql -U postgres -c "CREATE DATABASE \"Adventureworks\";"
+```
 
 1.  使用安装脚本创建表并填充数据。
 
@@ -57,8 +57,8 @@
 1.  运行以下命令，指向安装脚本：
 
 ```cpp
-    psql -d Adventureworks -f install.sql -U postgres
-    ```
+psql -d Adventureworks -f install.sql -U postgres
+```
 
 ## 使用 EF 建模数据库
 
@@ -178,8 +178,8 @@ NHibernate 起源于 Java 生态系统，并且是.NET 中最早的 ORM 之一�
 1.  在“变量值”旁边，粘贴以下内容：
 
 ```cpp
-    Host=localhost;Username=postgres;Password=*****;Database=globalfactory2021
-    ```
+Host=localhost;Username=postgres;Password=*****;Database=globalfactory2021
+```
 
 1.  然后在所有窗口上单击“确定”以设置您的环境变量。
 
@@ -443,51 +443,51 @@ EF 的最简单用例是将数据表读入 C#对象。这个练习将教你如�
 1.  创建一个`Location`实体。它应该具有`LocationId`、`Name`、`Costrate`、`Availability`和`ModifiedDate`属性，如下所示：
 
 ```cpp
-    [Table("location", Schema = "production")]
-    public class Location
-    {
-        [Column("locationid")]
-        public int LocationId { get; set; }
-        [Column("name")]
-        public string Name { get; set; }
-        [Column("costrate")]
-        public double Costrate { get; set; }
-        [Column("availability")]
-        public double Availability { get; set; }
-        [Column("modifieddate")]
-        public DateTime ModifiedDate { get; set; }
-    }
-    ```
+[Table("location", Schema = "production")]
+public class Location
+{
+    [Column("locationid")]
+    public int LocationId { get; set; }
+    [Column("name")]
+    public string Name { get; set; }
+    [Column("costrate")]
+    public double Costrate { get; set; }
+    [Column("availability")]
+    public double Availability { get; set; }
+    [Column("modifieddate")]
+    public DateTime ModifiedDate { get; set; }
+}
+```
 
 因为您需要指定模式以及正确大写的表名，所以已经应用了`[Table]`属性。除此之外，每个列名都需要使用`[Column]`属性显式指定，因为大小写不匹配。
 
 1.  创建一个名为`AdventureWorksContext`的类，它继承自`DbContext`，如下所示：
 
 ```cpp
-    public class AdventureWorksContext : DbContext
-    {
-        public DbSet<Location> Locations { get; set; }
+public class AdventureWorksContext : DbContext
+{
+    public DbSet<Location> Locations { get; set; }
 
-        public AdventureWorksContext()
-            : base(UsePostgreSqlServerOptions())
-        {
-        }
+    public AdventureWorksContext()
+        : base(UsePostgreSqlServerOptions())
+    {
+    }
 
-        protected static DbContextOptions UsePostgreSqlServerOptions()
-        {
-            return new DbContextOptionsBuilder()
-                .UseNpgsql(Program.AdventureWorksConnectionString)
-                .Options;
-        }
-    ```
+    protected static DbContextOptions UsePostgreSqlServerOptions()
+    {
+        return new DbContextOptionsBuilder()
+            .UseNpgsql(Program.AdventureWorksConnectionString)
+            .Options;
+    }
+```
 
 如果您想要重用数据库抽象的基本功能，比如连接到数据库，那么继承`DbContext`是必要的。基本功能的使用在两个基本构造函数中是可见的。在带参数的构造函数中，您使用 PostgreSQL；在非参数化的构造函数中，您可以选择任何数据库提供程序。
 
 1.  现在使用`Program.AdventureWorksConnectionString`连接字符串，如下所示：
 
 ```cpp
-    Host=localhost;Username=postgres;Password=****;Database=Adventureworks. DbSet<Location>Locations
-    ```
+Host=localhost;Username=postgres;Password=****;Database=Adventureworks. DbSet<Location>Locations
+```
 
 这代表了所需的`location`表。
 
@@ -498,31 +498,31 @@ EF 的最简单用例是将数据表读入 C#对象。这个练习将教你如�
 1.  连接到数据库：
 
 ```cpp
-    var db = new AdventureWorksContext();
-    ```
+var db = new AdventureWorksContext();
+```
 
 这就像创建一个新的`DbContext`一样简单。
 
 1.  通过添加以下代码获取所有产品：
 
 ```cpp
-    var locations = db.Locations.ToList();
-    ```
+var locations = db.Locations.ToList();
+```
 
 1.  现在您已经查询了位置，并且不再需要保持连接打开，最好断开与数据库的连接。为了断开与数据库的连接，请调用`Dispose`方法，如下所示：
 
 ```cpp
-    db.Dispose();
-    ```
+db.Dispose();
+```
 
 1.  通过添加以下代码打印结果：
 
 ```cpp
-    foreach (var location in locations)
-    {
-        Console.WriteLine($"{location.LocationId} {location.Name} {location.Costrate} {location.Availability} {location.ModifiedDate}");
-    }
-    ```
+foreach (var location in locations)
+{
+    Console.WriteLine($"{location.LocationId} {location.Name} {location.Costrate} {location.Availability} {location.ModifiedDate}");
+}
+```
 
 代码本身是从[`packt.link/2oxXn`](https://packt.link/2oxXn)运行的。请确保在`static void` `Main(string[] args)`主体中注释掉所有行，除了`Exercises.Exercise03.Demo.Run()`。运行代码时，将显示以下输出：
 
@@ -821,32 +821,32 @@ if (productToDelete != null)
 1.  创建一个接受`FactoryDbContext`作为参数的构造函数，如下所示：
 
 ```cpp
-    public class GlobalFactoryService : IDisposable
-    {
-        private readonly FactoryDbContext _context;
+public class GlobalFactoryService : IDisposable
+{
+    private readonly FactoryDbContext _context;
 
-        public GlobalFactoryService(FactoryDbContext context)
-        {
-            _context = context;
-        }
-    ```
+    public GlobalFactoryService(FactoryDbContext context)
+    {
+        _context = context;
+    }
+```
 
 1.  创建一个`public void CreateManufacturersInUsa(IEnumerable<string> names)`方法，如下所示：
 
 ```cpp
-    public void CreateManufacturersInUsa(IEnumerable<string> names)
-    {
-        var manufacturers = names
-            .Select(name => new Manufacturer()
-            {
-                Name = name,
-                Country = "USA"
-            });
+public void CreateManufacturersInUsa(IEnumerable<string> names)
+{
+    var manufacturers = names
+        .Select(name => new Manufacturer()
+        {
+            Name = name,
+            Country = "USA"
+        });
 
-        _context.Manufacturers.AddRange(manufacturers);
-        _context.SaveChanges();
-    }
-    ```
+    _context.Manufacturers.AddRange(manufacturers);
+    _context.SaveChanges();
+}
+```
 
 制造商只有两个自定义字段——`Name`和`Country`。在这种情况下，`Country`的值已知为`"USA"`。您只需传递一个制造商名称列表，并通过将`Country`的值与其名称组合来构建`Manufacturers`。
 
@@ -857,23 +857,23 @@ if (productToDelete != null)
 1.  最后，迭代每个制造商并将所有产品添加到每个制造商：
 
 ```cpp
-    public void CreateUsaProducts(IEnumerable<Product> products)
-    {
-        var manufacturersInUsa = _context
-            .Manufacturers
-            .Where(m => m.Country == "USA")
-            .ToList();
+public void CreateUsaProducts(IEnumerable<Product> products)
+{
+    var manufacturersInUsa = _context
+        .Manufacturers
+        .Where(m => m.Country == "USA")
+        .ToList();
 
-        foreach (var product in products)
-        {
-            manufacturersInUsa.ForEach(m => m.Products.Add(
-                new Product {Name = product.Name, Price = product.Price}
-                ));
-        }
+    foreach (var product in products)
+    {
+        manufacturersInUsa.ForEach(m => m.Products.Add(
+            new Product {Name = product.Name, Price = product.Price}
+            ));
+    }
 
-        _context.SaveChanges();
-    }
-    ```
+    _context.SaveChanges();
+}
+```
 
 请注意，在此示例中，每次将相同的产品添加到制造商时，您都重新创建了一个新产品。这是因为即使产品具有相同的属性，它也属于不同的制造商。为了设置该区别，您需要传递不同的对象。如果不这样做，产品将被分配给相同的（最后引用的）制造商。
 
@@ -884,33 +884,33 @@ if (productToDelete != null)
 1.  然后为该产品设置一个新的`Price`，并调用`SaveChanges()`来确认它：
 
 ```cpp
-    public void SetAnyUsaProductOnDiscount(decimal discountedPrice)
-    {
-        var anyProductInUsa = _context
-            .Products
-            .FirstOrDefault(p => p.Manufacturer.Country == "USA");
+public void SetAnyUsaProductOnDiscount(decimal discountedPrice)
+{
+    var anyProductInUsa = _context
+        .Products
+        .FirstOrDefault(p => p.Manufacturer.Country == "USA");
 
-        anyProductInUsa.Price = discountedPrice;
+    anyProductInUsa.Price = discountedPrice;
 
-        _context.SaveChanges();
-    }
-    ```
+    _context.SaveChanges();
+}
+```
 
 1.  创建一个`public void RemoveAnyProductInUsa()`方法。
 
 1.  要删除一个项目，只需选择`"USA"`组中的第一个产品并将其删除：
 
 ```cpp
-    public void RemoveAnyProductInUsa()
-    {
-        var anyProductInUsa = _context
-            .Products
-            .FirstOrDefault(p => p.Manufacturer.Country == "USA");
+public void RemoveAnyProductInUsa()
+{
+    var anyProductInUsa = _context
+        .Products
+        .FirstOrDefault(p => p.Manufacturer.Country == "USA");
 
-        _context.Remove(anyProductInUsa);
-        _context.SaveChanges();
-    }
-    ```
+    _context.Remove(anyProductInUsa);
+    _context.SaveChanges();
+}
+```
 
 注意
 
@@ -921,39 +921,39 @@ if (productToDelete != null)
 1.  在查询的末尾调用`ToList()`，以便执行 SQL：
 
 ```cpp
-      public IEnumerable<Manufacturer> GetManufacturersInUsa()
-      {
-          var manufacturersFromUsa = _context
-              .Manufacturers
-              .Include(m => m.Products)
-              .Where(m => m.Country == "USA")
-              .ToList();
+  public IEnumerable<Manufacturer> GetManufacturersInUsa()
+  {
+      var manufacturersFromUsa = _context
+          .Manufacturers
+          .Include(m => m.Products)
+          .Where(m => m.Country == "USA")
+          .ToList();
 
-          return manufacturersFromUsa;
-      }
-    }
-    ```
+      return manufacturersFromUsa;
+  }
+}
+```
 
 1.  创建一个`Demo`类，在其中调用所有函数：
 
 ```cpp
-    Demo.cs
-    public static class Demo
-    {
-        public static void Run()
-        {
-            var service = new GlobalFactoryService(new FactoryDbContext());
-            service.CreateManufacturersInUsa(new []{"Best Buy", "Iron Retail"});
-            service.CreateUsaProducts(new []
-            {
-                new Product
-                {
-                    Name = "Toy computer",
-                    Price = 20.99m
-                },
-                new Product
-                {
-    ```
+Demo.cs
+public static class Demo
+{
+    public static void Run()
+    {
+        var service = new GlobalFactoryService(new FactoryDbContext());
+        service.CreateManufacturersInUsa(new []{"Best Buy", "Iron Retail"});
+        service.CreateUsaProducts(new []
+        {
+            new Product
+            {
+                Name = "Toy computer",
+                Price = 20.99m
+            },
+            new Product
+            {
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/qMYbi.
@@ -1265,59 +1265,59 @@ public class ProductPriceHistory
 1.  接下来，更新`Product`模型，以便包括历史价格变动。因此，添加一个新的集合属性，`ProductPriceHistory`：
 
 ```cpp
-    public ICollection<ProductPriceHistory> PriceHistory { get; set; }
-    ```
+public ICollection<ProductPriceHistory> PriceHistory { get; set; }
+```
 
 1.  更改`Price`列。`Price`现在应该是一个获取产品最新价格的方法，整个模型现在看起来像这样：
 
 ```cpp
-    public partial class Product
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
-        public int ManufacturerId { get; set; }
+public partial class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public int ManufacturerId { get; set; }
 
-        public decimal GetPrice() => PriceHistory
-            .Where(p => p.ProductId == Id)
-            .OrderByDescending(p => p.DateOfPrice)
-            .First().Price;
+    public decimal GetPrice() => PriceHistory
+        .Where(p => p.ProductId == Id)
+        .OrderByDescending(p => p.DateOfPrice)
+        .First().Price;
 
-        public Manufacturer Manufacturer { get; set; }
-        public ICollection<ProductPriceHistory> PriceHistory { get; set; }
-    }
-    ```
+    public Manufacturer Manufacturer { get; set; }
+    public ICollection<ProductPriceHistory> PriceHistory { get; set; }
+}
+```
 
 1.  更新`DbContext`以包括一个新的`DbSet`，并将`ProductPriceHistory`配置添加到`OnModelCreating`方法中，如下所示：
 
 ```cpp
-    modelBuilder.Entity<ProductPriceHistory>(entity =>
-    {
-        entity.ToTable("ProductPriceHistory", "Factory");
+modelBuilder.Entity<ProductPriceHistory>(entity =>
+{
+    entity.ToTable("ProductPriceHistory", "Factory");
 
-        entity.Property(e => e.Price)
-            .HasColumnType("money");
+    entity.Property(e => e.Price)
+        .HasColumnType("money");
 
-        entity.Property(e => e.DateOfPrice)
-            .HasColumnType("date");
-    ```
+    entity.Property(e => e.DateOfPrice)
+        .HasColumnType("date");
+```
 
 上述代码提供了对表和列属性类型的映射。一个`Product`有许多历史价格变动，因此它与`PriceHistory`形成了 1:n 的关系。
 
 1.  在上述代码之后，创建`Product`和`PriceHistory`之间的 1:n 关系：
 
 ```cpp
-     RelationalForeignKeyBuilderExtensions.HasConstraintName((ReferenceCollectionBuilder)
-            entity.HasOne(d => d.Product)
-                .WithMany(p => p.PriceHistory)
-                .HasForeignKey(d => d.ProductId), "FK_ProductPriceHistory_Product");
-    });
-    ```
+ RelationalForeignKeyBuilderExtensions.HasConstraintName((ReferenceCollectionBuilder)
+        entity.HasOne(d => d.Product)
+            .WithMany(p => p.PriceHistory)
+            .HasForeignKey(d => d.ProductId), "FK_ProductPriceHistory_Product");
+});
+```
 
 1.  为了捕获数据库更改（以便你可以从代码到数据库应用更改或回滚），添加以下`migration`：
 
 ```cpp
-    dotnet ef migrations add AddProductPriceHistory -c globalfactory2021Contextv3 -o Exercises/Exercise03/Migrations
-    ```
+dotnet ef migrations add AddProductPriceHistory -c globalfactory2021Contextv3 -o Exercises/Exercise03/Migrations
+```
 
 将会生成以下内容：
 
@@ -1328,29 +1328,29 @@ public class ProductPriceHistory
 1.  为了应用迁移，运行以下命令：
 
 ```cpp
-    dotnet ef database update -c globalfactory2021contextv3
-    ```
+dotnet ef database update -c globalfactory2021contextv3
+```
 
 1.  通过添加一些虚拟数据创建一个`Demo`：
 
 ```cpp
-    Demo.cs
-    public static class Demo
-    {
-        public static void Run()
-        {
-            var db = new globalfactory2021Contextv3();
-            var manufacturer = new Manufacturer
-            {
-                Country = "Canada",
-                FoundedAt = DateTime.UtcNow,
-                Name = "Fake Toys"
-            };
+Demo.cs
+public static class Demo
+{
+    public static void Run()
+    {
+        var db = new globalfactory2021Contextv3();
+        var manufacturer = new Manufacturer
+        {
+            Country = "Canada",
+            FoundedAt = DateTime.UtcNow,
+            Name = "Fake Toys"
+        };
 
-            var product = new Product
-            {
-                Name = "Rubber Sweater",
-    ```
+        var product = new Product
+        {
+            Name = "Rubber Sweater",
+```
 
 ```cpp
 The complete code can be found here: https://packt.link/4FMz4.
@@ -1365,8 +1365,8 @@ The complete code can be found here: https://packt.link/4FMz4.
 1.  为了运行这个练习，在`static void Main(string[] args)`体中注释掉所有行，除了`Program.cs`中的`Exercises.Exercise03.Demo.Run();`。你会看到以下输出：
 
 ```cpp
-    Fake Toys Rubber Sweater 15.5000
-    ```
+Fake Toys Rubber Sweater 15.5000
+```
 
 在`Demo`中，你创建了一个`manufacturer`，有一个产品是一个玩具（`Rubber Sweater`）。这个玩具有两个价格：`15.11`和`15.50`（最新的）。然后你将这个玩具保存到数据库中，断开连接，重新连接到数据库（确保玩具没有被缓存，而是被获取），并执行了基于急切加载的连接。
 
@@ -1743,120 +1743,120 @@ public interface IAggregate : IEntity
 1.  首先，创建一个通用存储库类，该类在构造函数中接受`DbContext`：
 
 ```cpp
-    public class Repository<TAggregate>: IRepository<TAggregate> where TAggregate: class
-    {
-        private readonly DbSet<TAggregate> _dbSet;
-        private readonly DbContext _context;
+public class Repository<TAggregate>: IRepository<TAggregate> where TAggregate: class
+{
+    private readonly DbSet<TAggregate> _dbSet;
+    private readonly DbContext _context;
 
-        public Repository(DbContext context)
-        {
-            _dbSet = context.Set<TAggregate>();
-            _context = context;
-        }
-    ```
+    public Repository(DbContext context)
+    {
+        _dbSet = context.Set<TAggregate>();
+        _context = context;
+    }
+```
 
 `context.Set<TEntity>()`允许获取表模型绑定，然后在整个存储库中使用它。另一个有趣的地方是，您不必提供具体的`DbContext`，因为它使用通用实体，通用存储库适用于每种类型的上下文。
 
 1.  要实现`Create`操作，请添加一个插入单个聚合的方法：
 
 ```cpp
-    public int Create(TAggregate aggregate)
-    {
-        var added = _dbSet.Add(aggregate);
-        _context.SaveChanges();
+public int Create(TAggregate aggregate)
+{
+    var added = _dbSet.Add(aggregate);
+    _context.SaveChanges();
 
-        return added.Entity.Id;
-    }
-    ```
+    return added.Entity.Id;
+}
+```
 
 1.  要实现`Delete`操作，请添加一个按 ID 删除聚合的方法：
 
 ```cpp
-        public void Delete(int id)
-        {
-            var toRemove = _dbSet.Find(id);
-            if (toRemove != null)
-            {
-                _dbSet.Remove(toRemove);
-            }
+    public void Delete(int id)
+    {
+        var toRemove = _dbSet.Find(id);
+        if (toRemove != null)
+        {
+            _dbSet.Remove(toRemove);
+        }
 
-            _context.SaveChanges();
-        }
-    ```
+        _context.SaveChanges();
+    }
+```
 
 1.  要实现`Update`操作，请添加一个通过使用新实体的值覆盖旧值来更新实体的方法：
 
 ```cpp
-        public void Update(TAggregate aggregate)
-        {
-            _dbSet.Update(aggregate);
-            _context.SaveChanges();
-        }
-    ```
+    public void Update(TAggregate aggregate)
+    {
+        _dbSet.Update(aggregate);
+        _context.SaveChanges();
+    }
+```
 
 1.  要实现`Read`操作，请添加一个按 ID 获取单个实体的方法：
 
 ```cpp
-        public TAggregate Get(int id)
-        {
-            return _dbSet.Find(id);
-        }
-    ```
+    public TAggregate Get(int id)
+    {
+        return _dbSet.Find(id);
+    }
+```
 
 1.  `Read`操作还应支持获取所有实体。因此，请添加一个获取所有实体的方法：
 
 ```cpp
-        public IEnumerable<TAggregate> Get()
-        {
-            return _dbSet.ToList();
-        }
-    ```
+    public IEnumerable<TAggregate> Get()
+    {
+        return _dbSet.ToList();
+    }
+```
 
 1.  将`DbContext`传递给构造函数将打开数据库连接。一旦您使用完数据库，就应该断开连接。为了支持常规断开连接，实现一个`IDisposable`模式：
 
 ```cpp
-        public void Dispose()
-        {
-            _context?.Dispose();
-        }
-    }
-    ```
+    public void Dispose()
+    {
+        _context?.Dispose();
+    }
+}
+```
 
 1.  要测试通用存储库是否有效，请创建一个新的`Run()`方法：
 
 ```cpp
-    public static void Run()
-    {
-    ```
+public static void Run()
+{
+```
 
 1.  在`Run()`方法内，为`Manufacturer`实体初始化一个新的存储库：
 
 ```cpp
-         var db = new FactoryDbContext();
-         var manufacturersRepository = new Repository<Manufacturer>(db);
-    ```
+     var db = new FactoryDbContext();
+     var manufacturersRepository = new Repository<Manufacturer>(db);
+```
 
 1.  通过插入新的`manufacturer`来测试`Create`操作是否有效，如下所示：
 
 ```cpp
-        var manufacturer = new Manufacturer { Country = "Lithuania", Name = "Tomo Baldai" };
-         var id = manufacturersRepository.Create(manufacturer);
-    ```
+    var manufacturer = new Manufacturer { Country = "Lithuania", Name = "Tomo Baldai" };
+     var id = manufacturersRepository.Create(manufacturer);
+```
 
 1.  通过更新制造商的名称来测试`Update`操作是否有效，如下所示：
 
 ```cpp
-         manufacturer.Name = "New Name";
-         manufacturersRepository.Update(manufacturer);
-    ```
+     manufacturer.Name = "New Name";
+     manufacturersRepository.Update(manufacturer);
+```
 
 1.  通过从数据库中检索新制造商并打印它来测试`Read`操作是否有效：
 
 ```cpp
-         var manufacturerAfterChanges = manufacturersRepository.Get(id);
-         Console.WriteLine($"Id: {manufacturerAfterChanges.Id}, " +
-                      $"Name: {manufacturerAfterChanges.Name}");
-    ```
+     var manufacturerAfterChanges = manufacturersRepository.Get(id);
+     Console.WriteLine($"Id: {manufacturerAfterChanges.Id}, " +
+                  $"Name: {manufacturerAfterChanges.Name}");
+```
 
 您应该看到以下输出：
 
@@ -1867,28 +1867,28 @@ Id: 25, Name: New Name
 1.  通过使用以下代码获取所有制造商的计数，测试`Read`操作是否有效：
 
 ```cpp
-        var countBeforeDelete = manufacturersRepository.Get().Count();
-    ```
+    var countBeforeDelete = manufacturersRepository.Get().Count();
+```
 
 1.  您可以通过删除新制造商来测试`Delete`操作是否有效，如下所示：
 
 ```cpp
-        manufacturersRepository.Delete(id);
-    ```
+    manufacturersRepository.Delete(id);
+```
 
 1.  为了查看删除的影响（预期减少一个制造商），请按以下方式比较计数：
 
 ```cpp
-        var countAfter = manufacturersRepository.Get().Count();
-        Console.WriteLine($"Before: {countBeforeDelete}, after: {countAfter}");
-    }
-    ```
+    var countAfter = manufacturersRepository.Get().Count();
+    Console.WriteLine($"Before: {countBeforeDelete}, after: {countAfter}");
+}
+```
 
 1.  为了运行此练习，请在`Program.cs`中的`static void Main(string[] args)`主体中注释掉除`Exercises.Exercise04.Demo.Run();`之外的所有行。运行`dotnet run`命令后，您应该看到以下输出：
 
 ```cpp
-    Before: 3, after: 2
-    ```
+Before: 3, after: 2
+```
 
 以前，使用存储库是实现与数据库交互的一种方式（也许是 10-20 年前），因为这是一种很好的抽象方式来调用数据库。与数据库的抽象将使人们能够根据需要更改底层数据库提供程序。如果数据库更改，只有实现接口的类会更改，但使用接口的任何内容都不会受到影响。
 

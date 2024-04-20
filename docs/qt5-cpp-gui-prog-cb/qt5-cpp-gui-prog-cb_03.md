@@ -33,97 +33,97 @@
 1.  然后，打开`mainwindow.h`并添加以下代码以包含`QPainter`头文件：
 
 ```cpp
-    #include <QMainWindow>
-    #include <QPainter>
+#include <QMainWindow>
+#include <QPainter>
 
-    ```
+```
 
 1.  然后，在类析构函数下面声明`paintEvent()`事件处理程序：
 
 ```cpp
-    public:
-    explicit MainWindow(QWidget *parent = 0);
-    ~MainWindow();
-    virtual void paintEvent(QPaintEvent *event);
+public:
+explicit MainWindow(QWidget *parent = 0);
+~MainWindow();
+virtual void paintEvent(QPaintEvent *event);
 
-    ```
+```
 
 1.  接下来，打开`mainwindow.cpp`并定义`paintEvent()`事件处理程序：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-    }
-    ```
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+}
+```
 
 1.  之后，我们将使用`paintEvent()`事件处理程序内的`QPainter`类向屏幕添加文本。我们在屏幕上的位置`(20, 30)`绘制文本之前设置文本字体设置：
 
 ```cpp
-    QPainter textPainter(this);
-    textPainter.setFont(QFont("Times", 14, QFont::Bold));
-    textPainter.drawText(QPoint(20, 30), "Testing");
-    ```
+QPainter textPainter(this);
+textPainter.setFont(QFont("Times", 14, QFont::Bold));
+textPainter.drawText(QPoint(20, 30), "Testing");
+```
 
 1.  然后，我们将绘制一条从`(50, 60)`开始到`(100, 100)`结束的直线：
 
 ```cpp
-    QPainter linePainter(this);
-    linePainter.drawLine(QPoint(50, 60), QPoint(100, 100));
-    ```
+QPainter linePainter(this);
+linePainter.drawLine(QPoint(50, 60), QPoint(100, 100));
+```
 
 1.  我们还可以通过使用`QPainter`类调用`drawRect()`函数轻松绘制一个矩形形状。不过这次，在绘制之前我们还会为形状应用一个背景图案：
 
 ```cpp
-    QPainter rectPainter(this);
-    rectPainter.setBrush(Qt::BDiagPattern);
-    rectPainter.drawRect(QRect(40, 120, 80, 30));
-    ```
+QPainter rectPainter(this);
+rectPainter.setBrush(Qt::BDiagPattern);
+rectPainter.drawRect(QRect(40, 120, 80, 30));
+```
 
 1.  接下来，声明一个`QPen`类，将其颜色设置为`red`，将其绘制样式设置为`Qt::DashDotLine`。然后，将`QPen`类应用于`QPainter`并在`(80, 200)`处绘制一个水平半径为`50`，垂直半径为`20`的椭圆形：
 
 ```cpp
-    QPen ellipsePen;
-    ellipsePen.setColor(Qt::red);
-    ellipsePen.setStyle(Qt::DashDotLine);
+QPen ellipsePen;
+ellipsePen.setColor(Qt::red);
+ellipsePen.setStyle(Qt::DashDotLine);
 
-    QPainter ellipsePainter(this);
-    ellipsePainter.setPen(ellipsePen);
-    ellipsePainter.drawEllipse(QPoint(80, 200), 50, 20);
-    ```
+QPainter ellipsePainter(this);
+ellipsePainter.setPen(ellipsePen);
+ellipsePainter.drawEllipse(QPoint(80, 200), 50, 20);
+```
 
 1.  我们还可以使用`QPainterPath`类来定义形状，然后将其传递给`QPainter`类进行渲染：
 
 ```cpp
-    QPainterPath rectPath;
-    rectPath.addRect(QRect(150, 20, 100, 50));
+QPainterPath rectPath;
+rectPath.addRect(QRect(150, 20, 100, 50));
 
-    QPainter pathPainter(this);
-    pathPainter.setPen(QPen(Qt::red, 1, Qt::DashDotLine, Qt::FlatCap, Qt::MiterJoin));
-    pathPainter.setBrush(Qt::yellow);
-    pathPainter.drawPath(rectPath);
-    ```
+QPainter pathPainter(this);
+pathPainter.setPen(QPen(Qt::red, 1, Qt::DashDotLine, Qt::FlatCap, Qt::MiterJoin));
+pathPainter.setBrush(Qt::yellow);
+pathPainter.drawPath(rectPath);
+```
 
 1.  您还可以使用`QPainterPath`绘制任何其他形状，比如椭圆：
 
 ```cpp
-    QPainterPath ellipsePath;
-    ellipsePath.addEllipse(QPoint(200, 120), 50, 20);
+QPainterPath ellipsePath;
+ellipsePath.addEllipse(QPoint(200, 120), 50, 20);
 
-    QPainter ellipsePathPainter(this);
-    ellipsePathPainter.setPen(QPen(QColor(79, 106, 25), 5, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
-    ellipsePathPainter.setBrush(QColor(122, 163, 39));
-    ellipsePathPainter.drawPath(ellipsePath);
-    ```
+QPainter ellipsePathPainter(this);
+ellipsePathPainter.setPen(QPen(QColor(79, 106, 25), 5, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+ellipsePathPainter.setBrush(QColor(122, 163, 39));
+ellipsePathPainter.drawPath(ellipsePath);
+```
 
 1.  `QPainter`也可以用来将图像文件绘制到屏幕上。在下面的示例中，我们加载一个名为`tux.png`的图像文件，并在屏幕上的位置`(100, 150)`绘制它：
 
 ```cpp
-    QImage image;
-    image.load("tux.png");
+QImage image;
+image.load("tux.png");
 
-    QPainter imagePainter(this);
-    imagePainter.drawImage(QPoint(100, 150), image);
-    ```
+QPainter imagePainter(this);
+imagePainter.drawImage(QPoint(100, 150), image);
+```
 
 1.  最终结果应该看起来像这样：![操作步骤...](img/B02820_03_02.jpg)
 
@@ -168,128 +168,128 @@ QPainter linePainter(this);
 1.  点击**OK**按钮后，Qt Creator 将切换到脚本编辑器。你会发现一个名为`on_actionSave_as_SVG_triggered()`的槽已经自动添加到你的主窗口类中。在你的`mainwindow.h`的底部，你会看到类似这样的内容：
 
 ```cpp
-    void MainWindow::on_actionSave_as_SVG_triggered()
-    {
-    }
-    ```
+void MainWindow::on_actionSave_as_SVG_triggered()
+{
+}
+```
 
 当你从菜单栏点击**另存为 SVG**选项时，将调用上述函数。我们将在这个函数中编写代码，将所有矢量图形保存到一个 SVG 文件中。
 
 1.  为了做到这一点，我们首先需要在源文件顶部包含一个名为`QSvgGenerator`的类头文件。这个头文件非常重要，因为它用于生成 SVG 文件。然后，我们还需要包含另一个名为`QFileDialog`的类头文件，它将用于打开保存对话框：
 
 ```cpp
-    #include <QtSvg/QSvgGenerator>
-    #include <QFileDialog>
-    ```
+#include <QtSvg/QSvgGenerator>
+#include <QFileDialog>
+```
 
 1.  我们还需要在项目文件中添加 SVG 模块，如下所示：
 
 ```cpp
-    QT += core gui svg
-    ```
+QT += core gui svg
+```
 
 1.  然后，在`mainwindow.h`中创建一个名为`paintAll()`的新函数，如下所示：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-      virtual void paintEvent(QPaintEvent *event);
-      void paintAll(QSvgGenerator *generator = 0);
-    ```
+  virtual void paintEvent(QPaintEvent *event);
+  void paintAll(QSvgGenerator *generator = 0);
+```
 
 1.  之后，在`mainwindow.cpp`中，将所有代码从`paintEvent()`移动到`paintAll()`函数中。然后，用单一统一的`QPainter`替换所有单独的`QPainter`对象来绘制所有图形。还要在绘制任何内容之前调用`begin()`函数，并在完成绘制后调用`end()`函数。代码应该如下所示：
 
 ```cpp
-    void MainWindow::paintAll(QSvgGenerator *generator)
-    {
-      QPainter painter;
+void MainWindow::paintAll(QSvgGenerator *generator)
+{
+  QPainter painter;
 
-      if (engine)
-        painter.begin(engine);
-      else
-        painter.begin(this);
+  if (engine)
+    painter.begin(engine);
+  else
+    painter.begin(this);
 
-      painter.setFont(QFont("Times", 14, QFont::Bold));
-      painter.drawText(QPoint(20, 30), "Testing");
+  painter.setFont(QFont("Times", 14, QFont::Bold));
+  painter.drawText(QPoint(20, 30), "Testing");
 
-      painter.drawLine(QPoint(50, 60), QPoint(100, 100));
+  painter.drawLine(QPoint(50, 60), QPoint(100, 100));
 
-      painter.setBrush(Qt::BDiagPattern);
-      painter.drawRect(QRect(40, 120, 80, 30));
+  painter.setBrush(Qt::BDiagPattern);
+  painter.drawRect(QRect(40, 120, 80, 30));
 
-      QPen ellipsePen;
-      ellipsePen.setColor(Qt::red);
-      ellipsePen.setStyle(Qt::DashDotLine);
+  QPen ellipsePen;
+  ellipsePen.setColor(Qt::red);
+  ellipsePen.setStyle(Qt::DashDotLine);
 
-      painter.setPen(ellipsePen);
-      painter.drawEllipse(QPoint(80, 200), 50, 20);
+  painter.setPen(ellipsePen);
+  painter.drawEllipse(QPoint(80, 200), 50, 20);
 
-      QPainterPath rectPath;
-      rectPath.addRect(QRect(150, 20, 100, 50));
+  QPainterPath rectPath;
+  rectPath.addRect(QRect(150, 20, 100, 50));
 
-      painter.setPen(QPen(Qt::red, 1, Qt::DashDotLine, Qt::FlatCap, Qt::MiterJoin));
-      painter.setBrush(Qt::yellow);
-      painter.drawPath(rectPath);
+  painter.setPen(QPen(Qt::red, 1, Qt::DashDotLine, Qt::FlatCap, Qt::MiterJoin));
+  painter.setBrush(Qt::yellow);
+  painter.drawPath(rectPath);
 
-      QPainterPath ellipsePath;
-      ellipsePath.addEllipse(QPoint(200, 120), 50, 20);
+  QPainterPath ellipsePath;
+  ellipsePath.addEllipse(QPoint(200, 120), 50, 20);
 
-      painter.setPen(QPen(QColor(79, 106, 25), 5, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
-      painter.setBrush(QColor(122, 163, 39));
-      painter.drawPath(ellipsePath);
+  painter.setPen(QPen(QColor(79, 106, 25), 5, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+  painter.setBrush(QColor(122, 163, 39));
+  painter.drawPath(ellipsePath);
 
-      QImage image;
-      image.load("tux.png");
+  QImage image;
+  image.load("tux.png");
 
-      painter.drawImage(QPoint(100, 150), image);
+  painter.drawImage(QPoint(100, 150), image);
 
-      painter.end();
-    }
-    ```
+  painter.end();
+}
+```
 
 1.  由于我们已将所有代码从`paintEvent()`移动到`paintAll()`，因此现在我们应该在`paintEvent()`中调用`paintAll()`函数，如下所示：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-     paintAll();
-    }
-    ```
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+ paintAll();
+}
+```
 
 1.  然后，我们将编写将图形导出到 SVG 文件的代码。代码将写在名为`on_actionSave_as_SVG_triggered()`的槽函数中，该函数由 Qt 生成。我们首先调用保存文件对话框，并从用户那里获取所需文件名的目录路径：
 
 ```cpp
-    void MainWindow::on_actionSave_as_SVG_triggered()
-    {
-      QString filePath = QFileDialog::getSaveFileName(this, "Save SVG", "", "SVG files (*.svg)");
+void MainWindow::on_actionSave_as_SVG_triggered()
+{
+  QString filePath = QFileDialog::getSaveFileName(this, "Save SVG", "", "SVG files (*.svg)");
 
-      if (filePath == "")
-        return;
-    }
-    ```
+  if (filePath == "")
+    return;
+}
+```
 
 1.  之后，创建一个`QSvgGenerator`对象，并通过将`QSvgGenerator`对象传递给`paintAll()`函数将图形保存到 SVG 文件中：
 
 ```cpp
-    void MainWindow::on_actionSave_as_SVG_triggered()
-    {
-      QString filePath = QFileDialog::getSaveFileName(this, "Save SVG", "", "SVG files (*.svg)");
+void MainWindow::on_actionSave_as_SVG_triggered()
+{
+  QString filePath = QFileDialog::getSaveFileName(this, "Save SVG", "", "SVG files (*.svg)");
 
-      if (filePath == "")
-        return;
+  if (filePath == "")
+    return;
 
-     QSvgGenerator generator;
-     generator.setFileName(filePath);
-     generator.setSize(QSize(this->width(), this->height()));
-     generator.setViewBox(QRect(0, 0, this->width(), this->height()));
-     generator.setTitle("SVG Example");
-     generator.setDescription("This SVG file is generated by Qt.");
+ QSvgGenerator generator;
+ generator.setFileName(filePath);
+ generator.setSize(QSize(this->width(), this->height()));
+ generator.setViewBox(QRect(0, 0, this->width(), this->height()));
+ generator.setTitle("SVG Example");
+ generator.setDescription("This SVG file is generated by Qt.");
 
-     paintAll(&generator);
-    }
-    ```
+ paintAll(&generator);
+}
+```
 
 1.  现在编译并运行程序，您应该能够通过转到**文件** | **另存为 SVG**来导出图形：![如何做...](img/B02820_03_05.jpg)
 
@@ -335,117 +335,117 @@ SVG 允许三种类型的图形对象：矢量图形、光栅图形和文本。�
 1.  在此之后，打开`mainwindow.h`并包含以下头文件：
 
 ```cpp
-    #include <QTime>
-    #include <QTimer>
-    #include <QPainter>
-    ```
+#include <QTime>
+#include <QTimer>
+#include <QPainter>
+```
 
 1.  然后，声明`paintEvent()`函数，如下所示：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-    virtual void paintEvent(QPaintEvent *event);
+virtual void paintEvent(QPaintEvent *event);
 
-    ```
+```
 
 1.  在`mainwindow.cpp`中，创建三个数组来存储时针、分针和秒针的形状，其中每个数组包含三组坐标：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-     static const QPoint hourHand[3] =
-     {
-     QPoint(4, 4),
-     QPoint(-4, 4),
-     QPoint(0, -40)
-     };
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+ static const QPoint hourHand[3] =
+ {
+ QPoint(4, 4),
+ QPoint(-4, 4),
+ QPoint(0, -40)
+ };
 
-     static const QPoint minuteHand[3] =
-     {
-     QPoint(4, 4),
-     QPoint(-4, 4),
-     QPoint(0, -70)
-     };
+ static const QPoint minuteHand[3] =
+ {
+ QPoint(4, 4),
+ QPoint(-4, 4),
+ QPoint(0, -70)
+ };
 
-     static const QPoint secondHand[3] =
-     {
-     QPoint(2, 2),
-     QPoint(-2, 2),
-     QPoint(0, -90)
-     };
-    }
-    ```
+ static const QPoint secondHand[3] =
+ {
+ QPoint(2, 2),
+ QPoint(-2, 2),
+ QPoint(0, -90)
+ };
+}
+```
 
 1.  在此之后，将以下代码添加到数组下面，以创建绘图器并将其移动到主窗口的中心。此外，我们调整绘图器的大小，使其在主窗口中很好地适应，即使窗口被调整大小：
 
 ```cpp
-    int side = qMin(width(), height());
+int side = qMin(width(), height());
 
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.translate(width() / 2, height() / 2);
-    painter.scale(side / 250.0, side / 250.0);
-    ```
+QPainter painter(this);
+painter.setRenderHint(QPainter::Antialiasing);
+painter.translate(width() / 2, height() / 2);
+painter.scale(side / 250.0, side / 250.0);
+```
 
 1.  完成后，我们将通过使用`for`循环开始绘制刻度。每个刻度旋转增加 6 度，所以 60 个刻度将完成一个完整的圆。此外，每 5 分钟的刻度看起来会稍微长一些：
 
 ```cpp
-    for (int i = 0; i < 60; ++i)
-    {
-      if ((i % 5) != 0)
-        painter.drawLine(92, 0, 96, 0);
-      else
-        painter.drawLine(86, 0, 96, 0);
-      painter.rotate(6.0);
-    }
-    ```
+for (int i = 0; i < 60; ++i)
+{
+  if ((i % 5) != 0)
+    painter.drawLine(92, 0, 96, 0);
+  else
+    painter.drawLine(86, 0, 96, 0);
+  painter.rotate(6.0);
+}
+```
 
 1.  然后，我们继续绘制时钟的指针。每个指针的旋转根据当前时间和其相应的单位计算超过 360 度：
 
 ```cpp
-    QTime time = QTime::currentTime();
+QTime time = QTime::currentTime();
 
-    // Draw hour hand
-    painter.save();
-    painter.rotate((time.hour() * 360) / 12);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(Qt::black);
-    painter.drawConvexPolygon(hourHand, 3);
-    painter.restore();
+// Draw hour hand
+painter.save();
+painter.rotate((time.hour() * 360) / 12);
+painter.setPen(Qt::NoPen);
+painter.setBrush(Qt::black);
+painter.drawConvexPolygon(hourHand, 3);
+painter.restore();
 
-    // Draw minute hand
-    painter.save();
-    painter.rotate((time.minute() * 360) / 60);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(Qt::black);
-    painter.drawConvexPolygon(minuteHand, 3);
-    painter.restore();
+// Draw minute hand
+painter.save();
+painter.rotate((time.minute() * 360) / 60);
+painter.setPen(Qt::NoPen);
+painter.setBrush(Qt::black);
+painter.drawConvexPolygon(minuteHand, 3);
+painter.restore();
 
-    // Draw second hand
-    painter.save();
-    painter.rotate((time.second() * 360) / 60);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(Qt::black);
-    painter.drawConvexPolygon(secondHand, 3);
-    painter.restore();
-    ```
+// Draw second hand
+painter.save();
+painter.rotate((time.second() * 360) / 60);
+painter.setPen(Qt::NoPen);
+painter.setBrush(Qt::black);
+painter.drawConvexPolygon(secondHand, 3);
+painter.restore();
+```
 
 1.  最后，创建一个定时器，每秒刷新一次图形，使程序像一个真正的时钟一样工作！
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-      QTimer* timer = new QTimer(this);
-      timer->start(1000);
-      connect(timer, SIGNAL(timeout()), this, SLOT(update()));
-    }
-    ```
+  QTimer* timer = new QTimer(this);
+  timer->start(1000);
+  connect(timer, SIGNAL(timeout()), this, SLOT(update()));
+}
+```
 
 1.  现在编译并运行程序，你应该会看到类似这样的东西：![如何做...](img/B02820_03_07.jpg)
 
@@ -494,58 +494,58 @@ Qt 不仅允许我们在屏幕上绘制形状和图像，还允许我们将多�
 1.  接下来，将 QPainter 类头文件添加到`mainwindow.h`中：
 
 ```cpp
-    #include <QPainter>
-    ```
+#include <QPainter>
+```
 
 1.  之后，声明`paintEvent()`虚函数如下：
 
 ```cpp
-    virtual void paintEvent(QPaintEvent* event);
-    ```
+virtual void paintEvent(QPaintEvent* event);
+```
 
 1.  在`mainwindow.cpp`中，我们将首先使用`QImage`类加载几个图像文件：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent* event)
-    {
-     QImage image;
-     image.load("checker.png");
+void MainWindow::paintEvent(QPaintEvent* event)
+{
+ QImage image;
+ image.load("checker.png");
 
-     QImage image2;
-     image2.load("tux.png");
+ QImage image2;
+ image2.load("tux.png");
 
-     QImage image3;
-     image3.load("butterfly.png");
-    }
-    ```
+ QImage image3;
+ image3.load("butterfly.png");
+}
+```
 
 1.  然后，创建一个`QPainter`对象，并使用它来绘制两对图像，其中一张图像叠加在另一张图像上：
 
 ```cpp
-    QPainter painter(this);
-    painter.drawImage(QPoint(10, 10), image);
-    painter.drawImage(QPoint(10, 10), image2);
-    painter.drawImage(QPoint(300, 10), image);
-    painter.drawImage(QPoint(300, 40), image3);
-    ```
+QPainter painter(this);
+painter.drawImage(QPoint(10, 10), image);
+painter.drawImage(QPoint(10, 10), image2);
+painter.drawImage(QPoint(300, 10), image);
+painter.drawImage(QPoint(300, 40), image3);
+```
 
 1.  现在编译并运行程序，你应该会看到类似这样的东西：![如何做…](img/B02820_03_10.jpg)
 
 1.  接下来，我们将在屏幕上绘制每个图像之前设置组合模式：
 
 ```cpp
-    QPainter painter(this);
+QPainter painter(this);
 
-    painter.setCompositionMode(QPainter::CompositionMode_Difference);
-    painter.drawImage(QPoint(10, 10), image);
-    painter.setCompositionMode(QPainter::CompositionMode_Multiply);
-    painter.drawImage(QPoint(10, 10), image2);
+painter.setCompositionMode(QPainter::CompositionMode_Difference);
+painter.drawImage(QPoint(10, 10), image);
+painter.setCompositionMode(QPainter::CompositionMode_Multiply);
+painter.drawImage(QPoint(10, 10), image2);
 
-    painter.setCompositionMode(QPainter::CompositionMode_Xor);
-    painter.drawImage(QPoint(300, 10), image);
-    painter.setCompositionMode(QPainter::CompositionMode_SoftLight);
-    painter.drawImage(QPoint(300, 40), image3);
-    ```
+painter.setCompositionMode(QPainter::CompositionMode_Xor);
+painter.drawImage(QPoint(300, 10), image);
+painter.setCompositionMode(QPainter::CompositionMode_SoftLight);
+painter.drawImage(QPoint(300, 40), image3);
+```
 
 1.  再次编译并运行程序，你现在会看到类似这样的东西：![如何做…](img/B02820_03_11.jpg)
 
@@ -618,56 +618,56 @@ Qt 提供了一种简单的方法，可以在使用`QPainter`类绘制的任何�
 1.  您可能已经注意到字体大小比默认大小要大得多。例如，可以通过向标签小部件添加样式表来实现：
 
 ```cpp
-    font: 26pt "MS Shell Dlg 2";
-    ```
+font: 26pt "MS Shell Dlg 2";
+```
 
 1.  之后，打开`mainwindow.cpp`并在源代码顶部包含以下头文件：
 
 ```cpp
-    #include <QGraphicsBlurEffect>
-    #include <QGraphicsDropShadowEffect>
-    #include <QGraphicsColorizeEffect>
-    #include <QGraphicsOpacityEffect>
-    ```
+#include <QGraphicsBlurEffect>
+#include <QGraphicsDropShadowEffect>
+#include <QGraphicsColorizeEffect>
+#include <QGraphicsOpacityEffect>
+```
 
 1.  然后，在`MainWindow`类的构造函数中，添加以下代码以创建一个投影效果，并将其应用于其中一个标签：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-     QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect();
-     shadow->setXOffset(4);
-     shadow->setYOffset(4);
-     ui->label->setGraphicsEffect(shadow);
-    }
-    ```
+ QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect();
+ shadow->setXOffset(4);
+ shadow->setYOffset(4);
+ ui->label->setGraphicsEffect(shadow);
+}
+```
 
 1.  接下来，我们将创建一个着色效果，并将其应用于其中一幅图像，这里是蝴蝶。我们还将效果颜色设置为红色：
 
 ```cpp
-    QGraphicsColorizeEffect* colorize = new QGraphicsColorizeEffect();
-    colorize->setColor(QColor(255, 0, 0));
-    ui->butterfly->setGraphicsEffect(colorize);
-    ```
+QGraphicsColorizeEffect* colorize = new QGraphicsColorizeEffect();
+colorize->setColor(QColor(255, 0, 0));
+ui->butterfly->setGraphicsEffect(colorize);
+```
 
 1.  完成后，创建一个模糊效果，并将其半径设置为`12`。然后，将图形效果应用于另一个标签：
 
 ```cpp
-    QGraphicsBlurEffect* blur = new QGraphicsBlurEffect();
-    blur->setBlurRadius(12);
-    ui->label2->setGraphicsEffect(blur);
-    ```
+QGraphicsBlurEffect* blur = new QGraphicsBlurEffect();
+blur->setBlurRadius(12);
+ui->label2->setGraphicsEffect(blur);
+```
 
 1.  最后，创建一个 alpha 效果，并将其应用于企鹅图像。我们将不透明度值设置为`0.2`，即 20%的不透明度：
 
 ```cpp
-    QGraphicsOpacityEffect* alpha = new QGraphicsOpacityEffect();
-    alpha->setOpacity(0.2);
-    ui->penguin->setGraphicsEffect(alpha);
-    ```
+QGraphicsOpacityEffect* alpha = new QGraphicsOpacityEffect();
+alpha->setOpacity(0.2);
+ui->penguin->setGraphicsEffect(alpha);
+```
 
 1.  现在编译并运行程序，您应该能够看到类似于这样的东西：![如何做…](img/B02820_03_15.jpg)
 
@@ -702,178 +702,178 @@ Qt 提供了一种简单的方法，可以在使用`QPainter`类绘制的任何�
 1.  我们将暂时保留菜单栏，然后继续进行`mainwindow.h`。首先，包括以下头文件，因为它对项目是必需的：
 
 ```cpp
-    #include <QPainter>
-    #include <QMouseEvent>
-    #include <QFileDialog>
-    ```
+#include <QPainter>
+#include <QMouseEvent>
+#include <QFileDialog>
+```
 
 1.  接下来，声明我们将在此项目中使用的变量，如下所示：
 
 ```cpp
-    private:
-    Ui::MainWindow *ui;
+private:
+Ui::MainWindow *ui;
 
-    QImage image;
-    bool drawing;
-    QPoint lastPoint;
-    int brushSize;
-    QColor brushColor;
+QImage image;
+bool drawing;
+QPoint lastPoint;
+int brushSize;
+QColor brushColor;
 
-    ```
+```
 
 1.  然后，声明事件回调函数，这些函数是从`QWidget`类继承的。这些函数将由 Qt 在相应事件发生时触发。我们将重写这些函数，并告诉 Qt 在这些事件被调用时该做什么：
 
 ```cpp
-    public:
-      explicit MainWindow(QWidget *parent = 0);
-      ~MainWindow();
+public:
+  explicit MainWindow(QWidget *parent = 0);
+  ~MainWindow();
 
-     virtual void mousePressEvent(QMouseEvent *event);
-     virtual void mouseMoveEvent(QMouseEvent *event);
-     virtual void mouseReleaseEvent(QMouseEvent *event);
-     virtual void paintEvent(QPaintEvent *event);
-     virtual void resizeEvent(QResizeEvent *event);
+ virtual void mousePressEvent(QMouseEvent *event);
+ virtual void mouseMoveEvent(QMouseEvent *event);
+ virtual void mouseReleaseEvent(QMouseEvent *event);
+ virtual void paintEvent(QPaintEvent *event);
+ virtual void resizeEvent(QResizeEvent *event);
 
-    ```
+```
 
 1.  之后，转到`mainwindow.cpp`并在类构造函数中添加以下代码以设置一些变量：
 
 ```cpp
-    MainWindow::MainWindow(QWidget *parent) :
-      QMainWindow(parent), ui(new Ui::MainWindow)
-    {
-      ui->setupUi(this);
+MainWindow::MainWindow(QWidget *parent) :
+  QMainWindow(parent), ui(new Ui::MainWindow)
+{
+  ui->setupUi(this);
 
-     image = QImage(this->size(), QImage::Format_RGB32);
-     image.fill(Qt::white);
+ image = QImage(this->size(), QImage::Format_RGB32);
+ image.fill(Qt::white);
 
-     drawing = false;
-     brushColor = Qt::black;
-     brushSize = 2;
-    }
-    ```
+ drawing = false;
+ brushColor = Qt::black;
+ brushSize = 2;
+}
+```
 
 1.  接下来，我们将构造`mousePressEvent()`事件并告诉 Qt 当左鼠标按钮被按下时该做什么：
 
 ```cpp
-    void MainWindow::mousePressEvent(QMouseEvent *event)
-    {
-      if (event->button() == Qt::LeftButton)
-      {
-        drawing = true;
-        lastPoint = event->pos();
-      }
-    }
-    ```
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+  if (event->button() == Qt::LeftButton)
+  {
+    drawing = true;
+    lastPoint = event->pos();
+  }
+}
+```
 
 1.  然后，我们将构造`mouseMoveEvent()`事件并告诉 Qt 当鼠标移动时该做什么。在这种情况下，如果左鼠标按钮被按住，我们希望在画布上绘制线条：
 
 ```cpp
-    void MainWindow::mouseMoveEvent(QMouseEvent *event)
-    {
-      if ((event->buttons() & Qt::LeftButton) && drawing)
-      {
-        QPainter painter(&image);
-        painter.setPen(QPen(brushColor, brushSize, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.drawLine(lastPoint, event->pos());
+void MainWindow::mouseMoveEvent(QMouseEvent *event)
+{
+  if ((event->buttons() & Qt::LeftButton) && drawing)
+  {
+    QPainter painter(&image);
+    painter.setPen(QPen(brushColor, brushSize, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawLine(lastPoint, event->pos());
 
-        lastPoint = event->pos();
-        this->update();
-      }
-    }
-    ```
+    lastPoint = event->pos();
+    this->update();
+  }
+}
+```
 
 1.  之后，我们还将构造`mouseReleaseEvent()`事件，当鼠标按钮释放时将被触发：
 
 ```cpp
-    void MainWindow::mouseReleaseEvent(QMouseEvent *event)
-    {
-      if (event->button() == Qt::LeftButton)
-      {
-        drawing = false;
-      }
-    }
-    ```
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+  if (event->button() == Qt::LeftButton)
+  {
+    drawing = false;
+  }
+}
+```
 
 1.  完成后，我们将继续进行`paintEvent()`事件，与我们在之前章节中看到的其他示例相比，这个事件非常简单：
 
 ```cpp
-    void MainWindow::paintEvent(QPaintEvent *event)
-    {
-      QPainter canvasPainter(this);
-      canvasPainter.drawImage(this->rect(), image, image.rect());
-    }
-    ```
+void MainWindow::paintEvent(QPaintEvent *event)
+{
+  QPainter canvasPainter(this);
+  canvasPainter.drawImage(this->rect(), image, image.rect());
+}
+```
 
 1.  记住我们有一个无所事事的菜单栏吗？让我们右键单击 GUI 编辑器下面的每个操作，并在弹出菜单中选择**转到槽...**。我们要告诉 Qt 当菜单栏上的每个选项被选择时该做什么：![如何做到这一点...](img/B02820_03_17.jpg)
 
 1.  然后，选择名为`triggered()`的默认槽，并按下**确定**按钮。Qt 将自动生成一个新的槽函数，分别在你的`mainwindow.h`和`mainwindow.cpp`中。完成所有操作后，你应该在`mainwindow.h`中看到类似这样的东西：
 
 ```cpp
-    private slots:
-      void on_actionSave_triggered();
-      void on_actionClear_triggered();
-      void on_action2px_triggered();
-      void on_action5px_triggered();
-      void on_action10px_triggered();
-      void on_actionBlack_triggered();
-      void on_actionWhite_triggered();
-      void on_actionRed_triggered();
-      void on_actionGreen_triggered();
-      void on_actionBlue_triggered();
-    ```
+private slots:
+  void on_actionSave_triggered();
+  void on_actionClear_triggered();
+  void on_action2px_triggered();
+  void on_action5px_triggered();
+  void on_action10px_triggered();
+  void on_actionBlack_triggered();
+  void on_actionWhite_triggered();
+  void on_actionRed_triggered();
+  void on_actionGreen_triggered();
+  void on_actionBlue_triggered();
+```
 
 1.  接下来，我们将告诉 Qt 在每个这些槽被触发时该做什么：
 
 ```cpp
-    void MainWindow::on_actionSave_triggered()
-    {
-      QString filePath = QFileDialog::getSaveFileName(this, "Save Image", "", "PNG (*.png);;JPEG (*.jpg *.jpeg);;All files (*.*)");
+void MainWindow::on_actionSave_triggered()
+{
+  QString filePath = QFileDialog::getSaveFileName(this, "Save Image", "", "PNG (*.png);;JPEG (*.jpg *.jpeg);;All files (*.*)");
 
-      if (filePath == "")
-        return;
+  if (filePath == "")
+    return;
 
-      image.save(filePath);
-    }
-    void MainWindow::on_actionClear_triggered()
-    {
-      image.fill(Qt::white);
-      this->update();
-    }
-    void MainWindow::on_action2px_triggered()
-    {
-      brushSize = 2;
-    }
-    void MainWindow::on_action5px_triggered()
-    {
-      brushSize = 5;
-    }
-    void MainWindow::on_action10px_triggered()
-    {
-      brushSize = 10;
-    }
-    void MainWindow::on_actionBlack_triggered()
-    {
-      brushColor = Qt::black;
-    }
+  image.save(filePath);
+}
+void MainWindow::on_actionClear_triggered()
+{
+  image.fill(Qt::white);
+  this->update();
+}
+void MainWindow::on_action2px_triggered()
+{
+  brushSize = 2;
+}
+void MainWindow::on_action5px_triggered()
+{
+  brushSize = 5;
+}
+void MainWindow::on_action10px_triggered()
+{
+  brushSize = 10;
+}
+void MainWindow::on_actionBlack_triggered()
+{
+  brushColor = Qt::black;
+}
 
-    void MainWindow::on_actionWhite_triggered()
-    {
-      brushColor = Qt::white;
-    }
-    void MainWindow::on_actionRed_triggered()
-    {
-      brushColor = Qt::red;
-    }
-    void MainWindow::on_actionGreen_triggered()
-    {
-      brushColor = Qt::green;
-    }
-    void MainWindow::on_actionBlue_triggered()
-    {
-      brushColor = Qt::blue;
-    }
-    ```
+void MainWindow::on_actionWhite_triggered()
+{
+  brushColor = Qt::white;
+}
+void MainWindow::on_actionRed_triggered()
+{
+  brushColor = Qt::red;
+}
+void MainWindow::on_actionGreen_triggered()
+{
+  brushColor = Qt::green;
+}
+void MainWindow::on_actionBlue_triggered()
+{
+  brushColor = Qt::blue;
+}
+```
 
 1.  如果我们现在编译并运行程序，我们将得到一个简单但可用的绘图程序：![如何做到这一点...](img/B02820_03_18.jpg)
 
@@ -908,147 +908,147 @@ Qt 提供了一种简单的方法，可以在使用`QPainter`类绘制的任何�
 1.  接下来，打开`qml.rc`项目窗格下列出的`main.qml`。之后，删除引用`MainForm`的整个部分。现在剩下的只有`main.qml`中的`Window`对象。之后，为窗口设置一个 ID，并将其宽度和高度调整为更高的值，如下所示：
 
 ```cpp
-    import QtQuick 2.5
-    import QtQuick.Window 2.2
+import QtQuick 2.5
+import QtQuick.Window 2.2
 
-    Window
-    {
-      id: myWindow
-      visible: true
-      width: 540
-      height: 380
-    }
-    ```
+Window
+{
+  id: myWindow
+  visible: true
+  width: 540
+  height: 380
+}
+```
 
 1.  然后，在`myWindow`下添加一个`Canvas`对象，并将其命名为`myCanvas`。之后，将其宽度和高度设置为与`myWindow`相同：
 
 ```cpp
-    Window
-    {
-      id: myWindow
-      visible: true
-      width: 540
-      height: 380
+Window
+{
+  id: myWindow
+  visible: true
+  width: 540
+  height: 380
 
-     Canvas
-     {
-     id: myCanvas
-     width: myWindow.width
-     height: myWindow.height
-     }
-    }
-    ```
+ Canvas
+ {
+ id: myCanvas
+ width: myWindow.width
+ height: myWindow.height
+ }
+}
+```
 
 1.  接下来，我们定义`onPaint`事件触发时会发生什么；在这种情况下，我们将在窗口上绘制一个十字架：
 
 ```cpp
-    Canvas
-    {
-      id: myCanvas
-      width: myWindow.width
-      height: myWindow.height
+Canvas
+{
+  id: myCanvas
+  width: myWindow.width
+  height: myWindow.height
 
-      onPaint:
-     {
-     var context = getContext('2d')
-     context.fillStyle = 'white'
-     context.fillRect(0, 0, width, height)
-     context.lineWidth = 2
-     context.strokeStyle = 'black'
+  onPaint:
+ {
+ var context = getContext('2d')
+ context.fillStyle = 'white'
+ context.fillRect(0, 0, width, height)
+ context.lineWidth = 2
+ context.strokeStyle = 'black'
 
-     // Draw cross
-     context.beginPath()
-     context.moveTo(50, 50)
-     context.lineTo(100, 100)
-     context.closePath()
-     context.stroke()
+ // Draw cross
+ context.beginPath()
+ context.moveTo(50, 50)
+ context.lineTo(100, 100)
+ context.closePath()
+ context.stroke()
 
-     context.beginPath()
-     context.moveTo(100, 50)
-     context.lineTo(50, 100)
-     context.closePath()
-     context.stroke()
-     }
-    }
-    ```
+ context.beginPath()
+ context.moveTo(100, 50)
+ context.lineTo(50, 100)
+ context.closePath()
+ context.stroke()
+ }
+}
+```
 
 1.  之后，添加以下代码以在十字架旁边绘制一个勾号：
 
 ```cpp
-    // Draw tick
-    context.beginPath()
-    context.moveTo(150, 90)
-    context.lineTo(158, 100)
-    context.closePath()
-    context.stroke()
+// Draw tick
+context.beginPath()
+context.moveTo(150, 90)
+context.lineTo(158, 100)
+context.closePath()
+context.stroke()
 
-    context.beginPath()
-    context.moveTo(180, 100)
-    context.lineTo(210, 50)
-    context.closePath()
-    context.stroke()
-    ```
+context.beginPath()
+context.moveTo(180, 100)
+context.lineTo(210, 50)
+context.closePath()
+context.stroke()
+```
 
 1.  然后，通过添加以下代码来绘制一个三角形形状：
 
 ```cpp
-    // Draw triangle
-    context.lineWidth = 4
-    context.strokeStyle = "red"
-    context.fillStyle = "salmon"
+// Draw triangle
+context.lineWidth = 4
+context.strokeStyle = "red"
+context.fillStyle = "salmon"
 
-    context.beginPath()
-    context.moveTo(50,150)
-    context.lineTo(150,150)
-    context.lineTo(50,250)
-    context.closePath()
-    context.fill()
-    context.stroke()
-    ```
+context.beginPath()
+context.moveTo(50,150)
+context.lineTo(150,150)
+context.lineTo(50,250)
+context.closePath()
+context.fill()
+context.stroke()
+```
 
 1.  之后，使用以下代码绘制一个半圆和一个完整的圆：
 
 ```cpp
-    // Draw circle
-    context.lineWidth = 4
-    context.strokeStyle = "blue"
-    context.fillStyle = "steelblue"
+// Draw circle
+context.lineWidth = 4
+context.strokeStyle = "blue"
+context.fillStyle = "steelblue"
 
-    var pi = 3.141592653589793
+var pi = 3.141592653589793
 
-    context.beginPath()
-    context.arc(220, 200, 60, 0, pi, true)
-    context.closePath()
-    context.fill()
-    context.stroke()
+context.beginPath()
+context.arc(220, 200, 60, 0, pi, true)
+context.closePath()
+context.fill()
+context.stroke()
 
-    context.beginPath()
-    context.arc(220, 280, 60, 0, 2 * pi, true)
-    context.closePath()
-    context.fill()
-    context.stroke()
-    ```
+context.beginPath()
+context.arc(220, 280, 60, 0, 2 * pi, true)
+context.closePath()
+context.fill()
+context.stroke()
+```
 
 1.  最后，我们从文件中绘制一个 2D 图像：
 
 ```cpp
-    // Draw image
-    context.drawImage("tux.png", 280, 10, 256, 297)
-    ```
+// Draw image
+context.drawImage("tux.png", 280, 10, 256, 297)
+```
 
 1.  然而，仅仅使用上述代码将无法成功在屏幕上渲染图像，因为您还必须预先加载图像文件。在`Canvas`对象内添加以下代码，以便在程序启动时要求 QML 加载图像文件，然后在图像加载时调用`requestPaint()`信号，以便触发`onPaint()`事件槽：
 
 ```cpp
-    Component.onCompleted:
-    {
-     loadImage("tux.png")
-    }
+Component.onCompleted:
+{
+ loadImage("tux.png")
+}
 
-    onImageLoaded:requestPaint();
-    onPaint:
-    {
-      // The code we added previously
-    }
-    ```
+onImageLoaded:requestPaint();
+onPaint:
+{
+  // The code we added previously
+}
+```
 
 1.  现在构建并运行程序，您应该会得到以下结果：![如何做…](img/B02820_03_20.jpg)

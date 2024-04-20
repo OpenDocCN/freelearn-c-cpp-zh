@@ -69,30 +69,30 @@
 +   创建一个没有显式初始化的`std::thread`对象。记住，线程需要一个启动函数来运行它的工作。我们没有指出哪个函数是这个线程的主要函数。这意味着执行线程没有被创建。让我们看一下以下代码示例，其中我们创建一个空的`std::thread`对象：
 
 ```cpp
-    #include <thread>
-    int main()
-    {
-      std::thread myThread;  
-      return 0;
-    }
-    ```
+#include <thread>
+int main()
+{
+  std::thread myThread;  
+  return 0;
+}
+```
 
 +   创建一个`std::thread`对象，并将一个指向函数的指针作为构造函数参数传递。现在，执行线程将被创建，并将从我们在构造函数中传递的函数开始执行其工作。让我们看一下以下代码示例：
 
 ```cpp
-    #include <iostream>
-    #include <thread>
-    void printHello()
-    {
-        std::cout << "hello" << std::endl;
-    }
-    int main()
-    {
-      std::thread myThread(printHello);
-      myThread.join();
-      return 0;
-    }
-    ```
+#include <iostream>
+#include <thread>
+void printHello()
+{
+    std::cout << "hello" << std::endl;
+}
+int main()
+{
+  std::thread myThread(printHello);
+  myThread.join();
+  return 0;
+}
+```
 
 在这里，我们创建了一个`std::thread`对象，并用函数指针进行了初始化。这是一个简单的返回`void`并且不带任何参数的函数。然后，我们告诉主线程等待直到新线程完成，使用`join()`函数。我们总是必须在`std::thread`对象的作用域结束之前`join()`或`detach()`一个线程。如果不这样做，我们的应用程序将被操作系统使用`std::terminate()`函数终止，该函数在`std::thread`析构函数中被调用。除了函数指针，我们还可以传递任何可调用对象，如`lambda`，`std::function`或具有重载的`operator()`的类。
 
@@ -338,111 +338,111 @@ int main()
 1.  包括一些用于线程支持的头文件，即`<thread>`，流支持，即`<iostream>`，和函数对象支持，即`<functional>`：
 
 ```cpp
-    #include <iostream>
-    #include <thread>
-    #include <functional>
-    ```
+#include <iostream>
+#include <thread>
+#include <functional>
+```
 
 1.  实现一个名为`printNumbers()`的自由函数，在`for`循环中打印 0 到 100 的数字：
 
 ```cpp
-    void printNumbers()
-    {
-        for(int i = 0; i < 100; ++i)
-        {
-            std::cout << i << " ";
-        }
-        std::cout << std::endl;
-    }
-    ```
+void printNumbers()
+{
+    for(int i = 0; i < 100; ++i)
+    {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+}
+```
 
 1.  实现一个可调用对象，即一个具有重载的`operator()`的`Printer`类，它在`for`循环中从 0 到 100000 打印一个"*"符号。每 200 次迭代，打印一个新行符号，以获得更可读的输出：
 
 ```cpp
-    class Printer
-    {
-        public:
-        void operator()()
-        {
-            for(int i = 0; i < 100000; ++i)
-            {
-                if (!(i % 200))
-                {
-                    std::cout << std::endl;
-                }
-                std::cout << "*";
-            }
-        }
-    };
-    ```
+class Printer
+{
+    public:
+    void operator()()
+    {
+        for(int i = 0; i < 100000; ++i)
+        {
+            if (!(i % 200))
+            {
+                std::cout << std::endl;
+            }
+            std::cout << "*";
+        }
+    }
+};
+```
 
 1.  进入`main()`函数，然后创建一个名为`printRevers`的 lambda 对象，在`for`循环中打印 100 到 0 的数字：
 
 ```cpp
-    int main()
-    {
-        auto printRevers = []()
-        {
-            for(int i = 100; i >= 0; --i)
-            {
-                std::cout << i << " ";
-            }
-            std::cout << std::endl;
-        };
-        return 0;
-    }
-    ```
+int main()
+{
+    auto printRevers = []()
+    {
+        for(int i = 100; i >= 0; --i)
+        {
+            std::cout << i << " ";
+        }
+        std::cout << std::endl;
+    };
+    return 0;
+}
+```
 
 1.  实现一个名为`printOther`的`std::function`对象，它在`for`循环中从`0`到`100000`打印一个"^"符号。每 200 次迭代，打印一个新行符号，以获得更可读的输出：
 
 ```cpp
-    std::function<void()> printOther = []()
-    {
-        for(int i = 0; i < 100000; ++i)
-        {
-            if (!(i % 200))
-            {
-                std::cout << std::endl;
-            }
-            std::cout << "^";
-        }
-    };
-    ```
+std::function<void()> printOther = []()
+{
+    for(int i = 0; i < 100000; ++i)
+    {
+        if (!(i % 200))
+        {
+            std::cout << std::endl;
+        }
+        std::cout << "^";
+    }
+};
+```
 
 1.  创建第一个线程`thr1`，并将`printNumbers`自由函数传递给其构造函数。加入它：
 
 ```cpp
-    std::thread thr1(printNumbers);
-    thr1.join();
-    ```
+std::thread thr1(printNumbers);
+thr1.join();
+```
 
 1.  创建第二个线程`thr2`，并将`printRevers` lambda 对象传递给其构造函数。加入它：
 
 ```cpp
-    std::thread thr2(printRevers);
-    thr2.join();
-    ```
+std::thread thr2(printRevers);
+thr2.join();
+```
 
 1.  创建一个名为`print`的`Printer`类的实例。创建第三个线程`thr3`，并用`print`对象初始化它。使用`detach()`方法将其分离：
 
 ```cpp
-    Printer print;
-    std::thread thr3(print);
-    thr3.detach();
-    ```
+Printer print;
+std::thread thr3(print);
+thr3.detach();
+```
 
 1.  创建最后一个线程`thr4`，并用`printOther`对象初始化它。分离它：
 
 ```cpp
-    std::thread thr4(printOther);
-    thr4.detach();
-    ```
+std::thread thr4(printOther);
+thr4.detach();
+```
 
 1.  在`main()`函数退出之前添加`std::getchar()`函数调用。这样可以避免关闭应用程序。我们将有可能看到分离的线程是如何工作的：
 
 ```cpp
-    std::getchar();
-    ```
+std::getchar();
+```
 
 1.  在编辑器中运行此代码。您将看到`thr1`开始执行，程序等待。`thr1`完成后，`thr2`开始执行，程序等待。这是同步执行的一个例子。`thr2`完成工作后，线程`thr3`和`thr4`开始执行。它们被分离，所以程序可以继续执行。在下面的输出中，您将看到符号混合。这是因为操作系统执行中断，线程同时工作。
 
@@ -511,46 +511,46 @@ int main()
 1.  包括线程支持的头文件，即`<thread>`，流支持的头文件，即`<iostream>`，和函数对象支持的头文件，即`<functional>`：
 
 ```cpp
-    #include <iostream>
-    #include <chrono>
-    #include <thread>
-    ```
+#include <iostream>
+#include <chrono>
+#include <thread>
+```
 
 1.  实现一个`divide()`函数，执行两个整数的除法。通过引用传递`divisor`和`dividend`变量。检查被除数是否等于 0。然后，添加日志：
 
 ```cpp
-    void divide(int& divisor, int& dividend)
-    {
-        if (0 != dividend)
-        {
-            std::cout << "Dividend = " << dividend << std::endl;
-            std::cout << "Result: " << (divisor / dividend) << std::endl;    
-        }
-        else
-        {
-            std::cout << "Error: dividend = 0" << std::endl;
-        }
-    }
-    ```
+void divide(int& divisor, int& dividend)
+{
+    if (0 != dividend)
+    {
+        std::cout << "Dividend = " << dividend << std::endl;
+        std::cout << "Result: " << (divisor / dividend) << std::endl;    
+    }
+    else
+    {
+        std::cout << "Error: dividend = 0" << std::endl;
+    }
+}
+```
 
 1.  进入`main()`函数，创建两个名为`divisor`和`dividend`的整数，并用任意非零值初始化它们：
 
 ```cpp
-    int main()
-    {
-        int divisor = 15;
-        int dividend = 5;
-        return 0;
-    }
-    ```
+int main()
+{
+    int divisor = 15;
+    int dividend = 5;
+    return 0;
+}
+```
 
 1.  创建`thr1`线程，传递`divide`函数，使用引用传递`divisor`和`dividend`，然后分离线程：
 
 ```cpp
-    std::thread thr1(divide, std::ref(divisor), std::ref(dividend));
-    thr1.detach();
-    std::getchar();
-    ```
+std::thread thr1(divide, std::ref(divisor), std::ref(dividend));
+thr1.detach();
+std::getchar();
+```
 
 #### 注意
 
@@ -565,27 +565,27 @@ int main()
 1.  返回函数，并在`if`条件后为子线程设置睡眠时间为`2s`。添加日志：
 
 ```cpp
-    if (0 != dividend)
-    {
-        std::cout << "Child thread goes sleep" << std::endl;
-        using namespace std::chrono_literals;
-        std::this_thread::sleep_for(2s);
-        std::cout << "Child thread woke up" << std::endl;
-        std::cout << "Dividend = " << dividend << std::endl;
-        std::cout << (divisor / dividend) << std::endl;
-    }
-    ```
+if (0 != dividend)
+{
+    std::cout << "Child thread goes sleep" << std::endl;
+    using namespace std::chrono_literals;
+    std::this_thread::sleep_for(2s);
+    std::cout << "Child thread woke up" << std::endl;
+    std::cout << "Dividend = " << dividend << std::endl;
+    std::cout << (divisor / dividend) << std::endl;
+}
+```
 
 1.  返回`main()`函数，将主线程的睡眠时间设置为`1s`。之后，将`dividend`变量设置为`0`。添加日志：
 
 ```cpp
-    std::cout << "Main thread goes sleep" << std::endl;
-    using namespace std::chrono_literals;
-    std::this_thread::sleep_for(1s);
-    std::cout << "Main thread woke up" << std::endl;
-    dividend = 0;   
-    std::cout << "Main thread set dividend to 0" << std::endl;
-    ```
+std::cout << "Main thread goes sleep" << std::endl;
+using namespace std::chrono_literals;
+std::this_thread::sleep_for(1s);
+std::cout << "Main thread woke up" << std::endl;
+dividend = 0;   
+std::cout << "Main thread set dividend to 0" << std::endl;
+```
 
 #### 注意
 
@@ -594,8 +594,8 @@ int main()
 1.  在`main()`函数退出之前添加`std::getchar()`函数调用。这样可以避免关闭应用程序，我们将有可能看到分离线程的工作方式：
 
 ```cpp
-    std::getchar();
-    ```
+std::getchar();
+```
 
 1.  在编辑器中运行此代码。您将看到主线程睡眠了`1s`。然后，子线程进入`if`条件并睡眠了`2s`，这意味着它验证了`dividend`并且不等于`0`。然后，主线程醒来并将`dividend`变量设置为 0。然后，子线程醒来并执行除法。但是因为`dividend`现在等于`0`，应用程序崩溃了。如果在调试模式下运行此示例，您将看到一个带有消息“算术异常”的`SIGFPE 异常`。您将得到以下输出：
 
@@ -923,68 +923,68 @@ public:
 1.  包括线程支持的头文件，即`<thread>`，和流支持的头文件，即`<iostream>`：
 
 ```cpp
-    #include <iostream>
-    #include <thread>
-    ```
+#include <iostream>
+#include <thread>
+```
 
 1.  实现`Handler`类，它具有默认构造函数、析构函数、复制构造函数、赋值运算符、移动构造函数和移动赋值运算符。它们除了打印日志外什么都不做：
 
 ```cpp
-    class Handler
-    { 
-    public:
-        Handler()
-        {
-            std::cout << "Handler()" << std::endl;
-        }
-        Handler(const Handler&)
-        {
-            std::cout << "Handler(const Handler&)" << std::endl;
-        }
-        Handler& operator=(const Handler&)
-        {
-            std::cout << "Handler& operator=(const Handler&)" << std::endl;
-            return *this;
-        }
-        Handler(Handler && obj)
-        {
-            std::cout << "Handler(Handler && obj)" << std::endl;
-        }
-        Handler & operator=(Handler && obj)
-        {
-            std::cout << "Handler & operator=(Handler && obj)" << std::endl;
-            return *this;
-        }
-        ~Handler()
-        {
-            std::cout << "~Handler()" << std::endl;
-        }
-    };
-    ```
+class Handler
+{ 
+public:
+    Handler()
+    {
+        std::cout << "Handler()" << std::endl;
+    }
+    Handler(const Handler&)
+    {
+        std::cout << "Handler(const Handler&)" << std::endl;
+    }
+    Handler& operator=(const Handler&)
+    {
+        std::cout << "Handler& operator=(const Handler&)" << std::endl;
+        return *this;
+    }
+    Handler(Handler && obj)
+    {
+        std::cout << "Handler(Handler && obj)" << std::endl;
+    }
+    Handler & operator=(Handler && obj)
+    {
+        std::cout << "Handler & operator=(Handler && obj)" << std::endl;
+        return *this;
+    }
+    ~Handler()
+    {
+        std::cout << "~Handler()" << std::endl;
+    }
+};
+```
 
 1.  实现`doSomeJob()`函数，这里实际上什么也不做，只是打印一个日志消息：
 
 ```cpp
-    void doSomeJob(Handler&& h)
-    {
-        std::cout << "I'm here" << std::endl;
-    }
-    ```
+void doSomeJob(Handler&& h)
+{
+    std::cout << "I'm here" << std::endl;
+}
+```
 
 1.  进入`main()`函数并创建`Handler`类型的`handler`变量。创建`thr1`，传递`doSomeJob()`函数，并移动处理程序变量：
 
 ```cpp
-    Handler handler;
-    std::thread thr1(doSomeJob, std::move(handler));
-    ```
+Handler handler;
+std::thread thr1(doSomeJob, std::move(handler));
+```
 
 1.  分离`thr1`线程并为主线程添加一个小睡眠，以避免关闭应用程序。我们将能够看到来自分离线程的输出。
 
 ```cpp
-    thr1.detach();
-    using namespace std::chrono_literals; 
-    std::this_thread::sleep_for(5s);
-    ```
+thr1.detach();
+using namespace std::chrono_literals; 
+std::this_thread::sleep_for(5s);
+```
 
 1.  在编辑器中运行此代码。在终端日志中，从默认构造函数中，您将看到两个从移动运算符中的日志，一个从析构函数中的日志，来自`doSomeJob()`函数的消息，最后，另外两个从析构函数中的日志。我们可以看到移动构造函数被调用了两次。
 
@@ -1072,135 +1072,135 @@ std::thread convertThread([ unique = std::move(unique) ] {
 1.  包括线程支持的头文件，即`<thread>`，流支持的头文件，即`<iostream>`，和`<vector>`：
 
 ```cpp
-    #include <iostream>
-    #include <thread>
-    #include <vector>
-    #include <string>
-    ```
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <string>
+```
 
 1.  实现`Converter`类，它具有`const std::vector<std::string>&`类型的`m_bufferIn`私有成员。这是对原始字符串向量的引用。它还具有一个用户构造函数，它接受`bufferIn`变量。然后，我们删除复制构造函数和赋值运算符。最后，我们定义重载的`operator()`，在其中将所有小写符号转换为大写。转换后，我们将结果写入结果缓冲区：
 
 ```cpp
-    class Converter
-    {
-        public:
-        Converter(std::vector<std::string>& bufferIn)
-            : m_bufferIn(bufferIn)
-        {
-        }
-        Converter(Converter&& rhs)
-            : m_bufferIn(std::move(rhs.m_bufferIn))
-        {
-        }
-        Converter(const Converter&) = delete;
-        Converter& operator=(const Converter&) = delete;
-        Converter& operator=(Converter&&) = delete;
-        void operator()(const int idx, std::vector<std::string>& result)
-        {
-            try
-            {
-                std::string::const_iterator end = m_bufferIn.at(idx).end();
-                std::string bufferOut;
-                for (std::string::const_iterator iter = m_bufferIn.at(idx).begin(); iter != end; iter++)
-                {
-                    if (*iter >= 97 && *iter <= 122)
-                    {
-                        bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
-                    }
-                    else
-                    {
-                        bufferOut += *iter;
-                    }
-                }
-                result[idx] = bufferOut;
-            }
-            catch(...)
-            {
-                std::cout << "Invalid index" << std::endl;
-            }
-        }
-        private:
-        const std::vector<std::string>& m_bufferIn;
-    };
-    ```
+class Converter
+{
+    public:
+    Converter(std::vector<std::string>& bufferIn)
+        : m_bufferIn(bufferIn)
+    {
+    }
+    Converter(Converter&& rhs)
+        : m_bufferIn(std::move(rhs.m_bufferIn))
+    {
+    }
+    Converter(const Converter&) = delete;
+    Converter& operator=(const Converter&) = delete;
+    Converter& operator=(Converter&&) = delete;
+    void operator()(const int idx, std::vector<std::string>& result)
+    {
+        try
+        {
+            std::string::const_iterator end = m_bufferIn.at(idx).end();
+            std::string bufferOut;
+            for (std::string::const_iterator iter = m_bufferIn.at(idx).begin(); iter != end; iter++)
+            {
+                if (*iter >= 97 && *iter <= 122)
+                {
+                    bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
+                }
+                else
+                {
+                    bufferOut += *iter;
+                }
+            }
+            result[idx] = bufferOut;
+        }
+        catch(...)
+        {
+            std::cout << "Invalid index" << std::endl;
+        }
+    }
+    private:
+    const std::vector<std::string>& m_bufferIn;
+};
+```
 
 1.  进入`main()`函数，创建一个名为`numberOfTasks`的常量值，并将其设置为`5`。然后，创建一个`Converter`对象的向量，并使用`numberOfTasks`保留其大小。然后，创建一个`std::thread`对象的向量，并使用`numberOfTasks`保留其大小：
 
 ```cpp
-    const int numberOfTasks = 5;
-    std::vector<Converter> functions;
-    functions.reserve(numberOfTasks);
-    std::vector<std::thread> threads;
-    threads.reserve(numberOfTasks); 
-    ```
+const int numberOfTasks = 5;
+std::vector<Converter> functions;
+functions.reserve(numberOfTasks);
+std::vector<std::thread> threads;
+threads.reserve(numberOfTasks); 
+```
 
 1.  创建字符串向量`textArr`，并推入五个不同的大字符串以进行转换：
 
 ```cpp
-    std::vector<std::string> textArr;
-    textArr.emplace_back("In the previous topics, we learned almost all that we need to work with threads. But we still have something interesting to consider – how to synchronize threads using future results. When we considered condition variables we didn't cover the second type of synchronization with future results. Now it's time to learn that.");
-    textArr.emplace_back("First of all, let's consider a real-life example. Imagine, you just passed the exam at the university. You were asked to wait some amount of time for results. So, you have time to coffee with your mates, and every 10-15 mins you check are results available. Then, when you finished all your other activities, you just come to the door of the lecture room and wait for results.");
-    textArr.emplace_back("In this exercise, we will write a simple application where we will use std::move() with threads. First of all, we will implement a class that is move constructible. This class will convert lowercase text into uppercase text. Then we will create a vector of instances of this class. Next, we will create a vector of std::thread object. Finally, we will initialize threads with an object from the first vector");
-    textArr.emplace_back("Let's consider one interesting issue. As you remember when we initialize std::thread all constructor arguments are copied into thread memory, including a callable object – lambda, function, std::function. But what if our callable object doesn't support copy semantic? For example, we created a class that has only move constructor and a move assignment operator:");
-    textArr.emplace_back("Run this code in your editor. You will see in the terminal log from the default constructor, two logs from the move operator, then one log from a destructor, then message from the doSomeJob() function and, finally two other log messages from the destructor. We see that the move constructor is called twice. You will get the output like the following:");
-    ```
+std::vector<std::string> textArr;
+textArr.emplace_back("In the previous topics, we learned almost all that we need to work with threads. But we still have something interesting to consider – how to synchronize threads using future results. When we considered condition variables we didn't cover the second type of synchronization with future results. Now it's time to learn that.");
+textArr.emplace_back("First of all, let's consider a real-life example. Imagine, you just passed the exam at the university. You were asked to wait some amount of time for results. So, you have time to coffee with your mates, and every 10-15 mins you check are results available. Then, when you finished all your other activities, you just come to the door of the lecture room and wait for results.");
+textArr.emplace_back("In this exercise, we will write a simple application where we will use std::move() with threads. First of all, we will implement a class that is move constructible. This class will convert lowercase text into uppercase text. Then we will create a vector of instances of this class. Next, we will create a vector of std::thread object. Finally, we will initialize threads with an object from the first vector");
+textArr.emplace_back("Let's consider one interesting issue. As you remember when we initialize std::thread all constructor arguments are copied into thread memory, including a callable object – lambda, function, std::function. But what if our callable object doesn't support copy semantic? For example, we created a class that has only move constructor and a move assignment operator:");
+textArr.emplace_back("Run this code in your editor. You will see in the terminal log from the default constructor, two logs from the move operator, then one log from a destructor, then message from the doSomeJob() function and, finally two other log messages from the destructor. We see that the move constructor is called twice. You will get the output like the following:");
+```
 
 1.  实现一个`for`循环，将`Converter`对象推入函数向量：
 
 ```cpp
-    for (int i = 0; i < numberOfTasks; ++i)
-    {
-        functions.push_back(Converter(textArr));
-    }
-    ```
+for (int i = 0; i < numberOfTasks; ++i)
+{
+    functions.push_back(Converter(textArr));
+}
+```
 
 1.  创建一个字符串结果向量，并推入五个空字符串。然后，创建一个将作为数组元素索引的变量：
 
 ```cpp
-    std::vector<std::string> result;
-    for (int i = 0; i < numberOfTasks; ++i)
-    {
-        result.push_back("");
-    }
-    int idx = 0;
-    ```
+std::vector<std::string> result;
+for (int i = 0; i < numberOfTasks; ++i)
+{
+    result.push_back("");
+}
+int idx = 0;
+```
 
 1.  实现另一个`for`循环，将`std::thread`对象推入线程向量：
 
 ```cpp
-    for (auto iter = functions.begin(); iter != functions.end(); ++iter)
-    {
-        std::thread tmp(std::move(*iter), idx, std::ref(result));        
-        threads.push_back(std::move(tmp));
-        from = to;
-        to += step;
-    }
-    ```
+for (auto iter = functions.begin(); iter != functions.end(); ++iter)
+{
+    std::thread tmp(std::move(*iter), idx, std::ref(result));        
+    threads.push_back(std::move(tmp));
+    from = to;
+    to += step;
+}
+```
 
 1.  实现第三个`for`循环，其中我们分离`std::threads`：
 
 ```cpp
-    for (auto iter = threads.begin(); iter != threads.end(); ++iter)
-    {
-         (*iter).detach();
-    }
-    ```
+for (auto iter = threads.begin(); iter != threads.end(); ++iter)
+{
+     (*iter).detach();
+}
+```
 
 1.  为主线程添加一个小的休眠，以避免关闭应用程序。现在，我们可以看到分离的线程是如何工作的：
 
 ```cpp
-    using namespace std::chrono_literals; 
-    std::this_thread::sleep_for(5s);
-    ```
+using namespace std::chrono_literals; 
+std::this_thread::sleep_for(5s);
+```
 
 1.  最后将结果打印到终端：
 
 ```cpp
-    for (const auto& str : result)
-    {
-        std::cout << str;
-    }
-    ```
+for (const auto& str : result)
+{
+    std::cout << str;
+}
+```
 
 1.  在编辑器中运行此代码。在终端中，您可以看到所有字符串都是大写的，这意味着所有线程都已成功移动和运行。您将得到以下输出：
 
@@ -1310,27 +1310,27 @@ std::cout << "Future result = " << sharedResult.get() << std::endl;
 1.  我们创建一个新的`std::packaged_task`并声明可调用函数签名：
 
 ```cpp
-    std::packaged_task<std::string(const std::string&)> task(toUppercase);
-    ```
+std::packaged_task<std::string(const std::string&)> task(toUppercase);
+```
 
 1.  然后，我们将未来结果存储在`std::future`变量中：
 
 ```cpp
-    auto futureResult = task.get_future();
-    ```
+auto futureResult = task.get_future();
+```
 
 1.  接下来，我们在单独的线程中运行此任务或将其作为函数调用：
 
 ```cpp
-    std::thread thr1(std::move(task), "please, make it uppercase");
-    thr1.detach();
-    ```
+std::thread thr1(std::move(task), "please, make it uppercase");
+thr1.detach();
+```
 
 1.  最后，我们等待未来的结果准备就绪：
 
 ```cpp
-    std::cout << "Future result = " << futureResult.get() << std::endl;
-    ```
+std::cout << "Future result = " << futureResult.get() << std::endl;
+```
 
 #### 注意
 
@@ -1645,88 +1645,88 @@ int main()
 1.  包括用于线程支持的头文件，即`<thread>`，用于流支持的头文件，即`<iostream>`，以及用于 future 结果支持的`<future>`：
 
 ```cpp
-    #include <iostream>
-    #include <thread>
-    #include <future>
-    ```
+#include <iostream>
+#include <thread>
+#include <future>
+```
 
 1.  实现一个`ToUppercase`类，将给定的字符串转换为大写。它有两个重载的运算符，`()`。第一个`operator()`接受要转换的字符串并以大写形式返回结果值。第二个`operator()`接受要转换的字符串和一个`std::promise`，并将返回值存储在 promise 中：
 
 ```cpp
-    class ToUppercase
-    {
-        public:
-        std::string operator()(const std::string& bufIn)
-        {
-            std::string bufferOut;
-            for (std::string::const_iterator iter = bufIn.begin(); iter != bufIn.end(); iter++)
-            {
-                if (*iter >= 97 && *iter <= 122)
-                {
-                    bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
-                }
-                else
-                {
-                    bufferOut += *iter;
-                }
-            }
-            return bufferOut;
-        }
-        void operator()(const std::string& bufIn, std::promise<std::string> result)
-        {
-            std::string bufferOut;
-            for (std::string::const_iterator iter = bufIn.begin(); iter != bufIn.end(); iter++)
-            {
-                if (*iter >= 97 && *iter <= 122)
-                {
-                    bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
-                }
-                else
-                {
-                    bufferOut += *iter;
-                }
-            }
-            result.set_value(bufferOut);
-        }
-    };
-    ```
+class ToUppercase
+{
+    public:
+    std::string operator()(const std::string& bufIn)
+    {
+        std::string bufferOut;
+        for (std::string::const_iterator iter = bufIn.begin(); iter != bufIn.end(); iter++)
+        {
+            if (*iter >= 97 && *iter <= 122)
+            {
+                bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
+            }
+            else
+            {
+                bufferOut += *iter;
+            }
+        }
+        return bufferOut;
+    }
+    void operator()(const std::string& bufIn, std::promise<std::string> result)
+    {
+        std::string bufferOut;
+        for (std::string::const_iterator iter = bufIn.begin(); iter != bufIn.end(); iter++)
+        {
+            if (*iter >= 97 && *iter <= 122)
+            {
+                bufferOut += static_cast<char>(static_cast<int>(*iter) - 32);
+            }
+            else
+            {
+                bufferOut += *iter;
+            }
+        }
+        result.set_value(bufferOut);
+    }
+};
+```
 
 1.  现在，创建一个`ToUppercase`对象，即`ptConverter`，并创建一个`std::packaged_task`，即`upperCaseResult1`，它以`ptConverter`对象作为参数。创建一个`std::future`值，并从`upperCaseResult1`设置它。在一个单独的线程中运行这个任务：
 
 ```cpp
-    ToUppercase ptConverter;
-    std::packaged_task<std::string(const std::string&)> upperCaseResult1(ptConverter);
-    std::future<std::string> futureUpperResult1= upperCaseResult1.get_future();
-    std::thread thr1(std::move(ptConverter), "This is a string for the first asynchronous task");
-    thr1.detach(); 
-    ```
+ToUppercase ptConverter;
+std::packaged_task<std::string(const std::string&)> upperCaseResult1(ptConverter);
+std::future<std::string> futureUpperResult1= upperCaseResult1.get_future();
+std::thread thr1(std::move(ptConverter), "This is a string for the first asynchronous task");
+thr1.detach(); 
+```
 
 1.  现在，创建第二个`ToUppercase`对象，即`fConverter`。创建一个名为`futureUpperResult2`的`std::future`对象，并从`std::async()`设置它：
 
 ```cpp
-    ToUppercase fConverter;
-    std::future<std::string> futureUpperResult2 = std::async(fConverter, "This is a string for the asynchronous task"); 
-    ```
+ToUppercase fConverter;
+std::future<std::string> futureUpperResult2 = std::async(fConverter, "This is a string for the asynchronous task"); 
+```
 
 1.  现在，创建第三个`ToUppercase`对象，即`pConverter`。创建一个名为`promiseResult`的`std::promise`值。然后，创建一个名为`futureUpperResult3`的`std::future`值，并从`promiseResult`设置它。现在，在单独的线程中运行`pConverter`任务，并将`promiseResult`作为参数传递：
 
 ```cpp
-    ToUppercase pConverter;
-    std::promise<std::string> promiseResult;
-    std::future<std::string> futureUpperResult3 = promiseResult.get_future();
-    std::thread thr2(pConverter, "This is a string for the task that returns a promise", std::move(promiseResult));
-    thr2.detach(); 
-    ```
+ToUppercase pConverter;
+std::promise<std::string> promiseResult;
+std::future<std::string> futureUpperResult3 = promiseResult.get_future();
+std::thread thr2(pConverter, "This is a string for the task that returns a promise", std::move(promiseResult));
+thr2.detach(); 
+```
 
 1.  现在，要接收所有线程的结果，请等待`futureUpperResult3`准备就绪，然后获取所有三个结果并打印它们：
 
 ```cpp
-    futureUpperResult3.wait();
-    std::cout  << "Converted strings: "
-            << futureUpperResult1.get() << std::endl
-            << futureUpperResult2.get() << std::endl
-            << futureUpperResult3.get() << std::endl;
-    ```
+futureUpperResult3.wait();
+std::cout  << "Converted strings: "
+        << futureUpperResult1.get() << std::endl
+        << futureUpperResult2.get() << std::endl
+        << futureUpperResult3.get() << std::endl;
+```
 
 1.  在编辑器中运行此代码。您将看到来自所有三个线程的转换后的字符串。
 

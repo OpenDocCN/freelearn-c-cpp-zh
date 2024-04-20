@@ -109,16 +109,16 @@
 1.  在`DodgeballProjectile`类的头文件中，添加一个受保护的`class USoundBase*`属性，名为`BounceSound`。此属性应该是一个`UPROPERTY`，并具有`EditDefaultsOnly`标记，以便可以在蓝图中进行编辑：
 
 ```cpp
-    // The sound the dodgeball will make when it bounces off of a   surface
-    UPROPERTY(EditAnywhere, Category = Sound)
-    class USoundBase* BounceSound;
-    ```
+// The sound the dodgeball will make when it bounces off of a   surface
+UPROPERTY(EditAnywhere, Category = Sound)
+class USoundBase* BounceSound;
+```
 
 1.  完成此操作后，转到`DodgeballProjectile`类的源文件，并添加一个包含`GameplayStatics`对象的包含：
 
 ```cpp
-    #include "Kismet/GameplayStatics.h"
-    ```
+#include "Kismet/GameplayStatics.h"
+```
 
 1.  然后，在类的`OnHit`函数的实现开始之前，在对`DodgeballCharacter`类的转换之前，检查我们的`BounceSound`是否是有效属性（与`nullptr`不同），以及`NormalImpulse`属性的大小是否大于`600`单位（我们可以通过调用其`Size`函数来访问大小）。
 
@@ -137,11 +137,11 @@
 看一下以下代码片段：
 
 ```cpp
-        if (BounceSound != nullptr && NormalImpulse.Size() > 600.0f)
-        {
-          UGameplayStatics::PlaySoundAtLocation(this, BounceSound,   GetActorLocation(), 1.0f, FMath::RandRange(0.7f, 1.3f));
-        }
-        ```
+if (BounceSound != nullptr && NormalImpulse.Size() > 600.0f)
+{
+  UGameplayStatics::PlaySoundAtLocation(this, BounceSound,   GetActorLocation(), 1.0f, FMath::RandRange(0.7f, 1.3f));
+}
+```
 
 注意
 
@@ -202,10 +202,10 @@
 1.  转到`DodgeballProjectile`的头文件，并添加一个名为`BounceSoundAttenuation`的`protected` `class USoundAttenuation*`属性。这个属性应该是一个`UPROPERTY`，并且有`EditDefaultsOnly`标记，以便可以在蓝图中进行编辑：
 
 ```cpp
-    // The sound attenuation of the previous sound
-    UPROPERTY(EditAnywhere, Category = Sound)
-    class USoundAttenuation* BounceSoundAttenuation;
-    ```
+// The sound attenuation of the previous sound
+UPROPERTY(EditAnywhere, Category = Sound)
+class USoundAttenuation* BounceSoundAttenuation;
+```
 
 1.  转到`DodgeballProjectile`类的源文件中的`OnHit`函数的实现，并向`PlaySoundAtLocation`函数的调用添加以下参数：
 
@@ -214,8 +214,8 @@
 +   `SoundAttenuation`，我们将传递我们的`BounceSoundAttenuation`属性：
 
 ```cpp
-        UGameplayStatics::PlaySoundAtLocation(this, BounceSound,   GetActorLocation(), 1.0f, 1.0f, 0.0f,   BounceSoundAttenuation);
-        ```
+UGameplayStatics::PlaySoundAtLocation(this, BounceSound,   GetActorLocation(), 1.0f, 1.0f, 0.0f,   BounceSoundAttenuation);
+```
 
 注意
 
@@ -246,27 +246,27 @@
 1.  在`MusicManager`类的头文件中，添加一个名为`AudioComponent`的新的受保护属性，类型为`class UAudioComponent*`。将其设置为`UPROPERTY`，并添加`VisibleAnywhere`和`BlueprintReadOnly`标签：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    class UAudioComponent* AudioComponent;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+class UAudioComponent* AudioComponent;
+```
 
 1.  在`MusicManager`类的源文件中，添加`AudioComponent`类的包含：
 
 ```cpp
-    #include "Components/AudioComponent.h"
-    ```
+#include "Components/AudioComponent.h"
+```
 
 1.  在这个类的构造函数中，将`bCanEverTick`属性更改为`false`：
 
 ```cpp
-    PrimaryActorTick.bCanEverTick = false;
-    ```
+PrimaryActorTick.bCanEverTick = false;
+```
 
 1.  在这一行之后，添加一个新的行，通过调用`CreateDefaultSubobject`函数并将`UAudioComponent`类作为模板参数和`"Music Component"`作为普通参数传递来创建`AudioComponent`类：
 
 ```cpp
-    AudioComponent =   CreateDefaultSubobject<UAudioComponent>(TEXT("Music   Component"));
-    ```
+AudioComponent =   CreateDefaultSubobject<UAudioComponent>(TEXT("Music   Component"));
+```
 
 1.  进行这些更改后，编译您的代码并打开编辑器。
 
@@ -331,10 +331,10 @@ Niagara：[`docs.unrealengine.com/en-US/Engine/Niagara/EmitterEditorReference/in
 `UParticleSystem`类型是 UE4 中的粒子系统的指定。确保将其设置为`UPROPERTY`并给予`EditDefaultsOnly`标签，以便可以在蓝图类中进行编辑：
 
 ```cpp
-    // The particle system the dodgeball will spawn when it hits   the player
-    UPROPERTY(EditAnywhere, Category = Particles)
-    class UParticleSystem* HitParticles;
-    ```
+// The particle system the dodgeball will spawn when it hits   the player
+UPROPERTY(EditAnywhere, Category = Particles)
+class UParticleSystem* HitParticles;
+```
 
 1.  在`DodgeballProjectile`类的源文件中，在其`OnHit`函数的实现中。在调用`Destroy`函数之前，检查我们的`HitParticles`属性是否有效。如果有效，调用`GameplayStatics`对象的`SpawnEmitterAtLocation`函数。
 
@@ -347,11 +347,11 @@ Niagara：[`docs.unrealengine.com/en-US/Engine/Niagara/EmitterEditorReference/in
 +   将播放粒子系统的角色的`FTransform`，我们将使用`GetActorTransform`函数传递：
 
 ```cpp
-        if (HitParticles != nullptr)
-        {
-          UGameplayStatics::SpawnEmitterAtLocation(GetWorld(),   HitParticles, GetActorTransform());
-        }
-        ```
+if (HitParticles != nullptr)
+{
+  UGameplayStatics::SpawnEmitterAtLocation(GetWorld(),   HitParticles, GetActorTransform());
+}
+```
 
 注意
 

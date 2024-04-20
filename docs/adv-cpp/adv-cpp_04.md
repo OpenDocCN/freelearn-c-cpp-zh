@@ -219,8 +219,8 @@ C++语言所保证的销毁所有本地函数变量的过程被称为**堆栈展
 1.  在编辑器中打开**Fraction.hpp**，并更改文件顶部的行，使其读起来像这样：
 
 ```cpp
-    #define EXERCISE1_STEP  14
-    ```
+#define EXERCISE1_STEP  14
+```
 
 1.  点击`Fraction`，其中分母为零。测试期望抛出异常：![图 3.13：新的失败测试 ThrowsDomainErrorForZeroDenominator](img/C14583_03_13.jpg)
 
@@ -235,35 +235,35 @@ C++语言所保证的销毁所有本地函数变量的过程被称为**堆栈展
 `ASSERT_THROW()`宏需要两个参数。由于`Fraction 初始化器`中有一个逗号，因此需要在第一个参数的外面再加一组括号。第二个参数预期从这个构造函数中获得一个`std::domain_error`。内部的`try/catch`结构用于确认预期的字符串是否被捕获在异常对象中。如果我们不想检查这一点，那么我们可以简单地这样编写测试：
 
 ```cpp
-    ASSERT_THROW(({Fraction f1{1,0}; }), std::domain_error);
-    ```
+ASSERT_THROW(({Fraction f1{1,0}; }), std::domain_error);
+```
 
 1.  在编辑器中打开文件**Fraction.cpp**。在文件顶部附近插入以下行：
 
 ```cpp
-    #include <stdexcept> 
-    ```
+#include <stdexcept> 
+```
 
 1.  修改构造函数，如果使用零分母创建，则抛出异常：
 
 ```cpp
-    Fraction::Fraction(int numerator, int denominator) 
-                           : m_numerator{numerator}, m_denominator{denominator}
-    {
-        if(m_denominator == 0) 
-        {
-            throw std::domain_error("Zero Denominator");
-        }
-    }
-    ```
+Fraction::Fraction(int numerator, int denominator) 
+                       : m_numerator{numerator}, m_denominator{denominator}
+{
+    if(m_denominator == 0) 
+    {
+        throw std::domain_error("Zero Denominator");
+    }
+}
+```
 
 1.  点击**运行**按钮重新运行测试。现在有**19**个测试通过。
 
 1.  在编辑器中打开**Fraction.hpp**，并更改文件顶部附近的行，使其读起来像这样：
 
 ```cpp
-    #define EXERCISE1_STEP  20
-    ```
+#define EXERCISE1_STEP  20
+```
 
 1.  点击`ThrowsRunTimeErrorForZeroDenominator`失败。
 
@@ -282,26 +282,26 @@ C++语言所保证的销毁所有本地函数变量的过程被称为**堆栈展
 1.  通过添加一个将检测除法运算符的域错误来修改**Fraction.cpp**：
 
 ```cpp
-    Fraction& Fraction::operator/=(const Fraction& rhs)
-    {
-        if (rhs.m_numerator == 0)
-        {
-            throw std::runtime_error("Fraction Divide By Zero");
-        }
-        Fraction tmp(m_numerator*rhs.m_denominator, 
-    m_denominator*rhs.m_numerator);
-        *this = tmp;
-        return *this;
-    }
-    ```
+Fraction& Fraction::operator/=(const Fraction& rhs)
+{
+    if (rhs.m_numerator == 0)
+    {
+        throw std::runtime_error("Fraction Divide By Zero");
+    }
+    Fraction tmp(m_numerator*rhs.m_denominator, 
+m_denominator*rhs.m_numerator);
+    *this = tmp;
+    return *this;
+}
+```
 
 1.  点击**Run**按钮重新运行测试。所有**20**个测试通过。
 
 1.  在编辑器中打开**Stack.hpp**并更改文件顶部附近的行，使其读起来像这样：
 
 ```cpp
-    #define EXERCISE1_STEP  27
-    ```
+#define EXERCISE1_STEP  27
+```
 
 1.  点击`FractionTest`以折叠测试列表并显示`StackTest`：![图 3.16：pop Stack 测试失败](img/C14583_03_16.jpg)
 
@@ -310,55 +310,55 @@ C++语言所保证的销毁所有本地函数变量的过程被称为**堆栈展
 1.  在文件顶部使用`#include <stdexcept>`，然后更新`pop()`函数，使其如下所示：
 
 ```cpp
-    void pop()
-    {
-        if(empty())
-            throw std::underflow_error("Pop from empty stack");
-        m_stack.pop_back();
-    } 
-    ```
+void pop()
+{
+    if(empty())
+        throw std::underflow_error("Pop from empty stack");
+    m_stack.pop_back();
+} 
+```
 
 1.  点击**Run**按钮重新运行测试。现在**21**个测试通过了。
 
 1.  在编辑器中打开**Stack.hpp**并更改文件顶部的行，使其读起来像这样：
 
 ```cpp
-    #define EXERCISE1_STEP  31
-    ```
+#define EXERCISE1_STEP  31
+```
 
 1.  点击`TopEmptyStackThrowsUnderFlowException`，失败。
 
 1.  使用`top()`方法，使其如下所示：
 
 ```cpp
-    reference top()
-    {
-        if(empty())
-            throw std::underflow_error("Top from empty stack");
-        return m_stack.back();
-    }
-    ```
+reference top()
+{
+    if(empty())
+        throw std::underflow_error("Top from empty stack");
+    return m_stack.back();
+}
+```
 
 1.  点击**Run**按钮重新运行测试。**22**个测试通过。
 
 1.  在编辑器中打开**Stack.hpp**并更改文件顶部的行，使其读起来像这样：
 
 ```cpp
-    #define EXERCISE1_STEP  35
-    ```
+#define EXERCISE1_STEP  35
+```
 
 1.  点击`TopEmptyConstStackThrowsUnderFlowException`，失败。
 
 1.  使用`top()`方法，使其如下所示：
 
 ```cpp
-    const_reference top() const
-    {
-        if(empty())
-            throw std::underflow_error("Top from empty stack");
-        return m_stack.back();
-    }
-    ```
+const_reference top() const
+{
+    if(empty())
+        throw std::underflow_error("Top from empty stack");
+    return m_stack.back();
+}
+```
 
 1.  点击**Run**按钮重新运行测试。现在所有**23**个测试都通过了。
 
@@ -612,38 +612,38 @@ void do_something()
 1.  在编辑器中，输入以下内容到`File`类中：
 
 ```cpp
-    class File {
-    public:
-        File(const char* name, const char* access) {
-            m_file = fopen(name, access);
-            if (m_file == nullptr) {
-                throw std::ios_base::failure(""failed to open file"");
-            }
-        }
-        ~File() {
-            fclose(m_file);
-        }
-        operator FILE*() {
-            return m_file;
-        }
-    private:
-        FILE* m_file{};
-    };
-    ```
+class File {
+public:
+    File(const char* name, const char* access) {
+        m_file = fopen(name, access);
+        if (m_file == nullptr) {
+            throw std::ios_base::failure(""failed to open file"");
+        }
+    }
+    ~File() {
+        fclose(m_file);
+    }
+    operator FILE*() {
+        return m_file;
+    }
+private:
+    FILE* m_file{};
+};
+```
 
 1.  点击**Run**按钮运行 Exercise 3 - 它仍然泄漏文件和内存，但代码是正确的。
 
 1.  找到`LeakFiles()`函数，并修改它以使用新的`File`类（就像前面的代码一样）以防止文件泄漏：
 
 ```cpp
-    void LeakFiles()
-    {
-        File fh1{"HelloB1.txt", "w"};
-        fprintf(fh1, "Hello B2\n");
-        File fh2{"HelloB2.txt", "w"};
-        fprintf(fh2, "Hello B1\n");
-    }
-    ```
+void LeakFiles()
+{
+    File fh1{"HelloB1.txt", "w"};
+    fprintf(fh1, "Hello B2\n");
+    File fh2{"HelloB2.txt", "w"};
+    fprintf(fh2, "Hello B1\n");
+}
+```
 
 1.  正确点击`LeakFiles()`，然后输出将如下所示：![图 3.21：没有文件泄漏](img/C14583_03_21.jpg)
 
@@ -652,43 +652,43 @@ void do_something()
 1.  现在在`CharPointer`类中：
 
 ```cpp
-    class CharPointer
-    {
-    public:
-        void allocate(size_t size)
-        {
-            m_memory = new char[size];
-        }
-        operator char*() { return m_memory;}
-    private:
-        char* m_memory{};
-    };
-    ```
+class CharPointer
+{
+public:
+    void allocate(size_t size)
+    {
+        m_memory = new char[size];
+    }
+    operator char*() { return m_memory;}
+private:
+    char* m_memory{};
+};
+```
 
 1.  修改`LeakPointers()`如下所示：
 
 ```cpp
-    void LeakPointers()
-    {
-        CharPointer memory[5];
-        for (auto i{0} ; i<5 ; i++)
-        {
-            memory[i].allocate(20); 
-            std::cout << "allocated 20 bytes @ " << (void *)memory[i] << "\n";
-        }
-    }
-    ```
+void LeakPointers()
+{
+    CharPointer memory[5];
+    for (auto i{0} ; i<5 ; i++)
+    {
+        memory[i].allocate(20); 
+        std::cout << "allocated 20 bytes @ " << (void *)memory[i] << "\n";
+    }
+}
+```
 
 1.  点击**Run**按钮运行 Exercise 3 - 它仍然有内存泄漏，但代码是正确的。
 
 1.  现在，向`CharPointer`添加以下析构函数。请注意，`delete`操作符使用数组`[]`语法：
 
 ```cpp
-    ~CharPointer()
-    {
-        delete [] m_memory;
-    }
-    ```
+~CharPointer()
+{
+    delete [] m_memory;
+}
+```
 
 1.  再次点击**Run**按钮运行 Exercise 3 - 这次，您应该看到监视器报告没有泄漏：
 
@@ -1215,48 +1215,48 @@ int main()
 1.  在编辑器中，检查代码，特别是工厂方法，即`createSensor(type)`。
 
 ```cpp
-    std::unique_ptr<ISensor>
-    createSensor(SensorType type)
-    {
-        std::unique_ptr<ISensor> sensor;
-        if (type == SensorType::Light)
-        {
-            sensor.reset(new LightSensor);
-        }
-        else if (type == SensorType::Temperature)
-        {
-            sensor.reset(new TemperatureSensor);
-        }
-        else if (type == SensorType::Pressure)
-        {
-            sensor.reset(new PressureSensor);
-        }
-        return sensor;
-    }
-    ```
+std::unique_ptr<ISensor>
+createSensor(SensorType type)
+{
+    std::unique_ptr<ISensor> sensor;
+    if (type == SensorType::Light)
+    {
+        sensor.reset(new LightSensor);
+    }
+    else if (type == SensorType::Temperature)
+    {
+        sensor.reset(new TemperatureSensor);
+    }
+    else if (type == SensorType::Pressure)
+    {
+        sensor.reset(new PressureSensor);
+    }
+    return sensor;
+}
+```
 
 这将创建一个名为 sensor 的空 unique 指针，然后根据传入的`type`重置包含的指针以获取所需的传感器。
 
 1.  在编辑器中打开 Exercise4.cpp，并将文件顶部附近的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE4_STEP  5
-    ```
+#define EXERCISE4_STEP  5
+```
 
 1.  点击`unique_ptr`到`shared_ptr`是不允许的。
 
 1.  找到报告错误的行，并将其更改为以下内容：
 
 ```cpp
-    SensorSPtr light2 = std::move(light);
-    ```
+SensorSPtr light2 = std::move(light);
+```
 
 1.  点击`light`（一个`unique_ptr`）到`light2`（一个`shared_ptr`）。问题实际上是模板方法：
 
 ```cpp
-    template<typename SP>
-    void printSharedPointer(SP sp, const char* message)
-    ```
+template<typename SP>
+void printSharedPointer(SP sp, const char* message)
+```
 
 第一个参数是按值传递的，这意味着将创建`shared_ptr`的新副本并传递给方法进行打印。
 
@@ -1267,8 +1267,8 @@ int main()
 1.  在编辑器中打开**Exercise4.cpp**，并将文件顶部附近的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE4_STEP  12
-    ```
+#define EXERCISE4_STEP  12
+```
 
 1.  点击**Run**按钮编译和运行程序。生成以下输出：![](img/C14583_03_32.jpg)
 
@@ -1279,8 +1279,8 @@ int main()
 1.  在编辑器中打开**Exercise4.cpp**，并将文件顶部附近的行更改为以下内容：
 
 ```cpp
-    #define EXERCISE4_STEP  15
-    ```
+#define EXERCISE4_STEP  15
+```
 
 1.  点击**Run**按钮编译和运行程序。输出切换为以下内容：![图 3.33：在 unique_ptr 中管理数组](img/C14583_03_33.jpg)
 
@@ -1289,29 +1289,29 @@ int main()
 1.  在编辑器中找到`testArrays()`方法：
 
 ```cpp
-    void testArrays()
-    {
-        std::unique_ptr<int []> board = std::make_unique<int []>(8*8);
-        for(int i=0  ; i<8 ; i++)
-            for(int j=0 ; j<8 ; j++)
-                board[i*8+j] = 10*(i+1)+j+1;
-        for(int i=0  ; i<8 ; i++)
-        {
-            char sep{' '};
-            for(int j=0 ; j<8 ; j++)
-                std::cout << board[i*8+j] << sep;
-            std::cout << "\n";
-        }
-    }
-    ```
+void testArrays()
+{
+    std::unique_ptr<int []> board = std::make_unique<int []>(8*8);
+    for(int i=0  ; i<8 ; i++)
+        for(int j=0 ; j<8 ; j++)
+            board[i*8+j] = 10*(i+1)+j+1;
+    for(int i=0  ; i<8 ; i++)
+    {
+        char sep{' '};
+        for(int j=0 ; j<8 ; j++)
+            std::cout << board[i*8+j] << sep;
+        std::cout << "\n";
+    }
+}
+```
 
 在这段代码中有几点需要注意。首先，类型声明为`int[]`。我们在这个练习中选择了`int`，但它可以是几乎任何类型。其次，当使用`unique_ptr`（自 C++ 17 以来也是`shared_ptr`）来管理数组时，定义了`operator[]`。因此，我们通过从二维索引的`board[i*8+j]`计算出一维索引来模拟二维数组。
 
 1.  编辑方法的第一行并声明`auto`类型：
 
 ```cpp
-    auto board = std::make_unique<int []>(8*8);
-    ```
+auto board = std::make_unique<int []>(8*8);
+```
 
 1.  点击`make_unique()`调用。
 
@@ -1566,23 +1566,23 @@ void is_substring(std::string superstring, const char* substring)
 1.  代码检查发现了两个辅助模板：
 
 ```cpp
-    template<class T>
-    bool empty(const T& x)
-    {
-        return x.empty();
-    }
-    template<class T>
-    int size(const T& x)
-    {
-        return x.size();
-    }
-    ```
+template<class T>
+bool empty(const T& x)
+{
+    return x.empty();
+}
+template<class T>
+int size(const T& x)
+{
+    return x.size();
+}
+```
 
 1.  与所有其他练习不同，此练习已配置为在 C++ 14 下构建。打开**Lesson3**下的**CMakeLists.txt**文件，并找到以下行：
 
 ```cpp
-    set_property(TARGET L3Exercise5 PROPERTY CXX_STANDARD 14)
-    ```
+set_property(TARGET L3Exercise5 PROPERTY CXX_STANDARD 14)
+```
 
 1.  将`14`改为`17`。
 
@@ -1734,14 +1734,14 @@ C++标准允许在某些情况下，如果期望`bool`类型并且存在 bool �
 1.  在文本编辑器中，将`Voltage`的构造函数更改为`explicit`：
 
 ```cpp
-    struct Voltage
-    {
-        explicit Voltage(float emf) : m_emf(emf) 
-        {
-        }
-        float m_emf;
-    };
-    ```
+struct Voltage
+{
+    explicit Voltage(float emf) : m_emf(emf) 
+    {
+    }
+    float m_emf;
+};
+```
 
 1.  单击**Run**按钮重新编译代码 - 现在我们得到以下错误：![图 3.45：int 转换为 Voltage 失败](img/C14583_03_45.jpg)
 
@@ -1750,8 +1750,8 @@ C++标准允许在某些情况下，如果期望`bool`类型并且存在 bool �
 1.  从构造函数中删除显式，并将`calculate`函数更改为引用：
 
 ```cpp
-    void calculate(Voltage& v)
-    ```
+void calculate(Voltage& v)
+```
 
 1.  单击**Run**按钮重新编译代码 - 现在，我们得到以下错误：![](img/C14583_03_46.jpg)
 
@@ -1762,8 +1762,8 @@ C++标准允许在某些情况下，如果期望`bool`类型并且存在 bool �
 1.  注释掉生成错误的行，然后在调用`use_float(42)`之后，添加以下行：
 
 ```cpp
-    use_float(volts);
-    ```
+use_float(volts);
+```
 
 1.  单击**Run**按钮重新编译代码-现在我们得到以下错误：![图 3.47：电压转换为浮点数失败](img/C14583_03_47.jpg)
 
@@ -1772,11 +1772,11 @@ C++标准允许在某些情况下，如果期望`bool`类型并且存在 bool �
 1.  现在，将以下转换运算符添加到`Voltage`类中：
 
 ```cpp
-    operator float() const
-    {
-        return m_emf;
-    }
-    ```
+operator float() const
+{
+    return m_emf;
+}
+```
 
 1.  单击**Run**按钮重新编译代码并运行它：![图 3.48：成功将电压转换为浮点数](img/C14583_03_48.jpg)
 
@@ -1789,8 +1789,8 @@ C++标准允许在某些情况下，如果期望`bool`类型并且存在 bool �
 1.  通过在转换中添加显式声明，我们可以防止编译器使用转换运算符。将出错的行更改为将电压变量转换为浮点数：
 
 ```cpp
-    use_float(static_cast<float>(volts));
-    ```
+use_float(static_cast<float>(volts));
+```
 
 1.  单击**Run**按钮重新编译代码并运行它。
 

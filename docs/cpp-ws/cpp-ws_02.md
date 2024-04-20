@@ -97,68 +97,68 @@ ricky.Name = "Ricky";
 1.  创建一个名为 `Book` 的类。为 `Title`、`Author`、`Publisher`、`Description` 和页数添加字段。您必须从类的外部打印这些信息，因此请确保每个字段都是 `public` 的：
 
 ```cpp
-        public class Book
-        {
-            public string Title;
-            public string Author;
-            public string Publisher;
-            public int Pages;
-            public string Description;
-        }
-    ```
+    public class Book
+    {
+        public string Title;
+        public string Author;
+        public string Publisher;
+        public int Pages;
+        public string Description;
+    }
+```
 
 1.  创建一个名为 `Solution` 的类，其中包含 `Main` 方法。正如您在*第一章* *Hello C#*中看到的那样，这个带有 `Main` 方法的类是您应用程序的起点：
 
 ```cpp
-        public static class Solution
-        {
-            public static void Main()
-            {
-            }
-        }
-    ```
+    public static class Solution
+    {
+        public static void Main()
+        {
+        }
+    }
+```
 
 1.  在 `Main` 方法内，为第一本书创建一个对象，并设置字段的值，如下所示：
 
 ```cpp
-    Book book1 = new Book();
-    book1.Author = "New Writer";
-    book1.Title = "First Book";
-    book1.Publisher = "Publisher 1";
-    ```
+Book book1 = new Book();
+book1.Author = "New Writer";
+book1.Title = "First Book";
+book1.Publisher = "Publisher 1";
+```
 
 在这里，创建了一个名为 `book1` 的新对象。通过写点(`.`)后跟字段名称，为不同的字段分配值。第一本书没有描述，因此您可以省略字段 `book1.Description`。
 
 1.  重复此步骤以创建第二本书。对于这本书，您还需要为 `Description` 字段设置一个值：
 
 ```cpp
-    Book book2 = new Book();
-    book2.Author = "New Writer";
-    book2.Title = "Second Book";
-    book2.Publisher = "Publisher 2";
-    book2.Description = "Interesting read";
-    ```
+Book book2 = new Book();
+book2.Author = "New Writer";
+book2.Title = "Second Book";
+book2.Publisher = "Publisher 2";
+book2.Description = "Interesting read";
+```
 
 在实践中，您很少会看到具有公共访问修饰符的字段。数据很容易变异，您可能不希望在初始化后让程序对外部更改开放。
 
 1.  在`Solution`类中，创建一个名为`Print`的方法，该方法以`Book`对象作为参数，并打印所有字段及其值。使用字符串插值将书籍信息连接起来，并使用`Console.WriteLine()`将其打印到控制台，如下所示：
 
 ```cpp
-    private static void Print(Book book)
-    {
-        Console.WriteLine($"Author: {book.Author}, " +
-                          $"Title: {book.Title}, " +
-                          $"Publisher: {book.Publisher}, " +
-                          $"Description: {book.Description}.");
-    }
-    ```
+private static void Print(Book book)
+{
+    Console.WriteLine($"Author: {book.Author}, " +
+                      $"Title: {book.Title}, " +
+                      $"Publisher: {book.Publisher}, " +
+                      $"Description: {book.Description}.");
+}
+```
 
 1.  在`Main`方法中，调用`book1`和`book2`的`Print`方法：
 
 ```cpp
-    Print(book1);
-    Print(book2);
-    ```
+Print(book1);
+Print(book2);
+```
 
 运行此代码后，您将在控制台上看到以下输出：
 
@@ -563,65 +563,65 @@ class Keyboard
 1.  创建一个`Rectangle`类如下。它应该有`width`、`height`和`area`字段：
 
 ```cpp
-    public class Rectangle
-    {
-        private readonly double _width;
-        private readonly double _height;
-        public double Area
-        {
-            get
-            {
-                return _width * _height;
-            }
-        } 
+public class Rectangle
+{
+    private readonly double _width;
+    private readonly double _height;
+    public double Area
+    {
+        get
+        {
+            return _width * _height;
+        }
+    } 
 
-        public Rectangle(double width, double height)
-        {
-            _width = width;
-            _height = height;
-        }
-    }
-    ```
+    public Rectangle(double width, double height)
+    {
+        _width = width;
+        _height = height;
+    }
+}
+```
 
 在这里，使用`readonly`关键字使`_width`和`_height`成为不可变的。所选的类型是`double`，因为你将执行`math`操作。唯一公开的属性是`Area`。它将返回一个简单的计算：宽度和高度的乘积。`Rectangle`是不可变的，因此它只需要通过构造函数传递一次，之后保持不变。
 
 1.  同样，创建一个`Circle`类如下：
 
 ```cpp
-    public class Circle
-    {
-        private readonly double _radius;
+public class Circle
+{
+    private readonly double _radius;
 
-        public Circle(double radius)
-        {
-            _radius = radius;
-        }
+    public Circle(double radius)
+    {
+        _radius = radius;
+    }
 
-        public double Area
-        {
-            get { return Math.PI * _radius * _radius; }
-        }
-    }
-    ```
+    public double Area
+    {
+        get { return Math.PI * _radius * _radius; }
+    }
+}
+```
 
 `Circle`类与`Rectangle`类类似，只是它有`radius`而不是宽度和高度，并且`Area`的计算使用了不同的公式。使用了常量`PI`，可以从`Math`命名空间中访问。
 
 1.  创建一个名为`Solve`的骨架方法的`Solution`类：
 
 ```cpp
-    public static class Solution
-    {
-        public const string Equal = "equal";
-        public const string Rectangular = "rectangular";
-        public const string Circular = "circular";
-        public static string Solve(Rectangle[] rectangularSection, Circle[] circularSection)
-        {
-            var totalAreaOfRectangles = CalculateTotalAreaOfRectangles(rectangularSection);
-            var totalAreaOfCircles = CalculateTotalAreaOfCircles(circularSection);
-            return GetBigger(totalAreaOfRectangles, totalAreaOfCircles);
-        }
-    }
-    ```
+public static class Solution
+{
+    public const string Equal = "equal";
+    public const string Rectangular = "rectangular";
+    public const string Circular = "circular";
+    public static string Solve(Rectangle[] rectangularSection, Circle[] circularSection)
+    {
+        var totalAreaOfRectangles = CalculateTotalAreaOfRectangles(rectangularSection);
+        var totalAreaOfCircles = CalculateTotalAreaOfCircles(circularSection);
+        return GetBigger(totalAreaOfRectangles, totalAreaOfCircles);
+    }
+}
+```
 
 在这里，`Solution`类演示了代码的工作原理。目前，有三个基于要求的常量（哪个区域更大？矩形还是圆形，或者它们相等？）。此外，流程将是先计算矩形的总面积，然后是圆形的总面积，最后返回更大的那个。
 
@@ -630,56 +630,56 @@ class Keyboard
 1.  在`Solution`类中，添加一个方法来计算矩形部分的总面积：
 
 ```cpp
-    private static double CalculateTotalAreaOfRectangles(Rectangle[] rectangularSection)
-    {
-        double totalAreaOfRectangles = 0;
-        foreach (var rectangle in rectangularSection)
-        {
-            totalAreaOfRectangles += rectangle.Area;
-        }
+private static double CalculateTotalAreaOfRectangles(Rectangle[] rectangularSection)
+{
+    double totalAreaOfRectangles = 0;
+    foreach (var rectangle in rectangularSection)
+    {
+        totalAreaOfRectangles += rectangle.Area;
+    }
 
-        return totalAreaOfRectangles;
-    }
-    ```
+    return totalAreaOfRectangles;
+}
+```
 
 该方法遍历所有矩形，获取每个矩形的面积，并将其添加到总和中。
 
 1.  同样，添加一个方法来计算圆形部分的总面积：
 
 ```cpp
-    private static double CalculateTotalAreaOfCircles(Circle[] circularSection)
-    {
-        double totalAreaOfCircles = 0;
-        foreach (var circle in circularSection)
-        {
-            totalAreaOfCircles += circle.Area;
-        }
+private static double CalculateTotalAreaOfCircles(Circle[] circularSection)
+{
+    double totalAreaOfCircles = 0;
+    foreach (var circle in circularSection)
+    {
+        totalAreaOfCircles += circle.Area;
+    }
 
-        return totalAreaOfCircles;
-    }
-    ```
+    return totalAreaOfCircles;
+}
+```
 
 1.  接下来，添加一个获取更大面积的方法，如下所示：
 
 ```cpp
-    private static string GetBigger(double totalAreaOfRectangles, double totalAreaOfCircles)
-    {
-        const double margin = 0.01;
-        bool areAlmostEqual = Math.Abs(totalAreaOfRectangles - totalAreaOfCircles) <= margin;
-        if (areAlmostEqual)
-        {
-            return Equal;
-        }
-        else if (totalAreaOfRectangles > totalAreaOfCircles)
-        {
-            return Rectangular;
-        }
-        else
-        {
-            return Circular;
-        }
-    }
-    ```
+private static string GetBigger(double totalAreaOfRectangles, double totalAreaOfCircles)
+{
+    const double margin = 0.01;
+    bool areAlmostEqual = Math.Abs(totalAreaOfRectangles - totalAreaOfCircles) <= margin;
+    if (areAlmostEqual)
+    {
+        return Equal;
+    }
+    else if (totalAreaOfRectangles > totalAreaOfCircles)
+    {
+        return Rectangular;
+    }
+    else
+    {
+        return Circular;
+    }
+}
+```
 
 这段代码包含了最有趣的部分。在大多数语言中，带有小数点的数字是不准确的。实际上，在大多数情况下，如果 a 和 b 是浮点数或双精度浮点数，它们可能永远不会相等。因此，在比较这样的数字时，你必须考虑精度。
 
@@ -688,35 +688,35 @@ class Keyboard
 1.  现在，创建`Main`方法，如下所示：
 
 ```cpp
-    public static void Main()
-    { 
-        string compare1 = Solve(new Rectangle[0], new Circle[0]);
-        string compare2 = Solve(new[] { new Rectangle(1, 5)}, new Circle[0]);
-        string compare3 = Solve(new Rectangle[0], new[] { new Circle(1) });
-        string compare4 = Solve(new []
-        {
-            new Rectangle(5.0, 2.1), 
-            new Rectangle(3, 3), 
-        }, new[]
-        {
-            new Circle(1),
-            new Circle(10), 
-        });
+public static void Main()
+{ 
+    string compare1 = Solve(new Rectangle[0], new Circle[0]);
+    string compare2 = Solve(new[] { new Rectangle(1, 5)}, new Circle[0]);
+    string compare3 = Solve(new Rectangle[0], new[] { new Circle(1) });
+    string compare4 = Solve(new []
+    {
+        new Rectangle(5.0, 2.1), 
+        new Rectangle(3, 3), 
+    }, new[]
+    {
+        new Circle(1),
+        new Circle(10), 
+    });
 
-        Console.WriteLine($"compare1 is {compare1}, " +
-                          $"compare2 is {compare2}, " +
-                          $"compare3 is {compare3}, " +
-                          $"compare4 is {compare4}.");
-    }
-    ```
+    Console.WriteLine($"compare1 is {compare1}, " +
+                      $"compare2 is {compare2}, " +
+                      $"compare3 is {compare3}, " +
+                      $"compare4 is {compare4}.");
+}
+```
 
 在这里，创建了四组形状进行比较。`compare1`有两个空的部分，意味着它们应该是相等的。`compare2`有一个矩形和没有圆，所以矩形更大。`compare3`有一个圆和没有矩形，所以圆更大。最后，`compare4`既有矩形又有圆，但圆的总面积更大。你在`Console.WriteLine`中使用了字符串插值来打印结果。
 
 1.  运行代码。你应该看到以下内容被打印到控制台上：
 
 ```cpp
-    compare1 is equal, compare2 is rectangular, compare3 is circular, compare4 is circular.
-    ```
+compare1 is equal, compare2 is rectangular, compare3 is circular, compare4 is circular.
+```
 
 注意
 
@@ -771,66 +771,66 @@ public class LoginService
 1.  创建一个“人”类，其中包含“姓名”、“年龄”、“体重”和“身高”字段：
 
 ```cpp
-    public class Human
-    {
-        public string Name { get; }
-        public int Age { get; }
-        public float Weight { get; }
-        public float Height { get; }
+public class Human
+{
+    public string Name { get; }
+    public int Age { get; }
+    public float Weight { get; }
+    public float Height { get; }
 
-        public Human(string name, int age, float weight, float height)
-        {
-            Name = name;
-            Age = age;
-            Weight = weight;
-            Height = height;
-        }
-    }
-    ```
+    public Human(string name, int age, float weight, float height)
+    {
+        Name = name;
+        Age = age;
+        Weight = weight;
+        Height = height;
+    }
+}
+```
 
 1.  邮递员是一个人。因此，“邮递员”类应该拥有“人”类拥有的一切，但除此之外，它还应该具有能够投递邮件的附加功能。编写代码如下：
 
 ```cpp
-    public class Mailman : Human
-    {
-        public Mailman(string name, int age, float weight, float height) : base(name, age, weight, height)
-        {
-        }
+public class Mailman : Human
+{
+    public Mailman(string name, int age, float weight, float height) : base(name, age, weight, height)
+    {
+    }
 
-        public void DeliverMail(Mail mail)
-        {
-           // Delivering Mail...
-        }
-    }
-    ```
+    public void DeliverMail(Mail mail)
+    {
+       // Delivering Mail...
+    }
+}
+```
 
 现在，仔细看看“邮递员”类。编写`class Mailman : Human`意味着“邮递员”继承自“人”。这意味着“邮递员”继承了“人”的所有属性和方法。你还可以看到一个新关键字，`base`。这个关键字用于告诉在创建“邮递员”时将使用哪个父构造函数；在这种情况下是“人”。
 
 1.  接下来，创建一个名为`Mail`的类来表示邮件，其中包含一个字段，用于将消息传递到地址：
 
 ```cpp
-    public class Mail
-    {
-       public string Message { get; }
-       public string Address { get; }
+public class Mail
+{
+   public string Message { get; }
+   public string Address { get; }
 
-       public Mail(string message, string address)
-       {
-           Message = message;
-           Address = address;
-       }
-    }
-    ```
+   public Mail(string message, string address)
+   {
+       Message = message;
+       Address = address;
+   }
+}
+```
 
 创建“邮递员”对象与创建不使用继承的类的对象没有任何不同。
 
 1.  创建“邮递员”和“邮件”变量，并告诉“邮递员”投递邮件如下：
 
 ```cpp
-    var mailman = new Mailman("Thomas", 29, 78.5f, 190.11f);
-    var mail = new Mail("Hello", "Somewhere far far way");
-    mailman.DeliverMail(mail);
-    ```
+var mailman = new Mailman("Thomas", 29, 78.5f, 190.11f);
+var mail = new Mail("Hello", "Somewhere far far way");
+mailman.DeliverMail(mail);
+```
 
 注意
 
@@ -1420,34 +1420,34 @@ public interface IDrone : IWorker, IFlyer
 1.  创建一个名为`IShape`的接口，带有一个`Area`属性：
 
 ```cpp
-    public interface IShape
-    {
-        double Area { get; }
-    }
-    ```
+public interface IShape
+{
+    double Area { get; }
+}
+```
 
 这是一个只读属性。请注意，属性是一个方法，所以在接口中拥有它是可以的。
 
 1.  创建一个名为`Rectangle`的类，带有宽度和高度以及一个用于计算面积的方法，名为`Area`。为此实现一个`IShape`接口，如下所示的代码所示：
 
 ```cpp
-    Rectangle.cs
-    public class Rectangle : IShape
-    {
-        private readonly double _width;
-        private readonly double _height;
+Rectangle.cs
+public class Rectangle : IShape
+{
+    private readonly double _width;
+    private readonly double _height;
 
-        public double Area
-        {
-            get
-            {
-                return _width * _height;
-            }
-        } 
+    public double Area
+    {
+        get
+        {
+            return _width * _height;
+        }
+    } 
 
-        public Rectangle(double width, double height)
-        {
-    ```
+    public Rectangle(double width, double height)
+    {
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/zSquP.
@@ -1458,75 +1458,75 @@ You can find the complete code here: https://packt.link/zSquP.
 1.  创建一个带有`半径`和`Area`计算的`Circle`类，它还实现了`IShape`接口：
 
 ```cpp
-    public class Circle : IShape
-    {
-        Private readonly double _radius;
+public class Circle : IShape
+{
+    Private readonly double _radius;
 
-        public Circle(double radius)
-        {
-            _radius = radius;
-        }
+    public Circle(double radius)
+    {
+        _radius = radius;
+    }
 
-        public double Area
-        {
-            get { return Math.PI * _radius * _radius; }
-        }
-    }
-    ```
+    public double Area
+    {
+        get { return Math.PI * _radius * _radius; }
+    }
+}
+```
 
 1.  创建一个名为`IsEnough`的方法的骨架`Solution`类，如下所示：
 
 ```cpp
-    public static class Solution
-    {
-            public static bool IsEnough(double mosaicArea, IShape[] tiles)
-            {
-       }
-    }
-    ```
+public static class Solution
+{
+        public static bool IsEnough(double mosaicArea, IShape[] tiles)
+        {
+   }
+}
+```
 
 类和方法都只是实现的占位符。该类是`static`，因为它将用作演示，不需要具有状态。`IsEnough`方法接受所需的`mosaicArea`、一组瓷砖对象，并返回瓷砖占据的总面积是否足以覆盖马赛克。
 
 1.  在`IsEnough`方法内部，使用`for`循环来计算`totalArea`。然后，返回总面积是否覆盖了马赛克区域：
 
 ```cpp
-                double totalArea = 0;
-                foreach (var tile in tiles)
-                {
-                    totalArea += tile.Area;
-                }
-                const double tolerance = 0.0001;
-                return totalArea - mosaicArea >= -tolerance;
-           }
-    ```
+            double totalArea = 0;
+            foreach (var tile in tiles)
+            {
+                totalArea += tile.Area;
+            }
+            const double tolerance = 0.0001;
+            return totalArea - mosaicArea >= -tolerance;
+       }
+```
 
 1.  在`Solution`类内部创建一个演示。添加几组不同形状，如下所示：
 
 ```cpp
-    public static void Main()
-    {
-        var isEnough1 = IsEnough(0, new IShape[0]);
-        var isEnough2 = IsEnough(1, new[] { new Rectangle(1, 1) });
-        var isEnough3 = IsEnough(100, new IShape[] { new Circle(5) });
-        var isEnough4 = IsEnough(5, new IShape[]
-        {
-            new Rectangle(1, 1), new Circle(1), new Rectangle(1.4,1)
-        });
+public static void Main()
+{
+    var isEnough1 = IsEnough(0, new IShape[0]);
+    var isEnough2 = IsEnough(1, new[] { new Rectangle(1, 1) });
+    var isEnough3 = IsEnough(100, new IShape[] { new Circle(5) });
+    var isEnough4 = IsEnough(5, new IShape[]
+    {
+        new Rectangle(1, 1), new Circle(1), new Rectangle(1.4,1)
+    });
 
-        Console.WriteLine($"IsEnough1 = {isEnough1}, " +
-                          $"IsEnough2 = {isEnough2}, " +
-                          $"IsEnough3 = {isEnough3}, " +
-                          $"IsEnough4 = {isEnough4}.");
-    }
-    ```
+    Console.WriteLine($"IsEnough1 = {isEnough1}, " +
+                      $"IsEnough2 = {isEnough2}, " +
+                      $"IsEnough3 = {isEnough3}, " +
+                      $"IsEnough4 = {isEnough4}.");
+}
+```
 
 在这里，您使用了四个例子。当要覆盖的面积为`0`时，无论您传递什么形状，都足够了。当要覆盖的面积为`1`时，面积为`1x1`的矩形刚好足够。当面积为`100`时，半径为`5`的圆不够。最后，对于第四个例子，三个形状占据的面积相加，即面积为`1x1`的矩形、半径为`1`的圆和面积为`1.4x1`的第二个矩形。总面积为`5`，小于这三个形状的组合面积。
 
 1.  运行演示。您应该在屏幕上看到以下输出：
 
 ```cpp
-    IsEnough1 = True, IsEnough2 = True, IsEnough3 = False, IsEnough4 = False.
-    ```
+IsEnough1 = True, IsEnough2 = True, IsEnough3 = False, IsEnough4 = False.
+```
 
 注意
 
@@ -2778,244 +2778,244 @@ var (dog, human, boo) = GetDogHumanAndBool();
 1.  创建一个`TemperatureUnit`，它使用`enum`类型来定义常量，即一组已知的值。你不需要动态添加它：
 
 ```cpp
-    public enum TemperatureUnit
-    {
-        C,
-        F,
-        K
-    }
-    ```
+public enum TemperatureUnit
+{
+    C,
+    F,
+    K
+}
+```
 
 在这个例子中，你将使用三种温度单位，分别是`C`、`K`和`F`。
 
 1.  温度应该被看作一个由两个属性组成的简单对象：`Unit`和`Degrees`。你可以使用`record`或`struct`，因为它是一个非常简单的带有数据的对象。在这里，最好的选择是选择`struct`（因为对象的大小），但为了练习，你将使用一个`record`：
 
 ```cpp
-    public record Temperature(double Degrees, TemperatureUnit Unit);
-    ```
+public record Temperature(double Degrees, TemperatureUnit Unit);
+```
 
 1.  接下来，添加一个合同，定义你从一个特定的温度转换器中想要得到什么：
 
 ```cpp
-    public interface ITemperatureConverter
-    {
-        public TemperatureUnit Unit { get; }
-        public Temperature ToC(Temperature temperature);
-        public Temperature FromC(Temperature temperature);
-    }
-    ```
+public interface ITemperatureConverter
+{
+    public TemperatureUnit Unit { get; }
+    public Temperature ToC(Temperature temperature);
+    public Temperature FromC(Temperature temperature);
+}
+```
 
 你定义了一个接口，其中包含三个方法——`Unit`属性用于标识转换器所针对的温度，`ToC`和`FromC`用于从标准单位转换到和从标准单位转换。
 
 1.  现在您有了一个转换器，添加可组合的转换器，它具有一组转换器：
 
 ```cpp
-    public class ComposableTemperatureConverter
-    {
-        private readonly ITemperatureConverter[] _converters;
-    ```
+public class ComposableTemperatureConverter
+{
+    private readonly ITemperatureConverter[] _converters;
+```
 
 1.  拥有重复的温度单位转换器是没有意义的。因此，当检测到重复转换器时，添加一个将被抛出的错误。而且，没有任何转换器也是没有意义的。因此，应该有一些代码来验证`null`或空转换器：
 
 ```cpp
-    public class InvalidTemperatureConverterException : Exception
-    {
-        public InvalidTemperatureConverterException(TemperatureUnit unit) : base($"Duplicate converter for {unit}.")
-        {
-        }
+public class InvalidTemperatureConverterException : Exception
+{
+    public InvalidTemperatureConverterException(TemperatureUnit unit) : base($"Duplicate converter for {unit}.")
+    {
+    }
 
-        public InvalidTemperatureConverterException(string message) : base(message)
-        {
-        }
-    }
-    ```
+    public InvalidTemperatureConverterException(string message) : base(message)
+    {
+    }
+}
+```
 
 在创建自定义异常时，应尽可能提供有关错误上下文的尽可能多的信息。在这种情况下，传递未找到转换器的`unit`。
 
 1.  添加一个需要非空转换器的方法：
 
 ```cpp
-    private static void RequireNotEmpty(ITemperatureConverter[] converters)
-    {
-        if (converters?.Length > 0 == false)
-        {
-            throw new InvalidTemperatureConverterException("At least one temperature conversion must be supported");
-        }
-    }
-    ```
+private static void RequireNotEmpty(ITemperatureConverter[] converters)
+{
+    if (converters?.Length > 0 == false)
+    {
+        throw new InvalidTemperatureConverterException("At least one temperature conversion must be supported");
+    }
+}
+```
 
 传递一个空转换器数组会抛出`InvalidTemperatureConverterException`异常。
 
 1.  添加一个需要非重复转换器的方法：
 
 ```cpp
-    private static void RequireNoDuplicate(ITemperatureConverter[] converters)
-    {
-        for (var index1 = 0; index1 < converters.Length - 1; index1++)
-        {
-            var first = converters[index1];
-            for (int index2 = index1 + 1; index2 < converters.Length; index2++)
-            {
-                var second = converters[index2];
-                if (first.Unit == second.Unit)
-                {
-                    throw new InvalidTemperatureConverterException(first.Unit);
-                }
-            }
-        }
-    }
-    ```
+private static void RequireNoDuplicate(ITemperatureConverter[] converters)
+{
+    for (var index1 = 0; index1 < converters.Length - 1; index1++)
+    {
+        var first = converters[index1];
+        for (int index2 = index1 + 1; index2 < converters.Length; index2++)
+        {
+            var second = converters[index2];
+            if (first.Unit == second.Unit)
+            {
+                throw new InvalidTemperatureConverterException(first.Unit);
+            }
+        }
+    }
+}
+```
 
 这个方法遍历每个转换器，并检查在其他索引处是否重复转换器（通过重复`TemperatureUnit`）。如果找到重复的单位，它将抛出异常。如果没有，它将正常终止。
 
 1.  现在将所有内容组合在一个构造函数中：
 
 ```cpp
-    public ComposableTemperatureConverter(ITemperatureConverter[] converters)
-    {
-        RequireNotEmpty(converters);
-        RequireNoDuplicate(converters);
-        _converters = converters;
-    }
-    ```
+public ComposableTemperatureConverter(ITemperatureConverter[] converters)
+{
+    RequireNotEmpty(converters);
+    RequireNoDuplicate(converters);
+    _converters = converters;
+}
+```
 
 在创建转换器时，验证不为空且不重复的转换器，然后设置它们。
 
 1.  接下来，在可组合的转换器内创建一个`private`辅助方法来帮助您找到所需的转换器`FindConverter`：
 
 ```cpp
-    private ITemperatureConverter FindConverter(TemperatureUnit unit)
-    {
-        foreach (var converter in _converters)
-        {
-            if (converter.Unit == unit)
-            {
-                return converter;
-            }
-        }
+private ITemperatureConverter FindConverter(TemperatureUnit unit)
+{
+    foreach (var converter in _converters)
+    {
+        if (converter.Unit == unit)
+        {
+            return converter;
+        }
+    }
 
-        throw new InvalidTemperatureConversionException(unit);
-    }
-    ```
+    throw new InvalidTemperatureConversionException(unit);
+}
+```
 
 该方法返回所需单位的转换器，如果找不到转换器，则抛出异常。
 
 1.  为了简化您搜索和从任何单位转换为摄氏度的过程，添加一个`ToCelsius`方法：
 
 ```cpp
-    private Temperature ToCelsius(Temperature temperatureFrom)
-    {
-        var converterFrom = FindConverter(temperatureFrom.Unit);
-        return converterFrom.ToC(temperatureFrom);
-    }
-    ```
+private Temperature ToCelsius(Temperature temperatureFrom)
+{
+    var converterFrom = FindConverter(temperatureFrom.Unit);
+    return converterFrom.ToC(temperatureFrom);
+}
+```
 
 在这里，您找到所需的转换器并将`Temperature`转换为 Celsius。
 
 1.  对于从摄氏度转换为任何其他单位的转换，也是同样的操作：
 
 ```cpp
-    private Temperature CelsiusToOther(Temperature celsius, TemperatureUnit unitTo)
-    {
-        var converterTo = FindConverter(unitTo);
-        return converterTo.FromC(celsius);
-    }
-    ```
+private Temperature CelsiusToOther(Temperature celsius, TemperatureUnit unitTo)
+{
+    var converterTo = FindConverter(unitTo);
+    return converterTo.FromC(celsius);
+}
+```
 
 1.  通过实现这个算法，将温度标准化（转换为摄氏度），然后转换为任何其他温度，将所有内容包装起来：
 
 ```cpp
-    public Temperature Convert(Temperature temperatureFrom, TemperatureUnit unitTo)
-    {
-        var celsius = ToCelsius(temperatureFrom);
-        return CelsiusToOther(celsius, unitTo);
-    }
-    ```
+public Temperature Convert(Temperature temperatureFrom, TemperatureUnit unitTo)
+{
+    var celsius = ToCelsius(temperatureFrom);
+    return CelsiusToOther(celsius, unitTo);
+}
+```
 
 1.  添加一些转换器。从 Kelvin 转换器`KelvinConverter`开始：
 
 ```cpp
-    public class KelvinConverter : ITemperatureConverter
-    {
-        public const double AbsoluteZero = -273.15;
+public class KelvinConverter : ITemperatureConverter
+{
+    public const double AbsoluteZero = -273.15;
 
-        public TemperatureUnit Unit => TemperatureUnit.K;
+    public TemperatureUnit Unit => TemperatureUnit.K;
 
-        public Temperature ToC(Temperature temperature)
-        {
-            return new(temperature.Degrees + AbsoluteZero, TemperatureUnit.C);
-        }
+    public Temperature ToC(Temperature temperature)
+    {
+        return new(temperature.Degrees + AbsoluteZero, TemperatureUnit.C);
+    }
 
-        public Temperature FromC(Temperature temperature)
-        {
-            return new(temperature.Degrees - AbsoluteZero, Unit);
-        }
-    }
-    ```
+    public Temperature FromC(Temperature temperature)
+    {
+        return new(temperature.Degrees - AbsoluteZero, Unit);
+    }
+}
+```
 
 这个方法的实现和所有其他转换器的实现都很简单。您只需要实现将正确单位转换为或从摄氏度的公式。Kelvin 有一个有用的常数，绝对零度，所以您使用了一个命名常量而不是一个魔术数字`–273.15`。另外，值得记住的是温度不是一个原始类型。它既是一个度数值又是一个单位。因此，在转换时，您需要同时传递两者。`ToC`将始终以`TemperatureUnit.C`作为单位，而`FromC`将采用转换器被识别为的任何单位，即`TemperatureUnit.K`。
 
 1.  现在添加一个 Fahrenheit 转换器`FahrenheitConverter`：
 
 ```cpp
-    public class FahrenheitConverter : ITemperatureConverter
-    {
-        public TemperatureUnit Unit => TemperatureUnit.F;
+public class FahrenheitConverter : ITemperatureConverter
+{
+    public TemperatureUnit Unit => TemperatureUnit.F;
 
-        public Temperature ToC(Temperature temperature)
-        {
-            return new(5.0/9 * (temperature.Degrees - 32), TemperatureUnit.C);
-        }
+    public Temperature ToC(Temperature temperature)
+    {
+        return new(5.0/9 * (temperature.Degrees - 32), TemperatureUnit.C);
+    }
 
-        public Temperature FromC(Temperature temperature)
-        {
-            return new(9.0 / 5 * temperature.Degrees + 32, Unit);
-        }
-    }
-    ```
+    public Temperature FromC(Temperature temperature)
+    {
+        return new(9.0 / 5 * temperature.Degrees + 32, Unit);
+    }
+}
+```
 
 Fahrenheit 在结构上是相同的；唯一的区别是公式和单位值。
 
 1.  添加一个`CelsiusConverter`，它将接受一个温度值并返回相同的值，如下所示：
 
 ```cpp
-        public class CelsiusConverter : ITemperatureConverter
-        {
-            public TemperatureUnit Unit => TemperatureUnit.C;
+    public class CelsiusConverter : ITemperatureConverter
+    {
+        public TemperatureUnit Unit => TemperatureUnit.C;
 
-            public Temperature ToC(Temperature temperature)
-            {
-                return temperature;
-            }
+        public Temperature ToC(Temperature temperature)
+        {
+            return temperature;
+        }
 
-            public Temperature FromC(Temperature temperature)
-            {
-                return temperature;
-            }
-        }
-    ```
+        public Temperature FromC(Temperature temperature)
+        {
+            return temperature;
+        }
+    }
+```
 
 `CelsiusConverter`是最简单的。它什么也不做；它只是返回相同的温度。转换器将温度转换为标准温度——摄氏度转换为摄氏度始终是摄氏度。为什么你需要这样一个类呢？没有它，您需要稍微改变流程，添加`if`语句来忽略摄氏度的温度。但是通过这种实现，您可以将其合并到相同的流程中，并且可以在相同的抽象`ITemperatureConverter`的帮助下以相同的方式使用它。
 
 1.  最后，创建一个演示：
 
 ```cpp
-    Solution.cs
-    public static class Solution
-    {
-        public static void Main()
-        {
-            ITemperatureConverter[] converters = {new FahrenheitConverter(), new KelvinConverter(), new CelsiusConverter()};
-            var composableConverter = new ComposableTemperatureConverter(converters);
+Solution.cs
+public static class Solution
+{
+    public static void Main()
+    {
+        ITemperatureConverter[] converters = {new FahrenheitConverter(), new KelvinConverter(), new CelsiusConverter()};
+        var composableConverter = new ComposableTemperatureConverter(converters);
 
-            var celsius = new Temperature(20.00001, TemperatureUnit.C);
+        var celsius = new Temperature(20.00001, TemperatureUnit.C);
 
-            var celsius1 = composableConverter.Convert(celsius, TemperatureUnit.C);
-            var fahrenheit = composableConverter.Convert(celsius1, TemperatureUnit.F);
-            var kelvin = composableConverter.Convert(fahrenheit, TemperatureUnit.K);
-            var celsiusBack = composableConverter.Convert(kelvin, TemperatureUnit.C);
-            Console.WriteLine($"{celsius} = {fahrenheit}");
-    ```
+        var celsius1 = composableConverter.Convert(celsius, TemperatureUnit.C);
+        var fahrenheit = composableConverter.Convert(celsius1, TemperatureUnit.F);
+        var kelvin = composableConverter.Convert(fahrenheit, TemperatureUnit.K);
+        var celsiusBack = composableConverter.Convert(kelvin, TemperatureUnit.C);
+        Console.WriteLine($"{celsius} = {fahrenheit}");
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/ruBph.
@@ -3026,10 +3026,10 @@ You can find the complete code here: https://packt.link/ruBph.
 1.  运行代码，您将得到以下结果：
 
 ```cpp
-    Temperature { Degrees = 20.00001, Unit = C } = Temperature { Degrees = 68.000018, Unit = F }
-    Temperature { Degrees = 68.000018, Unit = F } = Temperature { Degrees = -253.14998999999997, Unit = K }
-    Temperature { Degrees = -253.14998999999997, Unit = K } = Temperature { Degrees = 20.000010000000003, Unit = C }
-    ```
+Temperature { Degrees = 20.00001, Unit = C } = Temperature { Degrees = 68.000018, Unit = F }
+Temperature { Degrees = 68.000018, Unit = F } = Temperature { Degrees = -253.14998999999997, Unit = K }
+Temperature { Degrees = -253.14998999999997, Unit = K } = Temperature { Degrees = 20.000010000000003, Unit = C }
+```
 
 注意
 
@@ -3056,8 +3056,8 @@ You can find the complete code here: https://packt.link/ruBph.
 1.  运行`main`方法，结果应该如下：
 
 ```cpp
-    Adding circles of radius of 3 and 3 results in a new circle with a radius 4.242640687119285
-    ```
+Adding circles of radius of 3 and 3 results in a new circle with a radius 4.242640687119285
+```
 
 从最终输出中可以看出，新的圆的半径将是`4.24`（四舍五入到小数点后两位）。
 

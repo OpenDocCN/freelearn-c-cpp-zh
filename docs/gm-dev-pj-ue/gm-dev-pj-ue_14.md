@@ -67,11 +67,11 @@
 1.  接下来，您还需要从`PickableActor_Base.cpp`文件中删除该函数；否则，您将收到编译错误。在此源文件中，查找并删除以下代码：
 
 ```cpp
-    void PickableActor_Base::Tick(float DeltaTime)
-    {
-      Super::Tick(DeltaTime);
-    }
-    ```
+void PickableActor_Base::Tick(float DeltaTime)
+{
+  Super::Tick(DeltaTime);
+}
+```
 
 注意
 
@@ -80,81 +80,81 @@
 1.  现在，是时候添加`PickableActor_Base`类所需的组件了。让我们从`USphereComponent`开始，您将使用它来检测与玩家的重叠碰撞。在`PickableActor_Base.h`头文件中的`Protected`访问修饰符内添加以下代码：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
-    class USphereComponent* CollisionComp;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
+class USphereComponent* CollisionComp;
+```
 
 `USphereComponent`的声明现在应该对您非常熟悉；我们在以前的章节中已经做过这个，比如*第十六章*，*多人游戏基础*，当我们创建`PlayerProjectile`类时。
 
 1.  接下来，在声明`USphereComponent`下面添加以下代码来创建一个新的`UStaticMeshComponent`。这将用于视觉上代表硬币可收集或药水提升：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
-    class UStaticMeshComponent* MeshComp;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
+class UStaticMeshComponent* MeshComp;
+```
 
 1.  最后，在声明`UStaticMeshComponent`下面添加以下代码来创建一个新的`URotatingMovementComponent`。这将用于给可收集的硬币和药水提供简单的旋转运动：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
-    class URotatingMovementComponent* RotationComp;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = PickableItem)
+class URotatingMovementComponent* RotationComp;
+```
 
 1.  现在，您已经在`PickableActor_Base.h`头文件中声明了组件，转到`PickableActor_Base.cpp`源文件，以便为这些添加的组件添加所需的`#includes`。在源文件的顶部，在第一个`#include "PickableActor_Base.h"`之后添加以下行：
 
 ```cpp
-    #include "Components/SphereComponent.h"
-    #include "Components/StaticMeshComponent.h"
-    #include "GameFramework/RotatingMovementComponent.h"
-    ```
+#include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "GameFramework/RotatingMovementComponent.h"
+```
 
 1.  现在，您已经为组件准备好了必要的`include`文件，可以在`APickableActor_Base::APickableActor_Base()`构造函数中添加必要的代码来初始化这些组件：
 
 ```cpp
-    APickableActor_Base::APickableActor_Base()
-    {
-    }
-    ```
+APickableActor_Base::APickableActor_Base()
+{
+}
+```
 
 1.  首先，通过在`APickableActor_Base::APickableActor_Base()`中添加以下代码来初始化`USphereComponent`组件变量`CollisionComp`：
 
 ```cpp
-    CollisionComp = CreateDefaultSubobject   <USphereComponent>(TEXT("SphereComp"));
-    ```
+CollisionComp = CreateDefaultSubobject   <USphereComponent>(TEXT("SphereComp"));
+```
 
 1.  接下来，通过在上一步提供的代码下面添加以下代码，使用默认的球体半径`30.0f`来初始化`USphereComponent`：
 
 ```cpp
-    CollisionComp->InitSphereRadius(30.0f);
-    ```
+CollisionComp->InitSphereRadius(30.0f);
+```
 
 1.  由于玩家角色需要与此组件重叠，因此您需要添加以下代码，以便默认情况下，`USphereComponent`具有`Overlap All Dynamic`的碰撞设置：
 
 ```cpp
-    CollisionComp->BodyInstance.SetCollisionProfileName("OverlapAllDynamic");
-    ```
+CollisionComp->BodyInstance.SetCollisionProfileName("OverlapAllDynamic");
+```
 
 1.  最后，`CollisionComp USphereComponent`应该是这个角色的根组件。添加以下代码来分配这个：
 
 ```cpp
-    RootComponent = CollisionComp;
-    ```
+RootComponent = CollisionComp;
+```
 
 1.  现在，`CollisionComp USphereComponent`已经初始化，让我们为`MeshComp UStaticMeshComponent`做同样的事情。添加以下代码。之后，我们将讨论代码为我们做了什么：
 
 ```cpp
-    MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
-    MeshComp->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
-    MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    ```
+MeshComp = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
+MeshComp->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
+MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+```
 
 第一行使用`CreateDefaultSubobject()`模板函数初始化了`MeshComp UStaticMeshComponent`。接下来，您使用`AttachTo()`函数将`MeshComp`附加到您为`CollisionComp`创建的根组件。最后，`MeshComp UStaticMeshComponent`默认不应具有任何碰撞，因此您使用`SetCollisionEnabled()`函数并传入`ECollisionEnable::NoCollision`枚举值。
 
 1.  最后，我们可以通过添加以下代码来初始化`URotatingMovementComponent RotationComp`：
 
 ```cpp
-    RotationComp =   CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotationComp"));
-    ```
+RotationComp =   CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotationComp"));
+```
 
 1.  所有组件初始化后，编译 C++代码并返回到 Unreal Engine 4 编辑器。编译成功后，您将继续为`PickableActor_Base`创建蓝图类。
 
@@ -173,8 +173,8 @@
 1.  将“旋转速率”设置为以下值：
 
 ```cpp
-    (X=100.000000,Y=100.000000,Z=100.000000)
-    ```
+(X=100.000000,Y=100.000000,Z=100.000000)
+```
 
 这些值确定了 actor 每秒沿每个轴旋转的速度。这意味着锥形 actor 将沿每个轴以每秒 100 度的速度旋转。
 
@@ -251,59 +251,59 @@
 1.  默认情况下，`PickableActor_Collectable.h`头文件在其类声明中没有声明的函数或变量。您需要在新的`Protected Access Modifier`下添加`BeginPlay()`函数的覆盖。添加以下代码：
 
 ```cpp
-    protected:
-      virtual void BeginPlay() override;
-    ```
+protected:
+  virtual void BeginPlay() override;
+```
 
 我们覆盖“BeginPlay()`函数的原因是，`URotatingMovementComponent`需要角色初始化并使用“BeginPlay()`来正确旋转角色。因此，我们需要创建这个函数的覆盖声明，并在源文件中创建一个基本的定义。然而，首先，我们需要覆盖另一个重要的函数，来自`PickableActor_Base`父类。
 
 1.  通过在“Protected Access Modifier”下添加以下代码，覆盖`PickableActor_Base`父类中的`PlayerPickedUp()`函数：
 
 ```cpp
-    virtual void PlayerPickedUp(class ASuperSideScroller_Player* Player)   override;
-    ```
+virtual void PlayerPickedUp(class ASuperSideScroller_Player* Player)   override;
+```
 
 通过这样做，我们表明我们将使用并覆盖“PlayerPickedUp()`函数的功能。
 
 1.  最后，创建一个名为`UPROPERTY()`的新整数，它将保存硬币可收集的价值；在这种情况下，它的价值将是`1`。添加以下代码来实现这一点：
 
 ```cpp
-    public:
-      UPROPERTY(EditAnywhere, Category = Collectable)
-      int32 CollectableValue = 1;
-    ```
+public:
+  UPROPERTY(EditAnywhere, Category = Collectable)
+  int32 CollectableValue = 1;
+```
 
 在这里，我们正在创建一个整数变量，该变量将在蓝图中可访问，并具有默认值为`1`。如果您愿意，可以使用“EditAnywhere UPROPERTY()`关键字来更改硬币可收集物品的价值。
 
 1.  现在，我们可以继续在`PickableActor_Collectable.cpp`源文件中创建覆盖的“PlayerPickedUp()`函数的定义。在源文件中添加以下代码：
 
 ```cpp
-    void APickableActor_Collectable::PlayerPickedUp(class   ASuperSideScroller_Player* Player)
-    {
-    }
-    ```
+void APickableActor_Collectable::PlayerPickedUp(class   ASuperSideScroller_Player* Player)
+{
+}
+```
 
 1.  现在，我们需要使用`Super`关键字调用“PlayerPickedUp()`父函数。将以下代码添加到“PlayerPicked()`函数中：
 
 ```cpp
-    Super::PlayerPickedUp(Player);
-    ```
+Super::PlayerPickedUp(Player);
+```
 
 使用`Super::PlayerPickedUp(Player)`调用父函数，将确保您在`PickableActor_Base`类中创建的功能被调用。您可能还记得，父类中的“PlayerPickedUp()`函数调用生成`PickupSound`声音对象并销毁角色。
 
 1.  接下来，在源文件中创建`BeginPlay()`函数的定义，添加以下代码：
 
 ```cpp
-    void APickableActor_Collectable::BeginPlay()
-    {
-    }
-    ```
+void APickableActor_Collectable::BeginPlay()
+{
+}
+```
 
 1.  在 C++中，最后要做的一件事是再次使用`Super`关键字调用“BeginPlay()`父函数。将以下代码添加到`PickableActor_Collectable`类中的“BeginPlay()`函数中：
 
 ```cpp
-    Super::BeginPlay();
-    ```
+Super::BeginPlay();
+```
 
 1.  编译 C++代码并返回编辑器。
 
@@ -388,25 +388,25 @@ UE_LOG(LogTemp, Warning, TEXT("My integer variable %d), MyInteger);
 1.  在`Private Access Modifier`下，创建一个名为`NumberofCollectables`的新`int`变量，如下所示：
 
 ```cpp
-    int32 NumberofCollectables;
-    ```
+int32 NumberofCollectables;
+```
 
 这将是一个私有属性，用于跟踪玩家已收集的硬币的当前数量。您将创建一个公共函数，用于返回这个整数值。出于安全原因，我们这样做是为了确保没有其他类可以修改这个值。
 
 1.  在现有的`public`访问修饰符下，使用`BlueprintPure`关键字创建一个新的`UFUNCTION()`，名为`GetCurrentNumberOfCollectables()`。这个函数将返回一个`int`。以下代码将其添加为内联函数：
 
 ```cpp
-    UFUNCTION(BlueprintPure)
-    int32 GetCurrentNumberofCollectables() { return NumberofCollectables; };
-    ```
+UFUNCTION(BlueprintPure)
+int32 GetCurrentNumberofCollectables() { return NumberofCollectables; };
+```
 
 我们使用`UFUNCTION()`和`BlueprintPure`关键字将这个函数暴露给蓝图，以便我们以后在 UMG 中使用它。
 
 1.  声明一个新的`void`函数，在`public`访问修饰符下，名为`IncrementNumberofCollectables()`，接受一个名为`Value`的整数参数：
 
 ```cpp
-    void IncrementNumberofCollectables(int32  Value);
-    ```
+void IncrementNumberofCollectables(int32  Value);
+```
 
 这是您将用来跟踪玩家收集了多少硬币的主要函数。我们还将添加一些安全措施，以确保这个值永远不会是负数。
 
@@ -415,19 +415,19 @@ UE_LOG(LogTemp, Warning, TEXT("My integer variable %d), MyInteger);
 1.  编写以下代码来创建`IncrementNumberofCollectables`函数的定义：
 
 ```cpp
-    void ASuperSideScroller_Player::IncrementNumberofCollectables(int32 Value)
-    {
-    }
-    ```
+void ASuperSideScroller_Player::IncrementNumberofCollectables(int32 Value)
+{
+}
+```
 
 1.  这里需要处理的主要情况是，传递给这个函数的整数值是否小于或等于`0`。在这种情况下，我们不希望麻烦增加`NumberofCollectables`变量。在`IncrementNumberofCollectables()`函数中添加以下代码：
 
 ```cpp
-    if(Value== 0)
-    {
-      return;
-    }
-    ```
+if(Value== 0)
+{
+  return;
+}
+```
 
 这个`if()`语句表示如果`value`输入参数小于或等于`0`，函数将结束。由于`IncrementNumberofCollectables()`函数返回`void`，在这种情况下使用`return`关键字是完全可以的。
 
@@ -436,17 +436,17 @@ UE_LOG(LogTemp, Warning, TEXT("My integer variable %d), MyInteger);
 1.  现在我们已经处理了`value`小于或等于`0`的边缘情况，让我们继续使用`else()`语句来增加`NumberofCollectables`。在上一步的`if()`语句下面添加以下代码：
 
 ```cpp
-    else
-    {
-      NumberofCollectables += Value;
-    }
-    ```
+else
+{
+  NumberofCollectables += Value;
+}
+```
 
 1.  接下来，让我们使用`UE_LOG`和我们学到的关于记录变量的知识来记录`NumberofCollectables`。在`else()`语句之后添加以下代码来正确记录`NumberofCollectables`：
 
 ```cpp
-    UE_LOG(LogTemp, Warning, TEXT("Number of Coins: %d"), NumberofCollectables);
-    ```
+UE_LOG(LogTemp, Warning, TEXT("Number of Coins: %d"), NumberofCollectables);
+```
 
 通过`UE_LOG()`，我们正在创建一个更健壮的日志来跟踪硬币的数量。这为 UI 的工作奠定了基础。这是因为我们实质上是通过 UMG 在本章后期向玩家记录相同的信息。
 
@@ -455,14 +455,14 @@ UE_LOG(LogTemp, Warning, TEXT("My integer variable %d), MyInteger);
 1.  在`PickableActor_Collectable.cpp`源文件中，添加以下头文件：
 
 ```cpp
-    #include "SuperSideScroller_Player.h"
-    ```
+#include "SuperSideScroller_Player.h"
+```
 
 1.  接下来，在`PlayerPickedUp()`函数内，在`Super::PlayerPickedUp(Player)`行之前添加以下函数调用：
 
 ```cpp
-    Player->IncrementNumberofCollectables(CollectableValue);
-    ```
+Player->IncrementNumberofCollectables(CollectableValue);
+```
 
 1.  现在，我们的`PickableActor_Collectable`类正在调用我们玩家的`IncrementNumberofCollectables`函数，重新编译 C++代码并返回到 Unreal Engine 4 编辑器。
 
@@ -601,8 +601,8 @@ UMG，或虚幻动态图形用户界面设计师，是虚幻引擎 4 用于创�
 1.  在`Format Text`函数中添加以下文本：
 
 ```cpp
-    Coins: {coins}
-    ```
+Coins: {coins}
+```
 
 请参阅下面的截图：
 
@@ -817,32 +817,32 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  在“我们的私有访问修饰符”下，添加一个名为`PowerupHandle`的`FTimerHandle`类型的新变量：
 
 ```cpp
-    FTimerHandle PowerupHandle;
-    ```
+FTimerHandle PowerupHandle;
+```
 
 此计时器句柄将负责跟踪自启动以来经过的时间。这将允许我们控制药水增益效果持续多长时间。
 
 1.  接下来，在我们的“私有访问修饰符”下添加一个名为`bHasPowerupActive`的布尔变量：
 
 ```cpp
-    bool bHasPowerupActive;
-    ```
+bool bHasPowerupActive;
+```
 
 在更新`Sprint()`和`StopSprinting()`函数时，我们将使用此布尔变量来确保根据增益是否激活来适当更新玩家的冲刺移动速度。
 
 1.  接下来，在我们的“公共访问修饰符”下声明一个名为`IncreaseMovementPowerup()`的新 void 函数：
 
 ```cpp
-    void IncreaseMovementPowerup();
-    ```
+void IncreaseMovementPowerup();
+```
 
 这是将从药水增益类调用的函数，以启用玩家的增益效果。
 
 1.  最后，您需要创建一个处理电源增强效果结束时的函数。在`Protected Access Modifier`下创建一个名为`EndPowerup()`的函数：
 
 ```cpp
-    void EndPowerup();
-    ```
+void EndPowerup();
+```
 
 有了所有必要的变量和声明的函数，现在是时候开始定义这些新函数并处理玩家的电源增强效果了。
 
@@ -853,82 +853,82 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  通过在源文件中添加以下代码来定义`IncreaseMovementPowerup()`函数：
 
 ```cpp
-    void ASuperSideScroller_Player::IncreaseMovementPowerup()
-    {
-    }
-    ```
+void ASuperSideScroller_Player::IncreaseMovementPowerup()
+{
+}
+```
 
 1.  当调用此函数时，我们需要做的第一件事是将`bHasPowerupActive`变量设置为`true`。将以下代码添加到`IncreaseMovementPowerup()`函数中：
 
 ```cpp
-    bHasPowerupActive = true;
-    ```
+bHasPowerupActive = true;
+```
 
 1.  接下来，添加以下代码来增加玩家角色移动组件的`MaxWalkSpeed`和`JumpZVelocity`组件：
 
 ```cpp
-    GetCharacterMovement()->MaxWalkSpeed = 500.0f;
-    GetCharacterMovement()->JumpZVelocity = 1500.0f;
-    ```
+GetCharacterMovement()->MaxWalkSpeed = 500.0f;
+GetCharacterMovement()->JumpZVelocity = 1500.0f;
+```
 
 在这里，我们将`MaxWalkSpeed`从默认值`300.0f`更改为`500.0f`。您可能还记得，默认的冲刺速度也是`500.0f`。我们将在本活动的后续部分中解决这个问题，以在电源增强状态下增加冲刺速度。
 
 1.  利用计时器，我们需要获得对`UWorld`对象的引用。添加以下代码：
 
 ```cpp
-    UWorld* World = GetWorld();
-    if (World)
-    {
-    }
-    ```
+UWorld* World = GetWorld();
+if (World)
+{
+}
+```
 
 与项目中以前做过的许多次一样，我们使用`GetWorld()`函数来获取对`UWorld`对象的引用，并将此引用保存在其变量中。
 
 1.  现在我们已经有了对`World`对象的引用，并且已经执行了有效性检查，可以安全地使用`TimerManager`来设置电源增强计时器。在上一步中显示的`if()`语句中添加以下代码：
 
 ```cpp
-    World->GetTimerManager().SetTimer(PowerupHandle, this,   &ASuperSideScroller_Player::EndPowerup, 8.0f, false);
-    ```
+World->GetTimerManager().SetTimer(PowerupHandle, this,   &ASuperSideScroller_Player::EndPowerup, 8.0f, false);
+```
 
 在这里，您正在使用`TimerManager`类来设置计时器。`SetTimer()`函数接受要使用的`FTimerHandle`组件；在这种情况下，是您创建的`PowerupHandle`变量。接下来，我们需要通过使用`this`关键字传递对玩家类的引用。然后，我们需要提供在计时器结束后调用的回调函数，这种情况下是`&ASuperSideScroller_Player::EndPowerup`函数。`8.0f`表示计时器的持续时间；随时根据需要进行调整，但目前 8 秒是可以的。最后，还有一个参数，用于确定此计时器是否应该循环；在这种情况下，不应该循环。
 
 1.  创建`EndPowerup()`函数的函数定义：
 
 ```cpp
-    void ASuperSideScroller_Player::EndPowerup()
-    {
-    }
-    ```
+void ASuperSideScroller_Player::EndPowerup()
+{
+}
+```
 
 1.  当调用`EndPowerup()`函数时，首先要做的是将`bHasPowerupActive`变量设置为`false`。在`EndPowerup()`函数中添加以下代码：
 
 ```cpp
-    bHasPowerupActive = false;
-    ```
+bHasPowerupActive = false;
+```
 
 1.  接下来，将角色移动组件的`MaxWalkSpeed`和`JumpZVelocity`参数更改回它们的默认值。添加以下代码：
 
 ```cpp
-    GetCharacterMovement()->MaxWalkSpeed = 300.0f;
-    GetCharacterMovement()->JumpZVelocity = 1000.0f;
-    ```
+GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+GetCharacterMovement()->JumpZVelocity = 1000.0f;
+```
 
 在这里，我们正在将角色移动组件的`MaxWalkSpeed`和`JumpZVelocity`参数都更改为它们的默认值。
 
 1.  再次利用计时器并清除`PowerupHandle`的计时器处理，我们需要获得对`UWorld`对象的引用。添加以下代码：
 
 ```cpp
-    UWorld* World = GetWorld();
-    if (World)
-    {
-    }
-    ```
+UWorld* World = GetWorld();
+if (World)
+{
+}
+```
 
 1.  最后，我们可以添加代码来清除计时器句柄的`PowerupHandle`：
 
 ```cpp
-    World->GetTimerManager().ClearTimer(PowerupHandle);
-    ```
+World->GetTimerManager().ClearTimer(PowerupHandle);
+```
 
 通过使用`ClearTimer()`函数并传入`PowerupHandle`，我们确保此计时器不再有效，并且不再影响玩家。
 
@@ -937,62 +937,62 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  将`Sprint()`函数更新为以下内容：
 
 ```cpp
-    void ASuperSideScroller_Player::Sprint()
-    {
-      if (!bIsSprinting)
-      {
-        bIsSprinting = true;
-        if (bHasPowerupActive)
-        {
-          GetCharacterMovement()->MaxWalkSpeed = 900.0f;
-        }
-        else
-        {
-          GetCharacterMovement()->MaxWalkSpeed = 500.0f;
-        }
-      }
-    }
-    ```
+void ASuperSideScroller_Player::Sprint()
+{
+  if (!bIsSprinting)
+  {
+    bIsSprinting = true;
+    if (bHasPowerupActive)
+    {
+      GetCharacterMovement()->MaxWalkSpeed = 900.0f;
+    }
+    else
+    {
+      GetCharacterMovement()->MaxWalkSpeed = 500.0f;
+    }
+  }
+}
+```
 
 在这里，我们正在更新`Sprint()`函数以考虑`bHasPowerupActive`是否为 true。如果此变量为 true，则我们在冲刺时将`MaxWalkSpeed`从`500.0f`增加到`900.0f`，如下所示：
 
 ```cpp
-    if (bHasPowerupActive)
-    {
-      GetCharacterMovement()->MaxWalkSpeed = 900.0f;
-    }
-    ```
+if (bHasPowerupActive)
+{
+  GetCharacterMovement()->MaxWalkSpeed = 900.0f;
+}
+```
 
 如果`bHasPowerupActive`为 false，则我们将`MaxWalkSpeed`增加到`500.0f`，就像默认情况下一样。
 
 1.  将`StopSprinting()`函数更新为以下内容：
 
 ```cpp
-    void ASuperSideScroller_Player::StopSprinting()
-    {
-      if (bIsSprinting)
-      {
-        bIsSprinting = false;
-        if (bHasPowerupActive)
-        {
-          GetCharacterMovement()->MaxWalkSpeed = 500.0f;
-        }
-        else
-        {
-          GetCharacterMovement()->MaxWalkSpeed = 300.0f;
-        }
-      }
-    }
-    ```
+void ASuperSideScroller_Player::StopSprinting()
+{
+  if (bIsSprinting)
+  {
+    bIsSprinting = false;
+    if (bHasPowerupActive)
+    {
+      GetCharacterMovement()->MaxWalkSpeed = 500.0f;
+    }
+    else
+    {
+      GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+    }
+  }
+}
+```
 
 在这里，我们更新`StopSprinting()`函数，以考虑`bHasPowerupActive`是否为真。如果这个变量为真，则将`MaxWalkSpeed`值设置为`500.0f`，而不是`300.0f`，如下所示：
 
 ```cpp
-    if (bHasPowerupActive)
-    {
-      GetCharacterMovement()->MaxWalkSpeed = 500.0f;
-    }
-    ```
+if (bHasPowerupActive)
+{
+  GetCharacterMovement()->MaxWalkSpeed = 500.0f;
+}
+```
 
 如果`bHasPowerupActive`为假，则将`MaxWalkSpeed`设置为`300.0f`，就像默认情况下一样。
 
@@ -1065,23 +1065,23 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  在`SuperSideScroller_Brick.h`文件的`Private Access Modifier`下，添加以下代码来声明一个新的`UStaticMeshComponent* UPROPERTY()`函数，以表示游戏世界中的砖块：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = Brick)
-    class UStaticMeshComponent* BrickMesh;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = Brick)
+class UStaticMeshComponent* BrickMesh;
+```
 
 1.  接下来，我们需要创建一个`UBoxComponent UPROPERTY()`，用于处理与玩家角色的碰撞。在我们的`Private Access Modifier`下添加以下代码来添加这个组件：
 
 ```cpp
-    UPROPERTY(VisibleDefaultsOnly, Category = Brick)
-    class UBoxComponent* BrickCollision;
-    ```
+UPROPERTY(VisibleDefaultsOnly, Category = Brick)
+class UBoxComponent* BrickCollision;
+```
 
 1.  在我们的`Private Access Modifier`下创建`UFUNCTION()`声明`OnHit()`函数。这将用于确定`UBoxComponent`何时被玩家击中：
 
 ```cpp
-    UFUNCTION()
-    void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,   UprimitiveComponent* OtherComp, FVector NormalImpulse,   const FHitResult& Hit);
-    ```
+UFUNCTION()
+void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,   UprimitiveComponent* OtherComp, FVector NormalImpulse,   const FHitResult& Hit);
+```
 
 注意
 
@@ -1090,18 +1090,18 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  接下来，在我们的`Private Access Modifier`下创建一个新的布尔`UPROPERTY()`，使用`EditAnywhere`关键字，命名为`bHasCollectable`：
 
 ```cpp
-    UPROPERTY(EditAnywhere)
-    bool bHasCollectable;
-    ```
+UPROPERTY(EditAnywhere)
+bool bHasCollectable;
+```
 
 这个布尔值将确定砖块是否包含玩家的硬币可收集物品。
 
 1.  现在，我们需要一个变量来保存此砖块中有多少硬币可收集物品供玩家使用。我们将通过创建一个名为`Collectable Value`的整数变量来实现这一点。将其放在`private access modifier`下，使用`EditAnywhere`关键字，并将其默认值设置为`1`，如下所示：
 
 ```cpp
-    UPROPERTY(EditAnywhere)
-    int32 CollectableValue = 1;
-    ```
+UPROPERTY(EditAnywhere)
+int32 CollectableValue = 1;
+```
 
 砖块将需要包含一个独特的声音和粒子系统，以便在玩家摧毁砖块时具有良好的光泽层。我们将在下面添加这些属性。
 
@@ -1110,75 +1110,75 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  接下来，使用`EditAnywhere`和`BlueprintReadOnly`关键字为`USoundBase`类的变量创建一个新的`UPROPERTY()`。将此变量命名为`HitSound`，如下所示：
 
 ```cpp
-    UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    class USoundBase* HitSound;
-    ```
+UPROPERTY(EditAnywhere, BlueprintReadOnly)
+class USoundBase* HitSound;
+```
 
 1.  然后，使用`EditAnywhere`和`BlueprintReadOnly`关键字为`UParticleSystem`类的变量创建一个新的`UPROPERTY()`。确保将其放在`public access modifier`下，并将此变量命名为`Explosion`，如下所示：
 
 ```cpp
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Brick)
-    class UParticleSystem* Explosion;
-    ```
+UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Brick)
+class UParticleSystem* Explosion;
+```
 
 现在，我们已经为`Brick`类准备好了所有必要的属性，让我们继续进行`SuperSideScroller_Brick.cpp`源文件，在那里我们将初始化组件。
 
 1.  让我们首先添加以下用于`StaticMeshComponent`和`BoxComponent`的`#include`目录。将以下代码添加到源文件的`#include`列表中：
 
 ```cpp
-    #include "Components/StaticMeshComponent.h"
-    #include "Components/BoxComponent.h"
-    ```
+#include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
+```
 
 1.  首先，通过将以下代码添加到`ASuperSideScroller_Brick::ASuperSideScroller_Brick()`构造函数来初始化`BrickMesh`组件：
 
 ```cpp
-    BrickMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BrickMesh"));
-    ```
+BrickMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BrickMesh"));
+```
 
 1.  接下来，`BrickMesh`组件应该具有碰撞，以便玩家可以在其上行走，用于平台游戏目的。为了确保这种情况默认发生，添加以下代码将碰撞设置为`"BlockAll"`：
 
 ```cpp
-    BrickMesh->SetCollisionProfileName("BlockAll");
-    ```
+BrickMesh->SetCollisionProfileName("BlockAll");
+```
 
 1.  最后，`BrickMesh`组件将作为`Brick`角色的根组件。添加以下代码来实现这一点：
 
 ```cpp
-    RootComponent = BrickMesh;
-    ```
+RootComponent = BrickMesh;
+```
 
 1.  现在，通过将以下代码添加到构造函数中来初始化我们的`BrickCollision UBoxComponent`：
 
 ```cpp
-    BrickCollision = CreateDefaultSubobject<UBoxComponent>  (TEXT("BrickCollision"));
-    ```
+BrickCollision = CreateDefaultSubobject<UBoxComponent>  (TEXT("BrickCollision"));
+```
 
 1.  就像`BrickMesh`组件一样，`BrickCollision`组件也需要将其碰撞设置为`"BlockAll"`，以便在本练习的后续步骤中添加`OnHit()`回调事件。添加以下代码：
 
 ```cpp
-    BrickCollision->SetCollisionProfileName("BlockAll");
-    ```
+BrickCollision->SetCollisionProfileName("BlockAll");
+```
 
 1.  接下来，需要将`BrickCollision`组件附加到`BrickMesh`组件上。我们可以通过添加以下代码来实现这一点：
 
 ```cpp
-    BrickCollision->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
-    ```
+BrickCollision->AttachToComponent(RootComponent,   FAttachmentTransformRules::KeepWorldTransform);
+```
 
 1.  在完成`BrickCollision`组件的初始化之前，我们需要为`OnHit()`函数添加函数定义。将以下定义添加到源文件中：
 
 ```cpp
-    void ASuperSideScroller_Brick::OnHit(UPrimitiveComponent* HitComp, AActor*   OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const   FHitResult& Hit)
-    {
-    }
-    ```
+void ASuperSideScroller_Brick::OnHit(UPrimitiveComponent* HitComp, AActor*   OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const   FHitResult& Hit)
+{
+}
+```
 
 1.  现在我们已经定义了`OnHit()`函数，我们可以将`OnComponentHit`回调分配给`BrickCollision`组件。将以下代码添加到构造函数中：
 
 ```cpp
-    BrickCollision->OnComponentHit.AddDynamic(this,   &ASuperSideScroller_Brick::OnHit);
-    ```
+BrickCollision->OnComponentHit.AddDynamic(this,   &ASuperSideScroller_Brick::OnHit);
+```
 
 1.  编译`SuperSideScroller_Brick`类的 C++代码，并返回到 Unreal Engine 4 编辑器。
 
@@ -1197,8 +1197,8 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  选择`BrickMesh`组件后，对其`Scale`参数进行以下更改：
 
 ```cpp
-    (X=0.750000,Y=0.750000,Z=0.750000)
-    ```
+(X=0.750000,Y=0.750000,Z=0.750000)
+```
 
 现在，`BrickMesh`组件的大小为其正常大小的`75%`，当我们将角色放入游戏世界时，以及在我们在关卡中开发有趣的平台部分时，`Brick`角色将变得更易于我们作为设计者管理。
 
@@ -1207,8 +1207,8 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  从`Components`选项卡中选择`BrickCollision`组件，并将其`Location`参数更新为以下值：
 
 ```cpp
-    (X=0.000000,Y=0.000000,Z=30.000000)
-    ```
+(X=0.000000,Y=0.000000,Z=30.000000)
+```
 
 `BrickCollision`组件现在应该定位如下：
 
@@ -1231,24 +1231,24 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  首先，我们需要创建一个函数，将可收集物品添加到玩家。在我们的`Private Access Modifier`下，在`SuperSideScroller_Brick.h`头文件中添加以下函数声明：
 
 ```cpp
-    void AddCollectable(class ASuperSideScroller_Player* Player);
-    ```
+void AddCollectable(class ASuperSideScroller_Player* Player);
+```
 
 我们希望传递对`SuperSideScroller_Player`类的引用，以便我们可以从该类调用`IncrementNumberofCollectables()`函数。
 
 1.  接下来，在我们的`Private Access Modifier`下创建一个名为`PlayHitSound()`的 void 函数声明：
 
 ```cpp
-    void PlayHitSound();
-    ```
+void PlayHitSound();
+```
 
 `PlayHitSound()`函数将负责生成您在*练习 15.07*，*创建 Brick 类*中创建的`HitSound`属性。
 
 1.  最后，在我们的`Private Access Modifier`下创建另一个名为`PlayHitExplosion()`的 void 函数声明：
 
 ```cpp
-    void PlayHitExplosion();
-    ```
+void PlayHitExplosion();
+```
 
 `PlayHitExplosion()`函数将负责生成您在*练习 15.07*中创建的`Explosion`属性。
 
@@ -1257,88 +1257,88 @@ void ClearTimer(FTimerHandle& InHandle)
 1.  在`SuperSideScroller_Brick.cpp`源文件的顶部，将以下`#includes`添加到已存在的`include`目录列表中：
 
 ```cpp
-    #include "Engine/World.h"
-    #include "Kismet/GameplayStatics.h"
-    #include "SuperSideScroller_Player.h"
-    ```
+#include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
+#include "SuperSideScroller_Player.h"
+```
 
 `World`和`GameplayStatics`类的包含是必要的，以生成砖块的`HitSound`和`Explosion`效果。包括`SuperSideScroller_Player`类是为了调用`IncrementNumberofCollectables()`类函数。
 
 1.  让我们从`AddCollectable()`函数的函数定义开始。添加以下代码：
 
 ```cpp
-    void ASuperSideScroller_Brick::AddCollectable(class   ASuperSideScroller_Player* Player)
-    {
-    }
-    ```
+void ASuperSideScroller_Brick::AddCollectable(class   ASuperSideScroller_Player* Player)
+{
+}
+```
 
 1.  现在，通过使用`Player`函数输入参数调用`IncrementNumberofCollectables()`函数：
 
 ```cpp
-    Player->IncrementNumberofCollectables(CollectableValue);
-    ```
+Player->IncrementNumberofCollectables(CollectableValue);
+```
 
 1.  对于`PlayHitSound()`函数，您需要获取对`UWorld*`对象的引用，并在从`UGameplayStatics`类调用`SpawnSoundAtLocation`函数之前验证`HitSound`属性是否有效。这是您已经做过许多次的过程，所以这是整个函数代码：
 
 ```cpp
-    void ASuperSideScroller_Brick::PlayHitSound()
-    {
-      UWorld* World = GetWorld();
-      if (World)
-      {
-        if (HitSound)
-        {
-          UGameplayStatics::SpawnSoundAtLocation(World, HitSound,         GetActorLocation());
-        }
-      }
-    }
-    ```
+void ASuperSideScroller_Brick::PlayHitSound()
+{
+  UWorld* World = GetWorld();
+  if (World)
+  {
+    if (HitSound)
+    {
+      UGameplayStatics::SpawnSoundAtLocation(World, HitSound,         GetActorLocation());
+    }
+  }
+}
+```
 
 1.  就像`PlayHitSound()`函数一样，`PlayHitExplosion()`函数将以几乎相似的方式工作，这是您在此项目中已经做过许多次的过程。添加以下代码以创建函数定义：
 
 ```cpp
-    void ASuperSideScroller_Brick::PlayHitExplosion()
-    {
-      UWorld* World = GetWorld();
-      if (World)
-      {
-        if (Explosion)
-        {
-          UGameplayStatics::SpawnEmitterAtLocation(World, Explosion,         GetActorTransform());
-        }
-      }
-    }
-    ```
+void ASuperSideScroller_Brick::PlayHitExplosion()
+{
+  UWorld* World = GetWorld();
+  if (World)
+  {
+    if (Explosion)
+    {
+      UGameplayStatics::SpawnEmitterAtLocation(World, Explosion,         GetActorTransform());
+    }
+  }
+}
+```
 
 有了这些函数的定义，让我们更新`OnHit()`函数，以便如果玩家确实击中了`BrickCollision`组件，我们可以生成`HitSound`和`Explosion`，并将一个硬币可收集物品添加到玩家的收集物品中。
 
 1.  首先，在`OnHit()`函数中，创建一个名为`Player`的新变量，类型为`ASuperSideScroller_Player`，其值等于函数的`OtherActor`输入参数的`Cast`，如下所示：
 
 ```cpp
-    ASuperSideScroller_Player* Player =   Cast<ASuperSideScroller_Player>(OtherActor);
-    ```
+ASuperSideScroller_Player* Player =   Cast<ASuperSideScroller_Player>(OtherActor);
+```
 
 1.  接下来，我们只想在`Player`有效且`bHasCollectable`为`True`时继续执行此函数。添加以下`if()`语句：
 
 ```cpp
-    if (Player && bHasCollectable)
-    {
-    }
-    ```
+if (Player && bHasCollectable)
+{
+}
+```
 
 1.  如果`if()`语句中的条件满足，那么我们需要调用`AddCollectable()`、`PlayHitSound()`和`PlayHitExplosion()`函数。确保在`AddCollectable()`函数中也传入`Player`变量：
 
 ```cpp
-    AddCollectable(Player);
-    PlayHitSound();
-    PlayHitExplosion();
-    ```
+AddCollectable(Player);
+PlayHitSound();
+PlayHitExplosion();
+```
 
 1.  最后，在`if()`语句内添加销毁砖块的函数调用：
 
 ```cpp
-    Destroy();
-    ```
+Destroy();
+```
 
 1.  当我们需要的`OnHit()`函数定义好了，重新编译 C++代码，但暂时不要返回到虚幻引擎 4 编辑器。
 

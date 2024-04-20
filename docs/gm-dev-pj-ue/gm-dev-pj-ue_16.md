@@ -314,16 +314,16 @@ void ARPCTest::ServerSetHealth_Implementation(float NewHealth)
 +   `可靠`：用于确保执行 RPC，通过重复请求直到远程机器确认其接收。这应仅用于非常重要的 RPC，例如执行关键的游戏逻辑。以下是如何使用它的示例：
 
 ```cpp
-    UFUNCTION(Server, Reliable)
-    void ServerReliableRPCFunction(int32 IntegerParameter); 
-    ```
+UFUNCTION(Server, Reliable)
+void ServerReliableRPCFunction(int32 IntegerParameter); 
+```
 
 +   `不可靠`：用于不关心 RPC 是否由于糟糕的网络条件而执行，例如播放声音或生成粒子效果。这应仅用于不太重要或非常频繁调用以更新值的 RPC，因为如果一个调用错过了，因为它经常更新，所以不重要。以下是如何使用它的示例：
 
 ```cpp
-    UFUNCTION(Server, Unreliable)
-    void ServerUnreliableRPCFunction(int32 IntegerParameter);
-    ```
+UFUNCTION(Server, Unreliable)
+void ServerUnreliableRPCFunction(int32 IntegerParameter);
+```
 
 注意
 
@@ -356,190 +356,190 @@ void ARPCTest::ServerSetHealth_Implementation(float NewHealth)
 1.  打开`RPCCharacter.h`文件，并包括`UnrealNetwork.h`头文件，其中包含我们将要使用的`DOREPLIFETIME_CONDITION`宏的定义：
 
 ```cpp
-    #include "Net/UnrealNetwork.h"
-    ```
+#include "Net/UnrealNetwork.h"
+```
 
 1.  声明受保护的计时器变量，以防止客户端滥用`Fire`动作：
 
 ```cpp
-    FTimerHandle FireTimer;
-    ```
+FTimerHandle FireTimer;
+```
 
 1.  声明受保护的可复制的弹药变量，初始为`5`发子弹：
 
 ```cpp
-    UPROPERTY(Replicated)
-    int32 Ammo = 5;
-    ```
+UPROPERTY(Replicated)
+int32 Ammo = 5;
+```
 
 1.  接下来，声明一个受保护的动画蒙太奇变量，当角色开火时将会播放：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, Category = "RPC Character")
-    UAnimMontage* FireAnimMontage;
-    ```
+UPROPERTY(EditDefaultsOnly, Category = "RPC Character")
+UAnimMontage* FireAnimMontage;
+```
 
 1.  声明一个受保护的声音变量，当角色没有弹药时将会播放：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, Category = "RPC Character")
-    USoundBase* NoAmmoSound;
-    ```
+UPROPERTY(EditDefaultsOnly, Category = "RPC Character")
+USoundBase* NoAmmoSound;
+```
 
 1.  重写`Tick`函数：
 
 ```cpp
-    virtual void Tick(float DeltaSeconds) override;
-    ```
+virtual void Tick(float DeltaSeconds) override;
+```
 
 1.  声明一个输入函数，用于处理*左鼠标按钮*的按压：
 
 ```cpp
-    void OnPressedFire();
-    ```
+void OnPressedFire();
+```
 
 1.  声明可靠且经过验证的服务器 RPC 以进行射击：
 
 ```cpp
-    UFUNCTION(Server, Reliable, WithValidation, Category = "RPC   Character")
-    void ServerFire();
-    ```
+UFUNCTION(Server, Reliable, WithValidation, Category = "RPC   Character")
+void ServerFire();
+```
 
 1.  声明一个不可靠的多播 RPC，将在所有客户端上播放开火动画：
 
 ```cpp
-    UFUNCTION(NetMulticast, Unreliable, Category = "RPC Character")
-    void MulticastFire();
-    ```
+UFUNCTION(NetMulticast, Unreliable, Category = "RPC Character")
+void MulticastFire();
+```
 
 1.  声明一个不可靠的客户端 RPC，仅在拥有客户端中播放声音：
 
 ```cpp
-    UFUNCTION(Client, Unreliable, Category = "RPC Character")
-    void ClientPlaySound2D(USoundBase* Sound);
-    ```
+UFUNCTION(Client, Unreliable, Category = "RPC Character")
+void ClientPlaySound2D(USoundBase* Sound);
+```
 
 1.  现在，打开`RPCCharacter.cpp`文件，并包括`DrawDebugHelpers.h`，`GameplayStatics.h`，`TimerManager.h`和`World.h`：
 
 ```cpp
-    #include "DrawDebugHelpers.h"
-    #include "Kismet/GameplayStatics.h"
-    #include "TimerManager.h"
-    #include "Engine/World.h"
-    ```
+#include "DrawDebugHelpers.h"
+#include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
+```
 
 1.  在构造函数的末尾，启用`Tick`函数：
 
 ```cpp
-    PrimaryActorTick.bCanEverTick = true;
-    ```
+PrimaryActorTick.bCanEverTick = true;
+```
 
 1.  实现`GetLifetimeReplicatedProps`函数，以便`Ammo`变量能够复制到所有客户端：
 
 ```cpp
-    void ARPCCharacter::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
-    {
-      Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-      DOREPLIFETIME(ARPCCharacter, Ammo);
-    }
-    ```
+void ARPCCharacter::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const
+{
+  Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+  DOREPLIFETIME(ARPCCharacter, Ammo);
+}
+```
 
 1.  接下来，实现`Tick`函数，显示`Ammo`变量的值：
 
 ```cpp
-    void ARPCCharacter::Tick(float DeltaSeconds)
-    {
-      Super::Tick(DeltaSeconds);
-      const FString AmmoString = FString::Printf(TEXT("Ammo = %d"),     Ammo);
-      DrawDebugString(GetWorld(), GetActorLocation(), AmmoString,     nullptr, FColor::White, 0.0f, true);
-    }
-    ```
+void ARPCCharacter::Tick(float DeltaSeconds)
+{
+  Super::Tick(DeltaSeconds);
+  const FString AmmoString = FString::Printf(TEXT("Ammo = %d"),     Ammo);
+  DrawDebugString(GetWorld(), GetActorLocation(), AmmoString,     nullptr, FColor::White, 0.0f, true);
+}
+```
 
 1.  在`SetupPlayerInputController`函数的末尾，将`Fire`动作绑定到`OnPressedFire`函数：
 
 ```cpp
-    PlayerInputComponent->BindAction("Fire", IE_Pressed, this,   &ARPCCharacter::OnPressedFire);
-    ```
+PlayerInputComponent->BindAction("Fire", IE_Pressed, this,   &ARPCCharacter::OnPressedFire);
+```
 
 1.  实现处理*左鼠标按钮*按压的函数，该函数将调用 fire Server RPC：
 
 ```cpp
-    void ARPCCharacter::OnPressedFire()
-    {
-      ServerFire();
-    }
-    ```
+void ARPCCharacter::OnPressedFire()
+{
+  ServerFire();
+}
+```
 
 1.  实现 fire 服务器 RPC 验证函数：
 
 ```cpp
-    bool ARPCCharacter::ServerFire_Validate()
-    {
-      return true;
-    }
-    ```
+bool ARPCCharacter::ServerFire_Validate()
+{
+  return true;
+}
+```
 
 1.  实现 fire 服务器 RPC 实现函数：
 
 ```cpp
-    void ARPCCharacter::ServerFire_Implementation()
-    {
+void ARPCCharacter::ServerFire_Implementation()
+{
 
-    }
-    ```
+}
+```
 
 1.  现在，添加逻辑以在上一次射击后仍处于活动状态时中止函数：
 
 ```cpp
-    if (GetWorldTimerManager().IsTimerActive(FireTimer))
-    {
-      return;
-    }
-    ```
+if (GetWorldTimerManager().IsTimerActive(FireTimer))
+{
+  return;
+}
+```
 
 1.  检查角色是否有弹药。如果没有，那么只在控制角色的客户端中播放`NoAmmoSound`并中止函数：
 
 ```cpp
-    if (Ammo == 0)
-    {
-      ClientPlaySound2D(NoAmmoSound);
-      return;
-    }
-    ```
+if (Ammo == 0)
+{
+  ClientPlaySound2D(NoAmmoSound);
+  return;
+}
+```
 
 1.  扣除弹药并安排`FireTimer`变量，以防止在播放开火动画时过度使用此函数：
 
 ```cpp
-    Ammo--;
-    GetWorldTimerManager().SetTimer(FireTimer, 1.5f, false);
-    ```
+Ammo--;
+GetWorldTimerManager().SetTimer(FireTimer, 1.5f, false);
+```
 
 1.  调用 fire 多播 RPC，使所有客户端播放开火动画：
 
 ```cpp
-    MulticastFire();
-    ```
+MulticastFire();
+```
 
 1.  实现 fire 多播 RPC，将播放开火动画蒙太奇：
 
 ```cpp
-    void ARPCCharacter::MulticastFire_Implementation()
-    {
-      if (FireAnimMontage != nullptr)
-      {
-        PlayAnimMontage(FireAnimMontage);
-      }
-    }
-    ```
+void ARPCCharacter::MulticastFire_Implementation()
+{
+  if (FireAnimMontage != nullptr)
+  {
+    PlayAnimMontage(FireAnimMontage);
+  }
+}
+```
 
 1.  实现在客户端播放 2D 声音的客户端 RPC：
 
 ```cpp
-    void ARPCCharacter::ClientPlaySound2D_Implementation(USoundBase*   Sound)
-    {
-      UGameplayStatics::PlaySound2D(GetWorld(), Sound);
-    }
-    ```
+void ARPCCharacter::ClientPlaySound2D_Implementation(USoundBase*   Sound)
+{
+  UGameplayStatics::PlaySound2D(GetWorld(), Sound);
+}
+```
 
 最后，您可以在编辑器中启动项目。
 
@@ -844,158 +844,158 @@ enum class ETestEnum : uint8
 1.  创建一个名为`ENUM_TO_INT32`的宏，它将枚举转换为`int32`数据类型：
 
 ```cpp
-    #define ENUM_TO_INT32(Value) (int32)Value
-    ```
+#define ENUM_TO_INT32(Value) (int32)Value
+```
 
 1.  创建一个名为`ENUM_TO_FSTRING`的宏，它将获取`enum`数据类型的值的显示名称，并将其转换为`FString`数据类型：
 
 ```cpp
-    #define ENUM_TO_FSTRING(Enum, Value) FindObject<UEnum>(ANY_PACKAGE, TEXT(Enum), true)-  >GetDisplayNameTextByIndex((int32)Value).ToString()
-    ```
+#define ENUM_TO_FSTRING(Enum, Value) FindObject<UEnum>(ANY_PACKAGE, TEXT(Enum), true)-  >GetDisplayNameTextByIndex((int32)Value).ToString()
+```
 
 1.  声明枚举`EWeaponType`和`EAmmoType`：
 
 ```cpp
-    UENUM(BlueprintType)
-    enum class EWeaponType : uint8
-    {
-      Pistol UMETA(Display Name = «Glock 19»),
-      Shotgun UMETA(Display Name = «Winchester M1897»),
-      RocketLauncher UMETA(Display Name = «RPG»),    
-      MAX
-    };
-    UENUM(BlueprintType)
-    enum class EAmmoType : uint8
-    {
-      Bullets UMETA(DisplayName = «9mm Bullets»),
-      Shells UMETA(Display Name = «12 Gauge Shotgun Shells»),
-      Rockets UMETA(Display Name = «RPG Rockets»),
-      MAX
-    };
-    ```
+UENUM(BlueprintType)
+enum class EWeaponType : uint8
+{
+  Pistol UMETA(Display Name = «Glock 19»),
+  Shotgun UMETA(Display Name = «Winchester M1897»),
+  RocketLauncher UMETA(Display Name = «RPG»),    
+  MAX
+};
+UENUM(BlueprintType)
+enum class EAmmoType : uint8
+{
+  Bullets UMETA(DisplayName = «9mm Bullets»),
+  Shells UMETA(Display Name = «12 Gauge Shotgun Shells»),
+  Rockets UMETA(Display Name = «RPG Rockets»),
+  MAX
+};
+```
 
 1.  打开`EnumerationsCharacter.h`文件，包括`Enumerations.h`头文件：
 
 ```cpp
-    #include "Enumerations.h"
-    ```
+#include "Enumerations.h"
+```
 
 1.  声明受保护的`Weapon`变量，保存所选武器的武器类型：
 
 ```cpp
-    UPROPERTY(BlueprintReadOnly, Category = "Enumerations Character")
-    EWeaponType Weapon;
-    ```
+UPROPERTY(BlueprintReadOnly, Category = "Enumerations Character")
+EWeaponType Weapon;
+```
 
 1.  声明受保护的`Ammo`数组，保存每种类型的弹药数量：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Enumerations Character")
-    TArray<int32> Ammo;
-    ```
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category =   "Enumerations Character")
+TArray<int32> Ammo;
+```
 
 1.  声明`Begin Play`和`Tick`函数的受保护覆盖：
 
 ```cpp
-    virtual void BeginPlay() override;
-    virtual void Tick(float DeltaSeconds) override;
-    ```
+virtual void BeginPlay() override;
+virtual void Tick(float DeltaSeconds) override;
+```
 
 1.  声明受保护的输入函数：
 
 ```cpp
-    void OnPressedPistol();
-    void OnPressedShotgun();
-    void OnPressedRocketLauncher();
-    void OnPressedFire();
-    ```
+void OnPressedPistol();
+void OnPressedShotgun();
+void OnPressedRocketLauncher();
+void OnPressedFire();
+```
 
 1.  打开`EnumerationsCharacter.cpp`文件，包括`DrawDebugHelpers.h`头文件：
 
 ```cpp
-    #include "DrawDebugHelpers.h"
-    ```
+#include "DrawDebugHelpers.h"
+```
 
 1.  在`SetupPlayerInputController`函数的末尾绑定新的动作绑定，如下面的代码片段所示：
 
 ```cpp
-    PlayerInputComponent->BindAction("Pistol", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedPistol);
-    PlayerInputComponent->BindAction("Shotgun", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedShotgun);
-    PlayerInputComponent->BindAction("Rocket Launcher", IE_Pressed,   this, &AEnumerationsCharacter::OnPressedRocketLauncher);
-    PlayerInputComponent->BindAction("Fire", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedFire);
-    ```
+PlayerInputComponent->BindAction("Pistol", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedPistol);
+PlayerInputComponent->BindAction("Shotgun", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedShotgun);
+PlayerInputComponent->BindAction("Rocket Launcher", IE_Pressed,   this, &AEnumerationsCharacter::OnPressedRocketLauncher);
+PlayerInputComponent->BindAction("Fire", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedFire);
+```
 
 1.  接下来，实现`BeginPlay`的重写，执行父逻辑，但也初始化`Ammo`数组的大小，大小为`EAmmoType`枚举中的条目数。数组中的每个位置也将初始化为值`10`：
 
 ```cpp
-    void AEnumerationsCharacter::BeginPlay()
-    {
-      Super::BeginPlay();
-      const int32 AmmoCount = ENUM_TO_INT32(EAmmoType::MAX);
-      Ammo.Init(10, AmmoCount);
-    }
-    ```
+void AEnumerationsCharacter::BeginPlay()
+{
+  Super::BeginPlay();
+  const int32 AmmoCount = ENUM_TO_INT32(EAmmoType::MAX);
+  Ammo.Init(10, AmmoCount);
+}
+```
 
 1.  实现`Tick`的重写：
 
 ```cpp
-    void AEnumerationsCharacter::Tick(float DeltaSeconds)
-    {
-      Super::Tick(DeltaSeconds);
-    }
-    ```
+void AEnumerationsCharacter::Tick(float DeltaSeconds)
+{
+  Super::Tick(DeltaSeconds);
+}
+```
 
 1.  将`Weapon`变量转换为`int32`，将`Weapon`变量转换为`FString`：
 
 ```cpp
-    const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
-    const FString WeaponString = ENUM_TO_FSTRING("EWeaponType",   Weapon);
-    ```
+const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
+const FString WeaponString = ENUM_TO_FSTRING("EWeaponType",   Weapon);
+```
 
 1.  将弹药类型转换为`FString`并获取当前武器的弹药数量：
 
 ```cpp
-    const FString AmmoTypeString = ENUM_TO_FSTRING("EAmmoType",   Weapon);
-    const int32 AmmoCount = Ammo[WeaponIndex];
-    ```
+const FString AmmoTypeString = ENUM_TO_FSTRING("EAmmoType",   Weapon);
+const int32 AmmoCount = Ammo[WeaponIndex];
+```
 
 我们使用`Weapon`来获取弹药类型字符串，因为`EAmmoType`中的条目与等效的`EWeaponType`的弹药类型匹配。换句话说，`Pistol = 0`使用`Bullets = 0`，`Shotgun = 1`使用`Shells = 1`，`RocketLauncher = 2`使用`Rockets = 2`，因此这是我们可以利用的一对一映射。
 
 1.  在角色位置显示当前武器的名称及其对应的弹药类型和弹药数量，如下面的代码片段所示：
 
 ```cpp
-    const FString String = FString::Printf(TEXT("Weapon = %s\nAmmo   Type = %s\nAmmo Count = %d"), *WeaponString, *AmmoTypeString,   AmmoCount);
-    DrawDebugString(GetWorld(), GetActorLocation(), String, nullptr,   FColor::White, 0.0f, true);
-    ```
+const FString String = FString::Printf(TEXT("Weapon = %s\nAmmo   Type = %s\nAmmo Count = %d"), *WeaponString, *AmmoTypeString,   AmmoCount);
+DrawDebugString(GetWorld(), GetActorLocation(), String, nullptr,   FColor::White, 0.0f, true);
+```
 
 1.  实现装备输入函数，将`Weapon`变量设置为相应的值：
 
 ```cpp
-    void AEnumerationsCharacter::OnPressedPistol()
-    {
-      Weapon = EWeaponType::Pistol;
-    }
-    void AEnumerationsCharacter::OnPressedShotgun()
-    {
-      Weapon = EWeaponType::Shotgun;
-    }
-    void AEnumerationsCharacter::OnPressedRocketLauncher()
-    {
-      Weapon = EWeaponType::RocketLauncher;
-    }
-    ```
+void AEnumerationsCharacter::OnPressedPistol()
+{
+  Weapon = EWeaponType::Pistol;
+}
+void AEnumerationsCharacter::OnPressedShotgun()
+{
+  Weapon = EWeaponType::Shotgun;
+}
+void AEnumerationsCharacter::OnPressedRocketLauncher()
+{
+  Weapon = EWeaponType::RocketLauncher;
+}
+```
 
 1.  实现火力输入函数，该函数将使用武器索引获取相应的弹药类型计数，并减去`1`，只要结果值大于或等于 0：
 
 ```cpp
-    void AEnumerationsCharacter::OnPressedFire()
-    {
-      const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
-      const int32 NewRawAmmoCount = Ammo[WeaponIndex] - 1;
-      const int32 NewAmmoCount = FMath::Max(NewRawAmmoCount, 0);
-      Ammo[WeaponIndex] = NewAmmoCount;
-    }
-    ```
+void AEnumerationsCharacter::OnPressedFire()
+{
+  const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
+  const int32 NewRawAmmoCount = Ammo[WeaponIndex] - 1;
+  const int32 NewAmmoCount = FMath::Max(NewRawAmmoCount, 0);
+  Ammo[WeaponIndex] = NewAmmoCount;
+}
+```
 
 1.  编译代码并运行编辑器。
 
@@ -1124,56 +1124,56 @@ AWeapon * APlayer::GetNewWeapon(int32 Direction)
 1.  打开`Enumerations.h`并添加`GET_CIRCULAR_ARRAY_INDEX`宏，该宏将应用我们已经讨论过的模数公式：
 
 ```cpp
-    #define GET_CIRCULAR_ARRAY_INDEX(Index, Count) (Index % Count +   Count) % Count
-    ```
+#define GET_CIRCULAR_ARRAY_INDEX(Index, Count) (Index % Count +   Count) % Count
+```
 
 1.  打开`EnumerationsCharacter.h`并声明武器循环的新输入函数：
 
 ```cpp
-    void OnPressedPreviousWeapon();
-    void OnPressedNextWeapon();
-    ```
+void OnPressedPreviousWeapon();
+void OnPressedNextWeapon();
+```
 
 1.  声明`CycleWeapons`函数，如下面的代码片段所示：
 
 ```cpp
-    void CycleWeapons(int32 Direction);
-    ```
+void CycleWeapons(int32 Direction);
+```
 
 1.  打开`EnumerationsCharacter.cpp`并在`SetupPlayerInputController`函数中绑定新的动作绑定：
 
 ```cpp
-    PlayerInputComponent->BindAction("Previous Weapon", IE_Pressed,   this, &AEnumerationsCharacter::OnPressedPreviousWeapon);
-    PlayerInputComponent->BindAction("Next Weapon", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedNextWeapon);
-    ```
+PlayerInputComponent->BindAction("Previous Weapon", IE_Pressed,   this, &AEnumerationsCharacter::OnPressedPreviousWeapon);
+PlayerInputComponent->BindAction("Next Weapon", IE_Pressed, this,   &AEnumerationsCharacter::OnPressedNextWeapon);
+```
 
 1.  现在，实现新的输入函数，如下面的代码片段所示：
 
 ```cpp
-    void AEnumerationsCharacter::OnPressedPreviousWeapon()
-    {
-      CycleWeapons(-1);
-    }
-    void AEnumerationsCharacter::OnPressedNextWeapon()
-    {
-      CycleWeapons(1);
-    }
-    ```
+void AEnumerationsCharacter::OnPressedPreviousWeapon()
+{
+  CycleWeapons(-1);
+}
+void AEnumerationsCharacter::OnPressedNextWeapon()
+{
+  CycleWeapons(1);
+}
+```
 
 在上面的代码片段中，我们定义了处理“上一个武器”和“下一个武器”动作映射的函数。每个函数都使用`CycleWeapons`函数，对于上一个武器使用方向为`-1`，对于下一个武器使用方向为`1`。
 
 1.  实现`CycleWeapons`函数，根据当前武器索引和`Direction`参数进行双向循环。
 
 ```cpp
-    void AEnumerationsCharacter::CycleWeapons(int32 Direction)
-    {
-      const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
-      const int32 AmmoCount = Ammo.Num();
-      const int32 NextRawWeaponIndex = WeaponIndex + Direction;
-      const int32 NextWeaponIndex = GET_CIRCULAR_ARRAY_INDEX(NextRawWeaponIndex , AmmoCount);
-      Weapon = (EWeaponType)NextWeaponIndex;
-    }
-    ```
+void AEnumerationsCharacter::CycleWeapons(int32 Direction)
+{
+  const int32 WeaponIndex = ENUM_TO_INT32(Weapon);
+  const int32 AmmoCount = Ammo.Num();
+  const int32 NextRawWeaponIndex = WeaponIndex + Direction;
+  const int32 NextWeaponIndex = GET_CIRCULAR_ARRAY_INDEX(NextRawWeaponIndex , AmmoCount);
+  Weapon = (EWeaponType)NextWeaponIndex;
+}
+```
 
 在上面的代码片段中，我们实现了`CycleWeapons`函数，该函数使用模运算符根据提供的方向计算下一个有效武器索引。
 

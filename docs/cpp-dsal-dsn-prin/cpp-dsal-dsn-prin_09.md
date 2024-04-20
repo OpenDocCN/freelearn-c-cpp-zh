@@ -225,95 +225,95 @@ for total_weight (1 <= total_weight <= max_capacity) found at index i of the set
 1.  我们将首先包括以下标题：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <algorithm>
-    using namespace std;
-    ```
+#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+```
 
 1.  我们的第一步将是处理输入。我们需要声明两个整数`items`和`capacity`，它们分别表示可供选择的物品总数和背包的重量限制。我们还需要两个数组`value`和`weight`，我们将在其中存储与每个物品对应的数据：
 
 ```cpp
-    int main()
-    {
-        int items, capacity;
-        cin >> items >> capacity;
-        vector<int> values(items), weight(items);
-        for(auto &v : values) cin >> v;
-        for(auto &w : weight) cin >> w;
-        ……
-    }
-    ```
+int main()
+{
+    int items, capacity;
+    cin >> items >> capacity;
+    vector<int> values(items), weight(items);
+    for(auto &v : values) cin >> v;
+    for(auto &w : weight) cin >> w;
+    ……
+}
+```
 
 1.  现在，我们将定义函数`Knapsack_01()`，它具有与输入对应的参数，并返回一个整数：
 
 ```cpp
-    int Knapsack_01(int items, int capacity, vector<int> value, vector<int> weight)
-    {
-        ……
-    }
-    ```
+int Knapsack_01(int items, int capacity, vector<int> value, vector<int> weight)
+{
+    ……
+}
+```
 
 1.  我们的 DP 表将是二维的，并且将与我们在子集和问题中使用的表非常接近。在子集和表中，第一维的大小初始化为比集合的长度大一，而第二维的大小初始化为比集合中所有元素的最大和大一。在这里，我们的第一维的大小将等效地初始化为`items + 1`；同样，第二维的大小将初始化为`capacity + 1`：
 
 ```cpp
-    vector<vector<int>> DP(items + 1, vector<int>(capacity + 1, 0));
-    ```
+vector<vector<int>> DP(items + 1, vector<int>(capacity + 1, 0));
+```
 
 1.  我们需要从`1`开始迭代两个维度的长度。在外部循环的每次迭代开始时，我们将定义两个变量`currentWeight`和`currentValue`，它们分别对应于`weight[i-1]`和`values[i-1]`中的元素：
 
 ```cpp
-    for(int i = 1; i <= items; i++)
-    {
-        int currentWeight = weight[i-1];
-        int currentValue = values[i-1];
-        for(int totalWeight = 1; totalWeight <= capacity; totalWeight++)
-        {
-            ……
-        }
-    }
-    ```
+for(int i = 1; i <= items; i++)
+{
+    int currentWeight = weight[i-1];
+    int currentValue = values[i-1];
+    for(int totalWeight = 1; totalWeight <= capacity; totalWeight++)
+    {
+        ……
+    }
+}
+```
 
 1.  现在，我们将实现我们的表格化方案：
 
 ```cpp
-    if(totalWeight < currentWeight)
-    {
-        DP[i][totalWeight] = DP[i-1][totalWeight];
-    }
-    else 
-    {
-        DP[i][totalWeight] = max(DP[i-1][totalWeight], DP[i-1][totalWeight - currentWeight] + currentValue);
-    }
-    ```
+if(totalWeight < currentWeight)
+{
+    DP[i][totalWeight] = DP[i-1][totalWeight];
+}
+else 
+{
+    DP[i][totalWeight] = max(DP[i-1][totalWeight], DP[i-1][totalWeight - currentWeight] + currentValue);
+}
+```
 
 1.  在我们的函数结束时，我们返回表的最后一个元素：
 
 ```cpp
-    return DP[items][capacity];
-    ```
+return DP[items][capacity];
+```
 
 1.  现在，我们添加一个对`main()`的调用并打印输出：
 
 ```cpp
-    int result = Knapsack_01(items, capacity, values, weight);
-    cout << "The highest-valued subset of items that can fit in the knapsack is: " << result << endl;
-    return 0;
-    ```
+int result = Knapsack_01(items, capacity, values, weight);
+cout << "The highest-valued subset of items that can fit in the knapsack is: " << result << endl;
+return 0;
+```
 
 1.  让我们尝试使用以下输入运行我们的程序：
 
 ```cpp
-    8 66
-    20 4 89 12 5 50 8 13
-    5 23 9 72 16 14 32 4
-    ```
+8 66
+20 4 89 12 5 50 8 13
+5 23 9 72 16 14 32 4
+```
 
 输出应该如下：
 
 ```cpp
-    The highest-valued subset of items that can fit in the knapsack is: 180
-    ```
+The highest-valued subset of items that can fit in the knapsack is: 180
+```
 
 正如我们所看到的，相对高效的 DP 解决方案对于背包问题而言只是对解决子集和问题所使用的相同算法的轻微修改。
 
@@ -618,90 +618,90 @@ Weight   —> { 3, 2, 4, 5, 2 }
 1.  让我们使用与上一个练习中相同的标题和输入：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <algorithm>
-    using namespace std;
-    ……
-    int main()
-    {
-        int items, capacity;
-        cin >> items >> capacity;
-        vector<int> values(items), weight(items);
-        for(auto &v : values) cin >> v;
-        for(auto &w : weight) cin >> w;
-        ……
-    }
-    ```
+#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+……
+int main()
+{
+    int items, capacity;
+    cin >> items >> capacity;
+    vector<int> values(items), weight(items);
+    for(auto &v : values) cin >> v;
+    for(auto &w : weight) cin >> w;
+    ……
+}
+```
 
 1.  现在，我们将实现一个名为`UnboundedKnapsack()`的函数，它返回一个整数。它的参数将与输入相同：
 
 ```cpp
-    int UnboundedKnapsack(int items, int capacity, vector<int> values, vector<int> weight)
-    {
-        ……
-    }
-    ```
+int UnboundedKnapsack(int items, int capacity, vector<int> values, vector<int> weight)
+{
+    ……
+}
+```
 
 1.  我们的 DP 表将表示为一个整数向量，大小为`capacity + 1`，每个索引初始化为`0`：
 
 ```cpp
-    vector<int> DP(capacity + 1, 0);
-    ```
+vector<int> DP(capacity + 1, 0);
+```
 
 1.  与 0-1 背包问题一样，我们的状态逻辑将包含在两个嵌套循环中；但是，在这个问题的变体中，我们将颠倒循环的嵌套，使得外部循环从`0`到`capacity`（包括），内部循环遍历项目索引：
 
 ```cpp
-    for(int w = 0; w <= capacity; w++)
-    {
-        for(int i = 0; i < items; i++)
-        {
-            ……
-        }
-    } 
-    ```
+for(int w = 0; w <= capacity; w++)
+{
+    for(int i = 0; i < items; i++)
+    {
+        ……
+    }
+} 
+```
 
 1.  现在，我们必须决定如何缓存我们的状态。我们唯一关心的是容量不被选择物品的重量超过。由于我们的表只足够大，可以表示从`0`到`capacity`的重量值，我们只需要确保`w`和`weight[i]`之间的差值是非负的。因此，所有的赋值逻辑都可以包含在一个`if`语句中：
 
 ```cpp
-    for(int w = 0; w <= capacity; w++)
-    {
-        for(int i = 0; i < items; i++)
-        {
-            if(weight[i] <= w)
-            {
-                DP[w] = max(DP[w], DP[w - weight[i]] + values[i]);
-            }
-        }
-    }
-    return DP[capacity];
-    ```
+for(int w = 0; w <= capacity; w++)
+{
+    for(int i = 0; i < items; i++)
+    {
+        if(weight[i] <= w)
+        {
+            DP[w] = max(DP[w], DP[w - weight[i]] + values[i]);
+        }
+    }
+}
+return DP[capacity];
+```
 
 1.  现在，让我们返回到`main()`，添加一个调用`UnboundedKnapsack()`，并输出结果：
 
 ```cpp
-    int main()
-    {
-            ……
-        int result = UnboundedKnapsack(items, capacity, values, weight);
-        cout << "Maximum value of items that can be contained in the knapsack: " << result << endl;
-        return 0;
-    }
-    ```
+int main()
+{
+        ……
+    int result = UnboundedKnapsack(items, capacity, values, weight);
+    cout << "Maximum value of items that can be contained in the knapsack: " << result << endl;
+    return 0;
+}
+```
 
 1.  尝试使用以下输入运行您的程序：
 
 ```cpp
-    30 335
-    91 81 86 64 24 61 13 57 60 25 94 54 39 62 5 34 95 12 53 33 53 3 42 75 56 1 84 38 46 62 
-    40 13 4 17 16 35 5 33 35 16 25 29 6 28 12 37 26 27 32 27 7 24 5 28 39 15 38 37 15 40 
-    ```
+30 335
+91 81 86 64 24 61 13 57 60 25 94 54 39 62 5 34 95 12 53 33 53 3 42 75 56 1 84 38 46 62 
+40 13 4 17 16 35 5 33 35 16 25 29 6 28 12 37 26 27 32 27 7 24 5 28 39 15 38 37 15 40 
+```
 
 您的输出应该如下：
 
 ```cpp
-    Maximum value of items that can be contained in the knapsack: 7138
-    ```
+Maximum value of items that can be contained in the knapsack: 7138
+```
 
 正如前面的实现所示，通常值得考虑在 DP 算法中缓存解决方案的更便宜的方法。看起来需要复杂状态表示的问题经过仔细检查后通常可以显著简化。
 
@@ -965,184 +965,184 @@ Depth = 5:
 1.  让我们从包括以下标头和`std`命名空间开始，并定义一个`UNKNOWN`常量：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <utility>
-    #include <map>
-    using namespace std;
-    const int UNKNOWN = 1e9;
-    ```
+#include <iostream>
+#include <vector>
+#include <utility>
+#include <map>
+using namespace std;
+const int UNKNOWN = 1e9;
+```
 
 1.  让我们还声明`V`和`E`（顶点数和边数），以及两个二维整数向量，`adj`（图的邻接表）和`weight`（边权重值的矩阵）。最后，我们将定义一个名为`memo`的记忆化表。这次，我们将使用`std::map`来简化区分检查缓存中的键是否存在与其值是否未知：
 
 ```cpp
-    int V, E;
-    vector<vector<int>> adj;
-    vector<vector<int>> weight;
-    map<pair<int, int>, int> memo;
-    ```
+int V, E;
+vector<vector<int>> adj;
+vector<vector<int>> weight;
+map<pair<int, int>, int> memo;
+```
 
 1.  在`main()`函数中，我们应该处理输入，以便接收我们希望应用算法的图。输入的第一行将包含`V`和`E`，接下来的`E`行将包含三个整数：`u`、`v`和`w`（每条边的源、目的地和权重）：
 
 ```cpp
-    int main()
-    {
-            int V, E;
-            cin >> V >> E;
-            weight.resize(V, vector<int>(V, UNKNOWN));
-            adj.resize(V);
-            for(int i = 0; i < E; i++)
-            {
-                int u, v, w;
-                cin >> u >> v >> w;
-                adj[u].push_back(v);
-                weight[u][v] = w;
-            }
-            …
-    }
-    ```
+int main()
+{
+        int V, E;
+        cin >> V >> E;
+        weight.resize(V, vector<int>(V, UNKNOWN));
+        adj.resize(V);
+        for(int i = 0; i < E; i++)
+        {
+            int u, v, w;
+            cin >> u >> v >> w;
+            adj[u].push_back(v);
+            weight[u][v] = w;
+        }
+        …
+}
+```
 
 1.  我们现在将定义一个名为`SingleSourceShortestPaths()`的函数，它将接受一个参数——`source`，即源顶点的索引，并将返回一个整数向量：
 
 ```cpp
-    vector<int> SingleSourceShortestPaths(int source)
-    {
-            ……
-    }
-    ```
+vector<int> SingleSourceShortestPaths(int source)
+{
+        ……
+}
+```
 
 1.  现在，我们需要对我们的图进行一些初步的修改。与其从源节点遍历图中的所有其他节点，我们将从其他节点开始每次遍历，并计算从源到目标的最短路径。由于我们的图是有向的，我们将不得不使用其转置来实现这一点：
 
 ```cpp
-    // Clear table
-    vector<vector<int>> adj_t(V);
-    vector<vector<int>> weight_t(V, vector<int>(V, UNKNOWN));
-    for(int i = 0; i < V; i++)
-    {
-            // Create transpose of graph
-            for(auto j : adj[i])
-            {
-                adj_t[j].push_back(i);
-                weight_t[j][i] = weight[i][j];
-            }
-            // Base case — shortest distance from source to itself is zero at any depth
-            memo[{source, i}] = 0;
-            if(i != source) 
-            {
-                // If any node other than the source has been reached 
-                // after V - 1 iterations, no path exists.
-                memo[{i, 0}] = UNKNOWN;
-            }
-    }
-    ```
+// Clear table
+vector<vector<int>> adj_t(V);
+vector<vector<int>> weight_t(V, vector<int>(V, UNKNOWN));
+for(int i = 0; i < V; i++)
+{
+        // Create transpose of graph
+        for(auto j : adj[i])
+        {
+            adj_t[j].push_back(i);
+            weight_t[j][i] = weight[i][j];
+        }
+        // Base case — shortest distance from source to itself is zero at any depth
+        memo[{source, i}] = 0;
+        if(i != source) 
+        {
+            // If any node other than the source has been reached 
+            // after V - 1 iterations, no path exists.
+            memo[{i, 0}] = UNKNOWN;
+        }
+}
+```
 
 在这里，我们定义了两个新的二维整数向量，`adj_t`和`weight_t`，它们将对应于转置图的邻接表和权重矩阵。然后，我们使用嵌套循环来创建我们的修改后的图，并初始化了我们`memo`表中的值。
 
 1.  现在，我们应该定义`ShortestPath_Memoization()`函数，它有四个参数：两个整数，`depth`和`node`，以及`adj`和`weight`（在这种情况下，它们将是对转置图的引用）：
 
 ```cpp
-        int ShortestPath_Memoization(int depth, int node, vector<vector<int>> &adj, vector<vector<int>> &weight)
-    {
-            ……
-        }
-    ```
+    int ShortestPath_Memoization(int depth, int node, vector<vector<int>> &adj, vector<vector<int>> &weight)
+{
+        ……
+    }
+```
 
 1.  我们的算法本质上是标准的深度优先搜索，除了我们将在每次函数调用结束时缓存每个`{节点，深度}`对的结果。在函数顶部，我们将检查缓存的结果，如果键存在于映射中，则返回它：
 
 ```cpp
-    // Check if key exists in map
-    if(memo.find({node, depth}) != memo.end())
-    {
-        return memo[{node, depth}];
-    }
-    memo[{node, depth}] = UNKNOWN;
-    // Iterate through adjacent edges
-    for(auto next : adj[node])
-    {
-        int w = weight[node][next];
-        int dist = ShortestPath_Memoization(depth - 1, next, adj, weight) + w;
-        memo[{node, depth}] = min(memo[{node, depth}], dist);
-    }
-    return memo[{node, depth}];
-    ```
+// Check if key exists in map
+if(memo.find({node, depth}) != memo.end())
+{
+    return memo[{node, depth}];
+}
+memo[{node, depth}] = UNKNOWN;
+// Iterate through adjacent edges
+for(auto next : adj[node])
+{
+    int w = weight[node][next];
+    int dist = ShortestPath_Memoization(depth - 1, next, adj, weight) + w;
+    memo[{node, depth}] = min(memo[{node, depth}], dist);
+}
+return memo[{node, depth}];
+```
 
 1.  回到`SingleSourceShortestPaths()`函数，我们将定义一个名为`distance`的整数向量，大小为`V`，并通过对`ShortestPath_Memoization()`的连续调用来填充它：
 
 ```cpp
-    vector<int> distance;
+vector<int> distance;
 
-    for(int i = 0; i < V; i++)
-    {
-        distance[i] = ShortestPath_Memoization(V - 1, i, adj_t, weight_t);
-    }
-    return distance;
-    ```
+for(int i = 0; i < V; i++)
+{
+    distance[i] = ShortestPath_Memoization(V - 1, i, adj_t, weight_t);
+}
+return distance;
+```
 
 1.  回到`main()`，我们将定义一个名为`paths`的二维整数矩阵，它将存储从`0`到`V`的每个节点索引返回的`SingleSourceShortestPaths()`的距离：
 
 ```cpp
-    vector<vector<int>> paths(V);
-    for(int i = 0; i < V; i++)
-    {
-        paths[i] = SingleSourceShortestPaths(i);
-    }
-    ```
+vector<vector<int>> paths(V);
+for(int i = 0; i < V; i++)
+{
+    paths[i] = SingleSourceShortestPaths(i);
+}
+```
 
 1.  现在，我们可以使用`paths`表来打印图中每对节点的距离值：
 
 ```cpp
-    cout << "The shortest distances between each pair of vertices are:" << endl;
-    for(int i = 0; i < V; i++)
-    {
-            for(int j = 0; j < V; j++)
-            {
-              cout << "\t" << j << ": ";
-              (paths[i][j] == UNKNOWN) ? cout << "- ";
-                                       : cout << paths[i][j] << " ";
-            }
-            cout << endl;
-    }
-    ```
+cout << "The shortest distances between each pair of vertices are:" << endl;
+for(int i = 0; i < V; i++)
+{
+        for(int j = 0; j < V; j++)
+        {
+          cout << "\t" << j << ": ";
+          (paths[i][j] == UNKNOWN) ? cout << "- ";
+                                   : cout << paths[i][j] << " ";
+        }
+        cout << endl;
+}
+```
 
 1.  现在，使用以下输入运行您的代码：
 
 ```cpp
-    8 20
-    0 1 387
-    0 3 38
-    0 5 471
-    1 0 183
-    1 4 796
-    2 5 715
-    3 0 902
-    3 1 712
-    3 2 154
-    3 6 425
-    4 3 834
-    4 6 214
-    5 0 537
-    5 3 926
-    5 4 125
-    5 6 297
-    6 1 863
-    6 7 248
-    7 0 73
-    7 3 874
-    ```
+8 20
+0 1 387
+0 3 38
+0 5 471
+1 0 183
+1 4 796
+2 5 715
+3 0 902
+3 1 712
+3 2 154
+3 6 425
+4 3 834
+4 6 214
+5 0 537
+5 3 926
+5 4 125
+5 6 297
+6 1 863
+6 7 248
+7 0 73
+7 3 874
+```
 
 输出应该如下所示：
 
 ```cpp
-    The shortest distances between each pair of vertices are:
-    0: 0 387 192 38 596 471 463 711 
-    1: 183 0 375 221 779 654 646 894 
-    2: 1252 1639 0 1290 840 715 1012 1260 
-    3: 746 712 154 0 994 869 425 673 
-    4: 535 922 727 573 0 1006 214 462 
-    5: 537 924 729 575 125 0 297 545 
-    6: 321 708 513 359 917 792 0 248 
-    7: 73 460 265 111 669 544 536 0  
-    ```
+The shortest distances between each pair of vertices are:
+0: 0 387 192 38 596 471 463 711 
+1: 183 0 375 221 779 654 646 894 
+2: 1252 1639 0 1290 840 715 1012 1260 
+3: 746 712 154 0 994 869 425 673 
+4: 535 922 727 573 0 1006 214 462 
+5: 537 924 729 575 125 0 297 545 
+6: 321 708 513 359 917 792 0 248 
+7: 73 460 265 111 669 544 536 0  
+```
 
 毫不奇怪，这并不是处理这个特定问题的首选方式，但是和之前的练习一样，我们可以通过实现像这样的递归解决方案来学习到很多关于最优子结构是如何形成的。有了这些见解，我们现在可以完全理解如何使用制表法同时找到每对节点之间的最短距离。
 
@@ -1177,206 +1177,206 @@ Floyd-Warshall 通过在顶点之间执行*V**3*次迭代来实现这一点。�
 1.  我们将首先包括以下标头并定义一个`UNKNOWN`常量：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    using namespace std;
-    const int UNKNOWN = 1e9;
-    ```
+#include <iostream>
+#include <vector>
+using namespace std;
+const int UNKNOWN = 1e9;
+```
 
 1.  让我们首先处理输入，几乎与我们在上一个练习中所做的完全相同。然而，这一次，我们不需要图的邻接表表示：
 
 ```cpp
-    int main()
-    {
-            int V, E;
-            cin >> V >> E;
-            vector<vector<int>> weight(V, vector<int>(V, UNKNOWN));
-            for(int i = 0; i < E; i++)
-            {
-                int u, v, w;
-                cin >> u >> v >> w;
-                weight[u][v] = w;
-            }
-            ……
-            return 0;
-    }
-    ```
+int main()
+{
+        int V, E;
+        cin >> V >> E;
+        vector<vector<int>> weight(V, vector<int>(V, UNKNOWN));
+        for(int i = 0; i < E; i++)
+        {
+            int u, v, w;
+            cin >> u >> v >> w;
+            weight[u][v] = w;
+        }
+        ……
+        return 0;
+}
+```
 
 1.  我们的`FloydWarshall()`函数将接受两个参数——`V`和`weight`——并返回一个二维整数向量，表示最短路径距离：
 
 ```cpp
-    vector<vector<int>> FloydWarshall(int V, vector<vector<int>> weight)
-    {
-            ……
-    }
-    ```
+vector<vector<int>> FloydWarshall(int V, vector<vector<int>> weight)
+{
+        ……
+}
+```
 
 1.  让我们定义一个名为`distance`的二维 DP 表，并将每个值初始化为`UNKNOWN`。然后，我们需要为每对节点分配最初已知的最短距离“估计”（即`weight`矩阵中的值），以及基本情况值（即从每个节点到自身的最短距离`0`）：
 
 ```cpp
-        vector<vector<int>> distance(V, vector<int>(V, UNKNOWN));
-    for(int i = 0; i < V; i++)
-    {
-        for(int j = 0; j < V; j++)
-        {
-            distance[i][j] = weight[i][j];
-        }
-        distance[i][i] = 0;
-    }
-    ```
+    vector<vector<int>> distance(V, vector<int>(V, UNKNOWN));
+for(int i = 0; i < V; i++)
+{
+    for(int j = 0; j < V; j++)
+    {
+        distance[i][j] = weight[i][j];
+    }
+    distance[i][i] = 0;
+}
+```
 
 1.  现在，我们将从`0`到`V – 1`（包括）执行三个嵌套的`for`循环，外部循环表示当前中间顶点`mid`，中间循环表示源顶点`start`，最内部循环表示目标顶点`end`。然后我们将比较每对顶点之间的距离值，并在找到更短的路径时重新分配从起点到终点的距离值：
 
 ```cpp
-    for(int mid = 0; mid < V; mid++)
-    {
-        for(int start = 0; start < V; start++)
-        {
-            for(int end = 0; end < V; end++)
-            {
-                if(distance[start][mid] + distance[mid][end] < distance[start][end])
-                {
-                    distance[start][end] = distance[start][mid] + distance[mid][end];
-                }
-            }
-        }
-    }
-    ```
+for(int mid = 0; mid < V; mid++)
+{
+    for(int start = 0; start < V; start++)
+    {
+        for(int end = 0; end < V; end++)
+        {
+            if(distance[start][mid] + distance[mid][end] < distance[start][end])
+            {
+                distance[start][end] = distance[start][mid] + distance[mid][end];
+            }
+        }
+    }
+}
+```
 
 1.  类似于 Bellman-Ford，如果我们的输入预计包含负边权重，我们需要检查负循环。值得庆幸的是，使用距离表可以很容易地实现这一点。
 
 考虑到图中的循环是一条长度大于零的路径，起点和终点顶点相同。在表示每对节点之间的距离的表中，节点和自身之间的最短路径将包含在`distance[node][node]`中。在只包含正边权的图中，`distance[node][node]`中包含的值显然只能等于`0`；然而，如果图中包含负权重循环，`distance[node][node]`将为负。因此，我们可以这样测试负循环：
 
 ```cpp
-    for(int i = 0; i < V; i++)
-    {
-            // If distance from a node to itself is negative, there must be a negative cycle
-            if(distance[i][i] < 0)
-            {
-                return {};
-            }
-    } 
-    return distance;
-    ```
+for(int i = 0; i < V; i++)
+{
+        // If distance from a node to itself is negative, there must be a negative cycle
+        if(distance[i][i] < 0)
+        {
+            return {};
+        }
+} 
+return distance;
+```
 
 1.  现在我们已经完成了算法的编写，可以在`main()`中调用`FloydWarshall()`并输出结果：
 
 ```cpp
-    int main()
-    {
-        ……
-        vector<vector<int>> distance = FloydWarshall(V, weight);
-        // Graphs with negative cycles will return an empty vector
-        if(distance.empty())
-        {
-            cout << "NEGATIVE CYCLE FOUND" << endl;
-            return 0;
-        }
-        for(int i = 0; i < V; i++)
-        {
-            cout << i << endl;
-            for(int j = 0; j < V; j++)
-            {
-                cout << "\t" << j << ": ";
+int main()
+{
+    ……
+    vector<vector<int>> distance = FloydWarshall(V, weight);
+    // Graphs with negative cycles will return an empty vector
+    if(distance.empty())
+    {
+        cout << "NEGATIVE CYCLE FOUND" << endl;
+        return 0;
+    }
+    for(int i = 0; i < V; i++)
+    {
+        cout << i << endl;
+        for(int j = 0; j < V; j++)
+        {
+            cout << "\t" << j << ": ";
 
-                (distance[i][j] == UNKNOWN) 
-                    ? cout << "_" << endl 
-                    : cout << distance[i][j] << endl;
-            }
-        }
-        return 0;
-    }
-    ```
+            (distance[i][j] == UNKNOWN) 
+                ? cout << "_" << endl 
+                : cout << distance[i][j] << endl;
+        }
+    }
+    return 0;
+}
+```
 
 1.  让我们在以下输入集上运行我们的程序：
 
 ```cpp
-    Input:
-    7 9
-    0 1 3
-    1 2 5
-    1 3 10
-    1 5 -4
-    2 4 2
-    3 2 -7
-    4 1 -3
-    5 6 -8
-    6 0 12
-    Output:
-    0:
-            0: 0
-            1: 3
-            2: 6
-            3: 13
-            4: 8
-            5: -1
-            6: -9
-    1:
-            0: 0
-            1: 0
-            2: 3
-            3: 10
-            4: 5
-            5: -4
-            6: -12
-    2:
-            0: -1
-            1: -1
-            2: 0
-            3: 9
-            4: 2
-            5: -5
-            6: -13
-    3:
-            0: -8
-            1: -8
-            2: -7
-            3: 0
-            4: -5
-            5: -12
-            6: -20
-    4:
-            0: -3
-            1: -3
-            2: 0
-            3: 7
-            4: 0
-            5: -7
-            6: -15
-    5:
-            0: 4
-            1: 7
-            2: 10
-            3: 17
-            4: 12
-            5: 0
-            6: -8
-    6:
-            0: 12
-            1: 15
-            2: 18
-            3: 25
-            4: 20
-            5: 11
-            6: 0
-    ```
+Input:
+7 9
+0 1 3
+1 2 5
+1 3 10
+1 5 -4
+2 4 2
+3 2 -7
+4 1 -3
+5 6 -8
+6 0 12
+Output:
+0:
+        0: 0
+        1: 3
+        2: 6
+        3: 13
+        4: 8
+        5: -1
+        6: -9
+1:
+        0: 0
+        1: 0
+        2: 3
+        3: 10
+        4: 5
+        5: -4
+        6: -12
+2:
+        0: -1
+        1: -1
+        2: 0
+        3: 9
+        4: 2
+        5: -5
+        6: -13
+3:
+        0: -8
+        1: -8
+        2: -7
+        3: 0
+        4: -5
+        5: -12
+        6: -20
+4:
+        0: -3
+        1: -3
+        2: 0
+        3: 7
+        4: 0
+        5: -7
+        6: -15
+5:
+        0: 4
+        1: 7
+        2: 10
+        3: 17
+        4: 12
+        5: 0
+        6: -8
+6:
+        0: 12
+        1: 15
+        2: 18
+        3: 25
+        4: 20
+        5: 11
+        6: 0
+```
 
 1.  现在，让我们尝试另一组输入：
 
 ```cpp
-    Input:
-    6 8
-    0 1 3
-    1 3 -8
-    2 1 3
-    2 4 2
-    2 5 5
-    3 2 3
-    4 5 -1
-    5 1 8
-    Output:
-    NEGATIVE CYCLE FOUND
-    ```
+Input:
+6 8
+0 1 3
+1 3 -8
+2 1 3
+2 4 2
+2 5 5
+3 2 3
+4 5 -1
+5 1 8
+Output:
+NEGATIVE CYCLE FOUND
+```
 
 正如你所看到的，Floyd-Warshall 是一种非常有用的算法，不仅有效而且相当容易实现。在效率方面，我们应该选择 Floyd-Warshall 还是 Johnson 算法完全取决于图的结构。但严格从实现的角度来看，Floyd-Warshall 是明显的赢家。
 

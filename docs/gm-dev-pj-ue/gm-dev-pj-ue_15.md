@@ -117,14 +117,14 @@
 +   通过快捷方式或命令提示符在编辑器中启动专用服务器，请运行以下命令：
 
 ```cpp
-    <UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Map Name> -server -game -log
-    ```
+<UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Map Name> -server -game -log
+```
 
 以下是一个示例：
 
 ```cpp
-    C:\Program Files\Epic   Games\UE_4.24\Engine\Binaries\Win64\UE4Editor.exe   D:\TestProject\TestProject.uproject TestMap -server -game -log
-    ```
+C:\Program Files\Epic   Games\UE_4.24\Engine\Binaries\Win64\UE4Editor.exe   D:\TestProject\TestProject.uproject TestMap -server -game -log
+```
 
 +   打包项目需要专门构建的项目的特殊构建，用作专用服务器。
 
@@ -141,26 +141,26 @@
 +   通过快捷方式或命令提示符在编辑器中启动专用服务器，请运行以下命令：
 
 ```cpp
-    <UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Map Name>?Listen -game
-    ```
+<UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Map Name>?Listen -game
+```
 
 以下是一个示例：
 
 ```cpp
-    C:\Program Files\Epic   Games\UE_4.24\Engine\Binaries\Win64\UE4Editor.exe   D:\TestProject\TestProject.uproject TestMap?Listen -game
-    ```
+C:\Program Files\Epic   Games\UE_4.24\Engine\Binaries\Win64\UE4Editor.exe   D:\TestProject\TestProject.uproject TestMap?Listen -game
+```
 
 +   打包项目（仅限开发构建）需要专门构建的项目的特殊构建，用作专用服务器：
 
 ```cpp
-    <Project Name>.exe <Map Name>?Listen -game
-    ```
+<Project Name>.exe <Map Name>?Listen -game
+```
 
 以下是一个示例：
 
 ```cpp
-    D:\Packaged\TestProject\TestProject.exe TestMap?Listen –game
-    ```
+D:\Packaged\TestProject\TestProject.exe TestMap?Listen –game
+```
 
 在下一节中，我们将讨论客户端。
 
@@ -185,14 +185,14 @@
 +   使用虚幻引擎 4 控制台（默认为*`*键）打开它并输入：
 
 ```cpp
-    Open <Server IP Address>
-    ```
+Open <Server IP Address>
+```
 
 例如：
 
 ```cpp
-    Open 194.56.23.4
-    ```
+Open 194.56.23.4
+```
 
 +   使用`Execute Console Command`蓝图节点。一个例子如下：![图 16.3：使用 Execute Console Command 节点加入具有示例 IP 的服务器](img/B16183_16_03.jpg)
 
@@ -201,20 +201,20 @@
 +   使用`APlayerController`中的`ConsoleCommand`函数如下：
 
 ```cpp
-    PlayerController->ConsoleCommand("Open <Server IP Address>");
-    ```
+PlayerController->ConsoleCommand("Open <Server IP Address>");
+```
 
 这是一个例子：
 
 ```cpp
-    PlayerController->ConsoleCommand("Open 194.56.23.4");
-    ```
+PlayerController->ConsoleCommand("Open 194.56.23.4");
+```
 
 +   通过快捷方式或命令提示符使用编辑器可执行文件：
 
 ```cpp
-    <UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Server IP Address> -game
-    ```
+<UE4 Install Folder>\Engine\Binaries\Win64\UE4Editor.exe   <UProject Location> <Server IP Address> -game
+```
 
 这是一个例子：
 
@@ -223,8 +223,8 @@
 +   通过快捷方式或命令提示符使用打包的开发版本：
 
 ```cpp
-    <Project Name>.exe  <Server IP Address>
-    ```
+<Project Name>.exe  <Server IP Address>
+```
 
 这是一个例子：
 
@@ -293,8 +293,8 @@
 1.  在目标上附加`ThirdPersonExampleMap?Listen -server`，这将使用`ThirdPersonExampleMap`创建一个监听服务器。您应该得到这个：
 
 ```cpp
-    "<Path>\WindowsNoEditor\TestMultiplayer.exe"   ThirdPersonExampleMap?Listen -server
-    ```
+"<Path>\WindowsNoEditor\TestMultiplayer.exe"   ThirdPersonExampleMap?Listen -server
+```
 
 1.  点击“确定”并运行快捷方式。
 
@@ -493,8 +493,8 @@ GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red, String);
 1.  在 Visual Studio 中，打开`OwnershipRoles.h`文件并添加以下宏：
 
 ```cpp
-    #define ROLE_TO_STRING(Value) FindObject<UEnum>(ANY_PACKAGE,   TEXT("ENetRole"), true)->GetNameStringByIndex((int32)Value)
-    ```
+#define ROLE_TO_STRING(Value) FindObject<UEnum>(ANY_PACKAGE,   TEXT("ENetRole"), true)->GetNameStringByIndex((int32)Value)
+```
 
 这个宏将把我们从`GetLocalRole()`函数和`GetRemoteRole()`获得的`ENetRole`枚举转换为`FString`。它的工作方式是通过在虚幻引擎的反射系统中找到`ENetRole`枚举类型，并从中将`Value`参数转换为`FString`变量，以便在屏幕上打印出来。
 
@@ -503,11 +503,11 @@ GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red, String);
 1.  根据以下代码片段中所示，声明静态网格组件和所有权半径的受保护变量：
 
 ```cpp
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Ownership Test Actor")
-    UStaticMeshComponent* Mesh;
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ownership   Test Actor")
-    float OwnershipRadius = 400.0f;
-    ```
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   "Ownership Test Actor")
+UStaticMeshComponent* Mesh;
+UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ownership   Test Actor")
+float OwnershipRadius = 400.0f;
+```
 
 在上面的代码片段中，我们声明了静态网格组件和`OwnershipRadius`变量，它允许您配置所有权的半径。
 
@@ -516,76 +516,76 @@ GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red, String);
 1.  现在，打开`OwnershipTestActor.cpp`文件，并根据以下代码片段中提到的添加所需的头文件：
 
 ```cpp
-    #include "DrawDebugHelpers.h"
-    #include "OwnershipRoles.h"
-    #include "OwnershipRolesCharacter.h"
-    #include "Components/StaticMeshComponent.h"
-    #include "Kismet/GameplayStatics.h"
-    ```
+#include "DrawDebugHelpers.h"
+#include "OwnershipRoles.h"
+#include "OwnershipRolesCharacter.h"
+#include "Components/StaticMeshComponent.h"
+#include "Kismet/GameplayStatics.h"
+```
 
 在上面的代码片段中，我们包括了`DrawDebugHelpers.h`，因为我们将调用`DrawDebugSphere`和`DrawDebugString`函数。我们包括`OwnershipRoles.h`，`OwnershipRolesCharacter.h`和`StaticMeshComponent.h`，以便`.cpp`文件知道这些类。最后，我们包括`GameplayStatics.h`，因为我们将调用`GetAllActorsOfClass`函数。
 
 1.  在构造函数定义中，创建静态网格组件并将其设置为根组件：
 
 ```cpp
-    Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
-    RootComponent = Mesh;
-    ```
+Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
+RootComponent = Mesh;
+```
 
 1.  在构造函数中，将`bReplicates`设置为`true`，告诉虚幻引擎该 actor 会复制，并且也应该存在于所有客户端中：
 
 ```cpp
-    bReplicates = true;
-    ```
+bReplicates = true;
+```
 
 1.  删除`BeginPlay`函数定义。
 
 1.  在`Tick`函数中，绘制一个调试球来帮助可视化所有权半径，如下面的代码片段所示：
 
 ```cpp
-    DrawDebugSphere(GetWorld(), GetActorLocation(), OwnershipRadius,   32, FColor::Yellow);
-    ```
+DrawDebugSphere(GetWorld(), GetActorLocation(), OwnershipRadius,   32, FColor::Yellow);
+```
 
 1.  仍然在`Tick`函数中，创建特定于权限的逻辑，该逻辑将获取所有权半径内最接近的`AOwnershipRolesCharacter`，如果与当前角色不同，则将其设置为所有者：
 
 ```cpp
-    if (HasAuthority())
-    {
-      AActor* NextOwner = nullptr;
-      float MinDistance = OwnershipRadius;
-      TArray<AActor*> Actors;
-      UGameplayStatics::GetAllActorsOfClass(this,    AOwnershipRolesCharacter::StaticClass(), Actors);
-      for (AActor* Actor : Actors)
-      {
-    const float Distance = GetDistanceTo(Actor);
-        if (Distance <= MinDistance)
-        {
-          MinDistance = Distance;
-          NextOwner = Actor;
-        }
-      }
-      if (GetOwner() != NextOwner)
-      {
-        SetOwner(NextOwner);
-      }
-    }
-    ```
+if (HasAuthority())
+{
+  AActor* NextOwner = nullptr;
+  float MinDistance = OwnershipRadius;
+  TArray<AActor*> Actors;
+  UGameplayStatics::GetAllActorsOfClass(this,    AOwnershipRolesCharacter::StaticClass(), Actors);
+  for (AActor* Actor : Actors)
+  {
+const float Distance = GetDistanceTo(Actor);
+    if (Distance <= MinDistance)
+    {
+      MinDistance = Distance;
+      NextOwner = Actor;
+    }
+  }
+  if (GetOwner() != NextOwner)
+  {
+    SetOwner(NextOwner);
+  }
+}
+```
 
 1.  仍然在`Tick`函数中，将本地/远程角色的值（使用我们之前创建的`ROLE_TO_STRING`宏），当前所有者和连接转换为字符串：
 
 ```cpp
-    const FString LocalRoleString = ROLE_TO_STRING(GetLocalRole());
-    const FString RemoteRoleString = ROLE_TO_STRING(GetRemoteRole());
-    const FString OwnerString = GetOwner() != nullptr ? GetOwner()-  >GetName() : TEXT("No Owner");
-    const FString ConnectionString = GetNetConnection() != nullptr ?   TEXT("Valid Connection") : TEXT("Invalid Connection");
-    ```
+const FString LocalRoleString = ROLE_TO_STRING(GetLocalRole());
+const FString RemoteRoleString = ROLE_TO_STRING(GetRemoteRole());
+const FString OwnerString = GetOwner() != nullptr ? GetOwner()-  >GetName() : TEXT("No Owner");
+const FString ConnectionString = GetNetConnection() != nullptr ?   TEXT("Valid Connection") : TEXT("Invalid Connection");
+```
 
 1.  最后，使用`DrawDebugString`在屏幕上显示我们在上一步中转换的字符串：
 
 ```cpp
-    const FString Values = FString::Printf(TEXT("LocalRole =   %s\nRemoteRole = %s\nOwner = %s\nConnection = %s"),   *LocalRoleString, *RemoteRoleString, *OwnerString,   *ConnectionString);
-    DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
-    ```
+const FString Values = FString::Printf(TEXT("LocalRole =   %s\nRemoteRole = %s\nOwner = %s\nConnection = %s"),   *LocalRoleString, *RemoteRoleString, *OwnerString,   *ConnectionString);
+DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
+```
 
 注意
 
@@ -594,40 +594,40 @@ GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red, String);
 1.  接下来，打开`OwnershipRolesCharacter.h`并将`Tick`函数声明为受保护的：
 
 ```cpp
-    virtual void Tick(float DeltaTime) override;
-    ```
+virtual void Tick(float DeltaTime) override;
+```
 
 1.  现在，打开`OwnershipRolesCharacter.cpp`并按照以下代码片段中所示包含头文件：
 
 ```cpp
-    #include "DrawDebugHelpers.h"
-    #include "OwnershipRoles.h"
-    ```
+#include "DrawDebugHelpers.h"
+#include "OwnershipRoles.h"
+```
 
 1.  实现`Tick`函数：
 
 ```cpp
-    void AOwnershipRolesCharacter::Tick(float DeltaTime)
-    {
-      Super::Tick(DeltaTime);
-    }
-    ```
+void AOwnershipRolesCharacter::Tick(float DeltaTime)
+{
+  Super::Tick(DeltaTime);
+}
+```
 
 1.  将本地/远程角色的值（使用我们之前创建的`ROLE_TO_STRING`宏），当前所有者和连接转换为字符串：
 
 ```cpp
-    const FString LocalRoleString = ROLE_TO_STRING(GetLocalRole());
-    const FString RemoteRoleString = ROLE_TO_STRING(GetRemoteRole());
-    const FString OwnerString = GetOwner() != nullptr ? GetOwner()-  >GetName() : TEXT("No Owner");
-    const FString ConnectionString = GetNetConnection() != nullptr ?   TEXT("Valid Connection") : TEXT("Invalid Connection");
-    ```
+const FString LocalRoleString = ROLE_TO_STRING(GetLocalRole());
+const FString RemoteRoleString = ROLE_TO_STRING(GetRemoteRole());
+const FString OwnerString = GetOwner() != nullptr ? GetOwner()-  >GetName() : TEXT("No Owner");
+const FString ConnectionString = GetNetConnection() != nullptr ?   TEXT("Valid Connection") : TEXT("Invalid Connection");
+```
 
 1.  使用`DrawDebugString`在屏幕上显示我们在上一步中转换的字符串：
 
 ```cpp
-    const FString Values = FString::Printf(TEXT("LocalRole =   %s\nRemoteRole = %s\nOwner = %s\nConnection = %s"), *LocalRoleString, *RemoteRoleString, *OwnerString,   *ConnectionString);
-    DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
-    ```
+const FString Values = FString::Printf(TEXT("LocalRole =   %s\nRemoteRole = %s\nOwner = %s\nConnection = %s"), *LocalRoleString, *RemoteRoleString, *OwnerString,   *ConnectionString);
+DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
+```
 
 最后，我们可以测试项目。
 
@@ -875,96 +875,96 @@ void AVariableReplicationActor::GetLifetimeReplicatedProps(TArray<   FLifetimePr
 1.  然后，在`VariableReplicationCharacter.generated.h`之前包含`UnrealNetwork.h`头文件，其中包含我们将使用的`DOREPLIFETIME`宏的定义：
 
 ```cpp
-    #include "Net/UnrealNetwork.h"
-    ```
+#include "Net/UnrealNetwork.h"
+```
 
 1.  使用各自的复制说明符将受保护的变量`A`和`B`声明为`UPROPERTY`：
 
 ```cpp
-    UPROPERTY(Replicated) 
-    float A = 100.0f; 
-    UPROPERTY(ReplicatedUsing = OnRepNotify_B) 
-    int32 B; 
-    ```
+UPROPERTY(Replicated) 
+float A = 100.0f; 
+UPROPERTY(ReplicatedUsing = OnRepNotify_B) 
+int32 B; 
+```
 
 1.  将`Tick`函数声明为受保护：
 
 ```cpp
-    virtual void Tick(float DeltaTime) override;
-    ```
+virtual void Tick(float DeltaTime) override;
+```
 
 1.  由于我们将变量`B`声明为`ReplicatedUsing = OnRepNotify_B`，因此我们还需要将受保护的`OnRepNotify_B`回调函数声明为`UFUNCTION`：
 
 ```cpp
-    UFUNCTION() 
-    void OnRepNotify_B(); 
-    ```
+UFUNCTION() 
+void OnRepNotify_B(); 
+```
 
 1.  现在，打开`VariableReplicationCharacter.cpp`文件，并包括`Engine.h`头文件，这样我们就可以使用`AddOnScreenDebugMessage`函数，以及`DrawDebugHelpers.h`头文件，这样我们就可以使用`DrawDebugString`函数：
 
 ```cpp
-    #include "Engine/Engine.h"
-    #include "DrawDebugHelpers.h"
-    ```
+#include "Engine/Engine.h"
+#include "DrawDebugHelpers.h"
+```
 
 1.  实现`GetLifetimeReplicatedProps`函数：
 
 ```cpp
-    void AVariableReplicationCharacter::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const 
-    {
-      Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    }
-    ```
+void AVariableReplicationCharacter::GetLifetimeReplicatedProps(TArray<   FLifetimeProperty >& OutLifetimeProps) const 
+{
+  Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+}
+```
 
 1.  将其设置为`A`变量，它将在没有任何额外条件的情况下复制：
 
 ```cpp
-    DOREPLIFETIME(AVariableReplicationCharacter, A);
-    ```
+DOREPLIFETIME(AVariableReplicationCharacter, A);
+```
 
 1.  将其设置为`B`变量，这将仅复制到此角色的所有者：
 
 ```cpp
-    DOREPLIFETIME_CONDITION(AVariableReplicationCharacter, B,   COND_OwnerOnly);
-    ```
+DOREPLIFETIME_CONDITION(AVariableReplicationCharacter, B,   COND_OwnerOnly);
+```
 
 1.  实现`Tick`函数：
 
 ```cpp
-    void AVariableReplicationCharacter::Tick(float DeltaTime) 
-    {
-      Super::Tick(DeltaTime);
-    }
-    ```
+void AVariableReplicationCharacter::Tick(float DeltaTime) 
+{
+  Super::Tick(DeltaTime);
+}
+```
 
 1.  接下来，运行特定权限的逻辑，将`1`添加到`A`和`B`：
 
 ```cpp
-    if (HasAuthority()) 
-    { 
-      A++; 
-      B++; 
-    } 
-    ```
+if (HasAuthority()) 
+{ 
+  A++; 
+  B++; 
+} 
+```
 
 由于此角色将在服务器上生成，因此只有服务器将执行此逻辑。
 
 1.  在角色的位置上显示`A`和`B`的值：
 
 ```cpp
-    const FString Values = FString::Printf(TEXT("A = %.2f    B =   %d"), A, B); 
-    DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
-    ```
+const FString Values = FString::Printf(TEXT("A = %.2f    B =   %d"), A, B); 
+DrawDebugString(GetWorld(), GetActorLocation(), Values, nullptr,   FColor::White, 0.0f, true);
+```
 
 1.  实现变量`B`的`RepNotify`函数，该函数在屏幕上显示一条消息，说明`B`变量已更改为新值：
 
 ```cpp
-    void AVariableReplicationCharacter::OnRepNotify_B() 
-    {
-      const FString String = FString::Printf(TEXT("B was changed by     the server and is now %d!"), B); 
-      GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red,String); 
-    }
-    ```
+void AVariableReplicationCharacter::OnRepNotify_B() 
+{
+  const FString String = FString::Printf(TEXT("B was changed by     the server and is now %d!"), B); 
+  GEngine->AddOnScreenDebugMessage(-1, 0.0f, FColor::Red,String); 
+}
+```
 
 最后，您可以测试项目：
 

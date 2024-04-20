@@ -211,13 +211,13 @@ QEMU 是一个强大的处理器模拟器，支持除 x86 和 ARM 之外的其�
 1.  使用您喜欢的文本编辑器将以下代码片段添加到其中：
 
 ```cpp
-    #include <iostream>
+#include <iostream>
 
-    int main() {
-     std::cout << "Hello, world!" << std::endl;
-     return 0;
-    }
-    ```
+int main() {
+ std::cout << "Hello, world!" << std::endl;
+ return 0;
+}
+```
 
 1.  现在我们有了`Hello, world!`程序的代码，我们需要编译它。
 
@@ -226,32 +226,32 @@ QEMU 是一个强大的处理器模拟器，支持除 x86 和 ARM 之外的其�
 1.  通过运行以下命令获取可用于安装的软件包的最新列表：
 
 ```cpp
-    # apt update -y
-    ```
+# apt update -y
+```
 
 1.  从 Ubuntu 服务器获取软件包描述需要一些时间。运行以下命令安装交叉编译工具：
 
 ```cpp
-     # apt install -y crossbuild-essential-armel
-    ```
+ # apt install -y crossbuild-essential-armel
+```
 
 1.  您将看到一个要安装的包的长列表。按*Y*确认安装。作为健全性检查，运行一个没有参数的交叉编译器：
 
 ```cpp
-    # arm-linux-gnueabi-g++
-    ```
+# arm-linux-gnueabi-g++
+```
 
 1.  更改目录到`/mnt`
 
 ```cpp
-    # cd /mnt
-    ```
+# cd /mnt
+```
 
 1.  我们在第 1 步中创建的`hello.cpp`文件位于这里。现在让我们来构建它：
 
 ```cpp
-     # arm-linux-gnueabi-g++ hello.cpp -o hello
-    ```
+ # arm-linux-gnueabi-g++ hello.cpp -o hello
+```
 
 1.  这个命令生成一个名为`hello`的可执行文件。您可能想知道为什么它没有任何扩展名。在 Unix 系统中，扩展名是完全可选的，二进制可执行文件通常没有任何扩展名。尝试运行文件。它应该会出现错误。
 
@@ -310,33 +310,33 @@ QEMU 是一个强大的处理器模拟器，支持除 x86 和 ARM 之外的其�
 1.  切换到树莓派模拟器并通过运行以下命令启用 SSH 服务：
 
 ```cpp
-    $ sudo systemctl start ssh
-    ```
+$ sudo systemctl start ssh
+```
 
 1.  切换到 Ubuntu 窗口并安装 SSH 客户端：
 
 ```cpp
-    # apt install -y ssh
-    ```
+# apt install -y ssh
+```
 
 1.  现在，我们可以将`hello`可执行文件复制到目标系统：
 
 ```cpp
-    # scp -P22023 /mnt/hello pi@192.168.1.5:~
-    ```
+# scp -P22023 /mnt/hello pi@192.168.1.5:~
+```
 
 1.  当要求输入密码时，输入`raspberry`。切换回树莓派模拟器窗口。检查我们刚刚复制的可执行文件是否存在：
 
 ```cpp
-    $ ls hello
-    hello
-    ```
+$ ls hello
+hello
+```
 
 1.  现在，运行程序：
 
 ```cpp
-    $ ./hello
-    ```
+$ ./hello
+```
 
 正如我们所看到的，程序现在按预期运行。
 
@@ -367,8 +367,8 @@ QEMU 是一个强大的处理器模拟器，支持除 x86 和 ARM 之外的其�
 在这个示例中，我们只是将文件复制到目标系统。除了复制，通常还会打开一个交互式 SSH 会话到嵌入式系统。通常，这比串行控制台更有效、更方便。它的建立方式与`scp`类似：
 
 ```cpp
-    # ssh pi@192.168.1.5 -p22023
-    ```
+# ssh pi@192.168.1.5 -p22023
+```
 
 SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证，就无需为每次复制或登录输入密码。这使得开发过程对开发人员来说更快速、更方便。
 
@@ -397,24 +397,24 @@ SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证�
 1.  运行以下命令：
 
 ```cpp
-    $ gdb ./hello
-    ```
+$ gdb ./hello
+```
 
 1.  这将打开`gdb`命令行。
 
 1.  输入`run`来运行应用程序：
 
 ```cpp
-    (gdb) run
-    ```
+(gdb) run
+```
 
 1.  您应该在输出中看到`Hello, world`。
 
 1.  现在，运行`quit`命令，或者只需输入`q`：
 
 ```cpp
-    (gdb) q
-    ```
+(gdb) q
+```
 
 这将终止调试会话并将我们返回到 Linux shell。
 
@@ -439,8 +439,8 @@ SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证�
 在这种情况下，GNU 调试器是预先安装的，但可能不在您的真实目标系统中。如果它是基于 Debian 的，您可以通过运行以下命令来安装它：
 
 ```cpp
-    # apt install gdb gdb-multiarch
-    ```
+# apt install gdb gdb-multiarch
+```
 
 在其他基于 Linux 的系统中，需要不同的命令来安装 GDB。在许多情况下，您需要从源代码构建并手动安装它，类似于我们在本章的配方中构建和测试的`hello`应用程序。
 
@@ -467,44 +467,44 @@ SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证�
 1.  要安装 gdbserver，请运行以下命令：
 
 ```cpp
-     # sudo apt-get install gdbserver
-    ```
+ # sudo apt-get install gdbserver
+```
 
 1.  在`gdbserver`下运行`hello`应用程序：
 
 ```cpp
-     $ gdbserver 0.0.0.0:9090 ./hello
-    ```
+ $ gdbserver 0.0.0.0:9090 ./hello
+```
 
 1.  切换到构建系统终端并将目录更改为`/mnt/hello`：
 
 ```cpp
-     # cd /mnt/hello
-    ```
+ # cd /mnt/hello
+```
 
 1.  安装`gdb-multiarch`软件包，它提供了对 ARM 平台的必要支持：
 
 ```cpp
-     # apt install -y gdb-multiarch
-    ```
+ # apt install -y gdb-multiarch
+```
 
 1.  接下来，运行`gdb`：
 
 ```cpp
-     # gdb-multiarch -q ./hello
-    ```
+ # gdb-multiarch -q ./hello
+```
 
 1.  通过在`gdb`命令行中输入以下命令来配置远程连接（确保您用实际 IP 地址替换`192.168.1.5`）：
 
 ```cpp
-     target remote 192.168.1.5:9090
-    ```
+ target remote 192.168.1.5:9090
+```
 
 1.  输入以下命令：
 
 ```cpp
-     continue
-    ```
+ continue
+```
 
 程序现在将运行。
 
@@ -549,8 +549,8 @@ SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证�
 1.  我们的构建系统尚未安装 CMake。要安装它，请运行以下命令：
 
 ```cpp
-     # apt install -y cmake
-    ```
+ # apt install -y cmake
+```
 
 1.  切换回本机操作系统环境。
 
@@ -559,67 +559,67 @@ SSH 提供各种身份验证机制。一旦启用并设置了公钥身份验证�
 1.  输入以下行：
 
 ```cpp
-    cmake_minimum_required(VERSION 3.5.1)
-    project(hello)
-    add_executable(hello hello.cpp)
-    ```
+cmake_minimum_required(VERSION 3.5.1)
+project(hello)
+add_executable(hello hello.cpp)
+```
 
 1.  保存文件并切换到 Ubuntu 控制台。
 
 1.  切换到`hello`目录：
 
 ```cpp
-    # cd /mnt/hello
-    ```
+# cd /mnt/hello
+```
 
 1.  运行 CMake：
 
 ```cpp
-     # mkdir build && cd build && cmake ..
-    ```
+ # mkdir build && cd build && cmake ..
+```
 
 1.  现在，通过运行以下命令构建应用程序：
 
 ```cpp
-    # make
-    ```
+# make
+```
 
 1.  使用`file`命令获取有关生成的可执行二进制文件的信息：
 
 ```cpp
-    # file hello
-    ```
+# file hello
+```
 
 1.  如您所见，构建是本地的 x86 平台。我们需要添加交叉编译支持。切换回文本编辑器，打开`CMakeLists.txt`，并添加以下行：
 
 ```cpp
-    set(CMAKE_C_COMPILER /usr/bin/arm-linux-gnueabi-gcc)
-    set(CMAKE_CXX_COMPILER /usr/bin/arm-linux-gnueabi-g++)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-    ```
+set(CMAKE_C_COMPILER /usr/bin/arm-linux-gnueabi-gcc)
+set(CMAKE_CXX_COMPILER /usr/bin/arm-linux-gnueabi-g++)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+```
 
 1.  保存并切换到 Ubuntu 终端。
 
 1.  再次运行`cmake`命令以重新生成构建文件：
 
 ```cpp
-    # cmake ..
-    ```
+# cmake ..
+```
 
 1.  通过运行`make`来构建代码：
 
 ```cpp
-    # make
-    ```
+# make
+```
 
 1.  再次检查生成的输出文件的类型：
 
 ```cpp
-    # file hello
-    ```
+# file hello
+```
 
 现在，我们使用 CMake 为我们的目标系统构建了一个可执行文件。
 

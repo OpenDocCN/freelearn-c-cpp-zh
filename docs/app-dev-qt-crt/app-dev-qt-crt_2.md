@@ -64,40 +64,40 @@ unsigned long factorial(unsigned int n)
 1.  编辑`mathfunctions.h`以包括我们的`factorial`函数的静态方法声明：
 
 ```cpp
-    #ifndef MATHFUNCTIONS_H
-    #define MATHFUNCTIONS_H
+#ifndef MATHFUNCTIONS_H
+#define MATHFUNCTIONS_H
 
-    class MathFunctions
-    {
-    public:
-        MathFunctions();
+class MathFunctions
+{
+public:
+    MathFunctions();
 
-        static unsigned long int factorial(unsigned int n);
-    };
+    static unsigned long int factorial(unsigned int n);
+};
 
-    #endif // MATHFUNCTIONS_H 
-    ```
+#endif // MATHFUNCTIONS_H 
+```
 
 1.  打开`mathfunctions.cpp`。有两种方法可以做到这一点，一种是在**项目**窗格中双击它，另一种是右键单击`factorial`函数，然后选择**切换头/源**。编写你的`factorial`函数；`mathfunctions.cpp`应该是这样的：
 
 ```cpp
-    #include "mathfunctions.h"
+#include "mathfunctions.h"
 
-    MathFunctions::MathFunctions()
-    {
-    }
+MathFunctions::MathFunctions()
+{
+}
 
-    unsigned long
-    MathFunctions::factorial(unsigned int n)
+unsigned long
+MathFunctions::factorial(unsigned int n)
+{
+    switch(n)
     {
-        switch(n)
-        {
-            case 0: return 0;
-            case 1: return 1;
-            default: return n * factorial(n-1);
-        }
+        case 0: return 0;
+        case 1: return 1;
+        default: return n * factorial(n-1);
     }
-    ```
+}
+```
 
 1.  点击左侧的**项目**按钮，并更改**发布**和**调试**构建的输出路径，通过编辑**常规**下的**构建目录**行，首先是**发布**，然后是**调试**构建配置。为了做到这一点，从**构建目录**路径中删除`release`和`debug`部分。这样，当你构建你的库时，Qt Creator 会将你的库的发布和调试版本放在一个单独的文件夹中，而不是分别命名为`release`和`debug`的文件夹。
 

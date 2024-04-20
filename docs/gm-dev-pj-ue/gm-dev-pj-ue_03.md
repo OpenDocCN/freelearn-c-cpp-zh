@@ -69,53 +69,53 @@
 1.  打开`MyThirdPersonChar.h`选项卡，在`GENERATED_BODY()`文本下添加以下代码：
 
 ```cpp
-    // Spring arm component which will act as a placeholder for   the player camera
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   MyTPS_Cam, meta = (AllowPrivateAccess = "true"))
-    class USpringArmComponent* CameraBoom;
-    // Follow camera
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   MyTPS_Cam, meta = (AllowPrivateAccess = "true"))
-    class UCameraComponent* FollowCamera;
-    ```
+// Spring arm component which will act as a placeholder for   the player camera
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   MyTPS_Cam, meta = (AllowPrivateAccess = "true"))
+class USpringArmComponent* CameraBoom;
+// Follow camera
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category =   MyTPS_Cam, meta = (AllowPrivateAccess = "true"))
+class UCameraComponent* FollowCamera;
+```
 
 在上述代码中，我们声明了两个组件：`Camera`本身和`Camera boom`，它充当了玩家与摄像机之间的某个距离的占位符。这些组件将在*步骤 11*中在构造函数中初始化。
 
 1.  在`MyThirdPersonChar.h`文件的`#include "CoreMinimal.h"`下的包含部分中添加以下内容：
 
 ```cpp
-    #include "GameFramework/SpringArmComponent.h"
-    #include "Camera/CameraComponent.h"
-    ```
+#include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
+```
 
 1.  现在，转到`MyThirdPersonChar.cpp`选项卡，在`#include MyThirdPersonChar.h`代码后添加以下包含：
 
 ```cpp
-    #include "Components/CapsuleComponent.h"
-    #include "GameFramework/CharacterMovementComponent.h"
-    ```
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+```
 
 在上述代码片段中，代码将相关类添加到类中，这意味着我们现在可以访问其方法和定义。
 
 1.  在`AMyThirdPersonChar::AMyThirdPersonChar()`函数中，添加以下行：
 
 ```cpp
-    // Set size for collision capsule
-    GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-    // Don't rotate when the controller rotates. Let that just   affect the camera.
-    bUseControllerRotationPitch = false;
-    bUseControllerRotationYaw = false;
-    bUseControllerRotationRoll = false;
-    // Configure character movement
-    GetCharacterMovement()->bOrientRotationToMovement = true;
-    // Create a camera boom (pulls in towards the   player if there is a collision)
-    CameraBoom =   CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-    CameraBoom->SetupAttachment(RootComponent);
-    CameraBoom->TargetArmLength = 300.0f;
-    CameraBoom->bUsePawnControlRotation = true; 
-    // Create a camera that will follow the character
-    FollowCamera =   CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-    FollowCamera->SetupAttachment(CameraBoom,   USpringArmComponent::SocketName);
-    FollowCamera->bUsePawnControlRotation = false;
-    ```
+// Set size for collision capsule
+GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+// Don't rotate when the controller rotates. Let that just   affect the camera.
+bUseControllerRotationPitch = false;
+bUseControllerRotationYaw = false;
+bUseControllerRotationRoll = false;
+// Configure character movement
+GetCharacterMovement()->bOrientRotationToMovement = true;
+// Create a camera boom (pulls in towards the   player if there is a collision)
+CameraBoom =   CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+CameraBoom->SetupAttachment(RootComponent);
+CameraBoom->TargetArmLength = 300.0f;
+CameraBoom->bUsePawnControlRotation = true; 
+// Create a camera that will follow the character
+FollowCamera =   CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
+FollowCamera->SetupAttachment(CameraBoom,   USpringArmComponent::SocketName);
+FollowCamera->bUsePawnControlRotation = false;
+```
 
 上述代码片段的最后一行将设置摄像机与角色的旋转绑定。这意味着摄像机应该随着与该角色关联的玩家控制器的旋转而旋转。
 

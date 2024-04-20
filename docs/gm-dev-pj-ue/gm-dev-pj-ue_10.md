@@ -371,8 +371,8 @@
 1.  在 SuperSideScroller_Player 中，您只会添加您需要的功能。您可以在 SuperSideScroller_Player.h 文件中查看继承正在发生的地方：
 
 ```cpp
-    class SUPERSIDESCROLLER_API ASuperSideScroller_Player : public ASuperSideScrollerCharacter
-    ```
+class SUPERSIDESCROLLER_API ASuperSideScroller_Player : public ASuperSideScrollerCharacter
+```
 
 这个类声明表示新的 ASuperSideScroller_Player 类继承自 ASuperSideScrollerCharacter 类。
 
@@ -425,17 +425,17 @@
 1.  您将在本练习的后面使用`构造函数`来为变量设置初始化值。现在，它将是一个空的构造函数。确保声明是在`public`访问修饰符标题下进行的，就像下面的代码中所示：
 
 ```cpp
-    //Constructor
-    ASuperSideScroller_Player();
-    ```
+//Constructor
+ASuperSideScroller_Player();
+```
 
 1.  构造函数声明后，在`SuperSideScroller_Player.cpp`源文件中创建构造函数定义：
 
 ```cpp
-    ASuperSideScroller_Player::ASuperSideScroller_Player()
-    {
-    }
-    ```
+ASuperSideScroller_Player::ASuperSideScroller_Player()
+{
+}
+```
 
 构造函数就位后，现在可以创建`SetupPlayerInputComponent`函数，以便您可以使用之前创建的按键绑定来调用`SuperSideScroller_Player`类中的函数。
 
@@ -444,19 +444,19 @@
 1.  `SetupPlayerInputComponent`函数需要将`UInputComponent`类的对象传递到函数中，如下所示：
 
 ```cpp
-    protected:
-    //Override base character class function to setup our player   input component
-    virtual void SetupPlayerInputComponent(class UInputComponent*   PlayerInputComponent) override;
-    ```
+protected:
+//Override base character class function to setup our player   input component
+virtual void SetupPlayerInputComponent(class UInputComponent*   PlayerInputComponent) override;
+```
 
 `UInputComponent* PlayerInputComponent`变量是从我们的`ASuperSideScroller_Player()`类继承的`UCharacter`基类中继承的，因此必须用作`SetupPlayerInputComponent()`函数的输入参数。使用其他任何名称都将导致编译错误。
 
 1.  现在，在源文件中创建`SetupPlayerInputComponent`函数的定义。在函数的主体中，我们将使用`Super`关键字来调用它：
 
 ```cpp
-    //Not always necessary, but good practice to call the function in   the base class with Super.
-    Super::SetupPlayerInputComponent(PlayerInputComponent);
-    ```
+//Not always necessary, but good practice to call the function in   the base class with Super.
+Super::SetupPlayerInputComponent(PlayerInputComponent);
+```
 
 `Super`关键字使我们能够调用`SetupPlayerInputComponent`父方法。有了`SetupPlayerInputComponent`函数准备好了，您需要包含以下头文件，以便在继续进行此练习时不会出现任何编译错误：
 
@@ -467,69 +467,69 @@
 您需要包含输入组件的头文件，以便将键映射绑定到接下来将创建的冲刺功能上。`Character Movement`组件的头文件将对冲刺功能是必需的，因为您将根据玩家是否正在冲刺来更新`Max Walk Speed`参数。以下是所有需要包含的玩家角色的头文件：
 
 ```cpp
-        #include "SuperSideScroller_Player.h"
-        #include "Components/InputComponent"
-        #include "GameFramework/CharacterMovementComponent.h"
-        ```
+#include "SuperSideScroller_Player.h"
+#include "Components/InputComponent"
+#include "GameFramework/CharacterMovementComponent.h"
+```
 
 在`SuperSideScroller_Player`类的源文件中包含了必要的头文件后，您现在可以创建用于使玩家角色移动更快的冲刺功能。让我们首先声明所需的变量和函数。
 
 1.  在`SuperSideScroller_Player`类的头文件中的`Private`访问修饰符下，声明一个名为`bIsSprinting`的新布尔变量。这个变量将被用作一个保险措施，以确切地知道玩家角色在进行任何移动速度更改之前是否正在冲刺：
 
 ```cpp
-    private:
-    //Bool to control if we are sprinting. Failsafe.
-    bool bIsSprinting;
-    ```
+private:
+//Bool to control if we are sprinting. Failsafe.
+bool bIsSprinting;
+```
 
 1.  接下来，声明两个新函数，`Sprint();`和`StopSprinting();`。这两个函数不需要任何参数，也不返回任何内容。在`Protected`访问修饰符下声明这些函数：
 
 ```cpp
-    //Sprinting
-    void Sprint();
-    //StopSprinting
-    void StopSprinting();
-    ```
+//Sprinting
+void Sprint();
+//StopSprinting
+void StopSprinting();
+```
 
 当玩家*按住/释放*与绑定的`Sprint`键映射相对应的键时，将调用`Sprint();`函数，并且当玩家*释放*与绑定的键相对应的键时，将调用`StopSprinting()`函数。
 
 1.  从`Sprint();`函数的定义开始。在`SuperSideScroller_Player`类的源文件中，创建此函数的定义，如下所示：
 
 ```cpp
-    void ASuperSideScroller_Player::Sprint()
-    {
-    }
-    ```
+void ASuperSideScroller_Player::Sprint()
+{
+}
+```
 
 1.  在函数内部，您首先要检查`bIsSprinting`变量的值。如果玩家`bIsSprinting`为`False`，则继续执行函数的其余部分。
 
 1.  在`If`语句内，将`bIsSprinting`变量设置为`True`。然后，您可以访问`GetCharacterMovement()`函数并修改`MaxWalkSpeed`参数。将`MaxWalkSpeed`设置为`500.0f`。请记住，移动混合空间的`Maximum Axis Value`参数为`500.0f`。这意味着玩家角色将达到使用`Running`动画所需的速度：
 
 ```cpp
-    void ASuperSideScroller_Player::Sprint()
-    {
-        if (!bIsSprinting)
-          {
-            bIsSprinting = true;
-            GetCharacterMovement()->MaxWalkSpeed = 500.0f;
-          }
-    }
-    ```
+void ASuperSideScroller_Player::Sprint()
+{
+    if (!bIsSprinting)
+      {
+        bIsSprinting = true;
+        GetCharacterMovement()->MaxWalkSpeed = 500.0f;
+      }
+}
+```
 
 `StopSprinting()`函数几乎与您刚刚编写的`Sprint()`函数相同，但它的工作方式相反。您首先要检查玩家是否正在冲刺，也就是`bIsSprinting`为`True`。如果是，就继续执行函数的其余部分。
 
 1.  在`If`语句内，将`bIsSprinting`设置为`False`。然后，访问`GetCharacterMovement()`函数来修改`MaxWalkSpeed`。将`MaxWalkSpeed`设置回`300.0f`，这是玩家角色行走的默认速度。这意味着玩家角色只会达到`Walking`动画所需的速度：
 
 ```cpp
-    void ASuperSideScroller_Player::StopSprinting()
-    {
-       if (bIsSprinting)
-        {
-         bIsSprinting = false;
-          GetCharacterMovement()->MaxWalkSpeed = 300.0f;
-        }
-    }
-    ```
+void ASuperSideScroller_Player::StopSprinting()
+{
+   if (bIsSprinting)
+    {
+     bIsSprinting = false;
+      GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+    }
+}
+```
 
 现在您已经拥有了需要进行冲刺的功能，是时候将这些功能绑定到您之前创建的动作映射上了。为了做到这一点，在`SetupPlayerInputComponent`函数中执行以下步骤。
 
@@ -542,16 +542,16 @@
 +   `EInputEvent`类型的枚举值，您想要用于此绑定；在这种情况下，您将使用`IE_Pressed`，因为这个绑定将是当按下`Sprint`键时。
 
 ```cpp
-        //Bind pressed action Sprint to your Sprint function
-        PlayerInputComponent->BindAction"Sprint", IE_Pressed, this,   &ASuperSideScroller_Player::Sprint);
-        ```
+//Bind pressed action Sprint to your Sprint function
+PlayerInputComponent->BindAction"Sprint", IE_Pressed, this,   &ASuperSideScroller_Player::Sprint);
+```
 
 1.  您将对`StopSprinting()`函数做同样的事情，但这次您需要使用`IE_Released`枚举值，并引用`StopSprinting`函数：
 
 ```cpp
-    //Bind released action Sprint to your StopSprinting function
-    PlayerInputComponent->BindAction("Sprint", IE_Released, this,   &ASuperSideScroller_Player::StopSprinting);
-    ```
+//Bind released action Sprint to your StopSprinting function
+PlayerInputComponent->BindAction("Sprint", IE_Released, this,   &ASuperSideScroller_Player::StopSprinting);
+```
 
 通过将`Action Mappings`绑定到奔跑功能，您需要做的最后一件事是设置`bIsSprinting`变量和`Character Movement`组件的`MaxWalkSpeed`参数的默认初始化值。
 
@@ -560,14 +560,14 @@
 1.  最后，通过添加一行`GetCharacterMovement()->MaxWalkSpeed = 300.0f`，将角色移动组件的`MaxWalkSpeed`参数设置为`300.0f`。请查看以下代码：
 
 ```cpp
-    ASuperSideScroller_Player::ASuperSideScroller_Player()
-    {
-      //Set sprinting to false by default.
-       bIsSprinting = false;
-      //Set our max Walk Speed to 300.0f
-       GetCharacterMovement()->MaxWalkSpeed = 300.0f;
-    }
-    ```
+ASuperSideScroller_Player::ASuperSideScroller_Player()
+{
+  //Set sprinting to false by default.
+   bIsSprinting = false;
+  //Set our max Walk Speed to 300.0f
+   GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+}
+```
 
 通过在构造函数中初始化变量，`SuperSideScroller_Player`类现在已经完成。返回到虚幻引擎，*左键单击*工具栏上的`Compile`按钮。这将重新编译代码并执行编辑器的热重载。
 

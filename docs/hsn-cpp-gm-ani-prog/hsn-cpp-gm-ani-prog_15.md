@@ -93,62 +93,62 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  声明`AnimTexture`类。它有三个成员变量：一个浮点数组，一个纹理大小的整数，以及一个指向 OpenGL 纹理对象的句柄：
 
 ```cpp
-    class AnimTexture {
-    protected:
-        float* mData;
-        unsigned int mSize;
-        unsigned int mHandle;
-    ```
+class AnimTexture {
+protected:
+    float* mData;
+    unsigned int mSize;
+    unsigned int mHandle;
+```
 
 1.  声明`AnimTexture`具有默认构造函数、复制构造函数、赋值运算符和析构函数：
 
 ```cpp
-    public:
-        AnimTexture();
-        AnimTexture(const AnimTexture&);
-        AnimTexture& operator=(const AnimTexture&);
-        ~AnimTexture();
-    ```
+public:
+    AnimTexture();
+    AnimTexture(const AnimTexture&);
+    AnimTexture& operator=(const AnimTexture&);
+    ~AnimTexture();
+```
 
 1.  声明函数，以便将`AnimTexture`保存到磁盘并再次加载：
 
 ```cpp
-        void Load(const char* path);
-        void Save(const char* path);
-    ```
+    void Load(const char* path);
+    void Save(const char* path);
+```
 
 1.  声明一个函数，将数据从`mData`变量上传到 OpenGL 纹理：
 
 ```cpp
-        void UploadTextureDataToGPU();
-    ```
+    void UploadTextureDataToGPU();
+```
 
 1.  声明`AnimTexture`包含的 CPU 端数据的 getter 和 setter 函数：
 
 ```cpp
-        unsigned int Size();
-        void Resize(unsigned int newSize);
-        float* GetData();
-    ```
+    unsigned int Size();
+    void Resize(unsigned int newSize);
+    float* GetData();
+```
 
 1.  声明`GetTexel`，它接受*x*和*y*坐标并返回一个`vec4`，以及一个`SetTexel`函数来设置`vec3`或`quat`对象。这些函数将写入纹理的数据：
 
 ```cpp
-        void SetTexel(unsigned int x, unsigned int y, 
-                      const vec3& v);
-        void SetTexel(unsigned int x, unsigned int y, 
-                      const quat& q);
-        vec4 GetTexel(unsigned int x, unsigned int y);
-    ```
+    void SetTexel(unsigned int x, unsigned int y, 
+                  const vec3& v);
+    void SetTexel(unsigned int x, unsigned int y, 
+                  const quat& q);
+    vec4 GetTexel(unsigned int x, unsigned int y);
+```
 
 1.  声明绑定和解绑纹理以进行渲染的函数。这将与`Texture`类的`Set`和`Unset`函数的方式相同：
 
 ```cpp
-       void Set(unsigned int uniform, unsigned int texture);
-       void UnSet(unsigned int textureIndex);
-       unsigned int GetHandle();
-    };
-    ```
+   void Set(unsigned int uniform, unsigned int texture);
+   void UnSet(unsigned int textureIndex);
+   unsigned int GetHandle();
+};
+```
 
 `AnimTexture`类是一种方便的处理浮点纹理的方式。`get`和`SetTexel`方法可以使用直观的 API 读取和写入纹理。在下一节中，您将开始实现`AnimTexture`类。
 
@@ -165,198 +165,198 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  实现默认构造函数。它应该将数据和大小设置为零，并生成一个新的 OpenGL 着色器句柄：
 
 ```cpp
-    AnimTexture::AnimTexture() {
-        mData = 0;
-        mSize = 0;
-        glGenTextures(1, &mHandle);
-    }
-    ```
+AnimTexture::AnimTexture() {
+    mData = 0;
+    mSize = 0;
+    glGenTextures(1, &mHandle);
+}
+```
 
 1.  实现复制构造函数。它应该做与默认构造函数相同的事情，并使用赋值运算符来复制实际的纹理数据：
 
 ```cpp
-    AnimTexture::AnimTexture(const AnimTexture& other) {
-        mData = 0;
-        mSize = 0;
-        glGenTextures(1, &mHandle);
-        *this = other;
-    }
-    ```
+AnimTexture::AnimTexture(const AnimTexture& other) {
+    mData = 0;
+    mSize = 0;
+    glGenTextures(1, &mHandle);
+    *this = other;
+}
+```
 
 1.  实现赋值运算符。它只需要复制 CPU 端的数据；OpenGL 句柄可以不变：
 
 ```cpp
-    AnimTexture& AnimTexture::operator=(
-                              const AnimTexture& other) {
-        if (this == &other) {
-            return *this;
-        }
-        mSize = other.mSize;
-        if (mData != 0) {
-            delete[] mData;
-        }
-        mData = 0;
-        if (mSize != 0) {
-            mData = new float[mSize * mSize * 4];
-            memcpy(mData, other.mData, 
-                sizeof(float) * (mSize * mSize * 4));
-        }
-        return *this;
-    }
-    ```
+AnimTexture& AnimTexture::operator=(
+                          const AnimTexture& other) {
+    if (this == &other) {
+        return *this;
+    }
+    mSize = other.mSize;
+    if (mData != 0) {
+        delete[] mData;
+    }
+    mData = 0;
+    if (mSize != 0) {
+        mData = new float[mSize * mSize * 4];
+        memcpy(mData, other.mData, 
+            sizeof(float) * (mSize * mSize * 4));
+    }
+    return *this;
+}
+```
 
 1.  实现`AnimTexture`类的析构函数。它应该删除内部浮点数组，并释放类所持有的 OpenGL 句柄：
 
 ```cpp
-    AnimTexture::~AnimTexture() {
-        if (mData != 0) {
-            delete[] mData;
-        }
-        glDeleteTextures(1, &mHandle);
-    }
-    ```
+AnimTexture::~AnimTexture() {
+    if (mData != 0) {
+        delete[] mData;
+    }
+    glDeleteTextures(1, &mHandle);
+}
+```
 
 1.  实现`Save`函数。它应该将`AnimTexture`的大小写入文件，并将`mData`的内容作为一个大的二进制块写入：
 
 ```cpp
-    void AnimTexture::Save(const char* path) {
-        std::ofstream file;
-        file.open(path, std::ios::out | std::ios::binary);
-        if (!file.is_open()) {
-            cout << "Couldn't open " << path << "\n";
-        }
-        file << mSize;
-        if (mSize != 0) {
-            file.write((char*)mData, 
-                 sizeof(float) * (mSize * mSize * 4));
-        }
-        file.close();
-    }
-    ```
+void AnimTexture::Save(const char* path) {
+    std::ofstream file;
+    file.open(path, std::ios::out | std::ios::binary);
+    if (!file.is_open()) {
+        cout << "Couldn't open " << path << "\n";
+    }
+    file << mSize;
+    if (mSize != 0) {
+        file.write((char*)mData, 
+             sizeof(float) * (mSize * mSize * 4));
+    }
+    file.close();
+}
+```
 
 1.  实现`Load`函数，将序列化的动画数据加载回内存：
 
 ```cpp
-    void AnimTexture::Load(const char* path) {
-        std::ifstream file;
-        file.open(path, std::ios::in | std::ios::binary);
-        if (!file.is_open()) {
-            cout << "Couldn't open " << path << "\n";
-        }
-        file >> mSize;
-        mData = new float[mSize * mSize * 4];
-        file.read((char*)mData, 
-             sizeof(float) * (mSize * mSize * 4));
-        file.close();
-        UploadTextureDataToGPU();
-    }
-    ```
+void AnimTexture::Load(const char* path) {
+    std::ifstream file;
+    file.open(path, std::ios::in | std::ios::binary);
+    if (!file.is_open()) {
+        cout << "Couldn't open " << path << "\n";
+    }
+    file >> mSize;
+    mData = new float[mSize * mSize * 4];
+    file.read((char*)mData, 
+         sizeof(float) * (mSize * mSize * 4));
+    file.close();
+    UploadTextureDataToGPU();
+}
+```
 
 1.  实现`UploadDataToGPU`函数。它的实现方式与`Texture::Load`非常相似，但使用的是`GL_RGBA32F`而不是`GL_FLOAT`：
 
 ```cpp
-    void AnimTexture::UploadTextureDataToGPU() {
-        glBindTexture(GL_TEXTURE_2D, mHandle);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, mSize, 
-                      mSize, 0, GL_RGBA, GL_FLOAT, mData);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, 
-                        GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, 
-                        GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, 
-                        GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, 
-                        GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
-    ```
+void AnimTexture::UploadTextureDataToGPU() {
+    glBindTexture(GL_TEXTURE_2D, mHandle);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, mSize, 
+                  mSize, 0, GL_RGBA, GL_FLOAT, mData);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, 
+                    GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, 
+                    GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, 
+                    GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, 
+                    GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+```
 
 1.  实现大小、OpenGL 句柄和浮点数据获取函数：
 
 ```cpp
-    unsigned int AnimTexture::Size() {
-        return mSize;
-    }
-    unsigned int AnimTexture::GetHandle() {
-        return mHandle;
-    }
-    float* AnimTexture::GetData() {
-        return mData;
-    }
-    ```
+unsigned int AnimTexture::Size() {
+    return mSize;
+}
+unsigned int AnimTexture::GetHandle() {
+    return mHandle;
+}
+float* AnimTexture::GetData() {
+    return mData;
+}
+```
 
 1.  实现`resize`函数，它应该设置`mData`数组的大小。这个函数的参数是动画纹理的宽度或高度：
 
 ```cpp
-    void AnimTexture::Resize(unsigned int newSize) {
-        if (mData != 0) {
-            delete[] mData;
-        }
-        mSize = newSize;
-        mData = new float[mSize * mSize * 4];
-    }
-    ```
+void AnimTexture::Resize(unsigned int newSize) {
+    if (mData != 0) {
+        delete[] mData;
+    }
+    mSize = newSize;
+    mData = new float[mSize * mSize * 4];
+}
+```
 
 1.  实现`Set`函数。它的工作方式类似于`Texture::Set`：
 
 ```cpp
-    void AnimTexture::Set(unsigned int uniformIndex, unsigned int textureIndex) {
-        glActiveTexture(GL_TEXTURE0 + textureIndex);
-        glBindTexture(GL_TEXTURE_2D, mHandle);
-        glUniform1i(uniformIndex, textureIndex);
-    }
-    ```
+void AnimTexture::Set(unsigned int uniformIndex, unsigned int textureIndex) {
+    glActiveTexture(GL_TEXTURE0 + textureIndex);
+    glBindTexture(GL_TEXTURE_2D, mHandle);
+    glUniform1i(uniformIndex, textureIndex);
+}
+```
 
 1.  实现`UnSet`函数。它的工作方式类似于`Texture::UnSet`：
 
 ```cpp
-    void AnimTexture::UnSet(unsigned int textureIndex) {
-        glActiveTexture(GL_TEXTURE0 + textureIndex);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE0);
-    }
-    ```
+void AnimTexture::UnSet(unsigned int textureIndex) {
+    glActiveTexture(GL_TEXTURE0 + textureIndex);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+}
+```
 
 1.  实现`SetTexel`函数，它以矢量`3`作为参数。这个函数应该将像素的未使用的 A 分量设置为`0`：
 
 ```cpp
-    void AnimTexture::SetTexel(unsigned int x, 
-                      unsigned int y, const vec3& v) {
-        unsigned int index = (y * mSize * 4) + (x * 4);
-        mData[index + 0] = v.x;
-        mData[index + 1] = v.y;
-        mData[index + 2] = v.z;
-        mData[index + 3] = 0.0f;
-    }
-    ```
+void AnimTexture::SetTexel(unsigned int x, 
+                  unsigned int y, const vec3& v) {
+    unsigned int index = (y * mSize * 4) + (x * 4);
+    mData[index + 0] = v.x;
+    mData[index + 1] = v.y;
+    mData[index + 2] = v.z;
+    mData[index + 3] = 0.0f;
+}
+```
 
 1.  实现`SetTexel`函数，它以四元数作为参数：
 
 ```cpp
-    void AnimTexture::SetTexel(unsigned int x, 
-                      unsigned int y, const quat& q) {
-        unsigned int index = (y * mSize * 4) + (x * 4);
-        mData[index + 0] = q.x;
-        mData[index + 1] = q.y;
-        mData[index + 2] = q.z;
-        mData[index + 3] = q.w;
-    }
-    ```
+void AnimTexture::SetTexel(unsigned int x, 
+                  unsigned int y, const quat& q) {
+    unsigned int index = (y * mSize * 4) + (x * 4);
+    mData[index + 0] = q.x;
+    mData[index + 1] = q.y;
+    mData[index + 2] = q.z;
+    mData[index + 3] = q.w;
+}
+```
 
 1.  实现`GetTexel`函数。这个函数将始终返回一个`vec4`，其中包含像素的每个分量：
 
 ```cpp
-    vec4 AnimTexture::GetTexel(unsigned int x, 
-                               unsigned int y) {
-        unsigned int index = (y * mSize * 4) + (x * 4);
-        return vec4(
-            mData[index + 0],
-            mData[index + 1],
-            mData[index + 2],
-            mData[index + 3]
-        );
-    }
-    ```
+vec4 AnimTexture::GetTexel(unsigned int x, 
+                           unsigned int y) {
+    unsigned int index = (y * mSize * 4) + (x * 4);
+    return vec4(
+        mData[index + 0],
+        mData[index + 1],
+        mData[index + 2],
+        mData[index + 3]
+    );
+}
+```
 
 在本节中，您学会了如何创建一个 32 位浮点纹理并管理其中的数据。`AnimTexture`类应该让您使用直观的 API 来处理浮点纹理，而不必担心任何 OpenGL 函数。在下一节中，您将创建一个函数，该函数将对动画剪辑进行采样，并将结果的动画数据写入纹理。
 
@@ -371,53 +371,53 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  创建一个名为`AnimBaker.h`的新文件，并在其中添加`BakeAnimationToTexture`函数的声明：
 
 ```cpp
-    void BakeAnimationToTexture(Skeleton& skel, Clip& clip, 
-                                AnimTexture& outTex);
-    ```
+void BakeAnimationToTexture(Skeleton& skel, Clip& clip, 
+                            AnimTexture& outTex);
+```
 
 1.  创建一个名为`AnimBaker.cpp`的新文件。开始在这个文件中实现`BakeAnimationToTexture`函数：
 
 ```cpp
-    void BakeAnimationToTexture(Skeleton& skel, Clip& clip, 
-                                AnimTexture& tex) {
-        Pose& bindPose = skel.GetBindPose();
-    ```
+void BakeAnimationToTexture(Skeleton& skel, Clip& clip, 
+                            AnimTexture& tex) {
+    Pose& bindPose = skel.GetBindPose();
+```
 
 1.  要将动画烘焙到纹理中，首先创建一个动画将被采样到的姿势。然后，循环遍历纹理的*x*维度，即时间：
 
 ```cpp
-        Pose pose = bindPose;
-        unsigned int texWidth = tex.Size();
-        for (unsigned int x = 0; x < texWidth; ++x) {
-    ```
+    Pose pose = bindPose;
+    unsigned int texWidth = tex.Size();
+    for (unsigned int x = 0; x < texWidth; ++x) {
+```
 
 1.  对于每次迭代，找到迭代器的归一化值（迭代器索引/（大小-1））。将归一化时间乘以剪辑的持续时间，然后加上剪辑的开始时间。在当前像素的这个时间点对剪辑进行采样：
 
 ```cpp
-            float t = (float)x / (float)(texWidth - 1);
-            float start = clip.GetStartTime();
-            float time = start + clip.GetDuration() * t;
-            clip.Sample(pose, time);
-    ```
+        float t = (float)x / (float)(texWidth - 1);
+        float start = clip.GetStartTime();
+        float time = start + clip.GetDuration() * t;
+        clip.Sample(pose, time);
+```
 
 1.  一旦剪辑被采样，就循环遍历绑定姿势中的所有关节。找到当前关节的全局变换，并使用`SetTexel`将数据写入纹理：
 
 ```cpp
-            for (unsigned int y = 0;y<pose.Size()*3;y+=3) {
-               Transform node=pose.GetGlobalTransform(y/3);
-               tex.SetTexel(x, y + 0, node.position);
-               tex.SetTexel(x, y + 1, node.rotation);
-               tex.SetTexel(x, y + 2, node.scale);
-            }
-    ```
+        for (unsigned int y = 0;y<pose.Size()*3;y+=3) {
+           Transform node=pose.GetGlobalTransform(y/3);
+           tex.SetTexel(x, y + 0, node.position);
+           tex.SetTexel(x, y + 1, node.rotation);
+           tex.SetTexel(x, y + 2, node.scale);
+        }
+```
 
 1.  在`Bake`函数返回之前，调用提供的动画纹理上的`UploadTextureDataToGPU`函数。这将使纹理在被烘焙后立即可用：
 
 ```cpp
-        } // End of x loop
-        tex.UploadTextureDataToGPU();
-    }
-    ```
+    } // End of x loop
+    tex.UploadTextureDataToGPU();
+}
+```
 
 在高层次上，动画纹理被用作时间轴，其中*x*轴是时间，*y*轴是该时间点上动画关节的变换。在下一节中，您将创建人群着色器。人群着色器使用`BakeAnimationToTexture`烘焙到纹理中的数据来采样动画的当前姿势。
 
@@ -434,163 +434,163 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  通过定义两个常量来开始实现着色器：一个用于骨骼的最大数量，一个用于支持的实例的最大数量：
 
 ```cpp
-    #version 330 core
-    #define MAX_BONES 60
-    #define MAX_INSTANCES 80
-    ```
+#version 330 core
+#define MAX_BONES 60
+#define MAX_INSTANCES 80
+```
 
 1.  声明所有群众演员共享的制服。这包括视图和投影矩阵，反向绑定姿势调色板和动画纹理：
 
 ```cpp
-    uniform mat4 view;
-    uniform mat4 projection;
-    uniform mat4 invBindPose[MAX_BONES];
-    uniform sampler2D animTex;
-    ```
+uniform mat4 view;
+uniform mat4 projection;
+uniform mat4 invBindPose[MAX_BONES];
+uniform sampler2D animTex;
+```
 
 1.  声明每个群众演员独有的统一。这包括演员的变换，当前和下一帧，以及混合时间：
 
 ```cpp
-    uniform vec3 model_pos[MAX_INSTANCES];
-    uniform vec4 model_rot[MAX_INSTANCES];
-    uniform vec3 model_scl[MAX_INSTANCES];
-    uniform ivec2 frames[MAX_INSTANCES];
-    uniform float time[MAX_INSTANCES];
-    ```
+uniform vec3 model_pos[MAX_INSTANCES];
+uniform vec4 model_rot[MAX_INSTANCES];
+uniform vec3 model_scl[MAX_INSTANCES];
+uniform ivec2 frames[MAX_INSTANCES];
+uniform float time[MAX_INSTANCES];
+```
 
 1.  声明顶点结构。每个顶点的数据与任何蒙皮网格的数据相同：
 
 ```cpp
-    in vec3 position;
-    in vec3 normal;
-    in vec2 texCoord;
-    in vec4 weights;
-    in ivec4 joints;
-    ```
+in vec3 position;
+in vec3 normal;
+in vec2 texCoord;
+in vec4 weights;
+in ivec4 joints;
+```
 
 1.  声明群众着色器的输出值：
 
 ```cpp
-    out vec3 norm;
-    out vec3 fragPos;
-    out vec2 uv;
-    ```
+out vec3 norm;
+out vec3 fragPos;
+out vec2 uv;
+```
 
 1.  实现一个函数，该函数将一个向量和一个四元数相乘。这个函数将与您在[*第四章*]（B16191_04_Final_JC_ePub.xhtml#_idTextAnchor069）*实现四元数*中构建的`transformVector`函数具有相同的实现，只是它在着色器中运行：
 
 ```cpp
-    vec3 QMulV(vec4 q, vec3 v) {
-        return q.xyz * 2.0f * dot(q.xyz, v) +
-               v * (q.w * q.w - dot(q.xyz, q.xyz)) +
-               cross(q.xyz, v) * 2.0f * q.w;
-    }
-    ```
+vec3 QMulV(vec4 q, vec3 v) {
+    return q.xyz * 2.0f * dot(q.xyz, v) +
+           v * (q.w * q.w - dot(q.xyz, q.xyz)) +
+           cross(q.xyz, v) * 2.0f * q.w;
+}
+```
 
 1.  实现`GetModel`函数。给定一个实例索引，该函数应该从动画纹理中采样并返回一个*4x4*变换矩阵：
 
 ```cpp
-    mat4 GetModel(int instance) {
-        vec3 position = model_pos[instance];
-        vec4 rotation = model_rot[instance];
-        vec3 scale = model_scl[instance];
-        vec3 xBasis = QMulV(rotation, vec3(scale.x, 0, 0));
-        vec3 yBasis = QMulV(rotation, vec3(0, scale.y, 0));
-        vec3 zBasis = QMulV(rotation, vec3(0, 0, scale.z));
-        return mat4(
-            xBasis.x, xBasis.y, xBasis.z, 0.0,
-            yBasis.x, yBasis.y, yBasis.z, 0.0,
-            zBasis.x, zBasis.y, zBasis.z, 0.0,
-            position.x, position.y, position.z, 1.0
-        );
-    }
-    ```
+mat4 GetModel(int instance) {
+    vec3 position = model_pos[instance];
+    vec4 rotation = model_rot[instance];
+    vec3 scale = model_scl[instance];
+    vec3 xBasis = QMulV(rotation, vec3(scale.x, 0, 0));
+    vec3 yBasis = QMulV(rotation, vec3(0, scale.y, 0));
+    vec3 zBasis = QMulV(rotation, vec3(0, 0, scale.z));
+    return mat4(
+        xBasis.x, xBasis.y, xBasis.z, 0.0,
+        yBasis.x, yBasis.y, yBasis.z, 0.0,
+        zBasis.x, zBasis.y, zBasis.z, 0.0,
+        position.x, position.y, position.z, 1.0
+    );
+}
+```
 
 1.  使用关节和实例实现`GetPose`函数，该函数应返回关节的动画世界矩阵。通过找到 x 和 y 位置来采样动画纹理开始实现：
 
 ```cpp
-    mat4 GetPose(int joint, int instance) {
-        int x_now = frames[instance].x;
-        int x_next = frames[instance].y;
-        int y_pos = joint * 3;
-    ```
+mat4 GetPose(int joint, int instance) {
+    int x_now = frames[instance].x;
+    int x_next = frames[instance].y;
+    int y_pos = joint * 3;
+```
 
 1.  从动画纹理中采样当前帧的位置、旋转和比例：
 
 ```cpp
-        vec4 pos0 = texelFetch(animTex, ivec2(x_now, 
-                              (y_pos + 0)), 0);
-        vec4 rot0 = texelFetch(animTex, ivec2(x_now, 
-                              (y_pos + 1)), 0);
-        vec4 scl0 = texelFetch(animTex, ivec2(x_now, 
-                              (y_pos + 2)), 0);
-    ```
+    vec4 pos0 = texelFetch(animTex, ivec2(x_now, 
+                          (y_pos + 0)), 0);
+    vec4 rot0 = texelFetch(animTex, ivec2(x_now, 
+                          (y_pos + 1)), 0);
+    vec4 scl0 = texelFetch(animTex, ivec2(x_now, 
+                          (y_pos + 2)), 0);
+```
 
 1.  从动画纹理中采样下一帧的位置、旋转和比例：
 
 ```cpp
-        vec4 pos1 = texelFetch(animTex, ivec2(x_next, 
-                              (y_pos + 0)), 0);
-        vec4 rot1 = texelFetch(animTex, ivec2(x_next, 
-                              (y_pos + 1)), 0);
-        vec4 scl1 = texelFetch(animTex, ivec2(x_next, 
-                              (y_pos + 2)), 0);
-    ```
+    vec4 pos1 = texelFetch(animTex, ivec2(x_next, 
+                          (y_pos + 0)), 0);
+    vec4 rot1 = texelFetch(animTex, ivec2(x_next, 
+                          (y_pos + 1)), 0);
+    vec4 scl1 = texelFetch(animTex, ivec2(x_next, 
+                          (y_pos + 2)), 0);
+```
 
 1.  在两个帧之间进行插值：
 
 ```cpp
-        if (dot(rot0, rot1) < 0.0) { rot1 *= -1.0; }
-        vec4 position = mix(pos0, pos1, time[instance]);
-        vec4 rotation = normalize(mix(rot0, 
-                                  rot1, time[instance]));
-        vec4 scale = mix(scl0, scl1, time[instance]);
-    ```
+    if (dot(rot0, rot1) < 0.0) { rot1 *= -1.0; }
+    vec4 position = mix(pos0, pos1, time[instance]);
+    vec4 rotation = normalize(mix(rot0, 
+                              rot1, time[instance]));
+    vec4 scale = mix(scl0, scl1, time[instance]);
+```
 
 1.  使用插值的位置、旋转和比例返回一个 4x4 矩阵：
 
 ```cpp
-        vec3 xBasis = QMulV(rotation, vec3(scale.x, 0, 0));
-        vec3 yBasis = QMulV(rotation, vec3(0, scale.y, 0));
-        vec3 zBasis = QMulV(rotation, vec3(0, 0, scale.z));
-        return mat4(
-            xBasis.x, xBasis.y, xBasis.z, 0.0,
-            yBasis.x, yBasis.y, yBasis.z, 0.0,
-            zBasis.x, zBasis.y, zBasis.z, 0.0,
-            position.x, position.y, position.z, 1.0
-        );
-    }
-    ```
+    vec3 xBasis = QMulV(rotation, vec3(scale.x, 0, 0));
+    vec3 yBasis = QMulV(rotation, vec3(0, scale.y, 0));
+    vec3 zBasis = QMulV(rotation, vec3(0, 0, scale.z));
+    return mat4(
+        xBasis.x, xBasis.y, xBasis.z, 0.0,
+        yBasis.x, yBasis.y, yBasis.z, 0.0,
+        zBasis.x, zBasis.y, zBasis.z, 0.0,
+        position.x, position.y, position.z, 1.0
+    );
+}
+```
 
 1.  通过找到着色器的主函数来实现着色器的主要功能，找到所有四个动画姿势矩阵，以及群众中当前演员的模型矩阵。使用`gl_InstanceID`来获取当前绘制的演员的 ID：
 
 ```cpp
-    void main() {
-        mat4 pose0 = GetPose(joints.x, gl_InstanceID);
-        mat4 pose1 = GetPose(joints.y, gl_InstanceID);
-        mat4 pose2 = GetPose(joints.z, gl_InstanceID);
-        mat4 pose3 = GetPose(joints.w, gl_InstanceID);
-        mat4 model = GetModel(gl_InstanceID);
-    ```
+void main() {
+    mat4 pose0 = GetPose(joints.x, gl_InstanceID);
+    mat4 pose1 = GetPose(joints.y, gl_InstanceID);
+    mat4 pose2 = GetPose(joints.z, gl_InstanceID);
+    mat4 pose3 = GetPose(joints.w, gl_InstanceID);
+    mat4 model = GetModel(gl_InstanceID);
+```
 
 1.  通过找到顶点的`skin`矩阵来继续实现主函数：
 
 ```cpp
-        mat4 skin = (pose0*invBindPose[joints.x])*weights.x;
-        skin += (pose1 * invBindPose[joints.y]) * weights.y;
-        skin += (pose2 * invBindPose[joints.z]) * weights.z;
-        skin += (pose3 * invBindPose[joints.w]) * weights.w;
-    ```
+    mat4 skin = (pose0*invBindPose[joints.x])*weights.x;
+    skin += (pose1 * invBindPose[joints.y]) * weights.y;
+    skin += (pose2 * invBindPose[joints.z]) * weights.z;
+    skin += (pose3 * invBindPose[joints.w]) * weights.w;
+```
 
 1.  通过将位置和法线通过蒙皮顶点的变换管道来完成实现主函数：
 
 ```cpp
-        gl_Position = projection * view * model * 
-                      skin * vec4(position, 1.0);
-        fragPos = vec3(model * skin * vec4(position, 1.0));
-        norm = vec3(model * skin * vec4(normal, 0.0f));
-        uv = texCoord;
-    }
-    ```
+    gl_Position = projection * view * model * 
+                  skin * vec4(position, 1.0);
+    fragPos = vec3(model * skin * vec4(position, 1.0));
+    norm = vec3(model * skin * vec4(normal, 0.0f));
+    uv = texCoord;
+}
+```
 
 在本节中，您实现了群众着色器。这个顶点着色器使用动画纹理来构建正在呈现的每个顶点的动画姿势。它将蒙皮管道的姿势生成部分移动到了 GPU 上。该着色器旨在呈现实例化的网格；它使用`gl_InstanceID`来确定当前正在呈现的实例。
 
@@ -609,56 +609,56 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  将人群演员的最大数量定义为`80`：
 
 ```cpp
-    #define CROWD_MAX_ACTORS 80
-    ```
+#define CROWD_MAX_ACTORS 80
+```
 
 1.  通过为所有实例数据创建向量来声明`Crowd`类。这包括每个演员的变换、动画帧和时间的数据，以及帧插值信息：
 
 ```cpp
-    struct Crowd {
-    protected:
-        std::vector<vec3> mPositions;
-        std::vector<quat> mRotations;
-        std::vector<vec3> mScales;
-        std::vector<ivec2> mFrames;
-        std::vector<float> mTimes;
-        std::vector<float> mCurrentPlayTimes;
-        std::vector<float> mNextPlayTimes;
-    ```
+struct Crowd {
+protected:
+    std::vector<vec3> mPositions;
+    std::vector<quat> mRotations;
+    std::vector<vec3> mScales;
+    std::vector<ivec2> mFrames;
+    std::vector<float> mTimes;
+    std::vector<float> mCurrentPlayTimes;
+    std::vector<float> mNextPlayTimes;
+```
 
 1.  声明`AdjustTime`、`UpdatePlaybackTimes`、`UpdateFrameIndices`和`UpdateInterpolationTimes`函数。`AdjustTime`函数类似于`Clip::AdjustTimeToFitRange`；它确保给定时间是有效的：
 
 ```cpp
-    protected:
-        float AdjustTime(float t, float start, 
-                    float end, bool looping);
-        void UpdatePlaybackTimes(float dt, bool looping, 
-                    float start, float end);
-        void UpdateFrameIndices(float start, 
-                    float duration, unsigned int texWidth);
-        void UpdateInterpolationTimes(float start, 
-                    float duration, unsigned int texWidth);
-    ```
+protected:
+    float AdjustTime(float t, float start, 
+                float end, bool looping);
+    void UpdatePlaybackTimes(float dt, bool looping, 
+                float start, float end);
+    void UpdateFrameIndices(float start, 
+                float duration, unsigned int texWidth);
+    void UpdateInterpolationTimes(float start, 
+                float duration, unsigned int texWidth);
+```
 
 1.  为人群的大小和每个演员的`Transform`属性声明 getter 和 setter 函数：
 
 ```cpp
-    public:
-        unsigned int Size();
-        void Resize(unsigned int size);
-        Transform GetActor(unsigned int index);
-        void SetActor(unsigned int index, 
-                      const Transform& t);
-    ```
+public:
+    unsigned int Size();
+    void Resize(unsigned int size);
+    Transform GetActor(unsigned int index);
+    void SetActor(unsigned int index, 
+                  const Transform& t);
+```
 
 1.  最后，声明`Update`和`SetUniforms`函数。这些函数将推进当前动画并更新每个实例的着色器 uniforms：
 
 ```cpp
-        void Update(float deltaTime, Clip& mClip, 
-                    unsigned int texWidth);
-        void SetUniforms(Shader* shader);
-    };
-    ```
+    void Update(float deltaTime, Clip& mClip, 
+                unsigned int texWidth);
+    void SetUniforms(Shader* shader);
+};
+```
 
 `Crowd`类为管理人群中每个演员的每个实例信息提供了直观的接口。在下一节中，您将开始实现`Crowd`类。
 
@@ -685,156 +685,156 @@ CPU 缓冲区保留下来，以便在保存到磁盘之前或上传到 OpenGL �
 1.  实现大小的获取器和设置器函数。设置器函数需要设置`Crowd`类中包含的所有向量的`size`：
 
 ```cpp
-    unsigned int Crowd::Size() {
-        return mCurrentPlayTimes.size();
-    }
-    void Crowd::Resize(unsigned int size) {
-        if (size > CROWD_MAX_ACTORS) {
-            size = CROWD_MAX_ACTORS;
-        }
-        mPositions.resize(size);
-        mRotations.resize(size);
-        mScales.resize(size, vec3(1, 1, 1));
-        mFrames.resize(size);
-        mTimes.resize(size);
-        mCurrentPlayTimes.resize(size);
-        mNextPlayTimes.resize(size);
-    }
-    ```
+unsigned int Crowd::Size() {
+    return mCurrentPlayTimes.size();
+}
+void Crowd::Resize(unsigned int size) {
+    if (size > CROWD_MAX_ACTORS) {
+        size = CROWD_MAX_ACTORS;
+    }
+    mPositions.resize(size);
+    mRotations.resize(size);
+    mScales.resize(size, vec3(1, 1, 1));
+    mFrames.resize(size);
+    mTimes.resize(size);
+    mCurrentPlayTimes.resize(size);
+    mNextPlayTimes.resize(size);
+}
+```
 
 1.  实现演员变换的获取器和设置器函数。位置、旋转和缩放保存在单独的向量中；演员的获取器和设置器函数隐藏了该实现，而是使用`Transform`对象：
 
 ```cpp
-    Transform Crowd::GetActor(unsigned int index) {
-        return Transform(
-            mPositions[index],
-            mRotations[index],
-            mScales[index] );
-    }
-    void Crowd::SetActor(unsigned int index, 
-                         const Transform& t) {
-        mPositions[index] = t.position;
-        mRotations[index] = t.rotation;
-        mScales[index] = t.scale;
-    }
-    ```
+Transform Crowd::GetActor(unsigned int index) {
+    return Transform(
+        mPositions[index],
+        mRotations[index],
+        mScales[index] );
+}
+void Crowd::SetActor(unsigned int index, 
+                     const Transform& t) {
+    mPositions[index] = t.position;
+    mRotations[index] = t.rotation;
+    mScales[index] = t.scale;
+}
+```
 
 1.  实现`AdjustTime`函数；它类似于`Clip::AdjustTimeToFitRange`函数：
 
 ```cpp
-    float Crowd::AdjustTime(float time, float start, 
-                            float end, bool looping) {
-        if (looping) {
-            time = fmodf(time - start, end - start);
-            if (time < 0.0f) {
-                time += end - start;
-            }
-            time = time + start;
-        }
-        else {
-            if (time < start) { time = start; }
-            if (time > end) { time = end; }
-        }
-        return time;
-    }
-    ```
+float Crowd::AdjustTime(float time, float start, 
+                        float end, bool looping) {
+    if (looping) {
+        time = fmodf(time - start, end - start);
+        if (time < 0.0f) {
+            time += end - start;
+        }
+        time = time + start;
+    }
+    else {
+        if (time < start) { time = start; }
+        if (time > end) { time = end; }
+    }
+    return time;
+}
+```
 
 1.  实现`UpdatePlaybackTimes`辅助函数。该函数将按照增量时间推进所有演员的播放时间：
 
 ```cpp
-    void Crowd::UpdatePlaybackTimes(float deltaTime, 
-                bool looping, float start, float end) {
-        unsigned int size = mCurrentPlayTimes.size();
-        for (unsigned int i = 0; i < size; ++i) {
-            float time = mCurrentPlayTimes[i] + deltaTime;
-            mCurrentPlayTimes[i] = AdjustTime(time, start,
-                                            end, looping);
-            time = mCurrentPlayTimes[i] + deltaTime;
-            mNextPlayTimes[i] = AdjustTime(time, start, 
-                                          end, looping);
-        }
-    }
-    ```
+void Crowd::UpdatePlaybackTimes(float deltaTime, 
+            bool looping, float start, float end) {
+    unsigned int size = mCurrentPlayTimes.size();
+    for (unsigned int i = 0; i < size; ++i) {
+        float time = mCurrentPlayTimes[i] + deltaTime;
+        mCurrentPlayTimes[i] = AdjustTime(time, start,
+                                        end, looping);
+        time = mCurrentPlayTimes[i] + deltaTime;
+        mNextPlayTimes[i] = AdjustTime(time, start, 
+                                      end, looping);
+    }
+}
+```
 
 1.  实现`UpdateFrameIndices`函数。该函数将当前播放时间转换为沿动画纹理*x*轴的像素坐标：
 
 ```cpp
-    void Crowd::UpdateFrameIndices(float start, float duration, unsigned int texWidth) {
-        unsigned int size = mCurrentPlayTimes.size();
-        for (unsigned int i = 0; i < size; ++i) {
-            float thisNormalizedTime = 
-                 (mCurrentPlayTimes[i] - start) / duration;
-            unsigned int thisFrame = 
-                 thisNormalizedTime * (texWidth - 1);
-            float nextNormalizedTime = 
-                 (mNextPlayTimes[i] - start) / duration;
-            unsigned int nextFrame = 
-                 nextNormalizedTime * (texWidth - 1);
-            mFrames[i].x = thisFrame;
-            mFrames[i].y = nextFrame;
-        }
-    }
-    ```
+void Crowd::UpdateFrameIndices(float start, float duration, unsigned int texWidth) {
+    unsigned int size = mCurrentPlayTimes.size();
+    for (unsigned int i = 0; i < size; ++i) {
+        float thisNormalizedTime = 
+             (mCurrentPlayTimes[i] - start) / duration;
+        unsigned int thisFrame = 
+             thisNormalizedTime * (texWidth - 1);
+        float nextNormalizedTime = 
+             (mNextPlayTimes[i] - start) / duration;
+        unsigned int nextFrame = 
+             nextNormalizedTime * (texWidth - 1);
+        mFrames[i].x = thisFrame;
+        mFrames[i].y = nextFrame;
+    }
+}
+```
 
 1.  实现`UpdateInterpolationTimes`函数。该函数应该找到当前和下一个动画帧之间的插值时间：
 
 ```cpp
-    void Crowd::UpdateInterpolationTimes(float start, 
-              float duration, unsigned int texWidth) {
-        unsigned int size =  mCurrentPlayTimes.size();
-        for (unsigned int i = 0; i < size; ++i) {
-            if (mFrames[i].x == mFrames[i].y) {
-                mTimes[i] = 1.0f;
-                continue;
-            }
-            float thisT = (float)mFrames[i].x / 
-                          (float)(texWidth - 1);
-            float thisTime = start + duration * thisT;
-            float nextT = (float)mFrames[i].y / 
-                          (float)(texWidth - 1);
-            float nextTime = start + duration * nextT;
-            if (nextTime < thisTime) {
-                nextTime += duration;
-            }
-            float frameDuration = nextTime - thisTime;
-            mTimes[i] = (mCurrentPlayTimes[i] - thisTime) /
-                        frameDuration;
-        }
-    }
-    ```
+void Crowd::UpdateInterpolationTimes(float start, 
+          float duration, unsigned int texWidth) {
+    unsigned int size =  mCurrentPlayTimes.size();
+    for (unsigned int i = 0; i < size; ++i) {
+        if (mFrames[i].x == mFrames[i].y) {
+            mTimes[i] = 1.0f;
+            continue;
+        }
+        float thisT = (float)mFrames[i].x / 
+                      (float)(texWidth - 1);
+        float thisTime = start + duration * thisT;
+        float nextT = (float)mFrames[i].y / 
+                      (float)(texWidth - 1);
+        float nextTime = start + duration * nextT;
+        if (nextTime < thisTime) {
+            nextTime += duration;
+        }
+        float frameDuration = nextTime - thisTime;
+        mTimes[i] = (mCurrentPlayTimes[i] - thisTime) /
+                    frameDuration;
+    }
+}
+```
 
 1.  实现`Update`方法。该方法依赖于`UpdatePlaybackTimes`、`UpdateFrameIndices`和`UpdateInterpolationTimes`辅助函数：
 
 ```cpp
-    void Crowd::Update(float deltaTime, Clip& mClip, 
-                            unsigned int texWidth) {
-       bool looping = mClip.GetLooping();
-       float start = mClip.GetStartTime();
-       float end = mClip.GetEndTime();
-       float duration = mClip.GetDuration();
+void Crowd::Update(float deltaTime, Clip& mClip, 
+                        unsigned int texWidth) {
+   bool looping = mClip.GetLooping();
+   float start = mClip.GetStartTime();
+   float end = mClip.GetEndTime();
+   float duration = mClip.GetDuration();
 
-       UpdatePlaybackTimes(deltaTime, looping, start, end);
-       UpdateFrameIndices(start, duration, texWidth);
-       UpdateInterpolationTimes(start, duration, texWidth);
-    }
-    ```
+   UpdatePlaybackTimes(deltaTime, looping, start, end);
+   UpdateFrameIndices(start, duration, texWidth);
+   UpdateInterpolationTimes(start, duration, texWidth);
+}
+```
 
 1.  实现`SetUniforms`函数，将`Crowd`类中包含的向量传递给人群着色器作为 uniform 数组：
 
 ```cpp
-    void Crowd::SetUniforms(Shader* shader) {
-        Uniform<vec3>::Set(shader->GetUniform("model_pos"),
-                           mPositions);
-        Uniform<quat>::Set(shader->GetUniform("model_rot"), 
-                           mRotations);
-        Uniform<vec3>::Set(shader->GetUniform("model_scl"), 
-                           mScales);
-        Uniform<ivec2>::Set(shader->GetUniform("frames"), 
-                           mFrames);
-        Uniform<float>::Set(shader->GetUniform("time"), 
-                           mTimes);
-    }
-    ```
+void Crowd::SetUniforms(Shader* shader) {
+    Uniform<vec3>::Set(shader->GetUniform("model_pos"),
+                       mPositions);
+    Uniform<quat>::Set(shader->GetUniform("model_rot"), 
+                       mRotations);
+    Uniform<vec3>::Set(shader->GetUniform("model_scl"), 
+                       mScales);
+    Uniform<ivec2>::Set(shader->GetUniform("frames"), 
+                       mFrames);
+    Uniform<float>::Set(shader->GetUniform("time"), 
+                       mTimes);
+}
+```
 
 使用`Crowd`类应该是直观的：创建一个人群，设置其演员的播放时间和模型变换，然后绘制人群。在下一节中，您将探讨如何使用`Crowd`类来绘制大型人群的示例。
 

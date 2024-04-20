@@ -77,58 +77,58 @@
 1.  首先，让我们包括所需的标头：
 
 ```cpp
-    #include <iostream>
-    #include <queue>
-    ```
+#include <iostream>
+#include <queue>
+```
 
 1.  为简单起见，我们假设任何人最多可以有两个下属。我们将看到这不难扩展以类似于现实生活中的情况。这种树也被称为**二叉树**。让我们为此编写一个基本结构：
 
 ```cpp
-    struct node
-    {
-        std::string position;
-        node *first, *second;
-    };
-    ```
+struct node
+{
+    std::string position;
+    node *first, *second;
+};
+```
 
 正如我们所看到的，任何节点都将有两个链接到其他节点-它们的下属。通过这样做，我们可以显示数据的递归结构。我们目前只存储位置，但我们可以轻松扩展此功能，以包括该位置的名称，甚至包括关于该位置的人的所有信息的整个结构。
 
 1.  我们不希望最终用户处理这种原始数据结构。因此，让我们将其包装在一个名为`org_tree`的良好接口中：
 
 ```cpp
-    struct org_tree
-    {
-        node *root;
-    ```
+struct org_tree
+{
+    node *root;
+```
 
 1.  现在，让我们添加一个函数来创建根，从公司的最高指挥官开始：
 
 ```cpp
-    static org_tree create_org_structure(const std::string& pos)
-    {
-        org_tree tree;
-        tree.root = new node{pos, NULL, NULL};
-        return tree;
-    }
-    ```
+static org_tree create_org_structure(const std::string& pos)
+{
+    org_tree tree;
+    tree.root = new node{pos, NULL, NULL};
+    return tree;
+}
+```
 
 这只是一个静态函数，用于创建树。现在，让我们看看如何扩展树。
 
 1.  现在，我们想要添加一个员工的下属。该函数应该接受两个参数-树中已存在的员工的名字和要添加为下属的新员工的名字。但在此之前，让我们编写另一个函数，以便更容易地找到基于值的特定节点来帮助我们编写插入函数：
 
 ```cpp
-    static node* find(node* root, const std::string& value)
-    {
-        if(root == NULL)
-            return NULL;
-        if(root->position == value)
-            return root;
-        auto firstFound = org_tree::find(root->first, value);
-        if(firstFound != NULL)
-            return firstFound;
-        return org_tree::find(root->second, value);
-    }
-    ```
+static node* find(node* root, const std::string& value)
+{
+    if(root == NULL)
+        return NULL;
+    if(root->position == value)
+        return root;
+    auto firstFound = org_tree::find(root->first, value);
+    if(firstFound != NULL)
+        return firstFound;
+    return org_tree::find(root->second, value);
+}
+```
 
 当我们在搜索元素时遍历树时，要么元素将是我们所在的节点，要么它将在右子树或左子树中。
 
@@ -137,84 +137,84 @@
 1.  现在，让我们实现插入函数。我们将利用`find`函数以便重用代码：
 
 ```cpp
-    bool addSubordinate(const std::string& manager, const std::string& subordinate)
-    {
-        auto managerNode = org_tree::find(root, manager);
-        if(!managerNode)
-        {
-            std::cout << "No position named " << manager << std::endl;
-            return false;
-        }
-        if(managerNode->first && managerNode->second)
-        {
-            std::cout << manager << " already has 2 subordinates." << std::endl;
-            return false;
-        }
-        if(!managerNode->first)
-            managerNode->first = new node{subordinate, NULL, NULL};
-        else
-            managerNode->second = new node{subordinate, NULL, NULL};
-        return true;
-    }
-    };
-    ```
+bool addSubordinate(const std::string& manager, const std::string& subordinate)
+{
+    auto managerNode = org_tree::find(root, manager);
+    if(!managerNode)
+    {
+        std::cout << "No position named " << manager << std::endl;
+        return false;
+    }
+    if(managerNode->first && managerNode->second)
+    {
+        std::cout << manager << " already has 2 subordinates." << std::endl;
+        return false;
+    }
+    if(!managerNode->first)
+        managerNode->first = new node{subordinate, NULL, NULL};
+    else
+        managerNode->second = new node{subordinate, NULL, NULL};
+    return true;
+}
+};
+```
 
 正如我们所看到的，该函数返回一个布尔值，指示我们是否可以成功插入节点。
 
 1.  现在，让我们使用此代码在`main`函数中创建一棵树：
 
 ```cpp
-    int main()
-    {
-        auto tree = org_tree::create_org_structure("CEO");
-        if(tree.addSubordinate("CEO", "Deputy Director"))
-            std::cout << "Added Deputy Director in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Deputy Director in the tree" << std::endl;
-        if(tree.addSubordinate("Deputy Director", "IT Head"))
-            std::cout << "Added IT Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add IT Head in the tree" << std::endl;
-        if(tree.addSubordinate("Deputy Director", "Marketing Head"))
-            std::cout << "Added Marketing Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Marketing Head in the tree" << std::endl;
-        if(tree.addSubordinate("IT Head", "Security Head"))
-            std::cout << "Added Security Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Security Head in the tree" << std::endl;
-        if(tree.addSubordinate("IT Head", "App Development Head"))
-            std::cout << "Added App Development Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add App Development Head in the tree" << std::endl;
-    if(tree.addSubordinate("Marketing Head", "Logistics Head"))
-            std::cout << "Added Logistics Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Logistics Head in the tree" << std::endl;
-        if(tree.addSubordinate("Marketing Head", "Public Relations Head"))
-            std::cout << "Added Public Relations Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Public Relations Head in the tree" << std::endl;
-        if(tree.addSubordinate("Deputy Director", "Finance Head"))
-            std::cout << "Added Finance Head in the tree." << std::endl;
-        else
-            std::cout << "Couldn't add Finance Head in the tree" << std::endl;
-    }
-    ```
+int main()
+{
+    auto tree = org_tree::create_org_structure("CEO");
+    if(tree.addSubordinate("CEO", "Deputy Director"))
+        std::cout << "Added Deputy Director in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Deputy Director in the tree" << std::endl;
+    if(tree.addSubordinate("Deputy Director", "IT Head"))
+        std::cout << "Added IT Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add IT Head in the tree" << std::endl;
+    if(tree.addSubordinate("Deputy Director", "Marketing Head"))
+        std::cout << "Added Marketing Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Marketing Head in the tree" << std::endl;
+    if(tree.addSubordinate("IT Head", "Security Head"))
+        std::cout << "Added Security Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Security Head in the tree" << std::endl;
+    if(tree.addSubordinate("IT Head", "App Development Head"))
+        std::cout << "Added App Development Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add App Development Head in the tree" << std::endl;
+if(tree.addSubordinate("Marketing Head", "Logistics Head"))
+        std::cout << "Added Logistics Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Logistics Head in the tree" << std::endl;
+    if(tree.addSubordinate("Marketing Head", "Public Relations Head"))
+        std::cout << "Added Public Relations Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Public Relations Head in the tree" << std::endl;
+    if(tree.addSubordinate("Deputy Director", "Finance Head"))
+        std::cout << "Added Finance Head in the tree." << std::endl;
+    else
+        std::cout << "Couldn't add Finance Head in the tree" << std::endl;
+}
+```
 
 在执行上述代码后，您应该获得以下输出：
 
 ```cpp
-    Added Deputy Director in the tree.
-    Added IT Head in the tree.
-    Added Marketing Head in the tree.
-    Added Security Head in the tree.
-    Added App Development Head in the tree.
-    Added Logistics Head in the tree.
-    Added Public Relations Head in the tree.
-    Deputy Director already has 2 subordinates.
-    Couldn't add Finance Head in the tree
-    ```
+Added Deputy Director in the tree.
+Added IT Head in the tree.
+Added Marketing Head in the tree.
+Added Security Head in the tree.
+Added App Development Head in the tree.
+Added Logistics Head in the tree.
+Added Public Relations Head in the tree.
+Deputy Director already has 2 subordinates.
+Couldn't add Finance Head in the tree
+```
 
 此输出在以下图表中说明：
 
@@ -231,68 +231,68 @@
 +   先序遍历：在这种方法中，我们首先访问当前节点，然后是当前节点的左子节点，然后是当前节点的右子节点，以递归的方式。这里，前缀“pre”表示父节点在其子节点之前被访问。使用先序方法遍历*图 2.4*中显示的树如下：
 
 ```cpp
-    CEO, Deputy Director, IT Head, Security Head, App Development Head, Marketing Head, Logistics Head, Public Relations Head,
-    ```
+CEO, Deputy Director, IT Head, Security Head, App Development Head, Marketing Head, Logistics Head, Public Relations Head,
+```
 
 正如我们所看到的，我们总是先访问父节点，然后是左子节点，然后是右子节点。我们不仅对根节点是这样，对于任何节点都是这样。我们使用以下函数实现前序遍历：
 
 ```cpp
-    static void preOrder(node* start)
-    {
-        if(!start)
-            return;
-        std::cout << start->position << ", ";
-        preOrder(start->first);
-        preOrder(start->second);
-    }
-    ```
+static void preOrder(node* start)
+{
+    if(!start)
+        return;
+    std::cout << start->position << ", ";
+    preOrder(start->first);
+    preOrder(start->second);
+}
+```
 
 +   中序遍历：在这种遍历中，首先访问左节点，然后是父节点，最后是右节点。遍历*图 2.4*中显示的树如下：
 
 ```cpp
-    Security Head, IT Head, App Development Head, Deputy Director, Logistics Head, Marketing Head, Public Relations Head, CEO, 
-    ```
+Security Head, IT Head, App Development Head, Deputy Director, Logistics Head, Marketing Head, Public Relations Head, CEO, 
+```
 
 我们可以这样实现一个函数：
 
 ```cpp
-    static void inOrder(node* start)
-    {
-        if(!start)
-            return;
-        inOrder(start->first);
-    std::cout << start->position << ", ";
-        inOrder(start->second);
-    }
-    ```
+static void inOrder(node* start)
+{
+    if(!start)
+        return;
+    inOrder(start->first);
+std::cout << start->position << ", ";
+    inOrder(start->second);
+}
+```
 
 +   后序遍历：在这种遍历中，我们首先访问两个子节点，然后是父节点。遍历*图 2.4*中显示的树如下：
 
 ```cpp
-    Security Head, App Development Head, IT Head, Logistics Head, Public Relations Head, Marketing Head, Deputy Director, CEO, 
-    ```
+Security Head, App Development Head, IT Head, Logistics Head, Public Relations Head, Marketing Head, Deputy Director, CEO, 
+```
 
 我们可以这样实现一个函数：
 
 ```cpp
-    static void postOrder(node* start)
-    {
-        if(!start)
-            return;
-        postOrder(start->first);
-        postOrder(start->second);
-        std::cout << start->position << ", ";
-    }
-    ```
+static void postOrder(node* start)
+{
+    if(!start)
+        return;
+    postOrder(start->first);
+    postOrder(start->second);
+    std::cout << start->position << ", ";
+}
+```
 
 +   层次遍历：这要求我们逐层遍历树，从顶部到底部，从左到右。这类似于列出树的每个级别的元素，从根级别开始。这种遍历的结果通常表示为每个级别，如下所示：
 
 ```cpp
-    CEO, 
-    Deputy Director, 
-    IT Head, Marketing Head, 
-    Security Head, App Development Head, Logistics Head, Public Relations Head, 
-    ```
+CEO, 
+Deputy Director, 
+IT Head, Marketing Head, 
+Security Head, App Development Head, Logistics Head, Public Relations Head, 
+```
 
 这种遍历方法的实现在以下练习中演示。
 
@@ -303,40 +303,40 @@
 1.  首先，我们将在*练习 7*中的`org_tree`结构中添加以下函数：
 
 ```cpp
-    static void levelOrder(node* start)
-    {
-        if(!start)
-            return;
-        std::queue<node*> q;
-        q.push(start);
-        while(!q.empty())
-        {
-            int size = q.size();
-            for(int i = 0; i < size; i++)
-            {
-                auto current = q.front();
-                q.pop();
-                std::cout << current->position << ", ";
-                if(current->first)
-                    q.push(current->first);
-                if(current->second)
-                    q.push(current->second);
-            }
-            std::cout << std::endl;
-        }
-    }
-    ```
+static void levelOrder(node* start)
+{
+    if(!start)
+        return;
+    std::queue<node*> q;
+    q.push(start);
+    while(!q.empty())
+    {
+        int size = q.size();
+        for(int i = 0; i < size; i++)
+        {
+            auto current = q.front();
+            q.pop();
+            std::cout << current->position << ", ";
+            if(current->first)
+                q.push(current->first);
+            if(current->second)
+                q.push(current->second);
+        }
+        std::cout << std::endl;
+    }
+}
+```
 
 如前面的代码所示，首先我们遍历根节点，然后是它的子节点。在访问子节点时，我们将它们的子节点推入队列中，以便在当前级别完成后处理。这个想法是从第一级开始队列，并将下一级的节点添加到队列中。我们将继续这样做，直到队列为空，表示下一级没有更多的节点。
 
 1.  我们的输出应该是这样的：
 
 ```cpp
-    CEO, 
-    Deputy Director, 
-    IT Head, Marketing Head, 
-    Security Head, App Development Head, Logistics Head, Public Relations Head, 
-    ```
+CEO, 
+Deputy Director, 
+IT Head, Marketing Head, 
+Security Head, App Development Head, Logistics Head, Public Relations Head, 
+```
 
 ## 树的变体
 
@@ -433,206 +433,206 @@
 1.  首先，让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    ```
+#include <iostream>
+```
 
 1.  现在，让我们写一个节点。这将类似于我们之前的练习，只是我们将有一个整数而不是一个字符串：
 
 ```cpp
-    struct node
-    {
-        int data;
-        node *left, *right;
-    };
-    ```
+struct node
+{
+    int data;
+    node *left, *right;
+};
+```
 
 1.  现在，让我们在节点上添加一个包装器，以提供一个清晰的接口：
 
 ```cpp
-    struct bst
-    {
-        node* root = nullptr;
-    ```
+struct bst
+{
+    node* root = nullptr;
+```
 
 1.  在编写插入函数之前，我们需要编写“查找”函数：
 
 ```cpp
-    node* find(int value)
-    {
-        return find_impl(root, value);
-    }
-        private:
-    node* find_impl(node* current, int value)
-    {
-        if(!current)
-        {
-            std::cout << std::endl;
-            return NULL;
-        }
-        if(current->data == value)
-        {
-            std::cout << "Found " << value << std::endl;
-            return current;
-        }
-        if(value < current->data)  // Value will be in the left subtree
-        {
-            std::cout << "Going left from " << current->data << ", ";
-            return find_impl(current->left, value);
-        }
-        if(value > current->data) // Value will be in the right subtree
-        {
-            std::cout << "Going right from " << current->data << ", ";
-            return find_impl(current->right, value);
-        }
-    }
-    ```
+node* find(int value)
+{
+    return find_impl(root, value);
+}
+    private:
+node* find_impl(node* current, int value)
+{
+    if(!current)
+    {
+        std::cout << std::endl;
+        return NULL;
+    }
+    if(current->data == value)
+    {
+        std::cout << "Found " << value << std::endl;
+        return current;
+    }
+    if(value < current->data)  // Value will be in the left subtree
+    {
+        std::cout << "Going left from " << current->data << ", ";
+        return find_impl(current->left, value);
+    }
+    if(value > current->data) // Value will be in the right subtree
+    {
+        std::cout << "Going right from " << current->data << ", ";
+        return find_impl(current->right, value);
+    }
+}
+```
 
 由于这是递归的，我们将实现放在一个单独的函数中，并将其设置为私有，以防止有人直接使用它。
 
 1.  现在，让我们编写一个“插入”函数。它将类似于“查找”函数，但有一些小调整。首先，让我们找到父节点，这是我们想要插入新值的地方：
 
 ```cpp
-    public:
-    void insert(int value)
-    {
-        if(!root)
-            root = new node{value, NULL, NULL};
-        else
-            insert_impl(root, value);
-    }
-    private:
-    void insert_impl(node* current, int value)
-    {
-        if(value < current->data)
-        {
-            if(!current->left)
-                current->left = new node{value, NULL, NULL};
-            else
-                insert_impl(current->left, value);
-        }
-        else
-        {
-            if(!current->right)
-                current->right = new node{value, NULL, NULL};
-                else
-                    insert_impl(current->right, value);
-        }
-    }
-    ```
+public:
+void insert(int value)
+{
+    if(!root)
+        root = new node{value, NULL, NULL};
+    else
+        insert_impl(root, value);
+}
+private:
+void insert_impl(node* current, int value)
+{
+    if(value < current->data)
+    {
+        if(!current->left)
+            current->left = new node{value, NULL, NULL};
+        else
+            insert_impl(current->left, value);
+    }
+    else
+    {
+        if(!current->right)
+            current->right = new node{value, NULL, NULL};
+            else
+                insert_impl(current->right, value);
+    }
+}
+```
 
 正如我们所看到的，我们正在检查值应该插入左侧还是右侧子树。如果所需侧面没有任何内容，我们直接在那里插入节点；否则，我们递归调用该侧的“插入”函数。
 
 1.  现在，让我们编写一个“中序”遍历函数。中序遍历在应用于 BST 时提供了重要的优势，正如我们将在输出中看到的：
 
 ```cpp
-    public:
-    void inorder()
-    {
-        inorder_impl(root);
-    }
-    private:
-    void inorder_impl(node* start)
-    {
-        if(!start)
-            return;
-        inorder_impl(start->left);        // Visit the left sub-tree
-        std::cout << start->data << " ";  // Print out the current node
-        inorder_impl(start->right);       // Visit the right sub-tree
-    }
-    ```
+public:
+void inorder()
+{
+    inorder_impl(root);
+}
+private:
+void inorder_impl(node* start)
+{
+    if(!start)
+        return;
+    inorder_impl(start->left);        // Visit the left sub-tree
+    std::cout << start->data << " ";  // Print out the current node
+    inorder_impl(start->right);       // Visit the right sub-tree
+}
+```
 
 1.  现在，让我们实现一个实用函数来获取后继：
 
 ```cpp
-    public:
-    node* successor(node* start)
-    {
-        auto current = start->right;
-        while(current && current->left)
-            current = current->left;
-        return current;
-    }
-    ```
+public:
+node* successor(node* start)
+{
+    auto current = start->right;
+    while(current && current->left)
+        current = current->left;
+    return current;
+}
+```
 
 这遵循了我们在*删除 BST 中的元素*子节中讨论的逻辑。
 
 1.  现在，让我们看一下`delete`的实际实现。由于删除需要重新指向父节点，我们将通过每次返回新节点来执行此操作。我们将通过在其上放置更好的接口来隐藏这种复杂性。我们将命名接口为`deleteValue`，因为`delete`是 C++标准中的保留关键字：
 
 ```cpp
-    void deleteValue(int value)
-    {
-        root = delete_impl(root, value);
-    }
-    private:
-    node* delete_impl(node* start, int value)
-    {
-        if(!start)
-            return NULL;
-        if(value < start->data)
-            start->left = delete_impl(start->left, value);
-        else if(value > start->data)
-            start->right = delete_impl(start->right, value);
-        else
-        {
-            if(!start->left)  // Either both children are absent or only left child is absent
-            {
-                auto tmp = start->right;
-                delete start;
-                return tmp;
-            }
-            if(!start->right)  // Only right child is absent
-            {
-                auto tmp = start->left;
-                delete start;
-                return tmp;
-            }
-            auto succNode = successor(start);
-            start->data = succNode->data;
-            // Delete the successor from right subtree, since it will always be in the right subtree
-            start->right = delete_impl(start->right, succNode->data);
-        }
-        return start;
-    }
-    };
-    ```
+void deleteValue(int value)
+{
+    root = delete_impl(root, value);
+}
+private:
+node* delete_impl(node* start, int value)
+{
+    if(!start)
+        return NULL;
+    if(value < start->data)
+        start->left = delete_impl(start->left, value);
+    else if(value > start->data)
+        start->right = delete_impl(start->right, value);
+    else
+    {
+        if(!start->left)  // Either both children are absent or only left child is absent
+        {
+            auto tmp = start->right;
+            delete start;
+            return tmp;
+        }
+        if(!start->right)  // Only right child is absent
+        {
+            auto tmp = start->left;
+            delete start;
+            return tmp;
+        }
+        auto succNode = successor(start);
+        start->data = succNode->data;
+        // Delete the successor from right subtree, since it will always be in the right subtree
+        start->right = delete_impl(start->right, succNode->data);
+    }
+    return start;
+}
+};
+```
 
 1.  让我们编写`main`函数，以便我们可以使用 BST：
 
 ```cpp
-    int main()
-    {
-        bst tree;
-        tree.insert(12);
-        tree.insert(10);
-        tree.insert(20);
-        tree.insert(8);
-        tree.insert(11);
-        tree.insert(15);
-        tree.insert(28);
-        tree.insert(4);
-        tree.insert(2);
-        std::cout << "Inorder: ";
-        tree.inorder();  // This will print all the elements in ascending order
-        std::cout << std::endl;
-        tree.deleteValue(12);
-        std::cout << "Inorder after deleting 12: ";
-        tree.inorder();  // This will print all the elements in ascending order
-        std::cout << std::endl;
-        if(tree.find(12))
-            std::cout << "Element 12 is present in the tree" << std::endl;
-        else
-            std::cout << "Element 12 is NOT present in the tree" << std::endl;
-    }
-    ```
+int main()
+{
+    bst tree;
+    tree.insert(12);
+    tree.insert(10);
+    tree.insert(20);
+    tree.insert(8);
+    tree.insert(11);
+    tree.insert(15);
+    tree.insert(28);
+    tree.insert(4);
+    tree.insert(2);
+    std::cout << "Inorder: ";
+    tree.inorder();  // This will print all the elements in ascending order
+    std::cout << std::endl;
+    tree.deleteValue(12);
+    std::cout << "Inorder after deleting 12: ";
+    tree.inorder();  // This will print all the elements in ascending order
+    std::cout << std::endl;
+    if(tree.find(12))
+        std::cout << "Element 12 is present in the tree" << std::endl;
+    else
+        std::cout << "Element 12 is NOT present in the tree" << std::endl;
+}
+```
 
 执行上述代码的输出应该如下所示：
 
 ```cpp
-    Inorder: 2 4 8 10 11 12 15 20 28 
-    Inorder after deleting 12: 2 4 8 10 11 15 20 28 
-    Going left from 15, Going right from 10, Going right from 11, 
-    Element 12 is NOT present in the tree
-    ```
+Inorder: 2 4 8 10 11 12 15 20 28 
+Inorder after deleting 12: 2 4 8 10 11 15 20 28 
+Going left from 15, Going right from 10, Going right from 11, 
+Element 12 is NOT present in the tree
+```
 
 观察 BST 的中序遍历结果。中序遍历将首先访问左子树，然后是当前节点，然后是右子树，如代码片段中的注释所示。因此，根据 BST 的属性，我们将首先访问所有小于当前值的值，然后是当前值，然后我们将访问所有大于当前值的值。由于这是递归进行的，我们将按升序排序获取我们的数据。
 
@@ -807,105 +807,105 @@ struct nTree
 1.  首先让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <queue>
-    #include <vector>
-    ```
+#include <iostream>
+#include <queue>
+#include <vector>
+```
 
 1.  现在，让我们编写一个容器来存储到目前为止收到的数据。我们将数据存储在两个堆中 - 一个最小堆和一个最大堆。我们将把较小的前半部分元素存储在最大堆中，将较大的或另一半存储在最小堆中。因此，在任何时候，中位数可以使用堆的顶部元素来计算，这些元素很容易访问：
 
 ```cpp
-    struct median
-    {
-        std::priority_queue<int> maxHeap;
-        std::priority_queue<int, std::vector<int>, std::greater<int>> minHeap;
-    ```
+struct median
+{
+    std::priority_queue<int> maxHeap;
+    std::priority_queue<int, std::vector<int>, std::greater<int>> minHeap;
+```
 
 1.  现在，让我们编写一个`insert`函数，以便我们可以插入新到达的数据：
 
 ```cpp
-    void insert(int data)
-    {
-        // First element
-        if(maxHeap.size() == 0)
-        {
-            maxHeap.push(data);
-            return;
-        }
-        if(maxHeap.size() == minHeap.size())
-        {
-            if(data <= get())
-                maxHeap.push(data);
-            else
-                minHeap.push(data);
-            return;
-        }
-        if(maxHeap.size() < minHeap.size())
-        {
-            if(data > get())
-            {
-                maxHeap.push(minHeap.top());
-                minHeap.pop();
-                minHeap.push(data);
-            }
-            else
-                maxHeap.push(data);
-            return;
-        }
-        if(data < get())
-        {
-            minHeap.push(maxHeap.top());
-            maxHeap.pop();
-            maxHeap.push(data);
-        }
-        else
-            minHeap.push(data);
-    }
-    ```
+void insert(int data)
+{
+    // First element
+    if(maxHeap.size() == 0)
+    {
+        maxHeap.push(data);
+        return;
+    }
+    if(maxHeap.size() == minHeap.size())
+    {
+        if(data <= get())
+            maxHeap.push(data);
+        else
+            minHeap.push(data);
+        return;
+    }
+    if(maxHeap.size() < minHeap.size())
+    {
+        if(data > get())
+        {
+            maxHeap.push(minHeap.top());
+            minHeap.pop();
+            minHeap.push(data);
+        }
+        else
+            maxHeap.push(data);
+        return;
+    }
+    if(data < get())
+    {
+        minHeap.push(maxHeap.top());
+        maxHeap.pop();
+        maxHeap.push(data);
+    }
+    else
+        minHeap.push(data);
+}
+```
 
 1.  现在，让我们编写一个`get`函数，以便我们可以从容器中获取中位数：
 
 ```cpp
-    double get()
-    {
-        if(maxHeap.size() == minHeap.size())
-            return (maxHeap.top() + minHeap.top()) / 2.0;
-        if(maxHeap.size() < minHeap.size())
-            return minHeap.top();
-        return maxHeap.top();
-    }
-    };
-    ```
+double get()
+{
+    if(maxHeap.size() == minHeap.size())
+        return (maxHeap.top() + minHeap.top()) / 2.0;
+    if(maxHeap.size() < minHeap.size())
+        return minHeap.top();
+    return maxHeap.top();
+}
+};
+```
 
 1.  现在，让我们编写一个`main`函数，以便我们可以使用这个类：
 
 ```cpp
-    int main()
-    {
-        median med;
-        med.insert(1);
-        std::cout << "Median after insert 1: " << med.get() << std::endl;
-        med.insert(5);
-        std::cout << "Median after insert 5: " << med.get() << std::endl;
-        med.insert(2);
-        std::cout << "Median after insert 2: " << med.get() << std::endl;
-        med.insert(10);
-        std::cout << "Median after insert 10: " << med.get() << std::endl;
-        med.insert(40);
-        std::cout << "Median after insert 40: " << med.get() << std::endl;
-        return 0;
-    }
-    ```
+int main()
+{
+    median med;
+    med.insert(1);
+    std::cout << "Median after insert 1: " << med.get() << std::endl;
+    med.insert(5);
+    std::cout << "Median after insert 5: " << med.get() << std::endl;
+    med.insert(2);
+    std::cout << "Median after insert 2: " << med.get() << std::endl;
+    med.insert(10);
+    std::cout << "Median after insert 10: " << med.get() << std::endl;
+    med.insert(40);
+    std::cout << "Median after insert 40: " << med.get() << std::endl;
+    return 0;
+}
+```
 
 上述程序的输出如下：
 
 ```cpp
-    Median after insert 1: 1
-    Median after insert 5: 3
-    Median after insert 2: 2
-    Median after insert 10: 3.5
-    Median after insert 40: 5
-    ```
+Median after insert 1: 1
+Median after insert 5: 3
+Median after insert 2: 2
+Median after insert 10: 3.5
+Median after insert 40: 5
+```
 
 这样，我们只需要插入任何新到达的元素，这只需要*O(log n)*的时间复杂度，与如果我们每次有新元素就对元素进行排序的时间复杂度*O(n log n)*相比。
 
@@ -960,149 +960,149 @@ struct nTree
 1.  首先，让我们包括所需的头文件：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    ```
+#include <iostream>
+#include <vector>
+```
 
 1.  现在，让我们添加一个`enum`类，以便我们可以存储城市的名称：
 
 ```cpp
-    enum class city: int
-    {
-        LONDON,
-        MOSCOW,
-        ISTANBUL,
-        DUBAI,
-        MUMBAI,
-        SEATTLE,
-        SINGAPORE
-    };
-    ```
+enum class city: int
+{
+    LONDON,
+    MOSCOW,
+    ISTANBUL,
+    DUBAI,
+    MUMBAI,
+    SEATTLE,
+    SINGAPORE
+};
+```
 
 1.  让我们还为`city`枚举添加`<<`运算符：
 
 ```cpp
-    std::ostream& operator<<(std::ostream& os, const city c)
-    {
-        switch(c)
-        {
-            case city::LONDON:
-                os << "LONDON";
-                return os;
-            case city::MOSCOW:
-                os << "MOSCOW";
-                return os;
-            case city::ISTANBUL:
-                os << "ISTANBUL";
-                return os;
-            case city::DUBAI:
-                os << "DUBAI";
-                return os;
-            case city::MUMBAI:
-                os << "MUMBAI";
-                return os;
-            case city::SEATTLE:
-                os << "SEATTLE";
-                return os;
-            case city::SINGAPORE:
-                os << "SINGAPORE";
-                return os;
-            default:
-                return os;
-        }
-    }
-    ```
+std::ostream& operator<<(std::ostream& os, const city c)
+{
+    switch(c)
+    {
+        case city::LONDON:
+            os << "LONDON";
+            return os;
+        case city::MOSCOW:
+            os << "MOSCOW";
+            return os;
+        case city::ISTANBUL:
+            os << "ISTANBUL";
+            return os;
+        case city::DUBAI:
+            os << "DUBAI";
+            return os;
+        case city::MUMBAI:
+            os << "MUMBAI";
+            return os;
+        case city::SEATTLE:
+            os << "SEATTLE";
+            return os;
+        case city::SINGAPORE:
+            os << "SINGAPORE";
+            return os;
+        default:
+            return os;
+    }
+}
+```
 
 1.  现在，让我们编写`struct graph`，它将封装我们的数据：
 
 ```cpp
-    struct graph
-    {
-        std::vector<std::vector<int>> data;
-    ```
+struct graph
+{
+    std::vector<std::vector<int>> data;
+```
 
 1.  现在，让我们添加一个构造函数，它将创建一个空图（没有任何边的图）并给定节点数：
 
 ```cpp
-    graph(int n)
-    {
-        data.reserve(n);
-        std::vector<int> row(n);
-        std::fill(row.begin(), row.end(), -1);
-        for(int i = 0; i < n; i++)
-        {
-            data.push_back(row);
-        }
-    }
-    ```
+graph(int n)
+{
+    data.reserve(n);
+    std::vector<int> row(n);
+    std::fill(row.begin(), row.end(), -1);
+    for(int i = 0; i < n; i++)
+    {
+        data.push_back(row);
+    }
+}
+```
 
 1.  现在，让我们添加最重要的函数——`addEdge`。它将接受三个参数——要连接的两个城市和边的权重（距离）：
 
 ```cpp
-    void addEdge(const city c1, const city c2, int dis)
-    {
-        std::cout << "ADD: " << c1 << "-" << c2 << "=" << dis << std::endl;
-        auto n1 = static_cast<int>(c1);
-        auto n2 = static_cast<int>(c2);
-        data[n1][n2] = dis;
-        data[n2][n1] = dis;
-    }
-    ```
+void addEdge(const city c1, const city c2, int dis)
+{
+    std::cout << "ADD: " << c1 << "-" << c2 << "=" << dis << std::endl;
+    auto n1 = static_cast<int>(c1);
+    auto n2 = static_cast<int>(c2);
+    data[n1][n2] = dis;
+    data[n2][n1] = dis;
+}
+```
 
 1.  现在，让我们添加一个函数，这样我们就可以从图中删除一条边：
 
 ```cpp
-    void removeEdge(const city c1, const city c2)
-    {
-        std::cout << "REMOVE: " << c1 << "-" << c2 << std::endl;
-        auto n1 = static_cast<int>(c1);
-        auto n2 = static_cast<int>(c2);
-        data[n1][n2] = -1;
-        data[n2][n1] = -1;
-    }
-    };
-    ```
+void removeEdge(const city c1, const city c2)
+{
+    std::cout << "REMOVE: " << c1 << "-" << c2 << std::endl;
+    auto n1 = static_cast<int>(c1);
+    auto n2 = static_cast<int>(c2);
+    data[n1][n2] = -1;
+    data[n2][n1] = -1;
+}
+};
+```
 
 1.  现在，让我们编写`main`函数，以便我们可以使用这些函数：
 
 ```cpp
-    int main()
-    {
-        graph g(7);
-        g.addEdge(city::LONDON, city::MOSCOW, 900);
-        g.addEdge(city::LONDON, city::ISTANBUL, 500);
-        g.addEdge(city::LONDON, city::DUBAI, 1000);
-        g.addEdge(city::ISTANBUL, city::MOSCOW, 1000);
-        g.addEdge(city::ISTANBUL, city::DUBAI, 500);
-        g.addEdge(city::DUBAI, city::MUMBAI, 200);
-        g.addEdge(city::ISTANBUL, city::SEATTLE, 1500);
-        g.addEdge(city::DUBAI, city::SINGAPORE, 500);
-        g.addEdge(city::MOSCOW, city::SEATTLE, 1000);
-        g.addEdge(city::MUMBAI, city::SINGAPORE, 300);
-        g.addEdge(city::SEATTLE, city::SINGAPORE, 700);
-        g.addEdge(city::SEATTLE, city::LONDON, 1800);
-        g.removeEdge(city::SEATTLE, city::LONDON);
-        return 0;
-    }
-    ```
+int main()
+{
+    graph g(7);
+    g.addEdge(city::LONDON, city::MOSCOW, 900);
+    g.addEdge(city::LONDON, city::ISTANBUL, 500);
+    g.addEdge(city::LONDON, city::DUBAI, 1000);
+    g.addEdge(city::ISTANBUL, city::MOSCOW, 1000);
+    g.addEdge(city::ISTANBUL, city::DUBAI, 500);
+    g.addEdge(city::DUBAI, city::MUMBAI, 200);
+    g.addEdge(city::ISTANBUL, city::SEATTLE, 1500);
+    g.addEdge(city::DUBAI, city::SINGAPORE, 500);
+    g.addEdge(city::MOSCOW, city::SEATTLE, 1000);
+    g.addEdge(city::MUMBAI, city::SINGAPORE, 300);
+    g.addEdge(city::SEATTLE, city::SINGAPORE, 700);
+    g.addEdge(city::SEATTLE, city::LONDON, 1800);
+    g.removeEdge(city::SEATTLE, city::LONDON);
+    return 0;
+}
+```
 
 1.  执行此程序后，我们应该得到以下输出：
 
 ```cpp
-    ADD: LONDON-MOSCOW=900
-    ADD: LONDON-ISTANBUL=500
-    ADD: LONDON-DUBAI=1000
-    ADD: ISTANBUL-MOSCOW=1000
-    ADD: ISTANBUL-DUBAI=500
-    ADD: DUBAI-MUMBAI=200
-    ADD: ISTANBUL-SEATTLE=1500
-    ADD: DUBAI-SINGAPORE=500
-    ADD: MOSCOW-SEATTLE=1000
-    ADD: MUMBAI-SINGAPORE=300
-    ADD: SEATTLE-SINGAPORE=700
-    ADD: SEATTLE-LONDON=1800
-    REMOVE: SEATTLE-LONDON
-    ```
+ADD: LONDON-MOSCOW=900
+ADD: LONDON-ISTANBUL=500
+ADD: LONDON-DUBAI=1000
+ADD: ISTANBUL-MOSCOW=1000
+ADD: ISTANBUL-DUBAI=500
+ADD: DUBAI-MUMBAI=200
+ADD: ISTANBUL-SEATTLE=1500
+ADD: DUBAI-SINGAPORE=500
+ADD: MOSCOW-SEATTLE=1000
+ADD: MUMBAI-SINGAPORE=300
+ADD: SEATTLE-SINGAPORE=700
+ADD: SEATTLE-LONDON=1800
+REMOVE: SEATTLE-LONDON
+```
 
 正如我们所看到的，我们正在将数据存储在一个向量的向量中，两个维度都等于节点数。因此，这种表示所需的总空间与*V2*成正比，其中*V*是节点数。
 
@@ -1121,152 +1121,152 @@ struct nTree
 1.  在这个练习中，我们将实现邻接表表示。让我们像往常一样从头文件开始：
 
 ```cpp
-    #include <iostream>
-    #include <vector>
-    #include <algorithm>
-    ```
+#include <iostream>
+#include <vector>
+#include <algorithm>
+```
 
 1.  现在，让我们添加一个`enum`类，以便我们可以存储城市的名称：
 
 ```cpp
-    enum class city: int
-    {
-        MOSCOW,
-        LONDON,
-        ISTANBUL,
-        SEATTLE,
-        DUBAI,
-        MUMBAI,
-        SINGAPORE
-    };
-    ```
+enum class city: int
+{
+    MOSCOW,
+    LONDON,
+    ISTANBUL,
+    SEATTLE,
+    DUBAI,
+    MUMBAI,
+    SINGAPORE
+};
+```
 
 1.  让我们还为`city`枚举添加`<<`运算符：
 
 ```cpp
-    std::ostream& operator<<(std::ostream& os, const city c)
-    {
-        switch(c)
-        {
-            case city::MOSCOW:
-                os << "MOSCOW";
-                return os;
-            case city::LONDON:
-                os << "LONDON";
-                return os;
-            case city::ISTANBUL:
-                os << "ISTANBUL";
-                return os;
-            case city::SEATTLE:
-                os << "SEATTLE";
-                return os;
-            case city::DUBAI:
-                os << "DUBAI";
-                return os;
-            case city::MUMBAI:
-                os << "MUMBAI";
-                return os;
-            case city::SINGAPORE:
-                os << "SINGAPORE";
-                return os;
-            default:
-                return os;
-        }
-    }
-    ```
+std::ostream& operator<<(std::ostream& os, const city c)
+{
+    switch(c)
+    {
+        case city::MOSCOW:
+            os << "MOSCOW";
+            return os;
+        case city::LONDON:
+            os << "LONDON";
+            return os;
+        case city::ISTANBUL:
+            os << "ISTANBUL";
+            return os;
+        case city::SEATTLE:
+            os << "SEATTLE";
+            return os;
+        case city::DUBAI:
+            os << "DUBAI";
+            return os;
+        case city::MUMBAI:
+            os << "MUMBAI";
+            return os;
+        case city::SINGAPORE:
+            os << "SINGAPORE";
+            return os;
+        default:
+            return os;
+    }
+}
+```
 
 1.  让我们编写`struct graph`，它将封装我们的数据：
 
 ```cpp
-    struct graph
-    {
-        std::vector<std::vector<std::pair<int, int>>> data;
-    ```
+struct graph
+{
+    std::vector<std::vector<std::pair<int, int>>> data;
+```
 
 1.  让我们看看我们的构造函数与矩阵表示有何不同：
 
 ```cpp
-    graph(int n)
-    {
-        data = std::vector<std::vector<std::pair<int, int>>>(n, std::vector<std::pair<int, int>>());
-    }
-    ```
+graph(int n)
+{
+    data = std::vector<std::vector<std::pair<int, int>>>(n, std::vector<std::pair<int, int>>());
+}
+```
 
 正如我们所看到的，我们正在用 2D 向量初始化数据，但所有行最初都是空的，因为开始时没有边。
 
 1.  让我们为此实现`addEdge`函数：
 
 ```cpp
-    void addEdge(const city c1, const city c2, int dis)
-    {
-        std::cout << "ADD: " << c1 << "-" << c2 << "=" << dis << std::endl;
-        auto n1 = static_cast<int>(c1);
-        auto n2 = static_cast<int>(c2);
-        data[n1].push_back({n2, dis});
-        data[n2].push_back({n1, dis});
-    }
-    ```
+void addEdge(const city c1, const city c2, int dis)
+{
+    std::cout << "ADD: " << c1 << "-" << c2 << "=" << dis << std::endl;
+    auto n1 = static_cast<int>(c1);
+    auto n2 = static_cast<int>(c2);
+    data[n1].push_back({n2, dis});
+    data[n2].push_back({n1, dis});
+}
+```
 
 1.  现在，让我们编写`removeEdge`，这样我们就可以从图中移除一条边：
 
 ```cpp
-    void removeEdge(const city c1, const city c2)
-    {
-        std::cout << "REMOVE: " << c1 << "-" << c2 << std::endl;
-        auto n1 = static_cast<int>(c1);
-        auto n2 = static_cast<int>(c2);
-        std::remove_if(data[n1].begin(), data[n1].end(), n2
-            {
-                return pair.first == n2;
-            });
-        std::remove_if(data[n2].begin(), data[n2].end(), n1
-            {
-                return pair.first == n1;
-            });
-    }
-    };
-    ```
+void removeEdge(const city c1, const city c2)
+{
+    std::cout << "REMOVE: " << c1 << "-" << c2 << std::endl;
+    auto n1 = static_cast<int>(c1);
+    auto n2 = static_cast<int>(c2);
+    std::remove_if(data[n1].begin(), data[n1].end(), n2
+        {
+            return pair.first == n2;
+        });
+    std::remove_if(data[n2].begin(), data[n2].end(), n1
+        {
+            return pair.first == n1;
+        });
+}
+};
+```
 
 1.  现在，让我们编写`main`函数，这样我们就可以使用这些函数：
 
 ```cpp
-    int main()
-    {
-        graph g(7);
-        g.addEdge(city::LONDON, city::MOSCOW, 900);
-        g.addEdge(city::LONDON, city::ISTANBUL, 500);
-        g.addEdge(city::LONDON, city::DUBAI, 1000);
-        g.addEdge(city::ISTANBUL, city::MOSCOW, 1000);
-        g.addEdge(city::ISTANBUL, city::DUBAI, 500);
-        g.addEdge(city::DUBAI, city::MUMBAI, 200);
-        g.addEdge(city::ISTANBUL, city::SEATTLE, 1500);
-        g.addEdge(city::DUBAI, city::SINGAPORE, 500);
-        g.addEdge(city::MOSCOW, city::SEATTLE, 1000);
-        g.addEdge(city::MUMBAI, city::SINGAPORE, 300);
-        g.addEdge(city::SEATTLE, city::SINGAPORE, 700);
-        g.addEdge(city::SEATTLE, city::LONDON, 1800);
-        g.removeEdge(city::SEATTLE, city::LONDON);
-        return 0;
-    }
-    ```
+int main()
+{
+    graph g(7);
+    g.addEdge(city::LONDON, city::MOSCOW, 900);
+    g.addEdge(city::LONDON, city::ISTANBUL, 500);
+    g.addEdge(city::LONDON, city::DUBAI, 1000);
+    g.addEdge(city::ISTANBUL, city::MOSCOW, 1000);
+    g.addEdge(city::ISTANBUL, city::DUBAI, 500);
+    g.addEdge(city::DUBAI, city::MUMBAI, 200);
+    g.addEdge(city::ISTANBUL, city::SEATTLE, 1500);
+    g.addEdge(city::DUBAI, city::SINGAPORE, 500);
+    g.addEdge(city::MOSCOW, city::SEATTLE, 1000);
+    g.addEdge(city::MUMBAI, city::SINGAPORE, 300);
+    g.addEdge(city::SEATTLE, city::SINGAPORE, 700);
+    g.addEdge(city::SEATTLE, city::LONDON, 1800);
+    g.removeEdge(city::SEATTLE, city::LONDON);
+    return 0;
+}
+```
 
 执行此程序后，我们应该得到以下输出：
 
 ```cpp
-    ADD: LONDON-MOSCOW=900
-    ADD: LONDON-ISTANBUL=500
-    ADD: LONDON-DUBAI=1000
-    ADD: ISTANBUL-MOSCOW=1000
-    ADD: ISTANBUL-DUBAI=500
-    ADD: DUBAI-MUMBAI=200
-    ADD: ISTANBUL-SEATTLE=1500
-    ADD: DUBAI-SINGAPORE=500
-    ADD: MOSCOW-SEATTLE=1000
-    ADD: MUMBAI-SINGAPORE=300
-    ADD: SEATTLE-SINGAPORE=700
-    ADD: SEATTLE-LONDON=1800
-    REMOVE: SEATTLE-LONDON
-    ```
+ADD: LONDON-MOSCOW=900
+ADD: LONDON-ISTANBUL=500
+ADD: LONDON-DUBAI=1000
+ADD: ISTANBUL-MOSCOW=1000
+ADD: ISTANBUL-DUBAI=500
+ADD: DUBAI-MUMBAI=200
+ADD: ISTANBUL-SEATTLE=1500
+ADD: DUBAI-SINGAPORE=500
+ADD: MOSCOW-SEATTLE=1000
+ADD: MUMBAI-SINGAPORE=300
+ADD: SEATTLE-SINGAPORE=700
+ADD: SEATTLE-LONDON=1800
+REMOVE: SEATTLE-LONDON
+```
 
 由于我们为每个节点存储了一个相邻节点的列表，这种方法被称为邻接表。这种方法也使用了一个向量的向量来存储数据，就像前一种方法一样。但内部向量的维度不等于节点的数量；相反，它取决于边的数量。对于图中的每条边，根据我们的`addEdge`函数，我们将有两个条目。这种表示所需的内存将与 E 成正比，其中 E 是边的数量。
 

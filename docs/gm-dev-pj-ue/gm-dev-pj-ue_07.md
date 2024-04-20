@@ -237,8 +237,8 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  打开文件，您会发现从`PublicDependencyModuleNames`属性调用的`AddRange`函数。这个函数告诉引擎这个项目打算使用哪些模块。作为参数，发送了一个字符串数组，其中包含项目的所有预期模块的名称。鉴于我们打算使用 UMG，我们需要添加与 UMG 相关的模块：`UMG`，`Slate`和`SlateCore`：
 
 ```cpp
-    PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG", "Slate", "SlateCore" });
-    ```
+PublicDependencyModuleNames.AddRange(new string[] { "Core",   "CoreUObject", "Engine", "InputCore", "HeadMountedDisplay",   "UMG", "Slate", "SlateCore" });
+```
 
 现在我们已经通知引擎我们将使用 UMG 模块，让我们创建我们的小部件 C++类：
 
@@ -257,9 +257,9 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  我们将要添加到这个类的第一件事是一个名为`RestartButton`的`public` `class UButton*`属性，它代表玩家将按下以重新启动级别的按钮。您将希望它通过使用`UPROPERTY`宏和`BindWidget`元标记绑定到从该类继承的蓝图类中的按钮。这将强制 Widget 蓝图具有一个名为`RestartButton`的`Button`，我们可以通过此属性在 C++中访问它，然后自由编辑其属性，例如在蓝图中的大小和位置：
 
 ```cpp
-    UPROPERTY(meta = (BindWidget))
-    class UButton* RestartButton;
-    ```
+UPROPERTY(meta = (BindWidget))
+class UButton* RestartButton;
+```
 
 注意
 
@@ -270,30 +270,30 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  在 Widget 类的头文件中，添加一个名为`OnRestartClicked`的`protected`函数的声明，它不返回任何内容并且不接收任何参数。此函数必须标记为`UFUNCTION`：
 
 ```cpp
-    protected:
-    UFUNCTION()
-    void OnRestartClicked();
-    ```
+protected:
+UFUNCTION()
+void OnRestartClicked();
+```
 
 1.  在类的源文件中，添加一个`GameplayStatics`对象的`include`：
 
 ```cpp
-    #include "Kismet/GameplayStatics.h"
-    ```
+#include "Kismet/GameplayStatics.h"
+```
 
 1.  然后，为我们的`OnRestartClicked`函数添加一个实现：
 
 ```cpp
-    void URestartWidget::OnRestartClicked()
-    {
-    }
-    ```
+void URestartWidget::OnRestartClicked()
+{
+}
+```
 
 1.  在其实现中，调用`GameplayStatics`对象的`OpenLevel`函数。此函数接收世界上下文对象作为参数，这将是`this`指针，并且级别的名称，我们将不得不使用`GameplayStatics`对象的`GetCurrentLevelName`函数来获取。这个最后的函数也必须接收一个世界上下文对象，这也将是`this`指针：
 
 ```cpp
-    UGameplayStatics::OpenLevel(this,   FName(*UGameplayStatics::GetCurrentLevelName(this)));
-    ```
+UGameplayStatics::OpenLevel(this,   FName(*UGameplayStatics::GetCurrentLevelName(this)));
+```
 
 注意
 
@@ -304,35 +304,35 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  为了做到这一点，我们将不得不重写属于`UserWidget`类的一个函数，名为`NativeOnInitialized`。这个函数只被调用一次，类似于 Actor 的`BeginPlay`函数，这使得它适合进行我们的设置。在我们的 Widget 类的头文件中，使用`virtual`和`override`关键字添加一个`public` `NativeOnInitialized`函数的声明：
 
 ```cpp
-    virtual void NativeOnInitialized() override;
-    ```
+virtual void NativeOnInitialized() override;
+```
 
 1.  接下来，在类的源文件中，添加此函数的实现。在其中，调用其`Super`函数并添加一个`if`语句，检查我们的`RestartButton`是否与`nullptr`不同：
 
 ```cpp
-    void URestartWidget::NativeOnInitialized()
-    {
-      Super::NativeOnInitialized();
-      if (RestartButton != nullptr)
-      {
-      }
-    }
-    ```
+void URestartWidget::NativeOnInitialized()
+{
+  Super::NativeOnInitialized();
+  if (RestartButton != nullptr)
+  {
+  }
+}
+```
 
 1.  如果`if`语句为真，我们将希望将我们的`OnRestartClicked`函数绑定到按钮的`OnClicked`事件。我们可以通过访问按钮的`OnClicked`属性并调用其`AddDynamic`函数来实现这一点，将我们想要调用该函数的对象（即`this`指针）和要调用的函数的指针（即`OnRestartClicked`函数）作为参数发送：
 
 ```cpp
-    if (RestartButton != nullptr)
-    {
-      RestartButton->OnClicked.AddDynamic(this,   &URestartWidget::OnRestartClicked);
-    }
-    ```
+if (RestartButton != nullptr)
+{
+  RestartButton->OnClicked.AddDynamic(this,   &URestartWidget::OnRestartClicked);
+}
+```
 
 1.  因为我们正在访问与`Button`类相关的函数，所以我们还必须包含它：
 
 ```cpp
-    #include "Components/Button.h"
-    ```
+#include "Components/Button.h"
+```
 
 注意
 
@@ -391,20 +391,20 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  在类的头文件中，添加一个名为`BP_RestartWidget`的`public` `TSubclassOf<class URestartWidget>`属性。确保将其设置为`UPROPERTY`，并使用`EditDefaultsOnly`标记，以便我们可以在蓝图类中编辑它：
 
 ```cpp
-    public:
-    UPROPERTY(EditDefaultsOnly)
-    TSubclassOf<class URestartWidget> BP_RestartWidget;
-    ```
+public:
+UPROPERTY(EditDefaultsOnly)
+TSubclassOf<class URestartWidget> BP_RestartWidget;
+```
 
 为了实例化这个 Widget 并将其添加到屏幕上，我们需要保存一个对它的引用。
 
 1.  添加一个`private`类型为`class URestartWidget*`的新变量，并将其命名为`RestartWidget`。确保将其设置为没有标签的`UPROPERTY`函数：
 
 ```cpp
-    private:
-    UPROPERTY()
-    class URestartWidget* RestartWidget;
-    ```
+private:
+UPROPERTY()
+class URestartWidget* RestartWidget;
+```
 
 注意
 
@@ -415,141 +415,141 @@ HUD 是游戏过程中存在的 UI 面板，向玩家提供他们应该始终知
 1.  添加一个声明为返回无内容并且不接收参数的`public`函数，名为`ShowRestartWidget`：
 
 ```cpp
-    void ShowRestartWidget();
-    ```
+void ShowRestartWidget();
+```
 
 1.  现在，转到我们类的源文件。首先，添加一个包含到`RestartWidget`类的包含：
 
 ```cpp
-    #include "RestartWidget.h"
-    ```
+#include "RestartWidget.h"
+```
 
 1.  然后，添加我们的`ShowRestartWidget`函数的实现，我们将首先检查我们的`BP_RestartWidget`变量是否不是`nullptr`：
 
 ```cpp
-    void ADodgeballPlayerController::ShowRestartWidget()
-    {
-      if (BP_RestartWidget != nullptr)
-      {
-      }
-    }
-    ```
+void ADodgeballPlayerController::ShowRestartWidget()
+{
+  if (BP_RestartWidget != nullptr)
+  {
+  }
+}
+```
 
 1.  如果该变量有效（不同于`nullptr`），我们希望使用`Player Controller`的`SetPause`函数暂停游戏。这将确保游戏停止，直到玩家决定做些什么（在我们的情况下，将按下重新开始关卡的按钮）：
 
 ```cpp
-    SetPause(true);
-    ```
+SetPause(true);
+```
 
 接下来要做的是改变输入模式。在 UE4 中，有三种输入模式：`仅游戏`，`游戏和 UI`和`仅 UI`。如果您的`输入`模式包括`游戏`，这意味着玩家角色和玩家控制器将通过`输入操作`接收输入。如果您的`输入`模式包括`UI`，这意味着屏幕上的小部件将接收玩家的输入。当我们在屏幕上显示此小部件时，我们不希望玩家角色接收任何输入。
 
 1.  因此，更新为`仅 UI` `输入`模式。您可以通过调用`Player Controller`的`SetInputMode`函数，并将`FInputModeUIOnly`类型作为参数传递来实现这一点：
 
 ```cpp
-    SetInputMode(FInputModeUIOnly());
-    ```
+SetInputMode(FInputModeUIOnly());
+```
 
 之后，我们希望显示鼠标光标，以便玩家可以看到他们悬停在哪个按钮上。
 
 1.  我们将通过将`Player Controller`的`bShowMouseCursor`属性设置为`true`来实现这一点：
 
 ```cpp
-    bShowMouseCursor = true;
-    ```
+bShowMouseCursor = true;
+```
 
 1.  现在，我们可以实例化我们的小部件，使用`Player Controller`的`CreateWidget`函数，将 C++小部件类作为模板参数传递，这在我们的情况下是`RestartWidget`，然后作为正常参数传递`Owning Player`，这是拥有此小部件的`Player Controller`，我们将使用`this`指针发送，以及小部件类，这将是我们的`BP_RestartWidget`属性：
 
 ```cpp
-    RestartWidget = CreateWidget<URestartWidget>(this,   BP_RestartWidget);
-    ```
+RestartWidget = CreateWidget<URestartWidget>(this,   BP_RestartWidget);
+```
 
 1.  在我们实例化小部件之后，我们将使用小部件的`AddToViewport`函数将其添加到屏幕上：
 
 ```cpp
-    RestartWidget->AddToViewport();
-    ```
+RestartWidget->AddToViewport();
+```
 
 1.  这就完成了我们的`ShowRestartWidget`函数。但是，我们还需要创建一个函数，用于从屏幕上移除`RestartWidget`。在类的头文件中，添加一个声明为与`ShowRestartWidget`函数类似的函数，但这次名为`HideRestartWidget`：
 
 ```cpp
-    void HideRestartWidget();
-    ```
+void HideRestartWidget();
+```
 
 1.  在类的源文件中，添加`HideRestartWidget`函数的实现：
 
 ```cpp
-    void ADodgeballPlayerController::HideRestartWidget()
-    {
-    }
-    ```
+void ADodgeballPlayerController::HideRestartWidget()
+{
+}
+```
 
 1.  在这个函数中，我们应该首先通过调用其`RemoveFromParent`函数将小部件从屏幕上移除，并使用`Destruct`函数将其销毁：
 
 ```cpp
-    RestartWidget->RemoveFromParent();
-    RestartWidget->Destruct();
-    ```
+RestartWidget->RemoveFromParent();
+RestartWidget->Destruct();
+```
 
 1.  然后，我们希望使用前一个函数中使用的`SetPause`函数取消暂停游戏：
 
 ```cpp
-    SetPause(false);
-    ```
+SetPause(false);
+```
 
 1.  最后，将`输入`模式设置为`仅游戏`，并以与前一个函数相同的方式隐藏鼠标光标（这次我们传递`FInputModeGameOnly`类型）：
 
 ```cpp
-    SetInputMode(FInputModeGameOnly());
-    bShowMouseCursor = false;
-    ```
+SetInputMode(FInputModeGameOnly());
+bShowMouseCursor = false;
+```
 
 这就完成了我们的`Player Controller` C++类的逻辑。我们接下来应该调用一个函数，将我们的小部件添加到屏幕上。
 
 1.  转到`DodgeballCharacter`类的源文件，并向我们新创建的`DodgeballPlayerController`添加`include`关键字：
 
 ```cpp
-    #include "DodgeballPlayerController.h"
-    ```
+#include "DodgeballPlayerController.h"
+```
 
 1.  在`DodgeballCharacter`类的`OnDeath_Implementation`函数的实现中，用以下内容替换对`QuitGame`函数的调用：
 
 +   使用`GetController`函数获取角色的玩家控制器。您将希望将结果保存在名为`PlayerController`的`DodgeballPlayerController*`类型的变量中。因为该函数将返回一个`Controller`类型的变量，您还需要将其转换为我们的`PlayerController`类：
 
 ```cpp
-        ADodgeballPlayerController* PlayerController = Cast<ADodgeballPlayerController>(GetController());
-        ```
+ADodgeballPlayerController* PlayerController = Cast<ADodgeballPlayerController>(GetController());
+```
 
 +   检查`PlayerController`变量是否有效。如果是，调用其`ShowRestartWidget`函数：
 
 ```cpp
-        if (PlayerController != nullptr)
-        {
-          PlayerController->ShowRestartWidget();
-        }
-        ```
+if (PlayerController != nullptr)
+{
+  PlayerController->ShowRestartWidget();
+}
+```
 
 在进行了这些修改之后，我们唯一剩下的事情就是调用将我们的小部件从屏幕上隐藏的函数。打开`RestartWidget`类的源文件并实现以下修改。
 
 1.  向`DodgeballPlayerController`添加一个`include`，其中包含我们将要调用的函数：
 
 ```cpp
-    #include "DodgeballPlayerController.h"
-    ```
+#include "DodgeballPlayerController.h"
+```
 
 1.  在`OnRestartClicked`函数实现中，在调用`OpenLevel`函数之前，我们必须使用`GetOwningPlayer`函数获取小部件的`OwningPlayer`，它是`PlayerController`类型的，并将其转换为`DodgeballPlayerController`类：
 
 ```cpp
-    ADodgeballPlayerController* PlayerController =   Cast<ADodgeballPlayerController>(GetOwningPlayer());
-    ```
+ADodgeballPlayerController* PlayerController =   Cast<ADodgeballPlayerController>(GetOwningPlayer());
+```
 
 1.  然后，如果`PlayerController`变量有效，我们调用其`HideRestartWidget`函数：
 
 ```cpp
-    if (PlayerController != nullptr)
-    {
-      PlayerController->HideRestartWidget();
-    }
-    ```
+if (PlayerController != nullptr)
+{
+  PlayerController->HideRestartWidget();
+}
+```
 
 在您完成所有这些步骤之后，关闭编辑器，编译您的更改并打开编辑器。
 
@@ -666,30 +666,30 @@ UE4 中的进度条只是另一个 UI 元素，就像`按钮`和`文本`元素�
 1.  在`HUDWidget`类的头文件中，添加一个新的`public`属性，类型为`class UProgressBar*`，名为`HealthBar`。这种类型用于在 C++中表示进度条，就像我们在上一节中创建的那样。确保将此属性声明为带有`BindWidget`标记的`UPROPERTY`函数：
 
 ```cpp
-    UPROPERTY(meta = (BindWidget))
-    class UProgressBar* HealthBar;
-    ```
+UPROPERTY(meta = (BindWidget))
+class UProgressBar* HealthBar;
+```
 
 1.  添加一个名为`UpdateHealthPercent`的`public`函数声明，它不返回任何内容，并接收一个`float HealthPercent`属性作为参数。这个函数将被调用以更新我们的进度条的`Percent`属性：
 
 ```cpp
-    void UpdateHealthPercent(float HealthPercent);
-    ```
+void UpdateHealthPercent(float HealthPercent);
+```
 
 1.  在`HUDWidget`类的源文件中，添加`UpdateHealthPercent`函数的实现，该函数将调用`HealthBar`属性的`SetPercent`函数，并将`HealthPercent`属性作为参数传递：
 
 ```cpp
-    void UHUDWidget::UpdateHealthPercent(float HealthPercent)
-    {
-      HealthBar->SetPercent(HealthPercent);
-    }
-    ```
+void UHUDWidget::UpdateHealthPercent(float HealthPercent)
+{
+  HealthBar->SetPercent(HealthPercent);
+}
+```
 
 1.  因为我们将使用`ProgressBar` C++类，所以我们需要在类的源文件顶部添加一个`include`：
 
 ```cpp
-    #include "Components/ProgressBar.h"
-    ```
+#include "Components/ProgressBar.h"
+```
 
 下一步将是为我们的`Player Controller`添加负责将`HUDWidget`添加到屏幕的所有必要逻辑。按照以下步骤实现这一点：
 
@@ -698,72 +698,72 @@ UE4 中的进度条只是另一个 UI 元素，就像`按钮`和`文本`元素�
 这个属性将允许我们在`DodgeballPlayerController`蓝图类中指定我们想要用作 HUD 的 Widget：
 
 ```cpp
-    UPROPERTY(EditDefaultsOnly)
-    TSubclassOf<class UHUDWidget> BP_HUDWidget;
-    ```
+UPROPERTY(EditDefaultsOnly)
+TSubclassOf<class UHUDWidget> BP_HUDWidget;
+```
 
 1.  添加另一个属性，这次是`private`类型为`class UHUDWidget*`，名为`HUDWidget`。将其标记为`UPROPERTY`，但不带任何标记：
 
 ```cpp
-    UPROPERTY()
-    class UHUDWidget* HUDWidget;
-    ```
+UPROPERTY()
+class UHUDWidget* HUDWidget;
+```
 
 1.  添加一个`protected`声明，名为`BeginPlay`函数，并将其标记为`virtual`和`override`：
 
 ```cpp
-    virtual void BeginPlay() override;
-    ```
+virtual void BeginPlay() override;
+```
 
 1.  添加一个新的`public`函数声明，名为`UpdateHealthPercent`，它不返回任何内容，并接收一个`float HealthPercent`作为参数。
 
 这个函数将被我们的玩家角色类调用，以更新 HUD 中的健康条：
 
 ```cpp
-    void UpdateHealthPercent(float HealthPercent);
-    ```
+void UpdateHealthPercent(float HealthPercent);
+```
 
 1.  现在转到`DodgeballPlayerController`类的源文件。首先添加一个`include`到我们的`HUDWidget`类：
 
 ```cpp
-    #include "HUDWidget.h"
-    ```
+#include "HUDWidget.h"
+```
 
 1.  然后，添加`BeginPlay`函数的实现，我们将首先调用`Super`对象的`BeginPlay`函数：
 
 ```cpp
-    void ADodgeballPlayerController::BeginPlay()
-    {
-      Super::BeginPlay();
-    }
-    ```
+void ADodgeballPlayerController::BeginPlay()
+{
+  Super::BeginPlay();
+}
+```
 
 1.  在调用该函数后，检查`BP_HUDWidget`属性是否有效。如果有效，调用`CreateWidget`函数，使用`UHUDWidget`模板参数，并将`Owning Player`、`this`和 Widget 类`BP_HUDWidget`作为参数传递。确保将`HUDWidget`属性设置为此函数调用的返回值：
 
 ```cpp
-    if (BP_HUDWidget != nullptr)
-    {
-      HUDWidget = CreateWidget<UHUDWidget>(this, BP_HUDWidget);
-    }
-    ```
+if (BP_HUDWidget != nullptr)
+{
+  HUDWidget = CreateWidget<UHUDWidget>(this, BP_HUDWidget);
+}
+```
 
 1.  设置完`HUDWidget`属性后，调用其`AddToViewport`函数：
 
 ```cpp
-    HUDWidget->AddToViewport();
-    ```
+HUDWidget->AddToViewport();
+```
 
 1.  最后，添加`UpdateHealthPercent`函数的实现，在这里我们将检查`HUDWidget`属性是否有效，如果有效，调用其`UpdateHealthPercent`函数，并将`HealthPercent`属性作为参数传递：
 
 ```cpp
-    void ADodgeballPlayerController::UpdateHealthPercent(float   HealthPercent)
-    {
-      if (HUDWidget != nullptr)
-      {
-        HUDWidget->UpdateHealthPercent(HealthPercent);
-      }
-    }
-    ```
+void ADodgeballPlayerController::UpdateHealthPercent(float   HealthPercent)
+{
+  if (HUDWidget != nullptr)
+  {
+    HUDWidget->UpdateHealthPercent(HealthPercent);
+  }
+}
+```
 
 现在我们已经添加了负责将 HUD 添加到屏幕并允许其更新的逻辑，我们需要对其他类进行一些修改。按照以下步骤进行修改。
 
@@ -772,46 +772,46 @@ UE4 中的进度条只是另一个 UI 元素，就像`按钮`和`文本`元素�
 1.  打开`HealthInterface`类的头文件，并添加一个类似于我们在*练习 7.04*中为`OnDeath`事件所做的声明的声明，但这次是为`OnTakeDamage`事件。每当一个对象受到伤害时，将调用此事件：
 
 ```cpp
-    UFUNCTION(BlueprintNativeEvent, Category = Health)
-    void OnTakeDamage();
-    virtual void OnTakeDamage_Implementation() = 0;
-    ```
+UFUNCTION(BlueprintNativeEvent, Category = Health)
+void OnTakeDamage();
+virtual void OnTakeDamage_Implementation() = 0;
+```
 
 1.  现在我们已经在我们的`Interface`类中添加了这个事件，让我们添加调用该事件的逻辑：打开`HealthComponent`类的源文件，在`LoseHealth`函数的实现中，在从`Health`属性中减去`Amount`属性之后，检查`Owner`是否实现了`Health`接口，如果是，调用它的`OnTakeDamage`事件。这与我们在同一函数中为我们的`OnDeath`事件所做的方式相同，但这次只需将事件的名称更改为`OnTakeDamage`：
 
 ```cpp
-    if (GetOwner()->Implements<UHealthInterface>())
-    {
-      IHealthInterface::Execute_OnTakeDamage(GetOwner());
-    }
-    ```
+if (GetOwner()->Implements<UHealthInterface>())
+{
+  IHealthInterface::Execute_OnTakeDamage(GetOwner());
+}
+```
 
 因为我们的生命条需要玩家角色的生命值作为百分比，我们需要做以下事情：
 
 1.  在我们的`HealthComponent`中添加一个`public`函数，该函数返回`HealthComponent`类的头文件中的声明，添加一个`FORCEINLINE`函数的声明，该函数返回一个`float`。这个函数应该被称为`GetHealthPercent`，并且是一个`const`函数。它的实现将简单地返回`Health`属性除以`100`，我们将假设这是游戏中一个对象可以拥有的最大生命值的百分比：
 
 ```cpp
-    FORCEINLINE float GetHealthPercent() const { return Health /   100.f; }
-    ```
+FORCEINLINE float GetHealthPercent() const { return Health /   100.f; }
+```
 
 1.  现在转到`DodgeballCharacter`类的头文件，并添加一个名为`OnTakeDamage_Implementation`的`public` `virtual`函数的声明，该函数不返回任何内容，也不接收任何参数。将其标记为`virtual`和`override`：
 
 ```cpp
-    virtual void OnTakeDamage_Implementation() override;
-    ```
+virtual void OnTakeDamage_Implementation() override;
+```
 
 1.  在`DodgeballCharacter`类的源文件中，添加我们刚刚声明的`OnTakeDamage_Implementation`函数的实现。将`OnDeath_Implementation`函数的内容复制到这个新函数的实现中，但做出这个改变：不要调用`PlayerController`的`ShowRestartWidget`函数，而是调用它的`UpdateHealthPercent`函数，并将`HealthComponent`属性的`GetHealthPercent`函数的返回值作为参数传递：
 
 ```cpp
-    void ADodgeballCharacter::OnTakeDamage_Implementation()
-    {
-      ADodgeballPlayerController* PlayerController =   Cast<ADodgeballPlayerController>(GetController());
-      if (PlayerController != nullptr)
-      {
-        PlayerController->UpdateHealthPercent(HealthComponent-  >GetHealthPercent());
-      }
-    }
-    ```
+void ADodgeballCharacter::OnTakeDamage_Implementation()
+{
+  ADodgeballPlayerController* PlayerController =   Cast<ADodgeballPlayerController>(GetController());
+  if (PlayerController != nullptr)
+  {
+    PlayerController->UpdateHealthPercent(HealthComponent-  >GetHealthPercent());
+  }
+}
+```
 
 这结束了这个练习的代码设置。在你做完这些改变之后，编译你的代码，打开编辑器，然后做以下操作：
 

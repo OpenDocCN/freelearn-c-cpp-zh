@@ -91,26 +91,26 @@ C#和.NET 提供了一种高效的并发代码运行方式，使得执行复杂�
 1.  创建一个名为`Chapter05`的新控制台应用程序项目，通过运行以下命令来完成：
 
 ```cpp
-    source>dotnet new console -o Chapter05
-    ```
+source>dotnet new console -o Chapter05
+```
 
 1.  将`Class1.cs`文件重命名为`Logger.cs`并删除所有模板代码。
 
 1.  确保包含`System`和`System.Threading`命名空间。`System.Threading`包含基于`Threading`的类：
 
 ```cpp
-    using System;
-    using System.Threading;
-    namespace Chapter05
-    {
-    ```
+using System;
+using System.Threading;
+namespace Chapter05
+{
+```
 
 1.  将`Logger`类标记为静态，以便无需创建实例即可使用：
 
 ```cpp
-        public static class Logger
-        {
-    ```
+    public static class Logger
+    {
+```
 
 注意
 
@@ -119,13 +119,13 @@ C#和.NET 提供了一种高效的并发代码运行方式，使得执行复杂�
 1.  现在声明一个名为`Log`的`static`方法，它接受一个`string message`参数：
 
 ```cpp
-            public static void Log(string message)
-            {
-                Console.WriteLine($"{DateTime.Now:T} [{Thread.CurrentThread.ManagedThreadId:00}] {message}");
-            }
-        }
-    }
-    ```
+        public static void Log(string message)
+        {
+            Console.WriteLine($"{DateTime.Now:T} [{Thread.CurrentThread.ManagedThreadId:00}] {message}");
+        }
+    }
+}
+```
 
 当调用时，这将使用`WriteLine`方法向控制台窗口记录消息。在前面的片段中，C#中的字符串插值功能使用`$`符号定义字符串；这里，`:T`将当前时间(`DateTime.Now`)格式化为时间格式的字符串，`：00`用于包含带有前导 0 的`Thread.ManagedThreadId`。
 
@@ -140,59 +140,59 @@ C#和.NET 提供了一种高效的并发代码运行方式，使得执行复杂�
 1.  首先添加一个名为`TaskExamples.cs`的新类文件：
 
 ```cpp
-    using System;
-    using System.Threading;
-    using System.Threading.Tasks;
-    namespace Chapter05.Examples
-    {
-        class TaskExamples
-        {
-    ```
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+namespace Chapter05.Examples
+{
+    class TaskExamples
+    {
+```
 
 1.  `Main`入口点将记录`taskA`正在被创建：
 
 ```cpp
-            public static void Main()
-            {
-                Logger.Log("Creating taskA");
-    ```
+        public static void Main()
+        {
+            Logger.Log("Creating taskA");
+```
 
 1.  接下来，添加以下代码：
 
 ```cpp
-                var taskA = new Task(() =>
-                {
-                    Logger.Log("Inside taskA");
-                    Thread.Sleep(TimeSpan.FromSeconds(5D));
-                    Logger.Log("Leaving taskA");
-                });
-    ```
+            var taskA = new Task(() =>
+            {
+                Logger.Log("Inside taskA");
+                Thread.Sleep(TimeSpan.FromSeconds(5D));
+                Logger.Log("Leaving taskA");
+            });
+```
 
 在这里，最简单的`Task`构造函数传递了一个`Action` lambda 语句，这是您要执行的实际目标代码。目标代码将消息`Inside taskA`写入控制台。它使用`Thread.Sleep`暂停五秒钟来阻塞当前线程，从而模拟长时间运行的活动，最后将`Leaving taskA`写入控制台。
 
 1.  现在您已经创建了`taskA`，请确认它只会在调用`Start()`方法时调用其目标代码。您将通过在方法调用之前和之后立即记录消息来实现这一点：
 
 ```cpp
-                Logger.Log($"Starting taskA. Status={taskA.Status}");
-                taskA.Start();
-                Logger.Log($"Started taskA. Status={taskA.Status}");
-                Console.ReadLine();
-            }
-        }
-    } 
-    ```
+            Logger.Log($"Starting taskA. Status={taskA.Status}");
+            taskA.Start();
+            Logger.Log($"Started taskA. Status={taskA.Status}");
+            Console.ReadLine();
+        }
+    }
+} 
+```
 
 1.  将`Logger.cs`文件的内容复制到与`TaskExamples.cs`示例相同的文件夹中。
 
 1.  接下来运行控制台应用程序以产生以下输出：
 
 ```cpp
-    10:47:34 [01] Creating taskA
-    10:47:34 [01] Starting taskA. Status=Created
-    10:47:34 [01] Started taskA. Status=WaitingToRun
-    10:47:34 [03] Inside taskA
-    10:47:39 [03] Leaving taskA
-    ```
+10:47:34 [01] Creating taskA
+10:47:34 [01] Starting taskA. Status=Created
+10:47:34 [01] Started taskA. Status=WaitingToRun
+10:47:34 [03] Inside taskA
+10:47:39 [03] Leaving taskA
+```
 
 请注意，即使您调用了`Start`，任务的状态仍为`WaitingToRun`。这是因为您要求.NET 调度程序安排代码运行 - 也就是说，将其添加到待处理操作队列中。根据您的应用程序与其他任务的繁忙程度，它可能不会在您调用`Start`后立即运行。
 
@@ -321,88 +321,88 @@ Console.ReadLine();
 1.  添加递归的`Fibonacci`函数如下。如果请求的迭代次数小于或等于`2`，可以通过返回`1`来节省一些处理时间：
 
 ```cpp
-    using System;
-    using System.Globalization;
-    using System.Threading;
-    using System.Threading.Tasks;
-    namespace Chapter05.Exercises.Exercise01
-    {
-      class Program
-      {
-            private static long Fibonacci(int n)
-            {
-                if (n <= 2L)
-                    return 1L;
-                return Fibonacci(n - 1) + Fibonacci(n - 2);
-            }
-    ```
+using System;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
+namespace Chapter05.Exercises.Exercise01
+{
+  class Program
+  {
+        private static long Fibonacci(int n)
+        {
+            if (n <= 2L)
+                return 1L;
+            return Fibonacci(n - 1) + Fibonacci(n - 2);
+        }
+```
 
 1.  在控制台应用程序中添加`static Main`入口点，并使用`do`循环提示输入一个数字。
 
 1.  如果用户输入一个字符串，使用`int.TryParse`将其转换为整数：
 
 ```cpp
-            public static void Main()
-            {
-                string input;
-                do
-                {
-                    Console.WriteLine("Enter number:");
-                    input = Console.ReadLine();
-                    if (!string.IsNullOrEmpty(input) &&                     int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var number))
-    ```
+        public static void Main()
+        {
+            string input;
+            do
+            {
+                Console.WriteLine("Enter number:");
+                input = Console.ReadLine();
+                if (!string.IsNullOrEmpty(input) &&                     int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var number))
+```
 
 1.  定义一个 lambda 语句，使用`DateTime.Now`捕获当前时间，调用运行缓慢的`Fibonacci`函数，并记录运行所花费的时间：
 
 ```cpp
-                     {
-                        Task.Run(() =>
-                        {
-                            var now = DateTime.Now;
-                            var fib = Fibonacci(number);
-                            var duration = DateTime.Now.Subtract(now);
-                            Logger.Log($"Fibonacci {number:N0} = {fib:N0} (elapsed time: {duration.TotalSeconds:N0} secs)");
-                        });
-                    } 
-    ```
+                 {
+                    Task.Run(() =>
+                    {
+                        var now = DateTime.Now;
+                        var fib = Fibonacci(number);
+                        var duration = DateTime.Now.Subtract(now);
+                        Logger.Log($"Fibonacci {number:N0} = {fib:N0} (elapsed time: {duration.TotalSeconds:N0} secs)");
+                    });
+                } 
+```
 
 Lambda 被传递给`Task.Run`，并将很快由`Task.Run`启动，从而释放`do-while`循环以提示输入另一个数字。
 
 1.  当输入空值时，程序将退出循环：
 
 ```cpp
-                 } while (input != string.Empty);
-            }
-        }
-    }
-    ```
+             } while (input != string.Empty);
+        }
+    }
+}
+```
 
 1.  运行控制台应用程序时，先输入数字`1`，然后输入`2`。由于这些是非常快速的计算，它们都在一秒内返回。
 
 ```cpp
-    Enter number:1
-    Enter number:2
-    11:25:11 [04] Fibonacci 1 = 1 (elapsed time: 0 secs)
-    Enter number:45
-    11:25:12 [04] Fibonacci 2 = 1 (elapsed time: 0 secs)
-    Enter number:44
-    Enter number:43
-    Enter number:42
-    Enter number:41
-    Enter number:40
-    Enter number:10
-    11:25:35 [08] Fibonacci 41 = 165,580,141 (elapsed time: 4 secs)
-    11:25:35 [09] Fibonacci 40 = 102,334,155 (elapsed time: 2 secs)
-    11:25:36 [07] Fibonacci 42 = 267,914,296 (elapsed time: 6 secs)
-    Enter number: 39
-    11:25:36 [09] Fibonacci 10 = 55 (elapsed time: 0 secs)
-    11:25:37 [05] Fibonacci 43 = 433,494,437 (elapsed time: 9 secs)
-    11:25:38 [06] Fibonacci 44 = 701,408,733 (elapsed time: 16 secs)
-    Enter number:38
-    11:25:44 [06] Fibonacci 38 = 39,088,169 (elapsed time: 1 secs)
-    11:25:44 [05] Fibonacci 39 = 63,245,986 (elapsed time: 2 secs)
-    11:25:48 [04] Fibonacci 45 = 1,134,903,170 (elapsed time: 27 secs)
-    ```
+Enter number:1
+Enter number:2
+11:25:11 [04] Fibonacci 1 = 1 (elapsed time: 0 secs)
+Enter number:45
+11:25:12 [04] Fibonacci 2 = 1 (elapsed time: 0 secs)
+Enter number:44
+Enter number:43
+Enter number:42
+Enter number:41
+Enter number:40
+Enter number:10
+11:25:35 [08] Fibonacci 41 = 165,580,141 (elapsed time: 4 secs)
+11:25:35 [09] Fibonacci 40 = 102,334,155 (elapsed time: 2 secs)
+11:25:36 [07] Fibonacci 42 = 267,914,296 (elapsed time: 6 secs)
+Enter number: 39
+11:25:36 [09] Fibonacci 10 = 55 (elapsed time: 0 secs)
+11:25:37 [05] Fibonacci 43 = 433,494,437 (elapsed time: 9 secs)
+11:25:38 [06] Fibonacci 44 = 701,408,733 (elapsed time: 16 secs)
+Enter number:38
+11:25:44 [06] Fibonacci 38 = 39,088,169 (elapsed time: 1 secs)
+11:25:44 [05] Fibonacci 39 = 63,245,986 (elapsed time: 2 secs)
+11:25:48 [04] Fibonacci 45 = 1,134,903,170 (elapsed time: 27 secs)
+```
 
 注意`ThreadId`对于`1`和`2`都是`[04]`。这表明`Task.Run`使用相同的线程进行了两次迭代。当输入`2`时，之前的计算已经完成。因此.NET 决定再次重用线程`04`。对于值`45`也是一样的，尽管它是第三次请求，但完成所花费的时间是`27`秒。
 
@@ -498,113 +498,113 @@ You can find the complete code here: http://packt.link/CicWk.
 1.  向控制台应用程序添加主入口点：
 
 ```cpp
-    using System;
-    using System.Threading;
-    using System.Threading.Tasks;
-    namespace Chapter05.Exercises.Exercise02
-    {
-        class Program
-        {
-            public static void Main()
-            {
-                Logger.Log("Starting");
-    ```
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+namespace Chapter05.Exercises.Exercise02
+{
+    class Program
+    {
+        public static void Main()
+        {
+            Logger.Log("Starting");
+```
 
 1.  声明一个名为`taskA`的变量，传递给`Task.Run`一个暂停当前线程`5`秒的 lambda：
 
 ```cpp
-                var taskA = Task.Run( () =>
-                {
-                    Logger.Log("Inside TaskA");
-                    Thread.Sleep(TimeSpan.FromSeconds(5));
-                    Logger.Log("Leaving TaskA");
-                    return "All done A";
-                });
-    ```
+            var taskA = Task.Run( () =>
+            {
+                Logger.Log("Inside TaskA");
+                Thread.Sleep(TimeSpan.FromSeconds(5));
+                Logger.Log("Leaving TaskA");
+                return "All done A";
+            });
+```
 
 1.  使用方法组语法创建另外两个任务：
 
 ```cpp
-                var taskB = Task.Run(TaskBActivity);
-                var taskC = Task.Run(TaskCActivity);
-    ```
+            var taskB = Task.Run(TaskBActivity);
+            var taskC = Task.Run(TaskCActivity);
+```
 
 正如你可能记得的，如果编译器可以确定零个或单个参数方法所需的参数类型，那么可以使用这种更短的语法。
 
 1.  现在随机选择一个最大超时时间（以秒为单位）。这意味着两个任务中的任何一个在超时期限到期之前都可能**不**完成：
 
 ```cpp
-                var timeout = TimeSpan.FromSeconds(new Random().Next(1, 10));
-                Logger.Log($"Waiting max {timeout.TotalSeconds} seconds...");
-    ```
+            var timeout = TimeSpan.FromSeconds(new Random().Next(1, 10));
+            Logger.Log($"Waiting max {timeout.TotalSeconds} seconds...");
+```
 
 请注意，每个任务仍将完成运行，因为你没有添加一个机制来停止执行`Task.Run` `Action` lambda 体内的代码。
 
 1.  调用`WaitAll`，传入三个任务和`timeout`时间：
 
 ```cpp
-                var allDone = Task.WaitAll(new[] {taskA, taskB, taskC}, timeout);
-                Logger.Log($"AllDone={allDone}: TaskA={taskA.Status}, TaskB={taskB.Status}, TaskC={taskC.Status}");
-                Console.WriteLine("Press ENTER to quit");
-                Console.ReadLine();
-            }
-    ```
+            var allDone = Task.WaitAll(new[] {taskA, taskB, taskC}, timeout);
+            Logger.Log($"AllDone={allDone}: TaskA={taskA.Status}, TaskB={taskB.Status}, TaskC={taskC.Status}");
+            Console.WriteLine("Press ENTER to quit");
+            Console.ReadLine();
+        }
+```
 
 如果所有任务都及时完成，这将返回`true`。然后，你将记录所有任务的状态，并等待按下`Enter`键退出应用程序。
 
 1.  最后，通过添加两个运行缓慢的`Action`方法来完成：
 
 ```cpp
-            private static string TaskBActivity()
-            {
-                Logger.Log($"Inside {nameof(TaskBActivity)}");
-                Thread.Sleep(TimeSpan.FromSeconds(2));
-                Logger.Log($"Leaving {nameof(TaskBActivity)}");
-                return "";
-            }
-            private static void TaskCActivity()
-            {
-                Logger.Log($"Inside {nameof(TaskCActivity)}");
-                Thread.Sleep(TimeSpan.FromSeconds(1));
-                Logger.Log($"Leaving {nameof(TaskCActivity)}");
-            }
-        }
-    }
-    ```
+        private static string TaskBActivity()
+        {
+            Logger.Log($"Inside {nameof(TaskBActivity)}");
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+            Logger.Log($"Leaving {nameof(TaskBActivity)}");
+            return "";
+        }
+        private static void TaskCActivity()
+        {
+            Logger.Log($"Inside {nameof(TaskCActivity)}");
+            Thread.Sleep(TimeSpan.FromSeconds(1));
+            Logger.Log($"Leaving {nameof(TaskCActivity)}");
+        }
+    }
+}
+```
 
 每个任务在开始和离开任务后都会记录一条消息，几秒钟后。有用的`nameof`语句用于包含方法的名称，以提供额外的日志信息。通常，检查日志文件以查看已访问方法的名称是有用的，而不是将其名称硬编码为字面字符串。
 
 1.  运行代码后，你将看到以下输出：
 
 ```cpp
-    14:46:28 [01] Starting
-    14:46:28 [04] Inside TaskBActivity
-    14:46:28 [05] Inside TaskCActivity
-    14:46:28 [06] Inside TaskA
-    14:46:28 [01] Waiting max 7 seconds...
-    14:46:29 [05] Leaving TaskCActivity
-    14:46:30 [04] Leaving TaskBActivity
-    14:46:33 [06] Leaving TaskA
-    14:46:33 [01] AllDone=True: TaskA=RanToCompletion, TaskB=RanToCompletion, TaskC=RanToCompletion
-    Press ENTER to quit
-    ```
+14:46:28 [01] Starting
+14:46:28 [04] Inside TaskBActivity
+14:46:28 [05] Inside TaskCActivity
+14:46:28 [06] Inside TaskA
+14:46:28 [01] Waiting max 7 seconds...
+14:46:29 [05] Leaving TaskCActivity
+14:46:30 [04] Leaving TaskBActivity
+14:46:33 [06] Leaving TaskA
+14:46:33 [01] AllDone=True: TaskA=RanToCompletion, TaskB=RanToCompletion, TaskC=RanToCompletion
+Press ENTER to quit
+```
 
 在运行代码时，运行时随机选择了七秒的超时时间。这使得所有任务都及时完成，因此`WaitAll`返回`true`，此时所有任务都处于`RanToCompletion`状态。请注意，方括号中的线程 ID 对于所有三个任务都是不同的。
 
 1.  再次运行代码：
 
 ```cpp
-    14:48:20 [01] Starting
-    14:48:20 [01] Waiting max 2 seconds...
-    14:48:20 [05] Inside TaskCActivity
-    14:48:20 [06] Inside TaskA
-    14:48:20 [04] Inside TaskBActivity
-    14:48:21 [05] Leaving TaskCActivity
-    14:48:22 [04] Leaving TaskBActivity
-    14:48:22 [01] AllDone=False: TaskA=Running, TaskB=Running, TaskC=RanToCompletion
-    Press ENTER to quit
-    14:48:25 [06] Leaving TaskA
-    ```
+14:48:20 [01] Starting
+14:48:20 [01] Waiting max 2 seconds...
+14:48:20 [05] Inside TaskCActivity
+14:48:20 [06] Inside TaskA
+14:48:20 [04] Inside TaskBActivity
+14:48:21 [05] Leaving TaskCActivity
+14:48:22 [04] Leaving TaskBActivity
+14:48:22 [01] AllDone=False: TaskA=Running, TaskB=Running, TaskC=RanToCompletion
+Press ENTER to quit
+14:48:25 [06] Leaving TaskA
+```
 
 这次运行时选择了两秒的最大等待时间，因此`WaitAll`调用超时，返回`false`。
 
@@ -726,110 +726,110 @@ You can find the complete code here: http://packt.link/rpNcx.
 1.  首先，创建一个`CarSale`记录。构造函数接受两个值，汽车的名称和销售价格（`name`和`salePrice`）：
 
 ```cpp
-    using System;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.Linq;
-    using System.Threading;
-    using System.Threading.Tasks;
-    namespace Chapter05.Exercises.Exercise03
-    {
-        public record CarSale
-        {
-            public CarSale(string name, double salePrice)
-                => (Name, SalePrice) = (name, salePrice);
-            public string Name { get; }
-            public double SalePrice { get; }
-        }
-    ```
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+namespace Chapter05.Exercises.Exercise03
+{
+    public record CarSale
+    {
+        public CarSale(string name, double salePrice)
+            => (Name, SalePrice) = (name, salePrice);
+        public string Name { get; }
+        public double SalePrice { get; }
+    }
+```
 
 1.  现在创建一个表示销售数据加载服务的接口`ISalesLoader`：
 
 ```cpp
-        public interface ISalesLoader
-        {
-            public IEnumerable<CarSale> FetchSales();
-        }
-    ```
+    public interface ISalesLoader
+    {
+        public IEnumerable<CarSale> FetchSales();
+    }
+```
 
 它只有一个调用，`FetchSales`，返回类型为`CarSale`的可枚举。现在，重要的是知道加载器的工作原理；只是在调用时返回汽车销售列表。在这里使用接口允许根据需要使用各种类型的加载器。
 
 1.  使用聚合器类调用`ISalesLoader`实现：
 
 ```cpp
-        public static class SalesAggregator
-        {
-           public static Task<double> Average(IEnumerable<ISalesLoader> loaders)
-           {
-    ```
+    public static class SalesAggregator
+    {
+       public static Task<double> Average(IEnumerable<ISalesLoader> loaders)
+       {
+```
 
 它声明为`static`，因为在调用之间没有状态。定义一个`Average`函数，该函数接受`ISalesLoader`项目的可枚举，并返回最终平均值计算的通用`Task<Double>`。
 
 1.  对于加载器参数的每个，使用 LINQ 投影将`loader.FetchSales`方法传递给`Task.Run`：
 
 ```cpp
-             var loaderTasks = loaders.Select(ldr => Task.Run(ldr.FetchSales));
-             return Task
-                    .WhenAll(loaderTasks)
-                    .ContinueWith(tasks =>
-    ```
+         var loaderTasks = loaders.Select(ldr => Task.Run(ldr.FetchSales));
+         return Task
+                .WhenAll(loaderTasks)
+                .ContinueWith(tasks =>
+```
 
 其中每个都将返回一个`Task<IEnumerable<CarSale>>`实例。使用`WhenAll`创建一个单一任务，该任务在`ContinueWith`调用时继续。
 
 1.  使用 LINQ 的`SelectMany`从每个加载器调用结果中抓取所有的`CarSale`项目，然后在每个`CarSale`项目的`SalePrice`字段上调用 Linq 的`Average`：
 
 ```cpp
-                    {
-                        var average = tasks.Result
-                            .SelectMany(t => t)
-                            .Average(car => car.SalePrice);
-                        return average;
-                    });
-            }
-        }
-    }
-    ```
+                {
+                    var average = tasks.Result
+                        .SelectMany(t => t)
+                        .Average(car => car.SalePrice);
+                    return average;
+                });
+        }
+    }
+}
+```
 
 1.  从名为`SalesLoader`的类实现`ISalesLoader`接口：
 
 ```cpp
-        public class SalesLoader : ISalesLoader
-        {
-            private readonly Random _random;
-            private readonly string _name;
-            public SalesLoader(int id, Random rand)
-            {
-                _name = $"Loader#{id}";
-                _random = rand;
-            }
-    ```
+    public class SalesLoader : ISalesLoader
+    {
+        private readonly Random _random;
+        private readonly string _name;
+        public SalesLoader(int id, Random rand)
+        {
+            _name = $"Loader#{id}";
+            _random = rand;
+        }
+```
 
 构造函数将传递一个用于记录的`int`变量和一个`Random`实例，以帮助创建随机数量的`CarSale`项目。
 
 1.  您的`ISalesLoader`实现需要一个`FetchSales`函数。包括一个介于`1`和`3`秒之间的随机延迟，以模拟不太可靠的服务：
 
 ```cpp
-            public IEnumerable<CarSale> FetchSales()
-            {
-                var delay = _random.Next(1, 3);
-                Logger.Log($"FetchSales {_name} sleeping for {delay} seconds ...");
-                Thread.Sleep(TimeSpan.FromSeconds(delay));
-    ```
+        public IEnumerable<CarSale> FetchSales()
+        {
+            var delay = _random.Next(1, 3);
+            Logger.Log($"FetchSales {_name} sleeping for {delay} seconds ...");
+            Thread.Sleep(TimeSpan.FromSeconds(delay));
+```
 
 您正在尝试测试应用程序在各种时间延迟下的行为。因此，使用随机类。
 
 1.  使用`Enumerable.Range`和`random.Next`来从一到五中选择一个随机数：
 
 ```cpp
-                var sales = Enumerable
-                    .Range(1, _random.Next(1, 5))
-                    .Select(n => GetRandomCar())
-                    .ToList();
-                foreach (var car in sales)
-                    Logger.Log($"FetchSales {_name} found: {car.Name} @ {car.SalePrice:N0}");
-                return sales;
-            }
-    ```
+            var sales = Enumerable
+                .Range(1, _random.Next(1, 5))
+                .Select(n => GetRandomCar())
+                .ToList();
+            foreach (var car in sales)
+                Logger.Log($"FetchSales {_name} found: {car.Name} @ {car.SalePrice:N0}");
+            return sales;
+        }
+```
 
 这是使用您的`GetRandomCar`函数返回的`CarSale`项目的总数。
 
@@ -838,124 +838,124 @@ You can find the complete code here: http://packt.link/rpNcx.
 1.  使用`carNames.length`属性来选择介于零和四之间的随机索引号作为汽车的名称：
 
 ```cpp
-            private readonly string[] _carNames = { "Ford", "BMW", "Fiat", "Mercedes", "Porsche" };
-            private CarSale GetRandomCar()
-            {
-                var nameIndex = _random.Next(_carNames.Length);
-                return new CarSale(
-                    _carNames[nameIndex], _random.NextDouble() * 1000);
-            }
-        }
-    ```
+        private readonly string[] _carNames = { "Ford", "BMW", "Fiat", "Mercedes", "Porsche" };
+        private CarSale GetRandomCar()
+        {
+            var nameIndex = _random.Next(_carNames.Length);
+            return new CarSale(
+                _carNames[nameIndex], _random.NextDouble() * 1000);
+        }
+    }
+```
 
 1.  现在，创建您的控制台应用程序来测试这一点：
 
 ```cpp
-        public class Program
-        {
-            public static void Main()
-            {
-                var random = new Random();
-                const int MaxSalesHubs = 10;
-                string input;
-                do
-                {
-                    Console.WriteLine("Max wait time (in seconds):");
-                    input = Console.ReadLine();
-                    if (string.IsNullOrEmpty(input))
-                        continue;
-    ```
+    public class Program
+    {
+        public static void Main()
+        {
+            var random = new Random();
+            const int MaxSalesHubs = 10;
+            string input;
+            do
+            {
+                Console.WriteLine("Max wait time (in seconds):");
+                input = Console.ReadLine();
+                if (string.IsNullOrEmpty(input))
+                    continue;
+```
 
 您的应用程序将重复要求用户准备等待数据下载的最长时间。一旦所有数据都已下载，应用程序将使用此数据来计算平均价格。仅按下`Enter`将导致程序循环结束。`MaxSalesHubs`是要请求数据的最大销售中心数。
 
 1.  将输入的值转换为`int`类型，然后再次使用`Enumerable.Range`创建新的`SalesLoader`实例的随机数量（最多有 10 个不同的销售中心）：
 
 ```cpp
-                    if (int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var maxDelay))
-                    {
-                           var loaders = Enumerable.Range(1,                                           random.Next(1, MaxSalesHubs))
-                            .Select(n => new SalesLoader(n, random))
-                            .ToList();
-    ```
+                if (int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var maxDelay))
+                {
+                       var loaders = Enumerable.Range(1,                                           random.Next(1, MaxSalesHubs))
+                        .Select(n => new SalesLoader(n, random))
+                        .ToList();
+```
 
 1.  将加载器传递给静态的`SalesAggregator.Average`方法以接收一个`Task<Double>`。
 
 1.  调用`Wait`，传入最大等待时间：
 
 ```cpp
-                        var averageTask = SalesAggregator.Average(loaders);
-                        var hasCompleted = averageTask.Wait(                              TimeSpan.FromSeconds(maxDelay));
-                        var average = averageTask.Result;
-    ```
+                    var averageTask = SalesAggregator.Average(loaders);
+                    var hasCompleted = averageTask.Wait(                              TimeSpan.FromSeconds(maxDelay));
+                    var average = averageTask.Result;
+```
 
 如果`Wait`调用及时返回，则将看到`has completed`的`true`值。
 
 1.  最后通过检查`hasCompleted`并相应地记录一条消息来完成：
 
 ```cpp
-                        if (hasCompleted)
-                        {
-                            Logger.Log($"Average={average:N0}");
-                        }
-                        else
-                        {
-                            Logger.Log("Timeout!");
-                        }
-                    }
-                } while (input != string.Empty);
-            }
-        }
-    }
-    ```
+                    if (hasCompleted)
+                    {
+                        Logger.Log($"Average={average:N0}");
+                    }
+                    else
+                    {
+                        Logger.Log("Timeout!");
+                    }
+                }
+            } while (input != string.Empty);
+        }
+    }
+}
+```
 
 1.  运行控制台应用程序并输入`1`秒的短暂最长等待时间时，您会看到随机创建了三个加载器实例：
 
 ```cpp
-    Max wait time (in seconds):1
-    10:52:49 [04] FetchSales Loader#1 sleeping for 1 seconds ...
-    10:52:49 [06] FetchSales Loader#3 sleeping for 1 seconds ...
-    10:52:49 [05] FetchSales Loader#2 sleeping for 1 seconds ...
-    10:52:50 [04] FetchSales Loader#1 found: Mercedes @ 362
-    10:52:50 [04] FetchSales Loader#1 found: Ford @ 993
-    10:52:50 [06] FetchSales Loader#3 found: Fiat @ 645
-    10:52:50 [05] FetchSales Loader#2 found: Mercedes @ 922
-    10:52:50 [06] FetchSales Loader#3 found: Ford @ 9
-    10:52:50 [05] FetchSales Loader#2 found: Porsche @ 859
-    10:52:50 [05] FetchSales Loader#2 found: Mercedes @ 612
-    10:52:50 [01] Timeout!
-    ```
+Max wait time (in seconds):1
+10:52:49 [04] FetchSales Loader#1 sleeping for 1 seconds ...
+10:52:49 [06] FetchSales Loader#3 sleeping for 1 seconds ...
+10:52:49 [05] FetchSales Loader#2 sleeping for 1 seconds ...
+10:52:50 [04] FetchSales Loader#1 found: Mercedes @ 362
+10:52:50 [04] FetchSales Loader#1 found: Ford @ 993
+10:52:50 [06] FetchSales Loader#3 found: Fiat @ 645
+10:52:50 [05] FetchSales Loader#2 found: Mercedes @ 922
+10:52:50 [06] FetchSales Loader#3 found: Ford @ 9
+10:52:50 [05] FetchSales Loader#2 found: Porsche @ 859
+10:52:50 [05] FetchSales Loader#2 found: Mercedes @ 612
+10:52:50 [01] Timeout!
+```
 
 每个加载器在返回随机的`CarSale`记录之前都会休眠`1`秒（您可以看到记录了各种线程 ID）。您很快就会达到最大超时值，因此显示了消息`Timeout!`，没有显示平均值。
 
 1.  输入`10`秒的较长超时期：
 
 ```cpp
-    Max wait time (in seconds):10
-    20:08:41 [05] FetchSales Loader#1 sleeping for 2 seconds ...
-    20:08:41 [12] FetchSales Loader#4 sleeping for 1 seconds ...
-    20:08:41 [08] FetchSales Loader#2 sleeping for 1 seconds ...
-    20:08:41 [11] FetchSales Loader#3 sleeping for 1 seconds ...
-    20:08:41 [15] FetchSales Loader#5 sleeping for 2 seconds ...
-    20:08:41 [13] FetchSales Loader#6 sleeping for 2 seconds ...
-    20:08:41 [14] FetchSales Loader#7 sleeping for 1 seconds ...
-    20:08:42 [08] FetchSales Loader#2 found: Porsche @ 735
-    20:08:42 [08] FetchSales Loader#2 found: Fiat @ 930
-    20:08:42 [11] FetchSales Loader#3 found: Porsche @ 735
-    20:08:42 [12] FetchSales Loader#4 found: Porsche @ 735
-    20:08:42 [08] FetchSales Loader#2 found: Porsche @ 777
-    20:08:42 [11] FetchSales Loader#3 found: Ford @ 500
-    20:08:42 [12] FetchSales Loader#4 found: Ford @ 500
-    20:08:42 [12] FetchSales Loader#4 found: Porsche @ 710
-    20:08:42 [14] FetchSales Loader#7 found: Ford @ 144
-    20:08:43 [05] FetchSales Loader#1 found: Fiat @ 649
-    20:08:43 [15] FetchSales Loader#5 found: Ford @ 779
-    20:08:43 [13] FetchSales Loader#6 found: Porsche @ 763
-    20:08:43 [15] FetchSales Loader#5 found: Fiat @ 137
-    20:08:43 [13] FetchSales Loader#6 found: BMW @ 415
-    20:08:43 [15] FetchSales Loader#5 found: Fiat @ 853
-    20:08:43 [15] FetchSales Loader#5 found: Porsche @ 857
-    20:08:43 [01] Average=639
-    ```
+Max wait time (in seconds):10
+20:08:41 [05] FetchSales Loader#1 sleeping for 2 seconds ...
+20:08:41 [12] FetchSales Loader#4 sleeping for 1 seconds ...
+20:08:41 [08] FetchSales Loader#2 sleeping for 1 seconds ...
+20:08:41 [11] FetchSales Loader#3 sleeping for 1 seconds ...
+20:08:41 [15] FetchSales Loader#5 sleeping for 2 seconds ...
+20:08:41 [13] FetchSales Loader#6 sleeping for 2 seconds ...
+20:08:41 [14] FetchSales Loader#7 sleeping for 1 seconds ...
+20:08:42 [08] FetchSales Loader#2 found: Porsche @ 735
+20:08:42 [08] FetchSales Loader#2 found: Fiat @ 930
+20:08:42 [11] FetchSales Loader#3 found: Porsche @ 735
+20:08:42 [12] FetchSales Loader#4 found: Porsche @ 735
+20:08:42 [08] FetchSales Loader#2 found: Porsche @ 777
+20:08:42 [11] FetchSales Loader#3 found: Ford @ 500
+20:08:42 [12] FetchSales Loader#4 found: Ford @ 500
+20:08:42 [12] FetchSales Loader#4 found: Porsche @ 710
+20:08:42 [14] FetchSales Loader#7 found: Ford @ 144
+20:08:43 [05] FetchSales Loader#1 found: Fiat @ 649
+20:08:43 [15] FetchSales Loader#5 found: Ford @ 779
+20:08:43 [13] FetchSales Loader#6 found: Porsche @ 763
+20:08:43 [15] FetchSales Loader#5 found: Fiat @ 137
+20:08:43 [13] FetchSales Loader#6 found: BMW @ 415
+20:08:43 [15] FetchSales Loader#5 found: Fiat @ 853
+20:08:43 [15] FetchSales Loader#5 found: Porsche @ 857
+20:08:43 [01] Average=639
+```
 
 输入一个值为`10`秒，允许`7`个随机加载器及时完成，并最终创建平均值为`639`。
 
@@ -1349,162 +1349,162 @@ namespace Chapter05.Examples
 1.  创建一个名为`SlowRunningService`的类。顾名思义，服务内部的方法被设计为完成速度较慢：
 
 ```cpp
-    using System;
-    using System.Globalization;
-    using System.Threading;
-    using System.Threading.Tasks;
-    namespace Chapter05.Exercises.Exercise04
-    {
-        public class SlowRunningService
-        {
-    ```
+using System;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
+namespace Chapter05.Exercises.Exercise04
+{
+    public class SlowRunningService
+    {
+```
 
 1.  添加第一个耗时操作`Fetch`，它传递了一个延迟时间（使用简单的`Thread.Sleep`调用实现），以及取消令牌，您将其传递给`Task.Run`：
 
 ```cpp
-            public Task<double> Fetch(TimeSpan delay, CancellationToken token)
-            {
-                return Task.Run(() =>
-                    {
-                        var now = DateTime.Now;
-                        Logger.Log("Fetch: Sleeping");
-                        Thread.Sleep(delay);
-                        Logger.Log("Fetch: Awake");
-                        return DateTime.Now.Subtract(now).TotalSeconds;
-                    },
-                    token);
-            }
-    ```
+        public Task<double> Fetch(TimeSpan delay, CancellationToken token)
+        {
+            return Task.Run(() =>
+                {
+                    var now = DateTime.Now;
+                    Logger.Log("Fetch: Sleeping");
+                    Thread.Sleep(delay);
+                    Logger.Log("Fetch: Awake");
+                    return DateTime.Now.Subtract(now).TotalSeconds;
+                },
+                token);
+        }
+```
 
 当调用`Fetch`时，线程休眠之前可能会取消令牌。
 
 1.  为了测试`Fetch`是否会停止运行或返回一个数字，添加一个控制台应用程序来测试这一点。在这里，使用默认延迟（`DelayTime`）为`3`秒：
 
 ```cpp
-        public class Program
-        {
-            private static readonly TimeSpan DelayTime=TimeSpan.FromSeconds(3);
-    ```
+    public class Program
+    {
+        private static readonly TimeSpan DelayTime=TimeSpan.FromSeconds(3);
+```
 
 1.  添加一个辅助函数来提示您准备等待的最大秒数。如果输入了有效数字，则将输入的值转换为`TimeSpan`：
 
 ```cpp
-            private static TimeSpan? ReadConsoleMaxTime(string message)
-            {
-                Console.Write($"{message} Max Waiting Time (seconds):");
-                var input = Console.ReadLine();
-                if (int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var intResult))
-                {
-                    return TimeSpan.FromSeconds(intResult);
-                }
-                return null;
-            }
-    ```
+        private static TimeSpan? ReadConsoleMaxTime(string message)
+        {
+            Console.Write($"{message} Max Waiting Time (seconds):");
+            var input = Console.ReadLine();
+            if (int.TryParse(input, NumberStyles.Any, CultureInfo.CurrentCulture, out var intResult))
+            {
+                return TimeSpan.FromSeconds(intResult);
+            }
+            return null;
+        }
+```
 
 1.  为控制台应用程序添加一个标准的`Main`入口点。这是异步标记的，并返回一个`Task`：
 
 ```cpp
-    public static async Task Main()
-            {
-    ```
+public static async Task Main()
+        {
+```
 
 1.  创建服务的实例。您将在不久的将来在循环中使用相同的实例：
 
 ```cpp
-                var service = new SlowRunningService();
-    ```
+            var service = new SlowRunningService();
+```
 
 1.  现在添加一个`do`循环，重复询问最大延迟时间：
 
 ```cpp
-              Console.WriteLine($"ETA: {DelayTime.TotalSeconds:N} seconds");  
+          Console.WriteLine($"ETA: {DelayTime.TotalSeconds:N} seconds");  
 
-              TimeSpan? maxWaitingTime;
-                while (true)
-                {
-                    maxWaitingTime = ReadConsoleMaxTime("Fetch");
-                    if (maxWaitingTime == null)
-                        break;
-    ```
+          TimeSpan? maxWaitingTime;
+            while (true)
+            {
+                maxWaitingTime = ReadConsoleMaxTime("Fetch");
+                if (maxWaitingTime == null)
+                    break;
+```
 
 这使您可以尝试各种值，以查看它对取消令牌和您收到的结果的影响。在`null`值的情况下，您将从`do`循环中`break`出来。
 
 1.  创建`CancellationTokenSource`，传入最大等待时间：
 
 ```cpp
-                    using var tokenSource = new CancellationTokenSource( maxWaitingTime.Value);
-                    var token = tokenSource.Token;
-    ```
+                using var tokenSource = new CancellationTokenSource( maxWaitingTime.Value);
+                var token = tokenSource.Token;
+```
 
 这将触发取消，而无需自己调用`Cancel`方法。
 
 1.  使用`CancellationToken.Register`方法，传递一个在令牌被取消时调用的`Action`委托。在这里，当发生这种情况时，简单地记录一条消息：
 
 ```cpp
-                    token.Register(() => Logger.Log($"Fetch: Cancelled token={token.GetHashCode()}"));
-    ```
+                token.Register(() => Logger.Log($"Fetch: Cancelled token={token.GetHashCode()}"));
+```
 
 1.  现在是主要活动，调用服务的`Fetch`方法，传入默认的`DelayTime`和令牌：
 
 ```cpp
-                    var resultTask = service.Fetch(DelayTime, token);
-    ```
+                var resultTask = service.Fetch(DelayTime, token);
+```
 
 1.  在等待`resultTask`之前，添加一个`try-catch`块来捕获任何`TaskCanceledException`：
 
 ```cpp
-                    try
-                    {
-                        await resultTask;
-                        if (resultTask.IsCompletedSuccessfully)
-                            Logger.Log($"Fetch: Result={resultTask.Result:N0}");
-                        else
-                            Logger.Log($"Fetch: Status={resultTask.Status}");
-                    }
-                    catch (TaskCanceledException ex)
-                    {
-                        Logger.Log($"Fetch: TaskCanceledException {ex.Message}");
-                    }
-                }
-            }
-        }
-    }
-    ```
+                try
+                {
+                    await resultTask;
+                    if (resultTask.IsCompletedSuccessfully)
+                        Logger.Log($"Fetch: Result={resultTask.Result:N0}");
+                    else
+                        Logger.Log($"Fetch: Status={resultTask.Status}");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    Logger.Log($"Fetch: TaskCanceledException {ex.Message}");
+                }
+            }
+        }
+    }
+}
+```
 
 在使用可取消任务时，有可能会抛出`TaskCanceledException`。在这种情况下，这是可以接受的，因为你确实希望发生这种情况。请注意，只有在任务标记为`IsCompletedSuccessfully`时才访问`resultTask.Result`。如果尝试访问故障任务的`Result`属性，则会抛出`AggregateException`实例。在一些较旧的项目中，您可能会看到捕获`AggregateException`的非异步/等待代码。
 
 1.  运行应用程序，并输入大于三秒的预计到达时间的等待时间，`5`在这种情况下：
 
 ```cpp
-    ETA: 3.00 seconds
-    Fetch Max Waiting Time (seconds):5
-    16:48:11 [04] Fetch: Sleeping
-    16:48:14 [04] Fetch: Awake
-    16:48:14 [04] Fetch: Result=3
-    ```
+ETA: 3.00 seconds
+Fetch Max Waiting Time (seconds):5
+16:48:11 [04] Fetch: Sleeping
+16:48:14 [04] Fetch: Awake
+16:48:14 [04] Fetch: Result=3
+```
 
 正如预期的那样，令牌在完成之前未被取消，因此您会看到`Result=3`（以秒为单位的经过时间）。
 
 1.  再试一次。为了触发和检测取消，输入`2`作为秒数：
 
 ```cpp
-    Fetch Max Waiting Time (seconds):2
-    16:49:51 [04] Fetch: Sleeping
-    16:49:53 [08] Fetch: Cancelled token=28589617
-    16:49:54 [04] Fetch: Awake
-    16:49:54 [04] Fetch: Result=3 
-    ```
+Fetch Max Waiting Time (seconds):2
+16:49:51 [04] Fetch: Sleeping
+16:49:53 [08] Fetch: Cancelled token=28589617
+16:49:54 [04] Fetch: Awake
+16:49:54 [04] Fetch: Result=3 
+```
 
 请注意，被记录的`Cancelled token`消息是`Fetch`醒来，但您最终仍然收到了一个`3`秒的结果，没有`TaskCanceledException`消息。这强调了将取消令牌传递给`Start.Run`并不会阻止任务的动作启动，更重要的是，它也没有中断它。
 
 1.  最后，使用`0`作为最大等待时间，这将有效地立即触发取消：
 
 ```cpp
-    Fetch Max Waiting Time (seconds):
-    0
-    16:53:32 [04] Fetch: Cancelled token=48717705
-    16:53:32 [04] Fetch: TaskCanceledException A task was canceled. 
-    ```
+Fetch Max Waiting Time (seconds):
+0
+16:53:32 [04] Fetch: Cancelled token=48717705
+16:53:32 [04] Fetch: TaskCanceledException A task was canceled. 
+```
 
 您将看到取消令牌消息和被捕获的`TaskCanceledException`，但根本没有记录`Sleeping`或`Awake`消息。这表明传递给`Start.Run`的`Action`实际上并没有被运行。当您将`CancelationToken`传递给`Start.Run`时，任务的`Action`被排队，但是如果`TaskScheduler`在启动之前注意到令牌已被取消，它就会抛出`TaskCanceledException`，而不会运行动作。
 
@@ -1513,37 +1513,37 @@ namespace Chapter05.Examples
 1.  在`SlowRunningService`类中，添加一个`FetchLoop`函数：
 
 ```cpp
-            public Task<double?> FetchLoop(TimeSpan delay, CancellationToken token)
-            {
-                return Task.Run(() =>
-                {
-                    const int TimeSlice = 500;
-                    var iterations = (int)(delay.TotalMilliseconds / TimeSlice);
-                    Logger.Log($"FetchLoop: Iterations={iterations} token={token.GetHashCode()}");
-                    var now = DateTime.Now;
-    ```
+        public Task<double?> FetchLoop(TimeSpan delay, CancellationToken token)
+        {
+            return Task.Run(() =>
+            {
+                const int TimeSlice = 500;
+                var iterations = (int)(delay.TotalMilliseconds / TimeSlice);
+                Logger.Log($"FetchLoop: Iterations={iterations} token={token.GetHashCode()}");
+                var now = DateTime.Now;
+```
 
 这产生了与之前的`Fetch`函数类似的结果，但其目的是展示如何将函数分解为一个重复循环，该循环提供了检查`CancellationToken`的能力，每次循环迭代都会运行。
 
 1.  定义一个`for...next`循环的主体，该循环在每次迭代时检查`IsCancellationRequested`属性是否为`true`，并在检测到取消请求时返回一个可空的双精度数：
 
 ```cpp
-                    for (var i = 0; i < iterations; i++)
-                    {
-                        if (token.IsCancellationRequested)
-                        {
-                            Logger.Log($"FetchLoop: Iteration {i + 1} detected cancellation token={token.GetHashCode()}");
-                            return (double?)null;
-                        }
-                        Logger.Log($"FetchLoop: Iteration {i + 1} Sleeping");
-                        Thread.Sleep(TimeSlice);
-                        Logger.Log($"FetchLoop: Iteration {i + 1} Awake");
-                    }
-                    Logger.Log("FetchLoop: done");
-                    return DateTime.Now.Subtract(now).TotalSeconds;
-                }, token);
-            }
-    ```
+                for (var i = 0; i < iterations; i++)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        Logger.Log($"FetchLoop: Iteration {i + 1} detected cancellation token={token.GetHashCode()}");
+                        return (double?)null;
+                    }
+                    Logger.Log($"FetchLoop: Iteration {i + 1} Sleeping");
+                    Thread.Sleep(TimeSlice);
+                    Logger.Log($"FetchLoop: Iteration {i + 1} Awake");
+                }
+                Logger.Log("FetchLoop: done");
+                return DateTime.Now.Subtract(now).TotalSeconds;
+            }, token);
+        }
+```
 
 这是一种相当坚定的退出循环的方式，但就这段代码而言，不需要做其他事情。
 
@@ -1554,83 +1554,83 @@ namespace Chapter05.Examples
 1.  在`Main`控制台应用程序中，这次添加一个类似的`while`循环，调用`FetchLoop`方法。代码与之前的循环代码类似：
 
 ```cpp
-            while (true)
-                {
-                    maxWaitingTime = ReadConsoleMaxTime("FetchLoop");
-                    if (maxWaitingTime == null)
-                        break;
-                    using var tokenSource = new CancellationTokenSource(maxWaitingTime.Value);
-                    var token = tokenSource.Token;
-                    token.Register(() => Logger.Log($"FetchLoop: Cancelled token={token.GetHashCode()}"));
-    ```
+        while (true)
+            {
+                maxWaitingTime = ReadConsoleMaxTime("FetchLoop");
+                if (maxWaitingTime == null)
+                    break;
+                using var tokenSource = new CancellationTokenSource(maxWaitingTime.Value);
+                var token = tokenSource.Token;
+                token.Register(() => Logger.Log($"FetchLoop: Cancelled token={token.GetHashCode()}"));
+```
 
 1.  现在调用`FetchLoop`并等待结果：
 
 ```cpp
-                    var resultTask = service.FetchLoop(DelayTime, token);
-                    try
-                    {
-                        await resultTask;
-                        if (resultTask.IsCompletedSuccessfully)
-                            Logger.Log($"FetchLoop: Result={resultTask.Result:N0}");
-                        else
-                            Logger.Log($"FetchLoop: Status={resultTask.Status}");
-                    }
-                    catch (TaskCanceledException ex)
-                    {
-                        Logger.Log($"FetchLoop: TaskCanceledException {ex.Message}");
-                    }
-                } 
-    ```
+                var resultTask = service.FetchLoop(DelayTime, token);
+                try
+                {
+                    await resultTask;
+                    if (resultTask.IsCompletedSuccessfully)
+                        Logger.Log($"FetchLoop: Result={resultTask.Result:N0}");
+                    else
+                        Logger.Log($"FetchLoop: Status={resultTask.Status}");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    Logger.Log($"FetchLoop: TaskCanceledException {ex.Message}");
+                }
+            } 
+```
 
 1.  运行控制台应用程序并使用`5`秒的最大值允许所有迭代运行，没有一个检测到取消请求。结果是`3`，正如预期的那样：
 
 ```cpp
-    FetchLoop Max Waiting Time (seconds):5
-    17:33:38 [04] FetchLoop: Iterations=6 token=6044116
-    17:33:38 [04] FetchLoop: Iteration 1 Sleeping
-    17:33:38 [04] FetchLoop: Iteration 1 Awake
-    17:33:38 [04] FetchLoop: Iteration 2 Sleeping
-    17:33:39 [04] FetchLoop: Iteration 2 Awake
-    17:33:39 [04] FetchLoop: Iteration 3 Sleeping
-    17:33:39 [04] FetchLoop: Iteration 3 Awake
-    17:33:39 [04] FetchLoop: Iteration 4 Sleeping
-    17:33:40 [04] FetchLoop: Iteration 4 Awake
-    17:33:40 [04] FetchLoop: Iteration 5 Sleeping
-    17:33:40 [04] FetchLoop: Iteration 5 Awake
-    17:33:40 [04] FetchLoop: Iteration 6 Sleeping
-    17:33:41 [04] FetchLoop: Iteration 6 Awake
-    17:33:41 [04] FetchLoop: done
-    17:33:41 [04] FetchLoop: Result=3
-    ```
+FetchLoop Max Waiting Time (seconds):5
+17:33:38 [04] FetchLoop: Iterations=6 token=6044116
+17:33:38 [04] FetchLoop: Iteration 1 Sleeping
+17:33:38 [04] FetchLoop: Iteration 1 Awake
+17:33:38 [04] FetchLoop: Iteration 2 Sleeping
+17:33:39 [04] FetchLoop: Iteration 2 Awake
+17:33:39 [04] FetchLoop: Iteration 3 Sleeping
+17:33:39 [04] FetchLoop: Iteration 3 Awake
+17:33:39 [04] FetchLoop: Iteration 4 Sleeping
+17:33:40 [04] FetchLoop: Iteration 4 Awake
+17:33:40 [04] FetchLoop: Iteration 5 Sleeping
+17:33:40 [04] FetchLoop: Iteration 5 Awake
+17:33:40 [04] FetchLoop: Iteration 6 Sleeping
+17:33:41 [04] FetchLoop: Iteration 6 Awake
+17:33:41 [04] FetchLoop: done
+17:33:41 [04] FetchLoop: Result=3
+```
 
 1.  使用`2`作为最大值。这次令牌在迭代`4`期间自动触发，并在迭代`5`中被发现，因此您将得到一个空结果：
 
 ```cpp
-    FetchLoop Max Waiting Time (seconds):
-    2
-    17:48:47 [04] FetchLoop: Iterations=6 token=59817589
-    17:48:47 [04] FetchLoop: Iteration 1 Sleeping
-    17:48:48 [04] FetchLoop: Iteration 1 Awake
-    17:48:48 [04] FetchLoop: Iteration 2 Sleeping
-    17:48:48 [04] FetchLoop: Iteration 2 Awake
-    17:48:48 [04] FetchLoop: Iteration 3 Sleeping
-    17:48:49 [04] FetchLoop: Iteration 3 Awake
-    17:48:49 [04] FetchLoop: Iteration 4 Sleeping
-    17:48:49 [06] FetchLoop: Cancelled token=59817589
-    17:48:49 [04] FetchLoop: Iteration 4 Awake
-    17:48:49 [04] FetchLoop: Iteration 5 detected cancellation token=59817589
-    17:48:49 [04] FetchLoop: Result=
-    ```
+FetchLoop Max Waiting Time (seconds):
+2
+17:48:47 [04] FetchLoop: Iterations=6 token=59817589
+17:48:47 [04] FetchLoop: Iteration 1 Sleeping
+17:48:48 [04] FetchLoop: Iteration 1 Awake
+17:48:48 [04] FetchLoop: Iteration 2 Sleeping
+17:48:48 [04] FetchLoop: Iteration 2 Awake
+17:48:48 [04] FetchLoop: Iteration 3 Sleeping
+17:48:49 [04] FetchLoop: Iteration 3 Awake
+17:48:49 [04] FetchLoop: Iteration 4 Sleeping
+17:48:49 [06] FetchLoop: Cancelled token=59817589
+17:48:49 [04] FetchLoop: Iteration 4 Awake
+17:48:49 [04] FetchLoop: Iteration 5 detected cancellation token=59817589
+17:48:49 [04] FetchLoop: Result=
+```
 
 1.  通过使用`0`，您将看到与之前的`Fetch`示例相同的输出：
 
 ```cpp
-    FetchLoop Max Waiting Time (seconds):
-    0
-    17:53:29 [04] FetchLoop: Cancelled token=48209832
-    17:53:29 [08] FetchLoop: TaskCanceledException A task was canceled.
-    ```
+FetchLoop Max Waiting Time (seconds):
+0
+17:53:29 [04] FetchLoop: Cancelled token=48209832
+17:53:29 [08] FetchLoop: TaskCanceledException A task was canceled.
+```
 
 该操作没有机会运行。您可以看到一个`Cancelled token`消息和被记录的`TaskCanceledException`。
 
@@ -1748,144 +1748,144 @@ Caught a divide by zero
 1.  首先添加`Customer`类：
 
 ```cpp
-    1    using System;
-    2    using System.Collections.Generic;
-    3    using System.Linq;
-    4    using System.Threading.Tasks;
-    5
-    6    namespace Chapter05.Exercises.Exercise05
-    7    {
-    8        public enum RegionName { North, East, South, West };
-    9
-    10        public class Customer
-    11        {
-    12            private readonly RegionName _protectedRegion;
-    13
-    14            public Customer(string name, RegionName region, RegionName protectedRegion)
-    15            {
-    ```
+1    using System;
+2    using System.Collections.Generic;
+3    using System.Linq;
+4    using System.Threading.Tasks;
+5
+6    namespace Chapter05.Exercises.Exercise05
+7    {
+8        public enum RegionName { North, East, South, West };
+9
+10        public class Customer
+11        {
+12            private readonly RegionName _protectedRegion;
+13
+14            public Customer(string name, RegionName region, RegionName protectedRegion)
+15            {
+```
 
 构造函数传递了客户的“名称”和他们的“地区”，以及一个标识`protectedRegion`名称的第二个地区。如果客户的“地区”与此`protectedRegion`相同，则在尝试读取`TotalOrders`属性时引发访问违例异常。
 
 1.  然后添加一个`CustomerOperations`类：
 
 ```cpp
-    public class CustomerOperations
-    {
-       public const RegionName ProtectedRegion = RegionName.West;
-    ```
+public class CustomerOperations
+{
+   public const RegionName ProtectedRegion = RegionName.West;
+```
 
 这知道如何加载客户的名称并填充其总订单价值。这里的要求是，来自`West`地区的客户需要有一个硬编码的限制，因此添加一个名为`ProtectedRegion`的常量，其值为`RegionName.West`。
 
 1.  添加一个`FetchTopCustomers`函数：
 
 ```cpp
-            public async Task<IEnumerable<Customer>> FetchTopCustomers()
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                Logger.Log("Loading customers...");
-                var customers = new List<Customer>
-                {
-                new Customer("Rick Deckard", RegionName.North, ProtectedRegion),
-                new Customer("Taffey Lewis", RegionName.North, ProtectedRegion),
-                new Customer("Rachael", RegionName.North, ProtectedRegion),
-                new Customer("Roy Batty", RegionName.West, ProtectedRegion),
-                new Customer("Eldon Tyrell", RegionName.East, ProtectedRegion)
-                };
-    ```
+        public async Task<IEnumerable<Customer>> FetchTopCustomers()
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Logger.Log("Loading customers...");
+            var customers = new List<Customer>
+            {
+            new Customer("Rick Deckard", RegionName.North, ProtectedRegion),
+            new Customer("Taffey Lewis", RegionName.North, ProtectedRegion),
+            new Customer("Rachael", RegionName.North, ProtectedRegion),
+            new Customer("Roy Batty", RegionName.West, ProtectedRegion),
+            new Customer("Eldon Tyrell", RegionName.East, ProtectedRegion)
+            };
+```
 
 这返回一个`Customer`的`Task`枚举，并标记为`async`，因为你将进一步进行`async`调用来填充每个客户的订单细节。使用`Task.Delay`来模拟一个运行缓慢的操作。在这里，一个客户的样本列表是硬编码的。创建每个`Customer`实例，传递他们的名字，实际区域和受保护的区域常量`ProtectedRegion`。
 
 1.  在`FetchOrders`（很快会声明）中添加一个`await`调用：
 
 ```cpp
-                await FetchOrders(customers);
-    ```
+            await FetchOrders(customers);
+```
 
 1.  现在，遍历客户列表，但一定要用一个`try-catch`块包装对`TotalOrders`的每个调用，明确检查访问违规异常，如果你尝试查看受保护的客户，它将被抛出：
 
 ```cpp
-                var filteredCustomers = new List<Customer>();
-                foreach (var customer in customers)
-                {
-                    try
-                    {
-                        if (customer.TotalOrders > 0)
-                            filteredCustomers.Add(customer);
-                    }
-                    catch (AccessViolationException e)
-                    {
-                        Logger.Log($"Error {e.Message}");
-                    }
-                }
-    ```
+            var filteredCustomers = new List<Customer>();
+            foreach (var customer in customers)
+            {
+                try
+                {
+                    if (customer.TotalOrders > 0)
+                        filteredCustomers.Add(customer);
+                }
+                catch (AccessViolationException e)
+                {
+                    Logger.Log($"Error {e.Message}");
+                }
+            }
+```
 
 1.  现在`filteredCustomers`列表已经填充了一个经过筛选的客户列表，使用 Linq 的`OrderByDescending`扩展方法按每个客户的`TotalOrders`值排序返回项目：
 
 ```cpp
-                return filteredCustomers.OrderByDescending(c => c.TotalOrders);
-            } 
-    ```
+            return filteredCustomers.OrderByDescending(c => c.TotalOrders);
+        } 
+```
 
 1.  用`FetchOrders`实现`CustomerOperations`的结束。
 
 1.  对于列表中的每个客户，使用一个`async` lambda，在分配随机值给`TotalOrders`之前暂停`500`毫秒：
 
 ```cpp
-            private async Task FetchOrders(IEnumerable<Customer> customers)
-            {
-                var rand = new Random();
-                Logger.Log("Loading orders...");
-                var orderUpdateTasks = customers.Select(
-                  cust => Task.Run(async () =>
-                  {
-                        await Task.Delay(500);
-                        cust.TotalOrders = rand.Next(1, 100);
-                   }))
-                  .ToList();
-    ```
+        private async Task FetchOrders(IEnumerable<Customer> customers)
+        {
+            var rand = new Random();
+            Logger.Log("Loading orders...");
+            var orderUpdateTasks = customers.Select(
+              cust => Task.Run(async () =>
+              {
+                    await Task.Delay(500);
+                    cust.TotalOrders = rand.Next(1, 100);
+               }))
+              .ToList();
+```
 
 延迟可能代表另一个运行缓慢的服务。
 
 1.  使用`Task.WhenAll`等待`orderUpdateTasks`完成：
 
 ```cpp
-                await Task.WhenAll(orderUpdateTasks);
-            }
-        }
-    ```
+            await Task.WhenAll(orderUpdateTasks);
+        }
+    }
+```
 
 1.  现在创建一个控制台应用程序来运行这个操作：
 
 ```cpp
-        public class Program
-        {
-            public static async Task Main()
-            {
-                var ops = new CustomerOperations();
-                var resultTask = ops.FetchTopCustomers();
-                var customers = await resultTask;
-                foreach (var customer in customers)
-                {
-                    Logger.Log($"{customer.Name} ({customer.Region}): {customer.TotalOrders:N0}");
-                }
-                Console.ReadLine();
-            }
-        }
-    }
-    ```
+    public class Program
+    {
+        public static async Task Main()
+        {
+            var ops = new CustomerOperations();
+            var resultTask = ops.FetchTopCustomers();
+            var customers = await resultTask;
+            foreach (var customer in customers)
+            {
+                Logger.Log($"{customer.Name} ({customer.Region}): {customer.TotalOrders:N0}");
+            }
+            Console.ReadLine();
+        }
+    }
+}
+```
 
 1.  在运行控制台时，没有错误，因为来自`West`地区的`Roy Batty`被安全地跳过了：
 
 ```cpp
-    20:00:15 [05] Loading customers...
-    20:00:16 [05] Loading orders...
-    20:00:16 [04] Error Cannot access orders for Roy Batty
-    20:00:16 [04] Rachael (North): 56
-    20:00:16 [04] Taffey Lewis (North): 19
-    20:00:16 [04] Rick Deckard (North): 10
-    20:00:16 [04] Eldon Tyrell (East): 6
-    ```
+20:00:15 [05] Loading customers...
+20:00:16 [05] Loading orders...
+20:00:16 [04] Error Cannot access orders for Roy Batty
+20:00:16 [04] Rachael (North): 56
+20:00:16 [04] Taffey Lewis (North): 19
+20:00:16 [04] Rick Deckard (North): 10
+20:00:16 [04] Eldon Tyrell (East): 6
+```
 
 在这个练习中，你看到了异常如何在异步代码中得到优雅处理。你在需要的位置放置了一个`try-catch`块，而不是过于复杂和添加太多不必要的嵌套`try-catch`块。当运行代码时，捕获了一个不会使应用程序崩溃的异常。
 
@@ -2697,23 +2697,23 @@ Customer#2      6,189,978       1,250           4,952
 +   通过调用`CreateSeed`创建第一个元素。列表的其余部分应使用`CreateNext`，传入前一个项目：
 
 ```cpp
-    FibonacciSequence.cs
-    1    public class Fibonacci
-    2    {
-    3        public static Fibonacci CreateSeed()
-    4        {
-    5            return new Fibonacci(1, 0D, 1D);
-    6        }
-    7    
-    8        public static Fibonacci CreateNext(Fibonacci previous, double angle)
-    9        {
-    10            return new Fibonacci(previous, angle);
-    11        }
-    12    
-    13        private Fibonacci(int index, double theta, double x)
-    14        {
-    15            Index = index;
-    ```
+FibonacciSequence.cs
+1    public class Fibonacci
+2    {
+3        public static Fibonacci CreateSeed()
+4        {
+5            return new Fibonacci(1, 0D, 1D);
+6        }
+7    
+8        public static Fibonacci CreateNext(Fibonacci previous, double angle)
+9        {
+10            return new Fibonacci(previous, angle);
+11        }
+12    
+13        private Fibonacci(int index, double theta, double x)
+14        {
+15            Index = index;
+```
 
 ```cpp
 You can find the complete code here: http://packt.link/I7C6A.
@@ -2722,23 +2722,23 @@ You can find the complete code here: http://packt.link/I7C6A.
 +   使用以下`FibonacciSequence`.`Calculate`方法创建斐波那契项的列表。这将传递要绘制的点数和`phi`的值（均由用户指定）：
 
 ```cpp
-    FibonacciSequence.cs
-    1    public static class FibonacciSequence
-    2    {
-    3        public static IList<Fibonacci> Calculate(int indices, double phi)
-    4        {
-    5            var angle = phi.GoldenAngle();
-    6    
-    7            var items = new List<Fibonacci>(indices)
-    8            {
-    9                Fibonacci.CreateSeed()
-    10            };
-    11            
-    12            for (var i = 1; i < indices; i++)
-    13            {
-    14                var previous = items.ElementAt(i - 1);
-    15                var next = Fibonacci.CreateNext(previous, angle);
-    ```
+FibonacciSequence.cs
+1    public static class FibonacciSequence
+2    {
+3        public static IList<Fibonacci> Calculate(int indices, double phi)
+4        {
+5            var angle = phi.GoldenAngle();
+6    
+7            var items = new List<Fibonacci>(indices)
+8            {
+9                Fibonacci.CreateSeed()
+10            };
+11            
+12            for (var i = 1; i < indices; i++)
+13            {
+14                var previous = items.ElementAt(i - 1);
+15                var next = Fibonacci.CreateNext(previous, angle);
+```
 
 ```cpp
 You can find the complete code here: https://packt.link/gYK4N.
@@ -2747,28 +2747,28 @@ You can find the complete code here: https://packt.link/gYK4N.
 +   使用`dotnet add package`命令将生成的数据导出为`.png`格式的图像文件，以添加对`System.Drawing.Common`命名空间的引用。在项目的源文件夹中，运行以下命令：
 
 ```cpp
-    source\Chapter05>dotnet add package System.Drawing.Common
-    ```
+source\Chapter05>dotnet add package System.Drawing.Common
+```
 
 +   此图像创建类`ImageGenerator`可用于创建每个最终图像文件：
 
 ```cpp
-    ImageGenerator.cs
-    1    using System.Collections.Generic;
-    2    using System.Drawing;
-    3    using System.Drawing.Drawing2D;
-    4    using System.Drawing.Imaging;
-    5    using System.IO;
-    6    
-    7    namespace Chapter05.Activities.Activity01
-    8    {
-    9        public static class ImageGenerator
-    10        {
-    11            public static void ExportSequence(IList<Fibonacci> sequence, 
-    12                string path, ImageFormat format, 13                int width, int height, double pointSize)
-    14            {
-    15                double minX = 0; 
-    ```
+ImageGenerator.cs
+1    using System.Collections.Generic;
+2    using System.Drawing;
+3    using System.Drawing.Drawing2D;
+4    using System.Drawing.Imaging;
+5    using System.IO;
+6    
+7    namespace Chapter05.Activities.Activity01
+8    {
+9        public static class ImageGenerator
+10        {
+11            public static void ExportSequence(IList<Fibonacci> sequence, 
+12                string path, ImageFormat format, 13                int width, int height, double pointSize)
+14            {
+15                double minX = 0; 
+```
 
 ```cpp
 You can find the complete code here: http://packt.link/a8Bu7.
@@ -2797,14 +2797,14 @@ You can find the complete code here: http://packt.link/a8Bu7.
 1.  运行控制台应用程序应该产生以下控制台输出：
 
 ```cpp
-    Using temp folder: C:Temp\Fibonacci\
-    Phi (eg 1.0 to 6.0) (x=quit, enter=cancel):1
-    Image Count (eg 1000):1000
-    Creating 1000 images...
-    20:36:19 [04] Saved Fibonacci_3000_1.015.png
-    20:36:19 [06] Saved Fibonacci_3000_1.030.png
-    20:36:20 [06] Saved Fibonacci_3000_1.090.png
-    ```
+Using temp folder: C:Temp\Fibonacci\
+Phi (eg 1.0 to 6.0) (x=quit, enter=cancel):1
+Image Count (eg 1000):1000
+Creating 1000 images...
+20:36:19 [04] Saved Fibonacci_3000_1.015.png
+20:36:19 [06] Saved Fibonacci_3000_1.030.png
+20:36:20 [06] Saved Fibonacci_3000_1.090.png
+```
 
 您会发现各种图像文件已经在系统的`Temp`文件夹中的 Fibonacci 文件夹中生成：
 

@@ -77,106 +77,106 @@ BFS 的一个有用特性是，对于每个被访问的顶点，所有子顶点�
 1.  添加所需的头文件并声明图，如下所示：
 
 ```cpp
-    #include <string>
-    #include <vector>
-    #include <iostream>
-    #include <set>
-    #include <map>
-    #include <queue>
-    template<typename T> class Graph;
-    ```
+#include <string>
+#include <vector>
+#include <iostream>
+#include <set>
+#include <map>
+#include <queue>
+template<typename T> class Graph;
+```
 
 1.  编写以下结构，表示图中的一条边：
 
 ```cpp
-    template<typename T>
-    struct Edge
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T>
+struct Edge
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 由于我们对边的定义使用了模板，因此可以轻松地使边具有所需的任何数据类型的边权重。
 
 1.  接下来，重载`<<`运算符，以便显示图的内容：
 
 ```cpp
-    template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i << ":\t";
-            auto edges = G.outgoing_edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
-            os << std::endl;
-        }
-        return os;
-    }
-    ```
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i << ":\t";
+        auto edges = G.outgoing_edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
+        os << std::endl;
+    }
+    return os;
+}
+```
 
 1.  编写一个类来定义我们的图数据结构，如下所示：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N) : V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V &&
-                e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto outgoing_edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for (auto& e : edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<<(std::ostream& os, const Graph<T>& G);
-    private:
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N) : V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V &&
+            e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto outgoing_edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for (auto& e : edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<<(std::ostream& os, const Graph<T>& G);
+private:
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 1.  在这个练习中，我们将在以下图上测试我们的 BFS 实现：![图 6.6：在练习 28 中实现 BFS 遍历的图](img/C14498_06_06.jpg)
 
@@ -185,76 +185,76 @@ BFS 的一个有用特性是，对于每个被访问的顶点，所有子顶点�
 我们需要一个函数来创建并返回所需的图。请注意，虽然图中为每条边分配了边权重，但这并不是必需的，因为 BFS 算法不需要使用边权重。实现函数如下：
 
 ```cpp
-    template <typename T>
-    auto create_reference_graph()
-    {
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 2}, {5, 3} };
-        edges[2] = { {1, 2}, {5, 5}, {4, 1} };
-        edges[3] = { {4, 2}, {7, 3} };
-        edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
-        edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
-        edges[6] = { {4, 4}, {7, 4}, {8, 1} };
-        edges[7] = { {3, 3}, {6, 4} };
-        edges[8] = { {4, 5}, {5, 3}, {6, 1} };
-        for (auto& i : edges)
-            for (auto& j : i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
-        return G;
-    }
-    ```
+template <typename T>
+auto create_reference_graph()
+{
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 2}, {5, 3} };
+    edges[2] = { {1, 2}, {5, 5}, {4, 1} };
+    edges[3] = { {4, 2}, {7, 3} };
+    edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
+    edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
+    edges[6] = { {4, 4}, {7, 4}, {8, 1} };
+    edges[7] = { {3, 3}, {6, 4} };
+    edges[8] = { {4, 5}, {5, 3}, {6, 1} };
+    for (auto& i : edges)
+        for (auto& j : i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    return G;
+}
+```
 
 1.  实施广度优先搜索如下：
 
 ```cpp
-    template <typename T>
-    auto breadth_first_search(const Graph<T>& G, size_t dest)
-    {
-        std::queue<size_t> queue;
-        std::vector<size_t> visit_order;
-        std::set<size_t> visited;
-        queue.push(1); // Assume that BFS always starts from vertex ID 1
-        while (!queue.empty())
-        {
-            auto current_vertex = queue.front();
-            queue.pop();
-            // If the current vertex hasn't been visited in the past
-            if (visited.find(current_vertex) == visited.end())
-            {
-                visited.insert(current_vertex);
-                visit_order.push_back(current_vertex);
-                for (auto e : G.outgoing_edges(current_vertex))
-                    queue.push(e.dest);
-            }
-        }
-        return visit_order;
-    }
-    ```
+template <typename T>
+auto breadth_first_search(const Graph<T>& G, size_t dest)
+{
+    std::queue<size_t> queue;
+    std::vector<size_t> visit_order;
+    std::set<size_t> visited;
+    queue.push(1); // Assume that BFS always starts from vertex ID 1
+    while (!queue.empty())
+    {
+        auto current_vertex = queue.front();
+        queue.pop();
+        // If the current vertex hasn't been visited in the past
+        if (visited.find(current_vertex) == visited.end())
+        {
+            visited.insert(current_vertex);
+            visit_order.push_back(current_vertex);
+            for (auto e : G.outgoing_edges(current_vertex))
+                queue.push(e.dest);
+        }
+    }
+    return visit_order;
+}
+```
 
 1.  添加以下测试和驱动代码，创建参考图，从顶点*1*开始运行 BFS，并输出结果：
 
 ```cpp
-    template <typename T>
-    void test_BFS()
-    {
-        // Create an instance of and print the graph
-        auto G = create_reference_graph<unsigned>();
-        std::cout << G << std::endl;
-        // Run BFS starting from vertex ID 1 and print the order
-        // in which vertices are visited.
-        std::cout << "BFS Order of vertices: " << std::endl;
-        auto bfs_visit_order = breadth_first_search(G, 1);
-        for (auto v : bfs_visit_order)
-            std::cout << v << std::endl;
-    }
-    int main()
-    {
-        using T = unsigned;
-        test_BFS<T>();
-        return 0;
-    }
-    ```
+template <typename T>
+void test_BFS()
+{
+    // Create an instance of and print the graph
+    auto G = create_reference_graph<unsigned>();
+    std::cout << G << std::endl;
+    // Run BFS starting from vertex ID 1 and print the order
+    // in which vertices are visited.
+    std::cout << "BFS Order of vertices: " << std::endl;
+    auto bfs_visit_order = breadth_first_search(G, 1);
+    for (auto v : bfs_visit_order)
+        std::cout << v << std::endl;
+}
+int main()
+{
+    using T = unsigned;
+    test_BFS<T>();
+    return 0;
+}
+```
 
 1.  运行上述代码。您的输出应如下所示：
 
@@ -301,139 +301,139 @@ BFS 的时间复杂度为*O(V + E)*，其中*V*是顶点数，*E*是图中的边
 1.  包括所需的头文件，如下所示：
 
 ```cpp
-    #include <string>
-    #include <vector>
-    #include <iostream>
-    #include <set>
-    #include <map>
-    #include <stack>
-    template<typename T> class Graph;
-    ```
+#include <string>
+#include <vector>
+#include <iostream>
+#include <set>
+#include <map>
+#include <stack>
+template<typename T> class Graph;
+```
 
 1.  编写以下结构以实现图中的边：
 
 ```cpp
-    template<typename T>
-    struct Edge
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T>
+struct Edge
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 同样，由于我们的实现使用了结构的模板化版本，它允许我们分配任何所需的数据类型的边权重。然而，为了 DFS 的目的，我们将使用空值作为边权重的占位符。
 
 1.  接下来，重载图的`<<`运算符，以便可以使用以下函数打印出来：
 
 ```cpp
-     template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i << ":\t";
-            auto edges = G.outgoing_edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
-            os << std::endl;
-        }
-        return os;
-    }
-    ```
+ template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i << ":\t";
+        auto edges = G.outgoing_edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
+        os << std::endl;
+    }
+    return os;
+}
+```
 
 1.  实现使用边列表表示的图数据结构如下：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N) : V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V &&
-                e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto outgoing_edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for (auto& e : edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
-    private:
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N) : V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V &&
+            e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto outgoing_edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for (auto& e : edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
+private:
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 1.  现在，我们需要一个函数来执行我们的图的 DFS。实现如下：
 
 ```cpp
-     template <typename T>
-    auto depth_first_search(const Graph<T>& G, size_t dest)
-    {
-        std::stack<size_t> stack;
-        std::vector<size_t> visit_order;
-        std::set<size_t> visited;
-        stack.push(1); // Assume that DFS always starts from vertex ID 1
-        while (!stack.empty())
-        {
-            auto current_vertex = stack.top();
-            stack.pop();
-            // If the current vertex hasn't been visited in the past
-            if (visited.find(current_vertex) == visited.end())
-            {
-                visited.insert(current_vertex);
-                visit_order.push_back(current_vertex);
-                for (auto e : G.outgoing_edges(current_vertex))
-                {    
-                    // If the vertex hasn't been visited, insert it in the stack.
-                    if (visited.find(e.dest) == visited.end())
-                    {
-                        stack.push(e.dest);
-                    }
-                }
-            }
-        }
-        return visit_order;
-    }
-    ```
+ template <typename T>
+auto depth_first_search(const Graph<T>& G, size_t dest)
+{
+    std::stack<size_t> stack;
+    std::vector<size_t> visit_order;
+    std::set<size_t> visited;
+    stack.push(1); // Assume that DFS always starts from vertex ID 1
+    while (!stack.empty())
+    {
+        auto current_vertex = stack.top();
+        stack.pop();
+        // If the current vertex hasn't been visited in the past
+        if (visited.find(current_vertex) == visited.end())
+        {
+            visited.insert(current_vertex);
+            visit_order.push_back(current_vertex);
+            for (auto e : G.outgoing_edges(current_vertex))
+            {    
+                // If the vertex hasn't been visited, insert it in the stack.
+                if (visited.find(e.dest) == visited.end())
+                {
+                    stack.push(e.dest);
+                }
+            }
+        }
+    }
+    return visit_order;
+}
+```
 
 1.  我们将在这里显示的图上测试我们的 DFS 实现：![图 6.13：用于实现练习 29 中 DFS 遍历的图](img/C14498_06_13.jpg)
 
@@ -442,51 +442,51 @@ BFS 的时间复杂度为*O(V + E)*，其中*V*是顶点数，*E*是图中的边
 使用以下函数创建并返回图：
 
 ```cpp
-    template <typename T>
-    auto create_reference_graph()
-    {
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 0}, {5, 0} };
-        edges[2] = { {1, 0}, {5, 0}, {4, 0} };
-        edges[3] = { {4, 0}, {7, 0} };
-        edges[4] = { {2, 0}, {3, 0}, {5, 0}, {6, 0}, {8, 0} };
-        edges[5] = { {1, 0}, {2, 0}, {4, 0}, {8, 0} };
-        edges[6] = { {4, 0}, {7, 0}, {8, 0} };
-        edges[7] = { {3, 0}, {6, 0} };
-        edges[8] = { {4, 0}, {5, 0}, {6, 0} };
-        for (auto& i : edges)
-            for (auto& j : i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
-        return G;
-    }
-    ```
+template <typename T>
+auto create_reference_graph()
+{
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 0}, {5, 0} };
+    edges[2] = { {1, 0}, {5, 0}, {4, 0} };
+    edges[3] = { {4, 0}, {7, 0} };
+    edges[4] = { {2, 0}, {3, 0}, {5, 0}, {6, 0}, {8, 0} };
+    edges[5] = { {1, 0}, {2, 0}, {4, 0}, {8, 0} };
+    edges[6] = { {4, 0}, {7, 0}, {8, 0} };
+    edges[7] = { {3, 0}, {6, 0} };
+    edges[8] = { {4, 0}, {5, 0}, {6, 0} };
+    for (auto& i : edges)
+        for (auto& j : i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    return G;
+}
+```
 
 请注意，在 DFS 中使用空值表示边权重，因此 DFS 不需要边权重。图的更简单的实现可以完全省略边权重而不影响我们的 DFS 算法的行为。
 
 1.  最后，添加以下测试和驱动代码，运行我们的 DFS 实现并打印输出：
 
 ```cpp
-    template <typename T>
-    void test_DFS()
-    {
-        // Create an instance of and print the graph
-        auto G = create_reference_graph<unsigned>();
-        std::cout << G << std::endl;
-        // Run DFS starting from vertex ID 1 and print the order
-        // in which vertices are visited.
-        std::cout << "DFS Order of vertices: " << std::endl;
-        auto dfs_visit_order = depth_first_search(G, 1);
-        for (auto v : dfs_visit_order)
-            std::cout << v << std::endl;
-    }
-    int main()
-    {
-        using T = unsigned;
-        test_DFS<T>();
-        return 0;
-    }
-    ```
+template <typename T>
+void test_DFS()
+{
+    // Create an instance of and print the graph
+    auto G = create_reference_graph<unsigned>();
+    std::cout << G << std::endl;
+    // Run DFS starting from vertex ID 1 and print the order
+    // in which vertices are visited.
+    std::cout << "DFS Order of vertices: " << std::endl;
+    auto dfs_visit_order = depth_first_search(G, 1);
+    for (auto v : dfs_visit_order)
+        std::cout << v << std::endl;
+}
+int main()
+{
+    using T = unsigned;
+    test_DFS<T>();
+    return 0;
+}
+```
 
 1.  编译并运行上述代码。您的输出应如下所示：
 
@@ -607,222 +607,222 @@ Prim 算法（也称为 Jarvik 算法）的思想与 BFS 类似。该算法首�
 1.  添加所需的头文件，如下所示：
 
 ```cpp
-    #include <set>
-    #include <map>
-    #include <queue>
-    #include <limits>
-    #include <string>
-    #include <vector>
-    #include <iostream>
-    ```
+#include <set>
+#include <map>
+#include <queue>
+#include <limits>
+#include <string>
+#include <vector>
+#include <iostream>
+```
 
 1.  使用以下结构在图中实现一条边：
 
 ```cpp
-    template<typename T> class Graph;
-    template<typename T>
-    struct Edge
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T> class Graph;
+template<typename T>
+struct Edge
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 1.  使用以下函数重载`Graph`类的`<<`运算符，以便我们可以将图输出到 C++流中：
 
 ```cpp
-     template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i << ":\t";
-            auto edges = G.outgoing_edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
-            os << std::endl;
-        }
-        return os;
-    }
-    ```
+ template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i << ":\t";
+        auto edges = G.outgoing_edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
+        os << std::endl;
+    }
+    return os;
+}
+```
 
 1.  添加基于边列表的图实现，如下所示：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N) : V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V &&
-                e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto outgoing_edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for (auto& e : edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
-    private:
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N) : V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V &&
+            e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto outgoing_edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for (auto& e : edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
+private:
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 1.  使用以下代码创建并返回*图 6.22*中所示的图的函数：
 
 ```cpp
-     template <typename T>
-    auto create_reference_graph()
-    {
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 2}, {5, 3} };
-        edges[2] = { {1, 2}, {5, 5}, {4, 1} };
-        edges[3] = { {4, 2}, {7, 3} };
-        edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
-        edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
-        edges[6] = { {4, 4}, {7, 4}, {8, 1} };
-        edges[7] = { {3, 3}, {6, 4} };
-        edges[8] = { {4, 5}, {5, 3}, {6, 1} };
-        for (auto& i : edges)
-            for (auto& j : i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
-        return G;
-    }
-    ```
+ template <typename T>
+auto create_reference_graph()
+{
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 2}, {5, 3} };
+    edges[2] = { {1, 2}, {5, 5}, {4, 1} };
+    edges[3] = { {4, 2}, {7, 3} };
+    edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
+    edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
+    edges[6] = { {4, 4}, {7, 4}, {8, 1} };
+    edges[7] = { {3, 3}, {6, 4} };
+    edges[8] = { {4, 5}, {5, 3}, {6, 1} };
+    for (auto& i : edges)
+        for (auto& j : i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    return G;
+}
+```
 
 1.  接下来，我们将实现`Label`结构，为图中的每个顶点分配一个实例，以存储其与*frontier*的距离。使用以下代码来实现：
 
 ```cpp
-    template<typename T>
-    struct Label
-    {
-        size_t vertex_ID;
-        T distance_from_frontier;
-        Label(size_t _id, T _distance) :
-            vertex_ID(_id),
-            distance_from_frontier(_distance)
-        {}
-        // To compare labels, only compare their distances from source
-        inline bool operator< (const Label<T>& l) const
-        {
-            return this->distance_from_frontier < l.distance_from_frontier;
-        }
-        inline bool operator> (const Label<T>& l) const
-        {
-            return this->distance_from_frontier > l.distance_from_frontier;
-        }
-        inline bool operator() (const Label<T>& l) const
-        {
-            return this > l;
-        }
-    };
-    ```
+template<typename T>
+struct Label
+{
+    size_t vertex_ID;
+    T distance_from_frontier;
+    Label(size_t _id, T _distance) :
+        vertex_ID(_id),
+        distance_from_frontier(_distance)
+    {}
+    // To compare labels, only compare their distances from source
+    inline bool operator< (const Label<T>& l) const
+    {
+        return this->distance_from_frontier < l.distance_from_frontier;
+    }
+    inline bool operator> (const Label<T>& l) const
+    {
+        return this->distance_from_frontier > l.distance_from_frontier;
+    }
+    inline bool operator() (const Label<T>& l) const
+    {
+        return this > l;
+    }
+};
+```
 
 1.  编写一个函数来实现 Prim 的 MST 算法，如下所示：
 
 ```cpp
-    template <typename T>
-    auto prim_MST(const Graph<T>& G, size_t src)
-    {
-        std::priority_queue<Label<T>, std::vector<Label<T>>, std::greater<Label<T>>> heap;
-        std::set<int> visited;
-        std::vector<T> distance(G.vertices(), std::numeric_limits<T>::max());
-        std::vector<size_t> MST;
-        heap.emplace(src, 0);
-        // Search for the destination vertex in the graph
-        while (!heap.empty())
-        {
-            auto current_vertex = heap.top();
-            heap.pop();
-            // If the current vertex hasn't been visited in the past
-            if (visited.find(current_vertex.vertex_ID) == visited.end())
-            {
-                std::cout << "Settling vertex ID " 
-    << current_vertex.vertex_ID << std::endl;
-                MST.push_back(current_vertex.vertex_ID);
-            // For each outgoing edge from the current vertex, 
-            // create a label for the destination vertex and add it to the heap
-                for (auto e : G.outgoing_edges(current_vertex.vertex_ID))
-                {
-                    auto neighbor_vertex_ID = e.dest;
-                    auto new_distance_to_frontier = e.weight;
-            // Check if the new path to the vertex is shorter
-            // than the previously known best path. 
-            // If yes, update the distance 
-                    if (new_distance_to_frontier < distance[neighbor_vertex_ID])
-                    {
-    heap.emplace(neighbor_vertex_ID,  new_distance_to_frontier);
-                        distance[e.dest] = new_distance_to_frontier;
-                    }
-                }
-                visited.insert(current_vertex.vertex_ID);
-            }
-        }
-        return MST;
-    }
-    ```
+template <typename T>
+auto prim_MST(const Graph<T>& G, size_t src)
+{
+    std::priority_queue<Label<T>, std::vector<Label<T>>, std::greater<Label<T>>> heap;
+    std::set<int> visited;
+    std::vector<T> distance(G.vertices(), std::numeric_limits<T>::max());
+    std::vector<size_t> MST;
+    heap.emplace(src, 0);
+    // Search for the destination vertex in the graph
+    while (!heap.empty())
+    {
+        auto current_vertex = heap.top();
+        heap.pop();
+        // If the current vertex hasn't been visited in the past
+        if (visited.find(current_vertex.vertex_ID) == visited.end())
+        {
+            std::cout << "Settling vertex ID " 
+<< current_vertex.vertex_ID << std::endl;
+            MST.push_back(current_vertex.vertex_ID);
+        // For each outgoing edge from the current vertex, 
+        // create a label for the destination vertex and add it to the heap
+            for (auto e : G.outgoing_edges(current_vertex.vertex_ID))
+            {
+                auto neighbor_vertex_ID = e.dest;
+                auto new_distance_to_frontier = e.weight;
+        // Check if the new path to the vertex is shorter
+        // than the previously known best path. 
+        // If yes, update the distance 
+                if (new_distance_to_frontier < distance[neighbor_vertex_ID])
+                {
+heap.emplace(neighbor_vertex_ID,  new_distance_to_frontier);
+                    distance[e.dest] = new_distance_to_frontier;
+                }
+            }
+            visited.insert(current_vertex.vertex_ID);
+        }
+    }
+    return MST;
+}
+```
 
 1.  最后，添加以下代码，运行我们的 Prim 算法实现并输出结果：
 
 ```cpp
-    template<typename T>
-    void test_prim_MST()
-    {
-        auto G = create_reference_graph<T>();
-        std::cout << G << std::endl;
-        auto MST = prim_MST<T>(G, 1);
-        std::cout << "Minimum Spanning Tree:" << std::endl;
-        for (auto v : MST)
-            std::cout << v << std::endl;
-        std::cout << std::endl;
-    }
-    int main()
-    {
-        using T = unsigned;
-        test_prim_MST<T>();
-        return 0;
-    }
-    ```
+template<typename T>
+void test_prim_MST()
+{
+    auto G = create_reference_graph<T>();
+    std::cout << G << std::endl;
+    auto MST = prim_MST<T>(G, 1);
+    std::cout << "Minimum Spanning Tree:" << std::endl;
+    for (auto v : MST)
+        std::cout << v << std::endl;
+    std::cout << std::endl;
+}
+int main()
+{
+    using T = unsigned;
+    test_prim_MST<T>();
+    return 0;
+}
+```
 
 1.  运行程序。您的输出应如下所示：
 
@@ -883,209 +883,209 @@ Dijkstra 算法适用于具有非负边权重的图，它只是 Prim 最小生�
 1.  包括所需的头文件并声明图数据结构，如下所示：
 
 ```cpp
-    #include <string>
-    #include <vector>
-    #include <iostream>
-    #include <set>
-    #include <map>
-    #include <limits>
-    #include <queue>
-    template<typename T> class Graph;
-    ```
+#include <string>
+#include <vector>
+#include <iostream>
+#include <set>
+#include <map>
+#include <limits>
+#include <queue>
+template<typename T> class Graph;
+```
 
 1.  编写以下结构来实现图中边的结构：
 
 ```cpp
-    template<typename T>
-    struct Edge
-    {
-        size_t src;
-        size_t dest;
-        T weight;
-        // To compare edges, only compare their weights,
-        // and not the source/destination vertices
-        inline bool operator< (const Edge<T>& e) const
-        {
-            return this->weight < e.weight;
-        }
-        inline bool operator> (const Edge<T>& e) const
-        {
-            return this->weight > e.weight;
-        }
-    };
-    ```
+template<typename T>
+struct Edge
+{
+    size_t src;
+    size_t dest;
+    T weight;
+    // To compare edges, only compare their weights,
+    // and not the source/destination vertices
+    inline bool operator< (const Edge<T>& e) const
+    {
+        return this->weight < e.weight;
+    }
+    inline bool operator> (const Edge<T>& e) const
+    {
+        return this->weight > e.weight;
+    }
+};
+```
 
 1.  重载`Graph`类的`<<`运算符，以便可以使用流输出，如下所示：
 
 ```cpp
-     template <typename T>
-    std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
-    {
-        for (auto i = 1; i < G.vertices(); i++)
-        {
-            os << i << ":\t";
-            auto edges = G.outgoing_edges(i);
-            for (auto& e : edges)
-                os << "{" << e.dest << ": " << e.weight << "}, ";
-            os << std::endl;
-        }
-        return os;
-    }
-    ```
+ template <typename T>
+std::ostream& operator<<(std::ostream& os, const Graph<T>& G)
+{
+    for (auto i = 1; i < G.vertices(); i++)
+    {
+        os << i << ":\t";
+        auto edges = G.outgoing_edges(i);
+        for (auto& e : edges)
+            os << "{" << e.dest << ": " << e.weight << "}, ";
+        os << std::endl;
+    }
+    return os;
+}
+```
 
 1.  实现图，如下所示：
 
 ```cpp
-    template<typename T>
-    class Graph
-    {
-    public:
-        // Initialize the graph with N vertices
-        Graph(size_t N) : V(N)
-        {}
-        // Return number of vertices in the graph
-        auto vertices() const
-        {
-            return V;
-        }
-        // Return all edges in the graph
-        auto& edges() const
-        {
-            return edge_list;
-        }
-        void add_edge(Edge<T>&& e)
-        {
-            // Check if the source and destination vertices are within range
-            if (e.src >= 1 && e.src <= V &&
-                e.dest >= 1 && e.dest <= V)
-                edge_list.emplace_back(e);
-            else
-                std::cerr << "Vertex out of bounds" << std::endl;
-        }
-        // Returns all outgoing edges from vertex v
-        auto outgoing_edges(size_t v) const
-        {
-            std::vector<Edge<T>> edges_from_v;
-            for (auto& e : edge_list)
-            {
-                if (e.src == v)
-                    edges_from_v.emplace_back(e);
-            }
-            return edges_from_v;
-        }
-        // Overloads the << operator so a graph be written directly to a stream
-        // Can be used as std::cout << obj << std::endl;
-        template <typename T>
-        friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
-    private:
-        size_t V;        // Stores number of vertices in graph
-        std::vector<Edge<T>> edge_list;
-    };
-    ```
+template<typename T>
+class Graph
+{
+public:
+    // Initialize the graph with N vertices
+    Graph(size_t N) : V(N)
+    {}
+    // Return number of vertices in the graph
+    auto vertices() const
+    {
+        return V;
+    }
+    // Return all edges in the graph
+    auto& edges() const
+    {
+        return edge_list;
+    }
+    void add_edge(Edge<T>&& e)
+    {
+        // Check if the source and destination vertices are within range
+        if (e.src >= 1 && e.src <= V &&
+            e.dest >= 1 && e.dest <= V)
+            edge_list.emplace_back(e);
+        else
+            std::cerr << "Vertex out of bounds" << std::endl;
+    }
+    // Returns all outgoing edges from vertex v
+    auto outgoing_edges(size_t v) const
+    {
+        std::vector<Edge<T>> edges_from_v;
+        for (auto& e : edge_list)
+        {
+            if (e.src == v)
+                edges_from_v.emplace_back(e);
+        }
+        return edges_from_v;
+    }
+    // Overloads the << operator so a graph be written directly to a stream
+    // Can be used as std::cout << obj << std::endl;
+    template <typename T>
+    friend std::ostream& operator<< <>(std::ostream& os, const Graph<T>& G);
+private:
+    size_t V;        // Stores number of vertices in graph
+    std::vector<Edge<T>> edge_list;
+};
+```
 
 1.  编写一个函数，使用`Graph`类创建*图 6.28*中显示的参考图，如下所示：
 
 ```cpp
-    template <typename T>
-    auto create_reference_graph()
-    {
-        Graph<T> G(9);
-        std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
-        edges[1] = { {2, 2}, {5, 3} };
-        edges[2] = { {1, 2}, {5, 5}, {4, 1} };
-        edges[3] = { {4, 2}, {7, 3} };
-        edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
-        edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
-        edges[6] = { {4, 4}, {7, 4}, {8, 1} };
-        edges[7] = { {3, 3}, {6, 4} };
-        edges[8] = { {4, 5}, {5, 3}, {6, 1} };
-        for (auto& i : edges)
-            for (auto& j : i.second)
-                G.add_edge(Edge<T>{ i.first, j.first, j.second });
-        return G;
-    }
-    ```
+template <typename T>
+auto create_reference_graph()
+{
+    Graph<T> G(9);
+    std::map<unsigned, std::vector<std::pair<size_t, T>>> edges;
+    edges[1] = { {2, 2}, {5, 3} };
+    edges[2] = { {1, 2}, {5, 5}, {4, 1} };
+    edges[3] = { {4, 2}, {7, 3} };
+    edges[4] = { {2, 1}, {3, 2}, {5, 2}, {6, 4}, {8, 5} };
+    edges[5] = { {1, 3}, {2, 5}, {4, 2}, {8, 3} };
+    edges[6] = { {4, 4}, {7, 4}, {8, 1} };
+    edges[7] = { {3, 3}, {6, 4} };
+    edges[8] = { {4, 5}, {5, 3}, {6, 1} };
+    for (auto& i : edges)
+        for (auto& j : i.second)
+            G.add_edge(Edge<T>{ i.first, j.first, j.second });
+    return G;
+}
+```
 
 1.  实现 Dijkstra 算法，如下所示：
 
 ```cpp
-    template <typename T>
-    auto dijkstra_shortest_path(const Graph<T>& G, size_t src, size_t dest)
-    {
-        std::priority_queue<Label<T>, std::vector<Label<T>>, std::greater<Label<T>>> heap;
-        std::set<int> visited;
-        std::vector<size_t> parent(G.vertices());
-        std::vector<T> distance(G.vertices(), std::numeric_limits<T>::max());
-        std::vector<size_t> shortest_path;
-        heap.emplace(src, 0);
-        parent[src] = src;
-        // Search for the destination vertex in the graph
-        while (!heap.empty()) {
-            auto current_vertex = heap.top();
-            heap.pop();
-            // If the search has reached the destination vertex
-            if (current_vertex.vertex_ID == dest) {
-                std::cout << "Destination " << 
-    current_vertex.vertex_ID << " reached." << std::endl;
-                break;
-            }
-            if (visited.find(current_vertex.vertex_ID) == visited.end()) {
-                std::cout << "Settling vertex " << 
-    current_vertex.vertex_ID << std::endl;
-                // For each outgoing edge from the current vertex, 
-                // create a label for the destination vertex and add it to the heap
-                for (auto e : G.outgoing_edges(current_vertex.vertex_ID)) {
-                    auto neighbor_vertex_ID = e.dest;
-                    auto new_distance_to_dest=current_vertex.distance_from_source 
-    + e.weight;
-                    // Check if the new path to the destination vertex 
-    // has a lower cost than any previous paths found to it, if // yes, then this path should be preferred 
-                    if (new_distance_to_dest < distance[neighbor_vertex_ID]) {
-                        heap.emplace(neighbor_vertex_ID, new_distance_to_dest);
-                        parent[e.dest] = current_vertex.vertex_ID;
-                        distance[e.dest] = new_distance_to_dest;
-                    }
-                }
-                visited.insert(current_vertex.vertex_ID);
-            }
-        }
-        // Construct the path from source to the destination by backtracking 
-        // using the parent indexes
-        auto current_vertex = dest;
-        while (current_vertex != src) {
-            shortest_path.push_back(current_vertex);
-            current_vertex = parent[current_vertex];
-        }
-        shortest_path.push_back(src);
-        std::reverse(shortest_path.begin(), shortest_path.end());
-        return shortest_path;
-    }
-    ```
+template <typename T>
+auto dijkstra_shortest_path(const Graph<T>& G, size_t src, size_t dest)
+{
+    std::priority_queue<Label<T>, std::vector<Label<T>>, std::greater<Label<T>>> heap;
+    std::set<int> visited;
+    std::vector<size_t> parent(G.vertices());
+    std::vector<T> distance(G.vertices(), std::numeric_limits<T>::max());
+    std::vector<size_t> shortest_path;
+    heap.emplace(src, 0);
+    parent[src] = src;
+    // Search for the destination vertex in the graph
+    while (!heap.empty()) {
+        auto current_vertex = heap.top();
+        heap.pop();
+        // If the search has reached the destination vertex
+        if (current_vertex.vertex_ID == dest) {
+            std::cout << "Destination " << 
+current_vertex.vertex_ID << " reached." << std::endl;
+            break;
+        }
+        if (visited.find(current_vertex.vertex_ID) == visited.end()) {
+            std::cout << "Settling vertex " << 
+current_vertex.vertex_ID << std::endl;
+            // For each outgoing edge from the current vertex, 
+            // create a label for the destination vertex and add it to the heap
+            for (auto e : G.outgoing_edges(current_vertex.vertex_ID)) {
+                auto neighbor_vertex_ID = e.dest;
+                auto new_distance_to_dest=current_vertex.distance_from_source 
++ e.weight;
+                // Check if the new path to the destination vertex 
+// has a lower cost than any previous paths found to it, if // yes, then this path should be preferred 
+                if (new_distance_to_dest < distance[neighbor_vertex_ID]) {
+                    heap.emplace(neighbor_vertex_ID, new_distance_to_dest);
+                    parent[e.dest] = current_vertex.vertex_ID;
+                    distance[e.dest] = new_distance_to_dest;
+                }
+            }
+            visited.insert(current_vertex.vertex_ID);
+        }
+    }
+    // Construct the path from source to the destination by backtracking 
+    // using the parent indexes
+    auto current_vertex = dest;
+    while (current_vertex != src) {
+        shortest_path.push_back(current_vertex);
+        current_vertex = parent[current_vertex];
+    }
+    shortest_path.push_back(src);
+    std::reverse(shortest_path.begin(), shortest_path.end());
+    return shortest_path;
+}
+```
 
 我们的实现分为两个阶段——从源顶点开始搜索目标顶点，并使用回溯阶段，在这个阶段通过从目标顶点回溯到源顶点的父指针来找到最短路径。
 
 1.  最后，添加以下代码来测试我们对 Dijkstra 算法的实现，以找到图中顶点 1 和 6 之间的最短路径：
 
 ```cpp
-     template<typename T>
-    void test_dijkstra()
-    {
-        auto G = create_reference_graph<T>();
-        std::cout << "Reference graph:" << std::endl;
-        std::cout << G << std::endl;
-        auto shortest_path = dijkstra_shortest_path<T>(G, 1, 6);
-        std::cout << "The shortest path between 1 and 6 is:" << std::endl;
-        for (auto v : shortest_path)
-            std::cout << v << " ";
-        std::cout << std::endl;
-    }
-    int main()
-    {
-        using T = unsigned;
-        test_dijkstra<T>();
-        return 0;
-    }
-    ```
+ template<typename T>
+void test_dijkstra()
+{
+    auto G = create_reference_graph<T>();
+    std::cout << "Reference graph:" << std::endl;
+    std::cout << G << std::endl;
+    auto shortest_path = dijkstra_shortest_path<T>(G, 1, 6);
+    std::cout << "The shortest path between 1 and 6 is:" << std::endl;
+    for (auto v : shortest_path)
+        std::cout << v << " ";
+    std::cout << std::endl;
+}
+int main()
+{
+    using T = unsigned;
+    test_dijkstra<T>();
+    return 0;
+}
+```
 
 1.  运行程序。您的输出应如下所示：
 

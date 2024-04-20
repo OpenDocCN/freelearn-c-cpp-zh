@@ -282,8 +282,8 @@ public delegate void MessageReceivedHandler(string message, int size);
 1.  切换到`Chapter03`文件夹并使用 CLI `dotnet`命令创建一个名为`Exercise01`的新控制台应用程序，如下所示：
 
 ```cpp
-    source\Chapter03>dotnet new console -o Exercise01
-    ```
+source\Chapter03>dotnet new console -o Exercise01
+```
 
 您将看到以下输出：
 
@@ -299,13 +299,13 @@ Restore succeeded.
 1.  打开`Chapter03\Exercise01.csproj`并用以下设置替换内容：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开`Exercise01\Program.cs`并清空内容。
 
@@ -324,111 +324,111 @@ namespace Chapter03.Exercise01
 1.  接下来，您将创建一个名为`Order`的类，其中包含订单的详细信息，并可以传递给两个日期验证委托：
 
 ```cpp
-       public class Order
-        {
-            private readonly DateValidationHandler _orderDateValidator;
-            private readonly DateValidationHandler _deliveryDateValidator;
-    ```
+   public class Order
+    {
+        private readonly DateValidationHandler _orderDateValidator;
+        private readonly DateValidationHandler _deliveryDateValidator;
+```
 
 请注意，您已声明了两个只读的类级别`DateValidationHandler`实例，一个用于验证订单日期，另一个用于验证交货日期。 此设计假定日期验证规则不会为此`Order`实例更改。
 
 1.  现在对于构造函数，您传递了两个委托：
 
 ```cpp
-           public Order(DateValidationHandler orderDateValidator,
-                DateValidationHandler deliveryDateValidator)
-            {
-                _orderDateValidator = orderDateValidator;
-                _deliveryDateValidator = deliveryDateValidator;
-            }  
-    ```
+       public Order(DateValidationHandler orderDateValidator,
+            DateValidationHandler deliveryDateValidator)
+        {
+            _orderDateValidator = orderDateValidator;
+            _deliveryDateValidator = deliveryDateValidator;
+        }  
+```
 
 在此设计中，通常由不同的类负责根据所选客户的配置文件决定使用哪些委托。
 
 1.  您需要添加要验证的两个日期属性。 这些日期可以使用监听按键并直接将用户编辑应用于此类的 UI 来设置：
 
 ```cpp
-            public DateTime OrderDate { get; set; }
-            public DateTime DeliveryDate { get; set; }
-    ```
+        public DateTime OrderDate { get; set; }
+        public DateTime DeliveryDate { get; set; }
+```
 
 1.  现在添加一个`IsValid`方法，将`OrderDate`传递给`orderDateValidator`委托，并将`DeliveryDate`传递给`deliveryDateValidator`委托：
 
 ```cpp
-            public bool IsValid() => 
-                _orderDateValidator(OrderDate) &&
-                _deliveryDateValidator(DeliveryDate);
-        }
-    ```
+        public bool IsValid() => 
+            _orderDateValidator(OrderDate) &&
+            _deliveryDateValidator(DeliveryDate);
+    }
+```
 
 如果两者都有效，则此调用将返回`true`。 关键在于`Order`不需要了解单个客户的日期验证规则的具体实现，因此您可以轻松地在程序的其他位置重用`Order`。 要调用委托，只需将任何参数括在括号中，本例中将正确的日期属性传递给每个委托实例：
 
 1.  要创建一个控制台应用程序来测试这一点，请添加一个名为`Program`的`static`类：
 
 ```cpp
-        public static class Program
-        {
-    ```
+    public static class Program
+    {
+```
 
 1.  您希望创建两个函数，用于验证传递给它们的日期是否有效。 这些函数将成为您的委托目标方法的基础：
 
 ```cpp
-            private static bool IsWeekendDate(DateTime date)
-            {
-                Console.WriteLine("Called IsWeekendDate");
-                return date.DayOfWeek == DayOfWeek.Saturday ||
-                       date.DayOfWeek == DayOfWeek.Sunday;
-            }
-            private static bool IsPastDate(DateTime date)
-            {
-                Console.WriteLine("Called IsPastDate");
-                return date < DateTime.Today;
-            }
-    ```
+        private static bool IsWeekendDate(DateTime date)
+        {
+            Console.WriteLine("Called IsWeekendDate");
+            return date.DayOfWeek == DayOfWeek.Saturday ||
+                   date.DayOfWeek == DayOfWeek.Sunday;
+        }
+        private static bool IsPastDate(DateTime date)
+        {
+            Console.WriteLine("Called IsPastDate");
+            return date < DateTime.Today;
+        }
+```
 
 请注意，两者都具有`DateValidationHandler`委托所期望的确切签名。 他们都不知道他们正在验证的日期的性质，因为这不是他们关心的事情。 他们都标记为`static`，因为它们不与此类中的任何变量或属性交互。
 
 1.  现在是`Main`入口点。 在这里，您创建了两个`DateValidationHandler`委托实例，将`IsPastDate`传递给一个委托，将`IsWeekendDate`传递给第二个委托。 这些是在调用每个委托时将被调用的目标方法：
 
 ```cpp
-            public static void Main()
-            {
-               var orderValidator = new DateValidationHandler(IsPastDate);
-               var deliverValidator = new DateValidationHandler(IsWeekendDate);
-    ```
+        public static void Main()
+        {
+           var orderValidator = new DateValidationHandler(IsPastDate);
+           var deliverValidator = new DateValidationHandler(IsWeekendDate);
+```
 
 1.  现在，您可以创建一个`Order`实例，传递委托并设置订单和交货日期：
 
 ```cpp
-              var order = new Order(orderValidator, deliverValidator)
-                {
-                    OrderDate = DateTime.Today.AddDays(-10), 
-                    DeliveryDate = new DateTime(2020, 12, 31)
-                };
-    ```
+          var order = new Order(orderValidator, deliverValidator)
+            {
+                OrderDate = DateTime.Today.AddDays(-10), 
+                DeliveryDate = new DateTime(2020, 12, 31)
+            };
+```
 
 有多种方法可以创建委托。 在这里，您首先将它们分配给变量，以使代码更清晰（稍后将介绍不同的样式）。
 
 1.  现在只需在控制台中显示日期并调用`IsValid`，然后`IsValid`将依次调用您的每个委托方法。 请注意，使用自定义日期格式使日期更易读：
 
 ```cpp
-              Console.WriteLine($"Ordered: {order.OrderDate:dd-MMM-yy}");
-              Console.WriteLine($"Delivered: {order.DeliveryDate:dd-MMM-yy }");
-              Console.WriteLine($"IsValid: {order.IsValid()}");
-            }
-        }
-    }
-    ```
+          Console.WriteLine($"Ordered: {order.OrderDate:dd-MMM-yy}");
+          Console.WriteLine($"Delivered: {order.DeliveryDate:dd-MMM-yy }");
+          Console.WriteLine($"IsValid: {order.IsValid()}");
+        }
+    }
+}
+```
 
 1.  运行控制台应用程序会产生以下输出：
 
 ```cpp
-    Ordered: 07-May-22
-    Delivered: 31-Dec-20
-    Called IsPastDate
-    Called IsWeekendDate
-    IsValid: False
-    ```
+Ordered: 07-May-22
+Delivered: 31-Dec-20
+Called IsPastDate
+Called IsWeekendDate
+IsValid: False
+```
 
 此顺序**无效**，因为交货日期是星期四，而不是周末，正如您所要求的：
 
@@ -622,8 +622,8 @@ var futureValidator = new Func<DateTime, bool>(DateValidators.IsFuture);
 +   使用空合并运算符调用：
 
 ```cpp
-    var isFuture1 = futureValidator?.Invoke(new DateTime(2000, 12, 31));
-    ```
+var isFuture1 = futureValidator?.Invoke(new DateTime(2000, 12, 31));
+```
 
 这是首选且最安全的方法；在调用`Invoke`之前，您应该始终检查空值。如果委托有可能不指向内存中的对象，则在访问方法和属性之前必须执行空引用检查。不这样做将导致抛出`NullReferenceException`。这是运行时警告您对象没有指向任何内容的方式。
 
@@ -658,19 +658,19 @@ var isFuture2 = futureValidator(new DateTime(2050, 1, 20));
 1.  切换到`Chapter03`文件夹，并使用 CLI `dotnet`命令创建一个名为`Exercise02`的新控制台应用程序：
 
 ```cpp
-    source\Chapter03>dotnet new console -o Exercise02
-    ```
+source\Chapter03>dotnet new console -o Exercise02
+```
 
 1.  打开`Chapter03\Exercise02.csproj`，并用以下设置替换整个文件：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开`Exercise02\Program.cs`并清空内容。
 
@@ -679,219 +679,219 @@ var isFuture2 = futureValidator(new DateTime(2050, 1, 20));
 1.  添加两个属性，`Distance`和`JourneyTime`。它们将具有`init`-only 属性，因此你将使用`init`关键字：
 
 ```cpp
-    using System;
-    using System.Globalization;
-    namespace Chapter03.Exercise02
-    {
-        public record Car
-        {
-            public double Distance { get; init; }
-            public double JourneyTime { get; init; }
-        }
-    ```
+using System;
+using System.Globalization;
+namespace Chapter03.Exercise02
+{
+    public record Car
+    {
+        public double Distance { get; init; }
+        public double JourneyTime { get; init; }
+    }
+```
 
 1.  接下来，创建一个名为`Comparison`的类，它被传递一个`Func`委托来使用。`Comparison`类将使用委托来提取`Distance`或`JourneyTime`属性，并计算两个`Car`实例的差异。通过使用委托的灵活性，`Comparison`将不知道它是提取`Distance`还是`JourneyTime`，只知道它使用一个`double`来计算差异。这表明你可以在将来需要计算其他`Car`属性时重用这个类：
 
 ```cpp
-        public class Comparison
-        {
-            private readonly Func<Car, double> _valueSelector;
-            public Comparison(Func<Car, double> valueSelector)
-            {
-                _valueSelector = valueSelector;
-            } 
-    ```
+    public class Comparison
+    {
+        private readonly Func<Car, double> _valueSelector;
+        public Comparison(Func<Car, double> valueSelector)
+        {
+            _valueSelector = valueSelector;
+        } 
+```
 
 1.  添加三个属性，形成计算结果，如下：
 
 ```cpp
-            public double Yesterday { get; private set; }
-            public double Today { get; private set; }
-            public double Difference { get; private set; }
-    ```
+        public double Yesterday { get; private set; }
+        public double Today { get; private set; }
+        public double Difference { get; private set; }
+```
 
 1.  现在进行计算，传入两个`Car`实例，一个是昨天的汽车行程`yesterdayCar`，另一个是今天的`todayCar`：
 
 ```cpp
-            public void Compare(Car yesterdayCar, Car todayCar)
-            {
-    ```
+        public void Compare(Car yesterdayCar, Car todayCar)
+        {
+```
 
 1.  要计算`Yesterday`的值，调用`valueSelector` `Func`委托，传入`yesterdayCar`实例。再次记住，`Comparison`类并不知道它是提取`Distance`还是`JourneyTime`；它只需要知道当`delegate`被`Car`参数调用时，它将得到一个`double`数字：
 
 ```cpp
-                Yesterday = _valueSelector(yesterdayCar);
-    ```
+            Yesterday = _valueSelector(yesterdayCar);
+```
 
 1.  同样的方法提取`Today`的值，使用相同的`Func`委托，但传入`todayCar`实例： 
 
 ```cpp
-                Today = _valueSelector(todayCar);
-    ```
+            Today = _valueSelector(todayCar);
+```
 
 1.  现在只是计算两个提取的数字之间的差异；你不需要使用`Func`委托来做到这一点：
 
 ```cpp
-                Difference = Yesterday - Today;
-            }
-         }
-    ```
+            Difference = Yesterday - Today;
+        }
+     }
+```
 
 1.  因此，你有一个知道如何调用`Func`委托来提取特定`Car`属性的类，当它被告知如何操作时。现在，你需要一个类来封装`Comparison`实例。为此，添加一个名为`JourneyComparer`的类：
 
 ```cpp
-        public class JourneyComparer
-        {
-            public JourneyComparer()
-            {
-    ```
+    public class JourneyComparer
+    {
+        public JourneyComparer()
+        {
+```
 
 1.  对于汽车行程，你需要计算`Yesterday`和`Today`的`Distance`属性之间的差异。为此，创建一个`Comparison`类，告诉它如何从`Car`实例中提取值。你可能会使用相同的名称来为这个`Comparison`类，因为你将提取汽车的`Distance`。记住，`Comparison`构造函数需要一个`Func`委托，它被传递一个`Car`实例并返回一个`double`值。你将很快添加`GetCarDistance()`；这将最终通过传递昨天和今天的行程的`Car`实例来调用：
 
 ```cpp
-              Distance = new Comparison(GetCarDistance);
-    ```
+          Distance = new Comparison(GetCarDistance);
+```
 
 1.  按照前面步骤中描述的过程重复这个过程，用于`JourneyTime` `Comparison`；这个应该被告知使用`GetCarJourneyTime()`如下：
 
 ```cpp
-              JourneyTime = new Comparison(GetCarJourneyTime);
-    ```
+          JourneyTime = new Comparison(GetCarJourneyTime);
+```
 
 1.  最后，添加另一个名为`AverageSpeed`的`Comparison`属性，如下。你很快会看到`GetCarAverageSpeed()`是另一个函数：
 
 ```cpp
-               AverageSpeed = new Comparison(GetCarAverageSpeed);
-    ```
+           AverageSpeed = new Comparison(GetCarAverageSpeed);
+```
 
 1.  现在对于`GetCarDistance`和`GetCarJourneyTime`本地函数，它们被传递一个`Car`实例，并根据需要返回`Distance`或`JourneyTime`：
 
 ```cpp
-               static double GetCarDistance(Car car) => car.Distance; 
-               static double GetCarJourneyTime(Car car) => car.JourneyTime;
-    ```
+           static double GetCarDistance(Car car) => car.Distance; 
+           static double GetCarJourneyTime(Car car) => car.JourneyTime;
+```
 
 1.  `GetCarAverageSpeed`，顾名思义，返回平均速度。在这里，你已经表明`Func`委托只需要一个兼容的函数；只要返回值是`double`，它返回的内容并不重要。`Comparison`类在调用`Func`委托时并不需要知道它返回的是这样的一个计算值：
 
 ```cpp
-              static double GetCarAverageSpeed(Car car)             => car.Distance / car.JourneyTime;
-           }
-    ```
+          static double GetCarAverageSpeed(Car car)             => car.Distance / car.JourneyTime;
+       }
+```
 
 1.  三个`Comparison`属性应该定义如下：
 
 ```cpp
-            public Comparison Distance { get; }
-            public Comparison JourneyTime { get; }
-            public Comparison AverageSpeed { get; }
-    ```
+        public Comparison Distance { get; }
+        public Comparison JourneyTime { get; }
+        public Comparison AverageSpeed { get; }
+```
 
 1.  现在是主要的`Compare`方法。这将传递两个`Car`实例，一个用于`昨天`，一个用于`今天`，然后简单地调用三个`Comparison`项上的`Compare`，传入两个`Car`实例：
 
 ```cpp
-            public void Compare(Car yesterday, Car today)
-            {
-                Distance.Compare(yesterday, today);
-                JourneyTime.Compare(yesterday, today);
-                AverageSpeed.Compare(yesterday, today);
-            }
-        }
-    ```
+        public void Compare(Car yesterday, Car today)
+        {
+            Distance.Compare(yesterday, today);
+            JourneyTime.Compare(yesterday, today);
+            AverageSpeed.Compare(yesterday, today);
+        }
+    }
+```
 
 1.  您需要一个控制台应用程序来输入每天的行驶里程，因此添加一个名为`Program`的类，并具有静态`Main`入口点：
 
 ```cpp
-        public class Program
-        {
-            public static void Main()
-            {
-    ```
+    public class Program
+    {
+        public static void Main()
+        {
+```
 
 1.  您可以随机分配旅行时间以保存一些输入，因此添加一个新的`Random`实例和一个`do-while`循环的开始，如下所示：
 
 ```cpp
-                var random = new Random();
-                string input;
-                do
-                {
-    ```
+            var random = new Random();
+            string input;
+            do
+            {
+```
 
 1.  阅读昨天的距离，如下所示：
 
 ```cpp
-                    Console.Write("Yesterday's distance: ");
-                    input = Console.ReadLine();
-                    double.TryParse(input, NumberStyles.Any,                    CultureInfo.CurrentCulture, out var distanceYesterday);
-    ```
+                Console.Write("Yesterday's distance: ");
+                input = Console.ReadLine();
+                double.TryParse(input, NumberStyles.Any,                    CultureInfo.CurrentCulture, out var distanceYesterday);
+```
 
 1.  您可以使用距离创建昨天的`Car`，并使用随机的`JourneyTime`，如下所示：
 
 ```cpp
-                    var carYesterday = new Car
-                    {
-                        Distance = distanceYesterday,
-                        JourneyTime = random.NextDouble() * 10D
-                    };
-    ```
+                var carYesterday = new Car
+                {
+                    Distance = distanceYesterday,
+                    JourneyTime = random.NextDouble() * 10D
+                };
+```
 
 1.  对于今天的距离也是如此：
 
 ```cpp
-                    Console.Write("    Today's distance: ");
-                    input = Console.ReadLine();
-                    double.TryParse(input, NumberStyles.Any,                    CultureInfo.CurrentCulture, out var distanceToday);
-                    var carToday = new Car
-                    {
-                        Distance = distanceToday,
-                        JourneyTime = random.NextDouble() * 10D
-                    };
-    ```
+                Console.Write("    Today's distance: ");
+                input = Console.ReadLine();
+                double.TryParse(input, NumberStyles.Any,                    CultureInfo.CurrentCulture, out var distanceToday);
+                var carToday = new Car
+                {
+                    Distance = distanceToday,
+                    JourneyTime = random.NextDouble() * 10D
+                };
+```
 
 1.  现在，您有两个填充了昨天和今天的`Car`实例，您可以创建`JourneyComparer`实例并调用`Compare`。然后，这将在三个`Comparison`实例上调用`Compare`：
 
 ```cpp
-                    var comparer = new JourneyComparer();
-                    comparer.Compare(carYesterday, carToday);
-    ```
+                var comparer = new JourneyComparer();
+                comparer.Compare(carYesterday, carToday);
+```
 
 1.  现在，将结果写入控制台：
 
 ```cpp
-                    Console.WriteLine();
-                    Console.WriteLine("Journey Details   Distance\tTime\tAvg Speed");
-                    Console.WriteLine("-------------------------------------------------");
-    ```
+                Console.WriteLine();
+                Console.WriteLine("Journey Details   Distance\tTime\tAvg Speed");
+                Console.WriteLine("-------------------------------------------------");
+```
 
 1.  写出昨天的结果：
 
 ```cpp
-                    Console.Write($"Yesterday         {comparer.Distance.Yesterday:N0}   \t");
-                    Console.WriteLine($"{comparer.JourneyTime.Yesterday:N0}\t {comparer.AverageSpeed.Yesterday:N0}");
-    ```
+                Console.Write($"Yesterday         {comparer.Distance.Yesterday:N0}   \t");
+                Console.WriteLine($"{comparer.JourneyTime.Yesterday:N0}\t {comparer.AverageSpeed.Yesterday:N0}");
+```
 
 1.  写出今天的结果：
 
 ```cpp
-                    Console.Write($"Today             {comparer.Distance.Today:N0}     \t");                 Console.WriteLine($"{comparer.JourneyTime.Today:N0}\t {comparer.AverageSpeed.Today:N0}");
-    ```
+                Console.Write($"Today             {comparer.Distance.Today:N0}     \t");                 Console.WriteLine($"{comparer.JourneyTime.Today:N0}\t {comparer.AverageSpeed.Today:N0}");
+```
 
 1.  最后，使用`Difference`属性写入摘要值：
 
 ```cpp
-                    Console.WriteLine("=================================================");
-                    Console.Write($"Difference             {comparer.Distance.Difference:N0}     \t");                Console.WriteLine($"{comparer.JourneyTime.Difference:N0} \t{comparer.AverageSpeed.Difference:N0}");
-                   Console.WriteLine("=================================================");
-    ```
+                Console.WriteLine("=================================================");
+                Console.Write($"Difference             {comparer.Distance.Difference:N0}     \t");                Console.WriteLine($"{comparer.JourneyTime.Difference:N0} \t{comparer.AverageSpeed.Difference:N0}");
+               Console.WriteLine("=================================================");
+```
 
 1.  完成`do-while`循环，如果用户输入空字符串，则退出：
 
 ```cpp
-                } 
-                while (!string.IsNullOrEmpty(input));
-            }
-        }
-    }
-    ```
+            } 
+            while (!string.IsNullOrEmpty(input));
+        }
+    }
+}
+```
 
 运行控制台并输入`1000`和`900`的距离会产生以下结果：
 
@@ -1014,19 +1014,19 @@ logger("4\. Closing customer")
 1.  切换到`Chapter03`文件夹，并使用 CLI`dotnet`命令创建一个名为`Exercise03`的新控制台应用程序：
 
 ```cpp
-    source\Chapter03>dotnet new console -o Exercise03
-    ```
+source\Chapter03>dotnet new console -o Exercise03
+```
 
 1.  打开`Chapter03\Exercise03.csproj`并用以下设置替换整个文件：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开`Exercise03\Program.cs`并清除内容。
 
@@ -1035,127 +1035,127 @@ logger("4\. Closing customer")
 1.  使用`Chapter03.Exercise03`命名空间：
 
 ```cpp
-    using System;
-    using System.IO;
-    namespace Chapter03.Exercise03
-    {
-        public class CashMachine
-        {
-            private readonly Action<string> _logger;
-            public CashMachine(Action<string> logger)
-            {
-                _logger = logger;
-            } 
-    ```
+using System;
+using System.IO;
+namespace Chapter03.Exercise03
+{
+    public class CashMachine
+    {
+        private readonly Action<string> _logger;
+        public CashMachine(Action<string> logger)
+        {
+            _logger = logger;
+        } 
+```
 
 `CashMachine`构造函数接收`Action<string>`委托，您可以将其分配给名为`_logger`的`readonly`类变量。
 
 1.  添加一个`Log`辅助函数，检查`_logger`委托在调用之前是否为 null：
 
 ```cpp
-            private void Log(string message)
-                => _logger?.Invoke(message);
-    ```
+        private void Log(string message)
+            => _logger?.Invoke(message);
+```
 
 1.  当调用`VerifyPin`和`ShowBalance`方法时，应记录一条带有一些详细信息的消息。按照以下方式创建这些方法：
 
 ```cpp
-            public void VerifyPin(string pin) 
-                => Log($"VerifyPin called: PIN={pin}");
-            public void ShowBalance() 
-                => Log("ShowBalance called: Balance=999");
-        }
-    ```
+        public void VerifyPin(string pin) 
+            => Log($"VerifyPin called: PIN={pin}");
+        public void ShowBalance() 
+            => Log("ShowBalance called: Balance=999");
+    }
+```
 
 1.  现在，添加一个配置`logger`委托的控制台应用程序，您可以将其传递给`CashMachine`对象。请注意，这是一种常见的用法：一个负责决定其他类如何记录消息的类。使用常量`OutputFile`作为文件记录使用的文件名，如下所示：
 
 ```cpp
-        public static class Program
-        {
-            private const string OutputFile = "activity.txt";
-            public static void Main()
-            {
-    ```
+    public static class Program
+    {
+        private const string OutputFile = "activity.txt";
+        public static void Main()
+        {
+```
 
 1.  每次程序运行时，它应该从`File.Delete`开始删除输出文件：
 
 ```cpp
-                if (File.Exists(OutputFile))
-                {
-                    File.Delete(OutputFile);
-                }
-    ```
+            if (File.Exists(OutputFile))
+            {
+                File.Delete(OutputFile);
+            }
+```
 
 1.  创建一个委托实例`logger`，该实例以单个目标方法`LogToConsole`开始：
 
 ```cpp
-                Action<string> logger = LogToConsole;
-    ```
+            Action<string> logger = LogToConsole;
+```
 
 1.  使用`+=`运算符，添加`LogToFile`作为第二个目标方法，每当`CashMachine`调用委托时也会被调用：
 
 ```cpp
-                logger += LogToFile;
-    ```
+            logger += LogToFile;
+```
 
 1.  您将很快实现这两个目标日志方法；现在，创建一个`cashMachine`实例，并准备调用其方法，如下所示：
 
 ```cpp
-                var cashMachine = new CashMachine(logger);
-    ```
+            var cashMachine = new CashMachine(logger);
+```
 
 1.  提示输入`pin`并将其传递给`VerifyPin`方法：
 
 ```cpp
-                Console.Write("Enter your PIN:");
-                var pin = Console.ReadLine();
-                if (string.IsNullOrEmpty(pin))
-                {
-                    Console.WriteLine("No PIN entered");
-                    return;
-                }
-                cashMachine.VerifyPin(pin);
-                Console.WriteLine();
-    ```
+            Console.Write("Enter your PIN:");
+            var pin = Console.ReadLine();
+            if (string.IsNullOrEmpty(pin))
+            {
+                Console.WriteLine("No PIN entered");
+                return;
+            }
+            cashMachine.VerifyPin(pin);
+            Console.WriteLine();
+```
 
 如果输入空值，则会进行检查并显示警告。然后使用`return`语句关闭程序。
 
 1.  在调用`ShowBalance`方法之前，等待按下`Enter`键：
 
 ```cpp
-                Console.Write("Press Enter to show balance");
-                Console.ReadLine();
-                cashMachine.ShowBalance();
-                Console.Write("Press Enter to quit");
-                Console.ReadLine();
-    ```
+            Console.Write("Press Enter to show balance");
+            Console.ReadLine();
+            cashMachine.ShowBalance();
+            Console.Write("Press Enter to quit");
+            Console.ReadLine();
+```
 
 1.  现在是记录方法的时间。它们必须与您的`Action<string>`委托兼容。一个将消息写入控制台，另一个将其附加到文本文件。按照以下方式添加这两个静态方法：
 
 ```cpp
-                static void LogToConsole(string message)
-                    => Console.WriteLine(message);
-                static void LogToFile(string message)
-                    => File.AppendAllText(OutputFile, message);
-            }
-         }
-    }
-    ```
+            static void LogToConsole(string message)
+                => Console.WriteLine(message);
+            static void LogToFile(string message)
+                => File.AppendAllText(OutputFile, message);
+        }
+     }
+}
+```
 
 1.  运行控制台应用程序，您会看到`VerifyPin`和`ShowBalance`调用被写入控制台：
 
 ```cpp
-    Enter your PIN:12345
-    VerifyPin called: PIN=12345
-    Press Enter to show balance
-    ShowBalance called: Balance=999
-    ```
+Enter your PIN:12345
+VerifyPin called: PIN=12345
+Press Enter to show balance
+ShowBalance called: Balance=999
+```
 
 1.  对于每个`logger`委托调用，`LogToFile`方法也将被调用，因此在打开`activity.txt`时，您应该看到以下行：
 
 ```cpp
-    VerifyPin called: PIN=12345ShowBalance called: Balance=999
-    ```
+VerifyPin called: PIN=12345ShowBalance called: Balance=999
+```
 
 注意
 
@@ -1353,170 +1353,170 @@ public abstract class MulticastDelegate : Delegate {
 1.  切换到`Chapter03`文件夹并使用 CLI `dotnet`命令创建一个名为`Exercise04`的新控制台应用程序：
 
 ```cpp
-    source\Chapter03>dotnet new console -o Exercise04
-    ```
+source\Chapter03>dotnet new console -o Exercise04
+```
 
 1.  打开`Chapter03\Exercise04.csproj`并用以下设置替换整个文件：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开`Exercise04\Program.cs`并清空内容。
 
 1.  现在为你的控制台应用程序添加一个静态`Program`类，包括`System`和额外的`System.IO`，因为你想要创建一个文件：
 
 ```cpp
-    using System;
-    using System.IO;
-    namespace Chapter03.Exercise04
-    {
-        public static class Program
-        {
-    ```
+using System;
+using System.IO;
+namespace Chapter03.Exercise04
+{
+    public static class Program
+    {
+```
 
 1.  使用`const`来命名日志文件。当程序执行时，将创建此文件：
 
 ```cpp
-            private const string OutputFile = "Exercise04.txt";
-    ```
+        private const string OutputFile = "Exercise04.txt";
+```
 
 1.  现在你必须定义应用程序的`Main`入口点。在这里，如果输出文件已经存在，你可以删除它。最好从一个空文件开始，否则每次运行应用程序时，日志文件都会不断增长：
 
 ```cpp
-            public static void Main()
-            {
-                if (File.Exists(OutputFile))
-                {
-                    File.Delete(OutputFile);
-                }
-    ```
+        public static void Main()
+        {
+            if (File.Exists(OutputFile))
+            {
+                File.Delete(OutputFile);
+            }
+```
 
 1.  你将从`logger`只有一个目标方法`LogToConsole`开始，稍后将添加：
 
 ```cpp
-                Action<string> logger = LogToConsole;
-    ```
+            Action<string> logger = LogToConsole;
+```
 
 1.  你使用`InvokeAll`方法来调用委托，传入`"First call"`作为参数。这不会失败，因为`logger`有一个有效的方法，你很快也会添加`InvokeAll`：
 
 ```cpp
-                InvokeAll(logger, "First call"); 
-    ```
+            InvokeAll(logger, "First call"); 
+```
 
 1.  这个练习的目的是要有一个多播委托，所以添加一些额外的目标方法：
 
 ```cpp
-                logger += LogToConsole;
-                logger += LogToDatabase;
-                logger += LogToFile; 
-    ```
+            logger += LogToConsole;
+            logger += LogToDatabase;
+            logger += LogToFile; 
+```
 
 1.  尝试使用`InvokeAll`进行第二次调用，如下所示：
 
 ```cpp
-                InvokeAll(logger, "Second call"); 
-                Console.ReadLine();
-    ```
+            InvokeAll(logger, "Second call"); 
+            Console.ReadLine();
+```
 
 1.  现在针对添加到委托中的目标方法，添加以下代码：
 
 ```cpp
-                static void LogToConsole(string message)
-                    => Console.WriteLine($"LogToConsole: {message}");
-                static void LogToDatabase(string message)
-                    => throw new ApplicationException("bad thing happened!");
-                static void LogToFile(string message)
-                    => File.AppendAllText(OutputFile, message);
+            static void LogToConsole(string message)
+                => Console.WriteLine($"LogToConsole: {message}");
+            static void LogToDatabase(string message)
+                => throw new ApplicationException("bad thing happened!");
+            static void LogToFile(string message)
+                => File.AppendAllText(OutputFile, message);
 
-    ```
+```
 
 1.  现在你可以实现`InvokeAll`方法：
 
 ```cpp
-                static void InvokeAll(Action<string> logger, string arg)
-                {
-                    if (logger == null)
-                         return;
-    ```
+            static void InvokeAll(Action<string> logger, string arg)
+            {
+                if (logger == null)
+                     return;
+```
 
 它传递了一个与`logger`委托类型匹配的`Action<string>`委托，以及在调用每个目标方法时使用的`arg`字符串。不过，在此之前，重要的是要检查`logger`是否已经为 null，对于 null 委托，你无法做任何操作。
 
 1.  使用委托的`GetInvocationList()`方法来获取所有目标方法的列表：
 
 ```cpp
-                    var delegateList = logger.GetInvocationList();
-                    Console.WriteLine($"Found {delegateList.Length} items in {logger}"); 
-    ```
+                var delegateList = logger.GetInvocationList();
+                Console.WriteLine($"Found {delegateList.Length} items in {logger}"); 
+```
 
 1.  现在，按照以下方式循环遍历列表中的每个项目：
 
 ```cpp
-                    foreach (var del in delegateList)
-                    {
-    ```
+                foreach (var del in delegateList)
+                {
+```
 
 1.  在每个循环元素中用`try`/`catch`包装，将`del`转换为`Action<string>`：
 
 ```cpp
-                       try
-                       {
-                         var action = del as Action<string>; 
-    ```
+                   try
+                   {
+                     var action = del as Action<string>; 
+```
 
 `GetInvocationList`返回每个项目作为基本委托类型，而不考虑它们的实际类型。
 
 1.  如果它是正确的类型且**不是**null，那么尝试调用是安全的：
 
 ```cpp
-                          if (del is Action<string> action)
-                          {
-                              Console.WriteLine($"Invoking '{action.Method.Name}' with '{arg}'");
-                              action(arg);
-                          }
-                          else
-                          {
-                              Console.WriteLine("Skipped null");
-                          } 
-    ```
+                      if (del is Action<string> action)
+                      {
+                          Console.WriteLine($"Invoking '{action.Method.Name}' with '{arg}'");
+                          action(arg);
+                      }
+                      else
+                      {
+                          Console.WriteLine("Skipped null");
+                      } 
+```
 
 你已经添加了一些额外的细节，以显示委托的`Method.Name`属性即将被调用的内容。
 
 1.  最后使用一个`catch`块，如果捕获到错误，则记录错误消息：
 
 ```cpp
-                      }
-                      catch (Exception e)
-                      {
-                          Console.WriteLine($"Error: {e.Message}");
-                      }
-                    }
-                }
-            }
-        }
-    }
-    ```
+                  }
+                  catch (Exception e)
+                  {
+                      Console.WriteLine($"Error: {e.Message}");
+                  }
+                }
+            }
+        }
+    }
+}
+```
 
 1.  运行代码，创建一个名为`Exercise04.txt`的文件，其中包含以下结果：
 
 ```cpp
-    Found 1 items in System.Action`1[System.String]
-    Invoking '<Main>g__LogToConsole|1_0' with 'First call'
-    LogToConsole: First call
-    Found 4 items in System.Action`1[System.String]
-    Invoking '<Main>g__LogToConsole|1_0' with 'Second call'
-    LogToConsole: Second call
-    Invoking '<Main>g__LogToConsole|1_0' with 'Second call'
-    LogToConsole: Second call
-    Invoking '<Main>g__LogToDatabase|1_1' with 'Second call'
-    Error: bad thing happened!
-    Invoking '<Main>g__LogToFile|1_2' with 'Second call'
-    ```
+Found 1 items in System.Action`1[System.String]
+Invoking '<Main>g__LogToConsole|1_0' with 'First call'
+LogToConsole: First call
+Found 4 items in System.Action`1[System.String]
+Invoking '<Main>g__LogToConsole|1_0' with 'Second call'
+LogToConsole: Second call
+Invoking '<Main>g__LogToConsole|1_0' with 'Second call'
+LogToConsole: Second call
+Invoking '<Main>g__LogToDatabase|1_1' with 'Second call'
+Error: bad thing happened!
+Invoking '<Main>g__LogToFile|1_2' with 'Second call'
+```
 
 你会发现它捕获了`LogToDatabase`抛出的错误，但仍然允许调用`LogToFile`。
 
@@ -1603,66 +1603,66 @@ public event EventHandler<MouseEventArgs> MouseDoubleClicked = delegate {};
 1.  定义一个名为`MouseClickedEventArgs`的类，其中包含有关事件的其他信息，例如检测到的鼠标点击次数：
 
 ```cpp
-    using System;
-    namespace Chapter03Examples
-    {
-        public class MouseClickedEventArgs 
-        {
-            public MouseClickedEventArgs(int clicks)
-            {
-                Clicks = clicks;
-            }
-            public int Clicks { get; }
-        }
-    ```
+using System;
+namespace Chapter03Examples
+{
+    public class MouseClickedEventArgs 
+    {
+        public MouseClickedEventArgs(int clicks)
+        {
+            Clicks = clicks;
+        }
+        public int Clicks { get; }
+    }
+```
 
 观察`MouseClickPublisher`类，它使用泛型`EventHandler<>`委托定义了一个`MouseClicked`事件。
 
 1.  现在添加`delegate { };`块以防止`MouseClicked`最初为 null：
 
 ```cpp
-        public class MouseClickPublisher
-        {
-         public event EventHandler<MouseClickedEventArgs> MouseClicked = delegate { };
-    ```
+    public class MouseClickPublisher
+    {
+     public event EventHandler<MouseClickedEventArgs> MouseClicked = delegate { };
+```
 
 1.  添加一个`OnMouseClicked`虚方法，让任何进一步子类化的`MouseClickPublisher`类有机会抑制或更改事件通知，如下所示：
 
 ```cpp
-            protected virtual void OnMouseClicked( MouseClickedEventArgs e)
-            {
-                var evt = MouseClicked;
-                evt?.Invoke(this, e);
-            }
-    ```
+        protected virtual void OnMouseClicked( MouseClickedEventArgs e)
+        {
+            var evt = MouseClicked;
+            evt?.Invoke(this, e);
+        }
+```
 
 1.  现在您需要一个跟踪鼠标点击的方法。在这个例子中，您实际上不会展示如何检测鼠标点击，但您将调用`OnMouseClicked`，传入`2`以指示双击。
 
 1.  请注意，您没有直接调用 `MouseClicked` 事件；您总是通过中间方法 `OnMouseClicked` 进行。这为其他 `MouseClickPublisher` 的实现提供了一种覆盖事件通知的方式，如果需要的话：
 
 ```cpp
-            private void TrackMouseClicks()
-            {
-                OnMouseClicked(new MouseClickedEventArgs(2));
-            }
-        } 
-    ```
+        private void TrackMouseClicks()
+        {
+            OnMouseClicked(new MouseClickedEventArgs(2));
+        }
+    } 
+```
 
 1.  现在添加一个基于 `MouseClickPublisher` 的新类型的发布者：
 
 ```cpp
-        public class MouseSingleClickPublisher : MouseClickPublisher
-        {
-            protected override void OnMouseClicked(MouseClickedEventArgs e)
-            {
-                if (e.Clicks == 1)
-                {
-                    OnMouseClicked(e);
-                }
-            }
-        }
-    } 
-    ```
+    public class MouseSingleClickPublisher : MouseClickPublisher
+    {
+        protected override void OnMouseClicked(MouseClickedEventArgs e)
+        {
+            if (e.Clicks == 1)
+            {
+                OnMouseClicked(e);
+            }
+        }
+    }
+} 
+```
 
 这个 `MouseSingleClickPublisher` 覆盖了 `OnMouseClicked` 方法，并且只有在检测到单击时才调用基本的 `OnMouseClicked`。通过实现这种类型的模式，您可以允许不同类型的发布者以定制的方式控制事件是否传递给订阅者。
 
@@ -1681,164 +1681,164 @@ public event EventHandler<MouseEventArgs> MouseDoubleClicked = delegate {};
 1.  切换到 `Chapter03` 文件夹，并使用 CLI `dotnet` 命令创建一个名为 `Exercise05` 的新控制台应用程序：
 
 ```cpp
-    dotnet new console -o Exercise05
-    ```
+dotnet new console -o Exercise05
+```
 
 1.  打开 `Chapter03\Exercise05.csproj` 并用以下设置替换整个文件：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开 `Exercise05\Program.cs` 并清空内容。
 
 1.  添加一个名为 `AlarmClock` 的新类。在这里，您需要使用 `DateTime` 类，因此包括 `System` 命名空间：
 
 ```cpp
-    using System;
-    namespace Chapter03.Exercise05
-    {
-        public class AlarmClock
-        {
-    ```
+using System;
+namespace Chapter03.Exercise05
+{
+    public class AlarmClock
+    {
+```
 
 您将为订阅者提供两个事件来监听——`WakeUp`，基于非泛型的 `EventHandler` 委托（因为您不会在此事件中传递任何额外信息），以及使用泛型 `EventHandler` 委托和 `DateTime` 参数类型的 `Ticked`。
 
 1.  您将使用此方法将当前时间传递给控制台显示。请注意，两者都具有初始的 `delegate {};` 安全机制：
 
 ```cpp
-            public event EventHandler WakeUp = delegate {};
-            public event EventHandler<DateTime> Ticked = delegate {};
-    ```
+        public event EventHandler WakeUp = delegate {};
+        public event EventHandler<DateTime> Ticked = delegate {};
+```
 
 1.  包括一个 `OnWakeUp` 覆盖作为示例，但不要对 `Ticked` 做同样的操作；这是为了展示不同的调用方法：
 
 ```cpp
-            protected void OnWakeUp()
-            {
-                WakeUp.Invoke(this, EventArgs.Empty);
-            }
-    ```
+        protected void OnWakeUp()
+        {
+            WakeUp.Invoke(this, EventArgs.Empty);
+        }
+```
 
 1.  现在添加两个 `DateTime` 属性，闹钟和时钟时间，如下所示：
 
 ```cpp
-            public DateTime AlarmTime { get; set; }
-            public DateTime ClockTime { get; set; }
-    ```
+        public DateTime AlarmTime { get; set; }
+        public DateTime ClockTime { get; set; }
+```
 
 1.  `Start` 方法用于启动时钟。您使用一个简单的循环模拟每分钟一次的时钟滴答声，持续 `24 小时`，如下所示：
 
 ```cpp
-            public void Start()
-            {
-                // Run for 24 hours
-                const int MinutesInADay = 60 * 24;
-    ```
+        public void Start()
+        {
+            // Run for 24 hours
+            const int MinutesInADay = 60 * 24;
+```
 
 1.  对于每个模拟的分钟，使用 `DateTime.AddMinute` 增加时钟并发布 `Ticked` 事件，传入 `this`（`AlarmClock` 发送方实例）和时钟时间：
 
 ```cpp
-                for (var i = 0; i < MinutesInADay; i++)
-                {
-                    ClockTime = ClockTime.AddMinutes(1);
-                    Ticked.Invoke(this, ClockTime);
-    ```
+            for (var i = 0; i < MinutesInADay; i++)
+            {
+                ClockTime = ClockTime.AddMinutes(1);
+                Ticked.Invoke(this, ClockTime);
+```
 
 `ClockTime.Subtract` 用于计算点击和闹钟时间之间的差异。
 
 1.  将 `timeRemaining` 值传递给本地函数 `IsTimeToWakeUp`，调用 `OnWakeUp` 方法，并在该时间到达时退出循环：
 
 ```cpp
-                  var timeRemaining = ClockTime                 .Subtract(AlarmTime)                .TotalMinutes;
-                   if (IsTimeToWakeUp(timeRemaining))
-                    {
-                        OnWakeUp();
-                        break;
-                    }
-                }
-    ```
+              var timeRemaining = ClockTime                 .Subtract(AlarmTime)                .TotalMinutes;
+               if (IsTimeToWakeUp(timeRemaining))
+                {
+                    OnWakeUp();
+                    break;
+                }
+            }
+```
 
 1.  使用关系模式 `IsTimeToWakeUp` 来查看是否剩余不到一分钟。添加以下代码：
 
 ```cpp
-                static bool IsTimeToWakeUp(double timeRemaining) 
-                    => timeRemaining is (>= -1.0 and <= 1.0);
-            }
-        }   
-    ```
+            static bool IsTimeToWakeUp(double timeRemaining) 
+                => timeRemaining is (>= -1.0 and <= 1.0);
+        }
+    }   
+```
 
 1.  现在添加一个控制台应用程序，通过从静态 void `Main` 入口点开始订阅闹钟及其两个事件：
 
 ```cpp
-             public static class Program
-        {
-            public static void Main()
-            {
-    ```
+         public static class Program
+    {
+        public static void Main()
+        {
+```
 
 1.  创建 `AlarmClock` 实例，并使用 `+=` 运算符订阅 `Ticked` 事件和 `WakeUp` 事件。您将很快定义 `ClockTicked` 和 `ClockWakeUp`。现在，只需添加以下代码：
 
 ```cpp
-                var clock = new AlarmClock();
-                clock.Ticked += ClockTicked;
-                clock.WakeUp += ClockWakeUp; 
-    ```
+            var clock = new AlarmClock();
+            clock.Ticked += ClockTicked;
+            clock.WakeUp += ClockWakeUp; 
+```
 
 1.  设置时钟的当前时间，使用 `DateTime.AddMinutes` 来将 `120` 分钟添加到闹钟时间，然后启动时钟，如下所示：
 
 ```cpp
-                clock.ClockTime = DateTime.Now;
-                clock.AlarmTime = DateTime.Now.AddMinutes(120);
-                Console.WriteLine($"ClockTime={clock.ClockTime:t}");
-                Console.WriteLine($"AlarmTime={clock.AlarmTime:t}");
-                clock.Start(); 
-    ```
+            clock.ClockTime = DateTime.Now;
+            clock.AlarmTime = DateTime.Now.AddMinutes(120);
+            Console.WriteLine($"ClockTime={clock.ClockTime:t}");
+            Console.WriteLine($"AlarmTime={clock.AlarmTime:t}");
+            clock.Start(); 
+```
 
 1.  通过提示按下 `Enter` 键来完成 `Main`：
 
 ```cpp
-                Console.WriteLine("Press ENTER");
-                Console.ReadLine();
+            Console.WriteLine("Press ENTER");
+            Console.ReadLine();
 
-    ```
+```
 
 1.  现在您可以添加事件订阅者本地方法：
 
 ```cpp
-                static void ClockWakeUp(object sender, EventArgs e)
-                {
-                   Console.WriteLine();
-                   Console.WriteLine("Wake up");
-                }
-    ```
+            static void ClockWakeUp(object sender, EventArgs e)
+            {
+               Console.WriteLine();
+               Console.WriteLine("Wake up");
+            }
+```
 
 `ClockWakeUp` 传递了发送方和 `EventArgs` 参数。您两者都没有使用，但它们是 `EventHandler` 委托所需的。当调用此订阅者的方法时，您将在控制台中写入 `"Wake up"`。
 
 1.  `ClockTicked`按照`EventHandler<DateTime>`委托所需的方式传递`DateTime`参数。在这里，您传递当前时间，因此使用`:t`将其以短格式显示在控制台上：
 
 ```cpp
-                 static void ClockTicked(object sender, DateTime e)
-                    => Console.Write($"{e:t}...");
-            }
-        }
-    } 
-    ```
+             static void ClockTicked(object sender, DateTime e)
+                => Console.Write($"{e:t}...");
+        }
+    }
+} 
+```
 
 1.  运行应用程序会产生以下输出：
 
 ```cpp
-    ClockTime=14:59
-    AlarmTime=16:59
-    15:00...15:01...15:02...15:03...15:04...15:05...15:06...15:07...15:08...15:09...15:10...15:11...15:12...15:13...15:14...15:15...15:16...15:17...15:18...15:19...15:20...15:21...15:22...15:23...15:24...15:25...15:26...15:27...15:28...15:29...15:30...15:31...15:32...15:33...15:34...15:35...15:36...15:37...15:38...15:39...15:40...15:41...15:42...15:43...15:44...15:45...15:46...15:47...15:48...15:49...15:50...15:51...15:52...15:53...15:54...15:55...15:56...15:57...15:58...15:59...16:00...16:01...16:02...16:03...16:04...16:05...16:06...16:07...16:08...16:09...16:10...16:11...16:12...16:13...16:14...16:15...16:16...16:17...16:18...16:19...16:20...16:21...16:22...16:23...16:24...16:25...16:26...16:27...16:28...16:29...16:30...16:31...16:32...16:33...16:34...16:35...16:36...16:37...16:38...16:39...16:40...16:41...16:42...16:43...16:44...16:45...16:46...16:47...16:48...16:49...16:50...16:51...16:52...16:53...16:54...16:55...16:56...16:57...16:58...16:59...
-    Wake up
-    Press ENTER
-    ```
+ClockTime=14:59
+AlarmTime=16:59
+15:00...15:01...15:02...15:03...15:04...15:05...15:06...15:07...15:08...15:09...15:10...15:11...15:12...15:13...15:14...15:15...15:16...15:17...15:18...15:19...15:20...15:21...15:22...15:23...15:24...15:25...15:26...15:27...15:28...15:29...15:30...15:31...15:32...15:33...15:34...15:35...15:36...15:37...15:38...15:39...15:40...15:41...15:42...15:43...15:44...15:45...15:46...15:47...15:48...15:49...15:50...15:51...15:52...15:53...15:54...15:55...15:56...15:57...15:58...15:59...16:00...16:01...16:02...16:03...16:04...16:05...16:06...16:07...16:08...16:09...16:10...16:11...16:12...16:13...16:14...16:15...16:16...16:17...16:18...16:19...16:20...16:21...16:22...16:23...16:24...16:25...16:26...16:27...16:28...16:29...16:30...16:31...16:32...16:33...16:34...16:35...16:36...16:37...16:38...16:39...16:40...16:41...16:42...16:43...16:44...16:45...16:46...16:47...16:48...16:49...16:50...16:51...16:52...16:53...16:54...16:55...16:56...16:57...16:58...16:59...
+Wake up
+Press ENTER
+```
 
 在这个例子中，您可以看到闹钟模拟每分钟发出一次滴答声并发布`Ticked`事件。
 
@@ -2031,87 +2031,87 @@ There's Something About Mary
 1.  切换到`Chapter03`文件夹并使用 CLI`dotnet`命令创建一个名为`Exercise06`的新控制台应用程序：
 
 ```cpp
-    source\Chapter03>dotnet new console -o Exercise06
-    ```
+source\Chapter03>dotnet new console -o Exercise06
+```
 
 1.  打开`Chapter03\Exercise06.csproj`并用以下设置替换整个文件：
 
 ```cpp
-    <Project Sdk="Microsoft.NET.Sdk">
-      <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net6.0</TargetFramework>
-      </PropertyGroup>
-    </Project>
-    ```
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>
+```
 
 1.  打开`Exercise02\Program.cs`并清空内容。
 
 1.  添加一个名为`WordUtilities`的新类，其中包含一个名为`ReverseWords`的字符串函数。您需要包括`System.Linq`命名空间来帮助进行字符串操作：
 
 ```cpp
-    using System;
-    using System.Linq;
-    namespace Chapter03.Exercise06
-    {
-        public static class WordUtilities
-        {
-            public static string ReverseWords(string sentence)
-            {
-    ```
+using System;
+using System.Linq;
+namespace Chapter03.Exercise06
+{
+    public static class WordUtilities
+    {
+        public static string ReverseWords(string sentence)
+        {
+```
 
 1.  定义一个名为`swapWords`的`Func<string, string>`委托，它接受一个字符串输入并返回一个字符串值：
 
 ```cpp
-              Func<string, string> swapWords = 
-    ```
+          Func<string, string> swapWords = 
+```
 
 1.  您将接受一个名为`phrase`的字符串输入参数：
 
 ```cpp
-                phrase =>
-    ```
+            phrase =>
+```
 
 1.  现在是 lambda 语句体。使用`string.Split`函数将`phrase`字符串按空格拆分为字符串数组：
 
 ```cpp
-                      {
-                        const char Delimit = ' ';
-                        var words = phrase
-                            .Split(Delimit)
-                            .Reverse();
-                        return string.Join(Delimit, words);
-                    };
-    ```
+                  {
+                    const char Delimit = ' ';
+                    var words = phrase
+                        .Split(Delimit)
+                        .Reverse();
+                    return string.Join(Delimit, words);
+                };
+```
 
 `String.Reverse`反转数组中字符串的顺序，最后使用`string.Join`将反转的单词字符串数组连接成一个字符串。
 
 1.  您已经定义了所需的`Func`，现在通过传递句子参数来调用它，并将其作为结果返回：
 
 ```cpp
-                return swapWords(sentence);
-             }
-        }
-    ```
+            return swapWords(sentence);
+         }
+    }
+```
 
 1.  现在创建一个控制台应用程序，提示输入一个句子，将其传递给`WordUtilities.ReverseWords`，并将结果写入控制台：
 
 ```cpp
-        public static class Program
-        {
-            public static void Main()
-            {
-                do
-                {
-                    Console.Write("Enter a sentence:");
-                    var input = Console.ReadLine();
-                    if (string.IsNullOrEmpty(input))
-                    {
-                        break;
-                    }
-                    var result = WordUtilities.ReverseWords(input);
-                    Console.WriteLine($"Reversed: {result}")
-    ```
+    public static class Program
+    {
+        public static void Main()
+        {
+            do
+            {
+                Console.Write("Enter a sentence:");
+                var input = Console.ReadLine();
+                if (string.IsNullOrEmpty(input))
+                {
+                    break;
+                }
+                var result = WordUtilities.ReverseWords(input);
+                Console.WriteLine($"Reversed: {result}")
+```
 
 运行控制台应用程序会产生类似于以下内容的结果输出：
 
@@ -2295,25 +2295,25 @@ using (IDisposable) { statement_block }
 1.  一旦您使用各种下载请求运行控制台应用程序，您应该看到类似以下的输出：
 
 ```cpp
-    Enter a URL:
-    https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz
-    Downloading https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz...
-    Downloading...73% complete (7,758 bytes)
-    Downloading...77% complete (8,192 bytes)
-    Downloading...100% complete (10,597 bytes)
-    Downloaded to C:\Temp\StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz
-    Enter a URL:
-    https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz
-    Downloading https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz...
-    Downloading...29% complete (7,758 bytes)
-    Downloading...31% complete (8,192 bytes)
-    Downloading...54% complete (14,238 bytes)
-    Downloading...62% complete (16,384 bytes)
-    Downloading...84% complete (22,238 bytes)
-    Downloading...93% complete (24,576 bytes)
-    Downloading...100% complete (26,220 bytes)
-    Downloaded to C:\Temp\StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz
-    ```
+Enter a URL:
+https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz
+Downloading https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz...
+Downloading...73% complete (7,758 bytes)
+Downloading...77% complete (8,192 bytes)
+Downloading...100% complete (10,597 bytes)
+Downloaded to C:\Temp\StormEvents_details-ftp_v1.0_d1950_c20170120.csv.gz
+Enter a URL:
+https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz
+Downloading https://www1.ncdc.noaa.gov/pub/data/swdi/stormevents/csvfiles/StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz...
+Downloading...29% complete (7,758 bytes)
+Downloading...31% complete (8,192 bytes)
+Downloading...54% complete (14,238 bytes)
+Downloading...62% complete (16,384 bytes)
+Downloading...84% complete (22,238 bytes)
+Downloading...93% complete (24,576 bytes)
+Downloading...100% complete (26,220 bytes)
+Downloaded to C:\Temp\StormEvents_details-ftp_v1.0_d1954_c20160223.csv.gz
+```
 
 通过完成这个活动，您已经学会了如何订阅现有的.NET 基于事件的发布者类（`WebClient`）的事件，并在重新发布到适配器类（`WebClientAdapter`）中进行自己的规范调整，最终由控制台应用程序订阅。
 

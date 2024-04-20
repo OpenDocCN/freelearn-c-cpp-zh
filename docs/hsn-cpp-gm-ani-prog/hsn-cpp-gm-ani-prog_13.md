@@ -58,34 +58,34 @@ CCD 算法看起来很简单，但它是如何工作的呢？从末端执行器�
 1.  首先声明`CCDSolver`类，包含三个变量：用于形成 IK 链的变换列表、要执行的迭代次数和可以用来控制目标与目标之间的距离的小增量。同时声明默认构造函数：
 
 ```cpp
-    class CCDSolver {
-    protected:
-        std::vector<Transform> mIKChain;
-        unsigned int mNumSteps;
-        float mThreshold;
-    public:
-        CCDSolver();
-    ```
+class CCDSolver {
+protected:
+    std::vector<Transform> mIKChain;
+    unsigned int mNumSteps;
+    float mThreshold;
+public:
+    CCDSolver();
+```
 
 1.  为 IK 链的大小、步数和阈值值实现 getter 和 setter 函数。声明要使用的`[] operator`来获取和设置本地关节变换。声明`GetGlobalTransform`函数，它将返回关节的全局变换：
 
 ```cpp
-        unsigned int Size();
-        void Resize(unsigned int newSize);
-        Transform& operator[](unsigned int index);
-        Transform GetGlobalTransform(unsigned int index);
-        unsigned int GetNumSteps();
-        void SetNumSteps(unsigned int numSteps);
-        float GetThreshold();
-        void SetThreshold(float value);
-    ```
+    unsigned int Size();
+    void Resize(unsigned int newSize);
+    Transform& operator[](unsigned int index);
+    Transform GetGlobalTransform(unsigned int index);
+    unsigned int GetNumSteps();
+    void SetNumSteps(unsigned int numSteps);
+    float GetThreshold();
+    void SetThreshold(float value);
+```
 
 1.  声明`Solve`函数，用于解决 IK 链。提供一个变换，但只使用变换的位置分量。如果链被解决，则`Solve`函数返回`true`，否则返回`false`：
 
 ```cpp
-        bool Solve(const Transform& target);
-    };
-    ```
+    bool Solve(const Transform& target);
+};
+```
 
 `mNumSteps`变量用于确保求解器不会陷入无限循环。不能保证末端执行器会达到目标。限制迭代次数有助于避免潜在的无限循环。在接下来的部分，您将开始实现 CCD 求解器。
 
@@ -96,132 +96,132 @@ CCD 算法看起来很简单，但它是如何工作的呢？从末端执行器�
 1.  定义默认构造函数，为步数和阈值赋值。使用小阈值，如`0.0001f`。默认步数为`15`：
 
 ```cpp
-    CCDSolver::CCDSolver() {
-        mNumSteps = 15;
-        mThreshold = 0.00001f;
-    }
-    ```
+CCDSolver::CCDSolver() {
+    mNumSteps = 15;
+    mThreshold = 0.00001f;
+}
+```
 
 1.  实现`Size`和`Resize`函数，控制 IK 链的大小，`[]运算符`包含链中每个关节的值：
 
 ```cpp
-    unsigned int CCDSolver::Size() {
-        return mIKChain.size();
-    }
-    void CCDSolver::Resize(unsigned int newSize) {
-        mIKChain.resize(newSize);
-    }
-    Transform& CCDSolver::operator[](unsigned int index) {
-        return mIKChain[index];
-    }
-    ```
+unsigned int CCDSolver::Size() {
+    return mIKChain.size();
+}
+void CCDSolver::Resize(unsigned int newSize) {
+    mIKChain.resize(newSize);
+}
+Transform& CCDSolver::operator[](unsigned int index) {
+    return mIKChain[index];
+}
+```
 
 1.  为求解器包含的步数和阈值实现获取器和设置器函数：
 
 ```cpp
-    unsigned int CCDSolver::GetNumSteps() {
-        return mNumSteps;
-    }
-    void CCDSolver::SetNumSteps(unsigned int numSteps) {
-        mNumSteps = numSteps;
-    }
-    float CCDSolver::GetThreshold() {
-        return mThreshold;
-    }
-    void CCDSolver::SetThreshold(float value) {
-        mThreshold = value;
-    }
-    ```
+unsigned int CCDSolver::GetNumSteps() {
+    return mNumSteps;
+}
+void CCDSolver::SetNumSteps(unsigned int numSteps) {
+    mNumSteps = numSteps;
+}
+float CCDSolver::GetThreshold() {
+    return mThreshold;
+}
+void CCDSolver::SetThreshold(float value) {
+    mThreshold = value;
+}
+```
 
 1.  实现`GetGlobalTransform`函数，这可能看起来很熟悉。它将指定关节的变换与所有父关节的变换连接起来，并返回指定关节的全局变换：
 
 ```cpp
-    Transform CCDSolver::GetGlobalTransform(unsigned int x) {
-        unsigned int size = (unsigned int)mIKChain.size();
-        Transform world = mIKChain[x];
-        for (int i = (int) x - 1; i >= 0; --i) {
-            world = combine(mIKChain[i], world);
-        }
-        return world;
-    }
-    ```
+Transform CCDSolver::GetGlobalTransform(unsigned int x) {
+    unsigned int size = (unsigned int)mIKChain.size();
+    Transform world = mIKChain[x];
+    for (int i = (int) x - 1; i >= 0; --i) {
+        world = combine(mIKChain[i], world);
+    }
+    return world;
+}
+```
 
 1.  通过确保链的大小有效并存储最后一个元素的索引和目标位置的向量来实现`Solve`函数：
 
 ```cpp
-    bool CCDSolver::Solve(const Transform& target) {
-        unsigned int size = Size();
-        if (size == 0) { return false; }
-        unsigned int last = size - 1;
-        float thresholdSq = mThreshold * mThreshold;
-        vec3 goal = target.position;
-    ```
+bool CCDSolver::Solve(const Transform& target) {
+    unsigned int size = Size();
+    if (size == 0) { return false; }
+    unsigned int last = size - 1;
+    float thresholdSq = mThreshold * mThreshold;
+    vec3 goal = target.position;
+```
 
 1.  循环从`0`到`mNumSteps`，执行正确数量的迭代。在每次迭代中，获取末端执行器的位置，并检查它是否足够接近目标。如果足够接近，提前返回：
 
 ```cpp
-        for (unsigned int i = 0; i < mNumSteps; ++i) {
-            vec3 effector = GetGlobalTransform(last).position;
-            if (lenSq(goal - effector) < thresholdSq) {
-                return true;
-            }
-    ```
+    for (unsigned int i = 0; i < mNumSteps; ++i) {
+        vec3 effector = GetGlobalTransform(last).position;
+        if (lenSq(goal - effector) < thresholdSq) {
+            return true;
+        }
+```
 
 1.  在每次迭代中，循环遍历整个 IK 链。从`size - 2`开始迭代；因为`size - 1`是最后一个元素，旋转最后一个元素对任何骨骼都没有影响：
 
 ```cpp
-            for (int j = (int)size - 2; j >= 0; --j) {
-    ```
+        for (int j = (int)size - 2; j >= 0; --j) {
+```
 
 1.  对于 IK 链中的每个关节，获取关节的世界变换。找到从关节位置到末端执行器位置的向量。找到从当前关节位置到目标位置的另一个向量：
 
 ```cpp
-                effector=GetGlobalTransform(last).position;
-                Transform world = GetGlobalTransform(j);
-                vec3 position = world.position;
-                quat rotation = world.rotation;
-                vec3 toEffector = effector - position;
-                vec3 toGoal = goal - position;
-    ```
+            effector=GetGlobalTransform(last).position;
+            Transform world = GetGlobalTransform(j);
+            vec3 position = world.position;
+            quat rotation = world.rotation;
+            vec3 toEffector = effector - position;
+            vec3 toGoal = goal - position;
+```
 
 1.  接下来，找到一个四元数，将位置到末端执行器的向量旋转到位置到目标向量。有一种特殊情况，指向末端执行器或目标的向量可能是零向量：
 
 ```cpp
-                quat effectorToGoal;
-                if (lenSq(toGoal) > 0.00001f) {
-                    effectorToGoal = fromTo(toEffector, 
-                                            toGoal);
-                }
-    ```
+            quat effectorToGoal;
+            if (lenSq(toGoal) > 0.00001f) {
+                effectorToGoal = fromTo(toEffector, 
+                                        toGoal);
+            }
+```
 
 1.  使用这个向量将关节旋转到世界空间中的正确方向。通过关节的上一个世界旋转的逆来旋转关节的世界空间方向，将四元数移回关节空间：
 
 ```cpp
-                quat worldRotated =rotation * 
-                                   effectorToGoal;
-                quat localRotate = worldRotated * 
-                                   inverse(rotation);
-                mIKChain[j].rotation = localRotate * 
-                                   mIKChain[j].rotation;
-    ```
+            quat worldRotated =rotation * 
+                               effectorToGoal;
+            quat localRotate = worldRotated * 
+                               inverse(rotation);
+            mIKChain[j].rotation = localRotate * 
+                               mIKChain[j].rotation;
+```
 
 1.  随着关节的移动，检查末端执行器在每次迭代中移动到目标的距离。如果足够接近，从函数中提前返回，返回值为`true`：
 
 ```cpp
-                effector=GetGlobalTransform(last).position;
-                if (lenSq(goal - effector) < thresholdSq) {
-                    return true;
-                }
-             }
-        }
-    ```
+            effector=GetGlobalTransform(last).position;
+            if (lenSq(goal - effector) < thresholdSq) {
+                return true;
+            }
+         }
+    }
+```
 
 1.  如果未达到目标，则 IK 链无法解决，至少不是在指定的迭代次数内。简单地返回`false`以表示函数未能达到目标：
 
 ```cpp
-        return false;
-    } // End CCDSolver::Solve function
-    ```
+    return false;
+} // End CCDSolver::Solve function
+```
 
 这个 CCD 求解器可以用来解决具有一个起点和一个末端执行器的单链。然而，处理 IK 链的更高级方法是，一个单链可以有多个末端执行器。然而，由于额外的实现复杂性，这些方法要少得多。在下一节中，您将开始探索另一种 IK 算法，FABRIK。
 
@@ -280,48 +280,48 @@ FABRIK 求解器将需要更多的内存来运行，因为它必须将本地关�
 1.  首先声明`FABRIKSolver`类，该类需要跟踪 IK 链、最大步数和一些距离阈值。声明一个世界空间位置向量和一个关节长度向量。这些向量是必需的，因为 FABRIK 算法不考虑旋转：
 
 ```cpp
-    class FABRIKSolver {
-    protected:
-        std::vector<Transform> mIKChain;
-        unsigned int mNumSteps;
-        float mThreshold;
-        std::vector<vec3> mWorldChain;
-        std::vector<float> mLengths;
-    ```
+class FABRIKSolver {
+protected:
+    std::vector<Transform> mIKChain;
+    unsigned int mNumSteps;
+    float mThreshold;
+    std::vector<vec3> mWorldChain;
+    std::vector<float> mLengths;
+```
 
 1.  声明辅助函数，将 IK 链复制到世界位置向量中，进行正向迭代，进行反向迭代，并将最终的世界位置复制回 IK 链中：
 
 ```cpp
-    protected:
-        void IKChainToWorld();
-        void IterateForward(const vec3& goal);
-        void IterateBackward(const vec3& base);
-        void WorldToIKChain();
-    ```
+protected:
+    void IKChainToWorld();
+    void IterateForward(const vec3& goal);
+    void IterateBackward(const vec3& base);
+    void WorldToIKChain();
+```
 
 1.  声明默认构造函数，获取器和设置器函数用于链的大小、解决链所需的迭代次数以及末端关节需要与目标的距离的 epsilon 值：
 
 ```cpp
-    public:
-        FABRIKSolver();
-        unsigned int Size();
-        void Resize(unsigned int newSize);
-        unsigned int GetNumSteps();
-        void SetNumSteps(unsigned int numSteps);
-        float GetThreshold();
-        void SetThreshold(float value);
-    ```
+public:
+    FABRIKSolver();
+    unsigned int Size();
+    void Resize(unsigned int newSize);
+    unsigned int GetNumSteps();
+    void SetNumSteps(unsigned int numSteps);
+    float GetThreshold();
+    void SetThreshold(float value);
+```
 
 1.  声明用于存储 IK 链中本地变换的获取器和设置器函数。声明一个函数来检索关节的全局变换。最后，声明`Solve`函数，当给定一个目标时解决 IK 链：
 
 ```cpp
-        Transform GetLocalTransform(unsigned int index);
-        void SetLocalTransform(unsigned int index, 
-                               const Transform& t);
-        Transform GetGlobalTransform(unsigned int index);
-        bool Solve(const Transform& target);
-    };
-    ```
+    Transform GetLocalTransform(unsigned int index);
+    void SetLocalTransform(unsigned int index, 
+                           const Transform& t);
+    Transform GetGlobalTransform(unsigned int index);
+    bool Solve(const Transform& target);
+};
+```
 
 FABRIK 算法的实现比 CCD 算法更复杂，但步骤更容易分解为函数。在接下来的部分，您将开始实现`FABRIKSolver`类的函数。
 
@@ -334,198 +334,198 @@ FABRIK 算法基于世界空间位置。这意味着，每次迭代时，IK 链�
 1.  实现`FABRIKSolver`类的构造函数。需要将步数和阈值设置为默认值：
 
 ```cpp
-    FABRIKSolver::FABRIKSolver() {
-        mNumSteps = 15;
-        mThreshold = 0.00001f;
-    }
-    ```
+FABRIKSolver::FABRIKSolver() {
+    mNumSteps = 15;
+    mThreshold = 0.00001f;
+}
+```
 
 1.  实现步数和阈值值的简单 getter 和 setter 函数：
 
 ```cpp
-    unsigned int FABRIKSolver::GetNumSteps() {
-        return mNumSteps;
-    }
-    void FABRIKSolver::SetNumSteps(unsigned int numSteps) {
-        mNumSteps = numSteps;
-    }
-    float FABRIKSolver::GetThreshold() {
-        return mThreshold;
-    }
-    void FABRIKSolver::SetThreshold(float value) {
-        mThreshold = value;
-    }
-    ```
+unsigned int FABRIKSolver::GetNumSteps() {
+    return mNumSteps;
+}
+void FABRIKSolver::SetNumSteps(unsigned int numSteps) {
+    mNumSteps = numSteps;
+}
+float FABRIKSolver::GetThreshold() {
+    return mThreshold;
+}
+void FABRIKSolver::SetThreshold(float value) {
+    mThreshold = value;
+}
+```
 
 1.  实现链条大小的 getter 和 setter 函数。setter 函数需要设置链条的大小、世界链条和长度向量：
 
 ```cpp
-    unsigned int FABRIKSolver::Size() {
-        return mIKChain.size();
-    }
-    void FABRIKSolver::Resize(unsigned int newSize) {
-        mIKChain.resize(newSize);
-        mWorldChain.resize(newSize);
-        mLengths.resize(newSize);
-    }
-    ```
+unsigned int FABRIKSolver::Size() {
+    return mIKChain.size();
+}
+void FABRIKSolver::Resize(unsigned int newSize) {
+    mIKChain.resize(newSize);
+    mWorldChain.resize(newSize);
+    mLengths.resize(newSize);
+}
+```
 
 1.  实现获取和设置 IK 链中元素的本地变换的方法：
 
 ```cpp
-    Transform FABRIKSolver::GetLocalTransform(
-                            unsigned int index) {
-        return mIKChain[index];
-    }
-    void FABRIKSolver::SetLocalTransform(unsigned int index,
-                                       const Transform& t) {
-        mIKChain[index] = t;
-    }
-    ```
+Transform FABRIKSolver::GetLocalTransform(
+                        unsigned int index) {
+    return mIKChain[index];
+}
+void FABRIKSolver::SetLocalTransform(unsigned int index,
+                                   const Transform& t) {
+    mIKChain[index] = t;
+}
+```
 
 1.  实现获取函数以检索全局变换，并将所有变换连接到根：
 
 ```cpp
-    Transform FABRIKSolver::GetGlobalTransform(
-                            unsigned int index) {
-        unsigned int size = (unsigned int)mIKChain.size();
-        Transform world = mIKChain[index];
-        for (int i = (int)index - 1; i >= 0; --i) {
-            world = combine(mIKChain[i], world);
-        }
-        return world;
-    }
-    ```
+Transform FABRIKSolver::GetGlobalTransform(
+                        unsigned int index) {
+    unsigned int size = (unsigned int)mIKChain.size();
+    Transform world = mIKChain[index];
+    for (int i = (int)index - 1; i >= 0; --i) {
+        world = combine(mIKChain[i], world);
+    }
+    return world;
+}
+```
 
 1.  实现`IKChainToWorld`函数，将 IK 链复制到世界变换向量中并记录段长度。长度数组存储了关节与其父节点之间的距离。这意味着根关节将始终包含长度`0`。对于非根关节，索引`i`处的距离是关节`i`和`i-1`之间的距离：
 
 ```cpp
-    void FABRIKSolver::IKChainToWorld() {
-        unsigned int size = Size();
-        for (unsigned int i = 0; i < size; ++i) {
-            Transform world = GetGlobalTransform(i);
-            mWorldChain[i] = world.position;
-            if (i >= 1) {
-                vec3 prev = mWorldChain[i - 1];
-                mLengths[i] = len(world.position - prev);
-            }
-        }
-        if (size > 0) {
-            mLengths[0] = 0.0f;
-        }
-    }
-    ```
+void FABRIKSolver::IKChainToWorld() {
+    unsigned int size = Size();
+    for (unsigned int i = 0; i < size; ++i) {
+        Transform world = GetGlobalTransform(i);
+        mWorldChain[i] = world.position;
+        if (i >= 1) {
+            vec3 prev = mWorldChain[i - 1];
+            mLengths[i] = len(world.position - prev);
+        }
+    }
+    if (size > 0) {
+        mLengths[0] = 0.0f;
+    }
+}
+```
 
 1.  接下来实现`WorldToIKChain`函数，它将把世界位置 IK 链转换回本地空间变换。循环遍历所有关节。对于每个关节，找到当前关节和下一个关节的世界空间变换。缓存当前关节的世界空间位置和旋转：
 
 ```cpp
-    void FABRIKSolver::WorldToIKChain() {
-        unsigned int size = Size();
-        if (size == 0) { return; }
-        for (unsigned int i = 0; i < size - 1; ++i) {
-            Transform world = GetGlobalTransform(i);
-            Transform next = GetGlobalTransform(i + 1);
-            vec3 position = world.position;
-            quat rotation = world.rotation;
-    ```
+void FABRIKSolver::WorldToIKChain() {
+    unsigned int size = Size();
+    if (size == 0) { return; }
+    for (unsigned int i = 0; i < size - 1; ++i) {
+        Transform world = GetGlobalTransform(i);
+        Transform next = GetGlobalTransform(i + 1);
+        vec3 position = world.position;
+        quat rotation = world.rotation;
+```
 
 1.  创建一个向量，指向当前关节到下一个关节的位置。这是当前节点和下一个节点之间的旋转：
 
 ```cpp
-            vec3 toNext = next.position - position;
-            toNext = inverse(rotation) * toNext;
-    ```
+        vec3 toNext = next.position - position;
+        toNext = inverse(rotation) * toNext;
+```
 
 1.  构造一个向量，指向下一个关节的世界空间 IK 链到当前位置的位置。这是当前节点和下一个节点之间的旋转：
 
 ```cpp
-            vec3 toDesired = mWorldChain[i + 1] - position;
-            toDesired = inverse(rotation) * toDesired;
-    ```
+        vec3 toDesired = mWorldChain[i + 1] - position;
+        toDesired = inverse(rotation) * toDesired;
+```
 
 1.  使用`fromTo`四元数函数将这两个向量对齐。将最终的增量旋转应用于当前关节的 IK 链旋转：
 
 ```cpp
-            quat delta = fromTo(toNext, toDesired);
-            mIKChain[i].rotation = delta * 
-                                   mIKChain[i].rotation;
-        }
-    }
-    ```
+        quat delta = fromTo(toNext, toDesired);
+        mIKChain[i].rotation = delta * 
+                               mIKChain[i].rotation;
+    }
+}
+```
 
 1.  接下来，实现`IterateBackward`函数，将链条中的最后一个元素设置为目标位置。这会打破 IK 链。使用存储的距离调整所有其他关节，以保持链条完整。执行此函数后，末端执行器始终位于目标位置，初始关节可能不再位于基底位置：
 
 ```cpp
-    void FABRIKSolver::IterateBackward(const vec3& goal) {
-        int size = (int)Size();
-        if (size > 0) {
-            mWorldChain[size - 1] = goal;
-        }
-        for (int i = size - 2; i >= 0; --i) {
-            vec3 direction = normalized(mWorldChain[i] - 
-                                        mWorldChain[i + 1]);
-            vec3 offset = direction * mLengths[i + 1];
-            mWorldChain[i] = mWorldChain[i + 1] + offset;
-        }
-    }
-    ```
+void FABRIKSolver::IterateBackward(const vec3& goal) {
+    int size = (int)Size();
+    if (size > 0) {
+        mWorldChain[size - 1] = goal;
+    }
+    for (int i = size - 2; i >= 0; --i) {
+        vec3 direction = normalized(mWorldChain[i] - 
+                                    mWorldChain[i + 1]);
+        vec3 offset = direction * mLengths[i + 1];
+        mWorldChain[i] = mWorldChain[i + 1] + offset;
+    }
+}
+```
 
 1.  实现`IterateForward`函数。此函数重新排列 IK 链，使第一个链接从链的原点开始。此函数需要将初始关节设置为基底，并迭代所有其他关节，调整它们以保持 IK 链完整。执行此函数后，如果链条可解并且迭代次数足够，末端执行器可能位于目标位置：
 
 ```cpp
-    void FABRIKSolver::IterateForward(const vec3& base) {
-        unsigned int size = Size();
-        if (size > 0) {
-            mWorldChain[0] = base;
-        }
-        for (int i = 1; i < size; ++i) {
-            vec3 direction = normalized(mWorldChain[i] - 
-                                        mWorldChain[i - 1]);
-            vec3 offset = direction * mLengths[i];
-            mWorldChain[i] = mWorldChain[i - 1] + offset;
-        }
-    }
-    ```
+void FABRIKSolver::IterateForward(const vec3& base) {
+    unsigned int size = Size();
+    if (size > 0) {
+        mWorldChain[0] = base;
+    }
+    for (int i = 1; i < size; ++i) {
+        vec3 direction = normalized(mWorldChain[i] - 
+                                    mWorldChain[i - 1]);
+        vec3 offset = direction * mLengths[i];
+        mWorldChain[i] = mWorldChain[i - 1] + offset;
+    }
+}
+```
 
 1.  通过将 IK 链复制到世界位置向量并填充长度向量来开始实现`Solve`函数。可以使用`IKChainToWorld`辅助函数完成。缓存基础和目标位置：
 
 ```cpp
-    bool FABRIKSolver::Solve(const Transform& target) {
-        unsigned int size = Size();
-        if (size == 0) { return false; }
-        unsigned int last = size - 1;
-        float thresholdSq = mThreshold * mThreshold;
+bool FABRIKSolver::Solve(const Transform& target) {
+    unsigned int size = Size();
+    if (size == 0) { return false; }
+    unsigned int last = size - 1;
+    float thresholdSq = mThreshold * mThreshold;
 
-        IKChainToWorld();
-        vec3 goal = target.position;
-        vec3 base = mWorldChain[0];
-    ```
+    IKChainToWorld();
+    vec3 goal = target.position;
+    vec3 base = mWorldChain[0];
+```
 
 1.  从`0`迭代到`mNumSteps`。对于每次迭代，检查目标和末端执行器是否足够接近以解决链条问题。如果足够接近，则使用`WorldToIKChain`辅助函数将世界位置复制回链条，并提前返回。如果它们不够接近，则通过调用`IterateBackward`和`IterateForward`方法进行迭代：
 
 ```cpp
-        for (unsigned int i = 0; i < mNumSteps; ++i) {
-            vec3 effector = mWorldChain[last];
-            if (lenSq(goal - effector) < thresholdSq) {
-                WorldToIKChain();
-                return true;
-            }
-            IterateBackward(goal);
-            IterateForward(base);
-        }
-    ```
+    for (unsigned int i = 0; i < mNumSteps; ++i) {
+        vec3 effector = mWorldChain[last];
+        if (lenSq(goal - effector) < thresholdSq) {
+            WorldToIKChain();
+            return true;
+        }
+        IterateBackward(goal);
+        IterateForward(base);
+    }
+```
 
 1.  迭代循环后，无论求解器是否能够解决链条问题，都将世界位置向量复制回 IK 链。最后再次检查末端执行器是否已经达到目标，并返回适当的布尔值：
 
 ```cpp
-        WorldToIKChain();
-        vec3 effector = GetGlobalTransform(last).position;
-        if (lenSq(goal - effector) < thresholdSq) {
-            return true;
-        }
-        return false;
-    }
-    ```
+    WorldToIKChain();
+    vec3 effector = GetGlobalTransform(last).position;
+    if (lenSq(goal - effector) < thresholdSq) {
+        return true;
+    }
+    return false;
+}
+```
 
 FABRIK 算法很受欢迎，因为它往往会快速收敛到最终目标，对于人形角色来说结果看起来不错，并且该算法易于实现。在下一节中，您将学习如何向 FABRIK 或 CCD 求解器添加约束。
 
@@ -542,41 +542,41 @@ CCD 和 FABRIK 求解器都能产生良好的结果，但都不能产生可预�
 1.  约束可以应用于 CCD 和 FABRIK 求解器，并且必须在每次迭代后应用。对于 CCD，这意味着在这里插入一小段代码：
 
 ```cpp
-    bool CCDSolver::Solve(const vec3& goal) {
-        // Local variables and size check
-        for (unsigned int i = 0; i < mNumSteps; ++i) {
-            // Check if we've reached the goal
-            for (int j = (int)size - 2; j >= 0; --j) {
-               // Iteration logic
-               // -> APPLY CONSTRAINTS HERE!
-                effector = GetGlobalTransform(last).position;
-                if (lenSq(goal - effector) < thresholdSq) {
-                    return true;
-                }
-             }
-        }
-        // Last goal check
-    }
-    ```
+bool CCDSolver::Solve(const vec3& goal) {
+    // Local variables and size check
+    for (unsigned int i = 0; i < mNumSteps; ++i) {
+        // Check if we've reached the goal
+        for (int j = (int)size - 2; j >= 0; --j) {
+           // Iteration logic
+           // -> APPLY CONSTRAINTS HERE!
+            effector = GetGlobalTransform(last).position;
+            if (lenSq(goal - effector) < thresholdSq) {
+                return true;
+            }
+         }
+    }
+    // Last goal check
+}
+```
 
 1.  将约束应用于 FABRIK 求解器更加复杂。约束应用于每次迭代，并且 IK 链需要在每次迭代时在世界位置链和 IK 链之间转换。在将数据复制到变换链后，每次迭代都应用约束：
 
 ```cpp
-    bool FABRIKSolver::Solve(const vec3& goal) {
-        // Local variables and size check
-        IKChainToWorld();
-        vec3 base = mWorldChain[0];
-        for (unsigned int i = 0; i < mNumSteps; ++i) {
-            // Check if we've reached the goal
-            IterateBackward(goal);
-            IterateForward(base);
-            WorldToIKChain();//NEW, NEEDED FOR CONSTRAINTS
-            // -> APPLY CONSTRAINTS HERE!
-            IKChainToWorld();//NEW, NEEDED FOR CONSTRAINTS
-        }
-        // Last goal check
-    }
-    ```
+bool FABRIKSolver::Solve(const vec3& goal) {
+    // Local variables and size check
+    IKChainToWorld();
+    vec3 base = mWorldChain[0];
+    for (unsigned int i = 0; i < mNumSteps; ++i) {
+        // Check if we've reached the goal
+        IterateBackward(goal);
+        IterateForward(base);
+        WorldToIKChain();//NEW, NEEDED FOR CONSTRAINTS
+        // -> APPLY CONSTRAINTS HERE!
+        IKChainToWorld();//NEW, NEEDED FOR CONSTRAINTS
+    }
+    // Last goal check
+}
+```
 
 `Solve`函数是虚拟的原因是您可以将每个`IKChain`类扩展为特定类型的链，例如`LegIKChain`或`ArmIKChain`，并直接将约束代码添加到解决方法中。在接下来的几节中，您将探索常见类型的约束。
 
