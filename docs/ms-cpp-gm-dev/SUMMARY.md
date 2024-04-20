@@ -1,3 +1,4 @@
++   [精通 C++ 游戏开发](README.md)
 +   [前言](ms-cpp-gm-dev_00.md)
 +   [第一章：C++游戏开发](ms-cpp-gm-dev_01.md)
 +   [第二章：理解库](ms-cpp-gm-dev_02.md)

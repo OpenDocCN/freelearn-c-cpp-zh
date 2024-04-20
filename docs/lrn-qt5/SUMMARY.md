@@ -1,3 +1,4 @@
++   [Qt5 学习手册](README.md)
 +   [前言](lrn-qt5_00.md)
 +   [第一章：Hello Qt](lrn-qt5_01.md)
 +   [第二章：项目结构](lrn-qt5_02.md)

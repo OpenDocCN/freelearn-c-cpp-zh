@@ -1,3 +1,4 @@
++   [C++ 函数式编程学习手册](README.md)
 +   [前言](lrn-cpp-fp_0.md)
 +   [第一章：深入现代 C++](lrn-cpp-fp_1.md)
 +   [第二章：在函数式编程中操作函数](lrn-cpp-fp_2.md)

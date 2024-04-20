@@ -1,3 +1,4 @@
++   [CUDA 编程学习手册](README.md)
 +   [前言](lrn-cuda-prog_00.md)
 +   [第一章：CUDA 编程简介](lrn-cuda-prog_01.md)
 +   [第二章：CUDA 内存管理](lrn-cuda-prog_02.md)

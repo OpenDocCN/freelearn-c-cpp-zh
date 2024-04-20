@@ -1,3 +1,4 @@
++   [Webassembly 学习手册](README.md)
 +   [前言](lrn-wasm_00.md)
 +   [第一章：什么是 WebAssembly？](lrn-wasm_01.md)
 +   [第二章：WebAssembly 的元素-Wat、Wasm 和 JavaScript API](lrn-wasm_02.md)

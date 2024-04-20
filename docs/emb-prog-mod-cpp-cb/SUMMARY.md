@@ -1,3 +1,4 @@
++   [C++ 现代嵌入式编程秘籍](README.md)
 +   [前言](emb-prog-mod-cpp-cb_00.md)
 +   [第一章：嵌入式系统基础](emb-prog-mod-cpp-cb_01.md)
 +   [第二章：设置环境](emb-prog-mod-cpp-cb_02.md)

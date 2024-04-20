@@ -1,3 +1,4 @@
++   [WebAssembly 游戏开发实用指南](README.md)
 +   [前言](hsn-gm-dev-wasm_00.md)
 +   [第一章：介绍 WebAssembly 和 Emscripten](hsn-gm-dev-wasm_01.md)
 +   [第二章：HTML5 和 WebAssembly](hsn-gm-dev-wasm_02.md)

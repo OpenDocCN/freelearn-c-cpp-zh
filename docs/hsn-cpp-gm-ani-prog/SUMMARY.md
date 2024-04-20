@@ -1,3 +1,4 @@
++   [C++ 游戏动画编程实用指南](README.md)
 +   [前言](hsn-cpp-gm-ani-prog_00.md)
 +   [第一章：创建游戏窗口](hsn-cpp-gm-ani-prog_01.md)
 +   [第二章：实现向量](hsn-cpp-gm-ani-prog_02.md)
