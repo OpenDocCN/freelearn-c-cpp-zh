@@ -1,4 +1,4 @@
-# 第一章。C++，SFML，Visual Studio 和开始第一个游戏
+# 第一章：C++，SFML，Visual Studio 和开始第一个游戏
 
 欢迎来到《开始 C++游戏编程》。我将立即让你开始你的写作之旅，使用 C++和**OpenGL**-**powered SFML**为 PC 编写出色的游戏。
 

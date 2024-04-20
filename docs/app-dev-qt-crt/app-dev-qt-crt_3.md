@@ -1,4 +1,4 @@
-# 第三章。使用 Qt Designer 设计您的应用程序
+# 第三章：使用 Qt Designer 设计您的应用程序
 
 Qt 可能最为人所知的是一个跨平台用户界面工具包，直到最近几年，Qt Creator 才真正发展成为一个完整的软件开发环境。然而，即使在早期版本中，Qt 也具有了一个优秀的用于使用 Qt Designer 构建用户界面的工具，现在已经成为 Qt Creator 的一部分。最近，构建 Qt 的开发人员添加了 Qt Quick 作为用户界面开发的第二个选项。Qt Quick 扩展了 Qt 库和 Qt Creator 的 Qt Designer 功能，用于构建触摸屏和机顶盒的流畅界面，并促进了 Qt Quick 和**Qt 元对象语言**（**QML**）的声明性特性。
 

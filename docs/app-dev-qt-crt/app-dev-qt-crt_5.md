@@ -1,4 +1,4 @@
-# 第五章。使用 Qt Creator 进行性能优化
+# 第五章：使用 Qt Creator 进行性能优化
 
 我们并不是每天都使用性能分析工具，但当我们需要时，我们很高兴它们存在。商业工具，如与 Microsoft Visual Studio 一起提供的工具或 IBM 的 Rational Rose Purify 等独立工具，可能会花费大量资金，幸运的是，Qt Creator 大部分所需的功能都内置了，或者支持使用开源工具来帮助您分析应用程序的运行时和内存性能。
 

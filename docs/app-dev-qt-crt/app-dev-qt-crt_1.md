@@ -1,4 +1,4 @@
-# 第一章。使用 Qt Creator 入门
+# 第一章：使用 Qt Creator 入门
 
 Qt Creator 是集成的软件开发环境，支持传统的 C++应用程序开发，以及使用 Qt 项目的库进行开发（统称为“Qt”，发音为“cute”）。在本章中，我们将看到开始使用 Qt Creator 所需的一切：
 
