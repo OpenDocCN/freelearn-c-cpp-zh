@@ -600,7 +600,74 @@ C++11 中有一个新功能，即别名声明可以轻松地并入模板中 - �
 
 1.  单击**启动配置**下拉菜单，然后选择**新启动配置...**。配置**L2BExercise2**以使用名称**Exercise2**运行。完成后，它将成为当前选择的启动配置。
 
-1.  单击**运行**按钮。**Exercise 2**将运行并产生类似以下输出：![图 2B.13：练习 2 输出###### 图 2B.13：练习 2 输出 1.  在编辑器中，在`printVector()`函数的声明之前，添加以下行：```cpp    typedef std::vector<int> IntVector;    ```1.  现在，将文件中所有的`std::vector<int>`更改为`IntVector`。1.  单击**运行**按钮。输出应与以前相同。1.  在编辑器中，更改之前添加的行为以下内容：```cpp    using IntVector = std::vector<int>;    ```1.  单击**运行**按钮。输出应与以前相同。1.  在编辑器中，添加以下行：```cpp    using IntVectorIter = std::vector<int>::iterator;    ```1.  现在，将`IntVector::iterator`的一个出现更改为`IntVectorIter`。1.  单击**运行**按钮。输出应与以前相同。在这个练习中，typedef 和使用别名似乎没有太大区别。在任何一种情况下，使用一个命名良好的别名使得代码更容易阅读和理解。当涉及更复杂的别名时，`using`提供了一种更容易编写别名的方法。在 C++11 中引入，`using`现在是定义别名的首选方法。它还比`typedef`有其他优点，例如能够在模板内部使用它。## 模板 - 不仅仅是泛型编程模板还可以提供比泛型编程更多的功能（一种带有类型的模板）。在泛型编程的情况下，模板作为一个不能更改的蓝图运行，并为指定的类型或类型提供模板的编译版本。模板可以被编写以根据涉及的类型提供函数或算法的特化。这被称为**模板特化**，并不是我们先前使用的意义上的通用编程。只有当它使某些类型在给定上下文中表现得像我们期望它们在某个上下文中表现得一样时，它才能被称为通用编程。当用于所有类型的算法被修改时，它不能被称为通用编程。检查以下专业化代码的示例：```cpp#include <iostream>#include <type_traits>template <typename T, std::enable_if_t<sizeof(T) == 1, int> = 0>void print(T val){    printf("%c\n", val);}template <typename T, std::enable_if_t<sizeof(T) == sizeof(int), int> = 0>void print(T val){    printf("%d\n", val);}template <typename T, std::enable_if_t<sizeof(T) == sizeof(double), int> = 0>void print(T val){    printf("%f\n", val);}int main(int argc, char** argv){    print('c');    print(55);    print(32.1F);    print(77.3);}```它定义了一个模板，根据使用`std::enable_if_t<>`和`sizeof()`的模板的特化，调用`printf()`并使用不同的格式字符串。当我们运行它时，会生成以下输出：![图 2B.14：错误的打印模板程序输出](img/C14583_02B_14.jpg)
+1.  单击**运行**按钮。**Exercise 2**将运行并产生类似以下输出：
+
+![图 2B.13：练习 2 输出](img/C14583_02B_13.jpg)
+
+###### 图 2B.13：练习 2 输出 1.  
+
+在编辑器中，在`printVector()`函数的声明之前，添加以下行：
+
+```cpp    
+typedef std::vector<int> IntVector;    
+```
+
+1.  现在，将文件中所有的`std::vector<int>`更改为`IntVector`。
+
+1.  单击**运行**按钮。输出应与以前相同。
+
+1.  在编辑器中，更改之前添加的行为以下内容：
+
+```cpp    
+using IntVector = std::vector<int>;    
+```
+
+1.  单击**运行**按钮。输出应与以前相同。
+
+1.  在编辑器中，添加以下行：
+
+```cpp    
+using IntVectorIter = std::vector<int>::iterator;    
+```
+
+1.  现在，将`IntVector::iterator`的一个出现更改为`IntVectorIter`。
+
+1.  单击**运行**按钮。输出应与以前相同。
+
+在这个练习中，typedef 和使用别名似乎没有太大区别。在任何一种情况下，使用一个命名良好的别名使得代码更容易阅读和理解。当涉及更复杂的别名时，`using`提供了一种更容易编写别名的方法。在 C++11 中引入，`using`现在是定义别名的首选方法。它还比`typedef`有其他优点，例如能够在模板内部使用它。
+
+## 模板 - 不仅仅是泛型
+
+编程模板还可以提供比泛型编程更多的功能（一种带有类型的模板）。在泛型编程的情况下，模板作为一个不能更改的蓝图运行，并为指定的类型或类型提供模板的编译版本。
+
+模板可以被编写以根据涉及的类型提供函数或算法的特化。这被称为**模板特化**，并不是我们先前使用的意义上的通用编程。只有当它使某些类型在给定上下文中表现得像我们期望它们在某个上下文中表现得一样时，它才能被称为通用编程。当用于所有类型的算法被修改时，它不能被称为通用编程。检查以下专业化代码的示例：
+
+```cpp
+#include <iostream>
+#include <type_traits>
+template <typename T, std::enable_if_t<sizeof(T) == 1, int> = 0>
+void print(T val){
+    printf("%c\n", val);
+}
+template <typename T, std::enable_if_t<sizeof(T) == sizeof(int), int> = 0>
+void print(T val){    
+    printf("%d\n", val);
+}
+template <typename T, std::enable_if_t<sizeof(T) == sizeof(double), int> = 0>
+void print(T val){    
+    printf("%f\n", val);
+}
+int main(int argc, char** argv){    
+    print('c');    
+    print(55);    
+    print(32.1F);    
+    print(77.3);
+}
+```
+
+它定义了一个模板，根据使用`std::enable_if_t<>`和`sizeof()`的模板的特化，调用`printf()`并使用不同的格式字符串。当我们运行它时，会生成以下输出：
+
+![图 2B.14：错误的打印模板程序输出](img/C14583_02B_14.jpg)
 
 ###### 图 2B.14：错误的打印模板程序输出
 
