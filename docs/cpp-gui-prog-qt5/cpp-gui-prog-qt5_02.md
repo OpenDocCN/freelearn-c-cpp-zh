@@ -1,4 +1,4 @@
-# Qt 小部件和样式表
+# 第二章：Qt 小部件和样式表
 
 使用 Qt 进行软件开发的一个优势是，使用 Qt 提供的工具非常容易设计程序的**图形用户界面**（**GUI**）。在本书中，我们将尝试创建一个涉及 Qt 许多不同组件和模块的单一项目。我们将在每一章中逐步介绍项目的每个部分，这样您最终将能够掌握整个 Qt 框架，并同时完成演示项目，这对于您的作品集来说是一个非常有价值的项目。您可以在[`github.com/PacktPublishing/Hands-On-GUI-Programming-with-C-QT5`](https://github.com/PacktPublishing/Hands-On-GUI-Programming-with-C-QT5)找到所有源代码。
 

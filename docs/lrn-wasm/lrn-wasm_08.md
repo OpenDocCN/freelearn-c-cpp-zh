@@ -1,4 +1,4 @@
-# 使用 Emscripten 移植游戏
+# 第八章：使用 Emscripten 移植游戏
 
 如 第七章 所示，*从头开始创建应用程序*，WebAssembly 在当前形式下仍然相对有限。Emscripten 提供了强大的 API，用于扩展 WebAssembly 的功能，以添加功能到您的应用程序。在某些情况下，编译为 WebAssembly 模块和 JavaScript 粘合代码（而不是可执行文件）可能只需要对现有的 C 或 C++源代码进行轻微更改。
 

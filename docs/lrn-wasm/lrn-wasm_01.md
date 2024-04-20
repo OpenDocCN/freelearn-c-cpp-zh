@@ -1,4 +1,4 @@
-# 什么是 WebAssembly？
+# 第一章：什么是 WebAssembly？
 
 **WebAssembly**（**Wasm**）代表了 Web 平台的一个重要里程碑。使开发人员能够在 Web 上运行编译后的代码，而无需插件或浏览器锁定，带来了许多新的机会。关于 WebAssembly 是什么以及对其持续能力的一些怀疑，存在一些混淆。
 

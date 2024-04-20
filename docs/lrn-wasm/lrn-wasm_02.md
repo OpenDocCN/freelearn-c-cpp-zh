@@ -1,4 +1,4 @@
-# WebAssembly 的元素-Wat、Wasm 和 JavaScript API
+# 第二章：WebAssembly 的元素-Wat、Wasm 和 JavaScript API
 
 第一章《什么是 WebAssembly？》描述了 WebAssembly 的历史，并提供了技术的高层概述以及潜在的用例和限制。WebAssembly 被描述为由多个元素组成，不仅仅是官方定义中指定的二进制指令格式。
 

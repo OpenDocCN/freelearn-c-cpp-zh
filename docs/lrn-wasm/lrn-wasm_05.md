@@ -1,4 +1,4 @@
-# 创建和加载 WebAssembly 模块
+# 第五章：创建和加载 WebAssembly 模块
 
 我们在第四章 *安装所需的依赖项*中向`emcc`命令传递的标志产生了一个单一的`.wasm`文件，可以使用本机的`WebAssembly`对象在浏览器中加载和实例化。C 代码是一个非常简单的示例，旨在测试编译器，而无需考虑包含的库或 WebAssembly 的限制。通过利用 Emscripten 的一些功能，我们可以克服 C/C++代码的一些 WebAssembly 的限制，而只有最小的性能损失。
 

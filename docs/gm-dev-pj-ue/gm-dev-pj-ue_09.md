@@ -1,4 +1,4 @@
-# 10. 创建一个 SuperSideScroller 游戏
+# 第九章：10. 创建一个 SuperSideScroller 游戏
 
 概述
 

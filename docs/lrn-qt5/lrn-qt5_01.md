@@ -1,4 +1,4 @@
-# Hello Qt
+# 第一章：Hello Qt
 
 Qt 是一个成熟而强大的框架，可在多种平台上交付复杂的应用程序。它被广泛应用于嵌入式设备，包括电视、卫星机顶盒、医疗设备、汽车仪表板等。它在 Linux 世界中也有丰富的历史，KDE 和 Sailfish OS 广泛使用它，许多应用程序也是使用 Qt 开发的。在过去几年中，它在移动领域也取得了巨大进展。然而，在 Microsoft Windows 和 Apple Mac OS X 世界中，C#/.NET 和 Objective-C/Cocoa 的主导地位意味着 Qt 经常被忽视。
 

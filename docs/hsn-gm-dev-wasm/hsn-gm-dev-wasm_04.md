@@ -1,4 +1,4 @@
-# 在 WebAssembly 中使用 SDL 进行精灵动画
+# 第四章：在 WebAssembly 中使用 SDL 进行精灵动画
 
 在撰写本文时，Simple DirectMedia Layer（SDL）是唯一集成到 Emscripten 中供 WebAssembly 使用的 2D 渲染库。但是，即使更多的渲染库变得可用，SDL 也是一个得到广泛支持的渲染库，已经被移植到了大量平台，并且在可预见的未来仍将保持相关和有用，用于 WebAssembly 和 C++开发。使用 SDL 渲染到 WebGL 可以节省大量时间，因为我们不必自己编写 WebAssembly C++代码和 WebGL 之间的接口代码。庞大的社区还提供支持和文档。您可以在[libsdl.org](http://libsdl.org)上找到更多 SDL 资源。
 

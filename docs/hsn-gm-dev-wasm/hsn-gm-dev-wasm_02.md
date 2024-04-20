@@ -1,4 +1,4 @@
-# HTML5 和 WebAssembly
+# 第二章：HTML5 和 WebAssembly
 
 在本章中，我们将向您展示我们编写的用于目标 WebAssembly 的 C 代码如何与 HTML5、JavaScript 和 CSS 结合在一起，创建一个网页。我们将教您如何创建一个新的 HTML 外壳文件，供 Emscripten 在创建我们的 WebAssembly 应用程序时使用。我们将讨论`Module`对象以及 Emscripten 如何将其用作 JavaScript 和 WebAssembly 模块之间的接口。我们将向您展示如何在我们的 HTML 页面上从 JavaScript 中调用用 C 编写的 WebAssembly 函数。我们还将向您展示如何从我们的 C 代码中调用 JavaScript 函数。我们将讨论如何使用 CSS 来改善我们网页的外观。我们将向您介绍 HTML5 Canvas 元素，并展示如何可以从 JavaScript 中向画布显示图像。我们将简要讨论如何从我们的 WebAssembly 模块移动这些图像。本章将让您了解所有内容是如何协同工作的，并为我们为 WebAssembly 应用程序开发的其他功能奠定基础。
 

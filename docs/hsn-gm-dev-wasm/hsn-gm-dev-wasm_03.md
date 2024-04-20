@@ -1,4 +1,4 @@
-# WebGL 简介
+# 第三章：WebGL 简介
 
 在苹果创建 Canvas 元素之后，Mozilla 基金会于 2006 年开始研究 Canvas 3D 原型，并在 2007 年实现了这个早期版本，最终成为 WebGL。2009 年，一个名为 Kronos Group 的财团成立了一个 WebGL 工作组。到 2011 年，该组织已经制定了基于 OpenGL ES 2.0 API 的 WebGL 1.0 版本。
 
