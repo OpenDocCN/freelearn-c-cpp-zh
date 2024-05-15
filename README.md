@@ -4,7 +4,7 @@
 > 
 > 让开源界提前感受入关。
 
-* [在线阅读](https://flccpp.flygon.net)
+* [在线阅读](https://flcc.flygon.net)
 ## 下载
 
 ### Docker
