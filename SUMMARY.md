@@ -20,7 +20,6 @@
 +   [WebAssembly 游戏开发实用指南](docs/hsn-gm-dev-wasm/README.md)
 +   [通过使用 Unreal4 构建游戏学习 C++](docs/lrn-cpp-bd-gm-ue4/README.md)
 +   [C++ 函数式编程学习手册](docs/lrn-cpp-fp/README.md)
-+   [CUDA 编程学习手册](docs/lrn-cuda-prog/README.md)
 +   [Qt5 学习手册](docs/lrn-qt5/README.md)
 +   [Webassembly 学习手册](docs/lrn-wasm/README.md)
 +   [C++ 现代编程](docs/mod-cpp/README.md)
