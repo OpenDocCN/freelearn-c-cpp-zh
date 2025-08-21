@@ -1,0 +1,2469 @@
+- en: Structuring Projects
+  id: totrans-0
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 项目结构
+- en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-1
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下配方：
+- en: Code reuse with functions and macros
+  id: totrans-2
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用函数和宏实现代码复用
+- en: Splitting CMake sources into modules
+  id: totrans-3
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 将CMake源代码拆分为模块
+- en: Writing a function to test and set compiler flags
+  id: totrans-4
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 编写一个函数来测试和设置编译器标志
+- en: Defining a function or macro with named arguments
+  id: totrans-5
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用命名参数定义函数或宏
+- en: Redefining functions and macros
+  id: totrans-6
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 重新定义函数和宏
+- en: Deprecating functions, macros, and variables
+  id: totrans-7
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 弃用函数、宏和变量
+- en: Limiting scope with `add_subdirectory`
+  id: totrans-8
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用`add_subdirectory`限制作用域
+- en: Avoiding global variables using `target_sources`
+  id: totrans-9
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 使用`target_sources`避免全局变量
+- en: Organizing Fortran projects
+  id: totrans-10
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 组织Fortran项目
+- en: Introduction
+  id: totrans-11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 引言
+- en: In the previous chapters, we have discovered a number of building blocks to
+    create projects configured and built using CMake. In this chapter, we will discuss
+    how to combine these building blocks and introduce abstractions to avoid huge
+    `CMakeLists.txt` files and minimize code repetition, global variables, global
+    state, and explicit ordering. Our goal will be to present patterns for a modular
+    CMake code structure and for limiting the scope of variables. We will discuss
+    strategies that will also help us control CMake code complexity for medium to
+    large code projects.
+  id: totrans-12
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前几章中，我们已经探索了使用CMake配置和构建项目所需的多个构建块。在本章中，我们将讨论如何组合这些构建块，并引入抽象概念以避免庞大的`CMakeLists.txt`文件，并最小化代码重复、全局变量、全局状态和显式排序。我们的目标是展示模块化CMake代码结构的范式，并限制变量的作用域。我们将讨论的策略也将帮助我们控制中等至大型代码项目的CMake代码复杂性。
+- en: Code reuse with functions and macros
+  id: totrans-13
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用函数和宏实现代码复用
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-01](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-01)
+    and has a C++ example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows.
+  id: totrans-14
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本配方的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-01](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-01)获取，并包含一个C++示例。该配方适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: In any programming language, functions allow us to abstract (hide) details and
+    avoid code repetition, and CMake is no exception. In this recipe, we will discuss
+    macros and functions as an example, and we will introduce a macro to make it more
+    convenient for us to define tests and set the ordering of tests. Instead of calling `add_test`
+    and `set_tests_properties` to define each set and to set the expected `COST` of
+    each test ([Chapter 4](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml), *Creating
+    and Running Tests*, Recipe 8, *Running tests in parallel*), our goal is to define
+    a macro that will be able to take care of both in one go.
+  id: totrans-15
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在任何编程语言中，函数允许我们抽象（隐藏）细节并避免代码重复，CMake也不例外。在本配方中，我们将讨论宏和函数作为示例，并引入一个宏，使我们定义测试和设置测试顺序更加方便。我们不是通过调用`add_test`和`set_tests_properties`来定义每个集合并设置每个测试的预期`COST`（[第4章](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml)，*创建和运行测试*，配方8，*并行运行测试*），我们的目标是定义一个宏，能够一次性处理这两项任务。
+- en: Getting ready
+  id: totrans-16
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'We will start with the example presented in [Chapter 4](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml),
+    *Creating and Running Tests*, Recipe 2, *Defining a unit test using the Catch2
+    library*. The `main.cpp`, `sum_integers.cpp`, and `sum_integers.hpp` files are
+    unchanged and can be used to compute the sum of integers provided as command line
+    arguments. The source code for the unit tests (`test.cpp`) is used unchanged,
+    as well. We also require the Catch2 header file, `catch.hpp`. In contrast to [Chapter
+    4](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml), *Creating and Running Tests,* Recipe
+    2, *Defining a unit test using the Catch2 library*, we will structure the source
+    files into subdirectories and form the following file tree (we will discuss the
+    CMake code later):'
+  id: totrans-17
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从[第4章](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml)，*创建和运行测试*，配方2，*使用Catch2库定义单元测试*中介绍的示例开始。`main.cpp`、`sum_integers.cpp`和`sum_integers.hpp`文件保持不变，可以用来计算作为命令行参数提供的整数之和。单元测试的源代码(`test.cpp`)也保持不变。我们还需要Catch2头文件`catch.hpp`。与[第4章](5b1b2efb-2ce1-4f8f-b4dd-a05606d8b87c.xhtml)，*创建和运行测试*，配方2，*使用Catch2库定义单元测试*不同，我们将把源文件结构化为子目录，并形成以下文件树（稍后我们将讨论CMake代码）：
+- en: '[PRE0]'
+  id: totrans-18
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE0]'
+- en: How to do it
+  id: totrans-19
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'Let us follow the required steps:'
+  id: totrans-20
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们按照所需的步骤进行：
+- en: 'The top-level `CMakeLists.txt` defines the minimum CMake version, project name,
+    and supported language, and requires the C++11 standard:'
+  id: totrans-21
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 顶层的`CMakeLists.txt`文件定义了最低CMake版本、项目名称和支持的语言，并要求使用C++11标准：
+- en: '[PRE1]'
+  id: totrans-22
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE1]'
+- en: 'We further define binary and library paths according to GNU standards:'
+  id: totrans-23
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们进一步根据GNU标准定义了二进制和库路径：
+- en: '[PRE2]'
+  id: totrans-24
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE2]'
+- en: 'And finally, we use `add_subdirectory` calls to structure our CMake code into `src/CMakeLists.txt`
+    and `tests/CMakeLists.txt` parts. We also enable testing:'
+  id: totrans-25
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们使用`add_subdirectory`调用来将我们的CMake代码结构化为`src/CMakeLists.txt`和`tests/CMakeLists.txt`部分。我们还启用了测试：
+- en: '[PRE3]'
+  id: totrans-26
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE3]'
+- en: 'The `src/CMakeLists.txt` file defines the source code targets:'
+  id: totrans-27
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`src/CMakeLists.txt`文件中定义了源代码目标：
+- en: '[PRE4]'
+  id: totrans-28
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE4]'
+- en: 'In `tests/CMakeLists.txt`, we first build and link the `cpp_test` executable:'
+  id: totrans-29
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`tests/CMakeLists.txt`中，我们首先构建并链接`cpp_test`可执行文件：
+- en: '[PRE5]'
+  id: totrans-30
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE5]'
+- en: 'We then define a new macro, `add_catch_test`, which we will discuss later:'
+  id: totrans-31
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后我们定义了一个新的宏，`add_catch_test`，我们将在后面讨论它：
+- en: '[PRE6]'
+  id: totrans-32
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE6]'
+- en: 'Finally, we define two tests using `add_catch_test` and in addition, we set
+    and print the value of a variable:'
+  id: totrans-33
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们使用`add_catch_test`定义了两个测试，此外，我们还设置并打印了一个变量的值：
+- en: '[PRE7]'
+  id: totrans-34
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE7]'
+- en: 'Now, we are ready to test it out. First, we configure the project (the interesting
+    output lines are shown):'
+  id: totrans-35
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们准备测试一下。首先，我们配置项目（显示的有趣输出行）：
+- en: '[PRE8]'
+  id: totrans-36
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE8]'
+- en: 'Finally, we build and run the tests:'
+  id: totrans-37
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们构建并运行测试：
+- en: '[PRE9]'
+  id: totrans-38
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE9]'
+- en: 'Observe that the long test is started first:'
+  id: totrans-39
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 注意，首先启动的是长测试：
+- en: '[PRE10]'
+  id: totrans-40
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE10]'
+- en: How it works
+  id: totrans-41
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: 'The new feature in this recipe is the `add_catch_test` macro. The macro expects
+    two arguments, `_name` and `_cost`, and we can use these arguments inside the
+    macro to call `add_test` and `set_tests_properties`. The leading underscores are
+    our choice, but with this we indicate to the reader that these arguments have
+    local scope and can only be accessed within the macro. Also, note that the macro
+    automatically populates `${ARGC}` (number of arguments) and `${ARGV}` (list of
+    arguments), and we verified this in the output:'
+  id: totrans-42
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱中的新特性是`add_catch_test`宏。宏期望两个参数，`_name`和`_cost`，我们可以在宏内部使用这些参数来调用`add_test`和`set_tests_properties`。前面的下划线是我们的选择，但通过这种方式，我们向读者表明这些参数具有局部作用域，并且只能在宏内部访问。还要注意，宏会自动填充`${ARGC}`（参数数量）和`${ARGV}`（参数列表），我们在输出中验证了这一点：
+- en: '[PRE11]'
+  id: totrans-43
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE11]'
+- en: 'The macro also defines `${ARGN}`, which holds the list of arguments past the
+    last expected argument. In addition, we can also address arguments with `${ARGV0}`, `${ARGV1}`,
+    and so on. Observe how we caught the unexpected argument (`extra_argument`) in
+    this call:'
+  id: totrans-44
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 宏还定义了`${ARGN}`，它保存了最后一个预期参数之后的参数列表。此外，我们还可以使用`${ARGV0}`、`${ARGV1}`等来引用参数。观察我们是如何在这个调用中捕获意外参数（`extra_argument`）的：
+- en: '[PRE12]'
+  id: totrans-45
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE12]'
+- en: 'We have done that using the following:'
+  id: totrans-46
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们使用以下方式完成了这一步骤：
+- en: '[PRE13]'
+  id: totrans-47
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE13]'
+- en: In this if-check, we had to introduce a new variable and could not query `ARGN`
+    directly since it is not a variable in the usual CMake sense. With this macro,
+    we were not only able to define tests by their name and command but also indicate
+    the expected cost, which led to the "long" test being started before the "short"
+    test thanks to the `COST` property.
+  id: totrans-48
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个条件检查中，我们不得不引入一个新的变量，并且不能直接查询`ARGN`，因为它在通常的CMake意义上不是一个变量。通过这个宏，我们不仅能够通过名称和命令定义测试，还能够指示预期的成本，这导致由于`COST`属性，“长”测试在“短”测试之前启动。
+- en: 'We could have implemented this using a function instead of a macro with the
+    same syntax:'
+  id: totrans-49
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用具有相同语法的函数而不是宏来实现这一点：
+- en: '[PRE14]'
+  id: totrans-50
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE14]'
+- en: 'The difference between macros and functions is their variable scope. Macros
+    are executed in the scope of the caller whereas functions have own variable scope.
+    In other words, if we need to set or modify variables that should be available
+    to the caller, we typically use a macro. If no output variables are set or modified,
+    we preferably use a function. We remark that it is possible to modify parent scope
+    variables also in a function, but this has to be explicitly indicated using `PARENT_SCOPE`:'
+  id: totrans-51
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 宏和函数之间的区别在于它们的变量作用域。宏在调用者的作用域内执行，而函数有自己的变量作用域。换句话说，如果我们需要设置或修改应该对调用者可用的变量，我们通常使用宏。如果没有设置或修改输出变量，我们更倾向于使用函数。我们注意到，在函数中也可以修改父作用域的变量，但这必须使用`PARENT_SCOPE`明确指示：
+- en: '[PRE15]'
+  id: totrans-52
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE15]'
+- en: 'To demonstrate the scope, we have written the following call after the definition
+    of the macro:'
+  id: totrans-53
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了展示范围，我们在宏定义之后编写了以下调用：
+- en: '[PRE16]'
+  id: totrans-54
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE16]'
+- en: 'Inside the macro, we increase `num_macro_calls` by 1:'
+  id: totrans-55
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在宏内部，我们将`num_macro_calls`增加1：
+- en: '[PRE17]'
+  id: totrans-56
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE17]'
+- en: 'And this is the output produced:'
+  id: totrans-57
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是产生的输出：
+- en: '[PRE18]'
+  id: totrans-58
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE18]'
+- en: If we changed the macro to a function, the tests would still work but `num_macro_calls`
+    would remain 0 throughout the calls in the parent scope. It is useful to imagine
+    CMake macros as being like functions, which are substituted directly into the
+    place where they are called (inlined in the C language sense). It is useful to
+    imagine CMake functions as black boxes where nothing comes back unless you explicitly
+    define it as `PARENT_SCOPE`. Functions in CMake do not have return values.
+  id: totrans-59
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果我们把宏改为函数，测试仍然有效，但`num_macro_calls`在整个父作用域的调用过程中将保持为0。想象一下，CMake宏就像函数一样，它们直接被替换到调用它们的位置（在C语言中称为内联）。想象一下，CMake函数就像黑盒子，除非你明确将其定义为`PARENT_SCOPE`，否则什么都不会返回。CMake函数没有返回值。
+- en: There is more
+  id: totrans-60
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: It is possible to nest function calls in macros and macro calls in functions,
+    but we need to carefully consider the scope of the variables. If a feature can
+    be implemented using a function, then this is probably preferable to a macro since
+    it gives more default control over the parent scope state.
+  id: totrans-61
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在宏中嵌套函数调用和在函数中嵌套宏调用是可能的，但我们需要仔细考虑变量的作用域。如果可以使用函数实现某个功能，那么这可能比宏更可取，因为它提供了对父作用域状态的更多默认控制。
+- en: 'We should also mention the use of `CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE` in `src/CMakeLists.txt`:'
+  id: totrans-62
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还应该提到在`src/CMakeLists.txt`中使用`CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE`：
+- en: '[PRE19]'
+  id: totrans-63
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE19]'
+- en: This command adds the current directory to the `INTERFACE_INCLUDE_DIRECTORIES`
+    property for all targets defined in this `CMakeLists.txt` file. In other words,
+    we did not have to use `target_include_directories` to indicate the header file
+    location for `cpp_test`.
+  id: totrans-64
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此命令将当前目录添加到此`CMakeLists.txt`文件中定义的所有目标的`INTERFACE_INCLUDE_DIRECTORIES`属性中。换句话说，我们不需要使用`target_include_directories`来指示`cpp_test`的头文件位置。
+- en: Splitting CMake sources into modules
+  id: totrans-65
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 将CMake源代码拆分为模块
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-02](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-02).
+    The recipe is valid with CMake version 3.5 (and higher) and has been tested on
+    GNU/Linux, macOS, and Windows.
+  id: totrans-66
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本例的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-02](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-02)找到。本例适用于CMake版本3.5（及更高版本），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: 'Projects typically start with a single `CMakeLists.txt` file, but over time
+    this file grows and in this recipe we will demonstrate one mechanism for splitting `CMakeLists.txt`
+    up into smaller units. There are several motivations for splitting up `CMakeLists.txt`
+    into modules that can be included in the main `CMakeLists.txt` or other modules:'
+  id: totrans-67
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 项目通常从一个`CMakeLists.txt`文件开始，但随着时间的推移，这个文件会增长，在本例中，我们将演示一种将`CMakeLists.txt`拆分为较小单元的方法。将`CMakeLists.txt`拆分为可以在主`CMakeLists.txt`或其他模块中包含的模块有几个动机：
+- en: The main `CMakeLists.txt` is easier to read.
+  id: totrans-68
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 主要的`CMakeLists.txt`更容易阅读。
+- en: CMake modules can be reused in other projects.
+  id: totrans-69
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: CMake模块可以在其他项目中重用。
+- en: In combination with functions, modules can help us limit the scope of variables.
+  id: totrans-70
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: 结合函数，模块可以帮助我们限制变量的作用域。
+- en: In this recipe, we will demonstrate how to define and include a macro that allows
+    us to get colored CMake output (for important status messages or warnings).
+  id: totrans-71
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将演示如何定义和包含一个宏，该宏允许我们获取彩色的CMake输出（用于重要状态消息或警告）。
+- en: Getting ready
+  id: totrans-72
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'In this example, we will use two files, the main `CMakeLists.txt` and `cmake/colors.cmake`:'
+  id: totrans-73
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将使用两个文件，主`CMakeLists.txt`和`cmake/colors.cmake`：
+- en: '[PRE20]'
+  id: totrans-74
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE20]'
+- en: 'The `cmake/colors.cmake` file contains definitions for colored output:'
+  id: totrans-75
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`cmake/colors.cmake`文件包含彩色输出的定义：'
+- en: '[PRE21]'
+  id: totrans-76
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE21]'
+- en: '[PRE22]'
+  id: totrans-77
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE22]'
+- en: How to do it
+  id: totrans-78
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'This is how we can use the color definitions to generate colored status messages:'
+  id: totrans-79
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这就是我们如何使用颜色定义来生成彩色状态消息的方法：
+- en: 'We start out with a familiar preamble:'
+  id: totrans-80
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们从一个熟悉的开头开始：
+- en: '[PRE23]'
+  id: totrans-81
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE23]'
+- en: 'Then, we append the `cmake` subdirectory to the list of module paths that CMake
+    will search:'
+  id: totrans-82
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们将`cmake`子目录添加到CMake将搜索的模块路径列表中：
+- en: '[PRE24]'
+  id: totrans-83
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE24]'
+- en: 'We then include the `colors.cmake` module and call the macro defined within:'
+  id: totrans-84
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们包含`colors.cmake`模块并调用其中定义的宏：
+- en: '[PRE25]'
+  id: totrans-85
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE25]'
+- en: 'Finally, we print a couple of messages in different colors:'
+  id: totrans-86
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们打印几条不同颜色的消息：
+- en: '[PRE26]'
+  id: totrans-87
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE26]'
+- en: 'Let us test it out (this output should appear colored on your screen if you
+    use macOS or Linux):'
+  id: totrans-88
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 让我们测试一下（如果使用macOS或Linux，此输出应该以彩色显示在屏幕上）：
+- en: '![](img/cac2beae-84fd-4a10-9dd5-c9925e2f1f6a.png)'
+  id: totrans-89
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/cac2beae-84fd-4a10-9dd5-c9925e2f1f6a.png)'
+- en: How it works
+  id: totrans-90
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 工作原理
+- en: 'This is an example where no code is compiled and no language support is required,
+    and we have indicated this by `LANGUAGES NONE`:'
+  id: totrans-91
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是一个示例，其中不编译任何代码，也不需要语言支持，我们通过`LANGUAGES NONE`表明了这一点：
+- en: '[PRE27]'
+  id: totrans-92
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE27]'
+- en: 'We defined the `define_colors` macro and placed it in `cmake/colors.cmake`.
+    We chose to use a macro and not a function since we also wish to use the variables
+    defined inside the macro in the scope of the call to change colors in the messages.
+    We have included the macro and called `define_colors` using the following lines:'
+  id: totrans-93
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们定义了`define_colors`宏，并将其放置在`cmake/colors.cmake`中。我们选择使用宏而不是函数，因为我们还希望在调用范围内使用宏内部定义的变量来改变消息的颜色。我们包含了宏，并使用以下行调用了`define_colors`：
+- en: '[PRE28]'
+  id: totrans-94
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE28]'
+- en: 'However, we also need to tell CMake where to look for the macro:'
+  id: totrans-95
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然而，我们还需要告诉CMake在哪里查找宏：
+- en: '[PRE29]'
+  id: totrans-96
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE29]'
+- en: The `include(colors)` command instructs CMake to search `${CMAKE_MODULE_PATH}`
+    for a module with the name `colors.cmake`.
+  id: totrans-97
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`include(colors)`命令指示CMake在`${CMAKE_MODULE_PATH}`中搜索名为`colors.cmake`的模块。'
+- en: 'Instead of writing the following:'
+  id: totrans-98
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 而不是这样写：
+- en: '[PRE30]'
+  id: totrans-99
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE30]'
+- en: 'We could have used an explicit include as follows:'
+  id: totrans-100
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以使用以下明确的包含：
+- en: '[PRE31]'
+  id: totrans-101
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE31]'
+- en: There is more
+  id: totrans-102
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: The recommended practice is to define macros or functions in modules and then
+    call the macro or function. It is not good practice to use module includes as
+    function calls. Including a module should not do more than defining functions
+    and macros and discovering programs, libraries, and paths. The actual include
+    command should not define or modify variables and the reason for this is that
+    a repeated include, which may be accidental, should not introduce any unwanted
+    side effects. In Recipe 5, *Redefining functions and macros*, we will create a
+    guard against accidental includes.
+  id: totrans-103
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 推荐的做法是在模块中定义宏或函数，然后调用宏或函数。使用模块包含作为函数调用是不好的做法。包含模块不应该做更多的事情，除了定义函数和宏以及发现程序、库和路径。实际的包含命令不应该定义或修改变量，这样做的原因是，重复的包含，可能是意外的，不应该引入任何不希望的副作用。在食谱5，“重新定义函数和宏”中，我们将创建一个防止意外包含的保护措施。
+- en: Writing a function to test and set compiler flags
+  id: totrans-104
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 编写一个测试和设置编译器标志的函数
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-03](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-03)
+    and has a C/C++ example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows.
+  id: totrans-105
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-03](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-03)找到，并包含一个C/C++示例。该食谱适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: 'In the previous two recipes, we used macros; in this recipe, we will use a
+    function to abstract away details and avoid code repetition. In the example, we
+    will implement a function that accepts a list of compiler flags. The function
+    will try to compile a test code with these flags, one by one, and return the first
+    flag that was understood by the compiler. By doing so, we will learn a couple
+    of new features: functions, list manipulations, string manipulations, and checking
+    whether compiler flags are supported by the compiler.'
+  id: totrans-106
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前两个食谱中，我们使用了宏；在本食谱中，我们将使用一个函数来抽象细节并避免代码重复。在示例中，我们将实现一个接受编译器标志列表的函数。该函数将尝试使用这些标志逐一编译测试代码，并返回编译器理解的第一标志。通过这样做，我们将学习一些新特性：函数、列表操作、字符串操作以及检查编译器是否支持编译器标志。
+- en: Getting ready
+  id: totrans-107
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备
+- en: 'Following the recommended practice of the previous recipe, we will define the
+    function in a module (`set_compiler_flag.cmake`), include the module, and then
+    call the function. The module contains the following code, which we will discuss
+    later:'
+  id: totrans-108
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 遵循前一个食谱的推荐实践，我们将在一个模块（`set_compiler_flag.cmake`）中定义函数，包含该模块，然后调用该函数。该模块包含以下代码，我们将在后面讨论：
+- en: '[PRE32]'
+  id: totrans-109
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE32]'
+- en: '[PRE33]'
+  id: totrans-110
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE33]'
+- en: How to do it
+  id: totrans-111
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'This is how we can use the `set_compiler_flag` function in our `CMakeLists.txt`:'
+  id: totrans-112
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们如何在`CMakeLists.txt`中使用`set_compiler_flag`函数的方法：
+- en: 'In the preamble, we define the minimum CMake version, project name, and supported
+    languages (in this case, C and C++):'
+  id: totrans-113
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在前言中，我们定义了最低CMake版本、项目名称和支持的语言（在这种情况下，C和C++）：
+- en: '[PRE34]'
+  id: totrans-114
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE34]'
+- en: 'Then, we include `set_compiler_flag.cmake`, in this case explicitly:'
+  id: totrans-115
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们明确地包含`set_compiler_flag.cmake`：
+- en: '[PRE35]'
+  id: totrans-116
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE35]'
+- en: 'Then, we try a list of C flags:'
+  id: totrans-117
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，我们尝试一组C标志：
+- en: '[PRE36]'
+  id: totrans-118
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE36]'
+- en: 'And we try a list of C++ flags:'
+  id: totrans-119
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们尝试一组C++标志：
+- en: '[PRE37]'
+  id: totrans-120
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE37]'
+- en: 'Now, we can configure the project and verify the output. Only the relevant
+    output is shown and the output may differ depending on the compiler:'
+  id: totrans-121
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 现在，我们可以配置项目并验证输出。仅显示相关输出，输出可能因编译器而异：
+- en: '[PRE38]'
+  id: totrans-122
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE38]'
+- en: '[PRE39]'
+  id: totrans-123
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE39]'
+- en: How it works
+  id: totrans-124
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 工作原理
+- en: 'The pattern that we have used here is:'
+  id: totrans-125
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们在这里使用的模式是：
+- en: Define a function or macro and place it in a module
+  id: totrans-126
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 定义一个函数或宏并将其放入模块中
+- en: Include the module
+  id: totrans-127
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 包含模块
+- en: Call the function or macro
+  id: totrans-128
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 调用函数或宏
+- en: 'From the output, we can see that the code checks each flag in the list and
+    as soon as the check is successful, it prints the successful compile flag. Let
+    us look inside the `set_compiler_flag.cmake` module. This module, in turn, includes
+    three modules:'
+  id: totrans-129
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 从输出中，我们可以看到代码检查列表中的每个标志，一旦检查成功，它就会打印出成功的编译标志。让我们看看`set_compiler_flag.cmake`模块内部。这个模块反过来包含了三个模块：
+- en: '[PRE40]'
+  id: totrans-130
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE40]'
+- en: 'These are standard CMake modules and CMake will locate them in `${CMAKE_MODULE_PATH}`.
+    These modules provide the `check_c_compiler_flag`, `check_cxx_compiler_flag`,
+    and `check_fortran_compiler_flag` macros, respectively. Then comes the function
+    definition:'
+  id: totrans-131
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些是标准的CMake模块，CMake将在`${CMAKE_MODULE_PATH}`中找到它们。这些模块提供了`check_c_compiler_flag`、`check_cxx_compiler_flag`和`check_fortran_compiler_flag`宏，分别。然后是函数定义：
+- en: '[PRE41]'
+  id: totrans-132
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE41]'
+- en: 'The `set_compiler_flag` function expects two arguments and we call them `_result`
+    (this will hold the successful compile flag or the empty string "") and `_lang`
+    (which specifies the language: C, C++, or Fortran).'
+  id: totrans-133
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`set_compiler_flag`函数期望两个参数，我们称它们为`_result`（这将保存成功的编译标志或空字符串""）和`_lang`（指定语言：C、C++或Fortran）。'
+- en: 'We would like to be able to call the function like this:'
+  id: totrans-134
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们希望能够这样调用函数：
+- en: '[PRE42]'
+  id: totrans-135
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE42]'
+- en: 'This call has five arguments, but the function header only expects two. This
+    means that `REQUIRED`, `"-Wall"`, and `"-warn all"` will be placed in `${ARGN}`.
+    From `${ARGN}`, we first build a list of flags using `foreach`. At the same time,
+    we filter out `REQUIRED` from the list of flags and use it to set `_flag_is_required`:'
+  id: totrans-136
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个调用有五个参数，但函数头只期望两个。这意味着`REQUIRED`、`"-Wall"`和`"-warn all"`将被放入`${ARGN}`中。从`${ARGN}`中，我们首先使用`foreach`构建一个标志列表。同时，我们从标志列表中过滤掉`REQUIRED`，并使用它来设置`_flag_is_required`：
+- en: '[PRE43]'
+  id: totrans-137
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE43]'
+- en: 'Now, we will loop over `${_list_of_flags}`, try each flag, and if `_flag_works`
+    is set to `TRUE`, we set `_flag_found` to `TRUE` and abort a further search:'
+  id: totrans-138
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 现在，我们将循环遍历`${_list_of_flags}`，尝试每个标志，如果`_flag_works`被设置为`TRUE`，我们将`_flag_found`设置为`TRUE`并终止进一步的搜索：
+- en: '[PRE44]'
+  id: totrans-139
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE44]'
+- en: The `unset(_flag_works CACHE)` line is there to make sure that the result of `check_*_compiler_flag`
+    is not cached between calls using the same `_flag_works` result variable.
+  id: totrans-140
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在`unset(_flag_works CACHE)`这一行是为了确保`check_*_compiler_flag`的结果不会在多次调用中使用相同的`_flag_works`结果变量时被缓存。
+- en: 'If a flag is found and `_flag_works` set to `TRUE`, we define the variable
+    mapped to by `_result`:'
+  id: totrans-141
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果找到标志并且`_flag_works`被设置为`TRUE`，我们定义映射到`_result`的变量：
+- en: '[PRE45]'
+  id: totrans-142
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE45]'
+- en: 'This needs to be done with `PARENT_SCOPE` since we are modifying a variable
+    that we wish to print and use outside the function body. Note, in addition, how
+    we dereferenced the variable `_result` passed from parent scope using the `${_result}`
+    syntax. This is necessary to ensure that the working flag is set as value of the
+    variable passed from parent scope when invoking the function, regardless of its
+    name. If no flag is found and the `REQUIRED` keyword was provided, we stop the
+    configuration with an error message:'
+  id: totrans-143
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这需要使用`PARENT_SCOPE`，因为我们希望修改的变量在函数体外打印和使用。此外，请注意我们是如何使用`${_result}`语法从父作用域传递的变量`_result`进行解引用的。这是必要的，以确保在调用函数时，无论其名称如何，都将工作标志设置为从父作用域传递的变量的值。如果没有找到标志并且提供了`REQUIRED`关键字，我们通过错误消息停止配置：
+- en: '[PRE46]'
+  id: totrans-144
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE46]'
+- en: There is more
+  id: totrans-145
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: We could have achieved this task with a macro, but with a function, we have
+    more control over the scope. We know that the only variable that can be modified
+    by the function is the result variable.
+  id: totrans-146
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以通过宏来完成这项任务，但使用函数，我们可以更好地控制作用域。我们知道，函数只能修改结果变量。
+- en: Also, note that some flags need to be set both at compile and link time by setting
+    `CMAKE_REQUIRED_FLAGS` for the `check_<LANG>_compiler_flag` function to report
+    success correctly. This was the case for the sanitizers, as we discussed in [Chapter
+    5](9612acc1-56f6-4158-a55f-9a9db3714759.xhtml), *Configure-time and Build-time
+    Operations*, Recipe 7, *Probing compiler flags*.
+  id: totrans-147
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 此外，请注意，某些标志需要在编译和链接时都设置，通过为`check_<LANG>_compiler_flag`函数设置`CMAKE_REQUIRED_FLAGS`来正确报告成功。正如我们在[第5章](9612acc1-56f6-4158-a55f-9a9db3714759.xhtml)，*配置时间和构建时间操作*，第7个配方，*探测编译标志*中讨论的，这是针对sanitizers的情况。
+- en: Defining a function or macro with named arguments
+  id: totrans-148
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 定义一个带有命名参数的函数或宏
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-04](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-04)
+    and has a C++ example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows.
+  id: totrans-149
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-04](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-04)找到，并包含一个C++示例。该食谱适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: 'In the previous recipes, we explored functions and macros and used positional
+    arguments. In this recipe, we will define a function with named arguments. We
+    will enhance the example from Recipe 1, *Code reuse with functions and macros*
+    and instead of defining tests using the following:'
+  id: totrans-150
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在前面的食谱中，我们探索了函数和宏并使用了位置参数。在本食谱中，我们将定义一个带有命名参数的函数。我们将增强来自食谱1的示例，即*使用函数和宏重用代码*，并使用以下方式定义测试：
+- en: '[PRE47]'
+  id: totrans-151
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE47]'
+- en: 'We will be able to call the following:'
+  id: totrans-152
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将能够调用以下内容：
+- en: '[PRE48]'
+  id: totrans-153
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE48]'
+- en: Getting ready
+  id: totrans-154
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: 'We will use the example from Recipe 1, *Code reuse with functions and macros*
+    and keep the C++ sources unchanged and the file tree essentially the same:'
+  id: totrans-155
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用来自食谱1的示例，即*使用函数和宏重用代码*，并保持C++源文件不变，文件树基本相同：
+- en: '[PRE49]'
+  id: totrans-156
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE49]'
+- en: '[PRE50]'
+  id: totrans-157
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE50]'
+- en: How to do it
+  id: totrans-158
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点
+- en: 'We will introduce small modifications in the CMake code, as shown here:'
+  id: totrans-159
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在CMake代码中引入小的修改，如下所示：
+- en: 'Only one additional line is added in the top-level `CMakeLists.txt`, since
+    we will include a module located under `cmake`:'
+  id: totrans-160
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 由于我们将包含位于`cmake`下的模块，因此在顶层`CMakeLists.txt`中只添加了一行额外的代码：
+- en: '[PRE51]'
+  id: totrans-161
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE51]'
+- en: We keep `src/CMakeLists.txt` unmodified.
+  id: totrans-162
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们保持`src/CMakeLists.txt`不变。
+- en: 'In `tests/CMakeLists.txt`, we move the `add_catch_test` function definition
+    to `cmake/testing.cmake` and define two tests:'
+  id: totrans-163
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在`tests/CMakeLists.txt`中，我们将`add_catch_test`函数定义移动到`cmake/testing.cmake`，并定义了两个测试：
+- en: '[PRE52]'
+  id: totrans-164
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE52]'
+- en: 'The `add_catch_test` function is now defined in `cmake/testing.cmake`:'
+  id: totrans-165
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test`函数现在在`cmake/testing.cmake`中定义：'
+- en: '[PRE53]'
+  id: totrans-166
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE53]'
+- en: 'We are ready to test the output. First, we configure the following:'
+  id: totrans-167
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 我们准备好测试输出。首先，我们配置以下内容：
+- en: '[PRE54]'
+  id: totrans-168
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE54]'
+- en: 'Then, compile and test the code:'
+  id: totrans-169
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，编译并测试代码：
+- en: '[PRE55]'
+  id: totrans-170
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE55]'
+- en: How it works
+  id: totrans-171
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: 'The new aspects in this recipe are the named arguments so we can focus on the `cmake/testing.cmake` module.
+    CMake provides the `cmake_parse_arguments` command, which we call with the function
+    name (`add_catch_test`) options (in our case, none), one-value arguments (here, `NAME`
+    and `COST`), and multi-value arguments (here, `LABELS`, `DEPENDS`, and `REFERENCE_FILES`):'
+  id: totrans-172
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱中的新内容是命名参数，因此我们可以专注于`cmake/testing.cmake`模块。CMake提供了`cmake_parse_arguments`命令，我们用函数名（`add_catch_test`）调用它，选项（在我们的例子中没有），单值参数（这里，`NAME`和`COST`），以及多值参数（这里，`LABELS`，`DEPENDS`，和`REFERENCE_FILES`）：
+- en: '[PRE56]'
+  id: totrans-173
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE56]'
+- en: 'The `cmake_parse_arguments` command parses options and arguments, and defines
+    the following in our case:'
+  id: totrans-174
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`cmake_parse_arguments`命令解析选项和参数，并在我们的情况下定义以下内容：'
+- en: '`add_catch_test_NAME`'
+  id: totrans-175
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test_NAME`'
+- en: '`add_catch_test_COST`'
+  id: totrans-176
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test_COST`'
+- en: '`add_catch_test_LABELS`'
+  id: totrans-177
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test_LABELS`'
+- en: '`add_catch_test_DEPENDS`'
+  id: totrans-178
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test_DEPENDS`'
+- en: '`add_catch_test_REFERENCE_FILES`'
+  id: totrans-179
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`add_catch_test_REFERENCE_FILES`'
+- en: We can then query and use these variables inside our function. This approach
+    gives us the chance to implement functions and macros with more robust interfaces
+    and more readable function/macro calls.
+  id: totrans-180
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 然后我们可以在函数内部查询和使用这些变量。这种方法为我们提供了实现具有更健壮接口和更易读的函数/宏调用的函数和宏的机会。
+- en: There is more
+  id: totrans-181
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: Option keywords (which we have not used in this example) are defined by `cmake_parse_arguments`
+    to either `TRUE` or `FALSE`. A further enhancement of the `add_catch_test` function
+    could be to also provide the test command as a named argument, which we have omitted
+    for the benefit of a more concise example.
+  id: totrans-182
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 选项关键字（在本示例中未使用）由`cmake_parse_arguments`定义为`TRUE`或`FALSE`。对`add_catch_test`函数的进一步增强可能是提供测试命令作为命名参数，为了更简洁的示例，我们省略了这一点。
+- en: The `cmake_parse_arguments` command was made available within the `CMakeParseArguments.cmake`
+    module prior to the release of CMake 3.5\. Thus, this recipe can be made to work
+    with earlier versions of CMake by using the `include(CMakeParseArguments)` command
+    at the top of the `cmake/testing.cmake` module file.
+  id: totrans-183
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`cmake_parse_arguments`命令在CMake 3.5发布之前在`CMakeParseArguments.cmake`模块中可用。因此，可以通过在`cmake/testing.cmake`模块文件的顶部使用`include(CMakeParseArguments)`命令来使本食谱与早期版本的CMake兼容。'
+- en: Redefining functions and macros
+  id: totrans-184
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 重新定义函数和宏
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-05](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-05).
+    The recipe is valid with CMake version 3.5 (and higher) and has been tested on
+    GNU/Linux, macOS, and Windows.
+  id: totrans-185
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本食谱的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-05](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-05)找到。该食谱适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: We have mentioned that module includes *should not* be used as function calls
+    since modules could be (accidentally) included multiple times. In this recipe,
+    we will program our own simple include guard, which will warn us if we try to
+    include a module multiple times. The built-in `include_guard` command is available
+    in CMake since version 3.10 and behaves like `#pragma once` for C/C++ header files.
+    For this version of CMake, we will discuss and demonstrate how functions and macros
+    can be redefined. We will show how we can check the CMake version and for versions
+    below 3.10, we will use our custom include guard.
+  id: totrans-186
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们提到过，模块包含*不应该*用作函数调用，因为模块可能会被（意外地）多次包含。在本食谱中，我们将编写我们自己的简单包含保护，如果我们尝试多次包含模块，它将警告我们。内置的`include_guard`命令自CMake
+    3.10版本起可用，并且行为类似于C/C++头文件的`#pragma once`。对于这个版本的CMake，我们将讨论和演示如何重新定义函数和宏。我们将展示如何检查CMake版本，对于3.10以下的版本，我们将使用我们自己的自定义包含保护。
+- en: Getting ready
+  id: totrans-187
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'In this example, we will use three files:'
+  id: totrans-188
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本例中，我们将使用三个文件：
+- en: '[PRE57]'
+  id: totrans-189
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE57]'
+- en: 'The custom `custom.cmake` module contains the following code:'
+  id: totrans-190
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 自定义的`custom.cmake`模块包含以下代码：
+- en: '[PRE58]'
+  id: totrans-191
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE58]'
+- en: We will discuss `cmake/include_guard.cmake` and `CMakeLists.txt` later.
+  id: totrans-192
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 稍后我们将讨论`cmake/include_guard.cmake`和`CMakeLists.txt`。
+- en: How to do it
+  id: totrans-193
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'This is a step-by-step breakdown of our three CMake files:'
+  id: totrans-194
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这是我们的三个CMake文件的逐步分解：
+- en: 'In this recipe, we will not compile any code and our language requirement is
+    therefore `NONE`:'
+  id: totrans-195
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在本食谱中，我们不会编译任何代码，因此我们的语言要求是`NONE`：
+- en: '[PRE59]'
+  id: totrans-196
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE59]'
+- en: 'We then define an `include_guard` macro, which we place in a separate module:'
+  id: totrans-197
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后我们定义一个`include_guard`宏，我们将其放置在一个单独的模块中：
+- en: '[PRE60]'
+  id: totrans-198
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE60]'
+- en: 'The `cmake/include_guard.cmake` file contains the following (we will discuss
+    it in detail shortly):'
+  id: totrans-199
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`cmake/include_guard.cmake`文件包含以下内容（我们稍后将详细讨论）：'
+- en: '[PRE61]'
+  id: totrans-200
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE61]'
+- en: 'In the main `CMakeLists.txt`, we then simulate including the custom module
+    accidentally twice:'
+  id: totrans-201
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在主`CMakeLists.txt`中，然后我们模拟意外地两次包含自定义模块：
+- en: '[PRE62]'
+  id: totrans-202
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE62]'
+- en: 'Finally, we configure with the following commands:'
+  id: totrans-203
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们使用以下命令进行配置：
+- en: '[PRE63]'
+  id: totrans-204
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE63]'
+- en: 'The result using CMake 3.10 and higher is as follows:'
+  id: totrans-205
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用CMake 3.10及以上版本的结果如下：
+- en: '[PRE64]'
+  id: totrans-206
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE64]'
+- en: 'The result using CMake below 3.10 is as follows:'
+  id: totrans-207
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 使用CMake 3.10以下版本的结果如下：
+- en: '[PRE65]'
+  id: totrans-208
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE65]'
+- en: How it works
+  id: totrans-209
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: 'Our `include_guard` macro contains two branches, one for CMake below 3.10 and
+    one for CMake 3.10 and higher:'
+  id: totrans-210
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的`include_guard`宏包含两个分支，一个用于CMake 3.10以下版本，另一个用于CMake 3.10及以上版本：
+- en: '[PRE66]'
+  id: totrans-211
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE66]'
+- en: 'If CMake version is below 3.10, we enter the first branch and an intrinsic
+    `include_guard` is not available, so we define our own:'
+  id: totrans-212
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果CMake版本低于3.10，我们进入第一个分支，内置的`include_guard`不可用，因此我们定义我们自己的：
+- en: '[PRE67]'
+  id: totrans-213
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE67]'
+- en: If the macro is called the first time, then the `included_modules` variable is
+    not defined so we set it to an empty list. We then check whether `${CMAKE_CURRENT_LIST_FILE}`
+    is an element of the `included_modules` list. If yes, we issue a warning. If no,
+    we append `${CMAKE_CURRENT_LIST_FILE}` to this list. In the CMake output, we can
+    verify that a second include of the custom module indeed leads to the warning.
+  id: totrans-214
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果宏第一次被调用，那么`included_modules`变量未定义，因此我们将其设置为空列表。然后我们检查`${CMAKE_CURRENT_LIST_FILE}`是否是`included_modules`列表的元素。如果是，我们发出警告。如果不是，我们将`${CMAKE_CURRENT_LIST_FILE}`添加到此列表中。在CMake输出中，我们可以验证第二次包含自定义模块确实会导致警告。
+- en: 'The situation is different for CMake 3.10 and higher; in this case, an intrinsic `include_guard`
+    exists and we call it with the arguments received by our own macro:'
+  id: totrans-215
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于CMake 3.10及以上的情况则不同；在这种情况下，存在一个内置的`include_guard`，我们用我们自己的宏接收的参数调用它：
+- en: '[PRE68]'
+  id: totrans-216
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE68]'
+- en: Here, `_include_guard(${ARGV})` points to the built-in `include_guard`. In this
+    case, we have augmented the built-in command with a custom message ("calling the
+    built-in `include_guard`"). This pattern provides us with a mechanism to redefine
+    own or built-in functions and macros. This can be useful for debugging or logging
+    purposes.
+  id: totrans-217
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，`_include_guard(${ARGV})`指向内置的`include_guard`。在这种情况下，我们通过添加自定义消息（“调用内置的`include_guard`”）来增强内置命令。这种模式为我们提供了一种重新定义自己的或内置的函数和宏的机制。这在调试或记录目的时可能很有用。
+- en: This pattern can be useful but it should be applied with care since CMake will
+    not warn about the redefinition of macros or functions.
+  id: totrans-218
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这种模式可能很有用，但应谨慎应用，因为CMake不会警告宏或函数的重新定义。
+- en: Deprecating functions, macros, and variables
+  id: totrans-219
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 弃用函数、宏和变量
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-06](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-06).
+    The recipe is valid with CMake version 3.5 (and higher) and has been tested on
+    GNU/Linux, macOS, and Windows.
+  id: totrans-220
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本示例的代码可在 [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-06](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-06)
+    获取。该示例适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: Deprecation is an important mechanism in the development of an evolving project
+    to signal to developers that a function or macro or a variable will be removed
+    or replaced at some point in the future. For a certain period, the function, macro,
+    or variable will continue being accessible but signal a warning, which eventually
+    can be elevated to an error.
+  id: totrans-221
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 弃用是在项目发展过程中向开发者发出信号的重要机制，表明某个函数、宏或变量将在未来的某个时候被移除或替换。在一定时期内，该函数、宏或变量将继续可用，但会发出警告，最终可以升级为错误。
+- en: Getting ready
+  id: totrans-222
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: 'We will start out with the following CMake project:'
+  id: totrans-223
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将从以下CMake项目开始：
+- en: '[PRE69]'
+  id: totrans-224
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE69]'
+- en: This code defines a custom include guard, includes a custom module (the same
+    module as in the previous recipe), and prints the list of all included modules.
+    For CMake 3.10 and higher, we now know from the previous recipe that there is
+    a built-in `include_guard`. But instead of simply removing `custom_include_guard`
+    and `${included_modules}`, we will deprecate the macro and the variable with a
+    deprecation warning, which at some point we can flip into a `FATAL_ERROR` to make
+    the code stop and force the developers to switch to the built-in command.
+  id: totrans-225
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这段代码定义了一个自定义的包含保护，包含了一个自定义模块（与前一个示例相同的模块），并打印了所有包含的模块列表。对于CMake 3.10及以上版本，我们知道从之前的示例中有一个内置的
+    `include_guard`。但不是简单地移除 `custom_include_guard` 和 `${included_modules}`，我们将通过弃用警告来弃用宏和变量，这样在某个时刻我们可以将其转换为
+    `FATAL_ERROR`，使代码停止并强制开发者切换到内置命令。
+- en: How to do it
+  id: totrans-226
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'Deprecating functions, macros, and variables can be done as follows:'
+  id: totrans-227
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 弃用函数、宏和变量可以按如下方式进行：
+- en: 'First, we define a function that we will use to deprecate a variable:'
+  id: totrans-228
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 首先，我们定义一个函数，用于弃用变量：
+- en: '[PRE70]'
+  id: totrans-229
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE70]'
+- en: 'Then, if the version of CMake is greater than 3.9, we redefine `custom_include_guard`
+    and attach `variable_watch` to `included_modules`:'
+  id: totrans-230
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 然后，如果CMake版本大于3.9，我们重新定义 `custom_include_guard` 并将 `variable_watch` 附加到 `included_modules`：
+- en: '[PRE71]'
+  id: totrans-231
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE71]'
+- en: 'Configuring the project on CMake below version 3.10 produces the following:'
+  id: totrans-232
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 在CMake版本低于3.10的项目中配置会产生以下结果：
+- en: '[PRE72]'
+  id: totrans-233
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE72]'
+- en: 'CMake 3.10 and higher will produce the expected deprecation warnings:'
+  id: totrans-234
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: CMake 3.10及以上版本将产生预期的弃用警告：
+- en: '[PRE73]'
+  id: totrans-235
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE73]'
+- en: How it works
+  id: totrans-236
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 工作原理
+- en: 'Deprecating a function or a macro is equivalent to redefining it, as demonstrated
+    in the previous recipe, and printing a message with `DEPRECATION`:'
+  id: totrans-237
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 弃用函数或宏相当于重新定义它，如前一个示例所示，并打印带有 `DEPRECATION` 的消息：
+- en: '[PRE74]'
+  id: totrans-238
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE74]'
+- en: 'Deprecating a variable can be achieved by first defining the following:'
+  id: totrans-239
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 弃用变量可以通过首先定义以下内容来实现：
+- en: '[PRE75]'
+  id: totrans-240
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE75]'
+- en: 'This function is then attached to the variable that is about to be deprecated:'
+  id: totrans-241
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 接下来，该函数将附加到即将被弃用的变量上：
+- en: '[PRE76]'
+  id: totrans-242
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE76]'
+- en: If in this case `${included_modules}` is read (`READ_ACCESS`), then the `deprecate_variable` function issues
+    the message with `DEPRECATION`.
+  id: totrans-243
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 如果在这种情况下读取了 `${included_modules}`（`READ_ACCESS`），则 `deprecate_variable` 函数会发出带有
+    `DEPRECATION` 的消息。
+- en: Limiting scope with add_subdirectory
+  id: totrans-244
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用add_subdirectory限制作用域
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-07](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-07)
+    and has a C++ example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows.
+  id: totrans-245
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本示例的代码可在 [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-07](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-07)
+    获取，并包含一个C++示例。该示例适用于CMake版本3.5（及以上），并在GNU/Linux、macOS和Windows上进行了测试。
+- en: In the remaining recipes of this chapter, we will discuss strategies to structure
+    projects and limit the scope of variables and side effects with the goal to lower
+    code complexity and simplify the maintenance of the project. In this recipe, we
+    will split a project into several `CMakeLists.txt` files with limited scope, which
+    will be processed using the `add_subdirectory` command.
+  id: totrans-246
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本章剩余的食谱中，我们将讨论项目结构化的策略，以及如何限制变量和副作用的范围，目的是降低代码复杂性并简化项目的维护。在本食谱中，我们将把一个项目拆分成多个`CMakeLists.txt`文件，每个文件都有有限的范围，这些文件将使用`add_subdirectory`命令进行处理。
+- en: Getting ready
+  id: totrans-247
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: 'Since we wish to show and discuss how to structure a non-trivial project, we
+    need an example that is more than a "hello world" project. We will develop a relatively
+    simple code that can compute and print elementary cellular automata:'
+  id: totrans-248
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 由于我们希望展示和讨论如何组织一个非平凡的项目，我们需要一个比“hello world”项目更复杂的示例。我们将开发一个相对简单的代码，它可以计算并打印基本细胞自动机：
+- en: '[https://en.wikipedia.org/wiki/Cellular_automaton#Elementary_cellular_automata](https://en.wikipedia.org/wiki/Cellular_automaton#Elementary_cellular_automata)'
+  id: totrans-249
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[https://en.wikipedia.org/wiki/Cellular_automaton#Elementary_cellular_automata](https://en.wikipedia.org/wiki/Cellular_automaton#Elementary_cellular_automata)'
+- en: '[http://mathworld.wolfram.com/ElementaryCellularAutomaton.html](http://mathworld.wolfram.com/ElementaryCellularAutomaton.html)'
+  id: totrans-250
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '[http://mathworld.wolfram.com/ElementaryCellularAutomaton.html](http://mathworld.wolfram.com/ElementaryCellularAutomaton.html)'
+- en: 'Our code will be able to compute any of the 256 elementary cellular automata,
+    for instance rule 90 (Wolfram code):'
+  id: totrans-251
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们的代码将能够计算256种基本细胞自动机中的任何一种，例如规则90（Wolfram代码）：
+- en: '[PRE77]'
+  id: totrans-252
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE77]'
+- en: 'The structure of our example code project is as follows:'
+  id: totrans-253
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们示例代码项目的结构如下：
+- en: '[PRE78]'
+  id: totrans-254
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE78]'
+- en: Here, we have split the code into many libraries to simulate a real-world medium
+    to large project, where sources can be organized into libraries that are then
+    linked into an executable.
+  id: totrans-255
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这里，我们将代码拆分为多个库，以模拟现实世界中的中型到大型项目，其中源代码可以组织成库，然后链接到可执行文件中。
+- en: 'The main function is in `src/main.cpp`:'
+  id: totrans-256
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 主函数在`src/main.cpp`中：
+- en: '[PRE79]'
+  id: totrans-257
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE79]'
+- en: 'The `external/conversion.cpp` file contains code to convert from decimal to
+    binary. We simulate here that this code is provided by an "external" library outside
+    of `src`:'
+  id: totrans-258
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`external/conversion.cpp`文件包含将十进制转换为二进制的代码。我们在这里模拟这段代码是由`src`之外的“外部”库提供的：'
+- en: '[PRE80]'
+  id: totrans-259
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE80]'
+- en: 'The `src/evolution/evolution.cpp` file propagates the system in a time step:'
+  id: totrans-260
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/evolution/evolution.cpp`文件在时间步长内传播系统：'
+- en: '[PRE81]'
+  id: totrans-261
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE81]'
+- en: 'The `src/initial/initial.cpp` file produces the initial state:'
+  id: totrans-262
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/initial/initial.cpp`文件生成初始状态：'
+- en: '[PRE82]'
+  id: totrans-263
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE82]'
+- en: 'The `src/io/io.cpp` file contains a function to print a row:'
+  id: totrans-264
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/io/io.cpp`文件包含打印一行的函数：'
+- en: '[PRE83]'
+  id: totrans-265
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE83]'
+- en: 'The `src/parser/parser.cpp` file parses the command-line input:'
+  id: totrans-266
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/parser/parser.cpp`文件解析命令行输入：'
+- en: '[PRE84]'
+  id: totrans-267
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE84]'
+- en: 'And finally, `tests/test.cpp` contains two unit tests using the Catch2 library:'
+  id: totrans-268
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，`tests/test.cpp`包含使用Catch2库的两个单元测试：
+- en: '[PRE85]'
+  id: totrans-269
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE85]'
+- en: The corresponding header files contain the function signatures. One could argue
+    that the project contains too many subdirectories for this little code example,
+    but please remember that this is only a simplified example of a project typically
+    containing many source files for each library, ideally organized into separate
+    directories like here.
+  id: totrans-270
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 相应的头文件包含函数签名。有人可能会说，对于这个小小的代码示例来说，项目包含的子目录太多了，但请记住，这只是一个简化的示例，通常每个库都包含许多源文件，理想情况下像这里一样组织在单独的目录中。
+- en: How to do it
+  id: totrans-271
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做
+- en: 'Let us dive into a detailed explanation of the CMake infrastructure needed:'
+  id: totrans-272
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们深入了解所需的CMake基础设施的详细解释：
+- en: 'The top-level `CMakeLists.txt` is very similar to Recipe 1, *Code reuse with
+    functions and macros*:'
+  id: totrans-273
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 顶层的`CMakeLists.txt`与食谱1，*使用函数和宏的代码重用*非常相似：
+- en: '[PRE86]'
+  id: totrans-274
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE86]'
+- en: 'Targets and sources are defined in `src/CMakeLists.txt` (except the conversion
+    target):'
+  id: totrans-275
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 目标和源文件在`src/CMakeLists.txt`中定义（转换目标除外）：
+- en: '[PRE87]'
+  id: totrans-276
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE87]'
+- en: 'The conversion library is defined in `external/CMakeLists.txt`:'
+  id: totrans-277
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 转换库在`external/CMakeLists.txt`中定义：
+- en: '[PRE88]'
+  id: totrans-278
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE88]'
+- en: 'The `src/CMakeLists.txt` file adds further subdirectories, which in turn contain
+    `CMakeLists.txt` files. They are all similar in structure; `src/evolution/CMakeLists.txt`
+    contains the following:'
+  id: totrans-279
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`src/CMakeLists.txt`文件添加了更多的子目录，这些子目录又包含`CMakeLists.txt`文件。它们的结构都类似；`src/evolution/CMakeLists.txt`包含以下内容：'
+- en: '[PRE89]'
+  id: totrans-280
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE89]'
+- en: 'The unit tests are registered in `tests/CMakeLists.txt`:'
+  id: totrans-281
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 单元测试在`tests/CMakeLists.txt`中注册：
+- en: '[PRE90]'
+  id: totrans-282
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE90]'
+- en: 'Configuring and building the project yields the following output:'
+  id: totrans-283
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 配置和构建项目会产生以下输出：
+- en: '[PRE91]'
+  id: totrans-284
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE91]'
+- en: 'Finally, we run the unit tests:'
+  id: totrans-285
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们运行单元测试：
+- en: '[PRE92]'
+  id: totrans-286
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE92]'
+- en: '[PRE93]'
+  id: totrans-287
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE93]'
+- en: How it works
+  id: totrans-288
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: We could have put all the code into one source file. This would be impractical;
+    every edit would require a full recompilation. Splitting source files into smaller,
+    more manageable units makes sense. We could have equally well compiled all sources
+    into a single library or executable, but in practice, projects prefer to split
+    the compilation of sources into smaller, well-defined libraries. This is done
+    both to localize scope and simplify dependency scanning, but also to simplify
+    code maintenance. This means that building a project out of many libraries as
+    we have done here is a typical situation.
+  id: totrans-289
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们本可以将所有代码放入一个源文件中。这样做是不切实际的；每次编辑都需要完全重新编译。将源文件分割成更小、更易管理的单元是有意义的。我们同样可以将所有源文件编译成一个单一的库或可执行文件，但在实践中，项目更倾向于将源文件的编译分割成更小、定义明确的库。这样做既是为了限定作用域和简化依赖扫描，也是为了简化代码维护。这意味着，像我们这里所做的那样，使用多个库构建项目是一个典型的情况。
+- en: 'To discuss the CMake structure we can proceed bottom-up from the individual
+    `CMakeLists.txt` files defining each library, such as `src/evolution/CMakeLists.txt`:'
+  id: totrans-290
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 为了讨论CMake结构，我们可以从定义每个库的单个`CMakeLists.txt`文件开始，例如`src/evolution/CMakeLists.txt`：
+- en: '[PRE94]'
+  id: totrans-291
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE94]'
+- en: 'These individual `CMakeLists.txt` files define libraries as close as possible
+    to the sources. In this example, we first define the library name with `add_library`
+    and then define its sources and include directories, as well as their target visibility:
+    the implementation files (here `evolution.cpp`) are `PRIVATE`, whereas the interface
+    header file `evolution.hpp` is defined as `PUBLIC` since we will access it in
+    `main.cpp` and `test.cpp`. The advantage of defining targets as close as possible
+    to the code is that code developers with knowledge of this library and possibly
+    limited knowledge of the CMake framework only need to edit files in this directory;
+    in other words, the library dependencies are encapsulated.'
+  id: totrans-292
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些单独的`CMakeLists.txt`文件尽可能靠近源代码定义库。在这个例子中，我们首先用`add_library`定义库名，然后定义其源文件和包含目录，以及它们的目标可见性：实现文件（这里为`evolution.cpp`）是`PRIVATE`，而接口头文件`evolution.hpp`被定义为`PUBLIC`，因为我们将在`main.cpp`和`test.cpp`中访问它。将目标尽可能靠近代码定义的优点是，了解该库且可能对CMake框架知识有限的代码开发人员只需要编辑此目录中的文件；换句话说，库依赖关系被封装了。
+- en: 'Moving one level up, the libraries are assembled in `src/CMakeLists.txt`:'
+  id: totrans-293
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 向上移动一级，库在`src/CMakeLists.txt`中组装：
+- en: '[PRE95]'
+  id: totrans-294
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE95]'
+- en: This file, in turn, is referenced in the top-level `CMakeLists.txt`. This means
+    that we have built our project from a tree of libraries using a tree of `CMakeLists.txt`
+    files. This approach is typical for many projects and it scales to large projects
+    without the need to carry lists of source files in global variables across directories.
+    An added bonus of the `add_subdirectory` approach is that it isolates scopes since
+    variables defined in a subdirectory are not automatically accessible in the parent
+    scope.
+  id: totrans-295
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这个文件反过来又被引用在顶层的`CMakeLists.txt`中。这意味着我们使用`CMakeLists.txt`文件的树构建了我们的项目，从一棵库的树开始。这种方法对许多项目来说是典型的，并且它可以扩展到大型项目，而不需要在目录之间携带全局变量中的源文件列表。`add_subdirectory`方法的一个额外好处是它隔离了作用域，因为在一个子目录中定义的变量不会自动在父作用域中访问。
+- en: There is more
+  id: totrans-296
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: One limitation of building a project using a tree of `add_subdirectory` calls
+    is that CMake does not allow us to use `target_link_libraries` with targets that
+    are defined outside of the current directory scope. This was not a problem for
+    the example shown in this recipe. In the next recipe, we will demonstrate an alternative
+    approach where we assemble the different `CMakeLists.txt` files not using `add_subdirectory`,
+    but using module includes, which allows us to link to targets defined outside
+    the current directory.
+  id: totrans-297
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 使用`add_subdirectory`调用树构建项目的一个限制是，CMake不允许我们在当前目录作用域之外使用`target_link_libraries`与目标链接。这对于本食谱中所示的示例来说不是问题。在下一个食谱中，我们将展示一种替代方法，其中我们不使用`add_subdirectory`，而是使用模块包含来组装不同的`CMakeLists.txt`文件，这允许我们链接到当前目录之外定义的目标。
+- en: 'CMake can use the Graphviz graph visualization software ([http://www.graphviz.org](http://www.graphviz.org/))
+    to generate the dependency graph of a project:'
+  id: totrans-298
+  prefs: []
+  type: TYPE_NORMAL
+  zh: CMake可以使用Graphviz图形可视化软件（[http://www.graphviz.org](http://www.graphviz.org/)）来生成项目的依赖关系图：
+- en: '[PRE96]'
+  id: totrans-299
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE96]'
+- en: 'The generated diagram will show dependencies between targets in different directories:'
+  id: totrans-300
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 生成的图表将显示不同目录中目标之间的依赖关系：
+- en: '![](img/cae65879-e147-4142-bcf4-fca0337c2e16.png)'
+  id: totrans-301
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/cae65879-e147-4142-bcf4-fca0337c2e16.png)'
+- en: 'Throughout the book, we have been building the code *out-of-source* to keep
+    the source tree and build tree separate. This is the recommended practice to allow
+    us to configure different builds (sequential or parallel, `Debug` or `Release`)
+    with the same source code, without duplicating the source code and without spilling
+    generated and object files across the source tree. With the following snippet,
+    you can protect your project against in-source builds:'
+  id: totrans-302
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本书中，我们一直在进行*源外*构建，以保持源代码树和构建树分离。这是推荐的实践，允许我们使用相同的源代码配置不同的构建（顺序或并行，`Debug`或`Release`），而不需要复制源代码，也不需要在源代码树中散布生成的和对象文件。通过以下代码片段，您可以保护您的项目免受源内构建的影响：
+- en: '[PRE97]'
+  id: totrans-303
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE97]'
+- en: 'It is useful to recognize that the structure of the build tree mimics the structure
+    of the source tree. In our example here, it is rather instructive to insert the
+    following `message` printout into `src/CMakeLists.txt`:'
+  id: totrans-304
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 认识到构建树的结构模仿了源代码树的结构是很有用的。在我们的示例中，在`src/CMakeLists.txt`中插入以下`message`打印输出是相当有教育意义的：
+- en: '[PRE98]'
+  id: totrans-305
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE98]'
+- en: When configuring the project to `build`, we will see that the printout refers
+    to `build/src`.
+  id: totrans-306
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在配置项目以进行`build`时，我们会看到打印输出指向`build/src`。
+- en: See also
+  id: totrans-307
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 另请参见
+- en: 'We note that, as of version 3.12 of CMake, `OBJECT` libraries are another viable
+    approach to organizing large projects. The only modification to our example would
+    be in the `CMakeLists.txt` for the libraries. The sources would be compiled into
+    object files: neither archived into a static archive, nor linked into a shared
+    library. For example:'
+  id: totrans-308
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们注意到，从CMake 3.12版本开始，`OBJECT`库是组织大型项目的另一种可行方法。我们对示例的唯一修改将是在库的`CMakeLists.txt`文件中。源代码将被编译成对象文件：既不会被归档到静态归档中，也不会被链接到共享库中。例如：
+- en: '[PRE99]'
+  id: totrans-309
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE99]'
+- en: 'The top-level `CMakeLists.txt` remains unchanged: the `automata` executable
+    target links these object files into the final executable. Usage requirements,
+    such as include directories, compile flags, and link libraries set on the `OBJECT`
+    libraries will correctly be inherited. For more details on this new feature of
+    `OBJECT` libraries introduced in CMake 3.12 refer to the official documentation:
+    [https://cmake.org/cmake/help/v3.12/manual/cmake-buildsystem.7.html#object-libraries](https://cmake.org/cmake/help/v3.12/manual/cmake-buildsystem.7.html#object-libraries)'
+  id: totrans-310
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 顶层`CMakeLists.txt`保持不变：`automata`可执行目标将这些对象文件链接到最终的可执行文件中。使用要求，如包含目录、编译标志和链接库设置在`OBJECT`库上将正确继承。有关CMake
+    3.12中引入的`OBJECT`库新功能的更多详细信息，请参阅官方文档：[https://cmake.org/cmake/help/v3.12/manual/cmake-buildsystem.7.html#object-libraries](https://cmake.org/cmake/help/v3.12/manual/cmake-buildsystem.7.html#object-libraries)
+- en: Avoiding global variables using target_sources
+  id: totrans-311
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 使用target_sources避免全局变量
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-08](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-08)
+    and has a C++ example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows.
+  id: totrans-312
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本配方的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-08](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-08)找到，并包含一个C++示例。本配方适用于CMake
+    3.5（及以上）版本，并在GNU/Linux、macOS和Windows上进行了测试。
+- en: In this recipe, we will discuss an alternative approach to the previous recipe
+    and assemble the different `CMakeLists.txt` files without using `add_subdirectory`,
+    but using module includes. This approach is inspired by [https://crascit.com/2016/01/31/enhanced-source-file-handling-with-target_sources/](https://crascit.com/2016/01/31/enhanced-source-file-handling-with-target_sources/)
+    and allows us to use `target_link_libraries` to link to targets defined outside
+    of the current directory.
+  id: totrans-313
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本配方中，我们将讨论与前一个配方不同的方法，并使用模块包含而不是使用`add_subdirectory`来组装不同的`CMakeLists.txt`文件。这种方法受到[https://crascit.com/2016/01/31/enhanced-source-file-handling-with-target_sources/](https://crascit.com/2016/01/31/enhanced-source-file-handling-with-target_sources/)的启发，允许我们使用`target_link_libraries`链接到当前目录之外定义的目标。
+- en: Getting ready
+  id: totrans-314
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备工作
+- en: We will use the same source code as in the previous recipe. The only changes
+    will be in `CMakeLists.txt` files and we will discuss these changes in the following
+    sections.
+  id: totrans-315
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将使用与之前配方相同的源代码。唯一的变化将在`CMakeLists.txt`文件中，我们将在接下来的章节中讨论这些变化。
+- en: How to do it
+  id: totrans-316
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何操作
+- en: 'Let us look in detail at the various files needed by CMake:'
+  id: totrans-317
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 让我们详细看看CMake所需的各个文件：
+- en: 'The top-level `CMakeLists.txt` contains the following:'
+  id: totrans-318
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 顶层`CMakeLists.txt`包含以下内容：
+- en: '[PRE100]'
+  id: totrans-319
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE100]'
+- en: '[PRE101]'
+  id: totrans-320
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE101]'
+- en: The `external/CMakeLists.txt` file is unchanged compared to the previous recipe.
+  id: totrans-321
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`external/CMakeLists.txt`文件与之前的配方相比没有变化。'
+- en: 'The `src/CMakeLists.txt` file defines two libraries (`automaton` and `evolution`):'
+  id: totrans-322
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`src/CMakeLists.txt` 文件定义了两个库（`automaton` 和 `evolution`）：'
+- en: '[PRE102]'
+  id: totrans-323
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE102]'
+- en: 'The `src/evolution/CMakeLists.txt` file contains the following:'
+  id: totrans-324
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`src/evolution/CMakeLists.txt` 文件包含以下内容：'
+- en: '[PRE103]'
+  id: totrans-325
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE103]'
+- en: '[PRE104]'
+  id: totrans-326
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE104]'
+- en: 'The remaining `CMakeLists.txt` files are equivalent to `src/initial/CMakeLists.txt`:'
+  id: totrans-327
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 剩余的`CMakeLists.txt`文件与`src/initial/CMakeLists.txt`相同：
+- en: '[PRE105]'
+  id: totrans-328
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE105]'
+- en: 'Configuring, building, and testing yields a result equivalent to the previous
+    recipe:'
+  id: totrans-329
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 配置、构建和测试的结果与之前的配方相同：
+- en: '[PRE106]'
+  id: totrans-330
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE106]'
+- en: '[PRE107]'
+  id: totrans-331
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE107]'
+- en: How it works
+  id: totrans-332
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: 'In contrast to the previous recipe, we have defined three libraries:'
+  id: totrans-333
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与之前的配方不同，我们定义了三个库：
+- en: '`conversion` (defined in `external`)'
+  id: totrans-334
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`conversion`（在`external`中定义）'
+- en: '`automaton` (containing all sources except conversion)'
+  id: totrans-335
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`automaton`（包含除转换之外的所有源文件）'
+- en: '`evolution` (defined in `src/evolution` and linked against by `cpp_test`)'
+  id: totrans-336
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+  zh: '`evolution`（在`src/evolution`中定义，并由`cpp_test`链接）'
+- en: 'In this example, we keep all targets available in the parent scope by referencing
+    `CMakeLists.txt` files using `include()`:'
+  id: totrans-337
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在这个例子中，我们通过使用`include()`引用`CMakeLists.txt`文件来保持父作用域中所有目标的可用性：
+- en: '[PRE108]'
+  id: totrans-338
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE108]'
+- en: 'We can build a tree of includes, remembering that when stepping into subdirectories
+    (`src/CMakeLists.txt`), we need to use paths relative to the parent scope:'
+  id: totrans-339
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以构建一个包含树，记住当我们进入子目录（`src/CMakeLists.txt`）时，我们需要使用相对于父作用域的路径：
+- en: '[PRE109]'
+  id: totrans-340
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE109]'
+- en: With this, we can define and link to the targets anywhere within the file tree
+    accessed *via* `include()` statements. However, we should choose to define them
+    at a place that is most intuitive for maintainers and code contributors.
+  id: totrans-341
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这样，我们可以在通过`include()`语句访问的文件树中的任何地方定义和链接目标。然而，我们应该选择一个对维护者和代码贡献者来说最直观的地方来定义它们。
+- en: There is more
+  id: totrans-342
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多
+- en: 'We can once again use CMake and Graphviz ([http://www.graphviz.org/](http://www.graphviz.org/))
+    to generate the dependency graph of this project:'
+  id: totrans-343
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们可以再次使用CMake和Graphviz（[http://www.graphviz.org/](http://www.graphviz.org/)）来生成这个项目的依赖图：
+- en: '[PRE110]'
+  id: totrans-344
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE110]'
+- en: 'For the current setup, we obtain the following dependency graph:'
+  id: totrans-345
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 对于当前的设置，我们得到以下依赖图：
+- en: '![](img/9e5d0ac0-84c8-40e7-8cc8-6da65f4e0b0f.png)'
+  id: totrans-346
+  prefs: []
+  type: TYPE_IMG
+  zh: '![](img/9e5d0ac0-84c8-40e7-8cc8-6da65f4e0b0f.png)'
+- en: Organizing Fortran projects
+  id: totrans-347
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 组织Fortran项目
+- en: The code for this recipe is available at [https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-09](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-09)
+    and has a Fortran example. The recipe is valid with CMake version 3.5 (and higher)
+    and has been tested on GNU/Linux, macOS, and Windows with MSYS Makefiles.
+  id: totrans-348
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 本配方的代码可在[https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-09](https://github.com/dev-cafe/cmake-cookbook/tree/v1.0/chapter-07/recipe-09)找到，并包含一个Fortran示例。该配方适用于CMake版本3.5（及更高版本），并在GNU/Linux、macOS和Windows上使用MSYS
+    Makefiles进行了测试。
+- en: 'We devote one recipe to the discussion of how to structure and organize Fortran
+    projects for two reasons:'
+  id: totrans-349
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们用一个配方来讨论如何结构化和组织Fortran项目，原因有二：
+- en: There are still many Fortran projects out there, in particular in numerical
+    software (for a more comprehensive list of general purpose Fortran software projects,
+    see [http://fortranwiki.org/fortran/show/Libraries](http://fortranwiki.org/fortran/show/Libraries)).
+  id: totrans-350
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 仍然有许多Fortran项目存在，特别是在数值软件领域（对于更全面的通用目的Fortran软件项目列表，请参见[http://fortranwiki.org/fortran/show/Libraries](http://fortranwiki.org/fortran/show/Libraries)）。
+- en: Fortran 90 (and later) can be more difficult to build for projects not using
+    CMake, since Fortran module files impose a compilation order. In other words,
+    for manually written Makefiles one typically needs to program a dependency scanner
+    for Fortran module files.
+  id: totrans-351
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: Fortran 90（及以后版本）对于不使用CMake的项目来说，构建起来可能会更加困难，因为Fortran模块文件要求编译顺序。换句话说，对于手动编写的Makefile，通常需要为Fortran模块文件编写一个依赖扫描器。
+- en: As we will see in this recipe, modern CMake allows us to express the configuration
+    and build process in a very compact and modular way. As an example, we will use
+    the elementary cellular automata from the previous two recipes, now ported to
+    Fortran.
+  id: totrans-352
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 正如我们将在本配方中看到的，现代CMake允许我们以非常紧凑和模块化的方式表达配置和构建过程。作为一个例子，我们将使用前两个配方中的基本细胞自动机，现在移植到Fortran。
+- en: Getting ready
+  id: totrans-353
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 准备就绪
+- en: 'The file tree structure is very similar to the previous two recipes. We have
+    replaced C++ with Fortran sources and in this case, we have no header files:'
+  id: totrans-354
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 文件树结构与前两个配方非常相似。我们用Fortran源代码替换了C++，在这种情况下，我们没有头文件：
+- en: '[PRE111]'
+  id: totrans-355
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE111]'
+- en: 'The main program is in `src/main.f90`:'
+  id: totrans-356
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 主程序在`src/main.f90`中：
+- en: '[PRE112]'
+  id: totrans-357
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE112]'
+- en: 'As in the previous recipe, we have placed the `conversion` module in `external/conversion.f90`:'
+  id: totrans-358
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 与之前的配方一样，我们将`conversion`模块放在`external/conversion.f90`中：
+- en: '[PRE113]'
+  id: totrans-359
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE113]'
+- en: 'The `evolution` library, which implements the time step, is artificially split
+    into three files. The bulk is collected in `src/evolution/evolution.f90`:'
+  id: totrans-360
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`evolution`库，它实现了时间步长，被人工分为三个文件。大部分内容收集在`src/evolution/evolution.f90`：'
+- en: '[PRE114]'
+  id: totrans-361
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE114]'
+- en: 'The computation of ancestors is performed in `src/evolution/ancestors.f90`:'
+  id: totrans-362
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 祖先的计算在`src/evolution/ancestors.f90`中执行：
+- en: '[PRE115]'
+  id: totrans-363
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE115]'
+- en: 'We also have an "empty" module in `src/evolution/empty.f90`:'
+  id: totrans-364
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们还在`src/evolution/empty.f90`中有一个“空”模块：
+- en: '[PRE116]'
+  id: totrans-365
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE116]'
+- en: We will explain these choices in the next section.
+  id: totrans-366
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们将在下一节解释这些选择。
+- en: 'The code for the starting condition is located in `src/initial/initial.f90`:'
+  id: totrans-367
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 起始条件的代码位于`src/initial/initial.f90`：
+- en: '[PRE117]'
+  id: totrans-368
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE117]'
+- en: 'The `src/io/io.f90` file contains a function to print a row:'
+  id: totrans-369
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/io/io.f90`文件包含一个打印行的函数：'
+- en: '[PRE118]'
+  id: totrans-370
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE118]'
+- en: 'The `src/parser/parser.f90` file parses the command-line arguments:'
+  id: totrans-371
+  prefs: []
+  type: TYPE_NORMAL
+  zh: '`src/parser/parser.f90`文件解析命令行参数：'
+- en: '[PRE119]'
+  id: totrans-372
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE119]'
+- en: 'Finally, we have the test sources in `tests/test.f90`:'
+  id: totrans-373
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 最后，我们有测试源文件在`tests/test.f90`：
+- en: '[PRE120]'
+  id: totrans-374
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE120]'
+- en: How to do it
+  id: totrans-375
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 如何做到这一点
+- en: 'We will now discuss the corresponding CMake structure:'
+  id: totrans-376
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们现在将讨论相应的CMake结构：
+- en: 'The top-level `CMakeLists.txt` is similar to Recipe 7; we only exchange `CXX`
+    for `Fortran` and remove the C++11 requirement:'
+  id: totrans-377
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 顶层的`CMakeLists.txt`与第7个配方类似；我们只将`CXX`替换为`Fortran`并删除C++11要求：
+- en: '[PRE121]'
+  id: totrans-378
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE121]'
+- en: 'Targets and sources are defined in `src/CMakeLists.txt` (except the `conversion`
+    target):'
+  id: totrans-379
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 目标和源文件在`src/CMakeLists.txt`中定义（除了`conversion`目标）：
+- en: '[PRE122]'
+  id: totrans-380
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE122]'
+- en: 'The `conversion` library is defined in `external/CMakeLists.txt`:'
+  id: totrans-381
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`转换`库在`external/CMakeLists.txt`中定义：'
+- en: '[PRE123]'
+  id: totrans-382
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE123]'
+- en: 'The `src/CMakeLists.txt` file adds further subdirectories, which in turn contain `CMakeLists.txt` files.
+    They are all similar in structure; for example, `src/initial/CMakeLists.txt` contains
+    the following:'
+  id: totrans-383
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: '`src/CMakeLists.txt`文件添加了进一步的子目录，这些子目录又包含`CMakeLists.txt`文件。它们的结构都类似；例如，`src/initial/CMakeLists.txt`包含以下内容：'
+- en: '[PRE124]'
+  id: totrans-384
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE124]'
+- en: 'The exception is the `evolution` library in `src/evolution/CMakeLists.txt`,
+    which we have split into three source files:'
+  id: totrans-385
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 例外是`src/evolution/CMakeLists.txt`中的`evolution`库，我们将其分为三个源文件：
+- en: '[PRE125]'
+  id: totrans-386
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE125]'
+- en: 'The unit tests are registered in `tests/CMakeLists.txt`:'
+  id: totrans-387
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 单元测试在`tests/CMakeLists.txt`中注册：
+- en: '[PRE126]'
+  id: totrans-388
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE126]'
+- en: 'Configuring and building the project yields the following output:'
+  id: totrans-389
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 配置和构建项目会产生以下输出：
+- en: '[PRE127]'
+  id: totrans-390
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE127]'
+- en: 'Finally, we run the unit tests:'
+  id: totrans-391
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+  zh: 最后，我们运行单元测试：
+- en: '[PRE128]'
+  id: totrans-392
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE128]'
+- en: How it works
+  id: totrans-393
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 它是如何工作的
+- en: 'Following Recipe 7, *Limiting scope with `add_subdirectory`*, we will discuss
+    the CMake structure from the bottom up, from the individual `CMakeLists.txt` files
+    defining each library, such as `src/evolution/CMakeLists.txt`:'
+  id: totrans-394
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 按照第7个配方，*使用`add_subdirectory`限制范围*，我们将从下至上讨论CMake结构，从定义每个库的单独`CMakeLists.txt`文件开始，例如`src/evolution/CMakeLists.txt`：
+- en: '[PRE129]'
+  id: totrans-395
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE129]'
+- en: '[PRE130]'
+  id: totrans-396
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE130]'
+- en: 'These individual `CMakeLists.txt` files define libraries as close as possible
+    to the sources, following the same reasoning as in previous two recipes: code
+    developers with knowledge of this library and possibly limited knowledge of the
+    CMake framework only need to edit files in this directory: divide and conquer.'
+  id: totrans-397
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 这些单独的`CMakeLists.txt`文件尽可能接近源文件定义库，遵循与前两个配方相同的推理：了解此库的代码开发人员，可能对CMake框架的了解有限，只需要编辑此目录中的文件：分而治之。
+- en: We first define the library name with `add_library` and then define its sources
+    and include directories, as well as their target visibility. In this case, both
+    `ancestors.f90` and `evolution.f90` are `PUBLIC` since their module interfaces
+    are accessed outside the library, whereas the module interface of `empty.f90`
+    is not accessed outside the file and therefore we mark this source as `PRIVATE`.
+  id: totrans-398
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 我们首先使用`add_library`定义库的名称，然后定义其源文件和包含目录，以及它们的目标可见性。在这种情况下，`ancestors.f90`和`evolution.f90`都是`PUBLIC`，因为它们的模块接口被库外部访问，而`empty.f90`的模块接口没有被库外部访问，因此我们将此源文件标记为`PRIVATE`。
+- en: 'Moving one level up, the libraries are assembled in `src/CMakeLists.txt`:'
+  id: totrans-399
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 向上移动一级，库在`src/CMakeLists.txt`中组装：
+- en: '[PRE131]'
+  id: totrans-400
+  prefs: []
+  type: TYPE_PRE
+  zh: '[PRE131]'
+- en: This file, in turn, is referenced in the top-level `CMakeLists.txt`. This means
+    that we have built our project from a tree of libraries using a tree of `CMakeLists.txt` files,
+    added using `add_subdirectory`. As discussed in Recipe 7, *Limiting scope with*
+    `add_subdirectory`, this approach scales to large projects without the need to
+    carry lists of source files in global variables across directories, with the added
+    bonus of isolating scopes and namespaces.
+  id: totrans-401
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 反过来，此文件在顶层的`CMakeLists.txt`中被引用。这意味着我们使用`CMakeLists.txt`文件的树构建了我们的项目库树，使用`add_subdirectory`添加。如第7个配方，*使用`add_subdirectory`限制范围*所述，这种方法可以扩展到大型项目，无需在目录之间携带源文件列表的全局变量，并且具有隔离作用域和命名空间的额外好处。
+- en: Comparing this Fortran example with the C++ version (Recipe 7), we can note
+    that we had to do less CMake work in the Fortran case; we do not have to use `target_include_directories`
+    since there are no header files and interfaces are communicated *via* the generated
+    Fortran module files. Also, observe that we neither have to worry about the order
+    of source files listed in `target_sources`, nor do we have to impose any explicit
+    dependencies between libraries! CMake is able to infer Fortran module dependencies
+    from the source file dependencies. Using `target_sources` in combination with
+    `PRIVATE` and `PUBLIC` allows us to express interfaces in a compact and robust
+    fashion.
+  id: totrans-402
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 将此Fortran示例与C++版本（配方7）进行比较，我们可以注意到，在Fortran情况下，我们不得不做的CMake工作较少；我们不需要使用`target_include_directories`，因为没有头文件，接口是通过生成的Fortran模块文件进行通信的。此外，我们也不必担心源文件在`target_sources`中列出的顺序，也不必在库之间施加任何显式依赖关系！CMake能够从源文件依赖关系中推断出Fortran模块依赖关系。结合使用`target_sources`与`PRIVATE`和`PUBLIC`，我们可以以紧凑且稳健的方式表达接口。
+- en: There is more
+  id: totrans-403
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+  zh: 还有更多内容。
+- en: In this recipe, we have not specified a directory where Fortran module files
+    should be placed and we have kept this transparent. The location for module files
+    can be specified by setting the `CMAKE_Fortran_MODULE_DIRECTORY` CMake variable.
+    Note that it is also possible to set this as a target property, `Fortran_MODULE_DIRECTORY`,
+    thus achieving a finer level of control. See [https://cmake.org/cmake/help/v3.5/prop_tgt/Fortran_MODULE_DIRECTORY.html](https://cmake.org/cmake/help/v3.5/prop_tgt/Fortran_MODULE_DIRECTORY.html#prop_tgt:Fortran_MODULE_DIRECTORY).
+  id: totrans-404
+  prefs: []
+  type: TYPE_NORMAL
+  zh: 在本配方中，我们没有指定Fortran模块文件应放置的目录，并保持了这种透明性。可以通过设置`CMAKE_Fortran_MODULE_DIRECTORY`
+    CMake变量来指定模块文件的位置。请注意，也可以将其设置为目标属性，即`Fortran_MODULE_DIRECTORY`，从而实现更精细的控制。请参阅[https://cmake.org/cmake/help/v3.5/prop_tgt/Fortran_MODULE_DIRECTORY.html](https://cmake.org/cmake/help/v3.5/prop_tgt/Fortran_MODULE_DIRECTORY.html#prop_tgt:Fortran_MODULE_DIRECTORY)。

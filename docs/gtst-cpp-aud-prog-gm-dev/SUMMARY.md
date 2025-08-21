@@ -1,0 +1,8 @@
++   [C++ 游戏开发的音频编程入门指南](README.md)
++   [前言](gtst-cpp-aud-prog-gm-dev_0.md)
++   [第一章：音频概念](gtst-cpp-aud-prog-gm-dev_1.md)
++   [第二章：音频播放](gtst-cpp-aud-prog-gm-dev_2.md)
++   [第三章：音频控制](gtst-cpp-aud-prog-gm-dev_3.md)
++   [第四章：3D 音频](gtst-cpp-aud-prog-gm-dev_4.md)
++   [第五章：智能音频](gtst-cpp-aud-prog-gm-dev_5.md)
++   [第六章：低级音频](gtst-cpp-aud-prog-gm-dev_6.md)
