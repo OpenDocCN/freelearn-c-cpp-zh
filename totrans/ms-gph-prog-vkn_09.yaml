@@ -1,699 +1,1028 @@
 - en: '9'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '9'
 - en: Implementing Variable Rate Shading
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 实现可变率着色
 - en: 'In this chapter, we are going to implement a technique that has become quite
     popular recently: variable rate shading. This technique allows developers to specify
     at which rate to shade individual pixels while maintaining the same perceived
     visual quality. This approach allows us to reduce the time taken for some rendering
     passes, and the time savings can be used to implement more features or render
     at higher resolutions.'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将实现一种最近变得相当流行的技术：可变率着色。这项技术允许开发者指定以何种速率对单个像素进行着色，同时保持相同的视觉质量感知。这种方法使我们能够减少某些渲染过程所需的时间，而这些节省下来的时间可以用来实现更多功能或以更高的分辨率进行渲染。
 - en: Vulkan provides multiple options to integrate this technique into an application,
     and we are going to provide an overview of all of them. This feature is provided
     through an extension that is supported only on recent hardware, but it’s possible
     to implement it manually using compute shaders. We won’t cover this option here,
     but we are going to point you to the relevant resources in the *Further* *reading*
     section.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: Vulkan提供了多种将此技术集成到应用程序中的选项，我们将概述所有这些选项。此功能通过一个仅支持在最新硬件上运行的扩展提供，但可以使用计算着色器手动实现它。我们不会在这里介绍这个选项，但将在*进一步阅读*部分指出相关资源。
 - en: 'In this chapter, we’ll cover the following main topics:'
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要主题：
 - en: Introducing variable rate shading
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 可变率着色介绍
 - en: Implementing variable rate shading using the Vulkan API
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用Vulkan API实现可变率着色
 - en: Using specialization constants to configure compute shaders
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用专用常量配置计算着色器
 - en: Technical requirements
+  id: totrans-8
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter9](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter9).'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的代码可以在以下URL找到：[https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter9](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter9)。
 - en: Introducing variable rate shading
+  id: totrans-10
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 可变率着色介绍
 - en: '**Variable rate shading** (**VRS**) is a technique that allows developers to
     control the rate at which fragments are shaded. When this feature is disabled,
     all fragments are shaded using a 1x1 rate, meaning that the fragment shader will
     run for all fragments in the image.'
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: '**可变率着色**（**VRS**）是一种允许开发者控制片段着色速率的技术。当此功能禁用时，所有片段都使用1x1的速率进行着色，这意味着片段着色器将为图像中的所有片段运行。'
 - en: With the introduction of **virtual reality** (**VR**) headsets, developers have
     started to investigate ways to reduce the amount of time it takes to render a
     frame. This is crucial, not only because VR requires rendering two frames (one
     for the right eye and one for the left) but also because VR is quite sensitive
     to frame latency, and higher frame rates are required to avoid users experiencing
     motion sickness.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 随着虚拟现实（**VR**）头显的引入，开发者开始研究减少渲染一帧所需时间的方法。这至关重要，不仅因为VR需要渲染两帧（一帧用于右眼，一帧用于左眼），而且因为VR对帧延迟非常敏感，需要更高的帧率来避免用户出现运动病。
 - en: 'One technique that was developed is called **foveated rendering**: the idea
     is to render the center of the image at full rate while lowering the quality outside
     the center. Developers have noticed that users are focused primarily on the central
     region of the image and don’t notice the lower quality in the surrounding area.'
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 开发出来的一种技术被称为**视野渲染**：其想法是在全速率渲染图像中心的同时降低中心以外的质量。开发者注意到，用户主要关注图像的中央区域，而不会注意到周围区域的低质量。
 - en: It turns out that this approach can be generalized outside of VR. For this reason,
     APIs such as DirectX® and Vulkan have added support for this feature natively.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 事实证明，这种方法可以推广到VR之外。因此，DirectX®和Vulkan等API已经原生地添加了对该功能的支持。
 - en: With this more general approach, it’s possible to specify multiple shading rates
     for individual fragments. The rates that are usually recommended are 1x1, 1x2,
     2x1, and 2x2\. While it might be possible to adopt higher shading rates, it usually
     leads to a visible artifact in the final frame.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用这种更通用的方法，可以为单个片段指定多个着色速率。通常推荐使用的速率是1x1、1x2、2x1和2x2。虽然可能采用更高的着色速率，但这通常会导致最终帧中出现可见的伪影。
 - en: As we mentioned, a 1x1 rate implies that the fragment shader will run for all
     fragments within an image, and there are no time savings. This is the default
     behavior when VRS is not enabled.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们提到的，1x1的比率意味着片段着色器将在图像中的所有片段上运行，没有时间节省。这是未启用VRS时的默认行为。
 - en: A rate of 1x2 or 2x1 means that two fragments will be shaded by a single fragment
     shader invocation, and the computed value is applied to both fragments. Likewise,
     with a 2x2 shading rate, a single fragment invocation will compute and apply a
     single value to four fragments.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 1x2或2x1的比率意味着两个片段将由单个片段着色器调用着色，计算出的值应用于这两个片段。同样，2x2的阴影率意味着单个片段调用将计算并应用单个值到四个片段上。
 - en: Determining the shading rate
+  id: totrans-18
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 确定阴影率
 - en: There are multiple options to choose the shading rate for individual fragments,
     and the one we have implemented is to run an edge detection filter based on luminance
     after the lighting pass.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 有多种选择来为单个片段选择阴影率，我们实现的方法是在光照过程之后运行基于亮度的边缘检测过滤器。
 - en: The idea is to reduce the shading rate in the areas of the image where luminance
     is uniform and use a full rate in transition areas. This approach works because
     the human eye is more susceptible to noticing changes in those areas compared
     to ones that have more uniform values.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 理念是在图像中亮度均匀的区域降低阴影率，在过渡区域使用全率。这种方法有效，因为人眼对这些区域的改变比那些具有更均匀值的区域更敏感。
 - en: 'The filter we have used is the traditional Sobel filter in a 3x3 configuration.
     For each fragment, we compute two values:'
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用的过滤器是3x3配置中的传统Sobel过滤器。对于每个片段，我们计算两个值：
 - en: '![Figure 9.1 – The filters used to approximate the x and y derivative for a
     given fragment (source: Wikipedia –https://en.wikipedia.org/wiki/Sobel_operator)](img/B18395_09_01.jpg)'
+  id: totrans-22
   prefs: []
   type: TYPE_IMG
+  zh: '![图 9.1 – 用于近似给定片段的x和y导数的过滤器（来源：维基百科 –https://en.wikipedia.org/wiki/Sobel_operator)](img/B18395_09_01.jpg)'
 - en: 'Figure 9.1 – The filters used to approximate the x and y derivative for a given
     fragment (source: Wikipedia –https://en.wikipedia.org/wiki/Sobel_operator)'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 9.1 – 用于近似给定片段的x和y导数的过滤器（来源：维基百科 –https://en.wikipedia.org/wiki/Sobel_operator）
 - en: 'We then compute the final derivative value with the following formula:'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们随后使用以下公式计算最终的导数值：
 - en: '![Figure 9.2 – The formula to approximate the derivative value (source: Wikipedia
     –https://en.wikipedia.org/wiki/Sobel_operator)](img/B18395_09_02.jpg)'
+  id: totrans-25
   prefs: []
   type: TYPE_IMG
+  zh: '![图 9.2 – 近似导数值的公式（来源：维基百科 –https://en.wikipedia.org/wiki/Sobel_operator)](img/B18395_09_02.jpg)'
 - en: 'Figure 9.2 – The formula to approximate the derivative value (source: Wikipedia
     –https://en.wikipedia.org/wiki/Sobel_operator)'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 9.2 – 近似导数值的公式（来源：维基百科 –https://en.wikipedia.org/wiki/Sobel_operator）
 - en: 'Let’s apply the Sobel filter to the following image:'
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们将Sobel过滤器应用于以下图像：
 - en: '![Figure 9.3 – The rendered frame after the lighting pass](img/B18395_09_03.jpg)'
+  id: totrans-28
   prefs: []
   type: TYPE_IMG
+  zh: '![图 9.3 – 光照过程后的渲染帧](img/B18395_09_03.jpg)'
 - en: Figure 9.3 – The rendered frame after the lighting pass
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 9.3 – 光照过程后的渲染帧
 - en: 'It gives us the following shading rate mask:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 它为我们提供了以下阴影率掩码：
 - en: '![Figure 9.4 – The computed shading rate mask](img/B18395_09_04.jpg)'
+  id: totrans-31
   prefs: []
   type: TYPE_IMG
+  zh: '![图 9.4 – 计算出的阴影率掩码](img/B18395_09_04.jpg)'
 - en: Figure 9.4 – The computed shading rate mask
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 9.4 – 计算出的阴影率掩码
 - en: In our implementation, we are going to use a full 1x1 rate for fragments that
     have a `G` value (as computed by the formula in *Figure 9**.2*) greater than `0.1`.
     These are the black pixels in *Figure 9**.4*.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的实现中，我们将为`G`值（如*图 9.2*中的公式计算）大于`0.1`的片段使用完整的1x1比率。这些是*图 9.4*中的黑色像素。
 - en: For fragments whose `G` value is below `0.1`, we are going to use a 2x2 rate,
     and these fragments are the red pixels in the screenshot in *Figure 9**.4*. We
     will explain how the values in the mask are computed in the next section.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于`G`值低于`0.1`的片段，我们将使用2x2的比率，这些片段是*图 9.4*中的截图中的红色像素。我们将在下一节中解释如何计算掩码中的值。
 - en: In this section, we have introduced the concepts behind variable rate shading
     and provided the details for our implementation. In the next section, we will
     demonstrate how to implement this feature using the Vulkan API.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们介绍了可变率着色的概念，并提供了我们实现的详细信息。在下一节中，我们将演示如何使用Vulkan API实现此功能。
 - en: Integrating variable rate shading using Vulkan
+  id: totrans-36
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用Vulkan集成可变率着色
 - en: As we mentioned in the previous section, the fragment shading rate functionality
     is provided through the `VK_KHR_fragment_shading_rate` extension. As with other
     option extensions, make sure the device you are using supports it before calling
     the related APIs.
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们在上一节中提到的，片段着色率功能是通过 `VK_KHR_fragment_shading_rate` 扩展提供的。与其他选项扩展一样，在使用相关
+    API 之前，请确保您使用的设备支持它。
 - en: 'Vulkan provides three methods to control the shading rate:'
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: Vulkan 提供了三种方法来控制着色率：
 - en: Per draw
+  id: totrans-39
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 每个绘制
 - en: Per primitive
+  id: totrans-40
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 每个原语
 - en: Using an image attachment for a render pass
+  id: totrans-41
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用图像附件进行渲染通道
 - en: To use a custom shading rate per draw, there are two options. We can pass a
     `VkPipelineFragmentShadingRateStateCreateInfoKHR` structure when creating a pipeline,
     or we can call `vkCmdSetFragmentShadingRateKHR` at runtime.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用每个绘制自定义着色率，有两种选择。我们可以在创建管道时传递 `VkPipelineFragmentShadingRateStateCreateInfoKHR`
+    结构，或者我们可以在运行时调用 `vkCmdSetFragmentShadingRateKHR`。
 - en: This approach is useful when we know in advance that some draws can be performed
     at a lower rate without affecting quality. This could include the sky or objects
     we know are far away from the camera.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们事先知道某些绘制可以在不影响质量的情况下以较低速率执行时，这种方法很有用。这可能包括我们知道远离相机的天空或物体。
 - en: It’s also possible to provide a shading rate per primitive. This is accomplished
     by populating the `PrimitiveShadingRateKHR` built-in shader variable from a vertex
     or mesh shader.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 还可以为每个原语提供一个着色率。这是通过从顶点着色器或网格着色器中填充内置着色器变量 `PrimitiveShadingRateKHR` 来实现的。
 - en: This can be useful if, for instance, we have determined we can use a lower level
     of details in the mesh shader and a lower rate to render that particular primitive.
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果，例如，我们确定可以在网格着色器中使用较低级别的细节并降低渲染特定原语的速率，这可能会很有用。
 - en: For our implementation, we decided to use the third approach as it is more flexible
     for our use case. As we mentioned in the previous section, we first need to compute
     the variable rate shading mask. This is done using a compute shader that populates
     the shading rate image.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于我们的实现，我们决定使用第三种方法，因为它对我们的用例来说更灵活。正如我们在上一节中提到的，我们首先需要计算可变率着色率掩码。这是通过一个计算着色器完成的，该着色器填充着色率图像。
 - en: 'We start by populating a table that is shared within a shader invocation:'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先填充一个在着色器调用中共享的表格：
 - en: '[PRE0]'
+  id: totrans-48
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Each entry in the table contains the luminance value for the fragment for this
     shader invocation.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 表格中的每个条目都包含此着色器调用中片段的亮度值。
 - en: We used this approach to reduce the number of texture reads we needed to perform.
     If each shader thread had to read the values it needs individually, we would need
     eight texture reads. With this solution, only one read per thread is needed.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用这种方法来减少我们需要执行的纹理读取次数。如果每个着色器线程都必须单独读取它需要的值，我们可能需要八次纹理读取。使用这个解决方案，每个线程只需要一次读取。
 - en: There is a caveat for the threads of the fragments on the border of the region
     we are processing. With each shader invocation, we process 16x16 fragments, but
     because of how the Sobel filter works, we need to fill an 18x18 table. For the
     threads on the border, we need to do some extra processing to make sure the table
     is fully filled. We have omitted the code here for brevity.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于我们正在处理的区域的边界上的片段线程，有一个需要注意的地方。随着每次着色器调用，我们处理 16x16 个片段，但由于 Sobel 滤波器的工作方式，我们需要填充一个
+    18x18 的表格。对于边界的线程，我们需要进行一些额外的处理以确保表格被完全填充。为了简洁，这里省略了代码。
 - en: Notice that we have to use the `barrier()` method to guarantee that all threads
     within this workgroup have completed their write. Without this call, threads will
     compute the wrong value, as the table will not be filled correctly.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，我们必须使用 `barrier()` 方法来确保这个工作组内的所有线程都完成了它们的写入。如果没有这个调用，线程将计算错误的价值，因为表格将不会正确填充。
 - en: 'Next, we compute the value of the derivative for a given fragment:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们计算给定片段的导数值：
 - en: '[PRE1]'
+  id: totrans-54
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'This is simply applying the formula we introduced in the previous section.
     Now that we have computed the derivative, we need to store the shading rate for
     this fragment:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 这只是简单地应用我们在上一节中介绍的公式。现在我们已经计算了导数，我们需要存储这个片段的着色率：
 - en: '[PRE2]'
+  id: totrans-56
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'The rate is computed following the formula from the Vulkan specification:'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 速率是按照 Vulkan 规范中的公式计算的：
 - en: '[PRE3]'
+  id: totrans-58
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: In our case, we are computing the `texel` value in the previous formula. We
     are setting the exponent (`0` or `1`) for the `x` and `y` shading rates and storing
     the value in the shading rate image.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的情况下，我们正在计算前一个公式中的 `texel` 值。我们为 `x` 和 `y` 着色率设置指数（`0` 或 `1`），并将值存储在着色率图像中。
 - en: 'Once the shading rate image has been filled, we can use it to provide the shading
     rate for the render pass for the next frame. Before using this image, we need
     to transition it to the correct layout:'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦着色率图像被填充，我们就可以使用它为下一帧的渲染通道提供着色率。在使用此图像之前，我们需要将其转换为正确的布局：
 - en: '[PRE4]'
+  id: totrans-61
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'We also need to use a new pipeline stage:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还需要使用一个新的管线阶段：
 - en: '[PRE5]'
+  id: totrans-63
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: There are a few options to use the newly created shading rate image as part
     of a render pass. The `VkSubpassDescription2` structure can be extended by a `VkFragmentShadingRateAttachmentInfoKHR`
     structure, which specifies which attachment to use as the fragment shading rate.
     Since we aren’t using the `RenderPass2` extension just yet, we opted to extend
     our existing dynamic rendering implementation.
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 有几种方法可以将新创建的着色率图像作为渲染通道的一部分使用。`VkSubpassDescription2`结构可以通过`VkFragmentShadingRateAttachmentInfoKHR`结构扩展，该结构指定了要使用哪个附加作为片段着色率。由于我们尚未使用`RenderPass2`扩展，我们选择扩展我们现有的动态渲染实现。
 - en: 'We have to extend the `VkRenderingInfoKHR` structure using the following code:'
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们必须使用以下代码扩展`VkRenderingInfoKHR`结构：
 - en: '[PRE6]'
+  id: totrans-66
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: And that’s it! The shader used for rendering doesn’t require any modifications.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 就这样！用于渲染的着色器不需要任何修改。
 - en: In this section, we have detailed the changes required to our rendering code
     to make use of a shading rate image. We have also provided the implementation
     of the compute shader that implements an edge detection algorithm based on the
     Sobel filter.
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们详细说明了修改我们的渲染代码以使用着色率图像所需的更改。我们还提供了实现基于索贝尔滤波器的边缘检测算法的计算着色器的实现。
 - en: The result of this algorithm is then used to determine the shading rate for
     each fragment.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 此算法的结果然后用于确定每个片段的着色率。
 - en: In the next section, we are going to introduce specialization constants, a Vulkan
     feature that allows us to control the workgroup size of compute shaders for optimal
     performance.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们将介绍特殊化常量，这是一个Vulkan特性，允许我们控制计算着色器的工作组大小以获得最佳性能。
 - en: Taking advantage of specialization constants
+  id: totrans-71
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 利用特殊化常量
 - en: '**Specialization constants** are a Vulkan feature that allows developers to
     define constant values when creating a pipeline. This is particularly useful when
     the same shader is needed for multiple use cases that differ only for some constant
     values, for example, materials. This is a more elegant solution compared to pre-processor
     definitions as they can be dynamically controlled at runtime without having to
     recompile the shaders.'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: '**特殊化常量**是Vulkan的一个特性，允许开发者在创建管线时定义常量值。这在需要相同着色器但只有一些常量值不同的多个用例时特别有用，例如材料。与预处理定义相比，这是一个更优雅的解决方案，因为它们可以在运行时动态控制，而无需重新编译着色器。'
 - en: 'In our case, we want to be able to control the workgroup size of compute shaders
     based on the hardware we are running to obtain the best performance:'
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的情况下，我们希望能够根据我们运行的硬件控制计算着色器的工作组大小以获得最佳性能：
 - en: 'The first step in the implementation is to determine whether a shader uses
     specialization constants. We now identify any variables that have been decorated
     with the following type when parsing the shader SPIR-V:'
+  id: totrans-74
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 实现的第一步是确定着色器是否使用特殊化常量。我们现在在解析着色器SPIR-V时识别任何被以下类型装饰的变量：
 - en: '[PRE7]'
+  id: totrans-75
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: '[PRE8]'
+  id: totrans-76
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: '[PRE9]'
+  id: totrans-77
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: '[PRE10]'
+  id: totrans-78
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: '[PRE11]'
+  id: totrans-79
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'When parsing all the variables, we now save the specialization constants’ details
     so that they can be used when compiling a pipeline that uses this shader:'
+  id: totrans-80
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在解析所有变量时，我们现在保存特殊化常量的详细信息，以便在编译使用此着色器的管线时使用：
 - en: '[PRE12]'
+  id: totrans-81
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: '[PRE13]'
+  id: totrans-82
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: '[PRE14]'
+  id: totrans-83
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: '[PRE15]'
+  id: totrans-84
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: '[PRE16]'
+  id: totrans-85
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: '[PRE17]'
+  id: totrans-86
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: '[PRE18]'
+  id: totrans-87
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: '[PRE19]'
+  id: totrans-88
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: '[PRE20]'
+  id: totrans-89
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: '[PRE21]'
+  id: totrans-90
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: '[PRE22]'
+  id: totrans-91
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: '[PRE23]'
+  id: totrans-92
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: '[PRE24]'
+  id: totrans-93
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: '[PRE25]'
+  id: totrans-94
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: '[PRE26]'
+  id: totrans-95
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: '[PRE27]'
+  id: totrans-96
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: '[PRE28]'
+  id: totrans-97
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: '[PRE29]'
+  id: totrans-98
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: '[PRE30]'
+  id: totrans-99
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: '[PRE31]'
+  id: totrans-100
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: '[PRE32]'
+  id: totrans-101
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: '[PRE33]'
+  id: totrans-102
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: '[PRE34]'
+  id: totrans-103
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: '[PRE35]'
+  id: totrans-104
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: '[PRE36]'
+  id: totrans-105
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: '[PRE37]'
+  id: totrans-106
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: '[PRE38]'
+  id: totrans-107
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: '[PRE39]'
+  id: totrans-108
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: '[PRE40]'
+  id: totrans-109
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: '[PRE41]'
+  id: totrans-110
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: '[PRE42]'
+  id: totrans-111
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: '[PRE43]'
+  id: totrans-112
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: 'Now that we have the specialization constants’ information, we can change their
     values when creating a pipeline. We start by filling a `VkSpecializationInfo`
     structure:'
+  id: totrans-113
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 现在我们有了特殊化常量的信息，我们可以在创建管线时更改它们的值。我们首先填充一个`VkSpecializationInfo`结构：
 - en: '[PRE44]'
+  id: totrans-114
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: '[PRE45]'
+  id: totrans-115
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: '[PRE46]'
+  id: totrans-116
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: '[PRE47]'
+  id: totrans-117
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: '[PRE48]'
+  id: totrans-118
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: '[PRE49]'
+  id: totrans-119
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: '[PRE50]'
+  id: totrans-120
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: '[PRE51]'
+  id: totrans-121
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE51]'
 - en: '[PRE52]'
+  id: totrans-122
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE52]'
 - en: '[PRE53]'
+  id: totrans-123
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE53]'
 - en: '[PRE54]'
+  id: totrans-124
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE54]'
 - en: '[PRE55]'
+  id: totrans-125
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE55]'
 - en: '[PRE56]'
+  id: totrans-126
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE56]'
 - en: 'We then set the value for each specialization constant entry:'
+  id: totrans-127
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后我们为每个特殊化常量条目设置值：
 - en: '[PRE57]'
+  id: totrans-128
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE57]'
 - en: '[PRE58]'
+  id: totrans-129
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE58]'
 - en: '[PRE59]'
+  id: totrans-130
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE59]'
 - en: '[PRE60]'
+  id: totrans-131
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE60]'
 - en: '[PRE61]'
+  id: totrans-132
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE61]'
 - en: '[PRE62]'
+  id: totrans-133
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE62]'
 - en: '[PRE63]'
+  id: totrans-134
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE63]'
 - en: '[PRE64]'
+  id: totrans-135
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE64]'
 - en: '[PRE65]'
+  id: totrans-136
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE65]'
 - en: '[PRE66]'
+  id: totrans-137
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE66]'
 - en: '[PRE67]'
+  id: totrans-138
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE67]'
 - en: '[PRE68]'
+  id: totrans-139
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE68]'
 - en: '[PRE69]'
+  id: totrans-140
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE69]'
 - en: '[PRE70]'
+  id: totrans-141
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE70]'
 - en: '[PRE71]'
+  id: totrans-142
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE71]'
 - en: '[PRE72]'
+  id: totrans-143
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE72]'
 - en: '[PRE73]'
+  id: totrans-144
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE73]'
 - en: '[PRE74]'
+  id: totrans-145
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE74]'
 - en: '[PRE75]'
+  id: totrans-146
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE75]'
 - en: 'In our case, we are looking for a variable named `SUBGROUP_SIZE`. The final
     step is to store the specialization constant details in the shader stage structure
     that will be used when creating the pipeline:'
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的情况下，我们正在寻找一个名为`SUBGROUP_SIZE`的变量。最后一步是将特殊化常量细节存储在创建管线时将使用的着色器阶段结构中：
 - en: '[PRE76]'
+  id: totrans-148
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE76]'
 - en: During compilations, the driver and compiler will override the existing value
     in the shader with the one we specified.
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 在编译过程中，驱动程序和编译器将覆盖着色器中现有的值，使用我们指定的值。
 - en: In this section, we have illustrated how to take advantage of specialization
     constants to modify shader behavior at runtime. We detailed the changes we made
     to identify specialization constants when parsing the SPIR-V binary. We then highlighted
     the new code required to override a specialization constant value when creating
     a pipeline.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们说明了如何利用专用常量在运行时修改着色器行为。我们详细介绍了在解析 SPIR-V 二进制文件时我们进行的更改，以识别专用常量。然后，我们强调了在创建管线时覆盖专用常量值所需的新代码。
 - en: Summary
+  id: totrans-151
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we introduced the variable rate shading technique. We gave
     a brief overview of this approach and how it can be used to improve the performance
     of some rendering passes without a loss in perceived quality. We also explained
     the edge detection algorithm used to determine the shading rate for each fragment.
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们介绍了可变率着色技术。我们简要概述了这种方法及其如何用于在不损失感知质量的情况下提高某些渲染通道的性能。我们还解释了用于确定每个片段着色率的边缘检测算法。
 - en: In the next section, we illustrated the changes necessary to enable and use
     this feature with the Vulkan API. We detailed the options available to change
     the shading rate at the draw, primitive, and render pass level. We then explained
     the implementation of the edge detection algorithm using a compute shader and
     how the result is used to generate the shading rate image.
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们说明了启用和使用 Vulkan API 中此功能所需的更改。我们详细介绍了在绘制、原语和渲染通道级别更改着色率的选项。然后，我们解释了使用计算着色器实现的边缘检测算法以及如何使用结果生成着色率图像。
 - en: In the last section, we introduced specialization constants, a mechanism provided
     by the Vulkan API to modify shader constant values at compile time. We illustrated
     how this feature can be used to control the group size of compute shaders for
     optimal performance based on the device our code is running on.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 在最后一节中，我们介绍了专用常量，这是 Vulkan API 提供的一种机制，可以在编译时修改着色器常量值。我们说明了如何使用此功能根据代码运行的设备来控制计算着色器的组大小以实现最佳性能。
 - en: In the next chapter, we will introduce volumetric effects into our scene. This
     technique allows us to set the mood of the environment and can be used to direct
     the attention of the player to a particular area.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一章中，我们将向场景中引入体积效果。这项技术允许我们设定环境的氛围，并可用于引导玩家注意特定区域。
 - en: Further reading
+  id: totrans-156
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 进一步阅读
 - en: 'We only gave a brief overview of the Vulkan APIs for variable rate shading.
     We recommend reading the specification for further details: [https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.xhtml#primsrast-fragment-shading-rate](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.xhtml#primsrast-fragment-shading-rate).'
+  id: totrans-157
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们只对可变率着色的 Vulkan API 给了一个简要概述。我们建议阅读规范以获取更多详细信息：[https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.xhtml#primsrast-fragment-shading-rate](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.xhtml#primsrast-fragment-shading-rate)。
 - en: 'Most of the resources available online seem to be focused on the DirectX API,
     but the same approach can be translated to Vulkan. This blog post provides some
     details on the benefits of VRS: [https://devblogs.microsoft.com/directx/variable-rate-shading-a-scalpel-in-a-world-of-sledgehammers/](https://devblogs.microsoft.com/directx/variable-rate-shading-a-scalpel-in-a-world-of-sledgehammers/).'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 在线可用的资源似乎大多集中在 DirectX API 上，但相同的策略可以转换为 Vulkan。本博客文章提供了一些关于 VRS 优势的细节：[https://devblogs.microsoft.com/directx/variable-rate-shading-a-scalpel-in-a-world-of-sledgehammers/](https://devblogs.microsoft.com/directx/variable-rate-shading-a-scalpel-in-a-world-of-sledgehammers/)。
 - en: 'These two videos provide in-depth details on integrating VRS into existing
     game engines. The section on how to implement VRS using compute shader is particularly
     interesting:'
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两个视频提供了将 VRS 集成到现有游戏引擎中的深入细节。特别是关于如何使用计算着色器实现 VRS 的部分特别有趣：
 - en: '[https://www.youtube.com/watch?v=pPyN9r5QNbs](https://www.youtube.com/watch?v=pPyN9r5QNbs)'
+  id: totrans-160
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://www.youtube.com/watch?v=pPyN9r5QNbs](https://www.youtube.com/watch?v=pPyN9r5QNbs)'
 - en: '[https://www.youtube.com/watch?v=Sswuj7BFjGo](https://www.youtube.com/watch?v=Sswuj7BFjGo)'
+  id: totrans-161
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://www.youtube.com/watch?v=Sswuj7BFjGo](https://www.youtube.com/watch?v=Sswuj7BFjGo)'
 - en: 'This article illustrates how VRS can also have other use cases, for instance,
     to accelerate raytracing: [https://interplayoflight.wordpress.com/2022/05/29/accelerating-raytracing-using-software-vrs/](https://interplayoflight.wordpress.com/2022/05/29/accelerating-raytracing-using-software-vrs/).'
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 本文说明了 VRS 也可以有其他用途，例如，加速光线追踪：[https://interplayoflight.wordpress.com/2022/05/29/accelerating-raytracing-using-software-vrs/](https://interplayoflight.wordpress.com/2022/05/29/accelerating-raytracing-using-software-vrs/)。
