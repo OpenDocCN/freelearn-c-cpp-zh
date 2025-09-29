@@ -1,1027 +1,1515 @@
 - en: '6'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '6'
 - en: GPU-Driven Rendering
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: GPU驱动渲染
 - en: 'In this chapter, we will upgrade the geometry pipeline to use the latest available
     technology: **mesh shaders** and **meshlets**. The idea behind this technique
     is to move the flow of mesh rendering from the CPU to the GPU, moving culling
     and draw command generation into different shaders.'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将升级几何管线以使用最新的可用技术：**网格着色器**和**网格块**。这种技术的理念是将网格渲染的流程从CPU移动到GPU，将剔除和绘制命令生成移动到不同的着色器中。
 - en: We will first work on the mesh structure on the CPU, by separating it into different
     *meshlets* that are groups of up to 64 triangles, each with an individual bounding
     sphere. We will then use compute shaders to perform culling and write a list of
     commands to draw the meshlets in the different passes. Finally, we will use the
     mesh shaders to render the meshlets. There will also be a compute version provided,
     as mesh shaders are still available only on Nvidia GPUs for now.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先将在CPU上处理网格结构，通过将其分离成不同的*网格块*，每个网格块是包含最多64个三角形的组，每个三角形都有一个单独的边界球。然后我们将使用计算着色器进行剔除，并在不同的传递中写入绘制网格块的命令列表。最后，我们将使用网格着色器渲染网格块。还将提供一个计算版本，因为目前网格着色器仅适用于Nvidia
+    GPU。
 - en: Traditionally, geometry culling has been performed on the CPU. Each mesh on
     the scene is usually represented by an **axis aligned bounding box** (**AABB**).
     An AABB can easily be culled against the camera frustum, but with the increase
     in scene complexity, a large portion of frame time could be spent on the culling
     step.
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 传统上，几何剔除是在CPU上执行的。场景中的每个网格通常由一个**轴对齐的边界框**（**AABB**）表示。AABB可以很容易地与相机视锥体进行剔除，但随着场景复杂性的增加，大量帧时间可能会花费在剔除步骤上。
 - en: This is usually the first step in a rendering pipeline, as we need to determine
     which meshes to submit for drawing. This means it’s hard to find other work that
     could be done in parallel. Another pain point of doing frustum culling on the
     CPU is that it’s hard to determine which objects are occluded and don’t need to
     be drawn.
+  id: totrans-5
   prefs: []
   type: TYPE_NORMAL
+  zh: 这通常是渲染管线中的第一步，因为我们需要确定哪些网格需要提交进行绘制。这意味着很难找到其他可以并行执行的工作。在CPU上执行视锥剔除的另一个痛点是难以确定哪些对象被遮挡且不需要绘制。
 - en: At every frame, we need to re-sort all elements based on the camera position.
     When there are hundreds of thousands of elements in the scene, this is usually
     unfeasible. Finally, some meshes, terrain, for example, are organized in large
     areas that end up always being drawn, even if only a small part of them is visible.
+  id: totrans-6
   prefs: []
   type: TYPE_NORMAL
+  zh: 在每一帧中，我们需要根据相机位置重新排序所有元素。当场景中有成千上万的元素时，这通常是不切实际的。最终，一些网格，例如地形，被组织在大的区域中，这些区域总是会被绘制出来，即使只有其中的一小部分是可见的。
 - en: Thankfully, we can move some of this computation to the GPU and take advantage
     of its parallel capabilities. The techniques we are going to present in this chapter
     will allow us to perform frustum and occlusion culling on the GPU. To make the
     process as efficient as possible, we are going to generate the list of draw commands
     directly on the GPU.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 幸运的是，我们可以将一些计算转移到GPU上，并利用其并行能力。本章中我们将要介绍的技术将允许我们在GPU上执行视锥和遮挡剔除。为了使过程尽可能高效，我们将直接在GPU上生成绘制命令列表。
 - en: 'In this chapter, we’re going to cover the following main topics:'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将涵盖以下主要主题：
 - en: Breaking down large meshes into meshlets
+  id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将大型网格分解成网格块
 - en: Processing meshlets using task and mesh shaders to perform back-face and frustum
     culling
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用任务和网格着色器处理网格块以执行背面和视锥剔除
 - en: Performing efficient occlusion culling using compute shaders
+  id: totrans-11
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用计算着色器进行高效的遮挡剔除
 - en: Generating draw commands on the GPU and using indirect drawing functions
+  id: totrans-12
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在GPU上生成绘制命令并使用间接绘制函数
 - en: Technical requirements
+  id: totrans-13
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6).'
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的代码可以在以下URL找到：[https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6)。
 - en: Breaking down large meshes into meshlets
+  id: totrans-15
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 将大型网格分解成网格块
 - en: In this chapter, we are going to focus primarily on the geometry stage of the
     pipeline, the one before the shading stage. Adding some complexity to the geometry
     stage of the pipeline will pay dividends in later stages as we’ll reduce the number
     of pixels that need to be shaded.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将主要关注管道的几何阶段，即着色阶段之前的一个阶段。向管道的几何阶段添加一些复杂性将在后续阶段带来回报，因为我们将减少需要着色的像素数量。
 - en: Note
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意
 - en: 'When we refer to the geometry stage of the graphics pipeline, we don’t mean
     geometry shaders. The geometry stage of the pipeline refers to **input assembly**
     (**IA**), vertex processing, and **primitive assembly** (**PA**). Vertex processing
     can, in turn, run one or more of the following shaders: vertex, geometry, tessellation,
     task, and mesh shaders.'
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们提到图形管道的几何阶段时，我们并不是指几何着色器。管道的几何阶段指的是**输入装配**（**IA**）、顶点处理和**原语装配**（**PA**）。顶点处理可以进一步运行一个或多个以下着色器：顶点、几何、细分、任务和网格着色器。
 - en: Content geometry comes in many shapes, sizes, and complexity. A rendering engine
     must be able to deal with meshes from small, detailed objects to large terrains.
     Large meshes (think terrain or buildings) are usually broken down by artists so
     that the rendering engine can pick out the different levels of details based on
     the distance from the camera of these objects.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 内容几何形状有多种形状、大小和复杂性。渲染引擎必须能够处理从小型详细对象到大型地形的网格。大型网格（如地形或建筑）通常由艺术家分解，以便渲染引擎可以根据这些对象与摄像机的距离选择不同的细节级别。
 - en: Breaking down meshes into smaller chunks can help cull geometry that is not
     visible, but some of these meshes are still large enough that we need to process
     them in full, even if only a small portion is visible.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 将网格分解成更小的块可以帮助剔除不可见的几何形状，但其中一些网格仍然足够大，以至于我们需要完全处理它们，即使只有一小部分是可见的。
 - en: Meshlets have been developed to address these problems. Each mesh is subdivided
     into groups of vertices (usually 64) that can be more easily processed on the
     GPU.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 网格细分是为了解决这些问题而开发的。每个网格被细分为顶点组（通常是64个），这些顶点可以在GPU上更容易地处理。
 - en: 'The following image illustrates how meshes can be broken down into meshlets:'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 下图说明了网格如何被分解成网格细分：
 - en: '![Figure 6.1 – A meshlet subdivision example](img/B18395_06_01.jpg)'
+  id: totrans-23
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.1 – 网格细分示例](img/B18395_06_01.jpg)'
 - en: Figure 6.1 – A meshlet subdivision example
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 图6.1 – 网格细分示例
 - en: These vertices can make up an arbitrary number of triangles, but we usually
     tune this value according to the hardware we are running on. In Vulkan, the recommended
     value is `126` (as written in [https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/),
     the number is needed to reserve some memory for writing the primitive count with
     each meshlet).
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些顶点可以组成任意数量的三角形，但我们通常根据我们运行的硬件调整这个值。在Vulkan中，推荐值为`126`（如[https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/)中所述，这个数字是为了为每个网格保留一些内存以写入原始计数）。
 - en: Note
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意
 - en: At the time of writing, mesh and task shaders are only available on Nvidia hardware
     through its extension. While some of the APIs described in this chapter are specific
     to this extension, the concepts can be generally applied and implemented using
     generic compute shaders. A more generic version of this extension is currently
     being worked on by the Khronos committee so that mesh and task shaders should
     soon be available from other vendors!
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 在撰写本文时，网格和任务着色器仅通过其扩展在Nvidia硬件上可用。虽然本章中描述的一些API是特定于这个扩展的，但概念可以普遍应用并使用通用计算着色器实现。Khronos委员会目前正在开发这个扩展的更通用版本，以便网格和任务着色器很快就能从其他供应商那里获得！
 - en: Now that we have a much smaller number of triangles, we can use them to have
     much finer-grained control by culling meshlets that are not visible or are being
     occluded by other objects.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有更少的三角形数量，我们可以通过剔除不可见或被其他对象遮挡的网格来使用它们进行更细粒度的控制。
 - en: Together with the list of vertices and triangles, we also generate some additional
     data for each meshlet that will be very useful later on to perform back-face,
     frustum, and occlusion culling.
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 除了顶点和三角形的列表之外，我们还为每个网格生成一些额外的数据，这些数据在稍后执行背面、视锥体和遮挡剔除时将非常有用。
 - en: One additional possibility (that will be added in the future) is to choose the
     **level of detail** (**LOD**) of a mesh and, thus, a different subset of meshlets
     based on any wanted heuristic.
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一个额外的可能性（将在未来添加）是选择网格的**细节级别**（**LOD**），从而根据任何想要的启发式方法选择不同的meshlets子集。
 - en: 'The first of this additional data represents the bounding sphere of a meshlet,
     as shown in the following screenshot:'
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 这额外数据中的第一个代表meshlet的边界球体，如下面的截图所示：
 - en: '![Figure 6.2 – A meshlet bounding spheres example; some of the larger spheres
     have been hidden for clarity](img/B18395_06_02.jpg)'
+  id: totrans-32
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.2 – meshlet边界球示例；为了清晰起见，一些较大的球已被隐藏](img/B18395_06_02.jpg)'
 - en: Figure 6.2 – A meshlet bounding spheres example; some of the larger spheres
     have been hidden for clarity
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 图6.2 – meshlet边界球示例；为了清晰起见，一些较大的球已被隐藏
 - en: 'Some of you might ask: why not AABBs? AABBs require at least two `vec3` of
     data: one for the center and one for the half-size vector. Another encoding could
     be to store the minimum and maximum corners. Instead, spheres can be encoded with
     a single `vec4`: a `vec3` for the center plus the radius.'
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 有些人可能会问：为什么不使用AABBs？AABBs至少需要两个`vec3`的数据：一个用于中心，一个用于半大小向量。另一种编码方式是存储最小和最大的角点。相反，球体可以用单个`vec4`编码：一个`vec3`用于中心加上半径。
 - en: Given that we might need to process millions of meshlets, each saved byte counts!
     Spheres can also be more easily tested for frustum and occlusion culling, as we
     will describe later in the chapter.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们可能需要处理数百万个meshlets，每个节省的字节都很重要！球体也更容易进行视锥体和遮挡剔除的测试，正如我们将在本章后面描述的。
 - en: 'The next additional piece of data that we’re going to use is the meshlet cone,
     as shown in the following screenshot:'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们接下来要使用的数据的下一部分是meshlet圆锥，如下面的截图所示：
 - en: '![Figure 6.3 – A meshlet cone example; not all cones are displayed for clarity](img/B18395_06_03.jpg)'
+  id: totrans-37
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.3 – meshlet圆锥示例；为了清晰起见，并非所有圆锥都显示](img/B18395_06_03.jpg)'
 - en: Figure 6.3 – A meshlet cone example; not all cones are displayed for clarity
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 图6.3 – meshlet圆锥示例；为了清晰起见，并非所有圆锥都显示
 - en: The cone indicates the direction a meshlet is facing and will be used for back-face
     culling.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 圆锥表示meshlet面向的方向，并将用于背面剔除。
 - en: Now we have a better understanding of why meshlets are useful and how we can
     use them to improve the culling of larger meshes, let’s see how we generate them
     in code!
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们更好地理解了meshlets为何有用以及我们如何使用它们来改进大型网格的剔除，让我们看看如何在代码中生成它们！
 - en: Generating meshlets
+  id: totrans-41
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 生成meshlets
 - en: We are using an open source library, called **MeshOptimizer** ([https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer))
     to generate the meshlets. An alternative library is **meshlete** ([https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete))
     and we encourage you to try both to find the one that best suits your needs.
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用一个开源库，称为**MeshOptimizer** ([https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer))来生成meshlets。另一个替代库是**meshlete**
+    ([https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete))，我们鼓励您尝试两者，以找到最适合您需求的库。
 - en: 'After we have loaded the data (vertices and indices) for a given mesh, we are
     going to generate the list of meshlets. First, we determine the maximum number
     of meshlets that could be generated for our mesh and allocate memory for the vertices
     and indices arrays that will describe the meshlets:'
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 在加载给定网格的数据（顶点和索引）之后，我们将生成meshlets的列表。首先，我们确定可以为我们网格生成的最大meshlets数量，并为描述meshlets的顶点和索引数组分配内存：
 - en: '[PRE0]'
+  id: totrans-44
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: Notice the types for the indices and triangle arrays. We are not modifying the
     original vertex or index buffer, but only generating a list of indices in the
     original buffers. Another interesting aspect is that we only need 1 byte to store
     the triangle indices. Again, saving memory is very important to keep meshlet processing
     efficient!
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意索引和三角形数组的类型。我们并没有修改原始的顶点或索引缓冲区，而是只在原始缓冲区中生成一个索引列表。另一个有趣的方面是，我们只需要1个字节来存储三角形索引。再次强调，节省内存对于保持meshlet处理效率非常重要！
 - en: 'The next step is to generate our meshlets:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是生成我们的meshlets：
 - en: '[PRE1]'
+  id: totrans-47
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: As mentioned in the preceding step, we need to tell the library the maximum
     number of vertices and triangles that a meshlet can contain. In our case, we are
     using the recommended values for the Vulkan API. The other parameters include
     the original vertex and index buffer, and the arrays we have just created that
     will contain the data for the meshlets.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前所述，我们需要告诉库一个meshlet可以包含的最大顶点和三角形数量。在我们的案例中，我们使用Vulkan API推荐值。其他参数包括原始顶点和索引缓冲区，以及我们将创建的包含meshlets数据的数组。
 - en: 'Let’s have a better look at the data structure of each meshlet:'
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们更详细地看看每个meshlet的数据结构：
 - en: '[PRE2]'
+  id: totrans-50
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: Each meshlet is described by two offsets and two counts, one for the vertex
     indices and one for the indices of the triangles. Note that these offsets refer
     to `meshlet_vertex_indices` and `meshlet_triangles` that are populated by the
     library, not the original vertex and index buffers of the mesh.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个meshlet由两个偏移量和两个计数描述，一个用于顶点索引，一个用于三角形索引。请注意，这些偏移量指的是由库填充的`meshlet_vertex_indices`和`meshlet_triangles`，而不是原始的顶点和索引缓冲区。
 - en: 'Now that we have the meshlet data, we need to upload it to the GPU. To keep
     the data size to a minimum, we store the positions at full resolution while we
     compress the normals to 1 byte for each dimension and UV coordinates to half-float
     for each dimension. In pseudocode, this is as follows:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有了meshlet数据，我们需要将其上传到GPU。为了将数据大小保持在最小，我们在全分辨率下存储位置，同时将每个维度的法线压缩为1字节，将UV坐标压缩为每个维度半浮点。在伪代码中，如下所示：
 - en: '[PRE3]'
+  id: totrans-53
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'The next step is to extract the additional data (bounding sphere and cone)
     for each meshlet:'
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是从每个meshlet中提取额外的数据（边界球体和圆锥）：
 - en: '[PRE4]'
+  id: totrans-55
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'We loop over all the meshlets and we call the MeshOptimizer API that computes
     the bounds for each meshlet. Let’s see in more detail the structure of the data
     that is returned:'
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们遍历所有meshlets，并调用MeshOptimizer API来计算每个meshlet的边界。让我们更详细地看看返回数据的结构：
 - en: '[PRE5]'
+  id: totrans-57
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: The first four floats represent the bounding sphere. Next, we have the cone
     definition, which is comprised of the cone direction (`cone_axis`) and the cone
     angle (`cone_cutoff`). We are not using the `cone_apex` value as it makes the
     back-face culling computation more expensive. However, it can lead to better results.
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 前四个浮点数代表边界球体。接下来，我们有圆锥定义，它由圆锥方向（`cone_axis`）和圆锥角度（`cone_cutoff`）组成。我们没有使用`cone_apex`值，因为它使得背面剔除计算更加昂贵。然而，它可以带来更好的结果。
 - en: Once again, notice that quantized values (`cone_axis_s8` and `cone_cutoff_s8`)
     help us reduce the size of the data required for each meshlet.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 再次提醒，量化值（`cone_axis_s8`和`cone_cutoff_s8`）帮助我们减少了每个meshlet所需的数据大小。
 - en: Finally, meshlet data is copied into GPU buffers and it will be used during
     the execution of task and mesh shaders.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，meshlet数据被复制到GPU缓冲区，并在任务和mesh shaders的执行期间使用。
 - en: 'For each processed mesh, we will also save an offset and count of meshlets
     to add a coarse culling based on the parent mesh: if the mesh is visible, then
     its meshlets will be added.'
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于每个处理的mesh，我们还会保存meshlets的偏移量和计数，以便基于父mesh进行粗略剔除：如果mesh可见，则其meshlets将被添加。
 - en: In this section, we have described what meshlets are and why they are useful
     to improve the culling of geometry on the GPU. Next, we showed the data structures
     that are used in our implementation. Now that our data is ready, it’s time for
     it to be consumed by task and mesh shaders. That’s the topic of the next section!
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们描述了什么是meshlets以及为什么它们对在GPU上改进几何剔除很有用。接下来，我们展示了我们实现中使用的数据结构。现在我们的数据已经准备好了，它将开始被任务和mesh
+    shaders消费。这就是下一节的主题！
 - en: Understanding task and mesh shaders
+  id: totrans-63
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解任务和mesh shaders
 - en: Before we begin, we should mention that mesh shaders can be used without task
     shaders. If, for instance, you wanted to perform culling or some other pre-processing
     step on the meshlets on the CPU, you are free to do so.
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们开始之前，我们应该提到mesh shaders可以在没有task shaders的情况下使用。例如，如果您想在CPU上对meshlets执行剔除或其他预处理步骤，您完全可以这样做。
 - en: Also, note that task and mesh shaders replace vertex shaders in the graphics
     pipeline. The output of mesh shaders is going to be consumed by the fragment shader
     directly.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，请注意，任务和mesh shaders在图形管线中替代了vertex shaders。mesh shaders的输出将被fragment shader直接消费。
 - en: 'The following diagram illustrates the differences between the traditional geometry
     pipeline and the mesh shader pipeline:'
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面的图示展示了传统几何管线和mesh shader管线之间的区别：
 - en: '![Figure 6.4 – The difference between traditional and mesh pipeline](img/B18395_06_04.jpg)'
+  id: totrans-67
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.4 – 传统管线和mesh管线之间的区别](img/B18395_06_04.jpg)'
 - en: Figure 6.4 – The difference between traditional and mesh pipeline
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 图6.4 – 传统与网格管道之间的区别
 - en: In this section, we are going to provide an overview of how task and mesh shaders
     work and then use this information to implement back-face and frustum culling
     using task shaders.
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将概述任务着色器和网格着色器的工作原理，然后使用这些信息来实现使用任务着色器的背面剔除和视锥剔除。
 - en: Both task and mesh shaders use the same execution model of compute shaders,
     with some minor changes. The output of task shaders is consumed directly by a
     mesh shader, and for both types, we can specify the thread group size.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 任务着色器和网格着色器使用与计算着色器相同的执行模型，有一些小的变化。任务着色器的输出直接由网格着色器消费，对于这两种类型，我们都可以指定线程组大小。
 - en: Task shaders (sometimes also referred to as amplification shaders) can be thought
     of as filters. We submit all meshlets for processing when invoking a task shader,
     and the task shader will output the meshlets that have passed the filter.
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 任务着色器（有时也称为放大着色器）可以被视为过滤器。在调用任务着色器时，我们将所有网格元素提交给处理，任务着色器将输出通过过滤器的网格元素。
 - en: The following diagram provides an example of meshlets that are processed by
     the task shader. The meshlets that are rejected won’t be processed further.
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下图表提供了一个由任务着色器处理的网格元素的示例。被拒绝的网格元素将不再进一步处理。
 - en: '![Figure 6.5 – The task shader determines which meshlets to cull. The culled
     meshlets won’t be processed by the mesh shader](img/B18395_06_05.jpg)'
+  id: totrans-73
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.5 – 任务着色器确定要剔除的网格元素。被剔除的网格元素不会被网格着色器处理](img/B18395_06_05.jpg)'
 - en: Figure 6.5 – The task shader determines which meshlets to cull. The culled meshlets
     won’t be processed by the mesh shader
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 图6.5 – 任务着色器确定要剔除的网格元素。被剔除的网格元素不会被网格着色器处理
 - en: The mesh shader then takes the active meshlets and performs the final processing
     as you normally would in a vertex shader.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后网格着色器将处理活动的网格元素，并执行与在顶点着色器中通常执行的处理。
 - en: While this is only a high-level overview of task and mesh shaders, there isn’t
     much more to it. We will provide more resources in the *Further reading* section
     if you’d like to know more about the inner workings of this feature.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然这只是一个关于任务着色器和网格着色器的高级概述，但内容并不多。如果您想了解更多关于该功能内部工作原理的信息，我们将在*进一步阅读*部分提供更多资源。
 - en: Next, we are going to explain how to implement task and mesh shaders in Vulkan!
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们将解释如何在Vulkan中实现任务着色器和网格着色器！
 - en: Implementing task shaders
+  id: totrans-78
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现任务着色器
 - en: As we mentioned previously, task and mesh shaders are available through an extension
     of the Vulkan API. We have shown how to check for extensions before, so we are
     not duplicating the code in this chapter. Please refer to the code for more details.
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 如我们之前提到的，任务着色器和网格着色器通过Vulkan API的扩展提供。我们之前已经展示了如何检查扩展，因此在本章中我们没有重复代码。请参阅代码以获取更多详细信息。
 - en: The extension also introduces two new pipeline stages, `VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV`
     and `VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV`, that can be used to place pipeline
     barriers to ensure data used by these stages is synchronized correctly.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 该扩展还引入了两个新的管道阶段，`VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV`和`VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV`，可用于放置管道屏障以确保这些阶段使用的数据正确同步。
 - en: 'Task shaders can be treated like any compute shader: we create a pipeline that
     includes an (optional) task shader module, a mesh shader, and a fragment shader.
     Invoking a task shader is done with the following API:'
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 任务着色器可以像任何计算着色器一样处理：我们创建一个包含（可选）任务着色器模块、网格着色器和片段着色器的管道。调用任务着色器使用以下API进行：
 - en: '[PRE6]'
+  id: totrans-82
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Think of `task_count` as the workgroup size of a compute shader. There is also
     an indirect variant that can read the invocation details for multiple draws from
     a buffer:'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 将`task_count`视为计算着色器的工作组大小。还有一个间接变体，可以从缓冲区中读取多个绘制的调用详情：
 - en: '[PRE7]'
+  id: totrans-84
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: We use this variant in our code as it allows us to have only one draw call per
     scene and give the GPU full control over which meshlets will be drawn.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在代码中使用这个变体，因为它允许我们每个场景只进行一次绘制调用，并让GPU完全控制哪些网格元素将被绘制。
 - en: With indirect rendering, we write the commands in a GPU program as we would
     do on the CPU, and we additionally read a buffer to know how many commands are
     there. We will see command writing in the *GPU culling using compute* section
     of this chapter.
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 在间接渲染中，我们像在CPU上一样在GPU程序中写入命令，并且我们还会读取一个缓冲区以了解有多少命令。我们将在本章的*使用计算进行GPU剔除*部分看到命令写入。
 - en: 'We now turn our attention to the shader implementation. Task and mesh shaders
     require that their GLSL extension be enabled, otherwise, the compiler might treat
     the code as a regular compute shader:'
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们将注意力转向着色器实现。任务和网格着色器要求启用它们的GLSL扩展，否则编译器可能会将代码视为常规计算着色器：
 - en: '[PRE8]'
+  id: totrans-88
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: 'Since we are using an indirect command to invoke our shader, we need to enable
     another extension that will let us access the `draw` ID for the current shader
     invocation:'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们使用间接命令来调用我们的着色器，我们需要启用另一个扩展，这将使我们能够访问当前着色器调用的`draw` ID：
 - en: '[PRE9]'
+  id: totrans-90
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'Note that this extension is enabled in the `platform.h` header and not directly
     in the shader code. As we mentioned, task shaders are akin to compute shaders.
     In fact, the first directive in our shader is to determine the thread group size:'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，此扩展是在`platform.h`头文件中启用的，而不是直接在着色器代码中。正如我们提到的，任务着色器类似于计算着色器。实际上，我们着色器的第一个指令是确定线程组大小：
 - en: '[PRE10]'
+  id: totrans-92
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Here, `local_size_y` and `local_size_z` will be ignored even if specified.
     We can now move to the main body of the shader. We start by determining which
     mesh and meshlet we need to process:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，即使指定了`local_size_y`和`local_size_z`，也会被忽略。现在我们可以进入着色器的主体部分。我们首先确定需要处理哪个网格和网格块：
 - en: '[PRE11]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: The `gl_DrawIDARB` draw index comes from the invocation of each `vkCmdDrawMeshTasksNV`
     through the commands written in the indirect buffer.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: '`gl_DrawIDARB`绘制索引来自通过间接缓冲区中写入的命令对每个`vkCmdDrawMeshTasksNV`的调用。'
 - en: 'Next, we load the data for the current meshlet. First, we determine the world
     position and the size of the meshlet bounding sphere:'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们加载当前网格块的数据。首先，我们确定网格块的世界位置和包围球的大小：
 - en: '[PRE12]'
+  id: totrans-97
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'Next, we restore the `cone_axis` value (remember, they are stored as a single
     byte) and `cone_cutoff`:'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们恢复`cone_axis`值（记住，它们存储为一个字节）和`cone_cutoff`：
 - en: '[PRE13]'
+  id: totrans-99
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'We now have all of the data we need to perform back-face and frustum culling:'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有了执行背面和截锥剔除所需的所有数据：
 - en: '[PRE14]'
+  id: totrans-101
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'Next, `coneCull` is implemented as follows:'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，`coneCull`的实现如下：
 - en: '[PRE15]'
+  id: totrans-103
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: This code first computes the cosine of the angle between the cone axis and the
     vector toward the camera from the center of the bounding sphere. Then it scales
     the cone cutoff (which is the cosine of the cut-off half angle) by the distance
     between the camera and the center of the bounding sphere and adds the radius of
     the bounding sphere.
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 此代码首先计算圆锥轴与从包围球中心指向相机的向量的夹角的余弦值。然后，它将圆锥截止值（即截止半角的余弦值）乘以相机与包围球中心的距离，并加上包围球的半径。
 - en: This determines whether the cone is pointing away from the camera, and should
     be culled or, if it’s pointing toward the camera, it should be kept.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 这决定了圆锥是否指向相机，应该被剔除，或者如果它指向相机，则应该保留。
 - en: 'The next step is to perform frustum culling. First, we transform the center
     of the bounding sphere into camera space:'
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是执行截锥剔除。首先，我们将包围球的中心转换到相机空间：
 - en: '[PRE16]'
+  id: totrans-107
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'Next, we check against the six frustum planes to determine whether the bounding
     sphere is inside the frustum:'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们检查六个截锥平面，以确定包围球是否在截锥内：
 - en: '[PRE17]'
+  id: totrans-109
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'We accept the meshlet if it’s both visible and not considered back facing:'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果网格块既可见又不是背面，我们就接受它：
 - en: '[PRE18]'
+  id: totrans-111
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'The final step is to write out the indices of the visible meshlets and their
     number. The output data structure is defined as follows:'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后一步是写出可见网格块的索引及其数量。输出数据结构定义如下：
 - en: '[PRE19]'
+  id: totrans-113
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: 'We use the subgroup instructions of GLSL for this step, and it’s worth going
     through line by line if it’s the first time you have seen this syntax. To access
     these instructions, the following extension must be enabled:'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用GLSL的子组指令来完成这一步，如果这是你第一次看到这种语法，逐行分析是值得的。要访问这些指令，必须启用以下扩展：
 - en: '[PRE20]'
+  id: totrans-115
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: 'First, we set a bit for the active shader invocation depending on whether the
     meshlet is considered visible or not:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，根据网格块是否被认为是可见的，为活动的着色器调用设置一个位：
 - en: '[PRE21]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'Next, we determine which bit was set by the previous call and use it to store
     the active meshlet index:'
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们确定前一个调用设置的位，并使用它来存储活动的网格块索引：
 - en: '[PRE22]'
+  id: totrans-119
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'Finally, we count all the bits set across this thread group and store them
     in the `gl_TaskCountNV` variable:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们计算这个线程组中所有设置的位，并将它们存储在`gl_TaskCountNV`变量中：
 - en: '[PRE23]'
+  id: totrans-121
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: The `gl_TaskCountNV` variable is used by the GPU to determine how many mesh
     shader invocations are needed to process the meshlets that have not been occluded.
     The `if` is needed so that we write `TaskCount` only once per meshlet.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: '`gl_TaskCountNV`变量由GPU用来确定需要多少个网格着色器调用才能处理未被遮挡的网格块。`if`语句是必需的，以确保每个网格块只写入一次`TaskCount`。'
 - en: This concludes our implementation of task shaders. Next, we are going to look
     at our mesh shader implementation.
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就完成了我们的任务着色器实现。接下来，我们将查看我们的网格着色器实现。
 - en: Implementing mesh shaders
+  id: totrans-124
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现网格着色器
 - en: After performing meshlet culling in the task shader, we need to process the
     active meshlets. This is similar to a regular vertex shader, however, there are
     some important differences that we’d like to point out.
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 在任务着色器中执行网格片裁剪后，我们需要处理活动网格片。这类似于常规顶点着色器，然而，有一些重要的区别我们想要指出。
 - en: 'Like task shaders, mesh shaders can be considered compute shaders, and the
     first directive is to determine the thread group size:'
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 就像任务着色器一样，网格着色器可以被视为计算着色器，第一个指令是确定线程组大小：
 - en: '[PRE24]'
+  id: totrans-127
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: 'We then have to read the data that has been written by the task shader:'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们必须读取任务着色器写入的数据：
 - en: '[PRE25]'
+  id: totrans-129
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: 'Next, we define the data we are going to output. We first determine the maximum
     number of vertices and primitives (triangles in our case) that we could write:'
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们定义我们将要输出的数据。我们首先确定我们可以写入的最大顶点数和原语（在我们的例子中是三角形）数：
 - en: '[PRE26]'
+  id: totrans-131
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'We follow with the same data we might usually output from a vertex shader:'
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们继续使用我们可能通常从顶点着色器输出的相同数据：
 - en: '[PRE27]'
+  id: totrans-133
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: Notice, though, that we are using an array of values, as we can output up to
     64 vertices per invocation.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，尽管如此，我们正在使用一个值数组，因为我们可以为每次调用输出多达64个顶点。
 - en: 'Now that we have our input and output values, we can move to the shader implementation.
     Like before, we first determine our mesh and meshlet index:'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有了输入和输出值，我们可以转向着色器实现。像之前一样，我们首先确定我们的网格和网格片索引：
 - en: '[PRE28]'
+  id: totrans-136
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: 'Next, we determine the vertex and index offset and count for the active meshlet:'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们确定活动网格片的顶点和索引偏移量以及计数：
 - en: '[PRE29]'
+  id: totrans-138
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: 'We then process the vertices for the active meshlet:'
+  id: totrans-139
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们处理活动网格片的顶点：
 - en: '[PRE30]'
+  id: totrans-140
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: Notice we are writing to the `gl_MeshVerticesNV` variable. This variable is
     used by the GPU to keep track of the vertices we output and their index. This
     data will then be used by the rasterizer to draw the resulting triangles on the
     screen.
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意我们正在写入`gl_MeshVerticesNV`变量。这个变量被GPU用来跟踪我们输出的顶点和它们的索引。这些数据随后将被光栅化器用来在屏幕上绘制生成的三角形。
 - en: 'Next, we write out the indices:'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们写入索引：
 - en: '[PRE31]'
+  id: totrans-143
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: The `writePackedPrimitiveIndices4x8NV` instruction has been introduced specifically
     for mesh shaders and it allows them to write four indices at once. As we mentioned
     previously, indices require only 1 byte to be stored, as we can’t have values
     greater than 64\. They are packed into `meshletData`, which is an unsigned `int`
     array.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: '`writePackedPrimitiveIndices4x8NV`指令是专门为网格着色器引入的，它允许它们一次写入四个索引。正如我们之前提到的，索引只需要1个字节来存储，因为我们不能有大于64的值。它们被打包到`meshletData`中，这是一个无符号`int`数组。'
 - en: If indices were stored in a different format, we would need to write them out
     individually to the `gl_PrimitiveIndicesNV` variable.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果索引以不同的格式存储，我们就需要将它们逐个写入到`gl_PrimitiveIndicesNV`变量中。
 - en: 'Finally, we write the primitive count in the appropriate variable:'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们在适当的变量中写入原语计数：
 - en: '[PRE32]'
+  id: totrans-147
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: This concludes our mesh shader implementation.
+  id: totrans-148
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就完成了我们的网格着色器实现。
 - en: In this section, we have given an overview of how task and mesh shaders work
     and how they relate to compute shaders. Next, we provided a walk-through of our
     task and mesh shader implementation and highlighted the main differences from
     regular vertex shaders.
+  id: totrans-149
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们概述了任务和网格着色器的工作原理以及它们与计算着色器的关系。接下来，我们提供了我们的任务和网格着色器实现的概述，并突出了与常规顶点着色器的主要区别。
 - en: In the next section, we are going to extend our implementation by adding occlusion
     culling.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们将通过添加遮挡裁剪来扩展我们的实现。
 - en: GPU culling using compute
+  id: totrans-151
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用计算进行GPU裁剪
 - en: In the previous section, we demonstrated how to perform back-face and frustum
     culling on meshlets. In this section, we are going to implement frustum and occlusion
     culling using compute shaders.
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们展示了如何在网格片中执行背面和视锥裁剪。在本节中，我们将使用计算着色器实现视锥和遮挡裁剪。
 - en: Depending on the rendering pipeline, occlusion culling is usually done through
     a depth pre-pass, where we write only the depth buffer. The depth buffer can then
     be used during the G-Buffer pass to avoid shading fragments that we already know
     are occluded.
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据渲染管线，遮挡裁剪通常通过深度预扫描来完成，我们只写入深度缓冲区。深度缓冲区随后可以在G-Buffer扫描期间使用，以避免着色那些我们已经知道被遮挡的片段。
 - en: The downside of this approach is that we have to draw the scene twice and, unless
     there is other work that can overlap with the depth pre-pass, have to wait for
     the depth pre-pass to complete before proceeding to the next step.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种方法的缺点是我们必须绘制场景两次，除非有其他工作可以与深度预遍历重叠，否则必须等待深度预遍历完成才能进行下一步。
 - en: The algorithm described in this section was first presented at [https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf).
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 本节中描述的算法最初在[https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf)上提出。
 - en: 'Here’s how it works:'
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是如何工作的：
 - en: Using the depth buffer from the previous frame, we render the visible objects
     in the scene and perform mesh and meshlet frustum and occlusion culling. This
     could lead to false negatives, for example, meshes or meshlets that are visible
     in this frame but were not visible before. We store the list of these objects
     so that any false positives can be resolved in the next phase.
+  id: totrans-157
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 使用上一帧的深度缓冲区，我们渲染场景中的可见对象，并执行网格和网格集的视锥体和遮挡剔除。这可能导致错误的否定，例如，在本帧中可见但之前不可见的网格或网格集。我们存储这些对象的列表，以便在下一阶段解决任何错误的肯定。
 - en: The previous step generates a list of draw commands directly in a compute shader.
     This list will be used to draw the visible objects using an indirect draw command.
+  id: totrans-158
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 上一步在计算着色器中直接生成了一组绘制命令。此列表将用于使用间接绘制命令绘制可见对象。
 - en: We now have an updated depth buffer, and we update the depth pyramid as well.
+  id: totrans-159
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 现在我们有了更新的深度缓冲区，我们也更新了深度金字塔。
 - en: We can now re-test the objects that have been culled in the first phase and
     generate a new draw list to remove any false positives.
+  id: totrans-160
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们现在可以重新测试第一阶段中剔除的对象，并生成一个新的绘制列表以删除任何错误的肯定。
 - en: We draw the remaining objects and generate our final depth buffer. This will
     then be used as the starting point for the next frame, and the process will repeat.
+  id: totrans-161
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们绘制剩余的对象并生成最终的深度缓冲区。然后，它将被用作下一帧的起点，这个过程将重复。
 - en: Now that we have a better understanding of the steps of the occlusion algorithm,
     let’s see in detail how it is implemented.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们对遮挡算法的步骤有了更好的理解，让我们详细看看它是如何实现的。
 - en: Depth pyramid generation
+  id: totrans-163
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 深度金字塔生成
 - en: When describing the occlusion algorithm, we mentioned the use of the depth buffer.
     However, we are not using the depth buffer directly. What we use instead is called
     a **depth pyramid**. You can think of it as the mipmap of the depth buffer.
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: 当描述遮挡算法时，我们提到了深度缓冲区的使用。然而，我们并没有直接使用深度缓冲区。我们使用的是所谓的**深度金字塔**。你可以将其视为深度缓冲区的MIP映射。
 - en: The main difference from traditional mipmaps is that we can’t use bi-linear
     interpolation to compute the lower level. If we were to use regular interpolation,
     we would compute depth values that don’t exist in the scene.
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 与传统的MIP映射相比，我们不能使用双线性插值来计算低级。如果我们使用常规插值，我们将计算场景中不存在的深度值。
 - en: Note
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意
 - en: As we’ll see later in the book, this applies in general to sampling depth textures.
     You should either use nearest neighbor sampling or specific samplers with min/max
     compare operations. Check out [https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml)
     for more info.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们将在本书后面看到的那样，这通常适用于采样深度纹理。你应该使用最近邻采样或具有min/max比较操作的特殊采样器。有关更多信息，请参阅[https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml)。
 - en: Instead, we read the four fragments we want to reduce and pick the maximum value.
     We pick the maximum because our depth value goes from `0` to `1` and we need to
     make sure we cover the full range of values. If you are using `inverted-z`, the
     depth values go from `1` to `0` and the minimum value has to be used instead.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 相反，我们读取我们想要减少的四个片段，并选择最大值。我们选择最大值是因为我们的深度值从`0`到`1`，我们需要确保覆盖所有值范围。如果你使用`反转z`，深度值从`1`到`0`，因此必须使用最小值。
 - en: 'We perform this step using a compute shader. We start by transitioning the
     depth texture to a read state:'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用计算着色器执行此步骤。我们首先将深度纹理转换为读取状态：
 - en: '[PRE33]'
+  id: totrans-170
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: 'Then, we loop over the levels of the depth pyramid:'
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们遍历深度金字塔的级别：
 - en: '[PRE34]'
+  id: totrans-172
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: 'The barrier in the preceding example is needed to ensure the image we are writing
     to is correctly set up. Next, we compute the group size for this level and invoke
     the compute shader:'
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的示例中，屏障是必需的，以确保我们写入的图像被正确设置。接下来，我们计算这一级的组大小并调用计算着色器：
 - en: '[PRE35]'
+  id: totrans-174
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: As we’ll see in a moment, the thread group size of the compute shader is set
     to 8x8\. We have to take this into account to compute the right group size.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 如我们稍后将看到的，计算着色器的线程组大小设置为8x8。我们必须考虑到这一点来计算正确的组大小。
 - en: 'Finally, we transition the image of the current level so that we can safely
     read from it at the next iteration:'
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们将当前级的图像进行转换，以便在下一迭代中安全地读取它：
 - en: '[PRE36]'
+  id: totrans-177
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: 'We also update the width and height to match the size of the next level. The
     compute shader implementation is relatively simple:'
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还将宽度和高度更新为与下一级的大小匹配。计算着色器的实现相对简单：
 - en: '[PRE37]'
+  id: totrans-179
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: 'We first compute the positions for the texels we want to reduce. Next, we read
     the depth value for these texels:'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先计算我们想要减少的texels的位置。然后，我们读取这些texels的深度值：
 - en: '[PRE38]'
+  id: totrans-181
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: 'Finally, we compute the maximum value and store it in the right position of
     the next level in the pyramid:'
+  id: totrans-182
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们计算最大值并将其存储在金字塔中下一级的正确位置：
 - en: '[PRE39]'
+  id: totrans-183
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: The `max` operation is needed because the depth goes from `0` (close to the
     camera) to `1` (far from the camera). When using `inverse-depth`, it should be
     set to `min`. When down-sampling, we want the farthest of the four samples to
     avoid over-occluding.
+  id: totrans-184
   prefs: []
   type: TYPE_NORMAL
+  zh: '`max`操作是必需的，因为深度从`0`（靠近相机）到`1`（远离相机）。当使用`inverse-depth`时，应将其设置为`min`。在降采样时，我们希望取四个样本中最远的，以避免过度遮挡。'
 - en: Now that we have computed the depth pyramid, let’s see how it’s going to be
     used for occlusion culling.
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经计算了深度金字塔，让我们看看它将如何用于遮挡剔除。
 - en: Occlusion culling
+  id: totrans-186
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 遮挡剔除
 - en: 'The implementation of this step is done entirely in a compute shader. We are
     going to highlight the main sections of the code. We start by loading the current
     mesh:'
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 这一步的实现完全在计算着色器中完成。我们将突出显示代码的主要部分。我们首先加载当前网格：
 - en: '[PRE40]'
+  id: totrans-188
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: 'Next, we compute the bounding sphere position and radius in view space:'
+  id: totrans-189
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们计算视空间中边界球的位置和半径：
 - en: '[PRE41]'
+  id: totrans-190
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: Note that this is the bounding sphere for the full mesh, not the meshlet. We
     are going to process the meshlets in the same way.
+  id: totrans-191
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，这是整个网格的边界球，而不是meshlet。我们将以相同的方式处理meshlets。
 - en: The next step is to perform frustum culling on the bounding sphere. This is
     the same code we presented in the *Implementing task shaders* section, and we
     are not going to replicate it here.
+  id: totrans-192
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是对边界球执行视锥剔除。这与我们在*实现任务着色器*部分中展示的代码相同，我们不会在这里重复它。
 - en: 'If the mesh passes the frustum culling, we check for occlusion culling next.
     First, we compute the bounding square of the perspective projected sphere. This
     step is necessary as the projected sphere shape could be an ellipsoid. Our implementation
     is based on this paper: [https://jcgt.org/published/0002/02/05/](https://jcgt.org/published/0002/02/05/)
     and the Niagara project ([https://github.com/zeux/niagara/](https://github.com/zeux/niagara/)).'
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果网格通过视锥剔除，我们将检查遮挡剔除。首先，我们计算透视投影球的边界矩形。这一步是必要的，因为投影球的形状可能是椭球体。我们的实现基于这篇论文：[https://jcgt.org/published/0002/02/05/](https://jcgt.org/published/0002/02/05/)
+    和 Niagara 项目 ([https://github.com/zeux/niagara/](https://github.com/zeux/niagara/))。
 - en: We are going to highlight only the final implementation; we suggest reading
     the full paper for more details about the theory and derivation.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将仅突出显示最终的实现；我们建议阅读完整论文以获取更多关于理论和推导的细节。
 - en: 'We start by checking whether the sphere is fully behind the near plane. If
     that’s the case, no further processing is required:'
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先检查球体是否完全位于近平面后面。如果是这样，则不需要进一步处理：
 - en: '[PRE42]'
+  id: totrans-196
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: Why `–C.z`? Because in our implementation, we look at a negative direction vector,
     thus the visible pixel’s `z` is always negative.
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 为什么是`–C.z`？因为在我们的实现中，我们查看一个负方向向量，因此可见像素的`z`始终是负的。
 - en: 'Next, we compute the minimum and maximum points on the *x* axis. We do so by
     considering only the `xz` plane, finding the projection of the sphere onto this
     plane, and computing the minimum and maximum `x` coordinates of this projection:'
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们计算*x*轴上的最小和最大点。我们这样做是通过仅考虑`xz`平面，找到球体在此平面上的投影，并计算该投影的最小和最大`x`坐标：
 - en: '[PRE43]'
+  id: totrans-199
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: 'We repeat the same procedure for the `y` coordinate (omitted here). The computed
     points are in world space, but we need their value in perspective-projected space.
     This is accomplished with the following code:'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们对`y`坐标重复相同的程序（此处省略）。计算出的点在世界空间中，但我们需要它们在透视投影空间中的值。这是通过以下代码实现的：
 - en: '[PRE44]'
+  id: totrans-201
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: '`P00` and `P11` are the first two diagonal values of the view-projection matrix.
     The final step is to transform these values from screen space to UV space. Operating
     in UV space will be useful for the next part of the algorithm.'
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: '`P00`和`P11`是视图-投影矩阵的前两个对角值。最后一步是将这些值从屏幕空间转换到UV空间。在UV空间中操作将有助于算法的下一部分。'
 - en: 'The transformation is performed by the following code:'
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: 变换是通过以下代码执行的：
 - en: '[PRE45]'
+  id: totrans-204
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: Coordinates in screen space are in the `[-1, 1]` range, while UV coordinates
     are in the `[0, 1]` range. This transformation performs the mapping from one range
     to the other. We use a negative offset for `y` as screen space has a bottom-left
     origin, while UV space has a top-left origin.
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 屏幕空间中的坐标在`[-1, 1]`范围内，而UV坐标在`[0, 1]`范围内。这种变换执行一个范围到另一个范围的映射。我们使用负偏移量`y`，因为屏幕空间有一个左下角的起点，而UV空间有一个左上角的起点。
 - en: 'Now that we have the 2D bounding box for the mesh sphere, we can check whether
     it’s occluded. First, we determine which level of the depth pyramid we should
     use:'
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有了网格球体的二维边界框，我们可以检查它是否被遮挡。首先，我们确定应该使用深度金字塔的哪个级别：
 - en: '[PRE46]'
+  id: totrans-207
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: We simply scale the size of the bounding box in UV coordinates, computed in
     the previous step, by the size of the top level of the depth pyramid texture.
     We then take the logarithm of the largest between the width and height to determine
     which level of the pyramid we should use for the depth value lookup.
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们简单地通过深度金字塔纹理的顶层大小来缩放之前步骤中计算的边界框大小。然后，我们取宽度和高度中最大的对数的对数，以确定我们应该使用金字塔的哪个级别来进行深度值查找。
 - en: With this step, we reduce the bounding box to an individual pixel lookup. Remember,
     when computing the levels of the pyramid, the reduction step stores the farthest
     depth value. Thanks to this, we can safely look up an individual fragment to determine
     whether the bounding box is occluded or not.
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过这一步，我们将边界框减少到单个像素查找。记住，在计算金字塔的级别时，减少步骤存储最远的深度值。正因为如此，我们可以安全地查找单个片段以确定边界框是否被遮挡。
 - en: 'This is accomplished with the following code:'
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 这是通过以下代码实现的：
 - en: '[PRE47]'
+  id: totrans-211
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: First, we look up the depth value in the pyramid for the sphere bounding box.
     Next, we compute the closest depth of the bounding sphere.
+  id: totrans-212
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们在金字塔中查找球体边界框的深度值。接下来，我们计算边界球体的最近深度。
 - en: 'We also compute the closest depth for the bounding sphere:'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们还计算边界球体的最近深度：
 - en: '[PRE48]'
+  id: totrans-214
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: 'Finally, we determine whether the sphere is occluded by checking its depth
     against the depth we read from the pyramid:'
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们通过将球体的深度与从金字塔中读取的深度进行比较来确定球体是否被遮挡：
 - en: '[PRE49]'
+  id: totrans-216
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: 'If the mesh passes both the frustum and occlusion culling, we add the command
     to draw it in the command list:'
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果网格通过了视锥体和遮挡剔除，我们就将绘制命令添加到命令列表中：
 - en: '[PRE50]'
+  id: totrans-218
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: We will then use this list of commands to draw the meshlets for the visible
     meshes (as shown in the *Understanding task and mesh shaders* section) and update
     the depth pyramid.
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们将使用这个命令列表来绘制可见网格的meshlets（如*理解任务和网格着色器*部分所示）并更新深度金字塔。
 - en: The last step will be to rerun the culling for the meshes that were discarded
     in this first pass. Using the updated depth pyramid, we can generate a new command
     list to draw any meshes that had been incorrectly culled.
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后一步将是重新运行第一次遍历中丢弃的网格的剔除。使用更新的深度金字塔，我们可以生成一个新的命令列表来绘制任何被错误剔除的网格。
 - en: This concludes our implementation of occlusion culling. In this section, we
     have explained an algorithm for efficient occlusion culling on the GPU. We started
     by detailing the steps performed by this technique.
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就完成了我们的遮挡剔除实现。在本节中，我们解释了一个在GPU上高效执行遮挡剔除的算法。我们首先详细说明了该技术执行的步骤。
 - en: We then highlighted the main sections of the code that perform the creation
     of the depth pyramid, which is used for occlusion culling based on the bounding
     sphere of each mesh.
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们随后突出了代码中执行深度金字塔创建的主要部分，该金字塔用于基于每个网格的边界球体进行遮挡剔除。
 - en: Performing culling on the GPU is a powerful technique that has helped developers
     overcome some of the limitations of the traditional geometry pipeline and allows
     us to render more complex and detailed scenes.
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: 在GPU上执行剔除是一种强大的技术，它帮助开发者克服了传统几何管道的一些限制，并使我们能够渲染更复杂和详细的场景。
 - en: Summary
+  id: totrans-224
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we have introduced the concept of meshlets, a construct that
     helps us break down large meshes into more manageable chunks and that can be used
     to perform occlusion computations on the GPU. We have demonstrated how to use
     the library of our choice (MeshOptimizer) to generate meshlets, and we also illustrated
     the extra data structures (cones and bounding spheres) that are useful for occlusion
     operations.
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们介绍了网格块的概念，这是一种帮助我们将大型网格分解成更易管理的块，并可用于在GPU上执行遮挡计算的构造。我们展示了如何使用我们选择的库（MeshOptimizer）生成网格块，我们还展示了对于遮挡操作有用的额外数据结构（锥体和边界球体）。
 - en: We introduced mesh and task shaders. Conceptually similar to compute shaders,
     they allow us to quickly process meshlets on the GPU. We demonstrated how to use
     task shaders to perform back-face and frustum culling, and how mesh shaders replace
     vertex shaders by processing and generating multiple primitives in parallel.
+  id: totrans-226
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们引入了网格和任务着色器。从概念上讲，它们与计算着色器相似，允许我们在GPU上快速处理网格块。我们展示了如何使用任务着色器执行背面和视锥剔除，以及如何通过并行处理和生成多个原语来替换顶点着色器。
 - en: Finally, we went through the implementation of occlusion culling. We first listed
     the steps that compose this technique. Next, we demonstrated how to compute a
     depth pyramid from our existing depth buffer. Lastly, we analyzed the occlusion
     culling implementation and highlighted the most relevant part of the compute shader.
     This step also generates a list of commands that can be used with an indirect
     draw call.
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们探讨了遮挡剔除的实现。我们首先列出了组成这项技术的步骤。接下来，我们展示了如何从现有的深度缓冲区计算深度金字塔。最后，我们分析了遮挡剔除的实现，并突出了计算着色器中最相关的部分。这一步还生成了一组可用于间接绘制调用的命令。
 - en: So far, our scene only uses one light. In the next chapter, we are going to
     implement clustered-deferred lighting, which will allow us to render hundreds
     of lights in our scene.
+  id: totrans-228
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们的场景只使用了一盏灯。在下一章中，我们将实现集群延迟光照，这将使我们能够在场景中渲染数百盏灯。
 - en: Further reading
+  id: totrans-229
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 进一步阅读
 - en: 'As we mentioned in a previous section, task and mesh shaders are only available
     on Nvidia GPUs. This blog post has more details about their inner workings: [https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/).'
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们在前面的章节中提到的，任务和网格着色器仅在Nvidia GPU上可用。这篇博客文章有更多关于它们内部工作原理的细节：[https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/)。
 - en: 'Our implementation has been heavily inspired by the algorithms and techniques
     described in these resources:'
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的实现受到了这些资源中描述的算法和技术的大力启发：
 - en: '[https://www.gdcvault.com/play/1023463/contactUs](https://www.gdcvault.com/play/1023463/contactUs)'
+  id: totrans-232
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://www.gdcvault.com/play/1023463/contactUs](https://www.gdcvault.com/play/1023463/contactUs)'
 - en: '[http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf)'
+  id: totrans-233
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf)'
 - en: 'Our go-to reference implementation for a task and mesh shader has been this
     project: [https://github.com/zeux/niagara](https://github.com/zeux/niagara), which
     is also accompanied by a series of videos showing its development: [https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd](https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd).'
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们用于任务和网格着色器的首选参考实现是这个项目：[https://github.com/zeux/niagara](https://github.com/zeux/niagara)，该项目还附带了一系列展示其开发的视频：[https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd](https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd)。
 - en: 'These libraries can be used to generate meshlets:'
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些库可以用来生成网格块：
 - en: '[https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer)
     (the one we use)'
+  id: totrans-236
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer)（我们使用的那个）'
 - en: '[https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete)'
+  id: totrans-237
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete)'
 - en: 'A more recent development in occlusion culling is the concept of a visibility
     buffer. The technique is described in detail in these resources:'
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 在遮挡剔除领域的一个较新的发展是可见性缓冲区概念。该技术在这些资源中进行了详细描述：
 - en: '[http://www.conffx.com/Visibility_Buffer_GDCE.pdf](http://www.conffx.com/Visibility_Buffer_GDCE.pdf)'
+  id: totrans-239
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[http://www.conffx.com/Visibility_Buffer_GDCE.pdf](http://www.conffx.com/Visibility_Buffer_GDCE.pdf)'
 - en: '[http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/](http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/)'
+  id: totrans-240
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/](http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/)'
 - en: '[https://www.youtube.com/watch?v=eviSykqSUUw](https://www.youtube.com/watch?v=eviSykqSUUw)'
+  id: totrans-241
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '[https://www.youtube.com/watch?v=eviSykqSUUw](https://www.youtube.com/watch?v=eviSykqSUUw)'
