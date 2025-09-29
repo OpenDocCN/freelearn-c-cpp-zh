@@ -1,8 +1,10 @@
 - en: '8'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Writing a Naïve Leak Detector
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -16,6 +18,7 @@
     some pointer, `pV` and later on calls `delete p` will quickly get in trouble if
     one overloads the `nothrow` version but not the “regular” one, as both might then
     end up not being compatible with one another.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
 - en: 'What we have not really discussed is how our code could benefit from taking
@@ -26,14 +29,17 @@
     hope to cover examples of all possible options so we will pick one, hoping that
     this example is sufficiently inspirational to let you explore other avenues on
     your own.'
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
 - en: 'The example we will explore in this chapter is a simple yet functional memory
     leak detector. In more detail, we will do the following:'
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
 - en: We will first detail the plan, giving an overview of how our leak detector will
     work and what tricks we will use to meet our objectives.
+  id: totrans-5
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
@@ -41,21 +47,25 @@
     seem to work, at least on the surface. We will walk through a call to `operator
     new()` and the corresponding `operator delete()` to understand what happens in
     memory throughout this process.
+  id: totrans-6
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: At this point, we will use the knowledge acquired in previous chapters to identify
     the flaws in our first solution as well as ways in which we can fix them.
+  id: totrans-7
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: Finally, we will revisit our initial implementation and end up with something
     that is simple yet usable in real code.
+  id: totrans-8
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: 'Since this will be a very concrete chapter, you can expect to develop (or refine)
     some useful skills as we go:'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
 - en: The first one is to plan before coding. We will be writing very low-level code
@@ -64,6 +74,7 @@
     raw memory, the compiler-provided safety net that is the type system tends to
     be a bit thinner and it’s easier to make mistakes (costly ones at that) if we’re
     not careful.
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -74,6 +85,7 @@
     will be global to our program. In addition, we know that user code might be multithreaded
     so our accounting of the allocated memory will require a form of synchronization
     to avoid data races.
+  id: totrans-11
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -81,6 +93,7 @@
     the type system. As we will handle raw memory for the a priori unknown needs of
     client code, we will learn to make choices that work for all “natural” (in the
     sense of “non-overaligned”) memory allocation use cases.
+  id: totrans-12
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -90,21 +103,26 @@
     chapter to the metaphors of your favorite debugging utility. All reasonable debuggers
     will let you examine the contents of a specific memory address, something you
     will assuredly want to do on occasion.
+  id: totrans-13
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Let’s dive in!
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
 - en: Technical requirements
+  id: totrans-15
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: 'You can find the code files for this chapter in the book’s GitHub repository
     here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8).'
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
 - en: The plan
+  id: totrans-17
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -113,15 +131,19 @@
     to do is to write a small test program, showing at once how we expect our tool
     to be used and highlighting the key aspects of our tool from the perspective of
     user code:'
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE0]'
+  id: totrans-19
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: As you can see, this “deliberately leaky” program performs two allocations but
     only a single deallocation, “forgetting” (conveniently for our purposes) to deallocate
     an array of ten `int` objects. Supposing `sizeof(int)==4`, our leak detector should
     allow the program to report a leak of 40 bytes.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
 - en: This program does not tell us how we will (portably) obtain the amount of dynamically
@@ -133,6 +155,7 @@
     leaks even in the presence of RAII objects (see [*Chapter 4*](B21071_04.xhtml#_idTextAnchor062))
     as they too could have bugs, so we want to make sure they are destroyed before
     we try to issue a diagnostic.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
 - en: 'As mentioned in this chapter’s introduction, we will implement our leak detector
@@ -141,6 +164,7 @@
     at the very least, they will need shared knowledge of the amount of memory allocated
     at a given moment since the `new` and `new[]` operators will increment that amount
     and the `delete` and `delete[]` operators will decrement it.'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
 - en: 'Note that for our leak detector, the array and non-array forms of these operators
@@ -149,15 +173,18 @@
     to track what these two forms do separately in a program. For simplicity, in this
     chapter, we will often simply mention `new` to describe both `new` and `new[]`
     and will use the same approach for `delete`.'
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
 - en: Since these are free functions, not member functions of some object, we will
     need to resort to a *global variable* for this state. I know global variables
     are often frowned upon, mostly for good reasons, but they exist for cases such
     as this.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
 - en: Global variables, oh my!
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
 - en: 'Reasons to dislike global variables abound: they make local reasoning difficult
@@ -168,19 +195,23 @@
     of tools because it is a language that is used to solve a wide variety of problems,
     so there’s no shame in using these tools when they are the right tools for the
     task at hand. Just ensure you make informed choices that you can justify!'
+  id: totrans-26
   prefs: []
   type: TYPE_NORMAL
 - en: To reduce (ever so slightly) the feeling of apparent revulsion that global variables
     provide to so many of us, we will encapsulate that state in an object, but of
     course, this object will also be global.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
 - en: We will apply the `Accountant` since its responsibilities will be to help the
     memory allocation operators keep track of the number of bytes allocated and deallocated
     during program execution.
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
 - en: Singletons, oh my!
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
 - en: 'As far as design patterns go, the singleton is probably one of the least liked
@@ -191,6 +222,7 @@
     As you might have guessed by now, since the shared mutable state is exactly what
     we need to keep track of the amount of memory allocated at a given time, well…
     this is what we will use!'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
 - en: 'Now, for the actual implementation, we will need to develop a strategy to track
@@ -200,11 +232,14 @@
     Now, for the purpose of this activity, we will use the traditional (up to and
     including C++11) form of these operators. As you might remember from [*Chapter
     7*](B21071_07.xhtml#_idTextAnchor116), their signatures are as follows:'
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE1]'
+  id: totrans-32
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Since you are reading this book, you are assuredly a most astute reader, so
     you might have already noticed a problem here: our allocation functions know from
     their argument the number of bytes to allocate, but our deallocation functions
@@ -212,6 +247,7 @@
     deallocate begins. This means that we need a way to make the connection between
     the address returned by `operator new()` and the size of the associated memory
     block.'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
 - en: 'That seems like an easy enough problem to solve: just allocate the moral equivalent
@@ -220,43 +256,54 @@
     but such containers need to allocate memory, and that would mean allocating memory
     in order to implement the way in which we allocate memory. This could get problematic,
     to say the least, so we need another solution.'
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
 - en: 'We will do what any sane programmer would do under similar circumstances: we
     will lie. Yes, we will! Why do you think we took the time to look at tricky and
     dangerous code in those first chapters?'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
 - en: 'How will lying help us solve the problem, you say? Well, remember that writing
     the following code leads to calling `operator new()` with `sizeof(X)` as an argument:'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE2]'
+  id: totrans-37
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'Let us name this argument `n`. This means that if the allocation and the ensuing
     construction both succeed, from the perspective of client code, the situation
     will be as follows:'
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.1 – Allocated block of memory from the perspective of client code](img/B21071_08_1.jpg)'
+  id: totrans-39
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.1 – Allocated block of memory from the perspective of client code
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
 - en: 'In order for `operator delete()` to be able to find the value of `n` based
     on `p`, one strategy (and the one we will adopt for this example) will be to hide
     the value of `n` just before `p`. The actual layout in memory from our own code’s
     perspective would then be as follows:'
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.2 – Allocated block of memory from the perspective of the allocation
     operators.](img/B21071_08_2.jpg)'
+  id: totrans-42
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.2 – Allocated block of memory from the perspective of the allocation
     operators.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
 - en: 'Here, `p` would be the address as seen from the client code, but `p''` would
@@ -265,6 +312,7 @@
     an object can be constructed, but it will not be the start of the memory block
     we have actually allocated. As long as the space between `p` and `p''` is known
     to both `operator new()` and `operator delete()`, this can be made to work.'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
 - en: 'For obvious reasons, overloading `operator new()` to do this trickery means
@@ -272,12 +320,15 @@
     some pointer `p`, go backward in memory where `p''` was, find the value of `n`
     that was hidden there, and inform the `Accountant` object of the fact that `n`
     bytes were released.'
+  id: totrans-45
   prefs: []
   type: TYPE_NORMAL
 - en: Now, let’s see how we will do this.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
 - en: A first implementation (that almost works)
+  id: totrans-47
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -287,15 +338,18 @@
     implementation once the basic infrastructure is in place. *Do not use this first
     version in production code* as it will be (slightly yet dangerously) incorrect.
     We will provide a correct version later in this chapter, of course.
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
 - en: As a suggestion, try to see if you can identify the “rough edges” of our implementation
     by yourself before we cover them later in this chapter. There will be clues left
     here and there for you, and if you read the chapters that preceded this one, you
     might already have an idea of what you should be looking for.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
 - en: The Accountant singleton class
+  id: totrans-50
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -306,19 +360,23 @@
     one instance in a program. This idea can be reified in various languages (at least
     those supporting some variant of the object-oriented paradigm) in ways that respect
     the particularities of each language.'
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
 - en: 'One key particularity of C++ is the presence of actual objects, not just references
     to objects, in user code. This means that a C++ singleton will usually have the
     following characteristics:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
 - en: A `private` default constructor, since if that constructor was `public`, it
     could be called more than once which would make the class a non-singleton.
+  id: totrans-53
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Deleted copy operations, as allowing copies of our object would make it a non-singleton.
+  id: totrans-54
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -326,11 +384,13 @@
     mechanism has to be such that it cannot be abused to create more than one object.
     Since our default constructor will be `private`, this mechanism will either be
     a `static` member function (this will be our choice) or a `friend` function.
+  id: totrans-55
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Finally, the state used for the object’s representation and the services offered
     by the singleton, if any.
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -338,22 +398,29 @@
     the `new` and `new[]` operators inform the `Accountant` object that memory has
     been taken, one to inform it that memory has been given back, and one to let client
     code know how much memory is used at a given time.'
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
 - en: 'An incomplete view of the `Accountant` class given what we have discussed so
     far would be as follows:'
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE3]'
+  id: totrans-59
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'With this, we can already complete the skeleton of our test program as presented
     earlier in this chapter:'
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE4]'
+  id: totrans-61
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Now, we need to examine the implementation of the `Accountant` class. The first
     thing we need to decide is how and where the actual object will be created. It
     happens that there are surprisingly many ways to do this, but in our case (where
@@ -362,9 +429,11 @@
     but always respected **Scott Meyers**, who suggested that technique as part of
     *item 47* in his well-known book, *Effective C++: Specific Ways to Improve Your
     Programs and Designs (3rd Edition),* *Addison-Wesley Professional*.'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
 - en: The Meyers Singleton technique
+  id: totrans-63
   prefs: []
   type: TYPE_NORMAL
 - en: The Meyers Singleton technique aims to avoid something colloquially called the
@@ -373,6 +442,7 @@
     source code in which order the global objects will be constructed (the problem
     also exists for the order of destruction, although the Meyers technique is not
     helpful for this).
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
 - en: 'The trick is to declare the singleton object as a `static` local variable in
@@ -382,6 +452,7 @@
     program. There is a slight but measurable cost to doing so as there is a form
     of low-level implicit synchronization surrounding the object’s construction to
     avoid the object being created more than once even in a multithreaded program.'
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
 - en: This technique ensures all such singletons are created in the correct order
@@ -389,6 +460,7 @@
     B, this will lead to singleton B being constructed “just in time”) even if they
     are technically “global” variables, as long as there is no cycle in the calls
     that create them of course.
+  id: totrans-66
   prefs: []
   type: TYPE_NORMAL
 - en: In terms of state, since `take()` and `give_back()` both accept an argument
@@ -398,6 +470,7 @@
     representation would make it difficult to detect a case where there have been
     more bytes *deallocated* than allocated, an unpleasant situation we would surely
     like to handle. For that reason, we will use a (large) signed integral instead.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
 - en: 'Fine, you might think: we can use a `long long` representation then! However,
@@ -407,18 +480,23 @@
     to use an atomic type, in our case, `std::atomic<long long>`. Note that atomic
     objects are uncopiable so our singleton would implicitly be uncopiable, but there’s
     no harm in stating that fact explicitly as we did when deleting the copy operations.'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
 - en: 'A complete implementation of the `Accountant` class would be as follows:'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE5]'
+  id: totrans-70
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'The services are probably trivial to understand for the most part. Since `cur`
     is an atomic object, operations such as `+=` or `-=` modify `cur` in a synchronized
     manner, avoiding data races. Two subtle aspects of `how_much()` deserve a short
     discussion:'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
 - en: The first is that we are returning `cur.load()`, not `cur`, since we care about
@@ -426,6 +504,7 @@
     is a synchronization mechanism, not an integral value, and is uncopiable as previously
     mentioned). It’s like taking a picture of that value at a specific point in time,
     really.
+  id: totrans-72
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -433,15 +512,18 @@
     gets the value returned by that function, the actual value might have changed,
     so this function is inherently “racy” if used in a multithreaded situation. It’s
     not a problem for our test code, of course, but it’s something to be aware of.
+  id: totrans-73
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Now that we have put in place a scaffolding for keeping track of the number
     of bytes allocated, we can start to write the actual allocation and deallocation
     functions.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
 - en: Implementing the new and new[] operators
+  id: totrans-75
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -451,6 +533,7 @@
     we will end up returning to our client. Minimally, we will need to allocate `n
     + sizeof n` bytes to achieve this. In this example, we will use `std::malloc()`
     and `std::free()` to perform the low-level allocation operations.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
 - en: 'We will signal failure to allocate by throwing `std::bad_alloc` as is customary
@@ -460,22 +543,28 @@
     that does not concern client code, and that might even be confusing when trying
     to diagnose problems: a program that allocates a single byte and is informed that
     it leaked much more than this would be somewhat awkward.'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
 - en: 'A complete but naïve (and slightly incorrect, as announced) implementation
     would be as follows:'
+  id: totrans-78
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE6]'
+  id: totrans-79
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: Remember that even though `operator new()` and `operator new[]()` are identical
     in this example, there is no obligation to make them the same in all situations.
     Also, note that some of the lines in this excerpt have a comment stating “to revisit”
     as we will want to take a closer look at these later in this chapter.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
 - en: Implementing the delete and delete[] operators
+  id: totrans-81
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -485,47 +574,59 @@
     it’s “just” the place where an object lived for a while. For that reason, it’s
     important that the `delete` and `delete[]` operators do the required address adjustment
     before performing the actual deallocation.'
+  id: totrans-82
   prefs: []
   type: TYPE_NORMAL
 - en: 'The rules for a correct implementation of `operator delete` are as follows:'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
 - en: Applying `operator delete()` or `operator delete[]()` on a null pointer is a
     no-op
+  id: totrans-84
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Deallocation functions should not throw
+  id: totrans-85
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: The deallocation code should be coherent with the associated allocation function
+  id: totrans-86
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Not all null pointers are the same
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
 - en: While it’s true that given some `T*` object named `p`, writing `delete p` or
     `delete [] p` will be a no-op if `p==nullptr`. However, writing `delete nullptr`
     will fail to compile as `nullptr` is an object of type `std::nullptr_t`, not a
     pointer.
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
 - en: 'Given the implementation of our allocation operators in the previous section,
     this means a mostly adequate deallocation operator could be as follows:'
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE7]'
+  id: totrans-90
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: That completes the lie, or so to say, and it completes the leak detector, at
     least for this first (and imperfect) implementation. If you run the test program
     with our implementation on a compiler where `sizeof(int)==4`, you can expect it
     to display that its execution leaked 40 bytes as expected.
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
 - en: Visualizing it all
+  id: totrans-92
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -533,6 +634,7 @@
     functions of your program, manipulating raw memory blocks, hiding information,
     and playing tricks with addresses), it can be hard to visualize what one is doing,
     and what the consequences are.
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
 - en: If your favorite debugger allows you to do so, you might want to try to go through
@@ -540,48 +642,62 @@
     “debug” (unoptimized) mode to fully benefit from the experience, as optimized
     code is often sufficiently transformed by the compiler to make the association
     between source code and generated code difficult to make.
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
 - en: 'Let’s walk through a call to `operator new()` step by step. The first thing
     we do is ask `Accountant` for the amount of dynamically allocated memory at the
     beginning of the `main()` function:'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE8]'
+  id: totrans-96
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: One can expect `pre==0` at this point but there are situations, such as a global
     object calling `new` in its constructor, that could lead to `pre` having other
     values. This is fine, as what we are monitoring with this approach is whether
     there is a leak in between the braces marked with `BEGIN` and `END`, and this
     should hold regardless of whether the amount of bytes allocated outside of those
     braces is zero or not.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
 - en: 'The next step is calling `operator new()` and requesting a memory block big
     enough to store an `int` object:'
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE9]'
+  id: totrans-99
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'This leads us to our implementation of `operator new()` where `n==sizeof(int)`.
     Supposing `sizeof(int)==4` and `sizeof(std::size_t)==8` for the sake of this example,
     our call to `std::malloc()` will request a block of at least 12 bytes:'
+  id: totrans-100
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE10]'
+  id: totrans-101
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'If you look at the memory pointed to by `p` with your debugger once the call
     to `std::malloc()` completes, you might see something like the following (all
     numbers are expressed in hexadecimal form):'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.3 – Possible initial state for the allocated block](img/B21071_08_3.jpg)'
+  id: totrans-103
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.3 – Possible initial state for the allocated block
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
 - en: Note that there is no guarantee that you will see these specific values as C++
@@ -590,6 +706,7 @@
     are however probable when using a “debug build” as libraries compiled for debugging
     will often place recognizable bit patterns in uninitialized memory to help detect
     programming errors.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
 - en: You might also notice the trailing four bytes (each containing `0xfd`), which
@@ -597,45 +714,58 @@
     I used allocated more than what I requested and stored a marker just after the
     block my code requested, probably to help detect buffer overruns. Our library
     has the same implementation freedom as we do, after all!
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
 - en: 'The first lie we did was the overallocation of memory with respect to the actual
     request we got. We now commit a second lie about the very nature of the memory
     we are pointing to:'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE11]'
+  id: totrans-108
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'Converting a pointer from or to `void*` can be done efficiently with `static_cast`,
     as explained in [*Chapter 3*](B21071_03.xhtml#_idTextAnchor047). We now have two
     perspectives on the same memory block with `p` claiming that the block holds raw
     memory and `q` claiming (erroneously) that it holds at least one `std::size_t`:'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.4 – Two perspectives on the same memory block](img/B21071_08_4.jpg)'
+  id: totrans-110
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.4 – Two perspectives on the same memory block
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
 - en: 'Through `q`, we hide the value of `n` at the beginning of the allocated memory
     block. Remember that this is not what we will be returning to our caller, so this
     is done without the client code’s knowledge:'
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE12]'
+  id: totrans-113
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'One possible view of the memory pointed to by both `p` and `q` would now be
     as follows:'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.5 – Possible state of the memory block after hiding the value of
     n](img/B21071_08_5.jpg)'
+  id: totrans-115
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.5 – Possible state of the memory block after hiding the value of n
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
 - en: 'Again, your view might differ from this one: we wrote an eight-byte integral
@@ -643,40 +773,53 @@
     but the order of bytes in an integer depends on the underlying hardware architecture:
     some architectures are `4` closer to the right and of that eight-byte write instead
     of being on the left as it is in this example.'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
 - en: 'After informing `Accountant` that we allocated 4 bytes (not 12, remember),
     we reach the point where we return to our caller the beginning of the 4-byte block
     that was actually requested:'
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE13]'
+  id: totrans-119
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: 'Looking at our memory block, the situation is now as follows:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.6 – State of the memory block at the point of return](img/B21071_08_6.jpg)'
+  id: totrans-121
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.6 – State of the memory block at the point of return
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
 - en: 'Returning to the caller, the constructor of the `int` object is applied to
     the block returned by `operator new()`:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE14]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'After having applied the constructor on the memory pointed to by `p` in `main()`,
     our memory block looks like the following:'
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.7 – Possible state of the memory block after constructing *p](img/B21071_08_7.jpg)'
+  id: totrans-126
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.7 – Possible state of the memory block after constructing *p
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
 - en: '*Voilà*! The beauty of all this is that client code (the `main()` function)
@@ -685,21 +828,27 @@
     at its source code, of course). Program execution continues normally and `*p`
     can be used like any other `int` until we reach the point where we decide to deallocate
     it:'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE15]'
+  id: totrans-129
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'When entering `operator delete()`, you might notice that the memory pointed
     to by the `p` argument begins with value `3` (the value of the `int`), not value
     `4`. This makes sense as `p` points to the memory block that was given to the
     client code, not to the beginning of the block we actually allocated:'
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)](img/B21071_08_8.jpg)'
+  id: totrans-131
   prefs: []
   type: TYPE_IMG
 - en: Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
 - en: Before continuing, it’s important to understand here that the reason why you
@@ -707,19 +856,24 @@
     was essentially a no-op. Normally, at the point where `operator delete()` begins
     its execution, the destructor for the pointed-to object has already run and the
     memory block could contain pretty much anything.
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
 - en: 'Within `operator delete()`, our first task is to retrieve the location where
     we hid the value of `n` during the corresponding call to `operator new()`:'
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE16]'
+  id: totrans-135
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: At this point, `q` is the location where the value of `n` was stored as well
     at the beginning of the memory block that was allocated. We inform `Accountant`
     of the fact that `n` bytes were deallocated, and call `std::free()` to perform
     the actual deallocation.
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
 - en: If you are observing the memory pointed to by `q` when calling `std::free()`,
@@ -730,6 +884,7 @@
     tasks it requires just as it can overwrite memory blocks that have been freed,
     particularly in builds meant for debugging; or, it can just leave the memory as
     it was, which is more probable with optimized builds.
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
 - en: That was fun, wasn’t it? It seems to work indeed, at least on some machines.
@@ -738,24 +893,30 @@
     on a compiler where `std::size_t` is four bytes wide and try to call `new double`,
     we might get into *very* serious trouble. It is now time to take a closer look
     at our implementation to grasp why this is so and fix the problems we caused.
+  id: totrans-138
   prefs: []
   type: TYPE_NORMAL
 - en: Identifying (and fixing) the problems
+  id: totrans-139
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
 - en: Our initial implementation has in fact one real problem, as well as something
     that works but could be cleaner and deserves discussion.
+  id: totrans-140
   prefs: []
   type: TYPE_NORMAL
 - en: 'The real problem is that we express our lies in dangerous ways and that we
     are not giving proper consideration to alignment requirements. Indeed, look at
     our initial implementation of `operator new()`:'
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE17]'
+  id: totrans-142
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'We know for a fact that the memory returned by `std::malloc()` has to be aligned
     appropriately for the strictest (meaning *worst*) natural alignment of our machine:
     indeed, since that function does not know what object will be constructed once
@@ -763,12 +924,14 @@
     will be properly aligned in all “natural” cases. C++ compilers offer `std::max_align_t`
     as an alias for the type with the strictest natural alignment in a machine, which
     is often, but not necessarily, type `double` in practice.'
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
 - en: 'Now, we allocate a bit more than was requested, `sizeof(std::size_t)` more
     bytes to be precise. That’s fine up to a point: we can assuredly store `std::size_t`
     at the beginning of the block returned by `std::malloc()` since that block is
     well aligned even in the worst case.'
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
 - en: Then, we “jump over” `std::size_t` and return an address that is `sizeof(std::size_t)`
@@ -776,11 +939,13 @@
     aligned address even in the worst case, but that is only the case if `std::size_t`
     and `std::max_align_t` are of the same size, something that is *not* guaranteed
     (in practice, their sizes are often different).
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
 - en: 'What happens if these types are of different sizes and, consequently, the address
     returned by `operator new()` does not match the alignment requirements of `std::max_align_t`?
     Well, it depends:'
+  id: totrans-146
   prefs: []
   type: TYPE_NORMAL
 - en: It can work if we get “lucky” and the address returned is aligned correctly
@@ -790,6 +955,7 @@
     it’s probable that calling `new double` will only lead to pain. This sort of “luck”
     can be a curse, hiding a latent, damaging bug for a while and making for unpleasant
     surprises later.
+  id: totrans-147
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -803,12 +969,14 @@
     as one thread could read a partially formed object (this is called a **torn read**)
     or write to a partially formed object (a **torn write**). You really do not want
     to debug code where this happens.
+  id: totrans-148
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Your code can simply crash, as will be the case on many embedded platforms (including
     quite a few game consoles). It’s arguably the most reasonable outcome in such
     a situation.
+  id: totrans-149
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -818,46 +986,59 @@
     the size of the “hiding spot” for `n` is such that jumping over that additional
     memory block still results in an address that is properly aligned for a `std::max_align_t`
     object:'
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-151
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: As you can see, this implementation allocates space for `std::max_align_t` in
     addition to the requested `n` bytes, then “jumps over” that additional storage
     to yield an address that is still properly aligned for the worst case. This might
     mean wasting more space than in the initial (incorrect) implementation if `sizeof(std::size_t)`
     happens to be less than `sizeof(std::max_align_t)`, but at least we know that
     client code will be able to construct its object there.
+  id: totrans-152
   prefs: []
   type: TYPE_NORMAL
 - en: 'The corresponding `operator delete()` will do the same pointer gymnastics but
     in reverse, going back `sizeof(std::max_align_t)` bytes in memory:'
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE19]'
+  id: totrans-154
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: Note that this implementation assigns `std::max_align_t*` to `void*` (pointer
     `p`), something that is perfectly legal and does not require a cast.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
 - en: 'The other issue we should discuss is not technically a problem in this implementation
     but is a problem in general. Look at this excerpt from `operator new()`:'
+  id: totrans-156
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE20]'
+  id: totrans-157
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: Do you notice something strange? The highlighted line of code performs an assignment
     where `p` points, but the assignment only makes sense on an existing object. Is
     there an object at location `*p` at that moment?
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
 - en: 'The answer is… strange. To create an object, one has to call its constructor,
     but we never called the constructor of `std::size_t` at location `p` in this code.
     This might make you wonder why our code seems to work. It happens that the following
     is the case:'
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
 - en: Some types in C++ are said to be `std::nullptr_t` including their cv-qualified
@@ -867,6 +1048,7 @@
     unsigned integral type, falls under the umbrella of implicit lifetime types. If
     you have a C++23 compiler, you can programmatically test if some type `T` qualifies
     as an implicit lifetime type through the `std::is_implicit_lifetime<T>` trait.
+  id: totrans-160
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -875,6 +1057,7 @@
     `std::memmove()`, and `std::malloc()`, but also `std::bit_cast`, some functions
     in allocators (see [*Chapter 14*](B21071_14.xhtml#_idTextAnchor199)) as well as
     two functions from C++23 respectively named `std::start_lifetime_as()` and `std::start_lifetime_as_array()`.
+  id: totrans-161
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -885,6 +1068,7 @@
     to store something more elaborate than an object of some implicit lifetime type,
     our assignment would either fail at compile-time (if our compiler is nice enough
     to notice our mistake) or risk causing damage at runtime.
+  id: totrans-162
   prefs: []
   type: TYPE_NORMAL
 - en: 'A better, and in general, safer approach to the act of hiding the value of
@@ -892,17 +1076,22 @@
     7*](B21071_07.xhtml#_idTextAnchor116). The following implementation of `operator
     new()` is thus preferable in general as it avoids an (often misguided) assignment
     to a non-object:'
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE21]'
+  id: totrans-164
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: Note that since `std::size_t` has a trivial destructor, there is no need to
     call its destructor in `operator delete()`; simply freeing its underlying storage
     is sufficient to end its lifetime. We now have a correct, working leak detector!
+  id: totrans-165
   prefs: []
   type: TYPE_NORMAL
 - en: Revisiting our implementation (and lessons learned)
+  id: totrans-166
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -912,6 +1101,7 @@
     That was an interesting adventure indeed, but the astute reader that you are is
     probably wondering about the cost of this trick, particularly in terms of how
     much memory it consumes.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
 - en: With our “allocate more than requested and hide `n` at the beginning” approach,
@@ -919,6 +1109,7 @@
     client code. If our code allocates large objects, that cost might be minor, but
     if we allocate smaller objects, this overhead can be unreasonable and dominate
     the memory consumption of our entire program.
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
 - en: Remember from [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116) that C++14 made
@@ -926,20 +1117,26 @@
     of the just-destroyed object as an argument. This makes the act of hiding `n`
     during `operator new()` redundant, as we did so precisely in order to retrieve
     `n` in `operator delete()`, something we no longer need to do.
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
 - en: 'Since we do not need to hide `n`, we can both simplify our implementation and
     significantly reduce our memory consumption:'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE22]'
+  id: totrans-171
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: This leak detector still works and represents a strict upgrade when compared
     with the more naïve version that preceded it.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
 - en: Summary
+  id: totrans-173
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -948,12 +1145,14 @@
     of the allocated memory blocks by injecting sentinel values before and after each
     block, or you could use it to make a sort of map of the way your memory is being
     used.'
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
 - en: This concludes our first foray into applications that benefit from taking charge
     of the memory allocation facilities at our disposal. Our next step, and next chapter,
     will lead us to examine how a C++ program can interact with atypical memory or
     deal with atypical allocation situations.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
 - en: Of course, no programming language (even one as versatile and wide-ranging as
@@ -961,5 +1160,7 @@
     could provide services for, nor should that be the language’s role. Still, as
     we will see, C++ provides us with the kind of “syntactic glue” required to build
     bridges between atypical needs and the rest of the program.
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，没有任何一种编程语言（即使是像C++这样多功能和广泛的编程语言）能够声称涵盖操作系统可能提供服务的所有可能的内存类型，也不应该是这种语言的角色。然而，正如我们将看到的，C++为我们提供了构建桥梁所需的“语法粘合剂”，以连接非典型需求与程序的其他部分。
