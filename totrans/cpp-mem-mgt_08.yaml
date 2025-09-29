@@ -3,11 +3,13 @@
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '8'
 - en: Writing a Naïve Leak Detector
   id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 编写一个简单的内存泄漏检测器
 - en: In [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116), we examined various ways
     to overload the memory allocation operators, which are `new`, `new[]`, `delete`,
     and `delete[]`, in order to grasp the syntax involved in writing these operators
@@ -21,6 +23,10 @@
   id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[*第7章*](B21071_07.xhtml#_idTextAnchor116)中，我们探讨了各种方法来重载内存分配操作符，即 `new`、`new[]`、`delete`
+    和 `delete[]`，以便掌握编写这些操作符所涉及的语法以及它们如何在客户端代码中使用。我们讨论了这些操作符如何与异常交互（甚至在 `nothrow`
+    版本的情况下），并看到了为什么它们在大多数情况下应该以四组或其倍数的形式编写。例如，调用 `nothrow` 版本的 `operator new()` 来获取一些指针
+    `pV`，然后在稍后调用 `delete p` 的代码，如果只重载了 `nothrow` 版本而没有重载“常规”版本，那么两者可能最终无法相互兼容，这会导致问题迅速出现。
 - en: 'What we have not really discussed is how our code could benefit from taking
     control of these operators. There are indeed multiple uses for this: tracing how
     or where memory is allocated, measuring memory fragmentation in a process, implementing
@@ -32,17 +38,20 @@
   id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们实际上还没有讨论的是，我们的代码如何通过控制这些操作符来受益。确实，这有多种用途：追踪内存是如何或在哪里被分配的，测量进程中的内存碎片，实现一种专门的战略来控制分配或释放过程的性能特性，等等。由于这本书的篇幅有限，我们无法希望涵盖所有可能的选项，因此我们将选择一个，希望这个例子足够启发你，让你能够自己探索其他途径。
 - en: 'The example we will explore in this chapter is a simple yet functional memory
     leak detector. In more detail, we will do the following:'
   id: totrans-4
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章我们将探讨的例子是一个简单但实用的内存泄漏检测器。更详细地说，我们将做以下几件事：
 - en: We will first detail the plan, giving an overview of how our leak detector will
     work and what tricks we will use to meet our objectives.
   id: totrans-5
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们首先将详细阐述计划，概述我们的泄漏检测器将如何工作以及我们将使用哪些技巧来实现我们的目标。
 - en: Then, we will implement the first version of our tool, and that version will
     seem to work, at least on the surface. We will walk through a call to `operator
     new()` and the corresponding `operator delete()` to understand what happens in
@@ -51,23 +60,28 @@
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后，我们将实现我们工具的第一个版本，这个版本表面上看起来似乎是可行的。我们将逐步分析对 `operator new()` 的调用以及相应的 `operator
+    delete()`，以了解在整个过程中内存中发生了什么。
 - en: At this point, we will use the knowledge acquired in previous chapters to identify
     the flaws in our first solution as well as ways in which we can fix them.
   id: totrans-7
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在这一点上，我们将利用前几章学到的知识来识别我们第一个解决方案中的缺陷以及我们可以如何修复它们。
 - en: Finally, we will revisit our initial implementation and end up with something
     that is simple yet usable in real code.
   id: totrans-8
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们将重新审视我们的初始实现，并最终得到一个既简单又能在实际代码中使用的解决方案。
 - en: 'Since this will be a very concrete chapter, you can expect to develop (or refine)
     some useful skills as we go:'
   id: totrans-9
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于这将是一个非常具体的章节，你可以期待在我们前进的过程中（或进一步）发展（或完善）一些有用的技能：
 - en: The first one is to plan before coding. We will be writing very low-level code
     in this chapter, which makes it particularly important for us to have a clear
     direction in mind. After all, when coding “close to the machine” and playing with
@@ -78,6 +92,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 第一件事是在编码前进行规划。在本章中，我们将编写非常底层的代码，这使得我们有一个清晰的方向尤为重要。毕竟，当我们“接近机器”编码并处理原始内存时，编译器提供的类型系统这一安全网往往会变得较薄，如果我们不小心，就更容易出错（代价高昂的错误）。
 - en: The second one is to safely use shared mutable resources. Our leak detector
     will use the global versions of the memory allocation operators in order to cover
     allocation requests for all types, at least unless users decide to use specialized
@@ -89,6 +104,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 第二个任务是安全地使用共享可变资源。我们的泄漏检测器将使用内存分配操作符的全局版本，以便覆盖所有类型的分配请求，至少除非用户决定使用这些操作符的专用版本，因此我们需要管理程序的全局状态。此外，我们知道用户代码可能是多线程的，因此我们分配的内存的会计需要一种同步形式，以避免数据竞争。
 - en: The third one will be to acknowledge the impact of alignment when bypassing
     the type system. As we will handle raw memory for the a priori unknown needs of
     client code, we will learn to make choices that work for all “natural” (in the
@@ -97,6 +113,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 第三个任务是承认在绕过类型系统时对对齐的影响。由于我们将处理原始内存以满足客户端代码事先未知的需求，我们将学会做出适用于所有“自然”（在“非对齐”的意义上）内存分配用例的选择。
 - en: Finally, we will examine how to debug our code based on the contents of raw
     memory. Since we aim to keep this book tooling-agnostic, we will apply a schematical
     approach to this problem, but in practice, you should adapt what we do in this
@@ -107,25 +124,30 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 最后，我们将检查如何根据原始内存的内容调试我们的代码。由于我们旨在使本书不受工具的限制，我们将采用一种图表方法来解决这个问题，但在实践中，您应该将本章中我们所做的事情适应到您最喜欢的调试工具的隐喻中。所有合理的调试器都会让您检查特定内存地址的内容，您肯定会在某些时候想要这样做。
 - en: Let’s dive in!
   id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们深入探讨吧！
 - en: Technical requirements
   id: totrans-15
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: 'You can find the code files for this chapter in the book’s GitHub repository
     here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8).'
   id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 您可以在本书的GitHub仓库中找到本章的代码文件：[https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8)。
 - en: The plan
   id: totrans-17
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 计划
 - en: 'We are planning to write a memory leak detector, a task that might seem strange
     and abstract at first. How do we start? Well, one way to clarify what we need
     to do is to write a small test program, showing at once how we expect our tool
@@ -134,6 +156,7 @@
   id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们计划编写一个内存泄漏检测器，这个任务一开始可能看起来很奇怪和抽象。我们如何开始呢？好吧，一种澄清我们需要做什么的方法是编写一个小型测试程序，同时展示我们期望我们的工具如何被使用，并突出从用户代码的角度看我们的工具的关键方面：
 - en: '[PRE0]'
   id: totrans-19
   prefs: []
@@ -146,6 +169,7 @@
   id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 如您所见，这个“故意泄漏”的程序执行了两次分配，但只有一次释放，"忘记"（对我们来说很方便）释放一个包含十个`int`对象的数组。假设`sizeof(int)==4`，我们的泄漏检测器应该允许程序报告40字节的泄漏。
 - en: This program does not tell us how we will (portably) obtain the amount of dynamically
     allocated memory at a given time (we will write this service in this chapter,
     after all), but it does show the allocations and deallocations being located between
@@ -158,6 +182,7 @@
   id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个程序并没有告诉我们如何在特定时间（portably）获取动态分配的内存量（我们将在本章后面编写这个服务），但它确实显示了分配和释放操作位于一对大括号之间（参见示例程序注释中的`BEGIN`和`END`）。正如您所知，C++中，匹配的大括号定义了一个作用域，作用域确保了在其中定义的自动变量的销毁。这里的想法是，即使存在RAII对象（参见[*第4章*](B21071_04.xhtml#_idTextAnchor062)），我们也要检测到泄漏，因为它们也可能有错误，所以我们要确保在尝试发出诊断之前它们被销毁。
 - en: 'As mentioned in this chapter’s introduction, we will implement our leak detector
     through the overloading of the *global* forms of memory allocation operators.
     As you might have already guessed, these operators will need to share some state:
@@ -167,6 +192,7 @@
   id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 如本章引言中所述，我们将通过重载内存分配操作符的**全局**形式来实现我们的泄漏检测器。你可能已经猜到了，这些操作符需要共享一些状态：至少，它们需要共享在特定时刻分配的内存数量的知识，因为`new`和`new[]`操作符会增加这个数量，而`delete`和`delete[]`操作符会减少它。
 - en: 'Note that for our leak detector, the array and non-array forms of these operators
     will be identical but that is *not* always the case: one could envision different
     strategies to allocate scalars and arrays, for example, just as one could want
@@ -176,6 +202,7 @@
   id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，对于我们的泄漏检测器，这些操作符的数组和非数组形式将是相同的，但这并不总是如此：可以设想不同的策略来分配标量和数组，例如，就像在程序中分别跟踪这两种形式所做的事情一样。为了简单起见，在本章中，我们通常会简单地提到`new`来描述`new`和`new[]`，并且对于`delete`也会使用相同的方法。
 - en: Since these are free functions, not member functions of some object, we will
     need to resort to a *global variable* for this state. I know global variables
     are often frowned upon, mostly for good reasons, but they exist for cases such
@@ -183,10 +210,12 @@
   id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于这些是自由函数，而不是某个对象的成员函数，我们需要求助于一个**全局变量**来存储这个状态。我知道全局变量通常是不受欢迎的，大多数情况下有很好的理由，但它们确实存在于像这种情况。
 - en: Global variables, oh my!
   id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 全局变量，哦我的天！
 - en: 'Reasons to dislike global variables abound: they make local reasoning difficult
     (who knows where and when they are being accessed?), they tend to be bottlenecks
     for cache access and slow programs down, they tend to require synchronization
@@ -198,22 +227,26 @@
   id: totrans-26
   prefs: []
   type: TYPE_NORMAL
+  zh: 不喜欢全局变量的理由有很多：它们使局部推理变得困难（谁知道它们在哪里和何时被访问？），它们往往成为缓存访问的瓶颈并减慢程序的速度，它们在当代（可能是多线程的）程序中往往需要同步，等等。我们之所以求助于这种机制，是因为我们需要这样做：C++为我们提供了各种各样的工具，因为它是一种用于解决各种问题的语言，所以当这些工具是手头任务的正确工具时，使用它们并不丢人。只是确保你做出明智的选择，并且能够为之辩护！
 - en: To reduce (ever so slightly) the feeling of apparent revulsion that global variables
     provide to so many of us, we will encapsulate that state in an object, but of
     course, this object will also be global.
   id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了稍微减少全局变量给许多人带来的明显厌恶感，我们将把这个状态封装在一个对象中，但当然，这个对象也将是全局的。
 - en: We will apply the `Accountant` since its responsibilities will be to help the
     memory allocation operators keep track of the number of bytes allocated and deallocated
     during program execution.
   id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将应用`Accountant`，因为它的职责将是帮助内存分配操作符在程序执行期间跟踪分配和释放的字节数。
 - en: Singletons, oh my!
   id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 单例，哦我的天！
 - en: 'As far as design patterns go, the singleton is probably one of the least liked
     ones, for reasons similar to those behind the dislike of global variables: difficult
     to test or mock, requires synchronization, tends to become a performance bottleneck,
@@ -225,6 +258,7 @@
   id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 就设计模式而言，单例模式可能是最不受欢迎的之一，原因与人们不喜欢全局变量的原因类似：难以测试或模拟，需要同步，容易成为性能瓶颈，等等。坦白说，这里的真正罪魁祸首是**共享可变状态**，由于这种状态在整个程序中都是全局可访问的，这使问题变得更糟。你可能已经猜到了，由于共享可变状态正是我们需要用来跟踪在特定时间分配的内存数量的，嗯……这正是我们将要使用的！
 - en: 'Now, for the actual implementation, we will need to develop a strategy to track
     the number of bytes allocated and deallocated. The overall idea is that `operator
     new()` will tell the `Accountant` object that bytes have been allocated, and that
@@ -235,6 +269,9 @@
   id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，对于实际的实现，我们需要制定一个策略来跟踪分配和释放的字节数。总体思路是 `operator new()` 将告诉 `Accountant` 对象已经分配了字节，而
+    `operator delete()` 将告诉 `Accountant` 对象已经释放了字节。现在，为了这个活动的目的，我们将使用传统的（直到包括C++11）这些操作符的形式。你可能还记得从
+    [*第7章*](B21071_07.xhtml#_idTextAnchor116)，它们的签名如下：
 - en: '[PRE1]'
   id: totrans-32
   prefs: []
@@ -250,6 +287,8 @@
   id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于你在读这本书，你肯定是一个非常敏锐的读者，所以你可能已经注意到了这里的一个问题：我们的分配函数知道从它们的参数中分配的字节数，但我们的释放函数没有这个特权，它们只提供了要释放的内存块的起始地址。这意味着我们需要一种方法来在
+    `operator new()` 返回的地址和关联的内存块大小之间建立联系。
 - en: 'That seems like an easy enough problem to solve: just allocate the moral equivalent
     of something like `std::vector<std::pair<void*,std::size_t>>` or `std::map<void*,std::size_t>`
     to make it easy to retrieve the `std::size_t` associated with a given address,
@@ -259,17 +298,21 @@
   id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 这似乎是一个容易解决的问题：只需分配类似于 `std::vector<std::pair<void*,std::size_t>>` 或 `std::map<void*,std::size_t>`
+    的道德等价物，以便轻松检索与给定地址关联的 `std::size_t`，但这样的容器需要分配内存，这意味着为了实现我们分配内存的方式而分配内存。这至少可能会出现问题，因此我们需要另一个解决方案。
 - en: 'We will do what any sane programmer would do under similar circumstances: we
     will lie. Yes, we will! Why do you think we took the time to look at tricky and
     dangerous code in those first chapters?'
   id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们会做任何理智的程序员在类似情况下都会做的事情：我们会撒谎。是的，我们会！你为什么认为我们花了时间查看那些第一章中的棘手和危险代码？
 - en: 'How will lying help us solve the problem, you say? Well, remember that writing
     the following code leads to calling `operator new()` with `sizeof(X)` as an argument:'
   id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: 你说撒谎能帮助我们解决问题吗？好吧，记住，写下以下代码会导致以 `sizeof(X)` 作为参数调用 `operator new()`：
 - en: '[PRE2]'
   id: totrans-37
   prefs: []
@@ -281,14 +324,17 @@
   id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们称这个参数为 `n`。这意味着如果分配和随后的构造都成功，从客户端代码的角度来看，情况将如下所示：
 - en: '![Figure 8.1 – Allocated block of memory from the perspective of client code](img/B21071_08_1.jpg)'
   id: totrans-39
   prefs: []
   type: TYPE_IMG
+  zh: '![图8.1 – 从客户端代码的角度看分配的内存块](img/B21071_08_1.jpg)'
 - en: Figure 8.1 – Allocated block of memory from the perspective of client code
   id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 图8.1 – 从客户端代码的角度看分配的内存块
 - en: 'In order for `operator delete()` to be able to find the value of `n` based
     on `p`, one strategy (and the one we will adopt for this example) will be to hide
     the value of `n` just before `p`. The actual layout in memory from our own code’s
@@ -296,16 +342,20 @@
   id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了让 `operator delete()` 能够根据 `p` 找到 `n` 的值，一种策略（以及我们将为此示例采用的策略）将是将 `n` 的值隐藏在
+    `p` 之前。从我们自己的代码的角度来看，内存的实际布局将如下所示：
 - en: '![Figure 8.2 – Allocated block of memory from the perspective of the allocation
     operators.](img/B21071_08_2.jpg)'
   id: totrans-42
   prefs: []
   type: TYPE_IMG
+  zh: '![图8.2 – 从分配操作符的角度看分配的内存块](img/B21071_08_2.jpg)'
 - en: Figure 8.2 – Allocated block of memory from the perspective of the allocation
     operators.
   id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 图8.2 – 从分配操作符的角度看分配的内存块。
 - en: 'Here, `p` would be the address as seen from the client code, but `p''` would
     be where the actually allocated block of memory starts. Clearly, *this is a lie*:
     the address returned by the allocation function will be a valid address where
@@ -315,6 +365,8 @@
   id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，`p`将是客户端代码中看到的地址，但`p'`将是实际分配的内存块的起始位置。显然，*这是谎言*：分配函数返回的地址将是一个有效的地址，可以在其中构造对象，但它不会是我们实际分配的内存块的起始位置。只要`p`和`p'`之间的空间对`operator
+    new()`和`operator delete()`都是已知的，这就可以工作。
 - en: 'For obvious reasons, overloading `operator new()` to do this trickery means
     that we have to overload `operator delete()` to do the reverse gymnastics: given
     some pointer `p`, go backward in memory where `p''` was, find the value of `n`
@@ -323,15 +375,18 @@
   id: totrans-45
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于显而易见的原因，重载`operator new()`来完成这种技巧意味着我们必须重载`operator delete()`来完成相反的体操：给定一些指针`p`，在内存中向后移动到`p'`的位置，找到那里隐藏的`n`值，并通知`Accountant`对象已经释放了`n`字节。
 - en: Now, let’s see how we will do this.
   id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们看看我们将如何做到这一点。
 - en: A first implementation (that almost works)
   id: totrans-47
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第一个实现（几乎可行）
 - en: We now have a plan, so we are ready to start implementing the initial version
     of our leak detector. This implementation will be slightly naïve but will help
     us understand the general idea; we will examine the more delicate aspects of the
@@ -341,6 +396,7 @@
   id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们有一个计划，因此我们准备开始实现我们泄漏检测器的初始版本。这个实现将稍微天真，但将帮助我们理解基本思想；一旦基本基础设施到位，我们将检查实现的更微妙方面。*不要在生产代码中使用这个第一个版本*，因为它将是（稍微但危险地）不正确的。当然，我们将在本章的后面提供正确版本。
 - en: As a suggestion, try to see if you can identify the “rough edges” of our implementation
     by yourself before we cover them later in this chapter. There will be clues left
     here and there for you, and if you read the chapters that preceded this one, you
@@ -348,11 +404,13 @@
   id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 作为建议，在我们稍后在本章中介绍它们之前，尝试自己识别我们实现的“粗糙边缘”。这里会留下一些线索，如果你阅读了这一章之前的章节，你可能已经对应该寻找什么有了想法。
 - en: The Accountant singleton class
   id: totrans-50
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 会计单例类
 - en: 'Our `Accountant` class will be a reification of the singleton design pattern
     whose role will be to allow the global overloads of the memory allocation operators
     to keep track of the number of bytes of dynamically allocated memory in a program.
@@ -363,23 +421,27 @@
   id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的`Accountant`类将是对单例设计模式的实现，其作用是允许全局重载的内存分配操作员跟踪程序中动态分配的字节数。如前所述，单例是一个概念：在程序中只有一个实例的类。这种概念可以在各种语言中实现（至少是支持某种变体的面向对象范式的语言），并且尊重每种语言的特定性。
 - en: 'One key particularity of C++ is the presence of actual objects, not just references
     to objects, in user code. This means that a C++ singleton will usually have the
     following characteristics:'
   id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: C++的一个关键特性是用户代码中存在实际对象，而不仅仅是对象的引用。这意味着C++的单例通常具有以下特征：
 - en: A `private` default constructor, since if that constructor was `public`, it
     could be called more than once which would make the class a non-singleton.
   id: totrans-53
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 一个`private`的默认构造函数，因为如果这个构造函数是`public`的，它就可以被多次调用，这将使类成为一个非单例。
 - en: Deleted copy operations, as allowing copies of our object would make it a non-singleton.
   id: totrans-54
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 删除复制操作，因为我们允许对象的副本会使它成为一个非单例。
 - en: A way to ensure the singleton can be created and, of course, accessed. That
     mechanism has to be such that it cannot be abused to create more than one object.
     Since our default constructor will be `private`, this mechanism will either be
@@ -388,12 +450,14 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 确保单例可以被创建和访问的一种方法。这种机制必须不能被滥用以创建多个对象。由于我们的默认构造函数将是`private`，这种机制将是一个`static`成员函数（这将是我们选择的方式）或是一个`friend`函数。
 - en: Finally, the state used for the object’s representation and the services offered
     by the singleton, if any.
   id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 最后，用于对象表示的状态以及单例提供的任何服务。
 - en: 'An object of our `Accountant` class will expose three services: one to let
     the `new` and `new[]` operators inform the `Accountant` object that memory has
     been taken, one to inform it that memory has been given back, and one to let client
@@ -401,11 +465,13 @@
   id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们`Accountant`类的一个对象将公开三种服务：一个让`new`和`new[]`运算符通知`Accountant`对象内存已被占用，一个通知它内存已被释放，还有一个让客户端代码知道在特定时间使用了多少内存。
 - en: 'An incomplete view of the `Accountant` class given what we have discussed so
     far would be as follows:'
   id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们对`Accountant`类的理解是不完整的，如下所示：
 - en: '[PRE3]'
   id: totrans-59
   prefs: []
@@ -416,6 +482,7 @@
   id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过这种方式，我们就可以完成本章前面提到的测试程序的框架：
 - en: '[PRE4]'
   id: totrans-61
   prefs: []
@@ -432,10 +499,13 @@
   id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们需要检查`Accountant`类的实现。我们需要决定的第一件事是实际对象将如何以及在哪里创建。实际上，有惊人的多种方法可以做到这一点，但就我们而言（我们并不关心执行速度），正确实例化对象的最简单方法被称为**Meyers单例**，以纪念现已退休但始终受到尊敬的**斯科特·梅耶斯**，他在其著名的书籍《Effective
+    C++：改进您的程序和设计的具体方法（第3版）》的第47条中提出了这一技术。
 - en: The Meyers Singleton technique
   id: totrans-63
   prefs: []
   type: TYPE_NORMAL
+  zh: Meyers单例技术
 - en: The Meyers Singleton technique aims to avoid something colloquially called the
     **static initialization order fiasco**, an informal name given to the fact that
     in a C++ program made of multiple translation units, one cannot know from the
@@ -445,6 +515,7 @@
   id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: Meyers单例技术旨在避免俗称的**静态初始化顺序灾难**，这是一个非正式的名称，用来描述在由多个翻译单元组成的C++程序中，无法从源代码中知道全局对象将被构造的顺序（这个问题也存在于销毁顺序上，尽管Meyers技术对此无能为力）。
 - en: 'The trick is to declare the singleton object as a `static` local variable in
     the `static` member function that provides access to the object (here, the `get()`
     function): doing so ensures the object will be created only once, the first time
@@ -455,6 +526,7 @@
   id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 技巧是将单例对象声明为提供对对象访问的`static`成员函数中的`static`局部变量（在这里，是`get()`函数）：这样做确保对象只会在函数第一次被调用时创建，并且在整个程序执行过程中保持其状态。这样做会有轻微但可测量的成本，因为对象构建周围存在一种低级隐式同步，以避免在多线程程序中对象被创建多次。
 - en: This technique ensures all such singletons are created in the correct order
     (meaning that, if the constructor of singleton A needs a service from singleton
     B, this will lead to singleton B being constructed “just in time”) even if they
@@ -463,6 +535,7 @@
   id: totrans-66
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种技术确保所有这样的单例都按正确的顺序创建（这意味着，如果单例A的构造函数需要单例B的服务，这将导致单例B“及时”构建）即使它们在技术上被视为“全局”变量，只要创建它们的调用中没有循环当然。
 - en: In terms of state, since `take()` and `give_back()` both accept an argument
     of type `std::size_t`, it would be tempting to represent the current amount of
     memory also as `std::size_t`, but allow me to recommend something else. Indeed,
@@ -473,6 +546,7 @@
   id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 在状态方面，由于`take()`和`give_back()`都接受`std::size_t`类型的参数，所以可能会倾向于将当前内存量也表示为`std::size_t`，但请允许我推荐另一种方法。实际上，`std::size_t`是一个指向无符号整型的别名，这意味着这种表示法会使得检测已分配的字节数多于已释放的字节数的情况变得困难，这是我们肯定希望处理的不愉快情况。因此，我们将使用一个（较大的）有符号整型。
 - en: 'Fine, you might think: we can use a `long long` representation then! However,
     remember that memory allocation and deallocation mechanisms need to be thread-safe,
     so we need to ensure that all accesses to that integral representation will be
@@ -483,10 +557,13 @@
   id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 好吧，你可能认为：我们可以使用`long long`表示法！然而，请记住，内存分配和释放机制需要是线程安全的，因此我们需要确保对那个整型表示的所有访问都将同步。有许多方法可以实现这一点，但最简单的方法可能是使用原子类型，在我们的例子中是`std::atomic<long
+    long>`。请注意，原子对象是不可复制的，所以我们的单例会隐式地不可复制，但明确地陈述这一事实并没有什么坏处，就像我们在删除复制操作时做的那样。
 - en: 'A complete implementation of the `Accountant` class would be as follows:'
   id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Accountant`类的完整实现如下：'
 - en: '[PRE5]'
   id: totrans-70
   prefs: []
@@ -499,6 +576,7 @@
   id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于大多数服务来说，理解起来可能很简单。由于`cur`是一个原子对象，所以像`+=`或`-=`这样的操作将以同步方式修改`cur`，从而避免数据竞争。`how_much()`函数的两个微妙之处值得简要讨论：
 - en: The first is that we are returning `cur.load()`, not `cur`, since we care about
     the value represented by the `atomic` object, not the atomic object itself (which
     is a synchronization mechanism, not an integral value, and is uncopiable as previously
@@ -508,6 +586,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 第一点是，我们返回的是`cur.load()`而不是`cur`，因为我们关心的是由`atomic`对象表示的值，而不是原子对象本身（它是一个同步机制，不是一个整数值，并且如前所述不可复制）。这就像在特定时间点拍摄该值的快照一样。
 - en: The second, a consequence of the first, is that by the time the client code
     gets the value returned by that function, the actual value might have changed,
     so this function is inherently “racy” if used in a multithreaded situation. It’s
@@ -516,17 +595,20 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 第二点，是第一点的结果，即当客户端代码获取该函数返回的值时，实际值可能已经改变，所以如果在使用多线程的情况下使用这个函数，它本质上是有风险的。当然，对于我们的测试代码来说这不是问题，但这是需要注意的一点。
 - en: Now that we have put in place a scaffolding for keeping track of the number
     of bytes allocated, we can start to write the actual allocation and deallocation
     functions.
   id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经建立了一个跟踪分配字节数的框架，我们可以开始编写实际的分配和释放函数。
 - en: Implementing the new and new[] operators
   id: totrans-75
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现new和new[]运算符
 - en: If you remember our plan, what we will do in our memory allocation operators
     is take the number of bytes, `n`, requested by client code, then allocate slightly
     more because we will hide `n` just before the beginning of the block of `n` bytes
@@ -536,6 +618,8 @@
   id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果您还记得我们的计划，我们在内存分配操作符中要做的就是在客户端代码请求的字节数`n`的基础上稍微多分配一些，因为我们将在返回给客户端的`n`字节块之前隐藏`n`。最少，我们需要分配`n
+    + sizeof n`字节来实现这一点。在这个例子中，我们将使用`std::malloc()`和`std::free()`来执行低级分配操作。
 - en: 'We will signal failure to allocate by throwing `std::bad_alloc` as is customary
     in C++. If the allocation succeeds, we will then inform the `Accountant` object
     that `n` bytes have been allocated, even though we will have allocated a bit more.
@@ -546,11 +630,13 @@
   id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将按照C++的惯例通过抛出`std::bad_alloc`来表示分配失败。如果分配成功，我们将通知`Accountant`对象已分配了`n`字节，尽管我们将分配得更多。我们的策略导致我们分配比请求的更多的事实是一个不影响客户端代码的副作用，甚至可能在尝试诊断问题时造成混淆：一个分配单个字节并被告知它泄漏了多得多的程序会有些尴尬。
 - en: 'A complete but naïve (and slightly incorrect, as announced) implementation
     would be as follows:'
   id: totrans-78
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个完整但天真（并且稍微不正确，如前所述）的实现如下所示：
 - en: '[PRE6]'
   id: totrans-79
   prefs: []
@@ -563,11 +649,13 @@
   id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 记住，尽管在这个例子中`operator new()`和`operator new[]()`是相同的，但在所有情况下都没有义务使它们相同。此外，请注意，本节中的一些行有注释说明“待回顾”，因为我们将在本章稍后更仔细地查看这些内容。
 - en: Implementing the delete and delete[] operators
   id: totrans-81
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现delete和delete[]操作符。
 - en: 'Our deallocation operators will collaborate in the elaborate lie prepared by
     the allocation operators: we know that the `new` and `new[]` operators return
     pointers to a block of `n` bytes, but that block is not what has really been allocated,
@@ -577,30 +665,36 @@
   id: totrans-82
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的释放操作符将与分配操作符精心准备的谎言合作：我们知道`new`和`new[]`操作符返回指向一个`n`字节块的指针，但那个块并不是真正分配的，它“只是”一个对象短暂居住的地方。因此，`delete`和`delete[]`操作符在执行实际释放之前进行必要的地址调整是很重要的。
 - en: 'The rules for a correct implementation of `operator delete` are as follows:'
   id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 正确实现`operator delete`的规则如下：
 - en: Applying `operator delete()` or `operator delete[]()` on a null pointer is a
     no-op
   id: totrans-84
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在空指针上应用`operator delete()`或`operator delete[]()`是一个无操作。
 - en: Deallocation functions should not throw
   id: totrans-85
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 释放函数不应抛出异常。
 - en: The deallocation code should be coherent with the associated allocation function
   id: totrans-86
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 释放代码应与相关的分配函数保持一致。
 - en: Not all null pointers are the same
   id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 并非所有空指针都相同。
 - en: While it’s true that given some `T*` object named `p`, writing `delete p` or
     `delete [] p` will be a no-op if `p==nullptr`. However, writing `delete nullptr`
     will fail to compile as `nullptr` is an object of type `std::nullptr_t`, not a
@@ -608,11 +702,14 @@
   id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然对于某个名为`p`的`T*`对象，如果`p==nullptr`，则写入`delete p`或`delete [] p`将是一个无操作。然而，写入`delete
+    nullptr`将无法编译，因为`nullptr`是`std::nullptr_t`类型的对象，而不是指针。
 - en: 'Given the implementation of our allocation operators in the previous section,
     this means a mostly adequate deallocation operator could be as follows:'
   id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据上一节中我们的分配操作符的实现，这意味着一个大致合适的释放操作符可能如下所示：
 - en: '[PRE7]'
   id: totrans-90
   prefs: []
@@ -625,11 +722,13 @@
   id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: 这样就完成了谎言，或者说，至少完成了泄漏检测器，至少对于这个第一个（并且不完美）的实现是这样。如果你在`sizeof(int)==4`的编译器上运行带有我们实现的测试程序，你可以期望它显示其执行泄漏了预期的40字节。
 - en: Visualizing it all
   id: totrans-92
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 可视化这一切。
 - en: When enjoying low-level programming such as this (taking over the memory allocation
     functions of your program, manipulating raw memory blocks, hiding information,
     and playing tricks with addresses), it can be hard to visualize what one is doing,
@@ -637,6 +736,7 @@
   id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 当享受这种低级编程（接管程序的记忆分配函数、操作原始内存块、隐藏信息以及玩弄地址）时，很难可视化正在做什么，以及会有什么后果。
 - en: If your favorite debugger allows you to do so, you might want to try to go through
     the test program’s execution step by step. Please make sure you work in so-called
     “debug” (unoptimized) mode to fully benefit from the experience, as optimized
@@ -645,12 +745,14 @@
   id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你喜欢的调试器允许这样做，你可能想尝试逐步执行测试程序的执行。请确保你在所谓的“调试”（非优化）模式下工作，以便充分利用这一经验，因为优化后的代码通常会被编译器充分转换，使得源代码和生成的代码之间的关联变得难以确定。
 - en: 'Let’s walk through a call to `operator new()` step by step. The first thing
     we do is ask `Accountant` for the amount of dynamically allocated memory at the
     beginning of the `main()` function:'
   id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们一步一步地分析对 `operator new()` 的调用。我们首先在 `main()` 函数的开始处询问 `Accountant` 动态分配的内存量：
 - en: '[PRE8]'
   id: totrans-96
   prefs: []
@@ -665,11 +767,14 @@
   id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 此时可以预期 `pre==0`，但存在一些情况，例如全局对象在其构造函数中调用 `new`，这可能导致 `pre` 有其他值。这是可以的，因为我们通过这种方法监控的是在
+    `BEGIN` 和 `END` 标记的大括号之间是否存在内存泄漏，而这应该与那些大括号外分配的字节数是否为零无关。
 - en: 'The next step is calling `operator new()` and requesting a memory block big
     enough to store an `int` object:'
   id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是调用 `operator new()` 并请求一个足够存储一个 `int` 对象的内存块：
 - en: '[PRE9]'
   id: totrans-99
   prefs: []
@@ -681,6 +786,8 @@
   id: totrans-100
   prefs: []
   type: TYPE_NORMAL
+  zh: 这引导我们到我们的 `operator new()` 实现中，其中 `n==sizeof(int)`。为了这个例子，假设 `sizeof(int)==4`
+    和 `sizeof(std::size_t)==8`，我们的 `std::malloc()` 调用将请求至少 12 字节的内存块：
 - en: '[PRE10]'
   id: totrans-101
   prefs: []
@@ -692,14 +799,17 @@
   id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 当 `std::malloc()` 调用完成后，如果你用调试器查看 `p` 所指向的内存，可能会看到以下内容（所有数字均以十六进制形式表示）：
 - en: '![Figure 8.3 – Possible initial state for the allocated block](img/B21071_08_3.jpg)'
   id: totrans-103
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.3 – 分配块的可能的初始状态](img/B21071_08_3.jpg)'
 - en: Figure 8.3 – Possible initial state for the allocated block
   id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 8.3 – 分配块的可能的初始状态
 - en: Note that there is no guarantee that you will see these specific values as C++
     does not impose any requirement on the initialization of the memory block returned
     by `std::malloc()`. These `0xcd` hexadecimal values (or similar recognizable patterns)
@@ -709,6 +819,8 @@
   id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，你看到的这些特定值没有保证，因为 C++ 对 `std::malloc()` 返回的内存块的初始化没有提出任何要求。然而，当使用“调试构建”时，这些
+    `0xcd` 十六进制值（或类似的可识别模式）是可能的，因为为调试编译的库通常会在未初始化的内存中放置可识别的位模式，以帮助检测编程错误。
 - en: You might also notice the trailing four bytes (each containing `0xfd`), which
     are also suspiciously recognizable, suggesting that the implementation of `std::malloc()`
     I used allocated more than what I requested and stored a marker just after the
@@ -717,12 +829,14 @@
   id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可能还会注意到尾部的四个字节（每个都包含 `0xfd`），这些字节也令人可疑地可识别，表明我使用的 `std::malloc()` 实现分配了比请求的更多的内存，并在我的代码请求的块之后存储了一个标记，可能是为了帮助检测缓冲区溢出。毕竟，我们的库和我们一样有相同的实现自由度！
 - en: 'The first lie we did was the overallocation of memory with respect to the actual
     request we got. We now commit a second lie about the very nature of the memory
     we are pointing to:'
   id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们做的第一个错误是关于实际请求的内存分配超量。现在，我们对所指向内存的本质又撒了一个谎：
 - en: '[PRE11]'
   id: totrans-108
   prefs: []
@@ -735,20 +849,25 @@
   id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 如同在 [*第 3 章*](B21071_03.xhtml#_idTextAnchor047) 中解释的那样，使用 `static_cast` 可以有效地将指针从或转换为
+    `void*`。我们现在对同一内存块有两个视角，`p` 声称该块包含原始内存，而 `q` 声称（错误地）它至少包含一个 `std::size_t`：
 - en: '![Figure 8.4 – Two perspectives on the same memory block](img/B21071_08_4.jpg)'
   id: totrans-110
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.4 – 同一内存块的两个视角](img/B21071_08_4.jpg)'
 - en: Figure 8.4 – Two perspectives on the same memory block
   id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 8.4 – 同一内存块的两个视角
 - en: 'Through `q`, we hide the value of `n` at the beginning of the allocated memory
     block. Remember that this is not what we will be returning to our caller, so this
     is done without the client code’s knowledge:'
   id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过 `q`，我们在分配的内存块的开头隐藏了 `n` 的值。记住，这不是我们将返回给调用者的内容，因此这是在不让客户端代码知道的情况下完成的：
 - en: '[PRE12]'
   id: totrans-113
   prefs: []
@@ -759,15 +878,18 @@
   id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: '`p` 和 `q` 指向的内存的一个可能视图现在如下所示：'
 - en: '![Figure 8.5 – Possible state of the memory block after hiding the value of
     n](img/B21071_08_5.jpg)'
   id: totrans-115
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.5 – 隐藏 n 值后内存块的可能状态](img/B21071_08_5.jpg)'
 - en: Figure 8.5 – Possible state of the memory block after hiding the value of n
   id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 8.5 – 隐藏 n 值后内存块的可能状态
 - en: 'Again, your view might differ from this one: we wrote an eight-byte integral
     value, which explains the number of consecutive bytes affected by this write,
     but the order of bytes in an integer depends on the underlying hardware architecture:
@@ -776,12 +898,15 @@
   id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 再次强调，你的视图可能与这个不同：我们写入了一个八字节的整数值，这解释了受此写入影响的连续字节数，但整数字节的顺序取决于底层硬件架构：一些架构的 `4`
+    位更接近右侧，而不是像这个例子中这样在左侧。
 - en: 'After informing `Accountant` that we allocated 4 bytes (not 12, remember),
     we reach the point where we return to our caller the beginning of the 4-byte block
     that was actually requested:'
   id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 在通知 `Accountant` 我们分配了 4 个字节（而不是 12 个，记住）之后，我们到达了返回到调用者的 4 字节块的实际请求开始点：
 - en: '[PRE13]'
   id: totrans-119
   prefs: []
@@ -791,19 +916,23 @@
   id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 看看我们的内存块，现在的情况如下：
 - en: '![Figure 8.6 – State of the memory block at the point of return](img/B21071_08_6.jpg)'
   id: totrans-121
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.6 – 返回点内存块的状态](img/B21071_08_6.jpg)'
 - en: Figure 8.6 – State of the memory block at the point of return
   id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 8.6 – 返回点内存块的状态
 - en: 'Returning to the caller, the constructor of the `int` object is applied to
     the block returned by `operator new()`:'
   id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 返回调用者时，`int` 对象的构造函数应用于 `operator new()` 返回的块：
 - en: '[PRE14]'
   id: totrans-124
   prefs: []
@@ -814,14 +943,17 @@
   id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 `main()` 中对 `p` 指向的内存应用构造函数后，我们的内存块看起来如下：
 - en: '![Figure 8.7 – Possible state of the memory block after constructing *p](img/B21071_08_7.jpg)'
   id: totrans-126
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.7 – 构建 *p 后内存块的可能状态](img/B21071_08_7.jpg)'
 - en: Figure 8.7 – Possible state of the memory block after constructing *p
   id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 8.7 – 构建 *p 后内存块的可能状态
 - en: '*Voilà*! The beauty of all this is that client code (the `main()` function)
     has no idea that we played those tricks and performed those lies, just as we really
     have no idea what other tricks `std::malloc()` did for us (unless we can look
@@ -831,6 +963,8 @@
   id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: '*Voilà*！所有这一切的美丽之处在于，客户端代码（`main()` 函数）根本不知道我们玩弄了这些诡计并执行了这些谎言，就像我们真的不知道 `std::malloc()`
+    为我们做了哪些其他诡计一样（除非我们能查看其源代码，当然）。程序执行继续正常，`*p` 可以像任何其他 `int` 一样使用，直到我们决定释放它：'
 - en: '[PRE15]'
   id: totrans-129
   prefs: []
@@ -843,14 +977,18 @@
   id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 当进入 `operator delete()` 时，你可能会注意到由 `p` 参数指向的内存以值 `3`（`int` 的值）开始，而不是值 `4`。这合乎逻辑，因为
+    `p` 指向的是客户端代码获得的内存块，而不是我们实际分配的块的开始：
 - en: '![Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)](img/B21071_08_8.jpg)'
   id: totrans-131
   prefs: []
   type: TYPE_IMG
+  zh: '![图 8.8 – 摧毁前的内存块状态（调用者视角）](img/B21071_08_8.jpg)'
 - en: Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)
   id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 图8.8 – 销毁前的内存块状态（调用者视角）
 - en: Before continuing, it’s important to understand here that the reason why you
     probably see `3` here is that `int` is a trivially destructible type so its destructor
     was essentially a no-op. Normally, at the point where `operator delete()` begins
@@ -859,11 +997,14 @@
   id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 在继续之前，重要的是要理解这里你看到 `3` 的原因可能是 `int` 是一个平凡可销毁的类型，所以它的析构函数实际上是一个空操作。通常，在 `operator
+    delete()` 开始执行的时候，指向的对象的析构函数已经运行，内存块可能包含几乎所有内容。
 - en: 'Within `operator delete()`, our first task is to retrieve the location where
     we hid the value of `n` during the corresponding call to `operator new()`:'
   id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 `operator delete()` 中，我们的第一个任务是检索在相应的 `operator new()` 调用期间我们隐藏的 `n` 值的位置：
 - en: '[PRE16]'
   id: totrans-135
   prefs: []
@@ -876,6 +1017,8 @@
   id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这一点上，`q` 是存储 `n` 值的位置，也是分配的内存块开始的地方。我们通知 `Accountant` 有 `n` 字节被释放，并调用 `std::free()`
+    来执行实际的释放操作。
 - en: If you are observing the memory pointed to by `q` when calling `std::free()`,
     it is possible (but not guaranteed) that you will see that memory being written
     to. It is also possible (but also not guaranteed) that you will see memory written
@@ -887,6 +1030,8 @@
   id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你正在观察调用 `std::free()` 时由 `q` 指向的内存，那么你可能会看到该内存被写入（但这并非保证会发生）。同样，你也有可能看到在 `q`
+    之前以及你分配的字节内存块结束之后被写入的内存。记住，`std::free()`，就像 `std::malloc()` 一样，可以执行它需要的任何账目管理任务，就像它可以覆盖已经释放的内存块一样，尤其是在为调试而构建的情况下；或者，它也可以让内存保持原样，这在优化构建中更为常见。
 - en: That was fun, wasn’t it? It seems to work indeed, at least on some machines.
     Yet, as stated earlier, this version of our leak detector has bugs, and these
     bugs can really hurt us. As a hint, know that if we compile this leak detector
@@ -896,22 +1041,27 @@
   id: totrans-138
   prefs: []
   type: TYPE_NORMAL
+  zh: 那很有趣，不是吗？它确实看起来是可行的，至少在某些机器上。然而，正如之前所述，我们这个泄漏检测器的这个版本有bug，这些bug可能会给我们带来真正的麻烦。作为一个提示，要知道如果我们在一个
+    `std::size_t` 是四字节宽的编译器上编译这个泄漏检测器，并尝试调用 `new double`，我们可能会遇到非常严重的问题。现在是我们更仔细地审视我们的实现，以了解为什么会出现这种情况并修复我们造成的问题的时候了。
 - en: Identifying (and fixing) the problems
   id: totrans-139
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 识别（并修复）问题
 - en: Our initial implementation has in fact one real problem, as well as something
     that works but could be cleaner and deserves discussion.
   id: totrans-140
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的初始实现实际上有一个真正的问题，以及一些工作正常但可以更简洁且值得讨论的问题。
 - en: 'The real problem is that we express our lies in dangerous ways and that we
     are not giving proper consideration to alignment requirements. Indeed, look at
     our initial implementation of `operator new()`:'
   id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: 真正的问题是我们在危险的方式中表达我们的谎言，并且我们没有充分考虑对齐要求。确实，看看我们 `operator new()` 的初始实现：
 - en: '[PRE17]'
   id: totrans-142
   prefs: []
@@ -927,6 +1077,8 @@
   id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们确实知道 `std::malloc()` 返回的内存必须适当地对齐，以适应我们机器的最严格（意味着最坏）的自然对齐：确实，由于该函数不知道分配完成后将构造什么对象，它必须确保分配的内存块在所有“自然”情况下都得到适当的对齐。C++
+    编译器提供 `std::max_align_t` 作为机器上具有最严格自然对齐的类型的一个别名，在实践中这通常是，但不一定是 `double` 类型。
 - en: 'Now, we allocate a bit more than was requested, `sizeof(std::size_t)` more
     bytes to be precise. That’s fine up to a point: we can assuredly store `std::size_t`
     at the beginning of the block returned by `std::malloc()` since that block is
@@ -934,6 +1086,7 @@
   id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们分配比请求的更多一点，精确地说，比请求的`sizeof(std::size_t)`更多字节。这在某种程度上是可以接受的：我们可以确信在`std::malloc()`返回的块的开头存储`std::size_t`，因为即使在最坏的情况下，这个块也是正确对齐的。
 - en: Then, we “jump over” `std::size_t` and return an address that is `sizeof(std::size_t)`
     bytes more than the one we allocated. This can be fine if it still yields a correctly
     aligned address even in the worst case, but that is only the case if `std::size_t`
@@ -942,12 +1095,14 @@
   id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: 然后，我们“跳过”`std::size_t`，并返回一个比我们分配的地址多`sizeof(std::size_t)`字节的地址。如果即使在最坏的情况下仍然产生正确对齐的地址，这可能还是可以接受的，但这只有在`std::size_t`和`std::max_align_t`具有相同大小的情况下才成立，这是**不保证的**（在实践中，它们的大小通常不同）。
 - en: 'What happens if these types are of different sizes and, consequently, the address
     returned by `operator new()` does not match the alignment requirements of `std::max_align_t`?
     Well, it depends:'
   id: totrans-146
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果这些类型的大小不同，并且因此`operator new()`返回的地址不匹配`std::max_align_t`的对齐要求，会发生什么？好吧，这取决于：
 - en: It can work if we get “lucky” and the address returned is aligned correctly
     for the type we want to construct. For example, suppose that `alignof(int)==4`
     and `alignof(std::max_align_t)==8`, then calling `new int` will work even if `operator
@@ -959,6 +1114,8 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如果我们“幸运”地得到一个正确对齐的地址，那么它就可以工作。例如，假设`alignof(int)==4`和`alignof(std::max_align_t)==8`，那么调用`new
+    int`将可以工作，即使`operator new`返回的地址是4的倍数但不是8的倍数。然而，调用`new double`可能只会带来痛苦。这种“幸运”可能是一种诅咒，隐藏一个潜在的、破坏性的错误一段时间，并在以后带来不愉快的惊喜。
 - en: You can end up with slow and dangerous code, as some hardware will support access
     to misaligned objects. You don’t want to do that, however, as for the machine
     to achieve this, it needs to perform acrobatics and transform a seemingly simple
@@ -973,6 +1130,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 你可能会得到缓慢且危险的代码，因为某些硬件将支持访问未对齐的对象。然而，你并不想这样做，因为为了实现这一点，机器需要执行杂技般的操作，将看似简单的操作，例如在寄存器中加载`double`，转换成一系列操作（加载“低”字节，加载“高”字节，并通过位操作从这两部分中创建一个`double`）。这导致代码执行速度显著减慢，显然，如果是一个多线程程序，还可能变得危险，因为一个线程可能会读取一个部分形成的对象（这被称为**撕裂读取**）或写入一个部分形成的对象（一个**撕裂写入**）。你真的不希望调试发生这种情况的代码。
 - en: Your code can simply crash, as will be the case on many embedded platforms (including
     quite a few game consoles). It’s arguably the most reasonable outcome in such
     a situation.
@@ -980,6 +1138,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 你的代码可能会简单地崩溃，就像在许多嵌入式平台（包括相当多的游戏机）上发生的那样。在这种情况下，这可能是最合理的结果。
 - en: 'To fix this problem, we need to ensure that the address returned from our overloaded
     `operator new()` is properly aligned for `std::max_align_t`, and that `operator
     delete()` is adjusted accordingly. One way to do this would be to ensure that
@@ -989,6 +1148,8 @@
   id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了解决这个问题，我们需要确保从我们的重载`operator new()`返回的地址对`std::max_align_t`是正确对齐的，并且`operator
+    delete()`相应地调整。一种方法是通过确保“隐藏区域”的大小，使得跳过额外的内存块仍然导致一个对`std::max_align_t`对象正确对齐的地址：
 - en: '[PRE18]'
   id: totrans-151
   prefs: []
@@ -1003,11 +1164,13 @@
   id: totrans-152
   prefs: []
   type: TYPE_NORMAL
+  zh: 如您所见，此实现除了为请求的`n`字节分配空间外，还为`std::max_align_t`分配空间，然后“跳过”额外的存储空间，从而得到一个在最坏情况下仍然正确对齐的地址。如果`sizeof(std::size_t)`恰好小于`sizeof(std::max_align_t)`，这可能会意味着比初始（错误）实现浪费更多的空间，但至少我们知道客户端代码能够在那里构造其对象。
 - en: 'The corresponding `operator delete()` will do the same pointer gymnastics but
     in reverse, going back `sizeof(std::max_align_t)` bytes in memory:'
   id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 相应的`operator delete()`将执行相同的指针体操，但方向相反，回退`sizeof(std::max_align_t)`字节：
 - en: '[PRE19]'
   id: totrans-154
   prefs: []
@@ -1018,11 +1181,13 @@
   id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，此实现将`std::max_align_t*`赋值给`void*`（指针`p`），这是完全合法的，不需要进行类型转换。
 - en: 'The other issue we should discuss is not technically a problem in this implementation
     but is a problem in general. Look at this excerpt from `operator new()`:'
   id: totrans-156
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们应该讨论的另一个问题在这个实现中不是技术问题，但在一般情况下是问题。看看`operator new()`的以下摘录：
 - en: '[PRE20]'
   id: totrans-157
   prefs: []
@@ -1034,6 +1199,7 @@
   id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 您注意到有什么奇怪的地方吗？高亮显示的代码行在`p`指向的位置执行赋值操作，但这个赋值只有在现有对象上才有意义。在那个时刻，位置`*p`处有一个对象吗？
 - en: 'The answer is… strange. To create an object, one has to call its constructor,
     but we never called the constructor of `std::size_t` at location `p` in this code.
     This might make you wonder why our code seems to work. It happens that the following
@@ -1041,6 +1207,7 @@
   id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 答案是…奇怪。要创建一个对象，必须调用其构造函数，但我们在代码中的位置`p`从未调用`std::size_t`的构造函数。这可能会让您想知道为什么我们的代码似乎能正常工作。实际上情况是这样的：
 - en: Some types in C++ are said to be `std::nullptr_t` including their cv-qualified
     counterparts) and implicit lifetime classes (aggregates with no user-provided
     destructor, at least one eligible trivial constructor as well as a non-deleted
@@ -1052,6 +1219,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: C++中有些类型被称为`std::nullptr_t`，包括它们的cv-限定版本）和隐式生命周期类（没有用户提供的析构函数的聚合体，至少有一个合格的平凡构造函数以及一个非删除的平凡析构函数）。您会注意到，`std::size_t`作为一个无符号整型别名的别名，属于隐式生命周期类型的范畴。如果您有一个C++23编译器，您可以通过`std::is_implicit_lifetime<T>`特性来编程测试某些类型`T`是否符合隐式生命周期类型。
 - en: Some standard library functions implicitly start the lifetime of objects of
     implicit lifetime types. These include some C functions, such as `std::memcpy()`,
     `std::memmove()`, and `std::malloc()`, but also `std::bit_cast`, some functions
@@ -1061,6 +1229,7 @@
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 一些标准库函数隐式地开始隐式生命周期类型的对象的寿命。这包括一些C函数，如`std::memcpy()`、`std::memmove()`和`std::malloc()`，还包括`std::bit_cast`、分配器中的某些函数（参见[*第14章*](B21071_14.xhtml#_idTextAnchor199)）以及C++23中的两个函数，分别命名为`std::start_lifetime_as()`和`std::start_lifetime_as_array()`。
 - en: What makes this assignment operation work in this specific case is that we are
     writing to an object of an implicit lifetime type in a block of memory that is
     properly aligned and has been allocated with one of these special functions that
@@ -1071,6 +1240,7 @@
   id: totrans-162
   prefs: []
   type: TYPE_NORMAL
+  zh: 使这个赋值操作在这个特定情况下工作的是，我们正在向一个隐式生命周期类型的对象所在的内存块中写入，该内存块是正确对齐的，并且是用具有隐式开始对象寿命特性的这些特殊函数之一分配的。如果我们决定存储比某些隐式生命周期类型的对象更复杂的东西，我们的赋值要么在编译时失败（如果我们的编译器足够好，能注意到我们的错误），要么在运行时造成损害的风险。
 - en: 'A better, and in general, safer approach to the act of hiding the value of
     `n` in some uninitialized storage is to use `placement new`, as seen in [*Chapter
     7*](B21071_07.xhtml#_idTextAnchor116). The following implementation of `operator
@@ -1079,6 +1249,8 @@
   id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 一种更好、通常也更安全的隐藏`n`值在未初始化存储中的方法，是使用`placement new`，正如在[*第7章*](B21071_07.xhtml#_idTextAnchor116)中所述。因此，以下`operator
+    new()`的实现通常更可取，因为它避免了（通常是错误的）对一个非对象的赋值：
 - en: '[PRE21]'
   id: totrans-164
   prefs: []
@@ -1090,11 +1262,13 @@
   id: totrans-165
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，由于`std::size_t`有一个平凡的析构函数，因此不需要在`operator delete()`中调用它的析构函数；只需释放其底层存储就足够了，这样就可以结束它的生命周期。现在我们有一个正确、有效的泄漏检测器！
 - en: Revisiting our implementation (and lessons learned)
   id: totrans-166
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 回顾我们的实现（以及学到的教训）
 - en: We just overloaded memory allocation operators, blatantly lied our way through
     the protections of the type system, performed potentially dangerous operations
     that risked leading to misaligned objects, and saw how to avoid this pitfall.
@@ -1104,6 +1278,7 @@
   id: totrans-167
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们只是重载了内存分配运算符，公然绕过了类型系统的保护，执行了可能危险的操作，这些操作可能导致对齐错误的对象，并看到了如何避免这个陷阱。这确实是一次有趣的冒险，但作为一位敏锐的读者，你可能会想知道这个技巧的成本，特别是它在内存消耗方面的成本。
 - en: With our “allocate more than requested and hide `n` at the beginning” approach,
     each allocation consumes `sizeof(std::max_align_t)` bytes more than needed by
     client code. If our code allocates large objects, that cost might be minor, but
@@ -1112,6 +1287,7 @@
   id: totrans-168
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用我们“分配多于请求的量并在开头隐藏`n`”的方法，每次分配都会比客户端代码需要的多消耗`sizeof(std::max_align_t)`个字节。如果我们分配大对象，这种成本可能微不足道，但如果我们分配小对象，这种开销可能是不合理的，并且可能主导我们整个程序的内存消耗。
 - en: Remember from [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116) that C++14 made
     it possible to provide an overload of `operator delete()` that accepts the size
     of the just-destroyed object as an argument. This makes the act of hiding `n`
@@ -1120,11 +1296,14 @@
   id: totrans-169
   prefs: []
   type: TYPE_NORMAL
+  zh: 记住从[*第7章*](B21071_07.xhtml#_idTextAnchor116)中提到的，C++14使得提供接受刚刚销毁的对象大小作为参数的`operator
+    delete()`重载成为可能。这使得在`operator new()`期间隐藏`n`的行为变得冗余，因为我们这样做正是为了在`operator delete()`中检索`n`，而我们现在不再需要这样做。
 - en: 'Since we do not need to hide `n`, we can both simplify our implementation and
     significantly reduce our memory consumption:'
   id: totrans-170
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们不需要隐藏`n`，我们可以简化我们的实现并显著减少我们的内存消耗：
 - en: '[PRE22]'
   id: totrans-171
   prefs: []
@@ -1135,11 +1314,13 @@
   id: totrans-172
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个泄漏检测器仍然有效，并且与它之前更天真的版本相比，代表了一个严格的升级。
 - en: Summary
   id: totrans-173
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: 'That was fun, wasn’t it? You can take this very simple tool and make it more
     interesting: for example, you could use it to check for overflow and underflow
     of the allocated memory blocks by injecting sentinel values before and after each
@@ -1148,6 +1329,7 @@
   id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 这很有趣，不是吗？你可以使用这个非常简单的工具让它更有趣：例如，你可以用它来检查分配的内存块的前后注入哨兵值，以检查溢出和下溢，或者你可以用它来制作你内存使用方式的某种映射。
 - en: This concludes our first foray into applications that benefit from taking charge
     of the memory allocation facilities at our disposal. Our next step, and next chapter,
     will lead us to examine how a C++ program can interact with atypical memory or
@@ -1155,6 +1337,7 @@
   id: totrans-175
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就结束了我们对利用我们可用的内存分配设施的应用程序的第一轮探索。我们的下一步，也是下一章，将引导我们探讨一个C++程序如何与典型内存或处理典型分配情况交互。
 - en: Of course, no programming language (even one as versatile and wide-ranging as
     C++) can profess to cover all possible types of memory that an operating system
     could provide services for, nor should that be the language’s role. Still, as
