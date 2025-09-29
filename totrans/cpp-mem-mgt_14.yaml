@@ -1,0 +1,1628 @@
+- en: '14'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Writing Generic Containers with Allocator Support
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have come a long way since the beginning of this book. Recent chapters examined
+    how one can write memory-efficient containers, describing how to do so when memory
+    management is done explicitly (in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172))
+    and when it is done implicitly, through smart pointers (in [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187)).
+    Choosing a memory management approach is not an either/or proposition; each one
+    is useful in its own way and solves real-life use cases depending on one’s application
+    domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, none of the approaches we have covered so far match what standard library
+    containers do. Indeed, standard library containers (as well as many other standard
+    library types that can dynamically allocate memory) are `std::vector` whose memory
+    comes from an arena (see [*Chapter 10*](B21071_10.xhtml#_idTextAnchor153)) or
+    from a fixed-capacity buffer on the stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocators officially came to the C++ language, along with the standard library
+    containers, in C++98, but they evolved and diversified themselves over time. Writing
+    an allocator became significantly simpler with C++11, and C++17 introduced an
+    entirely new approach to memory allocation with **polymorphic memory resource**
+    (**PMR**) allocators and containers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, you will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understand and use traditional allocators
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Write a traditional allocator for a specialized application domain
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learn how to manage the allocator lifetime when a container is moved or copied
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clone an allocator’s type
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand and use PMR allocators and containers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Equipped with a knowledge of allocators and how they interact with containers,
+    this chapter will enrich your memory management toolbox and open up new ways to
+    combine data organization with the way storage is obtained. Understanding allocators
+    might even make writing new containers less of a necessity; sometimes, instead
+    of trying to create an entirely new container, the solution is just a matter of
+    combining the right data organization strategy with the right storage management
+    approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter14](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter14).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A word about the examples in this chapter
+  prefs: []
+  type: TYPE_NORMAL
+- en: As was the case with [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187), this
+    chapter will show incomplete examples to avoid redundancy with the excerpts found
+    earlier, particularly those in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172).
+    Allocators change the way in which containers interact with memory management
+    facilities, but they do not require rewriting containers entirely, so a lot of
+    code written for a given container remains stable regardless of how memory is
+    managed. The code you will find in the GitHub repository is, of course, complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also note that this chapter discusses allocators in the context of containers,
+    but the idea can be extended to many types that need to dynamically allocate memory.
+    It is sometimes difficult to do so; for example, support for allocators in `std::function`
+    was removed in C++17 as no known standard library implementation had managed to
+    make it work. Still, allocators can be seen as a general idea, not something that
+    is limited to containers, and you can envision using allocators in other contexts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why allocators?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Allocators tend to scare people, including some experts, but you will not be
+    scared as you are already in possession of significant memory management knowledge
+    and skills (and you are probably curious to know more about the topic given the
+    fact that you are reading this book). Knowing this, the first question we need
+    to address, before even expressing what an allocator is, is “Why do allocators
+    exist?”. Why would we concern ourselves with an additional layer of complexity
+    in our memory management code?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Well, this is C++, and C++ is all about giving users *control*, so that’s where
+    our explanation begins. To make an analogy, think about iterators: why they are
+    useful, and how they make your life as a programmer better. They decouple iterating
+    over elements of a sequence from how the elements are organized in that sequence,
+    such that you can write code that computes something such as the sum of the values
+    in `std::list<int>` or `std::vector<short>` without having to know that in the
+    first case, you are navigating through nodes linked to one another by pointers
+    and in the second case, you are iterating through objects stored in contiguous
+    memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The beauty of iterators is this decoupling between iteration and data organization.
+    Similarly, allocators decouple data organization from the way the underlying storage
+    is obtained or freed. This allows us to reason about the properties of containers
+    independently from the properties of memory management and makes containers useful
+    in even more situations than they would otherwise be.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A very, very thin layer…
+  prefs: []
+  type: TYPE_NORMAL
+- en: To a container, an allocator (at least those in the “traditional” model that
+    we are about to discuss) represents a thin (*very* thin) layer of abstraction
+    over the hardware. To a container, an allocator expresses such things as “What
+    is an address?”, “How does one put an object somewhere?”, “How does one destroy
+    an object at some location?”, and so on. In a way, for a container, the allocator
+    essentially *is* the hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traditional allocators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As mentioned already, allocators have been a mainstay of C++ for decades now,
+    but they have existed in a few different guises and shapes. In this chapter, we
+    will adopt a sort of chronological approach, starting from the earlier (and more
+    complicated) allocator types and progressing toward the simpler (and more versatile)
+    ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To understand this chapter, one key idea to keep in mind is that a container
+    type such as `std::vector<T>` does not really exist. What does exist is the `std::vector<T,A>`
+    type where, by default, `A` is `std::allocator<T>`, which allocates through `::operator new()`
+    and deallocates through `::operator delete()`. By **traditional allocator**, we
+    mean an allocator type that is part of the type of a container (this is not the
+    only possible approach to writing allocators today, as we will see when we discuss
+    PMR allocators later in this chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will first examine what was required to write an allocator before C++11,
+    and how a container such as `std::vector<T,A>` could use an object of the `A`
+    type to abstract away its memory allocation tasks. Improvements to the way allocators
+    are expressed will follow in later sections of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before C++11
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Traditional allocators written before C++11 had to implement a wide array of
+    members, which made the task of writing allocators seem daunting to many. Consider
+    what one had to write in those days, and please note that not all of what follows
+    remains true as of this writing since the API of allocators has evolved over time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the difficulty of tracking an evolving API
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is required of allocators changed with every version of C++ since C++03,
+    and these days, it is not always easy (or relevant) to write examples that compile
+    for C++11\. For this reason, the examples we will write in a detailed manner will
+    use C++11 allocators, to show what that actually meant, but will compile with
+    the C++17 standard to make the code more pleasant to read (and write).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will examine such an allocator, `small_allocator<T>`, and implement it in
+    a way that resembles `std::allocator<T>` in order to highlight what it meant to
+    write an allocator in the C++11 era, and then compare that with an equivalent
+    expressed for a more recent version of the standard. We will use C++17 features
+    in our implementation as we do not want to introduce unnecessary complexity in
+    an already subtle topic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After introducing `small_allocator<T>`, we will show how `Vector<T>` from [*Chapter
+    12*](B21071_12.xhtml#_idTextAnchor172) and [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187)
+    can be enhanced and become `Vector<T,A>`, and how `A` can be `std::allocator<T>`,
+    `small_allocator<T>`, or any other conforming allocator type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type aliases
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An allocator of the `T` type had to expose type aliases for `value_type`, `size_type`,
+    `difference_type` (the type one would get from subtracting two `pointer` objects),
+    `pointer`, `const_pointer`, `reference`, and `const_reference`. One way to think
+    about this is that to a container, the allocator represents the underlying memory
+    and consequently defines the types that best describe these low-level ideas. Containers
+    could then map their own aliases to those of their allocator for conformity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our `small_allocator<T>` type, this would translate to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In practice, for an allocator of `T`, one could expect these type aliases to
+    correspond to those shown here for `small_allocator<T>` in all but the strangest
+    cases: as long as `value_type` is defined, we can almost always infer the others.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Member functions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An allocator of the `T` type had to expose a member function, `max_size()`,
+    that was supposed to return the size of the largest block that this allocator
+    could actually allocate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In practice, that often proved to be unimplementable as, with some operating
+    systems, allocation always succeeds (but usage of the allocated memory may fail
+    if the program is over-allocated) so that function usually turned out to be implemented
+    on a best-effort basis on a given platform. A possible implementation would be
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: An allocator of the `T` type also had to expose two overloads of a function
+    that uses all the words this author’s students “love” in a single signature (appreciate
+    the irony!). Consider `pointer address(reference r)` as well as the equivalent
+    for `const` objects, which is `const_pointer address(const_reference r)`. The
+    intent here is to abstract the ways in which one would get the address of an object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It would be tempting to implement each of these functions as `return &r;` but
+    in practice, this is perilous as users are allowed to overload the unary `operator&()`
+    for their types, and this means such an implementation would call arbitrary code,
+    a scary prospect indeed… Avoid overloading something as fundamental as “taking
+    the address of an object” unless you really, *really* have a good reason to do
+    so, and even then, consider alternative approaches to solving your problem!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A better implementation technique is to express these functions through `return std::addressof(r);`
+    where `std::addressof()` is a “magical” standard library function from `<memory>`
+    (that is, `constexpr`) and returns the address of an object without going through
+    an overloadable facility:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Obviously, an allocator needs to expose member functions to perform the actual
+    memory allocation. The signatures for these are `allocate(size_type n)` and `deallocate(pointer p, size_type n)`.
+    A simple implementation of these two functions could be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `allocate()` member function used to take a second argument of the `void*`
+    type named `hint`, which was initialized to `nullptr` by default. This argument
+    was meant to inform the allocator of a location that could be used to provide
+    storage, in case the container knew of such a location. That feature seemed rarely
+    (if ever) used in practice, and was deprecated in C++17 and then removed in C++20.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These two functions are the essence of why allocators exist: `allocate()` returns
+    a chunk of memory big enough to hold `n` contiguous elements of `value_type`,
+    throwing `bad_alloc` on failure, and `deallocate()` deallocates a chunk of memory
+    big enough to hold `n` contiguous elements of `value_type`. When one writes an
+    allocator, one usually seeks to provide an answer to this specific problem.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bytes or objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interestingly, contrary to `operator new()`, which takes a number of *bytes*
+    as argument, `allocate()` and `deallocate()` both take as argument a number of
+    *objects*. That is because traditional allocators are type-aware (they are allocators
+    of some type `T` after all), whereas `operator new()` and friends are (mostly)
+    type-agnostic. You will notice later in this chapter that PMR allocators (which
+    one might call “a step back”) use memory resources that are type-agnostic such
+    as `malloc()` or `operator new()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Both `allocate()` and `deallocate()` deliberately lie to client code: they
+    trade in raw memory and neither create nor destroy objects of type `T`, yet `allocate()`
+    returns a `pointer` (a `T*`, essentially) and `deallocate()` accepts a `pointer`
+    as argument even though all `T` objects are assumed to have been destroyed beforehand.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fact that these functions lie to the type system is a good thing in a way,
+    as it relieves the container from the task of doing so. Of course, the container
+    has to be aware of what these functions do and should not assume the presence
+    of objects in memory returned by `allocate()` or passed to `deallocate()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, an allocator had to expose member functions to turn raw memory into
+    objects and conversely. The `construct(pointer p,const_reference r)` and `destroy(pointer p)`
+    functions are respectively meant to construct a copy of `r` at location `p` (which
+    is assumed to have been allocated beforehand), and destroy the object at location
+    `p` (without deallocating the underlying storage):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: One can expect that most implementations will do essentially what the preceding
+    code does. There are alternatives, but they are rarely met in practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Again, these functions lie to the type system: `construct()` takes a `pointer`
+    (a `T*`, in practice) as argument but when the function is called, that pointer
+    points to raw memory, not to an object of type `T`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about rebind?
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will notice that we did not discuss the `rebind` public template type, but
+    that is only because the idea behind this type is easier to understand when facing
+    the kind of problem it is meant to solve. We will face such a situation when discussing
+    allocator-aware node-based containers through our `ForwardList<T,A>` class later
+    in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Past this point, the requirement for an allocator is to define whether two
+    allocator objects of different types are equal or not. A possible implementation
+    would be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Expressed otherwise, two `small_allocator` specializations for distinct types
+    describe the same strategy and are thus considered equal. “But wait!” you say,
+    “Where do you take into account the state of the allocators in this computation?”.
+    But here’s a revelation: pre-C++11 allocators were essentially assumed to be *stateless*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Well, they were not, but it was unclear what would happen to an allocator if
+    it was associated with a container object and that object was copied. You see,
+    if an allocator has *state*, we have to know what to do with that state when the
+    allocator is copied. Is the state copied? Is it shared? In the pre-C++11 era,
+    we did not know what to do in such a situation, so unless a container was used
+    in a context where it would not be copied, as in the case of a vector local to
+    a function and associated with an allocator that uses stack space as storage,
+    most people avoided stateful allocators altogether.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what about stateful allocators?
+  prefs: []
+  type: TYPE_NORMAL
+- en: As hinted, stateful allocators were a possibility back then (they existed, and
+    they were used in practice). How is one expected to define allocator equality
+    for stateful allocators (and for allocators in general)? The general idea is that
+    two allocators should compare equally if memory allocated from one can be deallocated
+    from the other. With an allocator that delegates allocation tasks to free functions
+    such as `std::malloc()` or `::operator new()`, equality is trivially `true`, but
+    stateful allocators require us to think about how to define this relation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we look at how we could write allocator-aware containers, we will take
+    a step back and see how we could adapt some of the uninitialized memory algorithms
+    used in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172) and [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187)
+    to use the services of an allocator. This will reduce the refactoring effort required
+    later in the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some allocator-aware support algorithms
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Since we are using allocators to bridge the gap between raw storage and objects,
+    we will not be able to use the raw memory algorithms seen in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172)
+    and [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187) in our allocator-aware implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have the option of writing our own versions of these algorithms in detail
+    at each call site within our containers, but that would be tedious (and bug-prone).
+    Instead, we will write somewhat simplified versions of these low-level memory
+    management algorithms and make these simplified versions use an allocator passed
+    as an argument. In so doing, we will reduce the impact of making containers allocator-aware
+    on our implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first three of these algorithms will be allocator-aware versions of algorithms
+    that initialize a range of values, as well as one that destroys such a range.
+    To minimize the impact on the existing implementations, we will essentially use
+    the same signature as their non-allocator-aware counterpart, but with an added
+    argument that is a reference to the allocator. For the algorithm that fills a
+    block of raw memory with some value, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, for the algorithm that copies a sequence of values to a block of raw
+    memory, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the algorithm that moves a sequence of values to a block of raw memory,
+    we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, for the algorithm that transforms a sequence of objects into a block
+    of raw memory, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that in each case, the implementation would be more conformant if, when
+    an exception occurs, objects were destroyed in reverse order of construction.
+    Feel free to implement this slight adjustment; it’s not difficult but it would
+    introduce some noise in our example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other standard facility we will rewrite is `cmp_less()`, which allows comparing
+    a signed value with an unsigned value without getting caught by the integer promotion
+    rules of the C language. It’s not directly memory-related, but we need it in our
+    `Vector<T>` implementation, and it’s a C++20 feature, which makes it unavailable
+    when we compile for C++17:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Both the `std::is_signed<T>` trait as well as the `std::make_unsigned<T>()`
+    function can be found in header `<type_traits>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Conditional compilation and feature test macros
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an aside, if you find yourself having to maintain code where a feature such
+    as `std::cmp_less()` might or might not be available, such as a source file that
+    is sometimes compiled for C++20 and sometimes compiled for C++17, consider conditional
+    inclusion of your “homemade workaround” version by testing the associated feature
+    test macro.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this specific case, one could wrap the definition of our personal version
+    of `cmp_less()` with `#ifndef __cpp_lib_integer_comparison_functions` to make
+    sure it is only provided if there is no version provided by one’s standard library
+    implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s see how these allocators and our support algorithms can be used by
+    a container, first with a container that uses contiguous storage (our `Vector<T,A>`
+    class) and then with a node-based container (our `ForwardList<T,A>` class).
+  prefs: []
+  type: TYPE_NORMAL
+- en: An allocator-aware Vector<T,A> class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We are now ready to look at how introducing allocator awareness in a container
+    that uses contiguous memory (more specifically, our `Vector<T>` class) impacts
+    the implementation of that container. Note that we will use the explicit memory
+    management approach from [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172) as a
+    baseline in this case since we want to explore the impact of allocator awareness
+    and this will help us make the implementation changes more apparent. Feel free
+    to adapt the code in this chapter with an implicit approach to memory management
+    if you are so inclined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Starting with the template’s signature itself, we now have a two-type template
+    with `T` being the type of the elements and `A` being the type for the allocator,
+    but with a reasonable default type for `A` such that casual users will not need
+    to worry about such technical details:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note some techniques here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since we expect `A` to be stateless, we used private inheritance and made `A`
+    a base class of `Vector<T,A>`, enabling the empty base optimization. Alternatively,
+    we could also have used a data member of type `A` inside each `Vector<T,A>` object
+    (perhaps incurring a small size penalty).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We deduced the type aliases of the container from those of its allocator. This
+    probably changes nothing in practice with respect to the aliases we used in previous
+    chapters, but `A` might be doing some “fancy tricks” (one can never be too careful).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In a private section of our class, we expose some selected members of our base
+    class as our own. This will make the code less verbose later on, allowing us to
+    write `allocate(n)` instead of `this->A::allocate(n)`, for example.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The non-allocating members of our class do not change, unsurprisingly. Data
+    members stay the same, and so do basic accessors such as `size()`, `empty()`,
+    `begin()`, `end()`, `front()`, `operator[]`, and so on. Even the default constructor
+    remains unchanged since it does not allocate memory and so does not need to interact
+    with its allocator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is a new constructor needed, one that accepts as argument an allocator.
+    This one is particularly useful in the case of stateful allocators:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Of course, when reaching the constructors that do need to allocate memory,
+    the situation becomes more interesting. Take, for example, the constructor that
+    takes as argument a number of elements and an initial value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is a lot to say here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The memory block that will serve as the underlying storage for our container
+    is allocated through a call to our base class’s `allocate()` member function.
+    Remember that even though this yields a `pointer` (a `T*`), that is a lie and
+    there are no `T` objects in the newly allocated block.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We fill that uninitialized memory block with `T` objects through our homemade
+    allocator-aware version of `std::uninitialized_fill()` (see the `_with_allocator`
+    suffix). Note how we pass the allocator as an argument to the algorithm: the inheritance
+    relationship between `Vector<T,A>` and `A` is `private`, but the derived class
+    is aware of it and can use that information through `static_cast`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If one of the constructors used in the process of initializing that memory block
+    throws, the algorithm destroys the objects it had created, as usual (no one else
+    really could do it anyway), after which we intercept that exception and deallocate
+    the storage before re-throwing said exception in the interest of exception neutrality.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Similar maneuvers are used in other allocating constructors, with different
+    algorithms used to initialize the allocated storage. The move constructor and
+    the `swap()` member function do not allocate memory and, for that reason, remain
+    unchanged, and the same goes for the assignment operators: they are built from
+    other member functions and do not need to allocate or deallocate memory by themselves.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you probably suspected already, the destructor of our container will use
+    the allocator to destroy the objects and deallocate the underlying storage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `push_back()` and `emplace_back()` member functions do not allocate by
+    themselves, delegating to our private `grow()` member function, which, in turn,
+    delegates to `reserve()` for the allocation, but they do need to `construct()`
+    an object at the end of the container:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The principal tools for memory allocation in our class are probably `reserve()`
+    and `resize()`. In both cases, the algorithm remains as it was, but the low-level
+    memory management tasks are delegated to the allocator. For `reserve()`, this
+    leads us to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Whereas, for `resize()`, we now have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: In previous implementations of the `Vector<T>` class, we had implemented one
+    version each of `insert()` and `erase()`, as implementing the whole set of these
+    functions would make this book unreasonably large. Since both functions meddle
+    with initialized and uninitialized memory, they need to be adapted to use the
+    services of the allocator rather than doing their own memory management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the case of `insert()`, the key aspects of the function that need to be
+    adjusted are those that copy or move objects into raw memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the case of `erase()`, what we do is copy all objects after the erased one
+    “to the left” by one position; the object at the end of the sequence after this
+    copying has been performed has to be destroyed, and for this, we need to use the
+    allocator’s services. An example follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you have probably gathered at this point, we could optimize or simplify
+    these functions in numerous ways, such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a common core functionality between `reserve()` and `resize()`, so
+    we could essentially claim that `resize()` is in large part like `reserve()` followed
+    by an uninitialized fill and express it as such.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the case of `erase()`, at compile time, we could test the value of the `std::is_nothrow_move_assignable_v<T>`
+    trait and, if that condition holds, replace the call to `std::copy()` with a call
+    to `std::move()`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We could make `insert()` and `erase()` more exception-safe than they are, although
+    this would make the code a bit long for a book such as this one.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At this point, we have an allocator-aware container that manages contiguous
+    memory. It will now be interesting to see what the impacts of allocator awareness
+    will be on a node-based container, something we will address through an allocator-aware
+    version of the `ForwardList<T>` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An allocator-aware ForwardList<T,A> class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A funny thing happens when writing allocator-aware node-based containers. Pay
+    attention to the beginning of our `ForwardList<T,A>` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Did you notice something interesting about type `A`? Think about it…
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Yes, that’s it: `A` *is the wrong type*! A node-based container such as `ForwardList<T,A>`
+    never allocates objects of type `T`: it allocates *nodes* that (most probably)
+    contain `T` objects and other things such as, in this case, a pointer to the next
+    `Node` in the sequence.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Knowing this, if we were supplied some allocator `A` that modeled a size-aware
+    allocation strategy akin to what we used in our arena for `Orc` objects in [*Chapter
+    10*](B21071_10.xhtml#_idTextAnchor153), making the allocator aware of `T` (and
+    thus, of `sizeof(T)`) would lead to an arena that manages objects of the wrong
+    size. This is not good!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are faced with an interesting conundrum: user code provides us with an allocator
+    because it wants our container to put an *allocation strategy* to good use. That
+    allocation strategy appears as a template parameter of our container, which is
+    why it is associated with the type of its elements (we do not know what the nodes
+    will be at this point in the definition of our container class). Only later, when
+    we have defined what a node will be for our container, are we really ready to
+    say what will need to be allocated, but then `A` already exists and is already
+    associated to `T`, not to the type we really need, which is `ForwardList<T,A>::Node`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that we have instantiated type `A` but have not constructed any object
+    of that type. Lucky for us, as that would have been wasteful (we would never use
+    it!). What we do need is a type that is just like `A`, but able to allocate objects
+    of our `Node` type instead of objects of type `T`. We need a way to *clone the
+    allocation strategy* described by `A` and apply it to another type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is exactly what `rebind` is for. Remember that we mentioned this template
+    type when writing `small_allocator<T>` earlier but said we would return to it
+    when we could put it to good use? There we are, dear reader. As a reminder, in
+    the context of an allocator, `rebind` presents itself as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can see `rebind` as some kind of weird code poetry: it is a way for the
+    allocator to say “If you want the same type as myself but applied to some `U`
+    type instead of `T`, here’s what that type would be.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning to our `ForwardList<T,A>` class, now that we know what `rebind` is
+    for, we can create our own internal allocator type, `Alloc`. This will be “like
+    the allocator type `A` but applied to `Node`, not to `T`” and create an object
+    of that type (incidentally named `alloc` in our implementation), which we will
+    use to perform the memory management tasks in our container:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: It’s a nice trick, isn’t it? Remember that we cloned the *strategy*, the type,
+    not an actual object so any state some hypothetical `A` object would have had
+    would not necessarily be part of our new `Alloc` type (at least not without performing
+    some non-trivial acrobatics). This is yet another reminder that with traditional
+    allocators as they were originally designed, copying and moving allocator state
+    was a complex problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As was the case for the transformation from `Vector<T>` to `Vector<T,A>`, a
+    significant portion of our `List<T>` implementation involved no memory allocation
+    and thus needs not change with `List<T,A>`. This includes the `size()`, `empty()`,
+    `begin()`, `end()`, `swap()`, `front()`, and `operator==()` member functions,
+    among others, as well as most of the `List<T,A>::Iterator<U>` class definition.
+    As our implementation of `ForwardList<T,A>` will need to access private data member
+    `cur` of its iterators on occasion, we give it `friend` privileges over `Iterator<U>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are, of course, member functions of `ForwardList<T,A>` that use memory
+    allocation mechanisms. One of them is `clear()`, whose role is to destroy the
+    nodes in the container. The destruction and deallocation of `Node` objects have
+    to be performed through the allocator, replacing the call to `operator delete()`
+    with a pair of function calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: In `ForwardList<T>`, we made all of the allocating constructors converge toward
+    a single sequence constructor that accepted a pair of iterators (type `It`) as
+    arguments. This localizes the changes required for constructors in `ForwardList<T,A>`
+    to that single function, something that simplifies our task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In `ForwardList<T>`, we had constrained template parameter `It` by the `std::forward_iterator`
+    concept, but concepts are a C++20 feature and we are compiling this implementation
+    in C++17 so we will (sadly) let go of this constraint for the time being.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Having to perform allocation and construction in separate steps complicates
+    our implementation a little, but I think you esteemed readers, will not find this
+    to be unsurmountable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also had written insertion member functions for `ForwardList<T>`, so these
+    will also need to be adapted to use allocators in `ForwardList<T,A>`. We had two
+    overloads of `push_front()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also had two overloads of `insert_after()`, one that inserted a single value
+    and one that inserted the elements in a half-open range. In the latter case, we
+    will need to put aside the `std::forward_iterator` constraint on type `It` again
+    as we are compiling for C++17:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our `erase_after()` member function is similarly adjusted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That concludes our transformation of `ForwardList<T>` into an allocator-aware
+    `ForwardList<T,A>` class. I hope, dear reader, that this was not as difficult
+    as some might have feared: given our understanding of the principles and fundamental
+    techniques presented in this book, integrating allocator awareness in a container
+    should make some sort of sense to most of us at this point.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have seen how to write a “traditional” iterator as well as examples
+    of how one can make a container allocator-aware, you might be wondering about
+    the benefits of using allocators. We know that allocators give use code control
+    over the ways in which containers manage memory, but what can we gain from that
+    control?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example usage – a sequential buffer allocator
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: A classical example of allocator usage is one that, instead of allocating memory
+    from the free store, manages a pre-allocated chunk of memory. That memory does
+    not have to come from the execution stack of a thread, but that’s often what is
+    done in practice, so that’s what our example code will do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What you need to know before reading the following example is this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This sort of allocator is a specialized tool for specialized users. We expect
+    users to know what they are doing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The pre-allocated buffer that will be managed by the allocator in our example
+    has to be properly aligned for the objects that will be stored therein. If you
+    want to adapt this example to handle memory allocation for any naturally aligned
+    object, some additional effort will be required (you will want the allocator to
+    yield addresses aligned on a `std::max_align_t` boundary, something our example
+    allocator does not do).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Some care will need to be taken if client code tries to “,over-allocate,” asking
+    for more memory than what the managed buffer could provide. In this example, we
+    will throw `std::bad_alloc` as usual, but alternatives exist.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When bad_alloc is not an option…
+  prefs: []
+  type: TYPE_NORMAL
+- en: For some applications, throwing or otherwise failing to allocate is not an option.
+    The fact that a specialized allocator cannot meet an allocation request should
+    not, for these applications, result in throwing an exception as throwing means
+    “I cannot meet the postconditions of this function.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: One thing that some applications do when a sequential buffer allocator runs
+    out of memory is simply call `::operator new()` and take the indeterministic allocation
+    time “hit” but leave a trace somewhere (a log, maybe) that this happened. This
+    means the program will leak memory, but for some applications (say, a stock market
+    exchange program that is restarted every day), one can expect those leaks to be
+    relatively low in number, and the fact that there is a trace that something leaked
+    will let programmers look at the problem and (hopefully) fix it before the next
+    day. The “lesser of two evils,” as some might say.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our sequential buffer allocator will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, the state for this allocator resembles what we did for the
+    size-based arena in [*Chapter 10*](B21071_10.xhtml#_idTextAnchor153): we know
+    where the buffer to manage starts (`buf`), how big it is (`cap`), and where we
+    are at in our sequential allocation process (`cur`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We make `cur` a `pointer`-type object to simplify computation later, in the
+    `allocate()`member function, but it’s a convenience, not a necessity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `allocate()` member function is very simple in the sense that it performs
+    a constant-time computation, returning contiguously allocated objects from the
+    underlying storage without even having to reuse that memory after it has been
+    deallocated. Part of the work done in `allocate()` requires avoiding over-allocating,
+    and to do this, we will compare pointers, but we might have to compare a pointer
+    within the allocated memory block with one that is not within that block (it all
+    depends on the value of our arguments). This would lead us into undefined behavior,
+    something we need to avoid, so we cast our pointers to `std::intptr_t` objects
+    and compare the resulting integral values instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if std::intptr_t is not offered on my platform?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Types `std::intptr_t` and `std::uintptr_t` are conditionally supported in C++,
+    which means that there might be vendors that do not offer these type aliases.
+    If you find yourself in this unlikely but not impossible situation, you can simply
+    keep track of the number of objects allocated and compare this with the `cap`
+    data member to achieve the same effect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We end up with the following `allocate()` implementation, accompanied by the
+    corresponding `deallocate()` member function, which is, in this case, effectively
+    a no-op:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As this allocator is stateful, we need to give some thought to allocator equality.
+    What we will do in this case is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: These equality operators make sense at a specific moment in time only, but then
+    this allocator type is not really meant to be copied in practice; if you plan
+    to use a buffer such as this and share its internal state, you will need to give
+    some thought to the way the original and the copy share their internal state and
+    remain coherent with one another – something we do not need to do in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, we test for overflow on allocation and throw `std::bad_alloc`
+    if an allocation request would lead to a buffer overflow, but that’s only one
+    option among others, as we have discussed earlier in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are a few things you might want to note at this point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The test code is the same irrespective of the chosen allocator.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When using a stateful allocator, we need to use a parametric constructor that
+    accepts the allocator as argument.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The responsibility with respect to the size and alignment of the buffer used
+    by the `seq_buf_allocator<T>` falls on the (metaphorical) shoulders of user code.
+    Again, remember that this is a specialized tool, so users are expected to know
+    what they are doing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you run this test on a conforming compiler, you might notice interesting
+    performances with the sequential buffer allocator, and you might notice that `Vector<T,A>`
+    outperforms `std::vector<T,A>`, but `Vector<T,A>` is not as complete and rigorous
+    as its `std::` counterpart. Prefer the standard facilities in practice.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are limitations to the size of the buffer provided to a sequential buffer
+    allocator as stack space is a limited resource (often one or two megabytes overall,
+    so we have less than this to work with). Still, this technique is useful and used
+    in practice in low-latency systems.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If you apply this sort of allocator with a node-based container list `ForwardList<T,A>`,
+    remember that there is a size overhead to each node so plan the size of the buffer
+    to provide accordingly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Of course, that was an implementation that respects C++17 standards. What has
+    changed with respect to allocators since then?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traditional allocators with contemporary standards
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As mentioned already, the traditional approach of ensconcing the allocator type
+    in the associated container type still exists as of this writing, but the way
+    allocators themselves are expressed has changed over time, and the allocators
+    from the previous section, whether `small_allocator<T>` or `seq_buf_allocator<T>`,
+    do not compile as written on a C++20 compiler. Before thinking this is sad, know
+    that we can still write these allocators, but we have to write them in a simpler
+    manner. Whew!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simplification and the advent of a traits-based implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first step in a simplification effort of allocators was the recognition
+    that in most cases, a significant part of the code written in an allocator is
+    what we call “boilerplate code,” code that is the same from class to class and
+    could be qualified as “noise.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: To that effect, C++11 introduced `std::allocator_traits<A>`. The idea is that
+    given some `typename A::value_type` type, one can generate a reasonable and efficient
+    default implementation for most allocator services (including type aliases such
+    as `pointer` or `size_type`) as long as one provides implementations for `allocate()`
+    and `deallocate()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using `small_allocator<T>` as an illustration, we would now be able to simply
+    express that entire allocator type with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, this is quite a simplification! This way, a container such as
+    `Vector<T,A>` could now use `std::allocator_traits<A>` instead of `A` directly
+    when referring to some allocator `A`’s members. With traits being this very thin
+    layer of abstraction that brings no runtime cost to speak of, what they do for
+    some member `M` is essentially “If `A` exposes member “`M`, then use `A::M`; otherwise,
+    here is some reasonable default implementation instead.” Of course, there will
+    be no branching here in practice as everything is determined at compile time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, based on our previous `small_allocator<T>` type, given that `small_allocator<T>::allocate()`
+    returns `T*`, then we can determine that `std::allocator_traits<small_allocator<T>>::pointer`
+    will be equivalent to `T*`, and a container such as `Vector<T,A>` will make its
+    `pointer` type alias correspond to the type expressed by `std::allocator_traits<A>::pointer`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For another example, `seq_buf_allocator<T>` would now be expressed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, even though it was not necessary, type `seq_buf_allocator<T>`
+    exposes the `pointer` and `size_type` aliases, which means that for this type,
+    the `std::allocator_traits` will use the allocator-provided versions instead of
+    trying to synthesize an alternative. As you can see, the contemporary traits-based
+    approach to allocators is very convenient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What services does type `std::allocator_traits<A>` provide exactly? Well, as
+    could be expected, this type exposes the usual type aliases of `value_type` (itself
+    being an alias for `A::value_type`), `pointer`, `const_pointer`, `size_type`,
+    and `difference_type`. For convenience, it also exposes aliases `allocator_type`
+    (equivalent to `A`): `void_pointer` and `const_void_pointer` (respectively equivalent
+    to `void*` and `const void*` in most cases). Remember that traits can be specialized,
+    and for that reason, these seemingly evident type aliases could map to more exotic
+    constructs on occasion.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Type `std::allocator_traits<A>` also exposes the traditional services of an
+    allocator, but in the form of `static` member functions that take the allocator
+    as first argument, including `construct()`, `destroy()`, `allocate()`, `deallocate()`,
+    and `max_size()`. C++23 adds another `static` member function to this set: `allocate_at_least()`.
+    This function returns a `std::allocation_result` object made of the allocated
+    pointer and the actual size of the allocated chunk, expressed as a number of objects
+    (even though, as usual, there is no object in that memory block after allocation
+    has completed).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `rebind` mechanism is expressed through types `std::rebind_alloc<A>` and
+    `std::rebind_traits<T>`. When cloning an allocation strategy (for node containers,
+    mostly), the equivalent of `typename A::rebind<T>::other` through these facilities
+    is somewhat more verbose:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note the presence of the `template` keyword required for grammatical disambiguation
+    Yes, I know what you are thinking now: what a complex language! But we rarely
+    need to use that keyword in practice, and only in those strange situations where
+    the compiler would get confused looking at the following `<` and not knowing whether
+    it’s part of a template signature or whether it’s the less-than operator.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are also new facilities that come with `std::allocator_traits<A>` and
+    deal with allocator lifetime management, something we learned to do over the years:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Three type aliases that inform containers as to what should be done with the
+    allocator at key moments in the container’s life. These types are `propagate_on_container_copy_assignment`
+    (also known as `propagate_on_container_move_assignment` (also known as `propagate_on_container_swap`
+    (also known as `constexpr` functions that yield `true` or `false` (they are equivalent
+    to `std::false_type` by default as, by default, allocators are not meant to be
+    copied or moved). For example, if an allocator exposes type alias POCMA equivalent
+    to `std::true_type`, then a container with that allocator should move the allocator
+    along with the allocated data. Note that in all three cases, this trait being
+    equivalent to `std::true_type` implies a `noexcept` copy, move, or swap (respectively)
+    operation for the allocator.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Type alias `is_always_equal`; which means that allocators of that type will
+    compare equally irrespective of the type of object to allocate (this alleviates
+    the need for `operator==()` and `operator!=()`, which compare two allocators of
+    the same template but different `value_type` aliases). Don’t spend too much time
+    on this one though; it has been deprecated in C++23 and will most likely be removed
+    in C++26.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `select_on_container_copy_construction()` member function. This is a `static`
+    member function that takes an allocator and copies it if its allocator traits
+    express that this is the right thing to do, or returns the original allocator
+    otherwise.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Okay, this allocator lifetime management is new and might be surprising. What
+    do we do with this information?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Managing traditional allocator lifetime
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What should a container do with allocators within a move or a copy operation?
+    Well, here are the details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a container’s copy constructor, the best thing to do is probably to use
+    `select_on_container_copy_construction()`. It is that function’s purpose, after
+    all. Please do not use that function elsewhere: it is really meant for the copy
+    constructor of a container. Once the container under construction has obtained
+    its allocator, this allocator can be used to perform the remainder of the memory
+    allocation tasks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a container’s move constructor, the thing to do is move construct the allocator
+    and steal the resources from the source container.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a container’s copy assignment operator, if type alias `propagate_on_container_copy_assignment`
+    is equivalent to `std::true_type` and both allocators compare unequally, the destination
+    container first has to deallocate all memory (that might not be possible later
+    on in the process). Past this point, if `propagate_on_container_copy_assignment`
+    is equivalent to `std::true_type`, then the allocators should be copy-assigned.
+    Only once this is all done should the elements be copied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The container’s move assignment operator is trickier (remember that *move*
+    is an optimization, and we want it to pay off!). The options we face are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type alias `propagate_on_container_move_assignment` is equivalent to `std::true_type`.
+    In this situation, the steps to perform are (a) ensure that the destination container
+    deallocates all memory under its responsibility (it might not be able to do so
+    later on), (b) move-assign the allocator, and then (c) transfer memory ownership
+    from the source container to the destination container.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Type alias `propagate_on_container_move_assignment` is equivalent to `std::false_type`
+    and the allocators compare equally. In this situation, you can do the same steps
+    as in the previous case but do not move the container.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Type alias `propagate_on_container_move_assignment` is equivalent to `std::false_type`
+    and the allocators compare unequally. In this case, ownership cannot really be
+    transferred, so the best one can do is move the objects themselves from the source
+    container to the destination container.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Luckily, all of these allocator properties can be tested at compile time so
+    the decision-making process does not need to incur any runtime cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Things we do for concision…
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will notice our `Vector<T,A>` and `ForwardList<T,A>` types do not do the
+    entire “allocator lifetime management dance” in order to keep our examples reasonably
+    short, and because the way in which we manage allocator copy and movement is an
+    interesting design aspect that would require adding at least one chapter to this
+    already rather big book. Please be tolerant, dear reader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using traits-based allocators in allocator-aware containers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The remaining question with traditional allocators in a traits-based approach
+    is: how do containers use them?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first thing we will need to do is to adapt our allocator-aware adaptation
+    of the standard uninitialized memory algorithms. For example, our personal adaptation
+    of `std::uninitialized_copy()` becomes the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we are now using `std::allocator_traits<A>` instead of `A` directly,
+    opening up customization opportunities, and passing the allocator as first argument
+    since the `std::allocator_traits<A>` member functions are all `static`. The same
+    adjustment can be applied to the other allocator-aware versions of the algorithms
+    we wrote, with the same calling pattern and passing the allocator as first argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we reach our `Vector<T,A>` type. How do we adjust its implementation
+    to use the contemporary traits-based allocators? The first thing to do is to adjust
+    the source of the container’s type aliases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might be surprised that type aliases `reference` and `const_reference` are
+    not taken from `std::allocator_traits<A>`, but there is a reason for this. In
+    C++, as in this writing, we can design types that behave like “smart pointers”
+    (we have even done so in this book; see [*Chapter 6*](B21071_06.xhtml#_idTextAnchor096)),
+    so an abstraction is useful in case the allocator provides pointers that are not
+    raw pointers, but there is no known way to write “smart references” (that would
+    require being able to overload `operator.()` and proposals to that effect have
+    so far failed to be accepted).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The only reference type that behaves like a reference to `T` is… well, `T&`.
+    For that reason, these type aliases were deprecated in C++17 and removed in C++20\.
+    We can still provide them to clarify our type’s member function signatures, but
+    they are no longer required by the standard.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As far as the member functions of `Vector<T,A>` go, the general idea is that
+    all calls to member functions of `A` are replaced with calls to `static` member
+    functions of `std::allocator_traits<A>` that take a reference to the `A` object
+    as argument (remember that in our `Vector<T,A>` implementation, `A` is a `private`
+    base class of the container). Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you feel discomfort with the use of `*this` in the data member initializers,
+    you can relax as we are only using the `A` part of `*this` and that base class
+    sub-object has been fully initialized at that point. It’s a safe part of `*this`
+    to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same adjustment has to be applied throughout the container (in dozens of
+    places) and obviously makes the source code more verbose, but the good news is
+    that this has gained us a zero-cost-at-runtime layer of abstraction and helped
+    everyone who actually writes allocators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a node-based container such as `ForwardList<T,A>`, the situation is similar
+    yet slightly different. For one thing, the type aliases are tricky; some of them
+    are meant for user code and should be expressed with respect to the `value_type`
+    of the container, and others should be based on the types of the allocator as
+    expressed through its traits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Within the container, we need to rebind `A` to an allocator of our internal
+    `Node` type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Past this point, what we will do to perform memory management tasks is use
+    `static` member functions from the `std::allocator_traits<Alloc>` type, passing
+    the `alloc` data member as argument, as in this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: The same technique needs to be applied throughout the container, of course,
+    but the complexity remains the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have seen how traditional allocators, ensconced in the type of their
+    container, have evolved from their original (rather involved) contract to their
+    contemporary traits-based and simplified implementation (with somewhat more verbose
+    containers), it’s tempting to think that we have reached some form of optimality.
+    This is both right and wrong.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Irritants with traditional allocators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The traditional approach to allocators is optimal at runtime in the sense that
+    the services of such an allocator can be called without any overhead, and if an
+    allocator is stateless, the introduction of an allocator in a container can be
+    achieved without any costs in terms of space. Not bad!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, the absence of runtime costs is not the absence of costs altogether:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A container’s implementation can become somewhat complex due to the additional
+    (compile-time) layering, and there is a cost to writing, understanding, and maintaining
+    source code. This sort of expertise is not universal; you have it, of course,
+    dear reader, but others do not necessarily share that upside with you.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Two containers that are identical in essentially every respect but differ in
+    the way they manage memory (two containers that use different allocators) will
+    in practice be different types, which might slow down compile times in programs
+    that have multiple container-allocator combinations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Some operations that should probably be simple become more complicated. For
+    example, if one seeks to compare containers `v0` and `v1` for equality, and if
+    `v0` is a `Vector<T,A0>` while `v1` is a `Vector<T,A1>`, then one needs to write
+    an `operator==()` function that deals with two different types… even though the
+    allocator of a container is probably not one of its salient properties and, as
+    such, should not be a concern when comparing two containers with respect to their
+    sizes and values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The same reasoning goes for many other container-related operations: an allocator
+    is (traditionally) part of its container’s type with the traditional approach,
+    but many operations are `value_type`-related and have nothing to do with allocators.
+    We are runtime optimal, but we have additional costs with respect to code generation
+    complexity (which might lead to bigger binaries, which might have runtime speed
+    impacts), and increasing the maintenance effort (including understanding code
+    from its source) has a price.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even something as seemingly simple as making allocators type-aware (traditional
+    allocators are allocators of `T` for some type `T` after all) is sometimes controversial.
+    Low-level memory allocation functions such as `std::malloc()` or `::operator new()`
+    deal in raw bytes after all, so is it a sign that our traditional allocator model
+    is perfectible?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Polymorphic memory resource allocators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: With C++17, the C++ language added so-called PMR allocators. A PMR container
+    stores allocator information as a runtime value, not as a compile-time part of
+    its type. In this model, a PMR container holds a pointer to a PMR allocator, reducing
+    the number of types required but adding virtual function calls whenever using
+    memory allocation services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is again not a no-cost decision, and there are trade-offs with the traditional
+    model:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This new allocator model supposes that containers store a pointer to an allocation
+    strategy, which generally (not always) makes PMR containers larger than their
+    non-PMR counterparts. Interestingly, it also means that a `std::pmr::vector<T>`
+    is a different container from a `std::vector<T>`, which sometimes causes very
+    real annoyances. For example, there is no implicit way to copy the contents of
+    a `std::pmr::string` into a `std::string`, but luckily, writing such a function
+    is very easy.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Every allocation or deallocation service call incurs a polymorphic indirection
+    cost. This will be minor to unnoticeable in programs where the called function
+    performs some significant computation, but the same costs can be painful when
+    the called function performs little computation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: PMR containers are parameterized on memory resources, and PMR memory resources
+    trade in bytes, not in objects. It’s unclear whether this is a good thing or a
+    bad thing (it’s probably a matter of perspective), as both approaches work, but
+    trading in bytes (the simplest common denominator) makes it easier to reduce the
+    number of types in a program.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There are also advantages to the PMR approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The type of a container is not influenced by the type of its allocator. All
+    PMR containers simply hold a pointer to the base class of all PMR memory resources
+    named `std::pmr::memory_resource`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The work required to implement a PMR allocator is very small as one only needs
+    to override three virtual member functions. This opens up avenues to express reusable
+    allocator libraries, for example.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Under the PMR model, a `std::pmr::polymorphic_allocator<T>` object uses a `std::pmr::memory_resource*`
+    to determine how memory is managed. In most cases, when designing a memory allocation
+    strategy, what one does is write a class that specializes `std::memory_resource`
+    and determines what it means to allocate or deallocate memory with that strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at a simple example of a PMR container with a sequential buffer
+    memory resource, as we just implemented such a mechanism with traditional allocators:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'That’s quite simple, isn’t it? You might want to pay attention to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This program aims to “allocate” objects in a byte buffer located on the thread’s
+    execution stack. With these objects being of type `int`, we ensure that buffer
+    `buf` is appropriately aligned and is of sufficient size to hold the objects that
+    are meant to be stored therein.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `std::pmr::monotonic_buffer_resource` object named `res` knows where the buffer
+    to manage starts and how big it is. It represents a perspective on contiguous
+    memory.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `std::pmr::vector<int>` used in this program knows about `res` and uses
+    that resource to allocate and deallocate memory.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That’s all there is to it. In practice, this program does not allocate even
+    a single byte from the free store in order to store the `int` objects. Compared
+    to what we had to do to achieve similar effects in the past, this might seem rejoiceful
+    somewhat. At the end of the program, iterating through the byte buffer and iterating
+    through the container yield the same results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That works nicely and requires very little coding effort, but what if we wanted
+    to express something like a vector of `string` objects but wanted both the vector
+    and the `string` objects it stores to use the same allocation strategy?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nested allocators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Well, it so happens that PMR allocators propagate allocation strategies by
+    default. Consider the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: This example also uses a buffer on the stack, but that buffer is used both for
+    the `std::pmr::vector` object and its metadata and for the `std::string` objects
+    therein. Propagation of the allocation strategy from the enclosing container to
+    the enclosed containers is implicit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Do note that the `make_str` lambda expression in that program is used to convert
+    `std::string` (formatted to end with an integer) to a `std::pmr::string`. As mentioned
+    earlier, the integration of types from namespace `std` and types from namespace
+    `std::pmr` sometimes requires a little bit of effort, but the APIs of classes
+    in these namespaces are sufficiently similar for this effort to remain reasonable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you use this program, you will notice that the `std::pmr::string` objects
+    contain the expected text, but you will also probably notice from the last loop
+    that buffer `buf` contains (among other things) the text in the strings. That’s
+    because our strings are rather short and, in most standard library implementations,
+    the `std::pmr::string` instead of being allocated separately. This shows clearly
+    that the same allocation strategy, represented by our object of type `std::pmr::monotonic_buffer_resource`,
+    has propagated from the `std::pmr::vector` object to the enclosed `std::pmr::string`
+    objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scoped allocators and the traditional model
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is possible to use a scoped allocator system with the traditional allocator
+    approach, even though we did not do so in this book. If you are curious, feel
+    free to explore type `std::scoped_allocator_adapter` for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will now look at one last example that uses allocators to track the memory
+    allocation process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocators and data collection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we saw in [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128) when we wrote our
+    own humble yet functional leak detector, memory management tools are often used
+    to gather information. For a non-exhaustive list, know that some companies use
+    them to track memory fragmentation or otherwise assess where objects are placed
+    in memory, maybe in a quest to optimize cache usage. Others want to evaluate when
+    and where allocations occur in the course of program execution to know whether
+    a reorganization of the code could lead to better performances. Of course, detecting
+    leaks is useful, but we already knew that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As our third and last example of PMR allocation usage, we will implement a
+    *tracing resource*, in the sense that we will track allocation and deallocation
+    requests from a container to understand some implementation choices made by that
+    container. For the sake of this example, we will use a standard library’s `std::pmr::vector`
+    and try to understand its approach to increasing its capacity when trying to insert
+    objects into a full container. Remember that the standard mandates an amortized
+    constant complexity for operations such as `push_back()`, meaning that capacity
+    should grow rarely and most insert-at-end operations should take constant time.
+    However, it does not impose a specific growth policy: for example, one implementation
+    could grow by a factor of 2, another by a factor of 1.5, and another could prefer
+    1.67\. Other options exist; each one has trade-offs, and each library makes its
+    own choices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will express this tool as class `tracing_resource`, which derives from `std::pmr::memory_resource`
+    as expected by `std::pmr` containers. This lets us show how easy it is to add
+    a memory resource type to this framework:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The base class exposes three member functions that we need to override: `do_allocate()`,
+    which is meant to perform an allocation request, `do_deallocate()`, whose role
+    is, unsurprisingly, to deallocate memory that is presumed to have been allocated
+    through `do_allocate()`, and `do_is_equal()`, which is meant to let user code
+    test two memory resources for equality. Note that “equality” in this sense means
+    that memory allocated from one could be deallocated from the other.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since we want to trace allocation requests but do not want to implement an actual
+    memory allocation strategy ourselves, we will use an `upstream` resource that
+    will do the allocation and deallocation for us. In our test implementation, that
+    resource will be a global resource obtained from `std::pmr::new_delete_resource()`
+    that calls `::operator new()` and `::operator delete()` to achieve this objective.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For this reason, our allocation functions will simply “log” (in our case, print)
+    the requested allocation and deallocation sizes, then delegate the allocation
+    work to the `upstream` resource.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'A complete implementation follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you run this very simple program, you will develop an intuition for the growth
+    strategy of your standard library `std::pmr::vector` implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Upsides and costs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we have seen, there’s a lot to love about the PMR model. It is simple to
+    use, relatively simple to understand, and easy to extend. In many application
+    domains, it is fast enough to meet most programmers’ needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are, of course, also domains that need the increased control over execution
+    time and runtime behavior that the traditional allocator model allows: no indirection
+    that stems from the model, no overhead in terms of object size… Sometimes, you
+    just need all the control you can get. This means that both models work and have
+    their own valid reasons for being.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One very real benefit of PMR allocators is that they make it easier to build
+    allocator and resource libraries that one can combine and build from. The standard
+    library offers a few useful examples from the `<``memory_resource>` header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have already seen function `std::pmr::new_delete_resource()`, which provides
+    a system-wide resource where allocation and deallocation are implemented through
+    `::operator new()` and `::operator delete()`, just as we have seen class `std::pmr::monotonic_buffer_resource`,
+    which formalizes the process of sequential allocation within an existing buffer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `std::pmr::synchronized_pool_resource` and `std::pmr::unsynchronized_pool_resource`
+    classes model the allocation of objects from pools of blocks of some sizes. Use
+    the synchronized one for multithreaded code, of course.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There are `std::pmr::get_default_resource()` and `std::pmr::set_default_resource()`
+    functions that respectively obtain or replace the default memory resource of a
+    program. The default memory resource is, as could be expected, the same as what
+    is returned by function `std::pmr::new_delete_resource()`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There is also a function `std::pmr::null_memory_resource()` that returns a
+    resource that never allocates (its `do_allocate()` member function, when called,
+    throws `std::bad_alloc`). This is interesting as an “upstream” measure: consider
+    a sequential buffer allocator system implemented through `std::pmr::monotonic_buffer_resource`
+    in which a request for memory allocation leads to a possible buffer overflow.
+    Since, by default, the `upstream` of a memory resource uses another resource that
+    calls `::operator new()` and `::operator delete()`, this potential overflow will
+    lead to an actual allocation, which could have an undesirable impact on performance.
+    Choosing a `std::pmr::null_memory_resource` for the `upstream` resource ensures
+    no such allocation will occur.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As we have seen and done, it is simple to add to this small set of memory resources
+    and customize the behavior of your containers to suit your needs with the PMR
+    model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This has been an eventful chapter, has it not? After venturing into explicit
+    and implicit memory allocation implementations in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172)
+    and [*Chapter 13*](B21071_13.xhtml#_idTextAnchor187), this chapter explored allocators
+    and how these facilities let us customize the behavior of memory allocation in
+    containers to match our needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw how a traditional allocator, ensconced in the type of its enclosing container,
+    can be implemented and used. We did so with a container that trades in contiguous
+    memory as well as with a node-based container. We also looked at how the task
+    of writing (and using) such allocators evolved through the years to become the
+    contemporary traits-based allocators that implicitly synthesize default implementations
+    for most allocator services.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then looked at the more recent PMR allocator model that represents a different
+    take on memory allocation and discussed its upsides and downsides. Equipped with
+    the knowledge in this chapter, you should have ideas of ways in which containers
+    can be customized to meet your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are nearing the end of our journey. In our next (and last) chapter, we will
+    look at some contemporary problems of memory allocation in C++ and start to think
+    about what awaits us in the near future.
+  prefs: []
+  type: TYPE_NORMAL

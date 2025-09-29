@@ -1,0 +1,1195 @@
+- en: '8'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Asynchronous Programming Using Coroutines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In previous chapters, we saw different methods of writing asynchronous code
+    in C++. We used threads, the basic units of execution, and some higher-level asynchronous
+    code mechanisms, such as futures and promises and **std::async** . We will look
+    at the Boost.Asio library in the next chapter. All these methods often use several
+    system threads, created and managed by the kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the main thread of our program may need to access a database. This
+    access may be slow, so we read the data in a different thread so our main thread
+    can go on doing some other tasks. Another example is the producer-consumer model,
+    where one or more threads generate data items to be processed, and one or more
+    threads process those items in a fully asynchronous way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both of the preceding examples use threads, also called system (kernel) threads,
+    and require different units of execution, one per thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to study a different way to write asynchronous
+    code – coroutines. Coroutines are an old concept from the late 1950s that was
+    added to C++ only recently, since C++20. They don’t need a separate thread (of
+    course, we can have different threads running coroutines). Coroutines are a mechanism
+    that allows us, among other things, to perform multiple tasks in a single thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are coroutines and how are they implemented and supported by C++?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing basic coroutines to see what the requirements of a C++ coroutine
+    are
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generator coroutines and the new C++23 **std::generator**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A string parser to parse integers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exceptions in coroutines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This chapter is about C++ coroutines implemented without using any third-party
+    libraries. This way of writing coroutines is quite low level and we need to write
+    code to support the compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For this chapter, you will need a C++20 compiler. For the generator examples,
+    you will need a C++23 compiler. We have tested the examples with GCC **14.1**
+    . The code is platform-independent, so even though we have a Linux focus in this
+    book, all the examples should work on macOS and Windows. Please note that Visual
+    Studio **17.11** doesn’t support the C++23 **std::generator** yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for this chapter can be found in the book’s GitHub repository: [https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP](https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP)
+    .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we start implementing coroutines in C++, we will introduce coroutines
+    conceptually and see how they can be useful in our programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start with a definition. A **coroutine** is a function that can suspend
+    itself. Coroutines suspend themselves while waiting for an input value (while
+    they are suspended, they don’t execute) or after yielding a value such as the
+    result of a computation. Once the input value is available or the caller requests
+    another value, the coroutine resumes execution. We will come back to coroutines
+    in C++ soon, but let’s see with a real-life example how a coroutine works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine someone working as an assistant. They start the day reading emails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the emails is a request for a report. After reading the email, they start
+    writing the requested document. Once they have written the introductory paragraphs,
+    they notice that they need another report from a colleague to get some accounting
+    results from the previous quarter. They stop writing the report, write an email
+    to their colleague requesting the needed information, and read the next email,
+    which is a request to book a room for an important meeting in the afternoon. They
+    open a special application the company has developed for booking meeting rooms
+    automatically to optimize their use and book the room.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After a while, they receive the required accounting data from their colleague
+    and resume writing the report.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The assistant is always busy working on their tasks. Writing the report is
+    a good example of a coroutine: they start writing the report, then suspend the
+    writing while they wait for the required information, and once the information
+    arrives, they resume their writing. Of course, the assistant doesn’t want to waste
+    their time, and while they wait, they go on doing other tasks. Their colleague
+    can be seen as another coroutine if they wait for requests and then send the appropriate
+    response.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now let’s go back to software. Let’s assume that we need to write a function
+    that stores data in a database after processing some input information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the data comes all at once, we can implement just a function. The function
+    will read the input, perform the required processing on it, and finally, write
+    the result to a database. But what if the data to be processed arrives in blocks
+    and processing each block requires the result from the previous block processing
+    (we can assume for the sake of this example that the first block processing needs
+    only some default value)?
+  prefs: []
+  type: TYPE_NORMAL
+- en: A possible solution to our problem would be to make the function wait for each
+    data block, process it, store the result in the database, and then wait for the
+    next one, and so on. But if we do that, we could potentially waste a lot of time
+    while waiting for each block of data to arrive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After reading the previous chapters, you may be thinking about different potential
+    solutions: we could create a thread to read the data, copy the blocks to a queue,
+    and a second thread (maybe the main thread) will process the data. This is an
+    acceptable solution but using multiple threads may be overkill.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another solution could be implementing a function to process only one block.
+    The caller will wait for the input to be passed to the function and will keep
+    the result of the previous block processing required to process each data block.
+    In this solution, we must keep the state required by the data processing function
+    in another function. It may be acceptable for a simple example, but once the processing
+    gets more complicated (for example, requiring several steps with different intermediate
+    results to be kept), the code might be difficult to understand and maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can solve the problem with a coroutine. Let’s see some possible pseudocode
+    for a coroutine that processes data in blocks and keeps intermediate results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding coroutine receives a data block from the caller, performs all
+    the processing, updates a database, and keeps the result required to process the
+    next block. After yielding the result to the caller (more on yielding later),
+    it suspends itself. Its execution will resume when the coroutine is called again
+    by the caller requesting the processing of a new data block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A coroutine such as this simplifies state management because it can keep the
+    state between calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After this conceptual introduction to coroutines, we are going to start implementing
+    them in C++20.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ coroutines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we have seen, coroutines are just functions, but they are not like the functions
+    we are used to. They have special properties that we will study in this chapter.
+    In this section, we will focus on coroutines in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A function starts executing when it’s called and normally terminates with a
+    return sentence or just when the function’s end is reached.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A function runs from beginning to end. It may call another function (or even
+    itself if it is recursive), and it may throw exceptions or have different return
+    points. But it always runs from beginning to end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A coroutine is different. A coroutine is a function that can suspend itself.
+    The flow for a coroutine may be like the following pseudocode:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will see what those terms with the **co_** prefix mean soon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a coroutine, we need a mechanism to keep the execution state to be able
+    to suspend/resume the coroutine. This is done for us by the compiler, but we must
+    write some *helping* code to let the compiler help us back.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines in C++ are stackless. This means that the state we need to store
+    to be able to suspend/resume the coroutine is stored in the heap calling **new**
+    / **delete** to allocate/free dynamic memory. These calls are created by the compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: New keywords
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Because a coroutine is essentially a function (with some special properties,
+    but a function nonetheless), the compiler needs some way to know whether a given
+    function is a coroutine. C++20 introduced three new keywords: **co_yield** , **co_await**
+    , and **co_return** . If a function uses at least one of those three keywords,
+    then the compiler knows it is a coroutine.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following table summarizes the functionality of the new keywords:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Keyword** | **Input/Output** | **Coroutine State** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **co_yield** | Output | Suspended |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **co_await** | Input | Suspended |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **co_return** | Output | Terminated |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 8.1: New coroutine keywords'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding table, we see that after **co_yield** and **co_await** , the
+    coroutine suspends itself, and after **co_return** , it is terminated ( **co_return**
+    is the equivalent of the **return** statement in a C++ function). A coroutine
+    cannot have a **return** statement; it must always use **co_return** . If the
+    coroutine doesn’t return any value and any of the other two coroutine keywords
+    are used, the **co_return** statement can be omitted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines restrictions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We have said that coroutines are functions using the new coroutines keywords.
+    But coroutines have the following restrictions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Functions with a variable number of arguments using **varargs** can’t be coroutines
+    (a variadic function template can be a coroutine)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A class constructor or destructor cannot be a coroutine
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The **constexpr** and **consteval** functions cannot be coroutines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A function returning **auto** cannot be a coroutine but **auto** with a trailing
+    return type can be
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The **main()** function cannot be a coroutine
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lambdas can be coroutines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: After studying the restrictions of coroutines (basically what kind of C++ functions
+    cannot be coroutines), we are going to start implementing coroutines in the next
+    section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing basic coroutines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we studied the basics of coroutines, what they are,
+    and some use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we will implement three simple coroutines to illustrate the
+    basics of implementing and working with them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The simplest coroutine that just returns
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A coroutine sending values back to the caller
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A coroutine getting values from the caller
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The simplest coroutine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We know that a coroutine is a function that can suspend itself and can be resumed
+    by the caller. We also know that the compiler identifies a function as a coroutine
+    if it uses at least one **co_yield** , **co_await** , or **co_return** expression.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compiler will transform the coroutine source code and create some data structures
+    and functions to make the coroutine functional and capable of being suspended
+    and resumed. This is required to keep the coroutine state and be able to communicate
+    with the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compiler will take care of all those details but bear in mind that C++ support
+    for coroutines is quite low level. There are some libraries to make our lives
+    easier when working with coroutines in C++. Some of them are **Lewis Baker’s cppcoro**
+    and **Boost.Cobalt** . The **Boost.Asio** library has support for coroutines too.
+    These libraries are the subject of the next two chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start from scratch. And we mean by absolute scratch. We will write some
+    code and be guided by both compiler errors and the C++ reference to write a basic
+    but fully functional coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code is the simplest implementation of a coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Simple, isn’t it? Our first coroutine will just return nothing. It will not
+    do anything else. Sadly, the preceding code is too simple for a functional coroutine
+    and will not compile. When compiling with GCC **14.1** , we get the following
+    error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also get the following note:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The compiler is giving us a hint: we may have missed including a required file.
+    Let’s include the **<coroutine>** header file. We’ll deal with the error about
+    the traits template in a minute:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When compiling the preceding code, we get the following error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first version of our coroutine gave us a compiler error saying that the
+    type **std::coroutine_traits** template couldn’t be found. Now we get an error
+    related to something called the *promise type* .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking at the C++ reference, we see that the **std::coroutine_traits** template
+    determines the return type and parameter types of a coroutine. The reference also
+    states that the return type of a coroutine must define a type named **promise_type**
+    . Following the reference advice, we can write a new version of our coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Please note that the return type of a coroutine can have any name (we have called
+    it **return_type** here because is convenient for this simple example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compiling the preceding code again gives us some errors (they are edited for
+    clarity). All the errors are about missing functions in the **promise_type** structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: All the compiler errors we have seen until now are related to missing features
+    in our code. Writing coroutines in C++ requires following some rules and helping
+    the compiler to make its generated code functional.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is the final version of the simplest coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: You may have noticed that we have removed the **std::coroutine_traits** template.
+    Implementing the return and promise types is enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding code compiles without any errors and you can run it. It does…
+    nothing! But it’s our first coroutine and we have learned that we need to supply
+    some code required by the compiler to create the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The promise type
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The **promise type** is required by the compiler. We need to always have this
+    type defined (it can be either a class or a struct), it must be named **promise_type**
+    , and it must implement some functions specified in the C++ reference. We have
+    seen that if we don’t do that, the compiler will complain and give us errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The promise type must be defined inside the type returned by the coroutine,
+    otherwise the code will not compile. The returned type (sometimes also called
+    the **wrapper type** because it wraps **promise_type** ) can be named arbitrarily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A yielding coroutine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A do-nothing coroutine is good for illustrating some basic concepts. We will
+    now implement another coroutine that can send data back to the caller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this second example, we will implement a coroutine that produces a message.
+    It will be the “hello world” of coroutines. The coroutine will say hello and the
+    caller function will print the message received from the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To implement that functionality, we need to establish a communication channel
+    from the coroutine to the caller. This channel is the mechanism that allows the
+    coroutine to pass values to the caller and receive information from it. This channel
+    is established through the coroutine’s **promise type** and **handle** , which
+    manages the state of the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The communication channel works in the following way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Coroutine frame** : When a coroutine is called, it creates a **coroutine
+    frame** , which contains all the state information needed to suspend and resume
+    its execution. This includes local variables, the promise type, and any internal
+    state.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Promise type** : Each coroutine has an associated **promise type** , which
+    is responsible for managing the coroutine’s interaction with the caller functions.
+    The promise is where the coroutine’s return value is stored, and it provides functions
+    to control the coroutine’s behavior. We are going to see these functions in this
+    chapter’s examples. The promise is the interface through which the caller interacts
+    with the coroutine.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Coroutine handle** : The **coroutine handle** is a type that gives access
+    to the coroutine frame (the coroutine’s internal state) and allows the caller
+    to resume or destroy the coroutine. The handle is what the caller can use to resume
+    the coroutine after it has been suspended (for example, after **co_await** or
+    **co_yield** ). The handle can also be used to check whether the coroutine is
+    done or to clean up its resources.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Suspend and resume mechanism** : When a coroutine yields a value ( **co_yield**
+    ) or awaits an asynchronous operation ( **co_await** ), it suspends its execution,
+    saving its state in the coroutine frame. The caller can then resume the coroutine
+    at a later point, retrieving the yielded or awaited value through the coroutine
+    handle and continuing the execution.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We are going to see, in the following examples, that this communication channel
+    requires a considerable amount of code on our side to help the compiler generate
+    all the code required for a coroutine to be functional.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code is the new version of both the caller function and the coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The changes are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**[1]** : The coroutine *yields* and sends some data (in this case, a **std::string**
+    object) to the caller'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**[2]** : The caller reads that data and prints it'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The required communication mechanism is implemented in the promise type and
+    in the return type (which is a promise type wrapper).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the compiler reads the **co_yield** expression, it will generate a call
+    to the **yield_value** function defined in the promise type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code is the implementation for our version of that function that
+    generates (or yields) a **std::string** object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The function gets a **std::string** object and moves it to the **output_data**
+    member variable of the promise type. But this just keeps the data inside the promise
+    type. We need a mechanism to get that string out of the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The handle type
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Once we require a communication channel to and from a coroutine, we need a way
+    to refer to a suspended or executing coroutine. The C++ standard library implements
+    such a mechanism in what is called a **coroutine handle** . Its type is **std::coroutine_handle**
+    and it’s a member variable of the return type. This structure is also responsible
+    for the full life cycle of the handle, creating and destroying it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code snippet is the functionality we added to our return type
+    to manage a coroutine handle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code declares a coroutine handle of type **std::coroutine_handle<promise_type>**
+    and creates the handle in the return type constructor. The handle is destroyed
+    in the return type destructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, back to our yielding coroutine. The only missing bit is the **get()**
+    function for the caller function to be able to access the string generated by
+    the coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **get()** function resumes the coroutine if it is not terminated and then
+    returns the string object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is the full code for our second coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the preceding code prints the following messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This output shows us what is happening during the coroutine execution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **return_type** object is created after a call to **get_return_object**
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The coroutine is initially suspended
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The caller wants to get the message from the coroutine, so **get()** is called
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**yield_value** is called and the coroutine is resumed and the message is copied
+    to a member variable in the promise'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, the message is printed by the caller function, and the coroutine returns
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note that the promise (and promise type) have nothing to do with the C++ Standard
+    Library **std::promise** type explained in *Chapter 6* .
+  prefs: []
+  type: TYPE_NORMAL
+- en: A waiting coroutine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the previous example, we saw how to implement a coroutine that can communicate
+    back to the caller by sending it a **std::string** object. Now, we are going to
+    implement a coroutine that can wait for input data sent by the caller. In our
+    example, the coroutine will wait until it gets a **std::string** object and then
+    print it. When we say that the coroutine “waits,” we mean it is suspended (that
+    is, not executing) until the data is received.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start with changes to both the coroutine and the caller function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, the caller function calls the **put()** function (a method
+    in the return type structure) and the coroutine calls **co_await** to wait for
+    a **std::string** object from the caller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The changes to the return type are simple, that is, just adding the **put()**
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need to add the **input_data** variable to the promise structure. But just
+    with those changes to our first example (we take it as the starting point for
+    the rest of the examples in this chapter because it’s the minimum code to implement
+    a coroutine) and the coroutine handle from the previous example, the code cannot
+    be compiled. The compiler gives us the following error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Going back to the C++ reference, we see that when the coroutine calls **co_await**
+    , the compiler will generate code to call a function in the promise object called
+    **await_transform** , which has a parameter of the same type as the data the coroutine
+    is waiting for. As its name implies, **await_transform** is a function that transforms
+    any object (in our example, **std::string** ) into an awaitable object. **std::string**
+    is not awaitable, hence the previous compiler error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**await_transform** must return an **awaiter** object. This is just a simple
+    struct implementing a required interface for the awaiter to be usable by the compiler.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code shows our implementation of the **await_transform** function
+    and the **awaiter** struct:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The **promise_type** function **await_transform** is required by the compiler.
+    We cannot use a different identifier for this function. The parameter type must
+    be the same as the object the coroutine is waiting for. The **awaiter** struct
+    can be named with any name. We used **awaiter** here because is descriptive. The
+    **awaiter** struct must implement three functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**await_ready** : This is called to check whether the coroutine is suspended.
+    If that is the case, it returns **false** . In our example, it always returns
+    **true** to indicate the coroutine is not suspended.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**await_resume** : This resumes the coroutine and generates the result of the
+    **co_await** expression.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**await_suspend** : In our simple awaiter, this returns **void** , meaning
+    the control is passed to the caller and the coroutine is suspended. It’s also
+    possible for **await_suspend** to return a Boolean. Returning **true** in this
+    case is like returning **void** . Returning **false** means the coroutine is resumed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'This is the code for the full example of the waiting coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we have seen three basic examples of coroutines. We have implemented
+    the simplest coroutine and then coroutines with communication channels to both
+    generate data for the caller ( **co_yield** ) and wait for data from the caller
+    ( **co_await** ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will implement a type of coroutine called a generator
+    and generate sequences of numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutine generators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A **generator** is a coroutine that generates a sequence of elements by repeatedly
+    resuming itself from the point that it was suspended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A generator can be seen as an *infinite* sequence because it can generate an
+    arbitrary number of elements. The caller function can get as many new elements
+    from the generator as it needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we say infinite, we mean in theory. A generator coroutine will yield elements
+    without a definite last element (it is possible to implement generators with a
+    limited range) but, in practice, we must deal with issues such as overflow in
+    the case of numerical sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s implement a generator from scratch, applying the knowledge we have gained
+    in the previous sections of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fibonacci sequence generator
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Imagine we are implementing an application and we need to use the Fibonacci
+    sequence. As you probably already know, the **Fibonacci sequence** is a sequence
+    in which each number is the sum of the two preceding ones. The first element is
+    0, the second element is 1, and then we apply the definition and generate element
+    after element.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![<math  display="block"><mrow><mrow><mi>F</mi><mi>i</mi><mi>b</mi><mi>o</mi><mi>n</mi><mi>a</mi><mi>c</mi><mi>c</mi><mi>i</mi><mi>s</mi><mi>e</mi><mi>q</mi><mi>u</mi><mi>e</mi><mi>n</mi><mi>c</mi><mi>e</mi><mo>:</mo><mi>F</mi><mfenced
+    open="(" close=")"><mi>n</mi></mfenced><mo>=</mo><mi>F</mi><mfenced open="(" close=")"><mrow><mi>n</mi><mo>−</mo><mn>2</mn></mrow></mfenced><mo>+</mo><mi>F</mi><mfenced
+    open="(" close=")"><mrow><mi>n</mi><mo>−</mo><mn>1</mn></mrow></mfenced><mo>;</mo><mi>F</mi><mfenced
+    open="(" close=")"><mn>0</mn></mfenced><mo>=</mo><mn>0</mn><mo>,</mo><mi>F</mi><mfenced
+    open="(" close=")"><mn>1</mn></mfenced><mo>=</mo><mn>1</mn></mrow></mrow></math>](img/12.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: We can always generate these numbers with a **for** loop. But if we need to
+    generate them at different points in our program, we need to implement a way to
+    store the state of the sequence. We need to keep somewhere in our program what
+    the last element we generated was. Was it the fifth or maybe the tenth element?
+  prefs: []
+  type: TYPE_NORMAL
+- en: A coroutine is a very good solution for this problem; it will keep the required
+    state itself and it will suspend until we request the next number in the sequence.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s the code using a generator coroutine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see in the preceding code, we generate the numbers we need without
+    worrying about what the last element was. The sequence is generated by the coroutine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that even though in theory the sequence is infinite, our program must be
+    aware of potential overflow for very big Fibonacci numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To implement the generator coroutine, we follow the principles explained previously
+    in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we implement the coroutine function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The coroutine just generates the next element in the Fibonacci sequence by applying
+    the formula. The elements are generated in an infinite loop, but the coroutine
+    suspends itself after **co_yield** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: The return type is the **sequence_generator** struct (we use a template to be
+    able to use either 32- or 64-bit integers). It contains a promise type, pretty
+    much like the one in the yielding coroutine we saw in a previous section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the **sequence_generator** struct, we added two functions that are useful
+    when implementing a sequence generator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **next()** function resumes the coroutine for a new Fibonacci number in
+    the sequence to be generated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **value()** function returns the last generated Fibonacci number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This way, we decouple element generation and its retrieval Qvalue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Please find the full code for this example in the book’s accompanying GitHub
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++23 std::generator
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We have seen that implementing even the most basic coroutine in C++ requires
+    a certain amount of code. This may change in C++26 with more support for coroutines
+    in the C++ Standard Library, which will allow us to write coroutines much more
+    easily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++23 introduced the **std::generator** template class. By using it, we can
+    write coroutine-based generators without writing any of the required code, such
+    as the promise type, the return type, and all their functions. To run this example,
+    you will need a C++23 compiler. We have used GCC 14.1. **std::generator** is not
+    available in Clang.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s see the Fibonacci sequence generator using the new C++23 Standard Library
+    features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first step is to include the **<generator>** header file. Then, we just
+    write the coroutine because all the rest of the required code has been written
+    for us. In the preceding code, we access the generated elements with an iterator
+    (which is provided by the C++ Standard Library). This allows us to use a range-for
+    loop, algorithms, and ranges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is also possible to write a version of the Fibonacci generator to generate
+    a certain number of elements instead of an infinite series:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code changes are very simple: just pass the number of elements we want
+    the generator to generate and use it as the termination condition in the **while**
+    loop.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have implemented one of the most common coroutine types
+    – a generator. We have implemented generators both from scratch and using the
+    C++23 **std::generator** class template.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will implement a simple string parser coroutine in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simple coroutine string parser
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, we will implement our last example: a simple string parser.
+    The coroutine will wait for the input, a **std::string** object, and will yield
+    the output, a number, after parsing the input string. To simplify the example,
+    we will assume that the string representation of the number doesn’t have any errors
+    and that the end of a number is represented by the hash character, **#** . We
+    will also assume that the number type is **int64_t** and that the string won’t
+    contain any values out of that integer type range.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The parsing algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s see how to convert a string representing an integer into a number. For
+    example, the string **"-12321#"** represents the number -12321. To convert the
+    string into a number, we can write a function like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code is quite simple because of the assumption that the string is well formed.
+    If we read the minus sign, **-** , then we change the sign to -1 (by default,
+    we assume positive numbers, and if there is a **+** sign, it is simply ignored).
+    Then, the digits are read one by one, and the number value is calculated as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The initial value of **num** is **0** . We read the first digit and add its
+    numeric value to the current **num** value multiplied by 10. This is the way we
+    read numbers: the leftmost digit will be multiplied by 10 as many times as the
+    number of digits to its right.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we use characters to represent digits, they have some value according to
+    the ASCII representation (we assume no wide characters or any other character
+    type is used). The characters *0* to *9* have consecutive ASCII codes, so we can
+    easily convert them to numbers by just subtracting *0* .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even if for the preceding code the last character check is not necessary, we
+    have included it here. When the parser routine finds the **#** character, it terminates
+    the parsing loop and returns the final number value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can use this function to parse any string and get the number value, but we
+    need the full string to convert it into a number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s think about this scenario: the string is being received from a network
+    connection and we need to parse it and convert it into a number. We may save the
+    characters to a temporary string and then call the preceding function.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But there is another issue: what if the characters arrive slowly, such as once
+    every few seconds, because that’s the way they are transmitted? We want to keep
+    our CPU busy and, if possible, do some other task (or tasks) while waiting for
+    each character to arrive.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are different approaches to solving this problem. We can create a thread
+    and process the string concurrently, but this can be costly in computer time for
+    such a simple task. We can use **std::async** too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The parsing coroutine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are working with coroutines in this chapter, so we will implement the string
+    parser using C++ coroutines. We don’t need an extra thread, and because of the
+    asynchronous nature of coroutines, it will be quite easy to perform any other
+    processing while the characters arrive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The boilerplate code we will need for the parsing coroutine is pretty much
+    the same as the code we have already seen in the previous examples. The parser
+    itself is quite different. See the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: I think that you can now easily recognize the return type ( **async_parse<int64_t,
+    char>** ) and that the parser coroutine suspends itself waiting for an input character.
+    The coroutine will suspend itself after yielding the number once the parsing has
+    been done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But you can see too that the preceding code is not as simple as our first attempt
+    at parsing a string into a number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, the parser coroutine parses one character after another. It doesn’t get
+    the full string to parse, hence the infinite **while (true)** loops. We don’t
+    know how many characters there are in the full string, so we need to keep on receiving
+    and parsing them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The outer loop means that the coroutine will parse numbers, one after another,
+    as the characters arrive – forever. But remember that it suspends itself to wait
+    for the characters, so we don’t waste CPU time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, one character arrives. The first check is to see whether it is a valid
+    character for our number. If the character is not either the minus sign, **-**
+    , the plus sign, **+** , or a digit, then the parser waits for the next character.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the next character is a valid one, then the following apply:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If it is the minus sign, we change the sign value to -1
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If it is the plus sign, we ignore it
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If it is a digit, we parse it into the number, updating the current number value
+    using the same method as we saw in the first version of the parser
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: After the first valid character, we enter a new loop to receive the rest of
+    the characters, either digits or the separator character ( **#** ). Note here
+    that when we say valid character, we mean good for numerical conversion. We are
+    still assuming that the input characters form a valid number that is correctly
+    terminated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the number has been converted, it is yielded by the coroutine and the outer
+    loop executes again. The terminating character is needed here because the input
+    character stream is, in theory, endless, and it can contain many numbers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for the rest of the coroutine can be found in the GitHub repo. It
+    follows the same convention as any other coroutine. First, we define the return
+    type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use a template for flexibility because it allows us to parameterize both
+    the input and output data types. In this case, these types are **int64_t** and
+    **char** , respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The input and output data items are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For input, we are using **std::optional<In>** because we need a way to know
+    whether we have received a character. We use the **put()** function to send a
+    character to the parser:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This function just assigns a value to the **std::optional** **input_data**
+    variable. To manage the waiting for the characters, we implement the following
+    awaiter type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The **awaiter** struct implements two functions to handle the input data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**await_ready()** : Returns **true** if the optional **input_data** variable
+    contains a valid value. It returns **false** otherwise.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**await_resume()** : Returns the value stored in the optional **input_data**
+    variable and *empties* it, assigning it to **std::nullopt** .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In this section, we have seen how to implement a simple parser using C++ coroutines.
+    This is our last example, illustrating a very basic stream processing function
+    using coroutines. In the next section, we will see exceptions in coroutines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines and exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous sections, we implemented a few basic examples to learn the
+    main C++ coroutines concepts. We implemented a very basic coroutine first to understand
+    what the compiler required from us: the return type (sometimes called the wrapper
+    type because it wraps the promise type) and the promise type.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even for such a simple coroutine, we had to implement some functions we explained
+    while we wrote the examples. But one function has not been explained yet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: We assumed then that coroutines couldn’t throw exceptions, but the truth is
+    they can. We can add the functionality to handle exceptions in the body of the
+    **unhandled_exception()** function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exceptions in coroutines can happen while the return type or the promise type
+    object is created and while the coroutine is executed (as in a normal function,
+    coroutines can throw exceptions).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The difference is that if the exception is thrown before the coroutine is executed,
+    the code creating the coroutine must handle the exception, while if the exception
+    is thrown when the coroutine is executed, then **unhandled_exception()** is called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first case is just the usual exception handling with no special functions
+    called. We can put the coroutine creation inside a **try-catch** block and handle
+    the possible exceptions as we normally do in our code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If, on the other hand, **unhandled_exception()** is called (inside the promise
+    type), we must implement the exception-handling functionality inside that function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are different strategies to handle such exceptions. Among them are the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rethrow the exception so we can handle it outside the promise type (that is,
+    in our code).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Terminate the program (for example, calling **std::terminate** ).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Leave the function empty. In this case, the coroutine will crash and it will
+    very likely crash the program too.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Because we have implemented very simple coroutines, we have left the function
+    empty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this last section, we have introduced the exception-handling mechanism for
+    coroutines. It is very important to handle exceptions properly. For example, if
+    you know that after an exception occurs inside a coroutine, it won’t be able to
+    recover; then, it may be better to let the coroutine crash and handle the exception
+    from another part of the program (usually from the caller function).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we have seen coroutines, a recently introduced feature in C++
+    that allows us to write asynchronous code without creating new threads. We have
+    implemented a few simple coroutines to explain the basic requirements of a C++
+    coroutine. Additionally, we have learned how to implement generators and a string
+    parser. Finally, we have seen exceptions in coroutines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Coroutines are important in asynchronous programming because they let the program
+    suspend execution at specific points and resume later, allowing other tasks to
+    run in the meantime, all running in the same thread. They allow better resource
+    utilization, reduce waiting time, and improve the scalability of applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will introduce Boost.Asio – a very powerful library
+    for writing asynchronous code in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '*C++ Coroutines for Beginners* , Andreas Fertig, Meeting C++ Online, 2024'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Deciphering Coroutines* , Andreas Weiss, CppCon 2022'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Part 4: Advanced Asynchronous Programming with Boost Libraries'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will learn about advanced asynchronous programming techniques
+    using powerful Boost libraries, enabling us to efficiently manage tasks that interact
+    with external resources and system-level services. We will explore the **Boost.Asio**
+    and **Boost.Cobalt** libraries, learning how they simplify the development of
+    asynchronous applications while offering fine-grained control over complex processes
+    such as task management and coroutine execution. Through hands-on examples, we
+    will see how Boost.Asio handles asynchronous I/O operations in both single-threaded
+    and multithreaded environments, and how Boost.Cobalt abstracts away the complexities
+    of C++20 coroutines, allowing us to focus on functionality instead of low-level
+    coroutine management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This part has the following chapters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 9*](B22219_09.xhtml#_idTextAnchor184) , *Asynchronous Programming
+    Using Boost.Asio*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 10*](B22219_10.xhtml#_idTextAnchor212) , *Coroutines with Boost.Cobalt*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

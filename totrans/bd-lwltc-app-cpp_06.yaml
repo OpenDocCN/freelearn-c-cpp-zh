@@ -1,0 +1,1590 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Building the C++ Matching Engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We spent the last chapter discussing the design of the electronic trading ecosystem
+    we will build in this book. The first component we will start with is the matching
+    engine at the exchange. In this chapter, we will focus on the task of building
+    the order book of the exchange matching engine, based on orders that clients enter.
+    We will implement the various data structures and algorithms needed to track these
+    orders, perform matching when orders *cross* each other, and update the order
+    book. *Crossing* means when a buy order has a price equal to or greater than a
+    sell order and then can execute against each other, but we will discuss this in
+    greater detail in this chapter. We will focus on achieving the lowest latencies
+    possible in these operations, since the exchanges with the best infrastructure
+    are likely to do the most business and be preferred by participants. For now,
+    we will not worry about the details of the market data publisher and order gateway
+    server components at the trading exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the operations and interactions in our matching engine
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the matching engine and exchanging external data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the order book and matching orders
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will kick off this chapter by first clarifying some assumptions we will make
+    to simplify the matching engine and limit the scope of what we can cover in this
+    book. We will also define some types, constants, and basic structures in the first
+    section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the code for this book can be found in the GitHub repository for this book
+    at [https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP](https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP).
+    The source code for this chapter is in the `Chapter6` directory in the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important that you have read and understand the design of the electronic
+    trading ecosystem presented in the *Designing Our Trading Ecosystem* chapter.
+    Note that in this chapter, we will also use the code we built in [*Chapter 4*](B19434_04.xhtml#_idTextAnchor093),
+    *Building the C++ Building Blocks for Low Latency Applications*, which can be
+    found in the `Chapter6/common/` directory in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The specifications of the environment in which the source code for this book
+    was developed are shown as follows. We present the details of this environment
+    because all the C++ code presented in this book is not necessarily portable and
+    might require some minor changes to work in your environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'OS: `Linux 5.19.0-41-generic #42~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Apr
+    18 17:40:00 UTC 2 x86_64 x86_64` `x86_64 GNU/Linux.`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'GCC: `g++ (Ubuntu` `11.3.0-1ubuntu1~22.04.1) 11.3.0.`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'CMake: `cmake` `version 3.23.2.`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ninja: `1.10.2.`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Defining the operations and interactions in our matching engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Here, we will declare and define the types, constants, and structures we will
+    need as we build the matching engine in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining some types and constants
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us define a few common typedefs to document the types we will use in the
+    rest of this book. We will also define some constants to represent some assumptions
+    that exist, purely for the purpose of simplifying the design of our matching engine.
+    Note that you don’t need these limits/constants, and we leave this enhancement
+    up to the interested among you. All the code for this subsection can be found
+    in the `Chapter6/common/types.h` file in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining a few basic types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We will define some types to hold different attributes in our electronic trading
+    system, such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`OrderId` to identify orders'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`TickerId` to identify trading instruments'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ClientId` for the exchange to identify different clients'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Price` to hold prices for instruments'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qty` to hold quantity values for orders'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Priority` to capture the position of an order in the **First In First Out**
+    (**FIFO**) queue at a price level, as discussed in the *Designing Our Trading*
+    *Ecosystem* chapter.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Side` to signify the side (buy/sell) of an order'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We will also provide basic methods to convert these to strings purely for logging
+    purposes. Let us look at each one of these code blocks to understand the declarations
+    next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we define the `OrderId` type to identify orders, which is simply `uint64_t`,
+    and a corresponding `orderIdToString()` method to log it. We also add a `OrderId_INVALID`
+    sentinel method to signify invalid values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define the `TickerId` type to identify trading instruments, which is simply
+    a `uint32_t` type, and add a corresponding `tickerIdToString()` method for it.
+    We have a `TickerId_INVALID` sentinel value for invalid instruments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ClientId` type is used to differentiate between different trading participants.
+    The `ClientId_INVALID` value represents an invalid sentinel. The `clientIdToString()`
+    method is used for logging purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next type is `Price`, which is used to capture prices on orders. We also
+    add a `Price_INVALID` constant to represent invalid prices. Finally, a `priceToString()`
+    method to *stringify* these values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Qty` type is `typedef` for `uint32_t` and represents order quantities.
+    We also provide the usual `Qty_INVALID` sentinel and the `qtyToString()` method
+    to convert them to strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Priority` type is just a position in the queue of type `uint64_t`. We
+    assign the `Priority_INVALID` sentinel value and the `priorityToString()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Side` type is an enumeration and contains two valid values, as shown in
+    the following code block. We also define a `sideToString()` method, as we did
+    for the other types previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Those are all the basic types we need for this chapter. Next, we will define
+    some limits to simplify the design of our system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining some limits and constraints
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We will define the following constant limits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`LOG_QUEUE_SIZE` represents the size of the lock-free queue used by the logger.
+    This holds the maximum number of characters that can be held in memory without
+    the logger queue being full.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_TICKERS` represents the number of trading instruments the exchange
+    supports.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_CLIENT_UPDATES` holds the maximum number of unprocessed order requests
+    from all clients that the matching engine has not processed yet. This also represents
+    the maximum number of order responses from the matching engine that the order
+    server has not published yet.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_MARKET_UPDATES` represents the maximum number of market updates generated
+    by the matching engine that have not yet been published by the market data publisher.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_NUM_CLIENTS` holds how many maximum simultaneous market participants
+    can exist in our trading ecosystem.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_ORDER_IDS` is the maximum number of orders possible for a single trading
+    instrument.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ME_MAX_PRICE_LEVELS` represents the maximum depth of price levels for the
+    limit order book that the matching engine maintains.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Note that these values have been chosen arbitrarily here; these can be increased
+    or decreased, depending on the capacity of the system on which we run the electronic
+    trading ecosystem. We chose powers of two to enable the possibility of using shifts
+    over multiplies when trying to compute addresses; however, the effect is negligible
+    on modern processors, and we would not recommend worrying about this too much.
+    The source for the constants we described previously is presented here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: These are all the constants we require for now. Now, we can shift our attention
+    to more complex structures that we will need inside the matching engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the matching engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will need a few structures for our matching engine to communicate with the
+    market data publisher and order server components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the MEClientRequest and ClientRequestLFQueue types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `MEClientRequest` structure is used by the order server to forward order
+    requests from the clients to the matching engine. Remember that the communication
+    from the order server to the matching engine is established through the lock-free
+    queue component we built earlier. `ClientRequestLFQueue` is a typedef for a lock-free
+    queue of `MEClientRequest` objects. The code for this structure can be found in
+    the `Chapter6/order_server/client_request.h` file in the GitHub repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note two things here – we use the `#pragma pack()` directive to make sure these
+    structures are packed and do not contain any extra padding. This is important
+    because these will be sent and received over a network as flat binary structures
+    in later chapters. We also define a `ClientRequestType` enumeration to define
+    what type of order request it is – whether it is a new order or a cancel request
+    for an existing order. We also define an `INVALID` sentinel value and a `clientRequestTypeToString()`
+    method to convert this enumeration into human-readable strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can define the `MEClientRequest` structure, which will contain information
+    for a single order request from the trading participant to the exchange. Note
+    that this is the internal representation that the matching engine uses, not necessarily
+    the exact format that the client sends. We will look at that in the next chapter,
+    *Communicating with Market Participants*. The important members of this struct
+    are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `type_` variable of type `ClientRequestType`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `client_id_` variable of type `ClientId` of the trading client that sent
+    this request
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `ticker_id_` variable of type `TickerId` of the instrument for which this
+    request is meant
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`OrderId` (`order_id_`) of the order for which this request is made, which
+    can be a new order or reference an existing order'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Side` of the order in the `side_` variable'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Price` of the order in the `price_` variable'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qty` of the order saved in the `qty_` variable'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Additionally, we will also add a simple `toString()` method to help us later
+    on with logging, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As discussed previously, we also define the `ClientRequestLFQueue` typedef
+    to represent the lock-free queue of these structures, as shown in the following
+    code snippet. The `#pragma pack(pop)` simply restores the alignment setting to
+    the default – that is, not tightly packed (which we had set by specifying the
+    `#pragma pack(push, 1)` directive). This is because we only want to tightly pack
+    the structures that will be sent over a network and no others:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will define a similar structure used by the matching engine that sends order
+    responses to the order server component. Let us look at that in the next subsection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the MEClientResponse and ClientResponseLFQueue types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let us present the implementation of the structure used by the matching engine
+    that sends order responses for the order server component to dispatch to clients.
+    Similar to the last section, we will also define `ClientResponseLFQueue`, which
+    is a lock-free queue of the `MEClientResponse` objects. The code for this structure
+    is available in the `Chapter6/order_server/client_response.h` source file in the
+    GitHub repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we will define a `ClientResponseType` enumeration to represent the type
+    of response for client orders. In addition to the `INVALID` sentinel value, it
+    contains values that represent when a request for a new order is accepted, an
+    order is canceled, an order is executed, or a cancel request is rejected by the
+    matching engine. We also add the `clientResponseTypeToString()` method to convert
+    the `ClientResponseType` values to strings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we define the `MEClientResponse` message used internally by the matching
+    engine to communicate order response messages for the trading clients when there
+    are updates to the client’s orders. Before we look at the source code, the important
+    data members in this struct are listed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `ClientResponseType type_` variable to represent the type of the client response.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `client_id_` variable of type `ClientId` to represent which market participant
+    the response message is meant for.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `ticker_id_` variable of type `TickerId` to represent the trading instrument
+    of this response.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `client_order_id_` variable that identifies `OrderId` of the order this response
+    message affects. This `OrderId` is the one that the client sent in the original
+    `MEClientRequest` message for the order.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `market_order_id_` variable, also of type `OrderId`, but this one identifies
+    this order in the public market data stream. This `OrderId` is unique across all
+    market participants, since it is possible for different market participants to
+    send orders with the same `client_order_id_` value. Even in those cases, two orders
+    with the same `client_order_id_` will have different `market_order_id_` values
+    in their responses. This `market_order_id_` value is also used when generating
+    market updates for this order.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `side_` variable of type `Side` to represent the side of this order response.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Price` of this client response update and whether it is accepted, canceled
+    or executed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An `exec_qty_` variable of type `Qty`, which is only used in the event of an
+    order execution. This variable is used to hold how much quantity was executed
+    in this `MEClientResponse` message. This value is not cumulative, meaning that
+    when an order gets partially executed multiple times, a `MEClientResponse` message
+    is generated for each individual execution and only contains the quantity executed
+    in that particular execution, not across all of them.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `leaves_qty_` variable, also of type `Qty`, which represents how much of the
+    original order’s quantity is still live in the matching engine’s order book. This
+    is used to communicate the size of this specific order in the book, which is still
+    active for further possible executions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Finally, we also have our usual `toString()` method for easy logging purposes.
+    The definition of the `MEClientResponse` structure, as discussed previously, is
+    presented next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `ClientResponseLFQueue` type definition is presented as follows, which
+    represents a lock-free queue of the structures we discussed previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes the discussion of the structures we need to represent client
+    requests and responses to and from the matching engine. Let us move on to the
+    market update structure in the next subsection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the MEMarketUpdate and MEMarketUpdateLFQueue types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The market update structure is used by the matching engine to provide market
+    data updates to the market data publishing component. We also have a `MEMarketUpdateLFQueue`
+    type to represent a lock-free queue of the `MEMarketUpdate` objects. The code
+    for this can be found in the `Chapter6/exchange/market_data/market_update.h` source
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `MEMarketUpdate` struct also needs to be a packed structure, since it will
+    be part of the message that is sent and received over the network; hence, we use
+    the `#pragma pack()` directive again. Before we define the struct, we need to
+    define the `MarketUpdateType` enumeration that represents the update action in
+    the market update for an order. In addition to taking on an `INVALID` sentinel
+    value, it can also be used to represent events such as an order being added, modified,
+    or canceled in the order book, as well as trade events in the market:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we define the `MEMarketUpdate` struct, which contains the following
+    important data members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `type_` variable of `MarketUpdateType` to represent the type of the market
+    update.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An `order_id_` variable of type `OrderId` to represent the specific order in
+    the limit order book for which this order update is applicable.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `ticker_id_` variable of type `TickerId` to represent the trading instrument
+    that this update applies to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `Side` variable to represent the side of this order.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `Price` variable for the exact price of the order in this market order update.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `priority_` field of type `Priority`, which, as we discussed before, will
+    be used to specify the exact position of this order in the FIFO queue. We build
+    a FIFO queue of all orders at the same price. This field specifies the position/location
+    of this order in that queue.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The complete `MEMarketUpdate` struct is shown in the following code block,
+    along with the `MEMarketUpdateLFQueue` typedef, which captures a lock-free queue
+    of `MEMarketUpdate` struct messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes the structures we will need to represent and publish market data
+    updates from the matching engine. In the next subsection, we will build some structures
+    and define some types that we will use to build the limit order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the exchange order book
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will define some building blocks that will be used to build,
+    maintain, and update the limit order book in an efficient manner. Before we discuss
+    each of the structures and objects we will need, we will present a diagram for
+    you to build a visual understanding of the limit order book implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The limit order book is organized as a collection of buy orders (referred to
+    as bids) and sell orders (referred to as asks). Orders that are entered at the
+    same price are organized in the **First In First Out** (**FIFO**) order in our
+    matching engine. We discussed these details in the *Designing Our Trading Ecosystem*
+    chapter, in the *Designing the C++ matching engine in a trading* *exchange* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the order book we build inside the matching engine, we have a list of bid
+    prices and ask prices that have active orders. Each price level is represented
+    by the `MEOrdersAtPrice` struct, as shown in the following diagram. The bids are
+    sorted from highest to lowest price level, and the asks are sorted from lowest
+    to highest price level. Each `MEOrdersAtPrice` stores the individual orders from
+    highest to lowest priority in a doubly linked list. Information for each individual
+    order is contained in the `MEOrder` structs. We will track each price level in
+    a hash map of type `OrdersAtPriceHashMap`, which is indexed by the price of that
+    level. We will also track each `MEOrder` object by their `market_order_id_` value
+    in a hash map of type `OrderHashMap`. The diagram representing this design of
+    our matching engine order book is presented as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.1 – The design of the limit order book inside the matching engine](img/Figure_6.1_B19434.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.1 – The design of the limit order book inside the matching engine
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have discussed the overall design of the limit order book data structure
+    and the components that make it up, we can start defining the basic structs we
+    need to implement that design. In the next subsection, we will first design the
+    basic blocks – the `MEOrder` structure to hold information for a single order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the MEOrder, OrderHashMap, and ClientOrderHashMap types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first structure is used to hold information inside the book for a single
+    limit order, which we will call `MEOrder`. This is shown in the following code
+    blocks, and the code can be found in the `Chapter6/matcher/me_order.h` and `Chapter6/matcher/me_order.cpp`
+    source files in the GitHub repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `MEOrder` struct has the following important data members in it to save
+    the attributes required to represent a single order in the limit order book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `ticker_id_` variable of type `TickerId` to represent the instrument that
+    this order corresponds to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `client_id_` variable of type `ClientId` that captures the market participant
+    who owns this order.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Two `OrderId` sets, as we discussed before – `client_order_id_`, which is what
+    the client sent on its order request, and `market_order_id_`, which is generated
+    by the matching engine and is unique across all clients.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Side side_` to represent whether the order is a buy or sell order.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `price_` variable of type `Price` to represent the price of the order.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qty qty_` to represent the quantity of the order that is still active in the
+    order book.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `priority_` variable of type `Priority`, which, as we discussed before, will
+    represent the exact position of this order in the queue of other `MEOrder` instances
+    with the same `side_` and `price_` values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `MEOrder` structure also has two pointers to other `MEOrder` objects. This
+    is because the `MEOrder` objects are also maintained as a doubly linked list of
+    orders arranged at a price level in the `MEOrdersAtPrice` structure, as we discussed
+    in the previous section:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Additionally, the `OrderHashMap` type is used to represent a hash map, implemented
+    using `std::array`, where `OrderId` is the key and `MEOrder` is the value. We
+    will also define another type, `ClientOrderHashMap`, which is a hash map, implemented
+    using `std::array` to represent a mapping from `ClientId` to the `OrderHashMap`
+    objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We present the `toString()` method for the `MEOrder` structure, which is very
+    simple and available in the `Chapter6/exchange/matcher/me_order.cpp` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will build some additional structures that contain and manage order
+    objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the MEOrdersAtPrice and OrdersAtPriceHashMap types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As discussed in *Figure 6**.1*, we define another structure that maintains a
+    list of `MEOrder` objects, and we call it `MEOrdersAtPrice`. This structure, presented
+    in the following code block, will be used to hold all the orders entered at the
+    same price, arranged in the FIFO priority order. This is achieved by creating
+    a singly linked list of `MEOrder` objects, arranged in order of highest to lowest
+    priority. For that, we create a `first_me_order_` variable of the `MEOrder` type
+    pointer, which will represent the first order at this price level, and the other
+    orders following it are chained together in the FIFO order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `MEOrdersAtPrice` structure also has two pointers to the `MEOrdersAtPrice`
+    objects, one for the previous (`prev_entry_`) and one for the next (`next_entry_`).
+    This is because the structure itself is a node in a doubly linked list of `MEOrdersAtPrice`
+    objects. The doubly linked list of `MEOrdersAtPrice` is arranged from the most
+    aggressive to the least aggressive prices on the buy and sell sides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The two other variables this struct contains are a `side_` variable of type
+    `Side` and a `price_` variable of type `Price`, respectively representing the
+    side and price of this price level:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We add a default constructor and a trivial custom container to initialize objects
+    of this structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also add a simple `toString()` method for logging purposes, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `OrdersAtPriceHashMap` type represents a hash map, implemented through
+    a `std::array` to represent a mapping from Price to `MEOrdersAtPrice`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes this section on setting up the initial types, definitions, and
+    basic structures for the matching engine and limit order book. Next, we can look
+    at how the matching engine framework is built.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the matching engine and exchanging external data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will build various parts of the matching engine class. A
+    lot of the heavy lifting of handling client requests, building and updating the
+    limit order book, and generating order responses and market updates will be offloaded
+    to the order book class, which we will discuss in the next section. Please reread
+    the *Designing the C++ matching engine in a trading exchange* section in the previous
+    chapter, *Designing Our Trading Ecosystem*, for a refresher on the components
+    we will build in this section and the design principles behind them. We present
+    the diagram from that chapter here for easy reference, showing the design of the
+    matching engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.2 – The design of our matching engine component](img/Figure_6.2_B19434.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.2 – The design of our matching engine component
+  prefs: []
+  type: TYPE_NORMAL
+- en: The matching engine is an independent thread of execution that consumes order
+    requests from `ClientRequestLFQueue`, publishes order responses to `ClientResponseLFQueue`,
+    and publishes market updates to `MEMarketUpdateLFQueue`. Let us first declare
+    and define some code for the construction, destruction, thread management, and
+    boilerplate functionality for the matching engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the matching engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `MatchingEngine` class contains a couple of important data members – first,
+    an `OrderBookHashMap` object to track the limit order book for each of the trading
+    instruments. The class also contains pointers to the following objects – `ClientRequestLFQueue`,
+    `ClientResponseLFQueue`, and `MEMarketUpdateLFQueue`, all of which will be passed
+    to it in the constructor. Let us first declare and define some code for the construction,
+    destruction, thread management, and boilerplate functionality for the matching
+    engine. We will also have a Boolean, `run_`, to track the thread state, a `time_str_`
+    string, and a `Logger` object to output some logs. The code for the next sub-sections
+    is available in the `Chapter6/exchange/matcher/matching_engine.h` source file
+    in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the header files we need to include to build our matching engine are
+    presented here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We declare the constructor and destructor methods next, and we add the `start()`
+    and `stop()` methods to respectively start and stop the execution of the main
+    matching engine loop, which we will build shortly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We add our usual boilerplate code for the constructors and assignment operators
+    to prevent accidental copies:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we add the data members for this `MatchingEngine` class, as discussed
+    before. The `ticker_order_book_` variable of type `OrderBookHashMap` is used to
+    store `MEOrderBook` for each instrument. We store the `incoming_requests_`, `outgoing_ogw_responses_`,
+    and `outgoing_md_updates_` pointers of the `ClientRequestLFQueue`, `ClientResponseLFQueue`,
+    and `MEMarketUpdateLFQueue` types respectively to communicate with the other threads.
+    Then, we have the `run_` Boolean variable, which we mark `volatile`, since it
+    will be accessed from different threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let us look at the implementation of the constructor, the destructor, and the
+    `start()` method that creates and launches a thread to execute the `run()` method
+    (which we will look at shortly). This code is in the `Chapter6/exchange/matcher/matching_engine.cpp`
+    source file. The constructor itself is straightforward – it initializes the internal
+    data members and creates an `MEOrderBook` instance for each one of the supported
+    trading instruments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor does the opposite of the constructor and resets the internal
+    data member variables. It also deletes the `MEOrderBook` objects it created in
+    the constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `start()` method creates and launches a new thread, assigning it the `MatchingEngine::run()`
+    method. Before it does that, it enables `run_ flag`, since it controls the execution
+    of the `run()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `stop()` method simply sets the `run_` flag to be `false`, and that in
+    turn causes the `run()` method to exit out of its main loop, but this will become
+    clear shortly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will investigate the source code that handles how the matching engine
+    consumes the order requests and publishes order responses and market updates.
+    But first, let us present the main `run()` loop that the matching engine thread
+    executes. This code is very simple – it simply consumes `MEClientRequest` objects
+    from the `incoming_requests_` lock-free queue and forwards them to the `processClientRequest()`
+    method. To achieve this, it simply checks the `LFQueue::getNextToRead()` method
+    to see whether there is a valid entry to be read, and if so, forwards the object
+    at that entry to be processed, and updates the read index in the lock-free queue
+    using the `LFQueue::updateReadIndex()` method. This code is in the `Chapter6/exchange/matcher/matching_engine.h`
+    source file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us look at the source code to handle client requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consuming from and publishing to the order gateway queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'First, we will start with the implementation of `processClientRequest()` in
+    the `MatchingEngine` class in the `matching_engine.h` header file. This implementation
+    simply checks for the type of the `MEClientRequest` and forwards it to the limit
+    order book for the corresponding instrument. It finds the correct order book instance
+    that this `MEClientRequest` is meant for by accessing the `ticker_order_book_`
+    container, using the `ticker_id_` field in `MEClientRequest`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For client requests that try to add a new order (`ClientRequestType::NEW`),
+    we call the `MEOrderBook::add()` method and let it service that request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Similarly, client requests that try to cancel an existing order (`ClientRequestType::CANCEL`)
+    are forwarded to the `MEOrderBook::cancel()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also define a method in the same class that the limit order book will
+    use to publish order responses through `MEClientResponse` messages. This simply
+    writes the response to the `outgoing_ogw_responses_` lock-free queue and advances
+    the writer index. It does that by finding the next valid index to write the `MEClientResponse`
+    message to by calling the `LFQueue::getNextToWriteTo()` method, moving the data
+    into that slot, and updating the next write index by calling the `LFQueue::updateWriteIndex()`
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we will look at some code that is similar to what we just saw, except it
+    is used to publish market data updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publishing to the market data publisher queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `sendMarketUpdate()` method in `Chapter6/exchange/matcher/matching_engine.h`
+    is used by the limit order book to publish market data updates through the `MEMarketUpdate`
+    structure. It simply writes to the `outgoing_md_updates_` lock-free queue and
+    advances the writer. It does this exactly the same way we saw before – by calling
+    the `getNextToWriteTo()` method, writing the `MEMarketUpdate` message to that
+    slot, and updating the next write index using `updateWriteIndex()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes this section, and we now have the finished implementation of
+    the matching engine. In the next subsection, we will tie all these pieces together
+    into the trading exchange binary, all except the limit order book implementation,
+    which is the last section we will discuss in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the exchange application binary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We can now build the trading exchange binary. We will instantiate the three
+    lock-free queues for order requests, order responses, and market updates that
+    the matching engine object needs. We will also create the `MatchingEngine` object
+    and launch the thread, and then the binary simply sleeps forever. Since the application
+    goes into an infinite loop, we will also install a signal handler for this application
+    to trap external signals and exit gracefully. Note that this code will be extended
+    in later chapters in this book as we build the order server and market data publisher
+    components on the trading exchange side that need to be added here. The code for
+    this application is in `Chapter6/exchange/exchange_main.cpp` in the GitHub repository
+    for this book. Let us break down the source file and understand each of the code
+    blocks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we add some variables that will be pointers for the `Logger` object
+    and the `MatchingEngine` object. We will also add a `signal_handler()` method
+    to be invoked when killing the exchange application. The signal handler simply
+    deletes these objects and exits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `main()` method is pretty simple for now till we add other components in
+    the next chapter. It installs the `signal_handler()` method using the `std::signal()`
+    routine to trap external `SIGINT` signals. The `SIGINT` signal is the signal value
+    2, which is sent to a running process when either *Ctrl* + *C* is pressed in Linux
+    or `kill –2 PID` is sent to that `ClientRequestLFQueue` variable, `client_requests`,
+    and the `ClientResponseLFQueue` variable, `client_responses`, to be of the `ME_MAX_CLIENT_UPDATES`
+    size. We also initialize the lock-free queue variable, `market_updates`, of type
+    `MEMarketUpdateLFQueue` to be of `ME_MAX_MARKET_UPDATES` capacity. The `main()`
+    method also initializes the `logger` variable with an instance of the `Logger`
+    class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the `main()` method initializes the `matching_engine` variable with
+    an instance of the `MatchingEngine` class we created and passes it the three lock-free
+    queues it needs from the preceding code block. It then calls the `start()` method
+    so that the main matching engine thread can start executing. At this point, the
+    `main()` method is done, so it enters into an infinite loop, where it sleeps most
+    of the time and waits for an external signal that will kill this process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: To make it easy to build the main binary, we have provided a script, `Chapter6/build.sh`,
+    which uses CMake and Ninja to build this binary. You will have to update this
+    script to point to the correct binaries on your system, or use a different build
+    system if you prefer. The next section will provide some information on how to
+    run this `exchange_main` application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the exchange application binary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Running the `exchange_main` application is achieved at this point simply by
+    calling the `exchange_main` binary, as shown in the following code block. We also
+    show the output you should be able to see on the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This process can be stopped by sending it the `SIGINT` signal, as we mentioned
+    before. At this point, it will generate three log files, similar to the ones shown
+    in the following snippet. However, note at this point that there is nothing interesting
+    in the log files, since we have only built the matching engine component out of
+    all the components we need to build the full trading ecosystem. At the end of
+    the next chapter, *Communicating with Market Participants*, we will run this application
+    again with additional components and have slightly more interesting output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next section will look at the internal workings of the order book and how
+    it handles client order requests and generates order responses and market updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the order book and matching orders
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This final section implements the order book functionality. Remember that the
+    order book handles client order requests forwarded from the matching engine. It
+    checks the order request type, updates the order book, generates order responses
+    for the client, and generates market data updates for the public market data feed.
+    All the code for the limit order book in the matching engine is in the `me_order_book.h`
+    and `me_order_book.cpp` source files, saved in the `Chapter6/exchange/matcher/`
+    directory in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the internal data structures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'First, we will declare the data members for the limit order book. We presented
+    a diagram depicting the data structures that make up the limit order book previously,
+    in Figure 6.1\. The limit order book contains the following important data members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `matching_engine_` pointer variable to the `MatchingEngine` parent for the
+    order book to publish order responses and market data updates to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `ClientOrderHashMap` variable, `cid_oid_to_order_`, to track the `OrderHashMap`
+    objects by their `ClientId` key. As a reminder, `OrderHashMap` tracks the `MEOrder`
+    objects by their `OrderId` keys.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `orders_at_price_pool_` memory pool variable of the `MEOrdersAtPrice` objects
+    to create new objects from and return dead objects back to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The head of the doubly linked list of bids (`bids_by_price_`) and asks (`asks_by_price_`),
+    since we track orders at the price level as a list of `MEOrdersAtPrice` objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A hash map, `OrdersAtPriceHashMap`, to track the `MEOrdersAtPrice` objects for
+    the price levels, using the price of the level as a key into the map.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A memory pool of the `MEOrder` objects, called `order_pool_`, where `MEOrder`
+    objects are created from and returned to without incurring dynamic memory allocations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Some minor members, such as `TickerId` for the instrument for this order book,
+    `OrderId` to track the next market data order ID, an `MEClientResponse` variable
+    (`client_response_`), an `MEMarketUpdate` object (`market_update_`), a string
+    to log time, and the `Logger` object for logging purposes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'First, we include some dependent header files and also forward-declare the
+    `MatchingEngine` class because we will reference that type without fully defining
+    it yet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we will define the data member variables, as discussed previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, we will also define the `OrderBookHashMap` type, which we referenced
+    before and is `std::array` of the `MEOrderBook` objects indexed by `TickerId`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, let us present the straightforward implementation of the constructor
+    and the destructor, as well as the boilerplate code for the default constructor
+    and assignment operators:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we add the boilerplate code to most of our classes to prevent accidental
+    copies and assignments of the `MEOrderBook` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Before we move on to the implementation of the different operations that will
+    be performed on the order book, let us present a few simple methods to generate
+    new market order IDs, convert `Price` to an index in `OrdersAtPriceHashMap`, and
+    access the `OrdersAtPriceHashMap price_orders_at_price_` map when given `Price`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `generateNewMarketOrderId()` method is basic; it returns the `next_market_order_id_`
+    value and increments it the next time this method is called:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `priceToIndex()` method converts a `Price` argument into an index that
+    ranges between `0` and `ME_MAX_PRICE_LEVELS-1`, which is then used to index the
+    price levels `std::array`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the `getOrdersAtPrice()` utility method indexes `std::array` of `price_orders_at_price_`
+    by converting `Price` it is provided into an index, using the `priceToIndex()`
+    method, which returns the `MEOrdersAtPrice` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next few subsections will detail the important operations of handling new
+    order requests and cancellation requests for existing orders, and matching aggressive
+    orders that cross existing passive orders on the other side of the order book.
+    We will also generate and publish order responses and market data updates back
+    to the matching engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling new passive orders
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The first important task we need to perform in the order book is handling client
+    order requests that want to enter new orders in the market. We will implement
+    the `MEOrderBook::add()` method, which the matching engine calls first. It generates
+    and sends `MEClientResponse`, accepting the new order, and sends it to the matching
+    engine (to be sent to the client who sent the new order). It then also checks
+    to see whether this new order crosses an existing passive order on the other side
+    and whether it matches either fully or partially, by calling the `checkForMatch()`
+    method. If the new order either does not match at all or is partially filled and
+    leaves some quantity in the book, `MEOrder` is added to the order book. In this
+    case, it also generates `MEMarketUpdate` for the public market data feed and sends
+    it back to the matching engine (to be published by the market data publisher component).
+    We will discuss the `getNextPriority()`, `checkForMatch()`, and `addOrder()` methods
+    shortly in this section, but let us first explore the `MEOrderBook::add()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first thing it does is generate `new_market_order_id_` to be used for `MEClientResponse`
+    and `MEMarketUpdate`. It updates the `client_response_` data member with the attributes
+    from this request and calls the `MatchingEngine::sendClientResponse()` method
+    to publish that response back to the matching engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, the `MEOrderBook::add()` method calls the `MEOrderBook::checkForMatch()`
+    method, which checks the current state of the order book against the new client
+    request that just came in. It checks whether a partial or complete match can be
+    made. The `checkForMatch()` method (which we will build shortly) returns the quantity
+    of the order left over (if any) after the matching event. For orders that do not
+    execute at all, `leaves_qty` returned is the same as the original quantity on
+    the order. For orders that partially execute, it is whatever is left after matching.
+    For orders that fully execute, this method will return a `0` value and that will
+    be assigned to `leaves_qty`. We will see the complete implementation of `checkForMatch()`
+    shortly, but for now, let us use it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the event that there is a quantity left over after the matching event, we
+    need to generate a market data update corresponding to this new order that will
+    join the book. To do that, the `MEOrderBook::add()` method finds out the correct
+    priority value for this order by calling the `MEOrderBook::getNextPriority()`
+    method. It allocates a new `MEOrder` object from the `order_pool_` memory pool
+    and assigns it the attributes for this order. It then calls the `MEOrderBook::addOrder()`
+    method to actually add it at the correct price level and priority in the `MEOrdersAtPrice`
+    data structures. Finally, it fills in the `market_update_` object with the values
+    for the market update and calls the `MatchingEngine::sendMarketUpdate()` method
+    to publish it to the matching engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `getNextPriority()` method is quite straightforward. If a price level already
+    exists at a certain price, then it just returns a priority value one higher than
+    the last order at that price. If a price level does not already exist, then it
+    returns 1 for the first order at that price level:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will lay out the details of adding a new order to the limit order
+    book. The method appends the `MEOrder` object passed to it at the end of the `MEOrdersAtPrice`
+    entry at the price for this order. If an `MEOrdersAtPrice` entry does not already
+    exist (new price level), it first allocates a new entry, adds the new level into
+    the book using the `addOrdersAtPrice()` method, and then appends the order. Additionally,
+    it tracks the `MEOrder` object in the `ClientOrderHashMap id_oid_to_order_` map,
+    mapping from `ClientId` and `OrderId` to the `MEOrder` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we try to check and fetch `MEOrdersAtPrice` if one exists by calling
+    the `getOrdersAtPrice()` method and saving it in the `orders_at_price` variable.
+    Then, we check whether a valid `MEOrdersAtPrice` exists, meaning a price level
+    with the price and side of this order already exists. If such a price level does
+    not exist and this is the first order that forms that level, we create a new `MEOrdersAtPrice`
+    from `orders_at_price_pool_`, initialize it, and call the `addOrdersAtPrice()`
+    method on it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If a valid price level exists, we append the new order at the very end of the
+    doubly linked list of `MEOrder` objects, reachable from the `first_me_order_`
+    member of `MEOrdersAtPrice`. We then update the `prev_order_` and `next_order_`
+    pointers on `MEOrder` being added as well as the last element on the list, after
+    which the `MEOrder` object is appended:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we add this `MEOrder` pointer to the `cid_oid_to_order_` container,
+    which is `std::array` of `std::array` instances, indexed first by `client_id_`
+    of the order and then by `client_order_id_` of the order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, to finish the discussion of adding new orders to the book, we need
+    to implement the `addOrdersAtPrice()` method to add new price levels to the book.
+    This method first adds the new `MEOrdersAtPrice` entry into `OrdersAtPriceHashMap
+    price_orders_at_price_`. Then, it walks through the bid or ask price levels, from
+    the most aggressive to the least aggressive price, to find the correct spot for
+    the new price level. Note that this implementation iterates through the doubly
+    linked list of `MEOrdersAtPrice` objects on the side. It is possible to have an
+    alternative implementation that walks through the `price_orders_at_price_` hash
+    map to find the right spot. Both implementations are viable and perform differently,
+    depending on the number of price levels and the distance between consecutive prices.
+    We will revisit this topic at the end of the book, in the *Optimizing the Performance
+    of Our C++* *System* chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first task for the `addOrdersAtPrice()` method is to insert the new `MEOrdersAtPrice`
+    in the `price_orders_at_price_` hash map, mapping from `Price` to `MEOrdersAtPrice`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we need to insert it in its correct location for the bids/asks arranged
+    by price. We do this by first assigning a `best_orders_by_price` variable to the
+    beginning of the bids or asks, sorted by price:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need to handle an edge case where there are no bids or no asks – that is,
+    a side of the order book is empty. In such a case, we set the `bids_by_price_`
+    or `asks_by_price_` members, which point to the head of the sorted list for that
+    side:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Otherwise, we need to find the correct entry in the doubly linked list of price
+    levels. We do this by walking through the bids or the asks till we find the correct
+    price level, before or after which we insert the new price level. We track the
+    price level before or after the new one in the following `target` variable, and
+    we track whether we need to insert after or before the target variable using the
+    `add_after` Boolean flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once we find the correct location for the new `MEOrdersAtPrice` entry, we append
+    the new price level by updating the `prev_entry_` or `next_entry_` variables in
+    the `target` `MEOrdersAtPrice` structure, as well as the new `MEOrdersAtPrice`
+    being appended, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, if we add the new price level before an existing price level, we need
+    to check whether prepending this price level changes the `bids_by_price_` or `asks_by_price_`
+    variable. Remember that these variables track the start of the bids or asks, respectively
+    – that is, the highest bid price and the lowest ask price. If we have a new best
+    bid/ask price level, we update the `bids_by_price_` or `asks_by_price_` variable,
+    respectively:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will discuss the source code that handles order cancellation requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling order cancellation requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The code to handle order cancellation requests is forwarded from the matching
+    engine. First, it checks to see whether the cancel request is valid, meaning that
+    `ClientId` is valid and `OrderId` on the cancellation request corresponds to an
+    active order in the order book. If the order is not cancellable, it generates
+    and publishes an `MEClientResponse` message to signify a rejected cancel request
+    back to the matching engine. If the order can be canceled, it generates `MEClientResponse`
+    to signify the successful cancel attempt and calls the `removeOrder()` method
+    to remove the order from the limit order book. We will discuss the details of
+    `removeOrder()` right after this next method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will track an `is_cancelable` Boolean variable that determines whether we
+    were able to successfully find and cancel the client’s order or not. If `client_id`
+    is larger than the maximum possible client ID value, then we cannot cancel the
+    order. If the client ID is valid, then we check the container from `cid_oid_to_order_`
+    for the provided `client_id` and the `order_id` value. If a valid order does not
+    exist, then we confirm that the order is not cancelable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we determine that the order cannot be cancelled, we generate an `MEClientResponse`
+    message of type `ClientResponseType::CANCEL_REJECTED` to notify the matching engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we can successfully cancel the order, we update the attributes in the `client_response_`
+    member variable and the `market_update_` member variable. Then, we call the `removeOrder()`
+    method to update our order book and delete this order from it. Finally, we send
+    the market update to the matching engine, using the `sendMarketUpdate()` method,
+    and we send the client response to the matching engine, using the `sendClientResponse()`
+    method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, let us implement the `removeOrder()` method. It first finds `MEOrdersAtPrice`
+    that the order being removed belongs to and then finds and removes `MEOrder` from
+    the list of orders contained in `MEOrdersAtPrice`. If the order being removed
+    is the only order at the price level, the method also calls `removeOrdersAtPrice()`
+    to remove the entire price level, since after this deletion, that no longer exists.
+    Finally, it removes the entry for that `MEOrder` from the `cid_oid_to_order_`
+    hash map and returns the deallocated `MEOrder` object to the `order_pool_` memory
+    pool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To conclude our discussion of tasks involved in handling order cancellation
+    requests, we will implement the `removeOrdersAtPrice()` method. It finds and removes
+    `MEOrdersAtPrice` from the doubly linked list of `MEOrdersAtPrice` for the bid
+    or ask side. If this price entry being removed happens to be the only `MEOrdersAtPrice`
+    entry on that side of the book, it sets the head of the doubly linked list to
+    be `nullptr`, representing an empty side of the book. Finally, the method removes
+    the entry from the `price_orders_at_price_` hash map for that price and returns
+    the deallocated `MEOrdersAtPrice` to the `orders_at_price_pool_` memory pool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs: []
+  type: TYPE_PRE
+- en: The last operation we need to tackle is an important one – matching aggressive
+    orders against passive orders on the other side of the order book. We will look
+    at the implementation of that operation next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Matching aggressive orders and updating the order book
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we will implement the matching functionality in the limit
+    order book by presenting the `MEOrderBook::checkForMatch()` method we encountered
+    earlier. The diagram presented in *Figure 6**.3* shows what would happen in a
+    hypothetical state of the limit order book. Here, the state of the ask side is
+    shown, and the passive sell prices represented by `MEOrdersAtPrice` are `MEOrder`
+    objects are shown, the first one with a priority of `MEOrder` following that in
+    the FIFO queue has a priority of **13**, a market order ID of **1400**, and a
+    quantity of **10**. In this case, a new buy order with a quantity of **25** and
+    a price of **117** (represented in blue) will match the first order with a market
+    order ID of **1200** (represented in yellow) and execute it fully. It will then
+    partially execute the remaining quantity of **5** against the order with a market
+    order ID of **1400** (represented in magenta), and the matching event is finished.
+    These steps are presented in the algorithm right after the following diagram.
+  prefs: []
+  type: TYPE_NORMAL
+- en: "![Figure 6.3 – An exa\uFEFFmple of a matching event in the limit order book](img/Figure_6.3_B19434.jpg)"
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.3 – An example of a matching event in the limit order book
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This method iterates through the `MEOrdersAtPrice` objects on the side of the
+    book opposite to the new (and possibly aggressive) order. It iterates through
+    the price levels from the most aggressive to least aggressive price and, for each
+    price level, matches the `MEOrder` objects contained at that price level from
+    the first to last, in the FIFO order. It continues matching the new order against
+    the passive orders on the other side, from the most aggressive to the least aggressive
+    price and in the first to last order at a price level, by calling the `match()`
+    method. It stops and returns when either the new aggressive order has no more
+    unmatched quantity left to match, the remaining price levels on the other side
+    no longer cross the new order’s price, or the side of the book is empty. At that
+    point, it returns the remaining unmatched quantity on the new order to the caller:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We keep iterating through all the ask price levels, arranged from the lowest
+    to the highest prices, starting from the `asks_by_price_` level. For the `asks_by_price_`
+    level, we start from the `first_me_order_` object of the `MEOrder` type pointer
+    and iterate in the FIFO order, from the lowest to the highest priority. For each
+    order that can match against the new aggressive order, we call the `MEOrder::match()`
+    method to perform the actual match. We continue doing this till either there is
+    no more `leaves_qty` left, the `asks_by_price_` variable is `nullptr` to signify
+    an empty book side, or the remaining price levels cannot be used to match the
+    new order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the new order has a side of sell, we perform the same logic as described
+    previously, except we iterate through the `bids_by_price_` price levels, which
+    are arranged from the highest buy price to the lowest buy price, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE77]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `match()` method is called when a new aggressive order matches an existing
+    passive order on the other side of the book. It computes the executed quantity,
+    which is the minimum of the quantity of the new order and the existing passive
+    order it would match against. It subtracts this executed quantity from the remaining
+    quantity of the aggressive order, as well as the passive order it matched against.
+    It generates two execution order responses and sends them to the matching engine
+    – one for the client who sent the aggressive order and another one for the client
+    whose passive order got executed against the new order. It also creates and publishes
+    a market update of type `MarketUpdateType::TRADE` to notify participants about
+    the execution on the public market data feed. Finally, it checks whether this
+    trade transaction fully executes the passive order or not, and if there is a full
+    execution, it generates another market update of type `MarketUpdateType::CANCEL`
+    to notify participants that the passive order has been removed. If the passive
+    order is only partially matched, it instead generates a market update of type
+    `MarketUpdateType::MODIFY` with the new remaining quantity of the passive limit
+    order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What this means is that participants who choose to ignore trade messages from
+    the market data stream can still accurately build and maintain the limit order
+    book. We could theoretically eliminate the extra cancel or modify market update,
+    but that would require downstream market data consumers to apply trade messages
+    to their order books and update them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `MEOrderBook::match()` method takes a few arguments to identify the client
+    information, but the key arguments are the `MEOrder` pointer, `itr`, and the `Qty`
+    pointer, `leaves_qty`. The `MEOrder` pointer represents the order in the book
+    that the new order is being matched against, and `Qty` represents the remaining
+    quantity on the new order. These arguments are passed by pointer because we will
+    modify them directly in this method and expect the changes to be reflected in
+    the calling method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE78]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We compute the `fill_qty` variable to be the minimum of the quantity on the
+    passive order that exists in the book and the new order’s quantity. We then use
+    `fill_qty` to decrease both `leaves_qty` and the `qty_` member on the `MEOrder`
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE79]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We generate a client response message of type `ClientResponseType::FILLED`,
+    meant for the client who sent the new order, and dispatch it to the matching engine
+    using the `sendClientResponse()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE80]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also generate a second client response message of `type_` `ClientResponseType::FILLED`;
+    this one is meant for the client whose order was in the order book and got matched:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE81]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also generate a market update of type `MarketUpdateType::TRADE` and
+    publish it using `sendMarketUpdate()`, notifying the participants about the trade
+    transaction that occurred and providing them with `fill_qty`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE82]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we will generate a market update for the passive client order that
+    existed in the book. If there is some quantity remaining on this `MEOrder`, then
+    we generate a `MarketUpdateType::MODIFY` message and pass the remaining quantity
+    left on that order. If the order is fully executed, then we generate a `MarketUpdateType::CANCEL`
+    update, publish it, and also call the `MEOrderBook::removeOrder()` method to remove
+    this `MEOrder` from the order book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE83]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our discussion of the operations involved in handling client
+    order requests, updating the limit order book inside the matching engine, and
+    generating and publishing order responses and market updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We started the C++ implementation of our electronic trading ecosystem in this
+    chapter. The first component we built was the exchange matching engine in charge
+    of accepting and answering order requests from the order server component in the
+    exchange infrastructure. This component is also responsible for generating and
+    publishing market data updates to the market data publisher component in the exchange’s
+    infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we declared some assumptions in our matching engine and limit order books.
+    We also defined a couple of basic `OrderId` and chain together orders at the same
+    price inside the `MEOrdersAtPrice` structure. Reiterating what we already covered,
+    these price levels themselves are maintained in a doubly linked list and a hash
+    map indexed by price.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we built the matching engine component, which is an independent thread
+    of execution that consumes updates from the order server and publishes responses
+    and market data updates back to the order server and the market data publisher.
+    We also built the main application binary for the electronic trading exchange,
+    which we will enhance in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we laid out the details of the mechanism involved in building and updating
+    the data structures for the limit order book. We discussed the tasks involved
+    in handling new order requests and order cancelation requests. We also implemented
+    the functionality of the matching engine to perform the actual matching between
+    new aggressive orders against existing passive orders that cross in price. Match
+    events generate private execution messages for the market participants involved
+    in a match event. Additionally, the event also generates trade messages and order
+    deletion or modification on the public market data feed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will build the market data publisher component, which
+    is the component that consumes the market data updates generated from the matching
+    engine and puts them on the wire for participants to consume. Additionally, we
+    will also build the order server component that resides in the electronic trading
+    exchange and manages the communication with the different market participant order
+    gateways, forwarding requests and responses to and from the matching engine.
+  prefs: []
+  type: TYPE_NORMAL

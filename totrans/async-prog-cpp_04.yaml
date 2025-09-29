@@ -1,0 +1,1522 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Thread Synchronization with Locks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 2*](B22219_02.xhtml#_idTextAnchor035) , we learned that threads
+    can read and write memory shared by the process they belong to. While the operating
+    system implements process memory access protection, there is no such protection
+    for threads accessing shared memory in the same process. Concurrent memory write
+    operations to the same memory address from multiple threads require synchronization
+    mechanisms to avoid data races and ensure data integrity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will describe in detail the problems created by concurrent
+    access to shared memory by multiple threads and how to fix them. We are going
+    to study in detail the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Race conditions – what they are and how they can happen
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Mutual exclusion as a synchronization mechanism and how it is implemented in
+    C++ by **std::mutex**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generic lock management
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What condition variables are and how to use them with mutexes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing a fully synchronized queue using **std::mutex** and **std::condition_variable**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The new synchronization primitives introduced with C++20 – semaphores, barriers,
+    and latches
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These are all lock-based synchronization mechanisms. Lock-free techniques are
+    the subject of the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The technical requirements for this chapter are the same as for the concepts
+    explained in the previous chapter, and to compile and run the examples, a C++
+    compiler with C++20 support is required (for semaphores, latches, and barriers
+    examples). Most of the examples require just C++11. Examples have been tested
+    on Linux Ubuntu LTS 24.04.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code in this chapter can be found on GitHub:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP](https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding race conditions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A race condition happens when the outcome of running a program depends on the
+    sequence in which its instructions are executed. We will begin with a very simple
+    example to show how race conditions happen, and later in this chapter, we will
+    learn how to resolve this problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following code, the **counter** global variable is incremented by two
+    threads running concurrently:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After running the preceding code three times, we get the following **counter**
+    values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We see two main issues here: first, the value of **counter** is incorrect;
+    second, every execution of the program ends with a different value of **counter**
+    . The results are non-deterministic and most frequently incorrect. If you are
+    very lucky, you may get the right values, but that is very unlikely.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This scenario involves two threads, **t1** and **t2** , that run concurrently
+    and modify the same variable, which is essentially some memory region. It seems
+    like it should work fine because there is only one line of code that increases
+    the **counter** value and thus modifies the memory content (by the way, it doesn’t
+    matter if we use the post-increment operator like in **counter++** or the pre-increment
+    operator like in **++counter** ; the results will be equally wrong).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking closer at the preceding code, let’s study the following line carefully:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It increments **counter** in three steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The contents of the memory address where the **counter** variable is stored
+    are loaded into a CPU register. In this case, an **int** data type is loaded from
+    memory into a CPU register.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The value in the register is incremented by one.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The value in the register is stored in the **counter** variable memory address.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Now, let us consider a possible scenario when two threads attempt to increment
+    the counter concurrently. Let us look at *Table 4.1* :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **THREAD 1** | **THREAD 2** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| [1] Load counter value into register | [3] Load counter value into register
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| [2] Increment register value | [5] Increment register value |'
+  prefs: []
+  type: TYPE_TB
+- en: '| [4] Store register in counter | [6] Store register in counter |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4.1: Two threads incrementing the counter concurrently'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread 1 executes [1] and loads the current value of the counter (let’s assume
+    it is 1) into a CPU register. Then, it increments the value in the register by
+    one [2] (now, the register value is 2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread 2 is scheduled for execution and [3] loads the current value of the counter
+    (remember – it has not been modified yet, so it is still 1) into a CPU register.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, thread 1 is scheduled again for execution and [4] stores the updated value
+    into memory. The value of **counter** is now equal to two.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, thread 2 is scheduled again, and [5] and [6] are executed. The register
+    value is incremented by one and then the value two is stored in memory. The **counter**
+    variable has been incremented just once when it should have been incremented twice
+    and its value should be three.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The previous issue happened because the increment operation on the counter is
+    not atomic. If each thread could execute the three instructions required to increment
+    the **counter** variable without being interrupted, **counter** would be incremented
+    twice as expected. However, depending on the order in which the operations are
+    executed, the result can be different. This is called a **race condition** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: To avoid race conditions, we need to ensure that shared resources are accessed
+    and modified in a controlled manner. One way to achieve this is by using locks.
+    A **lock** is a synchronization primitive that allows only one thread to access
+    a shared resource at a time. When a thread wants to access a shared resource,
+    it must first acquire the lock. Once the thread has acquired the lock, it can
+    access the shared resource without interference from other threads. When the thread
+    has finished accessing the shared resource, it must release the lock so that other
+    threads can access it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another way to avoid race conditions is by using **atomic operations** . An
+    atomic operation is an operation that is guaranteed to be executed in a single,
+    indivisible step. This means that no other thread can interfere with an atomic
+    operation while it is being executed. Atomic operations are typically implemented
+    using hardware instructions that are designed to be indivisible. Atomic operations
+    will be explained in [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097) .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we have seen the most common and important problem created
+    by multithreaded code: race conditions. We have seen how, depending on the order
+    of the operations performed, the results can be different. With this problem in
+    mind, we are going to study how to solve it in the next section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why do we need mutual exclusion?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Mutual exclusion** is a fundamental concept in concurrent programming that
+    ensures that multiple threads or processes do not simultaneously access a shared
+    resource such as a shared variable, a critical section of code, or a file or network
+    connection. Mutual exclusion is crucial for preventing race conditions such as
+    the one we have seen in the previous section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Imagine a small coffee shop with a single espresso machine. The machine can
+    only make one espresso at a time. This means the machine is a critical resource
+    that all baristas must share.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The coffee shop is attended by three baristas: Alice, Bob, and Carol. They
+    use the coffee machine *concurrently* , but they cannot use it simultaneously
+    because that could create problems: Bob puts the right amount of freshly ground
+    coffee in the machine and starts making an espresso. Then, Alice does the same
+    but first removes the coffee from the machine, thinking that Bob just forgot to
+    do it. Bob then takes the espresso from the machine, and after that, Alice finds
+    that there is no espresso! This is a disaster – a real-life version of our counter
+    program.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To fix the problems in the coffee shop, they may appoint Carol as a machine
+    manager. Before using the machine, both Alice and Bob ask her if they can start
+    making a new espresso. That would solve the issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Back to our counter program, if we could allow just one thread at a time to
+    access **counter** (what Carol did in the coffee shop), our software problem would
+    be solved too. Mutual exclusion is a mechanism that can be used to control concurrent
+    thread access to memory. The C++ Standard Library provides the **std::mutex**
+    class, a synchronization primitive used to protect shared data from being simultaneously
+    accessed by two or more threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This new version of the code we saw in the previous section implements two
+    ways of concurrently incrementing **counter** : free access, as in the previous
+    section, and synchronized access using mutual exclusion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: When a thread runs **funcWithLocks** , it acquires a lock with **mtx.lock()**
+    before incrementing **counter** . Once **counter** has been incremented, the thread
+    releases the lock ( **mtx.unlock()** ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The lock can only be owned by one thread. If, for example, **t1** acquires
+    the lock and then **t2** tries to acquire it too, **t2** will be blocked and will
+    wait until the lock is available. Because only one thread can own the lock at
+    any time, this synchronization primitive is called a **mutex** (from *mutual exclusion*
+    ). If you run this program a few times, you will always get the correct result:
+    **2000000** .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we introduced the concept of mutual exclusion and learned that
+    the C++ Standard Library provides the **std::mutex** class as a primitive for
+    thread synchronization. In the next section, we will study **std::mutex** in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ Standard Library mutual exclusion implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the previous section, we introduced the concept of mutual exclusion and mutexes
+    and why they are needed to synchronize concurrent memory access. In this section,
+    we will see the classes provided by the C++ Standard Library to implement mutual
+    exclusion. We will also see some helper classes the C++ Standard Library provides
+    to make the use of mutexes easier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following table summarizes the mutex classes provided by the C++ Standard
+    Library and their main features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Mutex Type** | **Access** | **Recursive** | **Timeout** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::mutex** | EXCLUSIVE | NO | NO |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::recursive_mutex** | EXCLUSIVE | YES | NO |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::shared_mutex** | 1 - EXCLUSIVEN - SHARED | NO | NO |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::timed_mutex** | EXCLUSIVE | NO | YES |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::recursive_timed_mutex** | EXCLUSIVE | YES | YES |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::shared_timed_mutex** | 1 - EXCLUSIVEN - SHARED | NO | YES |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4.2: Mutex classes in C++ Standard Library'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us explore these classes one by one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::mutex
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The **std::mutex** class was introduced in C++11 and is one of the most important
+    and most frequently used synchronization primitives provided by the C++ Standard
+    Library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we have seen earlier in this chapter, **std::mutex** is a synchronization
+    primitive that can be used to protect shared data from being simultaneously accessed
+    by multiple threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **std::mutex** class offers exclusive, non-recursive ownership semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The main features of **std::mutex** are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A calling thread owns the mutex from the time it successfully calls **lock()**
+    or **try_lock()** until it calls **unlock()** .
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A calling thread must not own the mutex before calling **lock()** or **try_lock(**
+    ). This is the non-recursive ownership semantics property of **std::mutex** .
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When a thread owns a mutex, all other threads will block (when calling **lock())**
+    or receive a **false** return value (when calling **try_lock()** ). This is the
+    exclusive ownership semantics of **std::mutex** .
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If a thread owning a mutex tries to acquire it again, the resulting behavior
+    is undefined. Usually, an exception is thrown when this happens, but this is implementation-defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If, after a thread releases a mutex, it tries to release it again, this is also
+    undefined behavior (as in the previous case).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A mutex being destroyed while a thread has it locked or a thread terminating
+    without releasing the lock are also causes of undefined behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **std::mutex** class has three methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**lock()** : Calling **lock()** acquires the mutex. If the mutex is already
+    locked, then the calling thread is blocked until the mutex is unlocked. From the
+    application’s point of view, it is as if the calling thread waits for the mutex
+    to be available.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**try_lock()** : When called, this function returns either **true** , indicating
+    that the mutex has been successfully locked, or **false** in the event of the
+    mutex being already locked. Note that **try_lock** is non-blocking, and the calling
+    thread either acquires the mutex or not, but it is not blocked like when calling
+    **lock()** . The **try_lock()** method is generally used when we don’t want the
+    thread to wait until the mutex is available. We will call **try_lock()** when
+    we want the thread to proceed with some processing and try to acquire the mutex
+    later.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**unlock()** : Calling **unlock()** releases the mutex.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: std::recursive_mutex
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The **std::mutex** class offers exclusive, non-recursive ownership semantics.
+    While exclusive ownership semantics are always required at least for a thread
+    (it is a mutual exclusion mechanism, after all), in some instances, we may need
+    to recursively acquire the mutex. For example, a recursive function may need to
+    acquire a mutex. We may also need to acquire a mutex in function **g()** called
+    from another function **f()** , which acquired the same mutex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **std::recursive_mutex** class offers exclusive, recursive semantics. Its
+    main features are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A calling thread may acquire the same mutex more than once. It will own the
+    mutex until it releases the mutex the same number of times it acquired it. For
+    example, if a thread recursively acquires a mutex three times, it will own the
+    mutex until it releases it for the third time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The maximum number of times a recursive mutex can be recursively acquired is
+    unspecified and hence implementation-defined. Once a mutex has been acquired for
+    the maximum number of times, calls to **lock()** will throw **std::system_error**
+    , and calls to **try_lock()** will return **false** .
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Ownership is the same as for **std::mutex** : if a thread owns a **std::recursive_mutex**
+    class, any other threads will block if they try to acquire it by calling **lock()**
+    , or they will get false as a return when calling **try_lock()** .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The **std::recursive_mutex** interface is exactly the same as for **std::mutex**
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_mutex
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Both **std::mutex** and **std::shared_mutex** have exclusive ownership semantics,
+    and just one thread can be the mutex owner at any given time. There are some cases,
+    though, when we may need to let several threads simultaneously access the protected
+    data and give just one thread exclusive access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The counter example required exclusive access to a single variable for every
+    thread because they were all updating **counter** values. Now, if we have threads
+    that only require reading the current value in **counter** and just one thread
+    to increment its value, it would be much better to let the reader threads access
+    **counter** concurrently and give the writer exclusive access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This functionality is implemented using what is called a Readers-Writer lock.
+    The C++ Standard Library implements the **std::shared_mutex** class, with a similar
+    (but not exactly the same) functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The main difference between **std::shared_mutex** and other mutex types is
+    that it has two access levels:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Shared** : Several threads can share the ownership of the same mutex. Shared
+    ownership is acquired/released calling **lock_shared()** , **try_lock_shared()**
+    / **unlock shared()** . While at least one thread has acquired shared access to
+    the lock, no other thread can get exclusive access to it, but it can acquire shared
+    access.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Exclusive** : Only one thread can own the mutex. Exclusive ownership is acquired/released
+    by calling **lock()** , **try_lock()** / **unlock()** . While a thread has acquired
+    exclusive access to the lock, no other thread can acquire either shared or exclusive
+    access to it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let’s see a simple example using **std::shared_mutex** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The example uses **std::shared_mutex** to synchronize six threads: two threads
+    are writers, and they increment the value of **counter** and require exclusive
+    access. The remaining four threads just read **counter** and only require shared
+    access. Also, note that in order to use **std::shared_mutex** , we need to include
+    the **<shared_mutex>** header file.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timed mutex types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The mutex types we have seen until now behave in the same way when we want
+    to acquire the lock for exclusive use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**std::lock()** : The calling thread blocks until the lock is available'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**std::try_lock()** : Returns **false** if the lock is not available'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the case of **std::lock()** , the calling thread may be waiting for a long
+    time, and we may need to just wait for a certain period of time and then let the
+    thread proceed with some processing if it has not been able to acquire the lock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve this goal, we can use the timed mutexes provided by the C++ Standard
+    Library: **std::timed_mutex** , **std::recursive_timed_mutex** , and **std::shared_time_mutex**
+    .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'They are similar to their non-timed counterparts and implement the following
+    additional functions to allow waiting for the lock to be available for a specific
+    period of time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**try_lock_for()** : Tries to lock the mutex and blocks the thread until the
+    specified time duration has elapsed (timed out). If the mutex is locked before
+    the specified time duration, then it returns **true** ; otherwise, it returns
+    **false** .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the specified time duration is less than or equal to zero ( **timeout_duration.zero()**
+    ), then the function behaves exactly like **try_lock()** .
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: This function may block for longer than the specified duration due to scheduling
+    or contention delays.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '**try_lock_until()** : Tries to lock the mutex until the specified timeout
+    time or the mutex is locked, whichever comes first. In this case, we specify an
+    instance in the future as a limit for the waiting.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The following example shows how to use **std::try_lock_for()** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code uses two locks: **tm** , a timed mutex, to synchronize access
+    to **counter** and writing to the screen if acquiring **tm** is successful, and
+    **m** , a non-timed mutex, to synchronize access to **failed** and writing to
+    the screen if acquiring **tm** is not successful.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Problems when using locks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have seen examples using just a mutex (lock). If we only need one mutex and
+    we acquire and release it properly, in general is not very difficult to write
+    correct multithreaded code. Once we need more than one lock, the code complexity
+    increases. Two common problems when using multiple locks are *deadlock* and *livelock*
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deadlock
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let’s consider the following scenario: to perform a certain task, a thread
+    needs to access two resources, and they cannot be accessed simultaneously by two
+    or more threads (we need mutual exclusion to properly synchronize access to the
+    required resources). Each resource is synchronized with a different **std::mutex**
+    class. In this case, a thread must acquire the first resource mutex then acquire
+    the second resource mutex, and finally process the resources and release both
+    mutexes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When two threads try performing the aforementioned processing, something like
+    this may happen:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Thread 1* and *thread 2* need to acquire two mutexes to perform the required
+    processing. *Thread 1* acquires the first mutex and *thread 2* acquires the second
+    mutex. Then, *thread 1* will be blocked forever waiting for the second mutex to
+    be available, and *thread 2* will be blocked forever waiting for the first mutex
+    to be available. This is called a **deadlock** because both threads will be blocked
+    forever waiting for each other to release the required mutex.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is one of the most common issues in multithreaded code. In [*Chapter 11*](B22219_11.xhtml#_idTextAnchor228)
+    , about debugging, we will learn how to spot this problem by inspecting the running
+    (deadlocked) program with a debugger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Livelock
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'A possible solution for deadlock could be the following: when a thread tries
+    to acquire the lock, it will block just for a limited time, and if still unsuccessful,
+    it will release any lock it may have acquired.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, *thread 1* acquires the first lock and *thread 2* acquires the
+    second lock. After a certain time, *thread 1* still has not acquired the second
+    lock, so it releases the first one. *Thread 2* may finish waiting too and release
+    the lock it acquired (in this example, the second lock).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This solution may work sometimes, but it is not right. Imagine this scenario:
+    *Thread 1* has acquired the first lock and has acquired the second lock. After
+    some time, both threads release their already acquired locks, and then they acquire
+    the same locks again. Then, the threads release the locks, then acquire them again,
+    and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The threads are unable to do anything but acquire a lock, wait, release the
+    lock, and do the same again. This situation is called **livelock** because the
+    threads are not just waiting forever (as in the deadlock case), but they are kind
+    of alive and acquire and release a lock continuously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most common solution for both deadlock and livelock situations is acquiring
+    the locks in a consistent order. For example, if a thread needs to acquire two
+    locks, it will always acquire the first lock first, and then it will acquire the
+    second lock. The locks will be released in the opposite order (first releasing
+    the second lock and then the first). If a second thread tries to acquire the first
+    lock, it will have to wait until the first thread releases both locks, and deadlock
+    will never happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have seen the mutex classes provided by the C++ Standard
+    Library. We have studied their main features and the issues we may experience
+    when using more than one lock. In the next section, we will see the mechanisms
+    that the C++ Standard Library provides to make acquiring and releasing mutexes.
+    easier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generic lock management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous section, we saw the different types of mutexes provided by
+    the C++ Standard Library. In this section, we will see the provided classes to
+    make the use of mutexes easier. This is done by using different wrapper classes.
+    The following table summarizes the lock management classes and their main features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Mutex** **Manager Class** | **Supported** **Mutex Types** | **Mutexes Managed**
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::lock_guard** | All | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::scoped_lock** | All | Zero or more |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::unique_lock** | All | 1 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **std::shared_lock** | **std::shared_mutex****std::shared_timed_mutex** |
+    1 |'
+  prefs: []
+  type: TYPE_TB
+- en: 'Table 4.3: Lock management classes and their features'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s see each of the mutex management classes and their main features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::lock_guard
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::lock_guard** class is a **Resource Acquisition Is Initialization**
+    ( **RAII** ) class that makes it easier to use mutexes and guarantees that a mutex
+    will be released when the **lock_guard** destructor is called. This is very useful,
+    for example, when dealing with exceptions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code shows the use of **std::lock_guard** and how it makes handling
+    exceptions easier when a lock is already acquired:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **function_throws()** function is just a utility function that will throw
+    an exception.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the previous code example, the **worker_exceptions()** function is executed
+    by **t1** . In this case, the exception is handled to print meaningful messages.
+    The lock is not explicitly acquired/released. This is delegated to **lock** ,
+    a **std::lock_guard** object. When the lock is constructed, it wraps the mutex
+    and calls **mtx.lock()** , acquiring the lock. When **lock** is destroyed, the
+    mutex is released automatically. In the event of an exception, the mutex will
+    also be released because the scope where **lock** was defined is exited.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is another constructor implemented for **std::lock_guard** , receiving
+    a parameter of type **std::adopt_lock_t** . Basically, this constructor makes
+    it possible to wrap an already acquired non-shared mutex, which will be released
+    automatically in the **std::lock_guard** destructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_lock
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::lock_guard** class is just a simple **std::mutex** wrapper that automatically
+    acquires the mutex in its constructor (the thread will be blocked, waiting until
+    the mutex is released by another thread) and releases the mutex in its destructor.
+    This is very useful, but sometimes we need more control. For example, **std::lock_guard**
+    will either call **lock()** on the mutex or assume the mutex is already acquired.
+    We may prefer or really need to call **try_lock** . We also may want the **std::mutex**
+    wrapper not to acquire the lock in its constructor; that is, we may want to defer
+    the locking until a later moment. All this functionality is implemented by **std::unique_lock**
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **std::unique_lock** constructor accepts a tag as its second parameter
+    to indicate what we want to do with the underlying mutex. There are three options:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**std::defer_lock** : Does not acquire ownership of the mutex. The mutex is
+    not locked in the constructor, and it will not be unlocked in the destructor if
+    it is never acquired.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**std::adopt_lock** : Assumes that the mutex has been acquired by the calling
+    thread. It will be released in the destructor. This option is also available for
+    **std::lock_guard** .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**std::try_to_lock** : Try to acquire the mutex without blocking.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'If we just pass the mutex as the only parameter to the **std::unique_lock**
+    constructor, the behavior is the same as in **std::lock_guard** : it will block
+    until the mutex is available and then acquire it. It will release the mutex in
+    the destructor.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **std::unique_lock** class, unlike **std::lock_guard** , allows you to call
+    **lock()** and **unlock()** to respectively acquire and release the mutex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::scoped_lock
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::scoped_lock** class, as with **std::unique_lock** , is a **std::mutex**
+    wrapper implementing an RAII mechanism (remember – the mutexes will be released
+    in the destructor if they are acquired). The main difference is that **std::unique_lock**
+    , as its name implies, just wraps one mutex, but **std::scoped_lock** wraps zero
+    or more mutexes. Also, the mutexes are acquired in the order they are passed to
+    the **std::scoped_lock** constructor, hence avoiding deadlock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code snippet shows how we can work with two mutex locks very easily.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_lock
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::shared_lock** class is another general-purpose mutex ownership wrapper.
+    As with **std::unique_lock** and **std::scoped_lock** , it allows deferred locking
+    and transferring the lock ownership. The main difference between **std::unique_lock**
+    and **std::shared_lock** is that the latter is used to acquire/release the wrapped
+    mutex in shared mode while the former is used to do the same in exclusive mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we saw mutex wrapper classes and their main features. Next,
+    we will introduce another synchronization mechanism: condition variables.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Condition variables
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Condition variables** are another synchronization primitive provided by the
+    C++ Standard Library. They allow multiple threads to communicate with each other.
+    They also allow for several threads to wait for a notification from another thread.
+    Condition variables are always associated with a mutex.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following example, a thread must wait for a counter to be equal to a
+    certain value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are two ways to wait for a certain condition: one is waiting in a loop
+    and using a mutex as a synchronization mechanism. This is implemented in **wait_for_counter_non_zero_mtx**
+    . The function acquires the lock, reads the value in **counter** , and releases
+    the lock. Then, it sleeps for 10 milliseconds, and the lock is acquired again.
+    This is done in a **while** loop until **counter** is nonzero.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Condition variables help us to simplify the previous code. The **wait_for_counter_10_cv**
+    function waits until **counter** is equal to 10. The thread will wait on the **cv**
+    condition variable until it is notified by **t1** , the thread increasing **counter**
+    in a loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**The wait_for_counter_10_cv** function works like this: a condition variable,
+    **cv** , waits on a mutex, **mtx** . After calling **wait()** , the condition
+    variable locks the mutex and waits until the condition is **true** (the condition
+    is implemented in the lambda passed as a second parameter to the **wait** function).
+    If the condition is not **true** , the condition variable remains in a *waiting*
+    state until it is signaled and releases the mutex. Once the condition is met,
+    the condition variable ends its waiting state and locks the mutex again to synchronize
+    its access to **counter** .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: One important issue is that the conditional variable may be signaled by an unrelated
+    thread. This is called **spurious wakeup** . To avoid errors due to spurious wakeups,
+    the condition is checked in **wait** . When the condition variable is signaled,
+    the condition is checked again. In the event of a spurious wakeup and the counter
+    being zero (the condition check returns **false** ), the waiting would resume.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A different thread increments the counter by running **increment_counter** .
+    Once **counter** has the desired value (in the example, this value is 10), it
+    signals the waiting thread condition variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two functions provided to signal a condition variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**cv.notify_one()** : Signal only one of the waiting threads'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**cv.notify_all()** : Signal all of the waiting threads'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In this section, we have introduced condition variables, and we have seen a
+    simple example of synchronization using condition variables and how in some cases
+    it can simplify the synchronization/waiting code. Now, let us turn our attention
+    to implementing a synchronized queue using a mutex and two condition variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a multithreaded safe queue
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, we will see how to implement a simple **multithreaded safe
+    queue** . The queue will be accessed by multiple threads, some of them adding
+    elements to it ( **producer threads** ) and some of them removing elements from
+    it ( **consumer threads** ). For starters, we are going to assume just two threads:
+    one producer and one consumer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Queues or **first-in-first-outs** ( **FIFOs** ) are a standard way of communication
+    between threads. For example, if we need to receive packets containing data from
+    a network connection as fast as possible, we may not have enough time in just
+    one thread to receive all the packets and process them. In this case, we use a
+    second thread to process the packets read by the first thread. Using just one
+    consumer thread is simpler to synchronize (we will see how this is the case in
+    [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097) ), and we have a guarantee that
+    the packets will be processed in the same order as they arrived and were copied
+    to the queue by the producer thread. It is true that the packets will really be
+    read in the same order they were copied to the queue irrespective of the number
+    of threads we have as consumers, but the consumer threads may be scheduled in
+    and out by the operating system, and the full sequence of processed packets could
+    be in a different order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, the easiest problem is that of a **single-producer-single-consumer**
+    ( **SPSC** ) queue. Different problems may require multiple consumers if the processing
+    of each item is too costly for just a thread, and we may have different sources
+    of data to be processed and need multiple producer threads. The queue described
+    in this section will work in every case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first step in designing the queue is deciding what data structure we will
+    use to store the queued items. We want the queue to contain elements of any type
+    *T* , so we will implement it as a template class. Also, we are going to limit
+    the capacity of the queue so that the maximum number of elements we can store
+    in the queue will be fixed and set in the class constructor. It is possible, for
+    example, to use a linked list and make the queue unbounded, or even use a **Standard
+    Template Library** ( **STL** ) queue, **std::queue** , and let the queue grow
+    to an arbitrary size. In this chapter, we will implement a fixed-size queue. We
+    will revisit the implementation in [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097)
+    and implement it in a very different way (we won’t be using any mutex or waiting
+    on condition variables). For our current implementation, we will use an STL vector,
+    **std::vector<T>** , to store the queued items. The vector will allocate memory
+    for all the elements in the queue class constructor, so there will be no memory
+    allocations after that. When the queue is destroyed, the vector will destroy itself
+    and will free the allocated memory. This is convenient and simplifies the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will use the vector as a **ring buffer** . This means that, once we store
+    an element at the end of the vector, the next one will be stored at the beginning,
+    so we *wrap around* both locations to write and read elements from the vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the first version of the queue class, quite simple and not useful yet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **head** and **tail** variables are used to indicate where to read or write
+    the next element respectively. We also need to know when the queue is empty or
+    full. If the queue is empty, the consumer thread won’t be able to get any item
+    from the queue. If the queue is full, the producer thread will not be able to
+    put any items in the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are different ways to indicate when a queue is empty and when it is full.
+    In this example, we follow this convention:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If **tail_ == head_** , then the queue is empty
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If **(tail_ + 1) % capacity_ == head_** , then the queue is full
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Another way to implement it would require just checking if **tail_ == head_**
+    and using an extra flag to indicate if the queue is full or not (or using a counter
+    to know how many items there are in the queue). We avoid any extra flag or counter
+    in this example because the flag will be read and written by both the consumer
+    and the producer threads, and we aim to minimize sharing data among threads as
+    much as we can. Also, reducing sharing data will be the only option when we revisit
+    the implementation of the queue in [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097)
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is a small issue here. Because of the way we check if the queue is full,
+    we lose one slot in the buffer, so the real capacity is **capacity_ - 1** . We
+    will consider the queue as full when there is just one empty slot. Because of
+    this, we lose one queue slot (note that the slot will be used, but the queue will
+    still be full when the number of items is **capacity_ - 1** ). In general, this
+    is not an issue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The queue we are going to implement is a bounded queue (fixed size) implemented
+    as a ring buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is another detail to be considered here: **head_ + 1** must take into
+    account that we wrap around the indices to the buffer (it is a ring buffer). So,
+    we must do **(head_ + 1) % capacity_** . The modulo operator calculates the remainder
+    of the index value divided by the queue capacity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code shows the basic utility functions implemented as helper
+    functions in the synchronized queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have implemented a few useful functions to update both the head and the tail
+    of the ring buffer and to check if the buffer is full or empty. Now, we can start
+    implementing the queue functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code for the full queue implementation is in the accompanying GitHub repo
+    for the book. *Here, we only show the important bits* for the sake of simplicity
+    and focus just on the synchronization aspects of the queue implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The interface to the queue has the following two functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **push** function inserts an element in the queue, while **pop** gets an
+    element from the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start with **push** . It inserts an item in the queue. If the queue is
+    full, **push** will wait until the queue has at least an empty slot (a consumer
+    removed an element from the queue). This way, the producer thread will be blocked
+    until the queue has at least one empty slot (the not-full condition is met).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have seen earlier in this chapter that there is a synchronization mechanism
+    called a condition variable that does just that. The **push** function will check
+    if the condition is met, and when it is met, it will insert an item in the queue.
+    If the condition is not met, the lock associated with the condition variable will
+    be released, and the thread will wait on the condition variable until the condition
+    is satisfied.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is possible for the condition variable to just wait until the lock is released.
+    We still need to check if the queue is full because a condition variable may end
+    its waiting due to a spurious wakeup. This happens when the condition variable
+    receives a notification not sent explicitly by any other thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We add the following three member variables to the queue class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: We need two condition variables – one to notify the consumers that the queue
+    is not full ( **not_full_** ) and another to notify the producers that the queue
+    is not empty ( **not_empty_** ).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the code implementing **push** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s think about a scenario with a single producer and a single consumer. We
+    will see the **pop** function later, but as an advance, it also synchronizes with
+    the mutex/condition variable. Both threads try to access the queue at the same
+    time – the producer when inserting an element and the consumer when removing it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s assume the consumer acquires the lock first. This happens in **[1]** .
+    The use of **std::unique_lock** is required by condition variables to use a mutex.
+    In **[2]** , we wait on the condition variable until the condition in the predicate
+    of the **wait** function is met. If it is not met, the lock is released for the
+    consumer thread to be able to access the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the condition is met, the lock is acquired again, and the queue is updated
+    in **[3]** . After updating the queue, **[4]** releases the lock and then **[5]**
+    notifies one consumer thread that may be waiting on **not_empty** that the queue
+    is effectively not empty now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **std::unique_lock** class could release the mutex lock in its destructor,
+    but we needed to release it in **[4]** because we didn’t want to release the lock
+    after notifying the condition variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **pop()** function follows a similar logic, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code is very similar to that in the **push** function. **[1]** creates the
+    **std::unique_lock** class required to use the **not_empty_** condition variable.
+    **[2]** waits on **not_empty_** until it is notified that the queue is not empty.
+    **[3]** reads the item from the queue, assigning it to the **item** variable,
+    and then in **[4]** , the lock is released. Finally, in **[5]** , the **not_full_**
+    condition variable is notified to indicate to the consumer that the queue is not
+    full.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both **push** and **pop** functions are blocking and waiting until the queue
+    is not full or not empty respectively. We may need the thread to keep on running
+    in the event of not being able to either insert or get a message to/from the queue
+    – for example, to let it do some independent processing – and then try again to
+    access the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **try_push** function does exactly that. If the mutex is free to be acquired
+    and the queue is not full, then the functionality is the same as the **push**
+    function, but in this case, **try_push** doesn’t need to use any condition variable
+    for synchronization (but it must notify the consumer). This is the code for **try_push**
+    :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code works like this: **[1]** tries to acquire the lock and returns without
+    blocking the calling thread. If the lock was already acquired, then it will evaluate
+    to **false** . In **[2]** , in case the lock has not been acquired or the queue
+    is full, **try_push** returns **false** to indicate to the caller that no item
+    was inserted in the queue and delegates the waiting/blocking to the caller. Note
+    that **[3]** returns **false** and the function terminates. If the lock was acquired,
+    it will be released when the function exits and the **std::unique_lock** destructor
+    is called.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the lock is acquired and has checked that the queue is not full, then
+    the item is inserted in the queue, and **tail_** is updated. In **[5]** , the
+    lock is released, and in **[6]** , the consumer is notified that the queue is
+    not empty anymore. This notification is required because the consumer may call
+    **pop** instead of **try_pop** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, the function returns **true** to indicate to the caller that the item
+    was successfully inserted in the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for the corresponding **try_pop** function is shown next. As an exercise,
+    try to understand how it works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the full code for the queue we have implemented in this section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we have introduced condition variables and implemented a basic
+    queue synchronized with a mutex and two condition variables, the two basic synchronization
+    primitives provided by the C++ Standard Library since C++11.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The queue example shows how synchronization is implemented using these synchronization
+    primitives and can be used as a basic building block for more elaborate utilities
+    such as, for example, a thread pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Semaphores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: C++20 introduces new synchronization primitives to write multithreaded applications.
+    In this section, we will look at semaphores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A **semaphore** is a counter that manages the number of permits available for
+    accessing a shared resource. Semaphores can be classified into two main types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A **binary semaphore** is like a mutex. It has only two states: 0 and 1. Even
+    though a binary semaphore is conceptually like a mutex, there are some differences
+    between a binary semaphore and a mutex that we will see later in this section.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A **counting semaphore** can have a value greater than 1 and is used to control
+    access to a resource that has a limited number of instances.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++20 implements both binary and counting semaphores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binary semaphores
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A binary semaphore is a synchronization primitive that can be used to control
+    access to a shared resource. It has two states: 0 and 1. A semaphore with a value
+    of 0 indicates that the resource is unavailable, while a semaphore with a value
+    of 1 indicates that the resource is available.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binary semaphores can be used to implement mutual exclusion. This is achieved
+    by using a binary semaphore to control access to the resource. When a thread wants
+    to access the resource, it first checks the semaphore. If the semaphore is 1,
+    the thread can access the resource. If the semaphore is 0, the thread must wait
+    until the semaphore is 1 before it can access the resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The most significant difference between mutexes and semaphores is that mutexes
+    have exclusive ownership, whereas binary semaphores do not. Only the thread owning
+    the mutex can release it. Semaphores can be signaled by any thread. A mutex is
+    a locking mechanism for a critical section, and a semaphore is more like a signaling
+    mechanism. In this respect, a semaphore is closer to a condition variable than
+    a mutex. For this reason, semaphores are commonly used for signaling rather than
+    for mutual exclusion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In C++20, **std::binary_semaphore** is an alias for the specialization of **std::counting_semaphore**
+    , with **LeastMaxValue** being 1.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Binary semaphores must be initialized with either 1 or 0, such as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the initial value is **0** , acquiring the semaphore will block the thread
+    trying to acquire it, and before it can be acquired, it must be released by another
+    thread. Acquiring a semaphore decreases the counter, and releasing it increases
+    the counter. As previously stated, if the counter is **0** and a thread tries
+    to acquire the lock (semaphore), the thread will be blocked until the semaphore
+    counter is greater than **0** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting semaphores
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A counting semaphore allows access to a shared resource by more than one thread.
+    The counter can be initialized to an arbitrary number, and it will be decreased
+    every time a thread acquires the semaphore. As an example of how to use counting
+    semaphores, we will modify the multithread safe queue we implemented in the previous
+    section and use semaphores instead of condition variables to synchronize access
+    to the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The member variables of the new class are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We still need **head_** and **tail_** to know where to read and write an element,
+    **capacity_** for the wraparound of the indices, and **buffer_** , a **std::vector<T>**
+    vector. But for now, we are not using a mutex, and we will use counting semaphores
+    instead of condition variables. We will use two of them: **sem_empty_** to count
+    the empty slots in the buffer (initially set to **capacity_** ) and **sem_full_**
+    to count the non-empty slots in the buffer, initially set to 0.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s see how to implement **push** , the function used to insert items
+    in a queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In **[1]** , **sem_empty_** is acquired, decreasing the semaphore counter.
+    If the queue is full, then the thread will block until **sem_empty_** is released
+    (signaled) by another thread. If the queue is not full, then the item is copied
+    to the buffer, and **tail_** is updated in **[2]** and **[3]** . Finally, **sem_full_**
+    is released in **[4]** , signaling another thread that the queue is not empty
+    and there is at least one item in the buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The **pop** function is used to get elements from a queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, in **[1]** , we successfully acquire **sem_full_** if the queue is not
+    empty. Then, the item is read and **head_** updated in **[2]** and **[3]** respectively.
+    Finally, we signal the consumer thread that the queue is not full, releasing **sem_empty**
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are several issues in our first version of **push** . The first and most
+    important one is that **sem_empty_** allows more than one thread to access the
+    critical section in the queue ( **[2]** and **[3]** ). We need to synchronize
+    this critical section and use a mutex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here is the new version of **push** using a mutex for synchronization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In **[2]** , the lock is acquired (using **std::unique_lock** ), and in **[5]**
+    , it is released. Using the lock will synchronize the critical section, preventing
+    several threads from simultaneously accessing it and updating the queue concurrently
+    without any synchronization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A second issue is that acquiring a semaphore is blocking, and as we have seen
+    previously, sometimes the caller thread can do some processing instead of just
+    waiting. The **try_push** function (and its corresponding **try_pop** function)
+    implements this functionality. Let’s study the code of **try_push** . Note that
+    **try_push** may still block on the mutex:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The only changes are **[1]** and **[2]** . Instead of blocking when acquiring
+    the semaphore, we just try to acquire it, and if we fail, we return **false**
+    . The **try_acquire** function may spuriously fail and return **false** even if
+    the semaphore can be acquired (count is not zero).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the complete code for the queue synchronized with semaphores:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we have seen semaphores, a new synchronization primitive included
+    in the C++ Standard Library since C++20. We learned how to use them to implement
+    the same queue we implemented before but using semaphores as synchronization primitives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will introduce **barriers** and **latches** , two new
+    synchronization mechanisms included in the C++ Standard Library since C++20.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Barriers and latches
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will introduce barriers and latches, two new synchronization
+    primitives introduced in C++20. These mechanisms allow threads to wait for each
+    other, thereby coordinating the execution of concurrent tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::latch
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::latch** latch is a synchronization primitive that allows one or more
+    threads to block until a specified number of operations are completed. It is a
+    single-use object, and once the count reaches zero, it cannot be reset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following example is a simple illustration of the use of latches in a multithreaded
+    application. We want to write a function to multiply by two each element of a
+    vector and then add all the elements of the vector. We will use three threads
+    to multiply the vector elements by two and then one thread to add all the elements
+    of the vector and obtain the result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We need two latches. The first one will be decremented by each of the three
+    threads multiplying by two vector elements. The adding thread will wait for this
+    latch to be zero. Then, the main thread will wait on the second latch to synchronize
+    printing the result of adding all the vector’s elements. We can also wait for
+    the thread performing the additions calling **join** on it, but this can be done
+    with a latch too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let’s analyze the code in functional blocks. We will include the full
+    code for the latches and barriers example later in this section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each multiplying thread will run this lambda function, multiplying by two elements
+    of a certain range in the vector (from **start** to **end** ). Once the thread
+    is done, it will decrease the **map_latch** counter by one. Once all the threads
+    finish their tasks, the latch counter will be zero, and the thread blocked waiting
+    on **map_latch** will be able to go on and add all the elements of the vector
+    together. Note that the threads access different elements of the vector, so we
+    don’t need to synchronize access to the vector itself, but we cannot start adding
+    the numbers until all the multiplications are done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for the adding thread is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This thread waits until the **map_latch** counter goes down to zero, then adds
+    all the elements of the vector, and finally decrements the **reduce_latch** counter
+    (it will go down to zero) for the main thread to be able to print the final result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Having seen a basic application of latches, next, let’s learn about barriers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::barrier
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The **std::barrier** barrier is another synchronization primitive used to synchronize
+    a group of threads. The **std::barrier** barrier is reusable. Each thread reaches
+    the barrier and waits until all participating threads reach the same barrier point
+    (like what happens when we use latches).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main difference between **std::barrier** and **std::latch** is the reset
+    capability. The **std::latch** latch is a single-use barrier with a countdown
+    mechanism that cannot be reset. Once it reaches zero, it stays at zero. In contrast,
+    **std::barrier** is reusable. It resets after all threads have reached the barrier,
+    allowing the same set of threads to synchronize at the same barrier multiple times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When to use latches and when to use barriers? Use **std::latch** when you have
+    a one-time gathering point for threads, such as waiting for multiple initializations
+    to complete before proceeding. Use **std::barrier** when you need to synchronize
+    threads repeatedly through multiple phases of a task or iterative computations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will now rewrite the previous example, this time using barriers instead of
+    latches. Each thread will multiply by two its corresponding range of vector elements,
+    and then it will add them. The main thread will use **join()** in this example
+    to wait for the processing to be finished and then add the results obtained by
+    each of the threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for the worker thread is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code is synchronized with a barrier. When a worker thread finishes doing
+    the multiplications, it decreases the **map_barrier** counter and waits for the
+    barrier counter to be zero. Once it goes down to zero, the threads end their waiting
+    and start doing the additions. The barrier counter is reset, and its value is
+    again equal to three. Once the additions are done, the barrier counter is decremented
+    again, but this time, the threads won’t wait because their task is done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sure – each thread could have done the additions and then multiplied by two.
+    They don’t need to wait for each other because the work done by any thread is
+    independent of the work done by any other thread, but this is a good way of explaining
+    how barriers work with an easy example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The main thread just waits with **join** for the worker threads to finish and
+    then prints the result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here is the full code for the latches and barriers example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this section, we have seen barriers and latches. Though they are not so
+    commonly used as mutexes, condition variables, and semaphores, it is always useful
+    to know what they are. The simple examples presented here have illustrated a common
+    use of barriers and latches: synchronizing threads performing processing in different
+    stages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we will see a mechanism to execute code just once, even if the code
+    is called more than once from different threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performing a task only once
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Sometimes, we need to perform a certain task just one time. For example, in
+    a multithreaded application, several threads may run the same function to initialize
+    a variable. Any of the running threads may do it, but we want the initialization
+    to be done exactly once.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The C++ Standard Library provides both **std::once_flag** and **std::call_once**
+    to implement exactly that functionality. We will see how to implement this functionality
+    using atomic operations in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following example will help us to understand how to use **std::once_flag**
+    and **std::call_once** to achieve our goal of performing a task just one time
+    when more than one thread tries to do it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the first part of the example, three threads, **t1** , **t2** , and **t3**
+    , run the **thread_function** function. This function calls a lambda from **std::call_once**
+    . If you run the example, you will see that the message **This must run just once**
+    is printed only one time, as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the second part of the example, again, three threads, **t4** , **t5** , and
+    **t6** , run the **thread_function_1** function. This function calls **function_throws**
+    , which depending on a parameter may throw or not throw an exception. This code
+    shows that, if the function called from **std::call_once** does not terminate
+    successfully, then it doesn’t count as done and **std::call_once** should be called
+    again. Only a successful function counts as a run function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This final section showed a simple mechanism we can use to ensure that a function
+    is executed exactly once, even if it is called more than once from the same or
+    a different thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned how to use the lock-based synchronization primitives
+    provided by the C++ Standard Library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We started with an explanation of race conditions and the need for mutual exclusion.
+    Then, we studied **std::mutex** and how to use it to solve race conditions. We
+    also learned about the main problems when synchronizing with locks: deadlock and
+    livelock.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After learning about mutexes, we studied condition variables and implemented
+    a synchronized queue using mutex and condition variables. Finally, we saw the
+    new synchronization primitives introduced in C++20: semaphores, latches, and barriers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we studied the mechanisms provided by the C++ Standard Library to run
+    a function just one time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we learned about the basic building blocks of thread synchronization
+    and the foundation of asynchronous programming with multiple threads. Lock-based
+    thread synchronization is the most used method to synchronize threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will study lock-free thread synchronization. We will
+    start with a review of atomicity, atomic operations, and atomic types provided
+    by the C++20 Standard Library. We will show an implementation of a lock-free bound
+    single-producer-single-consumer queue. We will also introduce the C++ memory model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: David R. Butenhof, *Programming with POSIX Threads* , Addison Wesley, 1997.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Anthony Williams, *C++ Concurrency in Action* , Second Edition, Manning, 2019.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,918 @@
+- en: '11'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Deferred Reclamation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 9*](B21071_09.xhtml#_idTextAnchor141), we showed some examples
+    of unusual memory allocation mechanisms and how they can be used, including how
+    to react to errors to give our programs a form of “second chance” to continue,
+    as well as how to use atypical or exotic memory through the mediation of the C++
+    language facilities. Then, in [*Chapter 10*](B21071_10.xhtml#_idTextAnchor153),
+    we examined arena-based allocation and some variants thereof with an eye on issues
+    of speed, determinism, and control over resource consumption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we will do in the current chapter is something that is not often done
+    in C++ but that is common practice in programs written in many other languages,
+    particularly those with integrated garbage collectors: we will write mechanisms
+    that delay the destruction of dynamically allocated objects at selected moments
+    in the execution of a program.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will *not* write a proper garbage collector, as that would involve deeper
+    involvement in the inner workings of the compiler and impact the programming model
+    that makes C++ such a wonderful tool. However, we will put together mechanisms
+    for **deferred reclamation**, in the sense that selected objects will deliberately
+    be destroyed and see their underlying storage freed together at chosen moments,
+    but without necessarily guaranteeing a destruction order. We will, of course,
+    not provide an exhaustive overview of techniques to achieve this objective, but
+    we will hopefully give you, dear reader, enough “food for thought” to build your
+    own deferred reclamation mechanisms should you need to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The techniques in this chapter can be coupled with those seen in [*Chapter
+    10*](B21071_10.xhtml#_idTextAnchor153) to make programs faster and reduce memory
+    fragmentation, but we will cover deferred reclamation as a standalone topic to
+    make our discourse clearer. After reading this chapter, you will be able to do
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understand the trade-offs associated with deferred reclamation, as there are
+    gains to be made but there are also costs involved (this is not a panacea!)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement an almost transparent external wrapper to track the memory that needs
+    to be collected
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement an almost transparent external wrapper to help finalize the objects
+    that are subjected to deferred reclamation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement a counting pointer akin to the reference counter of a `std::shared_ptr`
+    object in order to identify objects that can be reclaimed at the end of a chosen
+    scope
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first step we need to take is to try to understand some problem domains
+    where deferred reclamation can be helpful, including its relation to the (different
+    but not entirely dissimilar) problem of garbage collection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finalization? Reclamation?
+  prefs: []
+  type: TYPE_NORMAL
+- en: You will notice that, in this chapter, we will often use the word *finalization*
+    instead of the word *destruction*, as we seek to emphasize the fact that the code
+    executed at the end of an object’s lifetime (its destructor) is distinct from
+    the code that frees its underlying storage. As a bonus, **finalization** is also
+    more common in garbage-collected languages, and garbage collection is a cousin
+    of the techniques discussed in the sections that follow. Consider finalization
+    (without reclamation) as the equivalent of calling the destructor of an object
+    (without deallocating the underlying storage).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As stated earlier in this chapter, we will name **reclamation** the act of freeing
+    the memory for one or many objects at selected moments, for example, at the end
+    of a scope or when reaching the end of a program’s execution. Again, this term
+    is more common in garbage-collected languages than it is in C++, but the topic
+    of this chapter is in some ways closer to what these languages do so, hopefully,
+    using similar terms will help develop a common understanding of the ideas and
+    techniques involved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter11](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter11).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What do we mean by deferred reclamation?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Why would one want to resort to deferred reclamation? That’s a valid question
+    indeed, so thanks for asking!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The short answer is that it solves a real problem. Indeed, there are programs
+    where it makes sense not to collect objects right after they stop being referred
+    to by client code, or where it’s unclear whether they can be collected at all
+    until we know for sure the code that could use them concludes. These programs
+    are somewhat rare in C++ because of the way we reason about code in our language,
+    but they are not rare when looking at the programming world in general.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, consider a function in which there are circular references between
+    some of the locally allocated objects, or one where there is a tree that one can
+    navigate from the root node to its leaf nodes, but in which the leaves of the
+    tree also have a reference to its root node. Sometimes, we can determine how to
+    destroy the set of objects: for example, in the case of a tree, we could decide
+    to start at the root and go down the branches. In other situations, if we know
+    that a group of objects will not escape a given function, we can also use the
+    knowledge that, at the end of that function, they all can be reclaimed as a group.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are familiar with garbage-collected languages, you probably know that
+    in most of them, the collector “reclaims the bytes,” freeing the underlying storage
+    of the reclaimed objects (and sometimes compacting the memory as it proceeds),
+    but does not finalize the objects. One reason for this is that it is difficult
+    (in some cases, impossible) for an object in such a language to know which other
+    objects still exist in the program since there is no order-of-finalization guarantee…
+    and how could there be one if the garbage collector needs to deal with cycles
+    of objects referring to each other? Not knowing which other objects still exist
+    when an object reaches the end of its lifetime severely limits what finalization
+    code can do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The fact that reclamation does not mean finalization in many languages simplifies
+    the task of collecting the objects: one can conceptually call `std::free()` or
+    some equivalent function and free memory without worrying about the objects therein.
+    In languages that do guarantee finalization before reclamation, one often finds
+    a class hierarchy rooted in a single, common base class (often called `object`
+    or `Object`), which makes it possible to call the equivalent of a `virtual` destructor
+    on each object and polymorphically finalize it. Of course, what one can do when
+    finalizing an object under such circumstances is limited since the order in which
+    objects are finalized is usually unknown.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is more common in contemporary garbage-collected languages is to make finalization
+    the responsibility of client code and leave the collection to the language itself.
+    Such languages often use a special interface (`IDisposable` in C# and `Closeable`
+    in Java come to mind) that is implemented by classes for which finalization is
+    important (typically, classes that manage external resources), and client code
+    will explicitly put in place the required mechanisms for the ordered finalization
+    of objects. This moves part of the responsibility over resource management from
+    the object itself (as is customary in C++ with the RAII idiom described in [*Chapter
+    4*](B21071_04.xhtml#_idTextAnchor062)) to the code that uses it, which is a reminder
+    that garbage collectors tend to simplify memory management but, at the same time,
+    tend to complicate the management of other resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Examples of such client code-driven resource management include a `try` block
+    accompanied by a `finally` block, which serves as the locus of cleanup code applied
+    regardless of whether the `try` block concluded normally or some `catch` block
+    was entered. There are also simplified syntaxes that perform the same thing in
+    a less burdensome manner for client code. For example, Java uses try-with blocks
+    and implicitly calls `close()` on selected `Closeable` objects at *end of scope*,
+    and C# uses `using` blocks likewise in order to implicitly call `Dispose()` on
+    selected `IDisposable` objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ does not have `finally` blocks, nor does it use intrusive techniques such
+    as special interfaces known to the language that receive special treatment or
+    a common base class to all types. In C++, objects are usually made responsible
+    for the management of their resources through the RAII idiom; this leads to a
+    different mindset and different programming techniques when compared to other
+    popular languages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will face a similar yet different situation to the one
+    faced in garbage-collected languages: if we want to use deferred reclamation of
+    objects, we cannot guarantee that during destruction, one of the reclaimed objects
+    will be able to access other objects reclaimed in the same group, so one should
+    not try to do this. On the other hand, the fact that we will choose to apply deferred
+    reclamation to *selected* objects (instead of doing so for all objects) means
+    that objects not part of this group and known to survive that group’s reclamation
+    can still be accessed during the finalization of reclaimed objects. It’s a benefit
+    of not having a one-size-fits-all solution, really: C++ is nothing if not versatile,
+    as you probably knew even before starting to read this book.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not having a common base class to all types means that we will have to either
+    forego finalization (and this can work if we limit ourselves to allocating objects
+    of trivially destructible types, something we could validate at compile time)
+    or that we will have to find some other way to remember the types of the objects
+    we allocated and call the appropriate destructor when the time comes. In this
+    chapter, we will show how one can implement both approaches.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Contrary to popular belief, some garbage collectors have been implemented for
+    C++. One of the best-known ones (the Boehm-Demers-Weiser collector made by Hans
+    Boehm, Alan Demers, and Mark Weiser) does not finalize objects in general but
+    allows the registration of chosen finalizers from user code. This is done through
+    a facility named `GC_register_finalizer`, but the authors warn users of this facility
+    that what such a finalizer can do is limited, as is the case in garbage-collected
+    languages (and discussed earlier in this section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs: []
+  type: TYPE_NORMAL
+- en: To explore further, please check [https://www.hboehm.info/gc/](https://www.hboehm.info/gc/).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will use other techniques in this chapter. As is always the case in this
+    book, the intent is to present ideas from which you can experiment and build the
+    kind of solution your code needs. We will show three different examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code that reclaims selected objects at the end of program execution but does
+    not finalize them, limiting deferred reclamation to trivially destructible objects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Code that reclaims and finalizes selected objects at the end of program execution
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Code that reclaims and finalizes selected objects at the end of selected scopes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will proceed differently in each case, to give you a broader perspective
+    on what can be done. In all three cases, we will store the pointers in a globally
+    accessible object. Yes, a singleton, but that’s the correct tool here as we are
+    discussing a feature that impacts the whole program. Ready? Here we go!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Things we sometimes do to make examples readable…
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code in the following sections can seem strange to some readers. In an effort
+    to focus on the deferred reclamation aspects of the code and keep the overall
+    presentation readable, I chose not to go into aspects of thread safety, although
+    this is essential in contemporary code. In the GitHub repository for this chapter,
+    however, you will find both the code presented in this book and the thread-safe
+    equivalent for each example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reclamation (without finalization) at the end of the program
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our first implementation will provide reclamation but not finalization at the
+    end of program execution. For this reason, it will not accept managing objects
+    of some type `T` if `T` is not trivially destructible since objects of that type
+    have a destructor that might have to be executed to avoid leaks or other problems
+    along the way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With this example, as with the others in this chapter, we will start with our
+    test code, and then go on to see how the reclamation mechanics are implemented.
+    Our test code will go as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will declare two types, `NamedThing` and `Identifier`. The former will not
+    be trivially destructible as its destructor will contain user code that prints
+    out debugging information, but the latter will be, as it will only contain trivially
+    destructible non-static data members and offer no user-provided destructor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will provide two `g()` functions. The first one will be commented out as
+    it tries to allocate `NamedThing` objects through our reclamation system, something
+    that would not compile as type `NamedThing` does not meet our requirement of trivial
+    destructibility. The second one will be used as the objects it allocates are of
+    a type that meets those requirements.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `f()`, `g()`, and `main()` functions will construct objects at various levels
+    in the call stack of our program. However, the reclaimable objects will only be
+    at the end of program execution.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The client code in this case would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this code and the (so far missing) deferred reclamation code, this program
+    will print the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that `f()` allocates and returns an object from which `main()` calls the
+    `m()` member function without explicitly resorting to a smart pointer, yet this
+    program does not leak memory. Objects allocated through the `gcnew<T>()` function
+    are registered in the `GC` object, and the destructor of the `GC` object will
+    ensure the registered memory blocks will be deallocated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does `gcnew<T>()` work, then, and why write such a function instead of simply
+    overloading `operator new()`? Well, remember that `operator new()` intervenes
+    in the overall allocation process as an allocation function – one that trades
+    in raw memory, not one that knows what the type of object to create will be. In
+    this example, we want (a) memory to be allocated for the new object, (b) the object
+    to be constructed (hence the need for the type and the arguments that will be
+    passed to the constructor), and (c) to reject types that are not trivially destructible.
+    We need to know the type of object to construct, something `operator new()` is
+    not aware of.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To be able to reclaim the memory for these objects at the end of program execution,
+    we will need a form of globally available storage where we will put the pointers
+    that have been allocated. We will call such pointers `roots` and store them in
+    a singleton of the `GC` type (inspired by the nickname typically associated with
+    garbage collectors, even though this is not exactly what we are implementing –
+    that name will convey the intent well, and it’s short enough not to get in the
+    way).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `GC::add_root<T>(args...)` member function will ensure that `T` is a trivially
+    destructible type, allocate a chunk of `sizeof(T)` bytes, construct `T(args...)`
+    at that location, store an abstract pointer (a `void*`) to that object in `roots`,
+    and return a `T*` object to the newly created object. The `gcnew<T>()` function
+    will allow user code to interface with `GC::add_root<T>()` in a simplified manner;
+    since we want user code to use `gcnew<T>()`, we will qualify `GC::add_root<T>()`
+    as `private` and make `gcnew<T>()` a `friend` of the `GC` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the `GC` class itself is not a generic class (it’s not a template).
+    It exposes template member functions, but structurally only stores raw addresses
+    (`void*` objects), which makes this class mostly type-agnostic. This all leads
+    to the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// note: not trivially destructible'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct NamedThing {
+  prefs: []
+  type: TYPE_NORMAL
+- en: const char *name;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'NamedThing(const char *name) : name{ name } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::print("{} ctor\n", name);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~NamedThing() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::print("{} dtor\n", name);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void g() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[[maybe_unused]] auto p = gcnew<NamedThing>("hi");'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[[maybe_unused]] auto q = gcnew<NamedThing>("there");'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto h() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: int m() const { return 123; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return gcnew<X>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto f() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: g();
+  prefs: []
+  type: TYPE_NORMAL
+- en: return h();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::print("Pre\n");
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::print("{}\n", f()->m());
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::print("Post\n");
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Pre
+  prefs: []
+  type: TYPE_NORMAL
+- en: hi ctor
+  prefs: []
+  type: TYPE_NORMAL
+- en: there ctor
+  prefs: []
+  type: TYPE_NORMAL
+- en: '123'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Post
+  prefs: []
+  type: TYPE_NORMAL
+- en: hi dtor
+  prefs: []
+  type: TYPE_NORMAL
+- en: there dtor
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <vector>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <print>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class GC {
+  prefs: []
+  type: TYPE_NORMAL
+- en: class GcRoot {
+  prefs: []
+  type: TYPE_NORMAL
+- en: void *p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto get() const noexcept { return p; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GcRoot(void *p) : p{ p } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GcRoot(const GcRoot &) = delete;
+  prefs: []
+  type: TYPE_NORMAL
+- en: GcRoot& operator=(const GcRoot &) = delete;
+  prefs: []
+  type: TYPE_NORMAL
+- en: virtual void destroy(void *) const noexcept = 0;
+  prefs: []
+  type: TYPE_NORMAL
+- en: virtual ~GcRoot() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'template <class T> class GcNode : public GcRoot {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void destroy(void* q) const noexcept override {
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete static_cast<T*>(q);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class ... Args>
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'GcNode(Args &&... args) :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GcRoot(new T(std::forward<Args>(args)...)) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~GcNode() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: destroy(get());
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::vector<std::unique_ptr<GcRoot>> roots;
+  prefs: []
+  type: TYPE_NORMAL
+- en: GC() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: static auto &get() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: static GC gc;
+  prefs: []
+  type: TYPE_NORMAL
+- en: return gc;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T, class ... Args>
+  prefs: []
+  type: TYPE_NORMAL
+- en: T *add_root(Args &&... args) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return static_cast<T*>(roots.emplace_back(
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::make_unique<GcNode<T>>(
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::forward<Args>(args)...)
+  prefs: []
+  type: TYPE_NORMAL
+- en: )->get());
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T, class ... Args>
+  prefs: []
+  type: TYPE_NORMAL
+- en: friend T* gcnew(Args&&...);
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GC(const GC &) = delete;
+  prefs: []
+  type: TYPE_NORMAL
+- en: GC& operator=(const GC &) = delete;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T, class ... Args>
+  prefs: []
+  type: TYPE_NORMAL
+- en: T *gcnew(Args &&...args) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return GC::get().add_root<T>(
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::forward<Args>(args)...
+  prefs: []
+  type: TYPE_NORMAL
+- en: );
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// note: not trivially destructible'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct NamedThing {
+  prefs: []
+  type: TYPE_NORMAL
+- en: const char *name;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'NamedThing(const char *name) : name{ name } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << name << " ctor" << std::endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~NamedThing() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << name << " dtor" << std::endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto g() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto _ = scoped_collect{};
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[[maybe_unused]] auto p = gcnew<NamedThing>("hi");'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = gcnew<NamedThing>("there");
+  prefs: []
+  type: TYPE_NORMAL
+- en: return q;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} // a reclamation will occur here'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto h() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: int m() const { return 123; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return gcnew<X>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto f() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto _ = scoped_collect{};
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = g();
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << '\"' << p->name << '\"' << std::endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} // a reclamation will occur here'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace std;
+  prefs: []
+  type: TYPE_NORMAL
+- en: cout << "Pre" << endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: f();
+  prefs: []
+  type: TYPE_NORMAL
+- en: cout << h()->m() << endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: cout << "Post" << endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} scoped_collect object lives will lead to the reclamation of all objects allocated
+    through gcnew<T>() that are not referenced anymore at that point; this holds regardless
+    of whether they were allocated in that scope or somewhere else in the program.
+    The intent here is that the end of such as scope is a point where we are willing
+    to “pay” the time and effort required to collect a group of objects. Do not use
+    a scoped_collect object in a scope where either speed or deterministic behavior
+    is of the essence!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Executing this code, we end up with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, objects that are still being referred to remain available, and
+    objects that are not being referred to are collected either when the destructor
+    of a `scoped_collect` object is called, or at program termination if there are
+    still some reclaimable objects in the program at that point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `scoped_collect` type itself is very simple, its main role being to interact
+    with the `GC` global object. It is simply a non-copiable, non-movable RAII object
+    that invokes a reclamation at the end of its lifetime:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: How does this whole infrastructure work? Let’s take it step by step. We will
+    inspire ourselves from the previous sections of this chapter, where we initially
+    collect all objects at the end of program execution, and then add finalization
+    for these objects. The novelty in this section is that we will add the possibility
+    of collecting objects at various times in program execution and implement the
+    required code to track references to objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To track references to objects, we will use objects of the `counting_ptr<T>`
+    type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As can be seen, we can (and do!) implement this type solely through standard
+    tools. Note that the `count` data member is a pointer as it might be shared between
+    instances of `counting_ptr<T>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that the relational operators are in place, we can implement copy and move
+    semantics for our type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of destroying the counter and the pointee like a `shared_ptr<T>` would,
+    `counting_ptr<T>` will delete the counter but “mark” the pointee, making it a
+    candidate for ulterior reclamation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The general `GC`, `GC::GcRoot`, and `GC::GcNode<T>` approach from the previous
+    section remains, but is enhanced as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `roots` container couples a `unique_ptr<GcRoot>` with a “mark” data member
+    of type `bool`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `make_collectable(p)` member function marks the root associated with the
+    `p` pointer as collectable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `collect()` member functions reclaim all the roots that are marked as collectable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What this implementation does is (a) associate a Boolean mark (collect or do
+    not collect) with each reclaimable pointer, (b) use `counting_ptr<T>` object with
+    each `T*` to keep track of how each pointee is being used, and (c) collect reclaimable
+    pointees as a group whenever a collection request arrives. The easiest way to
+    request such a collection is to reach the destructor of a `scoped_collect` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for this somewhat more sophisticated version is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The collection functions in this case would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, dear reader, this last example would benefit from several optimizations,
+    but it works and is meant to be simple enough to understand and improve.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now know it is possible to reclaim objects in groups in C++, as it is in
+    other popular languages. It might not be idiomatic C++ code, but deferred reclamation
+    can be achieved with reasonable effort, on an opt-in basis. Not bad!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter took us in the territory of deferred reclamation, a territory that’s
+    unfamiliar to many C++ programmers. We saw ways in which we can reclaim objects
+    in groups at specific points in a program, discussed restrictions on what could
+    be done when reclaiming such objects, and examined various techniques to finalize
+    objects before freeing their associated memory storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are now ready to look at how memory management interacts with C++ containers,
+    an important topic that will occupy us in the next three chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Indeed, we could write containers that handle memory explicitly, but in general,
+    that would be counterproductive (for example, if we tied `std::vector<T>` to `new`
+    and `delete`, how could `std::vector<T>` handle some type `T` for which allocation
+    and deallocation have to be done through other means?).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are, of course, quite a few ways to get there. Want to know some of them?
+    Let’s take a deep breath and dive in…
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Part 4: Writing Generic Containers (and a Bit More)'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will focus on writing efficient generic containers, doing so
+    through explicit memory management, then through implicit memory management, and
+    finally, through allocators, under the various guises these types have held over
+    the years. Leveraging our deeper understanding of memory management techniques
+    and facilities, we will express two types of containers (one that uses contiguous
+    memory and another that uses linked nodes) in ways that can sometimes be much
+    more efficient than a simpler, more naïve implementation would be. We end this
+    part with a look to the near future in memory management with C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This part has the following chapters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 12*](B21071_12.xhtml#_idTextAnchor172), *Writing Generic Containers
+    with Explicit Memory Management*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 13*](B21071_13.xhtml#_idTextAnchor187), *Writing Generic Containers
+    with Implicit Memory Management*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 14*](B21071_14.xhtml#_idTextAnchor199), *Writing Generic Containers
+    with Allocator Support*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 15*](B21071_15.xhtml#_idTextAnchor213), *Contemporary Issues*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,1583 @@
+- en: '10'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Debugging Using LLVM Tools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: LLVM comes with a set of tools that helps you identify certain errors in your
+    application. All these tools make use of the LLVM and **clang** libraries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you will learn how to instrument an application with **sanitizers**,
+    as well as how to use the most common sanitizer to identify a wide range of bugs,
+    after which you’ll implement fuzz testing for your application. This will help
+    you identify bugs that are usually not found with unit testing. You will also
+    learn how to identify performance bottlenecks in your application, run the **static
+    analyzer** to identify problems normally not found by the compiler, and create
+    your own clang-based tool, in which you can extend clang with new functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instrumenting an application with sanitizers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finding bugs with **libFuzzer**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Performance profiling with **XRay**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Checking the source with the **Clang** **Static Analyzer**
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating your own clang-based tool
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of this chapter, you will know how to use the various LLVM and clang
+    tools to identify a large category of errors in an application. You will also
+    acquire the knowledge to extend clang with new functionality, for example, to
+    enforce naming conventions or to add new source analysis.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To create the **flame graph** in the *Performance profiling with XRay* section,
+    you need to install the scripts from [https://github.com/brendangregg/FlameGraph](https://github.com/brendangregg/FlameGraph).
+    Some systems, such as **Fedora** and **FreeBSD**, provide a package for these
+    scripts, which you can also use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To view the **Chrome visualization** in the same section, you need to have the
+    **Chrome** browser installed. You can download the browser from [https://www.google.com/chrome/](https://www.google.com/chrome/)
+    or use the package manager of your system to install **Chrome** browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, to run the static analyzer via the `scan-build` script, you need
+    to have the `perl-core` package installed on **Fedora** and **Ubuntu**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instrumenting an application with sanitizers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: LLVM comes with a couple of `compiler-rt` project. The sanitizers can be enabled
+    in clang, which makes them very comfortable to use. To build the `compiler-rt`
+    project, we can simply add the `-DLLVM_ENABLE_RUNTIMES=compiler-rt` CMake variable
+    to the initial CMake configuration step when building LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following sections, we will look at the `address`, `memory`, and `thread`
+    sanitizers. First, we’ll look at the `address` sanitizer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detecting memory access problems with the address sanitizer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You can use the `address` sanitizer to detect different types of memory access
+    bugs within an application. This includes common errors such as using dynamically
+    allocated memory after freeing it or writing to dynamically allocated memory outside
+    the boundaries of the allocated memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When enabled, the `address` sanitizer replaces calls to the `malloc()` and `free()`
+    functions with its own version and instruments all memory accesses with a checking
+    guard. Of course, this adds a lot of overhead to the application, and you will
+    only use the `address` sanitizer during the testing phase of the application.
+    If you are interested in the implementation details, then you can find the source
+    of the pass in the `llvm/lib/Transforms/Instrumentation/AddressSanitzer.cpp` file
+    and a description of the implemented algorithm at [https://github.com/google/sanitizers/wiki/AddressSanitizerAlgorithm](https://github.com/google/sanitizers/wiki/AddressSanitizerAlgorithm).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s run a short example to show the capabilities of the `address` sanitizer!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following example application, `outofbounds.c`, allocates `12` bytes of
+    memory, but initializes `14` bytes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can compile and run this application without noticing a problem as this
+    behavior is typical for this kind of error. Even in larger applications, such
+    kinds of bugs can go unnoticed for a long time. However, if you enable the `address`
+    sanitizer with the `-fsanitize=address` option, then the application stops after
+    detecting the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is also useful to enable debug symbols with the `–g` options because it
+    helps identify the location of the error in the source. The following code is
+    an example of how to compile the source file with the `address` sanitizer and
+    debug symbols enabled:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, you get a lengthy error report when running the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The report also contains detailed information about the memory content. The
+    important information is the type of the error – `outofbounds.c` file, which is
+    the line containing the call to `memset()`. This is the exact place where the
+    buffer overflow happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you replace the line containing `memset(p, 0, 14);` in the `outofbounds.c`
+    file with the following code, then you can introduce access to memory once you’ve
+    freed the memory. You’ll need to store the source in the `useafterfree.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Again, if you compile and run it, the sanitizer detects the use of the pointer
+    after the memory is freed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This time, the report points to *line 8*, which contains dereferencing of the
+    `p` pointer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On `ASAN_OPTIONS` environment variable to `detect_leaks=1` before running the
+    application, then you also get a report about memory leaks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the command line, you can do this as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `address` sanitizer is very useful because it catches a category of bugs
+    that are otherwise difficult to detect. The `memory` sanitizer does a similar
+    task. We’ll examine its use cases in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding uninitialized memory accesses with the memory sanitizer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using uninitialized memory is another category of bugs that are hard to find.
+    In **C** and **C++**, the general memory allocation routines do not initialize
+    the memory buffer with a default value. The same is true for automatic variables
+    on the stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are lots of opportunities for errors, and the memory sanitizer helps find
+    these bugs. If you are interested in the implementation details, you can find
+    the source for the memory sanitizer pass in the `llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp`
+    file. The comment at the top of the file explains the ideas behind the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s run a small example and save the following source as the `memory.c` file.
+    Note that the `x` variable is not initialized and is used as a `return` value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Without the sanitizer, the application will run just fine. However, you will
+    get an error report if you use the `-``fsanitize=memory` option:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Like the `address` sanitizer, the memory sanitizer stops the application at
+    the first error that’s found. As shown here the memory sanitizer provides a **use
+    of initialized** **value** warning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, in the next section, we’ll look at how we can use the `thread` sanitizer
+    to detect data races in multi-threaded applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pointing out data races with the thread sanitizer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To leverage the power of modern CPUs, applications now use multiple threads.
+    This is a powerful technique, but it also introduces new sources of errors. A
+    very common problem in multi-threaded applications is that the access to global
+    data is not protected, for example, with a `thread` sanitizer can detect data
+    races in `llvm/lib/Transforms/Instrumentation/ThreadSanitizer.cpp` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To demonstrate the functionality of the `thread` sanitizer, we will create a
+    very simple producer-consumer-style application. The producer thread increments
+    a global variable, while the consumer thread decrements the same variable. Access
+    to the global variable is not protected, so this is a data race.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You’ll need to save the following source in the `thread.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, the `data` variable is shared between two threads. Here,
+    it is of the `int` type to make the example simple since often, a data structure
+    such as the `std::vector` class or similar would be used. Furthermore, these two
+    threads run the `producer()` and `consumer()` functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `producer()` function only increments the `data` variable, while the `consumer()`
+    function decrements it. No access protection is implemented, so this constitutes
+    a data race. The `main()` function starts both threads with the `pthread_create()`
+    function, waits for the end of the threads with the `pthread_join()` function,
+    and returns the current value of the `data` variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you compile and run this application, then you will note no error – that
+    is, the return value is always zero. An error – in this case, a return value not
+    equal to zero – will appear if the number of loops that are performed is increased
+    by a factor of 100\. At this point, you will begin to notice other values appear.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use the `thread` sanitizer to identify the data race within our program.
+    To compile with the `thread` sanitizer enabled, you’ll need to pass the `-fsanitize=thread`
+    option to clang. Adding debug symbols with the `–g` options gives you line numbers
+    in the report, which is also helpful. Note that you also need to link the `pthread`
+    library:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The report points us to *lines 6* and *11* of the source file, where the global
+    variable is accessed. It also shows that two threads named *T1* and *T2* accessed
+    the variable and the file and line number of the respective calls to the `pthread_create()`
+    function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that, we’ve learned how to use three different types of sanitizers to identify
+    common problems in applications. The `address` sanitizer helps us identify common
+    memory access errors, such as out-of-bounds accesses or using memory after it’s
+    been freed. Using the `memory` sanitizer, we can find access to uninitialized
+    memory, and the `thread` sanitizer helps us identify data races.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we’ll try to trigger the sanitizers by running our application
+    on random data. This process is known as **fuzz testing**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding bugs with libFuzzer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To test your application, you’ll need to write **unit tests**. This is a great
+    way to make sure your software behaves correctly and as you might expect. However,
+    because of the exponential number of possible inputs, you’ll probably miss certain
+    weird inputs, and a few bugs as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Fuzz testing** can help here. The idea is to present your application with
+    randomly generated data, or data based on valid input but with random changes.
+    This is done repeatedly, so your application is tested with a large number of
+    inputs, which is why fuzz testing can be a powerful testing approach. It has been
+    noted that fuzz testing has assisted in finding hundreds of bugs within web browsers
+    and other software.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Interestingly, LLVM comes with its own fuzz testing library. Originally part
+    of the LLVM core libraries, the `compiler-rt`. The library is designed to test
+    small and fast functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s run a small example to see how libFuzzer works. First, you will need to
+    provide the `LLVMFuzzerTestOneInput()` function. This function is called by the
+    **fuzzer driver** and provides you with some input. The following function counts
+    consecutive ASCII digits in the input. Once it’s done that, we’ll feed random
+    input to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You’ll need to save the example in the `fuzzer.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, the `count()` function counts the number of digits in
+    the memory pointed to by the `Data` variable. The size of the data is only checked
+    to determine if there are any bytes available. Inside the `while` loop, the size
+    is not checked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Used with normal `0` byte. The `LLVMFuzzerTestOneInput()` function is the so-called
+    `0`, which is currently the only allowed value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To compile the file with libFuzzer, you must add the `-fsanitize=fuzzer` option.
+    The recommendation is to also enable the `address` sanitizer and the generation
+    of debug symbols. We can use the following command to compile the `fuzzer.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When you run the test, it emits a lengthy report. The report contains more
+    information than a stack trace, so let’s have a closer look at it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first line tells you the seed that was used to initialize the random number
+    generator. You can use the `–seed=` option to repeat this execution:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'By default, libFuzzer limits inputs to, at most, `4096` bytes. You can change
+    the default by using the `–``max_len=` option:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we can run the test without providing sample input. The set of all sample
+    inputs is called `corpus`, and it is empty for this run:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Some information about the generated test data will follow. It shows you that
+    `28` inputs were tried and `6` inputs, which together have a length of `19` bytes,
+    were found, which together cover `6` coverage points or basic blocks:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After this, a buffer overflow was detected, and it followed the information
+    from the `address` sanitizer. Lastly, the report tells you where the input causing
+    the buffer overflow is saved:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'With the saved input, the test case can be executed with the same crashing
+    input again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: This helps identify the problem as we can use the saved input as a direct reproducer
+    to fix whatever problems that may arise. However, only using random data is often
+    not very helpful in every situation. If you try to fuzz test the `tinylang` lexer
+    or parser, then pure random data leads to immediate rejection of the input because
+    no valid token can be found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In such cases, it is more useful to provide a small set of valid input, called
+    the corpus. In this situation, the files of the corpus are randomly mutated and
+    used as input. You can think of the input as mostly valid, with just a few bits
+    flipped. This also works great with other input, which must have a certain format.
+    For example, for a library that processes `corpus`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An example of providing the corpus looks like this. You can save the corpus
+    files in one or more directories and you can create a simple corpus for our fuzz
+    test with the help of the `printf` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When running the test, you must provide the directory on the command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The corpus is then used as the base for generating random input, as the report
+    tells you:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Furthermore, if you are testing a function that works on tokens or other magic
+    values, such as a programming language, then you can speed up the process by providing
+    a dictionary with the tokens. For a programming language, the dictionary would
+    contain all the keywords and special symbols used in the language. Moreover, the
+    dictionary definitions follow a simple key-value style. For example, to define
+    the `if` keyword in the dictionary, you can add the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, the key is optional, and you can leave it out. Now, you can specify
+    the dictionary file on the command line with the `–``dict=` option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve covered using libFuzzer to find bugs, let’s look at the limitations
+    and alternatives for the libFuzzer implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations and alternatives
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The libFuzzer implementation is fast but poses several restrictions on the
+    test target. They are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The function under `test` must accept the input as an array in memory. Some
+    library functions require a file path to the data instead, and they cannot be
+    tested with libFuzzer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `exit()` function should not be called.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The global state should not be altered.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Hardware random number generators should not be used.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first two restrictions are an implication of the implementation of libFuzzer
+    as a library. The latter two restrictions are needed to avoid confusion in the
+    evaluation algorithm. If one of these restrictions is not met, then two identical
+    calls to the fuzz target can yield different results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The best-known alternative tool for fuzz testing is **AFL**, which can be found
+    at [https://github.com/google/AFL](https://github.com/google/AFL). AFL requires
+    an instrumented binary (an LLVM plugin for instrumentation is provided) and requires
+    the application to take the input as a file path on the command line. AFL and
+    libFuzzer can share the same corpus and the same dictionary files. Thus, it is
+    possible to test an application with both tools. Furthermore, where libFuzzer
+    is not applicable, AFL may be a good alternative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many more ways of influencing the way libFuzzer works. You can read
+    the reference page at [https://llvm.org/docs/LibFuzzer.html](https://llvm.org/docs/LibFuzzer.html)
+    for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we look at a different problem an application can have
+    – we’ll try to identify performance bottlenecks while using the XRay tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performance profiling with XRay
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If your application seems to run slow, then you might want to know where the
+    time is spent in the code. Here, instrumenting the code with `llvm/lib/XRay/`
+    directory. The runtime portion is part of `compiler-rt`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following example source, real work is simulated by calling the `usleep()`
+    function. The `func1()` function sleeps for 10 µs. The `func2()` function calls
+    `func1()` or sleeps for 100 µs, depending on if the `n` parameter is odd or even.
+    Inside the `main()` function, both functions are called inside a loop. This is
+    already enough to get interesting information. You’ll need to save the following
+    source code in the `xraydemo.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: To enable the XRay instrumentation during compilation, you will need to specify
+    the `-fxray-instrument` option. It is worth noting that functions with less than
+    200 instructions are not instrumented. This is because this is an arbitrary threshold
+    defined by the developers, and in our case, the functions would not be instrumented.
+    The threshold can be specified with the `-``fxray-instruction-threshold=` option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alternatively, we can add a function attribute to control if a function should
+    be instrumented. For example, adding the following prototype would result in us
+    always instrumenting the function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Likewise, by using the `xray_never_instrument` attribute, you can turn off instrumentation
+    for a function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will now use the command-line option and compile the `xraydemo.c` file,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the resulting binary, instrumentation is turned off by default. If you run
+    the binary, you will note no difference compared to a non-instrumented binary.
+    The `XRAY_OPTIONS` environment variable is used to control the recording of runtime
+    data. To enable data collection, you can run the application as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `xray_mode=xray-basic` option tells the runtime that we want to use basic
+    mode. In this mode, all runtime data is collected, which can result in large log
+    files. When the `patch_premain=true` option is given, functions that are run before
+    the `main()` function are also instrumented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After running this command, a new file will be created in the directory, in
+    which the collected data is stored. You will need to use the **llvm-xray** tool
+    to extract any readable information from this file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The llvm-xray tool supports various sub-commands. First of all, you can use
+    the `account` sub-command to extract some basic statistics. For example, to get
+    the top 10 most called functions, you can add the `-top=10` option to limit the
+    output, and the `-sort=count` option to specify the function call count as the
+    sort criteria. You can also influence the sort order with the `-``sortorder=`
+    option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following commands can be run to get the statistics from our program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the `func1()` function is called most often; you can also see
+    the accumulated time spent in this function. This example only has three functions,
+    so the `–top=` option has no visible effect here, but for real applications, it
+    is very useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From the collected data, it is possible to reconstruct all the stack frames
+    that occurred during runtime. You use the `stack` sub-command to view the top
+    10 stacks. The output shown here has been reduced for brevity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: A `func2()` function is called by the `main()` function, and this is the stack
+    frame with the largest accumulated time. The depth depends on how many functions
+    are called, and the stack frames are usually large.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This sub-command can also be used to create a `flamegraph.pl` script, you can
+    convert the data into a **scalable vector graphics** (**SVG**) file that you can
+    view in your browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the following command, you instruct `llvm-xray` to output all stack frames
+    with the `–all-stacks` option. Using the `–stack-format=flame` option, the output
+    is in the format expected by the `flamegraph.pl` script. Moreover, with the `–aggregation-type`
+    option, you can choose if stack frames are aggregated by total time or by the
+    number of invocations. The output of `llvm-xray` is piped into the `flamegraph.pl`
+    script, and the resulting output is saved in the `flame.svg` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After running the command and generating the new flame graph, you can open
+    the generated `flame.svg` file in your browser. The graphic looks as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.1 – Flame graph produced by llvm-xray](img/B19561_10_1.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.1 – Flame graph produced by llvm-xray
+  prefs: []
+  type: TYPE_NORMAL
+- en: Flame graphs can be confusing at first glance because the *X*-axis does not
+    have the usual meaning of elapsed time. Instead, the functions are simply sorted
+    alphabetically by name. Furthermore, the *Y*-axis of the flame graph shows the
+    stack depth, where the bottom begins counting from zero. The colors are chosen
+    to have a good contrast and have no other meaning. From the preceding graph, you
+    can easily determine the call hierarchy and the time spent in a function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Information about a stack frame is displayed only after you move the mouse
+    cursor over the rectangle representing the frame. By clicking on the frame, you
+    can zoom into this stack frame. Flame graphs are of great help if you want to
+    identify functions worth optimizing. To find out more about flame graphs, please
+    visit the website of Brendan Gregg, the inventor of flame graphs: [http://www.brendangregg.com/flamegraphs.html](http://www.brendangregg.com/flamegraphs.html).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, you can use the `convert` subcommand to convert the data into
+    `.yaml` format or the format used by the `xray.evt` file, you can run the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you do not specify the `–symbolize` option, then no function names are shown
+    in the resulting graph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you’ve done that, open Chrome and type `chrome:///tracing`. Next, click
+    on the `xray.evt` file. You will see the following visualization of the data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.2 – Chrome Trace Viewer Visualization generated by llvm-xray](img/B19561_10_2.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.2 – Chrome Trace Viewer Visualization generated by llvm-xray
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this view, the stack frames are sorted by the time the function call occurs.
+    For further interpretation of the visualization, please read the tutorial at [https://www.chromium.org/developers/how-tos/trace-event-profiling-tool](https://www.chromium.org/developers/how-tos/trace-event-profiling-tool).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs: []
+  type: TYPE_NORMAL
+- en: The llvm-xray tool has more functionality that is applicable for performance
+    profiling. You can read about it on the LLVM website at [https://llvm.org/docs/XRay.html](https://llvm.org/docs/XRay.html)
+    and [https://llvm.org/docs/XRayExample.html](https://llvm.org/docs/XRayExample.html).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we learned how to instrument an application with XRay, how
+    to collect runtime information, and how to visualize that data. We can use this
+    knowledge to find performance bottlenecks in applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another approach to identifying errors in an application is to analyze the source
+    code, which is done with the clang static analyzer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking the source with the clang static analyzer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The **clang static analyzer** is a tool that performs additional checks on C,
+    C++, and **Objective C** source code. The checks that are performed by the static
+    analyzer are more thorough than the checks the compiler performs. They are also
+    more costly in terms of time and required resources. The static analyzer has a
+    set of checkers, which check for certain bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The tool performs a symbolic interpretation of the source code, which looks
+    at all code paths through an application and derives constraints on the values
+    used in the application from it. **Symbolic interpretation** is a common technique
+    that’s used in compilers, for example, to identify constant values. In the context
+    of the static analyzer, the checkers are applied to the derived values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, if the divisor of a division is zero, then the static analyzer
+    warns us about it. We can check this with the following example stored in the
+    `div.c` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The static analyzer will warn about a division by `0` in this example. However,
+    when compiling, the file, when compiled with the `clang -Wall -c div.c` command,
+    will show no warning.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two ways to invoke the static analyzer from the command line. The
+    older tool is `scan-build` tool is the easiest solution. You simply pass the `compile`
+    command to the tool; everything else is done automatically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The output on the screen already tells you that a problem was found – that is,
+    the `core.DivideZero` checker was triggered. However, that is not all. You will
+    find a complete report in HTML in the mentioned subdirectory of the `/tmp` directory.
+    You can then use the `scan-view` command to view the report or open the `index.html`
+    file found in the subdirectory in your browser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first page of the report shows you a summary of the bugs that were found:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.3 – Summary page](img/B19561_10_3.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.3 – Summary page
+  prefs: []
+  type: TYPE_NORMAL
+- en: For each error that was found, the summary page shows the type of the error,
+    the location in the source, and the path length after which the analyzer found
+    the error. A link to a detailed report for the error is also provided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot shows the detailed report for the error:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.4 – Detailed report](img/B19561_10_4.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.4 – Detailed report
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this detailed report, you can verify the error by following the numbered
+    bubbles. Our simple example shows how passing `0` as a parameter value leads to
+    a division by zero error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thus, human verification is required. If the derived constraints are not precise
+    enough for a certain checker, then false positives are possible – that is, an
+    error is reported for perfectly fine code. Based on the report, you can use them
+    to identify false positives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You are not limited to checkers that are provided with the tool – you can also
+    add new checkers. The next section demonstrates how to do this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a new checker to the clang static analyzer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Many C libraries provide functions that must be used in pairs. For example,
+    the C standard library provides the `malloc()` and `free()` functions. The memory
+    that’s allocated by `malloc()` function must be freed exactly one time by the
+    `free()` function. Not calling the `free()` function, or calling it several times,
+    is a programming error. There are many more instances of this coding pattern,
+    and the static analyzer provides checkers for some of them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `iconv_open()` and `iconv_close()` functions, which must be used in pairs,
+    similar to the memory management functions. No checker is implemented for those
+    functions, so let’s implement one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To add a new checker to the clang static analyzer, you must create a new subclass
+    of the `Checker` class. The static analyzer tries all possible paths through the
+    code. The analyzer engine generates events at certain points – for example, before
+    or after a function call. Moreover, your class must provide callbacks for these
+    events if you need to handle them. The `Checker` class and the registrations for
+    the events are provided in the `clang/include/clang/StaticAnalyzer/Core/Checker.h`
+    header file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Usually, a checker needs to track some symbols. However, the checker cannot
+    manage the state because it does not know which code path the analyzer engine
+    currently tries. Therefore, the tracked state must be registered with the engine,
+    and can only be changed using a `ProgramStateRef` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To detect the errors, the checker needs to track the descriptor that’s returned
+    from the `iconv_open()` function. The analyzer engine returns a `SymbolRef` instance
+    for the return value of the `iconv_open()` function. We associate this symbol
+    with a state to reflect if `iconv_close()` was called or not. For the state, we
+    create the `IconvState` class, which encapsulates a `bool` value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The new `IconvChecker` class needs to handle four types of events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`PostCall`, which occurs after a function call. After the `iconv_open()` function
+    was called, we retrieved the symbol for the return value and remembered it as
+    being in an “opened” state.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`PreCall`, which occurs before a function call. Before the `iconv_close()`
+    function is called, we check if the symbol for the descriptor is in an “opened”
+    state. If not, then the `iconv_close()` function was already called for the descriptor,
+    and we have detected a double call to the function.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DeadSymbols`, which occurs when unused symbols are cleaned up. We check if
+    an unused symbol for a descriptor is still in an “opened” state. If it is, then
+    we have detected a missing call to `iconv_close()`, which is a resource leak.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`PointerEscape`, which is called when the symbols can no longer be tracked
+    by the analyzer. In this case, we remove the symbol from the state because we
+    can no longer reason about whether the descriptor was closed or not.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can create a new directory to implement the new checker as a clang plugin,
+    and add the implementations within the `IconvChecker.cpp` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the implementation, we need to include several header files. The `include`
+    file, `BugType.h` is required for emitting reports. The header file, `Checker.h`,
+    provides the declaration of the `Checker` class and the callbacks for the events,
+    which are declared in the `CallEvent` file Moreover, the `CallDescription.h` file
+    helps with matching functions and methods. Finally, the `CheckerContext.h` file
+    is required for declaring the `CheckerContext` class, which is the central class
+    that provides access to the state of the analyzer:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To avoid typing the namespace names, we can use the `clang` and `ento` namespaces:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We associate a state with each symbol representing an iconv descriptor. The
+    state can be open or closed, and we use a `bool` typed variable, with `true` value
+    for the open state. The state value is encapsulated in the `IconvState` struct.
+    This struct is used with a `FoldingSet` data structure, which is a hash set that
+    filters duplicate entries. To be usable with this data structure implementation,
+    the `Profile()` method is added here, which sets the unique bits of this struct.
+    We put the struct into an anonymous namespace to avoid polluting the global namespace.
+    Instead of exposing the `bool` value, the class provides the `getOpened()` and
+    `getClosed()` factory methods and the `isOpen()` query method:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `IconvState` struct represents the state of an iconv descriptor, which
+    is represented by a symbol of the `SymbolRef` class. This is best done with a
+    map, which has the symbol as the key and the state as the value. As explained
+    earlier, the checker cannot hold the state. Instead, the state must be registered
+    with the global program state, which is done with the `REGISTER_MAP_WITH_PROGRAMSTATE`
+    macro. This macro introduces the `IconvStateMap` name, which we will use later
+    to access the map:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also implement the `IconvChecker` class in an anonymous namespace. The requested
+    `PostCall`, `PreCall`, `DeadSymbols`, and `PointerEscape` events are template
+    parameters to the `Checker` base class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `IconvChecker` class has fields of the `CallDescription` type, which are
+    used to identify function calls to `iconv_open()`, `iconv()`, and `iconv_close()`in
+    the program:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The class also holds references to the detected bug types:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, the class has a couple of methods. Besides the constructor and the
+    methods for the call events, we also need a method to emit a bug report:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The implementation of the constructor of the `IconvChecker` class initializes
+    the `CallDescription` fields using the name of the functions, and creates the
+    objects representing the bug types:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we can implement the first call event method, `checkPostCall()`. This
+    method is called after the analyzer has executed a function call. If the executed
+    function is not a global C function and not named `iconv_open`, then there is
+    nothing to do:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Otherwise, we can try to get the return value of the function as a symbol.
+    To store the symbol with the open state in the global program state, we need to
+    get a `ProgramStateRef` instance from the `CheckerContext` instance. The state
+    is immutable, so adding the symbol to the state results in a new state. Finally,
+    the analyzer engine is informed about the new state with a call to the `addTransition()`
+    method:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Likewise, the `checkPreCall()` method is called before the analyzer executes
+    a function. Only a global C function called `iconv_close` is of interest to us:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the symbol for the first argument of the function, which is the iconv descriptor,
+    is known, then we can retrieve the state of the symbol from the program state:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the state represents the closed state, then we have detected a double close
+    error, and we can generate a bug report for it. The call to `generateErrorNode()`
+    can return a `nullptr` value if an error report was already generated for this
+    path, so we have to check for this situation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Otherwise, we must set the state for the symbol to the “closed” state:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `checkDeadSymbols()` method is called to clean up unused symbols. We loop
+    over all symbols we track and ask the `SymbolReaper` instance if the current symbol
+    is dead:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the symbol is dead, then we need to check the state. If the state is still
+    open, then this is a potential resource leak. There is one exception: `iconv_open()`
+    returns `-1` in case of an error. If the analyzer is in a code path that handles
+    this error, then it is wrong to assume a resource leak because the function call
+    failed. We try to get the value of the symbol from the `ConstraintManager` instance,
+    and we do not consider the symbol as a resource leak if this value is `-1`. We
+    add a leaked symbol to a `SmallVector` instance to generate the error report later.
+    Finally, we remove the dead symbol from the program state:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After the loop, we call the `generateNonFatalErrorNode()` method. This method
+    transitions to the new program state and returns an error node if there is not
+    already an error node for this path. The `LeakedSyms` container holds the (possibly
+    empty) list of leaked symbols, and we call the `report()` method to generate an
+    error report:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `checkPointerEscape()` function is called when the analyzer detects a function
+    call for which the parameters cannot be tracked. In such a case, we must assume
+    that we do not know if the iconv descriptor will be closed inside the function
+    or not. The exceptions are a call to `iconv()`, which does the conversion and
+    is known to not call the `iconv_close()` function, and the `iconv_close()` function
+    itself, which we handle in the `checkPreCall()` method. We also do not change
+    the state if the call is inside a system header file, and if we know that the
+    arguments do not escape in the called function. In all other cases, we remove
+    the symbol from the state:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `report()` method generates an error report. The important parameters of
+    the method are an array of symbols, the type of the bug, and a bug description.
+    Inside the method, a bug report is created for each symbol, and the symbol is
+    marked as the interesting one for the bug. If a source range is provided as a
+    parameter, then this is also added to the report. Finally, the report is emitted:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, the new checker needs to be registered at a `CheckerRegistry` instance.
+    When our plugin is loaded, the `clang_registerCheckers()` function is used, in
+    which we perform the registration. Each checker has a name and belongs to a package.
+    We call the `IconvChecker` checker and put it into the `unix` packager because
+    the iconv library is a standard POSIX interface. This is the first parameter of
+    the `addChecker()` method. The second parameter is a brief documentation of the
+    functionality, and the third parameter can be a URI to a document that provides
+    more information about the checker:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, we need to declare the version of the static analyzer API we are using,
+    which enables the system to determine if the plugin is compatible:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'This finishes the implementation of the new checker. To build the plugin, we
+    also need to create a build description in the `CMakeLists.txt` file which lives
+    in the same directory as `IconvChecker.cpp`:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Begin by defining the required **CMake** version and the name of the project:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, include the LLVM files. If CMake can’t find the files automatically,
+    then you have to set the `LLVM_DIR` variable so that it points to the LLVM directory
+    containing the CMake files:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Append the LLVM directory with the CMake files to the search path, and include
+    the required modules from LLVM:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, load the CMake definitions for clang. If CMake can’t find the files automatically,
+    then you have to set the `Clang_DIR` variable so that it points to the clang directory
+    containing the CMake files:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, append the Clang directory with the CMake files to the search path, and
+    include the required modules from Clang:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, define where the header files and the library files are located, and
+    which definitions to use:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The previous definitions set up the build environment. Insert the following
+    command, which defines the name of your plugin, the source file(s) of the plugin,
+    and that it is a clang plugin:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'On **Windows**, the plugin support is different from **Unix**, and the required
+    LLVM and clang libraries must be linked in. The following code ensures this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we can configure and build the plugin, assuming that the `CMAKE_GENERATOR`
+    and `CMAKE_BUILD_TYPE` environment variables are set:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can test the new checker with the following source saved in the `conv.c`
+    file, which has two calls to the `iconv_close()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To use the plugin with the `scan-build` script, you need to specify the path
+    to the plugin via the `-load-plugin` option. A run with the `conv.c` file looks
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: With that, you’ve learned how to extend the clang static analyzer with your
+    own checker. You can use this knowledge to either create new general checkers
+    and contribute them to the community or create checkers specifically built for
+    your needs, to raise the quality of your product.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The static analyzer is built by leveraging the clang infrastructure. The next
+    section introduces you to how can build your own plugin extending clang.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating your own clang-based tool
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The static analyzer is an impressive example of what you can do with the clang
+    infrastructure. It is also possible to extend clang with plugins so that you can
+    add your own functionality to clang. The technique is very similar to adding a
+    pass plugin to LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s explore the functionality with a simple plugin. The LLVM coding standard
+    requires function names to begin with a lowercase letter. However, the coding
+    standard has evolved, and there are many instances in which a function begins
+    with an uppercase letter. A plugin that warns about a violation of the naming
+    rule can help fix this issue, so let’s give it a try.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Because you want to run a user-defined action over the AST, you need to define
+    a subclass of the `PluginASTAction` class. If you write your own tool using the
+    clang libraries, then you can define subclasses of the `ASTFrontendAction` class
+    for your actions. The `PluginASTAction` class is a subclass of the `ASTFrontendAction`
+    class, with the additional ability to parse command-line options.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other class you need is a subclass of the `ASTConsumer` class. An AST consumer
+    is a class using which you can run an action over an AST, regardless of the origin
+    of the AST. Nothing more is needed for our first plugin. You can create the implementation
+    in the `NamingPlugin.cpp` file as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Begin by including the required header files. Besides the mentioned `ASTConsumer`
+    class, you also need an instance of the compiler and the plugin registry:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Use the `clang` namespace and put your implementation into an anonymous `namespace`
+    to avoid name clashes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Next, define your subclass of the `ASTConsumer` class. Later, you will want
+    to emit warnings in case you detect a violation of the naming rule. To do so,
+    you need a reference to a `DiagnosticsEngine` instance.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'You’ll need to store a `CompilerInstance` instance in the class, after which
+    you can ask for a `DiagnosticsEngine` instance:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'An `ASTConsumer` instance has several entry methods. The `HandleTopLevelDecl()`
+    method fits our purpose. The method is called for each declaration at the top
+    level. This includes more than functions – for example, variables. So, you must
+    use the LLVM RTTI `dyn_cast<>()` function to determine if the declaration is a
+    function declaration. The `HandleTopLevelDecl()` method has a declaration group
+    as a parameter, which can contain more than a single declaration. This requires
+    a loop over the declarations. The following code shows the `HandleTopLevelDecl()`
+    method:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After finding a function declaration, you’ll need to retrieve the name of the
+    function. You’ll also need to make sure that the name is not empty:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the function name does not start with a lowercase letter, then you’ll have
+    a violation of the naming rule that was found:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To emit a warning, you need a `DiagnosticsEngine` instance. Additionally, you
+    need a message ID. Inside clang, the message ID is defined as an enumeration.
+    Because your plugin is not part of clang, you need to create a custom ID, which
+    you can then use to emit the warning:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Except for closing all open braces, you need to return `true` from this function
+    to indicate that processing can continue:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, you need to create the `PluginASTAction` subclass, which implements the
+    interface called by clang:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The first method you must implement is the `CreateASTConsumer()` method, which
+    returns an instance of your `NamingASTConsumer` class. This method is called by
+    clang, and the passed `CompilerInstance` instance gives you access to all the
+    important classes of the compiler. The following code demonstrates this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'A plugin also has access to command-line options. Your plugin has no command-line
+    parameters, and you will only return `true` to indicate success:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The action type of a plugin describes when the action is invoked. The default
+    value is `Cmdline`, which means that the plugin must be named on the command line
+    to be invoked. You’ll need to override the method and change the value to `AddAfterMainAction`,
+    which automatically runs the action:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The implementation of your `PluginNamingAction` class is finished; only the
+    closing braces for the class and the anonymous namespace are missing. Add them
+    to the code, as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE77]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Lastly, you need to register the plugin. The first parameter is the name of
+    the plugin, while the second parameter is help text:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE78]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'This finishes the implementation of the plugin. To compile the plugin, create
+    a build description in the `CMakeLists.txt` file. The plugin lives outside the
+    clang source tree, so you need to set up a complete project. You can do so by
+    following these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Begin by defining the required **CMake** version and the name of the project:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE79]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, include the LLVM files. If CMake can’t find the files automatically,
+    then you have to set the `LLVM_DIR` variable so that it points to the LLVM directory
+    containing the CMake files:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE80]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Append the LLVM directory with the CMake files to the search path, and include
+    some required modules:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE81]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, load the CMake definitions for clang. If CMake can’t find the files automatically,
+    then you have to set the `Clang_DIR` variable so that it points to the clang directory
+    containing the CMake files:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE82]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, define where the headers files and the library files are located, and
+    which definitions to use:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE83]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The previous definitions set up the build environment. Insert the following
+    command, which defines the name of your plugin, the source file(s) of the plugin,
+    and that it is a clang plugin:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE84]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'On **Windows**, the plugin support is different from **Unix**, and the required
+    LLVM and clang libraries must be linked in. The following code ensures this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE85]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we can configure and build the plugin, assuming that the `CMAKE_GENERATOR`
+    and `CMAKE_BUILD_TYPE` environment variables are set:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE86]'
+  prefs: []
+  type: TYPE_PRE
+- en: These steps create the `NamingPlugin.so` shared library in the `build` directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To test the plugin, save the following source as the `naming.c` file. The function
+    name, `Func1`, violates the naming rule, but not the `main` name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE87]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To invoke the plugin, you need to specify the `–``fplugin=` option:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE88]'
+  prefs: []
+  type: TYPE_PRE
+- en: This kind of invocation requires that you override the `getActionType()` method
+    of the `PluginASTAction` class and that you return a value different from the
+    `Cmdline` default value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you did not do this – for example, because you want to have more control
+    over the invocation of the plugin action – then you can run the plugin from the
+    compiler command line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE89]'
+  prefs: []
+  type: TYPE_PRE
+- en: Congratulations – you have built your first clang plugin!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The disadvantage of this approach is that it has certain limitations. The `ASTConsumer`
+    class has different entry methods, but they are all coarse-grained. This can be
+    solved by using the `RecursiveASTVisitor` class. This class traverses all AST
+    nodes, and you can override the `VisitXXX()` methods you are interested in. You
+    can rewrite the plugin so that it uses the visitor by following these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You need an additional `include` for the definition of the `RecursiveASTVisitor`
+    class. Insert it as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE90]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, define the visitor as the first class in the anonymous namespace. You
+    will only store a reference to the AST context, which will give you access to
+    all the important methods for AST manipulation, including the `DiagnosticsEngine`
+    instance, which is required for emitting the warning:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE91]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'During traversal, the `VisitFunctionDecl()` method is called whenever a function
+    declaration is discovered. Copy the body of the inner loop inside the `HandleTopLevelDecl()`
+    function here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE92]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'This finishes the visitor’s implementation. In your `NamingASTConsumer` class,
+    you will now only store a visitor instance:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE93]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Remove the `HandleTopLevelDecl()` method – the functionality is now in the
+    visitor class, so you’ll need to override the `HandleTranslationUnit()` method
+    instead. This class is called once for each translation unit. You will start the
+    AST traversal here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE94]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This new implementation has the same functionality. The advantage is that it
+    is easier to extend. For example, if you want to examine variable declarations,
+    then you must implement the `VisitVarDecl()` method. Alternatively, if you want
+    to work with a statement, then you must implement the `VisitStmt()` method. With
+    this approach, you have a visitor method for each entity of the C, C++, and Objective
+    C languages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having access to the AST allows you to build plugins that perform complex tasks.
+    Enforcing naming conventions, as described in this section, is a useful addition
+    to clang. Another useful addition you could implement as a plugin is the calculation
+    of a software metric such as **cyclomatic complexity**. You can also add or replace
+    AST nodes, allowing you, for example, to add runtime instrumentation. Adding plugins
+    allows you to extend clang in the way you need it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to apply various sanitizers. You detected pointer
+    errors with the `address` sanitizer, uninitialized memory access with the `memory`
+    sanitizer, and performed data races with the `thread` sanitizer. Application errors
+    are often triggered by malformed input, and you implemented fuzz testing to test
+    your application with random data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You also instrumented your application with XRay to identify the performance
+    bottlenecks, and you also learned about the various ways you can visualize the
+    data. This chapter also taught you how to utilize the clang static analyzer for
+    identifying potential errors by interpreting the source code, and how to create
+    your own clang plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These skills will help you raise the quality of the applications you build as
+    it is certainly good to find runtime errors before your application users complain
+    about them. Applying the knowledge you’ve gained in this chapter, you can not
+    only find a wide range of common errors, but you can also extend clang with new
+    functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, you will learn how to add a new backend to LLVM.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,1062 @@
+- en: '13'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Virtual Constructors and Factories
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In C++, any member function of any class, including its destructor, can be made
+    virtual - any member function except one—the constructor. Without virtual functions,
+    the exact type of object on which the member function is invoked is known at compile
+    time. Therefore, the type of object that is constructed is always known at compile
+    time, at the point of the constructor call. Nonetheless, we often need to construct
+    objects whose type is not known until runtime. This chapter describes several
+    related patterns and idioms that address this design problem in various ways,
+    including the Factory pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics will be covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why there is no way to make a constructor virtual
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to use the Factory pattern to defer the choice of the constructed object
+    type until compile time
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using C++ idioms to construct and copy objects polymorphically
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The example code for this chapter can be found at the following GitHub link:
+    [https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP_Second_Edition/tree/master/Chapter13](https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP_Second_Edition/tree/master/Chapter13).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why constructors cannot be virtual
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We already understand how polymorphism works—when a virtual function is called
+    through a pointer or a reference to the base class, that pointer or reference
+    is used to access the v-pointer in the class. The v-pointer is used to identify
+    the true type of the object, that is, the type that the object was created with.
+    It could be the base class itself, or any one of the derived classes. The member
+    function on that object is actually called. So, why can’t the same be done for
+    constructors? Let’s investigate this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When does an object get its type?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: It is pretty easy to understand why the process that we described previously
+    cannot work for creating *virtual constructors*. First of all, it is evident from
+    the description of the preceding process—as a part of it, we *identify the type
+    that the object was created with*. That can only happen after the object is constructed—before
+    construction, we don’t have an object of this type yet, just some uninitialized
+    memory. Another way to look at it is this—before the virtual function is dispatched
+    to the correct type, the v-pointer needs to be looked up. Who puts the right value
+    into the v-pointer? Considering that the v-pointer uniquely identifies the type
+    of object, it can only be initialized during construction. This implies that it
+    wasn’t initialized before construction. But if it wasn’t initialized, it can’t
+    be used to dispatch virtual function calls. And so again, we realize that constructors
+    cannot be virtual.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For derived classes in the hierarchy, the process of establishing the type
+    is even more complex. We can try to observe the type of an object as it is being
+    constructed. The easiest way to do this is to use the `typeid` operator, which
+    returns information about the object’s type, including the name of the type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this program produces the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The type name returned by the `std::typeinfo::name()` call is the so-called
+    mangled type name—it’s the internal name that the compiler uses to identify types,
+    instead of human-readable names such as `class A`. If you want to know the unmangled
+    type, you can use a demangler such as the `c++filt` program that comes with GCC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can also write a small C++ function to demangle type names, but the way
+    to do it varies from one compiler to another (there is no portable version). For
+    example, this is what you would write for GCC:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the demangler function returns a C string (a `char*` pointer) that
+    must be explicitly freed by the caller. The program now prints demangled names
+    such as `A`, `B`, and `C`. This is enough for our use, but in some cases, you
+    might notice that the type is not printed exactly as it should be:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we call the function `f()`, the type is reported as `C` but not `const C`
+    as we might expect (the object is `const` inside a `const` member function). This
+    is because the `typeid` operator removed the `const` and `volatile` qualifiers
+    as well as any references from the type. To print those, you have to figure them
+    out by yourself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Regardless of how you choose to print the types, how many objects were constructed
+    in these examples? The source code says just one, the `c` object of type `C`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The runtime output says three, that is, one of each type. Both answers are correct—when
+    an object of type `C` is constructed, the base class, `A`, has to be constructed
+    first, and so its constructor is called. Then, the intermediate base class, `B`,
+    is constructed, and only then will `C` be. The destructors are executed in reverse
+    order. The type of the object inside its constructor or destructor, as reported
+    by the `typeid` operator, is the same as the type of object whose constructor
+    or destructor is running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It appears that the type, as indicated by the virtual pointer, is changing
+    during the construction! That is, of course, assuming that the `typeid` operator
+    returns the dynamic type, the type indicated by the virtual pointer, and not the
+    static type that can be determined at compile time. The standard says that this
+    is, indeed, the case. Does this mean that, if we called the same virtual method
+    from each constructor, we would really be calling three different overrides of
+    this method? It’s easy enough to find out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we will create the object of type `C`, and the call to `whoami()` after
+    the creation confirms it – the dynamic type of the object is `C`. That was true
+    from the beginning of the construction process; we asked the compiler to construct
+    one object of type `C`, but the dynamic type of the object changed during construction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It is clear that the virtual pointer value has changed as the construction
+    of the object progressed. In the beginning, it was identifying the object type
+    as `A`, even though the final type is `C`. Is this because we created the object
+    on the stack? Would it be any different if the object was created on the heap?
+    We can easily find out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running the modified program produces exactly the same results as the original.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another reason that the constructor cannot be virtual, or, more generally, why
+    the type of the object being constructed has to be known at compile time at the
+    point of construction, is that the compiler has to know how much memory to allocate
+    for the object. The amount of memory is determined by the size of the type, that
+    is, by the `sizeof` operator. The result of `sizeof(C)` is a compile-time constant,
+    so the amount of memory allocated for the new object is always known at compile
+    time. This is true whether we create the object on the stack or on the heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The bottom line is this—if the program creates an object of the `T` type, somewhere
+    in the code there is an explicit call to the `T::T` constructor. After that, we
+    can hide the `T` type in the rest of the program, for example, by accessing the
+    object through a base class pointer, or by erasing the type (see [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266),
+    *Understanding Type Erasure*). But there has to be at least one explicit mention
+    of the `T` type in the code, and that is at the point of construction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the one hand, we now have a very reasonable explanation of why constructing
+    objects can never be polymorphic. On the other hand, this does nothing to address
+    a design challenge that may require constructing an object whose type is not known
+    at compile time. Consider designing a game—a player can recruit or summon any
+    number of adventurers for their party and build settlements and cities. It would
+    be reasonable to have a separate class for each creature kind and each building
+    type, but then we have to construct an object of one of these types when an adventurer
+    joins the party, or a building is erected, and until the player selects it, the
+    game cannot know which object to construct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As usual in software, the solution involves adding another level of indirection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Factory pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The problem we are faced with, that is, how to decide at runtime to create an
+    object of a particular type, is obviously a very common design problem. Design
+    patterns are the solutions for just such problems, and there is a pattern for
+    this problem as well—it’s called the Factory pattern. The Factory pattern is a
+    creational pattern, and it provides solutions for several related problems—how
+    to delegate the decision of which object to create to a derived class, how to
+    create objects using a separate factory method, and so on. We will review these
+    variations of the Factory pattern one by one, starting with the basic factory
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The basics of the Factory method
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In its simplest form, the factory method constructs an object of a type that’s
+    specified at runtime:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: How do we identify at runtime which object to create? We need a runtime identifier
+    for each type that the factory can create. In the simplest case, the list of these
+    types is known at compile time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider a game design where a player selects the type of building to construct
+    from a menu. The program has a list of buildings that can be constructed, each
+    represented by an object, with an identifier for each one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When the player selects the building type, the corresponding identifier value
+    is also selected by the game program. Now, the program can construct the building
+    using the factory method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the factory takes the type identifier argument and returns the pointer
+    to the base class. The returned object should have the type that corresponds to
+    the type identifier. How is the factory implemented? Remember the conclusion of
+    the last section—somewhere in the program, every object has to be explicitly constructed
+    with its true type. The Factory pattern does not remove this requirement; it merely
+    hides the place where the construction happens:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The correspondence between the type identifier and the object type is encoded
+    in the `switch` statement inside the factory. The return type has to be the same
+    for all types that are constructed by the factory since there is only one factory
+    method, and its type is declared at compile time. In the simplest case, it is
+    the base class pointer, although if you follow the modern memory ownership idioms
+    described in [*Chapter 3*](B19262_03.xhtml#_idTextAnchor110), *Memory and Ownership*,
+    of this book, the factory should return a unique pointer to the base class, `std::unique_ptr<Building>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: In rare cases when the shared ownership is really needed, the shared pointer,
+    `std::shared_ptr<Building>`, can be constructed by moving the object from the
+    unique pointer (but this is the decision to be made by the caller, not the factory
+    itself).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The other design choice that we made here (independently of using the owning
+    pointer) is to move the type identifiers and the factory function into the base
+    class. This is useful for encapsulation and to keep all related code and types
+    closer together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is the basic form of the factory method. There are many variations that
+    make it more suitable for a particular problem. We will review some of these variations
+    here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Factory clarification
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Note that there is some ambiguity in the use of the term “factory method.”
+    In this chapter, we use it to describe the function that creates objects of different
+    types based on some run-time information. There is another, not related, design
+    pattern that is sometimes introduced with the same name: instead of constructing
+    different classes, this pattern constructs the same class but in different ways.
+    Here is a brief example: suppose we have a class to represent a point on a plain.
+    The point is described by its coordinates, `x` and `y`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So far, so good. But the same point can be described using, for example, polar
+    coordinates. Because these are two ways to describe the same point, we do not
+    need a separate class, but we may want a new constructor that creates a cartesian
+    point from the specified polar coordinates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But this is not going to work: the new constructor and the original constructor
+    from `x` and `y` both take exactly the same arguments, so there is no way for
+    the overload resolution to figure out which one you meant. One solution is to
+    use different types for quantities that are measured in different units (length
+    and angle, in our case). But they have to be truly different types, not just aliases.
+    Sometimes, such a unit template library is just what you need, but if you’re staying
+    with doubles, you need some other way of invoking different constructors based
+    on the caller’s intent and not just the arguments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way to handle this problem is to switch to factory construction. Instead
+    of using the constructors, we will construct all `Point` objects using static
+    factory methods. Note that the constructor itself is usually made private when
+    using this approach:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This design works, but in modern C++, the more popular alternative is to use
+    multiple constructors and disambiguate them with uniquely defined type tags:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we create two unique types, `Point::polar_t` and `Point::cartesian_t`,
+    along with the corresponding variables, and use them as tags to specify what kind
+    of construction we want. The constructor overloads are no longer ambiguous since
+    each one has a unique first parameter type. Delegating constructors makes this
+    approach even more attractive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the use of static functions to construct objects of the same type in different
+    ways is sometimes called a factory method, it can also be seen as a variant of
+    the builder pattern (especially when, instead of static methods, we use a separate
+    builder class with similar methods). In any case, the more modern pattern – using
+    tags – can replace both of these patterns. Having clarified the terminology, let
+    us return to the original problem of constructing objects of different types based
+    on run-time information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Arguments for factory methods
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In our simple example, the constructor took no arguments. Passing arguments
+    to the constructor presents a bit of a problem if the constructors of different
+    types have different parameters—after all, the `MakeBuilding()` function has to
+    be declared with some specific parameters. One option that appears straightforward
+    is to make the factory a variadic template and simply forward the arguments to
+    each constructor. The straightforward implementation might look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code might even compile for a while, but, sooner or later, you are going
+    to run into the following error. Let us give the two classes we build some constructor
+    arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Forge` class uses a bitmask as flags to mark which services are provided
+    at the forge (a simple and efficient solution to handle a small number of non-exclusive
+    options). For example, if `(services & Forge::farrier)` is `true`, one of the
+    2 craftsmen working at the forge can shoe horses. Simple, elegant, and … doesn’t
+    compile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The compiler error will mention that there is no matching constructor for the
+    `Farm` class that could be used to construct a `Farm` from two integers. But we
+    are not trying to construct a `Farm`! This error gets everybody sooner or later.
+    The problem is that, at compile-time, it is impossible to be sure that we are
+    not trying to construct a `Farm`: that is a run-time decision. The function `MakeBuilding()`
+    must compile, which means its entire implementation must compile, including the
+    line starting with `case FARM`. Your first thought might be to replace the `switch`
+    statement with `if constexpr`, but that’s not going to work because the condition
+    we use to select which class to build is not `constexpr`, it’s a run-time value
+    – that’s the whole point of the factory pattern.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Trying to construct a `Farm` with the arguments meant for a `Forge` is an error.
+    However, it is a run-time error, and it can only be detected at run time. This
+    still leaves us with the problem of how to make valid the code we never want to
+    run. The problem is that the Farm doesn’t have a constructor we could use for
+    all the wrong arguments (but hopefully never will). The easiest workaround is
+    to provide one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have to do the same for all types we may construct with our factory. The
+    variadic function constructor is an “overload of the last resort” – it is selected
+    only if no other overload matches the arguments. Since it matches any arguments,
+    the compilation errors will be gone, replaced by run-time errors if something
+    does go wrong in the program. Why not simply add this constructor to the base
+    class? We could, but base class constructors are not visible in derived classes
+    without a `using` statement, so we still have to add something to every derived
+    class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Having to modify every class just so it can be used with the factory creation
+    pattern is definitely a disadvantage, especially since the new constructor could
+    be used anywhere, not just in the factory function (with unfortunate consequences).
+    As usual, with one more layer of indirection, we could solve this problem as well
+    by introducing an overloaded template for constructing our objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The good news is that now we do not need to modify any of the classes: any
+    factory call with the correct arguments compiles and is forwarded to the right
+    constructor, while any attempt to create an object with the wrong arguments is
+    a run-time error. The bad news is that any attempt to create an object with the
+    wrong arguments is a run-time error. That includes the dead code we never plan
+    to run (such as creating a `Farm` with `Forge`’s arguments), but it also includes
+    any mistakes we could make when calling the factory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the variadic template solution looks much less attractive once you start
+    implementing it, there is a simpler option: create a parameter object with the
+    hierarchy matching the hierarchy of the objects we create. Let’s assume that,
+    in our game, the player can select upgrades for each building to be constructed.
+    The user interface will have to offer building-specific options, of course, and
+    the results of the user selections are stored in a building-specific object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we included the type identifier with the argument object, there is
+    no reason to call the factory method with two arguments that must always correctly
+    match each other; it only creates the possibility of an error occurring. This
+    way, we are guaranteed that the type identifier and the arguments match in every
+    factory call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the factory pattern often works well with the named arguments pattern
+    we saw in [*Chapter 9*](B19262_09.xhtml#_idTextAnchor406), *Named Arguments, Method
+    Chaining, and the Builder Pattern* to avoid having to specify long argument lists.
+    The spec objects themselves become the options objects we can use to specify named
+    arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: This technique can be combined with some of the other factory variations that
+    are shown in the following sections so that we can pass arguments when the constructors
+    require them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dynamic type registry
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So far, we have assumed that the complete list of the types is known at compile
+    time and can be encoded in the type identifier correspondence table (implemented
+    with a switch statement, in our example). The former requirement is unavoidable
+    in the scope of the entire program: since every constructor call is explicit somewhere,
+    the total list of types that can be constructed is known at compile time. However,
+    our solution is more constrained than that—we have a list of all types that are
+    hard-coded in the factory method. No additional derived classes can be created
+    without also adding them to the factory. Sometimes, this restriction is not as
+    bad as it appears—for example, the list of buildings in the game may not change
+    very often, and even when it does, there is a complete list that must be manually
+    updated for the right menu to be generated, the pictures and sounds to appear
+    in the right places, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nonetheless, one of the advantages of the hierarchical designs is that derived
+    classes can be added later without modifying any of the code written to operate
+    on the hierarchy. The new virtual function simply plugs into the existing control
+    flow and provides the necessary customized behavior. We can implement the same
+    idea for the factory constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First of all, each derived class has to be responsible for constructing itself.
+    This is necessary because, as we have already learned, the explicit call to the
+    constructor has to be written somewhere. If it’s not in the generic code, it has
+    to be a part of the code that is added when a new derived class is created. For
+    example, we can have a static factory function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Second, the list of the types has to be extensible at runtime instead of being
+    fixed at compile time. We could still use an `enum`, but then it would have to
+    be updated every time a new derived class is added. Alternatively, we could assign
+    each derived class an integer identifier at runtime, making sure that the identifiers
+    are unique. Either way, we need a map of these identifiers to the factory functions,
+    and it cannot be a `switch` statement or anything else that is fixed at compile
+    time. The map has to be extensible. We could use `std::map` for this, but, if
+    the type identifiers are integers, we can also use a `std::vector` of function
+    pointers indexed by the type identifier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, to register a new type, we just need to generate a new identifier and
+    add the corresponding factory function to the vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This registration machinery can be encapsulated in the base class itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This base class has the factory function table and the count of registered
+    derived types as static data members. It also has two static functions: one to
+    register new types and one to construct an object of one of the types registered
+    with the class. Note that the registration function returns the type identifier
+    it has associated with the factory function. We are going to use this momentarily.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we just need to add every new building type to the registry. This is done
+    in two steps—first, we need to add a registration method to every building class,
+    like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Second, we need to arrange for all `Register()` methods to be called before
+    the game begins and make sure we know the right identifier for every building
+    type. This is where the value returned by the `RegisterBuilding()` function becomes
+    important because we are going to store it as the type identifier inside the class
+    itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The registration happens during the initialization of the static variables,
+    sometime before `main()` is started.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The factory functions do not have to be static member functions: anything that
+    can be invoked via a function pointer will work. For example, we could use a lambda
+    without captures:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have to explicitly specify the return type because the function pointer type
+    is defined as a function with no argument that returns `Building*`, while the
+    lambda is deduced as a function returning `Farm*` unless we cast the return value
+    or specify the return type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, a call to `Building::MakeBuilding(tag)` will construct an object of the
+    type that’s registered with the identifier `tag`. The value of the tag – the type
+    identifier – is stored as a static member in every class, so we don’t have to
+    know what it is and can’t make a mistake:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: In our solution, the correspondence between the identifier values and the types
+    is not known until runtime—we cannot say what building has the ID of 5 until we
+    run the program. Usually, we do not need to know that since the right value is
+    automatically stored in each class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that this implementation is very similar to the code that the compilers
+    generate for true virtual functions—virtual function calls are done through function
+    pointers that are stored in tables and accessed by means of a unique identifier
+    (the virtual pointer). The main difference is that the unique identifier is the
+    static data member associated with each type. Nonetheless, this is as close to
+    a *virtual constructor* as you can get.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many variants of this dynamic type registry pattern. In some cases,
+    it is preferable to explicitly specify the type identifiers instead of generating
+    them at the program startup time. In particular, readable names such as “farm”
+    and “forge” can be useful. In this case, instead of a vector, we can store the
+    factory function pointers in a `std::map` container indexed by strings (`std::map<std::string,
+    BuildingFactory>`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another modification is to allow more general callable objects as factory functions.
+    We can generalize the `BuildingFactory` type by using `std::function` instead
+    of the function pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can still register and use static factory methods as factories for our derived
+    classes, but we can also use lambdas and custom functors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: The implementation of these dynamic factories, whether it is done with a function
+    pointer or a more general std::function, strongly resembles the type erasure pattern
+    we have explored in [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266), *Understanding
+    Type Erasure*. The concrete type of object to construct is embedded in the code
+    of the function or functor whose declaration makes no mention of these types.
+    This allows us to store these functions in a single function table or map. Other
+    implementations of type erasure from [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266),
+    *Understanding Type Erasure*, can be used as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For simplicity, we did not use any arguments for our factory methods. We did,
+    however, explore the options for passing arguments in the previous section. The
+    variadic templates do not work well with function pointers (we have to declare
+    the signature of the factory function upfront), so the most likely pattern for
+    passing arguments is going to be the parameter spec object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: In all of our factory constructors so far, the decision about which object to
+    construct was driven by the external input to the program, and the construction
+    was done by the same factory method (possibly using delegation to the derived
+    classes). We will now see a different variant of the factory, which is used to
+    address a slightly different scenario.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Polymorphic factory
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Consider a slightly different problem—imagine that, in our game, each building
+    produces a unit of some kind, and the type of the unit is uniquely associated
+    with the type of the building. The Castle recruits knights, the Wizard Tower trains
+    mages, and the Spider Mound produces giant spiders. Now, our generic code not
+    only constructs a building of the type that is selected at runtime but also creates
+    new units whose types are also not known at compile time. We already have the
+    building factory. We could implement the Unit factory in a similar way, where
+    every building has a unique unit identifier associated with it. But this design
+    exposes the correspondence between the units and the buildings to the rest of
+    the program, and that is really not necessary—each building knows how to build
+    the *right* unit; there is no reason for the rest of the program to know it too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This design challenge calls for a slightly different factory—the factory method
+    determines that a unit is created, but exactly which unit is decided by the building.
+    This is the Template pattern in action, combined with the Factory pattern—the
+    overall design is the Factory, but the unit type is customized by the derived
+    classes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Each building has a factory for creating the corresponding unit, and we can
+    access these factory methods through the base class `Building`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: The factory that uses polymorphism and is accessed via a virtual function in
+    the base class – usually a pure virtual function – is known as the Abstract Factory
+    pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The factory methods for the buildings themselves are not shown in this example—the
+    Unit factory can coexist with any of the building factory implementations we have
+    learned (the source code example that accompanies this chapter uses the building
+    factory from Example 12). The generic code that constructs units from buildings
+    is written once and does not need to change when new derived classes for buildings
+    and units are added.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the return types of all `MakeUnit()` functions are different. Nonetheless,
+    they are all overrides of the same virtual `Building::MakeUnit()` function. These
+    are known as the *covariant return types*—the return type of the override method
+    may be a derived class of the return type of the overridden method. In our case,
+    return types match the class types, but in general, this is not required. Any
+    base and derived classes can be used as covariant types, even if they come from
+    a different hierarchy. However, only such types can be covariant, and, other than
+    that exception, the return type of the override must match the base class virtual
+    function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The strict rules for covariant return types present some problems when we try
+    and make factories return anything other than a raw pointer. For example, let’s
+    assume that we want to return `std::unique_ptr` instead of the raw pointer. But,
+    unlike `Unit*` and `Knight*`, `std::unique_ptr<Unit>` and `std::unique_ptr<Knight>`
+    are not covariant types and cannot be used as return types for a virtual method
+    and its override.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will consider solutions for this, and several other C++-specific problems
+    related to factory methods, in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Factory-like patterns in C++
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are many variations of the basic Factory patterns used in C++ to address
+    specific design needs and constraints. In this section, we will consider several
+    of them. This is by no means an exclusive list of factory-like patterns in C++,
+    but understanding these variants should prepare the reader for combining the techniques
+    that they have learned from this book to address various design challenges related
+    to object factories.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Polymorphic copy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we have considered factory alternatives to the object constructor—either
+    the default constructor or one of the constructors with arguments. However, a
+    similar pattern can be applied to the copy constructor—we have an object, and
+    we want to make a copy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a similar problem in many ways—we have an object that’s accessed through
+    the base class pointer, and we want to call its copy constructor. For the reasons
+    we discussed earlier, not the least of which is that the compiler needs to know
+    how much memory to allocate, the actual constructor call has to be done on the
+    statically determined type. However, the control flow that gets us to a particular
+    constructor call can be determined at runtime, and that, again, calls for an application
+    of the Factory pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The factory method we will use to implement a polymorphic copy is somewhat
+    similar to the Unit factory example from the previous section—the actual construction
+    has to be done by each derived class, and the derived class knows what type of
+    object to construct. The base class implements the control flow that dictates
+    that someone’s copy will be constructed, and the derived class customizes the
+    construction part:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can use the typeid operator (possibly with the demangling function we used
+    earlier in this chapter) to verify that the pointer `b1` does indeed point to
+    a `Derived` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have just implemented polymorphic copying using inheritance. Earlier, in
+    [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266), *Understanding Type Erasure*,
+    we have seen another way to copy objects whose type was known at construction
+    time but later lost (or erased). The two approaches are not fundamentally different:
+    when implementing type-erased copying, we built a virtual table ourselves. In
+    this chapter, we had the compiler do it for us. The preferred implementation in
+    any particular case will depend mostly on what else is going on in the code around
+    it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that, once again, we are using covariant return types, and, therefore,
+    are limited to the raw pointers. Let’s say that we want to return unique pointers
+    instead. Since only the raw pointers to the base and derived types are considered
+    covariant, we have to always return the unique pointer to the base class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: In many cases, this is not a significant limitation. Sometimes, however, it
+    can lead to unnecessary conversions and casts. If returning a smart pointer to
+    the exact type is important, there is another version of this pattern that we
+    will consider next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP Factory and return types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The only way we could return `std::unique_ptr<Derived>` from the factory copy
+    constructor of the derived class is to make the virtual `clone()` method of the
+    base class return the same type. But this is impossible, at least if we have more
+    than one derived class—for each derived class, we would need the return type of
+    `Base::clone()` to be that class. But there is only one `Base::clone()`! Or is
+    there? Fortunately, in C++, we have an easy way of making many out of one—the
+    templates. If we template the base class, we could make the base of each derived
+    class return the right type. But to do this, we need the base class to somehow
+    know the type of the class that will be derived from it. Of course, there is a
+    pattern for that, too—in C++, it is called the Curiously Recurring Template Pattern,
+    which we looked at in [*Chapter 8*](B19262_08.xhtml#_idTextAnchor360), *The Curiously
+    Recurring Template Pattern*. Now, we can combine the CRTP and the Factory patterns:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`auto` return types make writing code like this significantly less verbose.
+    In this book, we generally don’t use them to make it clear which function returns
+    what.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The template parameter of the `Base` class is one of the classes derived from
+    it, hence the naming. If you wish, you can even enforce this restriction with
+    a static assert:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason we had to hide the static assert in the class constructor is that
+    within the declaration of the class itself, the type `Derived` is incomplete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that, since the `Base` class now knows the type of the derived class,
+    we don’t even need the `clone()` method to be virtual:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are significant downsides to this method, at least regarding the way we
+    have implemented it so far. First of all, we had to make the base class a template,
+    which means that we no longer have a common pointer type to use in our general
+    code (or we have to make an even wider use of templates). Second, this approach
+    only works if no more classes are derived from the `Derived` class, because the
+    type of the base class does not track the second derivation—only the one that
+    instantiated the `Base` template. Overall, except for the specific cases where
+    it is very important to return the exact type instead of the base type, this approach
+    cannot be recommended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, there are some attractive features of this implementation
+    that we may want to preserve. Specifically, we got rid of the multiple copies
+    of the `clone()` function, one per each derived class, and got a template to generate
+    them for us automatically. In the next section, we will show you how to retain
+    that useful feature of the CRTP implementation, even if we have to give up on
+    extending the notion of *covariant return types* to cover smart pointers by playing
+    template tricks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP for Factory implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We have mentioned several times by now that, while CRTP is sometimes used as
+    a design instrument, it is just as likely to be used as an implementation technique.
+    We will now focus on using CRTP to avoid writing the `clone()` function in every
+    derived class. This is not just done to reduce typing—the more code is written—especially
+    very similar code that gets copied and modified—the more likely you are to make
+    an error. We have already seen how to use CRTP to generate a version of `clone()`
+    for every derived class automatically. We just don’t want to give up the common
+    (non-template) base class to do so. We don’t really have to do so if we delegate
+    the cloning to the special base class that handles only that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, for simplicity, we went back to returning raw pointers, although we could
+    also return `std::unique_ptr<Base>`. What we cannot do is return `Derived*` since,
+    at the time when the template for the `Cloner` is parsed, it is not known that
+    `Derived` is always derived from `Base`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This design allows us to derive any number of classes from `Base`, indirectly
+    through `Cloner`, and not have to write another `clone()` function ever again.
+    It still has the limitation that, if we derive another class from `Derived`, it
+    will not be copied correctly. In many designs, this is not an issue—enlightened
+    self-interest should guide you to avoid deep hierarchies and make all classes
+    be one of two kinds: abstract base classes that are never instantiated, and concrete
+    classes that are derived from one of these base classes, but never from another
+    concrete class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Factory and Builder
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'So far, we have been using mostly factory functions, or, more generally, functors
+    such as lambdas. In practice, it is just as likely that we will need a factory
+    class. This usually happens because the run-time information needed to construct
+    an object is more complex than just the type identifier and a few arguments. These
+    are the same reasons we may choose to use the Builder pattern to create objects,
+    so a factory class can also be viewed as a builder class with a factory method
+    used to create the concrete objects. The Unit factory we have seen earlier in
+    this chapter is an example of such a pattern: the Building class and all of its
+    derived classes act like a builder for the unit objects (and the fact that the
+    building objects themselves are created by another factory only serves as yet
+    another demonstration that even a simple piece of code can rarely be reduced to
+    a single pattern). In that case, however, we had a special motive for using the
+    factory class: each derived building class constructs its own unit objects.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us now consider a more common case for using a factory class: the overall
+    complexity of the run-time data that goes into deciding which class to construct
+    and how, as well as the non-trivial amount of code we need to do so. While it
+    is possible to handle it all with a factory function and some global objects,
+    it would be a poor design, lacking in cohesion and encapsulation. It is going
+    to be error-prone and difficult to maintain. It is much better to encapsulate
+    all related code and data into one class or a small number of related classes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For this example, we are going to tackle the very common (and still very challenging)
+    serialization/deserialization problem. In our case, we have a number of objects
+    derived from the same base class. We want to implement the framework necessary
+    to serialize them by writing them into a file and then restoring the objects from
+    this file. In this final example of the chapter, we are going to combine several
+    methods we have learned to design and implement the factory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to start with the base class. The base class is going to utilize
+    the dynamic type registry we learned earlier. Also, it is going to declare a pure
+    virtual `Serialize()` function that every derived class needs to implement to
+    serialize itself into a file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Any derived class needs to implement the `Serialize()` function as well as
+    register the deserialization function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: Only the derived class itself has the information about its state, what must
+    be saved in order to reconstitute the object, and how to do so. In our example,
+    the serialization is always done in the `Serialize()` function, while the deserialization
+    is done in the lambda we register with the type registry. Needless to say, the
+    two must be consistent with each other. There are template-based tricks that can
+    ensure this consistency, but they aren’t relevant to the factory construction
+    we are studying now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have the serialization part handled – all we need to do is call Serialize
+    on any object we have:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The deserialization itself is not particularly hard (most of the work is done
+    by the derived classes), but there is enough boilerplate code there to justify
+    a factory class. A factory object will read the entire file and deserialize (re-create)
+    all objects recorded there. There are, of course, many options for the destination
+    of such objects. Since we are constructing objects whose types are not known at
+    compile-time, we have to access them through the base class pointers. For example,
+    we can store them in a container of unique pointers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This factory reads the entire file, line by line. First, it reads just the
+    type identifier (which each object must write during serialization). Based on
+    that identifier, it dispatches the rest of the deserialization process to the
+    correct function registered for the corresponding type. The factory uses an inserter
+    iterator (such as a back-inserter) to store all deserialized objects in a container:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this approach, we can handle any class derived from SerializerBase, as
+    long as we can come up with a way to write it into a file and restore it. We can
+    handle a more complex state and constructors with multiple arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can equally easily deal with classes that have multiple constructors as
+    long as we know how a particular object should be constructed again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are many more variations of the factory pattern in C++. If you understood
+    the explanations and followed through with the examples in this chapter, none
+    of these alternatives should present a particular challenge for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we have learned why constructors cannot be made virtual, and
+    what to do when we really want a virtual constructor anyway. We have learned how
+    to construct and copy objects whose type becomes known at runtime by using the
+    Factory pattern and one of its variations. We also explored several implementations
+    of the Factory constructor that differ in the way that the code is organized and
+    that the behavior is delegated to different components of the system, and compared
+    their advantages and trade-offs. We have also seen how multiple design patterns
+    interact with each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While in C++, the constructor has to be invoked with the true type of the object
+    to construct—always—this does not mean that the application code has to specify
+    the complete type. The Factory pattern allows us to write code that specifies
+    the type indirectly, using an identifier that is associated with the type elsewhere
+    (*create an object of the third kind*), or an associated object type (*create
+    a unit that goes with this building type*), or even the same type (*make me a
+    copy of this, whatever* *it is*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next design pattern we will study in the following chapter is the Template
+    Method pattern, one of the classic object-oriented patterns that, in C++, has
+    additional implications for the way we design class hierarchies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Why does C++ not allow a virtual constructor?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is the Factory pattern?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you use the Factory pattern to achieve the effect of a virtual constructor?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you achieve the effect of a virtual copy constructor?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you use the Template and Factory patterns together?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you use the Builder and the Factory patterns together?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

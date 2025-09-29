@@ -1,0 +1,1118 @@
+- en: '7'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Overloading Memory Allocation Operators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Enjoying yourself so far? I hope you are! We are at the point where we hold
+    all the keys and can start to do what this book advertises and look in more detail
+    at how memory management works in C++. It’s not a simple topic, nor is it something
+    trivial, so we needed to make sure we were ready… but we are now, so let’s do
+    it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 5*](B21071_05.xhtml#_idTextAnchor079) and [*Chapter 6*](B21071_06.xhtml#_idTextAnchor096)
+    examined the standard tools one can use to ensconce responsibility over dynamically
+    allocated resources into the C++ type system through smart pointers, the ones
+    provided by the standard as well as those we could write to fill other niches.
+    Using smart pointers instead of raw pointers as data members and function return
+    types tends to simplify (and clarify) a significant proportion of memory management
+    tasks in C++ programs.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes, we want to work at a lower level than this and take control over
+    what happens when someone writes `new X`. The reasons for wanting such control
+    are numerous, and we will explore a few in this book, but in this chapter, we
+    will focus on the basics of memory management functions and how to take control
+    of these mechanisms in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After these basics are covered, we will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: See how our knowledge of the memory allocation mechanisms of C++ lets us write
+    a simple (yet working) leak detector in [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Examine how one can manage atypical (persistent, shared, and so on) memory in
+    C++ in [*Chapter 9*](B21071_09.xhtml#_idTextAnchor141)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Write arena-based memory allocation in [*Chapter 10*](B21071_10.xhtml#_idTextAnchor153)
+    to ensure deterministic time allocation and deallocation, leading to blazingly
+    fast implementations of `new` and `delete` when context allows it
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Later chapters will use the knowledge acquired in this chapter and the ones
+    that follow to write efficient containers and deferred reclamation mechanisms
+    that resemble a garbage collector. Past that point, we will examine how containers
+    can use these facilities, with and without allocators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why would one overload allocation functions?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we start discussing how to overload memory allocation mechanisms, let’s
+    take a step back and examine why one would want to do this. Indeed, most programmers
+    (even experienced ones) never end up doing anything of the sort, and we could
+    wager that a majority of programmers never thought they had a reason to do so.
+    Yet, we will allocate (!) a few chapters to that very topic. There has to be a
+    reason…
+  prefs: []
+  type: TYPE_NORMAL
+- en: The thing about memory allocation is that there’s no perfect solution to the
+    problem in general; there are many good solutions on average, and there are very
+    good solutions to more specialized versions of the problem. What constitutes a
+    good solution for a given use case in programming language A might be inappropriate
+    for another use case or in programming language B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Take, for example, languages where is it idiomatic to allocate dynamically large
+    numbers of small objects, something customary of Java or C#. In such a language,
+    one could expect the allocation strategies to be optimized for that usage pattern.
+    In a language such as C, where one would tend to allocate when faced with objects
+    too large to put on the stack or when using node-based data structures for example,
+    the best dynamic memory allocation strategy could be quite different. In [*Chapter
+    10*](B21071_10.xhtml#_idTextAnchor153), we will see an example where the allocation
+    process benefits from the fact that the allocated objects are all of the same
+    size and alignment, another interesting use case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'C++ emphasizes control and provides sophisticated and versatile tools to programmers.
+    When facing a situation where we know the context in which allocations will be
+    performed, we can sometimes use these tools to do better (even *much* better,
+    as we will see in [*Chapter 11*](B21071_11.xhtml#_idTextAnchor163)!) than a default
+    implementation would, and for numerous metrics: better execution time, more deterministic
+    execution time, reduced memory fragmentation, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Brief overview of the C language allocation functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Before we get to the memory allocation mechanisms of C++, let’s first take
+    a brief look at the C family of memory allocation functions through its most distinguished
+    representatives: `malloc()` and `free()`. There are, of course, many other memory-allocation-related
+    functions such as `calloc()`, `realloc()`, and `aligned_alloc()`, not counting
+    operating-system-specific services that perform similar tasks for specialized
+    use cases, but these will serve our discussion well.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that since this is a book on memory management with C++, I will use the
+    C++ version of these functions (from `<cstdlib>` instead of `<stdlib.h>`), which
+    really changes nothing to the code we will write except for the fact that in C++,
+    these functions are located in the `std` namespace.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The signatures for these two functions are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The role of `malloc(n)` is to find a location where there are at least `n` consecutive
+    bytes available, potentially marking that location as “taken” and returning an
+    abstract pointer (a `void*`) to the beginning of that block of memory. Note that
+    the pointer returned has to be aligned for the worst possible natural case in
+    a given machine, which means that it has to suit the alignment requirements of
+    `std::max_align_t`. On most machines, this type is an alias for `double`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Interestingly, it is legal to call `malloc()` with `n==0`, but the results
+    of such a call are implementation-defined: a call to `malloc(0)` could return
+    `nullptr` but it could also return a non-null pointer. Note that the pointer returned
+    by `malloc(0)` should not be dereferenced, regardless of whether it is null or
+    not.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `malloc()` fails to allocate memory, it returns `nullptr` since the C language
+    does not support exceptions in the C++ sense. In contemporary C (since C11), a
+    `malloc()` implementation has to be thread-safe and has to synchronize appropriately
+    with other C allocation functions if they are called concurrently, including with
+    `free()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The role of `free(p)` is to ensure that the memory pointed to by `p` becomes
+    available for further allocation requests, as long as `p` points to a block that
+    has been allocated through a memory allocation function such as `malloc()` and
+    has not yet been freed. It is `free()` an address that has not been allocated
+    through such an allocation function… Don’t do that! Also, know that once the memory
+    has been freed, it is no longer considered allocated, so code such as the following
+    leads to UB:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: As mentioned in the preceding example, `free(nullptr)` does nothing, and has
+    been defined as doing nothing for decades as of this writing. If there is code
+    in your code base that verifies `p!=nullptr` before calling `free()` – for example,
+    `if(p) free(p)` – you can safely get rid of that test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will sometimes (not always) use these C functions to implement our homemade
+    C++ allocation functions. They work, they are well understood, and they are low-level
+    abstractions we can use to our advantage when building higher-level ones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overview of the C++ allocation operators
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In C++, there are many (infinitely many!) flavors of memory allocation operators,
+    but there are rules to follow when writing your own. The current chapter is mostly
+    about those rules; the chapters that follow will explore ways to benefit from
+    this freedom C++ gives us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'C++ lets us overload the `new int` will use our homemade versions. One has
+    to be careful here since small mistakes can have a significant impact on code
+    execution: if your implementation of `operator new()` is slow, you will slow down
+    most memory allocations in your program! We will use this approach when writing
+    a simple-yet-working leak detector in [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++ lets us overload **member function versions** of the memory allocation operators.
+    If we do, then the global versions (overloaded or not) apply in general, but the
+    member function versions apply for specific types. This can be useful when we
+    have knowledge specific to the usage pattern of some types but not to others.
+    We will use that to our advantage in [*Chapter 10*](B21071_10.xhtml#_idTextAnchor153).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++ lets us overload `nothrow` version and the (extremely important) **placement
+    new**-related versions. We can also use this feature to benefit from “exotic”
+    memory such as shared memory or persistent memory, as we will see in [*Chapter
+    9*](B21071_09.xhtml#_idTextAnchor141).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In each case, memory allocation functions come in groups of four: `operator
+    new()`, `operator new[]()`, `operator delete()`, and `operator delete[]()`. There
+    are some exceptions to this rule, as we will see, but the rule generally holds.
+    If we overload at least one of these functions, it’s important that we overload
+    all four to keep the behavior of our program consistent. When playing with low-level
+    facilities like this, mistakes tend to bite harder than they would otherwise,
+    which explains why we took so much care in [*Chapter 2*](B21071_02.xhtml#_idTextAnchor027)
+    and [*Chapter 3*](B21071_03.xhtml#_idTextAnchor047) explaining ways we could get
+    in trouble… and how to play by the rules at the same time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory allocation interacts closely with the object model (see [*Chapter 1*](B21071_01.xhtml#_idTextAnchor016)
+    for the basics) and with exception safety (a topic that’s pervasive throughout
+    this book), so make sure to grasp these interactions in the pages and chapters
+    that follow. They will help you make the best of what you will read here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A word on Heap Allocation Optimization (HALO)
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s important to know that there are benefits to *not* overloading memory allocation
+    operators. One of them is that your library vendor provides very good ones by
+    default; another is that if you do not overload the memory allocation operators,
+    the compiler can assume that the number of allocations you make is not observable.
+    This means that it is allowed to replace *n* calls to `new` with a single call
+    that allocates everything at once, and then manages the results as if you had
+    performed many allocations. That can lead to some spectacular optimizations in
+    practice, including the removal of calls to `new` and `delete` altogether from
+    the generated code even when they appear in the source code! If in doubt, please
+    make sure that your optimizations provide measurable benefits before committing
+    them and using them in production code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that for the allocation operator overloads we will see in this chapter,
+    you will want to include the `<new>` header as this is where `std::bad_alloc`
+    is declared, among other things, and this is the type that allocation functions
+    typically use to report failure to allocate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Global allocation operators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Suppose we want to take control of the global versions of the allocation operators
+    in C++. For the sake of exposing how this can work, we will simply use them to
+    delegate to `malloc()` and `free()` for now, and show a more elaborate example
+    in [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128).
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we stick to the basic forms of these operators, we will want to overload…
+    well, four functions before C++11 or six functions since then. Of course, this
+    book supposes that we’re over a decade past C++14, so we will proceed accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The signatures we want to overload are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s a lot, I agree, but taking control of memory management facilities is
+    specialized work. As soon as you write one of these functions, you officially
+    replace the ones provided by your standard library for that program and that function
+    becomes responsible for the allocation (or deallocation) requests that come through
+    that channel. Replacing an allocation function requires you to use the exact same
+    signature as the original.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The reason why it is important that you overload the whole set of functions
+    if you overload at least one of them is that these functions form a consistent
+    whole. For example, if you change the way `new` behaves but neglect to change
+    the way the standard library-provided `delete` performs its task, it’s essentially
+    impossible to predict how much damage your program will incur. As a well-known
+    popular comic book hero stated many times, *“with great power comes great responsibility.”*
+    Be careful, be rigorous, and follow the rules.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pay attention to the signatures of these functions as they provide interesting
+    information…
+  prefs: []
+  type: TYPE_NORMAL
+- en: On operators new and new[]
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Functions `operator new()` and `operator new[]()` both take a single `std::size_t`
+    object as an argument and both return `void*`. The argument is, in both cases,
+    the minimal number of contiguous bytes to allocate. As such, their signatures
+    resemble that of `std::malloc()`. That often surprises people; how can the `new
+    X` expression create an `X` object if `new` is not a `template` and does not know
+    what to create?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That’s the thing: `new` does *not* create objects. What `new` does is find
+    the location where an object will be constructed. It’s the constructor that turns
+    the raw memory found by `new` into an object. In practice, you could write something
+    such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What you have written is a two-step operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This means the constructor is like a coat of paint applied to a block of memory,
+    turning that memory into an object. This also means that an expression such as
+    `new X` can fail either on `operator new()`, if the allocation request could not
+    succeed, or on `X::X()`, because the constructor failed somehow. Only if both
+    steps succeed does client code become responsible for the pointed-to object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A note on calling these operators
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might have noticed in the preceding example that we sometimes write `new
+    X` and we sometimes write `operator new(sizeof(X))`. The first form – the *operator
+    form* – will do the two-step process of allocation followed by construction, whereas
+    the second form – the *function form* – directly calls the allocation function
+    without invoking a constructor. This distinction also applies to `operator delete()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The situation is similar with `operator new[]`: the number of bytes passed
+    as argument to the function is the total number of bytes for the array, so the
+    allocation function itself knows neither the type of object that will be created
+    nor the number of elements or the individual size of the objects. A call to `new
+    X[N]` will, in practice, call `operator new[](N*sizeof(X))` to find a place to
+    put the array that will be constructed, then call `X::X()` on each of the `N`
+    blocks of size `sizeof(X)` in that array. Only when the entire sequence completes
+    successfully does client code become responsible for the resulting array.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failure to allocate a scalar through `operator new` should result in something
+    that matches `std::bad_alloc` being thrown. With `operator new[]()`, one can also
+    throw `std::bad_array_new_length` (derived from `std::bad_alloc`) if the requested
+    size is problematic, typically because it exceeds implementation-defined limits.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On operators delete and delete[]
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Like the C language’s `free()` function, operators `delete()` and `delete[]()`
+    both take a `void*` as argument. This means that they cannot destroy your object…
+    When they are called, the object has already been destroyed! Indeed, you could
+    write the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is, in practice, a two-step operation that is equivalent to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In C++, neither your destructors nor `operator delete()` should throw exceptions.
+    If they do, the program is pretty much terminated, for reasons that will become
+    self-evident in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The size-aware versions of `operator delete()` and `operator delete[]()` have
+    been introduced with C++14 and it is customary to implement them today, in addition
+    to the classical versions of these functions. The idea is that `operator new()`
+    was informed of the size of the blocks to allocate but `operator delete()` was
+    not, which required unneeded acrobatics on the part of implementations that sought
+    to do size-related tasks, such as filling the block of memory with some value
+    in order to try to obscure what was stored at that location. Contemporary implementations
+    of these functions require us to write a version that accepts the size of the
+    pointed-to objects in addition to the classical version; if one’s implementation
+    does not need that size, one can simply call the classical version from the size-aware
+    one and be done with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A note on sized operator delete[]() overloads
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you trace the execution of your overloads, you might be surprised to see
+    that the sized version of `operator delete[]()` is not necessarily called for
+    some types. Indeed, if you have an array `arr` of objects of trivially destructible
+    types, the standard leaves it unspecified as to which one of the sized and the
+    unsized versions of `operator delete[]()` will be used when you write `delete
+    [] arr`. It’s not a bug, rest assured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A full, yet naïve implementation of these functions that essentially delegate
+    work to the C allocation functions could be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: As is probably clear by now, the default behavior when `operator new()` and
+    `operator new[]()` fail to achieve their postconditions and actually allocate
+    the requested amount of memory is to throw `std::bad_alloc` or, when appropriate,
+    `std::bad_array_new_length`. Since allocation is followed by construction, client
+    code might also face any exception thrown by the constructor. We will look at
+    ways to handle these situations when writing custom containers in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are application domains where exceptions are not an option. This can be
+    due to memory constraints; most exception handlers make programs slightly bigger,
+    which can be unacceptable in domains such as embedded systems. It can also be
+    due to speed constraints; the code in `try` blocks is usually fast as these blocks
+    represent the “normal” execution paths, but code in `catch` blocks is usually
+    seen as the rare (“exceptional”) path and can be significantly slower to execute.
+    Of course, some will simply avoid exception usage for philosophical reasons, which
+    is fine too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Luckily, there is a way to perform dynamic memory allocation without resorting
+    to exceptions to signal failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Non-throwing versions of the allocation operators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are also versions of the allocation operators that do not throw upon
+    failure to allocate. The signatures for these functions are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: X *p = new (nothrow) X{ /* ... args ... */ };
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ... use *p
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// note: this is not the nothrow version of delete'
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p; // would be Ok even if !p
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: // step 1, try to perform the allocation for some T object
+  prefs: []
+  type: TYPE_NORMAL
+- en: p = operator new(n, ... maybe additional arguments ...)
+  prefs: []
+  type: TYPE_NORMAL
+- en: // the following line is only for a nothrow new
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(!p) return p
+  prefs: []
+  type: TYPE_NORMAL
+- en: try {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // step 2, construct the object at address p
+  prefs: []
+  type: TYPE_NORMAL
+- en: apply the constructor of T at address p // might throw
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} catch(...) { // construction threw an exception'
+  prefs: []
+  type: TYPE_NORMAL
+- en: deallocate p // this is what concerns us here
+  prefs: []
+  type: TYPE_NORMAL
+- en: re-throw the exception, whatever it was
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p // p points to a fully constructed object
+  prefs: []
+  type: TYPE_NORMAL
+- en: // only after this point does client code see p
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <cstdlib>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <new>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return std::malloc(n);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* operator new(std::size_t n) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = operator new(n, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: if (!p) throw std::bad_alloc{};
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(void* p, const std::nothrow_t&)
+  prefs: []
+  type: TYPE_NORMAL
+- en: noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::free(p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(void* p) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: operator delete(p, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(void* p, std::size_t) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: operator delete (p, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* operator new[](std::size_t n,
+  prefs: []
+  type: TYPE_NORMAL
+- en: const std::nothrow_t&) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return std::malloc(n);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* operator new[](std::size_t n) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = operator new[](n, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: if (!p) throw std::bad_alloc{};
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete[](void* p, const std::nothrow_t&)
+  prefs: []
+  type: TYPE_NORMAL
+- en: noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::free(p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete[](void* p) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: operator delete[](p, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete[](void* p, std::size_t) noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: operator delete[](p, std::nothrow);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using std::nothrow;
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = new (nothrow) int{ 3 };
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: p = new (nothrow) int[10];
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete[]p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '// note: these exist, you can use them but you cannot'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // replace them
+  prefs: []
+  type: TYPE_NORMAL
+- en: void *operator new(std::size_t, void *p) { return p; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: void *operator new[](std::size_t, void *p) { return p; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(void*, void*) noexcept { }
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete[](void*, void*) noexcept { }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: auto string_length(const char *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return std::string{ p }.size(); // augh! But it works...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: auto string_length(const char *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using std::string;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // A) make a local buffer of the right size and
+  prefs: []
+  type: TYPE_NORMAL
+- en: // alignment for a string object
+  prefs: []
+  type: TYPE_NORMAL
+- en: alignas(string) char buf[sizeof(string)];
+  prefs: []
+  type: TYPE_NORMAL
+- en: // B) "paint" a string object in that buffer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// (note: that object might allocate its'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // own data externally, but that's not
+  prefs: []
+  type: TYPE_NORMAL
+- en: // our concern here)
+  prefs: []
+  type: TYPE_NORMAL
+- en: string *s = new (static_cast<void*>(buf)) string{ p };
+  prefs: []
+  type: TYPE_NORMAL
+- en: // C) use that object to compute the size
+  prefs: []
+  type: TYPE_NORMAL
+- en: const auto sz = s->size();
+  prefs: []
+  type: TYPE_NORMAL
+- en: // D) destroy the object without releasing the memory
+  prefs: []
+  type: TYPE_NORMAL
+- en: // for the buffer (it's not dynamically allocated,
+  prefs: []
+  type: TYPE_NORMAL
+- en: // it's just local storage)
+  prefs: []
+  type: TYPE_NORMAL
+- en: s->~string(); // yes, you can do this
+  prefs: []
+  type: TYPE_NORMAL
+- en: return sz;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <new>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: X() { std::cout << "X::X()\n"; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~X() { std::cout << "X::~X()\n"; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: void *operator new(std::size_t);
+  prefs: []
+  type: TYPE_NORMAL
+- en: void *operator new[](std::size_t);
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(void*);
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete[](void*);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* X::operator new(std::size_t n) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "Some X::operator new() magic\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: return ::operator new(n);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* X::operator new[](std::size_t n) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "Some X::operator new[]() magic\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: return ::operator new[](n);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void X::operator delete(void *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "Some X::operator delete() magic\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: return ::operator delete(p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void X::operator delete[](void *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "Some X::operator delete[]() magic\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: return ::operator delete[](p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "p = new int{3}\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: int *p = new int{ 3 }; // global operator new
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "q = new X\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: X *q = new X; // X::operator new
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "delete p\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p; // global operator delete
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << "delete q\n";
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete q; // X::operator delete
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: struct alignas(16) Float4 { float vals[4]; };
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <new>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <cstdlib>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <type_traits>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void* operator new(std::size_t n, std::align_val_t al) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'std::cout << "new(" << n << ", align: "'
+  prefs: []
+  type: TYPE_NORMAL
+- en: << static_cast<std::underlying_type_t<
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::align_val_t
+  prefs: []
+  type: TYPE_NORMAL
+- en: '>>(al) << ")\n";'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return std::aligned_alloc(
+  prefs: []
+  type: TYPE_NORMAL
+- en: static_cast<std::size_t>(al), n
+  prefs: []
+  type: TYPE_NORMAL
+- en: );
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // (others omitted for brevity)
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct alignas(16) Float4 { float vals[4]; };
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = new Float4; // calls operator new(size_t)
+  prefs: []
+  type: TYPE_NORMAL
+- en: // calls operator new(size_t, align_val_t)
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = new(std::align_val_t{ 16 }) Float4;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // leaks, of course, but that's beside the point
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: class X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(X*, std::destroying_delete_t);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <new>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class Wrapper {
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: enum class Kind { A, B };
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'private:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct Impl {
+  prefs: []
+  type: TYPE_NORMAL
+- en: virtual int f() const = 0;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'struct ImplA final : Impl {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int f() const override { return 3; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~ImplA() { std::cout << "Kind A\n"; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'struct ImplB final : Impl {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int f() const override { return 4; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~ImplB() { std::cout << "Kind B\n"; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impl *p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kind kind;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: static Impl *create(Kind kind) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: switch(kind) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using enum Kind;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'case A: return new ImplA;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'case B: return new ImplB;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: throw 0;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wrapper(Kind kind)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p{ create(kind) }, kind{ kind } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator delete(Wrapper *p,
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::destroying_delete_t) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(p->kind == Kind::A) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete static_cast<ImplA*>(p->p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} else {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete static_cast<ImplB*>(p->p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: p->~Wrapper();
+  prefs: []
+  type: TYPE_NORMAL
+- en: ::operator delete(p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int f() const { return p->f(); }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace std;
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = new Wrapper{ Wrapper::Kind::A };
+  prefs: []
+  type: TYPE_NORMAL
+- en: cout << p->f() << endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: p = new Wrapper{ Wrapper::Kind::B };
+  prefs: []
+  type: TYPE_NORMAL
+- en: cout << p->f() << endl;
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE

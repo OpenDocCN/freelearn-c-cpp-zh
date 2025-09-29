@@ -1,0 +1,875 @@
+- en: '2'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Improving Resources Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to improve resource management to make it easier
+    to deal with materials that might have a varying number of textures. This technique
+    is usually referred to as bindless, even though it’s not entirely accurate. We
+    are still going to bind a list of resources; however, we can access them by using
+    an index rather than having to specify exactly which resources are going to be
+    used during a particular draw.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second improvement we are going to make is automating the generation of
+    pipeline layouts. Large projects have hundreds or thousands of shaders, compiled
+    with many different variations depending on the combinations of materials used
+    by a particular application. If developers had to manually update their pipeline
+    layout definitions every time a change is made, very few applications would make
+    it to market. The implementation presented in this chapter relies on the information
+    provided by the SPIR-V binary format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we are going to add pipeline caching to our GPU device implementation.
+    This solution improves the creation time of pipeline objects after the first run,
+    and can significantly improve an application’s loading times.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In summary, in this chapter, we’re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlocking and implementing bindless resources
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Automating pipeline layout generation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Improving load times with a pipeline cache
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of this chapter, you will understand how to enable and use bindless
+    resources in Vulkan. You will also be able to parse SPIR-V binary data to automatically
+    generate pipeline layouts. Finally, you will be able to speed up the loading time
+    of your application by using pipeline caching.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter2](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter2).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlocking and implementing bindless rendering
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we had to manually bind the textures for each material.
+    This also meant that if we wanted to support different types of materials requiring
+    a different number of textures, we would have needed separate shaders and pipelines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vulkan provides a mechanism to bind an array of textures that can be used across
+    multiple shaders. Each texture can then be accessed through an index. In the following
+    sections, we are going to highlight the changes we have made to the GPU device
+    implementation to enable this feature and describe how to use it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following sections, we will first check that the extensions required
+    to enable bindless resources are available on a given GPU. Then we will show the
+    changes required to the descriptor pool creation and descriptor set update to
+    make use of bindless resources. The last step will be to update our shaders to
+    use indices in our texture array for rendering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking for support
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Most desktop GPUs, even if relatively old, should support the `VK_EXT_descriptor_indexing`
+    extension, provided you have up-to-date drivers. It’s still good practice to verify
+    that the extension is available and, for a production implementation, provide
+    an alternative code path that uses the standard binding model if the extension
+    is not available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To verify that your device supports this extension, you can use the following
+    code, or you can run the `vulkaninfo` application provided by the Vulkan SDK.
+    See [*Chapter 1*](B18395_01.xhtml#_idTextAnchor016), *Introducing the Raptor Engine
+    and Hydra*, for how to install the SDK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first step then is to query the physical device to determine whether the
+    GPU supports this extension. The following code section accomplishes this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have to populate the `VkPhysicalDeviceDescriptorIndexingFeatures` structure
+    and chain it to the `VkPhysicalDeviceFeatures2` structure. The driver will then
+    populate the `indexing_features` variable members when calling `vkGetPhysicalDeviceFeatures2`.
+    To check that the descriptor indexing extension is supported, we verify that the
+    `descriptorBindingPartiallyBound` and `runtimeDescriptorArray` values are `true`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we have confirmed that the extension is supported, we can enable it when
+    creating the device:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have to chain the `indexing_features` variable to the `physical_features2`
+    variable used when creating our device. The rest of the code is unchanged from
+    [*Chapter 1*](B18395_01.xhtml#_idTextAnchor016), *Introducing the Raptor Engine*
+    *and Hydra*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the descriptor pool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The next step is to create a descriptor pool from which we can allocate descriptor
+    sets that support updating the content of a texture after it is bound:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The main difference with the code from [*Chapter 1*](B18395_01.xhtml#_idTextAnchor016),
+    *Introducing the Raptor Engine and Hydra*, is the addition of the `VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT`
+    flag. This flag is needed to allow the creation of descriptor sets that can be
+    updated after they have been bound.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we have to define the descriptor set layout bindings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that `descriptorCount` no longer has a value of `1` but has to accommodate
+    the maximum number of textures we can use. We can now use this data to create
+    a descriptor set layout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code is very similar to the version seen in the previous chapter; however,
+    we have added the `bindless_flags` values to enable partial updates to the descriptor
+    set. We also have to chain a `VkDescriptorSetLayoutBindingFlagsCreateInfoEXT`
+    structure to the `layout_info` variable. Finally, we can create the descriptor
+    set we are going to use for the lifetime of the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: We simply populate the `VkDescriptorSetAllocateInfo` structure with the values
+    we have defined so far and call `vkAllocateDescriptorSets`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating the descriptor set
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We have done most of the heavy lifting at this point. When we call `GpuDevice::create_texture`,
+    the newly created resource gets added to the `texture_to_update_bindless` array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It’s also possible to associate a specific sampler to a given texture. For
+    instance, when we load a texture for a given material, we add the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This links the diffuse texture with its sampler. This information will be used
+    in the next code section to determine whether we use a default sampler or the
+    one we have just assigned to the texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before the next frame is processed, we update the descriptor set we have created
+    in the previous section with any new textures that have been uploaded:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code is quite similar to the previous version. We have highlighted
+    the main differences: the sampler selection, as we mentioned in the previous paragraph,
+    and the use of a dummy texture if a slot is empty. We still have to assign a texture
+    to each slot, hence the use of a dummy texture if one is not specified. This is
+    also useful for spotting any missing textures in your scene.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you prefer to have a tightly packed array of textures, another option is
+    to enable the `VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT` flag and
+    chain a `VkDescriptorSetVariableDescriptorCountAllocateInfoEXT` structure when
+    creating the descriptor set. We already have some preliminary code to enable this
+    feature, and we encourage you to complete the implementation!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Update to shader code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The final piece of the puzzle to use bindless rendering is in the shader code,
+    as it needs to be written in a different way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The steps are similar for all shaders making use of bindless resources, and
+    it would be beneficial to have them defined in a common header. Unfortunately,
+    this is not fully supported by the **OpenGL Shading Language**, or **GLSL**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We recommend automating this step as it can be easily added when compiling the
+    shader in the engine code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first thing to do is to enable the nonuniform qualifier in the GLSL code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will enable the extension in the current shader, not globally; thus, it
+    must be written in every shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code is the declaration of the proper bindless textures, with
+    a catch:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a known trick to alias the texture declarations to the same binding
+    point. This allows us to have just one global bindless texture array, but all
+    kinds of textures (one-dimensional, two-dimensional, three-dimensional, and their
+    array counterparts) are supported in one go!
+  prefs: []
+  type: TYPE_NORMAL
+- en: This simplifies the usage of bindless textures across the engine and the shaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, to read the texture, the code in the shader has to be modified as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s go in the following order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all, we need the integer index coming from a constant. In this case,
+    `texture_index` will contain the same number as the texture position in the bindless
+    array.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Second, and this is the crucial change, we need to wrap the index with the `nonuniformEXT`
+    qualifier ([https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_nonuniform_qualifier.txt](https://github.com/KhronosGroup/GLSL/blob/master/extensions/ext/GL_EXT_nonuniform_qualifier.txt));
+    this will basically synchronize the programs between the different executions
+    to properly read the texture index, in case the index is different across different
+    threads of the same shader invocation.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This might sound complicated at first but think about it as a multithreading
+    issue that needs synchronization to make sure the proper texture index is read
+    in each thread and, as a result, the correct texture is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lastly, using the synchronized index we read from the `global_textures` array,
+    we finally have the texture sample we wanted!
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We have now added bindless textures support to the Raptor Engine! We started
+    by checking whether the GPU supports this feature. Then we detailed the changes
+    we made to the creation of the descriptor pool and descriptor set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we have shown how the descriptor set is updated as new textures are
+    uploaded to the GPU and the necessary shader modifications to make use of bindless
+    textures. All the rendering from now on will use this feature; thus, this concept
+    will become familiar.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to improve our engine capabilities by adding automatic pipeline
+    generation by parsing shaders’ binary data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Automating pipeline layout generation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to take advantage of the data provided by the
+    SPIR-V binary format to extract the information needed to create a pipeline layout.
+    SPIR-V is the **intermediate representation** (**IR**) that shader sources are
+    compiled to before being passed to the GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compared to standard GLSL shader sources, which are plain text, SPIR-V is a
+    binary format. This means it’s a more compact format to use when distributing
+    an application. More importantly, developers don’t have to worry about their shaders
+    getting compiled into a different set of high-level instructions depending on
+    the GPU and driver their code is running on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, a SPIR-V binary does not contain the final instructions that will be
+    executed by the GPU. Every GPU will take a SPIR-V blob and do a final compilation
+    into GPU instructions. This step is still required because different GPUs and
+    driver versions can produce different assemblies for the same SPIR-V binary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having SPIR-V as an intermediate step is still a great improvement. Shader code
+    validation and parsing are done offline, and developers can compile their shaders
+    together with their application code. This allows us to spot any syntax mistakes
+    before trying to run the shader code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another benefit of having an intermediate representation is being able to compile
+    shaders written in different languages to SPIR-V so that they can be used with
+    Vulkan. It’s possible, for instance, to compile a shader written in HLSL into
+    SPIR-V and reuse it in a Vulkan renderer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before this option was available, developers either had to port the code manually
+    or had to rely on tools that rewrote the shader from one language to another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By now, you should be convinced of the advantages the introduction of SPIR-V
+    has brought to developers and the Vulkan API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following sections, we are going to use one of our shaders to show you
+    how to compile it to SPIR-V and explain how to use the information in the binary
+    data to automatically generate a pipeline layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compiling GLSL to SPIR-V
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are going to use the vertex shader code that we developed in [*Chapter 1*](B18395_01.xhtml#_idTextAnchor016),
+    *Introducing the Raptor Engine and Hydra*. Previously, we stored the shader code
+    string in the `main.cpp` file and we didn’t compile it to SPIR-V before passing
+    it to the Vulkan API to create a pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Starting from this chapter, we are storing all shader code in the `shaders`
+    folder of each chapter. For [*Chapter 2*](B18395_02.xhtml#_idTextAnchor030), *Improving
+    Resources Management*, you will find two files: `main.vert` for the vertex shader
+    and `main.frag` for the fragment shader. Here is the content of `main.vert`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code is quite standard for a vertex shader. We have four streams of data
+    for position, tangent, normal, and texture coordinates. We have also defined a
+    `LocalConstants` uniform buffer that stores the data common for all vertices.
+    Finally, we have defined the `out` variables that are going to be passed to the
+    fragment shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Vulkan SDK provides the tools to compile GLSL to SPIR-V and to disassemble
+    the generated SPIR-V into human-readable form. This can be useful to debug a shader
+    that is not behaving as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To compile our vertex shader, we run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will produce a `main.vert.spv` file that contains the binary data. To
+    view the contents of this file in a human-readable format, we run the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command will print the disassembled SPIR-V on the Terminal. We are now
+    going to examine the relevant sections of the output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the SPIR-V output
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Starting from the top of the output, the following is the first set of information
+    we are provided with:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: This preamble defines the version of GLSL that was used to write the shader.
+    The `OpEntryPoint` directive references the main function and lists the inputs
+    and outputs for the shader. The convention is for variables to be prefixed by
+    `%`, and it’s possible to forward declare a variable that is defined later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next section defines the output variables that are available in this shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These are variables that are automatically injected by the compiler and are
+    defined by the GLSL specification. We can see we have a `gl_PerVertex` structure,
+    which in turn has four members: `gl_Position`, `gl_PointSize`, `gl_ClipDistance,`
+    and `gl_CullDistance`. There is also an unnamed variable defined as `%_`. We’re
+    going to discover soon what it refers to.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We now move on to the structures we have defined:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we have the entries for our `LocalConstants` uniform buffer, its members,
+    and their position within the struct. We see again an unnamed `%__0` variable.
+    We’ll get to it shortly. SPIR-V allows you to define member decorations to provide
+    additional information that is useful to determine the data layout and location
+    within the struct:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: From these entries, we can start to have some insights as to the type of each
+    member of the struct. For instance, we can identify the first three entries as
+    being matrices. The last one only has an offset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The offset value is the most relevant value for our purposes as it allows us
+    to know where exactly each member starts. This is crucial when transferring data
+    from the CPU to the GPU, as the alignment rules for each member could be different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next two lines define the descriptor set and binding for our struct:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see, these decorations refer to the unnamed `%__0` variable. We
+    have now reached the section where the variable types are defined:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: For each variable, we have its type and, depending on the type, additional information
+    that is relevant to it. For instance, the `%float` variable is of type 32-bit
+    `float`; the `%v4float` variable is of type `vector`, and it contains 4 `%``float`
+    values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This corresponds to `vec4` in GLSL. We then have a constant definition for an
+    unsigned value of `1` and a fixed-sized array of the `float` type and length of
+    `1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The definition of the `%gl_PerVertex` variable follows. It is of the `struct`
+    type and, as we have seen previously, it has four members. Their types are `vec4`
+    for `gl_Position`, `float` for `gl_PointSize`, and `float[1]` for `gl_ClipDistance`
+    and `gl_CullDistance`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The SPIR-V specs require that each variable that can be read or written to
+    is referred to by a pointer. And that’s exactly what we see with `%_ptr_Output_gl_PerVertex`:
+    it’s a pointer to the `gl_PerVertex` struct. Finally, we can see the type for
+    the unnamed `%_` variable is a pointer to the `gl_PerVertex` struct.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we have the type definitions for our own uniform data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As before, we can see that `%LocalConstants` is a struct with five members,
+    three of the `mat4` type and two of the `vec4` type. We then have the type definition
+    of the pointer to our uniform struct and finally, the `%__0` variable of this
+    type. Notice that this variable has the `Uniform` attribute. This means it is
+    read-only and we will make use of this information later to determine the type
+    of descriptor to add to the pipeline layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The rest of the disassembly contains the input and output variable definitions.
+    Their definition follows the same structure as the variables we have seen so far,
+    so we are not going to analyze them all here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The disassembly also contains the instructions for the body of the shader. While
+    it is interesting to see how the GLSL code is translated into SPIR-V instructions,
+    this detail is not relevant to the pipeline creation, and we are not going to
+    cover it here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to show how we can leverage all of this data to automate
+    pipeline creation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From SPIR-V to pipeline layout
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Khronos already provides functionality to parse SPIR-V data to create a pipeline
+    layout. You can find the implementation at [https://github.com/KhronosGroup/SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect).
+    For this book, we decided to write a simplified version of the parser that we
+    believe is easier to follow as we are interested only in a small subset of entries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can find the implementation in `source\chapter2\graphics\spirv_parser.cpp`.
+    Let’s see how to use this API and how it works under the hood:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we assume that the binary data for the vertex and fragment shader has
+    already been read into the `spv_vert_data` and `spv_frag_data` variables. We have
+    to define an empty `spirv::ParseResult` structure that will contain the result
+    of the parsing. Its definition is quite simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: It contains the number of sets that we identified from the binary data and the
+    list of entries for each set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first step of the parsing is to make sure that we are reading valid SPIR-V
+    data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: We first compute the number of 32-bit words that are included in the binary.
+    Then we verify that the first four bytes match the magic number that identifies
+    a SPIR-V binary. Finally, we retrieve the number of IDs that are defined in the
+    binary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we loop over all the words in the binary to retrieve the information
+    we need. Each ID definition starts with the `Op` type and the number of words
+    that it is composed of:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Op` type is stored in the bottom 16 bits of the word, and the word count
+    is in the top 16 bits. Next, we parse the data for the `Op` types we are interested
+    in. We are not going to cover all `Op` types in this section, as the structure
+    is the same for all types. We suggest you refer to the SPIR-V specification (linked
+    in the *Further reading* section) for more details on each `Op` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start with the type of shader we are currently parsing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: We extract the execution model, translate it into a `VkShaderStageFlags` value,
+    and store it in the `stage` variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we parse the descriptor set index and binding:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we retrieve the index of the ID. As we mentioned previously, variables
+    can be forward declared, and we might have to update the values for the same ID
+    multiple times. Next, we retrieve the value of the decoration. We are only interested
+    in the descriptor set index (`SpvDecorationDescriptorSet`) and binding (`SpvDecorationBinding`)
+    and we store their values in the entry for this ID.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We follow with an example of a variable type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we saw in the disassembly, a vector is defined by its entry type and count.
+    We store them in the `type_index` and `count` members of the ID struct. Here,
+    we also see how an ID can refer to another one if needed. The `type_index` member
+    stores the index to another entry in the `ids` array and can be used later to
+    retrieve additional type information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we have a sampler definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We only need to store the `Op` type for this entry. Finally, we have the entry
+    for a variable type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The relevant information for this entry is `type_index`, which will always refer
+    to an entry of `pointer` type and the storage class. The storage class tells us
+    which entries are variables that we are interested in and which ones we can skip.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And that is exactly what the next part of the code is doing. Once we finish
+    parsing all IDs, we loop over each ID entry and identify the ones we are interested
+    in. We first identify all variables:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we use the variable storage class to determine whether it is a uniform
+    variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We are only interested in the `Uniform` and `UniformConstant` variables. We
+    then retrieve the `uniform` type. Remember, there is a double indirection to retrieve
+    the actual type of a variable: first, we get the `pointer` type, and from the
+    `pointer` type, we get to the real type of the variable. We have highlighted the
+    code that does this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: After retrieving the type, we get the `DescriptorSetLayoutCreation` entry for
+    the set this variable is part of. We then create a new `binding` entry and store
+    the `binding` value. We always assume a count of `1` for each resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this last step, we determine the resource type for this binding and add
+    its entry to the set layout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use the `Op` type to determine the type of resource we have found. So far,
+    we are only interested in `Struct` for uniform buffers and `SampledImage` for
+    textures. We are going to add support for more types when needed for the remainder
+    of the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While it’s possible to distinguish between uniform buffers and storage buffers,
+    the binary data cannot determine whether a buffer is dynamic or not. In our implementation,
+    the application code needs to specify this detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative would be to use a naming convention (prefixing dynamic buffers
+    with `dyn_`, for instance) so that dynamic buffers can be automatically identified.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our introduction to the SPIR-V binary format. It might take a
+    couple of readings to fully understand how it works, but don’t worry, it certainly
+    took us a few iterations to fully understand it!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Knowing how to parse SPIR-V data is an important tool to automate other aspects
+    of graphics development. It can be used, for instance, to automate the generation
+    of C++ headers to keep CPU and GPU structs in sync. We encourage you to expand
+    our implementation to add support for the features you might need!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have explained how to compile a shader source into SPIR-V.
+    We have shown how the SPIR-V binary format is organized and how to parse this
+    data to help us automatically create a pipeline layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next and final section of this chapter, we are going to add pipeline
+    caching to our GPU device implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving load times with a pipeline cache
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Each time we create a graphics pipeline and, to a lesser extent, a compute pipeline,
+    the driver has to analyze and compile the shaders we have provided. It also has
+    to inspect the state we have defined in the creation structure and translate it
+    into instructions to program the different units of the GPU. This process is quite
+    expensive, and it’s one of the reasons why, in Vulkan we have to define most of
+    the pipeline state upfront.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we are going to add pipeline caching to our GPU device implementation
+    to improve loading times. If your application has to create thousands of pipelines,
+    it can incur a significant startup time or, for a game, long loading times between
+    levels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The technique described in this section will help to reduce the time spent
+    creating pipelines. The first change you will notice is that the `GpuDevice::create_pipeline`
+    method accepts a new optional parameter that defines the path of a pipeline cache
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then need to define the `VkPipelineCache` structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step is to check whether the pipeline cache file already exists. If
+    it does, we load the file data and add it to the pipeline cache creation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the file doesn’t exist, we don’t have to make any further changes to the
+    creation structure. We can now call `vkCreatePipelineCache`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will return a handle to a `VkPipelineCache` object that we are going to
+    use when creating the pipeline object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can do the same for compute pipelines:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we have loaded a pipeline cache file, the driver will use the data to accelerate
+    the pipeline creation. If, on the other hand, this is the first time we are creating
+    the given pipeline, we can now query and store the pipeline cache data for later
+    reuse:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: We first call `vkGetPipelineCacheData` with `nullptr` for the data member to
+    retrieve the cache data size. We then allocate the memory that is needed to store
+    the cache data and call `vkGetPipelineCacheData` again, this time with a pointer
+    to the memory where the cache data will be stored. Finally, we write this data
+    to the file specified when `GpuDevice::create_pipeline` was called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are now done with the pipeline cache data structure, and it can be destroyed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we conclude, we want to mention a shortcoming of pipeline caching. The
+    data in the cache is controlled by each vendor driver implementation. When a new
+    driver version is released, the data format of the cache might change and become
+    incompatible with the data previously stored in the cache file. Having a cache
+    file, in this case, might provide no benefit as the driver cannot make use of
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For this reason, each driver has to prefix the cache data with the following
+    header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When we load the cache data from disk, we can compare the values in the header
+    against the values returned by the driver and GPU we are running on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the values in the header match the ones of the device we are running on,
+    we use the cache data as before. If they don’t, we act as if the cache didn’t
+    exist and store a new version after the pipeline has been created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have demonstrated how to leverage pipeline caching to speed
+    up pipeline creation at runtime. We have highlighted the changes made to our GPU
+    device implementation to make use of this feature and how it has been used in
+    this chapter’s code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we improved our GPU device implementation to make it easier
+    to manage a large number of textures with bindless resources. We explained which
+    extensions are needed and detailed which changes are required when creating a
+    descriptor set layout to allow the use of bindless resources. We then showed the
+    changes needed when creating a descriptor set to update the array of textures
+    in use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then added automatic pipeline layout generation by parsing the SPIR-V binaries
+    generated by the `glslang` compiler for our shaders. We provided an overview of
+    the SPIR-V binary data format and explained how to parse it to extract the resources
+    bound to a shader, and how to use this information to create a pipeline layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we enhanced our pipeline creation API by adding pipeline caching to
+    improve the load times of our applications after the first run. We presented the
+    Vulkan APIs that are needed to either generate or load the pipeline cache data.
+    We also explained some of the limitations of pipeline caching and how to deal
+    with them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All the techniques presented in this chapter have the common goal of making
+    it easier to deal with large projects and reduce manual code changes to a minimum
+    when making changes to our shaders or materials.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will continue to scale our engine in the next chapter by adding multithreading
+    to record multiple command buffers or to submit multiple workloads in parallel
+    to the GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have covered only a small subset of the SPIR-V specification. If you would
+    like to expand our parser implementation for your needs, we highly recommend consulting
+    the official specification: [https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.xhtml](https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.xhtml).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We wrote a custom SPIR-V parser for this chapter, primarily for educational
+    purposes. For your own project, we recommend using the existing reflection library
+    from Khronos: [https://github.com/KhronosGroup/SPIRV-Reflect](https://github.com/KhronosGroup/SPIRV-Reflect).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It provides the functionality described in this chapter to deduce the pipeline
+    layout for a shader binary and many other features.
+  prefs: []
+  type: TYPE_NORMAL

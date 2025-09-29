@@ -1,0 +1,1081 @@
+- en: '13'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Improving Asynchronous Software Performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we’ll introduce the performance aspects of asynchronous code.
+    Code performance and optimization is a deep and complex subject, and we can’t
+    cover everything in just one chapter. We aim to give you a good introduction to
+    the subject with some examples of how to measure performance and optimize your
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter will cover the following key topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performance measurement tools with a focus on multithreaded applications
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What’s false sharing, how to spot it, and how to fix/improve our code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An introduction to modern CPUs’ memory cache architecture
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A review of the **single-producer-single-consumer** ( **SPSC** ) lock-free queue
+    we implemented in [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Like in the previous chapters, you’ll need a modern C++ compiler that supports
+    C++20. We’ll be using GCC 13 and Clang 18. You’ll also need a PC with an Intel/AMD
+    multicore CPU running Linux. For this chapter, we used Ubuntu 24.04 LTS running
+    on a workstation with a CPU AMD Ryzen Threadripper Pro 5975WX (32 cores). A CPU
+    with 8 cores is ideal but 4 cores is enough to run the examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ll also be using the Linux **perf** tool. We’ll explain how to get and install
+    these tools later in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The examples for this chapter can be found in this book’s GitHub repository:
+    [https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP](https://github.com/PacktPublishing/Asynchronous-Programming-with-CPP)
+    .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performance measurement tools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To learn about the performance of our applications, we need to be able to measure
+    it. If there’s one key takeaway from this chapter, it’s to *never estimate or
+    guess your code performance* . To know whether your program meets its performance
+    requirements (either latency or throughput), you need to measure, measure, and
+    then measure again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once you have the data from your performance tests, you’ll know the hotspots
+    in your code. Maybe they’re related to memory access patterns or thread contention
+    (such as, for example, when multiple threads must wait to acquire a lock to access
+    a resource). This is where the second most important takeaway comes into play:
+    *set a goal when optimizing your application* . Don’t aim to achieve the best
+    performance possible because there always will be room for improvement. The right
+    thing to do is to set a clear specification with targets such as maximum processing
+    time for a transaction or the number of network packets processed per second.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With these two main ideas in mind, let’s start with the different methods we
+    can use to measure code performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In-code profiling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A very simple but useful way to start understanding the performance of our code
+    is **in-code profiling** , which consists of adding some extra code to measure
+    the execution time of some code sections. This method is good to use as a tool
+    while we’re writing the code (of course, we need to have access to the source
+    code). This will allow us to find some performance issues in our code, as we’ll
+    see later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’re going to use **std::chrono** as our initial approach to profiling our
+    code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code snippet shows how we can use **std::chrono** to do some
+    basic profiling of our code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we get two time samples that call **high_resolution_clock::now()** and
+    print the time lapse converted into milliseconds. Depending on the time we estimate
+    the processing is going to take, we could use either microseconds or seconds,
+    for example. With this simple technique, we can easily get an idea of how long
+    the processing takes and we can easily compare different options.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, **std::chrono::high_resolution_clock** is the clock type that offers
+    the highest precision (smallest tick period provided by the implementation). The
+    C++ Standard Library allows it to be an alias of either **std::chrono::system_clock**
+    or **std::chrono::steady_clock** . libstdc++ has it aliased to **std::chrono::system_clock**
+    , whereas libc++ uses **std::chrono::steady_clock** . For the examples in this
+    chapter, we’ve used GCC and libstdc++. The clock resolution is 1 nanosecond:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let’s see a full example of profiling two of the C++ Standard Library
+    algorithms to sort vectors – **std::sort** and **std::stable_sort** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code generates a vector of normally distributed random numbers
+    and then sorts the vector with both **std::sort()** and **std::stable_sort()**
+    . Both functions sort the vector, but **std::sort()** uses a combination of quicksort
+    and insertion sort algorithms called introsort, while **std::stable_sort()** uses
+    merge sort. The sort is *stable* because equivalent keys have the same order in
+    both the original and sorted vectors. For a vector of integers, this isn’t important,
+    but if the vector has three elements with the same value, after sorting the vector,
+    the numbers will be in the same order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After running the code, we get the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, **std::stable_sort()** is slower than **std::sort()** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we learned about a simple way to measure the running time of
+    sections of our code. This method is intrusive and requires that we modify the
+    code; it’s mostly used while we develop our applications. In the next section,
+    we’re going to introduce another way to measure execution time called micro-benchmarks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code micro-benchmarks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sometimes, we just want to analyze a small section of code in isolation. We
+    may need to run it more than once and then get the average running time or run
+    it with different input data. In these cases, we can use a benchmark (also called
+    a **micro-benchmark** ) library to do just that – execute small parts of our code
+    in different conditions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Micro-benchmarks must be used as a guide. Bear in mind that the code runs in
+    isolation, and this can give us very different results when we run all the code
+    together due to the many complex interactions among different sections of our
+    code. Use them carefully and be aware that micro-benchmarks can be misleading.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many libraries we can use to benchmark our code. We’ll use *Google
+    Benchmark* , a very good and well-known library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start by getting the code and compiling the library. To get the code,
+    run the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once we have the code for both the benchmark and Google Test libraries (the
+    latter is required to compile the former), we’ll build it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Create a directory for the build:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: With that, we’ve created the build directory inside the benchmark directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we’ll use CMake to configure the build and create all the necessary information
+    for **make** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, run **make** to build and install the libraries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: You also need to add the library to the **CmakeLists.txt** file. We’ve done
+    that for you in the code for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once Google Benchmark has been installed, we can work on an example with a few
+    benchmark functions to learn how to use the library for some basic benchmarking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that both **std::chrono** and Google Benchmark aren’t specific tools for
+    working with asynchronous/multithreaded code and are more like generic tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is our first example of using Google Benchmark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need to include the library header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'All benchmark functions have the following signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a function with one parameter, **benchmark::State& state** , that returns
+    **void** . The **benchmark::State** parameter has a dual purpose:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Controlling the iteration loop** : The **benchmark::State** object is used
+    to control how many times a benchmarked function or piece of code should be executed.
+    This helps measure the performance accurately by repeating the test enough times
+    to minimize variability and collect meaningful data.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Measuring time and statistics** : The **state** object keeps track of how
+    long the benchmarked code takes to run, and it provides mechanisms to report metrics
+    such as elapsed time, iterations, and custom counters.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We’ve implemented three functions to benchmark adding elements to a **std::vector**
+    sequence in different ways: the first function uses **std::vector::push_back**
+    , the second uses **std::vector::emplace_back** , and the third uses **std::vector::insert**
+    . The first two functions add elements at the end of the vector, while the third
+    function adds elements at the beginning of the vector.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once we’ve implemented the benchmark functions, we need to tell the library
+    that they must be run as a benchmark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use the **BENCHMARK** macro to do this. For the benchmarks in this example,
+    we set the number of elements to be inserted into the vector in each iteration.
+    The range goes from **1** to **1000** and each iteration will insert eight times
+    the number of elements of the previous iteration until it reaches the maximum.
+    In this case, it will insert 1, 8, 64, 512, and 1,000 elements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we run our first benchmark program, we get the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, the program prints information about the execution of the benchmark:
+    the date and time, the name of the executable, and information about the CPU it’s
+    running on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Take a look at the following line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This line gives us an estimate of the CPU load: from 0.0 (no load at all or
+    very low load) to 1.0 (fully loaded). The three numbers correspond to the CPU
+    load for the last 5, 10, and 15 minutes, respectively.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After printing the CPU load information, the benchmark prints the results of
+    each iteration. Here’s an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This means that **BM_vector_push_back** was called 6,021,740 times (the number
+    of iterations) while inserting 64 elements into the vector.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The **Time** and **CPU** columns give us the average time for each iteration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Time** : This is the real time that’s elapsed from the beginning to the end
+    of each benchmark execution. It includes everything that happens during the benchmark:
+    CPU computation, I/O operations, context switches, and more.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**CPU time** : This is the amount of time the CPU spent processing the instructions
+    of the benchmark. It can be smaller than or equal to **Time** .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In our benchmark, because the operations are simple, we can see that **Time**
+    and **CPU** are mostly the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking at the results, we can come to the following conclusions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For simple objects such as 32-bit integers, both **push_back** and **emplace_back**
+    take the same amount of time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Here, **insert** takes the same amount of time as **push_back** / **emplace_back**
+    for a small number of elements but from 64 elements onwards, it takes considerably
+    more time. This is because **insert** must copy all the elements after each insertion
+    (we insert the elements at the beginning of the vector).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The following example also sorts a **std::vector** sequence, but this time,
+    we’ll use a micro-benchmark to measure execution time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code generates a vector of random numbers. Here, we run two benchmark
+    functions to sort the vector: one using **std::sort** and another using **std::stable_sort**
+    . Note that we use two copies of the same vector, so the input is the same for
+    both functions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following line of code uses the **BENCHMARK_CAPTURE** macro. This macro
+    allows us to pass parameters to our benchmark functions – in this case, a reference
+    to **std::vector** (we pass by reference to avoid copying the vector and impacting
+    the benchmark result).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We specify the results to be in milliseconds instead of nanoseconds:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are the results of the benchmark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The results are consistent with the ones we got measuring time using **std::chrono**
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For our last Google Benchmark example, we’ll create a thread ( **std::thread**
+    ):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This example is simple: **BM_create_terminate_thread** creates a thread (doing
+    nothing, just returning 0) and waits for it to end ( **thread.join())** . We run
+    **2000** iterations to get an estimation of the time it takes to create a thread.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The results are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we learned how to use the Google Benchmark library to create
+    micro-benchmarks to measure the execution time of some functions. Again, micro-benchmarks
+    are just an approximation and due to the isolated nature of the code being benchmarked,
+    they may be misleading. Use them carefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Linux perf tool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Using **std::chrono** in our code or a micro-benchmark library such as Google
+    Benchmark requires gaining access to the code to be profiled and also being able
+    to modify it by either adding extra calls to measure the execution time of code
+    sections or running small snippets as micro-benchmark functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the Linux **perf** tool, we can analyze the execution of a program without
+    changing any of its code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Linux **perf** tool is a powerful, flexible, and widely used performance
+    analysis and profiling utility for Linux systems. It provides detailed insights
+    into system performance at the kernel and user space levels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s consider the main uses of **perf** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we have **CPU profiling** . The **perf** tool allows you to capture the
+    execution profile of a process, measuring which functions consume most of the
+    CPU time. This can be very useful in helping to identify CPU-intensive parts of
+    the code and bottlenecks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following command line will run **perf** on the small **13x07-thread_contention**
+    program we wrote to illustrate the basics of the tool. The code for this application
+    can be found in this book’s GitHub repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **--call-graph** option records the data of the function call hierarchy
+    in a file called **perf.data** , while the **dwarf** option instructs **perf**
+    to use the dwarf file format to debug symbols (to get the function names).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the previous command, we must run the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will dump the recorded data (including the call stack) into a text file
+    called **out.perf** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we need to convert the text file into a picture with the call graph. To
+    do this, we can run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will generate a file called **callgraph.dot** that can be visualized using
+    Graphviz.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may need to install **gprof2dot** . For this, you need Python installed
+    on your PC. Run the following command to install **gprof2dot** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Install Graphviz too. In Ubuntu, you can do this like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, you can generate the **callgraph.png** picture by running the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Another very common way to visualize the call graph of a program is by using
+    a flame graph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To generate a flame graph, clone the **FlameGraph** repository:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the **FlameGraph** folder, you’ll find the scripts to generate the flame
+    graphs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This command will collapse the stack traces into a format that can be used
+    by the FlameGraph tool. Now, run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can visualize the flame graph with a web browser:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: "![Figure 13.1: \uFEFFAn overview of a flame graph](img/B22219_13_1.jpg)"
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 13.1: An overview of a flame graph'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s learn how to gather the performance statistics of a program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following command will show the number of instructions that have been executed
+    and CPU cycles that were used during the execution of **13x05-sort_perf** . The
+    number of instructions per cycle is the average number of instructions the CPU
+    executes in each clock cycle. This metric is only useful when we microbenchmark
+    or measure short parts of the code. For this example, we can see that the CPU
+    is executing one instruction per cycle, which is average for a modern CPU. In
+    multithreaded code, we can get a much bigger number due to the parallel nature
+    of the execution, but this metric is generally used to measure and optimize code
+    executed in a single CPU core. The number must be interpreted as how busy we keep
+    the CPU because it depends on many factors, such as the number of memory reads/writes,
+    memory access patterns (linear consecutive/no linear), level of branching in the
+    code, and so on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After running the preceding command, we get the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the following command, you can get the list of all the predefined events
+    you can analyze with **perf** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s do a few more:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The previous command measures the number of branch instructions that have been
+    executed. We get the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we can see that a sixth of the instructions that were executed are branching
+    instructions, which is expected in a program that sorts large vectors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As mentioned previously, measuring the level of branching in our code is important,
+    especially for short sections of the code (to avoid interactions that can impact
+    what’s being measured). A CPU will run instructions much faster if there are no
+    branches or there are just a few. The main issue with branches is that the CPU
+    may need to rebuild the pipeline and that can be costly, especially if branches
+    are in inner/critical loops.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following command will report the number of L1 cache data accesses (we
+    will see the CPU cache in the next section):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We get the following result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let’s go back to our lock contention example and gather some useful statistics
+    with **perf** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another benefit of using **perf** is **CPU migrations** – that is, the number
+    of times a thread was moved from one CPU core to another. Thread migration between
+    cores can degrade cache performance since threads lose the benefit of cached data
+    when moving to a new core (more on caches in the next section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This results in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let’s look at another advantage of using **perf** : **context switches** .
+    It counts the number of context switches (how many times a thread is swapped out
+    and another thread is scheduled) during the execution. High-context switching
+    can indicate that too many threads are competing for CPU time, leading to performance
+    degradation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s run the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This results in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s a wrap on this section. Here, we introduced the Linux **perf** tool and
+    some of its applications. We’ll study the CPU memory cache and false sharing in
+    the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: False sharing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we’ll study a common issue with multithreaded applications
+    called **false sharing** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: We already know that the ideal implementation of a multithreaded application
+    is minimizing the data that’s shared among its different threads. Ideally, we
+    should share data just for read access because in that case, we don’t need to
+    synchronize the threads to access the shared data and thus we don’t need to pay
+    the runtime cost and deal with issues such as deadlock and livelock.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let’s consider a simple example: four threads run in parallel, generate
+    random numbers, and calculate their sum. Each thread works independently, generating
+    random numbers and calculating the sum stored in a variable just written by itself.
+    This is the ideal (though for this example, a bit contrived) application, with
+    threads working independently without any shared data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code is the full source for the example we’re going to analyze
+    in this section. You can refer to it while you read the explanations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you compile and run the previous code, you’ll get an output similar to the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The program just calls two functions: **sum_random_unaligned** and **sum_random_aligned**
+    . Both functions do the same: they create eight threads, and each thread generates
+    random numbers and calculates their sum. No data is shared among the threads.
+    You can see that the functions are pretty much the same and the main difference
+    is that **sum_random_unaligned** uses the following data structure to store the
+    sum of the generated random numbers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The **sum_random_aligned** function uses a slightly different one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: The only difference is the use of **alignas(64)** in informing the compiler
+    that the data structure instances must be aligned at a 64-byte boundary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can see that the difference in performance is quite dramatic because the
+    threads are performing the same tasks. Just aligning the variables written by
+    each thread to a 64-byte boundary greatly improves performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To understand why this is happening, we need to consider a feature of modern
+    CPUs – the memory cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CPU memory cache
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Modern CPUs are very fast at computing and when we want to achieve maximum performance,
+    memory access is the main bottleneck. A good estimate for memory access is about
+    150 nanoseconds. In that time, our 3.6 GHz CPU has gone through 540 clock cycles.
+    As a rough estimate, if the CPU executes an instruction every two cycles, that’s
+    270 instructions. For a normal application, memory access is an issue, even though
+    the compiler may reorder the instructions it generates and the CPU may also reorder
+    the instructions to optimize memory access and try to run as many instructions
+    as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Therefore, to improve the performance of modern CPUs, we have what’s called
+    a **CPU cache** or **memory cache** , which is memory in the chip to store both
+    data and instructions. This memory is much faster than RAM and allows the CPU
+    to retrieve data much faster, significantly boosting overall performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an example of a real-life cache, think about a cook. They need some ingredients
+    to make lunch for their restaurant clients. Now, imagine that they only buy those
+    ingredients when a client comes to the restaurant and orders their food. That
+    will be very slow. They can also go to the supermarket and buy ingredients for,
+    say, a full day. Now, they can cook for all their clients and serve them their
+    meals in a much shorter period.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'CPU caches follow the same concept: when the CPU needs to access a variable,
+    say a 4-byte integer, it reads 64 bytes (this size may be different, depending
+    on the CPU, but most modern CPUs use that size) of contiguous memory *just in
+    case* it may need to access more contiguous data.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linear memory data structures such as **std::vector** will perform better from
+    a memory access point of view because in these cases, the cache can be a big performance
+    improvement. For other types of data structures, such as **std::list** , this
+    won’t be the case. Of course, this is just about optimizing cache use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may be wondering why if in-CPU cache memory is so good, isn’t all memory
+    like that? The answer is cost. Cache memory is very fast (much faster than RAM),
+    but it’s also very expensive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Modern CPUs employ a hierarchical cache structure, typically consisting of
+    three levels called L1, L2, and L3:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**L1 cache** is the smallest and fastest. It’s also the closest to the CPU,
+    as well as the most expensive. It’s often split into two parts: an instruction
+    cache for storing instructions and a data cache for storing data. The typical
+    sizes are 64 Kb split into 32 Kb for instructions and 32 Kb for data. The typical
+    access time to the L1 cache is between 1 and 3 nanoseconds.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**L2 cache** is larger and slightly slower than L1, but still much faster than
+    RAM. Typical L2 cache sizes are between 128 Kb and 512 Kb (the CPU used to run
+    the examples in this chapter has 512 Kb of L2 cache per core). Typical access
+    times for L2 cache are about 3 to 5 nanoseconds.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**L3 cache** is the largest and slowest of the three. The L1 and L2 caches
+    are per core (each core has its own L1 and L2 cache), but L3 is shared by more
+    than one core. Our CPU has 32 Mb of L3 cache shared by each group of eight cores.
+    The typical access time is about 10 to 15 nanoseconds.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With that, let’s turn our attention to another important concept related to
+    memory cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cache coherency
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The CPU doesn’t access RAM directly. This access is always done through the
+    cache, and RAM is accessed only if the CPU doesn’t find the data required in the
+    cache. In multi-core systems, each core having its own cache means that one piece
+    of RAM may be present in the cache of multiple cores at the same time. These copies
+    need to be synchronized all the time; otherwise, computation results could be
+    incorrect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we’ve seen that each core has its own L1 cache. Let’s go back to our
+    example and think about what happens when we run the function using non-aligned
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, each instance of **result_data** is 8 bytes. We create an array
+    of 8 instances of **result_data** , one for each thread. The total memory that’s
+    occupied will be 64 bytes and all the instances will be contiguous in memory.
+    Every time a thread updates the sum of random numbers, it changes the value that’s
+    stored in the cache. Remember that the CPU will always read and write 64 bytes
+    in one go (something called a **cache line** – you can think of it as the smallest
+    memory access unit). All the variables are in the same cache line and even if
+    the threads don’t share them (each thread has its own variable – **sum** ), the
+    CPU doesn’t know that and needs to make the changes visible for all the cores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, we have 8 cores, and each core is running a thread. Each core has loaded
+    64 bytes of memory from RAM into the L1 cache. Since the threads only read the
+    variables, everything is OK, but as soon as one thread modifies its variable,
+    the contents of the cache line are invalidated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, because the cache line is invalid in the remaining 7 cores, the CPU needs
+    to propagate the changes to all the cores. As mentioned previously, even if the
+    threads don’t share the variables, the CPU can’t possibly know that, and it updates
+    all the cache lines for all the cores to keep the values consistent. This is called
+    cache coherency. If the threads shared the variables, it would be incorrect not
+    to propagate the changes to all the cores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our example, the cache coherency protocol generates quite a lot of traffic
+    inside the CPU because all the threads *share the memory region where the variables
+    reside* , even though they don’t from the program’s point of view. This is the
+    reason we call it false sharing: the variables are shared because of the way the
+    cache and the cache coherency protocol work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we align the data to a 64-byte boundary, each instance occupies 64 bytes.
+    This guarantees that they are in their own cache line and no cache coherency traffic
+    is necessary because in this case, there’s no data sharing. In this second case,
+    performance is much better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s use **perf** to confirm that this is really happening.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we run **perf** while executing **sum_random_unaligned** . We want to
+    see how many times the program accesses the cache and how many times there’s a
+    cache miss. Each time the cache needs to be updated because it contains data that’s
+    also in a cache line in another core counts as a cache miss:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We obtain these results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Most of the cache references are cache misses. This is expected because of false
+    sharing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if we run **sum_random_aligned** , the results are quite different:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: The number of both cache references and cache misses is much smaller. This is
+    because there’s no need to constantly update the caches in all the cores to keep
+    cache coherency.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we saw one of the most common performance issues of multithreaded
+    code: false sharing. We saw a function example with and without false sharing
+    and the negative impact false sharing has on performance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we’ll go back to the SPSC lock-free queue we implemented
+    in [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097) and improve its performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SPSC lock-free queue
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 5*](B22219_05.xhtml#_idTextAnchor097) , we implemented an SPSC
+    lock-free queue as an example of how to synchronize access to a data structure
+    from two threads without using locks. This queue is accessed by just two threads:
+    one producer pushing data to the queue and one consumer popping data from the
+    queue. It’s the easiest queue to synchronize.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We used two atomic variables to represent the head (buffer index to read) and
+    tail (buffer index to write) of the queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To avoid false sharing, we can change the code to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: After this change, we can run the code we implemented to measure the number
+    of operations per second (push/pop) performed by the producer and consumer threads.
+    The code can be found in this book’s GitHub repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we can run **perf** :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We’ll get the following results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we can see that the queue is capable of about 100 million operations per
+    second. Also, there are roughly 41% cache misses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s review how the queue works. Here, the producer is the only thread writing
+    **tail_** and the consumer is the only thread writing **head_** . Still, both
+    threads need to read **tail_** and **head_** . We’ve declared both atomic variables
+    as **aligned(64)** so that they’re guaranteed to be in different cache lines and
+    there’s no false sharing. However, there is true sharing. True sharing also generates
+    cache coherency traffic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: True sharing means that both threads have shared access to both variables, even
+    if each variable is just written by one thread (and always the same thread). In
+    this case, to improve performance, we must reduce sharing, avoiding as much of
+    the read access from each thread to both variables as we can. We can’t avoid data
+    sharing, but we can reduce it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s focus on the producer (it’s the same mechanism for the consumer):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: The **push()** function is only called by the producer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s analyze what the function does:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It atomically reads the last index where an item was stored in the ring buffer:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'It calculates the index where the item will be stored in the ring buffer:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'It checks whether the ring buffer is full. However, instead of reading **head_**
+    , it reads the cached head value:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Initially, both **cache_head_** and **cache_tail_** are set to zero. As mentioned
+    previously, the goal of using these two variables is to minimize cache updates
+    between cores. The cache variables technique works like so: every time **push**
+    (or **pop** ) is called, we atomically read **tail_** (which is written by the
+    same thread, so no cache updates are required) and generate the next index where
+    we’ll store the item that’s passed as a parameter to the **push** function. Now,
+    instead of using **head_** to check whether the queue is full, we use **cache_head_**
+    , which is only accessed by one thread (the producer thread), avoiding any cache
+    coherency traffic. If the queue is “full,” then we update **cache_head_** by atomically
+    loading **head_** . After this update, we check again. If the second check results
+    in the queue being full, then we return **false** .'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: The advantage of using these local variables ( **cache_head_** for the producer
+    and **cache_tail_** for the consumer) is that they reduce true sharing – that
+    is, accessing variables that may be updated in the cache of a different core.
+    This will work better when the producer pushes several items in the queue before
+    the consumer tries to get them (same for the consumer). Say that the producer
+    inserts 10 items in the queue and the consumer tries to get one item. In this
+    case, the first check with the cache variable will tell us that the queue is empty
+    but after updating with the real value, it will be OK. The consumer can get nine
+    more items just by checking whether the queue is empty by only reading the **cache_tail_**
+    variable.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'If the ring buffer is full, then update **cache_head_** :'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: If the buffer is full (not just that **cache_head_** needs to be updated), then
+    return **false** . The producer can’t push a new item to the queue.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'If the buffer isn’t full, add the item to the ring buffer and return **true**
+    :'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We’ve potentially reduced the number of times the producer thread will access
+    **tail_** and hence reduced cache coherency traffic. Think about this case: the
+    producer and the consumer use the queue and the producer calls **push()** . When
+    **push()** updates **cache_head_** , it may be more than one slot ahead of **tail_**
+    , which means we don’t need to read **tail_** .'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same principle applies to the consumer and **pop()** .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s run **perf** again after modifying the code to reduce cache coherency
+    traffic:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we can that performance has improved by about 60% and that there is a
+    smaller number of cache references and cache misses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that, we’ve learned how reducing access to shared data between two threads
+    can improve performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we covered three methods you can use to profile your code:
+    **std::chrono** , micro-benchmarking with the Google Benchmark library, and the
+    Linux **perf** tool.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also saw how to improve multithreaded programs’ performance by both reducing/eliminating
+    false sharing and reducing true sharing, reducing the cache coherency traffic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter provided a basic introduction to some profiling techniques that
+    will be very useful as a starting point for further studies. As we said at the
+    beginning of this chapter, performance is a complex subject and deserves its own
+    book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Fedor G. Pikus, *The Art of Writing Efficient Programs* , First Edition, Packt
+    Publishing, 2021.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ulrich Drepper, *What Every Programmer Should Know About* *Memory* , 2007.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Shivam Kunwar, *Optimizing Multithreading* *Performance* ( [https://www.youtube.com/watch?v=yN7C3SO4Uj8](https://www.youtube.com/watch?v=yN7C3SO4Uj8)
+    ).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

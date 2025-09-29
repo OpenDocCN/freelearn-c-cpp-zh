@@ -1,0 +1,1284 @@
+- en: '11'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Adding Instrumentation and Measuring Performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will add a system to measure the performance of the C++
+    components we have built so far in this book. We will measure the latencies in
+    the trading exchange system we built in *Part 2* and the latencies in the client’s
+    trading system built in the previous section. Finally, we will measure and analyze
+    the performance of the end-to-end system by running the different algorithms we
+    built in the previous section. In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding an instrumentation system to measure system performance
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Measuring latencies in the exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Measuring latencies in the trading engine
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Running the entire ecosystem with the new instrumentation system
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the code for this book can be found in the book’s GitHub repository at [https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP](https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP).
+    The source for this chapter is in the `Chapter11` directory in the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter relies on a lot of the previous chapters since we will be measuring
+    the performance of all the different components and subcomponents in the electronic
+    trading ecosystem. So, we expect you to be familiar with the code base we have
+    built so far, specifically, the *Building the C++ Matching Engine*, *Communicating
+    with Market Participants*, *Processing Market Data and Sending Orders to the Exchange
+    in C++*, *Building the C++ Trading Algorithm Building Blocks*, and finally, *Building
+    the C++ Market Making and Liquidity Taking* *Algorithms* chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The specifications of the environment in which the source code for this book
+    was developed are shown next. We present the details of this environment since
+    all the C++ code presented in this book is not necessarily portable and might
+    require some minor changes to work in your environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'OS – `Linux 5.19.0-41-generic #42~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Apr
+    18 17:40:00 UTC 2 x86_64 x86_64` `x86_64 GNU/Linux`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GCC – `g++ (Ubuntu` `11.3.0-1ubuntu1~22.04.1) 11.3.0`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CMake – `cmake` `version 3.23.2`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ninja – `1.10.2`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding an instrumentation system to measure system performance
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first task we need to tackle is to add a few utility methods that will serve
+    as the base of our performance measurement system. These are meant to be used
+    to measure the latencies of internal components and subcomponents for processes
+    running on the same server. These are also meant to be used to measure latencies
+    between the different components, which are unlikely to be on the same server
+    in practice, such as the trading exchange and the trading clients, which are on
+    different servers. Note, however, that in this book, we run the trading exchange
+    and the trading clients on the same server for simplicity. Now, let us start by
+    adding these utilities in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding utilities for performance measurement using RDTSC
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The first performance measurement utility we add does not directly measure
+    the time itself but, instead, measures how many CPU clock cycles elapse between
+    two spots in our code base. This is achieved by reading the value of the `rdtsc`,
+    to fetch and return this value, which returns this in the form of two 32-bit values
+    that we will convert into a single 64-bit value. We can use these `rdtsc` values
+    as is to measure/compare performance if we do not really care about converting
+    them into time units. The other option is to convert this `rdtsc` value into time
+    units, which is achieved by dividing this value by the system’s clock frequency,
+    which is specified as the number of CPU clock cycles per second. For instance,
+    on my system, the CPU clock frequency comes out to be around 2.6 GHz, as shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: What this means is that if we measure the `rdtsc` value before and after the
+    execution of a code block and the difference between the two values is 26 clock
+    cycles, on my system, that translates to approximately 26 / 2.6 = a 10-nanosecond
+    execution time. We will talk about this more in the last subsection of this section,
+    *Understanding some issues with measurement systems in practice*. So, without
+    any more delay, let us look at the code for this measurement implementation. All
+    the code for this section can be found in the `Chapter11/common/perf_utils.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we implement an `rdtsc()` C++ method, which internally calls the `rdtsc`
+    assembly instruction and provides it with two variables, `lo` and `hi`, to read
+    the lower and higher 32-bits that make up the final `rdtsc` value. The `__asm__`
+    instruction tells the compiler that what follows it is an assembly instruction.
+    The `__volatile__` instruction exists to prevent the compiler from optimizing
+    the instructions so that it is executed as is to make sure we read the TSC register
+    every time this is called. We save the output into the `lo` and `hi` variables
+    and, finally, using a bit shift operation, create a 64-bit value from them and
+    return it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will define a simple preprocessor macro, `START_MEASURE`, which accepts
+    an argument called `TAG`, and all it does is create a variable with that name
+    and saves the value of the `rdtsc()` method we just built in it. In other words,
+    this macro simply creates a variable with the name provided and saves the `rdtsc()`
+    value in it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define another complimentary macro called `END_MEASURE`, which accepts an
+    argument called `TAG` as well as an argument called `LOGGER`, which it expects
+    to be of our `Common::Logger` type. It takes another measurement using the `rdtsc()`
+    method we built previously and uses the `LOGGER` object to log the difference
+    between the two. The only reason this code block is enclosed in a `do {} while(false)`
+    loop (without a terminating semi-colon) is to make sure that the compiler catches
+    missing semi-colons when this method is invoked. In other words, `END_MEASURE(example,
+    logger_);` is a valid use but `END_MEASURE(example, logger_)` (missing semi-colon)
+    causes a compilation error to maintain symmetry with `START_MEASURE`. This is
+    not strictly necessary, just a preference on our part:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we will define a similar macro called `TTT_MEASURE` that takes similar
+    arguments (i.e., `TAG` and `LOGGER`), This macro simply logs the current time
+    in nanoseconds, which it obtains by calling our `Common::getCurrentNanos()` method
+    that we saw before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will use these macros throughout this chapter, but before we do that, we
+    need to make some minor changes to the time utilities we built before and have
+    seen many uses of already.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating our previous time utilities
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we will make a minor change to the time utility `Common::getCurrentTimeStr()`
+    method to make the output more informative and granular. The goal here is to change
+    our previous output, which looked like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We want to change it to this format, which drops the date and year from the
+    output and changes the time output from just having seconds to having seconds
+    and nanoseconds to add granularity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will help us inspect, order, and analyze events that happen in the same
+    second even more closely. These changes can be found in the `Chapter11/common/time_utils.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the other change is the inclusion of the `perf_utils.h` header file
+    containing the measurement methods we built in the previous section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We saw this before in the *Building the C++ Building Blocks for Low-Latency
+    Applications* chapter in the *Designing utility methods for time* section. We
+    call `std::chrono::system_clock::now()` to extract the current `time_point` value
+    and save it in the `clock` variable. We also extract and save the `time_t` object
+    from it into the `time` variable using the `std::chrono::system_clock::to_time_t()`
+    method, as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We use a combination of `sprintf()`, `ctime()`, and the previously seen `std::chrono::duration_cast<std::chrono::nanoseconds>(clock.time_since_epoch()).count()`
+    method to extract and format the current time in the `HH:MM:SS.nnnnnnnnn` format.
+    Finally, we assign it to the `time_str` object of the `std::string` type, which
+    is passed to this method, as well as return it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we move on to using these new methods, we will discuss a few more points
+    regarding measuring performance in practice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding some issues with measurement systems in practice
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will discuss a few important considerations when it comes
+    to measuring performance in practice. This is important to understand because
+    performance measurement is not always as easy as it seems and it requires you
+    to understand some nuances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding overhead due to instrumentation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first key point we want to make about measuring performance in practice
+    is that it is important to consider that the measurement system itself is not
+    zero-latency. What this means is that adding instrumentation into the path of
+    the critical code base adds some extra latency. It is important to make sure that
+    the instrumentation system/routine itself is extremely low-latency relative to
+    the latency of the system it’s measuring. A hypothetical example is that if we
+    are measuring something that takes a few microseconds, we need to make sure that
+    the measurement routines take a few nanoseconds to not add too much overhead.
+    One of the reasons we have the option of using `rdtsc()` to measure performance
+    is that it is significantly faster than calling something such as `std::chrono::system_clock::now()`
+    or `clock_gettime()`. That gives us the option of using `rdtsc()` if we are measuring
+    a code block that has extremely low latency to add minimal overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the limitations and reliability of RDTSC
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The second key point is regarding `rdtsc()`, which is not always very portable
+    and can have reliability concerns depending on the platform. Another consideration
+    with `rdtsc()` when converting it into time units is that CPU clock frequency
+    can vary from core to core on a system, and using a static CPU clock frequency
+    for the conversion is not always accurate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the correct measurement environment
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The third point regarding measuring performance on trading servers is that
+    a lot of tuning needs to be done to facilitate accurate measurements. This involves
+    techniques such as disabling interrupts, making sure unnecessary processes are
+    not running, making sure the NUMA setup is correct, tweaking CPU power settings,
+    setting up CPU isolation, pinning threads to specific cores, and so on. Discussing
+    all these considerations when it comes to electronic trading is beyond the scope
+    of this book, nor is it the focus of this book. We just wanted to mention that
+    there are additional considerations when it comes to performance measurement.
+    We refer interested readers to the book *Developing High-Frequency Trading Systems:
+    Learn how to implement high-frequency trading from scratch with C++ or Java basics*,
+    which discusses **High-Frequency electronic Trading** (**HFT**) specific considerations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we can move on to using the performance measurement system we built in this
+    section in our electronic trading ecosystem, starting with the exchange in the
+    next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring latencies at the exchange
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: First, we will add instrumentation to the components on the electronic trading
+    exchange side – the market data publisher, the matching engine, and the order
+    server. Our approach to measuring performance will comprise two forms; let us
+    understand those first before we look at the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding how to measure internally
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The first approach is to measure the latency of internal components – for example,
+    how long does a call to the `Exchange::MatchingEngine::processClientRequest()`
+    method take or how long does a call to the `Exchange::MEOrderBook::add()` method
+    take? For these cases, we will use a pair of `START_MEASURE()` and `END_MEASURE()`
+    macros, which, in turn, use the `rdtsc()` method to measure the performance of
+    each such call. There is nothing here that prevents us from using the `TTT_MEASURE()`
+    macro in place of `rdtsc()` or as a supplement. But we will use `rdtsc()` for
+    these, for the sake of providing examples of how to use the two different instrumentation
+    systems. Additionally, we use the rationale that a call to a function such as
+    the one we mentioned previously should be very quick and it might be better to
+    use the lower overhead `rdtsc()` methods for that. The complete list of internal
+    measurements we will take is listed next, but interested readers should use similar
+    techniques to add even more points of measurement as they see fit. We will see
+    the code for how to measure these familiar methods shortly, but for now, the methods
+    we will measure on the exchange side are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Common::McastSocket::send()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::add()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::cancel()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MatchingEngine::processClientRequest()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::removeOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::match()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::match()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::checkForMatch()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::addOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::MEOrderBook::removeOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Common::TCPSocket::send()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::FIFOSequencer::addClientRequest()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Exchange::FIFOSequencer::sequenceAndPublish()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Next, let us take a few steps back and understand which high-level spots/hops
+    we will timestamp in the electronic trading exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding key hops at the exchange
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In addition to measuring the functioning of internal components, exchanges can
+    record performance data, especially timestamps, to track how events (client requests)
+    propagate through the different components and subcomponents. We mean tracking
+    and, often, publishing metrics such as when an order reached the order server,
+    when it reached the matching engine, when the response to that request left the
+    order server, when market updates corresponding to that request left the market
+    data publisher, and so on. By recording these metrics, exchanges can understand
+    and investigate their performance under different market/load conditions, track
+    per-participant performance, and so on. By publishing these metrics to the market
+    participants, the participants can understand and investigate their own performance
+    and consider ways to improve them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our electronic trading exchange, we will take timestamps of the following
+    events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`T1_OrderServer_TCP_read` – the time when a client request is first read at
+    the TCP socket in `OrderServer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T2_OrderServer_LFQueue_write` – the time when a client request is written
+    to `LFQueue` that connects to `MatchingEngine`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T3_MatchingEngine_LFQueue_read` – the time when `MatchingEngine` reads a client
+    request from `LFQueue`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T4_MatchingEngine_LFQueue_write` – the time when the market update is written
+    to the `LFQueue` connected to `MarketDataPublisher`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T4t_MatchingEngine_LFQueue_write` – the time when the client response is written
+    to the `LFQueue` connected to `OrderServer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T5_MarketDataPublisher_LFQueue_read` – the time when the market update is
+    read from `LFQueue`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T5t_OrderServer_LFQueue_read` – the time when the client response is read
+    from `LFQueue`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T6_MarketDataPublisher_UDP_write` – the time when the market update is written
+    to the UDP socket in `MarketDataPublisher`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T6t_OrderServer_TCP_write` – the time when the client response is written
+    to the TCP socket in `OrderServer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The exact locations of these timestamps are shown in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.1 – The topology of the electronic trading exchange with the key
+    hops to timestamp](img/B19434_11_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11.1 – The topology of the electronic trading exchange with the key hops
+    to timestamp
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, starting in the next section, we can start looking at the code changes
+    we need to add to these two forms of measurement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the market data publisher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, we will add performance measurement and timestamping code to the market
+    data publisher. For the sake of brevity, we will only show the code blocks where
+    we make these changes instead of including the source code for the entire source
+    file or full code blocks in the case of large code blocks. All the changes, as
+    well as the full, updated source code for the market data publisher-related changes,
+    are in the `Chapter11/exchange/market_data/market_data_publisher.cpp` source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, in the `MarketDataPublisher::run()` method, we will add a timestamp
+    using the `TTT_MEASURE` macro and the `T5_MarketDataPublisher_LFQueue_read` tag
+    right after reading from `outgoing_md_updates_` `LFQueue`, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will measure the time taken to call `MCastSocket::send()` on `incremental_socket_`
+    using the `START_MEASURE` and `END_MEASURE` macros and the `Exchange_McastSocket_send`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we will take another timestamp using the `TTT_MEASURE` macro and the
+    `T6_MarketDataPublisher_UDP_write` tag right after the socket write is finished:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, let us look at the changes in the `OrderServer` component for performance
+    measurement and timestamping.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the order server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: All the changes for performance measurement and timestamping, as well as the
+    full source code for `OrderServer`, are in the `Chapter11/exchange/order_server/order_server.h`
+    source file. As before, we will only show minimal code blocks where the changes
+    are made for the sake of brevity and to avoid repetition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we will make changes to the `OrderServer::run()` method, right after
+    reading an entry from `outgoing_responses_` `LFQueue`. We use the `TTT_MEASURE`
+    macro with the `T5t_OrderServer_LFQueue_read` tag, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will measure the call to the `TCPSocket::send()` method using the
+    `START_MEASURE` and `END_MEASURE` macros and the `Exchange_TCPSocket_send` tag.
+    Note that we measure the call to send out the full client response message, which,
+    in our implementation, results in two calls to the `TCPSocket::send()` methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, after the TCP socket send operations finish, we take another timestamp
+    using the `TTT_MEASURE` method and the `T6t_OrderServer_TCP_write` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next set of changes is in the `OrderServer::recvCallback()` method. Right
+    as soon as we enter the method, we take a timestamp with the `TTT_MEASURE` macro
+    with the `T1_OrderServer_TCP_read` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, at the end of this method, we measure the call to `FIFOSequencer::addClientRequest()`,
+    using the `START_MEASURE` and `END_MEASURE` macros with the `Exchange_FIFOSequencer_addClientRequest`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, for `OrderServer`, we need to update the `OrderServer::recvFinishedCallback()`
+    method. We measure the call to the `FIFOSequencer::sequenceAndPublish()` method
+    using the `START_MEASURE` and `END_MEASURE` macros with the `Exchange_FIFOSequencer_sequenceAndPublish`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next subsection, we will add instrumentation to the `FIFOSequencer` subcomponent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside FIFOSequencer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'All the instrumentation changes, as well as the full, updated source for the
+    `FIFOSequencer` subcomponent, can be found in the `Chapter11/exchange/order_server/fifo_sequencer.h`
+    source file. The only changes we will make are in the `FIFOSequencer::sequenceAndPublish()`
+    method. Here, all we do is add a timestamp after we write a client request to
+    `incoming_requests_` `LFQueue`, which we do by using the `TTT_MEASURE` macro and
+    using the `T2_OrderServer_LFQueue_write` tag value, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we move on to the task of adding instrumentation and timestamps to the
+    core matching engine component as well as its subcomponents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the matching engine and order book
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, we will update `MatchingEngine`; all the changes and the full, updated
+    source for `MatchingEngine` can be found in the `Chapter11/exchange/matcher/matching_engine.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `MatchingEngine::processClientRequest()` method, we will measure the
+    time it takes for the `MEOrderBook::add()` and `MEOrderBook::cancel()` methods.
+    First, we show the changes for the `MEOrderBook::add()` method using the `START_MEASURE`
+    and `END_MEASURE` macros and the `Exchange_MEOrderBook_add` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we have the changes for `MEOrderBook::cancel()` using the `START_MEASURE`
+    and `END_MEASURE` macros and the `Exchange_MEOrderBook_cancel` tag, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next method we need to update is `MatchingEngine::sendClientResponse()`.
+    We will use the `TTT_MEASURE` macro with the `T4t_MatchingEngine_LFQueue_write`
+    tag right after we write the client response to `outgoing_ogw_responses_` `LFQueue`,
+    as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need to update the `MatchingEngine::sendMarketUpdate()` method by adding
+    a timestamp after writing the market update to `outgoing_md_updates_` `LFQueue`
+    using the `TTT_MEASURE` macro and the `T4_MatchingEngine_LFQueue_write` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The final method we need to update in `MatchingEngine` is the `run()` method
+    itself. We take a timestamp right after reading from `incoming_requests_` `LFQueue`,
+    using the `TTT_MEASURE` macro and the `T3_MatchingEngine_LFQueue_read` tag, as
+    shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And we measure the call to the `MatchingEngine::processClientRequest()` method
+    with the `START_MEASURE` and `END_MEASURE` macros with the `Exchange_MatchingEngine_processClientRequest`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The final component on the exchange side that we need to update is the `MEOrderBook`
+    subcomponent in `MatchingEngine`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside MEOrderBook
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We will discuss the instrumentation changes to the `MEOrderBook` component in
+    this subsection, which can be found in the `Chapter11/exchange/matcher/me_order_book.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first method we will update is `MEOrderBook::match()`. We want to measure
+    the call to `MEOrderBook::removeOrder()` with the `START_MEASURE` and `END_MEASURE`
+    macros and the `Exchange_MEOrderBook_removeOrder` tag, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need to update the `MEOrderBook::checkForMatch()` method to measure
+    the calls to `MEOrderBook::match()`. We use the `START_MEASURE` and `END_MEASURE`
+    macros with the `Exchange_MEOrderBook_match` tag for the two branches of execution,
+    as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will add additional instrumentation within the `MEOrderBook::add()` method
+    to measure a few different calls. The first one is the call to `MEOrderBook::checkForMatch()`,
+    for which we will use the `Exchange_MEOrderBook_checkForMatch` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next one is the call to `MEOrderBook::addOrder()`, for which we will use
+    the `Exchange_MEOrderBook_addOrder` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last `MEOrderBook` method we need to add more granular instrumentation
+    to is the `cancel()` method. In this method, we want to measure the call to the
+    `MEOrderBook::removeOrder()` method, as shown next, with the `START_MEASURE` and
+    `END_MEASURE` macros and the `Exchange_MEOrderBook_removeOrder` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This concludes all the measurements we wanted to add on the side of the electronic
+    exchange, and in the next section, we will add similar instrumentation on the
+    other side: that is, the trading client system.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring latencies in the trading engine
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will focus on adding performance measurement and timestamps
+    to the trading client’s system – the market data consumer, the order gateway,
+    and the trade engine and its subcomponents. Here too, we will measure the performance
+    of internal components as well as add timestamps to help with a higher-level analysis
+    of incoming and outgoing events latencies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding how to measure internally
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The motivation and approach toward measuring the performance of internal components
+    for the trading clients’ systems are identical to those on the exchange side.
+    The complete list of internal measurements we will take is listed next, but interested
+    readers should use similar techniques to add even more points of measurement as
+    they see fit. We will see the code for how to measure these familiar methods shortly,
+    but for now, the methods we will measure on the client’s side are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Trading::MarketDataConsumer::recvCallback()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Common::TCPSocket::send()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderGateway::recvCallback()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::moveOrders()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::onOrderUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::moveOrders()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::onOrderUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::MarketOrderBook::addOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::MarketOrderBook::removeOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::MarketOrderBook::updateBBO()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::cancelOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::RiskManager::checkPreTradeRisk()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::newOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::moveOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::OrderManager::moveOrder()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::PositionKeeper::updateBBO()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::FeatureEngine::onOrderBookUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::TradeEngine::algoOnOrderBookUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::FeatureEngine::onTradeUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::TradeEngine::algoOnTradeUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::PositionKeeper::addFill()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Trading::TradeEngine::algoOnOrderUpdate()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As we did with the electronic trading exchange, we will understand the key hops
+    that we will timestamp in the trading client’s system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding key hops in the trading client’s system
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Market participants also have similar reasons for timestamping the flow of events
+    through each of the components and subcomponents. By recording and analyzing the
+    timings of these events, participants can seek to improve their systems as well
+    as analyze how to increase profitability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our electronic trading client’s system, we will take timestamps of the following
+    events:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`T7_MarketDataConsumer_UDP_read` – the time when a market data update is read
+    from the UDP socket in `MarketDataConsumer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T7t_OrderGateway_TCP_read` – the time when a client response is read from
+    the TCP socket in `OrderGateway`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T8_MarketDataConsumer_LFQueue_write` – the time when a market data update
+    is written to the `LFQueue` connected to `TradeEngine`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T8t_OrderGateway_LFQueue_write` – the time when a client response is written
+    to the `LFQueue` connected to `TradeEngine`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T9_TradeEngine_LFQueue_read` – the time when a market data update is read
+    from the `LFQueue` from `MarketDataConsumer`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T9t_TradeEngine_LFQueue_read` – the time when a client response is read from
+    the `LFQueue` from `OrderGateway`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T10_TradeEngine_LFQueue_write` – the time when a client request is written
+    to the `LFQueue` connected to `OrderGateway`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T11_OrderGateway_LFQueue_read` – the time when `OrderGateway` reads a client
+    request from the `LFQueue` from `TradeEngine`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`T12_OrderGateway_TCP_write` – the time when `OrderGateway` writes a client
+    request to the TCP socket'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The exact locations of these timestamps are shown in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 11.2 – The topology of the electronic trading client’s system with
+    the key hops to timestamp](img/B19434_11_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 11.2 – The topology of the electronic trading client’s system with the
+    key hops to timestamp
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, starting in the next section, we can start looking at the code changes
+    we need to add to these two forms of measurement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the market data consumer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will start with the `MarketDataConsumer` component and, as we discussed before,
+    we will only show the changes to the code here and omit repeating the full source
+    code. The changes, as well as the full source code, are in the `Chapter11/trading/market_data/market_data_consumer.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first timestamp we take is as soon as we enter `MarketDataConsumer::recvCallback()`,
+    where we use the `TTT_MEASURE` macro with the `T7_MarketDataConsumer_UDP_read`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also enclose the entire method using the `START_MEASURE` and `END_MEASURE`
+    macros with the `Trading_MarketDataConsumer_recvCallback` tag to measure the latency
+    of the entire method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will add a timestamp right after writing the decoded market update to `incoming_md_updates_`
+    `LFQueue`, using the `TTT_MEASURE` macro and the `T8_MarketDataConsumer_LFQueue_write`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next section, we move on to adding performance measurement to the `OrderGateway`
+    component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the order gateway
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will update the `OrderGateway` component in this subsection; all the changes
+    and the updated full source code are available in the `Chapter11/trading/order_gw/order_gateway.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first method we will update is the `OrderGateway::run()` method, and the
+    first timestamp we take is when we read a client request from `outgoing_requests_`
+    `LFQueue`. We accomplish this by using the `TTT_MEASURE` macro and the `T11_OrderGateway_LFQueue_read`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next thing we will measure is the time it takes to execute the `Common::TCPSocket::send()`
+    method, which we accomplish, as shown next, using the `Trading_TCPSocket_send`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we also timestamp right after `TCPSocket::send()` finishes using the
+    `TTT_MEASURE` macro and the `T12_OrderGateway_TCP_write` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next method we will update in the `OrderGateway` component is the `recvCallback()`
+    method. As soon as we enter the `recvCallback()` method, we take a timestamp using
+    the `TTT_MEASURE` macro and the `T7t_OrderGateway_TCP_read` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As with `MarketDataConsumer::recvCallback()`, we will enclose the entire `OrderGateway::recvCallback()`
+    method using the `START_MEASURE` and `END_MEASURE` macros and the `Trading_OrderGateway_recvCallback`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also take a timestamp right after writing the client response to `incoming_responses_`
+    `LFQueue` using the `TTT_MEASURE` macro and the `T8t_OrderGateway_LFQueue_write`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next and final subsection of this section, we will add the instrumentation
+    code to the trade engine and all the subcomponents in the trade engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the trading engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, we will start by updating the `TradeEngine` class itself, and the changes
+    and the full updated source code for this can be found in the `Chapter11/trading/strategy/trade_engine.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `TradeEngine::sendClientRequest()` method is first on our list, and here,
+    we take a timestamp after writing the client request to `outgoing_ogw_requests_`
+    `LFQueue` with the `T10_TradeEngine_LFQueue_write` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next method on our list is the `TradeEngine::run()` method, where the first
+    task is to take a timestamp right after reading a client response from `incoming_ogw_responses_`
+    `LFQueue`, with the `TTT_MEASURE` macro and the `T9t_TradeEngine_LFQueue_read`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also take a timestamp measurement right after reading a market update
+    from `incoming_md_updates_` `LFQueue` with the `T9_TradeEngine_LFQueue_read` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next method we need to update is the `TradeEngine::onOrderBookUpdate()`
+    method, where the first thing we will do is measure the call to `PositionKeeper::updateBBO()`,
+    using the `START_MEASURE` and `END_MEASURE` macros and the `Trading_PositionKeeper_updateBBO`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need to measure the call to the `FeatureEngine::onOrderBookUpdate()`
+    method, for which we use the `Trading_FeatureEngine_onOrderBookUpdate` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also need to measure the call to `TradeEngine::algoOnOrderBookUpdate_` `std::function`,
+    which calls `onOrderBookUpdate()` in either the `MarketMaker` or `LiquidityTaker`
+    algorithm instance. We use the `START_MEASURE` and `END_MEASURE` macros and use
+    the `Trading_TradeEngine_algoOnOrderBookUpdate_` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next method is the `TradeEngine::onTradeUpdate()` method. Here, the first
+    call we measure is the call to `FeatureEngine::onTradeUpdate()`, to which we assign
+    the `Trading_FeatureEngine_onTradeUpdate` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other call we will measure is the call using the `TradeEngine::algoOnTradeUpdate_`
+    standard function, which will forward it to the `MarketMaker` or `LiquidityTaker`
+    instance. We use the `START_MEASURE` and `END_MEASURE` macros using the tag of
+    `Trading_TradeEngine_algoOnTradeUpdate_`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The final method we have left to add instrumentation to is `TradeEngine::onOrderUpdate()`.
+    Here, the first function call that we measure will be the call to `PositionKeeper::addFill()`
+    using the `Trading_PositionKeeper_addFill` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we add the `START_MEASURE` and `END_MEASURE` macros with the `Trading_TradeEngine_algoOnOrderUpdate_`
+    tag around the invocation of the `algoOnOrderUpdate_` `std::function` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will add some internal measurement code to each of the subcomponents that
+    work with each other inside `TradeEngine`, starting with the `OrderManager` component
+    next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside OrderManager
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The changes to add performance measurement in `OrderManager` are the focus of
+    this subsection, and all the code can be found in the `Chapter11/trading/strategy/order_manager.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we will add measurements to the `OrderManager::moveOrder()` method.
+    The first thing we will measure is the call to the `OrderManager::cancelOrder()`
+    method using the `Trading_OrderManager_cancelOrder` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also measure the call to the `RiskManager` component, specifically
+    the `checkPreTradeRisk()` call. We will use the `START_MEASURE` and `END_MEASURE`
+    macros with the `Trading_RiskManager_checkPreTradeRisk` tag around the risk check,
+    as shown next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another thing to measure is the call to `OrderManager::newOrder()` if the risk
+    check succeeds, and we will assign the measurement the `Trading_OrderManager_newOrder`
+    tag, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other method in `OrderManager` to which we will add measurements is the
+    `moveOrders()` method, and there we will enclose the calls to `OrderManager::moveOrder()`
+    with `START_MEASURE` and `END_MEASURE` and the `Trading_OrderManager_moveOrder`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next subcomponent in the `TradeEngine` class that we need to update is `MarketOrderBook`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside MarketOrderBook
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The changes and full source for `MarketOrderBook` can be found in the `Chapter11/trading/strategy/market_order_book.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, in the `MarketOrderBook::onMarketUpdate()` method and the case for the
+    `MarketUpdateType::ADD` message, we will measure the call to `MarketOrderBook::addOrder()`.
+    This is achieved as usual by using the `START_MEASURE` and `END_MEASURE` macros
+    with the `Trading_MarketOrderBook_addOrder` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To measure the call to `MarketOrderBook::removeOrder()` in the `MarketUpdateType::CANCEL`
+    case, we will use the `Trading_MarketOrderBook_removeOrder` tag in the `START
+    _MEASURE` and `END_MEASURE` macros:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we will add a measurement around the call to `MarketOrderBook::updateBBO()`
+    and assign it the `Trading_MarketOrderBook_updateBBO` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next component to measure is one of the trading algorithms – the `LiquidityTaker`
+    algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the LiquidityTaker algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The changes we discuss here, as well as the full source code, are in the `Chapter11/trading/strategy/liquidity_taker.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our first measurement is in the `onTradeUpdate()` method for the `LiquidityTaker`
+    class. When the signal initiates a trade, we measure the call to `OrderManager::moveOrders()`
+    and assign it the `OrderManager_moveOrders` tag, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other call we want to measure is in the `onOrderUpdate()` method and measures
+    the call to `OrderManager::onOrderUpdate()` using the `START_MEASURE` and `END_MEASURE`
+    macros and the `Trading_OrderManager_onOrderUpdate` tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we are down to our last component for this chapter, updating the `MarketMaker`
+    algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Measuring the latencies inside the MarketMaker algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The changes and the full source code for `MarketMaker` are in the `Chapter11/trading/strategy/market_maker.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `MarketMaker::onOrderBookUpdate()` method contains the call to `OrderManager::moveOrders()`,
+    which is what we measure in the next code block with the `Trading_OrderManager_moveOrders`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The other method, `MarketMaker::onOrderUpdate()`, contains the call to `OrderManager::onOrderUpdate()`,
+    which we also measure and to which we will assign the `Trading_OrderManager_onOrderUpdate`
+    tag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes all the performance measurement and timestamping-related changes
+    across our entire electronic trading ecosystem. We will very quickly look at how
+    to run the ecosystem with all the changes we made so far and what differences
+    we find in the log files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the entire ecosystem with the new instrumentation system
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Running the updated electronic trading ecosystem remains the same as before
+    and is launched by running the following script:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the new ecosystem is done running, you can notice performance measurement
+    log entries such as the following for the RDTSC measurements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are also entries such as the following for the RDTSC measurements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are entries such as the following for the TTT measurements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And there are also entries such as the following for the TTT measurements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will revisit this performance data in the next chapter, but we have now finished
+    this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter was dedicated completely to measuring the performance of our electronic
+    trading ecosystem. First, we built a system to measure and compare the latency
+    incurred due to the execution of any arbitrary code block. We also built a system
+    to generate nanosecond-level timestamps when notable events occur. We also discussed
+    the motivation behind the design of these systems as well as various important
+    points to keep in mind when using these performance measurement techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next section was dedicated to understanding the design and motivation of
+    performance measurements within the various components and subcomponents on the
+    electronic exchange’s end. We then built and updated all the source code in the
+    exchange to add the performance measurement and timestamping code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After we finished the discussion and implementation of performance measurement
+    within the electronic exchange, we performed similar measurements in the trading
+    system. Finally, we concluded the chapter by running this updated ecosystem and
+    observing the new log entries from the performance measurement system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next and concluding chapter, we will analyze this performance data in
+    detail, discuss our findings, and discuss how to optimize the performance.
+  prefs: []
+  type: TYPE_NORMAL

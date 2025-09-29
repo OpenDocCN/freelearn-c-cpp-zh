@@ -1,0 +1,1786 @@
+- en: '12'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Advanced Collision Detection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Welcome to *Chapter 12*! In the previous chapter, we added the ability to load
+    static level data to the virtual world. Now the instances no longer have to run
+    in thin air; they can get a virtual home. First, we explored the differences between
+    model and level data, which file formats are mostly used for level data, and where
+    to find game maps on the internet. Then, we added code to load level data and
+    replaced the two-dimensional quadtree with a three-dimensional octree. Finally,
+    we implemented the level data rendering, including debug data for wireframe, octree,
+    and level AABB lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will extend the level data from the previous chapter. First,
+    we will add a specialized octree for the level data and update the code to also
+    support collision detection between instances and level geometry. Then, we will
+    add a simplified form of gravity to the virtual world to keep the instances at
+    ground level instead of having them floating around. As the last step, we will
+    introduce inverse kinematics for the instance legs to allow the instances to climb
+    slopes and stairs with more natural leg motions and to prevent the feet from clipping
+    into the ground or floating in the air.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhancing collision detection for level data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using gravity to keep the instances at floor level
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding inverse kinematics
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example code for this chapter is available in the `chapter12` folder, in
+    the `01_opengl_adv_collision` subfolder for OpenGL, and the `02_vulkan_adv_collision`
+    subfolder for Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhancing collision detection for level data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To speed up collision detection between instances and level geometry, we will
+    create spatial partitioning for the level data, like the octree. But instead of
+    adding the level triangles to the instance octree, we build a specialized octree
+    for the triangle data alone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a new octree type
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Using a separate data structure for level data makes more sense than trying
+    to mix both data types in the existing octree for several reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The level data is static while the instance positions change frequently. We
+    need to do costly updates to a quite heavily utilized octree on every instance
+    position change, possibly resulting in a lot of additional split and merge operations
+    when removing and re-adding the instances.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The number of subdivisions for level data and instances may be completely different,
+    depending on the level’s complexity and the number of instances. Having only a
+    small number of instances roaming around a detailed level may lead to a huge overhead
+    when searching for nearby triangles or instances.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We are using an octree for the level data for simplicity, but other data structures,
+    like BSP trees or **boundary volume hierarchies (BVHs)**, are more common. Since
+    BSP trees and BVHs cannot be dynamically updated as quickly as our octree, a split
+    between level data and instances would still be necessary.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With two different octrees, we can overcome these mentioned problems. The level
+    data octree is kept unchanged after adding all the level triangles, both octrees
+    have their own subdivisions, depending on the amount of data per octant, but we
+    can still combine the information by using the instance bounding boxes in the
+    level octree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As the first step for the level octree, we add a new `struct` named `MeshTriangle`
+    to the `OGLRenderData.h` file in the `opengl` folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Vulkan, the triangle `struct` will be added to the `VkRenderData.h` file
+    in the `vulkan` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `index` member is mostly for debugging purposes and will be added to a log
+    output line in case some triangles cannot be added to the octree. In the `points`
+    array, we save the world positions of each of the three points of a triangle.
+    The world position is needed to create the proper bounding box for the triangle,
+    we will use the world position also later for collision detection. And the `boundingBox`
+    member contains the `AABB` for every triangle of the level data mesh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using bounding boxes instead of the real triangle data in the octree simplifies
+    the query operations a lot since we do not have to check the exact outline of
+    every triangle when searching for collision. We may end up with more triangles
+    to check by using the AABB, but the `AABB` checks are cheap since we only need
+    a maximum of six simple `float` comparisons. As most parts of a level geometry
+    are either wall or ground, the additional size of the `AABB` does not matter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we add the new octree class named `TriangleOctree`. The new triangle octree
+    will be implemented in the two new files, `TriangleOctree.h` and `TriangleOctree.cpp`,
+    in the `octree` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `TriangleOctree` class is a copy of the normal `Octree` class, with a few
+    exceptions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We store the triangle data in the tree instead of the instance index.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since the level data octree will be kept read-only, we don’t need the methods
+    to update or remove objects or merge octants.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We handle only static data in the triangle octree, a search for intersections
+    between triangles of the level does not return any useful information for us.
+    So, the `findAllIntersections()` and `findIntersectionsInDescendants()` methods
+    can be skipped too.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In addition to the reasons to use a separate octree for the level data mentioned
+    in the *Adding a new octree type* section, we also use a different approach for
+    objects not fitting in a single octant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the instance octree, a bounding box of an instance will be only in rare cases
+    larger than a single octant, for instance when an instance is scaled by a large
+    factor. But within the level octree, the bounding box of many triangles may not
+    fit into a single subdivided octant. The creator of a level will try to minimize
+    the number of triangles in a level for good rendering performance, resulting in
+    areas of the level made of only a few large triangles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We could overcome the size problem with one of the following three methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep a large triangle in the octant big enough to contain the entire triangle.
+    This solution would store additional objects in a parent node, not only in a leaf.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Add the triangle to all affected subdivided octants. We would only have data
+    in the leaves but would duplicate the triangle data in the worst case 8 times.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Split the triangle on the octant boundaries and add only the sub-triangles to
+    each octant. Again, we would have an additional triangle per affected octant,
+    plus possible problems with rounding errors in the split lines.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To keep the code simple, we will use the first method and add any triangle exceeding
+    the dimensions of a subdivided octant only in the parent octant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can achieve the storage process for oversized triangles with a two-step
+    check in the `add()` and `split()` methods. First, we iterate over all child octants
+    to find possible intersections of the triangle with the boundaries of the child
+    octant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we find an intersection with a child octant, we increment the `intersectingChildren`
+    variable. Then, for the `add()` method, we check how many child octants the triangle
+    would intersect. In case of more than one octant, the triangle is kept in the
+    current octant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: And if we found only an intersection with a single child octant, we hand over
+    the triangle recursively to the child octant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the `split()` method, we do the same, and keep the triangle in the current
+    octant if we find more than one intersection with the future child octants:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `query()` methods to query the triangle octree for collisions with a bounding
+    box and `getTreeBoxes()` boxes to show octree debug lines remain the same as in
+    the original octree, only the data type for the `private` `query()` method needs
+    to be adjusted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the `TriangleOctree` is ready, we can add the level data to the new octree
+    and query for the tree for collisions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Filling the level data octree
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Like the instance octree, we need to add the `TriangleOctree.h` header to the
+    renderer header, and then add a new `private` member named `mTriangleOctree` and
+    the two `private` methods `initTriangleOctree()` and `generateLevelOctree()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To have default values for threshold and depth and to be able to control the
+    settings via UI later, two new variables named `rdLevelOctreeThreshold` and `rdLevelOctreeMaxDepth`
+    are stored in the `OGLRenderData` `struct` in the `OGLRenderData.h` file in the
+    `opengl` folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Again, for Vulkan, the two variables are added to the `VkRenderData` `struct`
+    in the `VkRenderData.h` file in the `vulkan` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'During the `init()` method of the renderer, `initTriangleOctree()` is called
+    to create an octree with the given threshold and maximum depth:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The world boundaries are updated during level `AABB` generation, so our triangle
+    octree is exactly the same size as the level data after the level was loaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Filling the level data octree is done in the `generateLevelOctree()` method.
+    We just walk through the important parts here since the outer code is only a loop
+    over all levels in the `micLevels` vector of the `ModelInstanceCamData` struct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For every level in `micLevels`, we get the level meshes in the form of optimized
+    meshes for drawing the level. Then, we iterate over all the indices of the level
+    mesh:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Vulkan, the `levelMeshes` vector will contain the `VkMesh` data type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We must use the indices to draw the triangles since the triangle data is stored
+    based on indices; using the vertices directly would not give us the correct information
+    to deduce the triangles’ vertices. We also retrieve the world and normal transformation
+    matrices from the level. The normal transformation matrix is just the transpose
+    of the inverse world transform matrix, the `getNormalTransformMatrix()` method
+    has been added to keep the additional transformations in the `AssimpLevel` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we create an empty `MeshTriangle` and use the transformation matrix of
+    the level to transform the level vertices to the world position:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now it is time to create the boundaries for each triangle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using an `AABB` makes it easy to calculate the bounding box coordinates. From
+    this `AABB`, we create a `BoundingBox3D` and store the result in the `boundingBox`
+    member of the `MeshTriangle` `struct`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Adding a small offset is needed to keep triangles that are coplanar to one of
+    the `X`, `Y`, or `Z` planes in the level. Without the offset, the dimension for
+    the bounding box of a triangle could become zero in one or more dimensions, making
+    it impossible for us to detect collisions with that triangle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we store and increment the debug index number and add the triangle
+    to the level data octree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: By calling `generateLevelOctree` whenever level data has been added or removed,
+    we assure that our octree has the correct world positions for all triangles. The
+    best way to achieve the update on level changes is to tie the octree update to
+    the already implemented `AABB` update for level data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve this coupling, we add a new `private` method named `generateLevelVertexData()`
+    and call `AABB` and octree generation there:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then, all occurrences of `generateLevelAABB()` are replaced by the new `generateLevelVertexData()`
+    method, and whenever the level data or other properties, such as rotation or scaling,
+    are changed, the level octree is also updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With an up-to-date level octree, we can finally check if the instances collide
+    with level geometry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detecting instance/level collisions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: By using the same strategy as we used in the *Adding a quadtree to store nearby
+    model instances* section in [*Chapter 8*](Chapter_8.xhtml), for instance/instance
+    collisions, finding collisions between instances and level triangles is easy.
+    All we must do is loop over all instances, get the bounding box of the instance,
+    and query the triangle octree for collisions with that bounding box. The octree
+    delivers us all the triangles where the bounding box of the triangle collides
+    with the bounding box of the instance, even if the instance is not stored inside
+    the triangle octree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To implement collision detection between instances and level data, follow these
+    steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we add a new member named `isCollidingTriangles` to the `InstanceSettings`
+    `struct` in the `InstanceSettings.h` file to store the colliding triangles:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, a new `public` method called `setCollidingTriangles()` of the `AssimpInstance`
+    class is created, storing the incoming triangle data in the instance settings:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we create a new private method called `checkForLevelCollisions()` in
+    the renderer. We start by getting the instance settings and skipping the null
+    instance:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, we simply query the triangle octree with the bounding box of the instances:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Just knowing that we have collisions is nice, but we want to store the collision
+    data for further actions, such as reacting to collisions or drawing debug lines.
+    So, we store the vector of `MeshTriangles` in the instance settings:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The method `checkForLevelCollisions()` is called to the `draw()` method of the
+    renderer, after the instances have been rendered and before the UI is drawn. Now
+    all instances are checked in every frame for collisions with the level geometry,
+    and if colliding triangles were found, we store them in the `InstanceSettings`
+    of the instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although you could have trust in the general functionality of collision detection
+    to work, seeing is believing. We add extra debug lines for the various level data
+    now, allowing us to draw viable information as overlaying lines on the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Drawing debug lines
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If we would like to see the collisions in real time on the screen, we can highlight
+    the affected triangles in the level geometry. To achieve this highlighting, we
+    will follow these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We add a new `private` member, `mLevelCollidingTriangleMesh`, to store the
+    colliding triangle meshes to the renderer:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, in `checkForLevelCollisions()`, we clear the mesh:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we iterate over all colliding triangles, adding the vertices pairwise
+    to the mesh storage to create a line for every side of the triangle:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now we have saved the outlines of the detected triangles for all instances.
+    Rendering the triangles to the screen can be done with a simple line draw call:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Running the application with instance/level collision and debug drawing results
+    in a picture similar to *Figure 12.1*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.1: Collision between an instance and the level geometry'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 12.1*, the instance collides with the ground and several walls. All
+    the triangles were detected by using their bounding boxes, so don’t be alarmed
+    if a triangle is highlighted while the instance is still a bit away from the triangle
+    itself. In this case, the bounding box of the triangle was hit, spanning a larger
+    area than the triangle itself. But the number of false positives among the detected
+    collisions is low and may only affect the performance of the collision detection
+    by a small amount.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To add a proper reaction of the instance to a collision with the level geometry,
+    we will enhance the node tree next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extending the node tree to support level geometry collisions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Thanks to the good foundation built in the last chapters, adding a new collision
+    type takes a matter of minutes by following these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we add the new event type to the `nodeEvent` `enum` in the `Enums.h`
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also add some text to the `micNodeUpdateMap` during the `init()` method
+    of the renderer to add a name in the node tree:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, in `checkForLevelCollisions()`, trigger the new event if we have at least
+    one colliding triangle:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The event informs the node tree of the instance that a collision with level
+    geometry occurred. As an example, we could just let the instance turn around by
+    180 degrees, as shown in *Figure 12.2*:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_02.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.2: An Event node reacting to instance/level collisions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the Event node in *Figure 12.2*, the instance would instantly turn around
+    when running into a collision with the level. Also, a cooldown of 250 milliseconds
+    has been added. Using a cooldown should give the instance a bit of time to walk
+    far enough away from the affected level geometry to avoid immediately re-triggering
+    a level collision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But right now, collision detection has a huge drawback: the instances keep
+    walking at the same height level, thus running through hills or walking in the
+    air when the elevation changes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To keep the instances on the ground, let’s add a simple form of gravity to the
+    application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using gravity to keep the instances on the floor
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Gravity is literally always around us, accelerating objects downwards until
+    they hit some other, immovable object, such as the ground. We mostly don’t realize
+    the effects of gravity while walking around or standing still; we only realize
+    its power when something falls down and most probably breaks when it hits the
+    ground.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we can add gravity, we need to find a way to detect if a triangle in
+    the level geometry belongs to the ground or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding ground triangles in level data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For real-world levels, extra attributes could be used to mark areas of a level
+    as walkable or not. Since we want to keep the ground-level technique as generic
+    as possible, we will use a different approach and use the triangle normal to check
+    if the area around us belongs to the floor or a wall, and up to which angle a
+    sloped area can be walked on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We store the `normal` of each triangle as 3-element vector inside the `MeshTriangle`
+    `struct`, along with the other triangle data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When generating the triangle octree in `generateLevelOctree()`, the normal
+    from the first vertex of the triangle is taken:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Due to the indexed structure of the level data, using one of the normals of
+    the vertices could lead to artifacts caused by reusing the same vertex for different
+    triangles. In this case, we could alter the calculation of the normal to be the
+    cross product of two edges of every triangle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To be able to control the ground slope in the user interface, we add a new
+    variable called `rdMaxLevelGroundSlopeAngle` to the `OGLRenderData` `struct`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Vulkan, as always, the variable will be added to the `VkRenderData` `struct`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, in `checkForLevelCollisions()`, we add a new check to find out if the
+    angle between an upward-pointing vector and the normal of the triangle is larger
+    than the maximum configurable ground slope:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Inside the `if` block, we can now limit the event sending code to be triggered
+    only for walls, no longer for ground triangles. We also change the color of the
+    debug lines for triangles detected as ground triangles to blue while wall triangles
+    remain red:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the **Levels...** section of the `UserInterface` class, we add a float slider
+    to enable controlling the maximum ground slope interactively:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now the application draws collisions with walls and ground in different colors,
+    as shown in *Figure 12.3*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_03.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.3: Separate collisions for ground and walls'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in *Figure 12.3*, wall collisions are now marked by red triangle
+    edges, while ground collisions are highlighted by blue triangle edges. The slope
+    angle can be configured by a slider, allowing finetuning of which slope of a hill
+    or edge will be still seen as the ground.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to the distinct colors for collisions between instances and walls
+    or the ground, the event reporting also differs. For a ground collision, no instance/level
+    geometry collision event will be generated, allowing the instances to run around
+    in the level and only collide with walls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After we can check if an instance collides with a ground polygon, it’s time
+    to add the gravity to the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding basic gravity
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For our application, we are using only simple gravity. We just move the instance
+    down by some amount every frame, without thinking about more complex patterns,
+    such as acceleration over time. If you want to implement more details, the *Addition
+    resources* section contains the ISBNs of books that dive into advanced physics
+    and collision detection topics. Also, a task in the *Practical sessions* section
+    implements enhanced gravity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To be able to add a gravity effect to an instance, we create a new `public`
+    method named `applyGravity()` to the `AssimpInstance` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The private variable `GRAVITY_CONSTANT` is defined in the `AssimpInstance.h`
+    header and set to `9.81`, similar to the real gravity on earth. The gravity is
+    then applied in the instances loop in the `draw()` method of the renderer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `rdEnableSimpleGravity` variable has been added to the `OGLRenderData` `struct`
+    in the `OGLRenderData.h` file for OpenGL, and to the `VkRenderData` `struct` in
+    the `VkRenderData.h` header for Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the **Levels...** collapsing header of the `createFrame()` method in the
+    `UserInterface` class, a checkbox is used to control the gravity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will use this checkbox to prevent all instances from falling when no level
+    geometry is loaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One last step is needed to enable instances to roam around on the floor of the
+    levels. Let’s create the final parts of the code the finish the ground handling
+    for the instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping the instances on the ground triangles
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: With the code from the previous sections of this chapter, we can detect collisions
+    between instances and level walls and floors and the handle wall collision. For
+    ground collisions, we need special handling since the instance will, most of the
+    time, stay on the floor of the level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A naive idea for ground collision would be to move the instance upward a bit
+    after gravity is applied. Sadly, applying gravity and moving the instance back
+    leads to oscillations if the amounts of vertical movement are not identical. But
+    instead of moving the instance up, we can avoid applying gravity in the first
+    place, leaving the instance on the ground triangle once the collision is detected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The functionality to keep instances on the ground triangles of the level will
+    be implemented by the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For every instance, we store the “on ground” state by using a new Boolean variable
+    named `isInstanceOnGround` in the `InstanceSettings` `struct` in the `InstanceSettings.h`
+    file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the `AssimpInstance` class, a `public` setter for the state will be added
+    too:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then we update the `applyGravity()` method to disable adding the gravity to
+    the vertical position if the instance is found to reside on the ground:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: To set the `isInstanceOnGround` instance variable in the renderer, a new checking
+    code will be added to the `draw()` method of the renderer, right below the `query()`
+    call to the triangle octree. This way, we make sure we are using the most recent
+    triangle colliding data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we set the local `instanceOnGround` Boolean to `true`, which prevents
+    instances from falling if the gravity is disabled. Next, we calculate the gravity
+    with the same formula as the instance, and we initialize the current `footPoint`
+    of the instance with the world position:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We need the foot point in the next step to have a valid position for the instance
+    in case the ground detection fails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we set `instanceOnGround` to false as the default setting for ground-level
+    detection, and we iterate over all colliding triangles:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, the same angle check between the normal vector of the triangle and an
+    upwards pointing vector as in `checkForLevelCollisions()` is used to find out
+    if the triangle is a ground triangle and thus considered walkable:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the triangle is walkable ground, we try to get the intersection between
+    a virtual ray pointing upwards, originating from the instance after it has already
+    been sunk slightly into the ground:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Checking the instance after applying the gravity value is required because no
+    collision will be reported if the instance is exactly at the same level as the
+    ground triangle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The helper function `rayTriangleIntersection()` in the `Tools` class implements
+    the Möller-Trumbore algorithm to find an intersection between a ray and a triangle.
+    This algorithm detects if a ray intersects the triangle and returns the exact
+    point of the intersection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A visualization of the algorithm is shown in *Figure 12.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_04.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.4: Visualization of the Möller-Trumbore algorithm'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Möller-Trumbore algorithm uses the barycentric coordinates of the triangle
+    created by the three vertices `V0`, `V1`, and `V2` to check if the ray is inside
+    or outside of the triangle. To simplify the detection process, the algorithm transforms
+    both the triangle vertices and the ray so that two of the triangle sides are mapped
+    to the `X` and `Y` axes of the Cartesian coordinate system, defining a unit triangle.
+    The barycentric coordinates of the intersection point stay intact during these
+    transformations. The final test for intersection just needs to check if the `x`
+    and `y` coordinates of the intersection point are inside the triangle by testing
+    for valid barycentric coordinates. A link to the mathematical backgrounds of the
+    algorithm is available in the *Additional resources* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As the last step in the `draw()` call part of the new renderer code, we set
+    the ground flag to the instance and apply the gravity:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The extra check for `rdEnableSimpleGravity` around `applyGravity()` that was
+    added in the *Adding basic gravity* section can be removed. We already ensure
+    that no gravity will be added if `rdEnableSimpleGravity` is `false` by setting
+    the default value of `instanceOnGround` to `true`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Running the application with collision triangle debug draw enabled and the
+    ground slope adjusted will result in an image similar to *Figure 12.5*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_05.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.5: Instances walking at different heights of the level'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 12.5*, we can see that the instances are walking on their own level,
+    with the left instance climbing up a small slope. In the running application,
+    you will see that climbing down a hill is also working as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After level gravity is enabled, the instances are running on the level floor.
+    But on an uneven floor, one either intersects with the floor when going up a hill,
+    or one of the feet is still in the air when going down a slope. You can see this
+    effect on the right foot of the left instance: the entire foot is clipping into
+    the ground triangle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s fix the instance feet by adding inverse kinematics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding inverse kinematics
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The word “kinematics” is defined as the mechanics behind the motion of an object,
+    but without referencing the forces that cause this motion. So, every part of our
+    daily motion can be described in terms of kinematics as the movement of our bones.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The two types of kinematics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The type of animation of our characters in the previous chapters is called
+    **forward kinematics**. An example of forward kinematics is shown in *Figure 12.6*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_06.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.6: Raising the hand of the simple skeleton by using Forward Kinematics'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The skeleton in *Figure 12.6* raises its simplified hand by rotating at bone
+    number one, the shoulder, and number two, the elbow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: During the movement or rotation of the skeletal bone, all the other nodes attached
+    to it are also affected. Rotating the arm around the shoulder does not change
+    the elbow or the forearm, as we only change one bone at a time. Next, the forearm
+    is rotated around the elbow, bringing the hand to the final position. This final
+    position of the hand is defined by the concatenation of the changes of all the
+    bones before the hand.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But… what happens if we only know the desired final position of the hand?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we want to move the hand of the skeleton in *Figure 12.7* to the green target
+    point, or we want to put the foot onto the green target block, our only option
+    with forward kinematics would be trial and error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_07.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.7: How to move the hand to the target, or put the foot on the box?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We would have to adjust all the nodes on the arm or the leg over and over again
+    until we reach a matching position. This is where **inverse kinematics** comes
+    into play. Instead of rotating the nodes directly, we calculate bone positions
+    matching the final movement and read the node rotations from the final bone positions,
+  prefs: []
+  type: TYPE_NORMAL
+- en: In inverse kinematics, the name **effector** is used to describe the part of
+    the skeleton that should reach the **target**. If the target is too far away to
+    be reached by the effector node, we should at least try to find a position as
+    close as possible to the target. In addition to effector and target, a **root
+    node** must be chosen. The root node is the first unchanged node of the skeleton.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although many inverse kinematics solver algorithms have been created, we will
+    use one of the basic algorithms: FABRIK, the **Forward And Backward Reaching Inverse
+    Kinematics** solver. FABRIK is easy to understand and implement and finds good
+    solutions for the nodes. So, let’s dive into inverse kinematics with FABRIK.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the FABRIK basics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: FABRIK was introduced in 2011 by Dr. Andreas Aristidou. The FABRIK algorithm
+    solves the inverse kinematics problem by moving the nodes of a bone chain one
+    by one closer to the target and then rescaling the bones back to the original
+    length. Also, FABRIK moves along the chain of bones in both directions, forward
+    and backward, hence its name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will use a simple robotics arm to describe the steps to solve an inverse
+    kinematics problem with FABRIK. Four nodes of the arm define three bones, and
+    the target and the effector were drawn in every step, with the blue node attached
+    to the ground as the root node and the outer red node used as the effector. All
+    the steps are shown in *Figure 12.8* to *Figure 12.11*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s step through a single iteration of the algorithm. First, we will examine
+    the *forward* solving part of FABRIK.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_08.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.8: Doing inverse kinematics using FABRIK forward iteration – part
+    1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The start situation is shown in *Figure 12.8* (**1**):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As shown in *Figure 12.8* (**2**), we will *move* the effector to the position
+    of the target as the first step. You can see that moving the node stretches the
+    red bone far beyond its original length.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We must correct the length of the red bone, so we need to save the length of
+    our bone before moving the effector. By using the saved length, we scale the red
+    bone back to its original length, right after the effector has been moved, as
+    shown in *Figure 12.8* (**3**). Scaling back the red bone to the previous length
+    rips apart our robotics arm, as seen in *Figure 12.8* (**3**), but this is an
+    intended behavior during a FABRIK iteration.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then, we will move the outer node of the purple bone back to the end of the
+    red bone, scaling it again to an arbitrary length. *Figure 12.8* (**4**) shows
+    the result after the robotics arm has been reconnected.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The purple bone is scaled back to its previous length, as shown in *Figure 12.9*
+    (**5**), moving the end node away from the blue bone.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_09.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.9: Inverse kinematics using FABRIK forward iteration – part 2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we will repeat *steps 4* and *5* of the purple bone movement with the
+    blue bone. We will reconnect the arm every time and scale the bone back to its
+    original length, as shown in *Figure 12.9* (**6**) and *Figure 12.9* (**7**).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '*Figure 12.9* (**8**) shows the result after the *forward* steps of the FABRIK
+    algorithm are finished. But having the robotic arm disconnected from the ground
+    is not the result we want. To fix the arm, we will repeat the same steps, but
+    this time *backward* on the same chain of bones.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the *backward* part of FABRIK, we will swap the target, effector node, and
+    root node. We use the original connection point of the arm as the target, the
+    end of the blue bone becomes the effector, and the original effector node is the
+    new root node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the first step in the backward operation, we will reconnect the arm to the
+    ground, as shown in *Figure 12.10* (**9**).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_10.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.10: Inverse kinematics using FABRIK backward iteration – part 1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we scale the blue bone back to its previous size and move the purple bone
+    in the same way as we did initially in *steps 2* and *3*. In *Figure 12.10* (**10**),
+    *Figure 12.10* (**11**), and *Figure 12.10* (**12**), the results of adjusting
+    the blue and purple bones are shown.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Now, the lower node of the red bone will move, and the red bone is scaled back
+    to its previous size, as shown in *Figure 12.11* (**13**) and *Figure 12.11* (**14**).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_11.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.11: Inverse kinematics using FABRIK backward iteration - part 2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 12.11* (**14**) moves the effector away from the position of the target,
+    but again, this is the intended behavior in FABRIK if the target cannot be reached.
+    In *Figure 12.11* (**15**), a single FABRIK iteration has ended.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the next iterations of FABRIK, *steps 2* to *9* are repeated until the effector
+    node reaches the target position, or until we hit the maximum number of iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By using simple pseudo-code, FABRIK can be melted down to this procedure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `SolveForward` and `SolveBackwards` methods are similar, so we can look
+    only at pseudo-code for the forward-solving part of FABRIK:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: The backward-solving part just starts with the saved root node position and
+    iterates over the bones in the opposite direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, the number of steps is small and the actions in these steps
+    are simple. Armed with the new knowledge, let’s add a FABRIK solver.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the FABRIK inverse kinematics algorithm
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The inverse kinematics solver using the FABRIK algorithm is implemented by
+    the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the FABRIK inverse kinematics solver, we create a new class, `IKSolver`,
+    by adding the `IKSolver.h` and `IKSolver.cpp` files to the `tools` folder.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Next to the constructor and a setter for the number of iterations, a `public`
+    method named `solveFABRIK()` is added:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also add the two `private` members, `mNodePositions` and `mBoneLengths`,
+    and three private methods, `solveFABRIKForward()`, `solveFABRIKBackwards()`, and
+    `calculateOrigBoneLengths()`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In `mNodePositions`, we store the world positions of the nodes during calculation,
+    and in `mBoneLengths`, the required original bone lengths are saved. The name
+    of the `calculateOrigBoneLengths()` method speaks for itself; we don’t need to
+    dive into details there. But let’s do a quick walkthrough of the three remaining
+    methods.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The forward part of FABRIK is handled in `solveFABRIKForward()`. First, we
+    set the first element of `mNodePositions` to the target position:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Then we loop over the remaining nodes, calculate the new direction of the bone
+    after moving the previous node, and calculate the new position of the node by
+    using the original length. Finally, we move the node to the new position, retaining
+    the length.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In `solveFABRIKBackwards()`, we do the same operations as in *steps 5 and 6*
+    but in the opposite direction along the node chain. We start with the root node
+    position as the target and adjust the node positions one by one:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The last method, `solveFARBIK()`, is used to control the iterations of FABRIK
+    plus the comparison of the effector and target positions. We start with a simple
+    check for an empty node matrix vector. In this case, we return an empty vector:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, we resize and fill the `mNodePositions` vector:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the helper method `extractGlobalPosition()`, the translational part of the
+    node matrix is extracted and returned. Now we can calculate the bone lengths,
+    and we store the position of the root node for the backward part of FABRIK:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We need to store the root node position because we alter the `mNodePositions`
+    vector during the forward calculations. Without saving the original root node,
+    the backward part would be impossible to solve.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Then, we start a loop with the maximum number of iterations:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: At the start of the loop, we compare the positions of the effector node and
+    the desired target. If the positions are close together, we return the current
+    node positions as solutions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now comes the FABRIK solving part. We call the forward solver method with the
+    target position and then the backward solver method with the saved root node position:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After both solving parts are finished, we continue with the next iteration.
+    Finally, we return the positions FABRIK found for the nodes:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: It’s possible that the effector node is unable to reach the target position,
+    i.e., because the node chain is too short. In this case, the best position FABRIK
+    could find will be returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we can continue with the last part of the FABRIK, we need to make sure
+    to configure the root and effector nodes of the model. Here, we will use only
+    the feet to create a natural appearance while walking up or down a hill.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the node chain for the instance’s feet
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To be able to configure the nodes for the feet, two new members of the `ModelSettings`
+    `struct` in the `ModelSettings.h` file are added:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the `msFootIKChainPair` array, we store the node IDs of the effector and
+    the root node for the left foot and right foot. We only need this pair for the
+    user interface since the contents of the `msFootIKChainNodes` array will be calculated
+    from the effector and root node IDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the user interface, we use the names from the bone name list of the instance’s
+    model. Since we have a 1:1 relationship between the bone IDs and the names, iterating
+    over the list to create a combo box is easy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Together with a Boolean variable to enable or disable inverse kinematics and
+    an iteration slider, the user interface for the section about inverse kinematics
+    for the model’s feet looks like *Figure 12.12*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_12.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.12: Configured inverse kinematics for the Women model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For *Figure 12.12*, the `Women` model was used as an example. For other models,
+    the node names may be different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inverse kinematics depends on the model
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ability to configure inverse kinematics for the feet of a model depends
+    heavily on the model’s skeleton. It’s likely that some models you find on the
+    internet may miss some parent-child relationships between nodes of the skeleton,
+    for instance between leg and feet nodes, leading to non-working inverse kinematics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The FABRIK algorithm has another part that adjusts the world positions of the
+    original nodes by using the calculated positions. We skipped the code for the
+    final part in the *Implementing the FABRIK inverse kinematics algorithm* section
+    since we have to split the FABRIK algorithm for technical reasons – the node data
+    used by the FABRIK algorithm resides on the GPU, but some of the calculations
+    are easier to handle on the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s combine the node positions now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adjusting the node positions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Due to the usage of compute shaders, the matrices containing the rotation, translation,
+    and scale plus the data for the world positions of the nodes only reside in GPU
+    memory. Plus, the node positions are calculated for performance reasons in a compute
+    shader. We need to copy the data back and forth between the CPU and the GPU to
+    adjust the node rotations to the results delivered by the FABRIK solver. After
+    calculating the final node positions for all instances with FABRIK, the rotation
+    data for every node from target to effector is updated. The resulting transform
+    matrices are uploaded to the GPU, and a compute shader is used to calculate the
+    new transform matrices. Since all child nodes of a node are affected by the transform
+    matrix, we have to perform these steps for each node individually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keeping the node transformations separate
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To simplify using the data calculated in the compute shaders, we will not combine
+    the rotation, translation, and scale data for the TRS matrix into a single matrix.
+    Instead, we store the values in a new `struct`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the three shaders files, `assimp_instance_matrix_mult.comp`, `assimp_instance_transform.comp`,
+    and `assimp_instance_headmove_transform.comp`, we add the following `TRSMat` `struct`
+    at the top:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: Be aware that the `rotation` element is a quaternion; we just use a `vec4` for
+    the transport to the shader since GLSL does not support quaternions directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To avoid adding translation, rotation, and scale to a matrix in one shader
+    and extracting the values again in another shader, we will keep the decomposed
+    transformation data as separate values in the SSBO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Creating the final TRS matrix is moved into the matrix multiplication shader,
+    along with the `createTRSMatrix()`, `createTranslationMatrix()`, `createScaleMatrix()`,
+    and `createRotationMatrix()` helper methods. The TRS matrices will be created
+    on the fly instead of doing a lookup in the `main()` method of the `assimp_instance_matrix_mult.comp`
+    shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since the calculation was done entirely on the GPU, the only change in the
+    renderer code to reflect the TRS data split is the size calculation for the `mShaderTRSMatrixBuffer`
+    SSBO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of a `glm::mat4` for the full TRS matrix, we use three `glm::vec4` instances
+    here, keeping the node transform split into translation, rotation, and scale like
+    in the compute shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `OGLRenderData.h` file, a matching `TRSMatrixData` `struct` is added:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Vulkan, the addition of `TRSMatrixData` happens in the `VkRenderData.h`
+    file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Right after the final node positions were calculated by the compute shaders,
+    but before the instances are rendered, new code will be added for the animated
+    instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the code for the animated instances
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We start by retrieving the current contents of the TRS buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then we iterate over the two feet and calculate the size of the node chain
+    for each foot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the foot node chain is empty, we continue immediately since we don’t have
+    anything to calculate here. But if we have a valid foot node chain, we iterate
+    backward over the node chain, and in each node chain, we iterate forward over
+    all instances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The order of the loops – foot first, then the node chain, and instance last
+    – has a good reason: it is much easier to handle cases where one of the foot node
+    chains is empty or the foot node chains have different sizes, as we can skip an
+    entire loop or use a different number of iterations. Iterating the node chain
+    backward is necessary because the foot chain vector contains the nodes in order
+    from the effector to the root node, but the world position update starts with
+    the root node as the first node.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the inner loop, we extract the node IDs of the current node and the previous
+    node from the foot node chains:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By using the two node IDs, we extract the world position of the nodes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: After multiplying the inverse of the bone offset node, the current node position,
+    and the instance world position, we get the world position of the two adjacent
+    nodes of the foot node chain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the two positions, we calculate the normalized `toNext` vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: To calculate the desired rotation for the node, we need to find a quaternion
+    that rotates the bone from the current world rotation to the rotation computed
+    by the FABRIK algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the new world positions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We extract the new world positions of the same nodes calculated by FABRIK,
+    calculate the normalized `toDesired` vector between the new world positions, and
+    compute the rotation angle between the `toNext` and `toDesired` vectors as a quaternion,
+    `nodeRotation`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, we have the world-level rotation between the current position
+    of the bone and the new position of the same bone of the model’s skeleton.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we extract the world-level rotation of the current node and calculate the
+    local rotation that would be needed to match the world-level rotation of the node:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we read the current local rotation of the node, concatenate the new
+    rotation, and store the rotation back to the TRS data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs: []
+  type: TYPE_PRE
+- en: By running the `mAssimpMatrixComputeShader` and uploading the updated TRS data,
+    the new node matrices for all the nodes in the foot node chain are recalculated.
+    As the last step, we read back the contents of the `mShaderBoneMatrixBuffer` to
+    have the new node matrices available for the next node in the foot node chain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are just one step away from a working inverse kinematics implementation.
+    What’s left now is detecting the collisions between the foot position and the
+    ground triangle. Let’s tackle the last section of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detecting feet-to-ground collisions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The general idea behind detecting collisions between instance feet and the ground
+    is the same as for the instances. We use the ray-to-triangle check to find the
+    intersection of a ray with the triangle below or above the defined foot node.
+    This intersection point is then used as the target position for the FABRIK solver.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For both feet of every instance, we use the same method to extract the world
+    position as in the last step of the FABRIK solver code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also calculate the offset of the foot node from the ground:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This `footDistAboveGround` offset is needed to let the foot hover above the
+    sloped ground triangle at the same distance as the foot would be on a plain ground
+    triangle. Then, we use the `AABB` of the instance to calculate the full and half
+    height of the bounding box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the two height values, we create a ray to detect the intersection with
+    the ground triangle. Next, we set a default value for the final `hitPoint` of
+    the intersection and iterate over the colliding triangles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then we check every colliding triangle for an intersection with a ray starting
+    at the half height of the instance, pointing at most the entire instance height
+    down:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using an upper and lower limit for the ray helps prevent the misdetection of
+    any nearby triangles. Next, we check if we have found an intersection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we add the `footDistAboveGround` to the resulting value to keep the original
+    distance from the animation to the ground. *Figure 12.13* shows a simplified example
+    of how keeping the foot-to-ground distance affects the instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_13.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.13: Retaining the distance of the foot above the ground'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we can run the inverse kinematics solver to calculate the adjusted node
+    positions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the FABRIK solver
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'First, we clear the vector containing positions to solve. Then, we place the
+    matrices of the nodes in the current foot node chain in `mIKWorldPositionsToSolve`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As the final step of the inverse kinematics, we let FABRIK solve the node positions
+    for the intersection point we have found, and insert the results into the `mNewNodePositions`
+    vector for the foot we are working on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE77]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, the foot positions are ready for the node matrix and TRS updates
+    from the *Detecting foot to ground collisions* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Enabling and configuring inverse kinematics after loading a level will render
+    an image similar to *Figure 12.14* to the screen:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/figure_12_14.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 12.14: The right foot of the right instance has less intersection on
+    sloped ground'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in the right instance in *Figure 12.14*, the right foot no longer
+    fully intersects the ground triangle. Also, the angle of the right knee has been
+    adjusted to allow the foot to be placed on the higher part of the ground triangle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is still some intersection with the toes on the left. Fixing the remaining
+    intersection by aligning the toes to the ground slope is a task in the *Practical
+    sessions* section. But even with this minimal intersection, it’s a lot of fun
+    to watch the instances going up and down on hills much more like a real human.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limitations of FABRIK
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Animations created by using a FABRIK solver for inverse kinematics usually look
+    good, but the algorithm has some limitations that should be addressed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The biggest problem arises when note rotations create unnatural bone positions.
+    For example, a human cannot bend their knees forward, but our instances on the
+    screen can do so. Without checking and restricting the rotations of the nodes,
+    the bones of the instances can end up in virtually any position. A task in the
+    *Practical sessions* section handles this issue by limiting node rotations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another problem emerges if the target is too far away from the effector, thus
+    becoming unreachable. FABRIK solves unreachable targets by stretching the entire
+    bone chain from the root node to the effector node in a straight line, causing
+    the instance to walk around with stiff legs like a robot. Since we can detect
+    if the target cannot be reached by the effector, handling these situations is
+    easier than unlimited node rotations. There is a task in the *Practical sessions*
+    section to solve problems with unreachable targets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we enhanced the collision detection in our level. First, we
+    added a separate and specialized octree for the level data, allowing us to do
+    a quick check for collisions between instances and level geometry. Then, we added
+    simple gravity to the virtual world and adjusted the collision detection to allow
+    instances to walk on the level floor. Finally, we added inverse kinematics for
+    the feet of the instances, bringing a more natural foot and leg movement on sloped
+    grounds by avoiding the feet floating above the ground or clipping into ground
+    triangles of the level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will add a final extension to the level data and add
+    simple navigation. We will start with a brief roundup of several ways to implement
+    navigation in games. Next, we will explore the A* pathfinding algorithm and implement
+    it in the application. Then, we will add waypoints to the map, serving as targets
+    for A* calculations. Finally, we will implement waypoint navigation to the instances,
+    enabling the instances to move to random waypoints or to patrol between a set
+    of defined waypoints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Practical sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here are some additions you could make to the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a more complete gravity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instead of just manipulating the vertical position of the instances, use a more
+    complex way to apply gravity by using vertical acceleration. Since gravity is
+    used in two places, in the instance for the speed and in the renderer for the
+    collision detection, synchronization between both code parts is needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add collision detection for the third-person camera.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In real games, the camera is also a normal object in the virtual world. And
+    instead of clipping through the level data, the camera always stays inside the
+    same boundaries as the character it follows, connected by a spring arm structure
+    to allow adjustments if the camera is unable to keep the exact position behind
+    the character. You can try to add a bounding box for the third-person camera and
+    check the boundaries against the level octree too. Remember to also check and
+    change the distance and height of the camera if a collision occurs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhance stair and cliff detection.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To enable the instances climbing stairs, basic logic has been added to the code
+    that compares the step height of stairs with the instance position. This idea
+    may not work for different kinds of game maps, plus the instance may fall off
+    a cliff when the stair detection returns the wrong result. Enhance the logic to
+    have better stair detection and also prevent the instance from falling down when
+    it “thinks” it is standing in front of a step when it is actually on the edge
+    of an abyss.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Align the instance’s feet to follow the slope and normal if the floor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Right now, the feet of the instances may still intersect the ground, depending
+    on the slope of the ground and the instance position. Add some code, and maybe
+    even more nodes to the model(s), to align the feet of the instance to the ground
+    triangle. This adjustment should work for forward/backward inclination and for
+    a sideway rotation of the feet to match the ground.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handle unreachable targets.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement logic to detect if the effector cannot reach the target and add some
+    kind of default rotations for the nodes, for instance, taken from the current
+    frame of the animation clip.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Move the node update part of FABRIK to a compute shader.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To keep the FABRIK code for updating the final node rotations simple and easy
+    to follow, a CPU/GPU combination was used. The downside of the current code is
+    the need to copy both TRS matrix data and final node positions from GPU memory
+    at the start of every update of the node chain. By creating a compute shader for
+    the node rotation updates, you can keep the entire node update process on the
+    GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Extended difficulty: Write a compute shader for inverse kinematics.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The FABRIK inverse kinematics algorithm is simple and straightforward. Implementing
+    the same algorithm in a compute shader should not be too hard. You can use the
+    matrix multiplication compute shader as an example of how to do loops in GLSL
+    code without hard coding the loop variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Extended difficulty: Add node limits to the inverse kinematics algorithm.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In the default version, inverse kinematics does not worry about unnatural bone
+    rotations when solving for the position. For a game character, it looks strange
+    if a knee or an elbow is bent in the wrong direction. By adding per-node limits
+    for all three rotation axes, the target may not be reachable, but the character
+    still looks like a human. But be warned: adding node limits may influence the
+    stability of the inverse kinematics algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Extended difficulty: Use a **bounding volume hierarchy** (**BVH**) for collision
+    detection.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The idea of a bounding volume hierarchy was mentioned in the *Using spatial
+    partitioning to reduce complexity* section of [*Chapter 8*](Chapter_8.xhtml),
+    and the book *Real-Time Collision Detection* by Christer Ericson has an entire
+    chapter about BHVs. Replacing the octree with a BHV to detect collisions may be
+    a long task since the creation of the hierarchy already adds a significant amount
+    of complexity to collision detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additional resources
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Introduction to the Jacobian Matrix: [https://medium.com/unity3danimation/overview-of-jacobian-ik-a33939639ab2](https://medium.com/unity3danimation/overview-of-jacobian-ik-a33939639ab2)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Collision Detection in Interactive 3D Environments* by *Gino van den Bergen*,
+    published by *CRC Press*: ISBN 978-1558608016'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Game Physics Engine Development* by *Ian Millington*, published by *CRC Press*:
+    ISBN 978-0123819765'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Game Physics* by *David H. Eberly*, published by *Morgan Kaufmann*: ISBN 978-0123749031'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Real-Time Collision Detection* by *Christer Ericson*, published by *CRC Press*:
+    ISBN 9781000750553'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'FABRIK publications: [http://www.andreasaristidou.com/FABRIK.html](http://www.andreasaristidou.com/FABRIK.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Inverse kinematics in Unreal Engine: [https://dev.epicgames.com/documentation/en-us/unreal-engine/ik-setups?application_version=4.27](https://dev.epicgames.com/documentation/en-us/unreal-engine/ik-setups?application_version=4.27)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Full body inverse kinematic: [https://dev.epicgames.com/documentation/en-us/unreal-engine/control-rig-full-body-ik-in-unreal-engine](https://dev.epicgames.com/documentation/en-us/unreal-engine/control-rig-full-body-ik-in-unreal-engine)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Möller-Trumbore algorithm for ray-triangle intersection checks: [http://www.lighthouse3d.com/tutorials/maths/ray-triangle-intersection/](http://www.lighthouse3d.com/tutorials/maths/ray-triangle-intersection/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

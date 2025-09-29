@@ -1,0 +1,1030 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Writing Smart Pointers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 5*](B21071_05.xhtml#_idTextAnchor079), we examined the standard
+    smart pointers at our disposal, with emphasis on the most important ones: `unique_ptr<T>`
+    and `shared_ptr<T>`. These types are precious and important tools in every contemporary
+    C++ programmer’s toolbox, and using them when appropriate leads to programs that
+    are smaller, faster, and simpler than they would be with most handwritten alternatives.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This book aims to discuss how to manage memory in a C++ program. For that reason,
+    in this chapter, we will write simple versions of both `unique_ptr<T>` and `shared_ptr<T>`
+    to show ways in which one could write naïve-yet-workable versions of these types
+    if needed. We *strongly* recommend that you use the standard versions in practice,
+    not those in this book (at least in production code): standard versions have been
+    thoroughly tested, optimized, and used by a multitude of programmers to good effect.
+    The reason we write “homemade” flavors here is simply to develop an intuition
+    as to how one could write such as type: there still exist companies using pre-C++11
+    compilers, sometimes for reasonable reasons, and there might be reasons in some
+    settings to write a smart pointer inspired by the standard ones yet slightly different.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will then examine some niches not covered by the standard smart pointers,
+    either because they are deemed simple enough that users can roll out their own,
+    they are deemed specialized enough that they should be covered through third-party
+    libraries, or there is no clear path to standardizing them yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To summarize, in this chapter, we will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Take a brief look at ownership semantics, those of the standard smart pointers
+    as well as others that we could – and sometimes will – implement ourselves.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement our own naïve-yet-usable version of `std::unique_ptr` in order to
+    grasp some of the techniques this might entail.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement our own naïve-yet-usable version of `std::shared_ptr`. Note that by
+    “usable” here we mean usable in simple contexts, as a full implementation of something
+    such as `std::shared_ptr` is significantly more complex than what a book such
+    as this one can reasonably cover.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement a non-standard smart pointer with single ownership and duplication
+    semantics, showing different techniques to achieve this objective.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement two distinct non-owning “smart” pointers that are very lightweight
+    types yet help write better and safer code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: After reading this chapter, we should have a better grasp of the techniques
+    involved in writing types that syntactically behave as pointers but provide (or
+    simply clarify) ownership semantics. The techniques used should be in large part
+    reusable to other types of problems, memory-management related or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Does that sound like a plan? Let’s get to it then!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter6](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter6).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ownership semantics
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Smart pointers are all about clarifying ownership over indirectly accessed
+    resources. If we restrict ourselves to the standard facilities, smart or not-so-smart,
+    what we have is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Type** | **Niche** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `unique_ptr<T>` | **Ownership semantics**: Single ownership.**Notable special
+    member functions**: Non-copyable. The destructor is responsible for destroying
+    the pointee. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `shared_ptr<T>` | **Ownership semantics**: Shared ownership.**Notable special
+    member functions**: Copying, assigning, and destroying update a shared use count.
+    The destructor of the last co-owner is responsible for destroying both the pointee
+    and the use count. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `T*` | **Ownership semantics**: No ownership is defined in the type system
+    (ownership rules have to be inscribed in user code).**Notable special member functions**:
+    Not applicable (this is a fundamental type). |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 6.1 – Usage category per pointer type
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s a small zoo, all things considered. What are the other kinds of semantics
+    we could envision in order to fill this table? Well, there could be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An `observer_ptr<T>` type that behaves like `T*` but makes it more difficult
+    to accidentally claim ownership with such operations as applying `delete` on the
+    pointer (accidents happen indeed)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `non_null_ptr<T>` type that behaves like `T*` but for which a `null` pointer
+    never occurs, simplifying client code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `remote_ptr<T>` type that behaves like a proxy to remote pointees
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `dup_ptr<T>` type that implements single ownership of the pointee, as `unique_ptr<T>`
+    does, but is copyable and duplicates the pointee when `dup_ptr<T>` is copied,
+    and so on
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will not implement all of these (the `remote_ptr<T>` case in particular,
+    interesting as it is, falls outside the scope of this book, and there are numerous
+    other exotic semantics we could entertain that you are welcome to implement based
+    on the ideas you will find in this chapter), but we will write a few. The important
+    aspect in each case is to define clearly what the intended semantics are, ensure
+    they are not already covered by an existing type, and make sure we implement them
+    appropriately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start with a simple implementation of what is perhaps the best-known
+    standard smart pointer: `unique_ptr`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing your own (naïve) unique_ptr
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will first try a simple, homegrown version of `std::unique_ptr<T>`. As mentioned
+    at the beginning of this chapter, our goal is to develop an intuition for the
+    kind of code required to write such a type and not to encourage you to try to
+    replace the standard facilities: they exist, they work, they are tested, use them.
+    Oh, and they use many cool tricks we cannot explore in this book as we want to
+    keep the book’s size under control!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type signature
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As mentioned in [*Chapter 5*](B21071_05.xhtml#_idTextAnchor079), `unique_ptr<T>`
+    does not really exist as the type is, in fact, `unique_ptr<T,D>`, where `D` defaults
+    to `default_deleter<T>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will cover both forms (scalar and array) of `unique_ptr`. The reason for
+    these two specializations is that for `T[]`, we will want `unique_ptr` to expose
+    `operator[]` but we will not want to expose this for a scalar `T` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s start with the basic deleter types we will offer. Note that users can
+    supply other deleter types if needed as long as they use the same signature for
+    `operator()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What we have so far are three deleter types that are callable in the same way
+    and that are all class types (the reason for this will become evident soon but
+    know that there’s sometimes value in uniformity). The odd one is `deleter_pointer_wrapper<T>`,
+    which wraps a copyable state (a function pointer) but otherwise behaves like the
+    other two: when called on `T*`, it applies some (user-supplied) function to that
+    pointer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step will be to choose the form of `unique_ptr<T,D>`. We will expect
+    most deleters to be stateless and use `deleter_pointer_wrapper<T>`. To choose
+    between these two options, we will need to detect whether `D` is a function pointer
+    or not, which we will achieve using our own `is_deleter_function_candidate<T>`
+    trait.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The part of our implementation that detects deleter function candidates is
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This bit is probably self-explanatory, but the idea is that most types are not
+    candidates to be deleter functions, but functions of the `void(*)(T*)` type are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then get to the general `unique_ptr<T>` type, used for scalars. We will
+    use our deleter function detection trait to conditionally choose between `D` types
+    and `deleter_pointer_wrapper<T>` as the base class for our type, and cast this
+    to a pointer to that base in order to release the resource in our destructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The same approach, essentially, is taken for the `T[]` specialization of our
+    type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice that a default `unique_ptr` will behave conceptually like a `null` pointer,
+    something that should be unsurprising to most. Now that we have the basic idea
+    in place, let’s explore the semantics specific to `unique_ptr`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Special member functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The code for the special member functions will be the same for both the scalar
+    and the array forms of `unique_ptr`. We have already looked at the destructor
+    and the default constructor in the previous section, so let’s look at the other
+    four, in pairs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We want the type to be non-copyable, as it represents sole ownership of the
+    pointee (if it was copyable, would ownership of the pointee belong to the original
+    or the copy?)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We want move operations to implement the transfer of ownership
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The code for both the general case and its array specialization will be as
+    follows (note that the code uses `std::exchange()` and `std::swap()`, both found
+    in the `<``utility>` header):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Most of this should be self-evident by this point. You might notice the use
+    of `std::exchange()`, which has the effect of copying `other.p` to `this->p` and
+    then copying `nullptr` to `other.p`, implementing the transfer of ownership as
+    expected. Note that move operations for our type are trivial and never throw,
+    both of which are highly desirable properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are some operations that will be implemented in both the general case
+    and the array case, namely, `operator bool` (`true` only if the object does not
+    model a `null` pointer), `empty()` (`true` only if the object does model a `null`
+    pointer), as well as `operator==()` and `operator!=()`. These are essentially
+    trivial to implement. The other member function we will want to expose is `get()`
+    in both its `const` and non-`const` versions in order to expose the underlying
+    pointer for client code that needs to interact with lower-level functions such
+    as system calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: As mentioned in the comments in the preceding code excerpt, one does not need
+    to explicitly implement `operator!=()` since C++20 as long as `operator==()` offers
+    the expected signature. The compiler will synthesize `operator!=()` from `operator==()`,
+    quite simply.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s take a look at how the `operator*()`, `operator->()`, and `operator[]()`
+    pointer-like functions are implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pointer-like functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The pointer-like functions are different for the scalar case and the array
+    case. For pointer-to-scalar, we will want to implement `operator*()` and `operator->()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `operator->()` member function is a strange beast: when used on an object,
+    it will be reinvoked on the returned object (and again on that returned object,
+    and so on) until something returns a raw pointer, at which point the compiler
+    will know what to do. It’s a very powerful mechanism.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For pointer-to-array (the `unique_ptr<T[]>` specialization), we will want to
+    implement `operator[]`, which will make more sense than either `operator*()` or
+    `operator->()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You might notice the apparent duplication of these member functions as each
+    one is exposed in both a `const` and non-`const` form, a “trend” started by the
+    `get()` member function a bit earlier. This is a *syntactic* resemblance as they
+    are *semantically* different: in particular, only the `const` form is available
+    through a `const` `unique_ptr<T>` object.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you have a C++23 compiler, you can make it so the compiler will synthesize
+    the forms you use in practice given a properly written set of template member
+    functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This reduces the number of member functions we have to write by half. How does
+    this work? Well, C++23 introduces the “deduced `this`” mechanism that allows one
+    to explicitly mark the first argument of a member function with the `this` keyword.
+    Doing so and combining it with a forwarding reference (the `U&&` type) lets the
+    compiler deduce the `const`-ness (or lack thereof) of `this`, in effect, expressing
+    both the `const` and non-`const` versions in a single function. Note the `decltype(auto)`
+    return types that accompany these functions, which infer both the `return` statement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And that’s it! We now have a simple, yet functional `unique_ptr<T>` implementation
+    that works for most use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, as nice as it is, `unique_ptr<T>` is not a panacea and there are
+    other needs to be covered in real programs. Let’s move on to a simplified implementation
+    of `shared_ptr<T>` to see how we could implement shared ownership semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A simple program that uses our homemade `unique_ptr<T>` with a default deleter
+    would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another that uses a custom deleter would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Writing your own (naïve) shared_ptr
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A `shared_ptr<T>` type is a difficult beast to implement and a harder beast
+    yet to optimize. The invitation to use the standard version of existing smart
+    pointers is stronger in this case than it was for `unique_ptr<T>`: this type is
+    hard to get right, and the standard version benefits from years of experience
+    and testing. Only use the naïve version in this section for experimentation (it
+    works and does the job for simple cases, but writing an industrial-strength implementation
+    is major-league work).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The main difficulty when writing a `shared_ptr` is that it’s a type with two
+    responsibilities: it co-owns both the pointee and the usage counter, requiring
+    some measure of care, especially with respect to exception safety. The single
+    responsibility principle of classical object-oriented programming is a sound principle:
+    a type with a single responsibility is exceedingly simpler to get right than a
+    type with two or more responsibilities.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To keep our proposition simple, we will eschew many details of the standard
+    `shared_ptr` contract, limiting ourselves to managing a scalar `T`. Let’s take
+    this type step by step:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: As mentioned previously, `shared_ptr<T>` is responsible for `T*` and a pointer
+    to a client counter, both of which need to be managed and shared between co-owners.
+    Note that our shared counter is a pointer to an atomic integral since `shared_ptr<T>`
+    is particularly relevant in multithreaded cases where one does not know which
+    of the threads will be the last user of the object. For that reason, operations
+    such as incrementing and decrementing the counter require synchronization to avoid
+    incurring a *data race*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding data races
+  prefs: []
+  type: TYPE_NORMAL
+- en: If a program meets a situation where a given object is (a) accessed concurrently
+    by at least two threads, (b) at least one of these accesses is a write, and (c)
+    there is no synchronization, then that program has what we call a **data race**
+    and we essentially lose the capacity to reason about it from the source code.
+    This is a really bad situation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our case, operations on the shared counter will most probably be done concurrently
+    and, as such, they have to be synchronized. This explains our use of the low-level
+    synchronization objects that are atomic integrals as counters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Constructing a `shared_ptr<T>` object can be tricky:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, we will define `shared_ptr<T>` to be empty, thus conceptually equivalent
+    to a `null` pointer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The constructor of `shared_ptr<T>` that takes `T*` as an argument represents
+    the act of *taking ownership* of the pointee. For that reason, if an exception
+    is thrown when allocating the counter, that pointee is destroyed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The copy constructor will represent *sharing ownership* of the pointee, making
+    sure to consider the case where the source object models a `null` pointer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The move constructor models the *transfer of ownership*. As is often the case
+    for move operations, it’s very fast and it shows highly predictable behavior.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'As can be seen from the following code excerpt, with a type that has more than
+    one responsibility, even construction is a delicate endeavor. In the constructor
+    that takes `T*`, we might need to allocate the shared counter, which might throw,
+    a situation we need to manage. In the copy constructor, we need to take into account
+    that the argument might model an empty `shared_ptr<T>`, in which case the shared
+    counter would be `null`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `empty()`and `operator bool()` member functions have been included in that
+    excerpt since these functions directly tie into the way the default constructor
+    (the empty state of this type) is expressed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The assignment operator is unsurprising: copy assignment models the act of
+    releasing control of the currently held resource and sharing the resource of its
+    argument, whereas move assignment models the act of releasing control of the currently
+    held resource and transferring control of the resource held by the argument to
+    the assigned-to object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Destruction is probably the trickiest aspect of this type. We want to make sure
+    that the last owner of the pointee destroys it, to avoid immortal objects. The
+    key point is that `shared_ptr<T>` should only destroy the pointed-to `T` object
+    if it was the last user of that object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are at least two “self-evident” naïve algorithms that do not work. One
+    is *If* `ctr` *is not null, then if* `*ctr==1`*, delete* `p` *and delete* `ctr`.
+    This algorithm allows the case where two threads enter the destructor concurrently
+    with `*ctr==2`. In that case, it is possible that neither thread sees `*ctr==1`,
+    and the pointees are never destroyed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.1 – Race condition leading to an immortal object](img/B21071_06_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.1 – Race condition leading to an immortal object
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other is *If* `ctr` *is not null, then decrement* `*ctr`*. If* `*ctr==0`*,
+    delete* `p` *and delete* `ctr`. This algorithm allows the case where two threads
+    enter the destructor concurrently with `*ctr==2`, and then both concurrently decrement
+    `*ctr` leading to the possibility of both seeing `*ctr==0`, resulting in a double
+    deletion of the pointees:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.2 – Race condition leading to double deletion of the object](img/B21071_06_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.2 – Race condition leading to double deletion of the object
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both cases are bad, albeit for different reasons, so we need to do better. The
+    difficult part of the process is ensuring that the executing thread can be made
+    aware that it is the one that made it so `*ctr` became zero. The general solution
+    to such a problem requires enclosing two steps (changing the value of a variable
+    only if it had a known-beforehand value and being informed that this write did
+    or did not happen) in a single operation, something that must be supported by
+    at least one hardware operation on a multicore machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ offers abstractions over these essential hardware operations through atomics.
+    One such atomic operation is named `compare_exchange_weak()`, which takes the
+    `expected` value (what is believed to be in the variable) and the `desired` value
+    (what one seeks to write to that variable, but only if it holds `expected`), and
+    returns `true` only if the *write* actually happened. For convenience, `expected`
+    is taken by reference and updated with the value actually held by the object at
+    that time, since this function is usually called in a loop until a successful
+    write of `desired` actually occurs, which involves re-reading `expected` every
+    time to update the function’s view of the variable’s current state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A dance with pictures
+  prefs: []
+  type: TYPE_NORMAL
+- en: This `expected` and `desired` dance can be seen as taking pictures. A thread
+    wants to decrement `*ctr`, but `*ctr` holds a mutable state and is accessed concurrently,
+    which means its value can change at any time. Thus, we take a picture (`expected`)
+    in a local variable under our control. We base the value we want to write (`desired`)
+    on that local picture that we know did not change. Then, we try to act based on
+    that (potentially obsolete) knowledge and see whether our assumption (that `*ctr`
+    holds `expected`) is held. This lets us know that we were the ones to write `desired`
+    in `*ctr`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With this knowledge, a possible implementation of the destructor would be the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: After the loop, we know that we wrote `desired` when `*ctr` held `expected`,
+    thus if `desired` was `0` (implying `expected` was `1`), we know we were the last
+    user of that pointee. Yes, it’s subtle. And this is only a toy version of `shared_ptr<T>`.
+    We could optimize it in many ways, but that goes beyond the scope of this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A simpler solution
+  prefs: []
+  type: TYPE_NORMAL
+- en: The solution shown here with `compare_exchange_weak()` is one of many options
+    at our disposal. It was preferred for this book because it’s an interesting approach
+    for a general solution to the concurrent update problem and opens up optimization
+    opportunities if you are comfortable with memory order constraints (which we will
+    not go into here). In this specific case, we could have replaced the loop with
+    something like `if((*ctr)-- == 1)`, as if one decrements `*ctr` atomically and
+    the value previously held was `1`, then we know for a fact that `*ctr` is now
+    `0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other important member functions of our `shared_ptr<T>` implementation
+    involve comparison (`operator==` and `operator!=`), the `get()` member functions
+    that let one obtain the underlying, raw `T*` for code that needs it, and the indirection
+    operators that are `operator*()` and `operator->()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you want to, feel free to apply the “deduced `this`” C++23 feature shown
+    in the `unique_ptr` section earlier to simplify this code. Also remember that
+    in C++20, `operator!=()` will be inferred from `operator==()` and does not need
+    to be written explicitly in the source code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A very simple example of client code for this smart pointer would be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, `th0` and `th1` both sleep for a pseudorandom number of milliseconds,
+    then display something and conclude execution, so we cannot know in advance which
+    of `th0` and `th1` will conclude first; both threads are detached, which means
+    there is no later point at which we will call `join()` on them, so we cannot suppose
+    that `main()` is the last user of the shared resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The example is contrived to keep it simple, and it bears repeating that as `shared_ptr<T>`
+    is significantly more costly to use than `unique_ptr<T>` would be, one will generally
+    prefer the latter over the former when there is a clear last owner of the resource.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A few words on make_shared()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'It is possible that when reading about C++ in general and `shared_ptr<T>` in
+    particular, you might have read that, whenever possible, it is recommended practice
+    to replace this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Replace it with the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: If that is the case, you might be wondering (a) why this is recommended practice,
+    and (b) why we have not addressed it yet. The answer to (a) we can provide now,
+    but the answer to (b) is that we will need to wait until we reach [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116)
+    to have the tools and knowledge required to implement such a facility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To understand why we recommend preferring the `make_shared<T>()` factory function
+    to a direct call to the `shared_ptr<T>` constructor, the key idea is that with
+    the `shared_ptr<T>` constructor, the `T` object is allocated by client code, and
+    given to `shared_ptr<T>` under construction, which takes ownership of that pointer
+    and allocates a shared counter *separately*. We then end up with two allocations
+    (the `T` object and the counter), probably on separate cache lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, if we go through `make_shared<T>()`, this factory function is responsible
+    for allocating both the `T` object *and* the counter, perfectly forwarding the
+    arguments received by the function to the `T` constructor. Since the same function
+    performs both allocations, it can fuse them in a single allocation of a memory
+    block that contains both the `T` object and the counter, *putting them both on
+    the same cache line*. This can lead to enhanced performance characteristics if
+    a single thread tends to read from both pointers (`T*` and the counter) in a short
+    time span, but (as can sometimes be the case) can be hurtful if another thread
+    observes frequent changes to the counter’s value. As is often the case in optimization-related
+    situations, measure and make sure what works well in general is also good for
+    your own, specific use cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clearly, to achieve this optimization, we need to be able to create such a block
+    (conceptually, a struct containing `T` and an atomic integral) and make sure that
+    `shared_ptr<T>` can contain either representation (two separate pointers or a
+    pointer to a block with two objects) while remaining usable and efficient. Controlled
+    use of the tricks seen in [*Chapter 2*](B21071_02.xhtml#_idTextAnchor027) and
+    [*Chapter 3*](B21071_03.xhtml#_idTextAnchor047) will be helpful when we get there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing a policy-based duplicating pointer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let’s leave aside the standard smart pointers for a moment. Suppose we seek
+    to write a smart pointer type whose semantics fit neither the sole ownership mold
+    of `std::unique_ptr<T>` nor the shared ownership mold of `std::shared_ptr<T>`.
+    For the sake of this example, suppose more specifically that we want single ownership
+    semantics but, unlike `std::unique_ptr<T>`, which is movable but non-copyable,
+    we want duplication of the pointer to lead to duplication of the pointee. What
+    can we do?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Well, this is C++, so we can of course write our own. Let’s call this new smart
+    pointer type of ours `dup_ptr<T>` (for “duplicating pointer”, or “pointer that
+    duplicates the pointee”). Since we examined how one could implement sole ownership
+    through our homemade `unique_ptr<T>` earlier in this chapter, this section will
+    mostly focus on the question of duplicating the pointee.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What do we mean by duplication? Well, there are two expected cases: copying
+    an object of a non-polymorphic type and copying an object of a polymorphic type,
+    with polymorphic meaning “with at least one `virtual` member function” for the
+    sake of this example. Of course, programmers, being highly inventive creatures,
+    know that someone will end up with more exotic situations so we will try to take
+    care of the aforementioned “expected cases” and leave a door open for those with
+    unusual applications.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Why is there a difference between polymorphic and non-polymorphic types? Consider
+    the following program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can suppose that the `duplicate(X*)` function can safely create an object
+    of the `X` type since `X` has no `virtual` member function and, as such, is probably
+    not meant to serve as a public base class. However, there is a high probability
+    that `duplicate(B*)` does the wrong thing by calling the constructor of `B`, as
+    `B*` passed as an argument could be `B` or a pointer to an object of any class
+    derived from `B` (here, `D0*`). Hence, calling `new B{ *p };` only constructs
+    the base part, slicing away any state from the pointed-to object and resulting
+    in a probably incorrect program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As is well known in object-oriented programming circles, the customary way to
+    duplicate an object of a polymorphic type is through *subjective duplication*,
+    otherwise known as `virtual` member function, the only entity that can really
+    claim to know the type of the pointee is… the pointee itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What `dup_ptr<T>` will do, then, is to pick a *duplication policy* based on
+    the characteristics of `T`: by default, if `T` is polymorphic, then we will duplicate
+    through cloning; otherwise, we will duplicate through copying. Of course, we will
+    let the client code specify a custom duplication mechanism if needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will explore three approaches to this selection of a default duplication
+    policy: an intrusive approach based on interfaces, a non-intrusive approach based
+    on traits and compile-time detection of a cloning member function using C++17
+    features, and another non-intrusive approach based on C++20 concepts.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detection through interfaces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'One thing we could do in user code is impose that cloneable types implement
+    a specific interface, as in this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Such a solution is probably not standardization-worthy: it is intrusive, imposes
+    some overhead (we are assuming that cloneable types will be polymorphic types,
+    something that is likely but not mandatory), and so on. It can be a solution for
+    your own code base, of course. Applying this idea to a revisitation of the example
+    that mishandled duplication of a polymorphic type, earlier, we end up with the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, suppose we want to develop a skeleton of `dup_ptr<T>` that copies types
+    that are not derived from `cloneable` and clones types that are. To that effect,
+    we can use the `std::conditional` type trait and choose between two function object
+    types, a `Copier` type that copies and a `Cloner` type that clones:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This implementation supposes a stateless (no member variables) `Dup` type, which
+    is highly probable but should be documented in practice (if we accept stateful
+    `Dup` types, we need to instantiate a `Dup` object and write code to copy and
+    move that object, leading to a much more involved implementation). With this implementation,
+    any type that derives from `cloneable` will be cloned and other types will be
+    copied, unless the user code supplies an exotic implementation of the `Dup` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detection through traits
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If we do not want to impose a base class to our `cloneable` types, we can use
+    type traits to detect the presence of a `const`-qualified `clone()` member function
+    and suppose this is a reasonable claim that cloning is a better choice than copying.
+    Note that this non-intrusiveness supposes an unspoken agreement on the meaning
+    of `clone()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can achieve this in many ways, but the cleanest and most general one probably
+    uses Dr. Walter Brown’s `std::void_t` type, found in `<type_traits>` since C++17:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `std::void_t` type is a brilliant piece of work that lets knowledgeable
+    people simulate, in a limited manner but for general expressions, what `requires`
+    has allowed since C++20\. The way to read this example is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, `has_clone<T>::value` is `false`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For any `T` type for which `p->clone()` for some `const T*` object `p`, `has_clone<T>::value`
+    is `true`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Once the `Dup` type has been chosen, normal operations continue. The advantage
+    of this implementation over the previous one is that this one checks for the existence
+    of a suitably written `clone()` member function, whereas the previous one checks
+    for the existence of a specific base class. Implementing a function is a lighter
+    contract than deriving from a specific base class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A word on std::void_t
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `std::void_t` type is a brilliant piece of work. Using it relies on `has_clone<T>`
+    is `false` for most types but is `true` when expression `p->clone()` is valid
+    for some `const T*` object `p`. That we can easily test the validity of any expression
+    even before concepts came into their own is just beautiful, and we owe Dr. Walter
+    Brown much for this gem (among many other gems).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detection through concepts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Since C++20, tricks such as `std::void_t` are less useful than they were since
+    concepts are now part of the language’s type system. Through concepts, we can
+    define a `cloneable` type, `T`, to be something for which a call to `clone()`
+    is well-formed on `const T*` and yields something that is convertible to `T*`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With this, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Concepts, like traits, are a non-intrusive solution to this problem. Where traits
+    are a programming technique, however, they are ingrained in the type system and
+    we can (for example) write code that’s specialized for `cloneable<T>` and code
+    that is not. In our case, the fact that we want to leave the door open for types
+    that use neither the copy constructor nor a `clone()` member function suggests
+    that the current setup, which lets client code supply other duplication mechanisms,
+    is probably preferable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++26
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++26 will contain two standard types named `std::indirect` and `std::polymorphic`
+    that will cover a niche close to the one described by this `dup_ptr`. It was voted
+    in on February 15 2025.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some not-so-smart yet useful smart pointers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So we have standard smart pointers, such as `unique_ptr<T>` (single ownership)
+    and `shared_ptr<T>` (shared ownership), and we can write our own for more exotic
+    situations (we examined `dup_ptr<T>` where we have single ownership but duplication
+    of the pointee when the pointer is duplicated). Are there other common semantics
+    we might want to ensconce in the type system of our program?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Well, there are at least two “easy” ones one could think of: implementing a
+    “never null” semantic and implementing an “only observing” semantic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A non_null_ptr type
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s go back to an earlier example where we wrote the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note the comment, which puts the burden of not supplying a null pointer on
+    user code. We could have approached this constraint in many other ways, including
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Asserting `!p`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calling `std::abort()` if `!p`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Calling `std::terminate()` if `!p`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Throwing if `!p`, and so on
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The important thing is that if we care about pointers being non-null, and if
+    we inject `if(!p)` tests in our runtime code, we are probably doing something
+    wrong as this could (or should?) be part of the type system: *this function only
+    accepts non-null pointers*. Code speaks louder than comments.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This idea appears in some commercial libraries (for example, `gsl::non_null<T>`
+    from the guideline support library offered by some major compiler vendors) and
+    is easy to implement as long as one has a clear way of signaling errors. For the
+    sake of the example, we will suppose that this clear way is throwing an exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using this type, any function that accepts a `non_null_ptr<T>` argument knows
+    that the `T*` pointer therein will be non-null, relieving client code from the
+    burden of validation. This makes `non_null_ptr<T>` a beautiful type for the interface
+    of functions that expect a non-null `T*`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The rest of this class is mostly trivial to write at this point. The key peculiarity
+    is that `non_null_ptr<T>` will not expose a default constructor, as that constructor
+    would have to initialize the `p` data member to some default value (probably `nullptr`)
+    but the `non_null_ptr<T>` type models a non-null pointer, which would lead to
+    nonsensical code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In terms of usage, take a look at this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, compare it with this, supposing that `non_null_ptr<T>` throws when constructed
+    with a null pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The two main advantages of `non_null_ptr<T>` over `T*` in this case are that
+    the type system documents the intent better with `non_null_ptr<T>` (with `T*`,
+    a null pointer might be fine, but with `non_null_ptr<T>`, it is clearly not) and
+    that the called functions can proceed without validating, the validation being
+    (again) ingrained in the type system. Using a richer type than `T*` makes both
+    caller code and called code better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What if the called function needs `T*`? This can happen, for example, in the
+    case where it needs to call a C function. Well, then, use the `non_null_ptr<T>`
+    object’s `get()` member function. C++ is nothing if not pragmatic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An observer_ptr type
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'How about having a very dumb smart pointer type named `observer_ptr<T>` that
+    solely cares about expressing the idea that that “smart” pointer is, indeed, *not*
+    a pointer, in the sense that operations that would apply to a raw pointer are
+    restricted on that type. The canonical issue is that applying `delete` on `T*`
+    would work but applying `delete` on `observer_ptr<T>` would not since `observer_ptr<T>`
+    is… not a pointer. Indeed, consider the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might say, as the comment states, “But that function’s not supposed to do
+    that! It does not own `*p`!” but, well, mistakes happen, as do misunderstandings.
+    In this case, the impact of misunderstandings is made worse by the fact that nothing
+    in the argument’s type states that applying `operator delete` to `p` is incorrect!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let’s change the signature slightly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The “use `*p`” comment remains the same in both versions. The `observer_ptr<T>`
+    type offers almost trivial versions of all reasonable operators and member functions
+    (`get()`, `operator*()`, `operator->()`, `empty()`, and so on) so usage of `T*`
+    and of `observer_ptr<T>` should be mostly equivalent in user code; the only difference
+    is in misguided uses such as applying `delete` or performing pointer arithmetic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sometimes, just clarifying intent in a function interface makes code better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 5*](B21071_05.xhtml#_idTextAnchor079), we spent some time on the
+    proper usage of standard smart pointers. In the current chapter, we “dirtied our
+    hands,” so to speak, and we wrote homemade (and simplified) versions of `unique_ptr<T>`
+    and `shared_ptr<T>`. As mentioned more than once, this is meant as an educational
+    exploration, as your library vendor assuredly provides significantly better (more
+    complete, more performant, better tested, etc.) implementations in both cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we also explored the possibility of providing homemade smart
+    pointer types, with a policy-based `dup_ptr<T>` based on three distinct approaches
+    to the selection of a duplication algorithm. The intent was to show that it can
+    be done, how it can be done, and how we can provide reasonable, usable defaults
+    without blocking user code with more exotic requirements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Toward the end of this chapter, we examined some relatively simple (but useful)
+    smart (well, lightly smart) pointers that can be used at the edges of functions
+    (typically, as argument types) to make semantic requirements implicit through
+    the type system instead of forcing user code to enforce these requirements explicitly…
+    and sometimes fail to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unsurprisingly, memory management is not limited to smart pointers. In the next
+    chapter, we will explore how the `new`, `new[]`, `delete`, and `delete[]` operators
+    work, how we can implement them ourselves, and why we sometimes want to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Part 3: Taking Control (of Memory Management Mechanisms)'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will delve somewhat deeper and examine ways in which you can
+    take over some of the core memory allocation mechanisms in the C++ language and
+    customize them to your needs. We will see how you can control what operators such
+    as new and delete do, how to use specialized knowledge to obtain specific execution
+    properties, and how these operators can be used in innovative ways. We will also
+    use this knowledge for a few real-life applications and to achieve fast, sometimes
+    extremely fast, memory management operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This part has the following chapters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 7*](B21071_07.xhtml#_idTextAnchor116), *Overloading Memory Allocation
+    Operators*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 8*](B21071_08.xhtml#_idTextAnchor128), *Writing a Naïve Leak Detector*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 9*](B21071_09.xhtml#_idTextAnchor141), *Atypical Allocation Mechanisms*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 10*](B21071_10.xhtml#_idTextAnchor153), *Arena-Based Memory Management
+    and Other Optimizations*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 11*](B21071_11.xhtml#_idTextAnchor163), *Deferred Reclamation*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

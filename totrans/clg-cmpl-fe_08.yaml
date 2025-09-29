@@ -1,0 +1,758 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Advanced Code Analysis
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Clang-Tidy checks, as discussed in the previous chapter, rely on advanced matching
+    provided by the AST. However, this approach might not be sufficient for detecting
+    more complex problems, such as lifetime issues (that is, when an object or resource
+    is accessed or referenced after it has been deallocated or has gone out of scope,
+    potentially leading to unpredictable behavior or crashes). In this chapter, we
+    will introduce advanced code analysis tools based on the **Control Flow Graph**
+    (**CFG**). The Clang Static Analyzer is an excellent example of such tools, and
+    Clang-Tidy also integrates some aspects of CFGs. We will begin with typical usage
+    examples and then delve into the implementation details. The chapter will conclude
+    with a custom check that employs advanced techniques and extends the concept of
+    class complexity to method implementations. We will define cyclomatic complexity
+    and demonstrate how to calculate it using the CFG library provided by Clang. In
+    this chapter, we will explore the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What static analysis is
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Gaining knowledge of CFGs – the basic data structure used for static analysis
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How CFGs can be used in a custom Clang-Tidy check
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What analysis tools are provided in Clang and what are their limitations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 6.1 Technical requirements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The source code for this chapter is located in the `chapter6` folder of the
+    book’s GitHub repository: [https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6](https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.2 Static analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Static analysis is a crucial technique in software development that involves
+    inspecting the code without actually running the program. This method focuses
+    on analyzing either the source code or its compiled version to detect a variety
+    of issues, such as errors, vulnerabilities, and deviations from coding standards.
+    Unlike dynamic analysis, which requires the execution of the program, static analysis
+    allows for examining the code in a non-runtime environment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More generally, static analysis aims to check a specific property of a computer
+    program based on its meaning; that is, it can be considered a part of semantic
+    analysis (see [*Figure** 2.6*](B19722_02.xhtml#x1-390002)*, Parser*). For instance,
+    if 𝒞 is the set of all C/C++ programs and 𝒫 is a property of such a program, then
+    the goal of static analysis is to check the property for a specific program P
+    ∈𝒞, that is, to answer the question of whether 𝒫(P) is true or false.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our Clang-Tidy check from the previous chapter (see [*Section** 5.4*](B19722_05.xhtml#x1-1090004)*,
+    Custom* *Clang-Tidy check*) is a good example of such a property. In reality,
+    it takes C++ code with a class definition and decides whether the class is complex
+    or not based on the number of methods it has.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s worth noting that not all properties of a program can be checked. The most
+    obvious example is the famous halting problem [[31](B19722_Bib.xhtml#XTuring1936)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The halting problem can be formulated as follows: Given a program P and an
+    input I, determine whether P halts or continues to run indefinitely when executed
+    with I.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Formally, the problem is to decide, for a given program P and an input I, whether
+    the computation of P(I) eventually stops (halts) or will never terminate (loops
+    indefinitely).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alan Turing proved that there is no general algorithmic method for solving this
+    problem for all possible program-input pairs. This result implies that there is
+    no single algorithm that can correctly determine for every pair (P,I) whether
+    P halts when run with I.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite the fact that not all properties of programs can be proven, it can be
+    done for some cases. There is a reasonable number of such cases that make static
+    analysis a practical tool for usage. Thus, we can use the tools in these cases
+    to systematically scan the code to determine properties of the code. These tools
+    are adept at identifying issues ranging from simple syntax errors to more complex
+    potential bugs. One of the key benefits of static analysis is its ability to catch
+    problems early in the development cycle. This early detection is not only efficient
+    but also resource-saving, as it helps identify and rectify issues before the software
+    is run or deployed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Static analysis plays a significant role in ensuring the quality and compliance
+    of software. It checks that the code adheres to prescribed coding standards and
+    guidelines, which is particularly important in large-scale projects or industries
+    with strict regulatory requirements. Moreover, it is highly effective in uncovering
+    common security vulnerabilities such as buffer overflows, SQL injection flaws,
+    and cross-site scripting vulnerabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, static analysis contributes to code refactoring and optimization
+    by pinpointing areas of redundancy, unnecessary complexity, and opportunities
+    for improvement. It’s a common practice to integrate these tools into the development
+    process, including continuous integration pipelines. This integration allows for
+    ongoing analysis of the code with each new commit or build, ensuring continual
+    quality assurance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Clang-Tidy checks that we created in the last chapter can be considered
+    an example of a static analysis program. In this chapter, we will consider more
+    advanced topics involving data structures such as CFGs, which we will see next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.3 CFG
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A **CFG** is a fundamental data structure in compiler design and static program
+    analysis, representing all paths that might be traversed through a program during
+    execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A CFG consists of the following key components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Nodes**: Correspond to basic blocks, a straight-line sequence of operations
+    with one entry and one exit point'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Edges**: Represent the flow of control from one block to another, including
+    both conditional and unconditional branches'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Start and end nodes**: Every CFG has a unique entry node and one or more
+    exit nodes'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'As an example of a CFG, consider the function to calculate the maximum of two
+    integer numbers that we used as an example before; see [Figure 2.5](B19722_02.xhtml#x1-37021r5):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.1**: CFG example C++ code: max.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The corresponding CFG can be represented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.2: CFG example for max.cpp ](img/Figure6.2_B19722.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '**Figure 6.2**: CFG example for max.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The diagram shown in [Figure 6.2](#Figure6.2) visually represents a CFG for
+    the `max` function (from [Figure 6.1](#x1-120012r1)) with a series of connected
+    nodes and directed edges:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Entry node**: At the top, there is an “**entry**” node, representing the
+    starting point of the function’s execution.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Conditional node**: Below the entry node, there is a node labeled “**a**
+    **> b**”. This node represents the conditional statement in the function, where
+    the comparison between *a* and *b* is made.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Branches for true and false conditions**:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: On the true branch (left side), there is a node labeled “**Return** **a**”,
+    connected by an edge from the “**a > b**” node. This edge is labeled “**true**”,
+    indicating that if *a* is greater than *b*, the flow goes to this node.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: On the false branch (right side), there is a node labeled “**Return** **b**”,
+    connected by an edge from the “**a > b**” node. This edge is labeled “**false**”,
+    indicating that if *a* is not greater than *b*, the flow goes to this node.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Exit node**: Below both the “**Return a**” and “**Return b**” nodes, converging
+    at a point, there is an “**exit**” node. This represents the termination point
+    of the function, where the control flow exits the function after returning either
+    *a* or *b*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This CFG effectively illustrates how the `max` function processes input and
+    reaches a decision on which value to return based on the comparison.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The CFG representation can also be used to estimate function complexity. In
+    brief, a more complex picture corresponds to a more complex system. We will use
+    a precise definition of complexity known as cyclomatic complexity, or M [[28](B19722_Bib.xhtml#XMcCabe1976)],
+    which can be calculated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| *M = E - N + 2P* |  |'
+  prefs: []
+  type: TYPE_TB
+- en: 'where:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: E is the number of edges in the graph
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: N is the number of nodes in the graph
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: P is the number of connected components (for a single CFG, P is usually 1)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the `max` function discussed earlier, the CFG can be analyzed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Nodes (N)**: There are five nodes (Entry, *a > b*, Return *a*, *b*, Exit)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Edges (E)**: There are five edges (from Entry to *a > b*, from *a > b* to
+    Return *a*, from *a > b* to Return *b*, from Return *a* to Exit, and from Return
+    *b* to Exit)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Connected components (P)**: As it’s a single function, *P* = 1'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Substituting these values into the formula, we get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 𝑀 = 5 − 5 + 2 × 1 = 2
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thus, the cyclomatic complexity of the `max` function, based on the given CFG,
+    is 2\. This indicates that there are two linearly independent paths through the
+    code, corresponding to the two branches of the if statement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our next step will be to create a Clang-Tidy check that uses a CFG to calculate
+    cyclomatic complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4 Custom CFG check
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are going to use the knowledge gained in [*Section** 5.4*](B19722_05.xhtml#x1-1090004)*,
+    Custom Clang-Tidy* *check* to create a custom CFG check. As mentioned previously,
+    the check will use Clang’s CFG to calculate cyclomatic complexity. The check should
+    issue a warning if the calculated complexity exceeds a threshold. This threshold
+    will be set up as a configuration parameter, allowing us to change it during our
+    tests. Let’s start with the creation of the project skeleton.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.1 Creating the project skeleton
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We will use `cyclomaticcomplexity` as the name for our check, and our project
+    skeleton can be created as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.3**: Creating a skeleton for the misc-cyclomaticcomplexity check'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a result of the run, we will get a number of modified and new files. The
+    most important ones for us are the following two files located in the `clang-tools-extra/clang-tidy/misc/`
+    folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`misc/CyclomaticcomplexityCheck.h` : This is the header file for our check'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`misc/CyclomaticcomplexityCheck.cpp` : This file will house the implementation
+    of our check'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These files need to be modified to achieve the required functionality for the
+    check.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.2 Check implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For the header file, we aim to add a private function to calculate the cyclomatic
+    complexity. Specifically, the following code needs to be inserted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.4**: Modifications to CyclomaticcomplexityCheck.h'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More substantial modifications are required in the `.cpp` file. We will begin
+    with the implementation of the `registerMatchers` method, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.5**: Modifications to CyclomaticcomplexityCheck.cpp: registerMatchers
+    implementation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Based on the code, our check will be applied only to function declarations,
+    `clang``::``FunctionDecl`. The code can also be extended to support other C++
+    constructs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The implementation of the `check` method is presented in [Figure 6.6](#x1-123030r6).
+    At *Lines 22-23*, we perform basic checks on the matched AST node, `clang``::``FunctionDecl`
+    in our case. At *Lines 25-26*, we create the CFG object using the `CFG``::``buildCFG`
+    method. The first two parameters specify the declaration (`clang``::``Decl`) and
+    the statement for the declaration (`clang``::``Stmt`). At *Line 30*, we calculate
+    the cyclomatic complexity using the threshold, which can be obtained as the `"``Threshold``"`
+    option of our check. This provides flexibility in testing for different input
+    programs. *Lines 31-34* contain the implementation of the check result printout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.6**: Modifications to CyclomaticcomplexityCheck.cpp: check implementation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `calculateCyclomaticComplexity` method is used to calculate the cyclomatic
+    complexity. It takes the created `clang``::``CFG` object as an input parameter.
+    The implementation is shown in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.7**: Modifications to CyclomaticcomplexityCheck.cpp: calculateCyclomaticComplexity
+    implementation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We iterate over all CFG blocks at *Lines 42-45*. The number of blocks corresponds
+    to the number of nodes, denoted as N in [Figure 6.2](#x1-120014r3). We sum up
+    the number of successors for each block to calculate the number of edges, denoted
+    as E. We assume that the number of connected components, denoted as P, is equal
+    to one for our simplified example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After implementing the check, it’s time to build and run our new check on our
+    example; see [Figure 6.1](#x1-120012r1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.4.3 Building and testing the cyclomatic complexity check
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We will use the basic build configuration specified in [Figure 1.4](B19722_01.xhtml#x1-27004r4)
+    and build Clang-Tidy using the standard command from [Figure 5.2](B19722_05.xhtml#x1-102004r2):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Assuming the build configuration from [Figure 1.4](B19722_01.xhtml#x1-27004r4),
+    this command will install the Clang-Tidy binary in the `<...>/llvm-project/install/bin`
+    folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you use a build configuration with shared libraries (with the `BUILD``_SHARED``_LIBS`
+    flag set to `ON` ), as shown in [Figure 1.12](B19722_01.xhtml#x1-30003r12), then
+    you might need to install and built all artifacts with `ninja` `install` .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will run our check on the example program shown in [Figure 6.1](#x1-120012r1).
+    As we previously calculated, the cyclomatic complexity for the test is 2, which
+    is lower than the default value of 5 specified at *Line 29* in our `check` method
+    implementation, as seen in [Figure 6.6](#x1-123030r6). Thus, we need to override
+    the default value to 1 to be able to see a warning in our test program. This can
+    be done using the `-config` option, which we previously used for `classchecker`
+    check tests, as shown in [Figure 5.20](B19722_05.xhtml#x1-111061r20). The command
+    for the test will look as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.8**: Testing cyclomatic complexity on the max.cpp example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Line 2* in [Figure 6.8](#x1-124011r8) indicates that we want to run only one
+    Clang-Tidy check: `misc-cyclomaticcomplexity` . At *lines 3-4*, we set up the
+    required threshold. *Line 5* specifies the name of the file being tested (`max.cpp`
+    in our case), and the final line, *Line 6*, contains some compilation flags for
+    our program.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will get the following output if we run the command from [Figure 6.8](#x1-124011r8):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.9**: Testing cyclomatic complexity on the max.cpp example: output'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following question might arise: How does Clang build the CFG? We can use
+    a debugger to investigate the process.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5 CFG on Clang
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A CFG is the basic data structure for advanced static analysis using Clang tools.
+    Clang constructs the CFG for a function from its AST, identifying basic blocks
+    and control flow edges. Clang’s CFG construction handles various C/C++ constructs,
+    including loops, conditional statements, switch cases, and complex constructs
+    such as `setjmp/longjmp` and C++ exceptions. Let’s consider the process using
+    our example from [Figure 6.1](#x1-120012r1).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5.1 CFG construction by example
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Our example from [Figure 6.1](#x1-120012r1) has five nodes, as shown in [Figure 6.2](#Figure6.2).
+    Lets run a debugger to investigate the process, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.10**: Debugger session running to investigate the CFG creation process'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We used the same command as in [Figure 6.8](#x1-124011r8) but changed the first
+    line of the command to run the check via a debugger. We also changed the last
+    line to suppress all warnings from the compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Advanced static analysis is a part of semantic analysis. For example, warnings
+    are printed if Clang detects unreachable code, controlled by the `-Wunreachable-code`
+    option. The detector is a part of Clang’s semantic analysis and utilizes CFGs,
+    in addition to ASTs, as the basic data structures to detect such issues. We can
+    suppress these warnings and, as a result, disable CFG initialization in Clang
+    by specifying the special `-Wno-all` command-line option, which suppresses all
+    warnings generated by the compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will set a breakpoint at the `CFGBuilder``::``createBlock` function, which
+    creates a CFG block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.11**: Running debugger and setting breakpoint for CFGBuilder::createBlock'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we run the debugger, we will see that the function is called five times
+    for our example; that is, five CFG blocks are created for our `max` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.12**: Creation of CFG blocks, with breakpoints highlighted'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The debugger session shown in [Figure 6.12](#x1-126049r12) can be considered
+    the entry point to the CFG creation process. Now, it’s time to delve deeply into
+    the implementation details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.5.2 CFG construction implementation details
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The blocks are created in reverse order, as seen in [Figure 6.13](#x1-127017r13).
+    The first block to be created is the exit block, as shown in [Figure 6.13](#x1-127017r13),
+    *Line 4*. Then, the CFG builder traverses the `clang``::``Stmt` object passed
+    as a parameter (*Line 9*). The entry block is created last, at *Line 12*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.13**: Simplified buildCFG implementation from clang/lib/Analysis/CFG.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The visitor uses the `clang``::``Stmt``::``getStmtClass` method to implement
+    an ad hoc visitor based on the type of the statement, as shown in the following
+    code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.14**: Statement visitor implementation; the cases used for our example
+    are highlighted, the code was taken from clang/lib/Analysis/CFG.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our example includes two return statements and one `if` statement, which are
+    combined into a compound statement. The relevant parts of the visitor are shown
+    in [Figure 6.14](#x1-127035r14).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our case, the passed statement is a compound statement; therefore, *Line
+    6* from [Figure 6.14](#x1-127035r14) is activated. The following code is then
+    executed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.15**: Compound statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Several constructions are visited while the CFG is being created for our example.
+    The first one is `clang``::``IfStmt`. The relevant parts are shown in the following
+    figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.16**: If statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A special block for the `if` statement is created at *Line 18*. We also visit
+    the ’then’ condition at *Line 8*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The ’then’ condition leads to visiting a return statement. The corresponding
+    code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 6.17**: Return statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For our example, it creates a block at *Line 3* and visits the return expression
+    at *Line 8*. Our return expression is a trivial one that does not necessitate
+    the creation of a new block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code fragments presented in [Figure 6.13](#x1-127017r13) to [Figure 6.17](#x1-127097r17)
+    show only the block creation procedure. Some important parts were omitted for
+    simplicity. Notably, the build procedure also involves the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Edge creation: A typical block can have one or more successors. The list of
+    nodes (blocks) with a list of successors (edges) for each block maintains the
+    entire graph structure, representing symbolic program execution.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Storing meta-information: Each block stores additional meta-information associated
+    with it. For instance, each block keeps a list of statements in the block.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Processing edge cases: C++ is a complex language with many different language
+    constructs that require special processing.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The CFG is a fundamental data structure for advanced code analysis. Clang has
+    several tools created using CFGs. Let’s briefly look at them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.6 Brief description of Clang analysis tools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As mentioned earlier, the CFG is foundational for other analysis tools in Clang,
+    several of which have been created atop the CFG. These tools also employ advanced
+    mathematics to analyze various cases. The most notable tools are as follows [[32](B19722_Bib.xhtml#XClangDataFlow2020)]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'LivenessAnalysis: Determines whether a computed value will be used before being
+    overwritten, producing liveness sets for each statement and CFGBlock'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'UninitializedVariables: Identifies the use of uninitialized variables through
+    multiple passes, including initial categorization of statements and subsequent
+    calculation of variable usages'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Thread Safety Analysis: Analyzes annotated functions and variables to ensure
+    thread safety'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: LivenessAnalysis in Clang is essential for optimizing code by determining whether
+    a value computed at one point will be used before being overwritten. It produces
+    liveness sets for each statement and CFGBlock, indicating potential future use
+    of variables or expressions. This backward ”may” analysis simplifies read/write
+    categorization by treating variable declarations and assignments as writes, and
+    other contexts as reads, regardless of aliasing or field usage. Valuable in dead
+    code elimination and compiler optimizations, such as efficient register allocation,
+    it helps free up memory resources and improve program efficiency. Despite challenges
+    with corner cases and documentation, its straightforward implementation and the
+    ability to cache and query results make it a vital tool in enhancing software
+    performance and resource management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Forward analysis is a method used in programming to check how data moves through
+    a program from start to finish. Following the data path step by step as the program
+    runs allows us to see how it changes or where it goes. This method is instrumental
+    for identifying issues such as improperly set-up variables or tracking data flow
+    in the program. It contrasts with backward analysis, which starts at the end of
+    the program and works backward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: UninitializedVariables analysis in Clang, designed to detect the use of variables
+    before initialization, operates as a forward ”must” analysis. It involves multiple
+    passes, including initial code scanning for statement classification and subsequent
+    use of a fix-point algorithm to propagate information through the CFG. Handling
+    more sophisticated scenarios than LivenessAnalysis, it faces challenges such as
+    lacking support for record fields and non-reusable analysis results, limiting
+    its efficiency in certain situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread Safety Analysis in Clang, a forward analysis, focuses on ensuring proper
+    synchronization in multithreaded code. It computes sets of locked mutexes for
+    each statement in a block and utilizes annotations to indicate guarded variables
+    or functions. Translating Clang expressions into TIL (Typed Intermediate Language)[[32](B19722_Bib.xhtml#XClangDataFlow2020)],
+    it effectively handles the complexity of C++ expressions and annotations. Despite
+    strong C++ support and a sophisticated understanding of variable interactions,
+    it faces limitations, such as lack of support for aliasing, which can lead to
+    false positives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.7 Knowing the limitations of analysis
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'It’s worth mentioning some limitations of the analysis that can be conducted
+    with Clang’s AST and CFG. The most notable ones are mentioned here [[2](B19722_Bib.xhtml#XCIR)]:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Limitations of Clang’s AST: Clang’s AST is unsuitable for data flow analysis
+    and control flow reasoning, leading to inaccurate results and inefficient analysis
+    due to the loss of vital language information. Soundness of analysis is also a
+    consideration, where the precision of certain analyses, such as liveness analysis,
+    can be valuable if they are precise enough rather than always being conservative.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Issues with Clang’s CFG: While Clang’s CFG aims to bridge the gap between AST
+    and LLVM IR, it encounters known problems, has limited interprocedural capabilities,
+    and lacks adequate testing coverage.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: One example mentioned in [[2](B19722_Bib.xhtml#XCIR)] relates to C++ coroutines,
+    a new feature introduced in C++20\. Some aspects of this functionality are implemented
+    outside the Clang frontend and are not visible with tools such as Clang’s AST
+    and CFG. This limitation makes analysis, especially lifetime analysis, tricky
+    for such functionalities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite these limitations, Clang’s CFG remains a powerful tool widely used in
+    compiler and compiler tool development. There is also active development of other
+    tools [[27](B19722_Bib.xhtml#XCIR_upstream)] that aim to close the gaps in Clang’s
+    CFG capabilities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.8 Summary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this chapter, we investigated Clang’s CFG, a powerful data structure that
+    represents the symbolic execution of a program. We created a simple Clang-Tidy
+    check using a CFG to calculate cyclomatic complexity, a metric useful for estimating
+    code complexity. Additionally, we explored the details of CFG creation and the
+    formation of its basic internal structures. We discussed some tools developed
+    with CFGs, which are useful for detecting lifetime issues, thread safety, and
+    uninitialized variables. We also briefly described the limitations of CFGs and
+    how other tools can address these limitations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter will cover refactoring tools. These tools can perform complex
+    code modifications using the AST provided by the Clang compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 6.9 Future reading
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Flemming Nielson, Hanne Riis Nielson, and Chris Hankin, *Principles* *of Program
+    Analysis*, Springer, 2005 [[29](B19722_Bib.xhtml#XNielson2005Principles)]
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Xavier Rival and Kwangkeun Yi, *Introduction to Static Analysis: An* *Abstract*
+    *Interpretation Perspective*, The MIT Press, 2020 [[30](B19722_Bib.xhtml#XRivalYi2020StaticAnalysis)]'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Kristóf Umann *A survey of dataflow analyses in Clang*: [https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html](https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Bruno Cardoso Lopes and Nathan Lanza *An MLIR based Clang IR* *(CIR)*: [https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319](https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,965 @@
+- en: '8'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Writing a Naïve Leak Detector
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116), we examined various ways
+    to overload the memory allocation operators, which are `new`, `new[]`, `delete`,
+    and `delete[]`, in order to grasp the syntax involved in writing these operators
+    as well as how they can be used in client code. We discussed how these operators
+    interact with exceptions (even in the case of the `nothrow` versions) and saw
+    why they should, in most cases, be written in groups of four or multiples thereof.
+    For example, code that calls the `nothrow` version of `operator new()` to obtain
+    some pointer, `pV` and later on calls `delete p` will quickly get in trouble if
+    one overloads the `nothrow` version but not the “regular” one, as both might then
+    end up not being compatible with one another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we have not really discussed is how our code could benefit from taking
+    control of these operators. There are indeed multiple uses for this: tracing how
+    or where memory is allocated, measuring memory fragmentation in a process, implementing
+    a specialized strategy to control performance characteristics of the allocation
+    or deallocation process, and so on. Since this book has a finite size, we cannot
+    hope to cover examples of all possible options so we will pick one, hoping that
+    this example is sufficiently inspirational to let you explore other avenues on
+    your own.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The example we will explore in this chapter is a simple yet functional memory
+    leak detector. In more detail, we will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will first detail the plan, giving an overview of how our leak detector will
+    work and what tricks we will use to meet our objectives.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then, we will implement the first version of our tool, and that version will
+    seem to work, at least on the surface. We will walk through a call to `operator
+    new()` and the corresponding `operator delete()` to understand what happens in
+    memory throughout this process.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: At this point, we will use the knowledge acquired in previous chapters to identify
+    the flaws in our first solution as well as ways in which we can fix them.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we will revisit our initial implementation and end up with something
+    that is simple yet usable in real code.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Since this will be a very concrete chapter, you can expect to develop (or refine)
+    some useful skills as we go:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first one is to plan before coding. We will be writing very low-level code
+    in this chapter, which makes it particularly important for us to have a clear
+    direction in mind. After all, when coding “close to the machine” and playing with
+    raw memory, the compiler-provided safety net that is the type system tends to
+    be a bit thinner and it’s easier to make mistakes (costly ones at that) if we’re
+    not careful.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The second one is to safely use shared mutable resources. Our leak detector
+    will use the global versions of the memory allocation operators in order to cover
+    allocation requests for all types, at least unless users decide to use specialized
+    versions of these operators, and as such, we will need to manage the state that
+    will be global to our program. In addition, we know that user code might be multithreaded
+    so our accounting of the allocated memory will require a form of synchronization
+    to avoid data races.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The third one will be to acknowledge the impact of alignment when bypassing
+    the type system. As we will handle raw memory for the a priori unknown needs of
+    client code, we will learn to make choices that work for all “natural” (in the
+    sense of “non-overaligned”) memory allocation use cases.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, we will examine how to debug our code based on the contents of raw
+    memory. Since we aim to keep this book tooling-agnostic, we will apply a schematical
+    approach to this problem, but in practice, you should adapt what we do in this
+    chapter to the metaphors of your favorite debugging utility. All reasonable debuggers
+    will let you examine the contents of a specific memory address, something you
+    will assuredly want to do on occasion.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let’s dive in!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter8).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The plan
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We are planning to write a memory leak detector, a task that might seem strange
+    and abstract at first. How do we start? Well, one way to clarify what we need
+    to do is to write a small test program, showing at once how we expect our tool
+    to be used and highlighting the key aspects of our tool from the perspective of
+    user code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, this “deliberately leaky” program performs two allocations but
+    only a single deallocation, “forgetting” (conveniently for our purposes) to deallocate
+    an array of ten `int` objects. Supposing `sizeof(int)==4`, our leak detector should
+    allow the program to report a leak of 40 bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This program does not tell us how we will (portably) obtain the amount of dynamically
+    allocated memory at a given time (we will write this service in this chapter,
+    after all), but it does show the allocations and deallocations being located between
+    a pair of braces (see `BEGIN` and `END` in the comments of that example program).
+    In C++, as you know, matching braces delimit a scope, and scope ensures the destruction
+    of automatic variables defined therein. The idea here is that we want to detect
+    leaks even in the presence of RAII objects (see [*Chapter 4*](B21071_04.xhtml#_idTextAnchor062))
+    as they too could have bugs, so we want to make sure they are destroyed before
+    we try to issue a diagnostic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As mentioned in this chapter’s introduction, we will implement our leak detector
+    through the overloading of the *global* forms of memory allocation operators.
+    As you might have already guessed, these operators will need to share some state:
+    at the very least, they will need shared knowledge of the amount of memory allocated
+    at a given moment since the `new` and `new[]` operators will increment that amount
+    and the `delete` and `delete[]` operators will decrement it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that for our leak detector, the array and non-array forms of these operators
+    will be identical but that is *not* always the case: one could envision different
+    strategies to allocate scalars and arrays, for example, just as one could want
+    to track what these two forms do separately in a program. For simplicity, in this
+    chapter, we will often simply mention `new` to describe both `new` and `new[]`
+    and will use the same approach for `delete`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since these are free functions, not member functions of some object, we will
+    need to resort to a *global variable* for this state. I know global variables
+    are often frowned upon, mostly for good reasons, but they exist for cases such
+    as this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Global variables, oh my!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Reasons to dislike global variables abound: they make local reasoning difficult
+    (who knows where and when they are being accessed?), they tend to be bottlenecks
+    for cache access and slow programs down, they tend to require synchronization
+    in contemporary (potentially multithreaded) programs, and so on. We are resorting
+    to this mechanism here because we need to: C++ provides us with a wide variety
+    of tools because it is a language that is used to solve a wide variety of problems,
+    so there’s no shame in using these tools when they are the right tools for the
+    task at hand. Just ensure you make informed choices that you can justify!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To reduce (ever so slightly) the feeling of apparent revulsion that global variables
+    provide to so many of us, we will encapsulate that state in an object, but of
+    course, this object will also be global.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will apply the `Accountant` since its responsibilities will be to help the
+    memory allocation operators keep track of the number of bytes allocated and deallocated
+    during program execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Singletons, oh my!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As far as design patterns go, the singleton is probably one of the least liked
+    ones, for reasons similar to those behind the dislike of global variables: difficult
+    to test or mock, requires synchronization, tends to become a performance bottleneck,
+    and so on. The real culprit here to be honest is **shared mutable state**, made
+    worse by the fact that this state is globally accessible throughout the program.
+    As you might have guessed by now, since the shared mutable state is exactly what
+    we need to keep track of the amount of memory allocated at a given time, well…
+    this is what we will use!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, for the actual implementation, we will need to develop a strategy to track
+    the number of bytes allocated and deallocated. The overall idea is that `operator
+    new()` will tell the `Accountant` object that bytes have been allocated, and that
+    `operator delete()` will tell the `Accountant` object that bytes have been deallocated.
+    Now, for the purpose of this activity, we will use the traditional (up to and
+    including C++11) form of these operators. As you might remember from [*Chapter
+    7*](B21071_07.xhtml#_idTextAnchor116), their signatures are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since you are reading this book, you are assuredly a most astute reader, so
+    you might have already noticed a problem here: our allocation functions know from
+    their argument the number of bytes to allocate, but our deallocation functions
+    do not have that privilege, being only provided the address where the block to
+    deallocate begins. This means that we need a way to make the connection between
+    the address returned by `operator new()` and the size of the associated memory
+    block.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That seems like an easy enough problem to solve: just allocate the moral equivalent
+    of something like `std::vector<std::pair<void*,std::size_t>>` or `std::map<void*,std::size_t>`
+    to make it easy to retrieve the `std::size_t` associated with a given address,
+    but such containers need to allocate memory, and that would mean allocating memory
+    in order to implement the way in which we allocate memory. This could get problematic,
+    to say the least, so we need another solution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will do what any sane programmer would do under similar circumstances: we
+    will lie. Yes, we will! Why do you think we took the time to look at tricky and
+    dangerous code in those first chapters?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How will lying help us solve the problem, you say? Well, remember that writing
+    the following code leads to calling `operator new()` with `sizeof(X)` as an argument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let us name this argument `n`. This means that if the allocation and the ensuing
+    construction both succeed, from the perspective of client code, the situation
+    will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.1 – Allocated block of memory from the perspective of client code](img/B21071_08_1.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.1 – Allocated block of memory from the perspective of client code
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In order for `operator delete()` to be able to find the value of `n` based
+    on `p`, one strategy (and the one we will adopt for this example) will be to hide
+    the value of `n` just before `p`. The actual layout in memory from our own code’s
+    perspective would then be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.2 – Allocated block of memory from the perspective of the allocation
+    operators.](img/B21071_08_2.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.2 – Allocated block of memory from the perspective of the allocation
+    operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, `p` would be the address as seen from the client code, but `p''` would
+    be where the actually allocated block of memory starts. Clearly, *this is a lie*:
+    the address returned by the allocation function will be a valid address where
+    an object can be constructed, but it will not be the start of the memory block
+    we have actually allocated. As long as the space between `p` and `p''` is known
+    to both `operator new()` and `operator delete()`, this can be made to work.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For obvious reasons, overloading `operator new()` to do this trickery means
+    that we have to overload `operator delete()` to do the reverse gymnastics: given
+    some pointer `p`, go backward in memory where `p''` was, find the value of `n`
+    that was hidden there, and inform the `Accountant` object of the fact that `n`
+    bytes were released.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s see how we will do this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A first implementation (that almost works)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We now have a plan, so we are ready to start implementing the initial version
+    of our leak detector. This implementation will be slightly naïve but will help
+    us understand the general idea; we will examine the more delicate aspects of the
+    implementation once the basic infrastructure is in place. *Do not use this first
+    version in production code* as it will be (slightly yet dangerously) incorrect.
+    We will provide a correct version later in this chapter, of course.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a suggestion, try to see if you can identify the “rough edges” of our implementation
+    by yourself before we cover them later in this chapter. There will be clues left
+    here and there for you, and if you read the chapters that preceded this one, you
+    might already have an idea of what you should be looking for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Accountant singleton class
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our `Accountant` class will be a reification of the singleton design pattern
+    whose role will be to allow the global overloads of the memory allocation operators
+    to keep track of the number of bytes of dynamically allocated memory in a program.
+    As previously mentioned, a singleton is an idea: a class for which there is only
+    one instance in a program. This idea can be reified in various languages (at least
+    those supporting some variant of the object-oriented paradigm) in ways that respect
+    the particularities of each language.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One key particularity of C++ is the presence of actual objects, not just references
+    to objects, in user code. This means that a C++ singleton will usually have the
+    following characteristics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `private` default constructor, since if that constructor was `public`, it
+    could be called more than once which would make the class a non-singleton.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deleted copy operations, as allowing copies of our object would make it a non-singleton.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A way to ensure the singleton can be created and, of course, accessed. That
+    mechanism has to be such that it cannot be abused to create more than one object.
+    Since our default constructor will be `private`, this mechanism will either be
+    a `static` member function (this will be our choice) or a `friend` function.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, the state used for the object’s representation and the services offered
+    by the singleton, if any.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'An object of our `Accountant` class will expose three services: one to let
+    the `new` and `new[]` operators inform the `Accountant` object that memory has
+    been taken, one to inform it that memory has been given back, and one to let client
+    code know how much memory is used at a given time.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An incomplete view of the `Accountant` class given what we have discussed so
+    far would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this, we can already complete the skeleton of our test program as presented
+    earlier in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we need to examine the implementation of the `Accountant` class. The first
+    thing we need to decide is how and where the actual object will be created. It
+    happens that there are surprisingly many ways to do this, but in our case (where
+    we are not concerned by execution speed), the simplest way to correctly instantiate
+    the object is what is called a **Meyers Singleton**, in honor of the now-retired
+    but always respected **Scott Meyers**, who suggested that technique as part of
+    *item 47* in his well-known book, *Effective C++: Specific Ways to Improve Your
+    Programs and Designs (3rd Edition),* *Addison-Wesley Professional*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Meyers Singleton technique
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Meyers Singleton technique aims to avoid something colloquially called the
+    **static initialization order fiasco**, an informal name given to the fact that
+    in a C++ program made of multiple translation units, one cannot know from the
+    source code in which order the global objects will be constructed (the problem
+    also exists for the order of destruction, although the Meyers technique is not
+    helpful for this).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The trick is to declare the singleton object as a `static` local variable in
+    the `static` member function that provides access to the object (here, the `get()`
+    function): doing so ensures the object will be created only once, the first time
+    the function is called, and will keep its state throughout the execution of the
+    program. There is a slight but measurable cost to doing so as there is a form
+    of low-level implicit synchronization surrounding the object’s construction to
+    avoid the object being created more than once even in a multithreaded program.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique ensures all such singletons are created in the correct order
+    (meaning that, if the constructor of singleton A needs a service from singleton
+    B, this will lead to singleton B being constructed “just in time”) even if they
+    are technically “global” variables, as long as there is no cycle in the calls
+    that create them of course.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In terms of state, since `take()` and `give_back()` both accept an argument
+    of type `std::size_t`, it would be tempting to represent the current amount of
+    memory also as `std::size_t`, but allow me to recommend something else. Indeed,
+    `std::size_t` is an alias for an *unsigned* integral type, which means that this
+    representation would make it difficult to detect a case where there have been
+    more bytes *deallocated* than allocated, an unpleasant situation we would surely
+    like to handle. For that reason, we will use a (large) signed integral instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fine, you might think: we can use a `long long` representation then! However,
+    remember that memory allocation and deallocation mechanisms need to be thread-safe,
+    so we need to ensure that all accesses to that integral representation will be
+    synchronized. There are many ways to do this, but the simplest one is probably
+    to use an atomic type, in our case, `std::atomic<long long>`. Note that atomic
+    objects are uncopiable so our singleton would implicitly be uncopiable, but there’s
+    no harm in stating that fact explicitly as we did when deleting the copy operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A complete implementation of the `Accountant` class would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The services are probably trivial to understand for the most part. Since `cur`
+    is an atomic object, operations such as `+=` or `-=` modify `cur` in a synchronized
+    manner, avoiding data races. Two subtle aspects of `how_much()` deserve a short
+    discussion:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first is that we are returning `cur.load()`, not `cur`, since we care about
+    the value represented by the `atomic` object, not the atomic object itself (which
+    is a synchronization mechanism, not an integral value, and is uncopiable as previously
+    mentioned). It’s like taking a picture of that value at a specific point in time,
+    really.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The second, a consequence of the first, is that by the time the client code
+    gets the value returned by that function, the actual value might have changed,
+    so this function is inherently “racy” if used in a multithreaded situation. It’s
+    not a problem for our test code, of course, but it’s something to be aware of.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now that we have put in place a scaffolding for keeping track of the number
+    of bytes allocated, we can start to write the actual allocation and deallocation
+    functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the new and new[] operators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you remember our plan, what we will do in our memory allocation operators
+    is take the number of bytes, `n`, requested by client code, then allocate slightly
+    more because we will hide `n` just before the beginning of the block of `n` bytes
+    we will end up returning to our client. Minimally, we will need to allocate `n
+    + sizeof n` bytes to achieve this. In this example, we will use `std::malloc()`
+    and `std::free()` to perform the low-level allocation operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will signal failure to allocate by throwing `std::bad_alloc` as is customary
+    in C++. If the allocation succeeds, we will then inform the `Accountant` object
+    that `n` bytes have been allocated, even though we will have allocated a bit more.
+    The fact that our strategy leads us to allocate more than requested is an artifact
+    that does not concern client code, and that might even be confusing when trying
+    to diagnose problems: a program that allocates a single byte and is informed that
+    it leaked much more than this would be somewhat awkward.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A complete but naïve (and slightly incorrect, as announced) implementation
+    would be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Remember that even though `operator new()` and `operator new[]()` are identical
+    in this example, there is no obligation to make them the same in all situations.
+    Also, note that some of the lines in this excerpt have a comment stating “to revisit”
+    as we will want to take a closer look at these later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing the delete and delete[] operators
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our deallocation operators will collaborate in the elaborate lie prepared by
+    the allocation operators: we know that the `new` and `new[]` operators return
+    pointers to a block of `n` bytes, but that block is not what has really been allocated,
+    it’s “just” the place where an object lived for a while. For that reason, it’s
+    important that the `delete` and `delete[]` operators do the required address adjustment
+    before performing the actual deallocation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The rules for a correct implementation of `operator delete` are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying `operator delete()` or `operator delete[]()` on a null pointer is a
+    no-op
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Deallocation functions should not throw
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The deallocation code should be coherent with the associated allocation function
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Not all null pointers are the same
+  prefs: []
+  type: TYPE_NORMAL
+- en: While it’s true that given some `T*` object named `p`, writing `delete p` or
+    `delete [] p` will be a no-op if `p==nullptr`. However, writing `delete nullptr`
+    will fail to compile as `nullptr` is an object of type `std::nullptr_t`, not a
+    pointer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Given the implementation of our allocation operators in the previous section,
+    this means a mostly adequate deallocation operator could be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: That completes the lie, or so to say, and it completes the leak detector, at
+    least for this first (and imperfect) implementation. If you run the test program
+    with our implementation on a compiler where `sizeof(int)==4`, you can expect it
+    to display that its execution leaked 40 bytes as expected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Visualizing it all
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When enjoying low-level programming such as this (taking over the memory allocation
+    functions of your program, manipulating raw memory blocks, hiding information,
+    and playing tricks with addresses), it can be hard to visualize what one is doing,
+    and what the consequences are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If your favorite debugger allows you to do so, you might want to try to go through
+    the test program’s execution step by step. Please make sure you work in so-called
+    “debug” (unoptimized) mode to fully benefit from the experience, as optimized
+    code is often sufficiently transformed by the compiler to make the association
+    between source code and generated code difficult to make.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s walk through a call to `operator new()` step by step. The first thing
+    we do is ask `Accountant` for the amount of dynamically allocated memory at the
+    beginning of the `main()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: One can expect `pre==0` at this point but there are situations, such as a global
+    object calling `new` in its constructor, that could lead to `pre` having other
+    values. This is fine, as what we are monitoring with this approach is whether
+    there is a leak in between the braces marked with `BEGIN` and `END`, and this
+    should hold regardless of whether the amount of bytes allocated outside of those
+    braces is zero or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is calling `operator new()` and requesting a memory block big
+    enough to store an `int` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This leads us to our implementation of `operator new()` where `n==sizeof(int)`.
+    Supposing `sizeof(int)==4` and `sizeof(std::size_t)==8` for the sake of this example,
+    our call to `std::malloc()` will request a block of at least 12 bytes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you look at the memory pointed to by `p` with your debugger once the call
+    to `std::malloc()` completes, you might see something like the following (all
+    numbers are expressed in hexadecimal form):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.3 – Possible initial state for the allocated block](img/B21071_08_3.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.3 – Possible initial state for the allocated block
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that there is no guarantee that you will see these specific values as C++
+    does not impose any requirement on the initialization of the memory block returned
+    by `std::malloc()`. These `0xcd` hexadecimal values (or similar recognizable patterns)
+    are however probable when using a “debug build” as libraries compiled for debugging
+    will often place recognizable bit patterns in uninitialized memory to help detect
+    programming errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might also notice the trailing four bytes (each containing `0xfd`), which
+    are also suspiciously recognizable, suggesting that the implementation of `std::malloc()`
+    I used allocated more than what I requested and stored a marker just after the
+    block my code requested, probably to help detect buffer overruns. Our library
+    has the same implementation freedom as we do, after all!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first lie we did was the overallocation of memory with respect to the actual
+    request we got. We now commit a second lie about the very nature of the memory
+    we are pointing to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Converting a pointer from or to `void*` can be done efficiently with `static_cast`,
+    as explained in [*Chapter 3*](B21071_03.xhtml#_idTextAnchor047). We now have two
+    perspectives on the same memory block with `p` claiming that the block holds raw
+    memory and `q` claiming (erroneously) that it holds at least one `std::size_t`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.4 – Two perspectives on the same memory block](img/B21071_08_4.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.4 – Two perspectives on the same memory block
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Through `q`, we hide the value of `n` at the beginning of the allocated memory
+    block. Remember that this is not what we will be returning to our caller, so this
+    is done without the client code’s knowledge:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'One possible view of the memory pointed to by both `p` and `q` would now be
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.5 – Possible state of the memory block after hiding the value of
+    n](img/B21071_08_5.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.5 – Possible state of the memory block after hiding the value of n
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Again, your view might differ from this one: we wrote an eight-byte integral
+    value, which explains the number of consecutive bytes affected by this write,
+    but the order of bytes in an integer depends on the underlying hardware architecture:
+    some architectures are `4` closer to the right and of that eight-byte write instead
+    of being on the left as it is in this example.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After informing `Accountant` that we allocated 4 bytes (not 12, remember),
+    we reach the point where we return to our caller the beginning of the 4-byte block
+    that was actually requested:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Looking at our memory block, the situation is now as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.6 – State of the memory block at the point of return](img/B21071_08_6.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.6 – State of the memory block at the point of return
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning to the caller, the constructor of the `int` object is applied to
+    the block returned by `operator new()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After having applied the constructor on the memory pointed to by `p` in `main()`,
+    our memory block looks like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.7 – Possible state of the memory block after constructing *p](img/B21071_08_7.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.7 – Possible state of the memory block after constructing *p
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Voilà*! The beauty of all this is that client code (the `main()` function)
+    has no idea that we played those tricks and performed those lies, just as we really
+    have no idea what other tricks `std::malloc()` did for us (unless we can look
+    at its source code, of course). Program execution continues normally and `*p`
+    can be used like any other `int` until we reach the point where we decide to deallocate
+    it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When entering `operator delete()`, you might notice that the memory pointed
+    to by the `p` argument begins with value `3` (the value of the `int`), not value
+    `4`. This makes sense as `p` points to the memory block that was given to the
+    client code, not to the beginning of the block we actually allocated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)](img/B21071_08_8.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 8.8 – State of the memory block prior to destruction (caller’s perspective)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before continuing, it’s important to understand here that the reason why you
+    probably see `3` here is that `int` is a trivially destructible type so its destructor
+    was essentially a no-op. Normally, at the point where `operator delete()` begins
+    its execution, the destructor for the pointed-to object has already run and the
+    memory block could contain pretty much anything.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Within `operator delete()`, our first task is to retrieve the location where
+    we hid the value of `n` during the corresponding call to `operator new()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, `q` is the location where the value of `n` was stored as well
+    at the beginning of the memory block that was allocated. We inform `Accountant`
+    of the fact that `n` bytes were deallocated, and call `std::free()` to perform
+    the actual deallocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are observing the memory pointed to by `q` when calling `std::free()`,
+    it is possible (but not guaranteed) that you will see that memory being written
+    to. It is also possible (but also not guaranteed) that you will see memory written
+    to *before* `q` as well as *after* the end of the bytes memory block you had allocated.
+    Remember that `std::free()`, like `std::malloc()`, can do whatever bookkeeping
+    tasks it requires just as it can overwrite memory blocks that have been freed,
+    particularly in builds meant for debugging; or, it can just leave the memory as
+    it was, which is more probable with optimized builds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That was fun, wasn’t it? It seems to work indeed, at least on some machines.
+    Yet, as stated earlier, this version of our leak detector has bugs, and these
+    bugs can really hurt us. As a hint, know that if we compile this leak detector
+    on a compiler where `std::size_t` is four bytes wide and try to call `new double`,
+    we might get into *very* serious trouble. It is now time to take a closer look
+    at our implementation to grasp why this is so and fix the problems we caused.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Identifying (and fixing) the problems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our initial implementation has in fact one real problem, as well as something
+    that works but could be cleaner and deserves discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The real problem is that we express our lies in dangerous ways and that we
+    are not giving proper consideration to alignment requirements. Indeed, look at
+    our initial implementation of `operator new()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We know for a fact that the memory returned by `std::malloc()` has to be aligned
+    appropriately for the strictest (meaning *worst*) natural alignment of our machine:
+    indeed, since that function does not know what object will be constructed once
+    the allocation has completed, it has to make sure that the memory block allocated
+    will be properly aligned in all “natural” cases. C++ compilers offer `std::max_align_t`
+    as an alias for the type with the strictest natural alignment in a machine, which
+    is often, but not necessarily, type `double` in practice.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we allocate a bit more than was requested, `sizeof(std::size_t)` more
+    bytes to be precise. That’s fine up to a point: we can assuredly store `std::size_t`
+    at the beginning of the block returned by `std::malloc()` since that block is
+    well aligned even in the worst case.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we “jump over” `std::size_t` and return an address that is `sizeof(std::size_t)`
+    bytes more than the one we allocated. This can be fine if it still yields a correctly
+    aligned address even in the worst case, but that is only the case if `std::size_t`
+    and `std::max_align_t` are of the same size, something that is *not* guaranteed
+    (in practice, their sizes are often different).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What happens if these types are of different sizes and, consequently, the address
+    returned by `operator new()` does not match the alignment requirements of `std::max_align_t`?
+    Well, it depends:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It can work if we get “lucky” and the address returned is aligned correctly
+    for the type we want to construct. For example, suppose that `alignof(int)==4`
+    and `alignof(std::max_align_t)==8`, then calling `new int` will work even if `operator
+    new` returns an address that is a multiple of four but not of eight. However,
+    it’s probable that calling `new double` will only lead to pain. This sort of “luck”
+    can be a curse, hiding a latent, damaging bug for a while and making for unpleasant
+    surprises later.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You can end up with slow and dangerous code, as some hardware will support access
+    to misaligned objects. You don’t want to do that, however, as for the machine
+    to achieve this, it needs to perform acrobatics and transform a seemingly simple
+    operation such as loading `double` in a register into a sequence of operations
+    (load the “low” bytes, load the “high” bytes, and make a `double` out of these
+    two parts through bitwise manipulations). This leads to code that is significantly
+    slower to execute, obviously, but also dangerous if you have a multithreaded program
+    as one thread could read a partially formed object (this is called a **torn read**)
+    or write to a partially formed object (a **torn write**). You really do not want
+    to debug code where this happens.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Your code can simply crash, as will be the case on many embedded platforms (including
+    quite a few game consoles). It’s arguably the most reasonable outcome in such
+    a situation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To fix this problem, we need to ensure that the address returned from our overloaded
+    `operator new()` is properly aligned for `std::max_align_t`, and that `operator
+    delete()` is adjusted accordingly. One way to do this would be to ensure that
+    the size of the “hiding spot” for `n` is such that jumping over that additional
+    memory block still results in an address that is properly aligned for a `std::max_align_t`
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, this implementation allocates space for `std::max_align_t` in
+    addition to the requested `n` bytes, then “jumps over” that additional storage
+    to yield an address that is still properly aligned for the worst case. This might
+    mean wasting more space than in the initial (incorrect) implementation if `sizeof(std::size_t)`
+    happens to be less than `sizeof(std::max_align_t)`, but at least we know that
+    client code will be able to construct its object there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The corresponding `operator delete()` will do the same pointer gymnastics but
+    in reverse, going back `sizeof(std::max_align_t)` bytes in memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that this implementation assigns `std::max_align_t*` to `void*` (pointer
+    `p`), something that is perfectly legal and does not require a cast.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other issue we should discuss is not technically a problem in this implementation
+    but is a problem in general. Look at this excerpt from `operator new()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Do you notice something strange? The highlighted line of code performs an assignment
+    where `p` points, but the assignment only makes sense on an existing object. Is
+    there an object at location `*p` at that moment?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The answer is… strange. To create an object, one has to call its constructor,
+    but we never called the constructor of `std::size_t` at location `p` in this code.
+    This might make you wonder why our code seems to work. It happens that the following
+    is the case:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some types in C++ are said to be `std::nullptr_t` including their cv-qualified
+    counterparts) and implicit lifetime classes (aggregates with no user-provided
+    destructor, at least one eligible trivial constructor as well as a non-deleted
+    trivial destructor). You will notice that `std::size_t`, being an alias for an
+    unsigned integral type, falls under the umbrella of implicit lifetime types. If
+    you have a C++23 compiler, you can programmatically test if some type `T` qualifies
+    as an implicit lifetime type through the `std::is_implicit_lifetime<T>` trait.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Some standard library functions implicitly start the lifetime of objects of
+    implicit lifetime types. These include some C functions, such as `std::memcpy()`,
+    `std::memmove()`, and `std::malloc()`, but also `std::bit_cast`, some functions
+    in allocators (see [*Chapter 14*](B21071_14.xhtml#_idTextAnchor199)) as well as
+    two functions from C++23 respectively named `std::start_lifetime_as()` and `std::start_lifetime_as_array()`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What makes this assignment operation work in this specific case is that we are
+    writing to an object of an implicit lifetime type in a block of memory that is
+    properly aligned and has been allocated with one of these special functions that
+    have the property of implicitly starting the lifetime of objects. If we had decided
+    to store something more elaborate than an object of some implicit lifetime type,
+    our assignment would either fail at compile-time (if our compiler is nice enough
+    to notice our mistake) or risk causing damage at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A better, and in general, safer approach to the act of hiding the value of
+    `n` in some uninitialized storage is to use `placement new`, as seen in [*Chapter
+    7*](B21071_07.xhtml#_idTextAnchor116). The following implementation of `operator
+    new()` is thus preferable in general as it avoids an (often misguided) assignment
+    to a non-object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that since `std::size_t` has a trivial destructor, there is no need to
+    call its destructor in `operator delete()`; simply freeing its underlying storage
+    is sufficient to end its lifetime. We now have a correct, working leak detector!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Revisiting our implementation (and lessons learned)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We just overloaded memory allocation operators, blatantly lied our way through
+    the protections of the type system, performed potentially dangerous operations
+    that risked leading to misaligned objects, and saw how to avoid this pitfall.
+    That was an interesting adventure indeed, but the astute reader that you are is
+    probably wondering about the cost of this trick, particularly in terms of how
+    much memory it consumes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With our “allocate more than requested and hide `n` at the beginning” approach,
+    each allocation consumes `sizeof(std::max_align_t)` bytes more than needed by
+    client code. If our code allocates large objects, that cost might be minor, but
+    if we allocate smaller objects, this overhead can be unreasonable and dominate
+    the memory consumption of our entire program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember from [*Chapter 7*](B21071_07.xhtml#_idTextAnchor116) that C++14 made
+    it possible to provide an overload of `operator delete()` that accepts the size
+    of the just-destroyed object as an argument. This makes the act of hiding `n`
+    during `operator new()` redundant, as we did so precisely in order to retrieve
+    `n` in `operator delete()`, something we no longer need to do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we do not need to hide `n`, we can both simplify our implementation and
+    significantly reduce our memory consumption:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: This leak detector still works and represents a strict upgrade when compared
+    with the more naïve version that preceded it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'That was fun, wasn’t it? You can take this very simple tool and make it more
+    interesting: for example, you could use it to check for overflow and underflow
+    of the allocated memory blocks by injecting sentinel values before and after each
+    block, or you could use it to make a sort of map of the way your memory is being
+    used.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our first foray into applications that benefit from taking charge
+    of the memory allocation facilities at our disposal. Our next step, and next chapter,
+    will lead us to examine how a C++ program can interact with atypical memory or
+    deal with atypical allocation situations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, no programming language (even one as versatile and wide-ranging as
+    C++) can profess to cover all possible types of memory that an operating system
+    could provide services for, nor should that be the language’s role. Still, as
+    we will see, C++ provides us with the kind of “syntactic glue” required to build
+    bridges between atypical needs and the rest of the program.
+  prefs: []
+  type: TYPE_NORMAL

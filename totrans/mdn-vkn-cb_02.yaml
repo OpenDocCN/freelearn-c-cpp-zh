@@ -1,0 +1,1981 @@
+- en: '2'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Working with Modern Vulkan
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The goal of this chapter is to show you how to render a scene that accepts input
+    information, such as textures and uniform data, from the application side. This
+    chapter will cover advanced topics in the Vulkan API that build upon the core
+    concepts discussed in the previous chapter and present all the information you
+    need to render complex scenes, along with newer features of the API. Additionally,
+    the chapter will demonstrate techniques to enhance the rendering speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’re going to cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding Vulkan’s memory model
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instantiating the VMA library
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating buffers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Uploading data to buffers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a staging buffer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to avoid data races using ring buffers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Setting up pipeline barriers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating images (textures)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating an image view
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a sampler
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Providing shader data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Customizing shader behavior with specialization constants
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing MDI and PVP
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding flexibility to the rendering pipeline using dynamic rendering
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Transferring resources between queue families
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For this chapter, you will need to make sure you have VS 2022 installed along
+    with the Vulkan SDK. Basic familiarity with the C++ programming language and an
+    understanding of OpenGL or any other graphics API will be useful. Please revisit
+    [*Chapter 1*](B18491_01.xhtml#_idTextAnchor019)*, Vulkan Core Concepts*, under
+    the *Technical requirements* section for details on setting up and building executables
+    for this chapter. The recipe for this chapter can be run by launching `Chapter02_MultiDrawIndirect.exe`
+    executable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding Vulkan’s memory model
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Memory allocation and management are crucial in Vulkan, as almost none of the
+    details of memory usage are managed by Vulkan. Except for deciding the exact memory
+    address where memory should be allocated, all other details are the responsibility
+    of the application. This means the programmer must manage memory types, their
+    sizes, and alignments, as well as any sub-allocations. This approach gives applications
+    more control over memory management and allows developers to optimize their programs
+    for specific uses. This recipe will provide some fundamental information about
+    the types of memory provided by the API as well as a summary of how to allocate
+    and bind that memory to resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Graphics cards come in two variants, integrated and discrete. Integrated graphics
+    cards share the same memory as the CPU, as shown in *Figure 2**.1*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: "![\uFEFFFigure 2.1 – Typical memory architecture for discrete graphics cards](img/B18491_02_01.jpg)"
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.1 – Typical memory architecture for discrete graphics cards
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Discrete graphics cards have their own memory (device memory) separate from
+    the main memory (host memory), as shown in *Figure 2**.2*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: "![F\uFEFFigure 2.2 – Typical memory architecture for integrated graphics cards](img/B18491_02_02.jpg)"
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.2 – Typical memory architecture for integrated graphics cards
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Vulkan provides different types of memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Device-local memory**: This type of memory is optimized for use by the GPU
+    and is local to the device. It is typically faster than host-visible memory but
+    is not accessible from the CPU. Usually, resources such as render targets, storage
+    images, and buffers are stored in this memory.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Host-visible memory**: This type of memory is accessible from both the GPU
+    and the CPU. It is typically slower than device-local memory but allows for efficient
+    data transfer between the GPU and CPU. Reads from GPU to CPU happen across **Peripheral
+    Component Interconnect Express** (**PCI-E**) lanes in the case of non-integrated
+    GPU. It’s typically used to set up staging buffers, where data is stored before
+    being transferred to device-local memory, and uniform buffers, which are constantly
+    updated from the application.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Host-coherent memory**: This type of memory is like host-visible memory but
+    provides guaranteed memory consistency between the GPU and CPU. This type of memory
+    is typically slower than both device-local and host-visible memory but is useful
+    for storing data that needs to be frequently updated by both the GPU and CPU.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Figure 2**.3* summarizes the three aforementioned types of memory. Device-local
+    memory is not visible from the host, while host-coherent and host-visible are.
+    Copying data from the CPU to the GPU can be done using mapped memory for those
+    two types of memory allocations. For device-local memory, it’s necessary to copy
+    the data from the CPU to host-visible memory first using mapped memory (the staging
+    buffer), and then perform a copy of the data from the staging buffer to the destination,
+    the device-local memory, using a Vulkan function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.3 – Types of memory and their visibility from the application in
+    Vulkan](img/B18491_02_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.3 – Types of memory and their visibility from the application in Vulkan
+  prefs: []
+  type: TYPE_NORMAL
+- en: Images are usually device-local memory, as they have their own layout that isn’t
+    readily interpretable by the application. Buffers can be of any one of the aforementioned
+    types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A typical workflow for creating and uploading data to a buffer includes the
+    following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Create a buffer object of type `VkBuffer` by using the `VkBufferCreateInfo`
+    structure and calling `vkCreateBuffer`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Retrieve the memory requirements based on the buffer’s properties by calling
+    `vkGetBufferMemoryRequirements`. The device may require a certain alignment, which
+    could affect the necessary size of the allocation to accommodate the buffer’s
+    contents.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create a structure of type `VkMemoryAllocateInfo`, specify the size of the allocation
+    and the type of memory, and call `vkAllocateMemory`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call `vkBindBufferMemory` to bind the allocation with the buffer object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the buffer is visible from the host, map a pointer to the destination with
+    `vkMapMemory`, copy the data, and unmap the memory with `vkUnmapMemory`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the buffer is a device-local buffer, copy the data to a staging buffer first,
+    then perform the final copy from the staging buffer to the device-local memory
+    using the `vkCmdCopyBuffer` function.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: As you can see, that’s a complex procedure that can be simplified by using the
+    VMA library, an open source library that provides a convenient and efficient way
+    to manage memory in Vulkan. It offers a high-level interface that abstracts the
+    complex details of memory allocation, freeing you from the burden of manual memory
+    management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instantiating the VMA library
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To use VMA, you first need to create an instance of the library and store a
+    handle in a variable of type `VmaAllocator`. To create one, you need a Vulkan
+    physical device and a device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating a VMA library instance requires instancing two different structures.
+    One stores pointers to API functions that VMA needs to find other function pointers
+    and another structure that provides a physical device, a device, and an instance
+    for creating an allocator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The allocator needs pointers to a few Vulkan functions so that it can work based
+    on the features you would like to use. In the preceding case, we provide only
+    the bare minimum for allocating and deallocating memory. The allocator needs to
+    be freed once the context is destroyed with `vmaDestroyAllocator`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating buffers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A buffer in Vulkan is simply a contiguous block of memory that holds some data.
+    The data can be vertex, index, uniform, and more. A buffer object is just metadata
+    and does not directly contain data. The memory associated with a buffer is allocated
+    after a buffer has been created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Table 2.1* summarizes the most important usage types of buffers and their
+    access type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Buffer Type** | **Access Type** | **Uses** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| --- | --- | --- |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Vertex or Index | Read-only |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform | Read-only | Uniform data storage |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Storage | Read/write | Generic data storage |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Uniform texel | Read/write | Data is interpreted as texels |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Storage texel | Read/write | Data is interpreted as texels |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 2.1 – Buffer types
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating buffers is easy, but it helps to know what types of buffers exist and
+    what their requirements are before setting out to create them. In this chapter,
+    we will provide a template for creating buffers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the repository, Vulkan buffers are managed by the `VulkanCore::Buffer` class,
+    which provides functions to create and upload data to the device, as well as a
+    utility function to use a staging buffer to upload data to device-only heaps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating a buffer using VMA is simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All you need are buffer creation flags ( –a value of `0` for the flags is correct
+    for most cases), the size of the buffer in bytes, its usage (this is how you define
+    how the buffer will be used), and assign those values to an instance of the `VkBufferCreateInfo`
+    structure:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You will also need a set of VmaAllocationCreateFlagBits values:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, call `vmaCreateBuffer` to obtain the buffer handle and its allocation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The next step is optional but useful for debugging and optimization:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Some creation flags affect how the buffer can be used, so you might need to
+    make adjustments to the preceding code depending on how you intend to use the
+    buffers you create in your application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uploading data to buffers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Uploading data from the application to the GPU depends on the type of buffer.
+    For host-visible buffers, it’s a direct copy using `memcpy`. For device-local
+    buffers, we need a staging buffer, which is a buffer that is visible both by the
+    CPU and the GPU. In this recipe, we will demonstrate how to upload data from your
+    application to the device-visible memory (into a buffer’s memory region on the
+    device).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If you haven’t already, please refer to the *Understanding Vulkan’s memory*
+    *model* recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The upload process depends on the type of buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For host-visible memory, it’s enough to retrieve a pointer to the destination
+    using `vmaMapMemory` and copy the data using `memcpy`. The operation is synchronous,
+    so the mapped pointer can be unmapped as soon as `memcpy` returns.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'It’s fine to map a host-visible buffer as soon as it is created and leave it
+    mapped until its destruction. That is the recommended approach, as you don’t incur
+    the overhead of mapping the memory every time it needs to be updated:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Uploading data to a device-local memory needs to be (1) copied to a buffer
+    that is visible from the host first (called a staging buffer) and then (2) copied
+    from the staging buffer to the device-local memory using `vkCmdCopyBuffer`, as
+    depicted in *Figure 2**.4*. Note that this requires a command buffer:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '![Figure 2.4 – Staging buffers](img/B18491_02_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.4 – Staging buffers
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once the data is residing on the device (on the host-visible buffer), copying
+    it to the device-only buffer is simple:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Uploading data from your application to a buffer is accomplished either by a
+    direct `memcpy` operation or by means of a staging buffer. We showed how to perform
+    both uploads in this recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a staging buffer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Creating a staging buffer is like creating a regular buffer but requires flags
+    that specify that the buffer is host-visible. In this recipe, we will show how
+    to create a buffer that can be used as a staging buffer – one that can be used
+    as an intermediary destination of the data being uploaded from your application
+    on its way to a device-local memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The *Creating buffers* recipe explains how to create buffers in general, while
+    this recipe shows which flags and parameters you need to create a staging buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`VkBufferCreateInfo::usage` needs to contain `VK_BUFFER_USAGE_TRANSFER_SRC_BIT`
+    as it will be the source operation for a `vkCmdCopyBuffer` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: A staging buffer may be better implemented using a wrapper in your application.
+    A wrapper can increase or decrease the size of the buffer as needed, for example.
+    One staging buffer may be enough for your application, but you need to watch the
+    requirements imposed by some architectures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to avoid data races using ring buffers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When a buffer needs to be updated every frame, we run the risk of creating
+    a data race, as shown in *Figure 2**.5*. A data race is a situation where multiple
+    threads within a program concurrently access a shared data point, with at least
+    one thread performing a write operation. This concurrent access can result in
+    unforeseen behavior due to the unpredictable order of operations. Take the example
+    of a uniform buffer that stores the view, model, and viewport matrices and needs
+    to be updated every frame. The buffer is updated while the first command buffer
+    is being recorded, initializing it (version 1). Once the command buffer starts
+    processing on the GPU, the buffer contains the correct data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.5 – Data race when using one buffer](img/B18491_02_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.5 – Data race when using one buffer
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the first command buffer starts processing in the GPU, the application
+    may try to update the buffer’s contents to version 2 while the GPU is accessing
+    that data for rendering!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Synchronization is by far the hardest aspect of Vulkan. If synchronization elements
+    such as semaphores, fences, and barriers are used too greedily, then your application
+    becomes a series and won’t use the full power of the parallelism between the CPU
+    and the GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Make sure you also read the *Understanding synchronization in the swapchain
+    – fences and semaphores* recipe in [*Chapter 1*](B18491_01.xhtml#_idTextAnchor019)*,
+    Vulkan Core Concepts*. That recipe and this one only scratch the surface of how
+    to tackle synchronization, but are very good starting points.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A ring-buffer implementation is provided in the `EngineCore::RingBuffer` repository,
+    which has a configurable number of sub-buffers. Its sub-buffers are all host-visible,
+    persistent buffers; that is, they are persistently mapped after creation for ease
+    of access.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are a few ways to avoid this problem, but the easiest one is to create
+    a ring buffer that contains several buffers (or any other resource) equal to the
+    number of frames in flight. *Figure 2**.6* shows events when there are two buffers
+    available. Once the first command buffer is submitted and is being processed in
+    the GPU, the application is free to process copy 1 of the buffer, as it’s not
+    being accessed by the device:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.6 – A data race is avoided with multiple copies of a resource](img/B18491_02_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.6 – A data race is avoided with multiple copies of a resource
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even though this is a simple solution, it has a caveat: if partial updates
+    are allowed, care must be taken when the buffer is updated. Consider *Figure 2**.7*,
+    in which a ring buffer that contains three sub-allocations is partially updated.
+    The buffer stores the view, model, and viewport matrices. During initialization,
+    all three sub-allocations are initialized to three identity matrices. On `(10,
+    10, 0)`. On the next frame, **Frame 1**, **Buffer 1** becomes active, and the
+    viewport matrix is updated. Because **Buffer 1** was initialized to three identity
+    matrices, updating only the viewport matrix makes buffers **0** and **1** out
+    of sync (as well as **Buffer 3**). To guarantee that partial updates work, we
+    need to copy the last active buffer, **Buffer 0**, into **Buffer 1** first, and
+    then update the viewport matrix:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.7 – Partial update of a ring buffer makes all sub-allocations out
+    of sync if they are not replicated](img/B18491_02_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.7 – Partial update of a ring buffer makes all sub-allocations out of
+    sync if they are not replicated
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization is a delicate topic, and guaranteeing your application behaves
+    correctly with so many moving parts is tricky. Hopefully, a ring-buffer implementation
+    that is simple may help you focus on other areas of the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up pipeline barriers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In Vulkan, commands may be reordered when a command buffer is being processed,
+    subject to certain restrictions. This is known as command buffer reordering, and
+    it can help to improve performance by allowing the driver to optimize the order
+    in which commands are executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The good news is that Vulkan provides a mechanism called pipeline barriers to
+    ensure that dependent commands are executed in the correct order. They are used
+    to explicitly specify dependencies between commands, preventing them from being
+    reordered, and at what stages they might overlap. This recipe will explain what
+    pipeline barriers are and what their properties mean. It will also show you how
+    to create and install pipeline barriers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Consider two draw calls issued in sequence. The first one writes to a color
+    attachment, while the second draw call samples from that attachment in the fragment
+    shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Figure 2**.8* helps visualize how those two commands may be processed by the
+    device. In the diagram, commands are processed from top to bottom and progress
+    on the pipeline from left to right. Clock cycles are a loose term, because processing
+    may take multiple clock cycles, but are used to indicate that – in general – some
+    tasks must happen after others.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the example, the second `vkCmdDraw` call starts executing at **C2**, after
+    the first draw call. This offset is not enough, as the second draw call needs
+    to read the color attachment at the **Fragment Shader** stage, which is not produced
+    by the first draw call until it reaches the **Color Attach Output** stage. Without
+    synchronization, this setup may cause data races:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.8 – Two consecutive commands recorded on the same command buffer
+    being processed without synchronization](img/B18491_02_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.8 – Two consecutive commands recorded on the same command buffer being
+    processed without synchronization
+  prefs: []
+  type: TYPE_NORMAL
+- en: A pipeline barrier is a feature that is recorded into the command buffer and
+    that specifies the pipeline stages that need to have been completed for all commands
+    that appear before the barrier and before the command buffer continues processing.
+    Commands recorded before the barrier are said to be in the *first synchronization
+    scope* or first scope. Commands recorded after the barrier are said to be part
+    of the *second synchronization scope* or second scope.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The barrier also allows fine-grained control to specify at which stage commands
+    after the barrier must wait until commands in the first scope finish processing.
+    That’s because commands in the second scope don’t need to wait until commands
+    in the first scope are done. They can start processing as soon as possible, as
+    long as the conditions specified in the barrier are met.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the example in *Figure 2**.8*, the first draw call, in the first scope,
+    needs to write to the attachment before the second draw call can access it. The
+    second draw call does not need to wait until the first draw call finishes processing
+    the **Color Attach Output** stage. It can start right away, as long as its fragment
+    stage happens after the first draw call is done with its **Color Attach Output**
+    stage, as shown in *Figure 2**.9*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.9 – Two consecutive commands recorded on the same command buffer
+    being processed with synchronization](img/B18491_02_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.9 – Two consecutive commands recorded on the same command buffer being
+    processed with synchronization
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three types of barriers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Memory barriers** are global barriers and apply to all commands in the first
+    and second scopes.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Buffer memory barriers** are barriers that apply only to commands that access
+    a portion of the buffer, as it’s possible to specify to which portion of the buffer
+    the barrier applies (offset + range).'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` layout, as it will be read from, while
+    the next mip level needs to be in the `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL` layout,
+    as it will be written to.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Pipeline barriers are recorded with the `vkCmdPipelineBarrier` command, in
+    which you can provide several barriers of multiple types at the same time. The
+    following code snippet shows how to create a barrier used to create a dependency
+    between the two draw calls in *Figure 2**.9*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The barrier needs to be recorded between the two draw calls:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Pipeline barriers are tricky but absolutely fundamental in Vulkan. Make sure
+    you understand what they offer and how they operate before continuing to read
+    the other recipes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating images (textures)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Images are used for storing 1D, 2D, or 3D data, although they are mostly used
+    for 2D data. Different than buffers, images have the advantage of being optimized
+    for locality in memory layout. This is because most GPUs have a fixed-function
+    texture unit or sampler that reads texel data from an image and applies filtering
+    and other operations to produce a final color value. Images can have different
+    formats, such as RGB, RGBA, BGRA, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An image object is only metadata in Vulkan. Its data is stored separately and
+    is created in a similar manner to buffers (*Figure 2**.10*):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.10 – Images](img/B18491_02_10.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.10 – Images
+  prefs: []
+  type: TYPE_NORMAL
+- en: Images in Vulkan cannot be accessed directly and need to be accessed only by
+    means of an image view. An image view is a way to access a subset of the image
+    data by specifying the subresource range, which includes the aspect (such as color
+    or depth), the mip level, and the array layer range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another *very important* aspect of images is their layout. It is used to specify
+    the intended usage of an image resource in Vulkan, such as whether it should be
+    used as a source or destination for a transfer operation, a color or depth attachment
+    for rendering, or as a shader read or write resource. The correct image layout
+    is important because it ensures that the GPU can efficiently access and manipulate
+    the image data in accordance with the intended usage. Using the wrong image layout
+    can lead to performance issues or rendering artifacts and can result in undefined
+    behavior. Therefore, it’s essential to correctly specify the image layout for
+    each usage of an image in a Vulkan application. Common image layouts are undefined
+    (`VK_IMAGE_LAYOUT_UNDEFINED`) color attachment (`VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL`),
+    depth/stencil attachment (`VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL`),
+    and shader read(`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`). Image layout transitions
+    are done as part of the `vkCmdPipelineBarrier` command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this recipe, you will learn how to create images on a device.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the `VulkanCore::Texture` class within our repository, we’ve encapsulated
+    the intricate management of images and image views, offering a comprehensive solution
+    for handling Vulkan textures. From facilitating efficient data uploads to handling
+    transitions between image layouts and generating mipmaps, the `Texture` class
+    equips us with the means to seamlessly integrate textures in the Vulkan examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating an image requires some basic information about it, such as type (1D,
+    2D, 3D), size, format (RGBA, BGRA, and so on), number of mip levels, number of
+    layers (faces for cubemaps), and a few others:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following structure tells VMA that the image will be a device-only image:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The resulting image’s handle will be stored in `image`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step is optional but useful for debugging or optimizing the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This recipe only showed you how to create an image in Vulkan, not how to upload
+    data to it. Uploading data to an image is just like uploading data to a buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating an image view
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Image views provide a way to interpret images in terms of size, location, and
+    format, except in terms of their layout, which needs to be transformed explicitly
+    and transitioned using image barriers. In this recipe, you will learn how to create
+    an image view object in Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Image views are stored and managed by the `VulkanCore::Texture` class in the
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating an image view is easy; all you need is the handle of the image it
+    is associated with and the region of the image that you would like to represent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Without an image view, a texture cannot be used by shaders. Even when used as
+    color attachments, images need image views.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a sampler
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A sampler in Vulkan transcends a simple object; it’s a crucial bridge between
+    shader execution and image data. Beyond interpolation, it governs filtering, addressing
+    modes, and mipmapping. Filters dictate interpolation between texels, while addressing
+    modes control how coordinates map to image extents. Anisotropic filtering further
+    enhances sampling fidelity. Mipmapping, a pyramid of downsampled image levels,
+    is another facet managed by samplers. In essence, creating a sampler involves
+    orchestrating these attributes to seamlessly harmonize image data and shader intricacies.
+    In this recipe, you will learn how to create a sampler object in Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Samplers are implemented by the `VulkanCore::Sampler` class in the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The properties of a sampler define how an image is interpreted in the pipeline,
+    usually in a shader. The process is simple – instantiate a `VkSamplerCreateInfo`
+    structure and call `vkCreateSampler`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: A sampler is one of the simplest objects to create in Vulkan and one of the
+    easiest to understand, as it describes very common computer graphics concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Providing shader data
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Providing data from your application that will be used in shaders is one of
+    the most convoluted aspects of Vulkan and requires several steps that need to
+    be accomplished in the right order (and with the right parameters). In this recipe,
+    with many smaller recipes, you will learn how to provide data used in shaders,
+    such as textures, buffers, and samplers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Resources consumed by shaders are specified using the `layout` keyword, along
+    with `set` and `binding` qualifiers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each resource is represented by a binding. A set is a collection of bindings.
+    One binding doesn’t necessarily represent just one resource; it can also represent
+    an array of resources of the same type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Providing a resource as input to shaders is a multi-step process that involves
+    the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specifying sets and their bindings using descriptor set layouts. This step doesn’t
+    associate real resources with sets/bindings. It just specifies the number and
+    types of bindings in a set.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Building a pipeline layout, which describes which sets will be used in a pipeline.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Creating a descriptor pool that will provide instances of descriptor sets. A
+    descriptor pool contains a list of how many bindings it can provide grouped by
+    binding type (texture, sampler, **shader storage buffer** (**SSBO**), uniform
+    buffers).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Allocate descriptor sets from the pool with `vkAllocateDescriptorSets`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Bind resources to bindings using `vkUpdateDescriptorSets`. In this step, we
+    associate a real resource (a buffer, a texture, and so on) with a binding.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Bind descriptor sets and their bindings to a pipeline during rendering using
+    `vkCmdBindDescriptorSet`. This step makes resources bound to their set/bindings
+    in the previous step available to shaders in the current pipeline.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The next recipes will show you how to perform each one of those steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specifying descriptor sets with descriptor set layouts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Consider the following GLSL code, which specifies several resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code requires three sets (0, 1, and 2), so we need to create three descriptor
+    set layouts. In this recipe, you will learn how to create a descriptor set layout
+    for the preceding code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Descriptor sets and bindings are created, stored, and managed by the `VulkanCore::Pipeline`
+    class in the repository. A descriptor set in Vulkan acts as a container that holds
+    resources, such as buffers, textures, and samplers, for use by shaders. Binding
+    refers to the process of associating these descriptor sets with specific shader
+    stages, enabling seamless interaction between shaders and resources during rendering.
+    These descriptor sets serve as gateways through which resources are seamlessly
+    bound to shader stages, orchestrating harmony between data and shader execution.
+    To facilitate this synergy, the class simplifies descriptor set creation and management,
+    complemented by methods for efficient resource binding within the Vulkan rendering
+    pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A descriptor set layout states its bindings (number and types) with the `vkDescriptorSetLayout`
+    structure. Each binding is described using an instance of the `vkDescriptorSetLayoutBinding`
+    structure. The relationship between the Vulkan structures needed to create a descriptor
+    set layout for the preceding code is shown in *Figure 2**.11*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.11 – Illustrating the configuration of descriptor set layouts for
+    GLSL shaders](img/B18491_02_11.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.11 – Illustrating the configuration of descriptor set layouts for GLSL
+    shaders
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code shows how to specify two bindings for set 1, which are stored
+    in a vector of bindings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since each binding describes a vector, and the `VkDescriptorSetLayoutBinding`
+    structure requires the number of descriptors, we are using a large number that
+    hopefully will accommodate all elements we need in the array. The vector of bindings
+    is stored in a structure that describes a set with its number and all its bindings.
+    This vector will be used to create a descriptor set layout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each set requires its own descriptor set layout, and the preceding process needs
+    to be repeated for each one. The descriptor set layout needs to be stored so that
+    it can be referred to in the future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Passing data to shaders using push constants
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Push constants are another way to pass data to shaders. Although a very performant
+    and easy way to do so, push constants are very limited in size, 128 bytes being
+    the only guaranteed amount by the Vulkan specification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This recipe will show you how to pass a small amount of data from your application
+    to shaders, using push constants for a simple shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Push constants are stored and managed by the `VulkanCore::Pipeline` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Push constants are recorded directly onto the command buffer and aren’t prone
+    to the same synchronization issues that exist with other resources. They are declared
+    in the shader as follows, with one maximum block per shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The pushed data must be split into the shader stages. Parts of it can be assigned
+    to different shader stages or assigned to one single stage. The important part
+    is that the data cannot be greater than the total amount available for push constants.
+    The limit is provided in `VkPhysicalDeviceLimits::maxPushConstantsSize`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before using push constants, we need to specify how many bytes we are using
+    in each shader stage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code states that the first (`offset == 0`) `64` bytes of the push constant
+    data recorded in the command buffer (the size of a 4x4 matrix of floats) will
+    be used by the vertex shader. This structure will be used in the next recipe to
+    create a pipeline layout object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a pipeline layout
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A pipeline layout is an object in Vulkan that needs to be created and destroyed
+    by the application. The layout is specified using structures that define the layout
+    of bindings and sets. In this recipe, you will learn how to create a pipeline
+    layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A `VkPipelineLayoutCreateInfo` instance is created automatically by the `VulkanCore::Pipeline`
+    class in the repository based on information provided by the application using
+    a vector of `VulkanCore::Pipeline::SetDescriptor` structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'With all descriptor set layouts for all sets and the push constant information
+    in hand, the next step consists of creating a pipeline layout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Once you have the descriptor set layout in hand and know how to use the push
+    constants in your application, creating a pipeline layout is straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a descriptor pool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A descriptor pool contains a maximum number of descriptors it can provide (be
+    allocated from), grouped by binding type. For instance, if two bindings of the
+    same set require one image each, the descriptor pool would have to provide at
+    least two descriptors. In this recipe, you will learn how to create a descriptor
+    pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Descriptor pools are allocated in the `VulkanCore::Pipeline::` `initDescriptorPool()`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Creating a descriptor pool is straightforward. All we need is a list of binding
+    types and the maximum number of resources we’ll allocate for each one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since we duplicate the resources based on the number of swapchain images to
+    avoid data races between the CPU and the GPU, we multiply the number of bindings
+    we requested before (`kMaxBindings = 1000`) by the number of swapchain images:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Be careful not to create pools that are too large. Achieving a high-performing
+    application means not allocating more resources than you need.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocating descriptor sets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once a descriptor layout and a descriptor pool have been created, before you
+    can use it, you need to allocate a descriptor set, which is an instance of a set
+    with the layout described by the descriptor layout. In this recipe, you will learn
+    how to allocate a descriptor set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Descriptor set allocations are done in the `VulkanCore::Pipeline:: allocateDescriptors()`
+    method. Here, developers define the count of descriptor sets required, coupled
+    with binding counts per set. The subsequent `bindDescriptorSets()` method weaves
+    the descriptors into command buffers, preparing them for shader execution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Allocating a descriptor set (or a number of them) is easy. You need to fill
+    the `VkDescriptorSetAllocateInfo` structure and call `vkAllocateDescriptorSets`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When using multiple copies of a resource to avoid race conditions, there are
+    two approaches:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocate one descriptor set for each resource. In other words, call the preceding
+    code once for each copy of the resource.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create one descriptor set and update it every time you need to render.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Updating descriptor sets during rendering
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once a descriptor set has been allocated, it is not associated with any resources.
+    This association must happen once (if your descriptor sets are immutable) or every
+    time you need to bind a different resource to a descriptor set. In this recipe,
+    you will learn how to update descriptor sets during rendering and after you have
+    set up the pipeline and its layout.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the repository, `VulkanCore::Pipeline` provides methods to update different
+    types of resources, as each binding can only be associated with one type of resource
+    (image, sampler, or buffer): `updateSamplersDescriptorSets()`, `updateTexturesDescriptorSets()`,
+    and `updateBuffersDescriptorSets``()`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Associating a resource with a descriptor set is done with the `vkUpdateDescriptorSets`
+    function. Each call to `vkUpdateDescriptorSets` can update one or more bindings
+    of one or more sets. Before updating a descriptor set, let’s look at how to update
+    *one* binding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can associate either a texture, a texture array, a sampler, a sampler array,
+    a buffer, or a buffer array with one binding. To associate images or samplers,
+    use the `VkDescriptorImageInfo` structure. To associate buffers, use the `VkDescriptorBufferInfo`
+    structure. Once one or more of those structures have been instantiated, use the
+    `VkWriteDescriptorSet` structure to bind them all with a binding. Bindings that
+    represent an array are updated with a vector of `VkDescriptor*Info`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider the bindings declared in the shader code presented next:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To update the `textures[]` array, we need to create two instances of `VkDescriptorImageInfo`
+    and record them in the first `VkWriteDescriptorSet` structure:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The two image views will be bound to set 1 (`.dstSet = 1`) and binding 0 (`.dstBinding
+    = 0`) as elements 0 and 1 of the array. If you need to bind more objects to the
+    array, all you need are more instances of `VkDescriptorImageInfo`. The number
+    of objects bound to the current binding is specified by the `descriptorCount`
+    member of the structure.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The process is similar for sampler objects:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'This time, we are binding the sampler objects to set 1, binding 1\. Buffers
+    are bound using the `VkDescriptorBufferInfo` structure:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Besides storing the address of the `bufferInfo` variable to the `.pBufferInfo`
+    member of `VkWriteDescriptorSet`, we are binding one buffer (`.descriptorCount
+    = 1`) to set 2 (`.dstSet = 2`) and binding `0` (`.dstBinding =` `0`).
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The last step consists of storing all `VkWriteDescriptorSet` instances in a
+    vector and calling `vkUpdateDescriptorSets`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Encapsulating this task is the best way to avoid repetition and bugs introduced
+    by forgetting a step in the update procedure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Passing resources to shaders (binding descriptor sets)
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While rendering, we need to bind the descriptor sets we’d like to use during
+    a draw call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Binding sets is done with the `VulkanCore::Pipeline::` `bindDescriptorSets()`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To bind a descriptor set for rendering, we need to call `vkCmdBindDescriptorSets`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we’ve successfully bound a descriptor set for rendering, let’s turn
+    our attention to another crucial aspect of our graphics pipeline: updating push
+    constants.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating push constants during rendering
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Push constants are updated during rendering by recording their values directly
+    into the command buffer being recorded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Updating push constants is done with the `VulkanCore::Pipeline::` `udpatePushConstants()`
+    method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Once rendered, updating push constants is straightforward. All you need to
+    do is call `vkCmdPushConstants`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: This call records the contents of `mat` into the command buffer, starting at
+    offset 0 and signaling that this data will be used by the vertex shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Customizing shader behavior with specialization constants
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The process of compiling shader code results in immutability once completed.
+    The compilation procedure carries a substantial time overhead and is generally
+    circumvented during runtime. Even minor adjustments to a shader necessitate recompilation,
+    leading to the creation of a fresh shader module and potentially a new pipeline
+    as well – all entailing significant resource-intensive operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In Vulkan, specialization constants allow you to specify constant values for
+    shader parameters at pipeline creation time, instead of having to recompile the
+    shader with new values every time you want to change them. This can be particularly
+    useful when you want to reuse the same shader with different constant values multiple
+    times. In this recipe, we will delve deeper into the practical application of
+    specialization constants in Vulkan to create more efficient and flexible shader
+    programs, allowing you to adjust without the need for resource-intensive recompilations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Specialization constants are available in the repository through the `VulkanCore::Pipeline::GraphicsPipelineDescriptor`
+    structure. You need to provide a vector of `VkSpecializationMapEntry` structures
+    for each shader type you’d like to apply specialization constants to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it…
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Specialization constants are declared in GLSL using the `constant_id` qualifier
+    along with an integer that specifies the constant’s ID:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: const bool kUseShaderDebug = false;
+  prefs: []
+  type: TYPE_NORMAL
+- en: const VkSpecializationMapEntry useShaderDebug = {
+  prefs: []
+  type: TYPE_NORMAL
+- en: .constantID = 0, // matches the constant_id qualifier
+  prefs: []
+  type: TYPE_NORMAL
+- en: .offset = 0,
+  prefs: []
+  type: TYPE_NORMAL
+- en: .size = sizeof(bool),
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: const VkSpecializationInfo vertexSpecializationInfo = {
+  prefs: []
+  type: TYPE_NORMAL
+- en: .mapEntryCount = 1,
+  prefs: []
+  type: TYPE_NORMAL
+- en: .pMapEntries = &useShaderDebug,
+  prefs: []
+  type: TYPE_NORMAL
+- en: .dataSize = sizeof(bool),
+  prefs: []
+  type: TYPE_NORMAL
+- en: .pData = &kUseShaderDebug,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: const VkPipelineShaderStageCreateInfo shaderStageInfo = {
+  prefs: []
+  type: TYPE_NORMAL
+- en: '...'
+  prefs: []
+  type: TYPE_NORMAL
+- en: .pSpecializationInfo = &vertexSpecializationInfo,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: typedef struct VkDrawIndexedIndirectCommand {
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t    indexCount;
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t    instanceCount;
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t    firstIndex;
+  prefs: []
+  type: TYPE_NORMAL
+- en: int32_t     vertexOffset;
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t    firstInstance;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} VkDrawIndexedIndirectCommand;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: VkCommandBuffer commandBuffer;  // Valid Command Bufer
+  prefs: []
+  type: TYPE_NORMAL
+- en: VkBuffer indirectCmdBuffer;     // Valid buffer w/
+  prefs: []
+  type: TYPE_NORMAL
+- en: // indirect commands
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t meshCount;  // Number of indirect commands in
+  prefs: []
+  type: TYPE_NORMAL
+- en: // the buffer
+  prefs: []
+  type: TYPE_NORMAL
+- en: uint32_t offset = 0; // Offset into the indirect commands
+  prefs: []
+  type: TYPE_NORMAL
+- en: // buffer
+  prefs: []
+  type: TYPE_NORMAL
+- en: vkCmdDrawIndexedIndirect(
+  prefs: []
+  type: TYPE_NORMAL
+- en: commandBuffer, indirectCmdBuffer, offset,
+  prefs: []
+  type: TYPE_NORMAL
+- en: meshCount,
+  prefs: []
+  type: TYPE_NORMAL
+- en: sizeof(VkDrawIndexedIndirectDrawCommand));
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: struct Vertex {
+  prefs: []
+  type: TYPE_NORMAL
+- en: vec3 pos;
+  prefs: []
+  type: TYPE_NORMAL
+- en: vec3 normal;
+  prefs: []
+  type: TYPE_NORMAL
+- en: vec2 uv;
+  prefs: []
+  type: TYPE_NORMAL
+- en: int material;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: layout(set = 2, binding = 0) readonly buffer VertexBuffer
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vertex vertices[];
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} vertexBuffer;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: void main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: Vertex vertex = vertexBuffer.vertices[gl_VertexIndex];
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: const VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures = {
+  prefs: []
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+  prefs: []
+  type: TYPE_NORMAL
+- en: .dynamicRendering = VK_TRUE,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: const VkDeviceCreateInfo dci = {
+  prefs: []
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+  prefs: []
+  type: TYPE_NORMAL
+- en: .pNext = &dynamicRenderingFeatures,
+  prefs: []
+  type: TYPE_NORMAL
+- en: '...'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: void Texture::addAcquireBarrier(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkCommandBuffer cmdBuffer,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: uint32_t srcQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: uint32_t dstQueueFamilyIndex) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkImageMemoryBarrier2 acquireBarrier = {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .dstStageMask =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .srcQueueFamilyIndex = srcQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .dstQueueFamilyIndex = dstQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .image = image_,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 0, mipLevels_, 0, 1},
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '};'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkDependencyInfo dependency_info{
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .imageMemoryBarrierCount = 1,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .pImageMemoryBarriers = &acquireBarrier,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '};'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: vkCmdPipelineBarrier2(cmdBuffer, &dependency_info);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: void Texture::addReleaseBarrier(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkCommandBuffer cmdBuffer,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: uint32_t srcQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: uint32_t dstQueueFamilyIndex) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkImageMemoryBarrier2 releaseBarrier = {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .srcQueueFamilyIndex = srcQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .dstQueueFamilyIndex = dstQueueFamilyIndex,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .image = image_,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 0, mipLevels_, 0, 1},
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '};'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkDependencyInfo dependency_info{
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .imageMemoryBarrierCount = 1,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .pImageMemoryBarriers = &releaseBarrier,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '};'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: vkCmdPipelineBarrier2(cmdBuffer, &dependency_info);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: auto transferQueueMgr =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: context.createTransferCommandQueue(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 1, 1, "transfer queue");
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: auto graphicsQueueMgr =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: context.createGraphicsCommandQueue(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 1, 1, "graphics queue");
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: VulkanCore::Context context;  // Valid Context
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: std::shared_ptr<VulkanCore::Texture>
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture;        // Valid Texture
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: void* textureData;  // Valid texture data
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: // Upload texture
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: auto textureUploadStagingBuffer =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: context.createStagingBuffer(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture->vkDeviceSize(),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '"texture upload staging buffer");'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: const auto commandBuffer =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferQueueMgr.getCmdBufferToBegin();
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture->uploadOnly(commandBuffer,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: textureUploadStagingBuffer.get(),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: textureData);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture->addReleaseBarrier(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: commandBuffer,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferQueueMgr.queueFamilyIndex(),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: graphicsQueueMgr.queueFamilyIndex());
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferQueueMgr.endCmdBuffer(commandBuffer);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferQueueMgr.disposeWhenSubmitCompletes(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: std::move(textureUploadStagingBuffer));
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: VkSemaphore graphicsSemaphore;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: const VkSemaphoreCreateInfo semaphoreInfo{
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '};'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VK_CHECK(vkCreateSemaphore(context.device(),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '&semaphoreInfo, nullptr,'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '&graphicsSemaphore));'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkPipelineStageFlags flags =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VK_PIPELINE_STAGE_TRANSFER_BIT;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: auto submitInfo =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: context.swapchain()->createSubmitInfo(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '&commandBuffer, &flags, false, false);'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: submitInfo.signalSemaphoreCount = 1;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: submitInfo.pSignalSemaphores = &graphicsSemaphore;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferQueueMgr.submit(&submitInfo);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: // Generate mip levels
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: auto commandBuffer =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: graphicsQueueMgr.getCmdBufferToBegin();
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture->addAcquireBarrier(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: commandBuffer,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: transferCommandQueueMgr_.queueFamilyIndex(),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: graphicsQueueMgr.queueFamilyIndex());
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: texture->generateMips(commandBuffer);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: graphicsQueueMgr.endCmdBuffer(commandBuffer);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VkPipelineStageFlags flags =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: auto submitInfo =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: context_.swapchain()->createSubmitInfo(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '&commandBuffer, &flags, false, false);'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: submitInfo.pWaitSemaphores = &graphicsSemaphore;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: submitInfo.waitSemaphoreCount = 1;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE

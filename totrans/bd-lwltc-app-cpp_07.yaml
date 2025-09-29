@@ -1,0 +1,1849 @@
+- en: '7'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Communicating with Market Participants
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will build the order gateway component at the electronic
+    trading exchange that is responsible for accepting client connections, handling
+    requests, and publishing responses to clients about their orders when there are
+    updates. Fairness, low latency, and low jitter (latency variance) are important
+    requirements here to facilitate high-frequency trading participants. We will also
+    build the component that publishes market data from the trading exchange. These
+    market data updates are designed to allow clients to construct the order book
+    of all client orders that the electronic trading exchange holds. These market
+    updates need to be sent out as soon as possible when there are order updates and
+    when matches occur, so the focus will be on super-low-latency performance. Additionally,
+    the exchange needs to periodically provide snapshots of the order book for participants
+    that drop packets or start after the market is already open.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the market data protocol and order data protocol
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the order gateway server
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the market data publisher
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building the main exchange application
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the code for this book can be found in the GitHub repository for this book
+    at [https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP](https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP).
+    The source code for this chapter can be found in the `Chapter7` directory in the
+    repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important that you have read and understood the design of the electronic
+    trading ecosystem presented in the *Designing Our Trading Ecosystem* chapter.
+    The components we build in this chapter will interact with the matching engine
+    we built in the *Building the C++ Matching Engine* chapter, so we assume you are
+    familiar with that. As before, we will use the building blocks we built in the
+    *Building the C++ Building Blocks for Low-Latency* *Applications* chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the market data protocol and order data protocol
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we build the components inside the trading exchange that publish market
+    data updates and receive and respond to client requests, we need to finalize the
+    protocol. The protocol needs to be publicly available so that market participants
+    who want to connect to the exchange, process updates, and send order requests
+    can build their software. The protocol is the *language* that the exchange and
+    market participants will use to communicate. We will have two protocols – one
+    for the format of the market data updates and one for the format to send order
+    requests and receive order responses in.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the market data protocol
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For the market data protocol, we will define an internal format that the matching
+    engine uses, and a public format meant for the market participants. We saw the
+    internal matching format, that is, the `MEMarketUpdate` struct, in the *Building
+    the Matching Engine* chapter, in the *Defining the operations and interactions
+    in our matching engine* section. In this section, we will define the public market
+    data format, which will be encapsulated in the `MDPMarketUpdate` struct. Remember
+    that we mentioned that market data formats can be of several types and different
+    complexity, for example, the FAST protocol or the SBE protocol. For our market
+    data format, we will use the `Chapter7/exchange/market_data/market_update.h` source
+    file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we look at the market data protocol, a reminder that we first explained
+    what a snapshot of market data is, why it is needed, and how it is synthesized
+    using incremental market data updates in the *Designing Our Trading Ecosystem*
+    chapter in the *Understanding how an exchange publishes information to participants*
+    section, in the *Designing the market data publisher* subsection. Additionally,
+    we discussed additional details about the snapshot data stream in the same chapter,
+    in the *Building a market participant’s interface to the exchange* section. So,
+    it would be worthwhile to revisit those sections if a refresher of those concepts
+    is required. But just to re-introduce snapshot messages, these are messages that
+    contain full information about the state of the limit order book at any given
+    time and can be used by market participants if they need to re-construct the full
+    limit order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we look at the `MDPMarketUpdate` struct, let us first revisit the `MarketUpdateType`
+    enumeration we created in the previous chapter. In this chapter, we will add a
+    few new enumeration types here – `CLEAR`, `SNAPSHOT_START`, and `SNAPSHOT_END`
+    – which will be needed later. The `CLEAR` message is used to notify clients that
+    they should clear/empty the order book on their end, `SNAPSHOT_START` signifies
+    that a snapshot message is starting, and `SNAPSHOT_END` signifies that all updates
+    in the snapshot update have been delivered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The updated enumeration list is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our `MDPMarketUpdate` structure contains an important addition over the `MEMarketUpdate`
+    structure, which is a sequence number field. This `size_t seq_num_` field is an
+    increasing sequence number value for every market update published by the exchange.
+    For every new market update, the sequence number is exactly 1 greater than the
+    previous market update. This sequence number field will be used by the market
+    data consumers in the market participants’ trading systems to detect gaps in market
+    updates. Remember that for our market data publisher, we will publish the market
+    data in UDP format, which is an unreliable protocol. So, when there are drops
+    in packets at the network level, or if a participant’s system drops a packet,
+    they can use the sequence number field to detect that. We present the internal
+    `MEMarketUpdate` format again, and the new public `MDPMarketUpdate` format as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Hence, `MDPMarketUpdate` is simply `MEMarketUpdate` with a leading `seq_num_`
+    field. Before we finish this subsection, we will define two simple typedefs that
+    we will need later in this chapter. We saw the first one, `MEMarketUpdateLFQueue`,
+    in the previous chapter; the new `MDPMarketUpdateLFQueue` is similar and represents
+    a lock-free queue of `MDPMarketUpdate` structures:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes our design of the market data protocol. We will see the design
+    of the order data protocol next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the order data protocol
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we will design the public order data protocol the clients
+    will use to send order requests to the exchange and receive order responses from
+    it, specifically the order gateway server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we will see the format of messages sent from the market participant’s
+    order gateway to the exchange’s order gateway server. We already discussed the
+    `ClientRequestType` enumeration, the `MEClientRequest` struct, and the `ClientRequestLFQueue`
+    typedef used by the matching engine in the *Building the C++ Matching Engine*
+    chapter, in the *Defining the operations and interactions in our matching engine*
+    section. `MEClientRequest` is the internal format used by the matching engine,
+    but `OMClientRequest` is the format that the market participants need to use when
+    sending order requests to the exchange order gateway server. Like the market data
+    format, `OMClientRequest` has a sequence number field, `seq_num_`, and then the
+    `MEClientRequest` struct after that. The sequence number field here serves a similar
+    purpose as before, to make sure that the exchange and client’s order gateway components
+    are in sync with each other. The code for this structure is in the `Chapter7/exchange/order_server/client_request.h`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have a symmetrical design of the responses sent from the exchange’s order
+    gateway server to the client’s order gateway component. We saw the `MEClientResponse`
+    structure in the previous chapter, which is used internally between the matching
+    engine and the order gateway server component inside the trading exchange infrastructure.
+    The `OMClientResponse` structure is the public format that the market participants
+    will use to receive and process order responses in. Like the other structures
+    we saw before, there is a sequence number field for synchronization purposes and
+    the remaining payload for this structure is the `MEClientResponse` structure.
+    This structure can be found in the `Chapter7/exchange/order_server/client_response.h`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes the design of the new structures we will need in this chapter.
+    Next, we will start discussing the implementation of the order gateway server,
+    starting with how it handles incoming client requests from market participants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the order gateway server
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will start building the order gateway server infrastructure,
+    which is responsible for setting up a TCP server for clients to connect to. The
+    order gateway server also needs to process incoming client requests from different
+    clients in the order in which they arrive and forward those to the matching engine.
+    Finally, it also needs to receive the order responses from the matching engine
+    and forward them to the correct TCP connection for the corresponding market participant.
+    We will revisit the design of the order gateway server and how it interacts with
+    the matching engine and the market participants, as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.1 – Order gateway server and its subcomponents](img/B19434_07_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.1 – Order gateway server and its subcomponents
+  prefs: []
+  type: TYPE_NORMAL
+- en: To refresh your memory, the order gateway server receives new TCP connections
+    or client requests on established TCP connections. Then, those requests go through
+    a FIFO sequencer stage to make sure that requests are processed in the exact order
+    in which they arrived at the exchange’s infrastructure. There is a transformation
+    between the internal matching engine format and the public order data format we
+    described in the previous section. In the previous chapter on *Building the Matching
+    Engine*, we already built the communication path to and from the matching engine,
+    which is through lock-free queues. All the details behind the design of this component
+    as well as what purpose it serves in our electronic trading ecosystem were discussed
+    in the *Designing Our Trading Ecosystem* chapter, specifically in the *Understanding
+    the layout of the electronic trading ecosystem* and *Understanding how an exchange
+    publishes information to participants* sections. So, we would strongly recommend
+    revisiting that chapter as you build the order gateway server at the exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we will build the `OrderServer` class, which represents the order gateway
+    server component in the preceding diagram. The code for `OrderServer` resides
+    in the `Chapter7/exchange/order_server/order_server.h` and `Chapter7/exchange/order_server/order_server.cpp`
+    files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members in the order gateway server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `OrderServer` class has a few important data members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `tcp_server_` variable, which is an instance of the `Common::TCPServer` class,
+    which will be used to host a TCP server to poll for, accept incoming connections
+    from market participants, and poll the established TCP connections to see whether
+    there is data to be read from any of the connections.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `fifo_sequencer_` variable, which is an instance of the `FIFOSequencer` class
+    and is responsible for making sure that client requests that come in on different
+    TCP connections are processed in the correct order in which they came.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A lock-free queue variable, `outgoing_responses_`, of the `ClientResponseLFQueue`
+    type, using which it receives `MEClientResponse` messages from the matching engine,
+    which need to be sent out to the correct market participant.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `std::array` `cid_tcp_socket_` of `TCPSocket` objects of size `ME_MAX_NUM_CLIENTS`,
+    which will be used as a hash map from client-id to the `TCPSocket` connection
+    for that client.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Two `std::array`s also of size `ME_MAX_NUM_CLIENTS` to track the exchange-to-client
+    and client-to-exchange sequence numbers on the `OMClientResponse` and `OMClientRequest`
+    messages. These are the `cid_next_outgoing_seq_num_` and `cid_next_exp_seq_num_`
+    variables.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'A Boolean `run_` variable, which will be used to start and stop the `OrderServer`
+    thread. Note that it is marked `volatile` since it will be accessed from different
+    threads, and we want to prevent compiler optimizations here for correct functionality
+    in a multi-threaded environment:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE6]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE7]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE8]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'One more minor declaration before we move on to the next subsection is that
+    the `OrderServer` class has the following method declarations, which we will define
+    in the subsequent subsections. These are methods corresponding to the constructor,
+    the destructor, a `start()` method, and a `stop()` method, but for now, do not
+    worry about the details of these; we will be defining them very soon:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next subsection, we will initialize and de-initialize the `OrderServer`
+    class and its member variables.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the order gateway server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The constructor for this class is straightforward. We initialize the three
+    arrays with some basic values: sequence numbers set to 1 and `TCPSocket`s set
+    to `nullptr`. We will also set the two callback members, `recv_callback_` and
+    `recv_finished_callback_`, to point to the `recvCallback()` and `recvFinishedCallback()`
+    member functions. We will discuss these callback handling methods in the next
+    few subsections. The constructor for `OrderServer` accepts pointers to two lock-free
+    queue objects: one to forward `MEClientRequest`s to the matching engine and one
+    to receive `MEClientResponse`s from the matching engine. It also accepts a network
+    interface and port to use that the order gateway server will listen to and accept
+    client connections on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will also define a `start()` method, which will set the bool run_ to be
+    true. This is the flag that controls how long the main thread will run. We also
+    initialize the `TCPServer` member object to start listening on the interface and
+    port that `OrderServer` was provided in the constructor. Finally, it creates and
+    launches a thread that will execute the `run()` method, which we will also see
+    in the next few subsections. For now, we will not set affinity on any threads
+    we create in this application, but we will discuss optimization possibilities
+    at the end of this book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define a complementary `stop()` method, which simply sets the `run_` flag
+    to false, which will cause the `run()` method to finish execution (more on this
+    shortly):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor for the `OrderServer` class is also quite simple. It calls the
+    `stop()` method to instruct the main thread to stop execution and then waits a
+    brief period of time for the thread to finish any pending tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes the subsection on the initialization of this class. Next, we
+    will investigate the functionality needed for `OrderServer` to handle incoming
+    client requests over TCP connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling incoming client requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this subsection, we will discuss the code we need to handle incoming client
+    requests. These client requests are received over TCP connections, and these are
+    dispatched to the `recvCallback()` and `recvFinishedCallback()` methods through
+    the `TCPServer` like we set up in the constructor. We will break down the implementation
+    of this method into different blocks so we can understand it better here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first code block in this method checks whether the size of the available
+    data is at least as large as a complete `OMClientRequest` struct. Then it breaks
+    up the available data into blocks of size equal to the size of an `OMClientRequest`
+    object, and iterates through the available data. It reinterprets `rcv_buffer_`
+    in `TCPSocket` as an `OMClientRequest` struct and saves it in the request variable,
+    which is of the `OMClientRequest` pointer type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once it has the `OMClientRequest` it needs to process, it checks whether this
+    is the first request from this client. If that is the case, then it tracks the
+    `TCPSocket` instance for this client by adding it to the `cid_tcp_socket_` `std::array`,
+    which we are using as a hash map:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If a `TCPSocket` entry for this client-id already existed in the `cid_tcp_socket_`
+    container, then we would make sure that the previously tracked `TCPSocket` for
+    this client-id matches the `TCPSocket` for the current request. If they do not
+    match, we log an error and skip processing this request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will perform a sequence number check to make sure that the sequence
+    number on this `OMClientRequest` is exactly what we expect it to be based on the
+    last message we have seen. If there is a mismatch between the expected and received
+    sequence numbers, then we log an error and ignore this request:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'One note here is that in a realistic setup, the exchange will send a reject
+    back to the client if it receives a request on an incorrect socket or if there
+    is a sequence number mismatch, to notify them of the error. We have omitted that
+    here for simplicity’s sake, but it is not difficult to add if needed. If we have
+    made it this far in the execution of this loop, then we increment the next expected
+    sequence number on the next `OMClientRequest` for this client and forward this
+    request to the FIFO sequencer data member. One important thing to note here is
+    that we also forward `rx_time`, which is the software receive time of this TCP
+    packet, to the FIFO sequencer since it will need that information to sequence
+    the requests correctly. We will discuss the details of how the FIFO sequencer
+    achieves this in the next subsection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Remember that the `recvFinishedCallback()` method is called when all the `recvCallback()`
+    methods have been dispatched from the current call to `TCPServer::sendAndRecv()`.
+    The `recvFinishedCallback()` method instructs `FIFOSequencer` to correctly order
+    the `MEClientRequests` that it has queued up and push them to the matching engine.
+    This mechanism will become clear when we discuss the design and implementation
+    of the `FIFOSequencer` in the next subsection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will discuss the FIFO sequencer component, which is responsible for
+    maintaining fairness from the perspective of processing client requests. It does
+    this by making sure that requests received across different TCP connections are
+    processed in the exact order in which they were received in the order gateway
+    server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Processing requests fairly using the FIFO sequencer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The FIFO sequencer subcomponent in the order gateway server is responsible for
+    making sure that client requests are processed in the order of their arrival time.
+    This is necessary because the order gateway server reads and dispatches client
+    requests from different TCP connections, which arrive at different times. Let
+    us get started by first defining the data members inside this class. The code
+    for the FIFO sequencer is in the `Chapter7/exchange/order_server/fifo_sequencer.h`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members in the FIFO sequencer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: First, we define a constant, `ME_MAX_PENDING_REQUESTS`, which represents the
+    maximum number of simultaneously pending requests available at the network socket
+    across all TCP connections. If the order gateway server is busy with other tasks
+    and has not polled the TCP connections for a very short period of time, it is
+    possible client requests arrived during that time and are queued at the network
+    socket level.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The FIFO sequencer uses this constant to create a `std::array` of that size
+    of `RecvTimeClientRequest` structures. This member variable is named `pending_client_requests_`
+    in this `FIFOSequencer` class. To count the number of actual pending request entries
+    in this `pending_client_requests_` array, we will maintain a `pending_size_` variable
+    of the `size_t` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `RecvTimeClientRequest` struct has two members – `recv_time_`, of the `Nanos`
+    type, and a `request_` variable of the `MEClientRequest` type. This structure
+    captures the client request as well as the time of its arrival at the order gateway
+    server. We will sort these by time and then process them in order of arrival.
+    To make sorting easy, we will define a `<` operator, which returns `true` if the
+    client request on the **left-hand side** (**LHS**) was received before the client
+    request on the **right-hand side** (**RHS**) of that operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the last important member of this class is the `incoming_requests_`
+    variable, which is of the `ClientRequestLFQueue` type, which is the lock-free
+    queue that the FIFO sequencer uses to send `MEClientRequest`s to the matching
+    engine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us look at the source code to initialize the FIFO sequencer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the FIFO sequencer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The constructor for the `FIFOSequencer` class is straightforward and self-explanatory.
+    It is presented as follows and initializes `incoming_requests_` `ClientRequestLFQueue`
+    and `logger_`, which are both passed to it in the constructor for this class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we will look at the most important functionality inside the FIFO sequencer
+    – queueing up client requests and publishing them in order of their receive time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publishing client requests in order
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We used the `FIFOSequencer::addClientRequest()` method in a previous subsection,
+    *Handling incoming client requests*. Here, we present the implementation, which
+    is quite simple and involves simply adding it to the end of `pending_client_requests_`
+    and incrementing the `pending_size_` variable to signify that there is an additional
+    entry that was added. Note here that we only ever expect a maximum of `ME_MAX_PENDING_REQUESTS`
+    at a time since we set it to a high value. If this limit is not enough, we have
+    the option of increasing the array size and possibly switching to using a `MemPool`
+    of `RecvTimeClientRequest` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also used the `FIFOSequencer::sequenceAndPublish()` method in a previous
+    subsection, *Handling incoming client requests*. This is the most important method
+    in the `FIFOSequencer` class and performs the following tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, it sorts all the `RecvTimeClientRequest` entries in the `pending_client_requests_`
+    container in ascending order of their arrival times. It achieves this by using
+    the `std::sort()` algorithm, which in turn uses the `<` operator we built for
+    `RecvTimeClientRequest` objects to sort the container. One word here: sorting
+    can become time consuming if the number of elements is very large, but we rarely
+    expect that to be the case here, since the number of simultaneously pending requests
+    is expected to be quite low. This would be another optimization area, but we need
+    to measure the load and performance of our system in practice before deciding
+    how to improve this.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: After the sorting step, it writes each of the `MEClientRequest` entries to the
+    `incoming_requests_` `LFQueue`, which goes to the matching engine.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Finally, it resets the `pending_size_` variable to mark the end of processing
+    and returns from the method:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE54]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE55]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE56]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE57]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE58]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE59]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE60]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE61]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE62]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE63]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE64]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE65]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE66]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE67]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This concludes the design and implementation of the `FIFOSequencer` subcomponent
+    inside our order gateway server. Now, we can go back to our design of the `OrderServer`
+    class by adding functionality to send client responses back out to the clients
+    over TCP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending client responses
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we will look at how `OrderServer` performs two important
+    tasks in the `run()` method. Remember that this `run()` method is the main loop
+    for this class, which is run on the thread we created and launched in the *Initializing
+    the order gateway server* subsection, specifically in the `start()` method. The
+    `run()` method performs the following two main tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It calls the `poll()` method on the `TCPServer` object it holds. Remember that
+    the `poll()` method checks for and accepts new connections, removes dead connections,
+    and checks whether there is data available on any of the established TCP connections,
+    that is, client requests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'It also calls the `sendAndRecv()` method on the `TCPServer` object it holds.
+    The `sendAndRecv()` method reads the data from each of the TCP connections and
+    dispatches the callbacks for them. The `sendAndRecv()` call also sends out any
+    outgoing data on the TCP connections, that is, client responses. This code block
+    is shown as follows and should be quite easy to understand:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE69]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE70]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE71]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE72]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE73]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The `run()` loop also drains the `outgoing_responses_` lock-free queue, which
+    the matching engine uses to send out `MEClientResponse` messages that need to
+    be dispatched to the correct clients.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'It iterates through the available data in the `outgoing_responses_` queue and
+    then for each `MEClientResponse` it reads, it first finds out what the correct
+    outgoing sequence number is. This is the sequence number on the `OMClientResponse`
+    message to be sent to that client ID.     It does this by looking up that answer in the `cid_next_outgoing_seq_num_` array,
+    which we are really using as a hash map from the client ID to the sequence number:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE75]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE76]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE77]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE78]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE79]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE80]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE81]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE82]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE83]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE84]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE85]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: It also checks that it has a valid `TCPSocket` for the client ID that this response
+    is meant for. It looks up that information in the `cid_tcp_socket_` array, which
+    is a hash map from the client ID to `TCPSocket` objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It then sends an `OMClientResponse` message on `TCPSocket` for this client ID
+    by calling the `TCPSocket::send()` method. It achieves this by first sending the
+    `next_outgoing_seq_num_` value and then the `MEClientResponse` message that the
+    matching engine generated. It might not be immediately clear, but this is actually
+    sending an `OMClientResponse` message because the `OMClientResponse` message is
+    actually just a sequence number field followed by a `MEClientResponse` message,
+    which is what we just did.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Finally, it updates the read index and the sequence number of the next outgoing
+    message and continues with the loop:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE86]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE87]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE88]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE89]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE90]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE91]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE92]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE93]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE94]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE95]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE96]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE97]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE98]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE99]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This concludes the full design and implementation of the order gateway server
+    component in our electronic trading infrastructure. Next, we will look at the
+    component that publishes the public market data to the participants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the market data publisher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The last component in the electronic trading exchange we need to build is the
+    market data publisher, which is how the exchange publishes public market data
+    updates to any market participants that need it. Revisiting the design of the
+    market data publisher, we present a diagram of how this component communicates
+    with the matching engine and publishes to the market data participants over UDP,
+    as follows.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.2 – Market data publisher and its subcomponents](img/B19434_07_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.2 – Market data publisher and its subcomponents
+  prefs: []
+  type: TYPE_NORMAL
+- en: We would like to remind you that the purpose and design of the market data publisher
+    were discussed in detail in the *Designing Our Trading Ecosystem* chapter, specifically
+    in the *Understanding the layout of the electronic trading ecosystem* and *Understanding
+    how an exchange publishes information to participants* sections. We would strongly
+    encourage you to revisit those sections to follow along as we build our market
+    data publisher component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us get started by first understanding how updates are consumed from the
+    matching engine and published by jumping into the `MarketDataPublisher` class.
+    All the source code for the `MarketDataPublisher` class is in the `Chapter7/exchange/market_data/market_data_publisher.h`
+    and `Chapter7/exchange/market_data/market_data_publisher.cpp` source files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members in the market data publisher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `MarketDataPublisher` class has the following important members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `next_inc_seq_num_` variable of the `size_t` type, which represents the sequence
+    number to set on the next outgoing incremental market data message. We discussed
+    the concepts of incremental and snapshot market data updates in the *Designing
+    Our Trading Ecosystem* chapter, in the *Understanding how an exchange publishes
+    information to participants* and *Building a market participant’s interface to
+    the* *exchange* sections.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An `outgoing_md_updates_` variable of the `MEMarketUpdateLFQueue` type, which
+    is a lock-free queue of `MEMarketUpdate` messages. We discussed the `MEMarketUpdate`
+    structure in the *Building the C++ Matching Engine* chapter, in the *Defining
+    the operations and interactions in our matching engine* section. This `LFQueue`
+    is how the matching engine sends the `MEMarketUpdate` messages that the market
+    data publisher then publishes over UDP.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An `incremental_socket_` member, which is an `McastSocket` to be used to publish
+    UDP messages on the incremental multicast stream.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `snapshot_synthesizer_` variable of the `SnapshotSynthesizer` type, which
+    we will discuss in the next subsection. This object will be responsible for generating
+    a snapshot of the limit order book from the updates that the matching engine provides
+    and periodically publishing a snapshot of the full order book on the snapshot
+    multicast stream. This was discussed in the *Designing Our Trading Ecosystem*
+    chapter, in the *Understanding how an exchange publishes information to participants*
+    section, specifically in the *Designing the market data* *publisher* subsection.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A lock-free queue instance called `snapshot_md_updates_`, which will be of the
+    `MDPMarketUpdateLFQueue` type, which is a lock-free queue containing `MDPMarketUpdate`
+    messages. This queue is used by the market data publisher thread to publish `MDPMarketUpdate`
+    messages that it sends on the incremental stream to the `SnapshotSynthesizer`
+    component. This `LFQueue` is necessary since `SnapshotSynthesizer` runs on a different
+    thread than `MarketDataPublisher`, which is primarily so that the snapshot synthesis
+    and publishing process do not slow down the latency-sensitive `MarketDataPublisher`
+    component.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The last important member of the `MarketDataPublisher` class is the `run_`
+    Boolean variable, which is just used to control when the `MarketDataPublisher`
+    thread is started and stopped. Since it is accessed from different threads, like
+    the `run_` variable in the `OrderServer` class, it is also marked as `volatile`:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE100]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE101]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE102]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE103]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE104]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE105]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE106]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE107]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE108]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE109]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE110]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE111]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE112]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE113]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE114]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE115]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In the next section, we will see how these data members are initialized.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the market data publisher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we will look at how to initialize `MarketDataPublisher`,
+    and how to start and stop the `MarketDataPublisher` component. First, we will
+    look at the constructor, which is presented as follows. The `market_updates` argument
+    passed to it is the `MEMarketUpdateLFQueue` object, which the matching engine
+    will publish market updates on. The constructor also receives the network interface
+    and two sets of IPs and ports – one for the incremental market data stream and
+    one for the snapshot market data stream. In the constructor, it initializes the
+    `outgoing_md_updates_` member with the argument passed in the constructor and
+    the `snapshot_md_updates_` `LFQueue` to be of the size `ME_MAX_MARKET_UPDATES`,
+    which we first defined back in the *Designing the C++ matching engine* chapter,
+    in the *Defining the operations and interactions in our matching engine* *section*,
+    and is available in the `common/types.h` source file. It also initializes the
+    `logger_` object with a log file for this class and initializes the `incremental_socket_`
+    variable with the incremental IP and port provided in the constructor. Finally,
+    it creates a `SnapshotSynthesizer` object and passes the `snapshot_md_updates_`
+    `LFQueue` and the snapshot multicast stream information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE116]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also present a `start()` method, shown as follows, which is similar in functionality
+    to the `start()` method we saw for the `OrderServer` class. First, it sets the
+    `run_` flag to `true`, then creates and launches a new thread and assigns the
+    `run()` method to that thread, which will be our main `run` loop for the `MarketDataPublisher`
+    component. It also calls the `start()` method on the `SnapshotSynthesizer` object
+    so that the `SnapshotSynthesizer` thread can also be launched:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE117]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor is quite self-explanatory; it calls the `stop()` method to stop
+    the running `MarketDataPublisher` thread, then waits a short amount of time to
+    let the thread finish any pending tasks and deletes the `SnapshotSynthesizer`
+    object. We will see the implementation of the `stop()` method right after the
+    destructor, but it should not be too difficult to guess what that method looks
+    like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE118]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, as mentioned before, we present the `stop()` method. This method simply
+    sets the `run_` flag to `false` and instructs the `SnapshotSynthesizer` thread
+    to stop as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE119]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have seen how to initialize this class, we will look at how `MarketDataPublisher`
+    will publish order book updates, first the updates on the incremental updatesmarket
+    data channel first and then the market updates on the snapshot updates secondmarket
+    data channel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publishing order book updates
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The main `run()` loop in `MarketDataPublisher` does a couple of important things,
+    which we will discuss here. First, it drains the `outgoing_md_updates_` queue
+    by reading any new `MEMarketDataUpdates` published by the matching engine. This
+    part of the code block is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE120]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once it has a `MEMarketUpdate` message from the matching engine, it will proceed
+    to write it to the `incremental_socket_` UDP socket. But it needs to write out
+    the message in the `MDPMarketUpdate` format, which is just a sequence number followed
+    by a `MEMarketUpdate` message. As we saw with `OrderServer`, it will achieve this
+    here by first writing `next_inc_seq_num_`, which is the next incremental sequence
+    number to be sent out on the incremental stream, and then write `MEMarketUpdate`,
+    which it received from the matching engine. This logic is shown in the following
+    code block, along with the line to increment the read index in the `LFQueue` that
+    it just read from:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE121]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It needs to do one additional step here, which is to write the same incremental
+    update it wrote to the socket to the `snapshot_md_updates_` `LFQueue` to inform
+    the `SnapshotSynthesizer` component about the new incremental update from the
+    matching engine that was sent to the clients. That code block is shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE122]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, it increments the incremental stream sequence number tracker for the
+    next message that will be sent out and calls `sendAndRecv()` on `incremental_socket_`
+    so that the messages get put on the wire:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE123]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes all the tasks we need to perform to consume updates from the
+    matching engine and generate the incremental market update multicast stream. In
+    the next subsection, we will take care of the final key step in the market data
+    publisher, which is synthesizing order book snapshots and publishing them periodically
+    on the snapshot multicast stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synthesizing and publishing snapshots
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This section will be dedicated to the design and implementation of the `SnapshotSynthesizer`
+    class, which consumes incremental `MDPMarketDataUpdates` from the `MarketDataPublisher`
+    thread, synthesizes a full snapshot of the order book, and periodically publishes
+    the full book snapshot on the snapshot multicast stream. All the source code for
+    `SnapshotSynthesizer` can be found in the `Chapter7/exchange/market_data/snapshot_synthesizer.h`
+    and `Chapter7/exchange/market_data/snapshot_synthesizer.cpp` source files.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members in the snapshot synthesizer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let us first define the data members in the `SnapshotSynthesizer` class. The
+    important ones are described as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, `snapshot_md_updates_` of the `MDPMarketUpdateLFQueue` type, which is
+    what `MarketDataPublisher` uses to publish incremental `MDPMarketUpdates` to this
+    component, which we saw in the previous section.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It also has a `snapshot_socket_` variable, which is an `McastSocket` to be used
+    to publish snapshot market data updates to the snapshot multicast stream.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: One of the most important data members is the `ticker_orders_` variable, which
+    is a `std::array` of size `ME_MAX_TICKERS` to represent the snapshot of the book
+    for each trading instrument. Each element of this array is a `std::array` of `MEMarketUpdate`
+    pointers and a maximum size of `ME_MAX_ORDER_IDS` to represent a hash map from
+    `OrderId` to the order corresponding to that `OrderId`. As we have done before,
+    we use the first `std::array` as a hash map from `TickerId` to the snapshot of
+    the limit order book. The second `std::array` is also a hash map from `OrderId`
+    to the order information. We will also have an `order_pool_` data member of the
+    `MemPool` type of `MEMarketUpdate` objects. This memory pool is what we will use
+    to allocate and deallocate `MEMarketUpdate` objects from as we update the order
+    book snapshot in the `ticker_orders_` container.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We have two variables to track information about the last incremental market
+    data update that `SnapshotSynthesizer` has processed. The first one is the `last_inc_seq_num_`
+    variable to track the sequence number on the last incremental `MDPMarketUpdate`
+    it has received. The second one is the `last_snapshot_time_` variable used to
+    track when the last snapshot was published over UDP since this component will
+    only periodically publish the full snapshot of all the books.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There is also a Boolean `run_` variable, which serves a similar purpose as
+    the `run_` variables in the `OrderServer` and `MarketDataPublisher` components
+    we built before. This will be used to start and stop the `SnapshotSynthesizer`
+    thread and will be marked `volatile` since it will be accessed from multiple threads:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE124]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE125]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE126]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE127]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE128]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE129]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE130]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE131]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE132]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE133]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE134]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE135]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE136]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE137]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE138]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE139]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE140]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE141]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE142]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE143]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE144]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE145]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE146]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE147]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE148]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE149]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In the next subsection, we will see how these variables are initialized as we
+    look at the initialization of the `SnapshotSynthesizer` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the snapshot synthesizer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `SnapshotSynthesizer` constructor takes an argument of the `MDPMarketUpdateLFQueue`
+    type passed to it from the `MarketDataPublisher` component. It also receives the
+    network interface name and the snapshot IP and port to represent the multicast
+    stream. The constructor initializes the `snapshot_md_updates_` data member from
+    the argument passed to it and initializes `logger_` with a new filename. It initializes
+    `MEMarketUpdate` `MemPool` to be of the size `ME_MAX_ORDER_IDS`. It also initializes
+    `snapshot_socket_` and configures it to publish messages on the snapshot multicast
+    IP and port on the provided network interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE150]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also add a `start()` method here in the same way as we did with our other
+    classes before. This `start()` method sets the `run_` flag to true, creates and
+    launches a thread, and assigns the `run()` method to the thread:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE151]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor for this class is extremely simple; it just calls the `stop()`
+    method. The `stop()` method is also extremely simple and just sets the `run_`
+    flag to false so that the `run()` method exits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE152]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will look at the important pieces of `SnapshotSynthesizer`, which will
+    synthesize the order book snapshots and publish the snapshots periodically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synthesizing the snapshot of the order book
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The process of synthesizing the snapshot of the order books for the different
+    trading instruments is like building `OrderBook`. However, the difference here
+    is that the snapshot synthesis process only needs to maintain the last state of
+    the live orders, so it is a simpler container. The `addToSnapshot()` method we
+    will build next receives an `MDPMarketUpdate` message every time there is a new
+    incremental market data update provided to `SnapshotSynthesizer`. We will break
+    this method up into several code blocks so that it is easier to follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the first code block, we extract the `MEMarketUpdate` piece of the `MDPMarketUpdate`
+    message and store it in the `me_market_update` variable. It also finds the `std::array`
+    of `MEMarketUpdate` messages for the correct `TickerId` for this instrument from
+    the `ticker_orders_ std::array` hash map. We then have a switch case on the type
+    of `MarketUpdateType` and then handle each of those cases individually. Before
+    we look at each of the cases under the switch case, let us present the initial
+    code block in the `addToSnapshot()` method we described:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE153]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we will show the implementation of the `MarketUpdateType::ADD` case in
+    the switch case. To handle a `MarketUpdateType::ADD` message, we simply insert
+    it into the `MEMarketUpdate` `std::array` at the correct `OrderId` location. We
+    create a `MEMarketUpdate` message by allocating it from the `order_pool_` memory
+    pool using the `allocate()` call and passing it the `MEMarketUpdate` object to
+    copy the fields from:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE154]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`MarketUpdateType::MODIFY` is handled similarly to `MarketUpdateType::ADD`.
+    The minor difference here is that we just update the `qty_` and `price_` fields
+    and leave the `type_` field on the entry as is:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE155]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `MarketUpdateType::CANCEL` type does the opposite of what `MarketUpdateType::ADD`
+    did. Here, we find `MEMarketUpdate` in the hash map and call `deallocate()` on
+    it. We also set the entry in the hash map style `std::array` to `nullptr` to mark
+    it as canceled or a dead order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE156]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We do not need to do anything with the other enumeration values, so we ignore
+    them. We just update the last sequence number we have seen on the incremental
+    market data stream, which is stored in the `last_inc_seq_num_` data members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE157]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes the code to synthesize and update the order book snapshot from
+    the incremental `MEMarketUpdate` messages. Next, we will look at how the full
+    snapshot stream is generated and published.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Publishing the snapshots
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The next method – `publishSnapshot()` – is called whenever we want to publish
+    a complete snapshot of the current state of the order book. Before we look at
+    the code to publish the snapshot messages, let us first try to understand the
+    format and content of a snapshot message containing the full state of the book
+    for multiple instruments. The format of a full snapshot message looks like the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first `MDPMarketUpdate` message is of the `MarketUpdateType::SNAPSHOT_START`
+    type with `seq_num_ = 0` to mark the beginning of the snapshot messages.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Then, for each instrument, we publish the following:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A `MDPMarketUpdate` message of the `MarketUpdateType::CLEAR` type to instruct
+    the client to clear their order book before applying the messages that follow
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For each order that exists in the snapshot for this instrument, we publish a
+    `MDPMarketUpdate` message with `MarketUpdateType::ADD` till we have published
+    the information for all the orders
+  prefs:
+  - PREF_IND
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we publish a `MDPMarketUpdate` message of the `MarketUpdateType::SNAPSHOT_END`
+    type to mark the end of the snapshot messages. One thing to note is that for the
+    `SNAPSHOT_START` and `SNAPSHOT_END` messages, we set the `OrderId` value to be
+    the last incremental sequence number that was used to construct this snapshot.
+    The market participants will use this sequence number to synchronize the snapshot
+    market data stream with the incremental market data stream.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This design is represented in the following diagram, with a snapshot containing
+    data for three instruments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.3 – Diagram describing the layout of our market data snapshot messages](img/B19434_07_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.3 – Diagram describing the layout of our market data snapshot messages
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With that format in mind, let us look at the code to synthesize and publish
+    the snapshot message format we described previously. First, we publish the `MarketUpdateType::SNAPSHOT_START`
+    message, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE158]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we iterate through all the instruments that we will publish the snapshots
+    for. The first thing we do is publish the `MDPMarketUpdate` message of the `MarketUpdateType::CLEAR`
+    type for that instrument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE159]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we iterate through all the orders for this trading instrument and check
+    for live orders – entries that do not have `nullptr` values. For each valid order,
+    we publish the `MDPMarketUpdate` message for that `OrderId` with `MarketUpdateType::ADD`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE160]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we publish the `MDPMarketUpdate` message with the `MarketUpdateType::SNAPSHOT_END`
+    type to signify the end of the snapshot messages this round:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE161]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes the design of the snapshot stream and the code to publish it
+    in the `publishSnapshot()` method. In the next subsection, we will finish our
+    discussion of the `SnapshotSynthesizer` component in the market data publisher
+    infrastructure by implementing the main `run()` loop that ties everything together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running the main loop
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Remember that `SnapshotSynthesizer` runs on its own thread separate from the
+    `MarketDataPublisher` thread to not cause latencies on the component that publishes
+    the incremental market data stream. The `run()` method is the method assigned
+    to the `SnapshotSynthesizer` thread. The only task it performs is checking the
+    `snapshot_md_updates_` lock-free queue for new entries, which the `MarketDataPublisher`
+    sends incremental `MDPMarketUpdate` messages on. For each incremental `MDPMarketUpdate`
+    message it reads, it calls the `addToSnapshot()` method we built earlier. Additionally,
+    it checks the `last_snapshot_time_` variable against the current time obtained
+    from `getCurrentTime()` to see whether a minute has elapsed. If at least a minute
+    has elapsed since the last time a snapshot was published, it calls the `publishSnapshot()`
+    method to publish a new snapshot. It also remembers the current time as the last
+    time a full snapshot was published:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE162]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes the design and implementation of `SnapshotSynthesizer` as well
+    as the `MarketDataPublisher` component and our complete electronic trading exchange
+    infrastructure. In the next section, we will build the main electronic exchange
+    application, which will tie together all the components we have built so far on
+    the side of the electronic exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the main exchange application
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this final section of the chapter, as well as the final section of the electronic
+    trading exchange discussion, we will build the main exchange application. This
+    will be a standalone binary application that will run an order gateway server,
+    the matching engine, and the market data publisher and perform the following tasks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The order gateway server accepts client connections and client requests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The matching engine builds the limit order book.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The matching engine also performs matching between client orders.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The matching engine and the order gateway server publish client responses.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The matching engine and the market data publisher publish incremental market
+    data updates in response to client requests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The market data publisher also synthesizes and periodically publishes a full
+    snapshot of the order book.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The complete design is presented in the following diagram.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.4 – The final trading exchange application and all its components](img/B19434_07_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 7.4 – The final trading exchange application and all its components
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code for this exchange application is available in the `Chapter7/exchange/exchange_main.cpp`
+    source file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will create a `Logger`, `MatchingEngine`, `MarketDataPublisher`, and `OrderServer`
+    instance in the global scope. We will also create a signal handling function since
+    this application will be killed when a UNIX signal is sent to it. The signal handler
+    cleans up the components and exits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE163]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `main()` function initializes the logger object, installs the signal handler,
+    and sets up three lock-free queues – `client_requests`, of the `ClientRequestLFQueue`
+    type, `client_responses`, of the `ClientResponseLFQueue` type, and `market_updates`,
+    of the `MEMarketUpdateLFQueue` type – to facilitate communication between the
+    three major components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE164]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we create and start the instance of the `MatchingEngine` component and
+    pass the three `LFQueue` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE165]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will also create and start the instance of `MarketDataPublisher` and provide
+    it with the snapshot and incremental stream information and the `market_updates`
+    `LFQueue` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One note about the interfaces and the IPs and ports specified in this chapter
+    as well as the subsequent ones is that we chose these arbitrarily; feel free to
+    change them if needed. The important thing here is that the market data stream
+    IP:port information used by the electronic exchange and trading clients should
+    match, and similarly, the order server IP:port information used by the electronic
+    exchange and trading clients match:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE166]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We perform similar tasks with the `order_server` object – create `OrderServer`
+    and start it after providing it with the order gateway server configuration information:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE167]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the `main()` thread just sleeps infinitely since the threads within
+    the three components will run the exchange from this point on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE168]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the application as follows will produce some minimal output to the
+    screen, but most of the output goes to the log files we create from the three
+    components and their subcomponents:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE169]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `exchange_main` application was killed by sending it the `SIGINT` signal
+    using the `kill –2 PID` command. We can inspect the log files to see what the
+    different components did. Note, however, that the output right now is not super
+    interesting. It simply logs that the components were created and started. This
+    output will have a lot more information once we add clients for this trading exchange
+    that connect and send client requests to it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE170]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `exchange_main.log` file contains information about the creation of the
+    different components, as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE171]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `exchange_market_data_publisher.log` file creates the UDP sockets and calls
+    the `run()` method as shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE172]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `exchange_matching_engine.log` file does not have much meaningful output
+    yet since no matching was performed and no order book was built:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE173]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `exchange_order_server.log` file also contains some information about the
+    creation of `TCPServer` and the `run()` method for the main thread:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE174]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the `exchange_snapshot_synthesizer.log` file outputs the messages
+    in an empty snapshot for the different trading instruments, since there are no
+    orders in the order book yet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE175]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our discussion, design, and implementation of the electronic
+    trading exchange. In the next chapter, we will build the trading system on the
+    client’s end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter was dedicated to building the order gateway server and the market
+    data publisher components. We also combined the matching engine component we built
+    in the previous chapter with the order gateway server and market data publisher
+    components we built in this chapter to build the final trading exchange main application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we defined the public market data protocol that will be used by the exchange
+    to publish data on the wire and used by the clients to write market data consumer
+    applications. We performed a similar task with the order gateway protocol so that
+    client applications can understand the format of the client requests that they
+    send to the exchange’s order gateway server and receive responses from.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We built the order gateway server, whose design we established in the *Designing
+    Our Trading Ecosystem* chapter. We built the `OrderServer` class, which builds
+    and runs `TCPServer`, to accept and manage TCP client connections. We added functionality
+    to handle incoming client requests and send client responses. We also built the
+    `FIFOSequencer` component, which is responsible for sequencing/ordering the incoming
+    TCP client requests in the order in which they were received to maintain fairness
+    in the market.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next component we built was designed in the same chapter, *Designing Our
+    Trading Ecosystem*, which is the market data publisher. We built `MarketDataPublisher`,
+    which consumes market data updates from the matching engine and generates a multicast
+    stream of incremental market data updates. We also added the `SnapshotSynthesizer`
+    component, which runs on a different thread and is responsible for consuming market
+    data updates from `MarketDataPublisher` and synthesizing the snapshot of the full
+    order book. This full snapshot is periodically published by `SnapshotSynthesizer`
+    on the snapshot multicast stream.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we built the main electronic trading exchange application, which ties
+    together all the exchange side components we have built so far. This will serve
+    as the central electronic trading exchange that supports multiple clients and
+    different trading instruments for clients to connect and trade as well as receive
+    market data updates for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we switch our focus from the exchange-side infrastructure
+    to the market participants’ infrastructure. The next chapter will focus on the
+    functionality to connect to the order gateway server and communicate with it,
+    as well as receiving and processing the market data updates published by the electronic
+    exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Part 3:Building Real-Time C++ Algorithmic Trading Systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will start building the trading client-side C++ algorithmic
+    trading system. We will be building components that interface with the trading
+    exchange to process market data and connect to and communicate with the exchange
+    order gateway. We will also build the C++ framework on which we will build market-making
+    and liquidity-taking trading algorithms. In the HFT space, this is where participants
+    spend a lot of time and effort trying to reduce latencies and maximize performance
+    (and profits). Finally, we will implement the market-making and liquidity-taking
+    trading algorithms in this framework, run the entire trading ecosystem, and understand
+    the interactions between all the components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This part contains the following chapters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 8*](B19434_08.xhtml#_idTextAnchor206)*, Processing Market Data and
+    Sending Orders to the Exchange in C++*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 9*](B19434_09.xhtml#_idTextAnchor227)*, Building the C++ Trading
+    Algorithm Building Blocks*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 10*](B19434_10.xhtml#_idTextAnchor262)*, Building the C++ Market-Making
+    and Liquidity-Taking Algorithms*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

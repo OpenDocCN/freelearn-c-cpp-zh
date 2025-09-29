@@ -1,0 +1,1558 @@
+- en: '8'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: An Introduction to Collision Detection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Welcome to *Chapter 8*! In the previous chapter, we extended the instance animation
+    system. We started by adding lookup tables for the animation transforms and moved
+    the computations to the GPU. Next, we added movement states and UI controls to
+    the application to create mappings between states and animation clips. As the
+    last step, we updated the YAML parser to save and restore the animation clip mappings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will implement a two-tier collision detection for the instances.
+    We will start with an exploration of the complexity of collision detection, and
+    how to lower the complexity by removing instances based on their distance and
+    by simplifying the representation of the instances. Then, we will discuss methods
+    to simplify the instances to minimize the number of intersection checks even more.
+    Next, we will implement a quadtree to limit the number of instances to check,
+    and finally, we will add bounding spheres to the instances to create the two tiers
+    of collision detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The complexities of collision detection
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using spatial partitioning to reduce complexity
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Simplifying the instances for faster collision checks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding a quadtree to store nearby model instances
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing bounding spheres
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example code is in the `chapter08` folder, in the subfolders `01_opengl_collisions`
+    for OpenGL and `02_vulkan_collisions` for Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The complexities of collision detection
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We already talked about the complexity of finding a collision in [*Chapter 3*](Chapter_3.xhtml)
+    when deciding how to implement a visual selection, either using ray shooting or
+    buffer drawing. We’ve chosen to draw the instances into a separate buffer, avoiding
+    collision detection entirely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now is the right time to do a short reprise of the complex topic and to present
+    solutions to accelerate finding collisions between instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding the naive way
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: If we would check every triangle of every instance against all triangles of
+    all other instances for collisions in the virtual world, this would come with
+    immense processing costs. These simple, brute-force collision checks would grow
+    exponentially, making it impossible to keep up a reasonable frame time when adding
+    more and more instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead of using the naive solution, we should take a step back and think about
+    possible types of simplification before implementing any kind of collision detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One idea is to reduce the number of instances we have to check against. Why
+    bother with instances in distant parts of the virtual world? Even if our object
+    is some kind of bullet, rocket, or other flying entity, all we can possibly hit
+    needs to be “less than an arm’s length” away from us. All other objects can be
+    safely ignored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To achieve this reduction, we can split the world into different areas. And
+    suddenly, we only have to check the area we are in. Maybe we have to check adjacent
+    areas too, depending on the algorithm we use, but the total number of instances
+    we have to check against can be reduced by a large amount.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, we can lower the computational work for collision detection
+    by reducing the amount of surface elements to test if we are even close to any
+    of the triangles of the instance. Any kind of simplification will become handy;
+    the fewer intersections to test, the better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Representing an instance as a box or sphere may produce a lot of false results,
+    but if the collision check against the box or sphere around the instance already
+    fails, we can immediately sort out this instance from our list of possible collision
+    targets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both ideas combined – reducing the number of instances to check and lowering
+    the complexity of the instance checks – help to do collision checks in real time,
+    even with larger numbers of detailed models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start with the spatial partitioning of the virtual world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using spatial partitioning to reduce complexity
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will take a look at some methods to split our world space
+    into different parts, lowering the number of instances in each of the parts. We
+    start with the simplest variant of spatial partitioning in two or three dimensions,
+    the grid.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Grid
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In a **grid**, the virtual lines divide the virtual world into equally sized
+    squares or rectangles, or equally sized cubes and cuboids.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/B22428_08_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.1: 2D and 3D grids'
+  prefs: []
+  type: TYPE_NORMAL
+- en: While grids are easy to create, *Figure 8.1* already shows some of the problems.
+    Objects larger than the grid spacing must be placed into all overlapping grid
+    fields, requiring checking all affected fields for other instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And while the vast majority of the grid will remain empty, “crowded places”
+    inside the virtual world can lead to many instances inside a single field of the
+    grid. Many instances mean many checks, and an uneven distribution of instances
+    may cause slowdowns due to the number of calculations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A sort of successor to the grid is the quadtree. A quadtree addresses the uneven
+    distribution problem of the grid.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quadtree
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The basic element of a **quadtree** is a single cell, being either a square
+    or a rectangle. We will only use square cells for the description, but all holds
+    true for rectangle-shaped cells, too. Objects are inserted with their position
+    and sizes into the root cell, usually by using a two-dimensional bounding box
+    covering the extents of the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The magic part of a quadtree starts when a configurable threshold of objects
+    per cell has been hit. The affected cell is subdivided into four equally sized
+    child cells. Any object overlapping one or more children could be either kept
+    in the parent cell or added to all affected child cells, depending on the implementation.
+    All other objects are moved into the respective child cell. See *Figure 8.2* for
+    an example of a quadtree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3907.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.2: A quadtree with different subdivisions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dividing the squares into four child cells and moving the objects from the parent
+    cell into the child cells reduces the number of objects per cell to be less than
+    the configured threshold, minimizing the number of objects to test for collisions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the sum of all objects inside the four child cells falls below the threshold,
+    all objects are moved to the parent cell again, and the now empty child cells
+    are deleted. This dynamic behavior helps to keep the number of objects in each
+    cell between zero and the threshold, independent of the size, number of parents,
+    or location of a cell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A quadtree can hold only two-dimensional information about the object’s position
+    and size. To extend the same logic into three dimensions, an octree can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Octree
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The basic functionality of a quadtree and an **octree** is identical. The only
+    difference is the number of dimensions used for the element of the tree itself.
+    While a quadtree uses squares or rectangles as cells, an octree is made of cubes
+    or cuboids. In *Figure 8.3*, a simple octree is shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3914.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.3: An octree with subdivisions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The inserted objects are internally maintained as three-dimensional axis-aligned
+    bounding boxes, representing the extents of the object. A split operation when
+    reaching the threshold results in creating eight sub-cubes as child cells (or
+    eight sub-cuboids).
+  prefs: []
+  type: TYPE_NORMAL
+- en: An octree is an effective way to remove large parts of the three-dimensional
+    space when checking for possible collisions. Another data structure to handle
+    two- and three-dimensional space partitioning is **binary space partitioning**
+    (**BSP**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Binary space partitioning
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You may have heard of the three letters BSP from older games. One of the first
+    games using BSP trees to maintain level data was the 1993 game **Doom** from **Id
+    Software**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although the level data in Doom was only two-dimensional, the game engine created
+    the illusion of a fully three-dimensional game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A BSP tree is created by recursively dividing the world space by using lines
+    (2D) or planes (3D) as hyperplanes, creating a front side and a back side. The
+    division into front and back sides continues until the remaining partition fulfills
+    some exit condition; for games, this condition is usually when the partition is
+    either completely filled or empty.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If any other lines or planes are hit by the subdivision, these lines or planes
+    are split into two parts, one residing on the front side and the other on the
+    back side.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 8.4* shows the subdivision of a space and the resulting BSP tree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3922.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.4: An example object and the resulting BSP tree'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 8.4*, line A is used as the starting point, with the front side pointing
+    downward. Splitting the space into two halves also splits lines B and C, resulting
+    in lines B1, B2, C1, and C2\. Line B1 lies on the back side of A and will be added
+    as the left child to A, and B2, on the back of A, as the right child of A. Both
+    lines C1 and C3 are on the back sides of B1 and B2, so they are added as the left
+    children to B1 respective to B2.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While parsing a BSP tree to find a partition is really fast, generating the
+    same BSP tree is a time-consuming task. The tree generation is done offline in
+    most cases, and the precalculated tree is shipped with the game or application.
+    Checking all lines or planes against all other lines or planes is the same type
+    of problem we have with collision detection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The inability to quickly change or update the elements of a BSP tree makes such
+    a tree only suitable for static data (i.e., for level data of a game). Dynamic
+    game elements, like doors or players, require using a different data structure,
+    for instance, an octree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to BSP trees, a k-d tree is fast for searching elements but slow for
+    creation or updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: K-d tree
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A **k-d tree** stores information about objects in a k-dimensional space. The
+    algorithm is a bit more complex compared to the previous trees. At every data
+    point insertion, the remaining space gets split into two parts, and after the
+    split, the affected dimension is changed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For a two-dimensional k-d tree, the split dimensions alternate between the
+    X and Y axes; for a three-dimensional k-d tree, it alternates in the order X,
+    Y, and Z; and so on. *Figure 8.5* shows what a k-d tree in two and three dimensions
+    looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3930.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.5: A two- and a three-dimensional k-d tree'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The red lines and the respective blue lines are for the split dimension in
+    2D: red stands for an X split and blue for a Y split. In three dimensions, the
+    same pattern applies, and we use the “next” dimension upon consecutive splits.
+    Due to the removal of parts of the remaining space, searching in a k-d tree for
+    an element is fast. The main uses for k-d trees are point clouds and searching
+    for the nearest neighbors of a given point.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A slightly different method for space partitioning is by using a bounding volume
+    hierarchy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bounding volume hierarchy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In contrast to the previous tree variants, a **bounding volume hierarchy**
+    can be achieved by different types of geometrical representations. As an example,
+    we are using two-dimensional bounding circles, as shown in *Figure 8.6*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3937.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.6: A bounding volume hierarchy made of circles'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By enclosing two or more bounding circles into a larger bounding circle, the
+    number of collision tests can be lowered. If the possible colliding object does
+    not hit the outer circle, there is no need to check any of the inner circles for
+    possible collisions. The inner circles are impossible to reach for the colliding
+    object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only if we hit the outer circle is a deeper check required. Similar to the other
+    trees, a bounding volume hierarchy can remove larger parts of the world space
+    from further collision checks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we start the implementation of a spatial partitioning algorithm, we
+    need to explore the second way of accelerating collision detection: using simplified
+    representations of the instances for faster checks.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Simplifying the instances for faster collision checks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Instead of checking every triangle of the instances after reducing the overall
+    number, we can greatly improve the performance of collision checks if we use **model
+    abstractions**. These abstractions are made of only a few geometrical elements,
+    like boxes, cuboids, or circles, enclosing the instance. If these abstractions
+    don’t intersect, the instances cannot have a collision, and we can remove the
+    instance already from our list of candidates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the fastest abstractions for an object is the axis-aligned bounding box.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Axis-aligned bounding box
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'An **axis-aligned bounding box** (**AABB**) is a rectangle or cuboid, just
+    large enough to contain the object, and all lines of the rectangle or planes of
+    the cuboid are aligned with the axes of the Cartesian coordinate system. We will
+    use the two-dimensional variant of an AABB during the implementation of the quadtree,
+    the bounding box. *Figure 8.7* shows a two-dimensional bounding box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3945.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.7: A two-dimensional bounding box'
+  prefs: []
+  type: TYPE_NORMAL
+- en: AABBs are best suited for objects shaped close to squares, rectangles, cubes,
+    or cuboids. For round objects, AABBs will produce a lot of space between the object
+    and the box extents, leading to more “false positives” when checking for a possible
+    collision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking intersections between AABBs is a quick and easy task. Since all four
+    lines or six sides are aligned to axes, only one dimension per line or plane needs
+    to be checked against the opposite line or plane of the second instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For instance, the bottom plane of instance one and the top plane of instance
+    two can be checked by just comparing the Y values (if the Y axis points upward).
+    If this check signals that the instances are not colliding (namely, the top plane
+    of the second instance is not above the bottom plane of instance one), the collision
+    check can be ended immediately – these two instances cannot intersect at all.
+    So, we can do a fast preflight check by using AABBs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we rotate an AABB with the object, an **oriented bounding box** (**OBB**)
+    will be created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Oriented bounding box
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Just rotating the AABB with the object may be tempting, since we still have
+    a good ratio between the object data and the extra space of the box. See *Figure
+    8.8* for an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3952.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.8: An oriented bounding box'
+  prefs: []
+  type: TYPE_NORMAL
+- en: But be aware that OBBs are not just AABBs in disguise! Rotating the planes will
+    no longer allow us to do simple coordinate checks, and we now need to solve a
+    lot of plane equations or use advanced methods like the so-called **Separating
+    Axis Theorem** to check if the side planes of the two OBBs intersect. Plus, the
+    creation and rotation of OOBs can be complex and ambiguous. So, the tip here is
+    to stay away from OBBs; in most cases, they are not worth the additional complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For round(ish) objects, bounding circles and spheres are a good simplification
+    type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bounding circles and spheres
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A bounding circle in two dimensions, or a bounding sphere in three dimensions,
+    is rather simple. We just need a center point and a radius, and we are done. *Figure
+    8.9* shows a bounding circle around an object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3959.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.9: A bounding circle around an object'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking against a bounding circle or sphere is also fast and simple. The Pythagorean
+    theorem helps us to calculate the distance to the center of the sphere from any
+    point in the world. Only if the calculated distance is smaller than the radius
+    will a collision hit occur.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Please keep in mind that the Pythagorean theorem includes calculating a square
+    root, a quite expensive operation if you don’t use modern **Single Instruction,
+    Multiple Data** (**SIMD**) CPU extensions like **Streaming SIMD Extensions** (**SSE**)
+    or **Advanced Vector Extensions** (**AVX**). One possible optimization here is
+    using the square of the radius and skipping the square root when calculating the
+    distance. Since both results are squared now, the outcome of the comparison is
+    identical to the square root version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An interesting adaptation of the bounding circle or bounding sphere is a capsule.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Capsule
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '**Capsules** look like a stretched version of a circle or a sphere, where the
+    middle part is shaped like a rectangle or cylinder. Capsules are used for human
+    bodies since the overall form of a capsule comes closer to the body shape compared
+    to spheres or rectangular bounding boxes. *Figure 8.10* shows an example of a
+    capsule:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3972.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.10: A capsule around a simple character'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When using the same values for the radius of the ending circles or spheres,
+    and the central rectangle or cylinder, we need to store only the central line
+    of the capsule and the radius. Calculating the distances of a possible collision
+    point is not much more expensive than the calculations for bounding circles or
+    spheres.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the high end of the costs for collision checks comes the convex hull.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Convex hull
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'A **convex hull** is defined as the smallest **convex** volume containing the
+    object. Emphasizing the convex property of the hull is done on purpose since this
+    property allows algorithmic optimizations to some extent. However, the number
+    of planes for the complex hull can become high, and the construction may be not
+    trivial. See *Figure 8.11* for a convex hull:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3981.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.11: A convex hull around an object'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Checking a convex hull for collisions needs a lot of tests, possibly lowering
+    the effect we wanted to achieve with our model simplification. As long as you
+    don’t have models with lots of triangles, a convex hull may be out of scope.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, if small collision errors can be tolerated, the convex hull
+    can be used as a replacement for a high-poly model, and all collision checks can
+    be done only against the convex hull.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the last method, the bounding volume hierarchy can be used. The hierarchy
+    model is not just suitable for space partitioning but also for model simplification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bounding volume hierarchy
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The general idea of the **bounding volume hierarchy** for space partitioning
+    also holds true to simplify the instances. But here, the model parts are enclosed
+    in larger and larger volumes. *Figure 8.12* shows a simplified example of the
+    bounding volume hierarchy around a character model:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image3988.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.12: Bounding spheres in a hierarchy around an object'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A failing check on one of the larger volumes allows us to discard the body part(s)
+    inside the volume completely. By using a carefully crafted configuration, only
+    a small number of tests are needed to decide if the instance should stay on the
+    list for deeper checks, or if it can be ignored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For details about collision checking between convex objects, you can look at
+    the **Gilbert–Johnson–Keerthi** (**GJK**) distance algorithm. The GJK algorithm
+    reduces the collision detection complexity by using the so-called Minkowski difference.
+    A link to a web page explaining the principle of the GJK algorithm is available
+    in the *Additional resources* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the sake of simplicity, because of the fast updates, and also based on setting
+    a limit to the number of instances to check, we will implement a quadtree into
+    the application and bounding spheres for the instances. The quadtree will allow
+    us to do the first step of collision detection much faster than the “brute-force”
+    pairwise comparisons of all models in the naive approach. The bounding spheres
+    are great for a balance between the number of collision checks and the number
+    of false positives due to the free space between the sphere and the instance triangles.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, let’s jump into the implementation of the quadtree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a quadtree to store nearby model instances
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Getting complex code right is hard, so using an open-source implementation
+    of a quadtree is a viable option. The best fitting version of a quadtree I’ve
+    found is from **Pierre Vigier** and can be found on GitHub here: [https://github.com/pvigier/Quadtree](https://github.com/pvigier/Quadtree).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code from Pierre is based on C++ templating to have great flexibility on
+    the data one stores in the quadtree. Also, he uses a custom-templated two-dimensional
+    vector type for storing positions and sizes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We don’t need this kind of flexibility as we will store only an `int` containing
+    the instance index position in the quadtree. And since we are using GLM for all
+    other cases where we need a two-dimensional vector type, we will change the bounding
+    box implementation to use `glm::vec2` to store box position and size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adjusting the bounding box code
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As the first step for the new and shiny quadtree, we need to adjust the code
+    for the bounding box. Instead of storing the top and left positions and width
+    plus height as single values, we use a `vec2` for position and size. Transforming
+    the templated C++ code from the `Box.h` file in the `include` folder of the GitHub
+    repository is done fairly easily, and we end up with constructors, a couple of
+    getters, and the two methods `contains()` and `intersects()` in the `BoundingBox2D.h`
+    and `BoundingBox2D.cpp` files in the newly created `quadtree` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most complex method is `intersects()` to check if two bounding boxes intersect
+    each other:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the `AssimpInstance` class, a new `private` member named `mBoundingBox`
+    will be added, storing the bounding box of the instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: We don’t need to load or save the bounding box, so it can be stored directly
+    in the `AssimpClass`, outside of the `InstanceSettings` struct.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need two trivial `public` methods to store and retrieve the bounding box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As the last step for the bounding box implementation, we must add the new `quadtree`
+    folder to the `CMakeLists.txt` file in the `project root` folder in two places,
+    to be able to use the bounding box and the quadtree in other classes. First, add
+    the folder with a wildcard for all `.cpp` files to the `SOURCES` file search:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, append the `quadtree` folder to the include directory list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: After recreating the CMake files, which should be done automatically by Visual
+    Studio and other IDEs after saving the changes in `CMakeLists.txt`, we can continue
+    with the implementation of the quadtree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Rewriting the quadtree code to fit our needs
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will store the new `Quadtree` class in the `Quadtree.h` and `Quadtree.cpp`
+    files in the `quadtree` folder. The transformation from the quadtree C++ template
+    to a C++ class needs some extra steps compared to the bounding box code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will need to make the following adjustments while translating the C++ template
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Replace the custom `Vector2` type with `glm::vec2`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Replace the custom `Box` type with the `BoundingBox2D` type and change the parameters
+    to `glm::vec2`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Replace the `assert()` checks with log outputs.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add a `clear()` method that removes all contents of the quadtree.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Add code to clean up the pairs of colliding instances with swapped IDs.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use return values for results instead of output parameters.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Use a callback function instead of the `GetBox` function parameter.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the callback function, we add another callback to the `Callbacks.h` file,
+    taking an `int` as the only parameter and returning a `BoundingBox2D`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The quadtree will be added to the renderer as a `private` member variable named
+    `mQuadtree`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'During the initialization in the `initQuadTree()` method, we will bind the
+    callback function to the `getBoundingBox()` method, using the instance index as
+    the parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Filling the quadtree will happen in the `draw()` call of the renderer while
+    iterating over the instances of the models. For each instance, we create the bounding
+    box and add the instance to the quadtree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating the bounding box for every instance will be handled in the section
+    *Calculating the instance bounding boxes*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One important question for the quadtree usage remains: Should we update the
+    instance positions in the tree in every frame, or should we clear the entire quadtree
+    and add all instances again?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Updating an object inside a quadtree needs to be done by deleting and re-adding.
+    So, if we have mostly static objects in the quadtree, updates would be fine. But
+    since our plan is to have many instances moving around and/or playing animations,
+    the position and/or bounding box will change in almost every frame. In such an
+    environment, instance removal and addition will be more expensive than clearing
+    the quadtree and adding all instances with fresh data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Starting over with a fresh quadtree in the `draw()` call of the renderer is
+    easy. Right before going into the instance loop, clear the contents of the quadtree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After the quadtree is ready, we have to solve the question of how to generate
+    the bounding boxes for the instances. The answer may be surprising: We need to
+    split the work between the GPU and the CPU.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculating the instance bounding boxes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The first idea when it comes to a large number of calculations for all instances
+    will most probably be “I will use a compute shader!”, especially after we have
+    solved some compute-intense problems by offloading the work to the GPU. But in
+    this case, the CPU must do a part of the job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While compute shaders are great for calculating independent results in a massively
+    parallel way, they aren’t well suited for simple tasks like creating a bounding
+    box. To calculate the bounding box of an instance, we need to store the minimum
+    and maximum coordinates of all nodes for every instance in the virtual world,
+    combining the intermediate results to create the final bounding box. On the CPU,
+    we can easily grab the vertex positions from the data structures one by one, do
+    the required calculations, and store the final AABB back in memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But if we would like to compute the AABB coordinates inside a shader, we may
+    end up overwriting the results of other shader invocations if the AABB results
+    use the same buffer positions. Or we will have a huge list of coordinates that
+    must be sorted afterward. Sorting the coordinates could be done in another computer
+    shader too, but parallel sorting algorithms tend to be complex because they face
+    the same constraints of not being able to write data to the same buffer positions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, instead of worrying about data synchronization issues in compute shaders,
+    we use them for what they can do very fast: creating lookup tables.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a three-dimensional bounding cube class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To store the generated lookup data, we will add a C++ class for a three-dimensional
+    AABB. Using AABBs here has the advantage of having data to draw debug lines in
+    the renderer, but the third set of coordinates adds only a little overhead to
+    storage and generation time. Also, a possible upgrade to an octree for a fast
+    collision check in all three dimensions will be simple.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The new class is called `AABB` and will reside in the `tools` folder. Next to
+    the constructor, some `public` getters and setters, and the two `private` floats
+    `mMinPos` and `mMaxPos`, the `AABB` class has two `public` methods called `create()`
+    and `addPoint()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By using the `create()` method, we add a point at the position given as the
+    `glm::vec3` parameter as the minimum and maximum extents for the bounding box.
+    And with `addPoint()`, we extend the bounding box to include the new point:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the new point is inside the bounding box, nothing happens. But if the point
+    is outside of the bounding box, the box will be expanded in one, two, or three
+    dimensions to include the new point. In the end, we will have a box around all
+    the points we added, defined by the minimum and maximum values of the three dimensions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For generating debug lines to draw in the renderer, the `public` method `getAABBlines()`
+    is used. In `getAABBLines()`, we create the 12 lines between the 8 possible combinations
+    of the minimum and maximum positions of the `x`, `y`, and `z` elements of `mMinPos`
+    and `mMaxPos`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating the AABB lookup tables
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The general idea of the AABB lookup tables is to precalculate the AABB for a
+    fixed number of frames of every animation clip for every model. Having the bounding
+    boxes in a lookup table allows us to retrieve a good approximation of the model’s
+    AABB in a frame of an animation clip.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By blending between AABB coordinates of the same frame number in two different
+    clips plus transforming the final AABB according to the model’s transformations,
+    we can calculate a well-fitting AABB for the instance at low computing costs,
+    even if the instance is in the middle of an animation blending.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Creating the lookup table is a mix of a compute shader and CPU work, done in
+    the `createAABBLookup()` method of the renderer. The lookup table is generated
+    in the renderer class for two reasons:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main method to load the models is placed in the renderer, and we also expose
+    the model loading method to the user interface via callback.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The renderer already has the compute shaders loaded. We can use the shaders
+    directly, instead of using another set of the same shaders in the `AssimpModel`
+    class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For the compute shader part, we can reuse the code from the instance loop of
+    the `draw()` call of the renderer we made back in [*Chapter 2*](Chapter_2.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: To find the maximum extents of the model, we will use the nodes. To calculate
+    the nodes per instance, the two compute shaders `assimp_instance_transform.comp`
+    and `assimp_instance_matrix_mult.comp` can be used. In the translation part of
+    the calculated matrices containing translation, rotation, and scale of the node,
+    the location of each node is stored. The only difference here is the node offset
+    matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While these offset matrices are required for vertex skinning, they would give
+    the wrong results for node positions. We can remove the offset matrices in the
+    calculations by binding an SSBO full of identity matrices, giving us only the
+    node’s TRS matrices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By extracting the node positions per instance and creating a per-node AABB from
+    the positions, we have an easy way to calculate the data we need for the quadtree
+    and the debug display. For the 2D bounding box, we simply extract the `x` and
+    `z` elements of the AABB, generating a “top-down” view of the AABB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The AABB calculations are done per animation clip and per node of the model.
+    The resulting `std::vector` will be stored in the `AssimpModel` data of the model
+    we just loaded. To retrieve the correct AABB data for a time position in an animation
+    clip, we use the same logic we already have for generating the vertex skinning
+    matrices and take the scaled time position as an index into the lookup data. If
+    we blend between two animations, we can even blend between the AABBs of the two
+    animations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the AABB in the model and renderer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'When iterating over the instances in the `draw()` call of the renderer, we
+    can now retrieve the AABB data for the animation clip and time position by calling
+    `getAABB()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Inside `getAABB()`, the data from animation and instance translation, rotation,
+    and scale are used to create an AABB fitting the instance. In detail, `getAABB()`
+    will:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Look up the AABBs of the first and second animation clip
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Blend between the two AABBs according to the animation blend factor
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Scale the resulting AABB by the instance scale factor
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rotate the AABB in case the axis swap of the model is activated
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Rotate the AABB according to the instance rotation (which is an OBB now)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generate a new AABB from the rotated ABB
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Translate the AABB to the instance position
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: At this point, the AABB encloses the instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since blending and rotations are still expensive operations that may harm performance
+    in scenes with many instances, a speed-up can be achieved by parallelizing the
+    computations with SIMD operations of modern processors, like SSE or AVX. But even
+    keeping the AABB lookup data on the GPU may be beneficial. Calculating the bounding
+    boxes of all instances with a compute shader and downloading the results could
+    be still faster than pure CPU calculation, despite the additional download of
+    the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To achieve the best possible performance, you might want to implement different
+    versions of the `getAABB()` method and profile the application with various scene
+    sizes and complexities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the AABB is adjusted for the instance, we calculate the position and
+    size of the two-dimensional bounding box for the quadtree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we have all the data to insert the instance into the quadtree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: To make sure we create a working quadtree, we will add a new ImGui window containing
+    the quadtree, including all subdivisions and instances. Seeing the quadtree in
+    action helps a lot to find any implementation bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a window to show the quadtree plus contents
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: For the ImGui window, we create a new method called `createPositionsWindow()`
+    in the `UserInterface` class. Inside this method, we create a new window by using
+    `ImGui::Begin()`. Next, we retrieve the world boundaries to have the origin, size,
+    and center point to draw.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we iterate over all instances, using the position and size of the bounding
+    box to draw ImGui rectangles at the 2D world positions of the instances. We also
+    use the pairs of the `micInstanceCollisions` variable to draw non-colliding and
+    colliding instances in different colors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we retrieve the bounding boxes of the quadtree and all the subdivisions.
+    To get the bounding boxes of all levels of the quadtree, we add a pair of `public`
+    and `private` methods to the `Quadtree` class called `getTreeBoxes()`. The `getTreeBoxes()`
+    method recursively iterates over the quadtree nodes and child nodes, storing the
+    bounding boxes in a `std::vector` of `BoundingBox2D` elements. We draw all quadtree
+    boxes by using white lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 8.13* shows an example of the quadtree window:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image4098.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.13: A quadtree with subdivisions, instances, and detected collisions'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 8.13*, the quadtree and all its subdivisions are drawn in white.
+    The bounding boxes of a normal instance are drawn as yellow lines and colliding
+    instances are drawn as red lines.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Filling the quadtree and drawing the result on the screen is only the first
+    half of the collision detection; we also need to do something with the information
+    of instances colliding in the virtual world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieving the colliding instances and reacting to collisions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Getting the list of all colliding instances out of the quadtree is done by
+    calling `findAllIntersections()` of the `mQuadtree` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: We store the result in the new variable `micInstanceCollisions` in the `ModelInstanceCamData`
+    struct to make the instance collisions available for other parts of the code (i.e.,
+    for debug drawing lines). The colliding instances are given to us as pairs of
+    instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To see the results of a collision in the screen, we can iterate over the pairs
+    of instances and rotate one or both instances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Walking or running into another instance should now rotate your instance, or
+    your instance and the colliding instance. Even though the angle is small, it will
+    be incremented for every frame where a collision between those instances is detected.
+    At a normal frame rate of 60 or 75 FPS, you will see yourself instantly rotated
+    away from the other instance, suddenly running in a different direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you don’t like having the instances just rotating on collisions, you can
+    try to implement more complex reactions to collisions. Check out the *Practical
+    sessions* section for a task about adding collision resolution and the *Additional
+    resources* section for links to resources about collision avoidance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Drawing the AABB debug lines
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the case that your instance or the other instance does not rotate and you
+    can still walk right through other instances, drawing the AABB lines to the screen
+    will become helpful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To draw the debug lines in the renderer, we can use the pairs in `micInstanceCollisions`,
+    retrieve the AABB lines from both affected instances, and add the vertices of
+    the lines to a `private` variable called `mAABBMesh`. Then, we upload the vertex
+    data to the line vertex buffer, and by using the line shader, we draw the AABBs
+    to the screen:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: As an alternative solution, we can iterate over all instances and use the instance
+    indices in the pairs in `micInstanceCollisions` to switch the color of the AABB
+    to draw.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For more control over the AABB lines, a separate section in the ImGui **Control**
+    window will be created. Combined with a new `enum` class called `collisionDebugDraws`
+    and a bit more code in the `drawAABBs()` method in the renderer, you can switch
+    between three different drawing modes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: No AABBs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Only the colliding AABBs in red
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All colliding AABBs in red and all other AABBs in yellow
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Figure 8.14* shows an example of a detected collision, using yellow lines
+    around non-colliding instances and red lines around the two colliding instances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image4158.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.14: Two colliding instances among other non-colliding instances'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Don’t be alarmed if some of the instances behave strangely, like constantly
+    rotating around themselves. The reaction to collisions with other instances and
+    the world boundaries is still very basic (just a rotation). We will enhance the
+    collision handling in [*Chapter 9*](Chapter_9.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the quadtree is working and reduces the number of instances to check
+    to a configurable minimum, we will start the implementation of one of the listed
+    simplifications: By utilizing the nodes of the game character models as anchor
+    points, bounding spheres have a good trade-off between creation and checking complexity.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, let’s go and add some spheres to the models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing bounding spheres
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Bounding spheres as abstractions of higher detailed models can be used in different
+    ways. One possible way is shown in *Figure 8.9*, where the sphere encloses the
+    entire model. But as you can see in *Figure 8.9*, we would have a lot of empty
+    space around the model, resulting in more false positives. Plus, we already have
+    a method to do a broader check for possible collisions: the bounding boxes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, we will use the spheres to simplify the instances at a more detailed
+    level by adding configurable bounding spheres to the model’s nodes. Even though
+    we would have to now check several dozens of spheres against the spheres of another
+    instance, we are still way below the computational power we would need to check
+    every single triangle of both models against each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of false positives will also remain at an acceptable level. As stated
+    broadly in the *Simplifying the instances for faster collision checks* section,
+    choosing between a higher detailed simplification and more computations or simpler
+    abstractions and more false positive collision detections is a tradeoff we have
+    to live with, but we can make the decision strategically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the data for the bounding spheres
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To create the sphere data, we use the same first step as in the bounding box
+    calculations. We use the compute shaders `assimp_instance_transform.comp` and
+    `assimp_instance_matrix_mult.comp`, combined with replacing the bone offset matrices
+    with identity matrices. The result of this shader run is an SSBO containing the
+    node positions of all instances we want to equip with bounding spheres.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But, in contrast to the bounding boxes, we can use another compute shader to
+    calculate the bounding spheres for the nodes. The third compute shader, called
+    `assimp_instance_bounding_spheres.comp`, uses the TRS matrices of the nodes created
+    by the previous compute shaders, the world position matrices from the instances,
+    and the parent node indices to create a bounding sphere for every node of every
+    instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another SSBO called `SphereAdjustment` is used, containing a `vec4` for every
+    node. These sphere adjustments can be set by a UI extension that maps the node
+    names of the model to one `SliderFloat` and one `SliderFloat3`, allowing us to
+    resize and move around the bounding spheres created by the shader. By carefully
+    placing the bounding spheres, we can make sure to have as little empty space around
+    the model that would be detected as collision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 8.15* shows the new UI section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image4167.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.15: Fine-tuning the bounding spheres of a model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `SphereAdjustments` SSBO is backed by a `std::vector` of `glm::vec4` elements
+    called `msBoundingSphereAdjustments`, placed in the `ModelSettings` struct. In
+    the adjustments vector, each `vec4` is split, using the first three elements for
+    the position and the last element for the radius of each sphere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: And since it’s a good idea to not have to tune the bounding spheres on every
+    application restart, the contents of the `msBoundingSphereAdjustments` buffer
+    are added to the `YamlParser` class to be able to save and restore the adjustments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both the addition to the user interface and to the YAML parser are more or less
+    trivial, copied from already existing ImGui and YAML parsing code parts. You can
+    explore the `UserInterface` and `YamlParser` classes to check out the code changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our third compute shader, `assimp_instance_bounding_spheres.comp`, also reuses
+    parts of other shaders. The top of the `main()` method is identical to the matrix
+    multiplication compute shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: We select the node and instance to work on based on the invocation IDs of the
+    shader, while the number of nodes in the model comes from the X dimension of the
+    number of work groups we use when dispatching the compute shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we get the node position by extracting the translational part from the
+    TRS matrix of the specific node of the instance and adding the position from the
+    sphere adjustment buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: We also declare the sphere radius and initialize it with a default value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we extract the parent node ID of the current node from the parent index
+    buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The parent node is used to switch between nodes that have a parent and the
+    parent or unconnected, standalone nodes. If we find a valid parent, we calculate
+    the world position of the parent node, including the position adjustment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By using the node and parent position, we calculate the middle point between
+    the node and its parent. We calculate the radius of the sphere – again, adjustable
+    by the sphere adjustment value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For the root node, we set the radius of the sphere to the adjustable value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At the end of the `main()` method, we add a small check to disable small spheres
+    already in the shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we need to run the three compute shaders from several different places in
+    the renderer code, we make our lives easier by adding the code to fill and run
+    the shaders to a new method called `runBoundingSphereComputeShaders`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Drawing bounding spheres
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The second usage of the compute shaders for the bounding spheres is a debug
+    display, similar to the AABBs. After running the compute shaders, we can use another
+    new vertex and fragment shader pair to draw the spheres to the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `main()` method of the new sphere-drawing vertex shader called `sphere_instanced.vert`,
+    we extract the center and radius of the sphere:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: To speed up the drawing, we will use an instanced drawing call for the rendering
+    API, so we can use the special variable `gl_InstanceID` here (the variable `gl_InstanceID`
+    was renamed to `gl_InstanceIndex` in Vulkan). Both OpenGL and Vulkan are internally
+    incrementing the values of the variable `gl_InstanceID` respective `gl_InstanceIndex`
+    for every instance, allowing us to draw thousands of bounding spheres from a single
+    set of vertices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Resizing the spheres to the correct radius is done by a small GLSL function
+    called `createScaleMatrix()` in the shader, essentially creating a scaling matrix
+    with the `radius` value in the main diagonal elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we scale the original position of the sphere vertex by the scaling matrix,
+    add the sphere adjustment, create the final shader matrix by multiplication with
+    `view` and `projection` matrices, and set the line color:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running the sphere shader is done by calling an instanced version of the `Shader`
+    class drawing command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the Vulkan renderer, the equivalent drawing calls are used (`vkCmdBindPipeline()`,
+    `vkCmdBindVertexBuffers()`, `vkCmdBindDescriptorSets()`, and `VkCmdDraw()`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since the bounding spheres for collision detection may not be identical to the
+    bounding spheres we want to draw on the screen, we use separate methods for drawing
+    debug spheres. The main difference between our debug draw methods is the creation
+    of the list of instances to feed the compute shaders with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We could draw bounding spheres only on the selected instance by calling `drawSelectedBoundingSpheres()`,
+    show the bounding boxes for instances with collisions by calling `drawCollidingBoundingSpheres()`,
+    or create “fluffy white snowballs” around all instances in the screen, as in *Figure
+    8.16*, by calling `drawAllBoundingSpheres()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image4175.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.16: Adjusted bounding spheres on the nodes of the woman’s model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we are able to calculate and draw bounding spheres for the models,
+    let’s add the spheres as a second tier to the collision detection code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the bounding spheres for collision detection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The colliding instances from the quadtree are collected in the renderer by
+    calling `findAllIntersections()` and saved to `micInstanceCollisions`, as already
+    stated in the *Retrieving the colliding instances and reacting to the collision*
+    section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: To make the collision detection code easier to maintain, we move the intersection
+    extraction call to a new method called `checkForInstanceCollisions()`. This new
+    method will be the starting point for all code related to collision detection
+    and handling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our first step to extend collision detection is done by calling the above `findAllIntersections()`
+    method to get all colliding instances from the quadtree. Then, we split up the
+    instances by model into separate sets of `int`. Using separate lists of colliding
+    instances per model is needed because different models may have a different number
+    of nodes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, for every set of instances, we create the SSBO with the bounding spheres
+    and extract the sphere data to a map of `glm::ve4` vectors. We will use the instance
+    index position as the key for the map, splitting up the SSBO into a map containing
+    all spheres per instance as values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The real collision check for the bounding spheres is done by comparing all spheres
+    from one colliding instance with all spheres of the second colliding instance.
+    We already reduced the number of these checks by a lot, since we only have the
+    instance pairs left that were delivered by the quadtree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But even if checking the spheres for collisions is an easy task and we just
+    have to compare the distance between the centers with the sum of the radii of
+    both spheres, the number of comparisons will make this check slow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even with a shortcut to remove all spheres with a radius of zero and stopping
+    to compare when a collision has been detected, a check between two just-not-colliding
+    instances with 30 active spheres per model will need 900 such comparisons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Speeding up the sphere compare operations with a compute shader is possible,
+    but problems like different node counts for each instance in a pair to check will
+    raise the complexity and lower the efficiency of a compute shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While the parallel computation on the GPU may be fast, uploading and downloading
+    the data and running the shader for a single pair of instances may add a significant
+    delay, nullifying the acceleration of the compute shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, we stick with the CPU-based solution to calculate the second tier of the
+    collisions between bounding boxes. Unless we have thousands of instances in a
+    very small virtual world or many instances in a small part of the world, the overall
+    number of collision checks will remain low.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 8.17* shows an example of a collision detected by the bounding boxes
+    (drawn with red lines), and an additional collision of any of the bounding spheres
+    (also in red):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Image4186.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 8.17: A collision was detected by the bounding spheres of the instances'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling collision remains identical to the reaction of collisions with bounding
+    boxes in the *Retrieving the colliding instances and reacting to collisions* section
+    – we simply rotate the colliding instances about a fixed angle in every frame.
+    We will enhance the reaction to collisions in [*Chapter 9*](Chapter_9.xhtml) and
+    [*Chapter 12*](Chapter_12.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Collision detection is a complex topic with many algorithms and choices based
+    on your application’s specific needs. We need to know what kind of objects we
+    need to check to select a good shape of an abstraction, and depending on the complexity
+    of the abstraction, we may need to adjust the algorithm (or algorithms) to use
+    when trying to find collisions. We did not even touch the collision resolution
+    part that resolves the collision by moving the instances apart after an intersection
+    was detected. If you want to dive deeper into the world of game physics, collision
+    detection, and collision resolution, check out the books in the *Additional resources*
+    section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we explored collision detection and created a two-tier collision
+    detection for the application. We started by discussing the shortcomings of a
+    naive solution, then we explored spatial partitioning methods and model simplifications
+    to lower the number of checks we have to do until we are quite sure which instances
+    really have some collisions. Finally, we implemented a quadtree with bounding
+    boxes and bounding spheres to find out which instances collide.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will create “real” **non-player characters** (**NPCs**)
+    and let the instances come to life by adding configurable behavior. We will start
+    by exploring the nature of behavior trees and their relation to the decision-making
+    of NPCs, and we will implement code to support behavior trees for our instances.
+    As the last step, we will look at the interaction between models as a specialized
+    set of the general behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Practical sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here are some additions you could make to the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add UI controls for the quadtree configuration.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Currently, the quadtree is statically initialized during the renderer `init()`
+    call. Add UI controls and a setter callback function to adjust the maximum number
+    of instances before splitting up the box and the maximum depth of the tree.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add UI controls to configure the world borders.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The instances are running around in the virtual world, and if one instance reaches
+    the virtual border set in `mWorldBoundaries`, it will be rotated to stay inside
+    the boundaries. Add some sliders and callbacks to control the origin and size
+    of the virtual world, and make sure the **Instance Positions** window will be
+    updated, too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implement an octree plus three-dimensional AABB checks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Right now, we are using only two-dimensional bounding boxes for the instances,
+    just as if the instances were seen top-down. Extend the quadtree to become an
+    octree and add three-dimensional intersection checks between the AABBs of the
+    instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Speed up the bounding sphere collision check.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Due to the general complexity of the checks – we have to check every sphere
+    of the first instance against every sphere of the second instance – the collision
+    check is quite slow. Maybe a compute shader can help here. In contrast to the
+    bounding box generation, we need only a single yes/no answer per instance to signal
+    if a collision occurred. Using an atomic counter per sphere or instance could
+    help avoid lengthy post-processing work after the computer shader has done its
+    job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a simple bounding volume hierarchy.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instead of checking all spheres of both instances, you could add some unused
+    nodes to the models and add bigger bounding spheres to these nodes, enclosing
+    some of the smaller spheres. Check the spheres by starting with the largest spheres
+    for both instances. If these large spheres don’t collide, all spheres inside the
+    larger sphere can never have a collision, and the entire part of the body could
+    be skipped for the next collision checks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Enhanced difficulty: Do a real triangle-to-triangle check between the instances.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This is the ultimate goal in collision detection. By checking the instances
+    for real intersections, not just some AABBs or bounding spheres, natural-looking
+    collision behavior could be achieved. Also, make note of the benefits of this
+    method and see whether the extra precision benefits the runtime behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Enhanced difficulty: Add collision resolution.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When the collision check signals a collision between two instances, it’s already
+    too late – the instances are partially intersected. Good collision detection comes
+    with collision resolution where the instances are moved apart when a collision
+    is found. Several books have been written about collision detection and collision
+    resolution; see the *Additional resources* section for some well-known titles.
+    There are still many caveats on the path to “making it right.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additional resources
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Separating Axis Theorem: [https://dyn4j.org/2010/01/sat/](https://dyn4j.org/2010/01/sat/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Gilbert–Johnson–Keerthi distance algorithm: [https://cse442-17f.github.io/Gilbert-Johnson-Keerthi-Distance-Algorithm/](https://cse442-17f.github.io/Gilbert-Johnson-Keerthi-Distance-Algorithm/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Template-based quadtree implementation: [https://github.com/pvigier/Quadtree](https://github.com/pvigier/Quadtree)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Collision Detection in Interactive 3D Environments: ISBN 978-1558608016'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Real-Time Collision Detection: ISBN 978-1558607323'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Game Physics Engine Development: ISBN 978-0123819765'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Game Physics: ISBN 978-0123749031'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Collision Avoidance: [https://code.tutsplus.com/understanding-steering-behaviors-collision-avoidance--gamedev-7777t](https://code.tutsplus.com/understanding-steering-behaviors-collision-avoidance--gamedev-7777t)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'More about Collision Avoidance: [https://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter19_Guide_to_Anticipatory_Collision_Avoidance.pdf](https://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter19_Guide_to_Anticipatory_Collision_Avoidance.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

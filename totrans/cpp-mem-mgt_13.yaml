@@ -1,0 +1,869 @@
+- en: '13'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Writing Generic Containers with Implicit Memory Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we wrote a working (if simple) implementation of a
+    `std::vector<T>`-like type in `Vector<T>`, as well as a working (if, again, simple)
+    implementation of a `std::forward_list<T>`-like type in `ForwardList<T>`. Not
+    bad!
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of our `Vector<T>` type, after an initial effort that led to a working
+    but sometimes inefficient implementation, we made the effort to separate allocation
+    from construction, something that reduced the amount of redundant effort required
+    at runtime but came at the cost of a more subtle implementation. In this more
+    sophisticated implementation, we distinguished parts of the underlying storage
+    that are initialized from those that are not and, of course, operated on both
+    parts appropriately (treating objects as objects and raw memory as such). For
+    example, we used assignment (and algorithms that use the assignment operator)
+    to replace the contents of existing objects but preferred placement `new` (and
+    algorithms that rely on this mechanism) to create objects in raw memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our `Vector<T>` implementation from the previous chapter is a class expressed
+    with a sizable amount of source code. One of the reasons for this situation is
+    the explicit memory management we have been doing. Indeed, we have made a `Vector<T>`
+    object responsible for both the management of the underlying memory block and
+    the objects stored therein, and this double responsibility came with a cost. In
+    this chapter, we will revisit that design by making memory management *implicit*
+    and we will discuss the consequences of this new approach. Hopefully, dear reader,
+    this will lead you toward a possible simplification and refinement of your coding
+    practices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, our goals will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To adapt a hand-written container such as `Vector<T>` in such a way as to significantly
+    simplify its memory management responsibilities
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To understand the consequences of our design on source code complexity
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To understand the consequences of our design on exception safety
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will spend most of our energy on revisiting the `Vector<T>` container, but
+    we will also revisit `ForwardList<T>` to see if we can apply the same kind of
+    reasoning to both container types. By the end of this chapter, at least in the
+    case of `Vector<T>`, we will still have a hand-written container that manages
+    memory efficiently and distinguishes raw memory from constructed objects, but
+    our implementation will be significantly simpler than the one we produced in [*Chapter
+    12*](B21071_12.xhtml#_idTextAnchor172).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that with respect to `Vector<T>`, this chapter will compare two versions.
+    One will be named the “*naïve* version” and will be the initial implementation
+    that uses objects of type `T` throughout the underlying storage. The other will
+    be named the “*sophisticated* version” and will be the implementation that considers
+    the underlying storage as being made of two (potentially empty) “sections,” with
+    objects of type `T` at the beginning and raw memory at the end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter13](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter13).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some words about the code excerpts in this chapter
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter will for the most part revisit and modify (hopefully simplifying!)
+    the code examples from [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172), using
+    ideas from previous chapters (notably [*Chapter 5*](B21071_05.xhtml#_idTextAnchor079)
+    and [*Chapter 6*](B21071_06.xhtml#_idTextAnchor096)) along the way. Since a lot
+    of the code used for `Vector<T>` and `ForwardList<T>` will not change, we will
+    not write the entire classes all over again to avoid undue repetition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, we will concentrate on the most meaningful modifications made to the
+    previous versions of those classes, sometimes comparing implementations “before”
+    and “after” modifications have been made. Of course, the code samples in the GitHub
+    repository are complete and can be used to “complete the picture.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why explicit memory management complicates our implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let’s look for a moment at one of the constructors for `Vector<T>` as written
+    in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172). For simplicity, we will use
+    the constructor that accepts a number of elements and an initial value for these
+    elements as arguments. If we limit ourselves to the naïve version where `elems`
+    points to a sequence of `T` objects and put aside for the moment the more sophisticated
+    version where `elems` points to a block of memory that holds `T` objects at the
+    beginning and raw memory at the end, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This constructor allocates an array of `T` objects, initializes them through
+    a sequence of assignments, “handles” exceptions, and so on. The `try` block and
+    its corresponding `catch` block are part of our implementation, but not because
+    we want to handle exceptions raised by the constructors of `T` objects. Indeed:
+    how could we know what exceptions it could throw if we do not know what `T` is?
+    We insert these blocks because we need to explicitly deallocate and destroy the
+    array if we are to avoid leaks. The situation gets even more complicated if we
+    look at the more sophisticated version that distinguishes allocation from construction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we can see, we do this work because we decided that `Vector<T>` would be
+    the *owner* of that memory. And we are totally allowed to do so! But what if we
+    made something else responsible for our memory?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implicit memory management with a smart pointer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In C++, the simplest way to change our `Vector<T>` implementation from one
+    that manually manages memory to one that does so implicitly is through a smart
+    pointer. The idea here is, essentially, to change the type of the `elems` data
+    member of `Vector<T>` from `T*` to `std::unique_ptr<T[]>`. We will look at this
+    from two angles:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How does this change impact the naïve version of `Vector<T>`? As a reminder,
+    our naïve version from [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172) did not
+    distinguish between objects and raw memory in the underlying storage, and thus
+    only stored objects. This led to a simpler implementation, but also one that needlessly
+    constructed objects on many occasions and was much slower than the more sophisticated
+    implementation for non-trivially constructible types.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How does this change impact the sophisticated version of `Vector<T>` that avoided
+    the performance trap of constructing unnecessary objects at the cost of a somewhat
+    more complicated implementation?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In both cases, we will examine selected member functions that are indicative
+    of the impact of this change. The full implementations of both the naïve and the
+    sophisticated implementations of `Vector<T>` are available to peruse and use in
+    the GitHub repository associated with this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact on the naïve Vector<T> implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'If we were basing our simplification effort on the initial, naïve version of
+    [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172) where `elems` simply pointed
+    to a contiguous sequence of `T` objects, this would be rather simple, as we could
+    change:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '… to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '… and then change the implementation of the `begin()` member functions from
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '… to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just doing this would be sufficient to significantly simplify the implementation
+    of type `Vector<T>` as deallocating memory would become implicit. For example,
+    we could simplify each constructor by removing the exception handling altogether,
+    changing, for example, the following implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '… for this significantly simpler one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The reason for this simplification is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the `Vector<T>` object is responsible for the allocated memory, then deleting
+    the array will be done implicitly when the destructor is called, but for a destructor
+    to be called, there needs to be an object to destroy: a `Vector<T>` constructor
+    needs to have succeeded! That explains why we need to catch whatever exception
+    was thrown, manually delete the array, and re-throw whatever exception was thrown:
+    until the closing brace of a destructor is reached, there is no `Vector<T>` object
+    to destruct and all resource management has to be done explicitly.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'On the other hand, if `elems` is a smart pointer, then it becomes responsible
+    for the pointee as soon as the smart pointer itself has been constructed, and
+    this occurs *before* the opening brace of the `Vector<T>` constructor. This means
+    that once `elems` has been constructed, it *will* be destructed if an exception
+    leaves the constructor, freeing the `Vector<T>` object-to-be from the task of
+    destructing the array. To be clear: when we reach the opening brace of the constructor
+    of `Vector<T>`, the data members of `*this` have been constructed, and for that
+    reason, they will be destructed if an exception is thrown, even if the construction
+    of `*this` itself does not conclude. The object model of C++ is truly wonderful
+    in such situations.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The more astute among you, dear readers, will have noticed that even if one
+    was writing code for a company where exceptions are disallowed or frowned upon,
+    the exception-safety we gained from using a smart pointer remains. We have (discretely)
+    written exception-safe code without writing the words `try` or `catch`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Other examples of simplification through the introduction of implicit memory
+    management would include move operations and the destructor of `Vector<T>`, which
+    would change from this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '… to simply this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Making move operations `=default` works because type `std::unique_ptr` does
+    “the right thing” when moving and transfers ownership of the pointee from the
+    source to the destination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Something to be aware of
+  prefs: []
+  type: TYPE_NORMAL
+- en: By making the move operations `=default`, we induced a slight semantic change
+    in our `Vector<T>` implementation. The C++ standard recommends that a moved-from
+    is in a valid yet unspecified state but does not go into detail as to what “valid”
+    means. Our hand-written move operations restored the moved-from object to the
+    equivalent of a default-constructed `Vector<T>` object, but the “defaulted” one
+    leaves the moved-from object with a null `elems` but with potentially non-zero
+    size and capacity. This still works in practice as long as user code does not
+    use the moved-from object unless it has first been reassigned to, but it is a
+    semantic change that deserves to be acknowledged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Yet another interesting simplification would be the implementation of the `resize()`
+    member function. In the original, naïve `Vector<T>` implementation, we had the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, again, we are faced with the possibility of an exception being thrown
+    from the copy assignment of a `T` object to a `T` object and need to handle exceptions
+    in order to avoid leaking resources. Going from explicit resource handling to
+    implicit resource handling, we get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the entire exception handling code is gone. Object `p` owns
+    the new array and will destroy it when the function concludes execution. Once
+    the copies (or the moves, depending on whether the move assignment of type `T`
+    is or is not marked as `noexcept`) are completed, `elems` lets go of the previously
+    owned array through `reset()` (destroying it at the same time) and “steals” ownership
+    of the array released by `p` through `release()`. Note that writing `elems = std::move(p);`
+    would have had a similar effect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying this simplification process throughout `Vector<T>`, source code gradually
+    shrinks and, on a container like the naïve version of `Vector<T>` that only contains
+    objects, no raw memory block at the end of the underlying storage, we can save
+    almost 25% of the number of source code lines (going from roughly 180 lines to
+    140 lines for this academic implementation). Try it and see for yourself!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Impact on the sophisticated Vector<T> implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Applying the same technique to the more sophisticated `Vector<T>` will require
+    a bit more work as the default behavior of the destructor of an object of type
+    `std::unique_ptr<T[]>` will be to apply `operator delete[]` to the pointer it
+    owns. As we know at this point, our sophisticated implementation can be conceptualized
+    as being made of two (potentially empty) “sections”: an initial section made of
+    `T` objects manually placed into raw memory followed by another section of uninitialized,
+    raw memory devoid of objects. As such, we need to handle each “section” in a different
+    manner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will still use a `std::unique_ptr<T[]>` object to manage the memory, but
+    we will need to use a `custom deleter` object (something we discussed in [*Chapter
+    5*](B21071_05.xhtml#_idTextAnchor079) and in [*Chapter 6*](B21071_06.xhtml#_idTextAnchor096))
+    to take into account the specifics of our implementation. This object will need
+    knowledge of the runtime state of the `Vector<T>` object it will accompany since
+    it will have to know where each “section” of the underlying storage starts as
+    well as where it ends, and that is something that changes as the code is executing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first important point of this implementation, and this is a point that
+    has been recurring but that we probably did not insist upon enough, is that we
+    want our implementations to expose the same interface to client code, regardless
+    of implementation variations. This is sometimes impossible or unreasonable to
+    achieve, but it is nonetheless a meaningful and worthwhile target. This includes
+    our choice of internal public types: for example, the fact that we use a smart
+    pointer to manage the underlying memory does not change the fact that a pointer
+    to an element is a `T*`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, since we want to define `elems` as being a smart pointer that owns and
+    manages the underlying storage instead of being a raw pointer, we will need to
+    define the custom deleter that will be used by that smart pointer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An important aspect of this problem is that the custom deleter will need to
+    know the state of the `Vector<T>` object to know what part of the underlying storage
+    holds objects. For this reason, the custom deleter of our `std::unique_ptr<T[]>`
+    will be stateful and store a reference named `source` to the `Vector<T>` object.
+    Through `source`, The function call operator of the `deleter` object will have
+    access to the sequence of objects in the container (the half-open sequence from
+    `source.begin()` to `source.end()`) and will be able to `destroy()` these objects
+    before freeing the underlying storage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `elems` data member knows that the type of the custom deleter will be `deleter`,
+    but the actual object that will play the role of deleter will have to know what
+    `Vector<T>` object it will interact with. The constructors of a `Vector<T>` will
+    be responsible for providing this information, and we will need to be careful
+    with the ways in which we implement our move operations in order to make sure
+    we do not transfer the `deleter` object’s state and make our code incoherent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As mentioned with the naïve version, we need to adapt the `begin()` member
+    functions to take into account the fact that `elems` is a smart pointer but that
+    our `iterator` interface relies on raw pointers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our constructors will need to adapt to the fact that we have a custom deleter
+    that will clean up if anything bad happens, or if the program concludes normally.
+    Three examples of `Vector<T>` constructors follow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Please note that we are not expressing the move constructor with `=default`
+    in this case as we do not want to transfer the custom deleter, our implementation
+    having associated this object with a specific `Vector<T>` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A small note is in order here: we are passing `*this` to the constructor of
+    the `deleter` object, but we are doing so *before* the construction of `*this`
+    has been completed, so *anything* done by the `deleter` object before the construction
+    of `*this` concludes (before the closing brace of its constructor) deserves care
+    and attention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our case, the `deleter` object will come into play if the destructor of `elems`
+    comes into play, which will happen if the constructor of an object of type `T`
+    throws. We need to make sure that the values of the data members of `*this` are
+    coherent whenever there is a possibility that the `deleter` object intervenes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our case, since the `begin()` and `end()` member functions return iterators
+    that define a half-open range of objects and, as we now know, `std::uninitialized_fill()`
+    calls the constructors and (if an exception is thrown) destroys the objects that
+    have been constructed, we have to make sure that `nelems==0` until all of the
+    objects have been constructed. Note that we defined the range to initialize as
+    `begin()` and `begin()+n`, and waited until after the call to `std::uninitialized_fill()`
+    to change `nelems`: this way, `begin()==end()` if an exception is thrown, and
+    the `deleter` object will not try to destruct “non-objects.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other constructors of class `Vector<T>` are likewise simplified; we will not
+    show them here so consider them as not-so-dreaded “exercises left to the reader.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The simplification of `Vector<T>` is made evident with some of the special
+    member functions that now require little or no effort on our part. Of note in
+    this regard is the destructor, which can now be defaulted; as mentioned with the
+    move constructor earlier in this section, we do not default the move assignment
+    to avoid transferring the custom deleter’s internal state, as can be seen in the
+    following code excerpt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Member functions `swap()` and `operator[]` have been shown to make it clear
+    that `std::unique_ptr<T[]>` behaves in many ways like a “regular” array of `T`
+    objects. Many other member functions of `Vector<T>` remain unchanged, such as
+    `front()`, `back()`, `operator==()`, `operator!=()`, `grow()`, `push_back()`,
+    and `emplace_back()`. Please refer to [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172)
+    for details on these functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `reserve()` and `resize()` functions can also be simplified through the
+    use of smart pointers, as we can get rid of explicit exception management and
+    yet remain exception-safe since `std::unique_ptr<T[]>` is an **RAII** type and
+    handles memory for us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the case of `reserve()`, we now use smart pointer `p` to hold the allocated
+    memory, then either `move()` or `copy()` the objects from `elems` to `p`. Once
+    this is done, we `destroy()` the objects left in `elems`, after which `p` relinquishes
+    its pointer and transfers it to `elems`, and the only thing left to do is to update
+    the container’s capacity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the case of `resize()`, we now use smart pointer `p` to hold the allocated
+    memory, then either `move()` or `copy()` the objects from `elems` to `p` and construct
+    default `T` objects in the remaining part of the memory block. Once this is done,
+    we `destroy()` the objects left in `elems`, after which `p` relinquishes its pointer
+    and transfers it to `elems`, and the only thing left to do is to update the container’s
+    capacity:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The magic of it all, or so to speak, is that our other member functions such
+    as `insert()` and `erase()` are built on top of basic abstractions such as `reserve()`,
+    `begin()`, `end()`, and so on, which means they do not have to be modified to
+    take into account this representational change.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consequences of this redesign
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'What are the consequences of this “redesign” of sorts? They have been mentioned
+    along the way, but let’s summarize:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For user code, consequences are essentially none: an object of type `Vector<T>`
+    occupies the same space in memory with the implicit memory management implementation
+    and almost the same space with the explicit memory management implementation (where
+    the custom deleter is stateful), and each exposes the same public interface.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'There are essentially no speed costs either, for reasons explained in [*Chapter
+    5*](B21071_05.xhtml#_idTextAnchor079): in code compiled with optimization levels
+    other than the basic, made-for-debugging ones, going through `std::unique_ptr<T>`
+    will, due to function call inlining, lead to code that is as efficient as going
+    through a `T*`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The implementation is made significantly simpler: fewer instructions, no explicit
+    exception handling code, more member functions that can be defaulted…'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'An important aspect of this implicit memory management implementation is that
+    it is exception-safe even in the absence of explicit `try` and `catch` blocks.
+    This can make a difference in many situations: for example, you might be in a
+    situation where exceptions are not allowed but find yourself using a library where
+    exceptions are a possibility… or can simply call `operator new()` in a situation
+    where memory is constrained. Our implementation with implicit memory management
+    would be safe under such circumstances, but an implementation taking a manual
+    memory management approach with no exception handling code would not be so “lucky.”'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The effort involved in implementing the custom deleter seems to be a sound investment
+    with `Vector<T>`. Now, you might wonder whether the situation is similar with
+    node-based containers, so we will explore this question by revisiting the naïve
+    `ForwardList<T>` implementation from [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generalizing to ForwardList<T>?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We now know that we can adapt the implementation of `Vector<T>`, transforming
+    it from an explicit memory management model to an implicit one, and that so doing
+    has lots of advantages. It is tempting to do the same with other containers, but
+    before embarking on such an adventure, it might be wise to analyze the problem
+    a little.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We implemented a node-based container with explicit memory management named
+    `ForwardList<T>` in [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172). What would
+    be the impact of trying to change the implementation of this container to make
+    it more implicit?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attempt - making each node responsible for its successor
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In our exploration of ways in which we could try to make memory management in
+    a node-based container more implicit, one possible approach could be to change
+    the definition of `ForwardList<T>::Node` such that the `next` data member becomes
+    a `std::unique_ptr<Node>` instead of a `Node*`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a synopsis, we would get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This might seem like an improvement at first glance, since it would simplify
+    the destructor of `ForwardList<T>` down to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This simplification would induce a kind of “domino effect”: since the `next`
+    data member of a node becomes the owner of its successor node in the list, and
+    since this is true for every node in the chain (except for `head` itself), then
+    destructing the first node ensures the destruction of its successor, and of that
+    successor’s successor, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This apparent simplification hides a tricky fact: when calling `delete head;`
+    under this implementation, *we might be provoking a stack overflow*. Indeed, we
+    replaced a loop that applied `delete` on each node in succession with something
+    that’s essentially a recursive call, meaning that the impact on stack usage changed
+    from something that was fixed to something that is proportional to the number
+    of nodes in the list. That’s unpleasant news indeed!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, dear reader, maybe you are thinking “Well, I was only going to
+    use this `ForwardList<T>` type for small lists anyway, so I’m not worried.” If
+    that expresses your line of thinking, maybe we should explore other implications
+    of this implementation decision in our `ForwardList<T>` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One such implication is that iterators get a little bit more complicated: we
+    do not want an iterator over nodes to be the sole owner of the node it is traversing.
+    That would be destructive indeed, as nodes would be destroyed as we are iterating
+    over the list. For this reason, `ForwardList<T>::Node<U>` (where `U` is either
+    `T` or `const T`) would still have a `T*` data member, meaning that `operator++()`,
+    for example, would need to obtain the underlying pointer of the `std::unique_ptr<T>`
+    data member in each node:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s a slight complexity increase, but nothing that is impossible to manage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 12*](B21071_12.xhtml#_idTextAnchor172), we made most of our `ForwardList<T>`
+    constructors converge towards the more general sequence constructor that takes
+    a pair of forward iterators of some type `It` as arguments. This constructor would
+    become in part more complex, as chaining nodes would now require knowledge that
+    we are using smart pointers inside each node, but cleanup in case an exception
+    is thrown would only require deleting the head node and letting the aforementioned
+    “domino effect” take place:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Most member functions of `ForwardList<T>` would remain unchanged. There would
+    be slight adjustments to such things as `push_front()`, for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: As can be seen, we need to distinguish code that uses the `head` data member
+    from code that uses the other nodes in the chain. Similar adjustments would apply
+    to any member function that modifies the structure of the list, including, notably,
+    insertions and suppressions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A more interesting, and probably more enlightening, member function would be
+    the `insert_after()` member function that inserts one element after a given iterator
+    in the list. Let’s look at this function in detail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Hum, that’s quite a lot of updated text! How did this function get so complicated?
+    Looking at the “lettered” comments, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On line *A*, we create a `std::unique_ptr<Node>` object named `p` for the value
+    to be inserted. We know the newly created node will not be the first node in the
+    list since the function is `insert_after()`, and requires an iterator to an existing
+    “before” node (named `pos` here), so that makes sense. For the same reason, we
+    know that `pos` is not `end()`, which, by definition, does not point to a valid
+    node in our container.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: On line *B*, we do what is required to make the successor of `p` the successor
+    of `pos`. That requires some care since `pos.cur->next` is guaranteed to be a
+    `std::unique_ptr<Node>` (it obviously cannot be `head` as `pos.cur` is “before”
+    `pos.cur->next`) and we made `p` a `std::unique_ptr<Node>`. We are displacing
+    responsibility over the successor node of `pos.cur` to `p->next`, effectively
+    inserting `pos->next` after `p` (albeit in a complicated way).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: On line *C*, we are ensuring that `pos.cur` relinquishes its responsibility
+    over `pos.cur->next`. This is important since, if we did not do so, then replacing
+    that `std::unique_ptr<Node>` would destroy the pointee. Line *B* ensured that
+    `pos.cur->next` and `p->next` would lead to the same object, which would have
+    been disastrous had we stopped there (two objects responsible for the same pointee
+    is a semantic problem we do not need).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Once `pos.cur->next` has been disconnected, we move to line *D* where we make
+    it point to the raw pointer underneath `p`. This would, again, lead to a shared
+    responsibility over a `Node`, so we continue with line *E* where we disconnect
+    `p` from its underlying pointer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Line *F* concludes the work in this function by returning the expected iterator
+    to a raw (thus non-owning) pointer.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: That is… complicated. The main reason why this is complicated is that most of
+    the effort in this function is the transfer of ownership. A `std::unique_ptr<T>`
+    object represents sole ownership over a `T*`, after all, and in a linked list,
+    each and every insertion or suppression requires moving pointers around, thus
+    transferring ownership between nodes. We simplified an occasional situation (deletion
+    of the nodes) by complicating most of the operations in our type. That’s… sad.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On meaning and responsibility semantics
+  prefs: []
+  type: TYPE_NORMAL
+- en: Smart pointers are all about encoding meaning and responsibility in the type
+    system. Simplifying user code is important, but it’s not the main point of these
+    types. In a `ForwardList<T>`object, the real owner of the `T` objects is the `ForwardList<T>`
+    object, and the `ForwardList<T>::Node<U>` objects are (from the `ForwardList<T>`
+    object’s perspective) essentially a storage facility. Trying to change this can
+    be made to work, but the ensuing complexity is an indication that something’s
+    suspicious.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When writing a class, especially a container class, it’s essential that we have
+    a clear view of the role intended for each type. We know that iterators are non-owning
+    by nature (we could, however, envision `shared_ptr<T>` objects that co-own the
+    pointee in some use cases). As far as containers and their underlying representation
+    goes, the important point is that the responsibilities of each type need to be
+    clear if our design is going to be manageable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Okay, so making a node responsible for its successor did not work. Would simply
+    making the `head` member of a `ForwardList<T>` object responsible for the other
+    nodes in the list make our lives better?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Attempt: making the head pointer responsible for the other nodes'
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As seen in the previous section, making each node responsible for its successor
+    is semantically incorrect. It leads to complex, involved, and error-prone code,
+    and the aspects of the implementation that are simplified by this transformation
+    are mostly outweighed by the added complexity in other places.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maybe just making the `head` node a `std::unique_ptr<Node>` object with a custom
+    deleter responsible for deleting the entire list would be beneficial? Well, we
+    can assuredly try this approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a synopsis, we would now get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void clear() noexcept {
+  prefs: []
+  type: TYPE_NORMAL
+- en: for (auto p = head.get(); p; ) { // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = p->next;
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: p = q;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: nelems = 0;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: iterator begin() { return { head.get() }; } // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: const_iterator begin() const {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return { head.get() }; // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <std::forward_iterator It>
+  prefs: []
+  type: TYPE_NORMAL
+- en: ForwardList(It b, It e) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(b == e) return;
+  prefs: []
+  type: TYPE_NORMAL
+- en: head.reset(new Node{ *b }); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = head.get(); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: ++nelems;
+  prefs: []
+  type: TYPE_NORMAL
+- en: for(++b; b != e; ++b) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: q->next = new Node{ *b };
+  prefs: []
+  type: TYPE_NORMAL
+- en: q = q->next;
+  prefs: []
+  type: TYPE_NORMAL
+- en: ++nelems;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void push_front(const_reference val) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = new Node{ val };
+  prefs: []
+  type: TYPE_NORMAL
+- en: p->next = head.get(); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: head.release(); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: head.reset(p); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: ++nelems;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void push_front(T&& val) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = new Node{ std::move(val) };
+  prefs: []
+  type: TYPE_NORMAL
+- en: p->next = head.get(); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: head.release(); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: head.reset(p); // <--
+  prefs: []
+  type: TYPE_NORMAL
+- en: ++nelems;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE

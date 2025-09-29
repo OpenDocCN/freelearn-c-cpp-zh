@@ -1,0 +1,741 @@
+- en: '13'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Working with C Libraries
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 6*](Chapter_06.xhtml), we discussed interoperability between C
+    and C++. We learned about language linkage and how to use it to include C libraries
+    in a C++ project. From the technical standpoint, that’s all we need to use C in
+    C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we’ll focus on software development techniques for integrating
+    C libraries into a C++ project to enhance code flexibility. Since many C++ projects
+    still rely on vendor-provided C **hardware abstraction layers** (**HALs**), we’ll
+    concentrate on how to effectively incorporate these C libraries into our projects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, this chapter will cover the **Resource Acquisition is Initialization**
+    (**RAII**) paradigm and explain why it’s particularly beneficial in embedded systems.
+    By automatically managing resource allocation and deallocation, RAII greatly reduces
+    the risk of leaks and other resource misuse issues, which is especially important
+    in resource-limited embedded environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using C HAL in C++ projects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Static classes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using RAII for wrapping `LittleFs` C library
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The examples from this chapter are available on GitHub ([https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter13](https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter13)).
+    To get the most out of this chapter, run the examples in the Renode simulator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using C HAL in C++ projects
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In [*Chapter 12*](Chapter_12.xhtml), we explored the benefits of using C++ for
+    HAL development. However, despite these advantages, target vendors provide HALs
+    as C libraries. These libraries have been thoroughly tested on millions of devices
+    worldwide, and vendors usually maintain them well, offering regular updates. Thus,
+    it makes more sense to use them rather than re-implement the HAL in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will create an interface-based design for the UART peripheral, which
+    will provide us with a more flexible software design and allow us to decouple
+    components that are using the UART interface from low-level details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: UART interface for flexible software design
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In [*Chapter 5*](Chapter_05.xhtml), we covered the importance of interfaces
+    for flexible software design. There, we had an `uart` interface class that was
+    implemented by the `uart_stm32` class. The `gsm_lib` class depended on the `uart`
+    interface, meaning we can reuse it with different `uart` interface implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `uart_stm32` class from [*Chapter 5*](Chapter_05.xhtml) had a simple implementation
+    for demo purposes. It used the `printf` and `putc` functions from the C standard
+    library to write messages on standard output. We will now go through the actual
+    implementation of the `uart_stm32` class that’s already been used in all the examples
+    in the book’s GitHub repo, enabling us to see the output in the Renode simulator.
+    Let’s start from the `uart` interface `class` with the code shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `uart` interface is a simple class with two virtual methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`virtual void init(std::uint32_t baudrate)`: A method used to initialize the
+    UART peripheral with a single parameter – `baudrate`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`virtual void write(std::span<const char> data)`: A method used to send data
+    over the UART peripheral. It has a `std::span<const char>` parameter in contrast
+    to the usual C approach with a pointer to the data buffer and length. Using `std::span`
+    increases the memory safety of the code.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, let us go through the `uart_stm32` class definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the `uart_stm32` class definition, we can notice the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overridden virtual methods `init` and `write` from the `uart` interface.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A constructor accepting a pointer to `USART_TypeDef`. This type is a `struct`
+    that describes the UART peripheral register layout in the CMSIS header `stm32f072xb.h`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Among the private members, we see `UART_HandleTypeDef`, a type defined in ST
+    HAL in the file `stm32f0xx_hal_uart.h`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, let us go through the implementation of the constructor and methods from
+    the `uart_stm32` class in this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we see the implementation of the `uart_stm32` constructor. It
+    just sets the private member `USART_TypeDef *instance_` using the initializer
+    list syntax. CMSIS defines the macros `USART1`, `USART2`, `USART3`, and `USART4`,
+    which specify the addresses of these peripherals and which we can use to initialize
+    the `uart_stm32` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `uart` interface defines the `init` method, as UART peripheral initialization
+    depends on other hardware initializations (i.e., clock configuration). If we implemented
+    the initialization within the constructor, we might run into issues if someone
+    defines a `global` or `static` `uart_stm32` object. The `init` method is shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the `init` method, we initialize the member `UART_HandleTypeDef huart_`
+    with the following configuration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`instance_`: The address to the UART peripheral selected in the constructor'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`baudrate`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 8-bit word length
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 1 stop bit
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Both TX and RX mode
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: No hardware control
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We also set `MspInitCallback` to `nullptr`. We make a call to the ST HAL `HAL_UART_Init`
+    function providing it with a pointer to `huart_`. Please note that for the sake
+    of example simplicity, there is no error handling. Error handling is an important
+    step, and return codes from HAL should be appropriately handled in code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we will go through the implementation of the `write` method shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the `write` method, we are making a call to `HAL_UART_Transmit` from ST HAL,
+    by passing the data pointer and data size from the `std::span<const char> data`
+    parameter. It’s worth noting that we need to cast away constness as the C `HAL_UART_Transmit`
+    function doesn’t accept the const pointer to data. This is only safe to do if
+    we are sure that the function we are passing the pointer with cast away constness
+    is not trying to modify its content.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will analyze this approach from the perspective of software design
+    and patterns used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The UART interface in the Adapter pattern
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The relationship between all the software components in this example (the `uart`
+    interface, the `uart_stm32` implementation of the interface, and the ST HAL) can
+    be represented by the following UML diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 13.1 – The uart_stm32 class diagram](img/B22402_13_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 13.1 – The uart_stm32 class diagram
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Figure 13.1*, we see the UML class diagram of the `uart_stm32` class. This
+    class effectively implements the **Adapter design pattern**, which is a structural
+    design pattern used to allow classes with incompatible interfaces to work together.
+    The Adapter pattern involves creating an adapter class that wraps an existing
+    class (or module) and provides a new interface that the client expects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our case, even though `stm32f0xx_hal_uart` is a C module rather than a C++
+    class, the `uart_stm32` class serves as an adapter by encapsulating the C-based
+    HAL code and exposing it through the C++ `uart` interface. This adaptation allows
+    other classes or clients in the system, such as a `GSM` library, to interact with
+    the UART hardware using the standardized C++ interface, without needing to concern
+    themselves with the underlying C implementation details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us analyze this approach from the perspective of the `uart` interface client,
+    such as a `GSM` library that is implemented in the `gsm_lib` class, with this
+    definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we see an example of a simple client of the `uart` interface
+    – `gsm_lib` – with a constructor that initializes the reference `hal::uart &uart_`.
+    This approach is called **dependency injection**. The dependency of the `gsm_lib`
+    class is constructed externally and supplied to the class as a reference through
+    the constructor. Depending on the interface also enables loose coupling, which
+    brings the following benefits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`gsm_lib` is not interested in the implementation details of the `uart` interface.
+    It doesn’t need to know about baud rate, hardware settings, etc.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`gsm_lib` is not tied to a particular target. We can reuse it on different
+    platforms by implementing the `uart` interface on those platforms.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Software testing of `gsm_lib` is easy as we can mock the `uart` interface and
+    instantiate the `gsm_lib` object with the mocked object used in tests.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instead of directly using the C HAL library in the `uart_stm32` class, we can
+    wrap the functions from the C library in a so-called `static` class with the direct
+    mapping of all parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing static classes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `static` class concept that we will discuss here doesn’t exist in the C++
+    language standard. We are borrowing it from languages such as C#, where it is
+    defined as a class that contains only `static` members and methods. It can’t be
+    instantiated. In C#, a `static` class is declared using the `static` keyword.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In C++, a `static` class can be created by defining a class with all `static`
+    methods and members and by deleting the default constructor. Deleting the constructor
+    ensures that no instances of the class can be created, enforcing this at compile
+    time. Disabling instantiation signals a clear intent to the user: *This is a*
+    `static` *class. The functions you’re using don’t rely on any instance-specific
+    states, as no instances exist. If there’s any internal state, it’s shared and
+    will affect everyone using the class*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will modify the previous example and create a `uart_c_hal` `static` class
+    to wrap UART C HAL functions, as shown in this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we simply mapped C functions in `static` methods of the class
+    `uart_c_hal`. Next, we will modify the `uart_stm32` class to use `uart_c_hal`,
+    as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we see that `uart_stm32` is now a template class that uses the
+    methods `init` and `transmit` from the template parameter `HalUart`. Now we can
+    use the class template, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `uart_stm32` class template still implements the `uart` interface, meaning
+    we can still use it with the `gsm_lib` class. Wrapping C HAL functions in a `static`
+    class and adjusting `uart_stm32` to use it through a template parameter decouples
+    C HAL from the `uart_stm32` implementation. This makes it possible to test the
+    `uart_stm32` class off-target, as it doesn’t depend on platform-specific code
+    anymore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Static classes are one way of using C libraries in C++ projects. They allow
+    us to encapsulate functions from C libraries in types that can be passed to C++
+    classes through template arguments, making the code more flexible and easier to
+    test.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will see how to apply the RAII technique to effectively wrap the **little
+    fail-safe** (`littlefs`) filesystem C library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using RAII for wrapping the littlefs C library
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: RAII is a simple yet powerful C++ technique used to manage resources through
+    an object’s lifetime. Resources can represent different things. Resources are
+    acquired when an object’s lifetime begins, and they are released when the object’s
+    lifetime ends.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The technique is used to manage resources such as dynamically allocated memory.
+    To ensure that the memory is released and avoid memory leaks, the recommendation
+    is to use dynamic allocation only internally in classes. When an object is instantiated,
+    the constructor will allocate memory, and when the object goes out of scope, the
+    destructor will release the allocated memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The RAII technique can be applied to other resources beyond the dynamically
+    allocated memory, such as files, and we will apply it to the `littlefs` filesystem
+    library ([https://github.com/littlefs-project/littlefs](https://github.com/littlefs-project/littlefs)).
+    We will start with a short overview of `littlefs` – a filesystem designed for
+    microcontrollers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LittleFS – a filesystem for microcontrollers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `littlefs` filesystem is designed for microcontrollers featuring the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Power-loss resilience**: It is built to handle unexpected power failures.
+    In the case of power loss, it will fall back to the last known good state.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Dynamic wear leveling**: It is optimized for flash memory, offering wear
+    leveling across dynamic blocks. It also includes mechanisms to detect and bypass
+    bad blocks, ensuring reliable performance over time.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Bounded RAM/ROM**: It is optimized for low memory usage. RAM consumption
+    remains constant, regardless of filesystem size, with no unbounded recursion.
+    Dynamic memory is limited to configurable buffers, which can be set up as `static`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We will first go through the basic usage of `littlefs` and then see how we
+    can apply RAII in a C++ wrapper class. We will go through an example of using
+    `littlefs` that will:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Format and mount filesystem.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Create a file, write some content to it, and then close it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Open a file, read content from it, and then close it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The full example is contained in `Chapter13/lfs_raii/app/src/main.cpp`. Let
+    us start with code that formats and mounts the filesystem, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code performs the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It declares a filesystem object named `lfs` of type `lfs_t`. This object will
+    be used to interact with the `littlefs` filesystem. It holds the state of the
+    filesystem and is required for all subsequent filesystem operations.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The function `get_ramfs_lfs_config()` returns a pointer to the `lfs_config`
+    structure that contains all the necessary configuration parameters for `littlefs`
+    to operate on a RAM storage medium. This includes function pointers for reading,
+    writing, and erasing, as well as parameters like block size, block count, and
+    cache size. In the project setup, we are using a portion of RAM as the storage
+    medium. The RAM-based `littlefs` configuration is defined in the C file `Chapter13/lfs_raii/app/src/lfs_ramfs.c`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It formats the storage medium to prepare it for use with `littlefs`. The `lfs_format`
+    function initializes the filesystem structures on the storage medium. This process
+    erases any existing data and sets up the necessary metadata structures. Formatting
+    is typically done once before the first use of the filesystem or when resetting
+    it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It mounts the filesystem to make it ready for file operations. The `lfs_mount`
+    function initializes the filesystem state in RAM based on the existing structures
+    on the storage medium. This step is necessary before performing any file operations
+    like reading or writing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, let us go over creating a file and writing some data to it. The code
+    is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code performs the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declares a file object named `file` of type `lfs_file_t`. This object represents
+    a file within the `littlefs` filesystem. It holds the state of the file and is
+    required for performing file operations like reading and writing.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Attempts to open a file named `“song.txt”` for writing using the function `lfs_file_open`.
+    The function is provided with the following arguments:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&lfs`: A pointer to the filesystem object, initialized and mounted earlier.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&file`: A pointer to the file object that will be associated with the opened
+    file.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`“song.txt”`: The name of the file to open.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LFS_O_WRONLY | LFS_O_CREAT`: Flags specifying to open the file in write-only
+    mode, and to create a file if it doesn’t exist already.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the `lfs_file_open` function returns a non-negative value, the code attempts
+    to write some data to it using the `lfs_file_write` function.
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We declare the content to write as a `file_content` string literal.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The function `lfs_file_write` is provided with the following arguments:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&lfs`: A pointer to the filesystem object.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&file`: A pointer to the file object associated with the opened file.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`reinterpret_cast<const void *>(file_content)`: Casts the character string
+    to a `const void*` pointer as required by the function.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`strlen(file_content)`: The number of bytes to write, calculated based on the
+    length of the string.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Closes the file after writing to ensure data integrity. `lfs_file_close` flushes
+    any pending writes to the storage medium and releases resources associated with
+    the file.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'After writing data to a file, we will attempt to open the same file in read
+    mode and read the data from it. The code for reading a file is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code performs the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Attempts to open the file `“song.txt”` for read-only access using the function
+    `lfs_file_open` and providing it with the flag `LFS_O_RDONLY`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the `lfs_file_open` function returns a non-negative value, the code attempts
+    to read data from the opened file.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`std::array<char, 64> buff = {0}` declares an array named `buff` with a fixed
+    size of `64` characters and initializes all elements to zero (`‘\0’`), ensuring
+    the buffer is null-terminated if treated as a C string.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Reads data from opened files in the `buff` array using the function `lfs_file_read`.
+    The function is provided with the following arguments:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&lfs`: A pointer to the filesystem object.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`&file`: A pointer to the file object associated with the opened file.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`reinterpret_cast<const void *>(buff.data())`: Casts the `buff` underlying
+    data array pointer to a const void* pointer as required by the function.'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`buff.size() – 1`: The number of bytes to read from the file. Subtracting 1
+    reserves space for a null terminator (`‘\0’`) at the end of the string.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Closes the file after reading to ensure data integrity.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'You can run the full example in the Renode simulator. Start Visual Studio Code,
+    attach it to the running container, open the `Chapter13/lfs_raii` project, as
+    described in [*Chapter 4*](Chapter_04.xhtml), and run the following commands in
+    the Visual Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Introducing an RAII-based C++ wrapper
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, we will wrap the `littlefs` functionality in a simple C++ wrapper applying
+    the RAII technique. We will create an `fs` namespace with types `lfs` and `file`
+    in it. Let us start with the `lfs` `struct` code shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The purpose of the `struct` `lfs` is to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Hold an instance of a filesystem object named `fs_lfs` of type `lfs_t` used
+    to interact with the `littlefs` filesystem.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implement the `static` method `init` used to initialize the filesystem by calling
+    the `lfs_format` and `lfs_mount` functions. The `init` method must be called before
+    any file operations are performed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, let’s go over the `file` class definition:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code shows methods and data members of the class file. Next, we will go
+    through them, starting with the constructor shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `file` constructor shown opens a file with the specified `filename` and
+    `flags`. It sets `is_open_` to true if the file opens successfully. Next, let’s
+    go over the destructor shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor shown will close the file if it’s already opened. It calls `lfs_file_close`
+    to close the file and release resources. The constructor and destructor implement
+    the RAII technique – creating an object will acquire resources, and when the object’s
+    lifetime ends, the destructor will release them. Next, let’s go over the read
+    and write methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `read` and `write` methods are simple wrappers for the `lfs_file_read` and
+    `lfs_file_write` functions. Both `read` and `write` use `std::span` as function
+    parameters for increased type safety and better flexibility, as we can simply
+    provide it with `std::array`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cleaner file management with RAII
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, we will see how we can use the `fs` and `file` wrappers to work with the
+    `littlefs` filesystem. The code is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We first initialize the filesystem by calling `fs::lfs::init()`. Next, we introduce
+    local scope to demonstrate a call to destructor and perform the next steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Open `“song.txt”` for writing (creating it if it doesn’t exist).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Write a string literal in the file if it was opened successfully.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Upon exit from the scope, the destructor is called, ensuring the file is closed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, we will open the file and read data from it. The code is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code performs the next steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Opens `“song.txt”` for reading (default mode).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Declares `std::array<char, 64> buff`, initialized to zeros.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reads the data from the file in `buff` if the file is opened successfully.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'You can run the full example in the Renode simulator. Start Visual Studio Code,
+    attach it to the running container, open the `Chapter13/lfs_raii` project, as
+    described in [*Chapter 4*](Chapter_04.xhtml), and run the following commands in
+    the Visual Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The simple C++ wrapper we wrote for the `littlefs` library applies RAII principles,
+    ensuring proper handling of resources as the destructor is called when an object’s
+    lifetime ends. This ensures the file is closed even when there are multiple return
+    paths from a code. It also simplifies the development experience as the code is
+    less verbose and cleaner. The usage of `std:span` increases safety.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we covered several techniques for using C libraries in C++
+    projects. By wrapping C code in C++ classes, we can organize our code better in
+    loosely coupled software modules. C++ increases type safety and compile-time features
+    allow us to easily organize C wrappers in `static` classes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying RAII is simple and provides us with a powerful mechanism that takes
+    care of resource management, as we saw in the example of the `littlefs` filesystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will go over super-loop in bare metal firmware and see
+    how we can enhance it with mechanisms such as sequencer in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join our community on Discord
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Join our community’s Discord space for discussions with the author and other
+    readers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://packt.link/embeddedsystems](https://packt.link/embeddedsystems)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/QR_code_Discord.png)'
+  prefs: []
+  type: TYPE_IMG

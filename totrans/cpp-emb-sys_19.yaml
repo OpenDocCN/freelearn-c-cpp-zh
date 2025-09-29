@@ -1,0 +1,496 @@
+- en: '15'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Practical Patterns – Building a Temperature Publisher
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Design patterns are tools for solving common problems. So far, we have covered
+    a few design patterns in this book, such as the Command and Adapter patterns.
+    In this chapter, we will go over the **Observer pattern** and apply it to a common
+    problem in embedded systems – handling temperature readings in different parts
+    of the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will start by looking at the Observer pattern and how it can be implemented
+    at runtime. This pattern is particularly useful when multiple components need
+    to react to changes in data from a central source. Imagine a temperature sensor
+    in an embedded device that reports changes to multiple listeners. This could be
+    part of a smart thermostat, an industrial machine monitor, or an HVAC control
+    board – each with components such as a screen, a logger, or a fan controller that
+    react to temperature updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will transition to a compile-time implementation of the same pattern
+    using modern C++ techniques such as variadic templates and fold expressions. By
+    leveraging these techniques, we can generate highly optimized code at compile
+    time, avoiding virtual dispatch, associated with runtime polymorphism. This approach
+    results in a smaller memory footprint and faster code that’s better suited to
+    systems with limited resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Observer pattern
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Runtime implementation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compile-time implementation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To get the most out of this chapter, I strongly recommend using Compiler Explorer
+    ([https://godbolt.org/](https://godbolt.org/)) as you read through the examples.
+    Add an execution pane with GCC as your compiler for x86 architecture. This will
+    allow you to see standard output and better observe the code’s behavior. As we
+    are using a lot of modern C++ features, make sure to select C++23 standard, by
+    adding `-std=c++23` in the **compiler options** box, and set the optimization
+    level to `-O3`. Also, add a compiler pane using `ARM gcc 11.2.1 (none)` to inspect
+    the assembly output of the examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can try the examples from this chapter in the Renode simulator in the Docker
+    container you set up in [*Chapter 4*](Chapter_04.xhtml). Make sure that the Docker
+    container is running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the files for this chapter on GitHub at [https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter15/observer](https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter15/observer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Observer pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The **Observer pattern** is often used in event-driven systems to publish events
+    to subscribed objects, usually by calling a method on them. An object that publishes
+    events is called a **subject** or **publisher**. Objects that receive events from
+    a publisher are called **observers** or **subscribers**. From now on, we will
+    use the terms **publisher** and **subscriber**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A publisher has an internal list of subscribers and provides an interface to
+    register and unregister a subscriber from the internal list. It also provides
+    the `notify` method, used by its client, which in turn calls `update` methods
+    on subscribers – that’s why we say that the publisher notifies subscribers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An example of a publisher-subscriber mechanism that is common in embedded systems
+    would be a temperature publisher, which notifies the logger, display, and data
+    sender at regular intervals. Before we go on to the implementation of this example,
+    we will first go through a UML diagram of the Observer pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 15.1 – UML diagram of the Observer pattern](img/B22402_15_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 15.1 – UML diagram of the Observer pattern
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 15.1* depicts the UML class diagram of the Observer pattern. In the
+    diagram, we see that the `publisher` class has the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`etl::vector<subscribers_, 8>`: Internal list of pointers to the subscriber
+    interface, for which we will use `vector` from ETL.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`register_sub(subscriber *)`: The method used to register a subscriber. The
+    `register` keyword is reserved in C++ and used as a storage specifier, so we are
+    using `register_sub` as the name for this method.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`unregister(subscriber *)`: The method used to unregister a subscriber.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`notify(float)`: The method used by the publisher’s client to trigger the updating
+    of subscribers.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `subscriber` interface class has one pure virtual method – `void update(float)`.
+    This method is overridden in the concrete implementation of the `subscriber` class.
+    To see this in action, we will proceed with the runtime implementation of the
+    Observer pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Runtime implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will go through the runtime implementation of the Observer pattern on the
+    example of temperature publisher. Subscribers will be a logger, display, and data
+    sender. The code of the subscriber interface and concrete subscribers is shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code defines the `subscriber` interface and concrete subscriber
+    classes: `display`, `data_sender`, and `logger`. Concrete classes override the
+    pure virtual `update` method from the interface class. For the sake of simplicity
+    of the example, all concrete implementations are printing temperature to standard
+    output.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the interface class allows the publisher to depend on the interface.
+    The publisher maintains an internal container of pointers to the subscriber interface.
+    This makes it possible to add different implementations of the subscriber interface
+    through the pointer on the base interface class. The code for the `publisher`
+    class is provided here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the preceding `publisher` class, we see the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`etl::vector<subscriber*, 8> subs_`: A private container used to maintain subscribers.
+    If you are running this example in Compiler Explorer, make sure to add the ETL
+    library using the **Libraries** option.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void register_sub(subscriber * sub)`: A method used to register the subscriber.
+    It uses the `std::find` algorithm to check if a subscriber has already been added.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void unregister(subscriber * sub)`: A method used to unregister a subscriber.
+    It uses the `std::find` algorithm to check if a subscriber is added before the
+    calling method `erase` to remove it from a vector. The method `erase` is provided
+    by the iterator returned by `std::find` if it is different from `subs_.end()`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void notify(float value)`: Loops through registered subscribers and calls
+    the method `update` on them.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Now, let us see how to use the preceding publisher and subscribers in the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the code, we perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instantiate the following concrete subscribers: `temp_logger`, `temp_display`,
+    and `temp_data_sender`.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Instantiate the publisher `temp_publisher`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Register the subscribers `temp_logger` and `temp_display`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call `notify(24.02f)` on `temp_publisher`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'After these steps, we expect the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unregister the subscriber `temp_logger`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Register the subscriber `temp_data_sender`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Call `notify(44.02f)` on `temp_publisher`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'After these steps, we expect the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: As an *exercise*, create a new subscriber class `eeprom_writer` that records
+    temperature if it goes under or above a set threshold.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can run the full example in Renode. Start Visual Studio Code, attach it
+    to the running container, open the `Chapter15/observer` project as described in
+    [*Chapter 4*](Chapter_04.xhtml), and run the following commands in the Visual
+    Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will go through the compile-time implementation of the Observer pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compile-time implementation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In most embedded applications, we know a lot about the system’s behavior at
+    compile time. This means that when using the Observer pattern, we already know
+    all the subscribers. If we assume that subscribers are only registered once and
+    never unregistered, we can create a compile-time version of the Observer pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To enable this, we’ll first break down the key C++17 features that make compile-time
+    implementation feasible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Leveraging variadic templates
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will base the implementation on variadic templates. We will start with a
+    simplified implementation to explain variadic templates, parameter packs, and
+    fold expressions – C++ features that will allow us to create a compile-time version
+    of the Observer pattern. Let us proceed with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the code above, we have subscribers structs `display`, `data_sender`, and
+    `logger`. All structs implement the static method `update`, which takes `temperature`
+    as a parameter and prints it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The struct `publisher` is a variadic class template. A **variadic template**
+    is a template with at least one **parameter pack**. A template parameter pack
+    is a template parameter that accepts zero or more template arguments. `typename...
+    Subs` is a type template parameter pack named `Subs`, meaning we can instantiate
+    the struct `publisher` with zero or more different types. To sum it up:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`publisher` is a variadic class template as it has a template parameter pack
+    `typename... Subs`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We can instantiate it with a variable number of types provided as template arguments.
+    This is the way to register subscribers to the publisher.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the `main` function, we create the alias `temp_publisher` as `publisher<display,
+    data_sender, logger>`. We call the `notify` method on this alias, which will result
+    in calls to update functions in types provided through the template parameter
+    pack, thanks to the fold expression in the `notify` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The final piece of the puzzle is the fold expression `(Subs::update(temp),
+    ...)`. This is a fold expression that uses the comma operator as the folding operator.
+    It expands to: `(display::update(temp), data_sender::update(temp), logger::update(temp))`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fold expression ensures that `display::update(temp)` is called first, then
+    `data_sender::update(temp)`, then `logger::update(temp)`. The order of evaluation
+    is strictly left to right for the operands of the comma operator. Each `update(temp)`
+    call returns a value (likely `void`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The comma operator discards all return values except the last one, so only the
+    final `logger::update(temp)` determines the fold’s result. If they all return
+    void, the whole expression also returns void.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fold expressions were introduced in C++17 and using the comma operator is a
+    concise way to call a function on each type in the parameter pack. Before that,
+    a recursion was needed to iterate through types and call a function on them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When examining the disassembly output in Compiler Explorer, you’ll notice that
+    the generated assembly code is relatively brief, approximately 30 lines in total,
+    as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this assembly code, we can see that there are no calls to the static update
+    methods from the `display`, `data_sender`, and `logger` structs. This means the
+    compiler was able to optimize these calls out, along with the registration of
+    subscribers and the call to the publisher’s `notify` method, resulting in direct
+    calls to the `printf` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The result is a small memory footprint and fast performance. This example demonstrates
+    the zero-cost abstraction design principle: we have abstractions for the publisher
+    and subscribers, yet there is zero overhead, as the compiler is able to optimize
+    the code to be as efficient as if it were written by hand.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compare the assembly output of the compile-time implementation with that of
+    the runtime implementation using the same optimization level (`-O3`). It is clear
+    that the compile-time implementation uses less memory and is faster as the compiler
+    optimized away most of the function calls, and there is no indirection caused
+    by virtual functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we analyze the assembly code, let’s take the opportunity to better understand
+    fold expressions. To prevent GCC from optimizing away calls to the `update` methods,
+    we can use the `__attribute__((noinline))` function attribute, e.g. `static void
+    __attribute__((noinline)) update(float temp)`. Add this attribute to the static
+    `update` method of the `display`, `data_sender`, and `logger` structs, and observe
+    the generated assembly code. You’ll see how the call to the `notify` method in
+    the `main` function results in parameter pack expansion and generates calls to
+    the `update` methods of the `display`, `data_sender`, and `logger` structs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can run the full example in Renode. Start Visual Studio Code, attach it
+    to the running container, open the `Chapter15/observer` project as described in
+    [*Chapter 4*](Chapter_04.xhtml), and run the following commands in the Visual
+    Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Simplified compile-time implementation of the Observer pattern has a couple
+    of limits:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subscribers can only be registered.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All subscribers are registered when the publisher is instantiated. They cannot
+    be registered after the publisher is instantiated.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Next, we will tackle the last point, as registering all subscribers in a single
+    line of code may be cumbersome and not always practical. This will provide us
+    with a more flexible compile-time design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Improving the compile-time implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will not change the interface of the publisher template struct. Instead,
+    we will allow it to receive other publishers as arguments. The code is below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the code above, we defined the following concepts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Updatable`: This describes a type that has a static method `update` that accepts
+    a float'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Notifiable`: This describes a type that has a static method `notify` that
+    accepts a float'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We covered concepts in more detail in [*Chapter 8*](Chapter_08.xhtml). The variadic
+    template class `publisher` has a new method – `call_update_or_notify`. It is called
+    on every type in the parameter pack `typename... Subs` in the method `notify`
+    using the fold expression and the comma operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the method `call_update_or_notify`, we use `if constexpr` to check, at compile-time,
+    if the type is `Updatable` or `Notifiable` and call the `update` or `notify` static
+    method on it respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Below is an example of using the new version of the Observer pattern:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the code above, we instantiate `temp_publisher` by providing the variadic
+    class template `publisher` with types `display` and `data_sender`, which are both
+    subscribers are `Updatable`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we instantiate `temp_publisher_new` by providing `publisher` with the
+    previously instantiated `temp_publisher` and the subscriber `logger`. Below is
+    the output of the above example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can run the full example in Renode. Start Visual Studio Code, attach it
+    to the running container, open the `Chapter15/observer` project as described in
+    [*Chapter 4*](Chapter_04.xhtml), and run the following commands in the Visual
+    Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This implementation of the Observer pattern allows us to register subscribers
+    in a more flexible manner. To make it more generic, as an exercise, you can modify
+    it so that the `notify` method is able to take a variable number of arguments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we went through the Observer pattern, both runtime and compile-time
+    implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compile-time implementation is utilizing what we know about the application
+    during compile-time. It is based on variadic template classes and fold expressions.
+    The result is super compact and fast code, as we are not storing information about
+    subscribers in a container, nor do we need to iterate through the container to
+    make a call to `update` methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will cover **Finite State Machines (FSM)** and the implementation
+    of the State patterns in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join our community on Discord
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Join our community’s Discord space for discussions with the author and other
+    readers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://packt.link/embeddedsystems](https://packt.link/embeddedsystems)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/QR_code_Discord.png)'
+  prefs: []
+  type: TYPE_IMG

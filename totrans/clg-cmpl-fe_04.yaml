@@ -1,0 +1,926 @@
+- en: '3'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Clang AST
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The parsing stage of any compiler generates a parse tree, and the **Abstract**
+    **Syntax Tree (AST)** is a fundamental algorithmic structure that is generated
+    during the parsing of a given input program. The AST serves as the framework for
+    the Clang frontend and is the primary tool for various Clang utilities, including
+    linters. Clang offers sophisticated tools for searching (or matching) various
+    AST nodes. These tools are implemented using a **Domain-Specific Language (DSL)**.
+    It’s crucial to understand its implementation to use it effectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will start with the basic data structures and the class hierarchy that Clang
+    uses to construct the AST. Additionally, we will explore the methods used for
+    AST traversal and highlight some helper classes that facilitate node matching
+    during this traversal. We will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Basic blocks used to construct the AST
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How the AST can be traversed
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The recursive visitor as the fundamental AST traversal tool
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: AST matchers and their role in assisting with AST traversal
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clang-Query as the basic tool to explore AST internals
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compilation errors and their impact on the AST
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 3.1 Technical requirements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The source code for this chapter is located in the `chapter3` folder of the
+    book’s GitHub repository: [https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter3](https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter3).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2 AST
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The AST is usually depicted as a tree, with its leaf nodes corresponding to
+    various objects, such as function declarations and loop bodies. Typically, the
+    AST represents the result of syntax analysis, i.e., parsing. Clang’s AST nodes
+    were designed to be immutable. This design requires that the Clang AST stores
+    results from semantic analysis, meaning the Clang AST represents the outcomes
+    of both syntax and semantic analyses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although Clang also employs an AST, it’s worth noting that the Clang AST is
+    not a true tree. The presence of backward edges makes ”graph” a more appropriate
+    term for describing Clang’s AST.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Typical tree structure implemented in C++ has all nodes derived from a base
+    class. Clang uses a different approach. It splits different C++ constructions
+    into separate groups with basic classes for each of them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Statements: `clang``::``Stmt` is the basic class for all statements. That includes
+    ordinary statements such as `if` statements (`clang``::``IfStmt` class) as well
+    as expressions and other C++ constructions.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Declarations: `clang``::``Decl` is the base class for declarations. This includes
+    a variable, typedef, function, struct, and more. There is also a separate base
+    class for declarations with context, that is, declarations that might contain
+    other declarations. The class is called `clang``::``DeclContext`. The declarations
+    contained in `clang``::``DeclContext` can be accessed using the `clang``::``DeclContext``::``decls`
+    method. Translation units (`clang``::``TranslationUnitDecl` class) and namespaces
+    (`clang``::``NamespaceDecl` class) are typical examples of declarations with context.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Types: C++ has a rich type system. It includes basic types such as `int` for
+    integers as well as custom defined types and type redefinition via `typedef` or
+    `using`. Types in C++ can have qualifiers such as `const` and can represent different
+    memory addressing modes, aka pointers, references, and so on. Clang uses `clang``::``Type`
+    as the basic class for type representations in AST.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It’s worth noting that there are additional relations between the groups. For
+    example, the `clang``::``DeclStmt` class, which inherits from `clang``::``Stmt`,
+    has methods to retrieve corresponding declarations. Additionally, expressions
+    (represented by the `clang``::``Expr` class), which inherit from `clang``::``Stmt`
+    have methods to work with types. Let’s look at all the groups in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.1 Statements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '`Stmt` is the basic class for all statements. The statements can be combined
+    into two sets (see [Figure 3.1](#Figure3.1)). The first one contains statements
+    with values and the opposite group is for statements without values.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 3.1: Clang AST: statements ](img/Figure3.1_B19722.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '**Figure 3.1**: Clang AST: statements'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The group of statements without a value consist of different C++ constructions
+    such as `if` statements (`clang``::``IfStmt` class) or compound statements (`clang``::``CompoundStmt`
+    class). The majority of all statements fall into the group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The group of statements with a value consists of one base class `clang``::``ValueStmt`
+    that has several children, such as `clang``::``LabelStmt` (for label representation)
+    or `clang``::``ExprStmt` (for expression representation), see [Figure 3.2](#Figure3.2).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 3.2: Clang AST: statements with a value ](img/Figure3.2_B19722.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '**Figure 3.2**: Clang AST: statements with a value'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.2 Declarations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Declarations can also be combined into two primary groups: declarations with
+    context and without. Declarations with context can be considered as placeholders
+    for other declarations. For example, a C++ namespace as well as a translation
+    unit or function declaration might contain other declarations. A declaration of
+    a friend entity (`clang``::``DeclFriend`) can be considered an example of a declaration
+    without context.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It has to be noted that classes that are inherited from `DeclContext` also have
+    `clang``::``Decl` as their top parent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some declarations can be redeclared, as in the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.3**: Declarations example: redeclaration.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Such declarations have an additional parent that is implemented via a `clang``::``Redeclarable``<...>`
+    template.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.2.3 Types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: C++ is a statically typed language, which means that the types of variables
+    must be declared at compile time. The types allow the compiler to make a reasonable
+    conclusion about the program’s meaning, which makes types an important part of
+    semantic analysis. `clang``::``Type` is the basic class for types in Clang.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Types in C/C++ might have qualifiers that are called CV-qualifiers, as specified
+    in the standard [[21](B19722_Bib.xhtml#Xstandard_cpp20), basic.type.qualifier].
+    CV here stands for two keywords `const` and `volatile` that can be used as the
+    qualifier for a type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: The C99 standard has an additional type qualifier, `restrict`, which is also
+    supported by Clang [[25](B19722_Bib.xhtml#Xstandard_c99), 6.7.3]. The type qualifier
+    indicates to the compiler that, for the lifetime of the pointer, no other pointer
+    will be used to access the object it points to. This allows the compiler to perform
+    optimizations such as vectorization that wouldn’t be possible otherwise. `restrict`
+    helps limit pointer aliasing effects, which occur when multiple pointers reference
+    the same memory location, thereby aiding optimizations. However, if the programmer’s
+    declaration of intent is not followed, and the object is accessed by an independent
+    pointer, it results in undefined behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Clang has a special class to support a type with a qualifier, `clang``::``QualType`,
+    which is a pair of a pointer to `clang``::``Type` and a bit mask with information
+    about the type qualifier. The class has a method to retrieve a pointer to the
+    `clang``::``Type` and check different qualifiers. The following code (LLVM 18.x,
+    `clang/lib/AST/ExprConstant.cpp`, *Line* *3918*) shows how we can check a type
+    for a const qualifier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.4**: checkConst implementation from clang/lib/AST/ExprConstant.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s worth mentioning that `clang``::``QualType` has `operator``->()` and `operator``*()`
+    implemented, that is, it can be considered as a smart pointer for the underlying
+    `clang``::``Type` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition to qualifiers, the type can have additional information that represents
+    different memory address models. For instance, there can be a pointer to an object
+    or reference. `clang``::``Type` has the following helper methods to check different
+    address models:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`clang``::``Type``::``isPointerType``()` for pointer type check'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`clang``::``Type``::``isReferenceType``()` for reference type check'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Types in C/C++ can also use aliases, which are introduced by using the `typedef`
+    or `using` keywords. The following code defines `foo` and `bar` as aliases for
+    the `int` type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.5**: Type alias declarations'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Original types, `int` in our case, are called canonical. You can test whether
+    the type is canonical or not using the `clang``::``QualType``::``isCanonical``()`
+    method. `clang``::``QualType` also provides a method to retrieve the canonical
+    type from an alias: `clang``::``QualType``::``getCanonicalType``()`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After gaining knowledge of the basic blocks used for the AST in Clang, it’s
+    time to investigate how these blocks can be used for AST traversal. This is the
+    basic operation used by the compiler and compiler tools, and we will use it extensively
+    throughout the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3 AST traversal
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The compiler requires traversal of the AST to generate IR code. Thus, having
+    a well-structured data structure for tree traversal is paramount for AST design.
+    To put it another way, the design of the AST should prioritize facilitating easy
+    tree traversal. A standard approach in many systems is to have a common base class
+    for all AST nodes. This class typically provides a method to retrieve the node’s
+    children, allowing for tree traversal using popular algorithms such as Breadth-First
+    Search (BFS) [[19](B19722_Bib.xhtml#Xbook_cormen2009introduction)]. Clang, however,
+    takes a different approach: its AST nodes don’t share a common ancestor. This
+    poses the question: how is tree traversal organized in Clang?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Clang employs three unique techniques:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Curiously Recurring Template Pattern (CRTP) for visitor class definition
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ad hoc methods tailored specifically for different nodes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Macros, which can be perceived as the connecting layer between the ad hoc methods
+    and CRTP
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will explore these techniques through a simple program designed to identify
+    function definitions and display the function names together with their parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.1 DeclVisitor test tool
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our test tool will build upon the `clang``::``DeclVisitor` class, which is defined
+    as a straightforward visitor class aiding in the creation of visitors for C/C++
+    declarations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will use the same CMake file as was created for our first Clang tool (see
+    [Figure 1.13](B19722_01.xhtml#x1-30031r13)). The sole addition to the new tool
+    is the `clangAST` library. The resultant `CMakeLists.txt` is shown in [Figure 3.6](#x1-60029r6):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.6**: CMakeLists.txt file for DeclVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `main` function of our tool is presented below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.7**: The main function of the DeclVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From *Lines 5 and 23*, it’s evident that we employ a custom frontend action
+    specific to our project: `clangbook``::``declvisitor``::``FrontendAction`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is the code for this class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.8**: Custom FrontendAction class for the DeclVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’ll notice that we have overridden the `CreateASTConsumer` function from
+    `clang``::``ASTFrontendAction` class to instantiate an object of our custom AST
+    consumer class `Consumer`, defined in `clangbook``::``declvisitor` namespace,
+    as highlighted in [Figure 3.8](#x1-60077r8), *Lines 9-12*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementation for the class is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.9**: Consumer class for the DeclVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, we can see that we’ve created a sample visitor and invoked it using an
+    overridden method `HandleTranslationUnit` from the `clang``::``ASTConsumer` class
+    (see [Figure 3.9](#x1-60100r9), *Line 11*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, the most intriguing portion is the code for the visitor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.10**: Visitor class implementation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will explore the code in more depth later. For now, we observe that it prints
+    the function name at *Line 8* and the parameter name at *Line* *14*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can compile our program using the same sequence of commands as we did for
+    our test project, as detailed in [*Section** 1.4*](B19722_01.xhtml#x1-300004)*,
+    Test project – syntax* *check with a Clang tool*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.11**: Configure and build commands for the DeclVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you may notice, we used the `-DCMAKE``_BUILD``_TYPE=Debug` option for CMake.
+    The option we are using will slow down the overall performance, but we use it
+    because we might want to investigate the resulting program under debugger.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The build command we used for our tool assumes that the required libraries
+    are installed under the `<...>/llvm-project/install` folder, which was specified
+    with the`-DCMAKE``_INSTALL``_PREFIX` option during the CMake configure command,
+    as described in [*Section** 1.4*](B19722_01.xhtml#x1-300004)*, Test project –*
+    *syntax check with a Clang tool*. See [Figure 1.12](B19722_01.xhtml#x1-30003r12):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The required build artifacts must be installed using the `ninja install` command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will use the same program we referenced in our previous investigations (see
+    [Figure 2.5](B19722_02.xhtml#x1-37021r5)) to also study AST traversal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.12**: Test program max.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This program consists of a single function, `max`, which takes two parameters,
+    `a` and `b`, and returns the maximum of the two.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can run our program as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.13**: The result of running the declvisitor utility on a test file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We used ’- -’ to pass additional arguments to the compiler in [Figure 3.13](#x1-60147r13),
+    specifically indicating that we want to use C++17 with the option ’-std=c++17’.
+    We can also pass other compiler arguments. An alternative is to specify the compilation
+    database path with the ’-p’ option, as shown below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, `<path>` is the path to the folder containing the compilation database.
+    You can find more information about the compilation database in [*Chapter** 9*](B19722_09.xhtml#x1-1810009)*,
+    Appendix 1: Compilation Database*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s investigate the `Visitor` class implementation in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.3.2 Visitor implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let’s delve into the `Visitor` code (see [Figure 3.10](#x1-60128r10)). Firstly,
+    you’ll notice an unusual construct where our class is derived from a base class
+    parameterized by our own class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.14**: Visitor class declaration'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This construct is known as the Curiously Recurring Template Pattern, or CRTP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Visitor class has several callbacks that are triggered when a corresponding
+    AST node is encountered. The first callback targets the AST node representing
+    a function declaration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.15**: FunctionDecl callback'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As shown in [Figure 3.15](#x1-61015r15), the function name is printed on *Line
+    8*. Our subsequent step involves printing the names of the parameters. To retrieve
+    the function parameters, we can utilize the `parameters``()` method from the `clang``::``FunctionDecl`
+    class. This method was previously mentioned as an ad hoc approach for AST traversal.
+    Each AST node provides its own methods to access child nodes. Since we have an
+    AST node of a specific type (i.e., `clang``::``FunctionDecl``*`) as an argument,
+    we can employ these methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The function parameter is passed to the `Visit``(...)` method of the base class
+    `clang``::``DeclVisitor``<>`, as shown in *Line 12* of [Figure 3.15](#x1-61015r15).
+    This call is subsequently transformed into another callback, specifically for
+    the `clang``::``ParmVarDecl` AST node:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.16**: ParmVarDecl callback'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might be wondering how this conversion is achieved. The answer lies in a
+    combination of the CRTP and C/C++ macros. To understand this, we need to dive
+    into the `Visit``()` method implementation of the `clang``::``DeclVisitor``<>`
+    class. This implementation heavily relies on C/C++ macros, so to get a glimpse
+    of the actual code, we must expand these macros. This can be done using the `shell`-E
+    compiler option. Let’s make some modifications to `CMakeLists.txt` and introduce
+    a new custom target.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.17**: Custom target to expand macros'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can run the target as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The resulting file can be located in the build folder specified earlier, named
+    `DeclVisitor.cpp.preprocessed` . The build folder containig the file was specified
+    by us earlier when executing the cmake command (see [Figure 3.11](#x1-60132r11)).
+    Within this file, the generated code for the `Visit``()` method appears as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.18**: Generated code for Visit() method'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This code showcases the use of the CRTP in Clang. In this context, CRTP is employed
+    to redirect back to our `Visitor` class, which is referenced as `ImplClass`. CRTP
+    allows the base class to call a method from an inherited class. This pattern can
+    serve as an alternative to virtual functions and offers several advantages, the
+    most notable being performance-related. Specifically, the method call is resolved
+    at compile time, eliminating the need for a vtable lookup associated with virtual
+    method calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code was generated using C/C++ macros, as demonstrated here. This particular
+    code was sourced from the `clang/include/clang/AST/DeclVisitor.h` header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.19**: DISPATCH macro definition from clang/include/clang/AST/DeclVisitor.h'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`NAME` from [Figure 3.19](#x1-61049r19) is replaced with the node name; in
+    our case, it’s `ParmVarDecl`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`DeclVisitor` is used to traverse C++ declarations. Clang also has `StmtVisitor`
+    and `TypeVisitor` to traverse statements and types, respectively. These are built
+    on the same principles as we considered in our example with the declaration visitor.
+    However, these visitors come with several issues. They can only be used with specific
+    groups of AST nodes. For instance, `DeclVisitor` can only be used with descendants
+    of the `Decl` class. Another limitation is that we are required to implement recursion.
+    For example, we set up recursion to traverse the function declaration in lines
+    9-11 ([Figure 3.10](#x1-60128r10)). The same recursion was employed to traverse
+    declarations within the translation unit (see [Figure 3.10](#x1-60128r10), *Lines
+    17-19*). This brings up another concern: it’s possible to miss some parts of the
+    recursion. For instance, our code will not function correctly if the `max` function
+    declaration is specified inside a namespace. To address such scenarios, we would
+    need to implement an additional visit method specifically for namespace declarations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These challenges are addressed by the recursive visitor, which we will discuss
+    shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.4 Recursive AST visitor
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Recursive AST visitors address the limitations observed with specialized visitors.
+    We will create the same program, which searches for and prints function declarations
+    along with their parameters, but we’ll use a recursive visitor this time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `CMakeLists.txt` for recursive visitor test tool will be used in a similar
+    way as before. Only the project name (*Lines 2 and 15-17* in [Figure 3.20](#x1-62028r20))
+    and source filename (*Line 14* in [Figure 3.20](#x1-62028r20) were changed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.20**: CMakeLists.txt file for the RecursiveVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `main` function for our tool is similar to the ‘DeclVisitor‘ one defined
+    in [Figure 3.7](#x1-60057r7).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.21**: The main function for the RecursiveVisitor test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, we changed only the namespace name for our custom frontend action
+    at *Line 23*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code for the frontend action and consumer is the same as in [Figure 3.8](#x1-60077r8)
+    and [Figure 3.9](#x1-60100r9), with the only difference being the namespace change
+    from `declvisitor` to `recursivevisitor`. The most interesting part of the program
+    is the `Visitor` class implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.22**: Visitor class implementation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are several changes compared to the code for ‘DeclVisitor‘ (see [Figure 3.10](#x1-60128r10)).
+    The first is that recursion isn’t implemented. We’ve only implemented the callbacks
+    for nodes of interest to us. A reasonable question arises: how is the recursion
+    controlled? The answer lies in another change: our callbacks now return a boolean
+    result. The `false` value indicates that the recursion should stop, while `true`
+    signals the visitor to continue the traversal.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The program can be compiled using the same sequence of commands as we used previously.
+    See [Figure 3.11](#x1-60132r11).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can run our program as follows, see [Figure 3.23](#x1-62081r23):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.23**: The result of running the recursivevisitor utility on a test
+    file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we can see, it produces the same result as we obtained with the DeclVisitor
+    implementation. The AST traversal techniques considered so far are not the only
+    ways for AST traversal. Most of the tools that we will consider later will use
+    a different approach based on AST matchers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.5 AST matchers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: AST matchers [[16](B19722_Bib.xhtml#Xllvm_astmatchers)] provide another approach
+    for locating specific AST nodes. They can be particularly useful in linters when
+    searching for improper pattern usage or in refactoring tools when identifying
+    AST nodes for modification.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will create a simple program to test AST matches. The program will identify
+    a function definition with the name `max`. We will use a slightly modified `CMakeLists.txt`
+    file from the previous examples to include the libraries required to support AST
+    matches:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.24**: CMakeLists.txt for AST matchers test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two additional libraries added: `LLVMFrontendOpenMP` and `clangASTMatchers`
+    (see *Lines 18 and 21* in [Figure 3.24](#x1-63030r24)). The `main` function for
+    our tool looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.25**: The main function for AST matchers test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can observe (*Lines 21-23*), we employ the `MatchFinder` class and define
+    a custom callback (included via the header in *Line 4*) that outlines the specific
+    AST node we intend to match. The callback is implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.26**: The match callback for the AST matchers test tool'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most crucial section of the code is located at lines 7-9\. Each matcher
+    is identified by an ID, which, in our case, is ’match-id’. The matcher itself
+    is defined in *Lines 8-9*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: This matcher seeks a function declaration that has a specific name, using `functionDecl``()`,
+    as seen in `matchesName``()`. We utilized a specialized Domain-Specific Language
+    (DSL) to specify the matcher. The DSL is implemented using C++ macros. We can
+    also create our own matchers, as will be shown in [*Section** 7.3.3*](B19722_07.xhtml#x1-1440003)*,
+    Check implementation*. It’s worth noting that the recursive AST visitor serves
+    as the backbone for AST traversal inside the matcher’s implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The program can be compiled using the same sequence of commands as we used previously.
+    See [Figure 3.11](#x1-60132r11).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will utilize a slightly modified version of the example shown in [Figure 2.5](B19722_02.xhtml#x1-37021r5),
+    with an additional function added:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.27**: Test program minmax.cpp for AST matchers'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we run our test tool on the example, we will obtain the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.28**: The result of running the matchvisitor utility on a test file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we can see, it has located only one function declaration with the name specified
+    for the matcher.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The DSL for matchers is typically employed in custom Clang tools, such as clang-tidy
+    (as discussed in [*Chapter** 5*](B19722_05.xhtml#x1-990005)*, Clang-Tidy Linter
+    Framework*), but it can also be used as a standalone tool. A specialized program
+    called `clang-query` enables the execution of different match queries, which can
+    be used to search for specific AST nodes in analyzed C++ code. Let’s see how the
+    tool works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.6 Explore Clang AST with clang-query
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'AST matchers are incredibly useful, and there’s a utility that facilitates
+    checking various matchers and analyzing the AST of your source code. This utility
+    is known as `clang-query` tool. You can build and install this utility using the
+    following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.29**: The clang-query installation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can run the tool as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.30**: Running clang-query on a test file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can use the `match` command as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.31**: Working with clang-query'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 3.31](#x1-64007r31) demonstrates the default output, referred to as
+    `’diag’` . Among several potential outputs, the most relevant one for us is `’dump’`
+    . When the output is set to `’dump’` , clang-query will display the located AST
+    node. For example, the following demonstrates how to match a function parameter
+    named `a` :'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.32**: Working with clang-query using dump output'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This tool proves useful when you wish to test a particular matcher or investigate
+    a portion of the AST tree. We will utilize this tool to explore how Clang handles
+    compilation errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.7 Processing AST in the case of errors
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: One of the most interesting aspects of Clang pertains to error processing. Error
+    processing encompasses error detection, the display of corresponding error messages,
+    and potential error recovery. The latter is particularly intriguing in terms of
+    the Clang AST. Error recovery occurs when Clang doesn’t halt upon encountering
+    a compilation error but continues to compile in order to detect additional issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Such behavior is beneficial for various reasons. The most evident one is user
+    convenience. When programmers compile a program, they typically prefer to be informed
+    about as many errors as possible in a single compilation run. If the compiler
+    were to stop at the first error, the programmer would have to correct that error,
+    recompile, then address the subsequent error, and recompile again, and so forth.
+    This iterative process can be tedious and frustrating, especially with larger
+    code bases or intricate errors. While this behavior is particularly useful for
+    compiled languages such as C/C++, it’s worth noting that interpreted languages
+    also exhibit this behavior, which can assist users in handling errors step by
+    step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another compelling reason centers on IDE integration, which will be discussed
+    in more detail in [*Chapter** 8*](B19722_08.xhtml#x1-1520008)*, IDE Support and
+    Clangd*. IDEs offer navigation support coupled with an integrated compiler. We
+    will explore `clangd` as one such tool. Editing code in IDEs often leads to compilation
+    errors. Most errors are confined to specific sections of the code, and it might
+    be suboptimal to cease navigation in such cases.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clang employs various techniques for error recovery. For the syntax stage of
+    parsing, it utilizes heuristics; for instance, if a user forgets to insert a semicolon,
+    Clang may attempt to add it as part of the recovery process. The Recovery Phase
+    can be abbreviated as DIRT where D stands for Delete a character (for example,
+    an extra semicolon), I stands for Insert a character (as in the example presented),
+    R stands for Replace (which replaces a character to match a particular token),
+    and T stands for Transpose (rearranging two characters to match a token).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clang performs full recovery if it’s possible and produces an AST that corresponds
+    to the modified file with all compilation errors fixed. The most interesting case
+    is when full recovery is not possible, and Clang implements unique techniques
+    to manage recovery while AST is created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider a program (maxerr.cpp) that is syntactically correct but has a semantic
+    error. For example, it might use an undeclared variable. In this program, refer
+    to *Line 3* where the undeclared variable `ab` is used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.33**: The maxerr.cpp test program with a semantic error – undeclared
+    variable'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are interested in the AST result produced by Clang, and we will use `clang-query`
+    to examine it, which can be run as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.34**: Compilation error example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: From the output, we can see that clang-query displayed a compilation error detected
+    by the compiler. It’s worth noting that, despite this, an AST was produced for
+    the program, and we can examine it. We are particularly interested in the return
+    statements and can use the corresponding matcher to highlight the relevant parts
+    of the AST.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will also set up the output to produce the AST and search for return statements
+    that are of interest to us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.35**: Setting the matcher for return statement'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The resulting output identifies two return statements in our program: the first
+    match on *Line 5* and the second match on *Line 3*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 3.36**: ReturnStmt node matches at maxerr.cpp test program'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we can see, the first match corresponds to semantically correct code on
+    *Line 5* and contains a reference to the `a` parameter. The second match is for
+    *Line 3*, which has a compilation error. Notably, Clang has inserted a special
+    type of AST node: `RecoveryExpr`. It’s worth noting that, in certain situations,
+    Clang might produce an incomplete AST. This can cause issues with Clang tools,
+    such as lint checks. In instances of compilation errors, lint checks might yield
+    unexpected results because Clang couldn’t recover accurately from the compilation
+    errors. We will revisit the problem when exploring the clang-tidy lint check framework
+    in [*Chapter** 5*](B19722_05.xhtml#x1-990005)*, Clang-Tidy Linter Framework*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.8 Summary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We explored the Clang AST, a major instrument for creating various Clang tools.
+    We learned about the architectural design principles chosen for the implementation
+    of the Clang AST and investigated different methods for AST traversal. We delved
+    into specialized traversal techniques, such as those for C/C++ declarations, and
+    also looked into more universal techniques that employ recursive visitors and
+    Clang AST matchers. Our exploration concluded with the `clang-query` tool and
+    how it can be used for Clang AST exploration. Specifically, we used it to understand
+    how Clang processes compilation errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter will discuss the basic libraries used in Clang and LLVM development.
+    We will explore the LLVM code style and foundational Clang/LLVM classes, such
+    as `SourceManager` and `SourceLocation`. We will also cover the TableGen library,
+    which is used for code generation, and the LLVM Integration Test (LIT) framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 3.9 Further reading
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'How to write RecursiveASTVisitor: [https://clang.llvm.org/docs/RAVFrontendAction.html](https://clang.llvm.org/docs/RAVFrontendAction.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'AST Matcher Reference: [https://clang.llvm.org/docs/LibASTMatchersReference.html](https://clang.llvm.org/docs/LibASTMatchersReference.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

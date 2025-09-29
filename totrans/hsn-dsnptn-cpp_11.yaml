@@ -1,0 +1,1108 @@
+- en: '11'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: ScopeGuard
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter covers a pattern that can be seen as a generalization of the RAII
+    idiom we studied earlier. In its earliest form, it is an old and established C++
+    pattern, however, it is also one that has particularly benefited from the language
+    additions in C++11, C++14, and C++17\. We will witness the evolution of this pattern
+    as the language becomes more powerful. The ScopeGuard pattern exists at the intersection
+    of declarative programming (say what you want to happen, not how you want it done)
+    and error-safe programs (especially exception safety). We will have to learn a
+    bit about both before we fully understand ScopeGuard.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics will be covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How can we write error-safe and exception-safe code? How does RAII make error
+    handling easier?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is composability as applied to error handling?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Why is RAII not powerful enough for error handling, and how is it generalized?
+    How can we implement declarative error handling in C++?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here is the example code: [https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/master/Chapter11](https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/master/Chapter11).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will also need the Google Benchmark library installed and configured: [https://github.com/google/benchmark](https://github.com/google/benchmark)
+    (see [*Chapter 4*](B19262_04.xhtml#_idTextAnchor152), *Swap – From Simple to Subtle*,
+    for installation instructions).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter is rather heavy on advanced C++ features, so keep a C++ reference
+    nearby ([https://en.cppreference.com](https://en.cppreference.com) unless you
+    want to dig through the standard itself).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, a very thorough and complete implementation of ScopeGuard can be found
+    in the Folly library: [https://github.com/facebook/folly/blob/master/folly/ScopeGuard.h](https://github.com/facebook/folly/blob/master/folly/ScopeGuard.h);
+    it includes C++ library programming details beyond those covered in this book.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error handling and resource acquisition is initialization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We begin by reviewing the concepts of error handling, and, in particular, writing
+    exception-safe code in C++. The **Resource Acquisition Is Initialization** (**RAII**)
+    idiom is one of the primary methods of error handling in C++. We have already
+    dedicated an entire chapter to it, and you will need it here to make sense of
+    what we are about to do. Let’s first recognize the problem we are facing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Error safety and exception safety
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For the rest of this chapter, we will consider the following problem—suppose
+    we are implementing a database of records. The records are stored on disk, but
+    there is also an in-memory index for fast access to the records. The database
+    API offers a method to insert records into the database:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the insertion succeeds, both the index and the disk storage are updated and
+    consistent with each other. If something goes wrong, an exception is thrown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While it appears to the clients of the database that the insertion is a single
+    transaction, the implementation has to deal with the fact that it is done in multiple
+    steps—we need to insert the record into the index and write it to disk. To facilitate
+    this, the database contains two classes, each responsible for its type of storage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The implementation of the `insert()` function must insert the record into both
+    the storage and the index, there is no way around it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unfortunately, either of these operations can fail. Let’s see first what happens
+    if the storage insertion fails. Let’s assume that all failures in the program
+    are signaled by throwing exceptions. If the storage insertion fails, the storage
+    remains unchanged, the index insertion is not attempted at all, and the exception
+    is propagated out of the `Database::insert()` function. That is exactly what we
+    want—the insertion failed, the database is unchanged, and an exception is thrown.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, what happens if the storage insertion succeeds but the index fails? Things
+    are not looking so good this time—the disk is altered successfully, then the index
+    insertion fails, and the exception propagates to the caller of `Database::insert()`
+    to signal the insertion failure, but the truth is the insertion did not completely
+    fail. It did not completely succeed either.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The database is left in an inconsistent state; there is a record on disk that
+    is not accessible from the index. This is a failure to handle an error condition,
+    exception-unsafe code, and it just won’t do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The impulsive attempt to change the order of the sub-operations does not help:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Sure, everything is now fine if the index fails. But we have the same problem
+    if the storage insertion throws an exception—we now have an entry in the index
+    that is pointing to nowhere since the record was never written to disk.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Obviously, we cannot just ignore the exceptions thrown by `Index` or `Storage`;
+    we have to somehow deal with them to maintain the consistency of the database.
+    We know how to handle exceptions; that’s what the `try-catch` block is for:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Again, if the storage fails, we don’t need to do anything special. If the index
+    fails, we have to undo the last operation on the storage (let’s assume that it
+    has the API to do that). Now the database is again consistent as if the insertion
+    never happened. Even though we caught the exception thrown by the index, we still
+    need to signal to the caller that the insertion fails, so we re-throw the exception.
+    So far, so good.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The situation is not much different if we choose to use error codes instead
+    of exceptions; let’s consider the variant where all `insert()` functions return
+    `true` if they succeed and `false` if they fail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have to check the return value of every function, undo the first action if
+    the second one fails, and return `true` only if both actions succeed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, so good; we were able to fix the simplest two-stage problem, so the
+    code is error-safe. Now, it is time to up the complexity. Suppose that our storage
+    needs some cleanup to be performed at the end of the transaction, for example,
+    the inserted record is not in its final state until we call the `Storage::finalize()`
+    method (maybe this is done so `Storage::undo()` can work, and after the insertion
+    is finalized it can no longer be undone). Note the difference between `undo()`
+    and `finalize()`; the former must be called only if we want to roll back the transaction,
+    while the latter must be called if the storage insertion succeeded, regardless
+    of what happens after.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our requirements are met with this flow of control:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Or we have something similar in the case of returning error codes (for the rest
+    of this chapter, we will use exceptions in all our examples, but conversion to
+    error codes is not hard).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is already getting ugly, particularly the part about getting the cleanup
+    code (in our case, `S.finalize()`) to run in every execution path. It’s only going
+    to get worse if we have a more complex sequence of actions that must all be undone
+    unless the entire operation succeeds. Here is the control flow for three actions,
+    each with its own rollback and cleanup:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The obvious problem is the explicit tests for success, either as conditionals
+    or as try-catch blocks. The more serious problem is that this way of error handling
+    is not composable. The solution for N+1 actions is not the code for N actions
+    with some bits added to it; no, we have to go deep inside the code and add the
+    right pieces there. But we have already seen the C++ idiom for solving this very
+    problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Resource Acquisition Is Initialization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The RAII idiom binds resources to objects. The object is constructed when the
+    resource is acquired, and the resource is deleted when the object is destroyed.
+    In our case, we are interested only in the second half, the destruction. The advantage
+    of the RAII idiom is that the destructors of all local objects must be called
+    when the control reaches the end of the scope, regardless of how it happens (`return`,
+    `throw`, `break`, and so on). Since we struggled with the cleanup, let’s hand
+    that off to an RAII object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `StorageFinalizer` object binds to the `Storage` object when it is constructed
+    and calls `finalize()` when it is destroyed. Since there is no way to exit the
+    scope in which the `StorageFinalizer` object is defined without calling its destructor,
+    we do not need to worry about the control flow, at least for the cleanup; it is
+    going to happen. Note that the `StorageFinalizer` is properly constructed after
+    the storage insertion succeeds; if the first insertion fails, there is nothing
+    to finalize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This code works, but it looks somehow half-done; we have two actions that are
+    performed at the end of the function, and the first one (cleanup, or `finalize()`)
+    is automated while the second one (rollback, or `undo()`) is not. Also, the technique
+    is still not composable; here is the flow of control for three actions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Again, to add another action, we have to add a try-catch block deep in the
+    code. On the other hand, the cleanup part by itself is perfectly composable. Consider
+    what the previous code looks like if we don’t need to do a rollback:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we need one more action, we simply add two lines at the end of the function,
+    and the cleanup happens in the right order. If we could do the same for the rollback,
+    we would be all set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We cannot simply move the call to `undo()` into a destructor of another object;
+    the destructors are always called, but the rollback happens only in the case of
+    an error. But we can make the destructor call the rollback conditionally:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Examine the code now; if the storage insertion fails, the exception is thrown
+    and the database is unchanged. If it succeeds, two RAII objects are constructed.
+    The first one will unconditionally call `S.finalize()` at the end of the scope.
+    The second one will call `S.undo()` unless we commit the change first by calling
+    the `commit()` method on the `StorageGuard` object. That will happen unless the
+    index insertion fails, in which case an exception is thrown, the rest of the code
+    in the scope is bypassed, and the control jumps straight to the end of the scope
+    (the closing `}`) where the destructors of all local objects are called. Since
+    we never called `commit()` in this scenario, the `StorageGuard` is still active
+    and will undo the insertion. Note also that there are no explicit `try-catch`
+    blocks at all: the actions that used to be in the `catch` clause are now done
+    by the destructors. The exception should be, of course, caught eventually (in
+    all examples that accompany this chapter, the exception is caught in `main()`).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The destructors of the local objects are called in reverse construction order.
+    This is important; if we have to undo the insertion, this can be done only until
+    the action is finalized, so the rollback has to happen before the cleanup. Therefore,
+    we construct the RAII objects in the correct order—first, the cleanup (to be done
+    last), then the rollback guard (to be done first, if necessary).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code now looks very nice, with no try-catch blocks at all. In some ways,
+    it does not look like regular C++. This programming style is called **declarative
+    programming**; it is a programming paradigm in which the program logic is expressed
+    without explicitly stating the flow of control (the opposite, and the more common
+    in C++, is **imperative programming**, where the program describes which steps
+    to do and in what order, but not necessarily why). There are declarative programming
+    languages (the prime example is SQL), but C++ is not one of them. Nonetheless,
+    C++ is very good at implementing constructs that allow the creation of higher-order
+    languages on top of C++, and so we have implemented a declarative error-handling
+    language. Our program now says that after the record was inserted into storage,
+    two actions are pending—the cleanup and the rollback.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The rollback is disarmed if the entire function succeeds. The code looks linear,
+    without the explicit flow of control, in other words, declarative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nice as it is, it is also far from perfect. The obvious problem is that we
+    have to write a guard or a finalizer class for every action in our program. The
+    less obvious one is that writing these classes correctly is not easy, and we have
+    not done a particularly good job so far. Take a moment to figure out what is missing
+    before looking at the fixed version here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: What we need is a general framework that lets us schedule an arbitrary action
+    to be executed at the end of the scope, unconditionally or conditionally. The
+    next section presents the pattern that provides such a framework, ScopeGuard.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ScopeGuard pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we learn how to write the on-exit action RAII classes such
+    as the ones we implemented in the previous section, but without all the boilerplate
+    code. This can be done in C++03 but is much improved in C++14, and again in C++17.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ScopeGuard basics
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s start with the more difficult problem—how to implement a generic rollback
+    class, a generic version of `StorageGuard` from the last section. The only difference
+    between that and the cleanup class is that the cleanup is always active, but the
+    rollback is canceled after the action is committed. If we have the conditional
+    rollback version, we can always take out the condition check, and we get the cleanup
+    version, so let’s not worry about that for now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In our example, the rollback is a call to the `S.undo()` method. To simplify
+    the example, let’s start with a rollback that calls a regular function, not a
+    member function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the implementation is finished, the program should look something like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code tells us (in a declarative manner!) that if the insert action succeeded,
+    we schedule the rollback to be done upon exiting the scope. The rollback will
+    call the `undo()` function with the argument `S`, which in turn will undo the
+    insertion. If we made it to the end of the function, we disarm the guard and disable
+    the rollback call, which commits the insertion and makes it permanent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A much more general and reusable solution was proposed by Andrei Alexandrescu
+    in the *Dr. Dobbs* article in 2000 ([http://www.drdobbs.com/cpp/generic-change-the-way-you-write-excepti/184403758?](http://www.drdobbs.com/cpp/generic-change-the-way-you-write-excepti/184403758?)).
+    Let’s look at the implementation and analyze it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: From the top, we have the base class for all the scope guards, `ScopeGuardImplBase`.
+    The base class holds the commit flag and the code to manipulate it; the constructor
+    initially creates the guard in the armed state, so the deferred action will happen
+    in the destructor. The call to `commit()` will prevent that from happening and
+    make the destructor do nothing. Finally, there is a copy constructor that creates
+    a new guard in the same state as the original but then disarms the original guard.
+    This is so the rollback does not happen twice, from the destructors of both objects.
+    The object is copyable but not assignable. We use C++03 features for everything
+    here, including the disabled assignment operator. This implementation is fundamentally
+    C++03; the few C++11 twists are just icing on the cake (that is about to change
+    in the next section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are several details of the implementation of `ScopeGuardImplBase` that
+    may seem odd and need elaboration. First of all, the destructor is not virtual;
+    this is not a typo or a bug, this is intentional, as we will see later. Second,
+    the `commit_` flag is declared `mutable`. This is, of course, so that it can be
+    changed by the `commit()` method, which we declared `const`. So, why is `commit()`
+    declared `const`? One reason is so we can call it on the source object from the
+    copy constructor, to transfer the responsibility for the rollback from the other
+    object to this one. In this sense, the copy constructor really does a move and
+    will be officially declared as such later. The second reason for `const` will
+    become obvious later (it is related to the non-virtual destructor, of all things).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s now turn to the derived class, `ScopeGuardImpl`. This is a class template
+    with two type parameters—the first is the type of the function or any other callable
+    object we are going to call for the rollback, and the second is the type of the
+    argument. Our rollback function is restricted, for now, to having only one argument.
+    That function is called in the destructor of the `ScopeGuard` object unless the
+    guard was disarmed by calling `commit()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we have a factory function template, `MakeGuard`. This is a very common
+    idiom in C++; if you need to create an instantiation of a class template from
+    the constructor arguments, use a template function that can deduce the type of
+    the parameters and that of the return value from the arguments (in C++17 class
+    templates can do that too, as we will see later).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How is this all used to create a guard object that will call `undo(S)` for
+    us? Like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `MakeGaurd` function deduces the types of the `undo()` function and the
+    argument `S` and returns a `ScopeGuard` object of the corresponding type. The
+    return is by value, so there is a copy involved (the compiler may choose to elide
+    the copy as an optimization, but is not required to). The returned object is a
+    temporary variable, it has no name and binds it to the base class reference `SG`
+    (casting from the derived class to the base class is implicit for both pointers
+    and references). The lifetime of the temporary variable is until the closing semicolon
+    of the statement that created it, as everyone knows. But then, what does the `SG`
+    reference point to after the end of the statement? It has to be bound to something,
+    as references cannot be unbound, they are not like `NULL` pointers. The truth
+    is, “everyone” knows wrong, or rather only mostly right—usually, the temporaries
+    indeed live until the end of the statement. However, binding a temporary to a
+    `const` reference extends its lifetime to coincide with the lifetime of the reference
+    itself. In other words, the unnamed temporary `ScopeGuard` object created by `MakeGuard`
+    will not be destroyed until the `SG` reference goes out of scope. Const-ness is
+    important here, but do not worry, you can’t forget it; the language does not permit
+    binding non-`const` references to temporary variables, so the compiler will let
+    you know. So this explains the `commit()` method; it has to be `const` since we
+    are going to call it on the `const` reference (and, therefore, the `commit_` flag
+    has to be `mutable`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: But what about the destructor? At the end of the scope, the destructor of the
+    `ScopeGuardImplBase` class will be called, since that is the type of reference
+    that goes out of scope. The base class destructor itself does nothing, it’s the
+    derived class that has the destructor we want. A polymorphic class with a virtual
+    destructor would have served us right, but we did not take that route. Instead,
+    we availed ourselves of yet another special rule in the C++ standard concerning
+    the `const` references and temporary variables—not only is the lifetime of the
+    temporary variable extended but also the destructor of the derived class, that
+    is the actual class that was constructed, is going to be called at the end of
+    the scope.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that this rule applies only to destructors; you still cannot call derived
+    class methods on the base class `SG` reference. Also, the lifetime extension works
+    only when the temporary variable is directly bound to a `const` reference. It
+    does not work if, for example, we initialize another `const` reference from the
+    first one. This is why we had to return the `ScopeGuard` object from the `MakeGuard`
+    function by value; if we tried to return it by reference, the temporary would
+    be bound to that reference, which is going to go away at the end of the statement.
+    The second reference, `SG`, initialized from the first one, would not have extended
+    the lifetime of the object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The function implementation we just saw comes very close to the original goal,
+    it is just a bit more verbose (and it mentions `ScopeGuardImplBase` instead of
+    the promised `ScopeGuard`). Fear not, for the last step is merely syntactic sugar:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can write this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is as far as we are going to get with the language tools we’ve used so
+    far. Ideally, the desired syntax would be as follows (and we are not very far
+    off):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can tidy up our `ScopeGuard` a bit by making use of the C++11 features.
+    First of all, we can properly disable the assignment operator. Second, we can
+    stop pretending that our copy constructor is anything other than a move constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Moving to C++14, we can make one more simplification and deduce the return
+    type of the `MakeGuard` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is still one concession we had to make—we did not really need the `undo(S)`
+    function what we really wanted was to call `S.undo()`. This is done just as easily
+    with a member function variant of `ScopeGuard`. In fact, the only reason we have
+    not done so from the beginning is to make the example easier to follow; the member
+    function pointer syntax is not the most straightforward aspect of C++:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Of course, if both versions of the ScopeGuard template are used in the same
+    program, we have to rename one of them. Also, our function guard is limited to
+    calling functions with only one argument, while our member function guard can
+    call only member functions with no arguments. In C++03, this problem is solved
+    in a tedious but reliable way—we have to create versions of the implementation,
+    `ScopeGuardImpl0`, `ScopeGuardImp1`, `ScopeGuardImpl2`, and so on, for functions
+    with zero, one, two, and so on arguments. We then create `ScopeObjGuardImpl0`,
+    `ScopeObjGuardImpl1`, and so on, for member functions with zero, one, two, and
+    so on arguments. If we do not create enough, the compiler will let us know. The
+    base class remains the same for all these variants of the derived class, and so
+    is the `ScopeGuard` `typedef`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In C++11, we have variadic templates that are designed to address this exact
+    problem, but we’re not going to see such an implementation here. There is no reason
+    for it; we can do so much better than that, as you are about to see.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generic ScopeGuard
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are now firmly in C++11 territory, nothing that you are about to see has
+    a C++03 equivalent of any practical worth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our `ScopeGuard` has, so far, allowed us to all arbitrary functions as rollback
+    for any action. Just like the hand-crafted guard objects, the scope guards are
+    composable and guarantee exception safety. But our implementation, so far, is
+    somewhat limited in what exactly we can call to implement the rollback; it has
+    to be a function or a member function. While this seems to cover a lot, we may
+    want to call, for example, two functions to do a single rollback. We could, of
+    course, write a wrapper function for that, but that sets us back on the path toward
+    single-purpose hand-crafted rollback objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is, in truth, another problem with our implementation. We decided to
+    capture the function argument by reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: This mostly works, unless the argument is a constant or a temporary variable;
+    then, our code will not compile.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'C++11 gives us another way to create arbitrary callable objects: lambda expressions.
+    Lambdas are actually classes, but they behave like functions in that they can
+    be called with parentheses. They can take arguments, but they can also capture
+    any arguments from the containing scope, and that often obviates the need to pass
+    arguments to the function call itself. We can also write arbitrary code and package
+    it in a lambda expression. This sounds ideal for the scope guard; we could just
+    write something that says, *at the end of the scope run* *this code*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s see what a lambda expression ScopeGuard looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: The base class is essentially the same as before, except we are not going to
+    use the `const` reference trick anymore, and so the `Impl` suffix is gone; what
+    you see is not an implementation aid but the base of the guard class itself; it
+    contains the reusable code dealing with the `commit_` flag. Since we do not use
+    the `const` reference, we can stop pretending that the `commit()` method is const,
+    and drop the `mutable` declaration from `commit_`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The derived class, on the other hand, is much different. First of all, there
+    is only one class for all types of rollback, and the argument type parameter is
+    gone; instead, we have a functional object that is going to be a lambda, and it’ll
+    contain all the arguments that it needs. The destructor is the same as before
+    (except for the missing argument to the callable `func_`), and so is the move
+    constructor. But the primary constructor of the object is quite different; the
+    callable object is stored by value, and initialized from either a `const` reference
+    or an r-value reference, with a suitable overload selected automatically by the
+    compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `MakeGuard` function is largely unchanged, and we do not need two of them;
+    we can use perfect forwarding (`std::forward`) to forward the argument of any
+    type to one of the constructors of `ScopeGuard`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is how this ScopeGuard is used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The punctuation-rich construct that is used as an argument to `MakeGuard` is
+    the lambda expression. It creates a callable object, and calling this object will
+    run the code in the body of the lambda, in our case `S.undo()`. There is no `S`
+    variable declared in the lambda object itself, so it has to be captured from the
+    containing scope. All captures are done by reference (`[&]`). Finally, the object
+    is called with no arguments; the parentheses can be omitted, although `MakeGuard([&]()
+    { S.undo(); });` is also valid. The function does not return anything, that is,
+    the return type is `void`; it does not have to be explicitly declared. Note that,
+    so far, we have used C++11 lambdas and have not taken advantage of the more powerful
+    C++14 lambdas. This will usually be the case with ScopeGuard, although in practice,
+    you would probably use C++14 just for auto-deduced return types, if nothing else.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We have, until now, intentionally set aside the matter of the regular cleanup
+    and focused on error handling and the rollback. Now that we have a decent working
+    ScopeGuard, we can tie up loose ends quite easily:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, nothing special needs to be added to our framework to support
+    the cleanup. We simply create another ScopeGuard that we never disarm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We should also point out that, in C++17, we no longer need the `MakeGuard`
+    function since the compiler can deduce the template arguments from the constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As long as we are on the subject of making ScopeGuard use prettier, we should
+    consider some helpful macros. We can easily write a macro for the cleanup guard,
+    the one that is always executed. We would like the resulting syntax to look something
+    like this (if this isn’t declarative enough, I don’t know what is):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can, in fact, get that very syntax. First of all, we need to generate a
+    name for the guard, what used to be called `SF`, and we need it to be something
+    unique. From the cutting edge of modern C++, we are now reaching decades back,
+    to classic C and its preprocessor tricks, to generate a unique name for an anonymous
+    variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `__CONCAT__` macros are how you concatenate two tokens in the preprocessor
+    (and yes, you need two of them, that’s the way the preprocessor works). The first
+    token will be a user-specified prefix, and the second one is something unique.
+    Many compilers support a preprocessor variable, `__COUNTER__`, that is incremented
+    every time it’s used, so it’s never the same. However, it is not in the standard.
+    If `__COUNTER__` is not available, we have to use the line number `__LINE__` as
+    a unique identifier. Of course, it is only unique if we don’t put two guards on
+    the same line, so don’t.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have a way to generate an anonymous variable name, we can implement
+    the `ON_SCOPE_EXIT` macro. It would be trivial to implement one where the code
+    is passed as a macro argument, but it would not give us the syntax we want; the
+    argument has to be in parentheses, so at best we could get `ON_SCOPE_EXIT(S.finalize();)`.
+    Also, commas in the code confuse the preprocessor, since it interprets them as
+    a separator between the macro arguments. If you look carefully at the syntax we
+    requested, `ON_SCOPE_EXIT { S.finalize(); };`, you will realize that this macro
+    has no arguments at all, and the body of the lambda expression is just typed after
+    the no-argument macro. The macro expansion, therefore, ends on something that
+    can be followed by an opening curly brace. Here is how this is done:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The macro expansion declares an anonymous variable that starts with `SCOPE_EXIT_STATE`,
+    followed by a unique number, and it ends on the incomplete lambda expression,
+    `[&]()`, that is completed by the code in the curly braces. In order to not have
+    a closing parenthesis of the former `MakeGuard` function, which the macro cannot
+    generate (the macro is expanded before the lambda body, so it cannot generate
+    any code after that), we have to replace the `MakeGuard` function (or the `ScopeGuard`
+    constructor in C++17) with an operator. The choice of the operator does not matter;
+    we use `+`, but we could use any binary operator. The first argument to the operator
+    is a temporary object of a unique type, it limits the overload resolution only
+    to the `operator+()` defined previously (the object itself is not used at all,
+    we only need its type). The `operator+()` itself is exactly what `MakeGuard` used
+    to be, it deduces the type of the lambda expression and creates the corresponding
+    `ScopeGuard` object. The only downside of this technique is that the closing semicolon
+    at the end of the `ON_SCOPE_EXIT` statement is required, and should you forget
+    it, the compiler will remind you in the most obscure and opaque way possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our program code can now be further tidied up:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It is tempting to apply the same technique to the second guard. Unfortunately,
+    this is not so simple; we have to know the name of this variable so we can call
+    `commit()` on it. We can define a similar macro that does not use an anonymous
+    variable but instead takes the user-specified name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can use it to complete the conversion of our code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At this point, we should revisit the issue of composability. For three actions,
+    each with its own rollback and cleanup, we now have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: One can see how this pattern is trivially extended to any number of actions.
+    An observant reader might wonder whether they have noticed a bug in the code,
+    though—should not the rollback guards be dismissed in reverse construction order?
+    This is not a bug, although neither is the reverse order of all `commit()` calls.
+    The reason is that `commit()` cannot throw an exception, it was declared `noexcept`,
+    and indeed its implementation is such that no exception can be thrown. This is
+    vitally important for the ScopeGuard pattern to work; if `commit()` could throw,
+    then there would be no way to guarantee that all rollback guards are properly
+    disarmed. At the end of the scope, some actions would be rolled back, and others
+    would not, leaving the system in an inconsistent state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While ScopeGuard was primarily designed to make exception-safe code easier to
+    write, the interaction of the ScopeGuard pattern with exceptions is far from trivial,
+    and we should spend more time on it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ScopeGuard and exceptions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The ScopeGuard pattern is designed to correctly run various cleanup and rollback
+    operations automatically upon exiting a scope, no matter what caused the exit—normal
+    completion by reaching the end of the scope, an early return, or an exception.
+    This makes writing error-safe code in general, and exception-safe code in particular,
+    much easier; as long as we queued up the right guards after every action, the
+    correct cleanup and error handling will automatically happen. That is, of course,
+    assuming that ScopeGuard itself is functioning correctly in the presence of exceptions.
+    We are going to learn how to make sure it does and how to use it to make the rest
+    of the code error-safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What must not throw an exception
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We have already seen that the `commit()` function that is used to commit an
+    action and disarm the rollback guard must never throw an exception. Fortunately,
+    that is easy to guarantee since all this function does is set a flag. But what
+    happens if the rollback function also fails, and throws an exception?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: The short answer is *nothing good*. In general, we have a conundrum—we cannot
+    allow the action, in our case the storage insertion, to remain, but we also cannot
+    undo it, since that also fails. Specifically, in C++, two exceptions cannot propagate
+    at the same time. For that reason, the destructors are not allowed to throw exceptions;
+    a destructor may be called when an exception is thrown, and if that destructor
+    also throws, we now have two exceptions propagating at the same time. If this
+    happens, the program immediately terminates. This is not so much a shortcoming
+    of the language as a reflection on the unsolvable nature of the problem in general;
+    we cannot let things stay the way they are, but we also failed in an attempt to
+    change something. There aren’t any good options left.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In general, there are three ways a C++ program can handle this situation. The
+    best option is not to fall into this trap—if the rollback cannot throw, none of
+    this will happen. A well-written exception-safe program thus goes to great lengths
+    to provide non-throwing rollback and cleanup. For example, the main action can
+    produce the new data and have it ready, then making the data available to the
+    callers is as simple as swapping a pointer, definitely a non-throwing operation.
+    The rollback involves only swapping the pointer back and maybe deleting something
+    (as we already said, destructors should not throw exceptions; if they do, the
+    program behavior is undefined).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second option is to suppress the exception in the rollback. We tried to
+    undo the operation, it didn’t work, there is nothing else we can do about it,
+    so let’s push on. The danger here is that the program may be in an undefined state,
+    and every operation from this point forward may be incorrect. This is, however,
+    the worst-case scenario. In practice, the consequences may be less severe. For
+    example, for our database, we may know that if the rollback fails, there is a
+    chunk of disk space that is claimed by the record but is unreachable from the
+    index. The caller will be correctly informed that the insertion failed, but we
+    have wasted some disk space. This may be preferable to terminating the program
+    outright. If this is what we want, we have to catch any exceptions that might
+    be thrown by the ScopeGuard action:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `catch` clause is empty; we catch everything but do nothing. This implementation
+    is sometimes called a *shielded ScopeGuard*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The final option is to allow the program to fail. That will happen with no
+    effort on our part if we just let two exceptions happen, but we could also print
+    a message or otherwise signal to the user what is about to happen and why. If
+    we want to insert our own dying action before the program terminates, we have
+    to write code that is very similar to previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: The key difference is the `throw;` statement without any arguments. This re-throws
+    the exception we caught and allows it to continue propagating.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The difference between the last two code fragments highlights a subtle detail
+    that we have glossed over earlier, but one that will become important later. It
+    is imprecise to say that in C++ the destructors should not throw exceptions. The
+    correct statement is that an exception should not propagate out of the destructor.
+    The destructor can throw anything it wants as long as it also catches it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Up until now, we have dealt with exceptions mostly as a nuisance; the program
+    has to remain in a well-defined state if something somewhere throws something,
+    but other than that, we have no use for these exceptions; we just pass them on.
+    On the other hand, our code could work with any type of error handling, be it
+    exceptions or error codes. If we knew for sure that errors are always signaled
+    by exceptions and that any return from a function other than an exception thrown
+    is a success, we could take advantage of that to automate the detection of success
+    or failure and therefore allow a commit or rollback to happen as needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exception-driven ScopeGuard
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are now going to assume that if a function returns without throwing an exception,
+    the operation has succeeded. If the function throws, it obviously failed. The
+    objective now is to get rid of the explicit call to `commit()` and instead detect
+    whether the destructor of ScopeGuard is executed because an exception was thrown,
+    or because the function returned normally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two parts to this implementation. The first part is specifying when
+    we want the action to be taken. The cleanup guard must be executed regardless
+    of how we exit the scope. The rollback guard is executed only in case of failure.
+    For completeness, we can also have a guard that is executed only if the function
+    has succeeded. The second part is determining what actually happened.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will start with the second part. Our ScopeGuard now needs two additional
+    parameters that will tell us whether it should be executed on success and whether
+    it should be executed on failure (both can be enabled at the same time). Only
+    the destructor of `ScopeGuard` needs to be modified:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We still need to figure out how to implement the pseudo-functions `is_success()`
+    and `is_failure()`. Remember that failure means that an exception was thrown.
+    In C++, we have a function for that: `std::uncaught_exception()`. It returns true
+    if an exception is currently propagating, and false otherwise. Armed with this
+    knowledge, we can implement our guard:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, back to the first part: `ScopeGuard` will execute the delayed action if
+    the conditions are right, so how do we tell it what conditions are right? Using
+    the macro approach we developed earlier, we can define three versions of the guard—`ON_SCOPE_EXIT`
+    is always executed, `ON_SCOPE_SUCCESS` is executed only if no exceptions were
+    thrown, and `ON_SCOPE_FAILURE` is executed if an exception was thrown. The latter
+    replaces our `ON_SCOPE_EXIT_ROLLBACK` macro, only now it too can use an anonymous
+    variable name, since there are no explicit calls to `commit()`. The three macros
+    are defined in a very similar way, we just need three different unique types instead
+    of one `ScopeGuardOnExit`, so we can decide which `operator+()` to call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Each overload of `operator+()` constructs a `ScopeGuard` object with different
+    Boolean arguments that control when it does and does not execute. Each macro directs
+    the lambda expression to the desired overload by specifying the type of the first
+    argument to the `operator+()` using one of the unique tree types we defined just
+    for this purpose: `ScopeGuardOnExit`, `ScopeGuardOnSuccess`, and `ScopeGuardOnFailure`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This implementation can pass simple and even fairly elaborate tests and appears
+    to work. Unfortunately, it has a fatal flaw—it does not correctly detect success
+    or failure. To be sure, it works fine if our `Database::insert()` function was
+    called from the normal control flow, where it may or may not succeed. The problem
+    is we may call `Database::insert()` from a destructor of some other object, and
+    that object may be used in a scope where an exception is thrown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, `db_.insert()` runs in the presence of an uncaught exception, and so `std::uncaught_exception()`
+    will return `true`. The problem is this is not the exception we were looking for.
+    This exception does not indicate that `insert()` failed, but it will be treated
+    as such and the database insertion will be undone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we really need is to know how many exceptions are currently propagating.
+    This may seem a strange statement since C++ does not allow multiple exceptions
+    to propagate at the same time. However, we have already seen that this is an oversimplification;
+    the second exception can propagate just fine as long as it does not escape the
+    destructor. In the same manner, three or more exceptions can propagate if we have
+    nested destructor calls, we just have to catch them all in time. To solve this
+    problem correctly, we need to know how many exceptions were propagating when the
+    `Database::insert()` function was called. Then, we can compare it with the number
+    of exceptions propagating at the end of the function, however we got there. If
+    these numbers are the same, `insert()` did not throw any exceptions, and any preexisting
+    ones are not our concern. If a new exception was added, `insert()` has failed,
+    and the exit handling must change accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'C++17 lets us implement this detection; in addition to the previous `std::uncaught_exception()`,
+    which is deprecated (and removed in C++20), we now have a new function, `std::uncaught_exceptions()`,
+    which returns the number of currently propagating exceptions. We can now implement
+    this `UncaughtExceptionDetector` to detect new exceptions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With this detector, we can finally implement the automatic `ScopeGuard`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The need to use C++17 may present a (hopefully short-term) obstacle to using
+    this technique in programs constrained to older versions of the language. While
+    there is no other standard-compliant, portable way to solve this problem, most
+    modern compilers have ways to get to the uncaught exception counter. This is how
+    it is done in GCC or Clang (the names starting with `__` are GCC internal types
+    and functions):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Whether we use the exception-driven ScopeGuard or the explicitly named ScopeGuard
+    (perhaps to handle error codes as well as exceptions), we have accomplished our
+    goals—we now can specify deferred actions that must be taken at the end of a function
+    or any other scope.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the end of this chapter, we will show another implementation of ScopeGuard
+    that can be found in several sources on the web. This implementation deserves
+    some consideration, but you should be aware of the downsides as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type-erased ScopeGuard
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If you search online for a ScopeGuard example, you may chance upon an implementation
+    that uses `std::function` instead of a class template. The implementation itself
+    is quite simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that this ScopeGuard is a class, not a class template. It has template
+    constructors that can accept the same lambda expression or another callable object
+    as the other guard. But the variable used to store that expression has the same
+    type no matter what the type of the callable is. That type is `std::function<void()>`,
+    a wrapper for any function that takes no arguments and returns nothing. How can
+    a value of any type be stored in an object of some fixed type? That is the magic
+    of type erasure, and we have a whole chapter dedicated to it ([*Chapter 6*](B19262_06.xhtml#_idTextAnchor266),
+    *Understanding Type Erasure*). This non-template ScopeGuard makes the code that
+    uses it simpler (at least in the pre-C++17 version) because there are no types
+    to deduce:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: There is, however, a serious downside to this approach—a type-erased object
+    has to do a non-trivial amount of computation to achieve its magic. As a minimum,
+    it involves an indirect or a virtual function call, and often some memory is allocated
+    and deallocated as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the lessons of [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266), *Understanding
+    Type Erasure*, we can come up with a slightly more efficient type erasure implementation;
+    in particular, we can insist that the on-exit callable fits into the guard’s buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can compare the runtime cost of the type-erased ScopeGuard versus the template
+    `ScopeGuard` using the Google Benchmark library. The results will depend on what
+    operation we are guarding, of course: for long computations and expensive on-exit
+    actions, a slight difference in `ScopeGuard`’s run time makes no difference. The
+    difference is going to be more pronounced if the computations in the scope and
+    upon exiting the scope are fast:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the memory is never allocated (`rand()` returns non-negative random
+    numbers) and the pointer `p` is always `null`, so we are benchmarking the call
+    to `rand()` plus the overhead of `ScopeGuard`. For comparison, we can call `delete`
+    explicitly, without the guard. The result shows that the template version of the
+    guard has no measurable overhead, while both type-erased implementations have
+    some:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our own type-erased version adds about 1 nanosecond to each iteration, and
+    the one based on `std::function` takes almost twice as long. Benchmarks of this
+    sort are strongly affected by compiler optimizations and can produce very different
+    results in response to even slight changes in the code. For example, let us change
+    the code to always construct the new object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we call the operator new on each iteration of the loop, so the corresponding
+    deletion must happen as well. This time, the compiler was able to optimize the
+    template `ScopeGuard` much better than the type-erased one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Overall, there isn’t much of a reason to use type erasure here. The runtime
+    cost may be negligible or significant, but there is usually nothing to gain in
+    exchange. The only advantage of the type-erased version is that the guard itself
+    is always of the same type. But the type of the guard is almost always irrelevant:
+    we create the variable as `auto` or using constructor template argument deduction,
+    and the only explicit operation we may need to do on the guard is to disarm it.
+    Thus, we never need to write any code that depends on the guard’s type. Overall,
+    the template-based ScopeGuard, with or without macros, remains the pattern of
+    choice for automatically releasing resources and performing other actions at the
+    end of a scope.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we have studied, in detail, one of the best C++ patterns for
+    writing exception-safe and error-safe code. The ScopeGuard pattern allows us to
+    schedule an arbitrary action, a fragment of C++ code, to be executed upon completion
+    of a scope. The scope may be a function, the body of a loop, or just a scope inserted
+    into the program to manage the lifetime of local variables. The actions that are
+    executed to the end may be conditional on the successful completion of the scope,
+    however, that is defined. The ScopeGuard pattern works equally well when success
+    or failure are indicated by return codes or exceptions, although in the latter
+    case we can automatically detect the failure (with return codes, the programmer
+    has to explicitly specify which return values mean success and which do not).
+    We have observed the evolution of the ScopeGuard pattern as more recent language
+    features are used. In its optimal form, ScopeGuard provides a simple declarative
+    way to specify post-conditions and deferred actions, such as cleanup or rollback,
+    in a manner that is trivially composable for any number of actions that need to
+    be committed or undone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter describes another very C++-specific pattern, the Friends Factory,
+    which is a kind of Factory, only instead of objects during the execution of a
+    program, it manufactures functions during its compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What is an error-safe or exception-safe, program?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How can we make a routine that performs several related actions be error-safe?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How does RAII assist in writing error-safe programs?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How does the ScopeGuard pattern generalize the RAII idiom?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How can the program automatically detect when a function exits successfully
+    and when it fails?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What are the advantages and drawbacks of a type-erased ScopeGuard
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

@@ -1,0 +1,1416 @@
+- en: '7'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Enhancing Animation Controls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Welcome to *Chapter 7*! In the previous chapter, we added some camera functions.
+    We started by implementing support for multiple camera objects and added new camera
+    types. We also set keyboard shortcuts to allow the simple selection of the existing
+    cameras. As the last step, we added an orthogonal camera configuration, which
+    enabled us to create entirely different views of the model instances and the virtual
+    worlds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we will update animation blending and controls to a new level.
+    First, we will implement blending between two animations in the existing transformation
+    compute shader. Also, we will move the calculation of translation, scaling, and
+    rotation for each node to lookup tables onto the GPU. Next, we will add new instance
+    states to the code, storing the kind of actions the instance could do, like walking,
+    running, and jumping, plus the direction of movement. Then, we will create UI
+    controls, allowing us to map the existing animation clips to instance actions.
+    Finally, we will add the logic for the mapping between animations and actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blending between animations with style
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding new states to the code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Linking states and animations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Saving and loading the states
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example code in the `chapter07` folder, in the `01_opengl_animations` folder
+    for OpenGL and the `02_vulkan_animations` folder for Vulkan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blending between animations with style
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If you solved the second and third tasks in the *Practical sessions* section
+    in [*Chapter 2*](Chapter_2.xhtml) and moved more parts of the animation blending
+    to the GPU, parts of this section may be familiar to you. But do not worry if
+    you skipped the tasks, as the process of moving the transformation data to lookup
+    tables and doing the interpolation calculations on the GPU is straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s start with the lookup table data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The power of lookup tables
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Currently, the data for the animation keyframes and the corresponding node transformations
+    is extracted during model loading, and all the data is stored in arrays inside
+    `AssimpAnimChannel` objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For every node in every frame, six lookups are needed to extract the translation,
+    scaling, and rotation for the previous and current keyframe time. Then, the values
+    are interpolated pairwise to calculate the final transformation for the specified
+    node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, doing the same calculations repeatedly is time-consuming. A better
+    solution is to generate all the interpolated transforms when the model is loaded,
+    and only do a lookup of the final transform value when playing the animation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The trade-off here is clear: GPU memory versus CPU computing power. Setting
+    the size of the lookup tables too small will cause visible artifacts, while setting
+    the size of the lookup table data too large will waste precious GPU memory without
+    having any visual benefits. You can experiment with the lookup table size, but
+    ~1,000 elements for the transform values should be a good balance between visuals
+    and memory size.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An alternative lookup solution
+  prefs: []
+  type: TYPE_NORMAL
+- en: A more memory-friendly version of the lookup table can be achieved by creating
+    a table for the keyframe times and using the extracted data as the index into
+    the original transformation data. You may use this variation if you have a lot
+    of nodes and animation clips to save GPU memory. Or you could use these sparser
+    lookups if there are only a few keyframes per animation. On the downside of this
+    version, you need to calculate the pair-wise interpolations between the values
+    per keyframe again, adding more computing load to the GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to the new transform data storage, we will scale all animation clips
+    to have the same time length. Without the need to scale the length of two animation
+    clips, blending between two clips becomes much simpler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the lookup tables
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As preparation for the lookup tables, we must find the maximum length of all
+    animation clips. Before adding the animation clips to the `loadModel()` method
+    of the `AssimpModel` class, we iterate over all animations and store the maximum
+    length in a new `private` member variable called `mMaxClipDuration`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, the maximum value is used as an additional parameter to the `addChannels()`
+    call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, inside the `addChannels()` method, we hand over the maximum duration
+    to every channel we are extracting:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Creating the lookup table data itself will be shown in the following code snippets
+    by using the code to create the translation data as an example. For scaling and
+    rotation, the same principle applies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first step for every lookup table is the extraction of the minimum and
+    the maximum keyframe times:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we calculate three scaling factors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'These include:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first variable, `translateScaleFactor`, stores the ratio between the maximum
+    clip duration and the maximum keyframe time. We need the first scaling factor
+    when we advance the time in the lookup table data creation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In `mTranslateTimeScaleFactor`, we calculate the ratio between the maximum clip
+    duration and the size of our lookup table. The second scaling factor is simply
+    the keyframe time step width of the lookup table entries.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As the last scaling factor, `mInvTranslateTimeScaleFactor` stores the inverse
+    of the `mTranslateTimeScaleFactor` value. We will use the third scaling factor
+    in the compute shader to calculate the right index position in the lookup table
+    from the keyframe time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, we set a helper variable named `timeIndex` to `0` and iterate over our
+    lookup table entries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For every lookup table entry, we extract the translation data from the `mPositionKeys`
+    array of the `aNodeAnim` object for the current and next keyframe times into a
+    `glm::vec4`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even though we only need the first three values for the translation, a four-element
+    vector is used for proper data alignment in the Shader Storage Buffer Object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we extract the time values for the current and next keyframes, plus the
+    current time of the animation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the current time, two scaling factors are used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By using the two translation vectors and the time values, we can create an
+    interpolated `glm::vec4` of the two translations at the time stamp of the lookup
+    table entry:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we check whether the current time of the lookup table entry is longer
+    than the time of the next keyframe. If it is, we increment our time index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `mTranslations` vector now contains interpolated translation values for
+    every time point of the animation clip in a step width defined by `mTranslateTimeScaleFactor`,
+    and by using the inverse value, `mInvTranslateTimeScaleFactor`, we can access
+    the corresponding lookup table entry if we know the replay time of the clip.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Uploading the data tables to the GPU
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once all animation clips have been converted to lookup tables, we can upload
+    the array data to an SSBO. The buffer preparation part is longer as we must ensure
+    all nodes are initialized properly, even the non-animated nodes. We will only
+    explore the translation steps here since the logic for scaling and rotation is
+    mostly identical. The biggest difference is the already known utilization of a
+    four-element vector to transport the quaternion data of the rotations to the compute
+    shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As the first step, we create a `std::vector` of `glm::vec4` to hold the data
+    for all node transformations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we define the size of the lookup table data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The addition of `1023` and `1` instead of the number `1024` is a hint of what
+    happens next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: We create an empty vector of `LOOKUP_SIZE` length and initialize the vector
+    with a zeroed four-element vector. Using zeroes for the translation makes sure
+    non-animated nodes will have no translational transformations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the first position of the vector, we do another explicit setting to zero
+    for documentation purposes because we will use the `x` component of the first
+    position in every lookup table to store the `mTranslateTimeScaleFactor`. It may
+    look a bit redundant to store the inverse scale factor in every vector, but because
+    we integrated the value directly into the lookup data, the compute shader will
+    find all the data in one place.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After creating appropriate empty vectors for scaling and rotation, we create
+    a triplet of translation, rotation, and scaling for every bone in the bone list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: By using the full number of bones in the array we may waste a couple of kilobytes,
+    but we don’t need to add extra logic inside the compute shader to choose between
+    animated and non-animated logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now we loop over all animation clips, and for every clip, over all channels.
+    Since we have already initialized all the data with default values, we only need
+    to upload the data for the animated bones:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `offset` value is calculated by using the bone list size and `LOOKUP_SIZE`
+    to find the position of the translation data for the channel’s bone in the current
+    animation clip:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we set the `mTranslateTimeScaleFactor` value of the channel at the `x`
+    component of the first position, get the translation data for the channel, and
+    copy the data into the lookup data vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, the `offset` value is advanced to the next lookup data position before
+    storing the next transformation data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After all the translation, scaling, and rotation data is stored in the `animLookupData`
+    vector, we can upload the data to the SSBO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, the animation lookup data for the loaded model is available on the GPU.
+    When we need to access the transformation data in the compute shader, we can simply
+    bind the SSBO.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adjusting the renderer code and the compute shader
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To be able to tell the compute shader which animation to play and/or blend,
+    we define a new `struct` called `PerInstanceAnimData` in the `OGLRenderData.h`
+    file in the `opengl` folder for OpenGL:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: For Vulkan, the file is named `VkRenderData.h` and resides in the `vulkan` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, we simply store the first clip number plus the timestamp of the current
+    frame we want to render from the first clip. Also, a possible second animation
+    clip, the time stamp for the second clip, and the blending factor between the
+    two clips can be sent to the compute shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the renderer, we define two new `private` data members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `mPerInstanceAnimData` variable stores the clip numbers, time stamp, and
+    blending factor for every instance, and `mPerInstanceAnimDataBuffer` is the CPU-side
+    handle for the animation data SSBO.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, in the instance loop in the `draw()` call of the renderer, we update
+    the per-instance animation data with the values of the instances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When preparing the first compute shader, we bind the animation lookup data
+    and upload the instance animation data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, all the data we need for the compute shader is ready to be computed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the `assimp_instance_transform.comp` compute shader, in the `shader` folder,
+    we also need to define the `PerInstanceAnimData` `struct` to be able to access
+    the SSBO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And we declare the two buffer bindings using the same binding points as in
+    the renderer code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the `main()` method of the compute shader, we define the same lookup table
+    size and offset calculation as in the `AssimpModel` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now access all the animation settings for each instance by using the
+    `instance` variable as the index in the `InstanceAnimData` SSBO:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For instance, to get the `mTranslateTimeScaleFactor` value for the translation
+    data, we must use the same formula as in C++ to access the first element of the
+    translation lookup data for the clip:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Even slight differences between C++ and shader formulae or data types could
+    lead to discrepancies in the transferred data, so we need to be strict here to
+    do exactly the same operations and use the same data types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we use the inverse time scale factor to calculate the correctly scaled
+    index in the translation lookup data:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The per-node translation data for the first and second animation clip can also
+    be calculated as in C++:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we can interpolate between the two animation clip translations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: We do the same lookup and interpolation for the scaling values. For rotation,
+    the same code as the GLM implementation for SLERP is used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, the product of all three transformation matrices is stored in the
+    SSBO containing the resulting TRS matrices of all instances:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, the `mShaderTRSMatrixBuffer` SSBO in the renderer contains the
+    same data as we had with the CPU-based transformation calculations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But all we need to upload to the compute shader is the data of the animations
+    we want to draw. So, the transformation calculation in the `updateAnimation()`
+    method of the `AssimpInstance` class can be removed, leaving the following three
+    lines to be executed when we update the animation of the instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: We simply advance the clip time by the delta time and update the instance root
+    matrix.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you compile and run the code now, the only visible difference is a much lower
+    matrix generation time when the number of instances goes up. For a recent computer
+    model, reaching 10,000 or even 20,000 animated instances of the basic model should
+    be no problem. We don’t need so many instances in the virtual world, but the lower
+    CPU usage for animations and animation blending gives us more freedom to implement
+    more features in the remaining chapters of the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have a fast and easy-to-use animation calculation, we can implement
+    a state-based system to organize the behavior of each instance. By defining different
+    states, like a movement direction or an action the instance will do, we create
+    the first steps on the path to an animation system where we can control the instance
+    as we would do in a simple game.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, let’s continue by adding new instance states.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding new states to the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our future game character should be able to perform typical actions for a character
+    in a game: wait idle for player input, walk in all four main directions, run forward,
+    plus a bunch of other actions. Depending on the available animations, we could
+    add a state for jumping or rolling, punching, or waving.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For maximum flexibility, we will allow characters of all models to perform all
+    the configured actions. Then we can use the UI to map an animation clip to each
+    action we want to use for a specific model. Without a mapped animation clip, the
+    requested action will be simply ignored.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using bit fields and plain enums
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will add two different `enum` `class` definitions to the `Enums.h` file.
+    The first `enum` called `moveDirection` is a bit field:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: For every direction, a different bit can be set in a variable. A bit field is
+    needed when multiple values can appear at the same time. In our case, it would
+    be normal to have the character running forward and to the left at the same time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The two additional `enum` values, `none` and `any`, are special placeholders.
+    If the character is just idling, forcing a direction for the idle state would
+    be strange since the character cannot “idle forward” or “idle to the left.” So,
+    the separate `enum` value `none` for not moving at all will help us to keep the
+    code a bit simpler. The value `any` can be used as a wildcard or fallback for
+    walking states. For example, we could set a generic walk animation for all directions,
+    and instead of configuring all four directions with identical animation clips,
+    we use the `any` direction to use this one clip for all walk movements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To be able to work with the values of the `moveDirection` `enum` in a real
+    bit field manner, we have to define the bitwise Boolean operators `OR` and `AND`
+    for the new data type. The declaration is short and simple, as the following code
+    for the logical `AND` operator between two movement directions shows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A second `enum` `class` named `moveState` takes care of the possible character
+    actions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, no bit field is needed. We may be able to `run` and `jump` at the same
+    time and will handle these cases in the code. But most of the actions cannot be
+    executed at the same time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We simply list all possible movement states in the `moveState` `enum` `class`.
+    The final value, `NUM`, can be utilized to iterate over all the `enum` values
+    in a `for` loop, i.e., starting from the first action with the value zero (`idle`)
+    and ending at the last valid action `wave`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Having not just numbers for movement directions and state will become handy
+    in the UI and for debug messages, so we add two new maps from the `enum` `class`
+    values to strings in the `ModelInstanceCamData` struct in the `ModelInstanceCamData.h`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will fill the two state maps in the `init()` method of the renderer with
+    appropriate string values. Next, we must extend the settings structs for instances
+    and models.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extending model and instance settings
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The special handling of the idle, walk, and run animation clips requires a
+    new `struct` called `IdleWalkRunBlending` in a new `ModelSettings.h` file in the
+    `model` folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we simply store the clip numbers and replay speeds for the three movements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The new `IdleWalkRunBlending` struct will be added to another new `struct`
+    called `ModelSettings`, along with the model’s name and file name:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `AssimpModel` class needs a new `private` data member of type `ModelSettings`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Both the model’s file name and name will be relocated from the `AssimpModel`
+    class to the new `ModelSettings` `struct` to have all the “variable” parts of
+    a model accessible with simple getter and setter calls, similar to the instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we can use the new states and animation features in an instance, we
+    must add variables of the two new `enum` `class` types to the `InstanceSettings`
+    `struct` in the `InstanceSettings.h` file in the `model` folder:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In addition, we must adjust the instance settings for the animation clips.
+    Since we can have two different animations plus animation blending, we need two
+    clip variables instead of only one, and the blending factor as a per-instance
+    setting:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also store the values for the speed and acceleration of the instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: The speed of the specific instance will be used to select the correct idle,
+    walk, or run animation clip. By using an acceleration-based movement, we achieve
+    a more natural appearance of the character instances. In real life, we also accelerate
+    and decelerate while moving, instead of jumping directly from idle to run speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the idle/walk/run logic
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The blending logic for idle/walk/run animation clips is defined in the method
+    called `playIdleWalkRunAnimation()` in the `AssimpInstance` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After a sanity check for the model of the instance, we calculate the absolute
+    speed of the instance, read the model settings containing a map with the blending
+    settings, and create a new, empty variable blend of type `IdleWalkRunBlending`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we check whether we have configured direction-specific animation clips:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: If such a direction clip is found, the blend variable is filled with the appropriate
+    settings. If no direction-specific clip was found, we check for the special `any`
+    and `none` directions too, trying to use a generic animation for all directions.
+    And if we don’t find the generic animation clips, we return from the method. Without
+    a configured clip for idle/walk/run, it makes no sense to play any animation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Controlling whether to blend between idle and walk or between walk and run
+    animations is done by using the `instanceSpeed` variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we scale speed factors and blend between the idle and walk animations
+    based on the `instanceSpeed` value. By using a value of `0.0f` for idle and `1.0f`
+    (inclusive) for full walk speed, the animation will be blended smoothly between
+    the instance standing still and walking around.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To blend the instance animations from walking to running, we use an `instanceSpeed`
+    range between `1.0f` (exclusive) and `2.0f`. The logic stays the same; we must
+    only subtract `1.0f` from the speed factor and the blending for the linear interpolation
+    between the walk and run clips:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `instanceSpeed` values of `1.0f` for walk speed and `2.0f` for run speed
+    were chosen because they work best for linear interpolation between the clips.
+    Any other ranges are possible; you just must adjust the scaling for the animation
+    blending accordingly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using acceleration and deceleration
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As our instances should move in the virtual world, we need to control the speed
+    of the instance we control. But instead of using the speed directly, we will go
+    for an acceleration-based speed model. Using a separate acceleration value to
+    speed up or slow down the instance gives more natural results. Like real physical
+    bodies, our model instances in the virtual world have their inertia working against
+    speed changes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the `AssimpInstance` class needs three new `private` `float` variables
+    named `MAX_ACCEL`, `MAX_ABS_SPEED`, and `MIN_STOP_SPEED`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: In `MAX_ACCEL`, we store the maximum acceleration our model can achieve, and
+    `MAX_ABS_SPEED` limits the speed of the instance. Acceleration and speed are three-component
+    vectors, and moving in different directions may add up to larger values. Limiting
+    both values helps to prevent instances from moving too fast in the virtual world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An acceleration-based model has a major drawback: stopping an instance can
+    become difficult. Since we only add and subtract the acceleration values from
+    the speed, reaching the exact value of zero is hard. To achieve a full stop, we
+    define a minimal speed in the `MIN_STOP_SPEED` variable. If the current speed
+    of the instance is lower than the value of `MIN_STOP_SPEED`, we set acceleration
+    and speed to zero, eventually stopping the instance.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Instance acceleration is controlled in the `updateInstanceState()` method of
+    `AssimpInstance` class. Basically, we check for a movement direction and set the
+    corresponding `x` or `z` components of `isAccel`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: If a direction key is pressed, we set `isMoveKeyPressed` to true and apply the
+    acceleration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we release all movement keys, the deceleration of the instance kicks in.
+    The slowdown logic happens in the `updateInstanceSpeed()` method of the `AssimpInstance`
+    class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: We also save the maximum speed of the instance locally. Using a `static` variable
+    helps to keep track of accelerating and slowing down the instance between walk
+    and run speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we calculate the length of the 3-component `isSpeed` vector. The resulting
+    length is then used to check whether we are still moving when no movement key
+    is being pressed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: For the possible move directions of the instance, we check whether any speed
+    is left and use an acceleration in the opposite direction of the speed to slow
+    down the instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And if we are slower than `MIN_STOP_SPEED`, we forcibly set speed and acceleration
+    to zero, movement state to `idle`, and move direction to `none`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Limiting speed and acceleration to the maximum values is a two-step process.
+    If we exceed the maximum value, we normalize the vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now the length of the `isAccel` vector equals `1.0f`. Then, we scale the vector
+    to the maximum length:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: After the multiplication, all three components of `isAccel` are scaled down
+    to a resulting length of `MAX_ACCEL`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Updating the instance speed is done by adding the `deltaTime` fraction of the
+    acceleration in `isAccel` to `isSpeed`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To reach run speed, we double the `maxSpeed` value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we no longer run but are over `maxSpeed`, we slow down to walk speed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: The example code uses a simple linear interpolation to reach the desired instance
+    speed. You might want to experiment with other techniques like ease-in/ease-out
+    curves, or cubic curves to adjust the interpolation between different instance
+    speeds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And if we are faster than `maxSpeed` while accelerating to walk or run speed,
+    we limit the instance speed `isSpeed` to `maxSpeed`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, the currently selected instance would move smoothly from the
+    idle animation clip to the walk animation clip, and even get a speedup to the
+    run animation if we switch to the `run` state. Sadly, we cannot see anything yet
+    since there is no mapping between movement states, directions, and animation clips.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, let’s link the animation clips to existing states.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linking states and animations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We start with the connections between the three states (idle, walk, and run),
+    and map the corresponding model animation clips to these three states. The `IdleWalkRunBlending`
+    `struct` and the `msIWRBlendings` member variable in the `ModelSettings` `struct`
+    are already in place, so we only have to take care of the UI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping idle/walk/run animations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Figure 7.1* shows the mapping section of the **Control** window for the three
+    states: idle, walk, and run:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Figure_7.1_B22428.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.1: Mapping between move direction, move state, and animation clip'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will step through the control elements from top to bottom and explore the
+    new code in the `createSettingsWindow()` method of the `UserInterface` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **Dir** combo box shows the names of the available entries of the `moveDirection`
+    `enum` `class`. The combo box is filled by using the `micMoveDirectionMap` map
+    from the `ModelInstanceCamData` `struct`. We store the selected entry in a `static`
+    `moveDirection` type variable to retain the value.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For the three combo boxes named **Idle**, **Walk**, and **Run**, we extract
+    the animation clips from the model of the instance and store the selected clip
+    in a `static` `int` for each state. The replay speed slider allows us to set individual
+    replay speeds for every clip. We had the same combo box/float slider combination
+    in the (now removed) **Animations** part of the **Control** window.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To store the current combination of direction, clips, and speeds, press the
+    **Save** button. The `UserInterface` code simply creates or updates the `msIWRBlendings`
+    entry for the selected direction.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Below the combo boxes, all saved mappings are listed. If you press the **Edit**
+    button on one of the entries, the corresponding line will be loaded into the combo
+    boxes and speed sliders. By pressing **Remove**, the entry will be deleted.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To enable a preview for the current mappings, check the **Enable Preview** checkbox.
+    In testing mode, the active mapping settings are used to animate the currently
+    selected instance and blend between the three states. Make sure to disable preview
+    mode once you have found good settings for the mappings.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Above the **Test** slider, the names of the three animation clips for the three
+    states, idle/walk/run, are shown. You can see the names changing if you select
+    a different animation clip in any of the combo boxes. The **Test** slider allows
+    you to preview the animation blending between the three selected clips when the
+    test mode is enabled in the **Model** section. Moving the slider to the left plays
+    the idle animation clip; if the slider is in the middle position, the walk animation
+    clip is shown; and on the right, the run animation is played. Between these three
+    slider positions, linear interpolations between idle and walk as well as between
+    walk and run are generated and drawn.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'One interesting addition to the `UserInterface` code is the automated creation
+    of button IDs for every mapping by using `ImGui::PushID()` and `ImGui::PopID()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: ImGui needs a unique identifier for every control element. Failing to provide
+    a unique ID leads to unwanted results, since triggering one control element also
+    triggers the other element(s) containing the same ID.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By using an incrementing integer value as an identifier, every mapping line
+    will have unique **Edit** and **Remove** buttons, and the buttons will only affect
+    *their* mapping line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another nice ImGui feature is the ability to close a `CollapsingHeader` element
+    from another part of the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: The internal state storage of ImGui saves information about the elements of
+    the current ImGui window. With the `SetInt()` call and the `CollapsingHeader`
+    name, we can control the open/close state of any header in the current ImGui window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This way, we forcibly close the other two mapping `CollapsingHeader` elements.
+    We are changing the animation clip settings in all three mapping headers, and
+    ImGui applies the settings multiple times, leading to unwanted results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After all idle/walk/run animation clips have been set, we continue with the
+    actions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mapping actions to animation clips
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the `moveState` `enum` `class`, we have defined several actions for the
+    instances, next to the already configured `idle`, `walk`, and `run` states. Depending
+    on the animations in a model file, not all actions may be available for all models.
+    But there is no need to worry: the code will ignore actions without a configured
+    animation. Pressing the action key will result in no animation or action.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All configured action mappings are saved to the `ModelSettings` `struct` in
+    the `ModelSettings.h` file in a new map called `msActionClipMappings`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The new `ActionAnimation` `struct` contains the clip number and the replay
+    speed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will start again with the UI part. In *Figure 7.2*, the `CollapsingHeader`
+    for the action mapping is shown:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Figure_7.2_B22428.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.2: Mapping movement states to animation clips and speeds'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `UserInterface` code for this mapping type is similar to the idle/walk/run
+    mapping as we do essentially the same kind of mapping. We have the following elements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A combo box for the elements of the `moveState` `enum` `class`, filled with
+    the values of the `micMoveStateMap` map
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A second combo box for the clips, generated from the animation clips of the
+    model
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A speed slider defining the replay speed of the clip
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A **Save** button to add the current mapping to the `msActionClipMappings` map
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A list of saved mappings, and every mapping line has two buttons to **Edit**
+    or **Remove** the current line
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The note from the idle/walk/run mapping also applies here. When a mapping for
+    the `none` movement direction exists in the **Model Idle/Walk/Run Blendings**
+    section, the currently selected clip is *not* playing. To see a preview of the
+    animation clip, you need to temporarily remove the `none` direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To blend between the idle/walk/run state and any action in the `AssimpInstance`
+    class, we can use the clip number and replay speed from the `msActionClipMappings`
+    map and use the clip as the destination clip for a blending operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we want our model to change to an action, we call the `setNextInstanceState()`
+    method of the `AssimpInstance` class. The renderer uses this call in the `handleMovementKeys()`
+    method to request a state change of the selected instance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: Before we dive into the animation blending logic, let’s finish the UI part by
+    looking at how to set allowed clip sequences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining allowed state changes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: While previewing the different animation clips of the models, you will notice
+    that some clips only work when the instance stands still, while other animations
+    are only usable if the instance is walking or running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To prevent unwanted and unnatural transitions between clips, for instance, from
+    an idle model to a full-speed jump animation, we define which action state changes
+    are allowed. The **Destination** state can only be triggered when the **Source**
+    state is the current active state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 7.3* shows some allowed state changes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Figure_7.3_B22428.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.3: Allowed state changes of a model'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The state order is saved in the `ModelSettings` `struct` using a `std::set`
+    containing `std::pair` elements of `moveState` entries:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: A `std::map` would not work here as we need to configure multiple destination
+    states for the same source state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After all the states are mapped to animation clips and the dependencies between
+    states have been configured, we will explore the way the model actions are concatenated
+    to give (mostly) smooth blending and transition effects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a finite state machine to control the animation flow
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The task of maintaining states over time and transitions from one state to another
+    state after an event can be solved best by using a **finite state machine**. And
+    in C++, such a state machine can be modeled with a simple `switch`/`case` statement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we start the implementation, let’s look at the states and transitions
+    of the state machine in *Figure 7.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/Figure_7.4_B22428.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Figure 7.4: State machine of the `mAnimState` variable in the `AssimpInstance`
+    class'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These five states and the transitions between the states can be explained as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We start at the state machine at `playIdleWalkRun`. Here, the default, instance-speed-based
+    blending between the movement states, idle, walk, and run, is played.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once an action is requested, we check whether source (current state) and destination
+    (action state) are in the `msAllowedStateOrder` map. If yes, we prepare the directional
+    clips and change to the `transitionFromIdleWalkRun` state.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `transitionFromIdleWalkRun` state is needed to smooth the transition from
+    idle/walk/run to the requested action. Most animation clips start from a similar
+    pose of body, arms, and legs. By blending the current idle, walk, or run animation
+    to the starting point of the same animation clip, the instance is adjusted back
+    to its starting pose. After reaching the starting pose, we advance to the `transitionToAction`
+    state.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In `transitionToAction`, we blend from the initial pose of the idle, walk, or
+    run animation clip to the action state animation clip. This transition is only
+    a few frames long and adds a smooth blending to the action clip. Once the transition
+    to the action clip is done, we change to `playActionAnim`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Once we are in `playActionAnim`, the animation for the requested action state
+    is played at the configured replay speed until the end of the clip is reached.
+    When the action animation clip is played, keyboard requests to switch to other
+    animation clips or to return to the idle/walk/run cycle are ignored. Once the
+    action animation clip is finished and no new requests for an action have been
+    issued, the state is changed to `transitionToIdleWalkRun`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Similar to `transitionToAction`, the `transitionToIdleWalkRun` state is used
+    to blend between the action clip and the idle/walk/run clip. The destination clip
+    (idle, walk, or run) is chosen via the instance speed. For a smooth animation
+    cycle, the positions of the body, arms, and legs are the same as the start and
+    end of the clip. By blending the end of the action clip with the start of an idle/walk/run
+    clip, we have a smooth transition back to the initial state. After the blending
+    is finished, we change the state back to `playIdleWalkRun`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the animation clip transitions, we create a new `enum` `struct` called
+    `animationState` in the `Enums.h` file containing the states of the finite state
+    machine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The state machine is defined in the `updateAimStateMachine()` method of the
+    `AssimpInstance` class. The states are built as switch/case statements moving
+    forward on the conditions outlined in *Figure 7.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can check the details of the finite state machine in the `updateAnimStateMachine()`
+    method of the `AssimpInstance` class. The code is simple and straightforward:
+    we just replay and blend between various animation clips.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the blending code and the finite state machine in place, you can change
+    to the view mode of the application by pressing `F10`. If you press a key for
+    an action while you are at an allowed source state, the action clip will be played.
+    Right after the action clip, the instance goes back to the previous idle/walk/run
+    state.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To complete this chapter’s features, we need to make the state and clip mappings
+    permanent by adding the contents of the `ModelSettings` `struct` and all related
+    custom data types to the configuration file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Saving and loading the states
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We can reuse some of the save and load code we created in the previous chapters
+    when saving and loading the current state of custom data types. The `moveState`
+    and `moveDirection` `enum` `class` types will be stored as integer values in the
+    YAML configuration file of the application. The three new `struct` types, `IdleWalkRunBlending`,
+    `ActionAnimation`, and `ModelSettings`, are deconstructed into their elements
+    when saving them to the configuration file and reassembled when reading the values.
+    The C++ maps and sets are created by using the known combination of YAML sequences
+    and YAML maps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing the new data types
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'For the `moveState` and `moveDirection` structs, we create a new `convert`
+    template in the `YamlParserTypes.h` file in the `tools` folder that will simply
+    cast to `int` and back:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The YAML emitter overloads for `moveState` and `moveDirection` in the `YamlParser.cpp`
+    file in the `tools` folder are also casting the values to `int`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now we can read and write the new data types like every other type when we generate
+    or parse our YAML configuration file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Both struct types, `IdleWalkRunBlending` and `ActionAnimation`, only use int
+    and float values, so the main task here is to find good names for the YAML nodes.
+    For example, the `ActionAnimation` values are stored as `clip` and `clip-speed`
+    in the YAML file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Saving the contents of the `ModelSettings` `struct` is also straightforward.
+    We simply output all the values and iterate over the `msIWRBlendings` and `msActionClipMappings`
+    maps and the `msAllowedStateOrder` set by using `for` loops:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Reading back the `ModelSettings` is done in the `getModelConfigs()` method
+    of the `YamlParser` class. The YAML parsing inside `getModelConfigs()` method
+    is identical to the parsing of the `InstanceSettings` or `CameraSettings` `struct`.
+    By using the `convert` template, all we must do is instruct `yaml-cpp` to use
+    the correct data type when filling the temporary `modeSettings` vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Parsing the C++ maps and sets is a bit tricky. We need to iterate over the
+    node containing the sequence, get every entry as a `std::map`, and add the map
+    to the corresponding map of the `ModelSettings` type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs: []
+  type: TYPE_PRE
+- en: Reading back the model settings in the renderer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Saving the model settings is entirely done by the YAML emitter; no changes
+    to the `saveConfigFile()` method of the renderer are needed. To get the model
+    settings back into the application in the `loadConfigFile()` method, we use the
+    `getModelConfigs()` method of the YAML parser:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we loop over the contents of the vector and we try to add the models
+    using the file name and path found in the loaded model settings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the model cannot be loaded, we stop the loading process. If we want to have
+    more relaxed file handling in case of errors, we can store the models that failed
+    to load, skip the instances of the failed models, and inform the user in a dialog
+    that an error has occurred.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we get the model by the file name again and restore the model settings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we restore the model that was selected when the configuration was
+    saved:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, all animation clip mappings and the state sequences are restored. The application
+    user can take a break from creating a virtual world at any time without losing
+    progress.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the additions from this chapter, we can bring the instances on the screen
+    to life. Depending on the available animations in the model file, the instance
+    can not only walk and run, but also do additional actions like jumping up or forward,
+    rolling around, punching targets, waving, or interacting with the environment.
+    The animations are also blended between the different movements and actions, creating
+    a game-like feeling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we improved animation processing efficiency and added gameplay-like
+    controls to map animation clips to the current animation state. We started by
+    moving the computational work of animation blending from the CPU to the GPU and
+    created lookup tables to reduce the amount of work for the GPU (at the cost of
+    memory usage). Then, we added the different movement states to the code, including
+    a UI-based mapping between states and animation clips. As the last step, we added
+    the new mappings to the YAML configuration file, allowing us to save and restore
+    the mappings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will take a closer look at collision detection. After
+    we can move the instance in the virtual world, we need to avoid just *running
+    through* other instances on the screen. As the first step, we will explore the
+    theoretical background of collision detection and discuss the problems of a naive
+    implementation. Then, we will add spatial partitioning to the virtual world and
+    instance simplifications to reduce the complexity of the collision detection checks.
+    Finally, we will implement multi-level collision detection, allowing us to detect
+    collisions between instances with minimal costs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Practical sessions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are some additions you could make to the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use root motion to control instance movement.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Instead of moving the position of the instances around the virtual world and
+    playing the animation at a specific rate, so-called **Root Motion** can be used
+    to let the animation clips control the movement of the character. In root motion,
+    the movement of the model’s root bone is coordinated by the animation and not
+    by us, allowing a better sync of the feet on the ground. However, root motion
+    data must be baked into model animations to work. Updating the animations is beyond
+    the scope of the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a second direction for the idle/walk/run mapping.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Right now, only animations for the four main directions (forward, backward,
+    left, and right) plus the special wildcards `none` and `any` can be configured.
+    Moving diagonally may look a bit awkward when the feet are not synchronized with
+    the instance movement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add animation blending for diagonal movement.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Similarly to the previous task, instead of adding multiple directions, you can
+    try to blend between the forward/backward and left/right animation clips when
+    the instance is moving in a diagonal direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a preview for the state order configuration.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To preview the transition from **Source** to **Destination** state, the finite
+    state machine would need to be adjusted with some sort of testing mode. The source
+    state must be set and played for a while, i.e., until the animation clip is restarted.
+    Then, the transition to the destination state must be triggered. Plus, we need
+    to forbid the instance from moving; all transitions must happen without changing
+    the world position of the instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allow animation clips to be played in the reverse direction.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The woman model has a clip with a **sit-down** animation. To make the instance
+    stand up again, you could add a Boolean to play the clip either forward or in
+    reverse direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add more speed interpolation functions and make them selectable.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As mentioned in the *Using acceleration and deceleration* section, the interpolation
+    between different speeds is done by a simple linear interpolation. Try to add
+    more advanced interpolation variants here, like separate ease-in and ease-out
+    functions based on curves. You could also add an extra field to the model settings
+    that stores the interpolation function and make additional fields in the UI to
+    choose an interpolation to use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use a graphical tool to draw nodes and connections.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The **Graph Editor** from ImGuizmo (see the link in the *Addition resources*
+    section) adds nodes and connections to ImGui. You could change the mapping configurations
+    to have nodes for states and animation clips and use the connections to define
+    mappings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additional resources
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'ImGuizmo GitHub repo: [https://github.com/CedricGuillemet/ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Join our community on Discord
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Join our community’s Discord space for discussions with the author and other
+    readers: [https://packt.link/cppgameanimation](https://packt.link/cppgameanimation)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![A qr code with black squares  AI-generated content may be incorrect.](img/QR_code_Discord.png)'
+  prefs: []
+  type: TYPE_IMG

@@ -1,0 +1,1009 @@
+- en: '2'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Learning More about Process Management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You became familiar with the concept of processes in the previous chapter. Now,
+    it’s time to get into details. It is important to understand how process management
+    is related to the system’s overall behavior. In this chapter, we will emphasize
+    fundamental OS mechanisms that are used specifically for process control and resource
+    access management. We will use this opportunity to show you how to use some C++
+    features too.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once we’ve investigated the program and its corresponding process as system
+    entities, we are going to discuss the states that one process goes through during
+    its lifetime. You are going to learn about spawning new processes and threads.
+    You are also going to see the underlying problems of such activities. Later we
+    are going to check out some examples while slowly introducing the multithreaded
+    code. By doing so, you will have the opportunity to learn the basics of some POSIX
+    and C++ techniques that are related to asynchronous execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regardless of your C++ experience, this chapter will help you to understand
+    some of the traps that you could end up in at the system level. You can use your
+    knowledge of various language features to enhance your execution control and process
+    predictability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Investigating the nature of the process
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Continuing with the process states and some scheduling mechanisms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learning more about process creation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introducing the system calls for thread manipulation in C++
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To run the code examples in this chapter, you must prepare the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Linux-based system capable of compiling and executing C++20 (for example,
+    **Linux** **Mint 21**)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The GCC12.2 compiler ([https://gcc.gnu.org/git/gcc.gitgcc-source](https://gcc.gnu.org/git/gcc.gitgcc-source))
+    with the `-std=c++2a` and `-``lpthread` flags
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Alternatively, for all the examples, you can use [https://godbolt.org/](https://godbolt.org/)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'All code examples in this chapter are available for download from: [https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%202](https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%202).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Disassembling process creation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As we mentioned in the previous chapter, a process is a running instance of
+    a program that contains its respective metadata, occupied memory, opened files,
+    and so on. It is the main job executor in the OS. Recall that the overall goal
+    of programming is to transform one type of data into another type of data, or
+    count. What we do via programming languages is provide instructions to the hardware.
+    Often, we *tell* the CPU what to do, including moving pieces of data throughout
+    different portions of memory. In other words, the computer must *compute*, and
+    we must tell it how to do this. This understanding is crucial and independent
+    of the programming languages or OSs that are used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this, we have come back to the topic of system programming and understanding
+    system behavior. Let’s immediately state that process creation and execution is
+    neither simple nor fast. And neither is the process switching. It is rarely observable
+    through the naked eye, but if you must design a highly scalable system or have
+    a strict timeline for events during the system’s execution, then you will get
+    to process interaction analysis sooner or later. Again, this is how the computer
+    works and this knowledge is useful when you get into resource optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Speaking of resources, let’s remind ourselves of the fact that our process was
+    initially just a program. It is usually stored on **non-volatile memory** (**NVM**).
+    Depending on the system, this could be a hard drive, SSD, ROM, EEPROM, Flash,
+    and so on. We have mentioned these devices as they have different physical characteristics,
+    such as speed, storage space, write access, and fragmentation. Each of these is
+    an important factor when it comes to the system’s durability, but for this chapter,
+    we care mostly about speed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Again, as we already mentioned in the previous chapter, a program, just like
+    all other OS resources, is a file. The C++ program is an executable object file,
+    which contains the code – for example, the instructions – that must be given to
+    the CPU. This file is the result of a compilation. The compiler is another program
+    that converts the C++ code into machine instructions. It is crucial to be aware
+    of what instructions our system supports. The OS and the compiler are prerequisites
+    for the integrated standards, libraries, language features, and so on, and there
+    is a good chance that the compiled object file is not going to run on another
+    system that’s not exactly matching ours. Moreover, the same code, compiled on
+    another system or through another compiler, would most probably have a different
+    executable object file size. The bigger the size, the longer the time to load
+    the program from **NVM** to the **main memory** (**Random Access Memory** (**RAM**)
+    is used the most). To analyze the speed of our code and optimize it as best as
+    possible for a given system, we will look at a generic diagram regarding the full
+    path along which our data or an instruction goes along. This is slightly off-topic,
+    so bear with us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.1 – Loading a program and its sequence of instruction execution
+    events](img/Figure_02.1_B20833.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.1 – Loading a program and its sequence of instruction execution events
+  prefs: []
+  type: TYPE_NORMAL
+- en: A generalized CPU overview has been provided here as different architectures
+    will have different layouts. L1 and L2 caches are **Static RAM** (**SRAM**) elements,
+    making them extremely fast, but expensive. Therefore, we must keep them small.
+    We also keep them small to achieve small CPU latency. The L2 cache has a bigger
+    capacity to make a shared space between the **Arithmetic Logic Units** (**ALUs**)
+    – a frequent example is two hardware threads in a single core, where the L2 cache
+    plays the shared memory role. The L3 cache doesn’t always exist, but it’s usually
+    based on **Dynamic RAM** (**DRAM**) elements. It is slower than the L1 and the
+    L2 caches but allows the CPU to have one more level of cache, just for speed-up
+    purposes. One example would be instructing the CPU to guess and prefetch data
+    from the RAM, thus sparing time in RAM-to-CPU loads. Modern C++ features can use
+    this mechanism a lot, leading to significant speed-ups in process execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, depending on their roles, three types of caches are recognized:
+    the **instruction cache**, **data cache**, and **Translation Lookaside Buffer**
+    (**TLB**). The first two are self-explanatory, whereas the **TLB** is not directly
+    related to CPU caches – it is a separate unit. It’s used for addresses of both
+    data and instructions, but its role is to speed up virtual-to-physical address
+    translation, which we’ll discuss later in this chapter.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: RAM is often used, and mostly involves **Double Data Rate Synchronous Dynamic
+    RAM** (**DDR SDRAM**) memory circuits. This is a very important point because
+    different DDR bus configurations have different speeds. And no matter the speed,
+    it is still not as fast as CPU internal transfers. Even with a 100%-loaded CPU,
+    the DDR is rarely fully utilized, thus becoming our *first significant bottleneck*.
+    As mentioned in [*Chapter 1*](B20833_01.xhtml#_idTextAnchor014), NVM is way slower
+    than DDR, which is its *second significant bottleneck*. We encourage you to analyze
+    your system and see the speed differences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Your programs’ sizes matter. The process of optimizing the sequence of events
+    for executing program instructions or loading data is a permanent and continuous
+    balancing act. You must be aware of your system’s hardware and OS before thinking
+    of code optimization!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you’re still not convinced, then think about the following: if we have a
+    program to visualize some data on some screen, it might not be an issue for a
+    desktop PC user if it’s there after 1 second or 10 seconds. But if this is a pilot
+    on an airplane, then showing data within a strict time window is a safety compliance
+    feature. And the size of our program matters. We believe the next few sections
+    will give you the tools you’ll need to analyze your environment. So, what happens
+    with our program during execution? Let’s find out.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory segments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '*Memory segments* are also known as *memory layouts* or *memory sections*.
+    These are just areas of memory and should not be mistaken for segmented memory
+    architecture. Some experts prefer to use *sections* when the compile-time operations
+    are discussed and *layout* for the runtime. Choose whatever you like, so long
+    as it describes the same thing. The main segments are **text** (or **code**),
+    **data**, **BSS**, **stack**, and **heap**, where **BSS** stands for **Block Started
+    by Symbol** or **Block Starting Symbol**. Let’s take a closer look:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`const` variables there as well.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Data**: This segment is created at compile time as well and consists of initialized
+    global, static, or both global and static data. It is used for preliminary allocated
+    storage, whenever you don’t want to depend on runtime allocation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`0`, theoretically as per the language standard, but it is practically set
+    to `0` by the OS’s program loader during process startup.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Stack**: The program stack is a memory segment that represents the running
+    program routines – it holds their local variables and tracks where to continue
+    from when a called function returns. It is constructed at runtime and follows
+    the **Last-in, First-Out** (**LIFO**) policy. We want to keep it small and fast.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Heap**: This is another runtime-created segment that is used for dynamic
+    memory allocation. For many embedded systems, it is considered forbidden, but
+    we are going to explore it further later in this book. There are interesting lessons
+    to be learned and it is not always possible to avoid it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In *Figure 2**.1*, you can observe two processes that are running the same
+    executable and are being loaded to the main memory at runtime. We can see that
+    for Linux, the **text** segment is copied only once since it should be the same
+    for both processes. The **heap** is missing as we are not focusing on it right
+    now. As you can see, the **stack** is not endless. Of course, its size depends
+    on many factors, but we guess that you’ve already seen the *stack overflow* message
+    a few times in practice. It is an unpleasant runtime event as the program flow
+    is ungracefully ruined and there’s the chance of it causing an issue at the system
+    level:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.2 – The memory segments of two processes](img/Figure_02.2_B20833.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.2 – The memory segments of two processes
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main memory at the top in *Figure 2**.2* represents the **virtual address
+    space**, where the OS uses a data structure, called a **page table**, to map the
+    process’s memory layout to the physical memory addresses. It is an important technique
+    to generalize the way the OS manages memory resources. That way, we don’t have
+    to think about the device’s specific characteristics or interfaces. At an abstract
+    level, it is quite like the way we accessed files in [*Chapter 1*](B20833_01.xhtml#_idTextAnchor014).
+    We will get back to this discussion later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s use the following code sample for analysis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a very simple program, where a function is called right after the entry
+    point. There’s nothing special here. Let’s compile it for C++20 without any optimizations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The resulting binary object is called `test`. Let’s analyze it through the
+    `size` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The overall size is 2,688 bytes, 2,040 of which are the instructions, 640 are
+    the **data**, and 8 are for **BSS**. As you can see, we don’t have any global
+    or static data, but still, 648 bytes have gone there. Keep in mind that the compiler
+    is still doing its job, so there are some allocated symbols there, which we could
+    analyze further when required:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let’s focus on something else and edit the code as such:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A static variable that’s not initialized must cause **BSS** to grow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, **BSS** is bigger – not by 4 bytes, but with 8\. Let’s double-check the
+    size of our new variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Everything is fine – the unsigned 32-bit integer is for 4 bytes, as expected,
+    but the compiler has put some extra symbols there. We can also see that it is
+    in the `b` in front of the symbol. Now, let’s change the code again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have initialized the variable. Now, we expect it to be in the **data** segment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: As expected, the `d` in front of the symbol). You can also see that the compiler
+    has shrunk `2688` bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s make a final change:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since `const` cannot be changed during the program’s execution, it has to be
+    marked as read-only. For this, it could be put into the **text** segment. Note
+    that this is system implementation-dependent. Let’s check it out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Correct! We can see the letter `r` in front of the symbol and that the `2044`
+    and not `2040`, as it was previously. It seems rather funny that the compiler
+    has generated an 8-byte `static` from the definition? We encourage you to try
+    this out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At this point, you’ve probably made the connection that the bigger compile-time
+    sections generally mean a bigger executable. And a bigger executable means more
+    time for the program to be started because copying the data from NVM to the main
+    memory is significantly slower than copying data from the main memory to the CPU’s
+    caches. We will get back to this discussion later when we discuss context switching.
+    If we want to keep our startup fast, then we should consider smaller compile-time
+    sections, but larger runtime ones. This is a balancing act that is usually done
+    by the software architects, or someone who has a good system overview and knowledge.
+    Prerequisites such as NVM read/write speed, DDR configuration, CPU and RAM loads
+    during system startup, normal work and shutdown, the number of active processes,
+    and so on must be considered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will revisit this topic later in this book. For now, let’s focus on the meaning
+    of the memory segments in the sense of new process creation. Their meaning will
+    be discussed later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Continuing with process states and some scheduling mechanisms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we discussed to how initiate a new process. But what
+    happens with it under the hood? As mentioned in [*Chapter 1*](B20833_01.xhtml#_idTextAnchor014),
+    processes and threads are considered tasks in Linux’s scheduler. Their states
+    are generic, and their understanding is important for correct procedure planning.
+    A task, when expecting a resource, might have to wait or even stopped. We can
+    affect this behavior through synchronization mechanisms as well, such as semaphores
+    and mutexes, which we’ll discuss later in this chapter. We believe that understanding
+    these fundamentals is crucial for system programmers as bad task state management
+    can lead to unpredictability and overall system degradation. This is strongly
+    observable in large-scale systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For now, let’s step aside for a bit and try to simplify the code’s goals –
+    it needs to instruct the CPU to perform an operation and modify the data. Our
+    task is to think about what the correct instructions would be so that we can save
+    time in rescheduling or doing nothing by blocking resources. Let’s look at the
+    states our process could find itself in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.3 – Linux task states and their dependencies](img/Figure_02.3_B20833.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.3 – Linux task states and their dependencies
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The states in the preceding figure are detailed, but Linux presents them to
+    the user in four general letter denotations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Executing (R – Running and Runnable)**: A processor (core or thread) is provided
+    for the instructions of the process – the task is running. The scheduling algorithm
+    might force it to give the execution. Then, the task becomes runnable, and it’s
+    added to a queue of *runnables*, waiting their turn. Both states are distinct
+    but are denoted as *processes* *in execution*.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Sleeping (D – Uninterruptible and S – Interruptible)**: Remember the example
+    with file read/write from the previous chapter? That was a form of uninterruptable
+    sleeping that was caused by waiting for external resources. Sleep cannot be interrupted
+    through signals until the resource is available and the process is available for
+    execution again. Interruptible sleep is not only dependent on resource availability
+    but allows the process to be controlled by signals.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Stopped (T)**: Have you ever used *Ctrl* + *Z* to stop a process? That’s
+    the signal putting the process in a stopped state, but depending on the signal
+    request, it could be ignored, and the process will continue. Alternatively, the
+    process could be stopped until it is signaled to continue again. We will discuss
+    signals later in this book.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Zombie (Z)**: We saw this state in [*Chapter 1*](B20833_01.xhtml#_idTextAnchor014)
+    – the process is terminated, but it is still visible in the OS’s task vector.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Using the `top` command, you will see the letter `S` on the top row of the
+    process information columns:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It will show you the letter denotation for the state of each process. Another
+    option is the `ps` command, where the `STAT` column will give you the current
+    states:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: With that, we know what states the tasks end up in, but not how and why they
+    switch between them. We’ll continue this discussion in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scheduling mechanisms
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Modern Linux distributions provide many scheduling mechanisms. Their sole purpose
+    is to help the OS decide which task must be executed next in an optimized fashion.
+    Should it be the one with the highest priority or the one that will finish fastest,
+    or just a mix of both? There are other criteria as well, so don’t fall under the
+    false apprehension that one will solve all your problems. Scheduling algorithms
+    are especially important when there are more processes in the **R** state than
+    the available processors on the system. To manage this task, the OS has a **scheduler**
+    – a fundamental module that every OS implements in some form. It is usually a
+    separate kernel process that acts like a load balancer, which means it keeps the
+    computer resources busy and provides service to multiple users. It can be configured
+    to aim at small latency, fair execution, max throughput, or minimal wait time.
+    In real-time OSs, it must guarantee that deadlines are met. These factors are
+    obviously in conflict, and the scheduler must resolve these through a suitable
+    compromise. System programmers can configure the system’s preferences based on
+    the users’ needs. But how does this happen?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scheduling at a high level
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We request the OS to start a program. First, we must load it from NVM. This
+    scheduling level considers the execution of the **program loader**. The destination
+    of the program is provided to it by the OS. The **text** and **data** segments
+    are loaded into the main memory. Most modern OSs will load the program *on demand*.
+    This enables a faster process startup and means that only the currently required
+    code is provided at a given moment. The **BSS** data is allocated and initialized
+    there as well. Then, the virtual address space is mapped. The new process, which
+    carries the instructions, is created and the required fields, such as process
+    ID, user ID, group ID, and others, are initialized. The **program counter** is
+    set to the entry point of the program and control is passed to the loaded code.
+    This overhead is considerably significant in the process’s lifetime because of
+    the hardware constraints of **NVM**. Let’s see what happens after the program
+    reaches the RAM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scheduling at a low level
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This is a collection of techniques that try to provide the best order of task
+    execution. Although we don’t mention the term **scheduling** much in this book,
+    be sure that every manipulation we do causes tasks to state switch, which means
+    we cause the scheduler to act. Such an action is known as a **context switch**.
+    The switch takes time too as the scheduling algorithm may need to reorder the
+    queue of tasks, and newly started task instructions must be copied from the RAM
+    to the CPU cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Multiple running tasks, parallel or not, could lead to time spent in rescheduling
+    instead of procedure executions. This is another balancing act that depends on
+    the system programmer’s design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is a basic overview:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.4 – Ready /blocked task queues](img/Figure_02.4_B20833.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.4 – Ready /blocked task queues
+  prefs: []
+  type: TYPE_NORMAL
+- en: The algorithm must pick a task from the queue and place it for execution. At
+    a system level, the basic hierarchy is as (from highest priority to lowest) scheduler
+    -> block devices -> file management -> character devices -> user processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Depending on the queue’s data structure implementation and the **scheduler’s**
+    configuration, we could execute different algorithms. Here are some of them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**First-come-first-serve** (**FCFS**): Nowadays, this is rarely used because
+    longer tasks might stall the system’s performance and important processes might
+    never be executed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Shortest job first** (**SJF**): This provides a shorter time to wait than
+    FCFS, but longer tasks may never be called. It lacks predictability.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Highest priority first** (**HPF**): Here, tasks have priority, where the
+    highest one will be executed. But who sets the priority value and who decides
+    if an incoming process will cause rescheduling or not? The Kleinrock rules are
+    one such discipline where priority is increased linearly, while the task stays
+    in the queue. Depending on the run-stay ratio, different orders are executed –
+    FCFS, Last-CFS, SJF, and so on. An interesting article on this matter can be found
+    here: [https://dl.acm.org/doi/10.1145/322261.322266](https://dl.acm.org/doi/10.1145/322261.322266).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Round-robin**: This is a resource starvation-free and preemptive algorithm,
+    where each task gets a time quantum in an equal portion. Tasks are executed in
+    circular order. Each of them gets a CPU time slot, equal to the time quantum.
+    When it expires, the task is pushed to the back of the queue. As you have probably
+    deduced, the queue’s length and the quantum’s value (usually between 10 and 300ms)
+    are of great significance. An additional technique to maintain fairness is to
+    enrich this algorithm in modern OS schedulers.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Completely fair scheduling** (**CFS**): This is the current Linux scheduling
+    mechanism. It applies a combination of the aforementioned algorithms, depending
+    on the system’s state:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This approach is complex and deserves a book on its own.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What we care about here is the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Priority**: Its value is the actual task priority, and it’s used for scheduling.
+    Values between 0 and 99 are dedicated to real-time processes, whereas values between
+    100 and 139 are for user processes.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Nice**: Its value is meaningful at the user-space level and adjusts the process’s
+    priority at runtime. The root user can set it from -20 to +19 and a simple user
+    could set it from 0 to +19, where a higher **nice** value means lower priority.
+    The default is 0.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Their dependency is that priority = nice + 20 for user processes and priority
+    = -1 – real_time_priority for real-time processes. The higher the priority value,
+    the lower the scheduling priority. We cannot change the base priority of a process,
+    but we can start it with a different `ps` with a new priority:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, `-5` means `5`. Making it `5` requires **sudo** permissions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Changing the priority of a process runtime can be done with the `renice` command
+    and `pid`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will set the `nice` value to `-10`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To start a real-time process or set and retrieve the real-time attributes of
+    `pid`, you must use the `chrt` command. For example, let’s use it to start a real-time
+    process with a priority of `99`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: We encourage you to take a look at other algorithms, such as **Feedback**, **Adaptive
+    Partition Scheduling** (**APS**), **Shortest Remaining Time** (**SRT**), and **Highest
+    Response Ratio** **Next** (**HRRN**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The topic of scheduling algorithms is wide and not only concerns the OS task’s
+    execution but other areas, such as network data management. We cannot go through
+    its entirety here, but it was important to illustrate how to initially handle
+    it and learn about your system’s strengths. That said, let’s continue by looking
+    at process management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning more about process creation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A common practice in system programming is to follow a strict timeline for process
+    creation and execution. Programmers use either daemons, such as `systemd` and
+    other in-house developed solutions, or startup scripts. We can use the Terminal
+    as well but this is mostly for when we repair the system’s state and restore it,
+    or test a given functionality. Another way to initiate processes from our code
+    is through system calls. You probably know some of them, such as `fork()` and
+    `vfork()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing fork()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let’s look at an example; we’ll discuss it afterward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Yes, we are aware that you’ve probably seen a similar example before and it’s
+    clear what should be given as output – a new process is initiated by `fork()`
+    [`1`] and both `pid` values are printed out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: In `Parent`, `fork()` will return the ID of the newly created process; that
+    way, the parent is aware of its children. In `Child`, `0` will be returned. This
+    mechanism is important for process management because `fork()` creates a duplicate
+    of the calling process. Theoretically, the compile-time segments (**text**, **data**,
+    and **BSS**) are created anew in the main memory. The new **stack** starts to
+    unwind from the same entry point of the program, but it branches at the fork call.
+    Then, one logical path is followed by the parent, and another by the child. Each
+    uses its own **data**, **BSS**, and **heap**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You’re probably thinking that large compile-time segments and stacks will cause
+    unnecessary memory usage because of duplication, especially when we don’t change
+    them. And you’re correct! Luckily for us, we are using a virtual address space.
+    This allows the OS to have extra management and abstraction over the memory. In
+    the previous section, we discussed that processes with the same `fork()` endlessly
+    as this will cause a so-called `exec`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: exec and clone()
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `exec` function call is not really a system call, but a group of system
+    calls with the `execXX(<args>)` pattern. Each has a specific role, but most importantly,
+    they create a new process through its filesystem path, known as `NULL`. This code
+    is similar to the previous example, but a few changes have been made:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: You can probably see that something’s missing from the printed output. Where’s
+    the `"Process called!"` message? If something went wrong, such as the executable
+    not being found, then we will observe `"Process creation failed!"`. But in this
+    case, we know it has been run because of the parent and child outputs. The answer
+    to this can be found in the paragraph before this code example – the memory segments
+    are replaced with the ones from `test_fork`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similarly to `exec`, `clone()` is a wrapper function to the real `clone()` system
+    call. It creates a new process, such as `fork()`, but allows you to precisely
+    manage the way the new process is instantiated. A few examples are virtual address
+    space sharing, signal handles, file descriptors, and so on. `vfork()`, as mentioned
+    earlier, is a special variant of `clone()`. We encourage you to spend some time
+    and take a look at some examples, although we believe that most of the time, `fork()`
+    and `execXX()` will be enough.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, we’ve chosen the `execv()` function {`1`} for the given example.
+    We’ve used this for simplicity and also because it’s related to *Figure 2**.5*.
+    But before we look at this figure, there are other functions we can use as well:
+    `execl()`, `execle()`, `execip()`, `execve()`, and `execvp()`. Following the `execXX()`
+    pattern, we need to be compliant with the given requirement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`e` requires the function to use an array of pointers to the environmental
+    variables of the system, which are passed to the newly created process.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`l` requires the command-line arguments to be stored in a temporary array and
+    have them passed to the function call. This is just for convenience while handling
+    the array’s size.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`p` requires the path’s environment variable (seen as `PATH` in Unix) to be
+    passed to the newly loaded process.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`v` was used earlier in this book – it requires the command-line arguments
+    to be provided to the function call, but they are passed as an array of pointers.
+    In our example, we are setting it to `NULL` for simplicity.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let’s see what this looks like now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: In a nutshell, their implementation is the same when it comes to how we create
+    a new process. The choice of whether or not to use them strictly depends on your
+    needs and software design. We will revisit the topic of process creation several
+    times in the next few chapters, especially when it goes to shared resources, so
+    this will not be the last time we mention it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s take a look at a trivial example: suppose we have a process-system command
+    that’s initiated through the command-line Terminal – `&`. This can be expressed
+    through the following graph:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 2.5 – Executing commands from the shell](img/Figure_02.5_B20833.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 2.5 – Executing commands from the shell
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have used this figure to emphasize the non-visible system calls for parent-child
+    relationships between processes in Linux. In the background, the `exec()`. The
+    kernel takes control and goes to the entry point of the application, where `main()`
+    is called. The executable does its work and when `main()` returns, the process
+    is ended. The ending routine is implementation-specific, but you can trigger it
+    yourself in a controlled manner through the `exit()` and `_exit()` system calls.
+    In the meantime, the **shell** is put to wait. Now, we’ll cover how to terminate
+    a process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminating a process
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Usually, `exit()` is seen as a library function that’s implemented on top of
+    `_exit()`. It does some extra work, such as buffer cleanup and closing streams.
+    Using `return` in `main()` could be considered the equivalent of calling `exit()`.
+    `_exit()` will handle the process termination by deallocating the data and the
+    stack segments, destructing kernel objects (shared memory, semaphores, and so
+    on), closing the files, and informing the parent about its status change (the
+    `SIGCHLD` signal will be triggered). Their interfaces are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`void` `_exit(int status)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void` `exit(int status)`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'It’s a common notion that the `status` value, when set to `0`, means a normal
+    process termination, whereas others indicate a termination caused by an internal
+    process issue. Therefore, the `EXIT_SUCCESS` and `EXIT_FAILURE` symbols are defined
+    in `stdlib.h`. To demonstrate this, we could modify our fork example from earlier
+    like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: So, the child will proceed as expected because nothing in particular happens,
+    but we enable it to manage its termination policy better. The output will be the
+    same as in the previous example. We will enrich this even further with a code
+    snippet in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But before we do that, let’s note that both functions are usually related to
+    a controlled manner of process termination. `abort()` will lead a process to termination
+    in a similar fashion, but the `SIGABRT` signal will be triggered. As discussed
+    in the next chapter, some signals should be handled and not ignored – this one
+    is a good example of gracefully handling the exit routine of a process. In the
+    meantime, what does the parent do and could it be affected by the child’s exit
+    code? Let’s see.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocking a calling process
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As you may have noticed in *Figure 2*.5, a process might be set to wait. Using
+    the `wait()`, `waitid()`, or `waitpid()` system calls will cause the calling process
+    to be blocked until it receives a signal or one of its children changes its state:
+    it is terminated, it is stopped by a signal, or it is resumed by a signal. We
+    use `wait()` to instruct the system to release the resources related to the child;
+    otherwise, it becomes a **zombie**, as discussed in the previous chapter. These
+    three methods are almost the same, but the latter two are compliant with POSIX
+    and provide more precise control over the monitored child process. The three interfaces
+    are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`pid_t` `wait(int *status);`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pid_t waitpid(pid_t pid, int *status,` `int options);`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`int waitid(idtype_t idtype, id_t id, siginfo_t * infop ,` `int options);`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `status` argument has the same role for the first two functions. `wait()`
+    could be represented as `waitpid(-1, &status, 0)`, meaning the process caller
+    must wait for any child process that terminates and receive its status. Let’s
+    take a look at one example directly with `waitpid()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result from this execution is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, we are creating two child processes and we set one of them to
+    exit successfully and the other with a failure ([`1`] and [`2`]). We set the parent
+    to wait for their exit statuses ([`1`] and [`5`]). When the child exits, the parent
+    is notified through a signal accordingly, as described earlier, and the exit statuses
+    are printed out ([`4`] and [`6`]).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, `idtype` and the `waitid()` system call allow us to wait not only
+    for a certain process but also for a group of processes. Its status argument provides
+    detailed information about the actual status update. Let’s modify the example
+    again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: We changed `exit()` to `abort()` ([`1`]), which caused the child process to
+    receive `SIGABRT` and exit with default handling (not exactly what we advised
+    earlier). We used the `struct` status ([`2`]) to collect more meaningful status
+    change information. The `waitid()` system call is used to monitor a single process
+    and is set to wait for it to exit ([`3`]). If the child process signals its exit,
+    then we print out the meaningful information ([`4`]), which in our case proves
+    that we get `SIGABRT` (with a value of `6`), the update comes with `SIGCHLD` (with
+    a value of `20`) and the exit code is `2`, as per the documentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `waitid()` system call has various options and through it, you can monitor
+    your spawned processes in real time. We will not delve deeper here, but you can
+    find more information on the manual pages should it suit your needs: [https://linux.die.net/man/2/waitid](https://linux.die.net/man/2/waitid).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: An important remark is that with POSIX and Linux’s thread management policy,
+    which we discussed earlier, by default, a thread will wait on children of other
+    threads in the same thread group. That said, we’ll get into some thread management
+    in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the system calls for thread manipulation in C++
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As discussed in [*Chapter 1*](B20833_01.xhtml#_idTextAnchor014), we use threads
+    to execute separate procedures in parallel. They exist only in the scope of a
+    process and their creation overhead is bigger than the thread’s one, so we consider
+    them lightweight, although they have their own stack and `task_struct`. They are
+    almost self-sufficient, except they rely on the parent process to exist. That
+    process is also known as *the main thread*. All others that are created by it
+    need to join it to be initiated. You could create thousands of threads simultaneously
+    on the system, but they will not run in parallel. You can run only *n* parallel
+    tasks, where *n* is the number of the system’s concurrent ALUs (occasionally,
+    these are the hardware’s concurrent threads). The others will be scheduled according
+    to the OS’s task-scheduling mechanism. Let’s look at the simplest example of a
+    POSIX thread interface:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Of course, there are other system calls we could use to manage the POSIX threads
+    further, such as exiting a thread, receiving the called procedure’s returned value,
+    detaching from the main thread, and so on. Let’s take a look at C++’s thread realization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: This looks simpler, but it provides the same operations as the POSIX thread.
+    To be consistent with the language, we advise you to use the C++ thread object.
+    Now, let’s see how these tasks are executed. Since we’ll cover the newly added
+    C++20 **jthreads** feature in [*Chapter 6*](B20833_06.xhtml#_idTextAnchor086),
+    we will provide a system programming overview in the next few sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Joining and detaching threads
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Regardless of whether you join threads through POSIX system calls or C++, you
+    require this action to execute a routine through a given thread and wait for its
+    termination. One remark, though – on Linux, the thread object of `pthread_join()`
+    must be joinable, and the C++ thread object is not joinable by default. It is
+    a good practice to join threads separately since joining them simultaneously leads
+    to undefined behavior. It works the same way as the `wait()` system call does,
+    except it relates to threads instead of processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And the same way processes could be run as daemons, threads can become daemons
+    as well through detaching – `pthread_detach()` for POSIX or `thread::detach()`
+    in C++. We are going to see this in the following example, but we are also going
+    to analyze the joinable setting of the threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The respective output is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding example is fairly simple – we create two thread objects: one
+    is to be detached from the main thread handle (`detached_routine()`), while the
+    other (`joined_thread()`) will join the main thread after exit. We check their
+    joinable status at creation and after setting them to work. As expected, after
+    the threads get to their routines, they are no longer joinable until they are
+    terminated.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thread termination
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Linux (POSIX) provides two ways to end a thread’s routine in a controlled manner
+    from the inside of the thread: `pthread_cancel()` and `pthread_exit()`. As you
+    have probably guessed from their names, the second one terminates the caller thread
+    and is expected to always succeed. In contrast with the process `exit()` system
+    call, during this one’s execution, no process-shared resources, such as semaphores,
+    file descriptors, mutexes, and so on, will be released, so make sure you manage
+    them before the thread exits. Canceling the thread is a more flexible way to do
+    this, but it ends up with `pthread_exit()`. Since the thread cancelation request
+    is sent to the thread object, it has the opportunity to execute a cancelation
+    cleanup and call thread-specific data destructors.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As C++ is an abstraction on top of the system call interface, it uses the thread
+    object’s scope to manage its lifetime and does this well. Of course, whatever
+    happens in the background is implementation-specific and depends on the system
+    and the compiler. We are revisiting this topic later in this book as well, so
+    use this opportunity to familiarize yourself with the interfaces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we walked through the low-level events that occur during process
+    or thread creation and manipulation. We discussed the processes’ memory layout
+    and its significance. You also learned some important points about the OS’s way
+    of task scheduling and what happens in the background during process and thread
+    state updates. We will use these fundamentals later in this book. The next chapter
+    will cover filesystem management and will provide you with some interesting C++
+    instruments in that domain.
+  prefs: []
+  type: TYPE_NORMAL

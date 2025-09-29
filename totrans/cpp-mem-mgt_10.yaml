@@ -1,0 +1,1077 @@
+- en: '10'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Arena-Based Memory Management and Other Optimizations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our memory-management toolbox is growing with every chapter. We now know how
+    to overload memory allocation operators ([*Chapter 7*](B21071_07.xhtml#_idTextAnchor116))
+    and how to put this skill to work in ways that solve a variety of concrete problems
+    ([*Chapter 8*](B21071_08.xhtml#_idTextAnchor128) and [*Chapter 9*](B21071_09.xhtml#_idTextAnchor141)
+    both give a few illustrative, real-world examples).
+  prefs: []
+  type: TYPE_NORMAL
+- en: One important reason why one would want to take control of memory allocation
+    mechanisms is *performance*. Now, it would be presumptuous (and plain wrong!)
+    to state that it’s trivial to beat the implementation of these functions as provided
+    by your library vendor, as these are good, often *very* good, for the average
+    case. The key element of the previous phrase, of course, is “for the average case.”
+    When one’s use case has specificities that are known of beforehand, it is sometimes
+    possible to benefit from that information and carve an implementation that outperforms,
+    maybe by a wide margin, anything that could have been designed for excellent *average*
+    performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter is about using knowledge of the memory management problem we want
+    to solve and building a solution that excels for us. This can mean a solution
+    that’s faster on average, that’s fast enough even in the worst case, that shows
+    deterministic execution times, that reduces memory fragmentation, and so on. There
+    are many different needs and constraints in real-world programs after all, and
+    we often have to make choices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once this chapter is over, our toolbox will be expanded to let us do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Write arena-based allocation strategy algorithms optimized to face a priori
+    known constraints
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Write per-memory block-size allocation strategies
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understand the benefits as well as the risks associated with such techniques
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The techniques covered in this chapter will lead us to explore use cases very
+    close to those for which memory allocation operators are overloaded in some specialized
+    application domains. Thus, we will initially apply them to a “real life” problem:
+    the fight between Orcs and Elves in a medieval fantasy game.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the (sometimes diminishing) returns of optimization
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we will be discussing optimization techniques (among other things) in
+    this chapter, some words of warning are in order: *optimization is a tricky thing*,
+    a moving target, and what makes code better one day could pessimize it another
+    day. Similarly, what can seem like a good idea in theory can lead to slowdowns
+    in practice once implemented and tested, and one can sometimes spend a lot of
+    time optimizing a piece of code that is rarely taken, effectively wasting time
+    and money.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before trying to optimize parts of your program, it’s generally wise to measure,
+    ideally with a profiling tool, and identify the parts that might benefit from
+    your efforts. Then, keep a simple (but correct) version of your code close by
+    and use it as a baseline. Whenever you try an optimization, compare the results
+    with the baseline code and run these tests regularly, particularly when changing
+    hardware, library, compiler, or version thereof. Sometimes, something such as
+    a compiler upgrade might induce a new optimization that “sees through” the simple
+    baseline code and makes it faster than your finely crafted alternative. Be humble,
+    be reasonable, measure early, and measure often.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter10](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter10).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Arena-based memory management
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The idea behind arena-based memory management is to allocate a chunk of memory
+    at a known moment in the program and manage it as a “small, personalized heap”
+    based on a strategy that benefits from knowledge of the situation or of the problem
+    domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are many variants on this general theme, including the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In a game, allocate and manage the memory by scene or by level, deallocating
+    it as a single chunk at the end of said scene or level. This can help reduce memory
+    fragmentation in the program.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When the conditions in which allocations and deallocations are known to follow
+    a given pattern or have bounded memory requirements, specialize allocation functions
+    to benefit from this information.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Express a form of ownership for a group of similar objects in such as way as
+    to destroy them all at a later point in the program instead of doing so one object
+    at a time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The best way to explain how arena-based allocation works is probably to write
+    an example program that uses it and shows both what it does and what benefits
+    this provides. We will write code in such a way as to use the same test code with
+    either the standard library-provided allocation functions or our own specialized
+    implementation, depending on the presence of a macro, and, of course, we will
+    measure the allocation and deallocation code to see whether there is a benefit
+    to our efforts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Specific example – size-based implementation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Suppose we are working on a video game where the action converges toward a stupendous
+    finale where Orcs and Elves meet in a grandiose battle. No one really remembers
+    why these two groups hate each other, but there is a suspicion that one day, one
+    of the Elves said to one of the Orcs “You know, you don’t smell all that bad today!”
+    and this Orc was so insulted that it started a feud that still goes on today.
+    It’s a rumor, anyway.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It so happens that, in this game, some things are known about the behavior
+    of Orc-using code, specifically, the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There will never be more than a certain number of dynamically allocated `Orc`
+    objects overall, so we have an upper bound to the space required to store these
+    beasties.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The Orcs that die will not come back to life in that game, as there are no shamans
+    to resurrect them. Expressed otherwise, there is no need to implement a strategy
+    that reuses the storage of an `Orc` object once it has been destroyed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'These two properties open algorithmic options for us:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we have enough memory available, we could allocate upfront a single memory
+    block large enough to put all the `Orc` objects in the game as we know what the
+    worst-case scenario is
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since we know that we will not need to reuse the memory associated with individual
+    `Orc` objects, we can implement a simple (and very fast) strategy for allocation
+    that does almost no bookkeeping and, as we will see, lets us achieve deterministic,
+    constant-time allocation *for* *this type*
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the sake of this example, the `Orc` class will be represented by three
+    data members, `name` (a `char[4]` as these beasties have a limited vocabulary),
+    `strength` (of type `int`), and `smell` (of the `double` type as these things
+    have… a reputation), as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will use arbitrary default values for our `Orc` objects as we are only concerned
+    about allocation and deallocation for this example. You can write more elaborate
+    test code that uses non-default values if you feel like it, of course, but that
+    would not impact our discussion so we will target simplicity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we are discussing the memory allocation of a large block upfront through
+    our size-based arena, we need to look at memory size consumption for `Orc` objects.
+    Supposing `sizeof(int)==4` and `sizeof(double)==8` and supposing that, being fundamental
+    types, their alignment requirements match their respective sizes, we can assume
+    that `sizeof(Orc)==16` in this case. If we aim to allocate enough space for all
+    `Orc` objects at once, ensuring `sizeof(Orc)` remains reasonable for the resources
+    at our disposal is important. For example, defining the maximum number of `Orc`
+    objects in a program as `Orc::NB_MAX` and the maximal amount of memory we can
+    allocate at once for `Orc` objects as some hypothetical constant named `THRESHOLD`,
+    we could leave a `static_assert` such as the following in our source code as a
+    form of *constraints-respected check*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This way, if we end up evolving the `Orc` class to the point where resources
+    become an issue, the code will stop compiling and we will be able to reevaluate
+    the situation. In our case, with a memory consumption of approximately 16 MB,
+    we will suppose we are within budget and that we can proceed with our arena.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will want to compare our arena-based implementation with a baseline implementation,
+    which, in this case, will be the standard library-provided implementation of the
+    memory allocation functions. It’s important to note upfront that each standard
+    library implementation provides its own version of these functions, so you might
+    want to run the code we will be writing here on more than one implementation to
+    get a better perspective on the impact of our techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To write code that allows us to do a proper comparison, we will need two distinct
+    executables as we will be in an either/or situation (we either get the standard
+    version or the “homemade” one we are writing), so this is a good use case for
+    macro-based conditional compilation. We will thus write a single set of source
+    files that will conditionally replace the standard library-provided versions of
+    the allocation operators with ours but will otherwise be essentially identical.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will work from three files: `Orc.h`, which declares the `Orc` class and
+    the conditionally defined allocation operator overloads; `Orc.cpp`, which provides
+    the implementation for these overloads as well as the arena implementation itself;
+    and a test program that allocates `Orc::NB_MAX` objects of type `Orc` then later
+    destroys them and measures the time it takes to do these two operations. Of course,
+    as with most microbenchmarks, take these measurements with a grain of salt: the
+    numbers will not be the same in a real program where allocations are interspersed
+    with other code, but at least we will apply the same tests to both implementations
+    of the allocation operators so the comparison should be reasonably fair.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declaring the Orc class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'First, let us examine `Orc.h`, which we have already seen in part when showing
+    the data member layout of the `Orc` class earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `HOMEMADE_VERSION` macro can be uncommented to use our version of the allocation
+    functions. As can be expected, since we are applying a special strategy for the
+    `Orc` class and its expected usage patterns, we are using member-function overloads
+    for the allocation operators. (We would not want to treat `int` objects or – imagine!
+    – Elves the same way we will treat Orcs, would we? I thought not.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the Orc class and implementing an arena
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The essence of the memory management-related code will be in `Orc.cpp`. We will
+    go through it in two steps, the arena implementation and the allocation operator
+    overloads, and analyze the different important parts separately. The whole implementation
+    found in this file will be conditionally compiled based on the `HOMEMADE_VERSION`
+    macro.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will name our arena class `Tribe`, and it will be a singleton. Yes, that
+    reviled design pattern we used in [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128)
+    again, but we really do want a single `Tribe` object in our program so that conveys
+    the intent well. The important parts of our implementation are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The default (and only) constructor of the `Tribe` class allocates a single
+    block of `Orc::NB_MAX*sizeof(Orc)` bytes. It is important to note right away that
+    there are no `Orc` objects in that chunk: this memory block is just the right
+    size and shape to put all the `Orc` objects we will need. A key idea for arena-based
+    allocation is that, at least for this implementation, *the arena manages raw memory,
+    not objects*: object construction and destruction are the province of user code,
+    and any object not properly destroyed at the end of the program is user code’s
+    fault, not the fault of the arena.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We validate at once that the allocation succeeded. I used an `assert()` in this
+    case, as the rest of the code depends on this success, but throwing `std::bad_alloc`
+    or calling `std::abort()` would also have been reasonable options. A `Tribe` object
+    keeps two pointers, `p` and `cur`, both initially pointing at the beginning of
+    the block. We will use `p` as the *beginning of block* marker, and `cur` as the
+    *pointer to the next block to return*; as such, `p` will remain stable throughout
+    program execution and `cur` will move forward by `sizeof(Orc)` bytes with each
+    allocation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using char* or Orc*
+  prefs: []
+  type: TYPE_NORMAL
+- en: This `Tribe` implementation uses `char*` for the `p` and `cur` pointers but
+    `Orc*` would have been a correct choice also. One simply needs to remember that,
+    as far as the `Tribe` object is concerned, there are no `Orc` objects in the arena
+    and the use of type `Orc*` is simply a convenient lie to simplify pointer arithmetic.
+    The changes this would entail would be replacing `static_cast<char*>` with `static_cast<Orc*>`
+    in the constructor, and replacing `cur+=sizeof(Orc)` with `++cur` in the implementation
+    of the `allocate()` member function. It’s mostly a matter of style and personal
+    preference.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The destructor frees the entire block of memory managed by the `Tribe` object.
+    This is a very efficient procedure: it’s quicker than separately freeing smaller
+    blocks, and it leads to very little memory fragmentation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This first implementation uses the Meyers singleton technique seen in [*Chapter
+    8*](B21071_08.xhtml#_idTextAnchor128), but we will use a different approach later
+    in this chapter to compare the performance impacts of two implementation strategies
+    for the same design pattern… because there are such impacts, as we will see.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The way our size-based arena implementation will benefit from our a priori
+    knowledge of the expected usage pattern is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each allocation will return a sequentially “allocated” `Orc`-sized block, meaning
+    that there is no need to search for an appropriately sized block – we always know
+    where it is.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There is no work to do when deallocating as we are not reusing the blocks once
+    they have been used. Note that, per standard rules, the allocation and deallocation
+    functions have to be thread-safe, which explains our use of `std::mutex` in this
+    implementation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The code follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you might have guessed already, these allocation conditions are close to
+    optimal, but they happen more often than we would think in practice. A similarly
+    efficient usage pattern would model a stack (the last block allocated is the next
+    block freed), and we write code that uses local variables every day without necessarily
+    realizing that we are using what is often an optimal usage pattern for the underlying
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then come to the overloaded allocation operators. To keep this implementation
+    simple, we will suppose there will be no array of `Orc` objects to allocate, but
+    you can refine the implementation to take arrays into account (it’s not a difficult
+    task; it’s just more complicated to write relevant test code). The role played
+    by these functions is to delegate the work to the underlying arena, and they will
+    only be used for the `Orc` class (there is a caveat to this, which will be discussed
+    in the *When parameters change* section later in this chapter). As such, they
+    are almost trivial:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Testing our implementation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We then come to the test code implementation we will be using. This program
+    will be made of a microbenchmark function named `test()` and of a `main()` function.
+    We will examine both separately.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `test()` function will take a non-`void` function, `f()`, a variadic pack
+    of arguments, `args`, and call `f(args...)` making sure to use perfect forwarding
+    for the arguments in that call to make sure the arguments are passed with the
+    semantic intended in the original call. It reads a clock before and after the
+    call to `f()` and returns a `pair` made of the result of executing `f(args...)`
+    and the time elapsed during this call. I used `high_resolution_clock` in my code
+    but there are valid reasons to use either `system_clock` or `steady_clock` in
+    this situation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might wonder why we are requiring non-`void` functions and returning the
+    result of calling `f(args...)` even if, in some cases, the return value might
+    be a little artificial. The idea here is to ensure that the compiler thinks the
+    result of `f(args...)` is useful and does not optimize it away. Compilers are
+    clever beasts indeed and can remove code that seems useless under what is colloquially
+    known as the “as-if rule” (simply put, if there is no visible effect to calling
+    a function, just get rid of it!).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the test program itself, pay attention to the following aspects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we will use `std::vector<Orc*>`, not `std::vector<Orc>`. This might seem
+    strange at first, but since we are testing the speed of `Orc::operator new()`
+    and `Orc::operator delete()`, we will want to actually call these operators! If
+    we were using a container of `Orc` objects, there would be no call to our operators
+    whatsoever.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We call `reserve()` on that `std::vector` object before running our tests,
+    to allocate the space to put the pointers to the `Orc` objects we will be constructing.
+    That is an important aspect of our measurements: calls to `push_back()` and similar
+    insertion functions in a `std::vector` object will need to reallocate if we try
+    to add an element to a full container, and this reallocation will add noise to
+    our benchmarks, so ensuring the container will not need to reallocate during the
+    tests helps us focus on what we want to measure.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What we measure with our `test()` function (used many times already in this
+    book) is a sequence of `Orc::NB_MAX` calls to `Orc::operator new()`, eventually
+    followed by the same number of calls to `Orc::operator delete()`. We suppose a
+    carnage of sorts in the time between the constructions and the destructions, but
+    we are not showing this violence out of respect for you, dear reader.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Once we reach the end, we print out the results of our measurements, using microseconds
+    as the measurement unit – our computers today are fast enough that milliseconds
+    would probably not be granular enough.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The code follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, you might wonder whether this is all worth the effort. After
+    all, our standard libraries are probably very efficient (and indeed, they are,
+    on average, excellent!). The only way to know whether the results will make us
+    happy is to run the test code and see for ourselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Looking at the numbers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Using an online gcc 15 compiler with the -O2 optimization level and running
+    this code twice (once with the standard library version and once with the homemade
+    version using a Meyers singleton), I get the following numbers for calls to the
+    `new` and `delete` operators on `Orc::NB_MAX` (here, 106) objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '|  |  | Homemade |'
+  prefs: []
+  type: TYPE_TB
+- en: '| N=106 | Standard library | Meyers singleton |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `operator new()` | 23433μs | 17906μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `operator delete()` | 7943μs | 638μs |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 10.1 – Speed comparison with Meyers singleton implementation
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Actual numbers will vary depending on a variety of factors, of course, but
+    the interesting aspect of the comparison is the ratio: our homemade `operator
+    new()` only took 76.4% of the time consumed by the standard library-provided version
+    and our homemade `operator delete()` took… 8.03% of the time required by our baseline.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Those are quite pleasant results, but they should not really surprise us: we
+    perform constant-time allocation and essentially “no time” deallocation. We do
+    take the time to lock and unlock a `std::mutex` object on every allocation, but
+    most standard libraries implement mutexes that expect low contention and are very
+    fast under those circumstances, and it so happens that our program does single-threaded
+    allocations and deallocations that lead to code that is clearly devoid of contention.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, your acute reasoning skills might lead you to be surprised that deallocation
+    is not actually faster than what we just measured. It’s an empty function we are
+    calling, after all, so what’s consuming this CPU time?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The answer is… our singleton, or more precisely, access to the `static` local
+    variable used for the Meyers implementation. Remember from [*Chapter 8*](B21071_08.xhtml#_idTextAnchor128)
+    that this technique aims to ensure that a singleton is created when needed, and
+    `static` local variables are constructed the first time their enclosing function
+    is called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'C++ implements “magic statics” where the call to the `static` local object’s
+    constructor is guarded by synchronization mechanisms that ensure the object is
+    constructed only once. As we can see, this synchronization, efficient as it is,
+    is not free. In our case, if we can guarantee that no other global object will
+    need to call `Tribe::get()` before `main()` is called, we can replace the Meyers
+    approach with a more classical approach where the singleton is simply a `static`
+    data member of the `Tribe` class, declared within the scope of that class and
+    defined at global scope:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Moving the definition of the singleton object away from within the function
+    – placing it at global scope – removes the need for synchronization around the
+    call to its constructor. We can now compare this implementation with our previous
+    results to evaluate the costs involved, and the gains to be made (if any).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the same test setup as used previously, adding the “global” singleton
+    to the set of implementations under comparison, we get the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| N=106 |  | Homemade |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Standard library | Meyers singleton | Global singleton |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Operator new()` | 23433μs | 17906μs | 17573μs |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `Operator delete()` | 7943μs | 638μs | 0μs |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 10.2 – Speed comparison with Meyers and “global” singleton implementations
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, this is more like it! The calls to `operator new()` are slightly faster
+    than they were 74.99% (of the time it took with the standard library version,
+    and 98.14% of the time it took with the Meyers singleton), but the calls to `operator
+    delete()` have become no-ops. It’s hard to do better than this!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So, is it worth the effort? It depends on your needs, of course. Speed is a
+    factor; in some programs, the speed gain can be a necessity, but in others, it
+    can be a non-factor or almost so. The reduction in memory fragmentation can make
+    a big difference in some programs too, and some will use arenas precisely for
+    that reason. The point is this: if you need to do this, now you know how.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generalizing to SizeBasedArena<T,N>
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Tribe` class as written seems specific to the `Orc` class but, in practice,
+    it really is specific to `Orc`-*sized* objects as it never calls any function
+    of the `Orc` class; it never constructs an `Orc` object, nor does it ever destroy
+    one. This means that we could turn that class into a generic class and reuse it
+    for other types that are expected to be used under similar constraints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To achieve this, we would decouple the arena code from the `Orc` class and
+    put it in a separate file, maybe called `SizeBasedArena.h`, for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: It might be surprising that we used `T` and `N` as template parameters. Why
+    type `T` instead of an integer initialized with `sizeof(T)` if we do not use `T`
+    in the arena? Well, if the `Elf` class (for example) used a size-based arena too,
+    and if we were unlucky enough that `sizeof(Orc)==sizeof(Elf)`, then basing ourselves
+    on the sizes of the types rather than on the types themselves might, if the values
+    for their respective `N` parameters are the same, lead `Orc` and `Elf` to use
+    the same arena… and we do not want that (nor do they!).
+  prefs: []
+  type: TYPE_NORMAL
+- en: To simplify the initialization of the singleton in this generic example, we
+    went back to the Meyers technique. It’s more difficult to guarantee the absence
+    of interdependence at construction time for global objects when writing generic
+    code than it was writing the `Orc`-specific equivalent, as the move to generic
+    code just enlarged the potential user base significantly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The implementation in `Orc.cpp` would now be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might have noted that since `SizeBasedArena<T,N>` implements allocation
+    functions for a single object or an array of `n` objects, we have extended the
+    `Orc` class’s member function allocation operator overloads to cover `operator
+    new[]()` and `operator delete[]()`. There’s really no reason not to do so at this
+    point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When parameters change
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Our size-based arena implementation is very specific: it supposes the possibility
+    of sequential allocations and the ability to dismiss the (generally important)
+    question of reusing memory after it has been freed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An important caveat to any size-based implementation is, obviously, that we
+    are counting on a specific size. Know, thus, that with this constraint, our current
+    implementation is slightly dangerous. Indeed, consider the following evolution
+    of our program, where we envision tougher, meaner `Orc` subclasses such as the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: It might not be apparent at first, but we just might have broken something important
+    with this new class, as *the member function allocation operators are inherited
+    by derived classes*. This means that the `Tribe` class, also known under the somewhat
+    noisier name of `SizeBasedArena<Orc,Orc::NB_MAX>`, would implement a strategy
+    meant for blocks of `sizeof(Orc)` bytes but be used (accidentally) also for objects
+    of size `MeanOrc`. This can only lead to pain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can protect ourselves from this disastrous situation in two ways. For the
+    `Orc` class, we could disallow derived classes altogether by marking the class
+    as `final`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: This removes the possibility of writing `MeanOrc` as a derived class of `Orc`;
+    we can still write `MeanOrc`, but through composition or other techniques, which
+    would sidestep the inherited operators problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From the perspective of `SizeBasedArena<T,N>` itself, we can also decide to
+    restrict our implementation to `final` types, as in this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This last part might not be for everyone, however. There are lots of types (fundamental
+    types, for example) that are not `final` and that could reasonably be used in
+    a size-based arena, so it’s up to you to see whether this is a good idea or not
+    for the kind of code you write. If it’s not good for you, then these constraints
+    could be expressed as prose rather than as code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Size-based arenas are far from the only use case for memory arenas. We could
+    envision many variations on both the size-based theme and the allocation strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, suppose we introduce shamans in our game and the need to reuse
+    memory becomes a reality. We could have a situation where there are, at most,
+    `Orc::NB_MAX` objects of the `Orc` type in the program *at once*, but there might
+    be more than that number *overall* during the entire program’s execution. In such
+    a situation, we need to consider the following things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If we allow arrays, we will have to deal with *internal* fragmentation within
+    the arena, so we might want to consider an implementation that allocates more
+    than `N*sizeof(T)` bytes per arena, but how much more?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will need a strategy to reuse memory. There are many approaches at our disposal,
+    including maintaining an ordered list of `begin,end` pairs to delimit the free
+    blocks (and fuse them more easily to reduce fragmentation) or keeping a stack
+    (maybe a set of stacks based on block size) of recently freed blocks to make it
+    easier to reuse freed blocks quickly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Answers to such questions as “*What is the best approach for our code base?*”
+    are in part technical and in part political: what makes allocation fast may slow
+    down deallocation, what makes allocation speed deterministic may cost more in
+    memory space overhead, and so on. The question is to determine what trade-offs
+    work best in our situation and measure to ensure we reap the desired benefits.
+    If we cannot manage to do better than the standard library already does, then
+    by all means, use the standard library!'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Chunked pools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Our size-based arena example was optimized for a single block size and specific
+    usage patterns, but there are many other reasons to want to apply a specialized
+    allocation strategy. In this section, we will explore the idea of a “chunked pool,”
+    or a pool of pre-allocated raw memory of selected block sizes. This is meant as
+    an academic example to build upon more than as something to use in production;
+    the code that follows will be reasonably fast and can be made to become very fast,
+    but in this book, we will focus on the general approach and leave you, dear reader,
+    to enjoy optimizing it to your liking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The idea in this example is that user code plans to allocate objects of similar
+    (but not necessarily identical) sizes and of various types and supposes an upper
+    bound on the maximal number of objects. This gives us additional knowledge; using
+    that knowledge, we will write a `ChunkSizedAllocator<N,Sz...>` type where `N`
+    will be the number of objects of each “size category” and each integral value
+    in `Sz...` will be a distinct size category.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To give a clarifying example, a `ChunkSizedAllocator<10,20,40,80,160>` object
+    would pre-allocate sufficient raw memory to hold 10 objects of size 20 bytes,
+    40 bytes, 80 bytes, and 160 bytes each for a total of at least 3,000 bytes (the
+    sum of the minimal size required for each size category being *200 + 400 + 800
+    + 1600*). We say “at least” in this case because to be useful, our class will
+    need to consider alignment and will generally need more than the minimal amount
+    of memory if we are to avoid allocating misaligned objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To understand what we are going to do, here are some pointers (pun intended):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the variadic sequence of integral values `Sz...` we will require the values
+    to be sorted in ascending order, as this will make further lookup faster (linear
+    complexity rather than quadratic complexity). Since these values are known at
+    compile time, being part of the template parameters of our type, this has no runtime
+    costs and is more of a constraint imposed on the user. We will, of course, validate
+    this at compile time to avoid unpleasant mishaps.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In C++, variadic packs can be empty, but in our case, an empty set of size categories
+    would make no sense so we will ensure that does not happen (at compile time, of
+    course). Obviously, `N` has to be more than zero for this class to be useful so
+    we will validate this also.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What might not be self-evident is that values in `Sz...` have to be at least
+    `sizeof(std::max_align_t)` (we could have tested for `alignof` too but, for fundamental
+    types, this is redundant) and that, in practice, we will need to make the effective
+    size categories powers of two to make sure arbitrary types can be allocated. This
+    latter part will be handled internally, as it’s trickier to impose on user code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Looking at the code, we can see these constraints expressed explicitly. Note
+    that to make the “code narrative” easier to follow, the code that follows is presented
+    step by step, so make sure to look at the complete example if you want to experiment
+    with it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we have two data members – namely, `blocks`, which will contain a
+    pointer to a block of raw memory for each size category, and `cur`, which will
+    contain the index of the next allocation within a block for each size category
+    (initialized to zero by default, as we will start from the beginning in each case).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for this class continues shortly. For now, you might notice some unexplained
+    helper functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use `make_array(Sz...)`, a `constexpr` function that constructs an object
+    of type `std::array<T,N>` from the values of `Sz...`, expecting all values to
+    be of the same type (the type of the first value of `Sz...`). We know `N` for
+    the resulting `std::array<T,N>` to be a compile-time constant as it is computed
+    from the number of values in `Sz...`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We use the `is_sorted()` predicate on that `std::array<T,N>` object to ensure,
+    at compile time, that the values are sorted in ascending order, as we expect them
+    to be. Unsurprisingly, this will simply call the `std::is_sorted()` algorithm,
+    which is `constexpr` and thus usable in this context.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The non-`static` member array named `sizes` will contain the next power of
+    two for each value in `Sz...`, including that value, of course: if the value is
+    already a power of two, wonderful! Thus, if `Sz...` is `10,20,32`, then `sizes`
+    will contain `16,32,32`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Why powers of two?
+  prefs: []
+  type: TYPE_NORMAL
+- en: In practice, blocks that are not powers of two will lead to misaligned objects
+    after the first allocation if we allocate them contiguously, and managing padding
+    to avoid this is possible but would complicate our implementation significantly.
+    To make allocations quicker, we compute the next power to two for each element
+    of `Sz...` at compile time and store them in the `sizes` array. This means we
+    could have two size categories that end up being of the same size (for example,
+    `40` and `60` would both lead to 64 bytes blocks) but that’s a minor issue (as
+    code would still work) considering that this is a specialized facility designed
+    for knowledgeable users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for these helper functions, in practice, defined before the declaration
+    of the `ChunkSizedAllocator<N,Sz...>` class is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that `make_array()` uses concepts to constrain that all values are of the
+    same type, and that `is_power_of_two(n)` ensures that the proper bits of `n` are
+    tested to make this test quick (it also tests `n` to ensure we do not report `0`
+    as being a power of two). The `next_power_of_two()` function could probably be
+    made much faster but that’s of little consequence here as it is only used at compile
+    time (we could enforce this by making it `consteval` instead of `constexpr`, but
+    there might be users that want to choose between run time and compile time usage
+    so we’ll give them that choice).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Returning to our `ChunkSizedAllocator<N,Sz...>` implementation after this short
+    digression on helper functions, we have a member function named `within_block(p,i)`
+    that returns `true` only if pointer `p` is within `blocks[i]`, which is the `i`-th
+    pre-allocated block of memory of our object. The logic for that function seems
+    deceptively simple: one might simply want to test something that looks like `blocks[i]<=p&&p<blocks[i]+N`
+    but with the proper casts applied, as the `blocks[i]` variable is of type `void*,`
+    which precludes pointer arithmetic, but that happens to be incorrect in C++ (remember
+    our discussion of the intricacies of pointer arithmetic in [*Chapter 2*](B21071_02.xhtml#_idTextAnchor027)).
+    It probably works in practice for compatibility with C code, but it’s not something
+    you want to rely on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As of this writing, there are ongoing discussions to add a standard library
+    function to test whether a pointer is between two others, but until this happens,
+    we can at least use the standard library-provided `std::less` functor to make
+    the comparisons somewhat legal. This is unsatisfactory, I know, but it will probably
+    work on all compilers today… and by making this test local to a specialized function,
+    we will simplify source code updates once we have a real standard solution to
+    this problem:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There’s no reason to make objects of `ChunkSizedAllocator<N,Sz...>` globally
+    available: this is a tool that could be instantiated many times in a program and
+    used to solve various problems. We do not want that type to be copyable, however
+    (we could, but that would really complicate the design for limited returns).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Through `std::malloc()`, our constructor allocates the raw memory blocks for
+    the various sizes in `Sz...`, or at least the next power of two for each of these
+    sizes, as explained earlier in this section, ensuring afterward that all of the
+    allocations succeeded. We used `assert()` for this, but one could also throw `std::bad_alloc`
+    on failure as long as one carefully called `std::free()` on the memory blocks
+    that were successfully allocated before doing so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our destructor, unsurprisingly, calls `std::free()` on each memory block: as
+    with the arena implementation earlier in this chapter, a `ChunkSizedAllocator<N,Sz...>`
+    object is responsible for memory, not the objects put there by client code, so
+    we have to suppose that client code destroyed all objects stored within the memory
+    blocks of a `ChunkSizedAllocator` object before that object’s destructor is called.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note the presence of a `std::mutex` data member, as we will need this (or some
+    other synchronization tool) to ensure allocations and deallocations are thread-safe
+    later:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we reach the crux of our effort with the `allocate()` and `deallocate()`
+    member functions. In `allocate(n)`, we search for the smallest element, `sizes[i]`,
+    for which the allocated block size is sufficiently big to hold `n` bytes. Once
+    one such block is found, we lock our `std::mutex` object to avoid race conditions
+    and then look to see whether there is still at least one available block in `blocks[i]`;
+    this implementation takes them sequentially and does not reuse them, to keep the
+    discussion simple. If there is one, we take it, update `cur[i]`, and return the
+    appropriate address to the user code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that when we do not find a free block in our pre-allocated blocks, or
+    when `n` is too large for the blocks we allocated upfront, we delegate the allocation
+    responsibility to `::operator new()` such that the allocation request might still
+    succeed. We could also have thrown `std::bad_alloc` in this case, depending on
+    what the intent is: if it’s important to us that the allocation is made within
+    our blocks and nowhere else, throwing or otherwise failing is a better choice.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How could failing be a good thing?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some applications, particularly in embedded systems of low-latency or real-time
+    system domains, are such that software that delivers the right answer or produces
+    the right computation but not in due time is as bad as software that produces
+    a wrong answer. Think, for example, of a system that controls the brakes of a
+    car: a car that stops after colliding is of limited usefulness indeed. Such systems
+    are rigorously tested to catch failures before being released and will count on
+    specific runtime behavior; for that reason, when under development, they might
+    prefer failing (in a way that will be caught during their testing phase) rather
+    than defaulting to a strategy that might sometimes not meet their timing requirements.
+    Of course, please do not ship critical systems that stop working when used in
+    real life: test them well and make sure users are kept safe! But maybe you are
+    developing a system where, if something bad happens, you will prefer to print
+    “Sorry, we messed up” somewhere and just restart the program, and that’s perfectly
+    fine too sometimes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `deallocate(p)` deallocation function goes through each memory block to
+    see whether `p` is within that block. Remember that our `within_block()` function
+    would benefit from a pointer comparison test that the standard does not yet provide
+    as of this writing, so if you use this code in practice, make sure you leave yourself
+    a note to apply this new function as soon as it becomes available. If `p` is in
+    none of our blocks, then it was probably allocated through `::operator new()`
+    so we make sure to free it through `::operator delete()` as we should.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As stated previously, our implementation does not reuse memory once it has
+    been freed, but the location where that reuse should happen has been left in comments
+    (along with code that locks the mutex for that section) so feel free to implement
+    memory block reuse logic there if you want to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since this is a specialized form of allocation to be used by client code as
+    needed, we will use specialized overloads of the allocation operators. As can
+    be expected, these overloads will be templates based on the parameters of the
+    `ChunkSizedAllocator` object to be used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we wrote these allocation facilities, but we need to test them, as we need
+    to see whether there are benefits to this approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing ChunkSizedAllocator
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We will now write a simple test program that uses a `ChunkSizedAllocator` object
+    with an appropriate set of size categories, then allocate and deallocate objects
+    with sizes that fit within these categories in ways that should benefit our class.
+    In so doing, we are supposing that users of this class do so seeking to benefit
+    from a priori known size categories. Other tests could be conducted to verify
+    the code’s behavior with inappropriate size requests or in the presence of throwing
+    constructors, for example, so feel free to write a more elaborate test harness
+    than the one we will be providing for the sake of our execution speed-related
+    discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `test()` function used to test our size-based arena earlier in this chapter
+    will be used here again. See that section for an explanation of its workings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s not trivial to write a good test program to validate the behavior of a
+    program that allocates and deallocates objects of various sizes. What we will
+    do is use a `dummy<N>` type whose objects will each occupy a space of `N` bytes
+    in memory (as we will use `char[N]` data members to get this result, we know that
+    `alignof(dummy<N>)==1` for all valid values of `N`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will also write two distinct `test_dummy<N>()` functions. Each of these functions
+    will allocate and then construct the `dummy<N>` object and set up the associated
+    destroy-then-deallocate code, but one will use the standard library implementation
+    of the allocation operators and the other will use our overloads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will note that both of our `test_dummy<N>()` functions return a pair of
+    values: one will be a pointer to the allocated object and the other will be the
+    code to destroy and deallocate that object. Since we will store this information
+    in client code, we need these pairs to be abstractions that share a common type,
+    which explains our use of `void*` for the address and `std::function<void(void*)>`
+    for the destruction code. We need `std::function` or something similar here: a
+    function pointer would not suffice as the destruction code can be stateful (we
+    sometimes need to remember what object was used to manage the allocation).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for these tools follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we have to write the test program. We will discuss this program step
+    by step to make sure we grasp all the subtleties involved in the process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our program first decides on a value of `N` for the `ChunkSizedAllocator` object
+    as well as on size categories `Sz...` for that memory manager to use (the value
+    I picked for `N` is arbitrary). I deliberately used one *non-power-of-two* size
+    category to show that the values are “rounded up” to the next power of two appropriately:
+    the size request of `62` is translated into `64` when constructing the `sizes`
+    data member of our type. We then construct that object and name it `chunks` because…
+    well, why not?'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The tests that follow take the same form for the standard library and for our
+    specialized facility. Let’s look at them in detail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We create a `std::vector` object of pairs named `ptrs` filled with default values
+    (null pointers and non-callable functions) for `N` objects in three size categories
+    (because `sizeof...(Sz)==3` in our example). This ensures that the allocation
+    for the space used by the `std::vector` object is performed prior to our measurements
+    (prior to the execution of the lambda expression passed to `test()`) and does
+    not interfere with them later. Note that each tested lambda is mutable as it needs
+    to modify the captured `ptrs` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: For each of the three size categories, we then allocate `N` objects of sizes
+    that fit in that category and remember through the returned `pair` both that object’s
+    address and the code that will correctly finalize it later.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Then, to end each test, we use the finalization code on each object and destroy
+    and then deallocate it.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'It sounds worse than it is, happily for us. Once the tests have run to completion,
+    we print out the execution time of each test expressed as microseconds:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Okay, so that was slightly intricate but hopefully instructive. Is it worth
+    the trouble? Well, it depends on your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When I ran this code on the same online gcc 15 compiler with the -O2 optimization
+    level as with the size-based arena, the standard library version reported an execution
+    time of 13,360, whereas the time reported for the “chunked” version was 12,032,
+    effectively 90.05% of the standard version’s execution time. This kind of speedup
+    can be lovely as long as we remember that the initial allocation done in the constructor
+    of our `chunks` object was not measured: the idea here is to show we can save
+    time when it’s important and choose to pay for it when we are not in a hurry.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s important to remember that this implementation does not reuse memory, but
+    the standard version does so, which means our speedup might be counterbalanced
+    by a loss of functionality (if it’s a functionality you need, of course). In the
+    tests I ran, locking the `std::mutex` object or not doing so had a significant
+    impact on speedup, so (a) depending on your platform, there might be a better
+    choice of synchronization mechanism at your disposal, and (b) this implementation
+    is probably too naïve to bring benefits as is if the `deallocate()` member function
+    also needs to lock the `std::mutex` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, one could optimize this (quite academic) version quite a bit, and
+    I invite you dear readers to do so (and test the results every step of the way!).
+    The point of this section was more to show (a) that chunk size-based allocation
+    can be done, (b) how it can be done from an architectural standpoint, and (c)
+    point out some risks and potential pitfalls along the way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That was fun, wasn’t it?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As a reminder, in this chapter, we examined arena-based allocation with a concrete
+    example (a size-based arena with a particular usage pattern) and saw we could
+    get significant results from it, and then saw another use case with pre-allocated
+    memory blocks from which we picked chunks where we placed objects, again seeing
+    some benefits. These techniques showed new ways to control memory management,
+    but in no way are they meant to represent an exhaustive discussion on the subject.
+    To be honest, this entire book cannot be an exhaustive treatise on the subject,
+    but it can hopefully give us ideas!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step in our journey will be to expand the techniques seen in this
+    chapter and write something that is not really a garbage collector but is in some
+    ways weaker and in some ways better: deferred reclamation memory zones. This will
+    be our last step before we start discussing memory management in containers.'
+  prefs: []
+  type: TYPE_NORMAL

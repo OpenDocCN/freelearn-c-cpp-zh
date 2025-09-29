@@ -1,0 +1,1332 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Basic Libraries and Tools
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: LLVM is written in the C++ language and, as of July 2022, it uses the C++17
+    version of the C++ standard [[6](B19722_Bib.xhtml#Xllvm_cpp17migration)]. LLVM
+    actively utilizes functionality provided by the **Standard Template Library (STL)**.
+    On the other hand, LLVM contains numerous internal implementations [[13](B19722_Bib.xhtml#Xllvm_programmer_manual)]
+    for fundamental containers, primarily aimed at optimizing performance. For example,
+    `llvm``::``SmallVector` has an interface similar to `std``::``vector` but features
+    an internally optimized implementation. Hence, familiarity with these extensions
+    is essential for anyone wishing to work with LLVM and Clang.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, LLVM has introduced other development tools such as **TableGen**,
+    a **domain specific language** (**DSL**) designed for structural data processing,
+    and **LIT** (LLVM Integrated Tester), the LLVM test framework. More details about
+    these tools are discussed later in this chapter. We’ll cover the following topics
+    in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLVM coding style
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: LLVM basic libraries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clang basic libraries
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: LLVM supporting tools
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clang plugin project
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We plan to use a simple example project to demonstrate these tools. This project
+    will be a Clang plugin that estimates the complexity of C++ classes. A class is
+    considered complex if the number of methods exceeds a threshold specified as a
+    parameter. While this definition of complexity may be considered trivial, we will
+    explore more advanced definitions of complexity later in [*Chapter** 6*](B19722_06.xhtml#x1-1170006)*,
+    Advanced* *Code Analysis*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.1 Technical requirements
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The source code for this chapter is located in the `chapter4` folder of the
+    book’s GitHub repository: [https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter4](https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter4).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.2 LLVM coding style
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: LLVM adheres to specific code-style rules [[11](B19722_Bib.xhtml#Xllvm_coding_standards)].
+    The primary objective of these rules is to promote proficient C++ practices with
+    a special focus on performance. As previously mentioned, LLVM employs C++17 and
+    prefers using data structures and algorithms from the **STL** (short for, **Standard
+    Template** **Library**). On the other hand, LLVM offers many optimized versions
+    of data structures that mirror those in the STL. For example, `llvm``::``SmallVector``<>`
+    can be regarded as an optimized version of `std``::``vector``<>`, especially for
+    small sizes of the vector, a common trait for data structures used in compilers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given a choice between an STL object/algorithm and its corresponding LLVM version,
+    the LLVM coding standard advises favoring the LLVM version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additional rules pertain to concerns regarding performance limitations. For
+    instance, both **run-time type information (RTTI)** and C++ exceptions are disallowed.
+    However, there are situations where RTTI could prove beneficial; thus, LLVM offers
+    alternatives such as `llvm``::``isa``<>` and other similar template helper functions.
+    More information on this can be found in [*Section** 4.3.1*](#x1-720001)*, RTTI*
+    *replacement and cast operators*. Instead of C++ exceptions, LLVM frequently employs
+    C-style `assert`s.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sometimes, asserts are not sufficiently informative. LLVM recommends adding
+    textual messages to them to simplify debugging. Here’s a typical example from
+    Clang’s code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.1**: Usage of assert() in clang/lib/AST/ASTContext.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the code, we check if the second parameter (`RD`) is a union and raise an
+    assert with a corresponding message if it’s not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Besides performance considerations, LLVM also introduces some additional requirements.
+    One of these requirements concerns comments. Code comments are very important.
+    Furthermore, both LLVM and Clang have comprehensive documentation generated from
+    the code. They use Doxygen ( [https://www.doxygen.nl/](https://www.doxygen.nl/))
+    for this purpose. This tool is the de facto standard for commenting in C/C++ programs,
+    and you have most likely encountered it before.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clang and LLVM are not monolithic pieces of code; instead, they are implemented
+    as a set of libraries. This design provides advantages in terms of code and functionality
+    reuse, as we will explore in [*Chapter** 8*](B19722_08.xhtml#x1-1520008)*, IDE
+    Support and* *Clangd*. These libraries also serve as excellent examples of LLVM
+    code style enforcement. Let’s examine these libraries in detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3 LLVM basic libraries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are going to start with RTTI replacement in the LLVM code and discuss how
+    it’s implemented. We will then continue with basic containers and smart pointers.
+    We will conclude with some important classes used to represent token locations
+    and how diagnostics are realized in Clang. Later, in [*Section** 4.6*](#x1-840006)*,
+    Clang plugin project*, we will use some of these classes in our test project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3.1 RTTI replacement and cast operators
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'As mentioned earlier, LLVM avoids using RTTI due to performance concerns. LLVM
+    has introduced several helper functions that replace RTTI counterparts, allowing
+    for the casting of an object from one type to another. The fundamental ones are
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`llvm``::``isa``<>` is akin to Java’s `java`instanceof operator. It returns
+    `true` or `false` depending on whether the reference to the tested object belongs
+    to the tested class or not.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``cast``<>`: Use this cast operator when you’re certain that the object
+    is of the specified derived type. If the cast fails (i.e., the object isn’t of
+    the expected type), `llvm``::``cast` will abort the program. Use it only when
+    you’re confident the cast won’t fail.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``dyn_cast``<>`: This is perhaps the most frequently used casting
+    operator in LLVM. `llvm``::``dyn_cast` is employed for safe downcasting when you
+    anticipate the cast will usually succeed, but there’s some uncertainty. If the
+    object isn’t of the specified derived type, `llvm``::``dyn_cast``<>` returns `nullptr`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The cast operators do not accept `nullptr` as input. However, there are two
+    special cast operators that can handle null pointers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`llvm``::``cast_if_present``<>`: A variant of `llvm``::``cast``<>` that accepts
+    `nullptr` values'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``dyn_cast_if_present``<>`: A variant of `llvm``::``dyn_cast``<>`
+    that accepts `nullptr` values'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Both operators can handle `nullptr` values. If the input is `nullptr` or if
+    the cast fails, they simply return `nullptr`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s worth noting that the casting operators `llvm``::``cast_if_present``<>`
+    and `llvm``:` `:``dyn_cast_if_present``<>` were introduced recently, specifically
+    in 2022\. They serve as replacements for popular ones `llvm``::``cast_or_null``<>`
+    and `llvm``::``dyn_cast_or` `_null``<>`, which had been in recent use. The older
+    versions are still supported and now redirect calls to the newer cast operators.
+    For more information, see the discussion about this change: [https://discourse.llvm.org/t/psa-swapping-out-or-null-with-if-present/65018](https://discourse.llvm.org/t/psa-swapping-out-or-null-with-if-present/65018)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: .
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following question might arise: how can the dynamic cast operation be performed
+    without RTTI? This can be achieved with certain specific decorations, as illustrated
+    in a simple example inspired by *How to set up* *LLVM-style RTTI for your class
+    hierarchy* [[14](B19722_Bib.xhtml#Xllvm_rtti_setup)]. We’ll begin with a base
+    class, `clangbook``::``Animal`, that has two descendants: `clangbook``::``Horse`
+    and `clangbook``::``Sheep`. Each horse can be categorized by its speed (in mph),
+    and each sheep by its wool mass. Here’s how it can be used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.2**: LLVM `isa``<>` and `dyn_cast``<>` usage example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code should produce the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: '*Line 48* in [Figure 4.2](#x1-72015r2) demonstrates the use of `llvm``::``isa``<>`,
+    while *Line 51* showcases `llvm``::``dyn_cast``<>`. In the latter, we cast the
+    base class to `clangbook``::``Horse` and call a method specific to that class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s look into the class implementations, which will provide insights into
+    how the RTTI replacement works. We will start with the base class `clangbook``::``Animal`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.3**: `clangbook``::``Animal` class'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The most crucial aspect is *Line 11* in the preceding code. It specifies different
+    ”kinds” of animals. One enum value is used for the horse (`AK_Horse`) and another
+    for the sheep (`AK_Sheep`). Hence, the base class has some knowledge about its
+    descendants. The implementations for the `clangbook``::``Horse` and `clangbook``::``Sheep`
+    classes can be found in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.4**: `clangbook``::``Horse` and `clangbook``::``Sheep` classes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Lines 25 and 37* are particularly important as they contain the `classof`
+    static method implementation. This method is crucial for the cast operators in
+    LLVM. A typical implementation might look like the following (simplified version):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.5**: Simplified implementation for `llvm``::``isa``<>`'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same mechanism can be applied to other cast operators.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our next topic will discuss various types of containers that serve as more powerful
+    alternatives to their corresponding STL counterparts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3.2 Containers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The LLVM ADT (which stands for Abstract Data Type) library offers a set of containers.
+    While some of them are unique to LLVM, others can be considered as replacements
+    for containers from the STL. We will explore some of the most popular classes
+    provided by the ADT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: String operations
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The primary class for working with strings in the standard C++ library is `std``::``string`.
+    Although this class was designed to be universal, it has some performance related
+    issues. A significant issue concerns the copy operation. Since copying strings
+    is a common operation in compilers, LLVM introduced a specialized class, `llvm``::``StringRef`,
+    that handles this operation efficiently without using extra memory. This class
+    is comparable to `std``::``string_view` from C++17 [[20](B19722_Bib.xhtml#Xstandard_cpp17)]
+    and `std``::``span` from C++20 [[21](B19722_Bib.xhtml#Xstandard_cpp20)].
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `llvm``::``StringRef` class maintains a reference to data, which doesn’t
+    need to be null-terminated like traditional C/C++ strings. It essentially holds
+    a pointer to a data block and the block’s size, making the object’s effective
+    size 16 bytes. Because `llvm``::``StringRef` retains a reference rather than the
+    actual data, it must be constructed from an existing data source. This class can
+    be instantiated from basic string objects such as `const` `char``*`, `std``::``string`,
+    and `std``::``string_view`. The default constructor creates an empty object. Typical
+    usage example for `llvm``::``StringRef` is shown in [Figure 4.6](#x1-74011r6):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.6**: `llvm``::``StringRef` usage example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output for the code is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Another class used for string manipulation in LLVM is `llvm``::``Twine`, which
+    is particularly useful when concatenating several objects into one. A typical
+    usage example for the class is shown in [Figure 4.7](#x1-74024r7):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.7**: `llvm``::``Twine` usage example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The output for the code is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Another class that is widely used for string manipulations is `llvm``::``SmallString``<>`.
+    It represents a string that is stack-allocated up to a fixed size, but can also
+    grow beyond this size, at which point it heap-allocates memory. This is a blend
+    between the space efficiency of stack allocation and the flexibility of heap allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The advantage of `llvm``::``SmallString``<>` is that for many scenarios, especially
+    in compiler tasks, strings tend to be small and fit within the stack-allocated
+    space. This avoids the overhead of dynamic memory allocation. But in situations
+    where a larger string is required, `llvm::SmallString` can still accommodate by
+    transitioning to heap memory. A typical usage example is show in [Figure 4.8](#x1-74038r8):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.8**: `llvm``::``SmallString``<>` usage example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite the fact that string manipulation is key in compiler tasks such as text
+    parsing, LLVM has many other helper classes. We’ll explore its sequential containers
+    next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sequential containers
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'LLVM recommends some optimized replacements for arrays and vectors from the
+    standard library. The most notable are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`llvm``::``ArrayRef``<>`: A helper class designed for interfaces that accept
+    a sequential list of elements for read-only access. The class is akin to `llvm``::``StringRef``<>`
+    in that it does not own the underlying data but merely references it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``SmallVector``<>`: An optimized vector for cases with a small size.
+    It resembles `llvm``::``SmallString`, as discussed in [*Section** 4.3.2*](#x1-740002)*,*
+    *String operations*. Notably, the size for the array isn’t fixed, allowing the
+    number of stored elements to grow. If the number of elements stays below `N` (the
+    template argument), then there is no need for additional memory allocation.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let’s examine the `llvm``::``SmallVector``<>` to better understand these containers,
+    as shown in [Figure 4.9](#x1-75010r9):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.9**: `llvm``::``SmallVector``<>` usage'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The vector is initialized at *Line 1* with a chosen size of 10 (indicated by
+    the second template argument). The container offers an API similar to `std``::``vector``<>`,
+    using the familiar `push_back` method to add new elements, as seen in [Figure 4.9](#x1-75010r9),
+    *Lines 3 and 5.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first 10 elements are added to the vector without any additional memory
+    allocation (see [Figure 4.9](#x1-75010r9), *Lines 2-4*). However, when the eleventh
+    element is added at *Line 5*, the array’s size surpasses the pre-allocated space
+    for 10 elements, triggering additional memory allocation. This container design
+    efficiently minimizes memory allocation for small objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: while maintaining the flexibility to accommodate larger sizes when necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Map-like containers
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'The standard library provides several containers for storing key-value data.
+    The most common ones are `std``::``map``<>` for general-purpose maps and `std``::``unordered_map``<>`
+    for hash maps. LLVM offers additional alternatives to these standard containers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`llvm``::``StringMap``<>`: A map that uses strings as keys. Typically, this
+    is more performance optimized than the standard associative container, `std``::``unordered_map``<``std``::``string``,`
+    `T``>`. It is frequently used in situations where string keys are dominant and
+    performance is critical, as one might expect in a compiler infrastructure like
+    LLVM. Unlike many other data structures in LLVM, `llvm``::``StringMap``<>` does
+    not store a copy of the string key. Instead, it keeps a reference to the string
+    data, so it’s crucial to ensure the string data outlives the map to prevent undefined
+    behavior.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``DenseMap``<>`: This map is designed to be more memory- and time-efficient
+    than `std``::``unordered_map``<>` in most situations, though it comes with some
+    additional constraints (e.g., keys and values having trivial destructors). It’s
+    especially beneficial when you have simple key-value types and require high-performance
+    lookups.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``SmallDenseMap``<>`: This map is akin to `llvm``::``DenseMap``<>`
+    but is optimized for instances where the map size is typically small. It allocates
+    from the stack for small maps and only resorts to heap allocation when the map
+    exceeds a predefined size.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`llvm``::``MapVector``<>`: This container retains the insertion order, akin
+    to Python’s `OrderedDict` . It is implemented as a blend of `std``::``vector`
+    and either `llvm``::``DenseMap` or `llvm``::``SmallDenseMap`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It’s noteworthy that these containers utilize a quadratically probed hash table
+    mechanism. This method is effective for hash collision resolution because the
+    cache isn’t recomputed during element lookups. This is crucial for performance-critical
+    applications, such as compilers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.3.3 Smart pointers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Different smart pointers can be found in LLVM code. The most popular ones come
+    from the standard template library: `std``::``unique_ptr``<>` and `std``::``shared_ptr``<>`.
+    In addition, LLVM provides some supplementary classes to work with smart pointers.
+    One of the most prominent among them is `llvm``::``IntrusiveRefCntPtr``<>`. This
+    smart pointer is designed to work with objects that support intrusive reference
+    counting. Unlike `std``::``shared_ptr`, which maintains its own control block
+    to manage the reference count, `IntrusiveRefCntPtr` expects the object to maintain
+    its own reference count. This design can be more memory efficient. A typical usage
+    example is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.10**: `llvm``::``IntrusiveRefCntPtr``<>` usage example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we can see, the smart pointer prominently employs the CRTP (which stands
+    for Curiously Recurring Template Pattern) that was mentioned earlier in [*Section** 3.3*](B19722_03.xhtml#x1-590003)*,
+    AST traversal*. The CRTP is essential for the `Release` operation when the reference
+    count drops to 0 and the object must be deleted. The implementation is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.11**: CRTP usage in `llvm``::``RefCountedBase``<>`. The code was
+    sourced from the `llvm/ADT/IntrusiveRefCntPtr.h` header'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since `MyClass` in [Figure 4.10](#x1-77008r10) is derived from `RefCountedBase`,
+    we can perform a cast on it in *Line 6* of [Figure 4.11](#x1-77018r11). This cast
+    is feasible since the type to cast is known, given that it is provided as a template
+    parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We’ve just finished with LLVM basic libraries. Now it is time to move on to
+    Clang basic libraries. Clang is a compiler frontend, and its most important operations
+    are related to diagnostics. Diagnostics require precise information about position
+    location in the source code. Let’s explore the basic classes that Clang provides
+    for these operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4 Clang basic libraries
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Clang is a compiler frontend, and its most important operations are related
+    to diagnostics. Diagnostics require precise information about position location
+    in the source code. Let’s explore the basic classes that Clang provides for these
+    operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4.1 SourceManager and SourceLocation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Clang, as a compiler, operates with text files (programs), and locating a specific
+    place in the program is one of the most frequently requested operations. Let’s
+    look at a typical Clang error report. Consider a program from [*Chapter** 3*](B19722_03.xhtml#x1-530003)*,
+    Clang AST*, as seen in [Figure 3.33](B19722_03.xhtml#x1-65010r33). Clang produces
+    the following error message for the program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.12**: Error reported in maxerr.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we can see in [Figure 4.12](#x1-79005r12), the following information is
+    required to display the message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Filename: In our case, it’s `maxerr.cpp`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Line in the file: In our case, it’s `3`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Column in the file: In our case, it’s `12`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The data structure that stores this information should be as compact as possible
+    because the compiler uses it frequently. Clang stores the required information
+    in the `clang``::``SourceLocation` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This object is used often, so it should be small in size and quick to copy.
+    We can check the size of the object using lldb. For instance, if we run Clang
+    under the debugger, we can determine the size as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.13**: clang::SourceLocation size determination under debugger'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'That is, the information is encoded using a single `unsigned` `long` number.
+    How is this possible? The number merely serves as an identifier for a position
+    in the text file. An additional class is required to correctly extract and represent
+    this information, which is `clang``::``SourceManager`. The `SourceManager` object
+    contains all the details about a specific location. In Clang, managing source
+    locations can be challenging due to the presence of macros, includes, and other
+    preprocessing directives. Consequently, there are several ways to interpret a
+    given source location. The primary ones are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Spelling location**: Refers to the location where something was actually
+    spelled out in the source. If you have a source location pointing inside a macro
+    body, the spelling location will give you the location in the source code where
+    the contents of the macro are defined.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Expansion location**: Refers to where a macro gets expanded. If you have
+    a source location pointing inside a macro body, the expansion location will give
+    you the location in the source code where the macro was used (expanded).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let’s look at a specific example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.14**: Example program to test different types of source locations:
+    functions.hpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [Figure 4.14](#x1-79023r14), we define two functions: `int` `foo``()` at
+    *Line 2* and `void` `bar``()` at *Line 3*. For the first function, both the spelling
+    and expansion locations point to *Line 2*. However, for the second function, the
+    spelling location is at *Line 1*, while the expansion location is at *Line 3*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s examine this with a test Clang tool. We will use the test project from
+    [*Section** 3.4*](B19722_03.xhtml#x1-620004)*, Recursive AST visitor* and replace
+    some parts of the code here. First of all, we have to pass `clang``::``ASTContext`
+    to our `Visitor` implementation. This is required because `clang``::``ASTContext`
+    provides access to `clang``::``SourceManager`. We will replace *Line 11* in [Figure 3.8](B19722_03.xhtml#x1-60077r8)
+    and pass `ASTContext` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `Consumer` class (see [Figure 3.9](B19722_03.xhtml#x1-60100r9)) will accept
+    the argument and use it as a parameter for `Visitor`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The main changes are for the `Visitor` class, which is mostly rewritten. First
+    of all, we pass `clang``::``ASTContext` to the class constructor as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.15**: Visitor class implementation: constructor'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The AST Context class is stored as a private member of our class, as shown
+    below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.16**: Visitor class implementation: private section'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main processing logic is in `Visitor``::``VisitFunctionDecl` method, which
+    you can see next
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.17**: Visitor class implementation: VisitFunctionDecl method'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we compile and run the code on the test file from [Figure 4.14](#x1-79023r14),
+    the following output will be generated::'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.18**: Output from the recursivevisitor executable on the functions.hpp
+    test file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`clang``::``SourceLocation` and `clang``::``SourceManager` are very powerful
+    classes. In combination with other classes such as `clang``::``SourceRange` (a
+    pair of two source locations that specify the beginning and end of a source range),
+    they provide a great foundation for diagnostics used in Clang.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.4.2 Diagnostics support
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Clang’s diagnostics subsystem is responsible for generating and reporting warnings,
+    errors, and other messages [[8](B19722_Bib.xhtml#Xllvm_clang_cfe_internals_manual)].
+    The main classes involved are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`DiagnosticsEngine`: Manages diagnostic IDs and options'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DiagnosticConsumer`: Abstract base class for diagnostic consumers'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DiagnosticIDs`: Handles the mapping between diagnostic flags and internal
+    IDs'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DiagnosticInfo`: Represents a single diagnostic'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Here is a simple example illustrating how you might emit a warning in Clang:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.19**: Emit warning with clang::DiagnosticsEngine'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our example, we will use a simple DiagnosticConsumer, `clang``::``TextDiagnosticPrinter`,
+    which formats and prints the processed diagnostic messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The full code for the main function of our example is shown in [Figure 4.20](#x1-80027r20):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.20**: Clang diagnostics example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code will produce the following output
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.21**: Printed diagnostics'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we first set up `DiagnosticsEngine` with `TextDiagnosticPrinter`
+    as its `DiagnosticConsumer`. We then use the `Report` method of `DiagnosticsEngine`
+    to emit a custom warning. We will add a more realistic example later when we create
+    our test project for the Clang plugin in [*Section** 4.6*](#x1-840006)*, Clang
+    plugin* *project*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5 LLVM supporting tools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The LLVM project has its own tooling support. The most important LLVM tools
+    are TableGen and LIT (which stands for LLVM Integrated Tester). We will look into
+    them with examples from the Clang code. These examples should help us understand
+    the purpose of the tooling and how they can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.1 TableGen
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: TableGen is a **domain-specific language (DSL)** and associated tool used in
+    the LLVM project for the purpose of describing and generating tables, particularly
+    those that describe a target architecture. This is highly useful for compiler
+    infrastructure, where one frequently needs to describe things such as instruction
+    sets, registers, and various other target-specific attributes in a structured
+    manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: TableGen is employed in various parts of the Clang compiler. It’s primarily
+    used where there’s a need to generate large amounts of similar code. For instance,
+    it can be used for supporting cast operations that necessitate extensive enum
+    declarations in basic classes, or in the diagnostic subsystem where code generation
+    is required to handle numerous similar diagnostic messages. We will examine how
+    TableGen functions within the diagnostics system as an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will begin with the `Diagnostic.td` file, which describes Clang’s diagnostics.
+    This file can be found at `clang/include/clang/Basic/Diagnostic.td`. Let’s examine
+    how diagnostic severity is defined:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.22**: Severity definition in clang/include/clang/Basic/Diagnostic.td'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [Figure 4.22](#x1-82009r22), we define a class for severities (*Lines 17-19*).
+    Each severity is associated with a string, as shown below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.23**: Definitions for different types of severity in clang/include/clang/Basic/Diagnostic.td'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[Figure 4.23](#x1-82017r23) contains definitions for the different severities;
+    for instance, the `Warning` severity is defined on *Line 22*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The severity is later used to define the `Diagnostic` class, with the `Warning`
+    diagnostic being defined as a descendant of this class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.24**: Diagnostics definition in clang/include/clang/Basic/Diagnostic.td'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using the `Warning` class definition, different instances of the class can
+    be defined. For example, the following is an instance that defines an unused parameter
+    warning located in `DiagnosticSemaKinds.td`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.25**: The definition of the unused parameter warning in clang/include/clang/Basic/DiagnosticSemaKinds.td'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `clang-tblgen` tool will generate the corresponding `DiagnosticSemaKinds.inc`
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.26**: The definition of the unused parameter warning in clang/include/clang/Basic/DiagnosticSemaKinds.inc'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This file retains all the necessary information about the diagnostic. This information
+    can be retrieved from the Clang source code using different definitions of the
+    `DIAG` macro.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For instance, the following code leverages the TableGen-generated code to extract
+    diagnostic descriptions, as found in `clang/lib/Basic/DiagnosticIDs.cpp`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.27**: DIAG macro definition'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The C++ preprocessor will expand to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.28**: DIAG macro expansion'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The provided example demonstrates how TableGen can be used to generate code
+    in Clang and how it can simplify Clang development. The diagnostic subsystem is
+    not the only area where TableGen is utilized; it is also widely used in other
+    parts of Clang. For instance, the macros used in various types of AST visitors
+    also rely on the code generated by TableGen; see [*Section** 3.3.2*](B19722_03.xhtml#x1-610002)*,
+    Visitor* *implementation*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.5.2 LLVM test framework
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'LLVM uses several testing frameworks for different types of testing. The primary
+    ones are **LLVM Integrated Tester (LIT)** and **Google Test (GTest)** [[24](B19722_Bib.xhtml#XGoogleTest)].
+    Both LIT and GTest play significant roles in Clang’s testing infrastructure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LIT is primarily used for testing the behavior of the Clang toolchain as a whole,
+    with a focus on its code compilation capabilities and the diagnostics it produces.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: GTest is utilized for unit tests, targeting specific components of the code
+    base, primarily utility libraries and internal data structures.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These tests are crucial for maintaining the quality and stability of the Clang
+    project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will not delve into GTest, as this testing framework is commonly used outside
+    LLVM and isn’t part of LLVM itself. For more information about GTest, please visit
+    its official page: [https://github.com/google/googletest](https://github.com/google/googletest)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our focus will be on LIT. LIT is LLVM’s own test framework and is heavily used
+    for testing the various tools and libraries in LLVM, including the Clang compiler.
+    LIT is designed to be lightweight and is tailored for the needs of compiler testing.
+    It’s commonly used for running tests that are essentially shell scripts, often
+    with checks for specific patterns in the output. A typical LIT test may consist
+    of a source code file along with a set of ”RUN” commands that specify how to compile,
+    link, or otherwise process the file, and what output to expect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The RUN commands often use FileCheck, another utility in the LLVM project, to
+    check the output against expected patterns. In Clang, LIT tests are often used
+    to test frontend features such as parsing, semantic analysis, code generation,
+    and diagnostics. These tests typically look like source code files with embedded
+    comments to indicate how to run the test and what to expect.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider the following example from `clang/test/Sema/attr-unknown.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.29**: LIT test for Clang warnings about unknown attributes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The example is a typical C source file that can be processed by Clang. LIT’s
+    behavior is controlled by comments within the source text. The first comment (on
+    *Line 1*) specifies how the test should be executed. As indicated, `clang` should
+    be started with some additional arguments: `-fsyntax-only` and `-verify` . There
+    are also substitutions that begin with the ’%’ symbol. The most important of these
+    is ’%s’, which is replaced by the source file’s name. LIT will also examine comments
+    beginning with `expected-warning` and ensure that the warnings produced by Clang’s
+    output match the expected values.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The test can be run as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.30**: LIT test run'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We run `llvm-lit` from the `build` folder because the tool is not included in
+    the installation procedure. We can obtain more details about LIT setup and its
+    invocation once we create our test clang plugin project and configure LIT tests
+    for it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6 Clang plugin project
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The goal of the test project is to create a clang plugin that will estimate
+    class complexity. Specifically, a class is deemed complex if the number of its
+    methods exceeds a certain threshold. We will leverage all the knowledge we have
+    acquired thus far for this project. This will include the use of a recursive visitor
+    and Clang diagnostics. Additionally, we will create a LIT test for our project.
+    Developing the plugin will necessitate a unique build configuration for LLVM,
+    which will be our initial step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.1 Environment setup
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The plugin will be created as a shared object, and our LLVM installation should
+    be built with support for shared libraries (see [*Section** 1.3.1*](B19722_01.xhtml#x1-270001)*,
+    Configuration with* *CMake*):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.31**: CMake configuration used for the Clang plugin project'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As can be seen, we use the build configuration from [*Section** 1.4*](B19722_01.xhtml#x1-300004)*,
+    Test project –* *syntax check with a Clang tool*, as shown in [Figure 1.12](B19722_01.xhtml#x1-30003r12).
+    In the configuration, we set up a folder for installing artifacts into `../install`,
+    limit our build targets to the `X86` platform, and enable only the `clang` project.
+    Additionally, we enable size optimization for debug symbols and use shared libraries
+    instead of static linkage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step involves building and installing clang. This can be achieved
+    with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: As soon as we are done with the clang build and installation, we can proceed
+    with the `CMakeLists.txt` file for our project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.2 CMake build configuration for plugin
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We will use [Figure 3.20](B19722_03.xhtml#x1-62028r20) as the foundation for
+    our plugin build configuration. We will change the project name to `classchecker`
+    , and `ClassComplexityChecker.cpp` will serve as our primary source file. The
+    main portion of the file is displayed in [Figure 4.32](#x1-86023r32). As can be
+    observed, we will construct a shared library (*Lines 18-20*) rather than an executable,
+    as in our previous test projects. Another modification is in *Line 12*, where
+    we set up a config parameter for the LLVM build folder. This parameter is necessary
+    to locate the LIT executable, which is not included in the standard installation
+    process, as mentioned earlier in [*Section** 4.5.2*](#x1-830002)*, LLVM test framework*.
+    Some additional modifications need to be made to support LIT test invocations,
+    but we will discuss the details later in [*Section** 4.6.8*](#x1-920008)*, LIT
+    tests for clang plugin* (see [Figure 4.44](#x1-94025r44)).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.32**: CMakeLists.txt file for class complexity plugin'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After completing the build configuration, we can start writing the primary code
+    for the plugin. The first component we’ll create is a recursive visitor class
+    named `ClassVisitor`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.3 Recursive visitor class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our visitor class is located in the `ClassVisitor.hpp` file (see [Figure 4.33](#x1-87040r33)).
+    This is a recursive visitor that handles `clang``::``CXXRecordDecl`, which are
+    the AST nodes for C++ class declarations. We calculate the number of methods in
+    *Lines 13-16* and emit diagnostics in *Lines 19-25* if the threshold is exceeded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.33**: Source code for ClassVisitor.hpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s worth noting the diagnostic calls. The diagnostic message is constructed
+    in *Lines 20-22*. Our diagnostic message accepts two parameters: the class name
+    and the number of methods for the class. These parameters are encoded with the
+    ’%1’ and ’%2’ placeholders in *Line 22*. The actual values for these parameters
+    are passed in *Line 25*, where the diagnostic message is constructed using the
+    `DiagBuild` object. This object is an instance of the `clang``::``DiagnosticBuilder`
+    class, which implements the **Resource** **Acquisition Is Initialization (RAII)**
+    pattern. It emits the actual diagnostics upon its destruction.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: In C++, the RAII principle is a common idiom used to manage resource lifetimes
+    by tying them to the lifetime of an object. When an object goes out of scope,
+    its destructor is automatically called, and this provides an opportunity to release
+    the resource that the object holds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ClassVisitor` is created within an AST consumer class, which will be our next
+    topic.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.4 Plugin AST consumer class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The AST consumer class is implemented in `ClassConsumer.hpp` and represents
+    the standard AST consumer, as seen in our AST visitor test projects (refer to
+    [Figure 3.9](B19722_03.xhtml#x1-60100r9)). The code is presented in [Figure 4.35](#x1-89032r35).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.34**: Source code for ClassConsumer.hpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code initializes `Visitor` at *Line 10* and utilizes the Visitor class at
+    *Line 13* to traverse the declarations, starting with the top one (translation
+    unit declaration). The consumer must be created from a special AST action class,
+    which we will discuss next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.5 Plugin AST action class
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The code for the AST action is shown in [Figure 4.35](#x1-89032r35). Several
+    important parts can be observed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Line 7*: We inherit our `ClassAction` from `clang``::``PluginASTAction`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Lines 10-13*: We instantiate `ClassConsumer` and utilize `MethodCountThreshold`,
+    which is derived from an optional plugin argument'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Lines 15-25*: We process the optional `threshold` argument for our plugin'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.35**: Source code for ClassAction.hpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are almost done and ready to initialize our plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.6 Plugin code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Our plugin registration is carried out in the `ClassChecker.cpp` file, shown
+    in [Figure 4.36](#x1-90009r36).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.36**: Source code for ClassChecker.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we can observe, the majority of the initialization is hidden by helper classes,
+    and we only need to pass our implementation to `lang``::``FrontendPluginRegistry``::``Add`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we are ready to build and test our clang plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.7 Building and running plugin code
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We need to specify a path to the installation folder for our LLVM project.
+    The rest of the procedure is the standard one that we have previously used, see
+    [Figure 3.11](B19722_03.xhtml#x1-60132r11):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.37**: Configure and build commands for the Clang plugin'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The build artifacts will be located in the `build` folder. We can then run
+    our plugin on a test file as follows, where `<filepath>` is the file we want to
+    compile:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.38**: How to run the Clang plugin on a test file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, if we use a test file named `test.cpp` that defines a class with
+    three methods (see [Figure 4.39](#x1-91014r39)), we will not receive any warnings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.39**: Test for the clang plugin: test.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'However, if we specify a smaller threshold, we will receive a warning for the
+    file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.40**: Clang plugin run on test.cpp'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It’s now time to create a LIT test for our plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.6.8 LIT tests for clang plugin
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We’ll begin with a description of the project organization. We’ll adopt the
+    common pattern used in the clang source code and place our tests in the `test`
+    folder. This folder will contain the following files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`lit.site.cfg.py.in` : This is the main configuration file, a CMake config
+    file. It replaces patterns marked as ’@...@’ with corresponding values defined
+    during the CMake configuration. Additionally, this file loads `lit.cfg.py` .'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`lit.cfg.py` : This serves as the primary configuration file for LIT tests.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`simple``_test.cpp` : This is our LIT test file.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The basic workflow is as follows: CMake takes `lit.site.cfg.py.in` as a template
+    and generates the corresponding `lit.site.cfg.py` in the `build/test` folder.
+    This file is then utilized by LIT tests as a seed to execute the tests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: LIT config files
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: There are two configuration files for LIT tests. The first one is shown in [Figure 4.41](#x1-93011r41).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.41**: lit.site.cfg.py.in file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This file is a CMake template that will be converted into a Python script. The
+    most crucial part is shown in *Lines 6-7*, where the main LIT config is loaded.
+    It is sourced from the main source tree and is not copied to the `build` folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The subsequent configuration is displayed in [Figure 4.42](#x1-93025r42). It
+    is a Python script containing the primary configuration for LIT tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.42**: lit.cfg.py file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Lines 4-7* define the fundamental configuration; for example, *Line 6* determines
+    which files should be utilized for tests. All files with the ’.cpp’ extension
+    in the `test` folder will be employed as LIT tests.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Lines 9-11* detail the substitutions that will be employed in the LIT tests.
+    These include the path to the clang binary (*Line 9*), the path to the shared
+    library with the plugin (*Line 10*), and the path to the `FileCheck` utility (*Line*
+    *11*).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have defined only one basic LIT test, `simple``_test.cpp` , as shown in [Figure 4.43](#x1-93048r43).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.43**: simple_test.cpp file'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The use of substitutions can be observed in *Line 1*, where paths to the clang
+    binary, the plugin shared library, and the `FileCheck` utility are referenced.
+    Special patterns recognized by the utility are used in *Line* *9*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final piece of the puzzle is the CMake configuration. This will set up the
+    required variables for substitutions in `lit.site.cfg.py.in` and also define a
+    custom target to run the LIT tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CMake configuration for LIT tests
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The `CMakeLists.txt` file requires some adjustments to support LIT tests. The
+    necessary changes are displayed in [Figure 4.44](#x1-94025r44).
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.44**: LIT tests configuration at CMakeLists.txt'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In *Lines 31 and 32*, we search for the necessary utilities, `llvm-lit` and
+    `FileCheck` . It’s worth noting that they rely on the $`LLVM``_BUILD` environment
+    variable, which we also verify in *Line 12* of the config (see [Figure 4.32](#x1-86023r32)).
+    The steps in *Lines 41-43* are essential for generating `lit.site.cfg.py` from
+    the provided template file, `lit.site.cfg.py.in` . Lastly, we establish a custom
+    target to execute the LIT tests in *Lines 46-49*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we are ready to start the LIT tests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Running LIT tests
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: 'To initiate the LIT tests, we must set an environment variable that points
+    to the build folder, compile the project, and then execute the custom target,
+    `check-classchecker`. Here’s how this can be done:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.45**: Configure, build and check commands for the Clang plugin'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Upon executing these commands, you may observe the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: '**Figure 4.46**: LIT test execution'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this, we conclude our first comprehensive project, which encompasses a
+    practical clang plugin that can be tailored via supplemental plugin arguments.
+    Additionally, it includes the respective tests that can be executed to verify
+    its functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.7 Summary
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this chapter, we became familiar with the basic classes from the LLVM ADT
+    library. We gained knowledge of Clang diagnostics and the test frameworks used
+    in LLVM for various types of testing. Using this knowledge, we created a simple
+    Clang plugin that detects complex classes and issues a warning about their complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The chapter concludes the first part of the book, where we gained basic knowledge
+    of the Clang compiler frontend. We are now prepared to explore various tools built
+    on the foundation of Clang libraries. We will begin with Clang-Tidy, a powerful
+    linter framework used to detect various issues in C++ code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 4.8 Further reading
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'LLVM Coding Standards: [https://llvm.org/docs/CodingStandards.html](https://llvm.org/docs/CodingStandards.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'LLVM Programmer’s Manual: [https://llvm.org/docs/ProgrammersManual.html](https://llvm.org/docs/ProgrammersManual.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '“Clang” CFE Internals Manual: [https://clang.llvm.org/docs/InternalsManual.html](https://clang.llvm.org/docs/InternalsManual.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'How to set up LLVM-style RTTI for your class hierarchy: [https://llvm.org/docs/HowToSetUpLLVMStyleRTTI.html](https://llvm.org/docs/HowToSetUpLLVMStyleRTTI.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'LIT - LLVM Integrated Tester: [https://llvm.org/docs/CommandGuide/lit.html](https://llvm.org/docs/CommandGuide/lit.html)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

@@ -1,0 +1,984 @@
+- en: '10'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Local Buffer Optimization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Not all design patterns are concerned with designing class hierarchies. For
+    commonly occurring problems, a software design pattern is the most general and
+    reusable solution, and, for those programming in C++, one of the most commonly
+    occurring problems is inadequate performance. One of the most common causes of
+    such poor performance is inefficient memory management. Patterns were developed
+    to deal with these problems. In this chapter, we will explore one such pattern
+    that addresses, in particular, the overhead of small, frequent memory allocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics will be covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is the overhead of small memory allocations, and how can it be measured?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is local buffer optimization, how does it improve performance, and how
+    can the improvements be measured?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When can the local buffer optimization pattern be used effectively?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What are the possible downsides of, and restrictions on, the use of the local
+    buffer optimization pattern?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You will need the Google Benchmark library installed and configured, details
+    for which can be found here: [https://github.com/google/benchmark](https://github.com/google/benchmark)
+    (see [*Chapter 4*](B19262_04.xhtml#_idTextAnchor152), *Swap – From Simple to Subtle*,
+    for installation instructions).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example code can be found at the following link: [https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/main/Chapter10](https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/main/Chapter10).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The overhead of small memory allocations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The local buffer optimization is just that - an optimization. It is a performance-oriented
+    pattern, and we must, therefore, keep in mind the first rule of performance -
+    never guess anything about performance. Performance, and the effect of any optimization,
+    must be measured.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cost of memory allocations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Since we are exploring the overhead of memory allocations and the ways to reduce
+    it, the first question we must answer is how expensive a memory allocation is.
+    After all, nobody wants to optimize something so fast that it needs no optimization.
+    We can use Google Benchmark (or any other microbenchmark, if you prefer) to answer
+    this question. The simplest benchmark to measure the cost of memory allocation
+    might look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `benchmark::DoNotOptimize` wrapper prevents the compiler from optimizing
+    away the unused variable. Alas, this experiment is probably not going to end well;
+    the microbenchmark library needs to run the test many times, often millions of
+    times, to accumulate a sufficiently accurate average runtime. It is highly likely
+    that the machine will run out of memory before the benchmark is complete. The
+    fix is easy enough, we must also free the memory we allocated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We must note that we now measure the cost of both allocation and deallocation,
+    which is reflected in the changed name of the function. This is not an unreasonable
+    change; any allocated memory will need to be deallocated sometime later, so the
+    cost must be paid at some point. We have also changed the benchmark to be parameterized
+    by the allocation size. If you run this benchmark, you should get something like
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This tells us that the allocation and deallocation of `64` bytes of memory
+    cost about `19` nanoseconds on this particular machine, which adds up to 52 million
+    allocations/deallocations per second. If you’re curious whether the *64 bytes*
+    size is special in some way, you can change the size value in the argument of
+    the benchmark, or run the benchmark for a whole range of sizes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You might also note that, so far, we have measured the time it takes to make
+    the very first memory allocation in the program since we have not allocated anything
+    else. The C++ runtime system probably did some dynamic allocations at the startup
+    of the program, but still, this is not a very realistic benchmark. We can make
+    the measurement more relevant by reallocating some amount of memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we make `N` calls to `malloc` before starting the benchmark. Further improvements
+    can be achieved by varying the allocation size during the reallocations. We have
+    also replicated the body of the benchmark loop `32` times (using the C preprocessor
+    macro) to reduce the overhead of the loop itself on the measurement. The time
+    reported by the benchmark is now the time it takes to do `32` allocations and
+    deallocations, which is not very convenient, but the allocation rate remains valid,
+    since we have accounted for the loop unrolling, and multiplied the number of iterations
+    by `32` when setting the number of processed items (in Google Benchmark, an item
+    is whatever you want it to be, and the number of items per second is reported
+    at the end of the benchmark, so we have declared one allocation/deallocation to
+    be an item).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even with all these modifications and improvements, the final result is going
+    to be pretty close to our initial measurement of `54` million allocations per
+    second. This seems very fast, just `18` nanoseconds. Remember, however, that a
+    modern CPU can do dozens of instructions in this time. As we are dealing with
+    small allocations, it is highly likely that the processing time spent on each
+    allocated memory fragment is also small, and the overhead of allocation is non-trivial.
+    This, of course, represents guessing about performance and is something I warned
+    you against, and so we will confirm this claim via direct experiments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, however, I want to show you another reason why small memory allocations
+    are particularly inefficient. So far, we have explored the cost of memory allocations
+    on only one thread. Today, most programs that have any performance requirements
+    at all are concurrent, and C++ supports concurrency and multi-threading. Let’s
+    take a look at how the cost of memory allocations changes when we do it on several
+    threads at once:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The result greatly depends on the hardware and the version of `malloc` used
+    by the system. Also, on large machines with many CPUs, you can have many more
+    than two threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nonetheless, the overall trend should look something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is quite dismal; the cost of allocations increased several times when we
+    went from one thread to two (on a larger machine, a similar increase is going
+    to happen, but probably with more than two threads). The system memory allocator
+    appears to be the bane of effective concurrency. There are better allocators that
+    can be used to replace the default `malloc()` allocator, but they have their own
+    downsides. Plus, it would be better if our C++ program did not depend on a particular,
+    non-standard, system library replacement for its performance. We need a better
+    way to allocate memory. Let’s have a look at it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing local buffer optimization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The least amount of work a program can do to accomplish a certain task is no
+    work at all. Free stuff is great. Similarly, the fastest way to allocate and deallocate
+    memory is this - don’t. Local buffer optimization is a way to get something for
+    nothing; in this case, to get some memory for no additional computing cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main idea
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To understand local buffer optimization, you have to remember that memory allocations
+    do not happen in isolation. Usually, if a small amount of memory is needed, the
+    allocated memory is used as a part of some data structure. For example, let’s
+    consider a very simple character string:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The string allocates its memory from `malloc()` via a `strdup()` call and returns
+    it by calling `free()`. To be in any way useful, the string would need many more
+    member functions, but these are sufficient for now to explore the overhead of
+    memory allocation. Speaking of allocation, every time a string is constructed,
+    copied, or assigned, an allocation happens. To be more precise, every time a string
+    is constructed, an additional allocation happens; the string object itself has
+    to be allocated somewhere, which may be on the stack for a local variable, or
+    on the heap if the string is a part of some dynamically allocated data structure.
+    In addition to that, an allocation for the string data happens, and the memory
+    is always taken from `malloc()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This, then, is the idea of the local buffer optimization - why don’t we make
+    the string object larger so it can contain its own data? That really would be
+    getting something for nothing; the memory for the string object has to be allocated
+    anyway, but the additional memory for the string data we would get at no extra
+    cost. Of course, a string can be arbitrarily long, so we do not know in advance
+    how much larger we need to make the string object to store any string the program
+    will encounter. Even if we did, it would be a tremendous waste of memory to always
+    allocate an object of that large size, even for very short strings.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can, however, make an observation - the longer the string is, the longer
+    it takes to process it (copy, search, convert, or whatever we need to do with
+    it).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For very long strings, the cost of allocations is going to be small compared
+    to the cost of processing. For short strings, on the other hand, the cost of the
+    allocation could be significant. Therefore, the most performance benefit can be
+    obtained by storing short strings in the object itself, while any string that
+    is too long to fit in the object will be stored in allocated memory as before.
+    This is, in a nutshell, local buffer optimization, which for strings is also known
+    as **short string optimization**; the object (string) contains a local buffer
+    of a certain size, and any string that fits into that buffer is stored directly
+    inside the object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code example, the buffer size is set statically at `16` characters,
+    including the null character used to terminate the string. Any string that is
+    longer than `16` is allocated from `malloc()`. When assigning or destroying a
+    string object, we must check whether the allocation was done or the internal buffer
+    was used, in order to appropriately release the memory used by the string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Effect of local buffer optimization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'How much faster is `small_string` compared to `simple_string`? That depends,
+    of course, on what you need to do with it. Let’s start with just creating and
+    deleting the strings. To avoid typing the same benchmark code twice, we can use
+    the template benchmark, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result is quite impressive:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It gets even better when we try the same test on multiple threads:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Regular string creation is slightly faster on two threads, but creating short
+    strings is almost exactly twice as fast (and again twice as fast on four threads).
+    Of course, this is pretty much the best-case scenario for small string optimization
+    - firstly because all we do is create and delete strings, which is the very part
+    we optimized, and secondly because the string is a local variable its memory is
+    allocated as a part of the stack frame, so there is no additional allocation cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, this is not an unreasonable case; after all, local variables are not
+    rare at all, and if the string is a part of some larger data structure, the allocation
+    cost for that structure has to be paid anyway, so allocating anything else at
+    the same time and without additional cost is effectively free.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nonetheless, it is unlikely that we only allocate the strings to immediately
+    deallocate them, so we should consider the cost of other operations. We can expect
+    similar improvements for copying or assigning strings, as long as they stay short,
+    of course:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Indeed, a similar dramatic performance gain is observed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: We are also likely to need to read the data in the strings at least once, to
+    compare them or search for a specific string or character, or compute some derived
+    value. We do not expect improvements of a similar scale for these operations,
+    of course, since none of them involves any allocations or deallocations. You might
+    ask why, then, should we expect any improvements at all?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Indeed, a simple test of string comparison, for example, shows no difference
+    between the two versions of the string. In order to see any benefit, we have to
+    create many string objects and compare them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For small values of `N` (a small total number of strings), there won’t be any
+    significant benefit from the optimization. But when we have to process many strings,
+    comparing strings with the small string optimization can be approximately twice
+    as fast:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why is that happening, if there are no allocations at all? This experiment shows
+    the second, very important, benefit of local buffer optimization - improved cache
+    locality. The string object itself has to be accessed before the string data can
+    be read; it contains the pointer to the data. For the regular string, accessing
+    the string characters involves two memory accesses at different, generally unrelated
+    addresses. If the total amount of data is large, then the second access, to the
+    string data, is likely to miss the cache and wait for the data to be brought from
+    the main memory. On the other hand, the optimized string keeps the data close
+    to the string object, so that once the string itself is in the cache, so is the
+    data. The reason that we need a sufficient amount of different strings to see
+    this benefit is that with few strings, all string objects and their data can reside
+    in the cache permanently. Only when the total size of the strings exceeds the
+    size of the cache will the performance benefits manifest themselves. Now, let’s
+    dive deeper into some additional optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additional optimizations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `small_string` class we have implemented has an obvious inefficiency -
+    when the string is stored in the local buffer, we do not really need the pointer
+    to the data. We know exactly where the data is, in the local buffer. We do need
+    to know, somehow, whether the data is in the local buffer or in the externally
+    allocated memory, but we don’t need to use 8 bytes (on a 64-bit machine) just
+    to store that. Of course, we still need the pointer for storing longer strings,
+    but we could reuse that memory for the buffer when the string is short:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we use the last byte as a `tag` to indicate whether the string is stored
+    locally (`tag == 0`) or in a separate allocation (`tag == 1`). Note that the total
+    buffer size is still `16` characters, `15` for the string itself and `1` for the
+    tag, which also doubles at the trailing zero if the string needs all `16` bytes
+    (this is why we have to use `tag == 0` to indicate local storage, as it would
+    cost us an extra byte to do otherwise). The pointer is overlaid in memory with
+    the first `8` bytes of the character buffer. In this example, we have chosen to
+    optimize the total memory occupied by the string; this string still has a 16-character
+    local buffer, just like the previous version, but the object itself is now only
+    16 bytes, not 24\. If we were willing to keep the object size the same, we could
+    have used a larger buffer and stored longer strings locally. The benefit of the
+    small string optimization does, generally, diminish as the strings become longer.
+    The optimal crossover point from local to remote strings depends on the particular
+    application and must of course be determined by benchmark measurements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local buffer optimization beyond strings
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The local buffer optimization can be used effectively for much more than just
+    short strings. In fact, any time a small dynamic allocation of a size that is
+    determined at runtime is needed, this optimization should be considered. In this
+    section, we will consider several such data structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Small vector
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Another very common data structure that often benefits from local buffer optimization
+    is vectors. Vectors are essentially dynamic contiguous arrays of data elements
+    of the specified type (in this sense, a string is a vector of bytes, although
+    null termination gives strings their own specifics). A basic vector, such as `std::vector`
+    found in the C++ standard library, needs two data members, a data pointer and
+    the data size:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Vectors are usually templates, like the standard `std::vector`, but we have
+    simplified this example to show a vector of integers (converting this vector class
+    to a template is left as an exercise for you, and does not in any way alter the
+    application of the local buffer optimization pattern). We can apply *small vector
+    optimization* and store the vector data in the body of the vector object as long
+    as it is small enough:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can further optimize the vector in a similar manner to the string and overlay
+    the local buffer with the pointer. We cannot use the last byte as a `tag`, as
+    we did before, since any element of the vector can have any value, and the value
+    of zero is, in general, not special. However, we need to store the size of the
+    vector anyway, so we can use it at any time to determine whether the local buffer
+    is used or not. We can take further advantage of the fact that if the local buffer
+    optimization is used, the size of the vector cannot be very large, so we do not
+    need a field of the `size_t` type to store it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we store the vector size either in `size_t` `long_.n` or in `unsigned`
+    `char` `short_.n`, depending on whether or not the local buffer is used. A remote
+    buffer is indicated by storing `UCHAR_MAX` (that is, 255) in the short size. Since
+    this value is larger than the size of the local buffer, this `tag` is unambiguous
+    (were the local buffer increased to store more than 255 elements, the type of
+    `short_.n` would need to be changed to a longer integer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can measure the performance gains from small vector optimization using a
+    benchmark similar to the one we used for the strings. Depending on the actual
+    size of the vector, gains of about 10x can be expected in creating and copying
+    the vectors, and more if the benchmark runs on multiple threads. Of course, other
+    data structures can be optimized in a similar manner when they store small amounts
+    of dynamically allocated data. The optimizations of these data structures are
+    fundamentally similar, but there is one noteworthy variant we should highlight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Small queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The small vector we have just seen uses a local buffer to store a small array
+    of vector elements. This is the standard way of optimizing data structures that
+    store a variable number of elements when this number is often small. A particular
+    version of this optimization is used for data structures based on a queue, where
+    the buffer grows on one end and is consumed on the other end. If there are only
+    a few elements in the queue at any time, the queue can be optimized with a local
+    buffer. The technique commonly employed here is a `buffer[N]`, so, as the elements
+    are added to the end of the queue, we are going to reach the end of the array.
+    By then some elements were taken from the queue, so the first few elements of
+    the array are no longer used. When we reach the end of the array, the next enqueued
+    value goes into the first element of the array, `buffer[0]`. The array is treated
+    like a ring, after the element `buffer[N-1]` comes the element `buffer[0]` (hence
+    another name for this technique, a *ring buffer*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The circular buffer technique is commonly used for queues and other data structures
+    where data is added and removed many times while the total volume of data stored
+    at any given time is limited. Here is one possible implementation of a circular
+    buffer queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this example, we support only the local buffer; if the number of elements
+    the queue must hold exceeds the size of the buffer, the call to `push()` returns
+    `false`. We could have switched to a heap-allocated array instead, just like we
+    did in `Example 07` for `small_vector`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this implementation, we increment the indices `front_` and `tail_` without
+    bounds, but when these values are used as indices into the local buffer, we take
+    the index value modulo buffer size. Of note is the optimization that is very common
+    when dealing with circular buffers: the size of the buffer is a power of two (enforced
+    by the assert). This allows us to replace the general (and slow) modulo calculation
+    such as `front_ % buf_size_` by much faster bitwise arithmetic. We do not have
+    to worry about integer overflow either: even if we call `push()` and `pop()` more
+    than `2^64` times, the unsigned integer index values will overflow and go back
+    to zero and the queue continues to work fine.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As expected, the queue with the local buffer optimization far outperforms a
+    general queue such as `std::queue<int>` (as long as the optimization remains valid
+    and the number of elements in the queue is small, of course):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The circular local buffer can be used very effectively in many situations where
+    we need to process large volumes of data but hold only a few elements at a time.
+    Possible applications include network and I/O buffers, pipelines for exchanging
+    data between threads in concurrent programs, and many more.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us now look at applications of local buffer optimizations beyond common
+    data structures.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type-erased and callable objects
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There is another, very different, type of application where the local buffer
+    optimization can be used very effectively - storing callable objects, which are
+    objects that can be invoked as functions. Many template classes provide an option
+    to customize some part of their behavior using a callable object. For example,
+    `std::shared_ptr`, the standard shared pointer in C++, allows the user to specify
+    a custom deleter. This deleter will be called with the address of the object to
+    be deleted, so it is a callable with one argument of the `void*` type. It could
+    be a function pointer, a member function pointer, or a functor object (an object
+    with an `operator()` defined) - any type that can be called on a `p` pointer;
+    that is, any type that compiles in the `callable(p)` function call syntax can
+    be used. The deleter, however, is more than a type; it is an object and is specified
+    at runtime, and so it needs to be stored someplace where the shared pointer can
+    get to it. Were the deleter a part of the shared pointer type, we could simply
+    declare a data member of that type in the shared pointer object (or, in the case
+    of the C++ shared pointer, in its reference object that is shared between all
+    copies of the shared pointer). You could consider it a trivial application of
+    the local buffer optimization, as in the following smart pointer that automatically
+    deletes the object when the pointer goes out of scope (just like `std::unique_ptr`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: We are after more interesting things, however, and one such thing can be found
+    when we deal with type-erased objects. The details of such objects were considered
+    in the chapter dedicated to type erasure, but in a nutshell, they are objects
+    where the callable is not a part of the type itself (as in, it is *erased* from
+    the type of the containing object). The callable is instead stored in a polymorphic
+    object, and a virtual function is used to call the object of the right type at
+    runtime. The polymorphic object, in turn, is manipulated through the base class
+    pointer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we have a problem that is, in a sense, similar to the preceding small
+    vector - we need to store some data, in our case the callable object, whose type,
+    and therefore size, is not statically known. The general solution is to dynamically
+    allocate such objects and access them through the base class pointer. In the case
+    of a smart pointer `deleter`, we could do it like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the `Deleter` type is no longer a part of the smart pointer type;
+    it was *erased*. All smart pointers for the same `T` object type have the same
+    type, `smartptr_te<T>` (here, `te` stands for *type-erased*). However, we have
+    to pay a steep price for this syntactic convenience - every time a smart pointer
+    is created, there is an additional memory allocation. How steep? The first rule
+    of performance must again be remembered - *steep* is only a guess until confirmed
+    by an experiment, such as the following benchmark:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For a smart pointer with a statically defined deleter, we can expect the cost
+    of each iteration to be very similar to the cost of calling `malloc()` and `free()`,
+    which we measured earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: For a type-erased smart pointer, there are two allocations instead of one, and
+    so the time it takes to create the pointer object is doubled. By the way, we can
+    also measure the performance of a raw pointer, and it should be the same as the
+    smart pointer within the accuracy of the measurements (this was, in fact, a stated
+    design goal for the `std::unique_ptr` standard).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can apply the same idea of local buffer optimization here, and it is likely
+    to be even more effective than it was for strings; after all, most callable objects
+    are small. We can’t completely count on that, however, and must handle the case
+    of a callable object that is larger than the local buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Using the same benchmark as before, we can measure the performance of the type-erased
+    smart pointer with local buffer optimization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: While the construction and deletion of a smart pointer without type erasure
+    took 21 nanoseconds, and 44 nanoseconds with type erasure, the optimized type-erased
+    shared pointer test takes 22 nanoseconds on the same machine. The slight overhead
+    comes from checking whether the `deleter` is stored locally or remotely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local buffer optimization in the standard library
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We should note that the last application of local buffer optimization, storing
+    callables for type-erased objects, is widely used in the C++ standard template
+    library. For example, `std::shared_ptr` has a type-erased deleter, and most implementations
+    use the local buffer optimization; the deleter is stored with the reference object
+    and not with each copy of the shared pointer, of course. The `std::unique_pointer`
+    standard, on the other hand, is not type-erased at all, to avoid even a small
+    overhead, or potentially a much larger overhead should the deleter not fit into
+    the local buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The “*ultimate*” type-erased object of the C++ standard library, `std::function`,
+    is also typically implemented with a local buffer for storing small callable objects
+    without the expense of an additional allocation. The universal container object
+    for any type, `std::any` (since C++17), is also typically implemented without
+    a dynamic allocation when possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local buffer optimization in detail
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have seen the applications of local buffer optimization; for simplicity,
+    we stayed with the most basic implementation of it. This simple implementation
+    misses several important details, which we will now highlight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First of all, we completely neglected the alignment of the buffer. The type
+    we used to reserve the space inside an object is `char`; therefore, our buffer
+    is byte-aligned. Most data types have higher alignment requirements: the exact
+    requirements are platform-specific, but most built-in types are aligned on their
+    own size (double is 8-byte-aligned on a 64-bit platform such as x86). Higher alignments
+    are needed for some machine-specific types such as packed integer or floating-point
+    arrays for AVX instructions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alignment is important: depending on the processor and the code generated by
+    the compiler, accessing memory not aligned as required by the data type can result
+    in poor performance or memory access violations (crashes). For example, most AVX
+    instructions require 16- or 32-byte alignment, and the unaligned versions of these
+    instructions are significantly slower. Another example is atomic operations such
+    as the ones used in mutexes and other concurrent data structures: they also don’t
+    work if the data type is not properly aligned (for example, an atomic `long` must
+    be aligned on an 8-byte boundary).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Specifying the minimum alignment for our buffer is not hard, at least if we
+    know the type we want to store in the buffer. For example, if we have a small
+    vector for an arbitrary type `T`, we can simply write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the buffer is used for storing an object of one of several types, we have
+    to use the highest alignment of all possible types. Finally, if the type of the
+    object to be stored is unknown – the typical case for type-erased implementations
+    – we have to select a “*high enough*” alignment and add a compile-time check at
+    the point where a specific object is constructed in the buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second important subtlety to remember is how the buffer is defined. Usually,
+    it is an aligned array of characters (or `std::byte_t`). In the previous section,
+    we used an array of `int` for the small vector of integers. Again, there is a
+    subtlety here: declaring the buffer as an object or an array of objects of the
+    right type will cause these objects to be destroyed automatically when the object
+    containing the buffer is destroyed. For trivially destructible types such as integers,
+    it makes no difference at all – their destructors do nothing.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In general, this is not so, and an arbitrary destructor can be invoked only
+    if an object was constructed at this location. For our small vector, this is not
+    always the case: the vector may be empty or contain fewer objects than the buffer
+    can hold. This is the most common case by far: usually, if we employ local buffer
+    optimization, we cannot be sure that an object was constructed in the buffer.
+    In this case, declaring the buffer as an array of non-trivially-destructible objects
+    would be a mistake. However, if you have a guarantee that, in your particular
+    case, the buffer always contains an object (or several objects, for an array),
+    declaring them with the corresponding type greatly simplifies the implementation
+    of the destructor, as well as the copy/move operations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You should have noticed by now that a typical implementation of a local buffer
+    needs a lot of boilerplate code. There are `reinterpret_cast` casts everywhere,
+    you have to remember to add the alignment, there are some compile-time checks
+    you should always add to make sure only suitable types are stored in the buffer,
+    and so on. It is good to combine these details together in a single general reusable
+    implementation. Unfortunately, as is often the case, there is a tension between
+    reusability and complexity, so we will have to settle for several general reusable
+    implementations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we put together everything we have learned about local buffers, we can come
+    up with something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here we have a buffer of arbitrary size and alignment (both are template parameters).
+    Now that we have a space to store objects, we have to make sure the type we want
+    to erase fits into this space. To this end, it is convenient to add a `constexpr`
+    validator function (it’s used only in compile-time syntax checks):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The buffer can be used as if it contained an object of type `T` by calling
+    the member function `as<T>()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The buffer can be constructed empty (default-constructed) or with an immediately
+    constructed object. In the former case, the object can be emplaced later. Either
+    way, we validate that the type fits into the buffer and meets the alignment requirements
+    (if C++20 and concepts are not available, SFINAE can be used instead). The default
+    constructor is trivial, but the emplacing constructor and the `emplace()` method
+    have constraints on the type and the constructor arguments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that we do check that the requested type can be stored in the buffer but
+    no checking is done at run time to ensure that the buffer does indeed contain
+    such an object. Such checking can be added at the cost of additional space and
+    run-time computations and might make sense as a debugging instrumentation. We
+    do not do anything special for copying, moving, or deleting the buffer. As-is,
+    this implementation is suitable for trivially copyable and trivially destructible
+    objects. In this case, we will want to assert these restrictions when an object
+    is constructed in the buffer (in both the constructor and the `emplace()` method):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this case, it may also make sense to add a `swap()` method to the class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On the other hand, if we’re using this buffer for storing objects of a single
+    known type and that type is not trivially destructible, we end up writing something
+    like this all the time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can simplify the client code by adding another generally usable method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can add similar methods to copy and move objects stored in the buffer, or
+    leave that to the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our general local buffer implementation works for all trivially copyable and
+    destructible types, as well as for all cases where the type is known and the client
+    of our code handles copying and destroying the objects stored in the buffer. There
+    is one special case that is left out but is nonetheless worth considering: when
+    a local buffer is used in type-erased classes, the stored (erased) type may require
+    non-trivial copying or deletion but the client cannot do these operations since
+    the whole point of type erasure is that the client code does not know the erased
+    type after it was emplaced into the buffer. In this special case, we need to capture
+    the type at the point when it was stored and generate the corresponding copy,
+    move, and deletion operations. In other words, we have to combine our local buffer
+    with the techniques we learned earlier, in [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266),
+    *Understanding Type Erasure*, about type erasure. The most suitable variant of
+    type erasure, in this case, is `vtable` – a table of function pointers we generate
+    using templates. The `vtable` itself is an aggregate (`struct`) holding function
+    pointers that will do the deletion, copying, or moving:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need one class member, `vtable_`, to store a pointer to the `vtable`. The
+    object that we will point to needs to be created by the constructor or the `emplace()`
+    method, of course – that is the only time we know the real type and how to delete
+    or copy it. But we are not going to do dynamic memory allocation for it. Instead,
+    we create a static template variable and initialize it with pointers to static
+    member functions (also templates). The compiler creates an instance of this static
+    variable for every type we store in the buffer. Of course, we also need static
+    template functions (a pointer to a static member function is the same as a regular
+    function pointer, rather than a member function pointer). These functions are
+    instantiated by the compiler with the same type `T` of the object that is stored
+    in the buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: As shown in [*Chapter 6*](B19262_06.xhtml#_idTextAnchor266), *Understanding
+    Type Erasure*, we first use template static functions to generate copy, move,
+    and delete operations for any type `T` we need. We store the pointers to these
+    functions in an instance of a static template variable `vtable`, and a pointer
+    to that instance in a (non-static) data member `vtable_`. The latter is our only
+    cost, size-wise (the rest is static variables and functions that are generated
+    by the compiler once for each type stored in the buffer).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This `vtable_` has to be initialized at the time the object is emplaced in
+    the buffer since this is the last time we explicitly know the type of the stored
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note the initialization of the `vtable_` member in the constructor. In the `emplace()`
+    method, we also have to delete the object previously constructed in the buffer,
+    if one exists.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the type erasure machinery in place, we can finally implement the destructors
+    and the copy/move operations. They all use a similar approach – call the corresponding
+    function in the `vtable`. Here are the copy operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The move operations are similar, only they use the `move_construct_` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the move-assignment operator is not required to check for self-assignment,
+    but it’s also not wrong to do so. It is highly desirable for the move operations
+    to be `noexcept`; unfortunately, we cannot guarantee that because we do not know
+    the erased type at compile time. We can make a design choice and declare them
+    `noexcept` anyway. If we do, we can also assert, at compile-time, that the object
+    we store in the buffer is `noexcept` movable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we have the destruction operations. Since we allow the caller to destroy
+    the contained object without destroying the buffer itself (by calling `destroy()`),
+    we have to take care to ensure that the object gets destroyed only once:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Having the type-erased `vtable` allows us to reconstruct, at run time, the
+    type stored in the buffer (it is embedded in the code generated for the static
+    functions such as `copy_construct()`). There is, of course, a cost to it; we already
+    noted the additional data member `vtable_`, but there is also some run-time cost
+    arising from the indirect function calls. We can estimate it by using both implementations
+    of the local buffer (with and without type erasure) to store and copy some trivially
+    copyable object, for example, a lambda with a captured reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: The overhead of (well-implemented) type erasure is non-negligible but modest.
+    An added advantage is that we could also verify at run-time whether or not our
+    calls to `as<T>()` refer to a valid type and that the object is indeed constructed.
+    Relatively to the very cheap implementation of an unchecked method, this would
+    add significant overhead, so probably should be restricted to debug builds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have seen significant, sometimes dramatic, improvements to the performance
+    of many different data structures and classes provided by the local buffer optimization.
+    With the easy-to-use general implementations we just learned, why would you not
+    use this optimization all the time? As is the case for any design pattern, our
+    exploration is not complete without mentioning the trade-offs and the downsides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Downsides of local buffer optimization
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Local buffer optimization is not without its downsides. The most obvious one
+    is that all objects with a local buffer are larger than they would be without
+    one. If the typical data stored in the buffer is smaller than the chosen buffer
+    size, then every object is wasting some memory, but at least the optimization
+    is paying off. Worse, if our choice of buffer size is badly off and most data
+    is, in fact, larger than the local buffer, the data is stored remotely but the
+    local buffers are still created inside every object, and all that memory is wasted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is an obvious trade-off between the amount of memory we are willing to
+    waste and the range of data sizes where the optimization is effective. The size
+    of the local buffer should be carefully chosen with the application in mind.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The more subtle complication is this - the data that used to be external to
+    the object is now stored inside the object. This has several consequences, in
+    addition to the performance benefits we were so focused on. First of all, every
+    copy of the object contains its own copy of the data as long as it fits into the
+    local buffer. This prevents designs such as the reference counting of data; for
+    example, a **Copy-On-Write** (**COW**) string, where the data is not copied as
+    long as all string copies remain the same, cannot use the small string optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Secondly, the data must be moved if the object itself is moved. Contrast this
+    with `std::vector`, which is moved or swapped, essentially like a pointer - the
+    pointer to the data is moved but the data remains in place. A similar consideration
+    exists for the object contained inside `std::any`. You could dismiss this concern
+    as trivial; after all, local buffer optimization is used primarily for small amounts
+    of data, and the cost of moving them should be comparable to the cost of copying
+    the pointer. However, more than performance is at stake here - moving an instance
+    of `std::vector` (or `std::any`, for that matter) is guaranteed not to throw an
+    exception. However, no such guarantees are offered when moving an arbitrary object.
+    Therefore, `std::any` can be implemented with a local buffer optimization only
+    if the object it contains is `std::is_nothrow_move_constructible`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even such a guarantee does not suffice for the case of `std::vector`, however;
+    the standard explicitly states that moving, or swapping, a vector does not invalidate
+    iterators pointing to any element of the vector. Obviously, this requirement is
+    incompatible with local buffer optimization, since moving a small vector would
+    relocate all its elements to a different region of memory. For that reason, many
+    high-efficiency libraries offer a custom vector-like container that supports small
+    vector optimization, at the expense of the standard iterator invalidation guarantees.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have just introduced a design pattern aimed solely at improved performance.
+    Efficiency is an important consideration for the C++ language; thus, the C++ community
+    developed patterns to address the most common inefficiencies. Repeated or wasteful
+    memory allocation is perhaps the most common of all. The design pattern we have
+    just seen - local buffer optimization - is a powerful tool that can greatly reduce
+    such allocations. We have seen how it can be applied to compact data structures,
+    as well as to store small objects, such as callables. We have also reviewed the
+    possible downsides of using this pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the next chapter, [*Chapter 11*](B19262_11.xhtml#_idTextAnchor509), *ScopeGuard*,
+    we move on to study more complex patterns that address broader design issues.
+    The idioms we have learned so far are often used in the implementation of these
+    patterns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: How can we measure the performance of a small fragment of code?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why are small and frequent memory allocations particularly bad for performance?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is local buffer optimization, and how does it work?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why is an allocation of an additional buffer inside an object effectively *free*?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is short string optimization?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is small vector optimization?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why is local buffer optimization particularly effective for callable objects?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What are the trade-offs to consider when using local buffer optimization?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When should an object not be placed in a local buffer?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

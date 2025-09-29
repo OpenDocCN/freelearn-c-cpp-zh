@@ -1,0 +1,1710 @@
+- en: '5'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using Standard Smart Pointers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: C++ emphasizes programming with values. By default, your code uses objects,
+    not indirections (references and pointers) to objects. Indirect access to objects
+    is, of course, allowed, and rare is the program that never uses such semantics,
+    but it is an opt-in and requires additional syntax. [*Chapter 4*](B21071_04.xhtml#_idTextAnchor062)
+    explored the association of resource management with object lifetime through destructors
+    and the RAII idiom, demonstrating one of C++’s main strengths in that essentially
+    all resources (including memory) can be handled implicitly through the very mechanics
+    of the language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ allows the use of raw pointers in code but does not actively encourage it.
+    Quite the contrary, in fact – raw pointers are a low-level facility, extremely
+    efficient but easy to misuse, and for which it is not easy to infer responsibility
+    about the *pointee* directly from the source code. Starting with the (now-removed)
+    `auto_ptr<T>` facility of decades past, there has been an effort in the C++ community
+    to define abstractions around lower-level facilities, such as raw pointers, through
+    types that provide clear, well-defined semantics and reduce the risk of programming
+    errors. This effort has met with significant success, in large part due to the
+    expressiveness of the C++ language and its ability to create powerful and efficient
+    abstractions, without losing speed or using more memory at runtime. For this reason,
+    in contemporary C++, raw pointers are usually encapsulated underneath harder-to-misuse
+    abstractions, examples of which include standard containers and smart pointers,
+    such as the ones we will explore in this chapter; raw pointers that are not encapsulated
+    are mostly used to mean “*Here’s a resource you can use but do* *not own*.”
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter will look at how to use the standard smart pointer types of C++.
+    We will first look at what they are, and then delve into ways to use the main
+    smart pointer types efficiently. Finally, we will look at those moments where
+    we need to “get our hands dirty” (so to speak) and use raw pointers, ideally (but
+    not only) through the mediation of smart pointers. This should lead us to learn
+    how to choose standard smart pointers for a given use case, how to use them appropriately,
+    and how to handle resources that have to be freed through custom mechanisms. Throughout
+    this journey, we will keep in mind and explain the costs of the choices we make.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Take a quick look at the general idea of standard smart pointers to develop
+    an idea of their reason for being
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Look more closely at `std::unique_ptr`, including how it can be used to handle
+    scalars, arrays, and release resources that are allocated in atypical ways
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Look at `std::shared_ptr` and the use cases for this essential but more costly
+    type, in order to grasp when alternatives should be preferred
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Take a quick look at `std::weak_ptr`, a companion to `std::shared_ptr` that
+    is useful when there is a need to model temporary shared ownership
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Look at cases where raw pointers should be used, as they still have their place
+    in the C++ ecosystem
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Ready? Let’s dive in!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'You can find the code files for this chapter in the book’s GitHub repository
+    here: [https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter5](https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter5).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The standard smart pointers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: C++ has a relatively small *zoo* of smart pointers. Before looking at the set
+    of options provided by the standard, let’s take a moment to show the problem we
+    are trying to solve. Consider the following (deliberately incomplete) program.
+    Do you see anything wrong with it?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is code that is legal but not something you want to see in a contemporary
+    program. There’s just so much that can go wrong here, such as the following from
+    a non-exhaustive list of potential problems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We don’t know whether `g()` will call `delete p`, leading to a second `delete`
+    (on a destroyed object!) in `h()` afterward
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We don’t know whether `g()` might throw, in which case the `delete p;` instruction
+    in `h()` will never be reached
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We don’t know whether `h()` should be assumed to own `p`, in the sense that
+    we do not know whether it should be responsible for calling `operator delete()`
+    on `p` (maybe it’s meant to be the responsibility of `g()`, or some other function)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We do not know whether what `p` points to has been allocated with `new`, `new[]`,
+    or something else (`malloc()`, some facility from another language, some custom
+    utility in your code base, etc.)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We don’t even know whether what `p` points to has been dynamically allocated
+    at all; `p` could point to a global or a `static` variable declared in `f()`,
+    for example (a bad idea, but some people do that – for example, when implementing
+    the singleton design pattern in a non-idiomatic way for C++)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Compare, for example, two possible implementations of `f()` (there are many,
+    many more we could consider, but these will suffice for now):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the first case, it *might* make sense to call `delete` on the returned pointer,
+    but in the second case, it would be disastrous to do so. Nothing in the function’s
+    signature clearly informs the client code whether we are facing one situation
+    or the other, or even something else entirely.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a “bonus” of sorts, what happens if someone calls `f()` without using the
+    returned value? If `f()` is implemented as `return new X;` or something similar,
+    then the code will leak – an unpleasant perspective indeed. Note that since C++17,
+    you can mitigate this specific problem by annotating the return type of `f()`
+    with the `[[nodiscard]]` attribute, but it’s still something you should be aware
+    of. Returning raw pointers from a function is something we mostly try to avoid,
+    even though we sometimes have to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are other possible pitfalls here, and they all have a common theme – using
+    raw pointers, we traditionally cannot tell from the source code what the semantics
+    are. More specifically, we cannot say for sure who is responsible for both the
+    pointer and what it points to. The fact that raw pointers do not provide clear
+    ownership information has been a recurring source of bugs in C++ over the years.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, for a different situation, consider the following code excerpt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, `f()` allocates an `X` object pointed to by `p`, after which two
+    threads, `th0` and `th1`, copy `p` (thus sharing the `X` object that `p` points
+    to). Finally, `th0` and `th1` are detached, meaning that the threads will run
+    until completion, even after `f()` is done. If we do not know in what order `th0`
+    and `th1` will conclude, we cannot clearly state which one should be responsible
+    for calling `operator delete()` on `p`. This is yet another issue of unclear responsibility
+    over the *pointee* but of a different kind than our first example, and as such,
+    it needs a different solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the cases where there is a clearly identified last owner of a pointed-to
+    object, regardless of whether the *pointee* is shared or not between pointers,
+    you probably want to use `std::unique_ptr`. In the (more niche, but very real
+    and quite subtle) case where the pointed-to object is shared by at least two “co-owners”
+    and the order in which these owners will be destroyed is a priori unknown, `std::shared_ptr`
+    is the tool of choice. The following sections go into the roles and meaning of
+    these types in more detail, hopefully helping you make an informed choice when
+    choosing a smart pointer type for a given use case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the exposition of intent through function signatures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Even though we have not looked in detail at the standard smart pointers yet,
+    it might be appropriate to offer a few words on what they mean, in particular
+    for `std::unique_ptr` and `std::shared_ptr`. These two types convey *ownership
+    semantics* – `std::unique_ptr` represents *sole ownership* of the pointee, and
+    `std::shared_ptr` represents *co-ownership* (or *shared ownership*) of the pointee.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s important to understand the difference between *owning* (in particular,
+    *co-owning*) a pointee and *sharing* a pointee. Consider the following example,
+    which uses `std::unique_ptr` (even though we have not covered it yet, but we’re
+    getting there) and raw pointers *together* in order to inscribe ownership semantics
+    in the type system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As mentioned when introducing this example, we used a `std::unique_ptr` object
+    to model ownership – `make_one()` constructs `std::unique_ptr<T>` and transfers
+    ownership to the caller; then, that caller keeps ownership of that object and
+    shares the underlying pointer with others (here, `print_pointee()`) but does not
+    relinquish ownership of the pointee. Using yet not owning is modeled by a raw
+    pointer. This shows us in a highly simplified setting that there is a difference
+    between owning and sharing a resource – `p` in `main()` owns the resource, yet
+    it shares it with the non-owner, `p`, in `print_pointee()`. This is all safe and
+    idiomatic C++ code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Knowing that the standard smart pointer types model represents ownership, we
+    know that as long as there is a single, clear last user of a resource, `std::unique_ptr`
+    tends to be the type of choice; it is much more lightweight than `std::shared_ptr`
+    (as we will see), and it provides the appropriate ownership semantics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are, of course, use cases where `std::unique_ptr` is not a good choice.
+    Consider this simplified, not thread-safe, and incomplete code excerpt:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that `borrow_one()` shares a pointer with the calling code but does not
+    share *ownership* of that pointer – the provider of the `entity` objects remains
+    solely responsible for the lifetime of these objects in this case. This would
+    neither be a case for `std::unique_ptr` (the sole owner of the resource) nor `std::shared_ptr`
+    (the co-owner of the resource). There are alternatives to using raw pointers to
+    express a non-owning pointer, as we will see in [*Chapter 6*](B21071_06.xhtml#_idTextAnchor096).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The important point here is that *function signatures convey meaning*, and it’s
+    important to use the types that convey our intent. To do so, we have to understand
+    that intent. Let’s keep that in mind as we explore how to use the standard smart
+    pointers to our advantage in the following sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type unique_ptr
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As its name suggests, a `unique_ptr<T>` object represents sole (unique) ownership
+    of a pointed-to object. That happens to be a common case – maybe even the most
+    common case – of ownership semantics when dealing with dynamically allocated memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Consider our first (still deliberately incomplete) example in this chapter,
+    where ownership of the *pointee* was not something we could determine from the
+    source code, and let’s rewrite it with `unique_ptr` objects instead of raw pointers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: // dynamically create an X or something derived from
+  prefs: []
+  type: TYPE_NORMAL
+- en: // X and return it without risk of a leak
+  prefs: []
+  type: TYPE_NORMAL
+- en: unique_ptr<X> factory(args);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // pass-by-value which means in practice pass-by-movement
+  prefs: []
+  type: TYPE_NORMAL
+- en: // since unique_ptr is uncopiable
+  prefs: []
+  type: TYPE_NORMAL
+- en: unique_ptr<X> borrowing(unique_ptr<X>);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // pass-by-reference to allow mutating the pointee. In
+  prefs: []
+  type: TYPE_NORMAL
+- en: // practice, X* would be a better choice here
+  prefs: []
+  type: TYPE_NORMAL
+- en: void possible_mutation(unique_ptr<X>&);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // pass by reference-to-const to consult the pointee but
+  prefs: []
+  type: TYPE_NORMAL
+- en: // not mutate it. In practice, prefer const X* here
+  prefs: []
+  type: TYPE_NORMAL
+- en: void consult(const unique_ptr<X>&);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// sink() consumes the object passed as argument : gets'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // in, never gets out. This could use pass-by-value but
+  prefs: []
+  type: TYPE_NORMAL
+- en: // intent is probably clearer with a rvalue-reference
+  prefs: []
+  type: TYPE_NORMAL
+- en: void sink(unique_ptr<X> &&);
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<X> f();
+  prefs: []
+  type: TYPE_NORMAL
+- en: void g(X*);
+  prefs: []
+  type: TYPE_NORMAL
+- en: void h() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // we could write std::unique_ptr<X> instead of auto
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = f();
+  prefs: []
+  type: TYPE_NORMAL
+- en: g(p.get());
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} // p implicitly releases the pointed-to X object here'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include “planet.h”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <string>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <vector>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<Planet>
+  prefs: []
+  type: TYPE_NORMAL
+- en: create_planet(std::string_view name);
+  prefs: []
+  type: TYPE_NORMAL
+- en: class solar_system {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::vector<std::unique_ptr<Planet>> planets {
+  prefs: []
+  type: TYPE_NORMAL
+- en: create_planet(“mercury.data”),
+  prefs: []
+  type: TYPE_NORMAL
+- en: create_planet(“venus.data”), // etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // solar_system is uncopyable by default
+  prefs: []
+  type: TYPE_NORMAL
+- en: // solar_system is movable by default
+  prefs: []
+  type: TYPE_NORMAL
+- en: // no need to write ~solar_system as planets
+  prefs: []
+  type: TYPE_NORMAL
+- en: // manages its resources implicitly
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: bool point_to_same(const std::unique_ptr<T> &p0,
+  prefs: []
+  type: TYPE_NORMAL
+- en: const std::unique_ptr<T> &p1) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p0 == p1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: bool have_same_value(const std::unique_ptr<T> &p0,
+  prefs: []
+  type: TYPE_NORMAL
+- en: const std::unique_ptr<T> &p1) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p0 && p1 && *p0 == *p1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <cassert>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // two distinct pointers to objects with same value
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<int> a{ new int { 3 } };
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<int> b{ new int { 3 } };
+  prefs: []
+  type: TYPE_NORMAL
+- en: assert(point_to_same(a, a) && have_same_value(a, a));
+  prefs: []
+  type: TYPE_NORMAL
+- en: assert(!point_to_same(a, b) && have_same_value(a, b));
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: void f(int n) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // p points to an int of value 3
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<int> p{ new int{ 3 } };
+  prefs: []
+  type: TYPE_NORMAL
+- en: // q points to an array of n int objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: // initialized to zero
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<int[]> q{ new int[n] {} };
+  prefs: []
+  type: TYPE_NORMAL
+- en: // example usage
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << *p << ‘\n’; // displays 3
+  prefs: []
+  type: TYPE_NORMAL
+- en: for(int i = 0; i != n; ++i) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // operator[] supported for unique_ptr<T[]>
+  prefs: []
+  type: TYPE_NORMAL
+- en: q[i] = i + 1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} // the destructor of q calls delete [] on its pointee'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // the destructor of p calls delete on its pointee
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <cstddef>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class fixed_size_array {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::size_t nelems{};
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<T[]> elems {};
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: fixed_size_array() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto size() const { return nelems; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: bool empty() const { return size() == 0; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: fixed_size_array(std::size_t n)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': nelems { n }, elems{ new T[n] {} } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: T& operator[](int n) { return elems[n]; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: const T& operator[](int n) const { return elems[n]; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: // etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: template<class T, class D = std::default_delete<T>>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class unique_ptr {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: template<class T> struct default_delete {
+  prefs: []
+  type: TYPE_NORMAL
+- en: constexpr default_delete() noexcept = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: constexpr void operator()(T *p) const { delete p; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class requires_dynamic_alloc {
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~requires_dynamic_alloc() = default; // private
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: friend struct cleaner;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct cleaner {
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: void operator()(T *p) const { delete p; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace std;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // requires_dynamic_alloc r0; // no
+  prefs: []
+  type: TYPE_NORMAL
+- en: //auto p0 = unique_ptr<requires_dynamic_alloc>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: //   new requires_dynamic_alloc
+  prefs: []
+  type: TYPE_NORMAL
+- en: //}; // no, as delete not available to default deleter
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p1 = unique_ptr<requires_dynamic_alloc, cleaner>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: new requires_dynamic_alloc
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}; // ok, will use cleaner::operator() to delete pointee'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct releasable {
+  prefs: []
+  type: TYPE_NORMAL
+- en: void release() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // overly simplified for the sake of this example
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete this;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'protected:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~releasable() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'class important_resource : public releasable {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void release(releasable *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(p) p->release();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace std;
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = unique_ptr<important_resource,
+  prefs: []
+  type: TYPE_NORMAL
+- en: void(*)(releasable*)>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: new important_resource, release
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}; // ok, will use release() to delete pointee'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct releasable {
+  prefs: []
+  type: TYPE_NORMAL
+- en: void release() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // overly simplified for the sake of this example
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete this;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'protected:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~releasable() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'class important_resource : public releasable {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void release(releasable *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(p) p->release();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using namespace std;
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = unique_ptr<important_resource,
+  prefs: []
+  type: TYPE_NORMAL
+- en: void(*)(releasable*)>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: new important_resource, release
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}; // ok, will use release() to delete pointee'
+  prefs: []
+  type: TYPE_NORMAL
+- en: static_assert(sizeof(p) > sizeof(void*));
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = unique_ptr<
+  prefs: []
+  type: TYPE_NORMAL
+- en: important_resource,
+  prefs: []
+  type: TYPE_NORMAL
+- en: decltype([](auto p) { release(p); })>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: new important_resource
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: static_assert(sizeof(q) == sizeof(void*));
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: template <class T, class ... Args>
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<T> make_unique(Args &&... args) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: return std::unique_ptr<T>{
+  prefs: []
+  type: TYPE_NORMAL
+- en: new T(std::forward<Args>(args)...);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class pair_with_alloc {
+  prefs: []
+  type: TYPE_NORMAL
+- en: T *p0, *p1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc(const T &val0, const T &val1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p0{ new T(val0) }, p1{ new T(val1) } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~pair_with_alloc() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p1; delete p0;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // copy and move operations left to your imagination
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: T *p0, *p1; // p0 declared before p1
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// below:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - new T(val0) will occur before construction of p0
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - new T(val1) will occur before construction of p1
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - construction of p0 will precede construction of p1
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc(const T &val0, const T &val1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p0{ new T(val0) }, p1{ new T(val1) } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class pair_with_alloc {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<T> p0, p1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc(const T &val0, const T &val1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p0{ new T(val0) }, p1{ new T(val1) } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // destructor implicitly correct
+  prefs: []
+  type: TYPE_NORMAL
+- en: // copy and move operations implicitly work
+  prefs: []
+  type: TYPE_NORMAL
+- en: // or are left to your imagination
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<T> p0, p1; // p0 declared before p1
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// below, suppose we identify the operations as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// A: new T(val0)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// B: construction of p0'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// C: new T(val1)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// D: construction of p1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// We know that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - A precedes B
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - C precedes D
+  prefs: []
+  type: TYPE_NORMAL
+- en: // - B precedes D
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc(const T &val0, const T &val1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p0{ new T(val0) }, p1{ new T(val1) } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class pair_with_alloc {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::unique_ptr<T> p0, p1;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc(const T &val0, const T &val1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: ': p0{ std::make_unique<T>(val0) },'
+  prefs: []
+  type: TYPE_NORMAL
+- en: p1{ std::make_unique<T>(val1) } {
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // destructor implicitly correct
+  prefs: []
+  type: TYPE_NORMAL
+- en: // copy and move operations implicitly work
+  prefs: []
+  type: TYPE_NORMAL
+- en: // or are left to your imagination
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <string>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <random>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: class risky {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::mt19937 prng{ std::random_device{}() };
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::uniform_int_distribution<int> penny{ 0,1 };
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: risky() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: risky(const risky &) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(penny(prng)) throw 3; // throws 50% of the time
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~risky() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “~risky()\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: // the following objects do not leak even if
+  prefs: []
+  type: TYPE_NORMAL
+- en: // an exception is thrown
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(std::string s0, s1; std::cin >> s0 >> s1)
+  prefs: []
+  type: TYPE_NORMAL
+- en: try {
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc a{ s0, s1 };
+  prefs: []
+  type: TYPE_NORMAL
+- en: pair_with_alloc b{ risky{}, risky{} };
+  prefs: []
+  type: TYPE_NORMAL
+- en: '} catch(...) {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cerr << “Something was thrown...\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: unique_ptr<some_type> p0 { new some_type{ args } };
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p1 = unique_ptr<some_type> { new some_type{ args } };
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p2 = make_unique<some_type>(args);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void f() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: X *p = new X;
+  prefs: []
+  type: TYPE_NORMAL
+- en: thread th0{ [p] { /* use *p */ };
+  prefs: []
+  type: TYPE_NORMAL
+- en: thread th1{ [p] { /* use *p */ };
+  prefs: []
+  type: TYPE_NORMAL
+- en: th0.detach();
+  prefs: []
+  type: TYPE_NORMAL
+- en: th1.detach();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: void f() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_ptr<X> p { new X };
+  prefs: []
+  type: TYPE_NORMAL
+- en: thread th0{ [p] { /* use *p */ };
+  prefs: []
+  type: TYPE_NORMAL
+- en: thread th1{ [p] { /* use *p */ };
+  prefs: []
+  type: TYPE_NORMAL
+- en: th0.detach();
+  prefs: []
+  type: TYPE_NORMAL
+- en: th1.detach();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: shared_ptr<X> p{ new X };
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: shared_ptr<X> p{ new X(args) };
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = make_shared<X>(args);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: // inspired from a cppreference example
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <format>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void observe(std::weak_ptr<int> w) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: if (std::shared_ptr<int> sh = w.lock())
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << std::format(“*sh == {}\n”, *sh);
+  prefs: []
+  type: TYPE_NORMAL
+- en: else
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “w is expired\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::weak_ptr<int> w;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '{'
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto sh = std::make_shared<int>(3);
+  prefs: []
+  type: TYPE_NORMAL
+- en: w = sh; // weak_ptr made from shared_ptr
+  prefs: []
+  type: TYPE_NORMAL
+- en: // w points to a live shared_ptr<int> here
+  prefs: []
+  type: TYPE_NORMAL
+- en: observe(w);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // w points to an expired shared_ptr<int> here
+  prefs: []
+  type: TYPE_NORMAL
+- en: observe(w);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: template <auto Cap>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class Cache {
+  prefs: []
+  type: TYPE_NORMAL
+- en: using clock = std::chrono::system_clock;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // a cache of capacity Cap that keeps the
+  prefs: []
+  type: TYPE_NORMAL
+- en: // most recently used Resource objects
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::vector<std::pair<
+  prefs: []
+  type: TYPE_NORMAL
+- en: decltype(clock::now()),
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_ptr<Resource>
+  prefs: []
+  type: TYPE_NORMAL
+- en: '>> resources;'
+  prefs: []
+  type: TYPE_NORMAL
+- en: bool full() const { return resources.size() == Cap; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '// precondition: !resources.empty()'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void expunge_one() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = std::min_element(
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::begin(resources), std::end(resources),
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[](auto && a, auto && b) {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return a.first < b.first;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: );
+  prefs: []
+  type: TYPE_NORMAL
+- en: assert(p != std::end(resources));
+  prefs: []
+  type: TYPE_NORMAL
+- en: p->second.reset(); // relinquish ownership
+  prefs: []
+  type: TYPE_NORMAL
+- en: resources.erase(p);
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void add(Resource *p) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: const auto t = clock::now();
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(full()) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: expunge_one();
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: resources.emplace_back(
+  prefs: []
+  type: TYPE_NORMAL
+- en: t, std::shared_ptr<Resource>{ p }
+  prefs: []
+  type: TYPE_NORMAL
+- en: );
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::weak_ptr<Resource> obtain(Resource::id_type id){
+  prefs: []
+  type: TYPE_NORMAL
+- en: const auto t = clock::now();
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = std::find_if(
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::begin(resources),
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::end(resources),
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[id](auto && p) {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p.second->id() == id;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: );
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(p == std::end(resources))
+  prefs: []
+  type: TYPE_NORMAL
+- en: return {};
+  prefs: []
+  type: TYPE_NORMAL
+- en: p->first = t;
+  prefs: []
+  type: TYPE_NORMAL
+- en: return p->second; // make weak_ptr from shared_ptr
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cache<5> cache;
+  prefs: []
+  type: TYPE_NORMAL
+- en: for(int i = 0; i != 5; ++i)
+  prefs: []
+  type: TYPE_NORMAL
+- en: cache.add(new Resource{ i + 1 });
+  prefs: []
+  type: TYPE_NORMAL
+- en: // let’s take a pointer to resource 3
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto p = cache.obtain(3);
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(auto q = p.lock(); q)
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “Using resource “ << q->id() << ‘\n’;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // things happen, resources get added, used, etc.
+  prefs: []
+  type: TYPE_NORMAL
+- en: for(int i = 6; i != 15; ++i)
+  prefs: []
+  type: TYPE_NORMAL
+- en: cache.add(new Resource{ i + 1 });
+  prefs: []
+  type: TYPE_NORMAL
+- en: if(auto q = p.lock(); q)
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “Using resource “ << q->id() << ‘\n’;
+  prefs: []
+  type: TYPE_NORMAL
+- en: else
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “Resource not available ...\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct Y;
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_ptr<Y> p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~X() { std::cout << “~X()\n”; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct Y {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_ptr<X> p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~Y() { std::cout << “~Y()\n”; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void oops() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto x = std::make_shared<X>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto y = std::make_shared<Y>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: x->p = y;
+  prefs: []
+  type: TYPE_NORMAL
+- en: y->p = x;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: oops();
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “Done\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: '#include <memory>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '#include <iostream>'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct Y;
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct X {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::weak_ptr<Y> p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~X() { std::cout << “~X()\n”; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct Y {
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::shared_ptr<X> p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~Y() { std::cout << “~Y()\n”; }
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: void oops() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto x = std::make_shared<X>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto y = std::make_shared<Y>();
+  prefs: []
+  type: TYPE_NORMAL
+- en: x->p = y;
+  prefs: []
+  type: TYPE_NORMAL
+- en: y->p = x;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: int main() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: oops();
+  prefs: []
+  type: TYPE_NORMAL
+- en: std::cout << “Done\n”;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class single_linked_list {
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct node {
+  prefs: []
+  type: TYPE_NORMAL
+- en: T value;
+  prefs: []
+  type: TYPE_NORMAL
+- en: node *next = nullptr;
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'node(const T &val) : value { val } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: node *head = nullptr;
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~single_linked_list() {
+  prefs: []
+  type: TYPE_NORMAL
+- en: for(auto p = head; p;) {
+  prefs: []
+  type: TYPE_NORMAL
+- en: auto q = p->next;
+  prefs: []
+  type: TYPE_NORMAL
+- en: delete p;
+  prefs: []
+  type: TYPE_NORMAL
+- en: p = q;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '}'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: template <class T>
+  prefs: []
+  type: TYPE_NORMAL
+- en: class single_linked_list {
+  prefs: []
+  type: TYPE_NORMAL
+- en: struct node {
+  prefs: []
+  type: TYPE_NORMAL
+- en: T value;
+  prefs: []
+  type: TYPE_NORMAL
+- en: unique_ptr<node> next; // good idea?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'node(const T &val) : value { val } {'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: unique_ptr<node> head; // good idea?
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'public:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: // ...
+  prefs: []
+  type: TYPE_NORMAL
+- en: ~single_linked_list() = default;
+  prefs: []
+  type: TYPE_NORMAL
+- en: '};'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE

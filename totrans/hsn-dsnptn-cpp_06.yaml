@@ -1,0 +1,1222 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Understanding Type Erasure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Type erasure is often seen as a mysterious, enigmatic programming technique.
+    It is not exclusive to C++ (most tutorials on type erasure use Java for their
+    examples). The goal of this chapter is to lift the shroud of mystery and teach
+    you what type erasure is and how to use it in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics will be covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is type erasure?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Is type erasure a design pattern, or an implementation technique?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How can we implement type erasure?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What design and performance considerations must be taken into account when deciding
+    to use type erasure? What other guidelines can be offered for the use of type
+    erasure?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Example code can be found at the following link: [https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/main/Chapter06](https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/main/Chapter06)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will need the Google Benchmark library installed and configured, details
+    for which can be found here: [https://github.com/google/benchmark](https://github.com/google/benchmark)
+    (see [*Chapter 4*](B19262_04.xhtml#_idTextAnchor152), *Swap - From Simple* *to
+    Subtle*)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is type erasure?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Type erasure**, in general, is a programming technique by which the explicit
+    type information is removed from the program. It is a type of abstraction that
+    ensures that the program does not explicitly depend on some of the data types.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This definition, while perfectly correct, also serves perfectly to surround
+    type erasure in mystery. It does so by employing a sort of circular reasoning—it
+    dangles before you the hope for something that, at first glance, appears impossible—a
+    program written in a strongly typed language that does not use the actual types.
+    How can this be? Why, by abstracting away the type, of course! And so, the hope
+    and the mystery lives on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is hard to imagine a program that uses types without explicitly mentioning
+    them (at least a C++ program; there are certainly languages where all types are
+    not final until runtime).
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, we begin by demonstrating what is meant by type erasure using an example.
+    This should allow us to gain an intuitive understanding of type erasure, which,
+    in the later sections of this chapter, we will develop and make more rigorous.
+    The aim here is to increase the level of abstraction—instead of writing some type-specific
+    code, perhaps several versions of it for different types, we can write just one
+    version that is more abstract, and expresses the concept—for example, instead
+    of writing a function whose interface expresses the concept *sort an array of
+    integers*, we want to write a more abstract function, *sort* *any array*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure by example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will go through a detailed explanation of what type erasure is and how it
+    is accomplished in C++. But first, let’s see what a program that has had the explicit
+    type information removed from it looks like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start with a very simple example of using a unique pointer, `std::unique_ptr`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is an owning pointer (see [*Chapter 3*](B19262_03.xhtml#_idTextAnchor110),
+    *Memory and Ownership*)—the entity containing this pointer, such as an object
+    or a functional scope, also controls the lifetime of the integer we allocated,
+    and is responsible for its deletion. The deletion is not explicitly visible in
+    the code and will happen when the `p` pointer is deleted (for example, when it
+    goes out of scope). The way this deletion will be accomplished is also not explicitly
+    visible—by default, `std::unique_ptr` deletes the object it owns using `operator
+    delete`, or, more precisely, by invoking `std::default_delete`, which, in turn,
+    calls `operator delete`. What if we do not want to use the regular standard `delete`?
+    For example, we may have objects that are allocated on our own heap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Allocation is no problem, with the help of the overloaded `operator new`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This syntax invokes the two-argument `operator new` function; the first argument
+    is always the size and is added by the compiler, and the second argument is the
+    heap pointer. Since we have such an overload declared, it will be invoked and
+    will return the memory allocated from the heap. But we have not done anything
+    to change the way the object is deleted. The regular `operator delete` function
+    will be called and will attempt to return to the global heap some memory that
+    wasn’t allocated from there. The result is likely to be memory corruption, and
+    probably a crash. We could define an `operator delete` function with the same
+    additional argument, but it does us no good here—unlike `operator new`, there
+    is no place to pass arguments to `delete` (you will often see such an `operator
+    delete` function defined anyway, and it should behave as such, but it has nothing
+    to do with any `delete` you see in the program; it is used in the stack unwinding
+    if the constructor throws an exception).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Somehow, we need to tell the unique pointer that this particular object is
+    to be deleted differently. It turns out that `std::unique_ptr` has a second `template`
+    argument. You usually don’t see it because it defaults to `std::default_delete`,
+    but that can be changed and a custom `deleter` object can be defined to match
+    the allocation mechanism. The `deleter` has a very simple interface—it needs to
+    be callable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `std::default_delete` policy is implemented pretty much like that and simply
+    calls `delete` on the `p` pointer. Our custom `deleter` will need a non-trivial
+    constructor to store the pointer to the heap. Note that, while the `deleter` needs,
+    in general, to be able to delete an object of any type that can be allocated,
+    it does not have to be a template class. A non-template class with a template
+    member function will do just as well, as long as the data members of the class
+    do not depend on the deleted type. In our case, the data members depend only on
+    the type of the heap, but not on what is being deleted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `deleter` has to perform the equivalent of both functions of the standard
+    `operator` `delete` function—it has to invoke the destructor of the object being
+    deleted, then it must deallocate the memory that was allocated for this object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have the appropriate `deleter`, we can finally use `std::unique_ptr`
+    with our own heap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that `deleter` objects are often created on demand, at the point of allocation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Either way, the `deleter` must be no-throw-copyable or no-throw-movable; that
+    is, it must have a copy constructor or a move constructor, and the constructor
+    must be declared `noexcept`. The built-in types, such as raw pointers, are, of
+    course, copyable, and the default compiler-generated constructor does not throw.
+    Any aggregate type combining one or more of these types as data members, such
+    as our `deleter`, has a default constructor that also does not throw (unless it
+    has been redefined, of course).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Note that the `deleter` is a part of the unique pointer’s type. Two unique
+    pointers that own objects of the same type, but have different deleters, are different
+    types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Similarly, the unique pointer must be constructed with the `deleter` of the
+    right type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As an aside, while experimenting with unique pointers of different types, you
+    might notice that the two pointers in the preceding code, `p` and `q`, while not
+    assignable, are comparable: `p == q` compiles. This happens because the `comparison`
+    operator is actually a template—it accepts two unique pointers of different types
+    and compares the underlying raw pointers (if that type differs as well, the compilation
+    error is likely to not mention the unique pointer at all, but instead, to say
+    something about comparing pointers to distinct types without a cast).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let’s do the same example, but with the shared pointer, `std::shared_ptr`.
+    First, we point the shared pointer to an object constructed with the regular `operator
+    new` function as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For comparison, we left the unique pointer declaration there as well. The two
+    smart pointers are declared and constructed in exactly the same way. And now,
+    in the following code block, the shared pointer to an object allocated on our
+    `heap`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now you see a difference—the shared pointer that was created with a custom `deleter`
+    is, nonetheless, of the same type as the one that uses the default `deleter`!
+    In fact, all shared pointers to `int` have the same type, `std::shared_ptr<int>`—the
+    template does not have another argument. Think this through—the `deleter` is specified
+    in the constructor but is used only in the destructor, therefore it must be stored
+    inside the smart pointer object until needed. There is no way to recover it later
+    if we lose the object that was given to us during construction. Both `std::shared_ptr`
+    and `std::unique_ptr` must store the `deleter` object of an arbitrary type inside
+    the pointer object itself. But only the `std::unique_ptr` class has the deleter
+    information in its type. The `std::shared_ptr` class is the same for all deleter
+    types. Going back to the very beginning of this section, the program that uses
+    `std::shared_ptr<int>` does not have any explicit information about the deleter
+    type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This type has been erased from the program. This, then, is what a type-erased
+    program looks like:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We spent so much time dissecting `std::shared_ptr` because it provides a very
+    simple example of type erasure, especially since we can contrast it with `std::unique_ptr`
+    which has to solve exactly the same problem but chooses the opposite approach.
+    This simple example, however, does not highlight the design implications of choosing
+    type erasure and does not illustrate what design problems this pattern solves.
+    For that, we should look at the quintessential type-erased object in C++: `std::function`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: From example to generalization
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In C++, `std::function` is a general-purpose polymorphic function wrapper,
+    or a general callable object. It is used to store any callable entity such as
+    a function, a lambda expression, a functor (an object with the `operator()`),
+    or a member function pointer. The only requirement for these different callable
+    entities is that they must have the same call signature, i.e., accept the same
+    arguments and return the result of the same type. The signature is specified when
+    a particular `std::function` object is declared:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have just declared a callable that can be invoked with two arguments, `long`
+    and `double` (or, to be more precise, with any two arguments convertible to `long`
+    and `double`), and returns a result that can be converted to `int`. What does
+    it do with the arguments and what is the result? That is determined by the concrete
+    callable entity that is assigned to `f`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this example, we first assign a non-member function `f1` to `f`; now calling
+    `f(s)` returns the capacity of the string `s` since that’s what `f1` does. Next,
+    we change `f` to contain a lambda expression; calling `f(s)` now invokes that
+    expression. The only thing these two functions have in common is the interface:
+    they accept the same arguments and have the same result types. Finally, we assign
+    a member function pointer to `f`; while the function `std::string::size()` takes
+    no arguments, all member functions have an implicit first argument which is a
+    reference to the object itself, so it fits the requirement on the interface.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can now see type erasure in its more general form: it is an abstraction
+    for many different implementations that all provide the same behavior. Let us
+    consider what design capabilities it opens.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure as a design pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have already seen how type erasure manifests itself in a program: the code
+    expects certain semantics behavior, but, instead of dealing with specific types
+    that provide it, we use an abstraction and “erase” the properties of those types
+    that are not relevant to the task at hand (starting with the name of the type).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this way, type erasure has attributes of several other design patterns, but
+    it’s not equivalent to any of them. It could reasonably be considered a design
+    pattern in its own right. So, what does type erasure offer as a design pattern?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In type erasure, we find an abstract expression of certain behavior, such as
+    a function call, that can be used to separate the interface from the implementation.
+    So far, this sounds very similar to inheritance. Recall now how, at the end of
+    the last section, we made a `std::function` object invoke several completely different
+    callables: a function, a lambda expression, and a member function. This illustrates
+    the fundamental difference between type erasure and inheritance: with inheritance,
+    the base class determines the abstract behavior (the interface), and any class
+    that needs to implement that interface must be derived from the same base. With
+    type erasure, there is no such requirement: the types that provide the common
+    behavior do not have to form any particular hierarchy; in fact, they need not
+    be classes at all.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It can be said that type erasure offers a non-intrusive way to separate the
+    interface from the implementation. By “intrusive” we mean the fact that we must
+    change a type in order to use the abstraction: for example, we may have a class
+    that has the desired behavior, but, in order to be used polymorphically, it must
+    also inherit from the common base class. This is the “intrusion” – the enforced
+    change we must make to the otherwise perfectly good class in order to make it
+    usable as a concrete implementation of a certain abstract interface. As we have
+    just seen, type erasure has no such need. As long as the class (or any other type)
+    has the desired behavior – usually, a way to invoke it in a function call-like
+    manner with certain arguments – it can be used to implement this behavior. The
+    other properties of the type are not relevant for supporting the interface we
+    are focusing on and are “erased.”'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can also say that type erasure provides “external polymorphism:” there is
+    no unifying hierarchy required, and the set of types that can be used to implement
+    a particular abstraction is extensible, not limited to just classes derived from
+    a common base.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So, why doesn’t type erasure completely replace inheritance in C++? To some
+    extent, it is tradition; don’t be too fast to kick tradition, though – the other
+    name for tradition is “convention,” and conventional code is also familiar, easy-to-understand
+    code. But there are two “real” reasons as well. The first one is performance.
+    We will study the implementations of type erasure and their respective performance
+    later in this chapter; however, without spoiling anything, we can say that high-performance
+    implementations of type erasure became available only recently. The second one
+    is convenience, and we can see that already. If we need to declare an abstraction
+    for a whole set of related operations, we can declare a base class with the necessary
+    virtual member functions. If we use a `std::function` approach, a type-erased
+    implementation would have to handle each of these operations separately. As we
+    will see soon, this is not a requirement – we can implement a type-erased abstraction
+    for a whole set of operations at once. However, doing it with inheritance is easier.
+    Also, remember that all concrete types hiding behind the type erasure must provide
+    the required behavior; if we require that all these types support several different
+    member functions, it is more likely that they are going to be coming from the
+    same hierarchy for other reasons.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure as an implementation technique
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Not every use of type erasure has a grand design idea behind it. Often, type
+    erasure is used purely as an implementation technique (the same is true for inheritance,
+    and we are about to see one such use). In particular, type erasure is a great
+    tool for breaking dependencies between components of a large system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is a simple example. We are building a large distributed software system,
+    so one of our core components is the network communication layer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is, of course, a very simplified and abstract view of a component that
+    is, at best, non-trivial, but sending data across the network is not what we want
+    to focus on now. The important point is that this is one of our foundational components,
+    the rest of the system depends on it. We may have several different programs built
+    as a part of our software solution; all of them include this communication library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, in one specific application, we have a need to process the data packets
+    before and after they are sent across the network; it could be a high-security
+    system that requires advanced encryption, or it could be the only tool in our
+    system that is designed to work over unreliable networks and needs to insert error
+    correction codes. The point is, the designer of the network layer is now asked
+    to introduce a dependency on some external code that comes from a higher-level
+    application-specific component:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'While this code looks simple, it is a dependency nightmare: the low-level library
+    now has to be built with the `apply_processing()` function from the specific application.
+    Even worse, all other programs that do not require this functionality must still
+    be compiled and linked with this code, even if they never set `needs_processing`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While this problem can be handled the “old school” way – with some function
+    pointers or (worse) global variables, type erasure offers an elegant solution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is an example of the strategy design pattern, where the implementation
+    of a particular behavior can be chosen at run-time. Now, any higher-level component
+    of the system can specify its own processor function (or a lambda expression,
+    or a callable object) without forcing the rest of the software to link with their
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we know what type erasure looks like and how it can help decouple components,
+    both as a design pattern and as a convenient implementation technique, there is
+    only one more question left - how does it work?
+  prefs: []
+  type: TYPE_NORMAL
+- en: How is type erasure implemented in C++?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have seen what type erasure looks like in C++. Now we understand what it
+    means for a program to not explicitly depend on a type. But the mystery remains—the
+    program makes no mention of the type, and yet, at the right time, invokes an operation
+    on the type it knows nothing about. How? That is what we are about to see.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Very old type erasure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The idea of writing a program without explicit type information is certainly
+    not new. In fact, it predates object-oriented programming and the notion of objects
+    by a long time. Consider this C program (no C++ here) as an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now remember the function declaration for `qsort` from the standard `C` library:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that, while we are using it to sort an array of integers, the `qsort` function
+    itself does not have any explicit types—it uses `void*` to pass in the array to
+    be sorted. Similarly, the comparison function takes two `void*` pointers and has
+    no explicit type information in its declaration. Of course, at some point, we
+    need to know how to compare the real types. In our C program, the pointers that
+    could, in theory, point to anything, are reinterpreted as pointers to integers.
+    This action, which reverses the abstraction, is known as **reification**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In C, restoring concrete types is entirely the responsibility of the programmer—our
+    `less()` comparison function does, in fact, only compare integers, but it is impossible
+    to deduce so from the interface. Neither is it possible to validate, at runtime,
+    that the correct types are used throughout the program, and it is certainly not
+    possible for the program to automatically select the right comparison operation
+    for the actual type at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Nonetheless, this simple example lets us penetrate the magic of type erasure:
+    the general code indeed does not depend on the concrete type that was erased,
+    but that type is hidden in the code of a function called through the type-erased
+    interface. In our example, it was the comparison function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The calling code knows nothing about the type `int`, but the implementation
+    of `less()` operates on this type. The type is “hidden” in the code of a function
+    invoked through the type-agnostic interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The major downside of this C approach is that the programmer is wholly responsible
+    for ensuring that all the pieces of the type-erased code are consistent; in our
+    example, it is the sorted data and the comparison function that must refer to
+    the same type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In C++, we can do a lot better, but the idea is still the same: the erased
+    type is reified by the implementation of some type-specific code that is invoked
+    through the type-agnostic interface. The key difference is that we are going to
+    force the compiler to generate this code for us. There are, fundamentally, two
+    techniques that can be used. The first one relies on run-time polymorphism (inheritance),
+    and the second one uses template magic. Let us start with the polymorphic implementation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure using inheritance
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We’re now going to see how `std::shared_ptr` does its magic. We will do it
+    with a simplified example of a smart pointer that focuses specifically on the
+    type erasure aspect. It should not surprise you to learn that this is done with
+    a combination of generic and object-oriented programming:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `smartptr` template has only one type parameter. Since the erased type is
+    not part of the smart pointer’s type, it has to be captured in some other object.
+    In our case, this object is an instantiation of the nested `smartptr<T>::destroy`
+    template. This object is created by the constructor, which is the last point in
+    the code where the deleter type is explicitly present. But `smartptr` must refer
+    to the `destroy` instance through a pointer whose type does not depend on `destroy`
+    (since the `smartptr` object has the same type for all deleters). Therefore, all
+    instances of the `destroy` template inherit from the same base class, `destroy_base`,
+    and the actual deleter is invoked through a virtual function. The constructor
+    is a template that deduces the type of deleter, but the type is only hidden, as
+    it’s part of the actual declaration of the specific instantiation of this template.
+    The smart pointer class itself, and, in particular, its destructor, where the
+    deleter is actually used, really have the deleter type erased. The compile-time
+    type detection is used to create a correct-by-construction polymorphic object
+    that will rediscover the deleter type at runtime and perform the correct action.
+    For that reason, we do not need a dynamic cast, and can use the static cast instead,
+    which only works if we know the real derived type (and we do).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The same technique can be used to implement `std::function` and other type-erased
+    types, such as the ultimate type-erased class, `std::any` (in C++17 and above).
+    This is a class, not a template, but it can hold a value of any type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Of course, without knowing the type, `std::any` cannot provide any interfaces.
+    You can store any value in it, and get it back if you know the right type (or
+    you can ask for the type and get back a `std::type_info` object).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we learn the other (usually more efficient) way to implement type erasure,
+    we have to address one glaringly obvious inefficiency in our design: every time
+    we create or delete a shared pointer or a `std::function` object that is implemented
+    as described above, we must allocate and deallocate memory for the derived object
+    that conceals the erased type.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure without memory allocation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There are, however, ways to optimize the type-erased pointers (as well as any
+    other type-erased data structures) and avoid the additional memory allocation
+    that happens when we construct the polymorphic `smartptr::destroy` object. We
+    can avoid this allocation, at least sometimes, by pre-allocating a memory buffer
+    for these objects. The details of this optimization, as well as its limitations,
+    are discussed in [*Chapter 10*](B19262_10.xhtml#_idTextAnchor453), *Local Buffer
+    Optimization*. Here is the gist of the optimization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The local buffer optimization does make type-erased pointers and functions a
+    lot more efficient, as we will see later in this chapter. Of course, it imposes
+    restrictions on the size of the deleter; for this reason, most real-life implementations
+    use a local buffer for small enough erased types and dynamic memory for types
+    that don’t fit into the buffer. The alternative solution - to assert as shown
+    above and force the programmer to increase the buffer – is often embraced in very
+    high-performance applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are some subtler consequences of the use of this optimization: the deleter
+    (or another erased object) is now stored as a part of the class and must be copied
+    with the rest of the class. How do we copy an object whose type we no longer know?
+    This and other details will have to wait until [*Chapter 10*](B19262_10.xhtml#_idTextAnchor453)*,
+    Local Buffer Optimization*. For now, we will use the local buffer optimization
+    in the rest of the examples, both to show its use and to simplify the code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type erasure without inheritance
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'There is an alternative implementation of type erasure that does not use an
+    internal hierarchy of classes to store the erased type. Instead, the type is captured
+    in the implementation of a function, just like it was done in C:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In C++, we make the function a template so the compiler generates instantiations
+    for every type `TE` we need:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a somewhat unusual template function: the type parameter cannot be
+    deduced from the arguments and must be explicitly specified. We already know that
+    this will be done in the constructor of a type-erased class, such as our smart
+    pointer: there, we still know the type that is about to be erased. The other very
+    important point is that any function generated by the preceding template can be
+    invoked through the same function pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we can see how the type erasure magic works: we have a function pointer
+    whose type does not depend on the type `TE` we are erasing. We are going to generate
+    a function with an implementation that uses this type and assign it to this pointer.
+    When we need to use the erased type `TE`, such as deleting the object with the
+    specified deleter, we are going to call a function through this pointer; we can
+    do that without knowing what `TE` is. We just have to put this all together into
+    a correct-by-construction implementation, and here is our type-erased smart pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: We store the user-given deleter in a small local buffer; in this example, we
+    do not show the alternative implementation for a larger deleter that would require
+    dynamic memory allocation. The function template that retains the information
+    about the erased type is `invoke_destroy()`. Note that it is a static function;
+    static functions can be invoked through a regular function pointer instead of
+    a more cumbersome member function pointer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the constructor of the `smartptr` class, we instantiate `invoke_destroy<Deleter>`
+    and assign it to the `destroy_` function pointer. We also need a copy of the deleter
+    object, since the deleter may contain a state (for example, a pointer to the allocator
+    that provided the memory for the object owned by the smart pointer). We construct
+    this deleter in the space provided by the local buffer `buf_`. At this point,
+    the original `Deleter` type is erased: all we have is a function pointer that
+    does not depend on the `Deleter` type and a character array.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the time comes to destroy the object owned by the shared pointer, we need
+    to invoke the deleter. Instead, we invoke the function through the `destroy_`
+    pointer and pass to it the object to be destroyed and the buffer where the deleter
+    resides. The erased `Deleter` type is nowhere to be seen, but it is hiding inside
+    the specific implementation of `invoke_destroy()`. There, the pointer to the buffer
+    is cast back to the type that is actually stored in the buffer (`Deleter`) and
+    the deleter is invoked.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This example is, perhaps, the most concise demonstration of type erasure machinery
+    in C++. But it is not quite equivalent to the example in the previous section
+    where we used inheritance. While we invoke the deleter on the object of type `T`
+    owned by the smart pointer, we do nothing to destroy the deleter object itself,
+    specifically, the copy we stored inside the local buffer. The local buffer is
+    not the problem here: if we dynamically allocated the memory instead, it would
+    still be accessed through a generic pointer such as `char*` or `void*`, and we
+    would now know how to properly delete it. For that, we need another function that
+    can reify the original type. Well, maybe: trivially destructible deleters (and,
+    in general, trivially destructible callable objects) are very common. All function
+    pointers, member function pointers, stateless objects, and lambdas that do not
+    capture any non-trivial objects by value are all trivially destructible. So we
+    could simply add a static assert to our constructor and restrict our smart pointer
+    to trivially destructible deleters, and, in reality, it would serve us fine in
+    most cases. But I also want to show you a more general solution.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can, of course, use another pointer to a static function that destroys the
+    deleter and is instantiated with the right type in the constructor. But the destructor
+    is not the end of what we need: in general, we also need to copy and move deleters,
+    and maybe even compare them. That’s a lot of function pointers making our `smartptr`
+    class bloated. By comparison, the inheritance-based implementation did everything
+    with just the pointer to the `destroy` object (stored as a pointer to the base
+    class `destroy_base`). There is a way we can do the same. For this example, there
+    is no good way to gradually reveal the magic, so we have to jump right in and
+    follow up with a line-by-line explanation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let us explain how this code works. First of all, we declare a `struct vtable_t`
+    that contains function pointers to every operation we need to implement on the
+    erased `Deleter` type. In our case, there are just two: invoke the deleter on
+    an object to be destroyed and destroy the deleter itself. In general, we would
+    have at least copy and move operations there as well (you will find such implementation
+    in [*Chapter 10*](B19262_10.xhtml#_idTextAnchor453)*, Local Buffer Optimization*).
+    Next, we have the `vtable_` pointer. After the object is constructed, it will
+    point to an object of the type `vtable_t`. While this may suggest dynamic memory
+    allocation ahead, we are going to do much better than that. Next is a variable
+    template `vtable`; instantiating it on a concrete `Deleter` type will create a
+    static instance of a variable of type `vtable_t`. This is, perhaps, the most tricky
+    part: usually, when we have a static data member of a class, it’s just a variable,
+    and we can access it by name. But here is something different: the name `vtable`
+    can refer to many objects, all of the same type, `vtable_t`. None of them are
+    explicitly created by us: we do not allocate memory for them, do not call `operator
+    new` to construct them. The compiler creates one of these objects for every `Deleter`
+    type we use. For every smartptr object, the address of the specific `vtable` object
+    we want it to use is stored in the `vtable_` pointer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An object of type `vtable_t` contains pointers to static functions. Our `vtable`
+    must do so as well: as you can see, we initialized the function pointers in `vtable`
+    to point to instantiations of static member functions of the `smartptr` class.
+    These instantiations are for the same `Deleter` type that the `vtable` itself
+    is instantiated with.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The name `vtable` was not chosen lightly: we have indeed implemented a virtual
+    table; the compiler builds a very similar structure with function pointers for
+    every polymorphic hierarchy, and every virtual class has a virtual pointer that
+    points to the table for its original type (the one it was constructed with).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the `vtable`, we have two static function templates. That is where the
+    erased type is really hidden and later reified. As we have seen before, the function
+    signatures do not depend on the `Deleter` type, but their implementations do.
+    Finally, we have the same buffer for storing deleter objects locally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As before, the constructor ties everything together; this must be so since
+    the constructor is the only place in this code where the `Deleter` type is explicitly
+    known. Our constructor does three things: first, it stores the pointer to the
+    object, as any other smart pointer does. Second, it points the `vtable_` pointer
+    to an instance of the static `vtable` variable for the right `Deleter` type. Finally,
+    it constructs a copy of the deleter in the local buffer. At this point, the `Deleter`
+    type is erased: nothing in the `smartptr` object explicitly depends on it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The deleter, and its true type, come into play again when the destructor of
+    the smart pointer is called and we need to destroy the owned object and the deleter
+    itself. Each of these actions is done by means of an indirect function call. The
+    functions to call are stored in the `*vtable_` object (just like for polymorphic
+    classes, the correct virtual function overrides are found in the virtual table
+    of function pointers). The deleter is passed into these functions using the address
+    of the buffer – no type information there. But the functions were generated for
+    the specific `Deleter` type, so they cast the `void*` buffer address to the right
+    type and use the deleter that was stored in the buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This implementation allows us to have multiple type-erased operations while
+    storing just one `vtable_` pointer in the object itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can also combine the two approaches: invoke some operations through a virtual
+    table and have dedicated function pointers for others. Why? Performance, possibly:
+    invoking a function through a virtual table may be a little slower. This needs
+    to be measured for any specific application.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we used type erasure to provide abstract interfaces for very specific
+    behaviors. We already know that type erasure does not need to be so restricted
+    – we have seen the example of the `std::function`. The last example in this section
+    will be our own generic type-erased function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Efficient type erasure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After the examples and explanations of the last section, a type-erased function
+    is not going to be much of a challenge. Nonetheless, there is value in showing
+    it here. We are going to demonstrate a very efficient implementation of type erasure
+    (the implementation you find in this book was inspired by the works of Arthur
+    O’Dwyer and Eduardo Magrid).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The template for a generic function looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here `Signature` is something like `int(std::string)` for a function that takes
+    a string and returns an integer. This function can be constructed to invoke any
+    `Callable` type as long as an object of this type can be invoked like a function
+    with the specified signature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to use a local buffer again, but instead of hard-coding it into
+    the class, we will add template parameters to control buffer size and alignment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For ease of coding, it is convenient to unpack the function signature into
+    the argument types `Args…` and the return type `Res`. The easiest way to do so
+    is with a class template specialization:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now all that is left is the small matter of the implementation. First, we need
+    the buffer to store the `Callable` object in it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Second, we need a function pointer `executor_` to store the address of the
+    static function `executor` generated from a template with the type of the `Callable`
+    object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, in the constructor we must initialize the executor and store the callable
+    in the buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The constructor has two subtle details. The first is the treatment of the type
+    of the callable: we deduce it as `CallableArg` but then use it as `Callable`.
+    This is because `CallableArg` may be a reference to the type of the callable,
+    such as the function pointer, and we don’t want to construct a copy of a reference.
+    The second is the concept restriction: the `Function` itself is a callable object
+    with the same signature, but we do not want this constructor to apply in such
+    a case – that is the job of the copy constructor. If you don’t use C++20, you
+    have to use SFINAE to achieve the same effect (see [*Chapter 7*](B19262_07.xhtml#_idTextAnchor314)*,
+    SFINAE, Concepts, and Overload Resolution Management,* for details). If you like
+    the concept style, you can emulate it to some degree:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Speaking of copying, our `Function` is correct only for trivially copyable and
+    trivially destructible `Callable` types since we did not provide any means to
+    destroy or copy the callable objects stored in the buffer. This still covers a
+    lot of ground, but we can handle non-trivial callables as well using the vtable
+    approach (you will find an example in [*Chapter 10*](B19262_10.xhtml#_idTextAnchor453)*,
+    Local* *Buffer Optimization*).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is one more detail we need to take care of right now: `std::function`
+    can be default-constructed without any callable; calling such a “null” function
+    throws a `std::bad_function_call` exception. We can do this too if we initialize
+    the executor to a pre-defined function that does nothing except throw this exception:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now we have a generic function that is very similar to `std::function` (or
+    would have been if we added support for calling member functions, copy and move
+    semantics, and the few missing member functions). It does work the same way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And just what did that convenience cost us? All performance should be measured,
+    but we can also get some idea by examining the machine code generated by the compiler
+    when it has to call a type-erased function. Here is what it takes to invoke `std::function`
+    with the same signature as we just used:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The compiler (GCC-11 with O3) turns this code into this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now our function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This time, the compiler can do much better:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'What we see here is the so-called tail call: the compiler simply redirects
+    the execution to the actual callable that needs to be invoked. You might ask,
+    doesn’t it always? Not usually: most function calls are implemented with `call`
+    and `ret` instructions. To call a function, its arguments must be stored in a
+    predefined location, then the return address is pushed onto the stack and the
+    execution is transferred to the function entry point by the `call` instruction.
+    The return instruction `ret` takes the address off the stack and transfers execution
+    to it. The beauty of the tail call is this: while we want the call to `Function`
+    to call the original callable in the end, we don’t need the execution to return
+    to the `Function` object. If there is nothing to do in the `Function` executor
+    except to return the control to the caller, we might as well simply leave the
+    original return address as-is and have the callable return the control to the
+    right place without an additional indirection. Of course, this assumes that the
+    executor has nothing to do after the call.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two key optimizations in our code that enable this compact implementation.
+    The first one is the way we handle the null function: most implementations of
+    `std::function` initialize the executor to `nullptr` and do a pointer comparison
+    on every call. We did no such comparison; we always invoke the executor. But then,
+    our executor is never null: unless otherwise initialized, it points to the default
+    executor.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second optimization is more subtle. You might have noticed that the executor
+    has one more argument than the callable: to call a function with the signature
+    `int(int, int)` our executor needs the two original function arguments (of course)
+    and the pointer to the callable object (stored in the local buffer in our case).
+    So our executor’s signature is `int(int, int, void*)`. Why not pass the object
+    first? That’s what the `std::function` does (at least the one whose assembly we
+    have just seen). The problem is that the original function arguments are also
+    sitting on the stack. Adding one more argument at the end of the stack is easy.
+    But to insert the new first argument, we have to shift all the existing arguments
+    by one (this is why the code generated for `std::function` becomes longer the
+    more arguments you have).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As convincing as it sounds, any speculations about performance are hardly worth
+    the electrons expanded to have them written down. Performance must always be measured,
+    and this is the last task left for us to do in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performance of type erasure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We are going to measure the performance of a type-erased generic function and
+    a type-erased smart pointer deleter. First, we need the right tools; in this case,
+    a micro-benchmarking library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Installing the micro-benchmark library
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In our case, we are interested in the efficiency of very small fragments of
+    code that construct and delete objects using different kinds of smart pointers.
+    The appropriate tool for measuring the performance of small fragments of code
+    is a micro-benchmark. There are many micro-benchmark libraries and tools out there;
+    in this book, we will use the Google Benchmark library. To follow along with the
+    examples in this section, you must first download and install the library (to
+    do this, follow the instructions in the `Readme.md` file). Then you can compile
+    and run the examples. You can build the sample files included with the library
+    to see how to build a benchmark on your particular system. For example, on a Linux
+    machine, the command to build and run a `smartptr.C` benchmark program might look
+    something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `$CXX` is your C++ compiler, such as `clang++` or `g++-11`, and `$GBENCH_DIR`
+    is the directory where the benchmark is installed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The overhead of type erasure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Every benchmark needs a baseline. In our case, the baseline is a raw pointer.
+    We can reasonably assume that no smart pointer will be able to outperform a raw
+    pointer, and the best smart pointer will have zero overhead. Thus, we begin by
+    measuring how long it takes to construct and destroy a small object using a raw
+    pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A good optimizing compiler can do a great deal of damage to a microbenchmark
+    like this by optimizing the “unnecessary” work (which is, really, all the work
+    done by this program). We can prevent such optimizations by moving the allocation
+    into a different compilation unit:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you have a compiler that can do whole program optimizations, turn them off
+    for this benchmark. But don’t turn off the optimization of each file: we want
+    to profile the optimized code since that’s what the real program will use.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The actual numbers reported by the benchmark depend, of course, on the machine
+    that it runs on. But we are interested in the relative changes, so any machine
+    will do, as long as we stay with it for all measurements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now verify that `std::unique_ptr` indeed has zero overhead (as long
+    as we construct and delete objects the same way, of course):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The result is within the measurement noise from the raw pointer, as can be
+    seen here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can similarly measure the performance of `std::shared_ptr` as well as different
+    versions of our own smart pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first line, `BM_sharedptr`, constructs and deletes a `std::shared_ptr<int>`
+    with our custom deleter. The shared pointer is much more expensive than the unique
+    pointer. Of course, there is more than one reason for that—`std::shared_ptr` is
+    a reference-counting smart pointer, and maintaining a reference count has its
+    own overhead. Using `std::make_shared` to allocate shared pointers makes its creation
+    and deletion considerably faster, as we can see in the `BM_make_sharedptr` benchmark,
+    but, to make sure that we measure only the overhead of type erasure, we should
+    implement a type-erased unique pointer. But we already did—it’s our `smartptr`
+    that we saw in the *How is type erasure implemented in C++?* section of this chapter.
+    It has just enough functionality to measure the performance of the same benchmark
+    that we used for all other pointers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, `smartptr_te` stands for the type-erased version of the smart pointer
+    implemented using inheritance. It is slightly faster than `std::shared_ptr`, proving
+    our suspicion that the latter has more than one source of overhead. Just like
+    `std::shared_ptr`, deleting `smartptr_te` touches two memory locations: in our
+    case, it is the object that is being deleted and the deleter (embedded in a polymorphic
+    object). This is exactly what `std::make_shared` avoids by consolidating both
+    memory locations for `std::shared_ptr`, and it definitely pays off. We can reasonably
+    assume that the second memory allocation is also the reason for the poor performance
+    of our type-erased smart pointer (approximately twice as slow as the raw or unique
+    pointers). We can avoid this allocation if we use an internal buffer reserved
+    inside the smart pointer object. We have already seen a local buffer implementation
+    of the smart pointer in the section *Type erasure without memory allocation* (in
+    this benchmark, it is renamed as `smartptr_te_lb0`). Here it is benchmarked under
+    the name `BM_smartptr_te_lb0`. The version that uses the local buffer when possible
+    but switches to dynamic allocation for larger deleters is named `smartptr_te_lb`
+    and is slightly slower (`BM_smartptr_te_lb`):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have also benchmarked the two type-erased smart pointers implemented without
+    inheritance. The static function version `BM_smartptr_te_static` is slightly faster
+    than the version that uses the vtable (`BM_smartptr_te_vtable`). Both of these
+    use local buffers; it should not come as a surprise that the compiler-generated
+    vtable performs exactly as well as the equivalent structure we crafted using static
+    variable templates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overall, there is some overhead even for the best type erasure implementation,
+    just under 10 percent in our case. Whether or not this is acceptable, depends
+    on the application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We should also measure the performance of the generic type-erased function.
+    We can measure its performance with any callable entity, for example, a lambda
+    expression:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can do the same measurement for `std::function` as well, and compare the
+    results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'While it may seem like a great success, this benchmark also hides the warning
+    against going overboard with type erasure. All we have to do to reveal this warning
+    is to measure the performance of the direct call to the same lambda:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: How do we reconcile this major slowdown with the minor cost of type erasure
+    we have seen earlier when we were comparing smart and raw pointers?
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to pay attention to what is being erased. A well-implemented
+    type-erased interface can deliver performance very similar to that of a virtual
+    function call. A non-inlined non-virtual function call is going to be slightly
+    faster (in our case, a call that took just under 9 nanoseconds incurred about
+    10 percent overhead). But a type-erased invocation is always indirect. The one
+    competition it can’t come close to is an inlined function call. This is exactly
+    what we observed when we compared the performance of type-erased and direct invocations
+    of lambdas.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With what we learned about the performance of type erasure, when can we recommend
+    it?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Guidelines for using type erasure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'What problems does type erasure solve, and when is the cost of the solution
+    acceptable? First of all, it is important to not lose sight of the original goal:
+    type erasure is a design pattern that helps with the separation of concerns, a
+    very powerful design technique. It is used to create an abstraction for a certain
+    behavior when the implementation of said behavior can be provided by an open set
+    of possibly unrelated types.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is also used as an implementation technique, mostly to aid in breaking dependencies
+    between compilation units and other program components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we can answer the question “*Is type erasure worth the cost?*”, we need
+    to consider the alternatives. In many cases, the alternative is another way to
+    implement the same abstraction: polymorphic class hierarchies or function pointers.
+    The performance of either option is similar to that of the type erasure (in its
+    optimal implementation), so it comes down to convenience and code quality. For
+    a single function, using a type-erased function is easier than developing a new
+    class hierarchy, and more flexible than using a function pointer. For a class
+    with many member functions, it is usually easier and less error-prone to maintain
+    a class hierarchy.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other possible alternative is to do nothing and allow tighter coupling
+    between parts of the design. The downsides of such a decision are often inversely
+    proportional to its performance benefit: closely coupled parts of the system often
+    need to coordinate implementation to achieve good performance, but they are closely
+    coupled for a reason. Components that are logically well separated should not
+    interact extensively, therefore, the performance of such interaction should not
+    be critical.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What do we do when performance is important but we still need an abstraction?
+    Often, the direct opposite of type erasure: we make everything into templates.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consider C++20 ranges. On one hand, they are abstract sequences. We can write
+    a function that operates on a range and invoke it with a vector, a deque, a range
+    created from one of these containers, a subrange of that range, or a filtered
+    view. Anything is a range as long as it can be iterated from `begin()` to `end()`.
+    But ranges created from a vector and a deque are different types, even though
+    they are abstractions for sequences, interface-wise. The standard library provides
+    multiple range adapters and range views, and they are all templates. So are the
+    functions operating on the ranges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Could we implement a type-erased range? Yes, it is not even that hard. We end
+    up with a single type, `GenericRange`, that can be constructed from a vector,
+    a deque, a list, or anything else that has `begin()`, `end()`, and a forward iterator.
+    We also get something that is about twice as slow as most container iterators,
+    except for vectors: their iterators are really just pointers, and vectorizing
+    compilers can do optimizations that speed up the code by at least an order of
+    magnitude. The possibility of such optimizations is lost when we erase the type
+    of the original container.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The C++ designers made the decision that, on the one hand, ranges provide an
+    abstraction for certain behavior and let us separate the interface from the implementation.
+    On the other hand, they were unwilling to sacrifice performance. So they chose
+    to make ranges and all code that operates on them into templates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a designer of a software system, you may have to make similar decisions.
+    The general guideline is to prefer tighter coupling for closely related components
+    where such coupling is essential for performance. Conversely, prefer better separation
+    for loosely coupled components whose interaction does not require high efficiency.
+    When in that domain, type erasure should be considered at least equally to polymorphism
+    and other decoupling techniques.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we have, hopefully, demystified the programming technique known
+    as type erasure. We have shown how a program can be written without all of the
+    type information being explicitly visible, and some of the reasons why this may
+    be a desirable implementation. We have also demonstrated that, when implemented
+    efficiently and used wisely, it is a powerful technique that may lead to much
+    simpler and more flexible interfaces and clearly separated components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter is a change of direction—we are done with the abstraction idioms
+    for some time and now move on to C++ idioms that facilitate the binding of template
+    components into complex interacting systems. We start with the SFINAE idiom.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What is type erasure, really?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How is type erasure implemented in C++?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is the difference between hiding a type behind `auto` and erasing it?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How is the concrete type reified when the program needs to use it?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is the performance overhead of type erasure?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

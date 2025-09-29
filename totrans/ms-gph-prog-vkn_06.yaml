@@ -1,0 +1,1027 @@
+- en: '6'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: GPU-Driven Rendering
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will upgrade the geometry pipeline to use the latest available
+    technology: **mesh shaders** and **meshlets**. The idea behind this technique
+    is to move the flow of mesh rendering from the CPU to the GPU, moving culling
+    and draw command generation into different shaders.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will first work on the mesh structure on the CPU, by separating it into different
+    *meshlets* that are groups of up to 64 triangles, each with an individual bounding
+    sphere. We will then use compute shaders to perform culling and write a list of
+    commands to draw the meshlets in the different passes. Finally, we will use the
+    mesh shaders to render the meshlets. There will also be a compute version provided,
+    as mesh shaders are still available only on Nvidia GPUs for now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traditionally, geometry culling has been performed on the CPU. Each mesh on
+    the scene is usually represented by an **axis aligned bounding box** (**AABB**).
+    An AABB can easily be culled against the camera frustum, but with the increase
+    in scene complexity, a large portion of frame time could be spent on the culling
+    step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is usually the first step in a rendering pipeline, as we need to determine
+    which meshes to submit for drawing. This means it’s hard to find other work that
+    could be done in parallel. Another pain point of doing frustum culling on the
+    CPU is that it’s hard to determine which objects are occluded and don’t need to
+    be drawn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At every frame, we need to re-sort all elements based on the camera position.
+    When there are hundreds of thousands of elements in the scene, this is usually
+    unfeasible. Finally, some meshes, terrain, for example, are organized in large
+    areas that end up always being drawn, even if only a small part of them is visible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Thankfully, we can move some of this computation to the GPU and take advantage
+    of its parallel capabilities. The techniques we are going to present in this chapter
+    will allow us to perform frustum and occlusion culling on the GPU. To make the
+    process as efficient as possible, we are going to generate the list of draw commands
+    directly on the GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’re going to cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Breaking down large meshes into meshlets
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Processing meshlets using task and mesh shaders to perform back-face and frustum
+    culling
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Performing efficient occlusion culling using compute shaders
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generating draw commands on the GPU and using indirect drawing functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter6).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Breaking down large meshes into meshlets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to focus primarily on the geometry stage of the
+    pipeline, the one before the shading stage. Adding some complexity to the geometry
+    stage of the pipeline will pay dividends in later stages as we’ll reduce the number
+    of pixels that need to be shaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we refer to the geometry stage of the graphics pipeline, we don’t mean
+    geometry shaders. The geometry stage of the pipeline refers to **input assembly**
+    (**IA**), vertex processing, and **primitive assembly** (**PA**). Vertex processing
+    can, in turn, run one or more of the following shaders: vertex, geometry, tessellation,
+    task, and mesh shaders.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Content geometry comes in many shapes, sizes, and complexity. A rendering engine
+    must be able to deal with meshes from small, detailed objects to large terrains.
+    Large meshes (think terrain or buildings) are usually broken down by artists so
+    that the rendering engine can pick out the different levels of details based on
+    the distance from the camera of these objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Breaking down meshes into smaller chunks can help cull geometry that is not
+    visible, but some of these meshes are still large enough that we need to process
+    them in full, even if only a small portion is visible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Meshlets have been developed to address these problems. Each mesh is subdivided
+    into groups of vertices (usually 64) that can be more easily processed on the
+    GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following image illustrates how meshes can be broken down into meshlets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.1 – A meshlet subdivision example](img/B18395_06_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.1 – A meshlet subdivision example
+  prefs: []
+  type: TYPE_NORMAL
+- en: These vertices can make up an arbitrary number of triangles, but we usually
+    tune this value according to the hardware we are running on. In Vulkan, the recommended
+    value is `126` (as written in [https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/),
+    the number is needed to reserve some memory for writing the primitive count with
+    each meshlet).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the time of writing, mesh and task shaders are only available on Nvidia hardware
+    through its extension. While some of the APIs described in this chapter are specific
+    to this extension, the concepts can be generally applied and implemented using
+    generic compute shaders. A more generic version of this extension is currently
+    being worked on by the Khronos committee so that mesh and task shaders should
+    soon be available from other vendors!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have a much smaller number of triangles, we can use them to have
+    much finer-grained control by culling meshlets that are not visible or are being
+    occluded by other objects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Together with the list of vertices and triangles, we also generate some additional
+    data for each meshlet that will be very useful later on to perform back-face,
+    frustum, and occlusion culling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One additional possibility (that will be added in the future) is to choose the
+    **level of detail** (**LOD**) of a mesh and, thus, a different subset of meshlets
+    based on any wanted heuristic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first of this additional data represents the bounding sphere of a meshlet,
+    as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.2 – A meshlet bounding spheres example; some of the larger spheres
+    have been hidden for clarity](img/B18395_06_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.2 – A meshlet bounding spheres example; some of the larger spheres
+    have been hidden for clarity
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some of you might ask: why not AABBs? AABBs require at least two `vec3` of
+    data: one for the center and one for the half-size vector. Another encoding could
+    be to store the minimum and maximum corners. Instead, spheres can be encoded with
+    a single `vec4`: a `vec3` for the center plus the radius.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Given that we might need to process millions of meshlets, each saved byte counts!
+    Spheres can also be more easily tested for frustum and occlusion culling, as we
+    will describe later in the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next additional piece of data that we’re going to use is the meshlet cone,
+    as shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.3 – A meshlet cone example; not all cones are displayed for clarity](img/B18395_06_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.3 – A meshlet cone example; not all cones are displayed for clarity
+  prefs: []
+  type: TYPE_NORMAL
+- en: The cone indicates the direction a meshlet is facing and will be used for back-face
+    culling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we have a better understanding of why meshlets are useful and how we can
+    use them to improve the culling of larger meshes, let’s see how we generate them
+    in code!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Generating meshlets
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We are using an open source library, called **MeshOptimizer** ([https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer))
+    to generate the meshlets. An alternative library is **meshlete** ([https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete))
+    and we encourage you to try both to find the one that best suits your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After we have loaded the data (vertices and indices) for a given mesh, we are
+    going to generate the list of meshlets. First, we determine the maximum number
+    of meshlets that could be generated for our mesh and allocate memory for the vertices
+    and indices arrays that will describe the meshlets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice the types for the indices and triangle arrays. We are not modifying the
+    original vertex or index buffer, but only generating a list of indices in the
+    original buffers. Another interesting aspect is that we only need 1 byte to store
+    the triangle indices. Again, saving memory is very important to keep meshlet processing
+    efficient!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is to generate our meshlets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: As mentioned in the preceding step, we need to tell the library the maximum
+    number of vertices and triangles that a meshlet can contain. In our case, we are
+    using the recommended values for the Vulkan API. The other parameters include
+    the original vertex and index buffer, and the arrays we have just created that
+    will contain the data for the meshlets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let’s have a better look at the data structure of each meshlet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each meshlet is described by two offsets and two counts, one for the vertex
+    indices and one for the indices of the triangles. Note that these offsets refer
+    to `meshlet_vertex_indices` and `meshlet_triangles` that are populated by the
+    library, not the original vertex and index buffers of the mesh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have the meshlet data, we need to upload it to the GPU. To keep
+    the data size to a minimum, we store the positions at full resolution while we
+    compress the normals to 1 byte for each dimension and UV coordinates to half-float
+    for each dimension. In pseudocode, this is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step is to extract the additional data (bounding sphere and cone)
+    for each meshlet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We loop over all the meshlets and we call the MeshOptimizer API that computes
+    the bounds for each meshlet. Let’s see in more detail the structure of the data
+    that is returned:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first four floats represent the bounding sphere. Next, we have the cone
+    definition, which is comprised of the cone direction (`cone_axis`) and the cone
+    angle (`cone_cutoff`). We are not using the `cone_apex` value as it makes the
+    back-face culling computation more expensive. However, it can lead to better results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once again, notice that quantized values (`cone_axis_s8` and `cone_cutoff_s8`)
+    help us reduce the size of the data required for each meshlet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, meshlet data is copied into GPU buffers and it will be used during
+    the execution of task and mesh shaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For each processed mesh, we will also save an offset and count of meshlets
+    to add a coarse culling based on the parent mesh: if the mesh is visible, then
+    its meshlets will be added.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have described what meshlets are and why they are useful
+    to improve the culling of geometry on the GPU. Next, we showed the data structures
+    that are used in our implementation. Now that our data is ready, it’s time for
+    it to be consumed by task and mesh shaders. That’s the topic of the next section!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding task and mesh shaders
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Before we begin, we should mention that mesh shaders can be used without task
+    shaders. If, for instance, you wanted to perform culling or some other pre-processing
+    step on the meshlets on the CPU, you are free to do so.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, note that task and mesh shaders replace vertex shaders in the graphics
+    pipeline. The output of mesh shaders is going to be consumed by the fragment shader
+    directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following diagram illustrates the differences between the traditional geometry
+    pipeline and the mesh shader pipeline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.4 – The difference between traditional and mesh pipeline](img/B18395_06_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.4 – The difference between traditional and mesh pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we are going to provide an overview of how task and mesh shaders
+    work and then use this information to implement back-face and frustum culling
+    using task shaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both task and mesh shaders use the same execution model of compute shaders,
+    with some minor changes. The output of task shaders is consumed directly by a
+    mesh shader, and for both types, we can specify the thread group size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task shaders (sometimes also referred to as amplification shaders) can be thought
+    of as filters. We submit all meshlets for processing when invoking a task shader,
+    and the task shader will output the meshlets that have passed the filter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following diagram provides an example of meshlets that are processed by
+    the task shader. The meshlets that are rejected won’t be processed further.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.5 – The task shader determines which meshlets to cull. The culled
+    meshlets won’t be processed by the mesh shader](img/B18395_06_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 6.5 – The task shader determines which meshlets to cull. The culled meshlets
+    won’t be processed by the mesh shader
+  prefs: []
+  type: TYPE_NORMAL
+- en: The mesh shader then takes the active meshlets and performs the final processing
+    as you normally would in a vertex shader.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While this is only a high-level overview of task and mesh shaders, there isn’t
+    much more to it. We will provide more resources in the *Further reading* section
+    if you’d like to know more about the inner workings of this feature.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to explain how to implement task and mesh shaders in Vulkan!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing task shaders
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we mentioned previously, task and mesh shaders are available through an extension
+    of the Vulkan API. We have shown how to check for extensions before, so we are
+    not duplicating the code in this chapter. Please refer to the code for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The extension also introduces two new pipeline stages, `VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV`
+    and `VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV`, that can be used to place pipeline
+    barriers to ensure data used by these stages is synchronized correctly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Task shaders can be treated like any compute shader: we create a pipeline that
+    includes an (optional) task shader module, a mesh shader, and a fragment shader.
+    Invoking a task shader is done with the following API:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Think of `task_count` as the workgroup size of a compute shader. There is also
+    an indirect variant that can read the invocation details for multiple draws from
+    a buffer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: We use this variant in our code as it allows us to have only one draw call per
+    scene and give the GPU full control over which meshlets will be drawn.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With indirect rendering, we write the commands in a GPU program as we would
+    do on the CPU, and we additionally read a buffer to know how many commands are
+    there. We will see command writing in the *GPU culling using compute* section
+    of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We now turn our attention to the shader implementation. Task and mesh shaders
+    require that their GLSL extension be enabled, otherwise, the compiler might treat
+    the code as a regular compute shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Since we are using an indirect command to invoke our shader, we need to enable
+    another extension that will let us access the `draw` ID for the current shader
+    invocation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that this extension is enabled in the `platform.h` header and not directly
+    in the shader code. As we mentioned, task shaders are akin to compute shaders.
+    In fact, the first directive in our shader is to determine the thread group size:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, `local_size_y` and `local_size_z` will be ignored even if specified.
+    We can now move to the main body of the shader. We start by determining which
+    mesh and meshlet we need to process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `gl_DrawIDARB` draw index comes from the invocation of each `vkCmdDrawMeshTasksNV`
+    through the commands written in the indirect buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we load the data for the current meshlet. First, we determine the world
+    position and the size of the meshlet bounding sphere:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we restore the `cone_axis` value (remember, they are stored as a single
+    byte) and `cone_cutoff`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We now have all of the data we need to perform back-face and frustum culling:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, `coneCull` is implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code first computes the cosine of the angle between the cone axis and the
+    vector toward the camera from the center of the bounding sphere. Then it scales
+    the cone cutoff (which is the cosine of the cut-off half angle) by the distance
+    between the camera and the center of the bounding sphere and adds the radius of
+    the bounding sphere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This determines whether the cone is pointing away from the camera, and should
+    be culled or, if it’s pointing toward the camera, it should be kept.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is to perform frustum culling. First, we transform the center
+    of the bounding sphere into camera space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we check against the six frustum planes to determine whether the bounding
+    sphere is inside the frustum:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We accept the meshlet if it’s both visible and not considered back facing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The final step is to write out the indices of the visible meshlets and their
+    number. The output data structure is defined as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We use the subgroup instructions of GLSL for this step, and it’s worth going
+    through line by line if it’s the first time you have seen this syntax. To access
+    these instructions, the following extension must be enabled:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'First, we set a bit for the active shader invocation depending on whether the
+    meshlet is considered visible or not:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we determine which bit was set by the previous call and use it to store
+    the active meshlet index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we count all the bits set across this thread group and store them
+    in the `gl_TaskCountNV` variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `gl_TaskCountNV` variable is used by the GPU to determine how many mesh
+    shader invocations are needed to process the meshlets that have not been occluded.
+    The `if` is needed so that we write `TaskCount` only once per meshlet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our implementation of task shaders. Next, we are going to look
+    at our mesh shader implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing mesh shaders
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After performing meshlet culling in the task shader, we need to process the
+    active meshlets. This is similar to a regular vertex shader, however, there are
+    some important differences that we’d like to point out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Like task shaders, mesh shaders can be considered compute shaders, and the
+    first directive is to determine the thread group size:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then have to read the data that has been written by the task shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we define the data we are going to output. We first determine the maximum
+    number of vertices and primitives (triangles in our case) that we could write:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We follow with the same data we might usually output from a vertex shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice, though, that we are using an array of values, as we can output up to
+    64 vertices per invocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have our input and output values, we can move to the shader implementation.
+    Like before, we first determine our mesh and meshlet index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we determine the vertex and index offset and count for the active meshlet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then process the vertices for the active meshlet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: Notice we are writing to the `gl_MeshVerticesNV` variable. This variable is
+    used by the GPU to keep track of the vertices we output and their index. This
+    data will then be used by the rasterizer to draw the resulting triangles on the
+    screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we write out the indices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `writePackedPrimitiveIndices4x8NV` instruction has been introduced specifically
+    for mesh shaders and it allows them to write four indices at once. As we mentioned
+    previously, indices require only 1 byte to be stored, as we can’t have values
+    greater than 64\. They are packed into `meshletData`, which is an unsigned `int`
+    array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If indices were stored in a different format, we would need to write them out
+    individually to the `gl_PrimitiveIndicesNV` variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we write the primitive count in the appropriate variable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our mesh shader implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we have given an overview of how task and mesh shaders work
+    and how they relate to compute shaders. Next, we provided a walk-through of our
+    task and mesh shader implementation and highlighted the main differences from
+    regular vertex shaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we are going to extend our implementation by adding occlusion
+    culling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: GPU culling using compute
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we demonstrated how to perform back-face and frustum
+    culling on meshlets. In this section, we are going to implement frustum and occlusion
+    culling using compute shaders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depending on the rendering pipeline, occlusion culling is usually done through
+    a depth pre-pass, where we write only the depth buffer. The depth buffer can then
+    be used during the G-Buffer pass to avoid shading fragments that we already know
+    are occluded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The downside of this approach is that we have to draw the scene twice and, unless
+    there is other work that can overlap with the depth pre-pass, have to wait for
+    the depth pre-pass to complete before proceeding to the next step.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The algorithm described in this section was first presented at [https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](https://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here’s how it works:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the depth buffer from the previous frame, we render the visible objects
+    in the scene and perform mesh and meshlet frustum and occlusion culling. This
+    could lead to false negatives, for example, meshes or meshlets that are visible
+    in this frame but were not visible before. We store the list of these objects
+    so that any false positives can be resolved in the next phase.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The previous step generates a list of draw commands directly in a compute shader.
+    This list will be used to draw the visible objects using an indirect draw command.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We now have an updated depth buffer, and we update the depth pyramid as well.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We can now re-test the objects that have been culled in the first phase and
+    generate a new draw list to remove any false positives.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We draw the remaining objects and generate our final depth buffer. This will
+    then be used as the starting point for the next frame, and the process will repeat.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Now that we have a better understanding of the steps of the occlusion algorithm,
+    let’s see in detail how it is implemented.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Depth pyramid generation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When describing the occlusion algorithm, we mentioned the use of the depth buffer.
+    However, we are not using the depth buffer directly. What we use instead is called
+    a **depth pyramid**. You can think of it as the mipmap of the depth buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main difference from traditional mipmaps is that we can’t use bi-linear
+    interpolation to compute the lower level. If we were to use regular interpolation,
+    we would compute depth values that don’t exist in the scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we’ll see later in the book, this applies in general to sampling depth textures.
+    You should either use nearest neighbor sampling or specific samplers with min/max
+    compare operations. Check out [https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSamplerReductionMode.xhtml)
+    for more info.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instead, we read the four fragments we want to reduce and pick the maximum value.
+    We pick the maximum because our depth value goes from `0` to `1` and we need to
+    make sure we cover the full range of values. If you are using `inverted-z`, the
+    depth values go from `1` to `0` and the minimum value has to be used instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We perform this step using a compute shader. We start by transitioning the
+    depth texture to a read state:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we loop over the levels of the depth pyramid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The barrier in the preceding example is needed to ensure the image we are writing
+    to is correctly set up. Next, we compute the group size for this level and invoke
+    the compute shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: As we’ll see in a moment, the thread group size of the compute shader is set
+    to 8x8\. We have to take this into account to compute the right group size.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we transition the image of the current level so that we can safely
+    read from it at the next iteration:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also update the width and height to match the size of the next level. The
+    compute shader implementation is relatively simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We first compute the positions for the texels we want to reduce. Next, we read
+    the depth value for these texels:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we compute the maximum value and store it in the right position of
+    the next level in the pyramid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `max` operation is needed because the depth goes from `0` (close to the
+    camera) to `1` (far from the camera). When using `inverse-depth`, it should be
+    set to `min`. When down-sampling, we want the farthest of the four samples to
+    avoid over-occluding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have computed the depth pyramid, let’s see how it’s going to be
+    used for occlusion culling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Occlusion culling
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The implementation of this step is done entirely in a compute shader. We are
+    going to highlight the main sections of the code. We start by loading the current
+    mesh:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we compute the bounding sphere position and radius in view space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that this is the bounding sphere for the full mesh, not the meshlet. We
+    are going to process the meshlets in the same way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step is to perform frustum culling on the bounding sphere. This is
+    the same code we presented in the *Implementing task shaders* section, and we
+    are not going to replicate it here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the mesh passes the frustum culling, we check for occlusion culling next.
+    First, we compute the bounding square of the perspective projected sphere. This
+    step is necessary as the projected sphere shape could be an ellipsoid. Our implementation
+    is based on this paper: [https://jcgt.org/published/0002/02/05/](https://jcgt.org/published/0002/02/05/)
+    and the Niagara project ([https://github.com/zeux/niagara/](https://github.com/zeux/niagara/)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going to highlight only the final implementation; we suggest reading
+    the full paper for more details about the theory and derivation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start by checking whether the sphere is fully behind the near plane. If
+    that’s the case, no further processing is required:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Why `–C.z`? Because in our implementation, we look at a negative direction vector,
+    thus the visible pixel’s `z` is always negative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we compute the minimum and maximum points on the *x* axis. We do so by
+    considering only the `xz` plane, finding the projection of the sphere onto this
+    plane, and computing the minimum and maximum `x` coordinates of this projection:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We repeat the same procedure for the `y` coordinate (omitted here). The computed
+    points are in world space, but we need their value in perspective-projected space.
+    This is accomplished with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`P00` and `P11` are the first two diagonal values of the view-projection matrix.
+    The final step is to transform these values from screen space to UV space. Operating
+    in UV space will be useful for the next part of the algorithm.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The transformation is performed by the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Coordinates in screen space are in the `[-1, 1]` range, while UV coordinates
+    are in the `[0, 1]` range. This transformation performs the mapping from one range
+    to the other. We use a negative offset for `y` as screen space has a bottom-left
+    origin, while UV space has a top-left origin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have the 2D bounding box for the mesh sphere, we can check whether
+    it’s occluded. First, we determine which level of the depth pyramid we should
+    use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: We simply scale the size of the bounding box in UV coordinates, computed in
+    the previous step, by the size of the top level of the depth pyramid texture.
+    We then take the logarithm of the largest between the width and height to determine
+    which level of the pyramid we should use for the depth value lookup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this step, we reduce the bounding box to an individual pixel lookup. Remember,
+    when computing the levels of the pyramid, the reduction step stores the farthest
+    depth value. Thanks to this, we can safely look up an individual fragment to determine
+    whether the bounding box is occluded or not.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is accomplished with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: First, we look up the depth value in the pyramid for the sphere bounding box.
+    Next, we compute the closest depth of the bounding sphere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also compute the closest depth for the bounding sphere:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we determine whether the sphere is occluded by checking its depth
+    against the depth we read from the pyramid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the mesh passes both the frustum and occlusion culling, we add the command
+    to draw it in the command list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will then use this list of commands to draw the meshlets for the visible
+    meshes (as shown in the *Understanding task and mesh shaders* section) and update
+    the depth pyramid.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last step will be to rerun the culling for the meshes that were discarded
+    in this first pass. Using the updated depth pyramid, we can generate a new command
+    list to draw any meshes that had been incorrectly culled.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our implementation of occlusion culling. In this section, we
+    have explained an algorithm for efficient occlusion culling on the GPU. We started
+    by detailing the steps performed by this technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We then highlighted the main sections of the code that perform the creation
+    of the depth pyramid, which is used for occlusion culling based on the bounding
+    sphere of each mesh.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performing culling on the GPU is a powerful technique that has helped developers
+    overcome some of the limitations of the traditional geometry pipeline and allows
+    us to render more complex and detailed scenes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we have introduced the concept of meshlets, a construct that
+    helps us break down large meshes into more manageable chunks and that can be used
+    to perform occlusion computations on the GPU. We have demonstrated how to use
+    the library of our choice (MeshOptimizer) to generate meshlets, and we also illustrated
+    the extra data structures (cones and bounding spheres) that are useful for occlusion
+    operations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We introduced mesh and task shaders. Conceptually similar to compute shaders,
+    they allow us to quickly process meshlets on the GPU. We demonstrated how to use
+    task shaders to perform back-face and frustum culling, and how mesh shaders replace
+    vertex shaders by processing and generating multiple primitives in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we went through the implementation of occlusion culling. We first listed
+    the steps that compose this technique. Next, we demonstrated how to compute a
+    depth pyramid from our existing depth buffer. Lastly, we analyzed the occlusion
+    culling implementation and highlighted the most relevant part of the compute shader.
+    This step also generates a list of commands that can be used with an indirect
+    draw call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, our scene only uses one light. In the next chapter, we are going to
+    implement clustered-deferred lighting, which will allow us to render hundreds
+    of lights in our scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As we mentioned in a previous section, task and mesh shaders are only available
+    on Nvidia GPUs. This blog post has more details about their inner workings: [https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/](https://developer.nvidia.com/blog/introduction-turing-mesh-shaders/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our implementation has been heavily inspired by the algorithms and techniques
+    described in these resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://www.gdcvault.com/play/1023463/contactUs](https://www.gdcvault.com/play/1023463/contactUs)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf](http://advances.realtimerendering.com/s2015/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Our go-to reference implementation for a task and mesh shader has been this
+    project: [https://github.com/zeux/niagara](https://github.com/zeux/niagara), which
+    is also accompanied by a series of videos showing its development: [https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd](https://www.youtube.com/playlist?list=PL0JVLUVCkk-l7CWCn3-cdftR0oajugYvd).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These libraries can be used to generate meshlets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://github.com/zeux/meshoptimizer](https://github.com/zeux/meshoptimizer)
+    (the one we use)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://github.com/JarkkoPFC/meshlete](https://github.com/JarkkoPFC/meshlete)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'A more recent development in occlusion culling is the concept of a visibility
+    buffer. The technique is described in detail in these resources:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[http://www.conffx.com/Visibility_Buffer_GDCE.pdf](http://www.conffx.com/Visibility_Buffer_GDCE.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/](http://filmicworlds.com/blog/visibility-buffer-rendering-with-material-graphs/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://www.youtube.com/watch?v=eviSykqSUUw](https://www.youtube.com/watch?v=eviSykqSUUw)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

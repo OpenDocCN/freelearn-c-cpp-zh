@@ -1,0 +1,1094 @@
+- en: '8'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Curiously Recurring Template Pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We are already familiar with the concepts of inheritance, polymorphism, and
+    virtual functions. A derived class inherits from the base class and customizes
+    the behavior of the base class by overriding its virtual functions. All operations
+    are done on an instance of the base class, polymorphically. When the base object
+    is actually an instance of the derived class, the right customized overrides are
+    called. The base class knows nothing about the derived class, which may not even
+    have been written when the base class code was written and compiled. The **Curiously
+    Recurring Template Pattern** (**CRTP**) turns this well-ordered picture on its
+    head, and inside out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics will be covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is CRTP?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is static polymorphism and how does it differ from dynamic polymorphism?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What are the downsides of virtual function calls, and why may it be preferable
+    to resolve such calls at compile time?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What are the other uses of CRTP?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Google Benchmark library: [https://github.com/google/benchmark](https://github.com/google/benchmark)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Example code: [https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/master/Chapter08](https://github.com/PacktPublishing/Hands-On-Design-Patterns-with-CPP-Second-Edition/tree/master/Chapter08)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wrapping your head around CRTP
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP was first introduced, under this name, by James Coplien in 1995, in his
+    article in *C++ Report*. It is a particular form of a more general bounded polymorphism
+    (Peter S. Canning et al., *F-bounded polymorphism for object-oriented programming,
+    Conference on Functional Programming Languages and Computer Architecture*, 1989).
+    While not a general replacement for virtual functions, it provides the C++ programmer
+    with a similar tool that, under the right circumstances, offers several advantages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is wrong with a virtual function?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before we can talk about a *better* alternative to a virtual function, we should
+    consider why we would want to have an alternative at all. What is not to like
+    about virtual functions?
+  prefs: []
+  type: TYPE_NORMAL
+- en: The problem is the performance overhead. A virtual function call can be several
+    times more expensive than a non-virtual call, more for very simple functions that
+    would have been inlined were they not virtual (recall that a virtual function
+    can never be inlined). We can measure this difference with a microbenchmark, the
+    ideal tool for measuring the performance of small fragments of code. There are
+    many microbenchmark libraries and tools out there; in this book, we will use the
+    Google Benchmark library. To follow along with the examples in this chapter, you
+    must first download and install the library (the detailed instructions can be
+    found in [*Chapter 5*](B19262_05.xhtml#_idTextAnchor199), *A Comprehensive Look
+    at RAII*). Then, you can compile and run the examples.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have the microbenchmark library ready, we can measure the overhead
+    of a virtual function call. We are going to compare a very simple virtual function,
+    with the minimum amount of code, against a non-virtual function doing the same
+    thing. Here is our virtual function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And, here is the equivalent non-virtual one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now call both of them in a micro-benchmark fixture and measure how long
+    each call takes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `benchmark::DoNotOptimize` wrapper prevents the compiler from optimizing
+    away the unused object, and, along with it, removing the entire set of function
+    calls as unnecessary. Note that there is a subtlety in measuring the virtual function
+    call time; a simpler way to write the code would be to avoid the `new` and `delete`
+    operators and simply construct the derived object on the stack:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: However, this benchmark is likely to yield the same time as the non-virtual
+    function call. The reason is not that a virtual function call has no overhead.
+    Rather, in this code, the compiler is able to deduce that the call to the virtual
+    function, `f()`, is always a call to `D::f()` (it helps that the call is not done
+    through the base class pointer, but rather the derived class reference, so it
+    could hardly be anything else). A decent optimizing compiler will de-virtualize
+    such a call, for instance, generating a direct call to `D::f()` without the indirection
+    and the reference to the *v-table*. Such a call can even be inlined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Another possible complication is that both microbenchmarks, especially the
+    non-virtual call, may be too fast—the body of the benchmark loop is likely to
+    take less time than the overhead of the loop. We can remedy that by making several
+    calls inside the body of the loop. This can be accomplished with the copy-paste
+    feature of your editor, or with the C++ preprocessor macros:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, inside the benchmark loop, we can write the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The per-iteration time reported by the benchmark now refers to `32` function
+    calls. While this does not matter for comparing the two calls, it may be convenient
+    to make the benchmark itself report the true number of calls per second by adding
+    this line to the end of the benchmark fixture, after the loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now compare the results of the two benchmarks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: We see that the virtual function call is almost 10 times more expensive than
+    the non-virtual one. Note that this is not exactly a fair comparison; the virtual
+    call provides additional functionality. However, some of this functionality can
+    be implemented in other ways, without paying the performance overhead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing CRTP
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, we will introduce CRTP, which turns inheritance on its head:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first change that jumps out is that the base class is now a `class` template.
+    The derived class still inherits from the base class, but now from the specific
+    instantiation of the base class template—on its own! Class `B` is instantiated
+    on class `D`, and class `D` inherits from that instantiation of class `B`, which
+    is instantiated on class `D`, which inherits from class `B`, which... that’s recursion
+    in action. Get used to it because you will see it often in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What is the motivation for this mind-twisting pattern? Consider that now the
+    base class has compile-time information about the derived class. Therefore, what
+    used to be a virtual function call can now be bound to the right function at compile
+    time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The call itself can still be done on the base class pointer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is no indirection and no overhead for the virtual call. The compiler
+    can, at compile time, track the call all the way to the actual function called,
+    and even inline it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The benchmark shows that the function call made through the CRTP takes exactly
+    as much time as a regular function call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The main restriction on the CRTP is that the size of the base class, `B`, cannot
+    depend on its template parameter, `D`. More generally, the template for class
+    `B` has to instantiate with type `D` being an incomplete type. For example, this
+    will not compile:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The realization that this code will not compile may come somewhat as a surprise,
+    given how similar it is to many widely used templates that refer to the nested
+    types of their template parameters. For example, consider this template, which
+    converts any sequence container with `push_back()` and `pop_back()` functions
+    to a stack:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the `using` type alias for `value_type` looks exactly the same as
+    the preceding one, in our attempt to declare class `B`. So, what is wrong with
+    the one in `B`? Actually, nothing is wrong with class `B` itself. It would compile
+    just fine in a context similar to that of our stack class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The problem lies not with class `B` itself, but with our intended use of it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At the point where `B<D>` has to be known, type `D` has not been declared yet.
+    It cannot be—the declaration of class `D` requires us to know exactly what the
+    base class `B<D>` is. So, if class `D` has not been declared yet, how does the
+    compiler know that the identified `D` even refers to a type? After all, you cannot
+    instantiate a template on a completely unknown type. The answer lies somewhere
+    in between—class `D` is forward-declared, the same as if we had this code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Some templates can be instantiated on forward-declared types, while others cannot.
+    The exact rules can be painstakingly gathered from the standard, but the gist
+    is this—anything that might affect the size of the class has to be fully declared.
+    A reference to a type declared inside an incomplete type, such as our `using T
+    = typename D::T`, would be a forward declaration of a nested class, and those
+    are not allowed either.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, the body of a member function of a class template is not
+    instantiated until it’s called. In fact, for a given template parameter, a member
+    function does not even have to compile, as long as it’s not called. Therefore,
+    references to the derived class, its nested types, and its member functions, inside
+    the member functions of the base class are perfectly fine. Also, since the derived
+    class type is considered forward-declared inside the base class, we can declare
+    pointers and references to it. Here is a very common refactoring of the CRTP base
+    class that consolidates the uses of the static cast in one place:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: The base class declaration owns a pointer to the incomplete (forward-declared)
+    type `D`. It works like any other pointer to an incomplete type; by the time the
+    pointer is de-referenced, the type has to be complete. In our case, this happens
+    inside the body of the member function; `B::f()`, which, as we discussed, is not
+    compiled until it’s called by the client code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So what do we do if we need to use a nested type of the derived class while
+    writing the base class? Inside a function body, there is no problem. If we need
+    to use the nested type in the base class itself, it is usually for one of two
+    reasons. The first is to declare the return type of a member function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we have just discussed, this will not compile. Fortunately, this problem
+    is easy to solve, all we have to do is let the compiler deduce the return type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The second case is more difficult: the nested type is needed to declare a data
+    member or a parameter. In this case, there is only one option left: the type should
+    be passed into the base class as an additional template parameter. Of course,
+    it introduces some redundancy into the code, but it can’t be helped:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we know what is CRTP and how to code it, let us see what design problems
+    can be solved with it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP and static polymorphism
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since CRTP allows us to override base class functions with those of the derived
+    class, it implements polymorphic behavior. The key difference is that polymorphism
+    happens at compile time, not at runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compile-time polymorphism
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'As we have just seen, CRTP can be used to allow the derived class to customize
+    the behavior of the base class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the base class `B::f()` method is called, it dispatches the call to the
+    derived class method for the real derived class, just like a virtual function
+    does. Of course, in order to fully take advantage of this polymorphism, we have
+    to be able to call the methods of the base class through the base class pointer.
+    Without this ability, we are simply calling methods of the derived class whose
+    type we already know:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that the function call looks exactly like any virtual function class, with
+    the base class pointer. The actual function, `f()`, that is called comes from
+    the derived class, `D::f()`. There is, however, a significant difference—the actual
+    type of the derived class, `D`, has to be known at compile time—the base class
+    pointer is not `B*` but rather `B<D>*`, which implies that the derived object
+    is of type `D`. There does not seem to be much point to such *polymorphism* if
+    the programmer has to know the actual type. But, that is because we have not fully
+    thought through what *compile-time polymorphism* really means. Just as the benefit
+    of a virtual function is that we can call member functions of a type we don’t
+    even know exists, the same has to be true for *static polymorphism* to be useful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'How do we write a function that has to compile for parameters of an unknown
+    type? With a function template, of course:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is a template function that can be called on any base class pointer, and
+    it automatically deduces the type of the derived class, `D`. Now, we can write
+    what looks like regular polymorphic code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that, on line one, the object has to be constructed with the knowledge
+    of the actual type. This is always the case; the same is true for regular runtime
+    polymorphism with virtual functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In both cases, on line two, we invoke some code that was written only with
+    the knowledge of the base class. The difference is that, with run-time polymorphism,
+    we have a common base class and some functions that operate on it. With CRTP and
+    static polymorphism, there is a common base class template but no single common
+    base class (a template is not a type) and every function that operates on this
+    base template becomes a template itself. To make the symmetry (not equivalence!)
+    between the two types of polymorphism complete, we just need to figure out two
+    more special cases: pure virtual functions and polymorphic destruction. Let’s
+    start with the former.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compile-time pure virtual function
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: What would be the equivalent of the pure virtual function in the CRTP scenario?
+    A pure virtual function must be implemented in all derived classes. A class that
+    declares a pure virtual function, or inherits one and does not override it, is
+    an abstract class; it can be further derived from, but it cannot be instantiated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we contemplate the equivalent of a pure virtual function for static polymorphism,
+    we realize that our CRTP implementation suffers from a major vulnerability. What
+    happens if we forget to override the *compile-time virtual function,* `f()`, in
+    one of the derived classes?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code compiles with no errors or warnings—on line one, we call `B::f()`,
+    which, in turn, calls `D::f()`. Class `D` does not declare its own version of
+    the member `f()`, so the one inherited from the base class is the one that is
+    called. That is, of course, the member function, `B::f()`, that we have already
+    seen, which again calls `D::f()`, which is really `B::f()` `...` and we have an
+    infinite loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The problem here is that nothing requires us to override the member function
+    `f()` in the derived class, but the program is malformed if we don’t. The root
+    of the problem is that we are mixing together the interface and the implementation—the
+    public member function declaration in the base class says that all derived classes
+    must have a function, `void f(int)`, as a part of their public interface. The
+    derived class’s version of the same function provides the actual implementation.
+    We will cover separating the interface and the implementation in [*Chapter 14*](B19262_14.xhtml#_idTextAnchor640),
+    *The Template Method Pattern and the Non-Virtual Idiom*, but for now, suffice
+    it to say that our life would be a lot easier if these functions had different
+    names:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: What happens now if we forget to implement `D::f_impl()`? The code does not
+    compile, because there is no such member function in class `D`, either directly
+    or through inheritance. So, we have implemented a compile-time pure virtual function!
+    Note that the virtual function is actually `f_impl()`, not `f()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With that accomplished, how would we implement a regular virtual function,
+    with a default implementation that can be optionally overridden? If we follow
+    the same pattern of separating the interface and the implementation, we only have
+    to provide the default implementation for `B::f_impl()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The last special case we need to cover is polymorphic destruction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Destructors and polymorphic deletion
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: So far, we have willfully avoided tackling the issue of deleting objects implemented
+    with CRTP in some sort of polymorphic fashion. In fact, if you go back and reread
+    the examples that presented complete code, such as the benchmark fixture, `BM_static`,
+    in the *Introducing CRTP* section, we either avoided deleting the object altogether
+    or constructed a derived object on the stack. This is because polymorphic deletion
+    presents an additional complication that we are finally ready to deal with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First of all, let’s note that, in many cases, polymorphic deletion is not a
+    concern. All objects are created with their actual types known. If the code that
+    constructs the objects also owns and eventually deletes them, the question *what
+    is the type of the deleted object?* is never really asked. Similarly, if the objects
+    are stored in a container, they are not deleted through the base class pointer
+    or reference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: In many cases, as shown in the preceding example, the objects are constructed
+    and deleted with their actual type known and no polymorphism involved, but the
+    code that works on them in between is universal, written to work on the base type
+    and, therefore, any class derived from that base type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But, what if we need to actually delete the object through the base class pointer?
+    Well, that is not easy. First of all, a simple call to the `delete` operator will
+    do the wrong thing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code compiles. Worse, even the compilers that normally warn when a class
+    has a virtual function but a non-virtual destructor do not generate any warnings
+    in this case, because there are no virtual functions, and CRTP polymorphism is
+    not recognized by the compiler as a potential source of trouble. However, the
+    trouble there is that only the destructor of the base class, `B<D>`, itself is
+    called; the destructor of `D` is never called!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may be tempted to resolve this problem the same way as we deal with other
+    *compile-time virtual* functions, by casting to the known derived type and calling
+    the indented member function of the derived class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unlike the regular functions, this attempt at polymorphism is badly broken,
+    for not one but two reasons—first of all, in the destructor of the base class,
+    the actual object is not of the derived type anymore, and calling any member functions
+    of the derived class on it results in undefined behavior. Secondly, even if this
+    somehow worked, the destructor of the derived class is going to do its work and
+    then call the destructor of the base class, which results in an infinite loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two solutions to this problem. One option is to extend the compile-time
+    polymorphism to the act of deletion in the same way as we do for any other operation,
+    with a function template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is well-defined. The `delete` operator is called on the pointer of the
+    actual type, `D`, and the right destructor is called. However, you must take care
+    to always delete these objects using this `destroy()` function, instead of calling
+    the `delete` operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second option is to actually make the destructor virtual. This does bring
+    back the overhead of the virtual function call, but only for the destructor. It
+    also increases the object size by the size of the virtual pointer. If neither
+    of these two sources of overhead is a concern, you could use this hybrid static-dynamic
+    polymorphism, where all virtual function calls are bound at compile time and with
+    no overhead, except the destructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP and access control
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When implementing CRTP classes, you do have to worry about access—any method
+    you want to call has to be accessible. Either the method has to be public, or
+    the caller has to have special access. This is a little different from the way
+    virtual functions are called—when calling a virtual function, the caller must
+    have access to the member function that is named in the call. For example, a call
+    to the base class function, `B::f()`, requires that either `B::f()` is public
+    or the caller has access to non-public member functions (another member function
+    of class `B` can call `B::f()` even if it’s private). Then, if `B::f()` is virtual
+    and overridden by the derived class `D`, the override `D::f()` is actually called
+    at `D::f()` be accessible from the original call site; for example, `D::f()` can
+    be private.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The situation with CRTP polymorphic calls is somewhat different. All calls
+    are explicit in the code, and the callers must have access to the functions they
+    call. Usually, it means that the base class must have access to the member functions
+    of the derived class. Consider the following example from an earlier section,
+    but now with explicit access control:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, both functions, `B::f_impl()` and `D::f_impl()`, are private in their
+    respective classes. The base class has no special access to the derived class,
+    and cannot call its private member functions. Unless we want to change the member
+    function, `D::f_impl()`, from private to public and allow any caller access to
+    it, we have to declare the base class to be a friend of the derived class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There is also some benefit in doing the reverse. Let’s create a new derived
+    class, `D1`, with a different override of the implementation function, `f_impl()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This class has a subtle error—it is not actually derived from `B<D1>` but from
+    the old class, `B<D>`; a mistake that is easy to make when creating a new class
+    from an old template. This mistake will be found if we attempt to use the class
+    polymorphically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This does not compile because `B<D1>` is not a base class of `D1`. However,
+    not all uses of CRTP involve a polymorphic call. In any case, it would be better
+    if the error was caught when class `D1` was first declared. We can accomplish
+    that by making class `B` into a sort of abstract class, only in the sense of static
+    polymorphism. All it takes is to make the constructor of class `B` private and
+    to declare the derived class to be a friend:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note the somewhat unusual form of the friend declaration—`friend D` and not
+    `friend class D`. This is how you write a friend declaration for the template
+    parameter. Now, the only type that can construct an instance of class `B<D>` is
+    that specific derived class, `D`, which is used as the template parameter, and
+    the erroneous code, `class D1 : public B<D>`, does not compile any longer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know how CRTP works, let us see what it is useful for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP as a delegation pattern
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So far, we have used CRTP as a compile-time equivalent of dynamic polymorphism,
+    including virtual-like calls through the base pointer (compile-time, of course,
+    with a template function). This is not the only way CRTP can be used. In fact,
+    more often than not, the function is called directly on the derived class. This
+    is a very fundamental difference—typically, public inheritance expresses the *is-a*
+    relationship—the derived object is a kind of a base object. The interface and
+    the generic code are in the base class, while the derived class overrides the
+    specific implementation. This relation continues to hold when a CRTP object is
+    accessed through the base class pointer or reference. Such use of CRTP is sometimes
+    also called a **static interface**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the derived object is used directly, the situation is quite different—the
+    base class is no longer the interface, and the derived class is not just the implementation.
+    The derived class expands the interface of the base class, and the base class
+    delegates some of its behavior to the derived class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Expanding the interface
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s consider several examples where CRTP is used to delegate behavior from
+    the base class to the derived one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first example is a very simple one—for any class that provides `operator+=()`,
+    we want to generate `operator+()` automatically that used the former:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Any class that inherits from `plus_base` in this manner automatically acquires
+    the addition operator that is guaranteed to match the provided increment operator.
+    The observant among you might point out that the way we have declared the operator
+    `+` here is, well, strange. Aren’t two-argument operators supposed to be non-member
+    functions? Indeed, they usually are. Nothing in the standard requires them to
+    be, and the preceding code is technically valid. The reason binary operators such
+    as `==`, `+`, and so on are usually declared as non-member functions has to do
+    with implicit conversions—if we have an addition, `x + y`, and the intended `operator+`
+    is a member function, it has to be a member function of the `x` object. Not any
+    object implicitly convertible to the type of `x`, but `x` itself—it’s a member
+    function call on `x`. In contrast, the `y` object has to be implicitly convertible
+    to the type of the argument of that member `operator+` usually, the same type
+    as `x`. To restore the symmetry and allow implicit conversions (if any are provided)
+    on both the left- and right-hand side of the `+` sign, we have to declare `operator+`
+    as a non-member function. Usually, such a function needs to have access to the
+    private data members of the class, as in the example previously, so it has to
+    be declared a friend. Putting all of this together, we arrive at this alternative
+    implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is a significant difference between this use of CRTP and the one we saw
+    earlier—the object that is going to be used in the program is of type `C`, and
+    it will never be accessed through a pointer to `plus_base<C>`. The latter isn’t
+    a complete interface for anything but is really an implementation that makes use
+    of the interface provided by the derived class. CRTP here is used as an implementation
+    technique, not as a design pattern. However, the boundary between the two is not
+    always clear: some implementation techniques are so powerful that they can alter
+    design choices.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One example is the generated comparison and ordering operations. In C++20,
+    the recommended choice for designing interfaces of value types (or any other comparable
+    and ordered types) is to provide only two operators, `operator==()` and `operator<=>()`.
+    The compiler will generate the rest. If you like this approach to interface design
+    and want to use it in earlier versions of C++, you need a way to implement it.
+    CRTP offers us a possible implementation. We will need a base class that will
+    generate `operator!=()` from the `operator==()` of the derived class. It will
+    also generate all ordering operators; of course, we cannot use `operator<=>()`
+    before C++20, but we can use any member function name we agree on, such as `cmp()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are many such examples to be found in the literature on CRTP. Along with
+    these examples, you can find discussions on whether C++20 concepts offer a better
+    alternative. The next section explains what this is about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP and concepts
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: At the first glance, it is unclear how concepts could replace CRTP. Concepts
+    (which you can read more about in [*Chapter 7*](B19262_07.xhtml#_idTextAnchor314),
+    *SFINAE, Concepts, and Overload Resolution Management*) are all about restricting
+    interfaces, while CRTP extends the interfaces.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are discussions inspired by cases where both concepts and CRTP can solve
+    the same problem by totally different means. Recall our use of CRTP to automatically
+    generate `operator+()` from `operator+=()`; all we had to do was to inherit from
+    the special base class template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our base class serves two purposes. First, it generates `operator+()` from
+    `operator+=()`. Second, it provides a mechanism for classes to opt into this automation:
+    to receive the generated `operator+()`, a class must inherit from `plus_base`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first problem by itself is easy to solve, we can just define a global `operator+()`
+    template:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There is a “slight” problem with this template: we just provided a global `operator+()`
+    for every type in our program, whether it needs one or not. Furthermore, most
+    of the time it won’t even compile since not all classes define `operator+=()`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is where the concepts come in: we can restrict the applicability of our
+    new `operator+()` so, in the end, it is generated for the same types that we would
+    have otherwise inherited from `plus_base` and no other.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One way to do this is to require that the template parameter type T at least
+    have the increment operator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, this is not the same result as what we got with CRTP. In some cases,
+    it may be a better result: instead of having to opt every class into the automatic
+    generation of `operator+()`, we did it for every class that satisfies certain
+    restrictions. But in other cases, any reasonable description of these restrictions
+    produces overly broad results, and we have to opt into our types one by one. This
+    is easy to do with concepts as well, but the technique used is not widely known.
+    All you need to do is to define a concept whose general case is false (a Boolean
+    variable will suffice):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, for every type that needs to opt in, we specialize the concept:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are some advantages to both approaches: CRTP uses a base class that can
+    be more complex than just a wrapper for a definition of an operator; while concepts
+    can combine explicit opt-in with some more general restrictions when appropriate.
+    However, these discussions miss a much more important distinction: CRTP can be
+    used to expand class interface with both member and non-member functions, while
+    concepts can be used only with non-member functions, including non-member operators.
+    When both concepts and CRTP-based solutions are applicable, you should choose
+    the most appropriate one (for simple functions such as `operator+()`, concepts
+    are probably easier to read). Also, you don’t have to wait until C++20 to use
+    the concept-based restrictions: the methods of emulating concepts shown in [*Chapter
+    7*](B19262_07.xhtml#_idTextAnchor314), *SFINAE, Concepts, and Overload Resolution
+    Management*, are more than adequate here.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, we can use concepts with CRTP instead of trying to replace CRTP:
+    if the CRTP base class template has some requirements on the type we want to derive
+    from it, we can enforce these with concepts. The use of concepts here is no different
+    from what we find in the chapter dedicated to them. But we are going to stay with
+    CRTP and what else can be done with it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP as an implementation technique
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As we pointed out earlier, CRTP is often used as a purely implementation pattern;
+    however, even in this role, it can influence design: some design choices are desirable
+    but hard to implement, and, if a good implementation technique comes along, the
+    design choices often change. So, let us see what problems can be solved with CRTP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP for code reuse
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let us start with a specific implementation issue: we have multiple classes
+    that have some common code. Ordinarily, we would write a base class for them.
+    But the common code is not really common: it does the same thing for all classes
+    except it for the types it uses. What we need is not a common base class but a
+    common base class template. And that brings us to CRTP.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'An example is an object registry. It may be desirable, often for debugging
+    purposes, to know how many objects of a certain type are currently in existence,
+    and perhaps even to maintain a list of such objects. We definitely do not want
+    to instrument every class with the registry mechanism, so we want to move it to
+    the base class. But, now we have a problem—if we have two derived classes, `C`
+    and `D`, both inherit from the same base class, `B`, and the count of instances
+    of `B` will be the total for both `C` and `D`. The problem is not that the base
+    class can’t determine what the real type of the derived class is—it can, if we’re
+    willing to pay the cost of runtime polymorphism. The problem is that the base
+    class has only one counter (or however many are coded in the class), while the
+    number of different derived classes is unlimited. We could implement a very complex,
+    expensive, and non-portable solution that uses `typeid`, to determine the class
+    name and maintain a map of names and counters. But, what we really need is one
+    counter per derived type, and the only way to do it is to make the base class
+    aware of the derived class type at compile time. This brings us back to CRTP:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have declared the constructor and the destructor protected because we don’t
+    want any registry objects created, except by the derived classes. It is also important
+    to not forget the copy constructor, otherwise, the default one is generated by
+    the compiler, and it does not increment the counter or update the list (but the
+    destructor does, so the counter will go negative and overflow). For each derived
+    class, `D`, the base class is `registry<D>`, which is a separate type with its
+    own static data members, `count` and `head` (the latter is the head of the list
+    of currently active objects). Any type that needs to maintain the runtime registry
+    of active objects now only needs to inherit from `registry`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: A similar example, where the base class needs to know the type of the derived
+    class and use it to declare its own members, can be found in [*Chapter 9*](B19262_09.xhtml#_idTextAnchor406),
+    *Named Arguments, Method Chaining, and Builder Pattern*. Next, we will see another
+    example of CRTP, and this time the availability of the implementation opens the
+    door to a particular design choice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP for generic interfaces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Another scenario where it is often necessary to delegate behavior to derived
+    classes is the problem of visitation. Visitors, in a general sense, are objects
+    that are invoked to process a collection of data objects and execute a function
+    on each one in turn. Often, there are hierarchies of visitors, where the derived
+    classes customize or alter some aspect of the behavior of the base classes. While
+    the most common implementation of visitors uses dynamic polymorphism and virtual
+    function calls, a static visitor offers the same sort of performance benefits
+    we saw earlier. Visitors are not usually invoked polymorphically; you create the
+    visitor you want and run it. The base visitor class, however, does call the member
+    functions that may be dispatched, at compile time, to the derived classes if they
+    have the right overrides. Consider this generic visitor for a collection of animals:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that the main visitation method is a template member function (a template
+    within a template!), and it accepts any kind of iterator that can iterate over
+    a sequence of `Animal` objects. Also, by declaring a private default constructor
+    at the bottom of the class, we are protecting ourselves from making a mistake
+    where the derived class incorrectly specifies its own type for the inheritance.
+    Now, we can start creating some visitors. The default visitor simply accepts the
+    default actions provided by the generic visitor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can visit any sequence of `Animal` objects, for example, a vector:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The visitation yields the expected result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But, we don’t have to constrain ourselves to the default actions—we can override
+    the visitation actions for one or more animal types:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When a dog trainer chooses to visit our animals, we use `TrainerVisitor`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, a visiting cat would have a set of actions all of its own:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will learn a lot more about different kinds of visitors later, in [*Chapter
+    17*](B19262_17.xhtml#_idTextAnchor783), *The Visitor Pattern and Multiple Dispatch*.
+    Now, however, we are going to explore the use of CRTP in conjunction with another
+    common pattern.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CRTP and policy-based design
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Policy-based design is a compile-time variant of the well-known Strategy pattern;
+    we have an entire chapter dedicated to it, [*Chapter 15*](B19262_15.xhtml#_idTextAnchor689),
+    aptly named *Policy-Based Design*. Here, we’re going to stay focused on the use
+    of CRTP to provide additional functionality to the derived classes. Specifically,
+    we are going to generalize the use of CRTP base classes to extend the interface
+    of the derived class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'So far, we have used one base class to add features to the derived class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, if we want to extend the interface of the derived class in multiple
+    ways, a single base class presents an unnecessary restriction. First of all, if
+    we add several member functions, the base class can get quite large. Second, we
+    may want a more modular approach to the interface design. For example, we can
+    have one base class template that adds factory construction methods to any derived
+    class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can even have several different factories that present the same interface
+    but allocate memory differently. We can have another base class template that
+    adds the conversion to string to any class that has the stream inserter operator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It makes no sense to combine the two into a single base. In a large system,
+    there can be many more of these classes, each adds a specific feature to the derived
+    class and uses CRTP to implement it. But not every derived class needs every one
+    of these features. With multiple base classes to choose from, it is easy to construct
+    a derived class that has a specific set of features:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This works, but we are in danger of repeating nearly identical code if we need
+    to implement several derived classes that have very similar behavior, except for
+    the features provided by the CRTP bases. For example, if we have another factory
+    that constructs objects in thread-local memory to speed up the performance of
+    concurrent programs (let’s call it `TLFactory`), we might have to write this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'But the two classes `C1` and `C2` are exactly the same except for the base
+    classes, and yet, as written we would have to implement and maintain two copies
+    of identical code. It would be better if we could write a single class template
+    and plug different base classes into it as needed. This is the main idea of policy-based
+    design; there are different approaches to it and you can learn about them in [*Chapter
+    15*](B19262_15.xhtml#_idTextAnchor689), *Policy-Based Design*. For now, let us
+    focus on using CRTP base classes in a template. Since we now need a class template
+    that accepts multiple base class types, we will need to use a variadic template.
+    We need something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are versions of the policy-based design that use this exact template;
+    but in our case, it won’t compile if we try to use `Factory` or `Stringify` as
+    policies. The reason is that they are not types (classes) and, therefore, cannot
+    be used as a type name. They are templates, so we have to declare the template
+    parameters of the template `C` as templates themselves (this is known as a template
+    template parameter). The syntax is easier to understand if we first recall how
+    to declare a single template template parameter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we wanted to inherit from a specific instantiation of this class template
+    `B`, we would write
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When using CRTP, the template argument is the type of the derived class itself,
+    `C<B>`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Generalizing this to a parameter pack is straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: The template parameter is a pack (any number of templates instead of a single
+    class). The derived class inherits from the entire pack `Policies…`, except `Policies`
+    are templates and we need to specify the actual instantiations of these templates.
+    Each template in the pack is instantiated on the derived class, whose type is
+    `C<Policies…>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we need additional template parameters, for example, to enable using different
+    value types in the class `C`, we can combine them with policies:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To use this class with a particular set of policies, it is convenient to define
+    some aliases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we want to use several classes with the same Policies, we can define a template
+    alias as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will learn more about policies in the [*Chapter 15*](B19262_15.xhtml#_idTextAnchor689),
+    *Policy-Based Design*. We will encounter the technique we just studied, CRPT,
+    there and in other chapters of this book – it is a flexible and powerful tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have examined a rather convoluted design pattern that combines both sides
+    of C++—generic programming (templates) and object-oriented programming (inheritance).
+    True to its name, the Curiously Recurring Template Pattern creates a circular
+    loop, where the derived class inherits the interface and the implementation from
+    the base class, while the base class has access to the interface of the derived
+    class through the template parameters. CRTP has two main use modes—true static
+    polymorphism, or *static interface*, where the object is primarily accessed as
+    the base type, and expanding the interface, or delegation, where the derived class
+    is accessed directly but the implementation uses CRTP to provide common functionality.
+    The latter can vary from a simple addition of one or two methods to a complex
+    task of composing the interfaces of derived classes from multiple building blocks
+    or policies.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter introduces an idiom that makes use of the pattern we have just
+    learned. This idiom also changes the standard way we pass arguments to functions,
+    in order of the parameters, and lets us have order-independent named arguments
+    instead. Read on to find out how!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: How expensive is a virtual function call, and why?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why does a similar function call, resolved at compile time, have no such performance
+    overhead?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How would you make compile-time polymorphic function calls?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How would you use CRTP to expand the interface of the base class?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What is necessary to use multiple CRTP base classes in a single derived class?.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

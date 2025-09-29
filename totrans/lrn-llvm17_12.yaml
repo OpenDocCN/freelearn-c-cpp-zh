@@ -1,0 +1,1300 @@
+- en: '9'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: JIT Compilation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The LLVM core libraries come with the **ExecutionEngine** component that allows
+    the compilation and execution of **intermediate representation** (**IR**) code
+    in memory. Using this component, we can build **just-in-time** (**JIT**) compilers,
+    which allows for direct execution of IR code. A JIT compiler works more like an
+    interpreter because no object code needs to be stored on secondary storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, you will learn about applications for JIT compilers, and how
+    the LLVM JIT compiler works in principle. You will explore the LLVM dynamic compiler
+    and interpreter and learn how to implement JIT compiler tools on your own. Furthermore,
+    you will also learn how to use a JIT compiler as part of a static compiler, and
+    the associated challenges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This chapter will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting an overview of LLVM’s JIT implementation and use cases
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using JIT compilation for direct execution
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing your own JIT compiler from existing classes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing your own JIT compiler from scratch
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of the chapter, you will understand and know how to develop a JIT
+    compiler, either using a preconfigured class or a customized version fitting for
+    your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You can find the code used in this chapter at [https://github.com/PacktPublishing/Learn-LLVM-17/tree/main/Chapter09](https://github.com/PacktPublishing/Learn-LLVM-17/tree/main/Chapter09)
+    .
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLVM’s overall JIT implementation and use cases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So far, we have only looked at **ahead-of-time** (**AOT**) compilers. These
+    compilers compile the whole application. The application can only run after the
+    compilation is finished. If the compilation is performed at the runtime of the
+    application, then the compiler is a JIT compiler. A JIT compiler has interesting
+    use cases:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Implementation of a virtual machine**: A programming language can be translated
+    to byte code with an AOT compiler. At runtime, a JIT compiler is used to compile
+    the byte code to machine code. The advantage of this approach is that the byte
+    code is hardware-independent, and thanks to the JIT compiler, there is no performance
+    penalty compared to an AOT compiler. Java and C# use this model today, but this
+    is not a new idea: the USCD Pascal compiler from 1977 already used a similar approach.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`lldb` LLVM debugger uses this approach to evaluate source expressions at debug
+    time.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Database queries**: A database creates an execution plan from a database
+    query. The execution plan describes operations on tables and columns, which leads
+    to a query answer when executed. A JIT compiler can be used to translate the execution
+    plan into machine code, which speeds up the execution of the query.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The static compilation model of LLVM is not as far away from the JIT model as
+    one may think. The `llc` LLVM static compiler compiles LLVM IR into machine code
+    and saves the result as an object file on disk. If the object file is not stored
+    on disk but in memory, would the code be executable? Not directly, as references
+    to global functions and global data use relocations instead of absolute addresses.
+    Conceptually, a **relocation** describes how to calculate the address – for example,
+    as an offset to a known address. If we resolve relocations into addresses, as
+    the linker and the dynamic loader do, then we can execute the object code. Running
+    the static compiler to compile IR code into an object file in memory, performing
+    a link step on the in-memory object file, and running the code gives us a JIT
+    compiler. The JIT implementation in the LLVM core libraries is based on this idea.
+  prefs: []
+  type: TYPE_NORMAL
+- en: During the development history of LLVM, there were several JIT implementations,
+    with different feature sets. The latest JIT API is the **On-Request Compilation**
+    (**ORC**) engine. In case you were curious about the acronym, it was the lead
+    developer’s intention to invent yet another acronym based on Tolkien’s universe,
+    after **Executable and Linking Format** (**ELF**) and **Debugging Standard** (**DWARF**)
+    were already present.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ORC engine builds on and extends the idea of using the static compiler and
+    a dynamic linker on the in-memory object file. The implementation uses a layered
+    approach. The two basic levels are the compile layer and the link layer. On top
+    of this sits a layer providing support for lazy compilation. A transformation
+    layer can be stacked on top or below the lazy compilation layer, allowing the
+    developer to add arbitrary transformations or simply to be notified of certain
+    events. Moreover, this layered approach has the advantage that the JIT engine
+    is customizable for diverse requirements. For example, a high-performance virtual
+    machine may choose to compile everything upfront and make no use of the lazy compilation
+    layer. On the other hand, other virtual machines will emphasize startup time and
+    responsiveness to the user and will achieve this with the help of the lazy compilation
+    layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The older MCJIT engine is still available, and its API is derived from an even
+    older, already-removed JIT engine. Over time, this API gradually became bloated,
+    and it lacks the flexibility of the ORC API. The goal is to remove this implementation,
+    as the ORC engine now provides all the functionality of the MCJIT engine, and
+    new developments should use the ORC API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we look at `lli`, the LLVM interpreter, and the dynamic
+    compiler, before we dive into implementing a JIT compiler.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using JIT compilation for direct execution
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Running LLVM IR directly is the first idea that comes to mind when thinking
+    about a JIT compiler. This is what the `lli` tool, the LLVM interpreter, and the
+    dynamic compiler do. We will explore the `lli` tool in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring the lli tool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let’s try the `lli` tool with a very simple example. The following LLVM IR can
+    be stored as a file called `hello.ll`, which is the equivalent of a C hello world
+    application. This file declares a prototype for the `printf()` function from the
+    C library. The `hellostr` constant contains the message to be printed. Inside
+    the `main()` function, a call to the `printf()` function is generated, and this
+    function contains a `hellostr` message that will be printed. The application always
+    returns `0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The complete source code is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This LLVM IR file is generic enough that it is valid for all platforms. We
+    can directly execute the IR using the `lli` tool with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The interesting point here is how the `printf()` function is found. The IR code
+    is compiled to machine code, and a lookup for the `printf` symbol is triggered.
+    This symbol is not found in the IR, so the current process is searched for it.
+    The `lli` tool dynamically links against the C library, and the symbol is found
+    there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, the `lli` tool does not link against the libraries you created.
+    To enable the use of such functions, the `lli` tool supports the loading of shared
+    libraries and objects. The following C source just prints a friendly message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Stored in `greetings.c`, we use this to explore loading objects with `lli`.
+    The following command will compile this source into a shared library. The `–fPIC`
+    option instructs `clang` to generate position-independent code, which is required
+    for shared libraries. Moreover, the compiler creates a `greetings.so` shared library
+    with `–``shared`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also compile the file into the `greetings.o` object file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now have two files, the `greetings.so` shared library and the `greetings.o`
+    object file, which we will load into the `lli` tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also need an LLVM IR file that calls the `greetings()` function. For this,
+    create a `main.ll` file that contains a single call to the function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Notice that on executing, the previous IR crashes, as `lli` cannot locate the
+    greetings symbol:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `greetings()` function is defined in an external file, and to fix the crash,
+    we have to tell the `lli` tool which additional file needs to be loaded. In order
+    to use the shared library, you must use the `–load` option, which takes the path
+    to the shared library as an argument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is important to specify the path to the shared library if the directory containing
+    the shared library is not in the search path for the dynamic loader. If omitted,
+    then the library will not be found.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alternatively, we can instruct `lli` to load the object file with `–extra-object`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Other supported options are `–extra-archive`, which loads an archive, and `–extra-module`,
+    which loads another bitcode file. Both options require the path to the file as
+    an argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You now know how you can use the `lli` tool to directly execute LLVM IR. In
+    the next section, we will implement our own JIT tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing our own JIT compiler with LLJIT
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `lli` tool is nothing more than a thin wrapper around LLVM APIs. In the
+    first section, we learned that the ORC engine uses a layered approach. The `ExecutionSession`
+    class represents a running JIT program. Besides other items, this class holds
+    information such as used `JITDylib` instances. A `JITDylib` instance is a symbol
+    table that maps symbol names to addresses. For example, these can be symbols defined
+    in an LLVM IR file or the symbols of a loaded shared library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For executing LLVM IR, we do not need to create a JIT stack on our own, as the
+    `LLJIT` class provides this functionality. You can also make use of this class
+    when migrating from the older MCJIT implementation, as this class essentially
+    provides the same functionality.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To illustrate the functions of the `LLJIT` utility, we will be creating an interactive
+    calculator application while incorporating JIT functionality. The main source
+    code of our JIT calculator will be extended from the `calc` example from [*Chapter
+    2*](B19561_02.xhtml#_idTextAnchor037), *The Structure of* *a Compiler*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The primary idea behind our interactive JIT calculator will be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allow the user to input a function definition, such as `def f(x) =` `x*2`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The function inputted by the user is then compiled by the `LLJIT` utility into
+    a function – in this case, `f`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Allow the user to call the function they have defined with a numerical value:
+    `f(3)`.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Evaluate the function with the provided argument, and print the result to the
+    console: `6`.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Before we discuss incorporating JIT functionality into the calculator source
+    code, there are a few main differences to point out with respect to the original
+    calculator example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Firstly, we previously only input and parsed functions beginning with the `with`
+    keyword, rather than the `def` keyword described previously. For this chapter,
+    we instead only accept function definitions beginning with `def`, and this is
+    represented as a particular node in our `DefDecl`. The `DefDecl` class is aware
+    of the arguments and their names it is defined with, and the function name is
+    also stored within this class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Secondly, we also need our AST to be aware of function calls, to represent the
+    functions that the `LLJIT` utility has consumed or JIT’ted. Whenever a user inputs
+    the name of a function, followed by arguments enclosed in parentheses, the AST
+    recognizes these as `FuncCallFromDef` nodes. This class essentially is aware of
+    the same information as the `DefDecl` class.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Due to the addition of these two AST classes, it is obvious to expect that the
+    semantic analysis, parser, and code generation classes will be adapted accordingly
+    to handle the changes in our AST. One additional thing to note is the addition
+    of a new data structure, called `JITtedFunctions`, which all these classes are
+    aware of. This data structure is a map with the defined function names as keys,
+    and the number of arguments a function is defined with is stored as values within
+    the map. We will see later how this data structure will be utilized in our JIT
+    calculator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For more details on the changes we have made to the `calc` example, the full
+    source containing the changes from `calc` and this section’s JIT implementation
+    can be found within the `lljit` source directory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integrating the LLJIT engine into the calculator
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Firstly, let’s discuss how to set up the JIT engine in our interactive calculator.
+    All of the implementation pertaining to the JIT engine exists within `Calc.cpp`,
+    and this file has one `main()` loop for the execution of the program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We must include several header files, aside from the headers including our
+    code generation, semantic analyzer, and parser implementation. The `LLJIT.h` header
+    defines the `LLJIT` class and the core classes of the ORC API. Next, the `InitLLVM.h`
+    header is needed for the basic initialization of the tool, and the `TargetSelect.h`
+    header is needed for the initialization of the native target. Finally, we also
+    include the `<iostream>` C++ header to allow for user input into our calculator
+    application:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we add the `llvm` and `llvm::orc` namespaces to the current scope:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Many of the calls from our `LLJIT` instance that we will be creating return
+    an error type, `Error`. The `ExitOnError` class allows us to discard `Error` values
+    that are returned by the calls from the `LLJIT` instance while logging to `stderr`
+    and exiting the application. We declare a global `ExitOnError` variable as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, we add the `main()` function, which initializes the tool and the native
+    target:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We use the `LLJITBuilder` class to create an `LLJIT` instance, wrapped in the
+    previously declared `ExitOnErr` variable in case an error occurs. A possible source
+    of error would be that the platform does not yet support JIT compilation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we declare our `JITtedFunctions` map that keeps track of the function
+    definitions, as we have previously described:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To facilitate an environment that waits for user input, we add a `while()`
+    loop and allow the user to type in an expression, saving the line that the user
+    typed within a string called `calcExp`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Afterward, the LLVM context class is initialized, along with a new LLVM module.
+    The module’s data layout is also set accordingly, and we also declare a code generator,
+    which will be used to generate IR for the function that the user has defined on
+    the command line:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We must interpret the line that was entered by the user to determine if the
+    user is defining a new function or calling a previous function that they have
+    defined with an argument. A `Lexer` class is defined while taking in the line
+    of input that the user has given. We will see that there are two main cases that
+    the lexer cares about:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The lexer can check the first token of the user input. If the user is defining
+    a new function (represented by the `def` keyword, or the `Token::KW_def` token),
+    then we parse it and check its semantics. If the parser or the semantic analyzer
+    detects any issues with the user-defined function, errors will be emitted accordingly,
+    and the calculator program will halt. If no errors are detected from either the
+    parser or the semantic analyzer, this means we have a valid AST data structure,
+    `DefDecl`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We then can pass our newly constructed AST into our code generator to compile
+    the IR for the function that the user has defined. The specifics of IR generation
+    will be discussed afterward, but this function that compiles to the IR needs to
+    be aware of the module and our `JITtedFunctions` map. After generating the IR,
+    we can add this information to our `LLJIT` instance by calling `addIRModule()`
+    and wrapping our module and context in a `ThreadSafeModule` class, to prevent
+    these from being accessed by other concurrent threads:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Instead, if the user is calling a function with parameters, which is represented
+    by the `Token::ident` token, we also need to parse and semantically check if the
+    user input is valid prior to converting the input into a valid AST. The parsing
+    and checking here are slightly different compared to before, as it can include
+    checks such as ensuring the number of parameters that the user has supplied to
+    the function call matches the number of parameters that the function was originally
+    defined with:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Once a valid AST is constructed for a function call, `FuncCallFromDef`, we
+    get the name of the function from the AST, and then the code generator prepares
+    to generate the call to the function that was previously added to the `LLJIT`
+    instance. What occurs under the cover is that the user-defined function is regenerated
+    as an LLVM call within a separate function that will be created that does the
+    actual evaluation of the original function. This step requires the AST, the module,
+    the function call name, and our map of function definitions:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After the code generator has completed its work to regenerate the original
+    function and to create a separate evaluation function, we must add this information
+    to the `LLJIT` instance. We create a `ResourceTracker` instance to track the memory
+    that is allocated to the functions that have been added to `LLJIT`, as well as
+    another `ThreadSafeModule` instance of the module and context. These two instances
+    are then added to the JIT as an IR module:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The separate evaluation function is then queried for within our `LLJIT` instance
+    through the `lookup()` method, by supplying the name of our evaluation function,
+    `calc_expr_func`, into the function. If the query is successful, the address for
+    the `calc_expr_func` function is cast to the appropriate type, which is a function
+    that takes no arguments and returns a single integer. Once the function’s address
+    is acquired, we call the function to generate the result of the user-defined function
+    with the parameters they have supplied and then print the result to the console:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After the function call is completed, the memory that was previously associated
+    with our functions is then freed by `ResourceTracker`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Code generation changes to support JIT compilation via LLJIT
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now, let’s take a brief look at some of the changes we have made within `CodeGen.cpp`
+    to support our JIT-based calculator:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As previously mentioned, the code generation class has two important methods:
+    one to compile the user-defined function into LLVM IR and print the IR to the
+    console, and another to prepare the calculation evaluation function, `calc_expr_func`,
+    which contains a call to the original user-defined function for evaluation. This
+    second function also prints the resulting IR to the user:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'As noted in the preceding source, these code generation functions define a
+    `ToIRVisitor` instance that takes in our module and a `JITtedFunctions` map to
+    be used in its constructor upon initialization:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Ultimately, this information is used to either generate IR or evaluate the
+    function that the IR was previously generated for. When generating the IR, the
+    code generator expects to see a `DefDecl` node, which represents defining a new
+    function. The function name, along with the number of arguments it is defined
+    with, is stored within the function definitions map:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Afterward, the actual function definition is created by the `genUserDefinedFunction()`
+    call:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Within `genUserDefinedFunction()`, the first step is to check if the function
+    exists within the module. If it does not, we ensure that the function prototype
+    exists within our map data structure. Then, we use the name and the number of
+    arguments to construct a function that has the number of arguments that were defined
+    by the user, and make the function return a single integer value:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After generating the user-defined function, a new basic block is created, and
+    we insert our function into the basic block. Each function argument is also associated
+    with a name that is defined by the user, so we also set the names for all function
+    arguments accordingly, as well as generate mathematical operations that operate
+    on the arguments within the function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'When evaluating the user-defined function, the AST that is expected in our
+    example is called a `FuncCallFromDef` node. First, we define the evaluation function
+    and name it `calc_expr_func` (taking in zero arguments and returning one result):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we create a new basic block to insert `calc_expr_func` into:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Similar to before, the user-defined function is retrieved by `genUserDefinedFunction()`,
+    and we pass the numerical parameters of the function call into the original function
+    that we have just regenerated:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Once we have the actual `llvm::Function` instance available, we utilize `IRBuilder`
+    to create a call to the defined function and also return the result so that it
+    is accessible when the result is printed to the user in the end:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Building an LLJIT-based calculator
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Finally, to compile our JIT calculator source, we also need to create a `CMakeLists.txt`
+    file with the build description, saved beside `Calc.cpp` and our other source
+    files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We set the minimal required CMake version to the number required by LLVM and
+    give the project a name:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The LLVM package needs to be loaded, and we add the directory of the CMake
+    modules provided by LLVM to the search path. Then, we include the `DetermineGCCCompatible`
+    and `ChooseMSVCCRT` modules, which check if the compiler has GCC-compatible command-line
+    syntax and ensure that the same C runtime is used as by LLVM, respectively:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We also need to add definitions and the `include` path from LLVM. The used
+    LLVM components are mapped to the library names with a function call:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Afterward, if it is determined that the compiler has GCC-compatible command-line
+    syntax, we also check if runtime type information and exception handling are enabled.
+    If they are not enabled, C++ flags to turn off these features are added to our
+    compilation accordingly:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Lastly, we define the name of the executable, the source files to compile,
+    and the library to link against:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The preceding steps are all that is required for our JIT-based interactive
+    calculator tool. Next, create and change into a build directory, and then run
+    the following command to create and compile the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: This compiles the `calc` tool. We can then launch the calculator, start defining
+    functions, and see how our calculator is able to evaluate the functions that we
+    define.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following example invocations show the IR of the function that is first
+    defined, and then the `calc_expr_func` function that is created to generate a
+    call to our originally defined function in order to evaluate the function with
+    whichever parameter passed into it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: That’s it! We have just created a JIT-based calculator application!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As our JIT calculator is meant to be a simple example that describes how to
+    incorporate `LLJIT` into our projects, it is worth noting that there are some
+    limitations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This calculator does not accept negatives of decimal values
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We cannot redefine the same function more than once
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For the second limitation, this occurs by design, and so is expected and enforced
+    by the ORC API itself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: Keep in mind that there are numerous other possibilities to expose names, besides
+    exposing the symbols for the current process or from a shared library. For example,
+    the `StaticLibraryDefinitionGenerator` class exposes the symbols found in a static
+    archive and can be used in the `DynamicLibrarySearchGenerator` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, the `LLJIT` class has also an `addObjectFile()` method to expose
+    the symbols of an object file. You can also provide your own `DefinitionGenerator`
+    implementation if the existing implementations do not fit your needs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we can see, using the predefined `LLJIT` class is convenient, but it can
+    limit our flexibility. In the next section, we’ll look at how to implement a JIT
+    compiler using the layers provided by the ORC API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a JIT compiler class from scratch
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using the layered approach of ORC, it is very easy to build a JIT compiler customized
+    for the requirements. There is no one-size-fits-all JIT compiler, and the first
+    section of this chapter gave some examples. Let’s have a look at how to set up
+    a JIT compiler from scratch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The ORC API uses layers that are stacked together. The lowest level is the object-linking
+    layer, represented by the `llvm::orc::RTDyldObjectLinkingLayer` class. It is responsible
+    for linking in-memory objects and turning them into executable code. The memory
+    required for this task is managed by an instance of the `MemoryManager` interface.
+    There is a default implementation, but we can also use a custom version if we
+    need.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Above the object-linking layer is the compile layer, which is responsible for
+    creating an in-memory object file. The `llvm::orc::IRCompileLayer` class takes
+    an IR module as input and compiles it to an object file. The `IRCompileLayer`
+    class is a subclass of the `IRLayer` class, which is a generic class for layer
+    implementations accepting LLVM IR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Both of these layers already form the core of a JIT compiler: they add an LLVM
+    IR module as input, which is compiled and linked in memory. To add extra functionality,
+    we can incorporate more layers on top of both layers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, the `CompileOnDemandLayer` class splits a module so that only the
+    requested functions are compiled. This can be used to implement lazy compilation.
+    Moreover, the `CompileOnDemandLayer` class is also a subclass of the `IRLayer`
+    class. In a very generic way, the `IRTransformLayer` class, also a subclass of
+    the `IRLayer` class, allows us to apply a transformation to the module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another important class is the `ExecutionSession` class. This class represents
+    a running JIT program. Essentially, this means that the class manages `JITDylib`
+    symbol tables, provides lookup functionality for symbols, and keeps track of used
+    resource managers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The generic recipe for a JIT compiler is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initialize an instance of the `ExecutionSession` class.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Initialize the layer, at least consisting of an `RTDyldObjectLinkingLayer` class
+    and an `IRCompileLayer` class.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Create the first `JITDylib` symbol table, usually with `main` or a similar name.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The general usage of the JIT compiler is also very straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add an IR module to the symbol table.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Look up a symbol, triggering the compilation of the associated function, and
+    possibly the whole module.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Execute the function.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the next subsection, we implement a JIT compiler class following the generic
+    recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a JIT compiler class
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To keep the implementation of the JIT compiler class simple, everything is
+    placed in `JIT.h`, within a source directory we can create called `jit`. However,
+    the initialization of the class is a bit more complex compared to using `LLJIT`.
+    Due to handling possible errors, we need a factory method to create some objects
+    upfront before we can call the constructor. The steps to create the class are
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We begin with guarding the header file against multiple inclusion with the
+    `JIT_H` preprocessor definition:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Firstly, a number of `include` files are required. Most of them provide a class
+    with the same name as the header file. The `Core.h` header provides a couple of
+    basic classes, including the `ExecutionSession` class. Additionally, the `ExecutionUtils.h`
+    header provides the `DynamicLibrarySearchGenerator` class to search libraries
+    for symbols. Furthermore, the `CompileUtils.h` header provides the `ConcurrentIRCompiler`
+    class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Declare a new class. Our new class will be called `JIT`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The private data members reflect the ORC layers and some helper classes. The
+    `ExecutionSession`, `ObjectLinkingLayer`, `CompileLayer`, `OptIRLayer`, and `MainJITDylib`
+    instances represent the running JIT program, the layers, and the symbol table,
+    as already described. Moreover, the `TargetProcessControl` instance is used for
+    interaction with the JIT target process. This can be the same process, another
+    process on the same machine, or a remote process on a different machine, possibly
+    with a different architecture. The `DataLayout` and `MangleAndInterner` classes
+    are required to mangle symbols’ names in the correct way. Additionally, the symbol
+    names are internalized, which means that all equal names have the same address.
+    This means that to check if two symbol names are equal, it is then sufficient
+    to compare the addresses, which is a very fast operation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The initialization is split into three parts. In C++, a constructor cannot return
+    an error. The simple and recommended solution is to create a static factory method
+    that can do the error handling before constructing an object. The initialization
+    of the layers is more complex, so we introduce factory methods for them, too.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the `create()` factory method, we first create a `SymbolStringPool` instance,
+    which is used to implement string internalization and is shared by several classes.
+    To take control of the current process, we create a `SelfTargetProcessControl`
+    instance. If we want to target a different process, then we need to change this
+    instance.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Next, we construct a `JITTargetMachineBuilder` instance, for which we need
+    to know the target triple of the JIT process. Afterward, we query the target machine
+    builder for the data layout. This step can fail if the builder is not able to
+    instantiate the target machine based on the provided triple – for example, because
+    support for this target is not compiled into the LLVM libraries:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'At this point, we have handled all calls that could potentially fail. We are
+    now able to initialize the `ExecutionSession` instance. Finally, the constructor
+    of the `JIT` class is called with all instantiated objects, and the result is
+    returned to the caller:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The constructor of the `JIT` class moves the passed parameters to the private
+    data members. Layer objects are constructed with a call to static factory names
+    with the `create` prefix. Furthermore, each layer factory method requires a reference
+    to the `ExecutionSession` instance, which connects the layer to the running JIT
+    session. Except for the object-linking layer, which is at the bottom of the layer
+    stack, each layer requires a reference to the previous layer, illustrating the
+    stacking order:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the body of the constructor, we add a generator to search the current process
+    for symbols. The `GetForCurrentProcess()` method is special, as the return value
+    is wrapped in an `Expected<>` template, indicating that an `Error` object can
+    also be returned. However, since we know that no error can occur, the current
+    process will eventually run! Thus, we unwrap the result with the `cantFail()`
+    function, which terminates the application if an error occurred anyway:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To create an object-linking layer, we need to provide a memory manager. Here,
+    we stick to the default `SectionMemoryManager` class, but we could also provide
+    a different implementation if needed:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'A slight complication exists for the **Common Object File Format** (**COFF**)
+    object file format, which is used on Windows. This file format does not allow
+    functions to be marked as exported. This subsequently leads to failures in checks
+    inside the object-linking layer: flags stored in the symbol are compared with
+    the flags from IR, which leads to a mismatch because of the missing export marker.
+    The solution is to override the flags only for this file format. This finishes
+    the construction of the object layer, and the object is returned to the caller:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To initialize the compiler layer, an `IRCompiler` instance is required. The
+    `IRCompiler` instance is responsible for compiling an IR module into an object
+    file. If our JIT compiler does not use threads, then we can use the `SimpleCompiler`
+    class, which compiles the IR module using a given target machine. The `TargetMachine`
+    class is not threadsafe, and therefore the `SimpleCompiler` class is not, either.
+    To support compilation with multiple threads, we use the `ConcurrentIRCompiler`
+    class, which creates a new `TargetMachine` instance for each module to compile.
+    This approach solves the problem with multiple threads:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Instead of compiling the IR module directly to machine code, we install a layer
+    that optimizes the IR first. This is a deliberate design decision: we turn our
+    JIT compiler into an optimizing JIT compiler, which produces faster code that
+    takes longer to produce, meaning a delay for the user. We do not add lazy compilation,
+    so whole modules are compiled when just a symbol is looked up. This can add up
+    to a significant amount of time before the user sees the code executing.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing lazy compilation is not a proper solution in all circumstances.
+    Lazy compilation is realized by moving each function into a module of its own,
+    which is compiled when the function name is looked up. This prevents inter-procedural
+    optimizations such as *inlining* because the inliner pass needs access to the
+    body of called functions to inline them. As a result, users see a faster startup
+    with lazy compilation, but the produced code is not as optimal as it can be. These
+    design decisions depend on the intended use. Here, we decide on fast code, accepting
+    a slower startup time. Furthermore, this means that the optimization layer is
+    essentially a transformation layer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `IRTransformLayer` class delegates the transformation to a function – in
+    our case, to the `optimizeModule` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `optimizeModule()` function is an example of a transformation on an IR
+    module. The function gets the module to transform as a parameter and returns the
+    transformed version of the IR module. Since the JIT compiler can potentially run
+    with multiple threads, the IR module is wrapped in a `ThreadSafeModule` instance:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To optimize the IR, we recall some information from [*Chapter 7*](B19561_07.xhtml#_idTextAnchor117),
+    *Optimizing IR*, in the *Adding an optimization pipeline to your compiler* section.
+    We need a `PassBuilder` instance to create an optimization pipeline. First, we
+    define a couple of analysis managers and register them afterward at the pass builder.
+    Afterward, we populate a `ModulePassManager` instance with the default optimization
+    pipeline for the `O2` level. This is again a design decision: the `O2` level produces
+    already fast machine code, but it produces even faster code at the `O3` level.
+    Next, we run the pipeline on the module, and finally, the optimized module is
+    returned to the caller:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The client of the `JIT` class needs a way to add an IR module, which we provide
+    with the `addIRModule()` function. Recall the layer stack we created: we must
+    add the IR module to the top layer; otherwise, we would accidentally bypass some
+    of the layers. This would be a programming error that is not easily spotted: if
+    the `OptIRLayer` member is replaced by the `CompileLayer` member, then our `JIT`
+    class still works, but not as an optimizing JIT because we have bypassed this
+    layer. This is no concern for this small implementation, but in a large JIT optimization,
+    we would introduce a function to return the top-level layer:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Likewise, a client of our JIT class needs a way to look up a symbol. We delegate
+    this to the `ExecutionSession` instance, passing in a reference to the main symbol
+    table and the mangled and internalized name of the requested symbol:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: As we can see, the initialization of this JIT class can be tricky, as it involves
+    a factory method and a constructor call for the `JIT` class, and factory methods
+    for each layer. Although this distribution is caused by limitations in C++, the
+    code itself is straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to use the new JIT compiler class to implement a simple command-line
+    utility that takes an LLVM IR file as input.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using our new JIT compiler class
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We start off by creating a file called `JIT.cpp`, in the same directory as
+    the `JIT.h` file, and add the following to this source file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Firstly, several header files are included. We must include `JIT.h` to use
+    our new class, and the `IRReader.h` header because it defines a function to read
+    LLVM IR files. The `CommandLine.h` header allows us to parse the command-line
+    options in the LLVM style. Next, `InitLLVM.h` is needed for the basic initialization
+    of the tool. Finally, `TargetSelect.h` is needed for the initialization of the
+    native target:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we add the `llvm` namespace to the current scope:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Our JIT tool expects exactly one input file on the command line, which we declare
+    with the `cl::opt<>` class:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To read the IR file, we call the `parseIRFile()` function. The file can be
+    a textual IR representation or a bitcode file. The function returns a pointer
+    to the created module. Additionally, the error handling is a bit different, because
+    a textual IR file can be parsed, which is not necessarily syntactically correct.
+    Finally, the `SMDiagnostic` instance holds the error information in case of a
+    syntax error. In the event of an error, an error message is printed, and the application
+    is exited:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `jitmain()` function is placed after the `loadModule()` method. This function
+    sets up our JIT engine and compiles an LLVM IR module. The function needs the
+    LLVM module with the IR to execute. The LLVM context class is also required for
+    this module because the context class contains important type information. The
+    goal is to call the `main()` function, so we also pass the usual `argc` and `argv`
+    parameters:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we create an instance of our JIT class that we constructed earlier. If
+    an error occurs, then we return an error message accordingly:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Then, we add the module to the main `JITDylib` instance, wrapping the module
+    and a context in a `ThreadSafeModule` instance yet again. If an error occurs,
+    then we return an error message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Following this, we look up the `main` symbol. This symbol must be in the IR
+    module given on the command line. The lookup triggers the compilation of that
+    IR module. If other symbols are referenced inside the IR module, then they are
+    resolved using the generator added in the previous step. The result is of the
+    `ExecutorAddr` class, where it represents the address of the executor process:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, we can call the `main()` function in the IR module, and pass the `argc`
+    and `argv` parameters that the function expects. We ignore the return value:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'We report success after the execution of the function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After implementing a `jitmain()` function, we add a `main()` function, which
+    initializes the tool and the native target and parses the command line:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Afterward, the LLVM context class is initialized, and we load the IR module
+    named on the command line:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After loading the IR module, we can call the `jitmain()` function. To handle
+    errors, we use the `ExitOnError` utility class to print an error message and exit
+    the application when an error is encountered. We also set a banner with the name
+    of the application, which is printed before the error message:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'If the control flow reaches this point, then the IR was successfully executed.
+    We return `0` to indicate success:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We can now test our newly implemented JIT compiler by compiling a simple example
+    that prints `Hello World!` to the console. Under the hood, the new class uses
+    a fixed optimization level, so with large enough modules, we can note differences
+    in the startup and runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To build our JIT compiler, we can follow the same CMake steps as we did near
+    the end of the *Implementing our own JIT compiler with LLJIT* section, and we
+    just need to ensure that the `JIT.cpp` source file is being compiled with the
+    correct libraries to link against:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then change into the `build` directory and compile the application:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our `JIT` tool is now ready to be used. A simple `Hello World!` program can
+    be written in C, like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we can compile the Hello World C source into LLVM IR with the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Remember – we compile the C source into LLVM IR because our JIT compiler accepts
+    an IR file as input. Finally, we can invoke our JIT compiler with our IR example,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE77]'
+  prefs: []
+  type: TYPE_PRE
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, you learned how to develop a JIT compiler. You began with learning
+    about the possible applications of JIT compilers, and you explored `lli`, the
+    LLVM dynamic compiler and interpreter. Using the predefined `LLJIT` class, you
+    built an interactive JIT-based calculator tool and learned about looking up symbols
+    and adding IR modules to `LLJIT`. To be able to take advantage of the layered
+    structure of the ORC API, you also implemented an optimizing `JIT` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, you will learn how to utilize LLVM tools for debugging
+    purposes.
+  prefs: []
+  type: TYPE_NORMAL

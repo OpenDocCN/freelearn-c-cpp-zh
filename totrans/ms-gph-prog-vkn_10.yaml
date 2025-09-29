@@ -1,0 +1,849 @@
+- en: '10'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Adding Volumetric Fog
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'After adding variable rate shading in the previous chapter, we will implement
+    another modern technique that will enhance the visuals of the Raptor Engine: **Volumetric
+    Fog**. Volumetric rendering and fog are very old topics in rendering literature,
+    but until a few years ago, they were considered impossible for real-time usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The possibility of making this technique feasible in real-time stems from the
+    observation that fog is a low-frequency effect; thus the rendering can be at a
+    much lower resolution than the screen, increasing the performance in real-time
+    usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, the introduction of compute shaders, and thus generic GPU programming,
+    paired with clever observations about approximations and optimizations of the
+    volumetric aspect of the technique, paved the way to unlocking real-time Volumetric
+    Fog.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The main idea comes from the seminal paper by Bart Wronski ([https://bartwronski.files.wordpress.com/2014/08/bwronski_volumetric_fog_siggraph2014.pdf](https://bartwronski.files.wordpress.com/2014/08/bwronski_volumetric_fog_siggraph2014.pdf))
+    at Siggraph 2014, where he described what is still the core idea behind this technique
+    even after almost 10 years.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Implementing this technique will also be important for learning more about
+    the synergies between different rendering parts of a frame: developing a single
+    technique can be challenging, but the interaction with the rest of the technology
+    is a very important part as well and can add to the challenge of the technique'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’ll cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing Volumetric Fog rendering
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing the Volumetric Fog base technique
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding spatial and temporal filtering to improve visuals
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'By the end of this chapter, we will have Volumetric Fog integrated into the
+    Raptor Engine, interacting with the scenery and all the dynamic lights, as shown
+    in the following figure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.1 – Volumetric Fog with a density volume and three shadow casting
+    lights](img/B18395_10_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.1 – Volumetric Fog with a density volume and three shadow casting
+    lights
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter10](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter10).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing Volumetric Fog Rendering
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What exactly is **Volumetric Fog Rendering**? As the name suggests, it is the
+    combination of Volumetric Rendering and the fog phenomena. We will now give some
+    background on those components and see how they are combined in the final technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let’s begin with Volumetric Rendering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Volumetric Rendering
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This rendering technique describes the visuals associated with what happens
+    to light when it travels through a participating medium. A participating medium
+    is a volume that contains local changes to density or albedo.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following diagram summarizes what happens to photons in a participating
+    medium:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.2 – Light behavior in a participating medium](img/B18395_10_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.2 – Light behavior in a participating medium
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we are trying to describe is how light changes when going through a participating
+    medium, namely a fog volume (or clouds or atmospheric scattering).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are three main phenomena that happen, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Absorption**: This happens when light is simply trapped inside the medium
+    and does not go outside. It is a net loss of energy.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Out-scattering**: This is depicted using green arrows in *Figure 10**.2*
+    and is again a loss of energy coming out (and thus visible) from the medium.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**In-scattering**: This is the energy coming from the lights that are interacting
+    with the medium.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: While these three phenomena are enough to describe what happens to light, there
+    are three other components that need to be understood before having a complete
+    picture of volumetric rendering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Phase function
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first component is the **phase function**. This function describes the scattering
+    of light in different directions. It is dependent on the angle between the light
+    vector and the outgoing directions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This function can be complex and tries to describe scattering in a realistic
+    way, but the most commonly used is the Henyey-Greenstein function, a function
+    that also takes into consideration anisotropy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The formula for the Henyey-Greenstein function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.3 – The Henyey-Greenstein function](img/B18395_10_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.3 – The Henyey-Greenstein function
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding equation, the angle theta is the angle between the view vector
+    and the light vector. We will see in the shader code how to translate this to
+    something usable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extinction
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The second component is **extinction**. Extinction is a quantity that describes
+    how much light is scattered. We will use this in the intermediate steps of the
+    algorithm, but to apply the calculated fog, we will need transmittance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transmittance
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The third and final component is **transmittance**. Transmittance is the extinction
+    of light through a segment of the medium, and it is calculated using the Beer-Lambert
+    law:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.4 – The Beer-Lambert law](img/B18395_10_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.4 – The Beer-Lambert law
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the final integration step, we will calculate the transmittance and use it
+    to choose how to apply fog to the scene. The important thing here is to get a
+    basic grasp of the concepts; there will be links provided to deepen your understanding
+    of the mathematical background at the end of the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We now have all the concepts needed to see the implementation details of Volumetric
+    Fog.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Volumetric Fog
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Now that we have an idea of the different components that contribute to Volumetric
+    Rendering, we can take a bird’s-eye view of the algorithm. One of the first and
+    most clever ideas that Bart Wronski had while developing this technique is the
+    usage of a Frustum Aligned Volume Texture, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.5 – Frustum Aligned Volume Texture](img/B18395_10_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.5 – Frustum Aligned Volume Texture
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using a volume texture and math associated with standard rasterization rendering,
+    we can create a mapping between the camera frustum and the texture. This mapping
+    is already happening in the different stages of rendering, for example, when multiplying
+    a vertex position for the view-projection matrix, so it is not something new.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is new is storing information in a volume texture to calculate the volumetric
+    rendering. Each element of this texture is commonly called the **froxel**, that
+    stands for **frustum voxel**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We chose to have a texture with a width, height, and depth of 128 units, but
+    other solutions use a width and height dependent on the screen resolution, similar
+    to clustered shading.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will use different textures with this resolution as an intermediate step,
+    and for additional filtering, we will discuss this later. One additional decision
+    is to increase the resolution of the camera by using a non-linear depth distribution
+    to map a linear range to an exponential one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will use a distribution function, such as the one used by Id in their iD
+    Tech engine, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.6 – Volume texture depth slice on the Z coordinate function](img/B18395_10_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.6 – Volume texture depth slice on the Z coordinate function
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have decided on the mapping between the volumetric texture and world
+    units, we can describe the steps needed to have a fully working Volumetric Fog
+    solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The algorithm is outlined in the following diagram, where rectangles represent
+    shader executions while ellipses represent textures:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 10.7 – Algorithm overview](img/B18395_10_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 10.7 – Algorithm overview
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will now see each step of the algorithm to create a mind model of what is
+    happening, and we will review the shader later in the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data injection
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first step is the data injection. This shader will add some colored fog
+    in the form of color and density into the first Frustum Aligned Texture containing
+    only data. We decided to add a constant fog, a height-based fog, and a fog volume
+    to mimic a more realistic game development setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Light scattering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: When performing the light scattering, we calculate the in-scattering coming
+    from the lights in the scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Having a working Clustered Lighting algorithm, we will reuse the same data structures
+    to calculate the light contribution for each froxel, paying attention to treating
+    the light in a different way than the standard Clustered Lighting – we don’t have
+    diffuse or specular here, but just a global term given by attenuation, shadow,
+    and phase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also sample shadow maps associated with the lights for even more realistic
+    behavior.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spatial filtering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To remove some of the noise, we apply a Gaussian filter only on the *X* and
+    *Y* axis of the Frustum Aligned Texture, and then we pass to the most important
+    filter, the temporal one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Temporal filtering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This filter is what really improves the visuals by giving the possibility of
+    adding some noise at different steps of the algorithm to remove some banding.
+    It will read the previous frame’s final texture (the one before the integration)
+    and blend the current light scattering result with the previous one based on some
+    constant factor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a very difficult topic, as temporal filtering and reprojection can cause
+    a few issues. We will have a much bigger discussion in the next chapter when talking
+    about **Temporal** **Anti-Aliasing** (**TAA**)
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the scattering and extinction finalized, we can perform the light integration
+    and thus prepare the texture that will be sampled by the scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Light integration
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This step prepares another Frustum Aligned Volumetric Texture to contain an
+    integration of the fog. Basically, this shader simulates a low-resolution ray
+    marching so that this result can be sampled by the scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ray marching normally starts from the camera toward the far plane of the scene.
+    The combination of the Frustum Aligned Texture and this integration gives, for
+    each froxel, a cached ray marching of the light scattering to be easily sampled
+    by the scene. In this step, from all the extinction saved in previous textures,
+    we finally calculate the transmittance with the Beer-Lambert law and use that
+    to merge the fog into the scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This and temporal filtering are some of the big innovations that unlocked the
+    real-time possibility of this algorithm. In more advanced solutions, such as in
+    the game Red Dead Redemption 2, an additional ray marching can be added to simulate
+    fog at much further distances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It also allows for blending fog and Volumetric Clouds, which use a pure ray
+    marching approach, to have an almost seamless transition. This is explained in
+    detail in the Siggraph presentation about Red Dead Redemption 2 rendering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Scene application in Clustered Lighting
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The final step is to read the Volumetric Texture in the lighting shader using
+    the world position. We can read the depth buffer, calculate the world position,
+    calculate the froxel coordinates and sample the texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An additional step to further smooth the volumetric look is to render to a half-resolution
+    texture the scene application and then apply it to the scene with a geometry-aware
+    upsampling, but this will be left as an exercise for you to complete.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing Volumetric Fog Rendering
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We now have all the knowledge necessary to read the code needed to get this
+    algorithm fully working. From a CPU perspective, it is just a series of compute
+    shaders dispatches, so it is straightforward.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The core of this technique is implemented throughout various shaders, and thus
+    on the GPU, working for almost all steps on the frustum aligned Volumetric Texture
+    we talked about in the previous section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 10**.7* shows the different algorithm steps, and we will see each one
+    individually in the following sections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Data injection
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the first shader, we will write scattering and extinction, starting from
+    the color and density of different fog phenomena.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We decided to add three different fog effects, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A constant fog
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Height fog
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Fog in a volume
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For each fog, we need to calculate scattering and extinction and accumulate
+    them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code converts color and density to scattering and extinction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can now have a look at the main shader. This shader, as most of the others
+    in this chapter, will be scheduled to have one thread for one froxel cell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the first section, we will see the dispatch and code to calculate world
+    position:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We add an optional noise to animate the fog and break the constant density:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, we add and accumulate constant fog:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, add and accumulate height fog:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And finally, add density from a box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We finally store the scattering and extinction, ready to be lit in the next
+    shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Calculating the lighting contribution
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lighting will be performed using the Clustered Lighting data structures already
+    used in general lighting functions. In this shader, we calculate the in-scattering
+    of light.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Shader dispatching is the same as for the previous shader, one thread for one
+    froxel:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We read scattering and extinction from the result of the injection shader:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: We then start accumulating light and using clustered bins.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Notice the cooperation between different rendering algorithms: having the clustered
+    bin already developed, we can use that to query lights in a defined volume starting
+    from the world space position:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Up until now, the code is almost identical to the one used in lighting, but
+    we add `phase_function` to finalize the lighting factor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Final scattering is calculated and stored, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will now have a look at the integration/ray marching shader to conclude the
+    main shaders needed to have the algorithm work for the volumetric part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Integrating scattering and extinction
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: This shader is responsible for performing the ray marching in the froxel texture
+    and performing the intermediate calculations in each cell. It will still write
+    in a frustum-aligned texture, but each cell will contain the accumulated scattering
+    and transmittance starting from that cell.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice that we now use transmittance instead of extinction, transmittance being
+    a quantity that integrates extinction to a certain space. The dispatch is just
+    on the *X* and *Y* axis of the frustum texture, reading the light scattering texture,
+    as we will perform the integration steps and write to each froxel in the main
+    loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The final stored result is scattering and transmittance, so it can be easier
+    to apply it to the scene:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: We integrate on the *Z* axis as this texture is frustum aligned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we calculate the depth difference to have the thickness needed for the
+    extinction integral:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We will calculate scattering and transmittance and accumulate them for the
+    following cell on the *Z* axis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: We now have a volume texture containing ray marched scattering and transmittance
+    values that can be queried from anywhere in the frame to know how much fog there
+    is and what color it is at that point.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes the main volumetric rendering aspect of the algorithm. We will
+    now have a look at how easy it is to apply the fog to a scene.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Applying Volumetric Fog to the scene
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We can finally apply the Volumetric Fog. To do that, we use the screen space
+    coordinates to calculate the sampling coordinates for the texture. This function
+    will be used at the end of the lighting calculations for both deferred and forward
+    rendering paths.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We first calculate the sampling coordinates:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After we read the scattering and transmittance at the specified position, we
+    use the transmittance to modulate the current scene color and add the fog scattered
+    color, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And this concludes the necessary steps to fully implement Volumetric Fog rendering.
+    But still, there is a big problem: **banding**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This is a large topic covered in several papers, but for the sake of simplicity,
+    we can say that having a low-resolution volume texture adds banding problems,
+    but it is necessary for achieving real-time performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding filters
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To further improve the visuals, we add two different filters: a temporal and
+    a spatial one.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The temporal filter is what really makes the difference because it gives us
+    the possibility of adding noise in different parts of the algorithm and thus removing
+    banding. The spatial filter smooths out the fog even further.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spatial filtering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This shader will smooth out the volumetric texture in the *X* and *Y* axis by
+    applying a Gaussian filter. It will read the result of the light scattering and
+    write into the froxel data texture, unused at this point of the frame, removing
+    the need to create a temporary texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We first define the Gaussian function and its representing code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then read the light scattering texture and accumulate values and weight
+    only if the calculated coordinates are valid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We store the result in the froxel data texture:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next step is temporal filtering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Temporal filtering
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This shader will take the currently calculated 3D light scattering texture and
+    apply a temporal filter. In order to do that it will need two textures, one for
+    the current and one for the previous frame, and thanks to bindless, we just need
+    to change the indices to use them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Dispatch is like most of the shaders in this chapter, with one thread for each
+    froxel element of the volume texture. Let’s begin with reading the current light
+    scattering texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This currently resides in `froxel_data_texture`, coming from the spatial filtering:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: We need to calculate the previous screen space position to read the previous
+    frame texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will calculate the world position and then use the previous view projection
+    to get the UVW coordinates to read the texture:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then check whether the calculated UVWs are valid and if so, we will read
+    the previous texture:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once we read the sample, we can merge the current result with the previous
+    one based on a user-defined percentage:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: We store the result back into the light scattering texture so that the integration
+    can use it for the last step of the volumetric side of the algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, we have seen all of the steps for the complete algorithm for
+    the Volumetric Fog.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last thing to see is the volumetric noise generation used to animate the
+    fog and briefly talk about noise and jittering used to remove banding.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Volumetric noise generation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To break the fog density up a bit so that it is more interesting, we can sample
+    a volumetric noise texture to modify the density a little. We can add a single
+    execution compute shader that creates and stores Perlin noise in a 3D texture
+    and then reads it when sampling the fog density.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Additionally, we can animate this noise to simulate wind animation. The shader
+    is straightforward and uses Perlin noise functions as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The result is a volume texture with a single channel and Perlin noise to be
+    sampled. We also use a special Sampler that has a repeat filter on the *U*, *V,*
+    and *W* axes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blue noise
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As an additional noise used to offset sampling in different areas of the algorithm,
+    we use blue noise, reading it from a texture and adding a temporal component to
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many interesting properties of blue noise and much literature on why
+    it is a great noise for visual perception, and we will post links at the end of
+    this chapter, but for now, we just read the noise from a texture with two channels
+    and map it to the `–1` to `1` range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The mapping function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'And the following is performed to read the blue noise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The final value will be between `–1` and `1` and can be scaled to any need and
+    used everywhere.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is an animated blue noise paper that promises even better quality, but
+    due to licensing problems, we opted to use this free version.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we introduced the Volumetric Fog rendering technique. We provided
+    a brief mathematical background and algorithmic overview before showing the code.
+    We also showed the different techniques available to improve banding – a vast
+    topic that requires a careful balance of noise and temporal reprojection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The algorithm presented is also an almost complete implementation that can be
+    found behind many commercial games. We also talked about filtering, especially
+    the temporal filter, which is linked to the next chapter, where we will talk about
+    an anti-aliasing technique that uses temporal reprojection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will see how the synergy between Temporal Anti-Aliasing
+    and noises used to jitter the sampling in Volumetric Fog will ease out the visual
+    bandings. We will also show a feasible way to generate custom textures with a
+    single-use compute shader used to generate a volumetric noise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique is also used for other volumetric algorithms, such as Volumetric
+    Clouds, to store more custom noises used for generating the cloud shapes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are many different papers that are referenced in this chapter, but the
+    most important is the *Real-Time Volumetric Rendering* paper for general GPU-based
+    volumetric rendering: [https://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf](https://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The algorithm is still a derivation of the seminal paper from Bart Wronski:
+    [https://bartwronski.files.wordpress.com/2014/08/bwronski_volumetric_fog_siggraph2014.pdf](https://bartwronski.files.wordpress.com/2014/08/bwronski_volumetric_fog_siggraph2014.pdf).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With some evolutions and mathematical improvements in the following link: [https://www.ea.com/frostbite/news/physically-based-unified-volumetric-rendering-in-frostbite](https://www.ea.com/frostbite/news/physically-based-unified-volumetric-rendering-in-frostbite).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the depth distribution, we referenced the formula used in iD Tech 6: [https://advances.realtimerendering.com/s2016/Siggraph2016_idTech6.pdf](https://advances.realtimerendering.com/s2016/Siggraph2016_idTech6.pdf).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For banding and noise, the most comprehensive papers come from Playdead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://loopit.dk/rendering_inside.pdf](https://loopit.dk/rendering_inside.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://loopit.dk/banding_in_games.pdf](https://loopit.dk/banding_in_games.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For information on animated blue noise: [https://blog.demofox.org/2017/10/31/animating-noise-for-integration-over-time/](https://blog.demofox.org/2017/10/31/animating-noise-for-integration-over-time/)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For information on dithering, blue noise, and the golden ratio sequence: [https://bartwronski.com/2016/10/30/dithering-part-two-golden-ratio-sequence-blue-noise-and-highpass-and-remap/](https://bartwronski.com/2016/10/30/dithering-part-two-golden-ratio-sequence-blue-noise-and-highpass-and-remap/)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A free blue noise texture can be found here: [http://momentsingraphics.de/BlueNoise.xhtml](http://momentsingraphics.de/BlueNoise.xhtml).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Part 3: Advanced Rendering Techniques'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will continue to add advanced techniques to our renderer and
+    we will also explore how to replace or improve some of the techniques developed
+    in earlier chapters using ray tracing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following chapters in this section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 11*](B18395_11.xhtml#_idTextAnchor178)*, Temporal Anti-Aliasing*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 12*](B18395_12.xhtml#_idTextAnchor205)*, Getting Started with Ray
+    Tracing*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 13*](B18395_13.xhtml#_idTextAnchor213)*, Revisiting Shadows with
+    Ray Tracing*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 14*](B18395_14.xhtml#_idTextAnchor241)*, Adding Dynamic Diffuse Global
+    Illumination with Ray Tracing*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 15*](B18395_15.xhtml#_idTextAnchor280)*, Adding Reflections with
+    Ray Tracing*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

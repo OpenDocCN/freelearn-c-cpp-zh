@@ -1,0 +1,663 @@
+- en: '15'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Adding Reflections with Ray Tracing
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to implement reflections using ray tracing. Before
+    ray tracing hardware was introduced, applications implemented reflections using
+    screen-space techniques. However, this technique has drawbacks as it can only
+    use information from what’s visible on the screen. If one of the rays goes outside
+    the visible geometry on the screen, we usually fall back to an environment map.
+    Because of this limitation, the rendered reflections can be inconsistent, depending
+    on the camera position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By introducing ray tracing hardware, we can overcome this limitation as we now
+    have access to geometry that is not visible on the screen. The downside is that
+    we might need to perform some expensive lighting computations. If the reflected
+    geometry is outside the screen, this means we don’t have the data from the G-buffer
+    and we need to compute the color, light, and shadow data from scratch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To lower the cost of this technique, developers usually trace reflections at
+    half resolution or use ray tracing only if screen-space reflection fails. Another
+    approach is to use lower-resolution geometry in the ray tracing path to lower
+    the cost of ray traversal. In this chapter, we are going to implement a ray tracing-only
+    solution, as this gives the best-quality results. Then, it will be easy to implement
+    the optimizations mentioned previously on top of it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’ll cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How screen-space reflections work
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing ray-traced reflections
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing a denoiser to make the ray-traced output usable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: By the end of the chapter, you will have a good understanding of the different
+    solutions available for reflections. You will also learn how to implement ray-traced
+    reflections and how to improve the final result with the help of a denoiser.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How screen-space reflections work
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Reflections are an important rendering element that can provide a better sense
+    of immersion in the scene. For this reason, developers have developed a few techniques
+    over the years to include this effect, even before ray tracing hardware was available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the most common approaches is to ray-march the scene after the G-buffer
+    data becomes available. Whether a surface will produce reflections is determined
+    by the material’s roughness. Only materials with a low roughness will emit a reflection.
+    This also helps reduce the cost of this technique since usually, only a low number
+    of surfaces will satisfy this requirement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Ray marching is a technique similar to ray tracing and was introduced in [*Chapter
+    10*](B18395_10.xhtml#_idTextAnchor152), *Adding Volumetric Fog*. As a quick reminder,
+    ray marching works similarly to ray tracing. Instead of traversing the scene to
+    determine whether the ray hit any geometry, we move in the ray’s direction by
+    small increments for a fixed number of iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This has both advantages and disadvantages. The advantage is that this technique
+    has a fixed cost independent of the scene’s complexity as the maximum number of
+    iterations per ray is pre-determined. The downside is that the quality of the
+    results depends on the step size and the number of iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the best quality, we want a large number of iterations and a small step
+    size, but this would make the technique too expensive. The compromise is to use
+    a step size that gives good enough results and then pass the result through a
+    denoising filter to try and reduce the artifacts introduced by the low-frequency
+    sampling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the name implies, this technique works in screen space, similar to other
+    techniques such as **Screen-Space Ambient Occlusion** (**SSAO**). For a given
+    fragment, we start by determining whether it produces a reflection or not. If
+    it does, we determine the reflected ray’s direction based on the surface normal
+    and view direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we move along the reflected ray direction for the given number of iterations
+    and step size. At each step, we check against the depth buffer to determine whether
+    we hit any geometry. Since the depth buffer has a limited resolution, usually,
+    we define a delta value that determines whether we consider a given iteration
+    a hit.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the difference between the ray depth and the value stored in the depth buffer
+    is under this delta, we can exit the loop; otherwise, we must continue. The size
+    of this delta can vary, depending on the scene’s complexity, and is usually tweaked
+    manually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the ray marching loop hits visible geometry, we look up the color value at
+    that fragment and use it as the reflected color. Otherwise, we either return black
+    or determine the reflected color using an environment map.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are skipping over some implementation details here as they are not relevant
+    to this chapter. We have provided resources that go into more detail in the *Further*
+    *reading* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As mentioned previously, this technique is limited to information that is visible
+    on screen. The main drawback is that reflections will disappear as the camera
+    moves if the reflected geometry is no longer rendered on the screen. The other
+    downside comes from ray marching as we have limited resolution in terms of the
+    number and size of steps we can take.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This can introduce holes in the reflection, which is usually addressed through
+    aggressive filtering. This can result in blurry reflections and makes it difficult
+    to obtain crisp reflections, depending on the scene and viewpoint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we introduced screen space reflections. We explained the main
+    ideas behind this technique and some of its shortcomings. In the next section,
+    we are going to implement ray-traced reflections, which can reduce some of the
+    limitations of this technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing ray-traced reflections
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to leverage the hardware ray tracing capabilities
+    to implement reflections. Before diving into the code, here’s an overview of the
+    algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We start with the G-buffer data. We check whether the roughness for a given
+    fragment is below a certain threshold. If it is, we move to the next step. Otherwise,
+    we don’t process this fragment any further.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'To make this technique viable in real time, we cast only one reflection ray
+    per fragment. We will demonstrate two ways to pick the reflection’s ray direction:
+    one that simulates a mirror-like surface and another that samples the GGX distribution
+    for a given fragment.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If the reflection ray hits some geometry, we need to compute its surface color.
+    We shoot another ray toward a light that has been selected through importance
+    sampling. If the selected light is visible, we compute the color for the surface
+    using our standard lighting model.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Since we are using only one sample per fragment, the final output will be noisy,
+    especially since we are randomly selecting the reflected direction at each frame.
+    For this reason, the output of the ray tracing step will be processed by a denoiser.
+    We have implemented a technique called **spatiotemporal variance-guided filtering**
+    (**SVGF**), which has been developed specifically for this use case. The algorithm
+    will make use of spatial and temporal data to produce a result that contains only
+    a small amount of noise.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we use the denoised data during our lighting computation to retrieve
+    the specular color.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Now that you have a good overview of the steps involved, let’s dive in! The
+    first step is checking whether the roughness for a given fragment is above a certain
+    threshold:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have selected `0.3` as it gives us the results we are looking for, though
+    feel free to experiment with other values. If this fragment is contributing to
+    the reflection computation, we initialize our random number generator and compute
+    the two values needed to sample the GGX distribution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The two random functions can be implemented as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: These two functions have been taken from the wonderful *Hash Functions for GPU
+    Rendering* paper, which we highly recommend. It contains many other functions
+    that you can experiment with. We selected this seed function so that we can use
+    the fragment’s position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we need to pick our reflection vector. As mentioned previously, we have
+    implemented two techniques. For the first technique, we simply reflect the view
+    vector around the surface normal for a mirror-like surface. This can be computed
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When using this method, we get the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 15.1 – Mirror-like reflections ](img/B18395_15_01.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 15.1 – Mirror-like reflections
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The other method computes the normal by randomly sampling the GGX distribution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `sampleGGXVNDF` function has been taken from the *Sampling the GGX Distribution
+    of Visible Normals* paper. Its implementation is clearly described in this paper;
+    we suggest you read it for more details.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In brief, this method computes a random normal according to the BRDF of the
+    material and the view direction. This process is needed to make sure the computed
+    reflection is more physically accurate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we must trace a ray in the scene:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the ray has a hit, we use importance sampling to select a light for our final
+    color computation. The main idea behind importance sampling is to determine which
+    element, which light in our case, is more likely to be selected based on a given
+    probability distribution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have adopted the importance value described in the *Importance Sampling of
+    Many Lights on the GPU* chapter from the book *Ray* *Tracing Gems*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start by looping through all the lights in the scene:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we compute the angle between the light and the normal of the triangle
+    that has been hit:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we compute the distance between the light and the fragment position in
+    the world space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After, we use these two values to determine whether this light should be considered
+    for this fragment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next step involves computing an orientation parameter. This tells us whether
+    the light is shining directly on the fragment or at an angle:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we must compute the importance value by also taking into account the
+    intensity of the light:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the given light is not considered active for this fragment, its importance
+    will have a value of `0`. Finally, we must accumulate the importance value for
+    this light:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have the importance values, we need to normalize them. Like any
+    other probability distribution function, our values need to sum to `1`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can now select the light to be used for this frame. First, we must generate
+    a new random value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we must loop through the lights and accumulate the importance of each
+    light. Once the accumulated value is greater than our random value, we have found
+    the light to use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have selected the light, we must cast a ray toward it to determine
+    whether it’s visible or not. If it’s visible, we compute the final color for the
+    reflected surface using our lighting model.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We compute the shadow factor as described in [*Chapter 13*](B18395_13.xhtml#_idTextAnchor213),
+    *Revisiting Shadows with Ray Tracing*, and the color is calculated in the same
+    way as in [*Chapter 14*](B18395_14.xhtml#_idTextAnchor241), *Adding Dynamic Diffuse
+    Global Illumination with* *Ray Tracing*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is the result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 15.2 – The noisy output of the ray tracing step](img/B18395_15_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 15.2 – The noisy output of the ray tracing step
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we illustrated our implementation of ray-traced reflections.
+    First, we described two ways to select a ray direction. Then, we demonstrated
+    how to use importance sampling to select the light to use in our computation.
+    Finally, we described how the selected light is used to determine the final color
+    of the reflected surface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The result of this step will be noisy and cannot be used directly in our lighting
+    computation. In the next section, we will implement a denoiser that will help
+    us remove most of this noise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a denoiser
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To make the output of our reflection pass usable for lighting computations,
+    we need to pass it through a denoiser. We have implemented an algorithm called
+    SVGF, which has been developed to reconstruct color data for path tracing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SVGF consists of three main passes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we compute the integrated color and moments for luminance. This is the
+    temporal step of the algorithm. We combine the data from the previous frame with
+    the result of the current frame.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Next, we compute an estimate for variance. This is done using the first and
+    second moment values we computed in the first step.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we perform five passes of a wavelet filter. This is the spatial step
+    of the algorithm. At each iteration, we apply a 5x5 filter to reduce the remaining
+    noise as much as possible.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Now that you have an idea of the main algorithm, we can proceed with the code
+    details. We start by computing the moments for the current frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we use the motion vectors value – the same values we computed in [*Chapter
+    11*](B18395_11.xhtml#_idTextAnchor178), *Temporal Anti-Aliasing* – to determine
+    whether we can combine the data for the current frame with the previous frame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we compute the position on the screen of the previous frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we check whether the old fragment coordinates are valid:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we check whether the mesh ID is consistent with the previous frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we check for large depth discontinuities, which can be caused by disocclusion
+    from the previous frame. We make use of the difference between the current and
+    previous frame’s depth, and also of the screen space derivative of the depth for
+    the current frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The last consistency check is done by using the normal value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If all of these tests pass, this means the values from the previous frame can
+    be used for temporal accumulation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the consistency check fails, we will only use the data from the current
+    frame:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This concludes the accumulation pass. This is the output we obtain:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 15.3 – The color output after the accumulation step](img/B18395_15_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 15.3 – The color output after the accumulation step
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is to compute the variance. This can easily be done as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now that we have our accumulated value, we can start implementing the wavelet
+    filter. As mentioned previously, this is a 5x5 cross-bilateral filter. We start
+    with the familiar double loop, being careful not to access out-of-bounds values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we compute the filter kernel value and weighting value, `w`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We’ll explain the implementation of the weighting function in a moment. Next,
+    we load the integrated color and variance for the given fragment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Lastly, we accumulate the new color and variance values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Before storing the newly computed values, we need to divide them by the accumulated
+    weight:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: We repeat this process five times. The resulting color output will be used for
+    our lighting computation for the specular color.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As promised, we are now going to look at the weight computation. There are
+    three elements to the weight: normal, depth, and luminance. In the code, we tried
+    to follow the naming from the paper so that it’s easier to match with our implementation
+    of the formulas.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We start with the normals:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: We compute the cosine between the normal of the current fragment and the fragment
+    from the filter to determine the weight of the normal component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We look at depth next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: In a similar fashion to the accumulation step, we make use of the difference
+    between the depth values between two fragments. The screen-space derivative is
+    also included. As before, we want to penalize large depth discontinuities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last weight element is luminance. We start by computing the luminance for
+    the fragments we are processing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we pass the variance value through a Gaussian filter to reduce instabilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we compute the luminance weight and combine it with the other two
+    weight values:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This concludes our implementation of the SVGF algorithm. After five passes,
+    we get the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 15.4 – The output at the end of the denoising step](img/B18395_15_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 15.4 – The output at the end of the denoising step
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we described how to implement a common denoising algorithm.
+    The algorithm consists of three passes: an accumulation phase for the color and
+    luminance moments, a step for computing luminance variance, and a step for the
+    wavelet filter, which is repeated five times.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we described how to implement ray-traced reflections. We started
+    with an overview of screen-space reflection, a technique that was used for many
+    years before ray tracing hardware was available. We explained how it works and
+    some of its limitations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we described our ray tracing implementation to determine reflection values.
+    We provided two methods to determine the reflected ray direction and explained
+    how the reflected color is computed if a hit is returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since we only use one sample per fragment, the result of this step is noisy.
+    To reduce as much of this noise as possible, we implemented a denoiser based on
+    SVGF. This technique consists of three passes. First, there’s a temporal accumulation
+    step to compute color and luminance moments. Then, we compute the luminance variance.
+    Finally, we process the color output by passing it through five iterations of
+    a wavelet filter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter also concludes our book! We hope you enjoyed reading it as much
+    as we had fun writing it. When it comes to modern graphics techniques, there is
+    only so much that can be covered in a single book. We have included what we thought
+    are some of the most interesting features and techniques when it comes to implementing
+    them in Vulkan. Our goal is to provide you with a starting set of tools that you
+    can build and expand upon. We wish you a wonderful journey on the path to mastering
+    graphics programming!
+  prefs: []
+  type: TYPE_NORMAL
+- en: We very much welcome your feedback and corrections, so please feel free to reach
+    out to us.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We have only provided a brief introduction to screen-space reflections. The
+    following articles go into more detail about their implementation, their limitations,
+    and how to improve the final results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml](https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/](https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/](https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We have only used one of the many hashing techniques presented in the paper
+    *Hash Functions for GPU* *Rendering*: [https://jcgt.org/published/0009/03/02/](https://jcgt.org/published/0009/03/02/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This link contains more details about the sampling technique we used to determine
+    the reflection vector by sampling the BRDF – *Sampling the GGX Distribution of
+    Visible* *Normals*: [https://jcgt.org/published/0007/04/01/](https://jcgt.org/published/0007/04/01/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For more details about the SVGF algorithm we presented, we recommend reading
+    the original paper and supporting material: [https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced](https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We used importance sampling to determine which light to use at each frame.
+    Another technique that has become popular in the last few years is **Reservoir
+    Spatio-Temporal Importance Resampling** (**ReSTIR**). We highly recommend reading
+    the original paper and looking up the other techniques that have been inspired
+    by it: [https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct](https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we implemented the SVGF algorithm from scratch for pedagogical
+    purposes. Our implementation is a good starting point to build upon, but we also
+    recommend looking at production denoisers from AMD and Nvidia to compare results:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[https://gpuopen.com/fidelityfx-denoiser/](https://gpuopen.com/fidelityfx-denoiser/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers](https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

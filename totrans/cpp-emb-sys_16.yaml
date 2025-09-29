@@ -1,0 +1,643 @@
+- en: '12'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Writing C++ HAL
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A **Hardware Abstraction Layer** (**HAL**) is a core software component in embedded
+    projects. It simplifies interactions with hardware peripherals by providing an
+    easy-to-use interface that abstracts the hardware details. The HAL manages the
+    reading and writing of memory-mapped peripheral registers, allowing you to use
+    peripherals such as GPIOs, timers, and serial communication interfaces, without
+    dealing directly with low-level hardware specifics. It often supports multiple
+    devices within the same family.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By using a HAL, firmware becomes more portable across different devices and
+    similar families from the same vendor. It hides the register layouts of memory-mapped
+    peripherals, making it easier to reuse drivers and business logic on various devices.
+    The HAL handles platform-specific details, enabling developers to focus on the
+    application rather than hardware nuances. It also manages differences among different
+    series of **microcontrollers** (**MCUs**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It’s recommended to use vendor-provided HALs, typically delivered as C libraries,
+    because they are well-tested and regularly maintained. Still, in some cases, it
+    may be needed to work directly with memory-mapped peripherals, thus, in this chapter,
+    we will explore C++ techniques that can help you write safer and more expressive
+    HALs. In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory-mapped peripherals
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Timers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The examples from this chapter are available on GitHub ([https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter12](https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter12)).
+    To get the most out of this chapter, run the examples in the Renode simulator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory-mapped peripherals
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Memory-mapped peripherals** allow programs to control hardware devices by
+    reading from and writing to specific memory addresses. Both peripheral registers
+    and RAM are mapped to the same address space, making communication with hardware
+    registers as simple as writing and reading to a pointer that points to those locations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In previous examples in this book, we used an ST-provided HAL written in C,
+    which controls hardware peripherals through **Common Microcontroller Software
+    Interface Standard** (**CMSIS**) headers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CMSIS is a vendor-independent HAL and software library collection for Arm Cortex-based
+    microcontrollers. Developed by Arm, it standardizes hardware access and configuration,
+    simplifying software development and improving code portability across different
+    manufacturers. Each microcontroller vendor provides its own CMSIS implementation,
+    adapting the core APIs and drivers to their specific devices. Next, we will explore
+    CMSIS implementation of access to memory-mapped peripherals for the STM32F072
+    microcontroller.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CMSIS memory-mapped peripherals
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Access to registers in CMSIS is modeled through pointers to structs that describe
+    register layout. CMSIS defines macros representing pointers to memory-mapped peripherals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Structs, according to CMSIS naming conventions, are named using the peripheral
+    name abbreviation and `_TypeDef` postfix. The **reset and clock control** (**RCC**)
+    peripheral struct is named `RCC_TypeDef`. It is defined in example projects in
+    the `platform/CMSIS/Device/ST/STM32F0xx/Include/stm32f072xb.h` file, as shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the same header file, along with the `RCC_TypeDef` struct, the following
+    macros are defined:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we are setting up the HSION bit of the clock control register
+    (`CR`) or the `RCC` peripheral, and we know we are doing that because of the comment
+    in the code. Also, nothing is preventing us from setting `CR` to any random value.
+    Here is an example of usage of the clock configuration register (`CFGR`) from
+    the `RCC` peripheral:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code sets PLL division, various prescaler, and clock settings. It’s not
+    quite obvious which settings are applied from the hex value `0x08FFB80CU`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even though this approach is common, there are several issues with modeling
+    access to peripherals using register structs and a pointer pointing to the peripheral’s
+    base address:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first is reduced readability. We can write `arbitrary uint32_t` values in
+    hex format, making the code meaningless and requiring us to refer to reference
+    manuals of microcontrollers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As we can write any value we want to a register, we can easily write wrong or
+    even random values.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Individual registers of a peripheral in a struct must be ordered according to
+    their memory layout. Members named `RESERVERDn` are used to add space into the
+    structure for adjusting the addresses of the peripheral registers and to prevent
+    padding.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: CMSIS headers may contain macros defining bit masks for accessing individual
+    settings in a register, which simplifies access to peripheral registers. Still,
+    these macros are not making the code any safer, just easier to work with.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let’s see how we can utilize C++ to address these concerns, making the code
+    safer and more readable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory-mapped peripherals in C++
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will use the knowledge we gained in previous chapters to create an expressive
+    and type-safe interface to access memory-mapped peripherals in C++. We will create
+    an interface with the following qualities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Read and write access control to a hardware register
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Type-safe write to a register
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Expressive and easy to use
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let us start with a basic implementation of an interface representing a memory-mapped
+    register that will match the CMSIS approach in functionality. The code is shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, the class template `reg` models a hardware register. It has the
+    following template parameters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`uintptr_t Address`: The memory address of the hardware register'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`typename Access`: The access rights for the register (defaults to `read_write_access`)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`typename T`: The data type matching the size of the register (defaults to
+    `std::uint32_t`)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The class template `reg` has two static methods: `read` and `write`. These
+    are used to read from and write to a register, respectively. Both methods are
+    enabled or disabled at compile time using SFINAE, which we covered in [*Chapter
+    8*](Chapter_08.xhtml). We are using the following types of access control:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`struct read_access`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`struct write_access`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`struct read_write_access`: This inherits from both `read_access` and `write_access`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To enable and disable `write` and `read` methods at compile time using SFINAE,
+    we made both methods template functions. This allows us to use the class template
+    `enable_if` at the return type of these methods to either enable or disable them,
+    depending on the condition provided to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The template parameter for both `write` and `read` is `Access_`, which defaults
+    to `Access`. It ensures that SFINAE works correctly by making the substitution
+    dependent on a template parameter of the function itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are enabling the `read` method using `std::enable_if_t<std::is_base_of_v<read_access,
+    Access_>, T>`. This means that if `std::is_base_of_v<read_access, Access_>` is
+    true (i.e., if `Access_` is derived from or is the same as `read_access`), `std::enable_if_t`
+    resolves to `T`, and the function is enabled. Otherwise, it results in a substitution
+    failure, and the function is not included in the overload set. We are enabling
+    the `write` method in a similar fashion, by checking whether `Access_` type is
+    derived from or the same as `write_access`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use `reinterpret_cast<volatile T*>` to convert the integer template parameter
+    `Address` into a pointer to a volatile variable of type `T` (which defaults to
+    `std::uint32_t`). The `volatile` keyword informs the compiler that the value at
+    this memory location can change at any time outside the program’s control – by
+    hardware. This prevents the compiler from applying certain optimizations that
+    might omit necessary reads or writes to this address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Without `volatile`, the compiler might assume that multiple reads from the same
+    address yield the same value or that writes to the address can be reordered or
+    even omitted, which can lead to incorrect behavior when interacting with hardware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we discussed in [*Chapter 9*](Chapter_09.xhtml), casting an integer to a
+    pointer using `reinterpret_cast` is considered an implementation-defined behavior
+    in C++. This means the C++ standard doesn’t specify exactly how it should work,
+    and different compilers or platforms might handle it differently. Writing directly
+    to a specific memory location is inherently unsafe and relies on behavior that
+    isn’t guaranteed to be portable across all systems. Therefore, we need to be cautious
+    about the portability of this solution, as some platforms may implement pointer
+    conversions differently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are a few examples of using the class template `reg`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: These examples demonstrate the usage of the implemented interface for accessing
+    memory-mapped peripherals. When defining types using the class template `reg`,
+    we provide it with the address of a register and `write` access if we are working
+    with write-only or read-only registers. The default access type allows us both
+    read and write privileges.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The preceding solution is as effective as the CMSIS approach. You can experiment
+    with the full example and compare binary sizes by running the full example in
+    Renode. Start Visual Studio Code, attach it to the running container, open the
+    `Chapter12/cpp_hal` project as described in [*Chapter 4*](Chapter_04.xhtml), and
+    run the following commands in the Visual Studio Code terminal, or run them directly
+    in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Our current solution still allows us to write arbitrary values to registers.
+    To address this, we will use strong types based on `enum` classes to model bit
+    fields used to set different settings in registers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Type-safe memory-mapped peripherals in C++
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To prevent arbitrary writings to a register using the class template `reg`,
+    we will add a new static method, `set`, which will accept only types meeting certain
+    criteria. We will model these types by creating a `BitFieldConcept`. We covered
+    concepts in [*Chapter 8*](Chapter_08.xhtml). Also, we will remove public access
+    to the `write` method and put it instead in the `private` section. The modified
+    code is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The template method `set` has a single template parameter – type `BitField`.
+    We use `BitFieldConcept` to impose the following requirements on the `BitField`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Reg` must be the same as `BitField::reg`. This ensures the bit field is associated
+    with the correct register.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`BitField::value` must be an `enum`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The underlying type of the `BitField::value` `enum` must be `T`. This ensures
+    that values represented by the `enum` can fit in the registers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `set` function parameter is `BitField::value bits_val`. The function itself
+    is simple, and it performs the following operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reads the current register value
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Clears the bits specified by `BitField::c_mask`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sets the new bits by shifting `bits_val` to the correct position (`BitField::c_position`)
+    and applying the mask
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Writes the modified value back to the register
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To use the `set` function, we need to define types that describe the register’s
+    bit fields and that meet the requirements imposed by the `BitFieldConcept`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Modeling HSION and HSITRIM bit fields from the RCC register
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let us examine bit fields in the RCC CR register defined in the STM32F0x2 reference
+    manual document, as shown in *Figure 12**.1*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.1 – RCC CR register](img/B22402_12_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 12.1 – RCC CR register
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 12**.1* depicts bit fields in the RCC CR register. Let us define a
+    struct `hsion` that describes the HSI clock `enable` bit field from the RCC CR
+    register. It has only one bit on position `0`, so we can model it as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we declare type `rcc` as an instance of the class template `reg`
+    by providing it with the address of the RCC register. Then, we create a struct
+    `hsion` with the following properties:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A public `typedef` member `reg`, which we set to `rcc`. This “maps” `hsion`
+    to the `rcc` register thanks to `BitFieldConcept`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `constexpr` variables `c_position` and `c_mask`, used for bit manipulation
+    by the `set` method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: An `enum` class `value`, defining `enable` and `disable`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can use the `hsion` struct to enable or disable the HSI clock using the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code allows us to safely set bits in a register. It is also expressive:
+    the syntax `rcc::set<hsion>(hsion::value::enable);` clearly communicates the intent
+    – setting the `hsion` bit field to `enable` on the `rcc` register.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we can see in *Figure 12**.1*, most of the defined bit fields in the `CR`
+    register are `enable`/`disable` bits. Exceptions are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`HSICAL[7:0]: HSI clock calibration`: These bits are automatically initialized
+    at startup and can be adjusted by software via the `HSITRIM` setting.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`HSITRIM[4:0]: HSI clock trimming`: These bits offer an additional user-programmable
+    trimming value added to the `HSICAL[7:0]` bits. This setting allows adjustments
+    for voltage and temperature variations that may affect the HSI frequency.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`HSICAL` bits are initialized at startup, meaning we shouldn’t modify them.
+    `HSITRIM` bits are user-programmable, and they occupy 5 bits. Defining all combinations
+    of 5 bits in the `BitField` value `enum` wouldn’t be practical, so we will approach
+    this by providing value through a template parameter, as shown in the code here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we defined the class template `hsitrim` with the auto template
+    parameter `Bits`. The `auto` keyword is used to indicate that we are using a non-type
+    template parameter. We use `static_assert` to make sure that the type of provided
+    parameter `Bits` (`decltype(Bits)`) is the same as the underlying registers type
+    to satisfy requirements imposed by `BitFieldConcept`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We encode the `enum` class value val with the `Bits`. This encodes the value
+    in the type itself and makes it possible to use it with the `reg` struct `set`
+    method. We also utilize `static_assert` to make sure that the provided value fits
+    in the allocated number of bits – `static_assert(Bits <= 0x1F)`. Again, we are
+    utilizing compile-time operations to ensure type safety. Here is an example of
+    using the `hsitrim` struct:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code sets the `hstrim` value in the `rcc` register to `0xF`. You can experiment
+    with the full example in Renode. Start Visual Studio Code, attach it to the running
+    container, open the `Chapter12/cpp_hal` project, as described in [*Chapter 4*](Chapter_04.xhtml),
+    and run the following commands in the Visual Studio Code terminal, or run them
+    directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Generic versions of hsion and hsi_trim
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'To enable the reuse of bit fields that have a single bit (enable/disable) such
+    as `hsion`, we will define the class template `reg_bits_enable_disable`, as shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This defined template type, `reg_bits_enable_disable`, could be used to define
+    the `hsion` type, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we will create a generic version of the type used to set multiple fields
+    with a value, such as `hsi_trim`. We will call it `reg_bits`, and the code is
+    shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We could use the generic type `reg_bits` to define the `hsi_trim` template
+    type, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will explore how to use C++ to create templates for peripherals that
+    are similar but also have some implementation differences.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Timers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`STM32F072` has multiple timers, including TIM2 and TIM3\. TIM2 is a 32-bit
+    timer and TIM3 is a 16-bit timer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will create a template class timer that will depend on timer traits structures
+    containing timer-specific details. Here is the code for timer traits structures:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, `timer2_traits` and `timer3_traits` are traits structures that
+    encapsulate the hardware-specific details of TIM2 and TIM3 timers, respectively.
+    They have the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`base_address`: The base memory address of the timer’s register map'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`irqn`: The interrupt request number associated with the timer'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`arr_bit_mask`: The bit mask for the auto-reload register (ARR):'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For TIM2, it’s `0xFFFFFFFF` (32-bit timer).
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For TIM3, it’s `0xFFFF` (16-bit timer).
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Next, let’s look at the template class timer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we defined a template class timer with template parameter `TimerTraits`
+    – a traits class that provides hardware-specific constants. The timer class template
+    provides a generic interface to configure and control timers, customized for each
+    specific timer via `TimerTraits`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Please note that for the sake of simplicity of the example, this is the minimum
+    code needed to set up the STM32 timer peripheral.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Within the timer class, we define register type aliases, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: These type aliases represent the timer’s hardware registers, each mapped to
+    a specific memory address. Each register is an instantiation of the `reg` class
+    template, which provides read/write access to hardware registers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we define type aliases for `BitFields`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we instantiate bit fields using the class templates `reg_bits`
+    and `reg_bits_enable_disable`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we define the template static method `start` in the class template
+    timer. This `static` function sets up the timer with the desired period and starts
+    it. The code executes the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Calculate Prescaler and Auto-Reload values. The function uses the template parameter
+    Period to calculate these values.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Set Prescaler (PSC) and Auto-Reload (ARR) registers.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Enable the update interrupt on the DIER register. It uses the `uie` bit field
+    to enable the update interrupt in the DIER register.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Configure NVIC for timer interrupts using CMSIS functions.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Start the timer. It uses the `cen` bit field to enable the timer counter in
+    the CR1 register.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Let’s now see how we can use the provided timer template class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this code, we create the type aliases `timer2` and `timer3` and implement
+    **Interrupt Request (IRQ)** functions for the `TIM2` and `TIM3` interrupts. In
+    the IRQs, we clear interrupt flags. We make calls to start functions of types
+    `timer2` and `timer3` in the `main` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can run the full example in Renode. Start Visual Studio Code, attach it
+    to the running container, open the `Chapter12/cpp_hal` project, as described in
+    [*Chapter 4*](Chapter_04.xhtml), and run the following commands in the Visual
+    Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this section, we learned how to create a generic, template-based timer interface
+    by utilizing C++ templates and traits classes. By defining `TimerTraits` structures
+    (`timer2_traits` and `timer3_traits`) that encapsulate hardware-specific details
+    of the TIM2 and TIM3 timers, we can instantiate a flexible `timer` class template
+    that abstracts the configuration and control of different timers. This approach
+    offers two main benefits: it increases type safety by using templates to enforce
+    correct usage at compile time, and it results in code that is as efficient as
+    traditional C HAL implementations because the use of templates and constexpr allows
+    the compiler to optimize the code thoroughly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned techniques that we can apply to create safer HAL
+    code in C++. We covered the implementation of memory-mapped peripherals. The design
+    utilizes templates and advanced techniques such as SFINAE, which we discovered
+    in [*Chapter 8*](Chapter_08.xhtml). We applied the knowledge from previous chapters
+    in the embedded systems domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also learned how to design classes that implement generic behavior and depend
+    on traits classes to supply them with specific details. The code we developed
+    is as efficient as a hand-coded (CMSIS-based) solution, thanks to the usage of
+    templates and compile-time computations, enabling compiler optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will cover working with C libraries in C++.
+  prefs: []
+  type: TYPE_NORMAL

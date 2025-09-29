@@ -1,0 +1,468 @@
+- en: '14'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Enhancing Super-Loop with Sequencer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Super-loop** is the basic software architecture of bare-metal firmware. It
+    is an infinite loop that executes tasks (functions) often conditioned by flags
+    set in an **Interrupt Service Routine** (**ISR**). As the complexity of business
+    logic increases, so does the size of a super loop, which can quickly turn into
+    a spaghetti mess. To solve this problem within bare-metal constraints (no operating
+    system), we can use a sequencer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A **sequencer** stores and executes tasks (functions) in an organized fashion.
+    Instead of setting a flag in an ISR, checking it in a super loop, and executing
+    a function if a flag is set, we simply add a task to a sequencer from the ISR.
+    The super loop then runs the sequencer, which executes the added tasks. Tasks
+    in the sequencer can be prioritized, so the sequencer will execute higher-priority
+    tasks first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’re going to cover sequencer design and implementation through
+    the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Super-loop and motivation for a sequencer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Designing a sequencer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Storing a callable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing a sequencer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The examples from this chapter are available on GitHub ([https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter14](https://github.com/PacktPublishing/Cpp-in-Embedded-Systems/tree/main/Chapter14)).
+    To get the most out of this chapter, run the examples in the Renode simulator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Super-loop and motivation for a sequencer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Before we get into the design and implementation of a sequencer, we will first
+    analyze the limitations of a super loop. In a usual super-loop scenario, we check
+    flags that are set from an ISR. Below is an example pseudocode of a super loop:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the preceding pseudocode, we perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Check the Boolean flag `data_read_ready` and, if it is set, we execute the function
+    `sensor_data_read_and_buffer`. We then reset the `data_read_ready` flag.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Check the Boolean flag `data_send_timeout` and, if it is set, we execute the
+    function `data_send_from_buffer`. We then reset the `data_send_timeout` flag.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Both the `data_read_ready` and `data_send_timeout` flags are set from an ISR.
+    In our example, this might be the timer’s ISR.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Finally, we check if both flags are false, and if they are, we enter sleep mode.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The example we discussed is simple, but as the number of flags grows, so does
+    the size of the super loop, the number of global variables (flags), and the possibility
+    of a mistake such as resetting a flag or forgetting to include it in the `if`
+    statement, which provides the conditions for entering sleep mode.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, imagine we wanted to prioritize functions executed in the super loop. Using
+    the current approach would be difficult. Adding a priority variable and checking
+    it in `if` statements might work initially, but the code would quickly become
+    messy and difficult to maintain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To address issues of a super loop in a bare-metal environment, we will utilize
+    a sequencer. Instead of defining global flags and setting them from an ISR, we
+    will add tasks to the sequencer from an ISR. Each task will include priority information,
+    enabling the sequencer to organize them in an internal queue based on their priority.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the main loop, the sequencer runs repeatedly. It handles tasks by always
+    picking the highest-priority one from the queue and executing it first, keeping
+    task management efficient and orderly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will proceed with the design of the sequencer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing a sequencer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will base the sequencer design on a command pattern that we covered in [*Chapter
+    10*](Chapter_10.xhtml). In the command pattern, a sequencer will take the role
+    of invoker. In our design, we’ll use the term *task* instead of *command*. This
+    *task* is equivalent to a function – it represents a specific unit of functionality
+    – not a task as defined in operating systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 14.1 – Sequencer design – UML diagram](img/B22402_14_01.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 14.1 – Sequencer design – UML diagram
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 14.1* depicts a UML diagram of a sequencer. We can see it takes the
+    role of a sequencer in the command pattern, as described earlier. Instead of a
+    command interface and concrete command, this UML design uses a `std::function`
+    class template (we used the same approach in the *GPIO Interrupt manager* example
+    of [*Chapter 10*](Chapter_10.xhtml)).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `sequencer` class holds an array of tasks, which are used to store callable
+    objects. The sequencer provides a simple interface, with just two methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`void add(task t)`: The method used to add a task to the sequencer'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`void run()`: The method used to take a task with the highest priority, execute
+    it, and remove it from the sequencer'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Before we go into the implementation of sequencer methods, we will first go
+    over the `task` class and alternatives to `std::array` for storing tasks. The
+    `task` class represents a unit of functionality that will be executed by a sequencer
+    according to priority. It has the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`std::function<void()> the_task_`: An actual callable that will be executed'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`std::uint8_t priority_`: Priority according to which tasks will be sorted
+    in the sequencer’s storage'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Below is the code that implements the `task` class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code implements the task as a class template, allowing us to use it with
+    different callable holders. The one we introduced in the book previously is `std::function`.
+    The class template task has the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A constructor that initializes the `the_task_` member, which is type `CallableHolder`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `void execute()` method, which calls `operator()` on `the_task_`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`operator<`, which compares task by priority'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'This code demonstrates the usage of the class template task:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this example, we instantiate the class template task with `std::function<void()>`.
+    We create two objects, `task_a` and `task_b`, and then execute one with higher
+    priority by using `operator<` to compare them. Task objects in this example are
+    initialized with lambdas, which are internally stored in `std::function<void()>`.
+    If you run the preceding example, you will see the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the task with higher priority was executed thanks to the overloaded
+    `operator<`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In [*Chapter 10*](Chapter_10.xhtml), we saw that the class template `std::function`
+    can resort to dynamic memory allocation to store lambdas that are captured. To
+    mitigate this concern, we will introduce the **Embedded Template Library** (**ETL**),
+    a library that defines a set of containers and algorithms whose operations are
+    deterministic and don’t use dynamic memory allocation. The ETL will be discussed
+    more in [*Chapter 17*](Chapter_17.xhtml).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Storing a callable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Instead of `std::function`, we can use `etl::delegate` – a callable holder
+    from the ETL. One of its limitations is it doesn’t work with capturing lambdas.
+    This may affect the code expressiveness, but it provides us with equivalent functionality
+    that allows us to capture different callables. This code demonstrates using the
+    class template task with `etl::delegate`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code demonstrates how we can use `etl::delegate` to store a callable:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`callable_etl::create<test, &test::print>(test_1)` creates `etl::delegate`
+    using the template method `create` instantiated with the class `test` and its
+    member `print`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`callable_etl::create<test::print_static>()` creates `etl::delegate` using
+    the template method `create` instantiated with the static method `print_static`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`task_lambda([](){ printf("This is non capturing lambda!\r\n");});` initializes
+    `etl::delegate` with the provided non-capturing lambda'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Running the preceding example will result in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can run the full example in the Renode simulator. Start Visual Studio Code,
+    attach it to the running container, open the `Chapter14/sequencer` project, as
+    described in [*Chapter 4*](Chapter_04.xhtml), and run the following commands in
+    the Visual Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: We have alternative implementations for callable storage – `std::function` from
+    the standard library, or the more embedded-friendly `etl::delegate` from ETL.
+    Next, let us consider options for a container for storing the tasks inside the
+    sequencer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the UML diagram in *Figure 14.1*, the sequencer is using `std::array` to
+    store tasks. This implies that sorting the elements of an array according to the
+    priority is handled by the sequencer itself. Instead of implementing this manually,
+    we can use `std::priority_queue` – a container adapter from the standard library.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`std::priority_queue` is a template class that is used as an adapter for another
+    container, which provides a random access iterator and the following methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`front()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`push_back()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pop_back()`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We could use `std::vector` from the standard library, as it meets all the requirements
+    imposed by `std::priority_queue`. As you know, `std::vector` uses dynamic memory
+    allocation, which doesn’t make it a good fit for most of the embedded applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ETL provides a fixed-size implementation of a vector with a similar interface
+    as standard library implementation. This makes it compatible with the priority
+    queue. This code demonstrates using `etl::vector` with `std::priority_queue`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code performs the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`std::priority_queue<int, etl::vector<int, 6>> pq{}` defines a priority queue,
+    `pq`, with the underlying container `etl::vector<int, 6>`, which is a fixed size
+    vector of size `6`.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`pq.push(12)` inserts an element (`12`) in the priority queue, `pq`, and sorts
+    the queue.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Using the `push` method, we add 5 more elements in the queue – `6`, `16`, `8`,
+    `1`, and `10`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: With `while(!pq.empty())`, we run a `while` loop until the priority queue is
+    empty.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Inside the `while` loop, we print the top element, which we access using the
+    `top()` method, and size using the `size()` method. Then, we pop the top element
+    from the queue using `pop()`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Running the preceding code will result in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As you can see from the output, the elements in the priority queue are sorted.
+    This makes it a good solution for storing tasks that can be sorted thanks to the
+    overloaded `operator<`. You can run the full example in the Renode simulator.
+    Start Visual Studio Code, attach it to the running container, open the `Chapter14/sequencer`
+    project, as described in [*Chapter 4*](Chapter_04.xhtml), and run the following
+    commands in the Visual Studio Code terminal, or run them directly in the container
+    terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have all the elements we need for the sequencer, we will proceed
+    with the implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a sequencer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we introduced `etl::delegate` – an alternative to `std::function`
+    and fixed size vector implementation from ETL. As ETL avoids dynamic memory allocation,
+    we will use these components for the implementation of the sequencer. Below is
+    an updated UML diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 14.2 – UML sequencer diagram using ETL components](img/B22402_14_02.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 14.2 – UML sequencer diagram using ETL components
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Figure 14.2* depicts a UML diagram of the sequencer using delegate and vector
+    ETL components and the priority queue from the standard library. This code implements
+    `sequencer`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, `sequencer` is implemented as a static template class with `Task`
+    and `Size` as template parameters. This allows us to use it with either `std::function`
+    or `etl::function`-based tasks and to define the size of the ETL vector. `sequencer`
+    has the following members:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`static inline std::priority_queue<Task, etl::vector<Task, Size>> pq{}`: A
+    private static priority queue based on an ETL vector.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`static void add(Task task)`: A static method used to add tasks to the queue
+    using the `push` method, guarded by disabling and enabling interrupts, as it can
+    be called from an ISR.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`static void run()`: A static method used to take the top element from the
+    queue and execute it. Access to the queue is guarded by disabling and enabling
+    interrupts.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Below is an example of using the sequencer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we do the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instantiate the `etl::delegate`-based tasks `task_member_fun`, `task_static_fun`,
+    and `task_lambda`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We add tasks to the sequencer using the sequencer `add` method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We run the sequencer in the main `while` loop using the method `run()`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Running the preceding code will result in the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As we can see in this code, the tasks are executed according to the assigned
+    priority. You can run the full example in Renode. Start Visual Studio Code, attach
+    it to the running container, open the `Chapter14/sequencer` project, as described
+    in [*Chapter 4*](Chapter_04.xhtml), and run the following commands in the Visual
+    Studio Code terminal, or run them directly in the container terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Running the example in the simulator should provide the same console output.
+    I invite you to explore the sequencer by adding tasks from the timer or external
+    interrupts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A sequencer offers a better alternative to a super loop by organizing tasks
+    in a strictly sequential, prioritized manner. Deterministic behavior needs to
+    be assured through task implementation. For instance, in the case of real-time
+    requirements, each task must include internal monitoring to guarantee it meets
+    the necessary real-time constraints.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we examined the common problems with a basic super loop, which
+    motivated our move toward a sequencer design. We covered sequencer design in detail
+    and introduced ETL components `etl::delegate` – callable holder which is an alternative
+    to `std::function` – and a fixed size vector, which are both great fits for embedded
+    applications as they don’t use dynamic memory allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will learn about the observer pattern and apply it to
+    a temperature-reading application.
+  prefs: []
+  type: TYPE_NORMAL

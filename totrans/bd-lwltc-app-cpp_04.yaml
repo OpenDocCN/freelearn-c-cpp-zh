@@ -1,0 +1,1769 @@
+- en: '4'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Building the C++ Building Blocks for Low Latency Applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we had a detailed and highly technical discussion of
+    how to approach developing low latency applications in C++. We also investigated
+    the technical details of the C++ programming language as well as the GCC compiler.
+    Now, we will move from a theoretical discussion to building some practical low
+    latency C++ components ourselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will build some relatively general components that can be used in a variety
+    of different low latency applications, such as the ones we discussed in the previous
+    chapters. As we build these basic building blocks in this chapter, we will learn
+    about using C++ effectively to write highly performant C++ code. We will use these
+    components in the rest of the book to demonstrate where these components fit into
+    the electronic trading ecosystem that we will design and build.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ threading for multi-threaded low latency applications
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Designing C++ memory pools to avoid dynamic memory allocations
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Transferring data using lock-free queues
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building a low latency logging framework
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++ network programming using sockets
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: All the code for this book can be found in the GitHub repository for this book
+    at [https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP](https://github.com/PacktPublishing/Building-Low-Latency-Applications-with-CPP).
+    The source for this chapter is in the `Chapter4` directory in the repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We expect you to have at least intermediate C++ programming experience, since
+    we will assume you understand the widely used C++ programming features well. We
+    also assume that you have some experience with network programming in C++, since
+    network programming is a huge topic and cannot be covered in this book. For this
+    book, starting with this chapter, we will use the CMake and Ninja build systems,
+    so we expect you to either understand CMake, g++, Ninja, Make, or some such build
+    system to be able to build the code samples for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The specifications of the environment in which the source code for this book
+    was developed are shown here. We present the details of this environment since
+    all the C++ code presented in this book is not necessarily portable and might
+    require some minor changes to work in your environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Linux 5.19.0-41-generic #42~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Apr 18
+    17:40:00 UTC 2 x86_64 x86_64` `x86_64 GNU/Linux`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`g++ (Ubuntu` `11.3.0-1ubuntu1~22.04.1) 11.3.0`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`cmake` `version 3.23.2`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`1.10.2`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++ threading for multi-threaded low latency applications
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The first component we will build is a very small one but still quite fundamental.
+    This section will design and implement a method of creating and running threads
+    of execution. These will be used in many different parts of a full low-latency
+    system, depending on the design of the different sub-components in the system.
+    Depending on the design of the system, different components might work together
+    as a pipeline to facilitate parallel processing. We will use the multi-threading
+    framework in exactly such a way in our electronic trading systems. Another use
+    case is to pass off non-critical tasks such as logging onto disk, computing statistics,
+    and so on to a background thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we move on to the source code that creates and manipulates threads, let
+    us first quickly define a few useful macros. We will use these functions in many
+    places in the source code that we will be writing in this book, starting with
+    this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining some useful macros and functions
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Most low latency applications run on modern pipelined processors that pre-fetch
+    instructions and data before they need to be executed. We discussed in the previous
+    chapter that branch mispredictions are extremely expensive and stall the pipeline,
+    introducing bubbles into it. Therefore, an important development practice for
+    low latency applications is to have fewer branches. Since branches are unavoidable,
+    it is also important to try and make them as predictable as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have two simple macros that we will use to provide branching hints to the
+    compiler. These use the `__builtin_expect` GCC built-in function that reorders
+    the machine instructions generated by the compiler. Effectively, the compiler
+    uses the branch prediction hints provided by the developer to generate machine
+    code that is optimized under the assumption that a branch is more or less likely
+    to be taken.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that instruction reordering is only part of the full picture when it comes
+    to branch prediction, since there is a hardware branch predictor that the processor
+    uses when running instructions. Note that modern hardware branch predictors are
+    extremely good at predicting branches and jumps, especially in cases where the
+    same branch gets taken many times and even when there are at least easily predictable
+    branching patterns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The two macros are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `LIKELY(x)` macro specifies that the condition specified by `x` is likely
+    to be true, and the `UNLIKELY(x)` macro does the opposite. As an example of the
+    usage, we will use the `UNLIKELY` macro shortly in the next set of functions.
+    In C++20, this is standardized like the `[[likely]]` and `[[unlikely]]` attributes
+    to perform the same function in a standard and portable manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will define two additional functions next, but these are simply used for
+    assertions in our code base. These should be pretty self-explanatory; `ASSERT`
+    logs a message and exits if the condition it is provided evaluates to `false`,
+    and `FATAL` simply logs a message and exits. Note the use of `UNLIKELY` here to
+    specify that we do not expect the `!cond` condition to evaluate to `true`. Also
+    note that using the `ASSERT` method on critical code paths is not free, mostly
+    because of the if check. This is something that we will eventually change to be
+    optimized out of our code for release builds, but for now, we will keep it, since
+    it should be extremely cheap to use:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code discussed in this section can be found in the `Chapter4/macros.h`
+    source file in the GitHub repository for this book. Note that the `macros.h` header
+    file includes the following two header files:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us jump into thread creation and manipulation functionality in the
+    next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating and launching a new thread
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The method defined in the following code block creates a new thread object,
+    sets the thread affinity on the thread (more on this later), and forwards the
+    function and related arguments that the thread will run during its execution.
+    This is achieved in the `thread_body` lambda, which is passed to the constructor
+    of `std::thread`. Note the use of *variadic template arguments* and *perfect forwarding*
+    to allow this method to be used, running all kinds of functions, arbitrary types,
+    and any number of arguments. After creating the thread, the method waits till
+    the thread either starts running successfully or fails because it failed to set
+    thread affinity, which is what the call to `t->join()` does. Ignore the call to
+    `setThreadCore(core_id)` for now; we will discuss that in the next section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code discussed in this section can be found in the `Chapter4/thread_utils.h`
+    source file in the GitHub repository for this book. Now, let us jump into the
+    final section to set thread affinity in the `setThreadCore(core_id)` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting thread affinity
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Here, we will discuss the source code to set the thread affinity for the thread
+    creation lambda we saw in the previous section. Before we discuss the source code,
+    remember that if there is a lot of context-switching between threads, it adds
+    a lot of overhead to thread performance. Threads jumping between CPU cores also
+    hurts performance for similar reasons. Setting thread affinity for performance-critical
+    threads is very important for low latency applications to avoid these issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let us look at how to set thread affinity in the `setThreadCore()` method.
+    First, we use the `CPU_ZERO()` method to clear the `cpu_set_t` variable, which
+    is just an array of flags. Then, we use the `CPU_SET()` method to enable entry
+    for the `core_id` we are trying to pin the core to. Finally, we use the `pthread_setaffinity_np()`
+    function to set the thread affinity and return `false` if that fails. Note the
+    use of `pthread_self()` here to get the thread ID to use, which makes sense because
+    this is called from within the `std::thread` instance we create in `createAndStartThread()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code discussed in this section can be found in the `Chapter4/thread_utils.h`
+    source file in the GitHub repository for this book. These code blocks belong in
+    the `Common` namespace, as you will see when you look at the `thread_utils.h`
+    source file in the GitHub repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building an example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before we conclude this section, let us quickly look at a simple example that
+    uses the thread utilities we just created. This example can be found in the `Chapter4/thread_example.cpp`
+    source file in the GitHub repository for this book. Note that the library and
+    all the examples for this chapter can be built using the `CMakeLists.txt` included
+    in the `Chapter4` directory. We also provided two simple scripts, `build.sh` and
+    `run_examples.sh`, to build and run these examples after setting the correct paths
+    to the `cmake` and `ninja` binaries. Note that `cmake` and `ninja` are arbitrary
+    build system choices here, and you can change the build system to be anything
+    else if needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The example should be quite self-explanatory – we create and launch two threads
+    with a dummy task of adding the two arguments (`a` and `b`) passed to it. Then,
+    we wait for the threads to finish execution before exiting the program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this example will output something like this as the program executes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let us move on to the next section, where we will discuss how to avoid dynamic
+    memory allocations when objects need to be created and discarded during runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing C++ memory pools to avoid dynamic memory allocations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We have had several discussions on dynamic memory allocation, the steps the
+    OS needs to perform, and why dynamic memory allocation is slow. Dynamic memory
+    allocation is so slow in fact that low latency applications actively try to avoid
+    it as much as possible on the critical path. We cannot build useful applications
+    without creating and deleting many objects at runtime, and dynamic memory allocation
+    is too slow for low latency applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the definition of a memory pool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, let us formally define what a memory pool is and why we need one. Many
+    applications (including low latency applications) need to be able to handle many
+    objects and an unknown number of objects. By an unknown number of objects, we
+    mean that the expected count of objects cannot be determined ahead of time, and
+    it cannot be ascertained what the maximum number of objects will be. Obviously,
+    the maximum number of objects possible is what can fit inside the system’s memory.
+    The traditional approach to handling these objects is to use dynamic memory allocations
+    as needed. In such a case, the heap memory is considered the memory pool – that
+    is, the pool of memory to allocate from and deallocate to. Unfortunately, these
+    are slow, and we will control how the allocation and deallocation of memory happen
+    in our system using our own custom memory pool. We define a memory pool as anything
+    from which we can request additional memory or objects and return free memory
+    or objects to. By building our own custom memory pool, we can leverage the usage
+    patterns and control the allocation and deallocation mechanisms for optimal performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the use cases of a memory pool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: When the exact number of objects of a certain type that will be required is
+    known ahead of time, you can decide to create exactly that number when needed.
+    In practice, there are many cases where the exact number of objects is not known
+    ahead of time. This means we need to create objects on the fly using dynamic memory
+    allocation. As mentioned previously, dynamic memory allocation is a very slow
+    process and a problem for low latency applications. We use the term *memory pool*
+    to describe a pool of objects of a certain type, and that is what we will build
+    in this section. We will use the memory pool in this book to allocate and deallocate
+    objects that we cannot predict.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The solution we will use is to pre-allocate large blocks of memory at startup
+    and serve out required amounts at runtime – that is, do the memory allocation
+    and deallocation steps ourselves from this storage pool. This ends up performing
+    significantly better for a lot of different reasons, such as being able to limit
+    the memory pool usage to certain components in our system instead of all processes
+    running on the server. We can also control the memory storage and allocation and
+    deallocation algorithms, tuning them to perform optimally for our specific application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us start by first making some design decisions for our memory pool. All
+    the source code for our memory pool is in the `Chapter4/mem_pool.h` source file
+    in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the memory pool storage
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, we need to decide how to store the elements inside the memory pool. We
+    have really two major choices here – store them on the stack using something like
+    an old-style array (`T[N]`) or `std::array`, or store it on the heap using something
+    like an old-style pointer (`T*`) or something like `std::vector`. Depending on
+    the size of the memory pool, the usage frequency, usage patterns, and the application
+    itself, one choice might be better than the other. For instance, it is possible
+    that we expect to need a huge amount of memory in the memory pool, either because
+    the objects it stores are large or there are many of them. For such a case, heap
+    allocation would be the preferred choice to accommodate the large memory requirements
+    without impacting the stack memory. If we expect very few objects or small objects,
+    we should consider using the stack implementation instead. If we expect to access
+    the objects rarely, putting them on the stack might encounter better cache performance,
+    but for frequent access, either implementation should work equally well. As with
+    a lot of other choices, these decisions are always made by measuring performance
+    in practice. For our memory pool, we will use `std::vector` and heap allocation
+    while noting that it is not thread-safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We also need a variable to track which blocks are free or in use. Finally,
+    we will need one last variable to track the location of the next free block to
+    quickly serve allocation requests. One important thing to note here is that we
+    have two choices:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We use two vectors – one to track the objects and one to track the free or empty
+    markers. This solution is presented in the following diagram; note that in this
+    example, we assume that these two vectors are in very different memory locations.
+    The point we are trying to make here is that accessing the free or empty marker
+    and the object itself might cause cache misses because they are far away from
+    each other.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Figure 4.1 – A memory pool implementation that uses two vectors to track
+    objects and show which indices are free or in use](img/Figure_4.1_B19434.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4.1 – A memory pool implementation that uses two vectors to track objects
+    and show which indices are free or in use
+  prefs: []
+  type: TYPE_NORMAL
+- en: We maintain a single vector of structures (a struct, a class, or primitive objects),
+    and each structure stores both the object and variable to represent the free or
+    empty flag.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '![Figure 4.2 – A memory pool implementation that uses a single vector to track
+    the object and see whether it is free or in use](img/Figure_4.2_B19434.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 4.2 – A memory pool implementation that uses a single vector to track
+    the object and see whether it is free or in use
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second choice is better from a cache performance perspective, because accessing
+    the object and free marker placed right after the object is better than accessing
+    two different locations in two different vectors that might be potentially far
+    away from each other in memory. This is also because, in almost all usage patterns,
+    if we access the object, we access the free marker and vice versa:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we need to look at how we initialize this memory pool in the constructor
+    and some boilerplate code for the construction and assignment tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the memory pool
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Initializing our memory pool is quite straightforward – we simply accept a
+    parameter that specifies the initial size of our memory pool and initialize the
+    vector to be large enough to accommodate that many concurrently allocated objects.
+    In our design, we will not add functionality to resize the memory pool past its
+    initial size, but that is a relatively straightforward extension to add if needed.
+    Note that this initial vector initialization is the only time the memory pool
+    allocates memory dynamically, so the memory pool should be created before the
+    execution of the critical path starts. One thing to note here is that we add an
+    assertion to make sure that the actual object of type `T` is the first one in
+    the `ObjectBlock` struct; we will see the reason for this requirement in the *Handling*
+    *deallocations* section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now for some boilerplate code – we will delete the default constructor, the
+    copy constructor, and the move constructor methods. We will do the same with the
+    copy assignment operator and the move assignment operator. We do this so that
+    these methods are not accidentally called without our knowledge. This is also
+    the reason we made our constructor explicit – to prohibit implicit conversions
+    where we do not expect them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us move on to the code to serve allocation requests by providing a
+    free object of the `T`-type template parameter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Serving new allocation requests
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Serving allocation requests is a simple task of finding a block that is free
+    in our memory pool storage, which we can do easily using the `next_free_index_`
+    tracker. Then, we update the `is_free_` marker for that block, initialize the
+    object block of type `T` using `placement new`, and then update `next_free_index_`
+    to point to the next available free block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note two things – the first is that we use `placement new` to return an object
+    of type `T` instead of a memory block that is the same size as `T`. This is not
+    strictly necessary and can be removed if the user of the memory pool wants to
+    take responsibility for constructing the object from the memory block we return.
+    `placement new` in most compiler implementations might add an extra `if` check
+    to confirm that the memory block provided to it is not null.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second thing, which is more of a design choice for us to make depending
+    on the application, is that we call `updateNextFreeIndex()` to update `next_free_index_`
+    to point to the next available free block, which can be implemented in different
+    ways other than the provided here. To answer the question of which implementation
+    is optimal is that it *depends* and needs to be measured in practice. Now, let
+    us first look at the `allocate()` method where, again, we use variadic template
+    arguments to allow arbitrary arguments to be forwarded to the constructor of `T`.
+    Note that here we use the `placement new` operator to construct an object of type
+    `T` with the given arguments from the memory block. Remember that `new` is an
+    operator that can also be overridden if needed, and the `placement new` operator
+    skips the step that allocates memory and uses the provided memory block instead:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: Let us look at the `updateNextFreeIndex()` method next. There are two things
+    to note here – first, we have a branch for a case where the index wraps around
+    the end. While this adds an `if` condition here, with the `UNLIKELY()` specification
+    and the expectation of our hardware branch predictor to always predict that the
+    branch isn’t taken, this should not hurt our performance in a meaningful way.
+    We can, of course, break up the loop into two loops and remove that `if` condition
+    if we really want to – that is, the first loop loops till `next_free_index_ ==
+    store_.size()`, and the second loop loops from 0 onwards.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Secondly, we added a check to detect and fail if there is ever a case where
+    the memory pool is completely full. There are obviously better ways to handle
+    this in practice that do not involve failures, but for the sake of brevity and
+    to stay within the scope of this book, we will just fail when this happens for
+    now:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next section deals with handling deallocations or returning objects of type
+    `T` back to the memory pool to reclaim them as free.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling deallocations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Deallocations are a simple matter of finding the correct `ObjectBlock` in our
+    internal `store_` that corresponds to the `T` object being deallocated and marking
+    the `is_free_` marker for that block to be `true`. Here, we use `reinterpret_cast`
+    to convert `T*` to `ObjectBlock*`, which is OK to do, since object `T` is the
+    first member in `ObjectBlock`. This should now explain the assertion we added
+    to the constructor in the *Initializing the memory pool* section. We also add
+    an assertion here to make sure that the element that the user tries to deallocate
+    belongs to this memory pool. Again, there can be more graceful handling of such
+    error cases, but we will leave that up to you for the sake of brevity and to keep
+    the discussion within the scope of this book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes our design and implementation of memory pools. Let us look at
+    a simple example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the memory pool with an example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let us look at a simple and self-explanatory example of the memory pool we
+    just created. This code is in the `Chapter4/mem_pool_example.cpp` file and can
+    be built using the `CMake` file, as previously mentioned. It creates a memory
+    pool of a primitive `double` type and another of a custom `MyStruct` type. Then,
+    it allocates and deallocates some elements from this memory pool and prints out
+    the values and memory locations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this example using the following command should produce output similar
+    to what is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next section, we will build a very similar component – lock-free queues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Transferring data using lock-free queues
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the *C++ threading for multi-threaded low latency applications* section,
+    we hinted that one possible application of having multiple threads is to set up
+    a pipelined system. Here, one component thread performs part of the processing
+    and forwards the results to the next stage of the pipeline for further processing.
+    We will be using such a design in our electronic trading system, but there’ll
+    be more on that later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communicating between threads and processes
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are a lot of options when it comes to transferring data between processes
+    and/or threads. **Inter-Process Communication** (**IPC**), such as mutexes, semaphores,
+    signals, memory-mapped files, and shared memory, can be used for these purposes.
+    It also gets tricky when there is concurrent access to shared data and the important
+    requirement is to avoid data corruption. Another important requirement is to make
+    sure that the reader and writer have consistent views of the shared data. To transfer
+    information from one thread to another (or from one process to another), the optimal
+    way to do so is through a data queue that both threads have access to. Building
+    a queue of data and using locks to synchronize in a concurrent access environment
+    is an option here. Due to the concurrent access nature of this design, locks or
+    mutexes or something similar has to be used to prevent errors. However, locks
+    and mutexes are extremely inefficient and lead to context switches, which degrade
+    performance tremendously for critical threads. So, what we need is a lock-free
+    queue to facilitate communication between threads without the overhead of locks
+    and context switches. Note that the lock-free queue we will build here is only
+    to be used for **Single Producer Single Consumer** (**SPSC**) – that is, only
+    one thread writes to the queue and only one thread consumes from the queue. More
+    complex use cases for lock-free queues will require additional complexity, which
+    is out of the scope of this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing lock-free queue storage
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: For lock-free queues, we again have the option of either having the storage
+    allocated on the stack or the heap. Here, we will again choose `std::vector` and
+    allocate memory on the heap. Additionally, we create two `std::atomic` variables
+    – one called `next_write_index_` – to track what index the next write to the queue
+    will go to.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second variable, called `next_read_index_`, is used to track what index
+    the next unread element in the queue is located in. The implementation is relatively
+    straightforward because of our assumption that a single thread writes to the queue
+    and a single thread reads from it. Now, let us first design and implement the
+    internal storage of the lock-free queue data structure. The source code discussed
+    in this section can be found in the `Chapter4/lf_queue.h` source file in the GitHub
+    repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A quick word on `std::atomic` – it is a modern C++ construct that allows thread-safe
+    operations. It lets us read, update, and write variables on a shared variable
+    without using locks or mutexes, and it does so while preserving the order of operations.
+    A detailed discussion of `std::atomic` and memory ordering is outside the scope
+    of this book, but you can find a reference in our other book *Developing High-Frequency*
+    *Trading Systems*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let us define the data members for this class in the following code
+    snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: This class holds a `std::vector` object `store_` of a `T` template object type,
+    which is the actual queue of data. A `std::atomic<size_t> next_write_index_` variable
+    tracks the index in this vector, where the next element will be written to. Similarly,
+    a `std::atomic<size_t> next_read_index_` variable tracks the index in this vector,
+    where the next element to be read or consumed is available. These need to be the
+    `std::atomic<>` type, since the reading and writing operations are performed from
+    different threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the lock-free queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The constructor for our lock-free queue is very similar to the constructor
+    of the memory pool we saw earlier. We dynamically allocate the memory for the
+    entire vector in the constructor. We can extend this design to allow the lock-free
+    queue to be resized at runtime, but for now, we will stick to a fixed-size queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have similar boilerplate code here with regards to the default constructor,
+    copy and move constructors, and assignment operators. These are deleted for the
+    reasons we discussed before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will look at the code to add new elements to the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding elements to the queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The code to add new elements to the queue is implemented in two parts; the
+    first part, `getNextToWriteTo()`, returns a pointer to the next element to write
+    new data to. The second part, `updateWriteIndex()`, increments the write index,
+    `next_write_index_`, once the element has been written to the slot provided. We
+    designed it in such a way that, instead of having a single `write()` function,
+    we provide the user with a pointer to the element and if the objects are quite
+    large then not all of it needs to be updated or overwritten. Additionally, this
+    design makes it much easier to deal with race conditions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next section, we will use a very similar design to consume elements from
+    the queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Consuming elements from the queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'To consume elements from the queue, we do the opposite of what we did to add
+    elements to the queue. Like the design we have where we split `write()` into two
+    parts, we will have two parts to consume an element from the queue. We have a
+    `getNextToRead()` method that returns a pointer to the next element to be consumed
+    but does not update the read index. This method will return `nullptr` if there
+    is no element to be consumed. The second part, `updateReadIndex()`, just updates
+    the read index after the element is consumed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also define another simple method to return the number of elements in the
+    queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: wThis finishes our design and implementation of lock-free queues for the SPSC
+    use case. Let us look at an example that uses this component in the next sub-section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the lock-free queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'This example of how to use the lock-free data queue can be found in the `Chapter4/lf_queue_example.cpp`
+    file and built as previously mentioned. This example creates a consumer thread
+    and provides it with a lock-free queue instance. The producer then generates and
+    adds some elements to that queue, and the consumer thread checks the queue and
+    consumes the queue elements till the queue is empty. Both threads of execution
+    – producer and consumer – wait for short periods of time between generating an
+    element and consuming it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of running this example program is provided as follows, which is
+    just the producer and the consumer writing to and reading from the lock-free queue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will build a low latency logging framework using some of the components
+    we just built – threads and lock-free queues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a low latency logging framework
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now, we will build a low latency logging framework using some of the components
+    we just built in the previous sections. Logging is an important part of any application,
+    whether it is logging general application behavior, warnings, errors, or even
+    performance statistics. However, a lot of important logging output is actually
+    from performance-critical components that are on a critical path.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A naïve logging approach would be to output to the screen, while a slightly
+    better approach would be for logs to be saved to one or more log files. However,
+    here we have a few problems – disk I/O is extremely slow and unpredictable, and
+    string operations and formatting themselves are slow. For these reasons, performing
+    these operations on a performance-critical thread is a terrible idea, so we will
+    build a solution in this section to alleviate the downsides while preserving the
+    ability to output logs as needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we jump into the logger class, we will define a few utility methods to
+    fetch the current system time as well as convert them to strings for logging purposes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing utility methods for time
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will define a simple utility function to fetch the current system time and
+    some constants to make conversions from different units easier. The code for the
+    time utilities can be found in `Chapter4/time_utils.h` in the GitHub repository
+    for this book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us design the logger class itself, starting with the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the low latency logger
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To build this low latency logging framework, we will create a background logging
+    thread whose only task is to write log lines to a log file on disk. The idea here
+    is to offload the slow disk I/O operations as well as the string formatting operations
+    away from the main performance-critical thread onto this background thread. One
+    thing to understand is that logging to disk does not have to be instantaneous
+    – that is, most systems can tolerate some delay between an event happening and
+    information pertinent to that event being logged to disk. We will use the multi-threading
+    function we created in the first section of this chapter to create this logger
+    thread and assign it the task of writing to the log file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To publish data that needs to be logged from the main performance-critical thread
+    to this logging thread, we will use the lock-free data queue we created in the
+    previous section. The way the logger will work is that instead of writing information
+    directly to the disk, the performance-sensitive threads will simply push the information
+    to this lock-free queue. As we discussed before, a logger thread will consume
+    from the other end of this queue and write to the disk. The source code for this
+    component is available in the `logging.h` and `logging.cpp` files in the `Chapter4`
+    directory in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining some logger structures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Before we start designing the logger itself, we will first define the basic
+    block of information that will be transferred across the lock-free queue from
+    the performance-sensitive thread to the logger thread. In this design, we simply
+    create a structure capable of holding the different types that we will log. First,
+    let us define an enumeration that specifies the type of value the structure it
+    is pointing to; we will call this enumeration `LogType`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can define the `LogElement` structure that will hold the next value
+    to push to the queue and, eventually, write logs to the file from the logger thread.
+    This structure contains a member of type `LogType` to specify the type of value
+    it holds. The other member in this structure is a union of the different possible
+    primitive types. This would have been a good place to use `std::variant`, since
+    it is a type-safe union in modern C++ with the `LogType type_`, which specifies
+    what the union contains) built into it. However, `std::variant` has worse runtime
+    performance; hence, we choose to move forward with the old-style union here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the definition of the `LogElement` structure out of the way, let us move
+    on to defining data in the logger class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing the logger data structures
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our logger will contain a few important objects. Firstly, a `std::ofstream`
+    file object is the log file that data is written to. Secondly, an `LFQueue<LogElement>`
+    object is the lock-free queue to transfer data from the main thread to the logger
+    thread. Next, `std::atomic<bool>` stops the logger thread’s processing when needed,
+    and a `std::thread` object which is the logger thread. Finally, `std::string`
+    is the filename, which we provide purely for informational purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us move on to constructing our logger, the logger queue, and the logger
+    thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the logger and launching the logger thread
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the logger constructor, we will initialize the logger queue with an appropriate
+    size, save `file_name_` for informational purposes, open the output log file object,
+    and create and launch the logger thread. Note that here we will exit if we are
+    unable to open the output log file or unable to create and launch the logger thread.
+    As we’ve mentioned before, there are obviously more forgiving and more graceful
+    ways to handle these failures, but we will not explore those in this book. Note
+    here that we set the `core_id` parameter in `createAndStartThread()` to –1, to
+    not set affinity on the thread right now. We will revisit the design of how to
+    assign each thread to a CPU core later in the book once we understand the design
+    of the full ecosystem, and we will tune it for performance:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We pass a method called `flushQueue()` that this logger thread will run. As
+    the name suggests, and in line with what we discussed, this thread will empty
+    the queue of log data and write the data to the file; we will look at that next.
+    The implementation of `flushQueue()` is simple. If the atomic `running_` Boolean
+    is `true`, it runs in a loop, performing the following steps: it consumes any
+    new elements pushed to the lock-free queue, `queue_`, and writes them to the `file_`
+    object we created. It unpacks the `LogElement` objects in the queue and writes
+    the correct member of the union to the file, depending on the type. The thread
+    sleeps for a millisecond when the lock-free queue is empty and then checks again
+    to see whether there are new elements to be written to disk:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The destructor for our logger class is important, so let us look at what cleanup
+    tasks it needs to perform. First, the destructor waits for the lock-free queue
+    to be consumed by the logger thread, so it waits till it is empty. Once it is
+    empty, it sets the `running_` flag to be `false` so that the logger thread can
+    finish its execution. To wait for the logger thread to finish execution – that
+    is, return from the `flushQueue()` method, it calls the `std::thread::join()`
+    method on the logger thread. Finally, it closes the `file_` object, which writes
+    any buffered data onto the disk, and then we are done:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we will add the usual boilerplate code we discussed multiple times
+    before regarding the constructors and assignment operators:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we saw the portion of the component that consumes from the
+    queue and writes it to disk. In the next section, we will see how data gets added
+    to the lock-free queue as part of the logging process from the performance-critical
+    thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Pushing data to the logger queue
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To push data to the logger queue, we will define a couple of overloaded `pushValue()`
+    methods that handle different types of arguments. Each method does the same thing,
+    which is to push values one by one onto the queue. One thing worthy of note here
+    is that there are more efficient implementations for what we are about to discuss;
+    however, they involve additional complexity, and we left them out for the sake
+    of brevity and to limit the scope of what we can cover in this book. We will point
+    out the areas of potential improvement when we discuss them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we create a variant of `pushValue()` to push objects of type `LogElement`,
+    which will get called from the other `pushValue()` functions we will define shortly.
+    It basically writes to the next location in the lock-free queue and increments
+    the write index:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next simple variant of `pushValue()` is for a single char value, which
+    basically just creates an object of type `LogElement`, calls the `pushValue()`
+    method we just discussed, and passes the `LogElement` object:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we create a variant of `pushValue()` for `const char*` – that is, a collection
+    of chars. This implementation loops through the characters one at a time and calls
+    the `pushValue()` we implemented previously. This is an area of potential improvement,
+    where we could use a single `memcpy()` to copy over all the characters in the
+    array instead of looping through them. There are some edge cases we would need
+    to handle around the wrapping of the indices at the end of the queue, but we will
+    leave it up to you to explore further:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we create another variant of `pushValue()` for `const std::string&`,
+    which is quite straightforward and uses `pushValue()`, which we created previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we need to add variants of `pushValue()` for the different primitive
+    types. They are very similar to the one we built for a single char value and are
+    shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: At this point, we have achieved two goals – moved the disk output operation
+    to the background logger thread and moved the task of formatting the primitive
+    values into string format to the background thread. Next, we will add functionality
+    for the performance-sensitive thread to use to push data to the lock-free queue,
+    using the `pushValue()` methods we just built.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a useful and generic log function
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will define a `log()` method, which is very similar to the `printf()` function
+    but slightly simpler. It is simpler in the sense that the format specifier is
+    just a `%` character that is used to substitute all the different primitive types.
+    This method uses variadic template arguments to support an arbitrary number and
+    types of arguments. It looks for the `%` character and then substitutes the next
+    value in its place, calling one of the overloaded `pushValue()` methods we defined
+    in the last section. After that, it calls itself recursively, except this time,
+    the value points to the first argument in the template parameter pack:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This method is meant to be called using something like this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `log()` method we built here cannot handle a case where there are no arguments
+    passed to it. Therefore, we need an extra overloaded `log()` method to handle
+    the case, where a simple `const char *` is passed to it. We add an extra check
+    here to make sure that extra arguments were not passed to this method or the aforementioned
+    `log()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: This finishes the design and implementation of our low latency logging framework.
+    Using our multi-threading routine and our lock-free queue, we created a framework
+    where the performance-critical thread offloads the string formatting and disk
+    file write tasks to the background logger thread. Now, let us look at a good example
+    of how to create, configure, and use the logger we just created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning how to use the logger with an example
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will present a basic example that creates a `Logger` object and configures
+    it to write the logs to `logging_example.log`. Then, it logs a few different data
+    types to the file through the logger. This source for this can be found in the
+    `Chapter4/logging_example.cpp` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The output of running this can be viewed by outputting the contents of the
+    `logging_example.log` file in the current directory, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this framework, the only overhead that a call to `log()` invokes is the overhead
+    of iterating through the characters in the string and pushing the characters and
+    values onto the lock-free queue. Now, we will move our discussion to network programming
+    and the use of sockets, which we will be using later on to facilitate communication
+    between different processes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++ network programming using sockets
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this final section, we will build the last of our basic building blocks –
+    a framework to handle network programming using Unix sockets. We will use this
+    framework to build a server that listens for incoming TCP connections and a client
+    that is capable of establishing a TCP connection to such a server. We will also
+    use this framework to publish UDP traffic and consume from a stream of multicast
+    traffic. Note that to limit the scope of this discussion, we will only discuss
+    Unix sockets without any kernel bypass capabilities. Using kernel bypass and leveraging
+    the kernel bypass API provided by the **Network Interface Cards** (**NICs**) that
+    support it is outside the scope of this book. Note also that we expect you to
+    have some basic knowledge or experience with network sockets and, ideally, programming
+    network sockets in C++.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a basic socket API
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Our goal here is to create a mechanism to create a network socket and initialize
+    it with the correct parameters. This method will be used to create listener, receiver,
+    and sender sockets to communicate over UDP and TCP protocols. Before we jump into
+    the routine that creates the socket itself, let us first define a bunch of utility
+    methods that we will use in our final method. All the code for the basic socket
+    API is in `Chapter4/socket_utils.cpp` in the GitHub repository for this book.
+    Note that before we investigate the implementation of the functionality, we will
+    present the `Chapter4/socket_utils.h` header file, which contains all the `include`
+    files and function signatures we will implement:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us start with the implementation of these methods, starting with the
+    next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting interface information
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The first utility method we need to build is to convert network interfaces
+    represented in string form to a form that can be used by the lower-level socket
+    routines we will use. We call this `getIfaceIP()`, and we will need this when
+    we specify what network interfaces to listen to, connect from, or send through.
+    We use the `getifaddrs()` method to fetch information about all the interfaces,
+    which returns a linked list structure, `ifaddrs`, containing this information.
+    Finally, it uses the `getnameinfo()` information to get the final name to be used
+    with the rest of the methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For instance, on my system with the following network interfaces, we have the
+    following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`getIfaceIP` (`"lo"`) returns `127.0.0.1`, and `getIfaceIP` (`"wlp4s0"`) returns
+    `192.168.10.104`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we will move on to the next important utility function we need, and this
+    one affects the performance of applications that need network sockets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting sockets to be non-blocking
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The next utility function we will build is one that sets sockets as non-blocking.
+    A blocking socket is one where a call that is read on it will block indefinitely
+    till data is available. This is generally not a good design for extremely low
+    latency applications for many reasons. One of the main reasons is that blocking
+    sockets are implemented using switches between the user space and the kernel space,
+    and that is highly inefficient. When the socket needs to be *woken up* or unblocked,
+    there needs to be an interrupt, an interrupt handler, and so on from the kernel
+    space to the user space to handle the event. Additionally, the performance-critical
+    thread that gets blocked would incur context-switching costs, which, as already
+    discussed, are detrimental to performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following `setNonBlocking()` method uses the `fcntl()` routine with `F_GETFL`
+    to first check a socket file descriptor, seeing whether it is already non-blocking.
+    If it is not already non-blocking, then it uses the `fcntl()` routine again but
+    this time with `F_SETFL` to add the non-blocking bit, which is set on the file
+    descriptor. It returns `true` if the socket file descriptor was already non-blocking
+    or the method was able to successfully make it non-blocking:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will enable another important optimization for TCP sockets by disabling
+    **Nagle’s algorithm**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Disabling Nagle’s algorithm
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Without diving into too many details, Nagle’s algorithm is used to improve buffering
+    in TCP sockets and prevent overhead associated with guaranteeing reliability on
+    the TCP socket. This is achieved by delaying some packets instead of sending them
+    out immediately. For many applications, it is a good feature to have, but for
+    low latency applications, disabling the latency associated with sending packets
+    out is imperative.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fortunately, disabling Nagle’s algorithm is a simple matter of setting a socket
+    option, `TCP_NODELAY`, using the `setsockopt()` routine, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will define a few more routines to set optional and/or additional functionality
+    in the next section, before we finally implement the functionality to create a
+    socket.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up additional parameters
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'First, we will define a simple method to check whether a socket operation would
+    block or not. This is a simple check of the global `errno` error variable against
+    two possible values, `EWOULDBLOCK` and `EINPROGRESS`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we define a method to set the `IP_TTL` socket options for non-multicast
+    sockets and `IP_MULTICAST_TTL` for multicast sockets, using the `setsockopt()`
+    routine, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we define one last method that will allow us to generate software
+    timestamps when network packets hit the network socket. Note that if we had specialized
+    hardware (NICs) that support hardware timestamping, we would enable and use those
+    here. However, to limit the scope of this book, we will assume that you do not
+    have any special hardware and can only set the `SO_TIMESTAMP` option, using the
+    `setsockopt()` method, to enable software timestamping:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: This completes our discussion of socket-related utility functions, and now,
+    we can move on to finally implementing the functionality to create generic Unix
+    sockets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the socket
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the first section of the `createSocket()` method, we first check whether
+    a non-empty `t_ip` has been provided, which represents the interface IP, such
+    as `192.168.10.104`, and if not, we fetch one from the interface name provided
+    using the `getIfaceIP()` method we built previously. We also need to populate
+    the `addrinfo` struct, based on the arguments passed in, because we will need
+    to pass it to the `getaddrinfo()` routine, which will return a linked list that
+    will finally be used to build the actual socket. Note that in the `createSocket()`
+    method, anytime we fail to create the socket or initialize it with the correct
+    parameters, we return –1 to signify the failure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: The next section then checks the parameters passed to the `createSocket()` method
+    and uses all the methods we built previously to set the correct socket parameters
+    as needed. Note that we use the `addrinfo *` result object returned from `getaddrinfo()`
+    to create the socket through the `socket()` routine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we make the actual function call to create the socket:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we set it to be non-blocking and disable Nagle’s algorithm using the
+    methods we defined previously:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we connect the socket to the target address if it is not a listening
+    socket:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, if we want to create a socket that listens for incoming connections,
+    we set the correct parameters and bind the socket to a specific address that the
+    client will try to connect to. We also need to call the `listen()` routine for
+    such a socket configuration. Note that we reference a `MaxTCPServerBacklog` parameter
+    here, which is defined as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, let us look at the code to make the socket a listening socket:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we set the TTL value for the socket we just created and return the
+    socket. We will also set the ability to fetch the data receipt timestamps from
+    incoming packets using the `setSOTimestamp()` method we created before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we have discussed and implemented the details of our lower-level socket
+    method, we can move on to the next section and build a slightly higher-level abstraction
+    that builds on top of this method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a sender/receiver TCP socket
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that we have finished our design and implementation of basic methods to
+    create sockets and set different parameters on them, we can start using them.
+    First, we will implement a `TCPSocket` structure that builds on top of the socket
+    utilities we created in the previous section. `TCPSocket` can be used to both
+    send and receive data, so it will be used both within TCP socket servers and clients.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members of the TCP socket
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Let us jump into our implementation of the `TCPSocket` structure, starting
+    with the data members we need. Since this socket will be used to send and receive
+    data, we will create two buffers – one to store data to be sent out and one to
+    store data that was just read in. We will also store the file descriptor corresponding
+    to our TCP socket in the `fd_` variable. We also create two flags: one to track
+    if the send socket is connected and another to check whether the receive socket
+    is connected. We will also save a reference to a `Logger` object, purely for logging
+    purposes. Finally, we will store a `std::function` object, which we will use to
+    dispatch callbacks to components that want to read data from this socket when
+    there is new data available to be consumed. The code for this section is in `Chapter4/tcp_socket.h`
+    and `Chapter4/tcp_socket.cpp` in the GitHub repository for this book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define a default receive callback we will use to initialize the `recv_callback_`
+    data member. This method simply logs information that confirms that the callback
+    was invoked:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, let us look at the constructor for the `TCPSocket` structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Constructing and destroying the TCP socket
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For the constructor, we will create the `send_buffer_` and `rcv_buffer_` `char
+    *` storage on the heap and assign the `defaultRecvCallback()` method to the `recv_callback_`
+    member variable through a lambda method. Note that we set the socket’s receive
+    and send buffers to be of size `TCPBufferSize`, as defined here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then create `destroy()` and a destructor to perform straightforward cleanup
+    tasks. We will close the socket file descriptor and destroy the receive and send
+    buffers we created in the constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE59]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define the boilerplate code we saw previously to prevent accidental or unintentional
+    constructions, copies, or assignments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE60]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, let us try to perform one key operation on this socket – establishing
+    TCP connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Establishing TCP connections
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'For this structure, we will define a `connect()` method, which is basically
+    what creates, initializes, and connects `TCPSocket`. We will use the `createSocket()`
+    method we created in the previous section with the correct parameters to achieve
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE61]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, we will move on to the next critical functionality in our socket – sending
+    and receiving data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending and receiving data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'We mentioned in our discussion that when new data is available, the interested
+    listener will be notified through the `recv_callback_` `std::function` mechanism.
+    Therefore, we just need to provide a `send()` method for the users of this structure
+    to send data out. Note that this `send()` method simply copies the provided data
+    into the outgoing buffer, and the actual write to the wire will be done in the
+    `sendAndRecv()` method we will see shortly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE62]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we have the most important method for the `TCPSocket` structure, `sendAndRecv()`,
+    which reads available data into `rcv_buffer_`, increments the counters, and dispatches
+    `recv_callback_` if there is some amount of data that was read. The second half
+    of this method does the opposite – it tries to write out data in `send_buffer_`
+    using the `send()` routine and updates the index tracker variables:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE63]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our discussion of the `TCPSocket` class. Next, we will build
+    a class that encapsulates and manages `TCPSocket` objects. It will be used to
+    implement functionality for TCP servers in components that act as servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a TCP server component
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We built a `TCPSocket` class in the previous section that can be used by components
+    that need to connect to TCP connections and send as well as receive data. In this
+    section, we will build a `TCPServer` component that manages several such `TCPSocket`
+    objects internally. It also manages tasks, such as listening for, accepting, and
+    tracking new incoming connections and sending and receiving data on this collection
+    of sockets. All the source code for the `TCPServer` component is in the `Chapter4/tcp_server.h`
+    and `Chapter4/tcp_server.cpp` files in the GitHub repository for this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the data members of the TCP server
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: First, we will define and describe the data members that the `TCPServer` class
+    will contain. It needs a file descriptor, `efd_`, and a corresponding `TCPSocket
+    listener_socket_` to represent the socket on which it will be listening for new
+    incoming connections from clients. It maintains an array of `epoll_event events_`,
+    which will be used to monitor the listening socket file descriptor, along with
+    socket descriptors for connected clients. It will have a few `std::vectors` of
+    socket objects – sockets that we expect to receive data from, sockets we expect
+    to send data on, and sockets that are disconnected. We will see how these are
+    used shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This class has two `std::function` objects – one used to dispatch callbacks
+    when new data is received and another one that is dispatched after all callbacks
+    in the current round of polling the sockets are completed. To explain this better,
+    we will first use the `epoll` call to find all the sockets that have data to read,
+    dispatch `recv_callback_` for each socket that has data, and finally, when all
+    sockets have been notified, dispatch `recv_finished_callback_`. One more thing
+    to note here is that the `recv_callback_` provides `TCPSocket` on which the data
+    was received, as well as `Nanos rx_time` to specify the software receive time
+    of the data on that socket. The receive timestamps are used to process the TCP
+    packets in the exact order in which they were received, since the TCP server monitors
+    and reads from many different client TCP sockets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE64]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next section, we will look at the code to initialize these fields and
+    de-initialize the TCP server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Initializing and destroying the TCP server
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The constructor for `TCPServer` is straightforward – it initializes `listener_socket_`
+    and `logger_` and sets the default callback receivers, as we did with `TCPSocket`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE65]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define the default receive callback methods here, which do not do anything
+    except log that the callback was received. These are placeholders anyway, since
+    we will set different ones in real applications:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE66]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code to destroy the sockets is quite simple as well – we close the file
+    descriptor and destroy `TCPSocket listener_socket_`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE67]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we present the boilerplate code that we saw previously for this class:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE68]'
+  prefs: []
+  type: TYPE_PRE
+- en: Next, let us understand the code that initializes the listener socket.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Starting up and listening for new connections
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The method `TCPServer::listen()`, first creates a new `epoll` instance, using
+    the `epoll_create()` Linux system call, and then saves it in the `efd_` variable.
+    It uses the `TCPSocket::connect()` method we built earlier to initialize `listener_socket_`,
+    but here, the important part is that we set the `listening` argument to be `true`.
+    Finally, we add `listener_socket_` to the list of sockets to be monitored using
+    the `epoll_add()` method, since initially, this is the only socket to monitor.
+    We will look at this `epoll_add()` method in the next section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE69]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, let us look at how the `epoll_add()` and the complementary `epoll_del()`
+    methods are built in the next subsection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding and removing monitored sockets
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `epoll_add()` method is used to add `TCPSocket` to the list of sockets
+    to be monitored. It uses the `epoll_ctl()` system call with the `EPOLL_CTL_ADD`
+    parameter to add the provided file descriptor of the socket to the `efd_` epoll
+    class member. `EPOLLET` enabled the *edge-triggered epoll* option, which in simple
+    terms means you are notified only once when data needs to be read instead of constant
+    reminders. In this mode, it is up to the application developer to read the data
+    when they want. `EPOLLIN` is used for notification once data is available to be
+    read:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE70]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `epoll_del()` does the opposite of `epoll_add()` – `epoll_ctl()` is still
+    used, but this time, the `EPOLL_CTL_DEL` parameter removes `TCPSocket` from the
+    list of sockets being monitored:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE71]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `del()` method we will build here removes `TCPSocket` from the list of
+    sockets being monitored, as well as the different data member containers of the
+    sockets:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE72]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we can look at the most important method in this subsection – `TCPServer::poll()`,
+    which will be used to perform a few tasks, as listed here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Call `epoll_wait()`, detect whether there are any new incoming connections,
+    and if so, add them to our containers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: From the call to `epoll_wait()`, detect sockets that have disconnected from
+    the client’s side and remove them from our containers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: From the call to `epoll_wait()`, check to see whether there are sockets with
+    data ready to be read or with outgoing data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Let us break down the entire method into a few blocks – first, the block that
+    calls the `epoll_wait()` method, with the `epoll` instance and the maximum number
+    of events being the total number of sockets in our containers, with no timeout:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE73]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we iterate through the `events_` array populated by the call to `epoll_wait()`
+    if it returns a value of `n` greater than 0\. For each `epoll_event` in the `events_`
+    array, we use the `event.data.ptr` object and cast it to `TCPSocket*`, since that
+    is how we set up the `events_` array in the `epoll_add()` method:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE74]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For each `epoll_event` entry, we check whether the `EPOLLIN` flag is set on
+    the events flag, which would signify that there is a new socket with data to read
+    from. If this socket happens to be `listener_socket_`, which is `TCPServer`’s
+    primary socket that we configured to listen for connections on, we can see that
+    we have a new connection to add. If this is a socket different from `listener_socket_`,
+    then we add it to the list of `receive_sockets_` vectors if it does not already
+    exist in the list:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE75]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Similarly, we check for the `EPOLLOUT` flag, which signifies there is a socket
+    that we can send data to, and add it to the `send_sockets_` vector if it does
+    not already exist:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE76]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we check whether the `EPOLLERR` or `EPOLLHUP` flags are set, which
+    indicate an error or indicate that the socket was closed (signal `hang up`) from
+    the other end. In this case, we add this socket to the `disconnected_sockets_`
+    vector to be removed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE77]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, in this method, we need to accept the new connection if we detected
+    one in the previous code block. We use the `accept()` system call with the `listener_socket_`
+    file descriptor to achieve this and fetch the file descriptor for this new socket.
+    We also set the socket to be non-blocking and disable Nagle’s algorithm, using
+    the `setNonBlocking()` and `setNoDelay()` methods we built before:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE78]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we create a new `TCPSocket` object using this file descriptor and
+    add the `TCPSocket` object to the `sockets_` and `receive_sockets_` containers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE79]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes all the functionality we need to look for new connections and
+    dead connections, as well as monitor existing connections to see whether there
+    is data to be read. The next sub-section concludes our `TCPServer` class by demonstrating
+    how to send and receive data from a list of sockets that have data to be read
+    or sent out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending and receiving data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The code to send and receive data on a list of sockets with incoming or outgoing
+    data is shown here. The implementation is very straightforward – it simply calls
+    the `TCPSocket::sendAndRecv()` method on each of the sockets in `receive_sockets_`
+    and `send_sockets_`. For incoming data, the call to `TCPSocket::sendAndRecv()`
+    dispatches the `recv_callback_` method. One thing we need to do here is to check
+    whether there was any data that was read this time around, and if so, we dispatch
+    `recv_finished_callback_` after all the `recv_callback_` calls are dispatched:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE80]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our implementation of the `TCPServer` class, let us wrap up our
+    network programming discussion with a simple example of everything we built in
+    this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building an example of the TCP server and clients
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will build an example and use the `TCPSocket` and `TCPServer`
+    classes we implemented in this section. This example can be found in the `Chapter4/socket_example.cpp`
+    source file. This simple example creates `TCPServer`, which listens for incoming
+    connections on the `lo` interface, the loopback `127.0.0.1` IP, and the listening
+    port, `12345`. The `TCPServer` class receives data from the clients, which connect
+    to it using the `tcpServerRecvCallback()` lambda method, and the `TCPServer` responds
+    back to the clients with a simple response. We then create five clients using
+    the `TCPSocket` class, each of which connects to this `TCPServer`. Finally, they
+    each send some data to the server, which sends responses back, each of the clients
+    repeatedly calling `sendAndRecv()` to send and receive data. `TCPServer` calls
+    `poll()` and `sendAndRecv()` to look for connections and data and reads it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, the code that sets up the callback lambdas is presented here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE81]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we create, initialize, and connect the server and the clients, as shown
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE82]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we have the clients send data and call the appropriate polling and
+    sending/receiving methods on the clients and the server, as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE83]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Running this example, as shown here, will output something similar to what
+    is shown here in the log file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE84]'
+  prefs: []
+  type: TYPE_PRE
+- en: This concludes our discussion of C++ network programming with sockets. We covered
+    a lot regarding the basic low-level details of socket programming. We also designed
+    and implemented slightly higher-level abstractions for TCP and UDP communication,
+    both from a server’s and a client’s perspective.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we jumped into the world of low latency application C++ development.
+    We built some relatively fundamental but extremely useful building blocks that
+    can be used for a variety of low latency application purposes. We put into practice
+    a lot of the theoretical discussions related to using C++ and computer architecture
+    features effectively to build low latency and highly performant applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first component was used to create new threads of execution and run the
+    functions that different components might require. One important functionality
+    here is being able to control the CPU core that the newly created thread gets
+    pinned to by setting the thread affinity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second component we built was meant to avoid dynamic memory allocation on
+    the critical code path. We reiterated the inefficiencies associated with dynamic
+    memory allocation and designed a memory pool to be used to pre-allocate memory
+    from the heap when constructed. Then, we added utility to the component to allow
+    the allocation and deallocation of objects at runtime without relying on dynamic
+    memory allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we built a lock-free, **First In First Out** (**FIFO**)-style queue to
+    communicate between threads in an SPSC setup. The important requirement here was
+    that a single reader and a single writer are able to access the shared data in
+    the queue without using any locks or mutexes. The absence of locks and mutexes
+    means the absence of context switches, which, as discussed, are a major source
+    of inefficiencies and latencies in multi-threaded applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The fourth component on our list was a framework to facilitate efficient logging
+    for latency-sensitive applications. Logging is a very important if not mandatory
+    component of all applications, including low latency applications. However, due
+    to issues such as disk I/O, slow string formatting, and so on, traditional logging
+    mechanisms such as writing to a log file on disk is impractical for use with low
+    latency applications. To build this component, we used the multi-threading mechanism
+    we built, as well as the lock-free FIFO queue.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we had an in-depth discussion about designing our network stack – how
+    to create network sockets, how to use them to create TCP servers and clients,
+    and how to use them to publish and consume multicast traffic. We have not used
+    this last component yet, but we will use this component in subsequent chapters
+    to facilitate communication between our electronic trading exchange and different
+    market participants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, we will move on to a case study project, which we will build in the rest
+    of this book – our electronic trading ecosystem. In the next chapter, we will
+    first focus on designing and understanding the higher-level design of the various
+    components in our system. We will understand the purpose of these components,
+    the motivation behind their design choices, and how the flow of information occurs
+    in the system. The next chapter will also see us designing the higher-level C++
+    interfaces that we will implement in the rest of this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Part 2:Building a Live Trading Exchange in C++
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this part, we will describe and design the trading applications that make
+    up our ecosystem, which we will be building from scratch in this book – electronic
+    trading exchanges, exchange market data dissemination, order gateways, client
+    market data decoders, and client trading algorithm frameworks. We will implement
+    the matching engine that tracks client orders and performs matching between them.
+    We will also build the components that publish market data for all participants
+    and how it handles client connections and order requests. The focus will be on
+    very low-latency reaction times and high throughput since modern electronic exchanges
+    have thousands of participants and a huge amount of order flow flowing through
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This part contains the following chapters:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[*Chapter 5*](B19434_05.xhtml#_idTextAnchor134)*, Designing Our Trading Ecosystem*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 6*](B19434_06.xhtml#_idTextAnchor166)*, Building the C++ Matching
+    Engine*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[*Chapter 7*](B19434_07.xhtml#_idTextAnchor186)*, Communicating with Market
+    Participants*'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

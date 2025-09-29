@@ -1,0 +1,560 @@
+- en: '5'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Forgetting Tick
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter we are going to explore the topic of tick (an event or process
+    that is called every frame), why using it can cause frame-rate issues for our
+    game projects, and two approaches to building systems without using tick, reducing
+    the impact of systems on the CPU. We will consider the example of a guard tower
+    in an RTS game, with a searchlight rotating back and forth. If the player’s unit
+    is seen by the searchlight, it will stop its rotation. We will start with the
+    Update pattern introduced in the previous chapter and iteratively improve from
+    there, reducing our reliance on the Update pattern by using Timers, Timelines,
+    and event-driven solutions instead. At each step, we will measure code efficiency,
+    using execution counting to quantify our improvements.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we’ll cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tick events and the challenges we face when using them
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Timers and Timelines
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Event-driven systems
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will focus on the Guard Tower classes in the [*Chapter 5*](B18297_05.xhtml#_idTextAnchor068)
+    folder of the project, linked via GitHub, that we downloaded for previous chapters.
+    If you haven’t followed along with the developments in the previous chapters,
+    you can download a version of the project, ready to start the [*Chapter 5*](B18297_05.xhtml#_idTextAnchor068)
+    tutorials from the `chapter5` branch on GitHub at [https://github.com/PacktPublishing/Game-Development-Patterns-with-Unreal-Engine-5/tree/main/Chapter05](https://github.com/PacktPublishing/Game-Development-Patterns-with-Unreal-Engine-5/tree/main/Chapter05)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before we begin
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this class, we will use a new smart pointer type. `TObjectPtr<>` is the Unreal
+    Engine 5 standard way of dealing with components held on an actor. The prior standard
+    was to use raw pointers, but this will no longer work with the new garbage collector,
+    as the new system provides reference tracking to detect when an object is actually
+    used. This can mean that objects only stored in raw pointers get mistaken for
+    de-referenced memory and can be deleted while still in use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within functions, we will still use raw pointers, as these variables will go
+    out of scope, and so the garbage collector is not necessary to free their memory.
+    Member variable object references will be stored as `TObjectPtr<>` and asset references
+    stored as `TSoftObjectPtr<>`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A world that ticks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the last chapter, we covered the idea of the Update pattern. When using the
+    Update pattern, we design with the philosophy that lots of different types of
+    classes need to execute code on each frame. To achieve this, we will use an update
+    function or, in the case of Unreal, a **Tick Event**. This pattern provides a
+    fast way to make things happen, which is why it has a certain gravity, pulling
+    many learning resources into leaning on it heavily. The volume of learning materials
+    doesn’t make this a good idea, but it does allow systems to be propped up quickly,
+    thus making learning from resources like this easy to understand. The problem
+    lies in the seeming loss of understanding, over the cost of relying on this method.
+    When we place any nodes or lines of code under the purview of tick, we need to
+    remember it runs once per frame. On modern machines this equates to an average
+    of 60 times a second, but it can vary depending on hardware, which is an important
+    consideration for developers. For small games on modern hardware, the odd variable
+    set or transform change may be fine; however, this is significantly more concerning
+    if you consider the impact of a loop. This should make it clear that, as powerful
+    as tick may seem, a web of problems lies beneath its surface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To illustrate the problem, let’s look at the `AGuardTower_CH5_1` actor in the
+    [*Chapter 5*](B18297_05.xhtml#_idTextAnchor068)folder. We have followed best practice
+    with the header file, using forward declared classes for member component definitions
+    and the most limited property specifiers that we can. You will probably notice
+    though that the only function, bar the constructor, is `Tick`. In this function,
+    we carry out all our searchlight functionality. Stepping through the tick function
+    on the searchlight, we have the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A call to the parent Tick
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A sphere trace that gets reference to any actor that falls within the rough
+    area of the light
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A check to see whether the detected actor is of the player pawn type
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Code branches to rotate the searchlight in every direction when the player has
+    not been found
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The `GuardTower` body file contains a `tick` function which looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower_CH5_1.cpp Tick function
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This code does run, and you can see that if you drag an instance of `BP_GuardTower`
+    into the level provided in the [*Chapter 5*](B18297_05.xhtml#_idTextAnchor068)
+    folder. However, there are some issues, so let’s break down these problems in
+    order:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With all the logic being on tick, we are performing some costly actions often.
+    A sphere trace on its own is not too costly, but if we perform that sphere trace
+    once per frame, per guard tower in a scene, the computational cost can add up
+    quickly.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Quite a few getter functions are repeatedly used without caching. The world
+    pointer could have been cached on `BeginPlay`, as that is unlikely to change,
+    and multiple calls to the arrow component’s location could be done once. These
+    are only minor improvements.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Casting is nowhere near as costly as it used to be in the early days of Unreal
+    Engine. That said, when casting to a class, the target class must be loaded to
+    ensure a match. This must be kept in mind when casting to a large class, as it
+    can inflate the size of the process in RAM. Alternatives could include casting
+    to an interface if you only need some functionality, checking tags if it is just
+    a validity check, or, even better, trying to flip the communication on its head
+    and remove the need to cast.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We then have a pattern that we will refer to as **gated polling**. On tick,
+    check to see whether a block of code needs to run; if so, run it. This gated polling
+    pattern is repeated a couple of times for different blocks of code. The alarm
+    bells should now be ringing but maybe for the wrong reason. Yes, we have a repeated
+    pattern of code, and we previously talked about avoiding repetition; that isn’t
+    the real issue here. Any time we process something that may or may not need to
+    happen, we guarantee a wasted check on some frames when it fails. We should consider
+    how we can avoid the check and only process the code when it does need to happen.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Lastly, we have a compound problem with each branch of the gated poll. Yes,
+    we are hardcoding values, both the rotation limit and the speed of rotation. Turning
+    the hardcoded `0.2` and `40` into float member variables called `_RotationSpeed`
+    and `_RotationLimit` respectively is a simple fix for the first part. Adding `EditAnywhere`
+    to the `UPROPERTY()` block above each new variable will allow designers to not
+    only balance the values in the actor but also create varied instances in their
+    levels. This still leaves an issue with our code. Tick is not constant, yet we
+    are using a constant value for rotation. This is where `DeltaTime` comes in. It
+    is an argument of tick passed in as the time since the last frame rendered. Multiplying
+    values by this will cause them to be applied evenly across 1 real-world second.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It should be pretty clear that there is a lot of room for improvement with this
+    code, but how much room? Back in [*Chapter 3*](B18297_03.xhtml#_idTextAnchor046),
+    we discussed Big O notation, but to get a higher resolution analysis, we need
+    to calculate the *T(n)* or time efficiency of the algorithm. This should provide
+    us with a baseline to prove that we can quantifiably do better.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first sphere trace section contains roughly three assignments, six function
+    calls, three arithmetic operations, and the internal time of a sphere trace. The
+    cast section is two function calls, one test, and one assignment. In the `if`
+    block, both branches are basically the same number of executions, so we will only
+    count the top branch, giving us two tests, four function calls, and one assignment.
+    Altogether, this makes roughly 23 + 1 * sphere trace executions per frame, with
+    no overhead beyond a standard setup. Over a second at 60 **frames per second**
+    (**FPS**), we would be running 1380 + 60 * sphere trace executions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can find the full working solutions for the following two sections under
+    the `_2` and `_3` versions of the `GuardTower_CH5` class, but try to follow along
+    with this section, making changes to the `_1` version to get the most out of the
+    chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we’ve reviewed the problems with using Tick for the guard tower, let’s
+    begin to look at how we can fix it, removing our reliance on Tick and writing
+    better code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A clock that stops
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now, we’ll deal with this gated polling issue. The go-to solutions for this
+    are `UKismetSystemLibrary`, where you will see that simply calling it is a bit
+    of a hassle. Timers will perform a check on each frame they are active to see
+    whether the function they point at should fire yet. This can be a useful behavior
+    for dynamically set delays or systems where you only want a signal after a set
+    amount of time, such as a countdown to decrease once per second instead of once
+    per frame. Timelines, however, provide a way of processing a behavior, similar
+    to an update while a curve is being queried. The length of these curves is predetermined,
+    although the play speed of the Timeline can be altered to achieve a dynamic length.
+    Timelines can also hold multiple types of tracks, which will all be synchronized
+    when playing, allowing a single Timeline to drive a lot of elements. This provides
+    a better fit for our problem, as we need to retain the update behavior but with
+    a smaller footprint, reducing the number of checks we perform each frame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Looking at the following code, we can see that to set up a Timeline in C++,
+    we start by adding the following variables and functions to our header to facilitate
+    the Timeline. It may seem at first glance that adding this much to a class would
+    slow the process down, but each element has its part to play. The first two variables
+    are delegates and will provide us with a way of linking functions to the Timeline
+    dynamically. These are followed by the functions we will link. This pattern follows
+    a naming convention described as follows to aid future readability:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`On<object name><delegate purpose>` for the delegate'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Handle_<object name><delegate purpose>` for the linked function'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The following two functions, `StartRotation` and `StopRotation`, are simply
+    there to act as wrappers for the Timeline methods.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Timeline itself is created as `TObjectPtr<>`, allowing for forward-looking
+    reference tallying and safer garbage collection. The property specifiers on this
+    also don’t matter too much, as we access all the functionality we need through
+    functions we have created. The last variable is `TSoftObjectPtr<>` to `UCurveFloat`.
+    This type is used by the engine to store a spline in 2D space as a set of keyframes
+    with tangents. We will use it to drive our searchlight angle over time, but we
+    want a designer to have access to make changes. This means we need to store the
+    variable as a reference to an asset that does not yet exist, hence the `TSoftObjectPtr<>`
+    wrapper. Setting this as `EditAnywhere` will allow the default value and the instance
+    variants to be set via their respective editor panels:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower Timeline Header
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we will turn our attention to the `GuardTower` constructor implementation
+    shown here. We need to create the Timeline component in the constructor. Then,
+    our delegate handles need to be bound to the listener functions. Binding like
+    this will allow rebinding later down the line as necessary, while any class derived
+    from this will always have a default response. It is also worth noting that binding
+    is done via function names created as `FName` types. This will make spelling and
+    capitalization important, and it is unlikely that your IDE will have auto-complete
+    functionality for these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower Timeline Constructor
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: We cannot do any more setup inside the constructor, as we are blocked by the
+    fact that we could not have set a value for the `_Curve` variable yet. This will
+    require linking in the editor, which forces the rest of the initialization process
+    into the `BeginPlay` method.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first thing to consider is that the variable may not have had a value set
+    at all, which would invalidate the need to continue any setup. Instead of nesting
+    all the code inside a positive conditioned `if` statement, we will reverse the
+    condition to check for a negative condition and plug in an early return. This
+    makes our code more human-readable and reduces the amount of information we need
+    to keep in mind while constructing the function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following that, the Timeline needs to have a few things set up, as shown in
+    the following code block. Any tracks that it should be running need to be added.
+    Here, we will add a float track based on whatever asset the `_Curve` variable
+    references. This needs to be injected with the delegate it will call whenever
+    its value changes and the name of the track for future reference. Here, we will
+    plug in the update delegate, `onTimeline_Update`, and a new `FName` value that
+    makes sense for our usage. The same then needs to be done for the timeline’s finished
+    callback. It is slightly different from the other function in that it doesn’t
+    require a curve or a name, just a callback. So, all we do here is insert the finished
+    delegate, `onTimeline_Finished`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this case, we also need to set the looping nature to `false` and the ignore
+    time dilation property to `true`. We will control how the Timeline replays, so
+    there is no need for any auto behavior, and the other variable is mainly there
+    to show what sort of control you can get with a timeline. There are plenty of
+    other properties to fiddle with to fine-tune how timelines behave, so it is well
+    worth your time exploring the type header for functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Useful tip
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you want to explore type or class headers, define a variable of that type
+    anywhere in your code. This will allow you to right-click the type and select
+    **Go To Definition** (*F12* in Visual Studio and Rider).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'All these changes should lead you to a `Beginplay` setup for the Timeline that
+    looks like the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower Timeline Setup
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, we need to fill out the callback handler functions, which are quite simple
+    in nature – one to rotate the light on its killable update and the other to change
+    the light’s direction when it reaches the rotation limit:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Callback handler functions
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The last thing we need to do is call the `StartRotation()` function to start
+    the Timeline. The body of this simply calls the timeline’s `Play()` function if
+    `_RotateForward` is `true`; otherwise, it calls `Reverse()`. We also have a wrapper
+    for the `Stop()` function, but this provides no benefit beyond being good practice
+    for later development, all it does is call the `Stop()` function on the timeline.
+    With that done, we can delete the nested `if` statements at the end of our old
+    `tick` function, add a `StopRotating()` call to our sphere trace where it sets
+    `_EnemySpotted` to `true`, and head to the editor to link up our `_Curve variable`
+    with an asset.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With the Timeline working, we can leverage some of its other features to improve
+    the gameplay as well. The old rotation behavior on tick was very linear and not
+    good for gameplay. Controlling the rotation with an f-curve telegraphs future
+    actions to the player. As the rotation slows, the player gets an innate understanding
+    that the light is about to swap direction and can plan accordingly. This concept
+    of `C_GuardTower_RotAlpha` and can be found with the guard tower class in the
+    [*Chapter 5*](B18297_05.xhtml#_idTextAnchor068) folder. The curve is a simple
+    f-curve with flat tangents on start and end points, covering (`0,` `0`) to (`5,`
+    `1`), as shown in *Figure 5**.1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.1 – The C_SearchLightRotation curve asset in the curve editor window](img/Figure_05.01_B18297.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.1 – The C_SearchLightRotation curve asset in the curve editor window
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have changed the old, gated polling out for a Timeline system, we
+    should recalculate the *T(n)* performance. We removed two tests, four function
+    calls, and one assignment, bringing the total down to 16 + 1 * sphere trace. Then,
+    we added a timeline, which is worth one test and one function call per frame,
+    one test and six function calls that will run one time, one test, and two function
+    calls that will currently run once every 5 seconds. Simply adding the values back
+    together makes the situation look worse, giving us a 28 + 1 * sphere trace, but
+    this is wrong. The new code will not run as regularly as the old, and when multiplying
+    it out by the correct frequencies, you get (60 * (18 + 1 * sphere trace)) + (3
+    / 5) = ~1081 + 60 * sphere trace per second, plus 7 overhead. This is roughly
+    a 22% improvement on the first implementation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is good, but we still have a problem. There is still something we are
+    doing every tick: the sphere trace. Every frame this projects a sphere through
+    space to see whether the player’s character is in “view” of the tower. This setup
+    mirrors our previous problem of gated polling. Every frame, we run the test. If
+    the player is overlapped, we fire the seen logic. If the player is not detected
+    or is just out of sight, then nothing happens, and that sphere trace we checked
+    was wasted.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following section will go through the process of improving this and the
+    architectural decisions that govern which route to take when considering efficiency
+    versus design.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Event driven systems
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A software engineer’s job is to solve problems. Most of the time, this means
+    special treatment in certain cases to make sure eventualities are handled. Sometimes,
+    perfection is found, and the problem is not solved but erased from existence.
+    In our current system, we want to solve the problem of needing to trace a sphere
+    through our world for the player in every frame.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The question is not, *how do we make this more efficient?* Instead, we should
+    be asking, *why sphere trace?* There isn’t really a clear answer to this. Yes,
+    it allows us to check the volume of space for a player, but so do colliders. Yes,
+    we can check all the space between the light mesh and the floor, but in our game,
+    the player cannot jump. Yes, we can tell whether there are objects blocking a
+    view of the player, but so can a cheaper line trace on the frames when we are
+    not sure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From these three answers, we can form a new solution. In principle, we will
+    attach a sphere collider, as it’s the cheapest primitive to use, to the light.
+    As the light swings, so does the attached collider. When the collider overlaps
+    the player, we use a line trace from the light to the player to see whether there
+    is a clear line of sight. This effectively flips the interaction between the searchlight
+    and the player on its head. No longer does the searchlight ask the world whether
+    it can see the player every frame. Now, the world will tell the searchlight only
+    when the player is seen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Walking through our implementation, we will link a handler function to our new
+    sphere component’s `onComponentBeginOverlap` event. This handler function, detailed
+    in the following code, starts with an early exit in case we have already collided
+    with a player unit. If so, then we can ignore future collisions. In a larger scenario
+    with more colliders in the scene, you may want to ignore this check and move on
+    to incrementing a counter instead, as the searchlight is big enough to cover multiple
+    units at once. We then cast the overlapped actor to the class we know the player
+    will use. This, again, could be switched to a check for `teamID` or some similar
+    group-identifying value. This would allow multiple players or factions to use
+    the same units. The next few lines set up the values for and execute a line trace
+    through the world, from the light position to the center of the unit we have just
+    overlapped with. This is done because the collider we will swing around has no
+    idea of the map it is on and where any vision-blocking walls may be. We will use
+    the line trace as another early return because if it does hit something, that
+    means we can ignore the player collision due to a mesh blocking vision. With a
+    clear line of sight established, we then simply set the `_EnemySpotted` variable
+    to `true` and stop the timeline-driven rotation. This would be where you would
+    link into something like an alert system to draw the attention of nearby friendly
+    units.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s start with the Begin Overlap:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower Sphere Begin Overlap function
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `onComponentEndOverlap` equivalent event is handled by the function shown
+    in the following code block and is much smaller, as it only needs to check that
+    the actor leaving the collision is the one that triggered the alarm in the first
+    place. Then, it can reset the `_EnemySpotted` and `_EnemeyUnit` variables, followed
+    by continuing the Timeline rotation code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower Sphere Overlap End
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Important note
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Component overlap functions were explored at the end of [*Chapter 1*](B18297_01.xhtml#_idTextAnchor016).
+    Remember to bind only functions matching `FComponentBeginOverlapSignature` and
+    `FComponentEndOverlapSignature`, respectively. The arguments used in the sample
+    code follow this pattern: `UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+    UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool FromSweep, const FHitResult&
+    SweepResult` for the begin overlap, which we can see are the same, minus the last
+    two arguments for the end overlap.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This last change, from traces to colliders, calls for another recalculation
+    of the *T(n)* performance. We repositioned the rest of the functionality in the
+    Tick function completely, leaving only the Timeline update running. This drops
+    our per frame executions to 2! The processing hasn’t been completely removed though.
+    In the worst-case scenario, the player would overlap with the sphere collider
+    and leave the interaction within a second, meaning all the code could fire. This
+    would be equivalent to four assignments, eight function calls, three tests, and
+    1 * line trace on begin overlap and two assignments, one function call, and one
+    test on end overlap. This, plus the four function calls to set up the new component
+    and bind these functions, detailed in the following code, brings our cost to 2
+    per frame, 19 + 1 * line trace per second, and 3 per 5 seconds. This makes (60
+    * 2) + (19 + 1 * line trace) + (3 / 5) = ~140 + 1 * line trace per second, with
+    an overhead setup cost of 11\. This is a massive 90% improvement on the first
+    implementation, showing how a change in approach can make a massive impact on
+    performance, even though it may seem like more has been created. For reference,
+    the following code can be used to link handler functions to the relevant component
+    overlap events if you need a syntax example. Your functions may have different
+    names, but these lines must run for the callback to work:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: GuardTower constructor new lines for sphere component setup
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The performance benefit here is shown to be quite extreme, but this is actually
+    the norm when compared to the prototype approach of dealing with all behavior
+    in Tick. We can also apply this technique to any situation where the Update pattern
+    has been extensively used. Unreal Engine 5 already uses it within the Enhanced
+    Input system, only firing the delegate callback events when the input has been
+    pressed. The old polling system would fire on axis inputs regardless, leaving
+    us to gate values that were not needed. We can also look at a few places where
+    Unreal provides options for communication, namely UI and networking – two very
+    different areas, but the principle is the same. Both provide a way of quickly
+    setting up a link using a polling, or update, method that fires every frame. For
+    UI, it is property binding, and for networking, we have replicated variables.
+    In both cases, there is some extra function run every frame to see whether the
+    variable it is linked to has updated. Hopefully, the parallels are clear with
+    the example we have just explored. Specific solutions would be to manually update
+    UI through a custom function call and use replicated functions when dealing with
+    networked systems, also called **Remote Procedural Calls** (**RPCs**), which allow
+    us to only send data across a network when it needs to be updated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With this chapter complete, you should now understand the need, and method,
+    to design systems with an event-driven approach. We have shown that we can make
+    code that has the exact same functionality in many ways, but using an event-driven
+    approach can save a lot of processing, even if it means a more complex setup.
+    As an additional task, consider how to make the searchlight work for multiple
+    controllable units, or how it could track a unit once it has been seen until it
+    loses sight. On a higher level, how could the searchlight notify the surrounding
+    enemies that it has seen your unit? It is advised that you revisit this class
+    after each chapter to see how the tools learned later can improve this further.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Through the explicit example of a watchtower in our example game, we learned
+    a host of different techniques and considerations to improve efficiency in our
+    systems. We applied the general technique of always trying to do less, by swapping
+    a gated polling system for a killable update and event-driven systems. We used
+    Unreal Engine-specific tools, such as the Timeline and Timers, to achieve these
+    patterns, and we thought about how their application may affect the design of
+    the gameplay beyond our numbers-based efficiency targets. The iterative process
+    of improvement that this chapter focused on has also shown how to improve code
+    in small measurable ways, using *T(n)* calculations to quantify each step. Moving
+    forward, we will look at more general programming tools and their implementations
+    within Unreal to expand this toolkit. The big takeaway is to break the problem
+    down into its base parts and measure your improvements as you go. This will allow
+    you to better communicate your process to, and work with, your team to achieve
+    your goals.
+  prefs: []
+  type: TYPE_NORMAL

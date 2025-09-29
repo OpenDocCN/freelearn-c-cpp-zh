@@ -1,0 +1,1744 @@
+- en: '5'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Designing Our Trading Ecosystem
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The previous chapter jumped into some hands-on, low-latency development in C++,
+    where we built some basic building blocks to be used throughout the rest of this
+    book. Now we are ready to start designing our electronic trading ecosystem, which
+    will be our main project for the rest of this book, where we will learn about
+    low-latency application development principles in practice. First, we will discuss
+    the high-level design and architecture of the different low-latency components
+    or applications that we will be building for the end-to-end electronic trading
+    ecosystem. We will also design the abstractions, components, and interactions
+    between them, which we will implement in the rest of the book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the layout of the electronic trading ecosystem
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Designing the C++ matching engine in a trading exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Understanding how an exchange publishes information to participants
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Building a market participant’s interface to the exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Designing a framework for low-latency C++ trading algorithms
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let us kick off this chapter by describing the high-level topology of the electronic
+    trading ecosystem we will design and build in the rest of this book. We will briefly
+    introduce the different components in the next section and then have a much more
+    detailed discussion in the rest of this chapter. One thing to keep in mind is
+    that the electronic trading ecosystem we will be building in this book is a simplified
+    version of what is found in practice. Not only is it a simplified version but
+    it is also a subset of all the components you would need in practice to build
+    and run a full electronic trading ecosystem. The components we will build in this
+    book were chosen because they are the most latency-sensitive components, and we
+    try to keep our focus on low-latency application development. We would like to
+    mention that, in practice, you will find components such as historical data capture
+    at the exchange and client ends, connections to clearing brokers, backend systems
+    for transaction processing, accounting and reconciliation at both the exchange
+    and trading client’s ends, backtesting frameworks (testing against historical
+    data), and many others.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the layout of the electronic trading ecosystem
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: First, we start by providing the higher-level layout of the electronic trading
+    ecosystem we will be building in the rest of this book. Before we get into the
+    details, we start with the disclaimer that this is a simplified design of what
+    happens in practice in electronic trading markets. Simplification was necessary
+    to limit the scope to what can be covered in this book; however, it is still an
+    accurate but simplified representation of what you will find in practice. The
+    other thing to note is that the goal here is to understand the design and implementation
+    of low-latency applications, so we ask you to focus more on the application of
+    C++ and computer science principles that we apply and less on the details of the
+    trading ecosystem itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let us kick off this introduction by defining and explaining the overall
+    topology of the electronic trading ecosystem and the components involved.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining the topology of the electronic trading ecosystem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let us first provide a bird’s eye view of the system with the diagram presented
+    here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: "![Figure 5.1 – Topology of a \uFEFFsimple electronic trading ecosystem](img/B19434_05_01.jpg)"
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.1 – Topology of a simple electronic trading ecosystem
+  prefs: []
+  type: TYPE_NORMAL
+- en: The major components, as laid out in the preceding diagram, are the following,
+    split at a high level depending on whether it belongs on the exchange side or
+    the trading client/market-participant side.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These are the exchange components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Matching engine at the electronic trading exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Order gateway server and protocol encoder and decoder at the trading exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Market data encoder and publisher at the exchange
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'These are the trading client components:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Market data consumer and decoder for a market participant interested in this
+    market data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Order gateway encoder and decoder client in the market participant’s system
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Trading engine inside the participant’s system
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will quickly introduce each one of these components in the next section and
+    then discuss them in detail in the rest of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the components of the electronic trading ecosystem
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Here, we will quickly introduce the different components that make up the electronic
+    trading ecosystem. One thing to keep in mind is that each one of these components
+    in a competitive ecosystem needs to be designed such that they can process events
+    and data with the lowest latencies possible. Also note that during periods of
+    heightened volatility, these systems must be able to keep up with and react to
+    large bursts in market activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the market data publisher
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The market data publisher at the trading exchange is responsible for communicating
+    every change to the limit order book maintained by the matching engine to the
+    market participants. Compared to the order gateway, the difference here is that
+    the market data publisher publishes public data meant for all participants, and
+    it typically hides details of which order belongs to which participant to maintain
+    fairness. Another difference is that the order gateway infrastructure only communicates
+    order updates to the market participants whose orders were impacted by the change
+    and not to all market participants. The market data publisher can use TCP or UDP
+    to publish market data, but given the large volume of market data updates, UDP
+    multicast is the preferred network-level protocol. The market data publisher is
+    also responsible for converting the internal matching engine format into the market
+    data format before publishing the updates.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the matching engine
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The matching engine at the electronic trading exchange is the most critical
+    piece of the trading exchange. It is responsible for handling requests from market
+    participants for their orders and updating the limit order book that it maintains.
+    These requests are generated when the clients want to add a new order, replace
+    an existing order, cancel an existing order, and so on. The limit order book is
+    a collection of all orders sent by all participants aggregated into a central
+    single book consisting of bids (buy orders) and asks (sell orders). The matching
+    engine is also responsible for performing matches between orders that cross in
+    price (i.e., matching buy orders with sell orders when the buy price is higher
+    than or equal to the sell price). During special market states such as **PreOpen**
+    (right before the market opens), **Auction**/**Opening** (right at the moment
+    at which the market opens), **PreOpenNoCancel** (orders can be entered but not
+    canceled), and so on, the rules are slightly different, but we will not worry
+    about those rules or implement them to keep the focus on low-latency application
+    development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the order gateway server at the exchange
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order gateway server at the exchange is responsible for accepting connections
+    from market participants so that they can send requests for orders and receive
+    notifications when there are updates to their respective orders. The order gateway
+    server is also responsible for translating messages between the matching engine
+    format and the order gateway messaging protocol. The network protocol used for
+    the order gateway server is always TCP to enforce in-order delivery of messages
+    and reliability.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the market data consumer at the market participant level
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The market data consumer is the complement of the exchange market data publisher
+    component on the market participants’ side. This component is responsible for
+    subscribing to the UDP stream or the TCP server set up by the market data publisher,
+    consuming the market data updates, and decoding the market data protocol into
+    an internal format used by the rest of the trading engine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the order gateway encoder and decoder client
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order gateway client component is the complement of the exchange order gateway
+    server on the market participants’ side. The responsibility of this component
+    is to establish and maintain TCP connections with the exchange’s order gateway
+    infrastructure. It is also responsible for encoding strategy order requests in
+    the correct exchange order messaging protocol and decoding exchange responses
+    into an internal format that the trading engine uses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing the trading engine in the market participants’ systems
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The trading engine is the brain of a market participant’s trading system. This
+    is where intelligence resides, and where the trading decisions are made. This
+    component is responsible for consuming the normalized market data updates from
+    the market data consumer component. It will usually also build the complete limit
+    order book to reflect the state of the market or, at the very least, a simplified
+    variant of the order book, depending on the requirements of the trading strategies.
+    It usually also builds analytics on top of the liquidity and prices from the order
+    book and makes automated trading decisions. This component uses the order gateway
+    client component to communicate with the trading exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have introduced the major components involved in our electronic
+    trading ecosystem, we will look at these components in greater detail. First,
+    we will start with the matching engine, which resides in the electronic trading
+    exchange system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the C++ matching engine in a trading exchange
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will discuss the matching engine component inside the electronic
+    trading exchange system introduced in the previous section. The first thing we
+    will do is understand what purpose the matching engine serves and why it is needed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the purpose of the matching engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the electronic trading ecosystem consisting of a single trading exchange,
+    generally, there is a single exchange that is responsible for accepting and managing
+    orders from numerous market participants. The matching engine in this case accepts
+    different kinds of orders that the participants are allowed to send for any given
+    trading instrument. An **order** is simply a request sent by any market participant
+    to the trading exchange to convey their interest in buying or selling a tradeable
+    product. Every time a new order is received by the matching engine from the order
+    gateway server infrastructure, it checks to see whether this new order crosses
+    an existing order with an opposite side to see whether a trade occurs. For this
+    book’s purposes, we will assume the market participants only send **limit orders**
+    and specify the side of the order, quantity, and price. Limit orders are orders
+    that can only execute at a price that is at, or better than, the price specified
+    by the market participant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It should be obvious by now that the matching engine performs the most critical
+    task of performing matches between orders from different market participants and
+    does so correctly and fairly. By fairness, we mean that the orders that reach
+    the exchange first are processed first, and this **first in, first out** (**FIFO**)
+    ordering is handled in the order gateway infrastructure, which we will discuss
+    shortly. Orders that do not match immediately rest in the book and are referred
+    to as **passive orders**. These orders are eligible for matching when new orders
+    come in with prices that cross the passive orders. Such orders that cross the
+    prices on passive orders are known as **aggressive orders**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The matching engine arranges all the passive orders sent by all market participants
+    into a data structure that is aptly named the **order book**. The details of this
+    order book will be the topic of our next discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the exchange order book
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The limit order book contains all the passive limit orders across all market
+    participants for a single trading instrument. These are typically arranged from
+    the highest buy price to the lowest buy price for passive buy orders, and from
+    the lowest sell price to the highest sell price for passive sell orders. This
+    ordering is intuitive and natural because passive buy orders are matched from
+    highest to lowest buy prices and passive sell orders are matched from lowest to
+    highest sell prices. For orders that have the same side and the same price, they
+    are arranged in FIFO order based on when they were sent. Note that FIFO is just
+    one ordering criterion; modern electronic trading markets have different types
+    of matching algorithms, such as **Pro Rata** and some mix of FIFO and Pro Rata.
+    Pro Rata is simply a matching algorithm where larger orders get larger fills from
+    aggressive orders regardless of where they are in the FIFO queue. For our matching
+    engine, we will only implement the FIFO matching algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To fully understand how the order book works, we will look at a few scenarios
+    that happen in the market and how they impact the order book. Let us first establish
+    the starting state of the order book. Let us assume there are orders belonging
+    to three different market participants – clients A, B, and C on the buy and sell
+    sides.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Client A OrderId 1 BUY 20 @ 10.90 | Client B OrderId 5 SELL 10 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 2 BUY 10 @ 10.80 | Client C OrderId 6 Sell 5 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 3 BUY 5 @ 10.80 | Client B OrderId 7 SELL 5 @ 11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client C OrderId 4 BUY 100 @ 10.70 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.1 – Initial state of the limit order book consisting of some orders
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, client A has 2 passive buy orders of quantities of 20 and 10 at prices
+    of 10.90 and 10.80, respectively. Client B has a buy order of a quantity of 5
+    at 10.80, and 2 sell orders of quantities of 10 and 5 at prices of 11.00 and 11.10,
+    respectively. Client C has 2 passive orders – a buy of a quantity of 5 at 10.80
+    and a sell of a quantity of 5 at 11.00, respectively. Now, let us assume client
+    A sends a new buy order of a quantity of 10 at the price of 10.90 and client B
+    sends a new sell order of a quantity of 10 at the price of 11.20\. The updated
+    order book is shown in the following table and the new orders are highlighted.
+    Due to the FIFO ordering, the new buy order of *OrderId=8* is behind the buy order
+    of *OrderId=1* at the same price.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Client A OrderId 1 BUY 20 @ 10.90 | Client B OrderId 5 SELL 10 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **Client A OrderId 8 BUY 10 @** **10.90** | Client C OrderId 6 Sell 5 @ 11.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 2 BUY 10 @ 10.80 | Client B OrderId 7 SELL 5 @ 11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 3 BUY 5 @ 10.80 | **Client B OrderId 9 SELL 10 @** **11.20**
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client C OrderId 4 BUY 100 @ 10.70 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.2 – Updated order book with newly added orders
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now let us assume that client A modifies the order with *OrderId=2* to go from
+    a quantity of 10 to a quantity of 20\. When an order’s quantity is increased in
+    such a manner, the order loses priority in the FIFO ordering and goes to the back
+    of the queue at that price level. Let us also assume that client B modifies the
+    order of *OrderId=5* to reduce the order’s quantity from 10 to 1\. Note that per
+    the rules of the market, when an order’s quantity is reduced, it does not lose
+    its priority in the queue and still stays where it is. The updated order book
+    is shown next, and the orders that are impacted are highlighted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Client A OrderId 1 BUY 20 @ 10.90 | **Client B OrderId 5 SELL 1 @** **11.00**
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 8 BUY 10 @ 10.90 | Client C OrderId 6 Sell 5 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 3 BUY 5 @ 10.80 | Client B OrderId 7 SELL 5 @ 11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **Client B OrderId 2 BUY 20 @** **10.80** | Client B OrderId 9 SELL 10 @
+    11.20 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client C OrderId 4 BUY 100 @ 10.70 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.3 – State of the order book after the modification of an order
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, let us assume that client A modifies the buy order with *OrderId=4*
+    from a price of 10.70 to a price of 10.90 with no changes to quantity. The impact
+    of this order action is equivalent to canceling the order and sending a new order
+    at the new price. Let us also assume that client B decides that they no longer
+    want the sell order of *OrderId=9* and sends a cancel for it. The updated order
+    book due to these two actions is shown next, with the modified order highlighted
+    and the canceled order removed from the order book:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Client A OrderId 1 BUY 20 @ 10.90 | **Client B OrderId 5 SELL 1 @** **11.00**
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 8 BUY 10 @ 10.90 | Client C OrderId 6 Sell 5 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| **Client C OrderId 4 BUY 100 @** **10.90** | Client B OrderId 7 SELL 5 @
+    11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 3 BUY 5 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 2 BUY 20 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.4 – Limit order book state after the modification and cancellation actions
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far in the scenarios we discussed, there has not been a trade because the
+    order activity has been such that all buy orders have prices lower than all sell
+    orders. Let us further this discussion in the next section and see what happens
+    when there is an aggressive order that can cross the buy or sell order prices
+    and what that does.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Two things to note here as far as order modification is concerned are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When orders are modified to reduce the quantity, the priority or position of
+    the order in the queue does not change
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When orders are modified to increase the quantity or the price of the order
+    is modified, it has the equivalent effect of canceling the order and sending the
+    order with the new price and quantity values (i.e., a new priority will be assigned
+    to it)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next section, we will look at the next big task that a matching engine
+    needs to perform – matching participant orders that cross each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Matching participant orders
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will understand what happens when a market participant modifies
+    an existing order or sends a new order in such a way that the price on this order
+    will cause a match against an existing passive order on the other side. In such
+    a scenario, the matching engine matches this aggressive order against passive
+    orders in order from most aggressive to least aggressive price. This means passive
+    bids are matched from highest to lowest buy prices, and passive asks are matched
+    from lowest to highest sell prices. In cases where the passive orders are not
+    fully matched because the aggressive order has a smaller quantity than the passive
+    liquidity available on the other side, then the remaining liquidity on the passive
+    orders stays in the book. In cases where the aggressive order is not fully matched
+    because the passive liquidity available on the other side is less than the quantity
+    on the aggressive order, then the remaining quantity on the aggressive order rests
+    in the book as a passive order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let us understand the different cases of matching participant orders and let
+    us assume the state of the order book is where we left it in the last section,
+    as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| Client A OrderId 1 BUY 20 @ 10.90 | Client B OrderId 5 SELL 1 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 8 BUY 10 @ 10.90 | Client C OrderId 6 Sell 5 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client C OrderId 4 BUY 100 @ 10.90 | Client B OrderId 7 SELL 5 @ 11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 3 BUY 5 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 2 BUY 20 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.5 – Starting state of the order book before any order matches
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let us assume client C sends a sell order of a quantity of 50 at a sell
+    price of 10.90\. This will cause the sell order to match against the buy orders
+    with *OrderId=1* and *OrderId=8*, which are fully matched, and *OrderId=4*, which
+    is partially matched for a quantity of 20 and has the remaining quantity of 80\.
+    The orders that are fully matched are removed from the order book and the partially-matched
+    order is modified to the new remaining quantity. The updated order book after
+    this matching transaction is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Client C OrderId 4 BUY 80 @** **10.90** | Client B OrderId 5 SELL 1 @ 11.00
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 3 BUY 5 @ 10.80 | Client C OrderId 6 Sell 5 @ 11.00 |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 2 BUY 20 @ 10.80 | Client B OrderId 7 SELL 5 @ 11.10 |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.6 – Order book reflecting the impact of the aggressive order and partial
+    executions
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let us assume client A sends a buy order of a quantity of 10 at a buy
+    price of 11.00\. This fully matches the sell orders with *OrderId=5* and *OrderId=6*,
+    and the remaining unmatched quantity on the aggressive buy order rests in the
+    book as a passive bid order. The updated order book after this matching transaction
+    is shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Client A OrderId 9 BUY 4 @** **11.00** | Client B OrderId 7 SELL 5 @ 11.10
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client C OrderId 4 BUY 80 @ 10.90 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client A OrderId 3 BUY 5 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: '| Client B OrderId 2 BUY 20 @ 10.80 |  |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.7 – Order book after full execution and resting quantity from the aggressor
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we understand a lot of the common interactions that we will encounter
+    in the matching engine and how those are handled, as well as how they interact
+    with the limit order book, we can design the matching engine we will build in
+    this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing our matching engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We will spend the rest of this book implementing each one of the C++ electronic
+    trading ecosystem components we discussed in this chapter. However, before we
+    get started on the next chapter, it is important to understand the architecture
+    of these components to make the implementation details easier and clearer later
+    on. We present only the matching engine component from *Figure 5**.1* here so
+    we can discuss the design of our matching engine in a little more detail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.2 – Design of our matching engine component](img/B19434_05_02.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.2 – Design of our matching engine component
+  prefs: []
+  type: TYPE_NORMAL
+- en: We present a few more details in this diagram compared to *Figure 5**.1* by
+    discussing the major design choices for the matching engine next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Threading model
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In our system, the matching engine, the market data publisher, and the order
+    gateway server will be independent threads. This is intentional so that each one
+    of these components can operate independently, and during periods of bursts in
+    market activity, the entire system can achieve maximum throughput. Also, there
+    are other tasks that each component needs to perform – for example, the order
+    gateway server must maintain connectivity with all market participants, even when
+    the matching engine is busy. Similarly, let us assume the market data publisher
+    is busy sending out market data on the network; we do not want the matching engine
+    or the order gateway server to slow down. We already saw how to create threads,
+    set affinity on them, and assign tasks for them to do in the previous chapter,
+    *Building the C++ Building Blocks for Low-Latency Applications*, in the *C++ threading
+    for multi-threaded low-latency* *applications* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communication between threads
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another important thing to discuss here is the communication between the matching
+    engine and the order gateway server infrastructure. The order gateway server serializes
+    the order requests coming in from the market participants and forwards them to
+    the matching engine for processing. The matching engine needs to generate a response
+    for order requests and send them back to the order gateway server. Additionally,
+    it also needs to inform the order gateway server about executions that happen
+    on the participant’s orders so that they can be informed about the trades. So,
+    it needs a bi-directional queue, or one queue from the order gateway server to
+    the matching engine and another queue from the matching engine to the order gateway
+    server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another communication channel is when the matching engine generates and sends
+    market data updates to reflect the updated state of the limit order book for the
+    public market data publisher component.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, since the matching engine, the order gateway server, and the market
+    data publisher are all different threads, here we find a perfect case for a lock-free
+    queue. We will use the lock-free FIFO queue we created in the previous chapter
+    in the *Transferring data using lock-free* *queues* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limit order book
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Finally, for the limit order book, we will use a couple of different data structures
+    to implement it efficiently. Without diving into specific implementation details
+    (which we will look at in the next chapter), we need to maintain the bids and
+    asks in the correct sorted order on both sides to facilitate efficient matching
+    when aggressive orders come in. We need to be able to efficiently insert and remove
+    orders from the price levels to support operations such as adding, modifying,
+    and deleting orders based on client requests. One other particularly important
+    consideration here is that the data structures we use and the order objects themselves
+    must avoid dynamic memory allocations and copy as little data around as possible.
+    We will make heavy use of the memory pool we created in the previous chapter in
+    the *Designing C++ memory pools to avoid dynamic memory* *allocations* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding how an exchange publishes information to participants
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The previous section was dedicated to discussing the details of the matching
+    engine, and in that discussion, we assumed that the matching engine receives market
+    participants’ order requests from the order gateway server infrastructure. We
+    also implicitly assumed that the matching engine would communicate changes to
+    the limit order book it maintains to all the market participants listening to
+    the market data feed. In this section, we will discuss the market data publisher
+    and the order gateway server components that the matching engine relies on to
+    communicate with the market participants.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Communicating market events through markets data
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss the market data publisher component first. This component is
+    responsible for converting the updates to the limit order book maintained by the
+    matching engine. We mentioned before that the market data network level protocol
+    can be TCP or UDP but generally, the preferred protocol in practice is UDP, and
+    that is the protocol we will be using in our market data publisher as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In simple terms, the market data protocol represents the format of the messages
+    that the market data publisher publishes over the UDP (or in some cases TCP) protocol.
+    **FIX Adapted for STreaming** (**FAST**) is the most well-known and popular messaging
+    format for market data that is currently used by a lot of electronic trading exchanges.
+    There are other protocols, such as **ITCH**, **PITCH**, **Enhanced Order Book
+    Interface** (**EOBI**), **Simple Binary Encoding** (**SBE**), and many others,
+    but for the purposes of this book, we will create a simple custom binary protocol
+    such as EOBI or SBE that we will use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since FIX is the most common protocol used in financial applications, we will
+    present a few details here. FIX data is organized as a set of `TAG`=`VALUE` style
+    fields. It will be easier to understand this with a simple example, so for a hypothetical
+    market data update, you might receive the following collection of fields to convey
+    all the data for that update. This hypothetical market data update corresponds
+    to a new buy order of a quantity of 1,000 being added for the Apple company stock
+    (stock symbol AAPL and numeric security ID 68475) at a price of 175.16.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **TAG** | **FIX NAME** | **VALUE** | **DESCRIPTION** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 268 | NoMDEntries | 1 | Number of market data updates |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 279 | MDUpdateAction | 0 (New) | Type of market data update |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 269 | MDEntryType | 0 (Bid) | Type of market data entry |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 48 | SecurityID | 68475 (AAPL) | Integer identifier for the trading product
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 270 | MDEntryPx | 175.16 | Price of this market data update |'
+  prefs: []
+  type: TYPE_TB
+- en: '| 271 | MDEntrySize | 1000 | Quantity of this market data update |'
+  prefs: []
+  type: TYPE_TB
+- en: '| ... | ... | ... | ... |'
+  prefs: []
+  type: TYPE_TB
+- en: Table 5.8 – An example of a FIX message corresponding to a hypothetical market
+    data update
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The different kinds of messages that make up the market data protocol are roughly
+    categorized into the following categories:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.3 – Different market updates that an exchange sends out](img/B19434_05_03.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.3 – Different market updates that an exchange sends out
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us discuss these next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Market state changes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These messages notify the market participants about changes in the market and/or
+    matching engine state. Typically, markets go through states such as **Closed**
+    for trading, **Pre-open** (market state before regular trading sessions), **Opening**
+    (when markets transition from the Pre-open to Trading states), and **Trading**
+    (regular trading session).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instrument updates
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The exchange uses instrument update messages to inform market participants
+    about the different instruments available for trading. Some exchanges support
+    special types of instruments that the market participants can create on the fly,
+    and these messages are used to inform participants about changes to such instruments.
+    Usually, these messages are used to inform participants about instrument metadata
+    such as minimum price increments, tick size value, and more. The **minimum price
+    increment** is the minimum price difference in order prices. In the examples we
+    have seen so far, we assumed the minimum price increment to be 0.10 (i.e., valid
+    prices are multiples of 0.10). The **tick size value** is the amount of money
+    made or lost when we buy and sell at prices that are apart by a single minimum
+    price increment. Very often, for products such as stocks, **Exchange Traded Fund**
+    (**ETF**s), and so on, the tick size multiplier is just 1, meaning the profit
+    or loss is simply the sell price minus the buy price for a pair of trades. ETFs
+    are securities that trade at the exchange and are an investment option which consists
+    of a basket of securities, i.e., by investing in an ETF, you invest in a bunch
+    of assets that make up that ETF. But for some leveraged products such as futures,
+    options, and so on, this tick size multiplier can be something other than 1, and
+    the final profit or loss is computed as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`((sell-price – buy-price) / min-price-increment) * trade-qty *` `tick-size`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Order updates
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The market data publisher uses order update messages to communicate changes
+    to the orders in the limit order book maintained by the matching engine – specifically,
+    updates to the order book similar to what we discussed in the *Understanding the
+    exchange order book* subsection in the *Designing the C++ matching engine in a
+    trading exchange* section. Generally, the different kinds of order updates messages
+    are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`instrument-id`, `order-id`, `price`, `side`, `quantity`, and `priority`. The
+    `priority` field here is used to specify the position of the order in the FIFO
+    queue of orders at that price.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Order Modify** – This is used by the exchange to let the participants know
+    that a passive order was modified in price or quantity or both. This message has
+    similar fields as an Order Add message. As mentioned before, in most cases (except
+    when the order quantity is reduced), a new order priority value will be assigned
+    for Order Modify events.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`instrument-id` and `order-id` to specify the order being deleted from the
+    order book.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Trade messages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Trade messages are used by the exchange to notify the market participants that
+    a match happened in the market. Generally, the attributes here are `instrument-id`,
+    side of the aggressive order, execution price of the trade, and the traded quantity.
+    Generally, when trades happen, the exchange also publishes as many Order Delete,
+    Order Modify, and Order Add messages as needed to communicate information about
+    which orders were fully and/or partially executed and need to be removed from
+    the book or modified to reflect the new state of the order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Market statistics
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: These are optional messages that some exchanges publish to communicate different
+    types of statistics about trading instruments. These statistics can be information
+    about traded volume for an instrument, open interest for the instrument, the highest,
+    lowest, opening, and closing prices for the instrument, and so on.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We covered a lot of details about the market data messaging types and the information
+    they try to convey. Now we are ready to design the market data publisher we will
+    build in our electronic trading exchange next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the market data publisher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss a few design details for the market data publisher we will implement
+    in our electronic exchange. We present only the market data publisher from *Figure
+    5**.1* here so we can discuss the design in greater detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.4 – Design of our market data publisher infrastructure](img/B19434_05_04.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.4 – Design of our market data publisher infrastructure
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two main components of the market data publisher infrastructure. Both
+    use the socket utilities we built in the previous chapter in the *C++ network
+    programming using sockets* section to put the market data on the wire. This is
+    in addition to the threading library we built, which will be used to create, launch,
+    and run the market data publisher thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Market data protocol encoder
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The market data protocol encoder component inside the market data publisher
+    infrastructure is responsible for encoding the market data updates published by
+    the matching engine. The market data encoder consumes market data updates that
+    reflect changes to the order book and converts them into the public market data
+    messaging format with some additional information. This component also publishes
+    the incremental market data updates to the UDP multicast stream configured for
+    incremental streams. Remember that the incremental stream only contains market
+    updates that can be used to update the order book, assuming the participant had
+    an accurate view of the limit order book prior to the incremental update. The
+    encoded market data updates are also published to the snapshot synthesizer component,
+    which we will discuss in more detail in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The market data stream is generally very high volume in terms of network traffic
+    and experiences large bursts in activity, especially during periods of high volatility
+    in the market. Since the TCP protocol adds extra bandwidth due to acknowledgments
+    of message receipts and retransmissions of lost data, typically, UDP is the network
+    protocol of choice for market data. Multicast streaming over UDP is also preferred
+    since the market data can be disseminated on the multicast streams once and all
+    interested subscribers can subscribe to that stream instead of having a one-to-one
+    connection with each market data consumer over TCP. This design is not without
+    some drawbacks, namely the possibility of market data consumers dropping UDP packets
+    due to network congestion, slow hardware or software, and so on. When that happens,
+    the order book that the trading client is maintaining is incorrect since they
+    might have lost an update corresponding to a new order being added, an order being
+    modified or canceled, and so on. This is the problem that the snapshot multicast
+    streams solve, which we will explore with examples in subsequent chapters as we
+    implement our market data consumers, but we will briefly introduce the snapshot
+    synthesizer component in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Snapshot synthesizer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The snapshot synthesizer consumes the encoded market date updates published
+    by the market data protocol encoder, synthesizes the latest snapshot of the limit
+    order book, and publishes the snapshot periodically to the snapshot multicast
+    stream. The important point here is that the snapshot synthesis does not interfere
+    with the incremental stream publishing so that incremental updates to the order
+    book can be published as quickly as possible. It is a separate thread of execution,
+    and the sole responsibility here is to generate an accurate snapshot of the order
+    book based on the incremental updates. This component also adds the correct sequence
+    information on the snapshot updates to facilitate synchronization at the client’s
+    end before publishing it on the snapshot UDP multicast stream. What this means
+    is that in the snapshot messages it sends out, it will provide the last sequence
+    number from the incremental stream that was used to synthesize this snapshot message.
+    This is important because the downstream market data consumer clients can use
+    this sequence number of the last update in the incremental stream to perform successful
+    synchronization/catch-up. This will become very clear when we build our market
+    data publisher and market data consumer components because we will cover all the
+    details with examples then. Another thing to understand is that the low-latency
+    criteria that apply to the other components in our system do not apply here since
+    this is a delayed and sub-sampled stream of information anyway. Additionally,
+    packet drops are expected to be extremely rare on the client’s end and the snapshot
+    synchronization process is slow on the client’s end, so trying to make this component
+    super low latency is unnecessary. For our snapshot synthesizer component, we will
+    also use the UDP protocol to keep it simple, but in practice, this is often a
+    combination of TCP and UDP protocols. For low-latency market participants, packet
+    drops on the UDP stream are expected to be rare because typically, the network
+    connection to the exchange and switches along the way have a large bandwidth capacity
+    and low switching latencies. Additionally, the participants invest resources into
+    procuring and installing super-fast servers, building low-latency market data
+    consumer software, and using special **Network Interface Cards** (**NICs**) to
+    handle large volumes of market data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our high-level design of the market data publisher infrastructure
+    we will build in this book. Next, we need to discuss the other channel that the
+    exchange uses to notify market participants about responses to their order requests
+    as well as when their orders get executed – the order gateway interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notifying market participants through the order gateway interfaces
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We discussed that the market data consumer is used by the electronic trading
+    exchange to disseminate public information about changes to the order book and
+    matches happening for the different trading instruments available at the exchange.
+    The point here is that this is public market data that is available to everyone
+    that has access to and is subscribed to the market data stream. This section will
+    discuss the other interface that the exchange uses to communicate with market
+    participants about updates for their orders – the order gateway interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are a few key differences between the information provided by the public
+    market data feed and the information provided by the order gateway infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the difference in network protocols
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We mentioned this before but we will reiterate here that typically, market data
+    publishers use the UDP protocol at the network level, and the order gateway infrastructure
+    uses the TCP protocol at the network level in their connections with market participants.
+    This is because the data published by market data publishers is very voluminous
+    and needs to be published as quickly as possible, hence the choice of UDP over
+    TCP. There are generally additional synchronization mechanisms available on the
+    market data publisher to deal with rare packet drops over UDP. The order gateway
+    infrastructure relies on TCP because it needs a reliable method of communicating
+    with the clients, and packet drops here are difficult to handle gracefully without
+    TCP. Intuitively, it should be clear that it would be a major headache if clients
+    were not sure that their orders reached the exchange or if clients weren’t sure
+    they received immediate notifications when their orders are updated or matched.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Differentiating between public and private information
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Perhaps the biggest difference between the market data publisher and the order
+    gateway infrastructure is that the market data publisher publishes public information
+    while hiding some sensitive information, such as which client an order belongs
+    to or which clients participated in a matching transaction. This information is
+    also published for all market participants and is meant to be used to construct
+    the limit order book to reflect the state of a trading instrument. The order gateway
+    server, on the other hand, only publishes order update notifications to the clients
+    who own the orders that are being updated. Another way to think about this is
+    that to receive and process public market data, a participant does not need to
+    have any orders in the order book. But to receive private order gateway notifications
+    the participant must have orders in the book, otherwise, there is nothing for
+    the exchange to notify the client privately about.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending order requests for participants’ orders
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another major difference that should be obvious by now is that the order gateway
+    component sending facilitates a bi-directional communication channel. What this
+    means is that clients can send order requests to the exchange such as new orders,
+    modify orders, cancel orders, and so on. On the other hand, as we discussed, the
+    exchange uses the order gateway infrastructure to send private notifications for
+    market participants’ orders. The market data publisher infrastructure does not
+    generally service any client requests (i.e., the communication path is from the
+    exchange to market data subscribers only).
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final sending component we need to design on the side of the electronic
+    trading exchange is the order gateway infrastructure we just discussed; let us
+    do that in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the order gateway server
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss a few design details for the order gateway server we will implement
+    in our electronic exchange. We present only the order gateway server infrastructure
+    from *Figure 5**.1* here so we can discuss the design of our order gateway server
+    in a little more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.5 – Design of our order gateway server infrastructure](img/B19434_05_05.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.5 – Design of our order gateway server infrastructure
+  prefs: []
+  type: TYPE_NORMAL
+- en: We present a few more details in this diagram compared to *Figure 5**.1* and
+    break down some details about the subcomponents for the order gateway server infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: TCP connection server/manager
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first component inside the order gateway infrastructure is the TCP connection
+    manager. This component is responsible for setting up a TCP server that listens
+    to and accepts incoming TCP connections from market participants’ order gateway
+    clients. It is also responsible for detecting clients who disconnect and removing
+    them from the list of active connections. Finally, this component needs to forward
+    order responses from the matching engine to the correct client for which the response
+    is meant. We will use the socket utilities, TCP socket, and TCP server functionality
+    we implemented in the *C++ network programming using sockets* section in the previous
+    chapter, *Building the C++ Building Blocks for* *Low-Latency Applications*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: FIFO sequencer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Another important task this component needs to do is maintain fairness when
+    processing requests from market participants. As mentioned previously, to maintain
+    fairness, client responses must be processed in the exact order they were received
+    at the exchange infrastructure. So, the FIFO sequencer must ensure that it forwards
+    client requests to the matching engine across the different client connections
+    that the TCP connection manager maintains in the order in which they are received.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exchange messaging protocol decoder and encoder
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The encoder-decoder component is responsible for translating between the exchange
+    messaging protocol and whatever internal structures the matching engine expects
+    client requests in and publishes client responses in. Depending on the complexity
+    of the exchange protocol, this can be as straightforward as packaging and extracting
+    the correct fields into and from a packed binary structure. If the exchange messaging
+    format is more complicated, then there will be additional encoding and decoding
+    steps involved. For this book’s purposes, we will have a simple exchange order
+    messaging protocol that uses packed binary structures and has additional information
+    on top of the format the exchange matching engine uses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes our discussion of the electronic trading exchange, and now we
+    can move on to building the client-side infrastructure for a market participant
+    that wishes to trade on this exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a market participant’s interface to the exchange
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will now discuss the purpose and design of the components in the market participants’
+    systems. Specifically, we will start by discussing the market data consumer in
+    the client’s trading system, which subscribes to, consumes, and decodes the public
+    market data published by the exchange. We will also discuss the order gateway
+    client infrastructure in the client’s trading system, which connects to the exchange
+    order gateway server. The order gateway client is also responsible for sending
+    order requests to the exchange and receiving and decoding responses for the client’s
+    orders.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the market data consumer infrastructure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The market data consumer component in a market participant’s trading system
+    is the direct complement of the market data publisher component in the electronic
+    trading exchange. It is responsible for subscribing to and consuming the multicast
+    network traffic that the exchange publishes, decoding and normalizing the market
+    data it reads from the exchange protocol to an internal format, and implementing
+    packet drop-related synchronization mechanisms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Subscribing to and consuming UDP multicast traffic
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The first and most obvious task is to subscribe to the multicast stream that
+    the exchange is publishing market data on. Typically, in the interest of load
+    balancing, the exchange groups different trading instruments on different multicast
+    stream addresses. This lets clients choose a subset of all the data that the exchange
+    is publishing, depending on the trading instrument and products that the client
+    is interested in. Typically, this involves the clients joining the correct multicast
+    streams, the addresses of which are public information available from the exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Decoding and normalizing from exchange protocol
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The next thing the market data consumer needs to do is convert from the exchange
+    market data protocol into an internal format that the rest of the components in
+    the participant’s system use. Depending on the exchange market data protocol,
+    this part of the component can vary in complexity and performance latencies. The
+    fastest protocols are the ones where minimal decoding is required, such as EOBI
+    and SBE, which are just binary-packed structures. What this means is that the
+    market data format is such that decoding the stream just involves reinterpreting
+    the byte stream as the binary-packed structure we expect to find in the stream
+    and is as fast as it gets. More complicated protocols such as FAST generally take
+    longer to decode and normalize.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronizing on startup and packet drops
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Remember that we discussed that usually exchanges prefer UDP to be the network
+    protocol to deliver market data to the participants. While this speeds up the
+    delivery of data to clients and achieves higher throughput, this also leaves us
+    open to packet drops and out-of-order delivery due to the unreliable nature of
+    UDP. To make sure that market participants see market data packets in the correct
+    order, as well as detect packet drops when they occur, typically, there are packet-level
+    and instrument-level sequence numbers that the participants should check.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another thing that needs to be designed, both on the exchange market data publisher
+    and the participants’ market data consumers, is a mechanism to recover from such
+    packet drops. This same mechanism is also used by participants who join the market
+    data stream after the markets are already open or if the participants need to
+    restart their market data consumer components for any reason. In all such cases,
+    the market data consumers in the client’s trading system needs to perform some
+    synchronization to get the current and complete state of the limit order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The commonly used design to achieve this synchronization is explained in this
+    section. Usually, the exchange market data streams are broken down into two major
+    groups – **snapshot streams** and **incremental streams**. We will explain the
+    reason for having these two streams and how they help market participants handle
+    cases of packet drops next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Incremental market data streams
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: The incremental market data stream assumes that the market participant already
+    has the correct view of the limit order book maintained by the matching engine,
+    and this stream only publishes incremental updates to the previous state of the
+    order book. This means that this stream is much lower in bandwidth requirements
+    since it publishes only incremental updates to the book. Typically, under normal
+    operating conditions, it is expected that market participants only be subscribed
+    to the incremental streams to maintain the correct state of the order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the client drops a packet from this stream, then the state of the order book
+    that they maintain might be inconsistent with what the matching engine has. The
+    mechanism to handle this failure is to clear or reset the order book that the
+    participant maintains. Then it needs to subscribe to the snapshot stream, which
+    contains data for the full state of the entire order book (instead of only incremental
+    updates) to synchronize to the correct state of the book once again. The protocol
+    here is to clear the book, start queuing up incremental updates received from
+    the incremental stream and wait to build the full state of the order book, and
+    then apply the incremental updates to that full order book to finish the synchronization.
+    Now, let us understand a few more details of what is published by the exchange
+    on the snapshot market data streams.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Snapshot market data streams
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: As we mentioned before, the snapshot market data stream contains data that can
+    be used to build the full order book from a completely empty state. Usually, this
+    stream just contains a thorough list of *Order Add* messages corresponding to
+    every single passive order that exists in the order book. The exchange usually
+    throttles how often this list is updated and published, meaning it might only
+    send out a stream of snapshot messages every couple of seconds or so. This is
+    because, since this stream contains information about all the orders in the order
+    book for every single trading instrument, it can become quite bandwidth-heavy.
+    Additionally, since packet drops are an exceedingly rare occurrence and participants
+    do not mind waiting a few seconds when they first start up to grab the correct
+    state of the order book, the throttling does not usually have a large negative
+    impact.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This concludes the discussion of the market data protocols and the synchronization
+    process, so now we can design the market data consumer that we will implement.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the market data consumer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss a few design details for the market data consumer we will implement
+    in our market participant’s trading system. We present only the market data consumer
+    from *Figure 5**.1* here so we can discuss the design in greater detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.6 – Design of our market data consumer infrastructure](img/B19434_05_06.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.6 – Design of our market data consumer infrastructure
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us discuss the two primary subcomponents when it comes to the design of
+    the market data consumer infrastructure in a market participant’s trading system.
+    Both use the socket utilities we built in the previous chapter in the *C++ network
+    programming using sockets* section to subscribe to and consume the market data
+    from the network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Snapshot and incremental stream synchronizer
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The market data consumer needs to have a subcomponent that can be used to subscribe
+    to the snapshot stream in addition to being subscribed to the incremental stream.
+    Remember that we explained that when a market participant’s system first starts
+    up or needs to restart in the middle of the day or drops a market data packet
+    from the incremental stream, it does not have the correct view of the limit order
+    book. In such a scenario, the correct recovery/synchronization procedure is to
+    clear the limit order book, subscribe to the snapshot stream, and wait till a
+    full snapshot of the order book is received. Additionally, the updates that continue
+    to come in over the incremental market data stream need to be queued up. Once
+    the full snapshot is received and all incremental updates starting from the sequence
+    number of the last update in the snapshot are also queued up and available, we
+    are done. At this point, the limit order book is reconstructed from the snapshot
+    stream, and all queued-up incremental updates are applied to this book to synchronize/catch
+    up with the exchange. At this point, the consumer can stop consuming data from
+    the snapshot stream and leave the snapshot stream, and only consume data from
+    the incremental stream. The component in the market data consumer infrastructure
+    responsible for this synchronization mechanism is what we will refer to as the
+    snapshot and incremental stream synchronization subcomponent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Market data protocol decoder
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The other subcomponent is responsible for decoding the stream of data coming
+    in from the snapshot and/or the incremental market data streams. This component
+    translates the data from the exchange feed format to the internal format of the
+    trading strategy framework. This is usually a subset of the fields that the exchange
+    provides and is often normalized across different trading exchanges to make the
+    trading strategy framework independent of exchange-specific details. For our market
+    data consumer infrastructure, we will keep this component quite simple since we
+    will be using a packed binary structure, but as mentioned before, in practice,
+    this can be a much more complicated format such as FAST.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We discussed the details and design of how a market participant’s system consumes
+    the public market data feed from the exchange. We can move on to the order gateway
+    client infrastructure, which the participant uses to send order requests and receive
+    responses and execution notifications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the order gateway client infrastructure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The order gateway client infrastructure in the market participant’s trading
+    system is a TCP client that connects to the exchange’s order gateway server. The
+    other task that this component performs is receiving updates from the exchange
+    on this TCP connection, decoding the messages received from the exchange order
+    messaging protocol into a normalized internal format for use by the rest of the
+    system. Finally, the order gateway client component is also responsible for taking
+    the order actions requested by the trading framework and encoding them in the
+    order messaging format that the exchange understands and sending it through to
+    the exchange.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The important thing to remember here is that the order gateway client must always
+    maintain a reliable TCP connection to the exchange. This is to make sure that
+    the exchange does not miss any order request from the client and that the client
+    does not miss any updates to its orders from the exchange. In addition to the
+    reliability mechanisms implemented by the TCP networking protocol itself, there
+    usually exists an application-level reliability mechanism implemented by the exchange
+    and the participants. This application-level reliability mechanism usually consists
+    of strictly incrementing sequence numbers on the messages sent from exchange to
+    client and from client to exchange. Additionally, there can be heart-beating mechanisms
+    in place, which are simply messages sent from exchange to client and client to
+    exchange to check whether a connection is still active during periods of low activity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, there are mechanisms to authenticate and identify clients when
+    they first connect, and this is usually implemented as a handshake mechanism with
+    user identification and password, and so on. There can be additional administrative
+    messages, such as the logon authentication message, and it depends on the exchange
+    and can have a wide range of purposes. For this book’s purposes, we will limit
+    the scope to not focus on these administrative messages since they do not matter
+    to our low latency goals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, let us design our order gateway client infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing the order gateway client infrastructure
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss a few design details for the market data publisher we will implement
+    in our market participant’s trading system. We present only the order gateway
+    client from *Figure 5**.1* here so we can discuss the design in greater detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.7 – Design of our order gateway client infrastructure](img/B19434_05_07.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.7 – Design of our order gateway client infrastructure
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are two simple components that make up the order gateway client inside
+    the market participant’s trading system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: TCP connection manager
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order gateway client in a market participant’s trading system oversees connecting
+    to the exchange order gateway server and managing that connection. In practice,
+    a single participant will have multiple connections to the exchange for load balancing,
+    redundancy, and latency reasons. But in the electronic trading ecosystem that
+    we will be building, we will design it such that an order gateway client creates
+    a single connection to the exchange order gateway server. We will use the TCP
+    socket client library we built in the previous chapter under the *C++ network
+    programming using* *sockets* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Order gateway protocol encoder and decoder
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order messaging format encoder and decoder translate order requests from
+    the internal format that the trading strategy uses to the exchange format and
+    translate order responses and execution notifications from the exchange to an
+    internal format for the strategy framework. This component can vary in complexity
+    depending on the exchange format, but for our trading system, we will keep the
+    encoding and decoding complexity low by using a binary-packed structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we move away from our discussion of the order gateway infrastructure and
+    on to the most complex (and most interesting) component of the participant’s system
+    – the trading strategy framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing a framework for low-latency C++ trading algorithms
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Now that we have discussed the market data consumer and order gateway client
+    components on the market participants’ trading systems, the last component we
+    need to discuss is the framework that makes trading decisions. This component
+    is one of the most important components in a trading system since this is where
+    intelligence lies. By intelligence, we mean the system that processes normalized
+    market data updates, builds a view into the market conditions, and computes trading
+    analytics to find trading opportunities and execute trades. Obviously, this component
+    relies on the market data consumer to receive decoded and normalized market data
+    updates and uses the order gateway client component to send order requests to
+    and receive order responses from the exchange in a decoded and normalized format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the order book
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The market participant needs to construct the limit order book based on the
+    market data that the exchange publishes. Note that it is not strictly necessary
+    that the client must build the entire order book, especially if the trading strategies
+    do not require information that is that granular. For this book’s purposes, we
+    will build a full order book in our trading framework, but we just wanted to point
+    out that it is not strictly necessary in all cases. A simple example of such a
+    case would be strategies that only care about knowing the prices and/or quantity
+    of the most aggressively priced orders – that is, the highest bid price and lowest
+    offer price (known as **Top Of Book** (**TOB**) or **Best Bid and Offer** (**BBO**)).
+    Another example would be strategies that only rely on trade prices to make decisions
+    and do not require a view into the full order book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One thing to reiterate here is that the order book that the client builds is
+    slightly different from the one that the exchange maintains because the client
+    does not usually know which order belongs to which market participant. Additionally,
+    depending on the exchange, a few more pieces of information might be hidden from
+    the market participants, such as which orders are icebergs, which new orders are
+    stop orders, self-match-prevention considerations, and so on. **Iceberg orders**
+    are orders that have a larger hidden quantity than what is displayed in the public
+    market data. **Stop orders** are orders that lie dormant and then become active
+    when a specific price trades. **Self-match prevention** (**SMP**) is a constraint
+    that prevents a client from trading against themselves, which some exchanges choose
+    to enforce in the matching engine. For the purposes of this book, we will ignore
+    and not implement such special functionality. Another thing to understand is that
+    the book that the trading participants have is a slightly delayed version of the
+    order book that the matching engine has. This is because there is some latency
+    between the matching engine updating its order book to the trading client getting
+    the market updates corresponding to the changes and updating their book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building a feature engine
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sophisticated trading strategies need to build additional intelligence over
+    just the order book. These trading strategies need to implement various trading
+    signals and intelligence on top of the prices, liquidity, trade transactions,
+    and order book published by the exchange. The idea here is to build intelligence,
+    which can be a combination of technical analysis style indicators, statistical
+    predictive signals and models, and market microstructure-related statistical edges.
+    A detailed discussion of various kinds of trading signals and predictive analysis
+    is outside the scope of this book, but there are plenty of texts dedicated to
+    this topic. There are many different terms used in practice for such predictive
+    edges – trading signals, indicators, features, and so on. The component inside
+    the trading system that constructs and wires together a collection of such predictive
+    signals is often referred to as a feature/signal/indicator engine. In this book,
+    we will build a minimal feature engine for our trading strategies, but we reiterate
+    here that feature engines can get quite sophisticated and complicated depending
+    on the strategy’s complexity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing the execution logic
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: After building the order book and deriving some trading signals from the current
+    state of the market, if the trading strategies find an opportunity, they still
+    need to execute their orders at the exchange. This is achieved by sending new
+    orders, modifying existing orders to either move them to a more aggressive or
+    less aggressive price, and/or canceling existing orders to avoid getting filled
+    on them. The subcomponent in the trading infrastructure responsible for sending,
+    modifying, and canceling orders – basically, managing a strategy’s orders at the
+    exchange – is called the execution system. For the execution systems, the ability
+    to react quickly to market data and order responses coming from the exchange and
+    send out order requests as quickly as possible is extremely important. A large
+    part of a high-frequency trading system’s profitability and sustainability depends
+    on achieving the lowest possible latencies in the execution systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the risk management systems
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The risk management system is an important piece of the trading strategy infrastructure.
+    Technically speaking, in practice, there are multiple layers of risk management
+    systems in a modern electronic trading ecosystem. In practice, there are risk
+    management systems in the client’s trading strategy framework, order gateway clients
+    in the market participant’s system, and backend systems at the clearing broker’s
+    end. For this book’s purposes, we will only implement a minimal risk management
+    system in the trading strategy framework. Risk management systems try to manage
+    the different forms of risk, as depicted in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.8 – Different risk metrics in an automated risk management system](img/B19434_05_08.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.8 – Different risk metrics in an automated risk management system
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let us discuss these risk measures in more detail next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk based on order quantities
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One measure that a lot of trading systems care about is the maximum possible
+    quantity that the algorithm is allowed to send for a single order. This is mostly
+    to prevent bugs and user errors in the system where the algorithm ends up accidentally
+    sending an order much larger than expected. These types of errors in practice
+    are referred to as **Fat Finger** errors, to refer to what would happen if a user
+    accidentally pressed more keys than intended.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk based on firm positions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An obvious measure of risk is the position that a strategy has in a certain
+    trading instrument. The size of the position directly dictates how much money
+    is lost if the market prices change a certain amount. This is why the realized
+    position that a strategy or a firm has in a certain trading instrument is an extremely
+    important one and is closely monitored to make sure it falls within agreed-upon
+    limits. Note that realized position is the position that the strategy currently
+    holds, and this ignores additional orders that the strategy might have, which
+    might increase or decrease the position on execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk based on worst-case position
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Note that in the last section, we mentioned that realized position metrics ignore
+    how many additional live orders exist in the market. The worst-case scenario position
+    metric tracks what the position would be considering the live orders on the side
+    that would increase the realized position along with the actual realized position.
+    This means if the strategy or firm is long (position from buying an instrument),
+    then it will also check how much additional unexecuted buy quantity the strategy
+    has in the market to compute the absolute worst-case position. This is important
+    because some strategies might never build up to large positions but might always
+    have a lot of active orders in the market. The perfect example of such a strategy
+    is a market-making strategy, which we will see later in this book, but the point
+    here is that it is important to think about worst-case scenarios when it comes
+    to risk management.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk to manage realized and unrealized loss
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is what most people think of when they think of risk in the context of
+    electronic trading. This risk metric tracks and imposes limits on how much money
+    a strategy or firm has lost. If that value crosses a certain threshold, then depending
+    on how much the firm has in its brokerage account, how much collateral they have,
+    and so on, there can be consequences for the firm. Not only is it important to
+    track the realized losses for a strategy when the strategy opens and closes positions
+    but it is also important to track the open positions against the market prices.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To understand this, let us explain the following scenario: a strategy buys
+    a certain quantity of an instrument and then sells the same amount of quantity
+    back at a lower price where the strategy has a realized loss and no open position.
+    Now, let us say the strategy buys some amount of the trading instrument, and then
+    after the purchase where the strategy has a long position, the price of the instrument
+    in the market moves lower. Here, this strategy not only has the realized loss
+    it is carrying from the previous set of trades but now it also has an unrealized
+    loss on this most recently opened long position. The risk management system needs
+    to compute realized and unrealized losses in near real time to get an accurate
+    view of the actual risk.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk based on traded volumes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This measure is not necessarily a risk; a strategy that trades a lot of volume
+    on a certain day or in general is not a problem in itself. This risk metric seeks
+    mostly to prevent runaway algorithms from overtrading in the market in cases of
+    software or configuration bugs or just unexpected market conditions. This can
+    be implemented in many ways, but the simplest implementation would be to have
+    a cap on how much volume a strategy is allowed to trade for a trading instrument
+    before it automatically stops sending any new orders or trading further. Usually,
+    at this point, an external human operator needs to make sure that the algorithm
+    behavior is as expected and then resume the trading strategy or stop it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk to manage rate of orders, trades, and losses
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The risk metrics we will discuss in this subsection fall into the **rate-based**
+    risk management category. What we mean by rate-based is that the risk is computed
+    for sliding windows of time to make sure that the strategy does not send too many
+    orders in each window, does not trade too much in each time window, does not lose
+    too much money in each window, and so on. Again, these metrics are to prevent
+    trading strategy behavior that is unexpected or resembles an out-of-control or
+    runaway algorithm. These are implemented by either resetting the counters for
+    the underlying metric (number of orders or number of trades or traded volume or
+    loss) at the end of the time-period window or using a rolling counter of these
+    metrics. These risk metrics also implicitly prevent the trading strategy from
+    behaving unexpectedly during periods of super-heightened volatility or flash crash-style
+    scenarios.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we will design the last major component in our electronic trading ecosystem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Designing our trading strategy framework
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Let us discuss a few design details for the trading strategy framework we will
+    implement in our participant’s trading system. We present only the trading strategy
+    framework from *Figure 5**.1* here so we can discuss the design in greater detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.9 – Design of our trading strategy framework](img/B19434_05_09.jpg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Figure 5.9 – Design of our trading strategy framework
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we will discuss the design of the major subcomponents in the trading strategy
+    framework we will build in this book. Note that we use the terms **trading strategy
+    framework** and **trading engine** interchangeably and they mean the same thing
+    in the context of this book – a collection of components to house and run automated
+    trading algorithms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limit order book
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The limit order book in the trading strategy framework is similar to the one
+    that the exchange matching engine builds. Obviously, the goal here is not to perform
+    matching between orders but instead to build, maintain, and update the limit order
+    book from the market data updates consumed by the market data consumer via the
+    lock-free queue. The requirement to support efficient insertion, modification,
+    and deletion of orders into this book still applies here. The other goal here
+    is to also make this order book accessible for use cases that the feature engine
+    and trading strategy components require. There can be various use cases; one example
+    is being able to synthesize a BBO or TOB quickly and efficiently for components
+    that only need the best prices and quantities. Another example would be the ability
+    to track the strategy’s own orders in the limit order book to find where they
+    are in the FIFO queue at a price level. Yet another example would be the ability
+    to detect executions on a strategy’s orders from the public market data feed,
+    which can be a big boost during times when the private order feed is lagging behind
+    the public market data feed. Implementing these details in the trading strategies
+    we build in this book is out of the scope of what we can cover. But in practice,
+    these details are extremely important since the advantage one gains from detecting
+    executions from both the order responses and market data can be tens, hundreds,
+    or even thousands of microseconds in latency. Here, we will use the lock-free
+    queue that we built in the *Transferring data using lock-free queues* section
+    and the memory pool we built in the *Designing C++ memory pools to avoid dynamic
+    memory allocations* section in the previous chapter, *Building the C++ Building
+    Blocks for* *Low-Latency Applications*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Feature engine
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We mentioned before that we will be building a minimal feature engine in this
+    book. Our feature engine will only support a single feature computed from the
+    data available from our order book, and this single feature will be used to drive
+    our trading strategies. This feature will be updated when there are substantial
+    changes to the order book in terms of price or liquidity and as trades occur in
+    the market. When the feature is updated, the trading strategy can use the new
+    feature value to re-evaluate its position, live orders, and so on to make a trading
+    decision.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Trading strategy
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The trading strategy is the component that finally makes the trading decisions
+    based on a multitude of factors. The trading decisions depend on the trading algorithm
+    itself, the feature values from the feature engine, the state of the order book,
+    the prices and FIFO position of the strategy’s orders in the order book, risk
+    evaluations from the risk manager, the state of the live orders from the order
+    manager, and so on. This is where most of the complexity of the trading strategy
+    framework resides because it needs to handle a lot of different conditions and
+    execute the orders safely and profitably. In this book, we will build two distinct
+    kinds of basic trading algorithms – **market-making**, also known as **liquidity-providing
+    strategies**, and **taking strategies**, also known as **liquidity-removing strategies**.
+    Market-making strategies have passive orders in the book and rely on other market
+    participants crossing the spread to trade against us. Liquidity-taking strategies
+    are the strategies that cross the spread and send aggressive orders to take out
+    passive liquidity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Order manager
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The order manager component is an abstraction that hides the lower-level details
+    of sending order requests, managing the states of active orders, handling **in-flight
+    conditions** (we will explain this shortly) for these orders, handling responses
+    from the exchange, handling scenarios around partial and full executions of orders,
+    and managing positions. The order manager also builds and maintains a couple of
+    different data structures to track the state of the strategy’s orders. In some
+    sense, the order manager is like the limit order book, except it manages a tiny
+    subset of the orders that belong to the strategy.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, there is some additional complexity in the order management
+    since there are some cases where order requests are in-flight from the market
+    participant to the exchange and some events happen in the exchange matching engine
+    at the same time. An example of an in-flight condition would be the scenario where
+    the client tries to cancel an active order and sends a cancel request to the exchange.
+    But while this cancel request is in-flight to the exchange, the matching engine
+    at the exchange executes the order because an aggressor that would match this
+    order shows up. Then, by the time the cancel request finally reaches the matching
+    engine, the order is already executed and removed from the limit order book at
+    the exchange, resulting in a cancel reject for this request. The order manager
+    needs to be able to handle all different scenarios like this one accurately and
+    efficiently.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this book, we will build an order manager that can be used to manage passive
+    and aggressive orders and can handle all these different conditions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Risk manager
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The risk manager tracks the different risk metrics we described in the previous
+    section, *Understanding the risk management systems*. Additionally, the risk manager
+    needs to notify the trading strategy about events where risk limits are breached
+    so that the trading strategy can reduce risk and/or shut down safely. In our trading
+    infrastructure, we will implement a few basic risk metrics, such as position,
+    total loss, and messaging rates for order requests.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This concludes our discussion of the details and design of the major components
+    in our electronic trading ecosystem. Let us summarize the concepts, components,
+    and interactions we discussed, as well as the design of the components that build
+    the electronic trading ecosystem we will build.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We started off by presenting the topology of the electronic trading ecosystem.
+    This consists of the electronic trading exchange and many market participants
+    that want to trade on that exchange. The electronic trading exchange infrastructure
+    itself consists of three major components at a high level – the matching engine,
+    the market data publisher, and the order gateway server infrastructure. From a
+    market participant’s perspective, the major components are the market data subscriber
+    and consumer, the trading strategy framework with all its subcomponents, and the
+    order gateway client infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we performed a deep dive into the exchange matching engine details. We
+    explained the responsibilities of this component and how it builds, maintains,
+    and updates the limit order book and matches participant orders that cross against
+    each other. We concluded that section by designing our simplified matching engine
+    component and its subcomponents, which we will implement in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next topics of discussion were the market data publisher and the order gateway
+    server infrastructure at the exchange. We described in great detail the different
+    messages that the market data feed is composed of, the market data feed protocol,
+    as well as designing the components inside the market data publisher. We also
+    discussed the order gateway server, which the exchange hosts as an endpoint for
+    the market participants to connect to, forward order requests, and receive order
+    responses and notifications for their orders getting executed by the matching
+    engine. We presented the design of the order gateway server with all its subcomponents,
+    which we will implement in later chapters of this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The section following that took a look at the market participants’ trading systems.
+    First, we discussed the details for the market data consumer and the order gateway
+    client infrastructure, which the participants use to consume the public market
+    data feed from the exchange and connect to and communicate with the exchange.
+    We also presented and discussed the design of the market data consumer we will
+    build, as well as how it synchronizes and decodes the exchange market data feed.
+    Finally, we designed the order gateway client infrastructure, which the trading
+    system will use to connect to and communicate with the exchange’s order gateway
+    server infrastructure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final section of this chapter was dedicated to describing and designing
+    the framework for trading strategies. We described the major components we will
+    need to build this framework – the order book, the feature engine, the execution
+    logic framework, and the risk management subcomponent. Finally, we laid out the
+    design of the trading infrastructure we will build so that you can understand
+    the higher-level design of this component before we dive into the lower-level
+    details in subsequent chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter jumps into the implementation details of the matching engine
+    framework we designed in this chapter. Note that we will reuse a lot of the basic
+    building blocks we built in the previous chapter moving forward as we implement
+    our electronic trading ecosystem. The motivation for building the basic building
+    blocks will become clearer as we implement the rest of the system, starting in
+    the next chapter.
+  prefs: []
+  type: TYPE_NORMAL

@@ -1,0 +1,575 @@
+- en: '10'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Managing Resources
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we recapped the communication mechanisms between Lua
+    and C++. In this chapter, we will learn more about managing resources. Resources
+    can be anything an object uses, such as memory, files, or network sockets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Customizing Lua memory allocation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Delegating C++ object memory allocation to Lua
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What is RAII?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We will use the source code for *Chapter 9* as a base to develop the examples
+    in this chapter. Make sure you can access the source code for this book: [https://github.com/PacktPublishing/Integrate-Lua-with-CPP/tree/main/Chapter10](https://github.com/PacktPublishing/Integrate-Lua-with-CPP/tree/main/Chapter10).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Customizing Lua memory allocation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the Lua runtime, memory is allocated, reallocated, or deallocated in the
+    heap in the following situations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Memory is allocated**: This happens when an object is created. Lua needs
+    to allocate a piece of memory to hold it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Memory is reallocated**: This happens when the size of an object needs to
+    be changed – for example, adding entries to a table when the table has no more
+    pre-allocated space.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Memory is deallocated**: This happens during garbage collection when the
+    object is no longer needed.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In most situations, you do not need to be concerned about this. But sometimes,
+    it is helpful to get an insight into, or customize, the Lua memory allocation.
+    Here are some examples:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You need to analyze the memory footprint of your Lua objects to find optimization
+    opportunities.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You need to customize where the memory is allocated. For example, to increase
+    runtime efficiency, you may have a memory pool and you can simply have Lua use
+    it without allocating new memory regions in the heap every time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In this section, we will see how we can customize Lua’s memory allocation by
+    providing a memory allocation function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is the Lua memory allocation function?
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Lua provides a simple way to customize memory allocation. When you create a
+    Lua state, you can provide a memory allocation function so that whenever Lua needs
+    to manage memory, it calls the function you provided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The memory allocation function is defined as the following type:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The function returns a pointer to the newly allocated memory, or `NULL` if
+    the call is to deallocate a piece of memory. Its arguments are explained as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ud` is the pointer to user-defined data for the Lua state. You can use the
+    same memory allocation function with many Lua states. In such cases, you can use
+    `ud` to identify each Lua state. Lua treats this transparently.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ptr` is the pointer to the memory to be reallocated or deallocated. If it
+    is `NULL`, the call to the memory allocator is to allocate a new piece of memory.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`osize` is the original size for a previously allocated memory pointed by `ptr`.
+    If `ptr` is `NULL`, `osize` has a special meaning – the type of the Lua object
+    that is being allocated for, which can be `LUA_TSTRING`, `LUA_TTABLE`, and so
+    on.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`nsize` is the size for the memory to be allocated or reallocated. If `nsize`
+    is `0`, the memory is to be deallocated.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To register your memory allocation function, you can use `lua_newstate` to
+    create the Lua state, which is declared as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: With this, you provide both the memory allocation function and the user data
+    for the Lua state to be created. Note that you can provide `NULL` to `ud`, and
+    this user data is a C++ side object, not the Lua user data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we’ll implement a memory allocation function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a memory allocation function
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: We will extend `LuaExecutor` to practice implementing a memory allocation function.
+    When we create an executor, we want to pass a flag to indicate whether we should
+    use our own memory allocation function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can start this work based on the source code for *Chapter 9*. In `LuaExecutor.h`,
+    change the constructor, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: We added another Boolean argument named `overrideAllocator` for the constructor.
+    We also provided a default value as `false` because in most cases, we do not need
+    to override the Lua memory allocator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In `LuaExecutor.cc`, implement our memory allocation function in a new anonymous
+    namespace, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`luaAlloc` relies on the standard `realloc` and `free` C functions to allocate,
+    reallocate, and deallocate memory. This is exactly what the default Lua allocator
+    does. But we also log the arguments and the return value to get more insight into
+    the memory usage.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use `luaAlloc`, in `LuaExecutor.cc`, modify the constructor, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we check if `overrideAllocator` is `true`. If it is, we use our memory
+    allocation function by calling `lua_newstate`. If it is not, we use the default
+    allocator by calling `luaL_newstate`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, let’s test our allocator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing it out
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Rewrite `main.cpp`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The test code creates a Lua executor, registers the `Destinations` module, and
+    executes `script.lua`. This is similar to what we did in the previous chapters.
+    The only thing to note is that we are setting `overrideAllocator` to `true` when
+    creating the `LuaExecutor` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Rewrite `script.lua`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: The script creates an object of the `Destinations` type and tests its member
+    functions. This, again, is similar to what we did in the previous chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also print out markers to mark when the script starts and finishes execution.
+    This helps us locate things of interest because the customized memory allocation
+    function will be quite verbose.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compile and execute the project. You should get an output similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The two lines highlighted here are the allocation and deallocation of the object
+    at the `0x14e706170` address. You will also see a lot of unrelated memory allocation
+    outputs because Lua will also use the customized memory allocation function to
+    manage the memory of its internal states.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although this customized memory allocation function is not very complex, you
+    can extend what you have learned to change how memory is managed. This is useful
+    for runtime optimization or resource-restricted systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will explore a higher-level scenario – *how to make
+    Lua allocate memory for* *C++ objects*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Delegating C++ object memory allocation to Lua
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So far, we have been creating C++ objects in C++ and making Lua store its pointer
+    in userdata. This was done in `LuaModuleExporter::luaNew`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this case, the Lua userdata only stores a pointer. As you may recall, Lua
+    userdata can represent a much larger piece of memory, so you might be wondering
+    if we can store the whole C++ object in userdata, instead of just the pointer.
+    Yes, we can. Let’s learn how to do it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using C++ placement new
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In C++, the most common way to create an object is to call `new T()`. This
+    does two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It creates a piece of memory to hold an object of the `T` type.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It calls a constructor of the `T` type. In our example, we are calling the default
+    constructor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Similarly, the most common way to destroy an object is to call `delete obj`.
+    It also does two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It calls the destructor of the `T` type. Here, `obj` is an object of the `T`
+    type.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Frees the memory that holds `obj`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: C++ also provides another *new expression* that only constructs an object by
+    calling a constructor. It does not allocate memory for the object. Instead, you
+    tell C++ where to place the object. This *new expression* is called **placement
+    new**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To use *placement new*, we need to provide the address to a piece of memory
+    that has already been allocated. We can use it in the following way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: We need to provide the address to the memory location between the `new` keyword
+    and the constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have found a way to decouple C++ memory allocation and object construction,
+    let’s extend our C++ module exporter to support delegating memory management to
+    Lua.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extending LuaModuleDef
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We have implemented a C++ module exporting system in this book. It has two
+    parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`LuaModuleExporter` abstracts the module registration and implements the Lua
+    finalizer for the module'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`LuaModuleDef` defines the module name, exported functions, and object construction
+    and destruction'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: First, we will add the capability to use pre-allocated memory in `LuaModuleDef`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In `LuaModule.h`, add a new member variable named `isManagingMemory`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: When `isManagingMemory` is `true`, we indicate that the `LuaModuleDef` instance
+    is managing memory allocation and deallocation. When `isManagingMemory` is `false`,
+    we indicate that `LuaModuleDef` is not managing memory. In the latter case, `LuaModuleExporter`
+    should make Lua manage memory, which we will implement after we have extended
+    `LuaModuleDef`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With the new flag added, modify `createInstance`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: We added a new argument – `void *addr`. When the `LuaModuleDef` instance is
+    managing memory, it allocates the memory with the normal *new operator*. When
+    the instance is not managing memory, it uses the *placement new expression*, where
+    `addr` is the address where the object should be constructed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This implementation is the default implementation for `createInstance`. You
+    can override it and call a non-default constructor when you create `LuaModuleDef`
+    instances.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we need to modify `destroyInstance` to support `isManagingMemory` as
+    well. Change its default implementation, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the `LuaModuleDef` instance is not managing memory, we simply call the
+    object’s destructor, `obj->~T()`, to destroy it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Placement delete?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are wondering whether there is a *placement delete* to match the *placement
+    new*, the answer is no. To destroy an object without deallocating its memory,
+    you can simply call its destructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With `LuaModuleDef` ready to support two ways of memory management, next, we
+    will extend `LuaModuleExporter`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Extending LuaModuleExporter
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Before we add support to delegate memory management for C++ objects to Lua,
+    we will highlight the major architectural difference:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When C++ allocates the object’s memory, as we have done in this book till now,
+    the Lua userdata holds a pointer to the address of the memory allocated
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When Lua allocates the object’s memory as userdata, the userdata holds the actual
+    C++ object
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let’s start to extend `LuaModuleExporter`. We need to modify both `luaNew` and
+    `luaDelete` so that they work with `LuaModuleDef::isManagingMemory`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In `LuaModuleExporter.hpp`, change `luaNew`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The function is broken down into four blocks, separated by new lines. These
+    blocks are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first two lines of code get the `LuaModuleExporter` instance and the `LuaModuleDef`
+    instance. You can revisit *Chapter 8* to understand how `getExporter` works if
+    you need to.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `if` clause creates the C++ module object and the Lua userdata. When `luaModuleDef.isManagingMemory`
+    is `true`, the code that’s executed is the same as that in *Chapter 8*. When it
+    is `false`, the code creates a userdata with a size of `sizeof(T)` to hold the
+    actual `T` instance. Note that, in this case, the type of the userdata is `T*`,
+    and its address is passed to `luaModuleDef.createInstance` to use with the *placement
+    new*.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: It copies the userdata to the bottom of the stack via `lua_copy(L, -1, 1)` and
+    clears everything but the bottom of the stack via `lua_settop`(`L, 1`). The object
+    construction is delegated to `LuaModuleDef` to clear the stack of temporary items
+    in case `LuaModuleDef` has pushed any. These two lines of code are an improved
+    version compared to the code in *Chapter 8* to cover more cases and the different
+    ways of object creation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The omitted code in the rest of the function is unchanged.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Finally, to complete the feature, modify `LuaModuleExporter::luaDelete`, as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: We need to change how to get the C++ module instance in the finalizer. The difference
+    comes from whether the userdata is holding the actual object or a pointer to the
+    object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, let’s test whether the mechanism to have Lua allocate the C++ object memory
+    works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Testing with the Destinations.cc module
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'We only need to tweak the code in `Destinations.cc` a little bit to support
+    both memory allocation scenarios. Change `getObj`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The change we’ve made here is similar to what we did to `LuaModuleExporter::luaDelete`
+    so that it supports the different content the Lua userdata holds.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To choose to have Lua allocate the memory, change `DestinationsLuaModuleDef::def`,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we set `LuaModuleDef::isManagingMemory` to `false`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compile and execute the project. You should see the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: If you set `LuaModuleDef::isManagingMemory` to `true`, it should also work.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Who should manage the memory for C++ objects?
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can have either C++ or Lua manage the memory allocation for C++ objects.
+    Managing memory in C++ can provide better control in complex projects. Managing
+    memory in Lua can get rid of the double-pointer indirection. There are also psychological
+    considerations. For some people coming from the C++ world, having Lua allocate
+    C++ objects, especially when Lua is only one of the libraries used in the project,
+    may seem to violate resource ownership. For some people coming from the Lua or
+    C world, making Lua do more may be easier to accept. However, in a real-world
+    project, these details will be hidden. As seen in this section, if you have an
+    abstraction, it is easy to change from one way to another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, I would like to introduce you to the RAII resource management idiom.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What is RAII?
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter is all about resource management. A resource can be a piece of
+    memory, an opened file, or a network socket. Although in this chapter we have
+    only used memory management as examples, the principles for all resources are
+    the same.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Of course, all acquired resources need to be released. In C++, the destructor
+    is a good place to release resources. When working with Lua, the Lua finalizer
+    is a good trigger to release resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Resource Acquisition is Initialization**, or **RAII**, is a useful resource
+    management idiom. This means object creation and acquiring the resources the object
+    needs should be an atomic operation – everything should succeed, or the partially
+    acquired resources should be released before raising an error.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By using this technique, the resources are also linked with the object’s life
+    cycle. This ensures that all resources are guaranteed to be available during the
+    life cycle of the object. This will prevent complex failure scenarios. For example,
+    say a job has been half done and resources were spent but it could not be finished
+    due to a certain new resource not being available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When designing a C++ class, you can make sure all resources are acquired in
+    the constructor and released in the destructor. When integrating with Lua, make
+    sure you provide a finalizer and destroy the object from the finalizer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The finalizer will be called during one of Lua’s garbage collection cycles.
+    You should not assume when Lua does this as it is not portable across different
+    platforms and Lua versions. If you are memory-constrained, you can trigger a garbage
+    collection cycle manually by calling `lua_gc` from C++ or `collectgarbage` from
+    Lua.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Garbage collection is only for memory
+  prefs: []
+  type: TYPE_NORMAL
+- en: Remember that garbage collection is only for memory. If you have a simple class
+    that does not use other resources, it may be tempting to not provide a Lua finalizer.
+    But if later the class is changed to rely on a non-memory resource, chances are
+    that adding a finalizer is not part of the change. Then, you find out later that
+    the resource is leaked from a weird bug report.
+  prefs: []
+  type: TYPE_NORMAL
+- en: RAII is also useful in multithreaded programming to acquire a shared resource.
+    We will see an example of this in the next chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned more about resource management. We learned how to
+    provide a customized memory allocation function to Lua. We also learned how to
+    hold the actual C++ object in a Lua userdata. Finally, we familiarized ourselves
+    with the RAII resource management technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will explore multithreading when integrating Lua into
+    C++.
+  prefs: []
+  type: TYPE_NORMAL
