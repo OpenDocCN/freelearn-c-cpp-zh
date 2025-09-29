@@ -1,11 +1,15 @@
 - en: '6'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '6'
 - en: Advanced Code Analysis
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 高级代码分析
 - en: 'Clang-Tidy checks, as discussed in the previous chapter, rely on advanced matching
     provided by the AST. However, this approach might not be sufficient for detecting
     more complex problems, such as lifetime issues (that is, when an object or resource
@@ -19,81 +23,117 @@
     class complexity to method implementations. We will define cyclomatic complexity
     and demonstrate how to calculate it using the CFG library provided by Clang. In
     this chapter, we will explore the following topics:'
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前一章所述，Clang-Tidy 检查依赖于 AST 提供的高级匹配。然而，这种方法可能不足以检测更复杂的问题，例如生命周期问题（即，当对象或资源在已解除分配或超出作用域之后被访问或引用时，可能导致不可预测的行为或崩溃）。在本章中，我们将介绍基于
+    **控制流图**（**CFG**）的高级代码分析工具。Clang 静态分析器是此类工具的绝佳例子，Clang-Tidy 也集成了 CFG 的某些方面。我们将从典型用法示例开始，然后深入探讨实现细节。本章将以一个使用高级技术并扩展类复杂度概念到方法实现的定制检查结束。我们将定义圈复杂度并展示如何使用
+    Clang 提供的 CFG 库来计算它。在本章中，我们将探讨以下主题：
 - en: What static analysis is
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 什么是静态分析
 - en: Gaining knowledge of CFGs – the basic data structure used for static analysis
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 了解 CFG – 静态分析中使用的基本数据结构
 - en: How CFGs can be used in a custom Clang-Tidy check
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 如何在自定义 Clang-Tidy 检查中使用 CFG
 - en: What analysis tools are provided in Clang and what are their limitations
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Clang 提供了哪些分析工具以及它们的局限性
 - en: 6.1 Technical requirements
+  id: totrans-7
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.1 技术要求
 - en: 'The source code for this chapter is located in the `chapter6` folder of the
     book’s GitHub repository: [https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6](https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6).'
+  id: totrans-8
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的源代码位于本书 GitHub 存储库的 `chapter6` 文件夹中：[https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6](https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6)。
 - en: 6.2 Static analysis
+  id: totrans-9
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.2 静态分析
 - en: Static analysis is a crucial technique in software development that involves
     inspecting the code without actually running the program. This method focuses
     on analyzing either the source code or its compiled version to detect a variety
     of issues, such as errors, vulnerabilities, and deviations from coding standards.
     Unlike dynamic analysis, which requires the execution of the program, static analysis
     allows for examining the code in a non-runtime environment.
+  id: totrans-10
   prefs: []
   type: TYPE_NORMAL
+  zh: 静态分析是软件开发中的一种关键技术，它涉及在不实际运行程序的情况下检查代码。这种方法侧重于分析源代码或其编译版本，以检测各种问题，例如错误、漏洞和与编码标准的偏差。与需要执行程序的动态分析不同，静态分析允许在非运行时环境中检查代码。
 - en: More generally, static analysis aims to check a specific property of a computer
     program based on its meaning; that is, it can be considered a part of semantic
     analysis (see [*Figure** 2.6*](B19722_02.xhtml#x1-390002)*, Parser*). For instance,
     if 𝒞 is the set of all C/C++ programs and 𝒫 is a property of such a program, then
     the goal of static analysis is to check the property for a specific program P
     ∈𝒞, that is, to answer the question of whether 𝒫(P) is true or false.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
+  zh: 更一般地说，静态分析旨在根据计算机程序的意义检查其特定的属性；也就是说，它可以被认为是语义分析的一部分（参见[*图** 2.6*](B19722_02.xhtml#x1-390002)*，解析器*）。例如，如果
+    𝒞 是所有 C/C++ 程序的集合，而 𝒫 是此类程序的一个属性，那么静态分析的目标是检查特定程序 P ∈𝒞 的属性，即回答 𝒫(P) 是否为真或假的问题。
 - en: Our Clang-Tidy check from the previous chapter (see [*Section** 5.4*](B19722_05.xhtml#x1-1090004)*,
     Custom* *Clang-Tidy check*) is a good example of such a property. In reality,
     it takes C++ code with a class definition and decides whether the class is complex
     or not based on the number of methods it has.
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在前一章中提到的 Clang-Tidy 检查（参见[*节** 5.4*](B19722_05.xhtml#x1-1090004)*，自定义* *Clang-Tidy
+    检查*）是此类属性的一个很好的例子。实际上，它接受具有类定义的 C++ 代码，并根据方法数量决定该类是否复杂。
 - en: It’s worth noting that not all properties of a program can be checked. The most
     obvious example is the famous halting problem [[31](B19722_Bib.xhtml#XTuring1936)].
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得注意的是，并非所有程序的性质都可以进行检查。最明显的例子是著名的停机问题 [[31](B19722_Bib.xhtml#XTuring1936)]。
 - en: Important note
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 重要提示
 - en: 'The halting problem can be formulated as follows: Given a program P and an
     input I, determine whether P halts or continues to run indefinitely when executed
     with I.'
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 停机问题可以表述如下：给定一个程序P和一个输入I，确定当P在I上执行时，P是停止运行还是无限期地继续运行。
 - en: Formally, the problem is to decide, for a given program P and an input I, whether
     the computation of P(I) eventually stops (halts) or will never terminate (loops
     indefinitely).
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 形式上，问题是要决定，对于给定的程序P和输入I，P(I)的计算最终是否会停止（停机）或永远不会终止（无限循环）。
 - en: Alan Turing proved that there is no general algorithmic method for solving this
     problem for all possible program-input pairs. This result implies that there is
     no single algorithm that can correctly determine for every pair (P,I) whether
     P halts when run with I.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 阿兰·图灵证明了不存在一种通用的算法方法可以解决所有可能的程序-输入对的问题。这个结果意味着没有一种单一的算法可以正确地确定对于每一对（P，I），当P在I上运行时，P是否会停止。
 - en: Despite the fact that not all properties of programs can be proven, it can be
     done for some cases. There is a reasonable number of such cases that make static
     analysis a practical tool for usage. Thus, we can use the tools in these cases
@@ -103,250 +143,362 @@
     problems early in the development cycle. This early detection is not only efficient
     but also resource-saving, as it helps identify and rectify issues before the software
     is run or deployed.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管并非所有程序的性质都能被证明，但在某些情况下是可以做到的。有相当数量的这种案例使得静态分析成为一个实用的工具。因此，我们可以使用这些工具在这些情况下系统地扫描代码，以确定代码的性质。这些工具擅长识别从简单的语法错误到更复杂的潜在错误的各种问题。静态分析的一个关键优势是它能够在开发周期的早期阶段捕捉到问题。这种早期检测不仅效率高，而且节省资源，因为它有助于在软件运行或部署之前识别和纠正问题。
 - en: Static analysis plays a significant role in ensuring the quality and compliance
     of software. It checks that the code adheres to prescribed coding standards and
     guidelines, which is particularly important in large-scale projects or industries
     with strict regulatory requirements. Moreover, it is highly effective in uncovering
     common security vulnerabilities such as buffer overflows, SQL injection flaws,
     and cross-site scripting vulnerabilities.
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 静态分析在确保软件质量和合规性方面发挥着重要作用。它检查代码是否遵循规定的编码标准和指南，这在大型项目或对监管要求严格的行业中尤为重要。此外，它在揭示常见的安全漏洞方面非常有效，例如缓冲区溢出、SQL注入漏洞和跨站脚本漏洞。
 - en: Additionally, static analysis contributes to code refactoring and optimization
     by pinpointing areas of redundancy, unnecessary complexity, and opportunities
     for improvement. It’s a common practice to integrate these tools into the development
     process, including continuous integration pipelines. This integration allows for
     ongoing analysis of the code with each new commit or build, ensuring continual
     quality assurance.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 此外，静态分析通过确定冗余区域、不必要的复杂性和改进机会，有助于代码重构和优化。将此类工具集成到开发过程中，包括持续集成管道，是一种常见做法。这种集成允许对代码进行持续分析，每次提交或构建时都会进行，从而确保持续的质量保证。
 - en: The Clang-Tidy checks that we created in the last chapter can be considered
     an example of a static analysis program. In this chapter, we will consider more
     advanced topics involving data structures such as CFGs, which we will see next.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在上章中创建的Clang-Tidy检查可以被视为静态分析程序的一个例子。在本章中，我们将考虑涉及数据结构（如CFG）的更高级主题，我们将在下一节中看到。
 - en: 6.3 CFG
+  id: totrans-22
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.3 CFG
 - en: A **CFG** is a fundamental data structure in compiler design and static program
     analysis, representing all paths that might be traversed through a program during
     execution.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: '**CFG**是编译设计和静态程序分析中的一个基本数据结构，它表示程序在执行过程中可能遍历的所有路径。'
 - en: 'A CFG consists of the following key components:'
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 一个CFG由以下关键组件组成：
 - en: '**Nodes**: Correspond to basic blocks, a straight-line sequence of operations
     with one entry and one exit point'
+  id: totrans-25
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**节点**：对应于基本块，一个具有一个入口点和一个出口点的操作直线序列'
 - en: '**Edges**: Represent the flow of control from one block to another, including
     both conditional and unconditional branches'
+  id: totrans-26
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**边**：表示从一个块到另一个块的控件流，包括条件和无条件分支'
 - en: '**Start and end nodes**: Every CFG has a unique entry node and one or more
     exit nodes'
+  id: totrans-27
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**起始和结束节点**：每个CFG都有一个唯一的入口节点和一个或多个出口节点'
 - en: 'As an example of a CFG, consider the function to calculate the maximum of two
     integer numbers that we used as an example before; see [Figure 2.5](B19722_02.xhtml#x1-37021r5):'
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 作为CFG的一个示例，考虑我们之前用作示例的两个整数最大值的函数；参见[图2.5](B19722_02.xhtml#x1-37021r5)：
 - en: '[PRE0]'
+  id: totrans-29
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: '**Figure 6.1**: CFG example C++ code: max.cpp'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.1**: max.cpp的CFG示例 C++代码'
 - en: 'The corresponding CFG can be represented as follows:'
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 相应的CFG可以表示如下：
 - en: '![Figure 6.2: CFG example for max.cpp ](img/Figure6.2_B19722.png)'
+  id: totrans-32
   prefs: []
   type: TYPE_IMG
+  zh: '![图6.2: max.cpp的CFG示例](img/Figure6.2_B19722.png)'
 - en: '**Figure 6.2**: CFG example for max.cpp'
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.2**: max.cpp的CFG示例'
 - en: 'The diagram shown in [Figure 6.2](#Figure6.2) visually represents a CFG for
     the `max` function (from [Figure 6.1](#x1-120012r1)) with a series of connected
     nodes and directed edges:'
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 如[图6.2](#Figure6.2)所示，该图直观地表示了`max`函数的CFG（来自[图6.1](#x1-120012r1)），通过一系列连接的节点和有向边：
 - en: '**Entry node**: At the top, there is an “**entry**” node, representing the
     starting point of the function’s execution.'
+  id: totrans-35
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**入口节点**：在顶部，有一个“**entry**”节点，表示函数执行的起点。'
 - en: '**Conditional node**: Below the entry node, there is a node labeled “**a**
     **> b**”. This node represents the conditional statement in the function, where
     the comparison between *a* and *b* is made.'
+  id: totrans-36
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**条件节点**：在入口节点下方，有一个标记为“**a** **> b**”的节点。此节点表示函数中的条件语句，其中比较*a*和*b*。'
 - en: '**Branches for true and false conditions**:'
+  id: totrans-37
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**真和假条件分支**：'
 - en: On the true branch (left side), there is a node labeled “**Return** **a**”,
     connected by an edge from the “**a > b**” node. This edge is labeled “**true**”,
     indicating that if *a* is greater than *b*, the flow goes to this node.
+  id: totrans-38
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在真分支（左侧），有一个标记为“**返回** **a**”的节点，通过从“**a > b**”节点的边连接。这条边标记为“**true**”，表示如果*a*大于*b*，则流程流向此节点。
 - en: On the false branch (right side), there is a node labeled “**Return** **b**”,
     connected by an edge from the “**a > b**” node. This edge is labeled “**false**”,
     indicating that if *a* is not greater than *b*, the flow goes to this node.
+  id: totrans-39
   prefs:
   - PREF_IND
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 在假分支（右侧），有一个标记为“**返回** **b**”的节点，通过从“**a > b**”节点的边连接。这条边标记为“**false**”，表示如果*a*不大于*b*，则流程流向此节点。
 - en: '**Exit node**: Below both the “**Return a**” and “**Return b**” nodes, converging
     at a point, there is an “**exit**” node. This represents the termination point
     of the function, where the control flow exits the function after returning either
     *a* or *b*.'
+  id: totrans-40
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**出口节点**：在“**Return a**”和“**Return b**”节点下方，汇聚于一点，有一个“**exit**”节点。这表示函数的终止点，在返回*a*或*b*后，控制流退出函数。'
 - en: This CFG effectively illustrates how the `max` function processes input and
     reaches a decision on which value to return based on the comparison.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 此CFG有效地说明了`max`函数如何处理输入并基于比较决定返回哪个值。
 - en: 'The CFG representation can also be used to estimate function complexity. In
     brief, a more complex picture corresponds to a more complex system. We will use
     a precise definition of complexity known as cyclomatic complexity, or M [[28](B19722_Bib.xhtml#XMcCabe1976)],
     which can be calculated as follows:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: CFG表示也可以用来估计函数的复杂度。简而言之，更复杂的图像对应更复杂的系统。我们将使用一个称为循环复杂度的精确复杂度定义，或M [[28](B19722_Bib.xhtml#XMcCabe1976)]，其计算方法如下：
 - en: '| *M = E - N + 2P* |  |'
+  id: totrans-43
   prefs: []
   type: TYPE_TB
+  zh: '| *M = E - N + 2P* |  |'
 - en: 'where:'
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 其中：
 - en: E is the number of edges in the graph
+  id: totrans-45
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: E 是图中边的数量
 - en: N is the number of nodes in the graph
+  id: totrans-46
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: N 是图中节点的数量
 - en: P is the number of connected components (for a single CFG, P is usually 1)
+  id: totrans-47
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: P 是连通分量的数量（对于单个CFG，P通常为1）
 - en: 'For the `max` function discussed earlier, the CFG can be analyzed as follows:'
+  id: totrans-48
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于前面讨论的`max`函数，CFG可以分析如下：
 - en: '**Nodes (N)**: There are five nodes (Entry, *a > b*, Return *a*, *b*, Exit)'
+  id: totrans-49
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**节点 (N)**: 有五个节点（入口，*a > b*，返回*a*，*b*，出口）'
 - en: '**Edges (E)**: There are five edges (from Entry to *a > b*, from *a > b* to
     Return *a*, from *a > b* to Return *b*, from Return *a* to Exit, and from Return
     *b* to Exit)'
+  id: totrans-50
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**边 (E)**: 有五条边（从入口到*a > b*，从*a > b*到返回*a*，从*a > b*到返回*b*，从返回*a*到出口，以及从返回*b*到出口）'
 - en: '**Connected components (P)**: As it’s a single function, *P* = 1'
+  id: totrans-51
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**连通分量 (P)**: 由于它是一个单一函数，*P* = 1'
 - en: 'Substituting these values into the formula, we get the following:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 将这些值代入公式，我们得到以下结果：
 - en: 𝑀 = 5 − 5 + 2 × 1 = 2
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 𝑀 = 5 − 5 + 2 × 1 = 2
 - en: Thus, the cyclomatic complexity of the `max` function, based on the given CFG,
     is 2\. This indicates that there are two linearly independent paths through the
     code, corresponding to the two branches of the if statement.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，基于给定的CFG，`max`函数的循环复杂度为2。这表明代码中有两条线性独立的路径，对应于if语句的两个分支。
 - en: Our next step will be to create a Clang-Tidy check that uses a CFG to calculate
     cyclomatic complexity.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的下一步将是创建一个使用CFG来计算循环复杂度的Clang-Tidy检查。
 - en: 6.4 Custom CFG check
+  id: totrans-56
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.4 自定义CFG检查
 - en: We are going to use the knowledge gained in [*Section** 5.4*](B19722_05.xhtml#x1-1090004)*,
     Custom Clang-Tidy* *check* to create a custom CFG check. As mentioned previously,
     the check will use Clang’s CFG to calculate cyclomatic complexity. The check should
     issue a warning if the calculated complexity exceeds a threshold. This threshold
     will be set up as a configuration parameter, allowing us to change it during our
     tests. Let’s start with the creation of the project skeleton.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用在[*第5.4节**](B19722_05.xhtml#x1-1090004)*中获得的关于自定义Clang-Tidy检查的知识来创建一个自定义CFG检查。如前所述，该检查将使用Clang的CFG来计算循环复杂度。如果计算出的复杂度超过阈值，则检查应发出警告。此阈值将作为配置参数设置，允许我们在测试期间更改它。让我们从创建项目骨架开始。
 - en: 6.4.1 Creating the project skeleton
+  id: totrans-58
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 6.4.1 创建项目骨架
 - en: 'We will use `cyclomaticcomplexity` as the name for our check, and our project
     skeleton can be created as follows:'
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用`cyclomaticcomplexity`作为检查的名称，我们的项目骨架可以创建如下：
 - en: '[PRE1]'
+  id: totrans-60
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: '**Figure 6.3**: Creating a skeleton for the misc-cyclomaticcomplexity check'
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.3**：为misc-cyclomaticcomplexity检查创建骨架'
 - en: 'As a result of the run, we will get a number of modified and new files. The
     most important ones for us are the following two files located in the `clang-tools-extra/clang-tidy/misc/`
     folder:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 运行结果将生成多个修改后的新文件。对我们来说，最重要的是位于`clang-tools-extra/clang-tidy/misc/`文件夹中的以下两个文件：
 - en: '`misc/CyclomaticcomplexityCheck.h` : This is the header file for our check'
+  id: totrans-63
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`misc/CyclomaticcomplexityCheck.h`：这是我们的检查的头文件'
 - en: '`misc/CyclomaticcomplexityCheck.cpp` : This file will house the implementation
     of our check'
+  id: totrans-64
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`misc/CyclomaticcomplexityCheck.cpp`：此文件将包含我们的检查实现'
 - en: These files need to be modified to achieve the required functionality for the
     check.
+  id: totrans-65
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些文件需要修改以达到检查所需的函数。
 - en: 6.4.2 Check implementation
+  id: totrans-66
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 6.4.2 检查实现
 - en: 'For the header file, we aim to add a private function to calculate the cyclomatic
     complexity. Specifically, the following code needs to be inserted:'
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于头文件，我们旨在添加一个用于计算循环复杂度的私有函数。具体来说，需要插入以下代码：
 - en: '[PRE2]'
+  id: totrans-68
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: '**Figure 6.4**: Modifications to CyclomaticcomplexityCheck.h'
+  id: totrans-69
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.4**：对CyclomaticcomplexityCheck.h的修改'
 - en: 'More substantial modifications are required in the `.cpp` file. We will begin
     with the implementation of the `registerMatchers` method, as follows:'
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`.cpp`文件中需要更多的实质性修改。我们将从`registerMatchers`方法的实现开始，如下所示：
 - en: '[PRE3]'
+  id: totrans-71
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: '**Figure 6.5**: Modifications to CyclomaticcomplexityCheck.cpp: registerMatchers
     implementation'
+  id: totrans-72
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.5**：对CyclomaticcomplexityCheck.cpp的修改：registerMatchers实现'
 - en: Based on the code, our check will be applied only to function declarations,
     `clang``::``FunctionDecl`. The code can also be extended to support other C++
     constructs.
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 根据代码，我们的检查将仅应用于函数声明，即`clang::FunctionDecl`。代码也可以扩展以支持其他C++结构。
 - en: The implementation of the `check` method is presented in [Figure 6.6](#x1-123030r6).
     At *Lines 22-23*, we perform basic checks on the matched AST node, `clang``::``FunctionDecl`
     in our case. At *Lines 25-26*, we create the CFG object using the `CFG``::``buildCFG`
@@ -355,61 +507,90 @@
     the cyclomatic complexity using the threshold, which can be obtained as the `"``Threshold``"`
     option of our check. This provides flexibility in testing for different input
     programs. *Lines 31-34* contain the implementation of the check result printout.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: '`check`方法的实现如[图6.6](#x1-123030r6)所示。在*第22-23行*，我们对匹配的AST节点进行基本检查，在我们的例子中是`clang::FunctionDecl`。在*第25-26行*，我们使用`CFG::buildCFG`方法创建CFG对象。前两个参数指定了声明（`clang::Decl`）和声明的语句（`clang::Stmt`）。在*第30行*，我们使用阈值计算循环复杂度，该阈值可以作为我们检查的`"Threshold"`选项获得。这为测试不同的输入程序提供了灵活性。*第31-34行*包含了检查结果打印的实现。'
 - en: '[PRE4]'
+  id: totrans-75
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: '**Figure 6.6**: Modifications to CyclomaticcomplexityCheck.cpp: check implementation'
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.6**：对CyclomaticcomplexityCheck.cpp的修改：检查实现'
 - en: 'The `calculateCyclomaticComplexity` method is used to calculate the cyclomatic
     complexity. It takes the created `clang``::``CFG` object as an input parameter.
     The implementation is shown in the following figure:'
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: '`calculateCyclomaticComplexity`方法用于计算循环复杂度。它接受创建的`clang::CFG`对象作为输入参数。实现如下所示：'
 - en: '[PRE5]'
+  id: totrans-78
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: '**Figure 6.7**: Modifications to CyclomaticcomplexityCheck.cpp: calculateCyclomaticComplexity
     implementation'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.7**：对CyclomaticcomplexityCheck.cpp的修改：calculateCyclomaticComplexity实现'
 - en: We iterate over all CFG blocks at *Lines 42-45*. The number of blocks corresponds
     to the number of nodes, denoted as N in [Figure 6.2](#x1-120014r3). We sum up
     the number of successors for each block to calculate the number of edges, denoted
     as E. We assume that the number of connected components, denoted as P, is equal
     to one for our simplified example.
+  id: totrans-80
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在第42-45行迭代所有CFG块。块的数量对应于节点数，在[图6.2](#x1-120014r3)中用N表示。我们计算每个块的后续节点数之和，以计算边的数量，用E表示。我们假设对于我们的简化示例，连接组件的数量，用P表示，等于一个。
 - en: After implementing the check, it’s time to build and run our new check on our
     example; see [Figure 6.1](#x1-120012r1).
+  id: totrans-81
   prefs: []
   type: TYPE_NORMAL
+  zh: 在实现检查后，是时候构建并在我们的示例上运行我们的新检查了；参见[图6.1](#x1-120012r1)。
 - en: 6.4.3 Building and testing the cyclomatic complexity check
+  id: totrans-82
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 6.4.3 构建和测试循环复杂度检查
 - en: 'We will use the basic build configuration specified in [Figure 1.4](B19722_01.xhtml#x1-27004r4)
     and build Clang-Tidy using the standard command from [Figure 5.2](B19722_05.xhtml#x1-102004r2):'
+  id: totrans-83
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将使用[图1.4](B19722_01.xhtml#x1-27004r4)中指定的基本构建配置，并使用[图5.2](B19722_05.xhtml#x1-102004r2)中的标准命令构建Clang-Tidy：
 - en: '[PRE6]'
+  id: totrans-84
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: Assuming the build configuration from [Figure 1.4](B19722_01.xhtml#x1-27004r4),
     this command will install the Clang-Tidy binary in the `<...>/llvm-project/install/bin`
     folder.
+  id: totrans-85
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设从[图1.4](B19722_01.xhtml#x1-27004r4)的构建配置，此命令将Clang-Tidy二进制文件安装到`<...>/llvm-project/install/bin`文件夹中。
 - en: Important note
+  id: totrans-86
   prefs: []
   type: TYPE_NORMAL
+  zh: 重要提示
 - en: If you use a build configuration with shared libraries (with the `BUILD``_SHARED``_LIBS`
     flag set to `ON` ), as shown in [Figure 1.12](B19722_01.xhtml#x1-30003r12), then
     you might need to install and built all artifacts with `ninja` `install` .
+  id: totrans-87
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果你使用带有共享库的构建配置（将`BUILD_SHARED_LIBS`标志设置为`ON`），如[图1.12](B19722_01.xhtml#x1-30003r12)所示，那么你可能需要使用`ninja
+    install`安装和构建所有工件。
 - en: 'We will run our check on the example program shown in [Figure 6.1](#x1-120012r1).
     As we previously calculated, the cyclomatic complexity for the test is 2, which
     is lower than the default value of 5 specified at *Line 29* in our `check` method
@@ -418,68 +599,100 @@
     be done using the `-config` option, which we previously used for `classchecker`
     check tests, as shown in [Figure 5.20](B19722_05.xhtml#x1-111061r20). The command
     for the test will look as follows:'
+  id: totrans-88
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在[图6.1](#x1-120012r1)中显示的示例程序上运行我们的检查。正如我们之前计算的，测试的循环复杂度为2，低于我们在`check`方法实现中指定的默认值5，如[图6.6](#x1-123030r6)所示。因此，我们需要将默认值重写为1，以便在测试程序中看到警告。这可以通过使用我们之前用于`classchecker`检查测试的`-config`选项来完成，如[图5.20](B19722_05.xhtml#x1-111061r20)所示。测试命令如下：
 - en: '[PRE7]'
+  id: totrans-89
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: '**Figure 6.8**: Testing cyclomatic complexity on the max.cpp example'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.8**：在max.cpp示例上测试循环复杂度'
 - en: '*Line 2* in [Figure 6.8](#x1-124011r8) indicates that we want to run only one
     Clang-Tidy check: `misc-cyclomaticcomplexity` . At *lines 3-4*, we set up the
     required threshold. *Line 5* specifies the name of the file being tested (`max.cpp`
     in our case), and the final line, *Line 6*, contains some compilation flags for
     our program.'
+  id: totrans-91
   prefs: []
   type: TYPE_NORMAL
+  zh: '[图6.8](#x1-124011r8)中的*第2行*表明我们只想运行一个Clang-Tidy检查：`misc-cyclomaticcomplexity`。在*第3-4行*中，我们设置了所需的阈值。*第5行*指定了正在测试的文件名（在我们的例子中是`max.cpp`），而最后一行，*第6行*包含了我们程序的某些编译标志。'
 - en: 'We will get the following output if we run the command from [Figure 6.8](#x1-124011r8):'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们运行[图6.8](#x1-124011r8)中的命令，将会得到以下输出：
 - en: '[PRE8]'
+  id: totrans-93
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: '**Figure 6.9**: Testing cyclomatic complexity on the max.cpp example: output'
+  id: totrans-94
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.9**：在max.cpp示例上测试循环复杂度：输出'
 - en: 'The following question might arise: How does Clang build the CFG? We can use
     a debugger to investigate the process.'
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 可能会提出以下问题：Clang是如何构建CFG的？我们可以使用调试器来调查这个过程。
 - en: 6.5 CFG on Clang
+  id: totrans-96
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.5 Clang上的CFG
 - en: A CFG is the basic data structure for advanced static analysis using Clang tools.
     Clang constructs the CFG for a function from its AST, identifying basic blocks
     and control flow edges. Clang’s CFG construction handles various C/C++ constructs,
     including loops, conditional statements, switch cases, and complex constructs
     such as `setjmp/longjmp` and C++ exceptions. Let’s consider the process using
     our example from [Figure 6.1](#x1-120012r1).
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: CFG是使用Clang工具进行高级静态分析的基本数据结构。Clang从函数的AST（抽象语法树）构建CFG，识别基本块和控制流边。Clang的CFG构建处理各种C/C++结构，包括循环、条件语句、switch情况以及如`setjmp/longjmp`和C++异常等复杂结构。让我们使用[图6.1](#x1-120012r1)中的示例来考虑这个过程。
 - en: 6.5.1 CFG construction by example
+  id: totrans-98
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 6.5.1 通过示例进行CFG构建
 - en: 'Our example from [Figure 6.1](#x1-120012r1) has five nodes, as shown in [Figure 6.2](#Figure6.2).
     Lets run a debugger to investigate the process, as follows:'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在[图6.1](#x1-120012r1)中的示例有五个节点，如图[图6.2](#Figure6.2)所示。让我们运行一个调试器来调查这个过程，如下所示：
 - en: '[PRE9]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: '**Figure 6.10**: Debugger session running to investigate the CFG creation process'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.10**: 运行以调查CFG创建过程的调试器会话'
 - en: We used the same command as in [Figure 6.8](#x1-124011r8) but changed the first
     line of the command to run the check via a debugger. We also changed the last
     line to suppress all warnings from the compiler.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们使用了与[图6.8](#x1-124011r8)中相同的命令，但将命令的第一行改为通过调试器运行检查。我们还改变了最后一行以抑制编译器的所有警告。
 - en: Important note
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 重要提示
 - en: Advanced static analysis is a part of semantic analysis. For example, warnings
     are printed if Clang detects unreachable code, controlled by the `-Wunreachable-code`
     option. The detector is a part of Clang’s semantic analysis and utilizes CFGs,
@@ -487,157 +700,231 @@
     suppress these warnings and, as a result, disable CFG initialization in Clang
     by specifying the special `-Wno-all` command-line option, which suppresses all
     warnings generated by the compiler.
+  id: totrans-104
   prefs: []
   type: TYPE_NORMAL
+  zh: 高级静态分析是语义分析的一部分。例如，如果Clang检测到不可达的代码，将会打印警告，由`-Wunreachable-code`选项控制。检测器是Clang语义分析的一部分，并利用CFGs（控制流图）以及ASTs（抽象语法树）作为基本数据结构来检测此类问题。我们可以抑制这些警告，并因此通过指定特殊的`-Wno-all`命令行选项来禁用Clang中的CFG初始化，该选项抑制编译器生成的所有警告。
 - en: We will set a breakpoint at the `CFGBuilder``::``createBlock` function, which
     creates a CFG block.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在`CFGBuilder::createBlock`函数上设置断点，该函数创建CFG块。
 - en: '[PRE10]'
+  id: totrans-106
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: '**Figure 6.11**: Running debugger and setting breakpoint for CFGBuilder::createBlock'
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.11**: 运行调试器并设置CFGBuilder::createBlock的断点'
 - en: 'If we run the debugger, we will see that the function is called five times
     for our example; that is, five CFG blocks are created for our `max` function:'
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们运行调试器，我们将看到我们的示例函数被调用了五次；也就是说，为我们的`max`函数创建了五个CFG块：
 - en: '[PRE11]'
+  id: totrans-109
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: '**Figure 6.12**: Creation of CFG blocks, with breakpoints highlighted'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.12**: 创建CFG块，突出显示断点'
 - en: The debugger session shown in [Figure 6.12](#x1-126049r12) can be considered
     the entry point to the CFG creation process. Now, it’s time to delve deeply into
     the implementation details.
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: 如[图6.12](#x1-126049r12)中所示的调试器会话可以被认为是CFG创建过程的入口点。现在，是时候深入探讨实现细节了。
 - en: 6.5.2 CFG construction implementation details
+  id: totrans-112
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 6.5.2 CFG构建实现细节
 - en: 'The blocks are created in reverse order, as seen in [Figure 6.13](#x1-127017r13).
     The first block to be created is the exit block, as shown in [Figure 6.13](#x1-127017r13),
     *Line 4*. Then, the CFG builder traverses the `clang``::``Stmt` object passed
     as a parameter (*Line 9*). The entry block is created last, at *Line 12*:'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 块是按相反的顺序创建的，如图[图6.13](#x1-127017r13)所示。首先创建的是退出块，如图[图6.13](#x1-127017r13)所示，*第4行*。然后，CFG构建器遍历作为参数传递的`clang::Stmt`对象（*第9行*）。入口块最后创建，在*第12行*：
 - en: '[PRE12]'
+  id: totrans-114
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: '**Figure 6.13**: Simplified buildCFG implementation from clang/lib/Analysis/CFG.cpp'
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.13**: 从clang/lib/Analysis/CFG.cpp中提取的简化buildCFG实现'
 - en: 'The visitor uses the `clang``::``Stmt``::``getStmtClass` method to implement
     an ad hoc visitor based on the type of the statement, as shown in the following
     code snippet:'
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: 访问者使用`clang::Stmt::getStmtClass`方法根据语句的类型实现一个临时的访问者，如下面的代码片段所示：
 - en: '[PRE13]'
+  id: totrans-117
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: '**Figure 6.14**: Statement visitor implementation; the cases used for our example
     are highlighted, the code was taken from clang/lib/Analysis/CFG.cpp'
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.14**: 状态访问者实现；用于我们示例的情况被突出显示，代码取自clang/lib/Analysis/CFG.cpp'
 - en: Our example includes two return statements and one `if` statement, which are
     combined into a compound statement. The relevant parts of the visitor are shown
     in [Figure 6.14](#x1-127035r14).
+  id: totrans-119
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的例子包括两个返回语句和一个`if`语句，它们被组合成一个复合语句。访问者的相关部分在[图6.14](#x1-127035r14)中显示。
 - en: 'In our case, the passed statement is a compound statement; therefore, *Line
     6* from [Figure 6.14](#x1-127035r14) is activated. The following code is then
     executed:'
+  id: totrans-120
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们的例子中，传递的语句是一个复合语句；因此，[图6.14](#x1-127035r14)中的第6行被激活。然后执行以下代码：
 - en: '[PRE14]'
+  id: totrans-121
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: '**Figure 6.15**: Compound statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.15**：复合语句访问者，代码来自clang/lib/Analysis/CFG.cpp'
 - en: 'Several constructions are visited while the CFG is being created for our example.
     The first one is `clang``::``IfStmt`. The relevant parts are shown in the following
     figure:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 在为我们的例子创建CFG时，访问了几个构造。第一个是`clang::IfStmt`。相关部分在以下图中显示：
 - en: '[PRE15]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: '**Figure 6.16**: If statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  id: totrans-125
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.16**：`if`语句访问者，代码来自clang/lib/Analysis/CFG.cpp'
 - en: A special block for the `if` statement is created at *Line 18*. We also visit
     the ’then’ condition at *Line 8*.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: 在第18行创建了一个特殊的`if`语句块。我们还访问了第8行的`then`条件。
 - en: 'The ’then’ condition leads to visiting a return statement. The corresponding
     code is as follows:'
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: '`then`条件导致访问返回语句。相应的代码如下：'
 - en: '[PRE16]'
+  id: totrans-128
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: '**Figure 6.17**: Return statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp'
+  id: totrans-129
   prefs: []
   type: TYPE_NORMAL
+  zh: '**图6.17**：返回语句访问者，代码来自clang/lib/Analysis/CFG.cpp'
 - en: For our example, it creates a block at *Line 3* and visits the return expression
     at *Line 8*. Our return expression is a trivial one that does not necessitate
     the creation of a new block.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于我们的例子，它在第3行创建了一个块并访问了第8行的返回表达式。我们的返回表达式是一个简单的表达式，不需要创建新的块。
 - en: 'The code fragments presented in [Figure 6.13](#x1-127017r13) to [Figure 6.17](#x1-127097r17)
     show only the block creation procedure. Some important parts were omitted for
     simplicity. Notably, the build procedure also involves the following:'
+  id: totrans-131
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[图6.13](#x1-127017r13)到[图6.17](#x1-127097r17)中展示的代码片段仅显示了块创建过程。为了简化，省略了一些重要部分。值得注意的是，构建过程还涉及以下内容：
 - en: 'Edge creation: A typical block can have one or more successors. The list of
     nodes (blocks) with a list of successors (edges) for each block maintains the
     entire graph structure, representing symbolic program execution.'
+  id: totrans-132
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 边缘创建：一个典型的块可以有一个或多个后继者。每个块的节点（块）列表以及每个块的后继者（边）列表维护整个图结构，表示符号程序执行。
 - en: 'Storing meta-information: Each block stores additional meta-information associated
     with it. For instance, each block keeps a list of statements in the block.'
+  id: totrans-133
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 存储元信息：每个块存储与其相关的附加元信息。例如，每个块保留该块中语句的列表。
 - en: 'Processing edge cases: C++ is a complex language with many different language
     constructs that require special processing.'
+  id: totrans-134
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 处理边缘情况：C++是一种复杂的语言，具有许多不同的语言结构，需要特殊处理。
 - en: The CFG is a fundamental data structure for advanced code analysis. Clang has
     several tools created using CFGs. Let’s briefly look at them.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: CFG是高级代码分析的基本数据结构。Clang有几个使用CFG创建的工具。让我们简要地看看它们。
 - en: 6.6 Brief description of Clang analysis tools
+  id: totrans-136
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.6 Clang分析工具简要描述
 - en: 'As mentioned earlier, the CFG is foundational for other analysis tools in Clang,
     several of which have been created atop the CFG. These tools also employ advanced
     mathematics to analyze various cases. The most notable tools are as follows [[32](B19722_Bib.xhtml#XClangDataFlow2020)]:'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 如前所述，CFG是Clang中其他分析工具的基础，其中一些是在CFG之上创建的。这些工具也使用高级数学来分析各种情况。最显著的工具如下 [[32](B19722_Bib.xhtml#XClangDataFlow2020)]：
 - en: 'LivenessAnalysis: Determines whether a computed value will be used before being
     overwritten, producing liveness sets for each statement and CFGBlock'
+  id: totrans-138
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: LivenessAnalysis：确定计算值在覆盖之前是否会被使用，为每个语句和CFGBlock生成活动性集
 - en: 'UninitializedVariables: Identifies the use of uninitialized variables through
     multiple passes, including initial categorization of statements and subsequent
     calculation of variable usages'
+  id: totrans-139
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 未初始化变量：通过多次遍历识别未初始化变量的使用，包括对语句的初始分类和后续的变量使用计算
 - en: 'Thread Safety Analysis: Analyzes annotated functions and variables to ensure
     thread safety'
+  id: totrans-140
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 线程安全性分析：分析标记的函数和变量以确保线程安全性
 - en: LivenessAnalysis in Clang is essential for optimizing code by determining whether
     a value computed at one point will be used before being overwritten. It produces
     liveness sets for each statement and CFGBlock, indicating potential future use
@@ -649,19 +936,26 @@
     with corner cases and documentation, its straightforward implementation and the
     ability to cache and query results make it a vital tool in enhancing software
     performance and resource management.
+  id: totrans-141
   prefs: []
   type: TYPE_NORMAL
+  zh: Clang 中的 LivenessAnalysis 对于通过确定在某个点计算出的值在覆盖之前是否会被使用来优化代码至关重要。它为每个语句和 CFGBlock
+    生成活动集，指示变量或表达式的潜在未来使用。这种“可能”的后向分析通过将变量声明和赋值视为写入，将其他上下文视为读取，简化了读写分类，无论是否存在别名或字段使用。它在死代码消除和编译器优化（如高效的寄存器分配）中非常有价值，有助于释放内存资源并提高程序效率。尽管存在边缘案例和文档的挑战，但其直接的实现和缓存查询结果的能力使其成为提高软件性能和资源管理的重要工具。
 - en: Important note
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 重要注意事项
 - en: Forward analysis is a method used in programming to check how data moves through
     a program from start to finish. Following the data path step by step as the program
     runs allows us to see how it changes or where it goes. This method is instrumental
     for identifying issues such as improperly set-up variables or tracking data flow
     in the program. It contrasts with backward analysis, which starts at the end of
     the program and works backward.
+  id: totrans-143
   prefs: []
   type: TYPE_NORMAL
+  zh: 前向分析是编程中用来检查数据从程序开始到结束如何流动的方法。随着程序的运行，逐步跟踪数据路径使我们能够看到它的变化或去向。这种方法对于识别诸如设置不当的变量或跟踪程序中的数据流等问题至关重要。它与反向分析形成对比，反向分析从程序的末尾开始，向后工作。
 - en: UninitializedVariables analysis in Clang, designed to detect the use of variables
     before initialization, operates as a forward ”must” analysis. It involves multiple
     passes, including initial code scanning for statement classification and subsequent
@@ -669,8 +963,11 @@
     more sophisticated scenarios than LivenessAnalysis, it faces challenges such as
     lacking support for record fields and non-reusable analysis results, limiting
     its efficiency in certain situations.
+  id: totrans-144
   prefs: []
   type: TYPE_NORMAL
+  zh: Clang 中的未初始化变量分析旨在检测在初始化之前使用变量的情况，它作为一个前向的“必须”分析操作。它涉及多个遍历，包括对代码进行初始扫描以对语句进行分类，以及随后使用固定点算法通过
+    CFG 传播信息。它处理比 LivenessAnalysis 更复杂的场景，面临着诸如缺乏对记录字段和非可重用分析结果支持等挑战，这限制了它在某些情况下的效率。
 - en: Thread Safety Analysis in Clang, a forward analysis, focuses on ensuring proper
     synchronization in multithreaded code. It computes sets of locked mutexes for
     each statement in a block and utilizes annotations to indicate guarded variables
@@ -679,47 +976,65 @@
     strong C++ support and a sophisticated understanding of variable interactions,
     it faces limitations, such as lack of support for aliasing, which can lead to
     false positives.
+  id: totrans-145
   prefs: []
   type: TYPE_NORMAL
+  zh: Clang 中的线程安全性分析是一种前向分析，它专注于确保多线程代码中的正确同步。它为每个语句块中的每个语句计算被锁定互斥锁的集合，并利用注解来指示受保护的变量或函数。将
+    Clang 表达式转换为 TIL（类型中间语言）[[32](B19722_Bib.xhtml#XClangDataFlow2020)]，它有效地处理了 C++
+    表达式和注解的复杂性。尽管它对 C++ 有强大的支持，并且对变量交互有深入的理解，但它面临着一些限制，例如缺乏对别名支持，这可能导致误报。
 - en: 6.7 Knowing the limitations of analysis
+  id: totrans-146
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.7 了解分析的限制
 - en: 'It’s worth mentioning some limitations of the analysis that can be conducted
     with Clang’s AST and CFG. The most notable ones are mentioned here [[2](B19722_Bib.xhtml#XCIR)]:'
+  id: totrans-147
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得提及的是，使用 Clang 的 AST 和 CFG 可以进行一些分析的限制，其中最显著的如下 [[2](B19722_Bib.xhtml#XCIR)]：
 - en: 'Limitations of Clang’s AST: Clang’s AST is unsuitable for data flow analysis
     and control flow reasoning, leading to inaccurate results and inefficient analysis
     due to the loss of vital language information. Soundness of analysis is also a
     consideration, where the precision of certain analyses, such as liveness analysis,
     can be valuable if they are precise enough rather than always being conservative.'
+  id: totrans-148
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Clang的AST局限性：Clang的AST不适合数据流分析和控制流推理，由于丢失了关键的语言信息，导致结果不准确且分析效率低下。分析的健全性也是一个考虑因素，某些分析（如可达性分析）的精确性如果足够精确，那么它们是有价值的，而不是总是保守的。
 - en: 'Issues with Clang’s CFG: While Clang’s CFG aims to bridge the gap between AST
     and LLVM IR, it encounters known problems, has limited interprocedural capabilities,
     and lacks adequate testing coverage.'
+  id: totrans-149
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Clang的CFG问题：尽管Clang的CFG旨在弥合AST和LLVM IR之间的差距，但它遇到了已知的问题，具有有限的跨程序能力，并且缺乏足够的测试覆盖率。
 - en: One example mentioned in [[2](B19722_Bib.xhtml#XCIR)] relates to C++ coroutines,
     a new feature introduced in C++20\. Some aspects of this functionality are implemented
     outside the Clang frontend and are not visible with tools such as Clang’s AST
     and CFG. This limitation makes analysis, especially lifetime analysis, tricky
     for such functionalities.
+  id: totrans-150
   prefs: []
   type: TYPE_NORMAL
+  zh: 在[[2](B19722_Bib.xhtml#XCIR)]中提到的一个例子与C++20中引入的新特性C++ coroutines有关。该功能的一些方面是在Clang前端之外实现的，并且无法通过Clang的AST和CFG等工具看到。这种限制使得对这些功能的分析，尤其是生命周期分析，变得复杂。
 - en: Despite these limitations, Clang’s CFG remains a powerful tool widely used in
     compiler and compiler tool development. There is also active development of other
     tools [[27](B19722_Bib.xhtml#XCIR_upstream)] that aim to close the gaps in Clang’s
     CFG capabilities.
+  id: totrans-151
   prefs: []
   type: TYPE_NORMAL
+  zh: 尽管存在这些局限性，Clang的CFG仍然是一个在编译器和编译器工具开发中广泛使用的强大工具。还有其他工具正在积极开发中 [[27](B19722_Bib.xhtml#XCIR_upstream)]，旨在弥合Clang的CFG能力上的差距。
 - en: 6.8 Summary
+  id: totrans-152
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.8 摘要
 - en: In this chapter, we investigated Clang’s CFG, a powerful data structure that
     represents the symbolic execution of a program. We created a simple Clang-Tidy
     check using a CFG to calculate cyclomatic complexity, a metric useful for estimating
@@ -728,31 +1043,45 @@
     with CFGs, which are useful for detecting lifetime issues, thread safety, and
     uninitialized variables. We also briefly described the limitations of CFGs and
     how other tools can address these limitations.
+  id: totrans-153
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们研究了Clang的CFG，这是一种强大的数据结构，用于表示程序的符号执行。我们使用CFG创建了一个简单的Clang-Tidy检查，用于计算环路复杂度，这是一个用于估计代码复杂度的有用度量。此外，我们还探讨了CFG创建的细节及其基本内部结构的形成。我们讨论了一些使用CFG开发的工具，这些工具对于检测生命周期问题、线程安全和未初始化变量很有用。我们还简要描述了CFG的局限性以及其他工具如何解决这些局限性。
 - en: The next chapter will cover refactoring tools. These tools can perform complex
     code modifications using the AST provided by the Clang compiler.
+  id: totrans-154
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一章将介绍重构工具。这些工具可以使用Clang编译器提供的AST执行复杂的代码修改。
 - en: 6.9 Future reading
+  id: totrans-155
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 6.9 未来阅读
 - en: Flemming Nielson, Hanne Riis Nielson, and Chris Hankin, *Principles* *of Program
     Analysis*, Springer, 2005 [[29](B19722_Bib.xhtml#XNielson2005Principles)]
+  id: totrans-156
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Flemming Nielson、Hanne Riis Nielson和Chris Hankin，*程序分析原理*，Springer，2005 [[29](B19722_Bib.xhtml#XNielson2005Principles)]
 - en: 'Xavier Rival and Kwangkeun Yi, *Introduction to Static Analysis: An* *Abstract*
     *Interpretation Perspective*, The MIT Press, 2020 [[30](B19722_Bib.xhtml#XRivalYi2020StaticAnalysis)]'
+  id: totrans-157
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: Xavier Rival和Kwangkeun Yi，*静态分析导论：抽象解释视角*，麻省理工学院出版社，2020 [[30](B19722_Bib.xhtml#XRivalYi2020StaticAnalysis)]
 - en: 'Kristóf Umann *A survey of dataflow analyses in Clang*: [https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html](https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html)'
+  id: totrans-158
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 'Kristóf Umann *Clang中数据流分析的调查*: [https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html](https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html)'
 - en: 'Bruno Cardoso Lopes and Nathan Lanza *An MLIR based Clang IR* *(CIR)*: [https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319](https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319)'
+  id: totrans-159
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 'Bruno Cardoso Lopes和Nathan Lanza *基于MLIR的Clang IR* *(CIR)*: [https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319](https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319)'
