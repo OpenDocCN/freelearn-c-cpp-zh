@@ -1,0 +1,775 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><div id="_idContainer129" class="Basic-Text-Frame">
+    <h1 class="chapterNumber">10</h1>
+    <h1 id="_idParaDest-286" class="chapterTitle">Advanced Animation Blending</h1>
+    <p class="normal">Welcome to <a href=""><em class="italic">Chapter 10</em></a>! In the previous chapter, we added a bit more <em class="italic">real-life behavior</em> to the instances. After a brief overview of behavior trees, we added a visual node editor to visually draw the behavior of the instances by using a simple finite state machine. At the end of the chapter, we extended the code and implemented interaction as an additional form of behavior.</p>
+    <p class="normal">In this chapter, the instances will come even more to life. We start with a short exploration of the world of face animations made by morph target animations. Then we will add extra functionality to load morph meshes into the application and enable control over the face animations of the instances. Next, we add a graph node to be able to use face animations in the node trees as well. At the end of the chapter, additive blending will be implemented, allowing us to move the head of the instances independently of the skeletal and face animations.</p>
+    <p class="normal">In this chapter, we will cover the following topics:</p>
+    <ul>
+      <li class="bulletList">How to animate facial expressions</li>
+      <li class="bulletList">Adding face animations to code and GPU shaders</li>
+      <li class="bulletList">Using face animations in node trees</li>
+      <li class="bulletList">Implementing additive blending</li>
+    </ul>
+    <h1 id="_idParaDest-287" class="heading-1">Technical requirements</h1>
+    <p class="normal">The example code is in the <code class="inlineCode">chapter10</code> folder, in the <code class="inlineCode">01_opengl_morphanim</code> subfolder for OpenGL and <code class="inlineCode">02_vulkan_morphanim</code> subfolder for Vulkan.</p>
+    <h1 id="_idParaDest-288" class="heading-1">How to animate facial expressions</h1>
+    <p class="normal">After implementing behavior in <a href="Chapter_9.xhtml"><em class="italic">Chapter 9</em></a>, life in our virtual world has become a lot more vivid. The instances can walk or <a id="_idIndexMarker500"/>run around by themselves, do simple tasks at random times, react to a collision with another instance, and won’t leave the virtual world beyond the invisible borders.</p>
+    <p class="normal">But the instances still appear a bit sterile and lifeless. They roam around like robots, always looking forward, keeping a straight face. No emotions are visible, and there are no reactions to interactions other than playing a waving animation.</p>
+    <p class="normal">So, let’s give the instances the ability to show emotions by adding facial expressions. The most common way to add face animations<a id="_idIndexMarker501"/> to any kind of <em class="italic">living</em> virtual object is <strong class="keyWord">morph target animations</strong>.</p>
+    <p class="normal">To get the idea of morph target animations, here’s a simple example. In <em class="italic">Figure 10.1</em>, three different weights of a morph target animation are shown:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.01_B22428.png" alt="" width="1375" height="550"/></figure>
+    <p class="packt_figref">Figure 10.1: Three different weights during an angry morph target animation</p>
+    <p class="normal">The left face has an <em class="italic">angry</em> morph target animation applied to 0%, showing only the original face. The middle face has the morph target applied to 50%, blending halfway between the original face and the full morph, and for the right face, the full morph target animation has been applied.</p>
+    <p class="normal">As you can see, the eyebrows have been rotated, the mouth vertex has been moved a bit upward in the final state, and the <a id="_idIndexMarker502"/>vertex positions are only interpolated between the original and the final mesh. But these small vertex position changes create an entirely different facial expression for the model.</p>
+    <p class="normal">Morph target animations may<a id="_idIndexMarker503"/> have a different name in your tool, such as <strong class="keyWord">per-vertex animation</strong>, <strong class="keyWord">shape interpolation</strong>, <strong class="keyWord">shape keys</strong>, or <strong class="keyWord">blend shapes</strong>. All these names describe the same technique: multiple deformed versions of a mesh are stored in keyframes, and the animation of the mesh is done by interpolating the vertex positions between the positions in the keyframes.</p>
+    <p class="normal">There’s an important difference between skeletal animals and morph target animations when it comes to cost: a skeletal animation only affects the properties of the model’s nodes, while morph animations replace an entire mesh of the model’s virtual skin, and the mesh needs to be duplicated for every morph animation the model should play, raising the overall size of the model as a file on disk and in memory.</p>
+    <p class="normal">Models have quite a small number of bones but many vertices for the skin, so recalculating the positions for a large number of vertices in every frame adds extra computation costs to morph animations. Luckily, the morph animations happen entirely in the vertex shader and are only linear interpolations between two positions saved as vectors. Thus, the additional computational burden of a morph animation remains negligible in our example code.</p>
+    <p class="normal">In Blender, morph target animations can be controlled by the <strong class="screenText">Shape Keys</strong> options on the <strong class="screenText">Data</strong> tab. <em class="italic">Figure 10.2</em> shows the setting used for the right face of <em class="italic">Figure 10.1</em>, with the <strong class="screenText">Value</strong> set to <code class="inlineCode">1.000</code> to apply 100% of the <strong class="screenText">Angry</strong> morph:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.02_B22428.png" alt="" width="775" height="593"/></figure>
+    <p class="packt_figref">Figure 10.2: Shape keys in Blender controlling morph target animations</p>
+    <p class="normal">Creating and modifying shape key-based morph target animations in Blender is beyond the scope of this book. Blender has some<a id="_idIndexMarker504"/> basic documentation about shape keys, a link is included in the <em class="italic">Additional resources</em> section, and there are plenty of videos around showing how to work with shape keys in Blender.</p>
+    <p class="normal">If you have a model file containing morph target animations available, like the two models in the <code class="inlineCode">assets</code> folder of <a href=""><em class="italic">Chapter 10</em></a>, or if you have created your own set of morph animations in any other existing model, you are ready to go for the next step: using the Open Asset Importer Library to import these extra animations.</p>
+    <p class="normal">Let’s now learn how to add morph target animations to our application.</p>
+    <h1 id="_idParaDest-289" class="heading-1">Adding face animations to code and GPU shaders</h1>
+    <p class="normal">Morph target animation data is stored in two places in an Assimp model file. </p>
+    <p class="normal">The first part of the morph animation data, the meshes, reside in the <code class="inlineCode">mAnimMeshes</code> array of an <code class="inlineCode">aiMesh</code> node, and the <a id="_idIndexMarker505"/>number of meshes is stored in the <code class="inlineCode">mNumAnimMeshes</code> variable of the <code class="inlineCode">aiMesh</code>. Every element of the <code class="inlineCode">mAnimMeshes</code> array contains the exact same number of vertices as the original mesh, allowing us to interpolate the vertex positions between different versions of the mesh.</p>
+    <p class="normal">This interpolation is not limited to blending between the original mesh and one of the morph target meshes. Also, blending between two morph target meshes is possible, or mixing positions of more than two meshes. Be aware that the outcome of mixing meshes may not always be as expected as the effect of the morph target animations heavily depends on the intention of the animator.</p>
+    <p class="normal">The second part of the morph animation data, the keyframe data, is in the <code class="inlineCode">mMorphMeshChannels</code> array of an <code class="inlineCode">aiAnimation</code> node, which has the number of keyframes stored in a variable called <code class="inlineCode">mNumMorphMeshChannels</code>. The keys in every keyframe contain the points in time for the specific key, plus the numbers of the morph mesh to use and the weight of the morph mesh in a linear interpolation.</p>
+    <p class="normal">We will only use the mesh data to interpolate between different facial expressions, so we ignore the animation data for the morph meshes. But it is easy to add support for the morph target animations on top of the code of this chapter.</p>
+    <p class="normal">As the first step on<a id="_idIndexMarker506"/> the way to morph animations, we will learn how to load the additional mesh data and extract the vertices.</p>
+    <h2 id="_idParaDest-290" class="heading-2">Loading morph meshes</h2>
+    <p class="normal">Since every vertex in a morph mesh replaces the position and the normal of the same vertex in the original mesh, only a <a id="_idIndexMarker507"/>subset of vertex data is needed for the<a id="_idIndexMarker508"/> replacement vertices. We will create a <em class="italic">lightweight</em> version of a vertex named <code class="inlineCode">OGLMorphVertex</code> in the <code class="inlineCode">OGLRenderData.h</code> file in the <code class="inlineCode">opengl</code> folder, containing only the position and normal:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">OGLMorphVertex</span> {
+  glm::vec4 position = glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>);
+  glm::vec4 normal = glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>);
+};
+</code></pre>
+    <p class="normal">To collect the replacement morph vertices into a mesh, we also create a new <code class="inlineCode">struct</code> called <code class="inlineCode">OGLMorphMesh</code> that contains all the vertices in a <code class="inlineCode">std::vector</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">OGLMorphMesh</span> {
+  std::vector&lt;OGLMorphVertex&gt; morphVertices{};
+};
+</code></pre>
+    <p class="normal">As all the morph meshes depend on the original meshes, we add a <code class="inlineCode">OGLMorphMesh</code> vector to the default mesh, <code class="inlineCode">struct</code> <code class="inlineCode">OGLMesh</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">OGLMesh</span> {
+  ...
+<span class="code-highlight"><strong class="hljs-slc">  std::vector&lt;OGLMorphMesh&gt; morphMeshes{};</strong></span>
+};
+</code></pre>
+    <p class="normal">For Vulkan, the two new structs are named <code class="inlineCode">VkMorphVertex</code> and <code class="inlineCode">VkMorphMesh</code>, residing in the <code class="inlineCode">VkRenderData.h</code> file in the <code class="inlineCode">vulkan</code> folder. The <code class="inlineCode">VkMorphMesh</code> vector is added to the <code class="inlineCode">VkMesh</code> <code class="inlineCode">struct</code>.</p>
+    <p class="normal">Right before the end of the <code class="inlineCode">processMesh()</code> method in the <code class="inlineCode">AssimpMesh</code> class, we add a new code block to extract the morph mesh data from the model file. First, we check if we have any morph meshes <a id="_idIndexMarker509"/>attached to the current mesh:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">int</span> animMeshCount = mesh-&gt;mNumAnimMeshes;
+  <span class="hljs-keyword">if</span> (animMeshCount &gt; <span class="hljs-number">0</span>) {
+</code></pre>
+    <p class="normal">If we find morph meshes, we iterate over all morph meshes, extracting the mesh data and the number of vertices:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; animMeshCount; ++i) {
+      aiAnimMesh* animMesh = mesh-&gt;mAnimMeshes[i];
+      <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> mAninVertexCount =
+        animMesh-&gt;mNumVertices;
+</code></pre>
+    <p class="normal">Per definition, the number of vertices in the morph mesh must match the number of vertices in the original mesh. It does <a id="_idIndexMarker510"/>not hurt to do an addition check here, skipping the entire morph mesh and printing an error when a vertex count mismatch is detected:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">if</span> (animVertexCount != mVertexCount) {
+        Logger::<span class="hljs-built_in">log</span>(<span class="hljs-number">1</span>, <span class="hljs-string">"%s error: morph mesh %i vertex</span>
+<span class="hljs-string">          count does not match (orig mesh has %i vertices,</span>
+<span class="hljs-string">          morph mesh %i)\n"</span>,
+      __  FUNCTION__, i, mVertexCount, animVertexCount);
+        <span class="hljs-keyword">continue</span>;
+      }
+</code></pre>
+    <p class="normal">Next, we check whether the morph mesh contains position data and create a temporary <code class="inlineCode">OGLMorphMesh</code> if the check succeeds:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">if</span> (animMesh-&gt;<span class="hljs-built_in">HasPositions</span>()) {
+        OGLMorphMesh newMorphMesh{};
+</code></pre>
+    <p class="normal">It may sound silly to check whether the morph mesh has vertex positions, but morph meshes can also override other data, such as normals, colors, or texture positions. It is possible to encounter a morph mesh without position data.</p>
+    <p class="normal">Then, we loop over all vertices and extract the vertex positions:</p>
+    <pre class="programlisting code"><code class="hljs-code">        <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; animVertexCount; ++i) {
+          OGLMorphVertex vertex;
+          vertex.position.x = animMesh-&gt;mVertices[i].x;
+          vertex.position.y = animMesh-&gt;mVertices[i].y;
+          vertex.position.z = animMesh-&gt;mVertices[i].z;
+</code></pre>
+    <p class="normal">If normal data is stored in the morph mesh too, we extract the normals. Without normal data, we set the vertex normal to zero:</p>
+    <pre class="programlisting code"><code class="hljs-code">          <span class="hljs-keyword">if</span> (animMesh-&gt;<span class="hljs-built_in">HasNormals</span>()) {
+            vertex.normal.x = animMesh-&gt;mNormals[i].x;
+            vertex.normal.y = animMesh-&gt;mNormals[i].y;
+            vertex.normal.z = animMesh-&gt;mNormals[i].z;
+          } <span class="hljs-keyword">else</span> {
+            vertex.normal = glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>);
+          }
+</code></pre>
+    <p class="normal">Finally, we place the vertex into the temporary <code class="inlineCode">OGLMorphMesh</code>, and after all the vertices are processed, the <code class="inlineCode">OGLMorphMesh</code> is added to the <code class="inlineCode">morphMeshes</code> vector of the <code class="inlineCode">OGLMesh</code> for this <code class="inlineCode">AssimpMesh</code> object:</p>
+    <pre class="programlisting code"><code class="hljs-code">          newMorphMesh.morphVertices.<span class="hljs-built_in">emplace_back</span>(vertex);
+        }
+        mMesh.morphMeshes.<span class="hljs-built_in">emplace_back</span>(newMorphMesh);
+      }
+    }
+  }
+</code></pre>
+    <p class="normal">Accessing any <a id="_idIndexMarker511"/>alternative morph meshes is now as simple as checking the <code class="inlineCode">morphMeshes</code> vector for a size greater than zero, and if we have any morph meshes, extracting<a id="_idIndexMarker512"/> the vertex data and interpolating between the positions and normals of the original vertices and the vertices of the selected morph mesh.</p>
+    <p class="normal">At this point, all valid morph meshes found in the model file are available as part of the <code class="inlineCode">AssimpMesh</code> mesh data. To use these morph meshes for face animations, we must add some code and logic to the application.</p>
+    <h2 id="_idParaDest-291" class="heading-2">Storing all morph meshes in a single buffer</h2>
+    <p class="normal">To use the vertices of the <a id="_idIndexMarker513"/>morph meshes in a shader, we store the vertex data of all morph meshes into a single SSBO. Using a single SSBO is needed due to the instanced rendering of the model instances on the screen – we need the vertex<a id="_idIndexMarker514"/> data of all meshes available at all times during the rendering since we cannot tell when a specific model instance will be drawn to the screen. Splitting the rendering depending on the selected morph mesh would also be possible, but that would be quite a costly alternative as we must filter the instances on every draw call.</p>
+    <p class="normal">The morph mesh SSBO plus some related variables are added to the <code class="inlineCode">AssimpModel</code> class. First, three new <code class="inlineCode">private</code> variables are added to the <code class="inlineCode">AssimpModel.h</code> header file: <code class="inlineCode">mNumAnimatedMeshes</code>, <code class="inlineCode">mAnimatedMeshVertexSize</code>, and <code class="inlineCode">mAnimMeshVerticesBuffer</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> mNumAnimatedMeshes = <span class="hljs-number">0</span>;
+    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> mAnimatedMeshVertexSize = <span class="hljs-number">0</span>;
+    ShaderStorageBuffer mAnimMeshVerticesBuffer{};
+</code></pre>
+    <p class="normal">In <code class="inlineCode">mNumAnimatedMeshes</code>, we store the number of morph meshes for this model. Right now, the code supports only a single mesh containing morph meshes, so the number in <code class="inlineCode">mNumAnimatedMeshes</code> is equal to the number of morph meshes in this specific mesh.</p>
+    <p class="normal">But since we are doing only face animations, the limit of a single mesh with morph meshes is no problem. Also, a task in the <em class="italic">Practical sessions</em> section is available to extend the code accordingly and add support for multiple meshes containing morph meshes.</p>
+    <p class="normal">The value in <code class="inlineCode">mAnimatedMeshVertexSize</code> is used to find the start of vertex data for the selected morph clip in the SSBO. By multiplying the mesh vertex size and the index of the morph clip, we can jump directly to the first vertex of the morph clip.</p>
+    <p class="normal">Finally, all vertex data is<a id="_idIndexMarker515"/> stored in the <code class="inlineCode">mAnimMeshVerticesBuffer</code> SSBO.</p>
+    <p class="normal">We also add two <code class="inlineCode">public</code> methods called <code class="inlineCode">hasAnimMeshes()</code> and <code class="inlineCode">getAnimMeshVertexSize()</code> to the <code class="inlineCode">AssimpModel.cpp</code> class implementation file. Thanks to the <em class="italic">descriptive</em> method names, no further explanation should be required.</p>
+    <p class="normal">Filling the SSBO is <a id="_idIndexMarker516"/>done in the <code class="inlineCode">loadModel()</code> method of the <code class="inlineCode">AssimpModel</code> class. When all meshes are collected into the <code class="inlineCode">mModelMeshes</code> vector, we can iterate over all meshes to add the vertex data to the new buffer:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; mesh : mModelMeshes) {
+    <span class="hljs-keyword">if</span> (mesh.morphMeshes.<span class="hljs-built_in">size</span>() == <span class="hljs-number">0</span>) {
+      <span class="hljs-keyword">continue</span>;
+    }
+</code></pre>
+    <p class="normal">As the first step of collecting the vertices in the <code class="inlineCode">mAnimMeshVerticesBuffer</code> SSBO, we check if we have any morph meshes in this mesh. If we have a mesh without additional morph meshes, we simply continue with the next mesh.</p>
+    <p class="normal">Then, we create a temporary <code class="inlineCode">OGLMorphMesh</code> called <code class="inlineCode">animMesh</code> to collect all vertices and resize the <code class="inlineCode">morphVertices</code> vector in the <code class="inlineCode">animMesh</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    OGLMorphMesh animMesh;
+    animMesh.morphVertices.<span class="hljs-built_in">resize</span>(
+      mesh.vertices.<span class="hljs-built_in">size</span>() * mNumAnimatedMeshes);
+</code></pre>
+    <p class="normal">Now we can copy all vertices of the morph mesh into <code class="inlineCode">animMesh</code>, using the number of vertices to calculate the correct position:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; mNumAnimatedMeshes; ++i) {
+      <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> vertexOffset = mesh.vertices.<span class="hljs-built_in">size</span>() * i;
+      std::<span class="hljs-built_in">copy</span>(mesh.morphMeshes[i].morphVertices.<span class="hljs-built_in">begin</span>(),
+        mesh.morphMeshes[i].morphVertices.<span class="hljs-built_in">end</span>(),
+        animMesh.morphVertices.<span class="hljs-built_in">begin</span>() + vertexOffset);
+      mAnimatedMeshVertexSize = mesh.vertices.<span class="hljs-built_in">size</span>();
+    }
+</code></pre>
+    <p class="normal">Finally, we upload the collected vertices to the SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mAnimMeshVerticesBuffer.<span class="hljs-built_in">uploadSsboData</span>(
+      animMesh.morphVertices);
+  }
+</code></pre>
+    <p class="normal">Whenever we need the morph animations of this model now, we can bind the buffer to a specified shader binding point. This binding can be achieved by using the new <code class="inlineCode">public</code> method, <code class="inlineCode">bindMorphAnimBuffer()</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">AssimpModel::bindMorphAnimBuffer</span><span class="hljs-params">(</span><span class="hljs-type">int</span><span class="hljs-params"> bindingPoint)</span><span class="hljs-function"> </span>{
+  mAnimMeshVerticesBuffer.<span class="hljs-built_in">bind</span>(bindingPoint);
+}
+</code></pre>
+    <p class="normal">To use face animations on<a id="_idIndexMarker517"/> a per-instance basis, we <a id="_idIndexMarker518"/>must add a couple of variables and methods and extend some data structures.</p>
+    <h2 id="_idParaDest-292" class="heading-2">Adding face morph settings to the code</h2>
+    <p class="normal">The most important <a id="_idIndexMarker519"/>change to enable face animations is a new <code class="inlineCode">enum</code> <code class="inlineCode">class</code> called <code class="inlineCode">faceAnimation</code>, which resides in the <code class="inlineCode">Enums.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">faceAnimation</span> : <span class="hljs-type">uint8_t</span> {
+  none = <span class="hljs-number">0</span>,
+  angry,
+  worried,
+  surprised,
+  happy
+};
+</code></pre>
+    <p class="normal">All supported morph animations are stored in the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code> the same way as actions or node types. Instead of using the morph animation from the model files, we will use only a fixed set of face animations in the code.</p>
+    <p class="normal">Similar to other data types, we add a mapping from the <code class="inlineCode">enum</code> values to strings. It is a lot easier to use the <code class="inlineCode">enum</code> value in code and show the user-friendly string in the UI. The new map named <code class="inlineCode">micFaceAnimationNameMap</code> will be added to the <code class="inlineCode">ModelInstanceCamData</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">ModelInstanceCamData.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::unordered_map&lt;faceAnimation, std::string&gt;
+    micFaceAnimationNameMap{};
+</code></pre>
+    <p class="normal">Filling the map with strings happens in the <code class="inlineCode">init()</code> method of the renderer class files, <code class="inlineCode">OGLRenderer.cpp</code> or <code class="inlineCode">VkRenderer.cpp</code>, the best place is next to the existing mapping code.</p>
+    <div class="note">
+      <p class="normal">Fixed morph mapping vs. dynamic loading from the model</p>
+      <p class="normal">The reason to hard code all morph target animation clips in the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code> and <code class="inlineCode">micFaceAnimationNameMap</code> is to keep the code simple.</p>
+      <p class="normal">While populating the list of morph target clips from the model file is easy, maintaining a dynamic list in the UI becomes quite complex. For instance, adding code to choose a morph clip in a node tree would create a hard dependency between the tree and a single model – using the same tree for other models will become impossible.</p>
+      <p class="normal">To avoid a model-tree dependency, only a predefined set of morph animations will be used. Any model can support all morph animations, none of them, or a partial number of clips with matching indices, filling any gaps with empty morph animations.</p>
+    </div>
+    <p class="normal">For the instance part, two new variables named <code class="inlineCode">isFaceAnimType</code> and <code class="inlineCode">isFaceAnimWeight</code> are added to the <code class="inlineCode">InstanceSettings</code> <code class="inlineCode">struct</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  faceAnimation isFaceAnimType = faceAnimation::none;
+  <span class="hljs-type">float</span> isFaceAnimWeight = <span class="hljs-number">0.0f</span>;
+</code></pre>
+    <p class="normal">In <code class="inlineCode">isFaceAnimType</code>, we store the current face animation clip. Due to the extra <code class="inlineCode">none</code> value in the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code>, we<a id="_idIndexMarker520"/> do not need another Boolean to switch the face animations on or off. The interpolation weight between the default face mesh and the face animation can be controlled by <code class="inlineCode">isFaceAnimWeight</code>, with <code class="inlineCode">0.0f</code> showing only the default mesh and <code class="inlineCode">1.0f</code> the morph mesh.</p>
+    <div class="note">
+      <p class="normal"><code class="inlineCode">is</code> stands for “InstanceSettings”, not for “it is”</p>
+      <p class="normal">To bring up the sidenote again, and to avoid confusion: The <code class="inlineCode">is</code> in the <code class="inlineCode">InstanceSettings</code> variable names is just the abbreviation of the <code class="inlineCode">struct</code> name, not something to define a state. So, <code class="inlineCode">isFaceAnimType</code> stands for “Instance Settings Face Animation Type”, not a Boolean controlling whether the face animation is enabled.</p>
+    </div>
+    <p class="normal">We also need to give the renderer the information about the face animations for every instance. Let’s extend the renderer as the next step.</p>
+    <h2 id="_idParaDest-293" class="heading-2">Filling the per-instance buffer data in the renderer</h2>
+    <p class="normal">As for all other <a id="_idIndexMarker521"/>shader-related data, we need an SSBO to hand the data over to the GPU. To fill the SSBO, a <code class="inlineCode">std::vector</code> of some data type is needed. So, the renderer class header file <code class="inlineCode">OGLRenderer.h</code> will get two new <code class="inlineCode">private</code> variables called <code class="inlineCode">mFaceAnimPerInstanceData</code> and <code class="inlineCode">mFaceAnimPerInstanceDataBuffer</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    std::vector&lt;glm::vec4&gt; mFaceAnimPerInstanceData{};
+    ShaderStorageBuffer mFaceAnimPerInstanceDataBuffer{};
+</code></pre>
+    <p class="normal">For the Vulkan renderer, the data type of the buffer differs. We need to add the following lines to the <code class="inlineCode">VkRenderer.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">std::vector&lt;glm::vec4&gt; mFaceAnimPerInstanceData{};
+VkShaderStorageBufferData mFaceAnimPerInstanceDataBuffer{};
+</code></pre>
+    <p class="normal">Even though we need only three values, we will use a <code class="inlineCode">glm::vec4</code> here to tackle possible data-alignment problems. You should try to avoid the three-element vector (<code class="inlineCode">glm::vec3</code>) to transport data via an SSBO to the GPU since you may get a mismatch between the vector or struct on the CPU side and the buffer on the GPU side.</p>
+    <p class="normal">The per-instance face <a id="_idIndexMarker522"/>animation SSBO will be added to the <code class="inlineCode">draw()</code> call of the renderer class file, <code class="inlineCode">OGLRenderer.cpp</code> or <code class="inlineCode">VkRenderer.cpp</code>, more specifically in the loop over the instances of the model:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; model : mModelInstCamData.micModelList) {
+  ...
+<span class="code-highlight"><strong class="hljs-slc">      mFaceAnimPerInstanceData.</strong><strong class="hljs-built_in-slc">resize</strong><strong class="hljs-slc">(numberOfInstances);</strong></span>
+      ...
+      <span class="hljs-keyword">for</span> (<span class="hljs-type">size_t</span> i = <span class="hljs-number">0</span>; i &lt; numberOfInstances; ++i) {
+</code></pre>
+    <p class="normal">We also add the resizing of the vector containing the morphing data before the loop; see the highlighted part in the previous code snippet.</p>
+    <p class="normal">And since we have already extracted the <code class="inlineCode">InstanceSettings</code> <code class="inlineCode">struct</code> of the current instance in the loop, adding the face animation is done in just a couple of lines.</p>
+    <p class="normal">First, we add an empty <code class="inlineCode">glm::vec4</code> named <code class="inlineCode">morphData</code>, plus we check whether the instance has a face animation set:</p>
+    <pre class="programlisting code"><code class="hljs-code">    glm::vec4 morphData = glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>);
+    <span class="hljs-keyword">if</span> (instSettings.isFaceAnimType !=
+      faceAnimation::none)  {
+</code></pre>
+    <p class="normal">If we should animate the face of the instance, we fill three elements of <code class="inlineCode">morphData</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">      morphData.x = instSettings.isFaceAnimWeight;
+      morphData.y =
+        <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">int</span>&gt;(instSettings.isFaceAnimType) – <span class="hljs-number">1</span>;
+      morphData.z = model-&gt;<span class="hljs-built_in">getAnimMeshVertexSize</span>();
+</code></pre>
+    <p class="normal">Now we set the weight of the face animation, the clip number decreased by one to honor the <code class="inlineCode">none</code> element of the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code>, and the number of vertices to skip between two morph meshes.</p>
+    <p class="normal">The current shader code uses the number of vertices and the clip number to calculate the first vertex of the desired morph animation, but it is possible to an absolute value here. An absolute value could become handy if we plan to extend the code to support multiple meshes with morph target animations (see the <em class="italic">Practical sessions</em> section).</p>
+    <p class="normal">Finally, we store the <code class="inlineCode">morphData</code> in the vector used to fill the SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code">    }
+    mFaceAnimPerInstanceData.<span class="hljs-built_in">at</span>(i) = morphData;
+</code></pre>
+    <p class="normal">As a last step for the face animations, the vertex shaders must be made aware of the new buffers.</p>
+    <h2 id="_idParaDest-294" class="heading-2">Extending the shader to draw face animations</h2>
+    <p class="normal">As morph target animations only change vertex data, we need to add the new SSBOs and a bit of logic to the vertex shader. There is <a id="_idIndexMarker523"/>no need to touch a compute or fragment shader, a fact that simplifies the face animation implementation a lot.</p>
+    <p class="normal">To prevent distortions for models without face animations, we will use a separate set of shaders to draw the meshes containing morph animations. First, we add two new <code class="inlineCode">private</code> shader variables to the renderer header file <code class="inlineCode">OGLRenderer.h</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    Shader mAssimpSkinningMorphShader{};
+    Shader mAssimpSkinningMorphSelectionShader{};
+</code></pre>
+    <p class="normal">For the Vulkan renderer, more work is needed here since the shaders are part of the pipelines. We need to add two <code class="inlineCode">VkPipelineLayout</code> handles, two <code class="inlineCode">VkPipeline</code> handles, two <code class="inlineCode">VkDescriptorSetLayout</code> handles, and two <code class="inlineCode">VkDescriptorSet</code> handles in the <code class="inlineCode">VkRenderData.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">VkPipelineLayout rdAssimpSkinningMorphPipelineLayout;
+VkPipelineLayout
+  rdAssimpSkinningMorphSelectionPipelineLayout;
+VkPipeline rdAssimpSkinningMorphPipeline;
+VkPipeline rdAssimpSkinningMorphSelectionPipeline;
+VkDescriptorSetLayout
+  rdAssimpSkinningMorphSelectionDescriptorLayout;
+VkDescriptorSetLayout
+  rdAssimpSkinningMorphPerModelDescriptorLayout;
+VkDescriptorSet rdAssimpSkinningMorphDescriptorSet;
+VkDescriptorSet
+  rdAssimpSkinningMorphSelectionDescriptorSet;
+</code></pre>
+    <p class="normal">With these handles, two new Vulkan pipelines are created to draw the models with and without the special selection handling. For further Vulkan implementation details, check out the <code class="inlineCode">VkRenderer.cpp</code> file.</p>
+    <p class="normal">We need to adjust the selection vertex shader to draw the morphed face meshes in the selection buffer. Without the selection shader, the head of the instances would no longer be selectable by clicking the mouse button.</p>
+    <p class="normal">For the shader code itself, we can reuse and extend the existing files. Copy the following four files to the new file names:</p>
+    <ul>
+      <li class="bulletList"><code class="inlineCode">assimp_skinning.vert</code> to <code class="inlineCode">assimp_skinning_morph.vert</code></li>
+      <li class="bulletList"><code class="inlineCode">assimp_skinning.frag</code> to <code class="inlineCode">assimp_skinning_morph.frag</code></li>
+      <li class="bulletList"><code class="inlineCode">assimp_skinning_selection.vert</code> to <code class="inlineCode">assimp_skinning_morph_selection.vert</code></li>
+      <li class="bulletList"><code class="inlineCode">assimp_skinning_selection.frag</code> to <code class="inlineCode">assimp_skinning_morph_selection.frag</code></li>
+    </ul>
+    <p class="normal">The fragment shaders with the <code class="inlineCode">.frag</code> extension will not be changed, but for further changes or debugging it is always <a id="_idIndexMarker524"/>better to use separate files for the new shaders.</p>
+    <p class="normal">In both vertex shader files ending with <code class="inlineCode">.vert</code>, add the following lines to define the new <code class="inlineCode">MorphVertex</code> <code class="inlineCode">struct</code>, matching the <code class="inlineCode">OGLMorphVertex</code> struct defined in the <code class="inlineCode">OGLRenderData.h</code> file in the <code class="inlineCode">opengl</code> folder:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">MorphVertex</span> {
+  vec4 position;
+  vec4 normal;
+};
+</code></pre>
+    <p class="normal">For Vulkan, the name of the original <code class="inlineCode">struct</code> is <code class="inlineCode">VkMorphVertex</code>, defined in <code class="inlineCode">VkRenderData.h</code> in the <code class="inlineCode">vulkan</code> folder.</p>
+    <p class="normal">Then, add two new SSBOs named <code class="inlineCode">AnimMorphBuffer</code> and <code class="inlineCode">AnimMorphData</code> on binding points four and five:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">layout</span> (<span class="hljs-keyword">std430</span>, <span class="hljs-keyword">binding</span> = <span class="hljs-number">4</span>) <span class="hljs-keyword">readonly</span> <span class="hljs-keyword">restrict</span>
+    <span class="hljs-keyword">buffer</span> AnimMorphBuffer {
+  MorphVertex morphVertices[];
+};
+<span class="hljs-keyword">layout</span> (<span class="hljs-keyword">std430</span>, <span class="hljs-keyword">binding</span> = <span class="hljs-number">5</span>) <span class="hljs-keyword">readonly</span> <span class="hljs-keyword">restrict</span>
+    <span class="hljs-keyword">buffer</span> AnimMorphData {
+  <span class="hljs-type">vec4</span> vertsPerMorphAnim[];
+};
+</code></pre>
+    <p class="normal">The first buffer, <code class="inlineCode">AnimMorphBuffer</code>, contains the vertices of all morph available animations. In the second buffer, <code class="inlineCode">AnimMorphData</code>, all instance settings are handed over from the CPU to the GPU.</p>
+    <p class="normal">Inside the <code class="inlineCode">main()</code> method of the vertex shader, we calculate the offset to the vertices for the desired face animation by multiplying the vertex count and the index of the face animation clip for every instance:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">int</span> morphAnimIndex =
+    <span class="hljs-built_in">int</span>(vertsPerMorphAnim[gl_InstanceID].y *
+        vertsPerMorphAnim[gl_InstanceID].z);
+</code></pre>
+    <p class="normal">It is no problem to cast the <code class="inlineCode">float</code> values to <code class="inlineCode">int</code> here to avoid another struct with separate integer and floating-point values and to use <code class="inlineCode">glm::vec4</code> as a “transportation object.” The first inaccurate integer represented by a float would be 2<sup class="superscript">24</sup>+1, and that value is large enough even for bigger meshes with many face animations (2<sup class="superscript">24</sup>+1 would be ~16 MiB of vertex data).</p>
+    <p class="normal">Then we extract the vertices from the morph mesh by using the <code class="inlineCode">gl_VertexID</code> internal shader variable (<code class="inlineCode">gl_VertexIndex</code> for Vulkan):</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">vec4</span> origVertex = <span class="hljs-type">vec4</span>(aPos.x, aPos.y, aPos.z, <span class="hljs-number">1.0</span>);
+  <span class="hljs-type">vec4</span> morphVertex = <span class="hljs-type">vec4</span>(morphVertices[<span class="hljs-built_in">gl_VertexID</span> +
+    morphAnimOffset].position.xyz, <span class="hljs-number">1.0</span>)
+</code></pre>
+    <p class="normal">Now we can mix the positions of the original vertex and the replacement vertex from the morph mesh according<a id="_idIndexMarker525"/> to the weight factor:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-built_in">gl_Position</span> = projection * view * worldPosSkinMat *
+    <span class="hljs-built_in">mix</span>(origVertex, morphVertex,
+    vertsPerMorphAnim[<span class="hljs-built_in">gl_InstanceID</span>].x);
+</code></pre>
+    <p class="normal">We do the same extraction and calculation work for the vertex normals since a position change of a vertex may also affect the normal of the triangle the vertex is part of:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">vec4</span> origNormal =
+    <span class="hljs-type">vec4</span>(aNormal.x, aNormal.y, aNormal.z, <span class="hljs-number">1.0</span>);
+  <span class="hljs-type">vec4</span> morphNormal =
+    <span class="hljs-type">vec4</span>(morphVertices[<span class="hljs-built_in">gl_VertexID</span> +
+    morphAnimOffset].normal.xyz, <span class="hljs-number">1.0</span>);
+  normal = <span class="hljs-built_in">transpose</span>(<span class="hljs-built_in">inverse</span>(worldPosSkinMat)) *
+    <span class="hljs-built_in">mix</span>(origNormal, morphNormal,
+    vertsPerMorphAnim[<span class="hljs-built_in">gl_InstanceID</span>].x);
+</code></pre>
+    <p class="normal">For a better selection of meshes with and without morph animations, we also need some small changes in the <code class="inlineCode">AssimpModel</code> class and the renderer.</p>
+    <h2 id="_idParaDest-295" class="heading-2">Finalizing the face animation code</h2>
+    <p class="normal">In the <code class="inlineCode">AssimpModel</code> class, two new drawing methods are added:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">drawInstancedNoMorphAnims</span><span class="hljs-params">(</span><span class="hljs-type">int</span><span class="hljs-params"> instanceCount)</span>;
+    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">drawInstancedMorphAnims</span><span class="hljs-params">(</span><span class="hljs-type">int</span><span class="hljs-params"> instanceCount)</span>;
+</code></pre>
+    <p class="normal">The names say what the<a id="_idIndexMarker526"/> methods are doing: <code class="inlineCode">drawInstancedNoMorphAnims()</code> draws all meshes without morph animations, and <code class="inlineCode">drawInstancedMorphAnims()</code> draws only the meshes with morph animations.</p>
+    <p class="normal">To filter the meshes in both methods, a quite simple check is used – we loop over all the meshes and look at the size of the <code class="inlineCode">morphMeshes</code> vector inside the mesh. For the <code class="inlineCode">drawInstancedNoMorphAnims()</code> method that draws only non-morph meshes, we simply skip the meshes without extra morph meshes:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; mModelMeshes.<span class="hljs-built_in">size</span>(); ++i) {
+    <span class="hljs-keyword">if</span> (mModelMeshes.<span class="hljs-built_in">at</span>(i).morphMeshes.<span class="hljs-built_in">size</span>() &gt; <span class="hljs-number">0</span>) {
+      <span class="hljs-keyword">continue</span>;
+    }
+    OGLMesh&amp; mesh = mModelMeshes.<span class="hljs-built_in">at</span>(i);
+    <span class="hljs-built_in">drawInstanced</span>(mesh, i, instanceCount);
+  }
+</code></pre>
+    <p class="normal">And for the morph-mesh-only version, we reverse the check:</p>
+    <pre class="programlisting code"><code class="hljs-code">    ...
+    <span class="hljs-keyword">if</span> (mModelMeshes.<span class="hljs-built_in">at</span>(i).morphMeshes.<span class="hljs-built_in">size</span>() == <span class="hljs-number">0</span>) {
+      <span class="hljs-keyword">continue</span>;
+    ...
+    }
+</code></pre>
+    <p class="normal">The reason for using two separate methods lies in the <code class="inlineCode">draw()</code> method of the renderer class files, <code class="inlineCode">OGLRenderer.cpp</code> or <code class="inlineCode">VkRenderer.cpp</code>. There, we replace the normal instanced draw call for the animated models with <a id="_idIndexMarker527"/>the no-morph version:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">model-&gt;</strong><strong class="hljs-built_in-slc">drawInstancedNoMorphAnims</strong><strong class="hljs-slc">(numberOfInstances);</strong></span>
+</code></pre>
+    <p class="normal">Drawing the meshes with morph animations is done after checking whether the model contains any morph meshes, as shown in the following code of the OpenGL renderer:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">if</span> (model-&gt;<span class="hljs-built_in">hasAnimMeshes</span>()) {
+        mAssimpSkinningMorphShader.<span class="hljs-built_in">use</span>();
+        ...
+        model-&gt;<span class="hljs-built_in">bindMorphAnimBuffer</span>(<span class="hljs-number">4</span>);
+        mFaceAnimPerInstanceDataBuffer.<span class="hljs-built_in">uploadSsboData</span>(
+          mFaceAnimPerInstanceData, <span class="hljs-number">5</span>);
+        model-&gt;<span class="hljs-built_in">drawInstancedMorphAnims</span>(numberOfInstances);
+      }
+</code></pre>
+    <p class="normal">In this case, we use the new morphing shader, bind the two SSBOs containing the vertex data and the per-instance settings, and use the draw call that only draws meshes with morph animations.</p>
+    <p class="normal">For a simple test, you can set the <code class="inlineCode">morphData</code> values in the renderer to some fixed values and check whether the instances run around angry or smiling. But to have full control of the new settings, we will also add a combo box and a slider to the UI.</p>
+    <h2 id="_idParaDest-296" class="heading-2">Adding UI elements to control face animations</h2>
+    <p class="normal">For the UI, the amount of code is small. We just need a combo box, mapping the <code class="inlineCode">isFaceAnimType</code> value of <code class="inlineCode">InstanceSettings</code> to the <a id="_idIndexMarker528"/>string from <code class="inlineCode">micFaceAnimationNameMap</code>, and a float slider linked to <code class="inlineCode">isFaceAnimWeight</code>. With a model without a face animation, we simply disable the combo box and the slider.</p>
+    <p class="normal"><em class="italic">Figure 10.3</em> shows the expanded combo box with the four face animations plus the <code class="inlineCode">None</code> setting to disable face animations:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.03_B22428.png" alt="" width="1058" height="520"/></figure>
+    <p class="packt_figref">Figure 10.3: UI settings to control the face animations of an instance</p>
+    <p class="normal">We can choose the face animation clip now, and by using the weight slider, we can control how much of the face animation morph will be used.</p>
+    <p class="normal">As the last step for the<a id="_idIndexMarker529"/> face animations implementation, we will cover how to add the new settings to the YAML configuration file.</p>
+    <h2 id="_idParaDest-297" class="heading-2">Saving and loading the new instance settings</h2>
+    <p class="normal">Luckily, the current state <a id="_idIndexMarker530"/>of the YAML parser and emitter code allows us to add face animations with truly little effort. Since the face animation settings are set per instance, we need to extend the YAML emitter output operator for <code class="inlineCode">InstanceSettings</code> in the <code class="inlineCode">YamlParser.cpp</code> file in the <code class="inlineCode">tools</code> folder.</p>
+    <p class="normal">Right after the output of the optional node tree setting, we check whether a face animation is configured and output the instance settings if a clip was set:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (settings.isFaceAnimType != faceAnimation::none) {
+    out &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"face-anim-index"</span>;
+    out &lt;&lt; YAML::Value &lt;&lt; settings.isFaceAnimType;
+    out &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"face-anim-weight"</span>;
+    out &lt;&lt; YAML::Value &lt;&lt; settings.isFaceAnimWeight;
+  }
+</code></pre>
+    <p class="normal">To output the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code>, we also need a definition of the output operator for the new data type:</p>
+    <pre class="programlisting code"><code class="hljs-code">YAML::Emitter&amp; <span class="hljs-keyword">operator</span>&lt;&lt;(YAML::Emitter&amp; out,
+    <span class="hljs-type">const</span> faceAnimation&amp; faceAnim) {
+  out &lt;&lt; YAML::Flow;
+  out &lt;&lt; <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">int</span>&gt;(faceAnim);
+  <span class="hljs-keyword">return</span> out;
+}
+</code></pre>
+    <p class="normal">In the <code class="inlineCode">YamlParserTypes.h</code> file, we also need a simple <code class="inlineCode">decode()</code> method for the new <code class="inlineCode">faceAnimation</code> data type:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">template</span>&lt;&gt;
+<span class="hljs-keyword">struct</span> <span class="hljs-title">convert</span>&lt;faceAnimation&gt; {
+  <span class="hljs-type">static</span><span class="hljs-function"> </span><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">decode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> Node&amp; node, faceAnimation&amp; rhs)</span><span class="hljs-function"> </span>{
+      rhs = <span class="hljs-built_in">static_cast</span>&lt;faceAnimation&gt;(node.<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">int</span>&gt;());
+      <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>;
+    }
+  };
+</code></pre>
+    <p class="normal">The <code class="inlineCode">encode()</code> method is not shown here, it essentially does the same as all other <code class="inlineCode">enum</code> <code class="inlineCode">encode()</code> methods do: it casts the node data to an <code class="inlineCode">int</code>.</p>
+    <p class="normal">Finally, we just must extend the <code class="inlineCode">decode()</code> method for the <code class="inlineCode">ExtendedInstanceSettings</code>, adding the two new values:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">if</span> (node[<span class="hljs-string">"face-anim"</span>]) {
+        rhs.isFaceAnimType =
+          node[<span class="hljs-string">"face-anim"</span>].<span class="hljs-built_in">as</span>&lt;faceAnimation&gt;();
+        rhs.isFaceAnimWeight =
+          node[<span class="hljs-string">"face-anim-weight"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+      }
+</code></pre>
+    <p class="normal">The <code class="inlineCode">encode()</code> method extension is also super simple:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">if</span> (rhs.isFaceAnimType != faceAnimation::none) {
+        node[<span class="hljs-string">"face-anim"</span>] = rhs.isFaceAnimType;
+        node[<span class="hljs-string">"face-anim-weight"</span>] = rhs.isFaceAnimWeight;
+      }
+</code></pre>
+    <p class="normal">Make sure to bump the version of the configuration file since we added new data to it. In this case, changing the<a id="_idIndexMarker531"/> file version is less crucial since parser versions from previous chapters simply do not know the new settings.</p>
+    <p class="normal">And that’s it! When you select an instance now, you can change the type and strength of the facial expression, as shown in <em class="italic">Figure 10.4</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.04_B22428.png" alt="" width="1344" height="725"/></figure>
+    <p class="packt_figref">Figure 10.4: A “worried” instance next to the default face mesh</p>
+    <p class="normal">The face animations can be controlled for every instance, and changes to one instance do not affect other instances. It is up to you if you want the instances to be angry, worried, happy, or even surprised, and how much of that expression will be shown.</p>
+    <p class="normal">Adding more morph clips to the application is also easy. The most complex thing for new clips will be most probably<a id="_idIndexMarker532"/> the vertex animation in a tool such as Blender. In the code, it is just adding a new value to the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code> and a new string to the name mapping in the <code class="inlineCode">micFaceAnimationNameMap</code> variable of the <code class="inlineCode">ModelInstanceCamData</code> <code class="inlineCode">struct</code>.</p>
+    <p class="normal">To be able to use the new face animations in a node tree too, we need to create a new node type, allowing us to control both the animation clip and the weight of the desired morph target animation. So, let’s add the all-new <strong class="keyWord">FaceAnim</strong> node.</p>
+    <h1 id="_idParaDest-298" class="heading-1">Using face animations in node trees</h1>
+    <p class="normal">Creating a new node type is easy. First, we add a new class, <code class="inlineCode">FaceAnimNode</code>, consisting of the <code class="inlineCode">FaceAnimNode.h</code> header and the implementation file, <code class="inlineCode">FaceAnimNode.cpp</code>, both placed in the <code class="inlineCode">graphnodes</code> folder. We can <a id="_idIndexMarker533"/>borrow most of the implementation <a id="_idIndexMarker534"/>from the WaitNode, adding ImGui elements and a bit of logic to control the face animation during the execution time. <em class="italic">Figure 10.5</em> shows the final layout of the FaceAnim node:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.05_B22428.png" alt="" width="556" height="434"/></figure>
+    <p class="packt_figref">Figure 10.5: The new FaceAnim node</p>
+    <p class="normal">The node allows us to choose one of the face animation clips, including the <code class="inlineCode">None</code> setting to disable face animations on an instance, starting and ending weights for the animation in both play directions, and a timer to control how long the animation replay will take.</p>
+    <p class="normal">Before we can add the new <code class="inlineCode">FaceAnim</code> node, we must extend the <code class="inlineCode">enum</code> containing the node types and the graph node factory class.</p>
+    <h2 id="_idParaDest-299" class="heading-2">Adjusting the code for the new FaceAnim node</h2>
+    <p class="normal">Similar to WaitNode, the <code class="inlineCode">FaceAnim</code> node delays the control flow until the timer reaches zero and informs the parent node <a id="_idIndexMarker535"/>about it once the animation replay has ended.</p>
+    <p class="normal">Next to adding the two <a id="_idIndexMarker536"/>new files, creating the new node type needs two extra steps.</p>
+    <p class="normal">First, we must extend the <code class="inlineCode">graphNodeType</code> <code class="inlineCode">enum</code> in the <code class="inlineCode">Enums.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">graphNodeType</span> : <span class="hljs-type">int8_t</span> {
+  ...
+<span class="code-highlight"><strong class="hljs-slc">  faceAnim,</strong></span>
+  NUM
+};
+</code></pre>
+    <p class="normal">Next, the constructor and the <code class="inlineCode">makeNode()</code> method of the <code class="inlineCode">GraphNodeFactory</code> class must be made aware of the new node. In the constructor, we add the node title string to <code class="inlineCode">mGraphNodeTypeMap</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mGraphNodeTypeMap[graphNodeType::faceAnim] = <span class="hljs-string">"FaceAnim"</span>;
+</code></pre>
+    <p class="normal">In <code class="inlineCode">makeNode()</code>, we add a case block for the new node type:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">case</span> graphNodeType::faceAnim:
+      newNode = std::<span class="hljs-built_in">make_shared</span>&lt;FaceAnimNode&gt;(nodeId);
+      <span class="hljs-keyword">break</span>;
+</code></pre>
+    <p class="normal">Now we can adjust the implementation of the new <code class="inlineCode">FaceAnimNode</code> class.</p>
+    <h2 id="_idParaDest-300" class="heading-2">Adding the FaceAnim node</h2>
+    <p class="normal">As we will blend manually <a id="_idIndexMarker537"/>between the two weight values, we will <a id="_idIndexMarker538"/>map the blend time to a range between zero and one in the <code class="inlineCode">update()</code> method once the node is active:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> morphTimeDiff = <span class="hljs-number">1.0f</span>;
+  <span class="hljs-keyword">if</span> (mFaceAnimBlendTime != <span class="hljs-number">0.0f</span>) {
+    morphTimeDiff = std::<span class="hljs-built_in">clamp</span>(mCurrentTime /
+      mFaceAnimBlendTime, <span class="hljs-number">0.0f</span>, <span class="hljs-number">1.0f</span>);
+  }
+</code></pre>
+    <p class="normal">By doing a simple division, surrounded by a check to avoid a division by zero, the time difference in <code class="inlineCode">morphTimeDiff</code> will go from one to zero.</p>
+    <p class="normal">Then we interpolate the final weight by using the product of the time difference and weight difference:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> morphWeightDiff =
+    mFaceAnimEndWeight – mFaceAnimStartWeight;
+  <span class="hljs-type">float</span> currentWeight =
+    mFaceAnimEndWeight - morphWeightDiff * morphTimeDiff;
+</code></pre>
+    <p class="normal">On every run of the <code class="inlineCode">update()</code> method, we continuously sent the new weight via the <code class="inlineCode">fireNodeOutputCallback</code> to the renderer:</p>
+    <pre class="programlisting code"><code class="hljs-code">  instanceUpdateType updateType =
+    instanceUpdateType::faceAnimWeight;
+  nodeCallbackVariant result;
+  <span class="hljs-type">bool</span> extra = <span class="hljs-literal">false</span>;
+  result = currentWeight;
+  <span class="hljs-built_in">fireNodeActionCallback</span>(<span class="hljs-built_in">getNodeType</span>(), updateType,
+    result, extra);
+</code></pre>
+    <p class="normal">Before doing the <a id="_idIndexMarker539"/>weight update, we send the desired animation clip index in <a id="_idIndexMarker540"/>the <code class="inlineCode">activate()</code> method:</p>
+    <pre class="programlisting code"><code class="hljs-code">  instanceUpdateType updateType =
+    instanceUpdateType::faceAnimIndex;
+  nodeCallbackVariant result;
+  <span class="hljs-type">bool</span> extra = <span class="hljs-literal">false</span>;
+  result = mFaceAnim;
+  <span class="hljs-built_in">fireNodeActionCallback</span>(<span class="hljs-built_in">getNodeType</span>(), updateType,
+    result, extra);
+</code></pre>
+    <p class="normal">To signal the face animation values to the renderer, the <code class="inlineCode">instanceUpdateType</code> <code class="inlineCode">enum</code> needs to be extended by two new values, <code class="inlineCode">faceAnimIndex</code> and <code class="inlineCode">faceAnimWeight</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">instanceUpdateType</span> : <span class="hljs-type">uint8_t</span> {
+  ...
+<span class="code-highlight"><strong class="hljs-slc">  faceAnimIndex,</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">  faceAnimWeight</strong></span>
+};
+</code></pre>
+    <p class="normal">We also need the <code class="inlineCode">faceAnimation</code> type in the <code class="inlineCode">nodeCallbackVariant</code> variant to use the new data type in the callbacks between the classes:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">using</span> nodeCallbackVariant = std::variant&lt;<span class="hljs-type">float</span>, moveState, moveDirection, <span class="code-highlight"><strong class="hljs-slc">faceAnimation</strong></span>&gt;;
+</code></pre>
+    <p class="normal">Since we use the <code class="inlineCode">fireNodeOutputCallback</code> in the node, both the <code class="inlineCode">GraphEditor</code> and the <code class="inlineCode">SingleInstanceBehavior</code> classes need to be extended.</p>
+    <p class="normal">In the <code class="inlineCode">GraphEditor.cpp</code> file in the <code class="inlineCode">graphnodes</code> folder, the <code class="inlineCode">faceAnim</code> node type must be added to the <code class="inlineCode">createNodeEditorWindow()</code> method to bind the node action callback to the newly created <code class="inlineCode">faceAnim</code> nodes:</p>
+    <pre class="programlisting code"><code class="hljs-code">        <span class="hljs-keyword">if</span> (nodeType == graphNodeType::instance ||
+            nodeType == graphNodeType::action <span class="code-highlight"><strong class="hljs-slc">||</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">            nodeType == graphNodeType::faceAnim </strong></span>{
+          newNode-&gt;<span class="hljs-built_in">setNodeActionCallback</span>(
+            behavior-&gt;bdNodeActionCallbackFunction);
+        }
+</code></pre>
+    <p class="normal">A similar check exists in the <code class="inlineCode">SingleInstanceBehavior</code> copy constructor; we also have to add the <code class="inlineCode">faceAnim</code> node type here to <a id="_idIndexMarker541"/>bind the node action callback:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">if</span> (node-&gt;<span class="hljs-built_in">getNodeType</span>() == graphNodeType::instance ||
+        node-&gt;<span class="hljs-built_in">getNodeType</span>() == graphNodeType::action <span class="code-highlight"><strong class="hljs-slc">||</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">        node-&gt;</strong><strong class="hljs-built_in-slc">getNodeType</strong><strong class="hljs-slc">() == graphNodeType::faceAnim</strong></span> {
+      newNode-&gt;<span class="hljs-built_in">setNodeActionCallback</span>(
+        mBehaviorData-&gt;bdNodeActionCallbackFunction);
+    }
+</code></pre>
+    <p class="normal">In addition to a <a id="_idIndexMarker542"/>manipulation of the <code class="inlineCode">InstanceSettings</code> variables when changing the face animation settings, we add two new setters to the <code class="inlineCode">AssimpInstance</code> class for simplified access to the new <code class="inlineCode">InstanceSettings</code> variables.</p>
+    <h2 id="_idParaDest-301" class="heading-2">Enabling instance and renderer to react to face animation changes</h2>
+    <p class="normal">Updating the <code class="inlineCode">InstanceSettings</code> by reading all data first plus writing all data back at the end is good if we need to<a id="_idIndexMarker543"/> adjust more than multiple values. For a single change, separate setters are easier to use. We add the two new <code class="inlineCode">public</code> methods <code class="inlineCode">setFaceAnim()</code> and <code class="inlineCode">setFaceAnimWeight()</code> to the <code class="inlineCode">AssimpInstance</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">setFaceAnim</span><span class="hljs-params">(faceAnimation faceAnim)</span>;
+    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">setFaceAnimWeight</span><span class="hljs-params">(</span><span class="hljs-type">float</span><span class="hljs-params"> weight)</span>;
+</code></pre>
+    <p class="normal">Both methods update the two values in the <code class="inlineCode">InstanceSettings</code> data of the instance, plus a bit of extra logic to handle the <code class="inlineCode">none</code> value of the <code class="inlineCode">faceAnimation</code> <code class="inlineCode">enum</code>.</p>
+    <p class="normal">As the last step for the new node, the <code class="inlineCode">updateInstanceSettings()</code> method of the renderer class, <code class="inlineCode">OGLRenderer.cpp</code> or <code class="inlineCode">VkRenderer.cpp</code>, needs to know what to do when an instance wants to change the face animation settings.</p>
+    <p class="normal">To do that, in the <code class="inlineCode">switch</code> block for the node type, a new <code class="inlineCode">case</code> block for the new <code class="inlineCode">faceAnim</code> node type must be added:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">switch</span> (nodeType) {
+    ...
+<span class="code-highlight"><strong class="hljs-slc">    </strong><strong class="hljs-keyword-slc">case</strong><strong class="hljs-slc"> graphNodeType::faceAnim:</strong></span>
+</code></pre>
+    <p class="normal">Then, we check for the type of face animation update we have received. Since we need to react to a change to the face animation clip index and the clip weight, a new <code class="inlineCode">switch</code>/<code class="inlineCode">case</code> statement with the two update types is added:</p>
+    <pre class="programlisting code"><code class="hljs-code">      <span class="hljs-keyword">switch</span> (updateType) {
+        <span class="hljs-keyword">case</span> instanceUpdateType::faceAnimIndex:
+          instance-&gt;<span class="hljs-built_in">setFaceAnim</span>(
+            std::<span class="hljs-built_in">get</span>&lt;faceAnimation&gt;(data));
+          <span class="hljs-keyword">break</span>;
+        <span class="hljs-keyword">case</span> instanceUpdateType::faceAnimWeight:
+          instance-&gt;<span class="hljs-built_in">setFaceAnimWeight</span>(
+            std::<span class="hljs-built_in">get</span>&lt;<span class="hljs-type">float</span>&gt;(data));
+          <span class="hljs-keyword">break</span>;
+        <span class="hljs-keyword">default</span>:
+          <span class="hljs-keyword">break</span>;
+</code></pre>
+    <p class="normal">We also need to close the case block for the <code class="inlineCode">faceAnim</code> node type:</p>
+    <pre class="programlisting code"><code class="hljs-code">      }
+      <span class="hljs-keyword">break</span>;
+</code></pre>
+    <p class="normal">For the two new <a id="_idIndexMarker544"/>update types, <code class="inlineCode">faceAnimIndex</code> and <code class="inlineCode">faceAnimWeight</code>, the newly added methods in the <code class="inlineCode">AssimpInstance</code> class will be called, using the data from the <code class="inlineCode">nodeCallbackVariant</code> variant as parameters.</p>
+    <p class="normal">This last step completes the chain from the new node to the renderer, allowing us to use the face animations in the node editor. The FaceAnim node to the node tree of the man’s model can be used to change the wave animations of all instances to let the instance wave with a smiling face, as shown in <em class="italic">Figure 10.6</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.06_B22428.png" alt="" width="557" height="576"/></figure>
+    <p class="packt_figref">Figure 10.6: Combined “Wave” action and “Happy” face animation in a node tree</p>
+    <p class="normal">More additions to the node tree are possible. You can make the models angry before punching or kicking, or surprised before playing the picking animation to simulate that the instance has seen something on the ground. And with more skeletal and face animation clips, even more funny and crazy combinations can be created.</p>
+    <p class="normal">Being able to see someone’s mood in their face helps us as humans to evaluate possible next steps, and bringing facial expressions into the application enables a much broader way to interact with the<a id="_idIndexMarker545"/> instances. By using morph target animations, even our basic low-poly models take on much more personality.</p>
+    <p class="normal">But morph target animations have three severe limitations, which we’ll discuss next.</p>
+    <h2 id="_idParaDest-302" class="heading-2">Limitations of morph target animations</h2>
+    <p class="normal">When using morph target animations, we must take care of these three limits:</p>
+    <ul>
+      <li class="bulletList">The number of vertices in the <a id="_idIndexMarker546"/>mesh must be identical in all animations and frames. It is not possible to add or remove vertices within a frame or during an animation, or to change the vertex<a id="_idIndexMarker547"/> assignment to triangles. You can only move the vertices around.</li>
+      <li class="bulletList">The entire mesh of the morphing part of the model must be replicated for every morph key in an animation. For smaller parts of the model’s body, this may be okay, but having a high-detail part of the body several times in memory may create a noticeable overhead.</li>
+      <li class="bulletList">Only vertex position changes are supported, the morphing is usually done by a simple linear interpolation. Small rotations can be simulated by position changes but moving vertices by a large rotation or scaling, like for turning the head or moving the hands around, will result in visual distortions during the interpolation.</li>
+    </ul>
+    <p class="normal">You can test the third limit by yourself in Blender. To do that, add a morph target-based rotation of the head, and you will see the rotation also affects the volume of the head. The larger the rotation angle gets, the bigger the distortion during the animation becomes.</p>
+    <p class="normal"><em class="italic">Figure 10.7</em> shows the result of around 50% of a head rotation by 180 degrees:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.07_B22428.png" alt="" width="647" height="674"/></figure>
+    <p class="packt_figref">Figure 10.7: Distorted volume while rotating the head with a morph target animation</p>
+    <p class="normal">Morph target animations must be created and tested carefully while animating a model. They are a valuable addition to animations, but they still have some drawbacks.</p>
+    <p class="normal">How do we create advanced <a id="_idIndexMarker548"/>animations that may need rotations without using morph target animations, such as a fancy head movement animation to let<a id="_idIndexMarker549"/> the model look around in the virtual world?</p>
+    <p class="normal">That’s what we’ll learn next as we dive into additive blending.</p>
+    <h1 id="_idParaDest-303" class="heading-1">Implementing additive blending</h1>
+    <p class="normal">Additive blending is an alternative method of animation blending. While <em class="italic">normal</em> animation blending is used to interpolate between two skeletal animation clips and morph target animations are <a id="_idIndexMarker550"/>changing vertex positions of a mesh, additive blending <em class="italic">stacks</em> two different skeletal animations on top of each other.</p>
+    <p class="normal">The technical part of additive blending is astonishingly simple, but the effect achieved by the combination of two different skeletal animations leads to a much more natural appearance of a 3D model.</p>
+    <p class="normal">Let’s explore the similarities and differences between additive blending and the animation blending methods we already know.</p>
+    <h2 id="_idParaDest-304" class="heading-2">How additive blending works</h2>
+    <p class="normal">The basic idea of additive blending comes from the desire to split up model animations into multiple and<a id="_idIndexMarker551"/> especially independent parts.</p>
+    <p class="normal">A skeletal animation usually delivers an animation for the entire model, allowing the model to either run, walk, punch, or jump. Blending between skeletal animations will smooth the transition between these two clips but won’t add new movements. So, there are two different approaches: splitting the skeleton or stacking animations.</p>
+    <p class="normal">Splitting the skeleton into two or even more animation domains and playing a different clip for each part of the <a id="_idIndexMarker552"/>skeleton is called <strong class="keyWord">layered blending</strong>. Layered blending is a simple and cost-effective way to mix animations since every node of the skeleton is affected only by the transforms of a single animation clip, just the animation clips are different for the nodes.</p>
+    <p class="normal">But splitting the model skeleton into multiple parts with each part playing a different skeletal animation may lead to extra effort to synchronize clips across the body. Failures in a synchronous replay on a split-skeleton animation may lead to visual artifacts, just think of different replay speeds for the clips.</p>
+    <p class="normal">We don’t handle layered blending in the book, but a task in the <em class="italic">Practical sessions</em> section is available to implement layered animation blending for the models. In contrast, additive blending allows <em class="italic">adding up</em> skeletal animations on top of other skeletal animations. While the basic movement created by the basic skeletal animation is applied normally, property changes of one or even more other skeletal animations are added to the nodes of the model, creating a concatenated motion with what’s provided by the basic animation. Additive blending is more expensive to calculate than layered blending because we need to calculate multiple animations, and we also have to mix all the animations together. As an example, this simple addition of property changes allows us to add a head movement to the normal skeletal animations. The model will be able to run, walk, punch, or jump from a skeletal animation <em class="italic">and</em> move the head around at the same time. As a bonus, facial animations are not affected by additive blending, so a model <a id="_idIndexMarker553"/>can walk, look to the right, and smile, and all three animations are running in parallel.</p>
+    <p class="normal">For the technical implementation part, an additive animation is done by adding the differences in the node transformations between the current pose and a reference pose to another skeletal animation.</p>
+    <p class="normal">Let’s use another example to explain the technical side. <em class="italic">Figure 10.8</em> shows the first and the last keyframe for an animation that only rotates the head node of the model to the right (from the model’s perspective), while all other nodes remain in the T-pose:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.08_B22428.png" alt="" width="1237" height="661"/></figure>
+    <p class="packt_figref">Figure 10.8: Start and end pose for the additive animation “head look right”</p>
+    <p class="normal">As the reference pose, we use the first keyframe, with the entire model in the T-pose. To calculate the values for an additive animation, we take the desired keyframe and simply subtract the translation, rotation, and scale values of the reference pose from the destination pose.</p>
+    <p class="normal">If the model remains in the T-pose, all values for the additive animation will be zero. And nothing is added to the running skeletal animation, for instance, the walking cycle.</p>
+    <p class="normal">When we advance further in the animation clip in <em class="italic">Figure 10.8</em>, the rotation of the head will lead to a bigger difference in the rotation value of the head node between the current pose and the reference pose. But we will get only a difference for the head node, all other node transformations are still identical to the reference pose.</p>
+    <p class="normal">Adding the difference of the head node rotation to the currently running skeletal animation clip is easy. Since we collect the transformation properties for all nodes, a combination of two skeletal animations is just a simple per-node addition of the values for translation and scale, and a quaternion multiplication for the rotation value.</p>
+    <p class="normal">This addition only changes the values for nodes that have changed in the animation clip of the additive animation clip compared to the reference pose. All nodes without changes in the additive animation will remain unaltered in the skeletal animation.</p>
+    <div class="note">
+      <p class="normal">How to create suitable animations</p>
+      <p class="normal">Creating animations to use in additive blending is out of the scope of this book, similar to creating face animations. You can use a tool like Blender, or use the man’s model from <a href=""><em class="italic">Chapter 10</em></a>, which already contains four extra animations altering only the head.</p>
+      <p class="normal">If you create extra animations by yourself, make sure to prefix the clip names with something common, like an underscore, or the letters <em class="italic">ZZZ_</em> to keep them grouped together. At least Blender tends to sort the clips by name during the export and since we store several clip mappings based on the index number of the clip in the YAML configuration file, adding the new clips at the start or somewhere in-between the existing clips would lead to broken config files.</p>
+    </div>
+    <p class="normal">Implementing additive <a id="_idIndexMarker554"/>animations in our application is also surprisingly simple.</p>
+    <h2 id="_idParaDest-305" class="heading-2">Extending the code to support additive animations</h2>
+    <p class="normal">To bring the <a id="_idIndexMarker555"/>additional data to the GPU, we add four new variables to the <code class="inlineCode">struct</code> <code class="inlineCode">PerInstanceAnimData</code> in the <code class="inlineCode">OGLRenderData.h</code> file in the <code class="inlineCode">opengl</code> folder:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">PerInstanceAnimData</span> {
+  ...
+<span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">unsigned</strong><strong class="hljs-slc"> </strong><strong class="hljs-type-slc">int</strong><strong class="hljs-slc"> headLeftRightAnimClipNum;</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">unsigned</strong><strong class="hljs-slc"> </strong><strong class="hljs-type-slc">int</strong><strong class="hljs-slc"> headUpDownAnimClipNum;</strong></span>
+  ...
+<span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">float</strong><strong class="hljs-slc"> headLeftRightReplayTimestamp;</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">float</strong><strong class="hljs-slc"> headUpDownReplayTimestamp</strong></span>;
+};
+</code></pre>
+    <p class="normal">As always for Vulkan, the file is called <code class="inlineCode">VkRenderData.h</code> and resides in the <code class="inlineCode">vulkan </code>folder.</p>
+    <p class="normal">We split the head animation into two parts and use separate variables to control both the left/right animation and the up/down animation of the head. It’s impossible to move the head to the left and right at the same time, so we can combine those two directions into a single control variable. The same holds true for moving the head up and down.</p>
+    <p class="normal">Then, we create a new <code class="inlineCode">private</code> compute shader called <code class="inlineCode">mAssimpTransformHeadMoveComputeShader</code> in the renderer class file, <code class="inlineCode">OGLRanderer.cpp</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    Shader mAssimpTransformHeadMoveComputeShader{};
+</code></pre>
+    <p class="normal">For Vulkan, we add a new <code class="inlineCode">VkPipeline</code> handle named <code class="inlineCode">rdAssimpComputeHeadMoveTransformPipeline</code> to the <code class="inlineCode">VkRenderData.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">  VkPipeline rdAssimpComputeHeadMoveTransformPipeline;
+</code></pre>
+    <p class="normal">Since not all models may have additive head animations, we could skip the extra calculations if no head animations were set. We also add the new variables in the <code class="inlineCode">PerInstanceAnimData</code> <code class="inlineCode">struct</code> to the compute shader file, <code class="inlineCode">assimp_instance_transform.comp.</code> The new head animation variables will be ignored, but we need to expand the struct to the same size in both shaders.</p>
+    <p class="normal">Next, we copy the <code class="inlineCode">assimp_instance_transform.comp</code> file to <code class="inlineCode">assimp_instance_headmove_transform.comp</code> and load the new file into the new <code class="inlineCode">mAssimpTransformHeadMoveComputeShader</code> compute shader during the <code class="inlineCode">init()</code> method of the <code class="inlineCode">OGLRenderer.cpp</code>. For Vulkan, we create the new rendering pipeline loading the head transform compute<a id="_idIndexMarker556"/> shader in the <code class="inlineCode">createPipelines()</code> method of <code class="inlineCode">VkRenderer.cpp</code>.</p>
+    <p class="normal">In the new shader file, most of the additions are just copy and paste work. We must do the following steps in the extended compute shader, using the code for the rotational part of the left/right head movement as examples:</p>
+    <ol>
+      <li class="numberedList" value="1">Extract the animation clip numbers for both head animations:
+        <pre class="programlisting code-one"><code class="hljs-code">  uint headLeftRightClip =
+    instAnimData[instance].headLeftRightAnimClipNum;
+</code></pre>
+      </li>
+      <li class="numberedList">Extract the inverse scale factors for both head animations:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">float</span> headLeftRightRotInvScaleFactor =
+    lookupData[headLeftRightClip * clipOffset +
+      node * boneOffset + lookupWidth].x;
+</code></pre>
+      </li>
+      <li class="numberedList">Calculate the index values for accessing the lookup data of the head animations:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">int</span> headLeftRightRotLookupIndex =
+    <span class="hljs-built_in">clamp</span>(<span class="hljs-built_in">int</span>(instAnimData[instance]
+      .headLeftRightReplayTimestamp *
+      headLeftRightRotInvScaleFactor) + <span class="hljs-number">1</span>, <span class="hljs-number">0</span>,
+      lookupWidth - <span class="hljs-number">1</span>);
+</code></pre>
+      </li>
+      <li class="numberedList">Get translation, rotation, and scale values for both the reference pose at the first lookup positions and the desired head animation clip timestamps:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">vec4</span> headLeftRightBaseRotation =
+     lookupData[headLeftRightClip * clipOffset + node *
+     boneOffset + lookupWidth + <span class="hljs-number">1</span>];
+...
+  <span class="hljs-type">vec4</span> headLeftRightRotation =
+    lookupData[headLeftRightClip * clipOffset + node *
+    boneOffset + lookupWidth +
+    HeadLeftRightRotLookupIndex];
+</code></pre>
+      </li>
+      <li class="numberedList">Calculate the difference between the transform values of the current pose and the references pose, using a quaternion multiplication for the rotation:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">vec4</span> headLeftRightRotationDiff =
+    qMult(qInverse(headLeftRightBaseRotation),
+      headLeftRightRotation);
+</code></pre>
+      </li>
+      <li class="numberedList">Add up the differences for translation, rotation, and scale for both head animations to a single value for each transform:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">vec4</span> headRotationDiff =
+    qMult(headUpDownRotationDiff,
+    headLeftRightRotationDiff);
+</code></pre>
+      </li>
+      <li class="numberedList">Add the summed-up differences<a id="_idIndexMarker557"/> to the first and second clip transforms, again using a quaternion multiplication for the rotation:
+        <pre class="programlisting code-one"><code class="hljs-code">  <span class="hljs-type">vec4</span> finalRotation =
+    slerp(qMult(headRotationDiff, firstRotation),
+    qMult(headRotationDiff, secondRotation), blendFactor);
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal">The instances also need to carry information about the head movements, so we add the two new variables, <code class="inlineCode">isHeadLeftRightMove</code> and <code class="inlineCode">isHeadUpDownMove</code>, to the <code class="inlineCode">InstanceSettings</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">InstanceSettings.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">float</strong><strong class="hljs-slc"> isHeadLeftRightMove = </strong><strong class="hljs-number-slc">0.0f</strong><strong class="hljs-slc">;</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">  </strong><strong class="hljs-type-slc">float</strong><strong class="hljs-slc"> isHeadUpDownMove = </strong><strong class="hljs-number-slc">0.0f</strong><strong class="hljs-slc">;</strong></span>
+</code></pre>
+    <p class="normal">We map the positive ranges between <code class="inlineCode">0.0f</code> and <code class="inlineCode">1.0f</code> to a head movement to the left and upwards, and the negative range from <code class="inlineCode">0.0f</code> to <code class="inlineCode">-1.0f</code> to move the head to the right or down. A movement value of zero will use the values of the reference pose for both animations, resulting in no head movement at all.</p>
+    <p class="normal">Filling the new data in the <code class="inlineCode">PerInstanceAnimData</code> <code class="inlineCode">struct</code> is done in the <code class="inlineCode">draw()</code> call of the <code class="inlineCode">OGLRenderer</code> or <code class="inlineCode">VKRenderer</code> class, in the same part of the code as the facial animations. Following the mapping explained before, selecting the clip number is done as shown here:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">if</span> (instSettings.isHeadLeftRightMove &gt; <span class="hljs-number">0.0f</span>) {
+  animData.headLeftRightAnimClipNum =
+    modSettings.msHeadMoveClipMappings[
+    headMoveDirection::left];
+} <span class="hljs-keyword">else</span> {
+  animData.headLeftRightAnimClipNum =
+   modSettings.msHeadMoveClipMappings[
+   headMoveDirection::right];
+}
+</code></pre>
+    <p class="normal">For head movement, we use the absolute value of the timestamp:</p>
+    <pre class="programlisting code"><code class="hljs-code">animData.headLeftRightReplayTimestamp =
+  std::<span class="hljs-built_in">fabs</span>(instSettings.isHeadLeftRightMove) *
+    model-&gt;<span class="hljs-built_in">getMaxClipDuration</span>();
+</code></pre>
+    <p class="normal">Hard coding the clip numbers in the code is a bad idea, different models have these new animations on other clip indices, or not at all. Let’s add another mapping, this time between the additive blending clip<a id="_idIndexMarker558"/> numbers and the four possible directions of the head movement.</p>
+    <h2 id="_idParaDest-306" class="heading-2">Creating mappings for the new head animations</h2>
+    <p class="normal">For a mapping between clips and <a id="_idIndexMarker559"/>head animations, a new <code class="inlineCode">enum</code> <code class="inlineCode">class</code> called <code class="inlineCode">headMoveDirection</code> is created in the <code class="inlineCode">Enums.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">headMoveDirection</span> : <span class="hljs-type">uint8_t</span> {
+  left = <span class="hljs-number">0</span>,
+  right,
+  up,
+  down,
+  NUM
+};
+</code></pre>
+    <p class="normal">The corresponding string map <code class="inlineCode">micHeadMoveAnimationNameMap</code> to show the names in the UI is added to the <code class="inlineCode">ModelInstanceCamData</code> <code class="inlineCode">struct</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::unordered_map&lt;headMoveDirection, std::string&gt;
+    micHeadMoveAnimationNameMap{};
+</code></pre>
+    <p class="normal">And since the mapping is model-related, the new <code class="inlineCode">msHeadMoveClipMappings</code> mapping is added to the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">ModelSettings.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::map&lt;headMoveDirection, <span class="hljs-type">int</span>&gt; msHeadMoveClipMappings{};
+</code></pre>
+    <p class="normal">The <code class="inlineCode">AssimpModel</code> class also gets a new <code class="inlineCode">public</code> method to check whether all the mappings in <code class="inlineCode">msHeadMoveClipMappings</code> are active:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">hasHeadMovementAnimationsMapped</span><span class="hljs-params">()</span>;
+</code></pre>
+    <p class="normal">Failing to find at least one of the head animations leads to a disabled additive head animation.</p>
+    <p class="normal">In the <code class="inlineCode">draw()</code> call of the <code class="inlineCode">OGLRenderer.cpp</code> files, we switch the compute shader based on the availability of all head animation mappings:</p>
+    <pre class="programlisting code"><code class="hljs-code">       <span class="hljs-keyword">if</span> (model-&gt;<span class="hljs-built_in">hasHeadMovementAnimationsMapped</span>()) {
+          mAssimpTransformHeadMoveComputeShader.<span class="hljs-built_in">use</span>();
+        } <span class="hljs-keyword">else</span> {
+          mAssimpTransformComputeShader.<span class="hljs-built_in">use</span>();
+        }
+</code></pre>
+    <p class="normal">For Vulkan, we use the availability of head move animations to choose the pipeline to bind for the compute shader in the <code class="inlineCode">runComputeShaders()</code> method of the <code class="inlineCode">VkRenderr.cpp</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">if</span> (model-&gt;<span class="hljs-built_in">hasHeadMovementAnimationsMapped</span>()) {
+  <span class="hljs-built_in">vkCmdBindPipeline</span>(mRenderData.rdComputeCommandBuffer,
+    VK_PIPELINE_BIND_POINT_COMPUTE,
+    mRenderData.rdAssimpComputeHeadMoveTransformPipeline);
+} <span class="hljs-keyword">else</span> {
+  <span class="hljs-built_in">vkCmdBindPipeline</span>(mRenderData.rdComputeCommandBuffer,
+    VK_PIPELINE_BIND_POINT_COMPUTE,
+    mRenderData.rdAssimpComputeTransformPipeline);
+ }
+</code></pre>
+    <p class="normal">The UI part for the head <a id="_idIndexMarker560"/>animations can be copied mostly from other parts of the code in the <code class="inlineCode">UserInterface</code> class. A combo box to select the clip, a loop over all four values in the <code class="inlineCode">headMoveDirection</code> <code class="inlineCode">enum</code>, two buttons, and two sliders to test the animations are all we need to create a new UI section, as shown in <em class="italic">Figure 10.9</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.09_B22428.png" alt="" width="1052" height="376"/></figure>
+    <p class="packt_figref">Figure 10.9: UI control for the head movement/animation clip mapping</p>
+    <p class="normal">Clip mapping and clips are taken from the model of the currently selected instance, making it easy to configure the additive head animations for all models.</p>
+    <p class="normal">To use the head animation in node trees, another new node type is needed.</p>
+    <h2 id="_idParaDest-307" class="heading-2">Adding a head animation node</h2>
+    <p class="normal">Thanks to the <a id="_idIndexMarker561"/>previous <code class="inlineCode">FaceAnimNode</code> node, adding a new <code class="inlineCode">HeadAnimNode</code> is done in minutes. You can follow the steps in the <em class="italic">Using face animations in node trees</em> section to create the new node as you have to do the same actions as with the <code class="inlineCode">FaceAnimNode</code>. Only a couple of minor changes are needed, like the names of the <code class="inlineCode">enum</code> <code class="inlineCode">class</code> entries.</p>
+    <p class="normal">For the UI part of the new node, you can reuse the <code class="inlineCode">FaceAnimNode</code> class code for the controls and copy the code to switch the two<a id="_idIndexMarker562"/> sections on or off from the <code class="inlineCode">InstanceNode</code> class code.</p>
+    <p class="normal">The final <strong class="keyWord">HeadAnim</strong> node to be used in a node tree looks like in <em class="italic">Figure 10.10</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.10_B22428.png" alt="" width="686" height="606"/></figure>
+    <p class="packt_figref">Figure 10.10: The HeadAnim node</p>
+    <p class="normal">Like the Instance node, we can control which head animation values we want to change, and for each animation, we can adjust the starting and ending weight plus the time it takes to blend between the two weight values. And like the FaceAnim node, the HeadAnim node delays the control flow until both timers are <a id="_idIndexMarker563"/>expired and signals the end of the execution to the parent node.</p>
+    <p class="normal">We close the chapter with the changes needed to save and load the settings for the additive head animations.</p>
+    <h2 id="_idParaDest-308" class="heading-2">Saving and loading the head animation settings</h2>
+    <p class="normal">Similar to the new tree node, implementing the YAML configuration file changes to save and load head animation<a id="_idIndexMarker564"/> settings is a matter of minutes.</p>
+    <p class="normal">For the <code class="inlineCode">ModelSettings</code> YAML emitter output in the <code class="inlineCode">YamlParser.cpp</code> file, we add the clip mappings directly from the map if all four clips are configured. We also need a new emitter output for the <code class="inlineCode">headMoveDirection</code> <code class="inlineCode">enum</code>, casting the value to an <code class="inlineCode">int</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">YAML::Emitter&amp; <span class="hljs-keyword">operator</span>&lt;&lt;(YAML::Emitter&amp; out,
+    <span class="hljs-type">const</span> headMoveDirection&amp; moveDir) {
+  out &lt;&lt; YAML::Flow;
+  out &lt;&lt; <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">int</span>&gt;(moveDir);
+  <span class="hljs-keyword">return</span> out;
+}
+</code></pre>
+    <p class="normal">To load the mapping back, we add a section to the <code class="inlineCode">decode()</code> method for the <code class="inlineCode">ModelSettings</code> in the <code class="inlineCode">YamlParserTypes.h</code> file, reading back the map values one by one. A new <code class="inlineCode">decode()</code> method for the <code class="inlineCode">headMoveDirection</code> <code class="inlineCode">enum</code> is needed here too:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">static</span><span class="hljs-function"> </span><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">decode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> Node&amp; node, headMoveDirection&amp; rhs)</span><span class="hljs-function"> </span>{
+        rhs = <span class="hljs-built_in">static_cast</span>&lt;headMoveDirection&gt;(node.<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">int</span>&gt;());
+    }
+</code></pre>
+    <p class="normal">And for the instance<a id="_idIndexMarker565"/> settings, the two <code class="inlineCode">float</code> values stored in the <code class="inlineCode">isHeadLeftRightMove</code> and <code class="inlineCode">isHeadUpDownMove</code> of the <code class="inlineCode">InstanceSettings</code> are added to the emitter in <code class="inlineCode">YamlParser.cpp</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (settings.isHeadLeftRightMove != <span class="hljs-number">0.0f</span>) {
+    out &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"head-anim-left-right-timestamp"</span>;
+    out &lt;&lt; YAML::Value &lt;&lt; settings.isHeadLeftRightMove;
+  }
+  <span class="hljs-keyword">if</span> (settings.isHeadUpDownMove != <span class="hljs-number">0.0f</span>) {
+    out &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"head-anim-up-down-timestamp"</span>;
+    out &lt;&lt; YAML::Value &lt;&lt; settings.isHeadUpDownMove;
+  }
+</code></pre>
+    <p class="normal">And the two values are also to the <code class="inlineCode">decode()</code> method for the <code class="inlineCode">ExtendedInstanceSettings</code> data type in <code class="inlineCode">YamlParserTypes.h</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (node[<span class="hljs-string">"head-anim-left-right-timestamp"</span>]) {
+    rhs.isHeadLeftRightMove =
+     node[<span class="hljs-string">"head-anim-left-right-timestamp"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+  }
+  <span class="hljs-keyword">if</span> (node[<span class="hljs-string">"head-anim-up-down-timestamp"</span>]) {
+    rhs.isHeadUpDownMove =
+      node[<span class="hljs-string">"head-anim-up-down-timestamp"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+  }
+</code></pre>
+    <p class="normal">After all these additions, you can add some HeadAnim nodes to the node tree of the man’s model, creating animations like the one shown in <em class="italic">Figure 10.11</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_10.11_B22428.png" alt="" width="788" height="739"/></figure>
+    <p class="packt_figref">Figure 10.11: The instance looks up while waving and smiling</p>
+    <p class="normal">The instance can now turn the head at any time in a natural manner, we just need to add the new HeadAnim node to<a id="_idIndexMarker566"/> the control flow. If you go back to <em class="italic">Figure 10.6</em>, you will see that a small addition like the head movement makes an enormous difference in the appearance of the instance.</p>
+    <p class="normal">You can let your imagination flow about other possibilities for the new head movement. Do you want the head to follow the camera or any other nearby instance? Do you want to nod the head to signal <em class="italic">yes</em> and shake the head slightly if the answer to a question is <em class="italic">no</em>? Do you want to make the player look up or down to move the player’s point of interest toward the sky or the floor? Some ideas are listed in the <em class="italic">Practical sessions</em> section if you want to extend the code.</p>
+    <h1 id="_idParaDest-309" class="heading-1">Summary</h1>
+    <p class="normal">In this chapter, we added both facial expressions and separate head animations to the instances. We started with a brief exploration of face animations. Then we implemented face animations in the form of morph target animations to code and shaders, enabling the instances to smile or be angry. Next, we added a tree node for the face animations, enabling us to use the new facial expressions in the node trees. Finally, we looked at additive animation blending and added head movement by using additive blending, including a new tree node and UI controls.</p>
+    <p class="normal">In the next chapter, we will leave the animation controls for a while and give the instances literally a room to live in by adding level data to the virtual world, like a game level. We start by checking the formats supported by the Open Assimp Importer Library and search for available level files. Then, we explore reasons why we should separate level data from models and instances. Finally, we load the level data from a file and add the level-related data to the application and renderer.</p>
+    <h1 id="_idParaDest-310" class="heading-1">Practical sessions</h1>
+    <p class="normal">Here are some additions you could make to the code:</p>
+    <ul>
+      <li class="bulletList">Add support for multiple meshes containing morph target animations.</li>
+      <li class="bulletList">Currently, only one mesh of a model can have morph target animations. For a simple head animation, this limit is fine. But if you want to control more than one part of the face, using multiple morph targets may be helpful.</li>
+      <li class="bulletList">Add blending between two morph targets. For even better and more natural facial expressions, a direct blending between two morph targets would be nice. A detour via the neutral position is no longer needed, then, but a direct path between anger and worry is available.</li>
+      <li class="bulletList">Add more morph targets.</li>
+      <li class="bulletList">You may try to let the models <em class="italic">speak</em>. You could add expressions for different vowels and consonants, including the direct blending from the previous task. With such animations, you could mimic instances speaking to you during interactions.</li>
+      <li class="bulletList">Add layered/masked animations.</li>
+    </ul>
+    <p class="normal-one">In contrast to additive animation blending, layered blending uses different skeletal animation clips for distinct parts of the model’s virtual body. For instance, all but the right arm uses the running animation and only the right arm plays the waving animation. As noted in the <em class="italic">How additive blending works</em> section, layered animations may need additional effort to synchronize the two animation clips. You need to add some logic to mask out parts of the model’s skeleton.</p>
+    <ul>
+      <li class="bulletList">Let the instance turn their head toward you on interaction. This is a feature of many games: if you start interacting with an instance, they turn their head around to look directly toward you.</li>
+      <li class="bulletList">Let nearby instances <em class="italic">judge</em> you. This is like the previous task: you could also add the additive head-turning animation to instances walking near you. Add a random facial expression too, enabling the instances to show some sort of emotion when they pass near you.</li>
+      <li class="bulletList">Let the instances smile and wave at the nearest instance passing by.</li>
+    </ul>
+    <p class="normal-one">This is a combination and extension of the two previous tasks: use the interaction logic to find the nearest instance for every instance in the virtual world, then move the head towards that instance. Play the smiling morph animation and a new additive animation with only the right arm waving. You might want to use a layered animation for the arm here.</p>
+    <ul>
+      <li class="bulletList">Add more additive blending animations.</li>
+    </ul>
+    <p class="normal-one">Turning the head around is a good start, but what about doing an entire animation of someone looking around? Try to add more layers of additive blending animations to make instances make gestures in interaction.</p>
+    <ul>
+      <li class="bulletList">Optimize C++ and shader code for better performance.</li>
+    </ul>
+    <p class="normal-one">The current C++ and GLSL shader code and the data structures on the CPU and GPU were created to explain and explore the features we added here, like morph target animations and facial expressions. There is a lot of room left for optimization, both on the CPU and the GPU. You could try to squeeze more frames per second out of the application, for instance, by optimizing the data types sent to the GPU, by moving more work to compute shaders, or by removing the busy-waits for the shader results on Vulkan. You could also check if data compression has a positive or negative outcome on the frame times. For an easy comparison, add a checkbox to the UI to switch between the default code and the optimized version.</p>
+    <h1 id="_idParaDest-311" class="heading-1">Additional resources</h1>
+    <ul>
+      <li class="bulletList">Layered animations in Unreal Engine: <a href="https://dev.epicgames.com/documentation/en-us/unreal-engine/using-layered-animations-in-unreal-engine"><span class="url">https://dev.epicgames.com/documentation/en-us/unreal-engine/using-layered-animations-in-unreal-engine</span></a></li>
+      <li class="bulletList">Additive animations in Unreal Engine: <a href="https://dev.epicgames.com/documentation/en-us/unreal-engine/additive-vs.-full-body?application_version=4.27"><span class="url">https://dev.epicgames.com/documentation/en-us/unreal-engine/additive-vs.-full-body?application_version=4.27</span></a></li>
+      <li class="bulletList">Unity Animation Layers: <a href="https://docs.unity3d.com/Manual/AnimationLayers.html"><span class="url">https://docs.unity3d.com/Manual/AnimationLayers.html</span></a></li>
+      <li class="bulletList">Godot Animation Trees: <a href="https://docs.godotengine.org/en/latest/tutorials/animation/animation_tree.html"><span class="url">https://docs.godotengine.org/en/latest/tutorials/animation/animation_tree.html</span></a></li>
+      <li class="bulletList">Blender: <a href="https://www.blender.org"><span class="url">https://www.blender.org</span></a></li>
+      <li class="bulletList">Blender Shape Keys: <a href="https://docs.blender.org/manual/en/latest/animation/shape_keys/introduction.html"><span class="url">https://docs.blender.org/manual/en/latest/animation/shape_keys/introduction.html</span></a></li>
+    </ul>
+  </div>
+</div></div></body></html>

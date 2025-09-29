@@ -1,0 +1,528 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><div id="_idContainer140" class="Basic-Text-Frame">
+    <h1 class="chapterNumber">11</h1>
+    <h1 id="_idParaDest-313" class="chapterTitle">Loading a Game Map</h1>
+    <p class="normal">Welcome to <a href=""><em class="italic">Chapter 11</em></a>! In the previous chapter, we added facial expressions to the instances. After a brief introduction of morph target animations, we extended the application to load morph meshes and added UI elements to control the face animations of an instance. Also, a new graph node type was added to allow using face animations in node trees. Finally, we implemented additive blending to move the heads of the instances independently of any skeletal and face animations.</p>
+    <p class="normal">In this chapter, we will take a short break from character control and add a game level and level assets to the virtual world. We will start by exploring reasons why level data should be handled differently than models and instances; plus, we will look at suitable file formats to import level data with the Open Asset Importer Library and where to find game levels. Then, we will load level data and assets from files into the application and update the quadtree to become an octree. As the last step, we will add the level-related data to the renderer to draw the game map to the screen, giving us an idea of what the home for the inhabitants of our virtual world will look like. In this chapter, we will cover the following topics:</p>
+    <ul>
+      <li class="bulletList">Differences between map and model data</li>
+      <li class="bulletList">Choosing a file format for a map</li>
+      <li class="bulletList">Importing a game map</li>
+      <li class="bulletList">Sending the map data to the GPU</li>
+    </ul>
+    <h1 id="_idParaDest-314" class="heading-1">Technical requirements</h1>
+    <p class="normal">The example code for this chapter is available in the <code class="inlineCode">chapter11</code> folder, in the <code class="inlineCode">01_opengl_level</code> subfolder for OpenGL and the <code class="inlineCode">02_vulkan_level</code> subfolder for Vulkan.</p>
+    <h1 id="_idParaDest-315" class="heading-1">Differences between map and model data</h1>
+    <p class="normal">There are some interesting<a id="_idIndexMarker567"/> differences between handling models and level data, allowing us to apply optimizations in data handling. In the code for this book, we will do these optimizations after loading the level data. For larger levels, doing a precalculation during level creation is the better approach.</p>
+    <p class="normal">Let’s take a closer look at some of the differences.</p>
+    <h2 id="_idParaDest-316" class="heading-2">Level data does not move around</h2>
+    <p class="normal">The most significant difference between models and levels is simple: while the properties of a model instance can change, such as position, rotation, and speed, and they play animations, react to events, and so on, a level’s architecture typically remains unchanged.</p>
+    <p class="normal">Non-movable and non-animated<a id="_idIndexMarker568"/> polygons of a level have a big advantage: some data can be precalculated, either at creation time or at loading time for collision detection or lighting, for example. At runtime, only a lookup into the precalculated data is needed. Plus, we do not have to upload the data in every frame to the GPU again. All triangles can be processed at loading time and then uploaded once into GPU memory, residing there until the level data may be removed from the application by the user.</p>
+    <div class="note">
+      <p class="normal">What about doors, buttons, elevators, or anything that does move in a level?</p>
+      <p class="normal">Movable parts of a level, such as sliding or revolving doors, elevators, buttons and switches, locker doors, mechanical platforms... in short, anything that can move inside a level, are usually modeled and used like an animated model instead of static level data.</p>
+      <p class="normal">Just think of a revolving door as a 3D model of a door, having a single node placed on the hinges. And on interaction, the model rotates around the hinge. Or, for a sliding door, the door model is translated a specific amount to one side, opening the passage to another room. In contrast to those doors, a static wall or a static floor in a level will never move or rotate.</p>
+    </div>
+    <p class="normal">Doing split collision detection for static data also helps us to improve performance.</p>
+    <h2 id="_idParaDest-317" class="heading-2">Using a separate collision detection for level data</h2>
+    <p class="normal">For collision detection, we can add a quadtree or octree containing only the level data. This tree must be recreated when the level is loaded and can be kept read-only during runtime, skipping costly operations of adding and removing instances. We then use the AABBs of the instances to check<a id="_idIndexMarker569"/> the level-data tree if an instance is colliding with level geometry. Using different tree structures for instance and level data also allows us to configure the trees according to the specific needs. A level octree may need entirely different values for maximum depth and number of triangles per node due to many triangles in the map, while there are only a few instances running around in the virtual world. In addition to the improvements for static data, a game level may contain other data that is not needed for models.</p>
+    <h2 id="_idParaDest-318" class="heading-2">Level data may contain additional data</h2>
+    <p class="normal">Both CPU and GPU time are <a id="_idIndexMarker570"/>scarce resources at runtime, and any data that can be made available in lookup tables or calculated in a shader can save precious milliseconds when creating the next frame. We saw the effect in <a href="Chapter_2.xhtml"><em class="italic">Chapter 2</em></a> while moving parts of the animation calculation to a compute shader, and again in <a href="Chapter_7.xhtml"><em class="italic">Chapter 7</em></a> after adding animation lookup tables to GPU memory. In both chapters, a significant frame time boost was achieved for the same number of instances on the screen.</p>
+    <p class="normal">For level data, similar accelerations can be done. Four examples of such additional data are spatial division, lightmaps, navigation meshes, and hierarchical level of detail. Let’s take a brief look at these extra data types. Links to more detailed explanations can be found in the <em class="italic">Additional resources</em> section at the end of the chapter.</p>
+    <h3 id="_idParaDest-319" class="heading-3">Spatial division</h3>
+    <p class="normal">We talked about the spatial division of a level when diving into collision detection in <a href="Chapter_8.xhtml"><em class="italic">Chapter 8</em></a>. Saving spatial division data to the level file is needed to avoid doing the same calculations at loading time, or even at runtime of the game.</p>
+    <p class="normal">Creating <strong class="keyWord">Binary Space Partition</strong> (<strong class="keyWord">BSP</strong>) trees or dividing the virtual world into an octree may take a long time, depending on<a id="_idIndexMarker571"/> the number of triangles in a level and the overall level complexity. This kind of computation can be moved to level creation time, adding only an optimized lookup version to the final level file.</p>
+    <h3 id="_idParaDest-320" class="heading-3">Lightmaps</h3>
+    <p class="normal">Even though the principle of lightmaps was introduced in <strong class="screenText">id Software</strong>’s <strong class="screenText">Quake</strong> nearly thirty years ago, this technique is still in use today. During level creation, the light effects of static lights are “baked” into a texture, with bright pixels depicting the parts of the level geometry where the light of a static light<a id="_idIndexMarker572"/> source shines onto a surface, and dark pixels where shadows are on the level surface.</p>
+    <p class="normal">The lightmap texture is then added as a secondary texture, darkening the areas where the light from a light source does not reach the level geometry and simulating a shadow. Using a lightmap can drastically speed up light calculations by keeping a reasonable visual effect, since less expensive per-pixel calculations are needed.</p>
+    <h3 id="_idParaDest-321" class="heading-3">Navigation mesh</h3>
+    <p class="normal">A <strong class="keyWord">navmesh</strong>, or <strong class="keyWord">navigation mesh</strong>, is an addition for enemies, NPCs, or any other computer-controlled objects. The level <a id="_idIndexMarker573"/>geometry will be overlayed with an extra mesh made of triangles or other polygons, but only in those places where computer-controlled objects should be able to move around. A navmesh accelerates pathfinding for the objects and can help to prevent collision checks when placed correctly.</p>
+    <p class="normal">We will come back to navigation meshes in <a href="Chapter_13.xhtml"><em class="italic">Chapter 13</em></a>, when we add simple navigation to the instances.</p>
+    <h3 id="_idParaDest-322" class="heading-3">Hierarchical level-of-detail</h3>
+    <p class="normal">Model files can include so-called<a id="_idIndexMarker574"/> level-of-detail meshes. When drawing models that are far away from the camera, the mesh complexity can be lowered without affecting the visual quality as the model will cover only a few pixels of the screen. By using different mesh resolutions, the overall number of triangles to draw the models can be reduced.</p>
+    <p class="normal">Level data can leverage level-of-detail meshes even more, replacing groups of objects with a simpler representation. For example, instead of drawing a large number of visually indistinguishable rocks at a great distance, the <strong class="keyWord">Hierarchical Level-of-Detail</strong> (<strong class="keyWord">HLOD</strong>) version of the same area could be merged to a<a id="_idIndexMarker575"/> single mesh with adjusted textures, delivering a similar visual quality with a fraction of the polygons and textures.</p>
+    <h2 id="_idParaDest-323" class="heading-2">Level data may be partial or incomplete</h2>
+    <p class="normal">Your fancy animated 3D model should be fully available all the time, not only half of the model, or even less. But for level data, the sheer size of a level could be too much for a PC or console to handle at once, especially when taking the additional level data into account, like for lighting, navigation, or collision detection. But also texture size and quality, or the number and distribution of computer-controlled characters can raise the memory requirements by and large. Plus, the currently loaded level part could have much more detail, using the available resources to draw the visible area instead <a id="_idIndexMarker576"/>of keeping invisible and unused data in memory.</p>
+    <p class="normal">Keeping the immersion for the player alive is part of the level design. The level may be hidden behind a winding passage, where none of the two-level parts is visible, allowing the game engine to discard the area where the player is coming from and loading the part they are heading to. Another widely used example for level switches is to use elevators and load new level data as the next floor of a building, spaceship, or similar.</p>
+    <p class="normal">By using precomputed data wisely, the time to render a single frame could be reduced to deliver a greater experience to the player. Or the visual details could be adjusted with the now unused CPU power, allowing to show more objects on the screen, or more detailed objects, while still maintaining the same frame time.</p>
+    <p class="normal">After the differences between maps and instances are clear, let’s see which file formats are mostly used for level data, and how to get game maps.</p>
+    <h1 id="_idParaDest-324" class="heading-1">Choosing a file format for a map</h1>
+    <p class="normal">The Open Asset Importer Library knows several old and new formats for 3D character models, but – sadly – support for level <a id="_idIndexMarker577"/>data is pretty limited.</p>
+    <p class="normal">We will explore file formats of level files mostly found on the internet first, and then look at alternatives if the available formats do not fit our needs.</p>
+    <h2 id="_idParaDest-325" class="heading-2">Using levels in file formats supported by Assimp</h2>
+    <p class="normal">A couple of file formats are used to<a id="_idIndexMarker578"/> create game level data, either by creating data from scratch or by using buildings and landscapes from other games as templates.</p>
+    <p class="normal">If you want to get some<a id="_idIndexMarker579"/> game maps to import, you should check out these <a id="_idIndexMarker580"/>websites:</p>
+    <ul>
+      <li class="bulletList"><strong class="screenText">Sketchfab</strong>: <a href="https://sketchfab.com/"><span class="url">https://sketchfab.com/</span></a></li>
+      <li class="bulletList"><strong class="screenText">Free3D</strong>: <a href="https://free3d.com"><span class="url">https://free3d.com</span></a></li>
+    </ul>
+    <p class="normal">On both sites, an enormous number of free and paid animated and non-animated models, levels, and assets can be searched and downloaded. Several models come with a Creative Commons license, allowing you to use models in free and even commercial projects.</p>
+    <p class="normal">Usually, you will find levels in the following formats:</p>
+    <ul>
+      <li class="bulletList">Khronos Group glTF (<code class="inlineCode">.gltf</code>/<code class="inlineCode">.glb</code>): The open source glTF format can not only be used for models like the<a id="_idIndexMarker581"/> animated <code class="inlineCode">Woman</code> and <code class="inlineCode">Man</code> models we are using in the chapters, but also entire levels can be exported as glTF files.</li>
+      <li class="bulletList">Collada (<code class="inlineCode">.dae</code>): Collada is an old but fully open XML-based file format. Collada is also managed by the Khronos <a id="_idIndexMarker582"/>Group, and even an ISO standard for the file format has been created.</li>
+      <li class="bulletList">Wavefront (<code class="inlineCode">.obj</code> + <code class="inlineCode">.mtl</code>): Many levels can be found in the Wavefront file format. Files in Wavefront format<a id="_idIndexMarker583"/> are pure text (no binary components) and the format is well documented and widely supported.</li>
+      <li class="bulletList">Universal Scene<a id="_idIndexMarker584"/> Description (<code class="inlineCode">.usd</code>/<code class="inlineCode">.usdz</code>): The <strong class="keyWord">Universal Scene Description</strong> (<strong class="keyWord">USD</strong>) format is quite new <a id="_idIndexMarker585"/>compared to the other file formats. USD is also open source and well documented, but<a id="_idIndexMarker586"/> the support in Assimp is still experimental due to the complexity of the file format.</li>
+      <li class="bulletList">Autodesk FBX (<code class="inlineCode">.fbx</code>): The “Filmbox” format is proprietary and mostly undocumented, but <a id="_idIndexMarker587"/>tools such as Blender and Assimp can read and write this file format. Using FBX is more or less at your own risk as it is possible that only specific versions are working as expected.</li>
+    </ul>
+    <p class="normal">If none of these models fits your needs, you may have to extend a file format, or even build a custom file format.</p>
+    <h2 id="_idParaDest-326" class="heading-2">Extending existing formats or creating a custom format</h2>
+    <p class="normal">Creating new game levels from scratch or modifying existing game levels may require additional information that is <a id="_idIndexMarker588"/>not available in the original file format, such as baked-in light maps, tree data, navigation meshes, or level-of-detail data. See the <em class="italic">Level data may contain additional data</em> section for more information.</p>
+    <p class="normal">File formats such as glTF have the built-in ability to create extensions, while other file formats may be hard or impossible to <a id="_idIndexMarker589"/>extend without breaking existing importers. In such a case, you could invent your own file format from scratch or use a combination of one of the standard file formats for level data and add a custom format to store additional data.</p>
+    <p class="normal">A custom file format was created earlier in this book in the <em class="italic">Adding a YAML parser </em>section of <a href="Chapter_5.xhtml"><em class="italic">Chapter 5</em></a>: the YAML configuration file to store all settings of the models, instances, cameras, collision detection, and node trees. Although we are relying on a standard textual format to store the data on disk, the contents of the file are tailored to fit the needs of our example application. Storing the same data in a binary format would also be possible, for instance, when decoding the text information will take too long.</p>
+    <p class="normal">But creating an entirely new file format should the last resort since you will have to write all the code to read and write the data, keep track of different versions of the file format during read and write operations, and maybe even support different operating systems and hardware architectures. Maintaining such an organically grown file format can become a nightmare.</p>
+    <p class="normal">A better way is to use standard formats and bundle all files into an archive, for instance, into a ZIP file. You don’t have to care about missing files when the level is distributed to players or other developers, but at the same time, you do not need to reinvent the wheel by creating a new, all-encompassing file format.</p>
+    <p class="normal">Such archives are more common than you might think. Formats such as WAD from the original DOOM and PAK/PK2/PK3 for the <a id="_idIndexMarker590"/>Quake series were created to collect all game data in a single file, and these file types <a id="_idIndexMarker591"/>even support patching as files in new archives replace files of the same name in old archives.</p>
+    <div class="note">
+      <p class="normal">Building your own levels</p>
+      <p class="normal">What if you can’t find a suitable game level map on the internet? You still have the option to create a small map by yourself, for instance, with Blender. Creating a map is out of the scope of this book, but you will find suitable tutorials and videos on the internet. You can find links to two example videos in the <em class="italic">Additional resources</em> section.</p>
+    </div>
+    <p class="normal">After we explored the reasons why separating model and level data in the application, we will now implement new code for loading and processing level data.</p>
+    <h1 id="_idParaDest-327" class="heading-1">Importing a game map</h1>
+    <p class="normal">As the first step to load a level, we will add a new C++ class named <code class="inlineCode">AssimpLevel</code>. You can think of the <code class="inlineCode">AssimpLevel</code> class as a mix of the two classes, <code class="inlineCode">AssimpModel</code> and <code class="inlineCode">AssimpInstance</code>, containing<a id="_idIndexMarker592"/> the static vertex data of the model class and dynamic properties such as the position, rotation, or scale of the instance class.</p>
+    <p class="normal">The <code class="inlineCode">AssimpLevel</code> class consists of two new files, <code class="inlineCode">AssimpLevel.h</code> and <code class="inlineCode">AssimpLevel.cpp</code>. Both files are in the <code class="inlineCode">model</code> folder, but we will borrow most of the methods and members from the two classes, <code class="inlineCode">AssimpModel</code> and <code class="inlineCode">AssimpInstance</code>.</p>
+    <p class="normal">Let’s do a brief walkthrough of the <code class="inlineCode">AssimpLevel</code> class.</p>
+    <h2 id="_idParaDest-328" class="heading-2">Adding a C++ class to hold the level data</h2>
+    <p class="normal">Since the level<a id="_idIndexMarker593"/> and model/instance data are so similar, we can reuse parts of the functionality we already have in the <code class="inlineCode">AssimpModel</code> and <code class="inlineCode">AssimpInstance</code> classes, such as loading the model file or doing matrix operations.</p>
+    <p class="normal">For the static data, we can copy the following methods and members from the <code class="inlineCode">AssimpModel</code> class, exchanging the <code class="inlineCode">model</code> part in the name with <code class="inlineCode">level</code> to be consistent with the class name:</p>
+    <ul>
+      <li class="bulletList">The <code class="inlineCode">loadModel()</code> method, but without bones, animations, and lookup table creation</li>
+      <li class="bulletList">The <code class="inlineCode">processNode()</code> method, again without the bone-specific part</li>
+      <li class="bulletList">The entire <code class="inlineCode">draw()</code> method</li>
+      <li class="bulletList">The <code class="inlineCode">getTriangleCount()</code>, <code class="inlineCode">getModelFileName()</code>, and <code class="inlineCode">getModelFileNamePath()</code>methods</li>
+      <li class="bulletList">The <code class="inlineCode">setModelSettings()</code> and <code class="inlineCode">getModelSettings()</code> methods</li>
+      <li class="bulletList">The <code class="inlineCode">mTriangleCount</code> and <code class="inlineCode">mVertexCount</code> member variables</li>
+      <li class="bulletList">The <code class="inlineCode">mRootNode</code>, <code class="inlineCode">mNodeList</code>, <code class="inlineCode">mRootTransformMatrix</code>, <code class="inlineCode">mModelMeshes</code>, <code class="inlineCode">mVertexBuffers</code>, and <code class="inlineCode">mModelSettings</code> member variables to store the viable level data</li>
+      <li class="bulletList">The <code class="inlineCode">mTextures</code> and <code class="inlineCode">mPlaceholderTexture</code> member variables for the textures</li>
+    </ul>
+    <p class="normal">For the dynamic data, the following methods and members can be copied from the <code class="inlineCode">AssimpInstance</code> class, again replacing the word <code class="inlineCode">model</code> with <code class="inlineCode">level</code> in the names:</p>
+    <ul>
+      <li class="bulletList">The <code class="inlineCode">updateModelRootMatrix()</code> and <code class="inlineCode">getWorldTransformMatrix() </code>methods</li>
+      <li class="bulletList">The <code class="inlineCode">mLocalTranslationMatrix</code>, <code class="inlineCode">mLocalRotationMatrix</code>, <code class="inlineCode">mLocalScaleMatrix</code>, <code class="inlineCode">mLocalSwapAxisMatrix</code>, <code class="inlineCode">mLocalTransformMatrix</code>, and <code class="inlineCode">mModelRootMatrix</code> member variables</li>
+    </ul>
+    <p class="normal">To have all the variable<a id="_idIndexMarker594"/> level data in one location, we create the <code class="inlineCode">LevelSettings.h</code> file in the <code class="inlineCode">model</code> folder, containing the <code class="inlineCode">LevelSettings</code> <code class="inlineCode">struct</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">LevelSettings</span> {
+  std::string lsLevelFilenamePath;
+  std::string lsLevelFilename;
+  glm::vec3 lsWorldPosition = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+  glm::vec3 lsWorldRotation = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+  <span class="hljs-type">float</span> lsScale = <span class="hljs-number">1.0f</span>;
+  <span class="hljs-type">bool</span> lsSwapYZAxis = <span class="hljs-literal">false</span>;
+};
+</code></pre>
+    <p class="normal">As you can see, these level settings are also a mix of data taken partially from model settings (filenames) and instance settings (position, rotation, scale, axis swap). The <code class="inlineCode">LevelSettings</code> data type will be used to simplify the level settings in the user interface and to save and load level-related data.</p>
+    <p class="normal">We also make the loaded level data available to other parts of the application by adding a vector of <code class="inlineCode">AssimpLevel</code> shared pointers called <code class="inlineCode">micLevels</code> and the <code class="inlineCode">micSelectedlevel</code> int that holds the currently selected level from the vector:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::vector&lt;std::shared_ptr&lt;AssimpLevel&gt;&gt; micLevels{};
+  <span class="hljs-type">int</span> micSelectedLevel = <span class="hljs-number">0</span>;
+</code></pre>
+    <p class="normal">The main work to manage the <code class="inlineCode">AssimpLevel</code> objects in the <code class="inlineCode">micLevels</code> vector will be handled by the renderer class, so we add methods and callbacks as the second step.</p>
+    <h2 id="_idParaDest-329" class="heading-2">Adding callbacks and renderer code</h2>
+    <p class="normal">Similarities between the <a id="_idIndexMarker595"/>new level functionality and existing model functions also continue in the callbacks. Three new callback definitions named <code class="inlineCode">levelCheckCallback</code>, <code class="inlineCode">levelAddCallback</code>, and <code class="inlineCode">levelDeleteCallback</code> must be added to the <code class="inlineCode">Callbacks.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">using</span> levelCheckCallback = std::function&lt;<span class="hljs-built_in">bool</span>(std::string)&gt;;
+<span class="hljs-keyword">using</span> levelAddCallback = std::function&lt;<span class="hljs-built_in">bool</span>(std::string)&gt;;
+<span class="hljs-keyword">using</span> levelDeleteCallback =
+  std::function&lt;<span class="hljs-built_in">void</span>(std::string)&gt;;
+</code></pre>
+    <p class="normal">For the models, we have the same set of callbacks. The first callback, <code class="inlineCode">levelCheckCallback</code>, is used to check if a level file with the same name is already loaded, and the other two callbacks, <code class="inlineCode">levelAddCallback</code> and <code class="inlineCode">levelDeleteCallback</code>, are used to load a new level from a file and to delete an existing<a id="_idIndexMarker596"/> level object.</p>
+    <p class="normal">Like for most of the callbacks, we will also make the functions available in the <code class="inlineCode">ModelInstanceCamData</code> struct in <code class="inlineCode">ModelInstanceCamData.h</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  levelCheckCallback micLevelCheckCallbackFunction;
+  levelAddCallback micLevelAddCallbackFunction;
+  levelDeleteCallback micLevelDeleteCallbackFunction;
+</code></pre>
+    <p class="normal">In the renderer class, four new methods are added to handle the level management. And again, the new methods, <code class="inlineCode">hasLevel()</code>, <code class="inlineCode">getLevel()</code>, <code class="inlineCode">addLevel()</code>, and <code class="inlineCode">deleteLevel()</code>, are mostly copies from the equivalent model methods:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">hasLevel</span><span class="hljs-params">(std::string levelFileName)</span>;
+    <span class="hljs-function">std::shared_ptr&lt;AssimpLevel&gt; </span><span class="hljs-title">getLevel</span><span class="hljs-params">(std::string</span>
+<span class="hljs-params">      levelFileName)</span>;
+    <span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">addLevel</span><span class="hljs-params">(std::string levelFileName)</span>;
+    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">deleteLevel</span><span class="hljs-params">(std::string levelFileName)</span>;
+</code></pre>
+    <p class="normal">While <code class="inlineCode">hasLevel()</code> is examining the <code class="inlineCode">micLevels</code> vector to see if a level with the same file name is already loaded, <code class="inlineCode">getLevel()</code> returns a shared pointer to the existing <code class="inlineCode">AssimpLevel</code> object, or a <code class="inlineCode">nullptr</code> if no level with the requested file name exists.</p>
+    <p class="normal">As the names suggest, <code class="inlineCode">addLevel()</code> will try to load a level data file from local storage and add the new <code class="inlineCode">AssimpLevel</code> object to <code class="inlineCode">micLevels</code>, and <code class="inlineCode">deleteLevel()</code> will delete the requested level from <code class="inlineCode">micLevels</code> if it exists.</p>
+    <p class="normal">We also add a <code class="inlineCode">null</code> level to stop <code class="inlineCode">micLevels</code> being empty:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">OGLRenderer::addNullLevel</span><span class="hljs-params">()</span><span class="hljs-function"> </span>{
+  std::shared_ptr&lt;AssimpLevel&gt; nullLevel =
+    std::<span class="hljs-built_in">make_shared</span>&lt;AssimpLevel&gt;();
+  mModelInstCamData.micLevels.<span class="hljs-built_in">emplace_back</span>(nullLevel);
+}
+</code></pre>
+    <p class="normal">The connection between the three new callbacks and the <code class="inlineCode">hasLevel()</code>, <code class="inlineCode">addLevel()</code>, and <code class="inlineCode">deleteLevel()</code> methods is created in the <code class="inlineCode">init()</code> method of the renderer, allowing us to use the level calls in the <code class="inlineCode">UserInterface</code> class.</p>
+    <p class="normal">So, let’s go for the third step on<a id="_idIndexMarker597"/> the path to level data management and add new elements to the user interface.</p>
+    <h2 id="_idParaDest-330" class="heading-2">Extending the UI with level property controls</h2>
+    <p class="normal">Just like for the <code class="inlineCode">AssimpLevel</code> class, we can simply copy and adjust existing control elements from other parts <a id="_idIndexMarker598"/>of the <code class="inlineCode">createSettingsWindow()</code> method in the <code class="inlineCode">UserInterface</code> class to create the new <code class="inlineCode">CollapsingHeader</code> named <strong class="screenText">Levels</strong>.</p>
+    <p class="normal">In <em class="italic">Figure 11.1</em>, the resulting user interface part for the level data is shown:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_11.1_B22428.png" alt="" width="1005" height="324"/></figure>
+    <p class="packt_figref">Figure 11.1: User interface controls for the level data</p>
+    <p class="normal">The <strong class="screenText">Levels</strong> combo box is filled from the file names of the levels within the <code class="inlineCode">micLevels</code> vector in the <code class="inlineCode">ModelInstanceCamData</code> struct. The <strong class="screenText">Delete Level</strong> button for the level data has the same function as the <strong class="screenText">Delete Model</strong> button from the <strong class="screenText">Models </strong>section of the UI, removing the currently selected level, and the <a id="_idIndexMarker599"/>controls for axis swap, position, rotation, and scaling are taken from the <strong class="screenText">Instances</strong> UI section, along with the <strong class="screenText">Reset Values to Zero</strong> button to set all controls to default values.</p>
+    <p class="normal">In addition to the new control elements, a new main menu entry named <strong class="screenText">Levels</strong> is created. <em class="italic">Figure 11.2</em> shows all the elements of the main menu at this point:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_11.2_B22428.png" alt="" width="568" height="121"/></figure>
+    <p class="packt_figref">Figure 11.2: The new Levels main menu entry</p>
+    <p class="normal">Clicking on <strong class="screenText">Load Level...</strong> opens the well-known ImGui-based file dialog, configured with a list of supported file formats for level data. See <em class="italic">Choosing a file format for a map</em> section about the extensions in the filter.</p>
+    <p class="normal">The <strong class="screenText">Delete Model</strong> and <strong class="screenText">Load Level...</strong> UI elements utilize the callbacks to add and delete an <code class="inlineCode">AssimpLevel</code> object from the application, creating a seamless workflow for the user when adding level data to the virtual world.</p>
+    <p class="normal">The significant difference between level data and model instances in terms of user experience is the missing visual selection and modification functionality for the level data. Since you will adjust the level data a few times until you are happy with position, rotation, and scale, the extra code to continuously move the level data around like instances will be used only once or twice. It is even more probable that a visual selection harms the workflow if the level data is selected when the desired instance is missed by some pixels.</p>
+    <p class="normal">As the last step of level <a id="_idIndexMarker600"/>data management, we will add the names of the loaded level files and the per-level settings to the YAML config file.</p>
+    <h2 id="_idParaDest-331" class="heading-2">Saving and loading the level configuration</h2>
+    <p class="normal">Storing the loaded levels and the level settings in the YAM configuration file is quick and straightforward.</p>
+    <p class="normal">After adding an Emitter output operator overload for the <code class="inlineCode">LevelSettings</code> data type, we can copy and adjust the<a id="_idIndexMarker601"/> emitting code block for models or cameras in the <code class="inlineCode">createConfigFile()</code> method of the <code class="inlineCode">YamlParser</code> class in the <code class="inlineCode">tools</code> folder to save the level data. In addition, we must also emit the selected level number in the <code class="inlineCode">settings</code> map of our configuration file.</p>
+    <p class="normal">Also, two new methods named <code class="inlineCode">getLevelConfigs()</code> and <code class="inlineCode">getSelectedLevelNum()</code> are added to the <code class="inlineCode">YamlParser</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-function">std::vector&lt;LevelSettings&gt; </span><span class="hljs-title">getLevelConfigs</span><span class="hljs-params">()</span>;
+    <span class="hljs-type">int</span><span class="hljs-function"> </span><span class="hljs-title">getSelectedLevelNum</span><span class="hljs-params">()</span>;
+</code></pre>
+    <p class="normal">Both methods follow the same process as the model and camera counterparts. The first method, <code class="inlineCode">getLevelConfigs()</code>, tries to load the level data from the YAML file, and <code class="inlineCode">getSelectedLevelNum()</code> returns the index of the selected level at the time the configuration was saved.</p>
+    <p class="normal">In the <code class="inlineCode">YamlParserTypes.h</code> file, a simple pair of <code class="inlineCode">encode()</code> and <code class="inlineCode">decode()</code> methods for the <code class="inlineCode">LevelSettings</code> data type must be added to read back the data from the YAML file. We should also increase the <code class="inlineCode">mYamlConfigFileVersion</code> value as the configuration structure has changed.</p>
+    <p class="normal">Now we can add level data from a file, place the level in the virtual world, and store and reload the configuration. Adding the level data to the undo/redo stack is left as an exercise for you, but the basic principle level data undo/redo is identical to the undo/redo functionality for models.</p>
+    <p class="normal">Since the level data may contain overlapping elements, such as bridges, tunnels, or multiple floors of a building, instances could be on the same location in two dimensions. The existing collision detection would be triggered even if the instances are walking at different heights in the level, causing false reactions to non-existing collisions.</p>
+    <p class="normal">We have to extend the quadtree to become an octree to support collision detection in all three dimensions. Let’s check out how to upgrade the quadtree.</p>
+    <h2 id="_idParaDest-332" class="heading-2">Converting the quadtree to an octree</h2>
+    <p class="normal">Updating the <a id="_idIndexMarker602"/>quadtree to an octree is astonishingly simple, and most of the work can be triggered by using the <code class="inlineCode">Rename</code> function of the <code class="inlineCode">Refactoring</code> functionality of the IDE. For brevity, we will just do a brief walkthrough of the required changes here. Please <a id="_idIndexMarker603"/>check the example code in the subfolders within the <code class="inlineCode">chapter11</code> folder for the full octree code.</p>
+    <p class="normal">First, we change the name of the <code class="inlineCode">quadtree</code> folder to <code class="inlineCode">octree</code>. In the <code class="inlineCode">CMakeLists.txt</code> file, the two occurrences of <code class="inlineCode">quadtree</code> must be also renamed <code class="inlineCode">octree</code> to match the folder name. And we rename the <code class="inlineCode">QuadTree</code> class <code class="inlineCode">Octree</code> and change <code class="inlineCode">BoundingBox2D</code> to <code class="inlineCode">BoundingBox3D</code>.</p>
+    <p class="normal">Next, we extend the <code class="inlineCode">Octree</code> class by using eight instead of four children. <em class="italic">Figure 11.3</em> shows the quadrant IDs of the octree:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_11.3_B22428.png" alt="" width="516" height="378"/></figure>
+    <p class="packt_figref">Figure 11.3: Quadrant IDs in the octree</p>
+    <p class="normal">The four existing child quadrant IDs, 0 to 3, will be used for the four front-facing octants, and the four back-facing octants will receive the new IDs 4 to 7. Moving the four new octants to the back of the octree cuboid allows us to retain most of the logic from the quadtree. Adding the new logic to find the correct octant becomes merely an act of copying and pasting the code, taking front- and back-facing octants into account.</p>
+    <p class="normal">Then, we update all <code class="inlineCode">QuadTree</code>-related <code class="inlineCode">include</code> statements, classes, and method calls in the code to <code class="inlineCode">Octree</code>, and all <code class="inlineCode">BoundingBox2D</code> occurrences to <code class="inlineCode">BoundingBox3D</code>. The bounding box upgrade includes the change of all <code class="inlineCode">glm::vec2</code> types of the old <code class="inlineCode">BoundingBox2D</code> parameters to use <code class="inlineCode">glm::vec3</code> instead. We also change the name of <code class="inlineCode">getTopLeft()</code> to <code class="inlineCode">getFrontTopLeft()</code> and add the <code class="inlineCode">getBack()</code> method to reflect the availability of the third dimension.</p>
+    <p class="normal">Finally, all callback function types in the code will be renamed from <code class="inlineCode">quadTree</code> to <code class="inlineCode">octree</code> to reflect the functionality change in all other places in the code too.</p>
+    <p class="normal">Now we can use the octree to detect collisions in three dimensions. Sadly, the <strong class="screenText">Instance Positions</strong> window still shows a top-down view of the instances, and we are unable to see if any instances are placed at <a id="_idIndexMarker604"/>different heights. We must adjust the rendering <a id="_idIndexMarker605"/>of the mini window containing the instances so that we can see any instances placed at different heights.</p>
+    <h2 id="_idParaDest-333" class="heading-2">Creating an interactive octree view</h2>
+    <p class="normal">The <a id="_idIndexMarker606"/>new octree view is <a id="_idIndexMarker607"/>created in three steps:</p>
+    <ol>
+      <li class="numberedList" value="1">For a better overview of the octree and the instances, the new view can be scaled, rotated, and translated by using the mouse. It may still take some extra rotations to align the octree with the camera view, but that is hard to do due to the orthogonal display and the symmetry of the octree. Fading out far away parts of the octree or highlighting the octant containing the camera may help to focus on the current area of interest. On the other hand, using a perspective projected octree may make it easier to find the right alignment, but the perspective will distort the distances between the instances, and we just create a copy of the main level rendering.</li>
+      <li class="numberedList">The lines of the <a id="_idIndexMarker608"/>octree quadrants and the instances are collected into a temporary data structure. We will use an <code class="inlineCode">OGLLineMesh</code> here as this data type contains just the bare minimum; we need to draw ImGui lines.</li>
+      <li class="numberedList">To achieve the desired view, all points of the octree quadrants and the instance bounding boxes must <a id="_idIndexMarker609"/>be transformed by the scaling, rotation, and translation from the first step. This transformation is done in the same way as we did for the cameras and instances: by creating a matrix and a matrix-vector multiplication for each point. There should be no surprises in the matrix operations; only the translation may need an explanation.</li>
+    </ol>
+    <p class="normal">Let’s step through the interactive part first.</p>
+    <h3 id="_idParaDest-334" class="heading-3">Adding interactivity</h3>
+    <p class="normal">To be able to change the<a id="_idIndexMarker610"/> octree view with the mouse button and mouse movements, we need three new private variables named <code class="inlineCode">mOctreeZoomFactor</code>, <code class="inlineCode">mOctreeRotation</code>, and <code class="inlineCode">mOctreeTranslation</code> in the <code class="inlineCode">UserInterface</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">float</span> mOctreeZoomFactor = <span class="hljs-number">1.0f</span>;
+    glm::vec3 mOctreeRotation = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+    glm::vec3 mOctreeTranslation = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+</code></pre>
+    <p class="normal">The names of the variables are self-explanatory, so we do not need to dive into the details here.</p>
+    <p class="normal">Right after creating the <strong class="screenText">Instance Positions</strong> window in the <code class="inlineCode">createPositionsWindow()</code> method of the <code class="inlineCode">UserInterface</code> class, we add a check to see if the current window has been hovered over:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">IsWindowHovered</span>(
+      ImGuiHoveredFlags_RootAndChildWindows)) {
+</code></pre>
+    <p class="normal">Without the check, the mouse buttons and motions would trigger the octree view changes in all windows, leading to unwanted results.</p>
+    <p class="normal">Then, we get a reference to the internal <code class="inlineCode">io</code> structure of ImGui:</p>
+    <pre class="programlisting code"><code class="hljs-code">    ImGuiIO&amp; io = ImGui::<span class="hljs-built_in">GetIO</span>();
+    mOctreeZoomFactor += <span class="hljs-number">0.025f</span> * io.MouseWheel;
+    mOctreeZoomFactor = std::<span class="hljs-built_in">clamp</span>(mOctreeZoomFactor,
+      <span class="hljs-number">0.1f</span>, <span class="hljs-number">5.0f</span>);
+</code></pre>
+    <p class="normal">In ImGui’s <code class="inlineCode">io</code> structure, many internal states are available, like changes made to the mouse wheel or the mouse position.</p>
+    <p class="normal">We use the mouse wheel here to adjust the zoom factor of the octree view. Setting upper and lower bounds for the zoom <a id="_idIndexMarker611"/>factor helps to avoid losing the overview.</p>
+    <p class="normal">Next, we check if the right mouse button has been pressed and rotate the view according to the mouse movement while the right mouse button is still pressed:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">IsMouseDown</span>(ImGuiMouseButton_Right)) {
+      mOctreeRotation.y += io.MouseDelta.x;
+      mOctreeRotation.x += io.MouseDelta.y;
+    }
+</code></pre>
+    <p class="normal">Using the right mouse button to change the rotation is also used for the camera, so this kind of view change should be known from working with the application.</p>
+    <p class="normal">Finally, we check for the middle mouse button, moving the octree around with the mouse motion:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">IsMouseDown</span>(ImGuiMouseButton_Middle)) {
+      mOctreeTranslation.x += io.MouseDelta.x;
+      mOctreeTranslation.y += io.MouseDelta.y;
+    }
+  }
+</code></pre>
+    <p class="normal">If you wonder why we don’t use the left mouse button here: Pressing the left mouse button above an ImGui window activates the internal window movement. We have only the right and middle mouse buttons left to achieve two different view changes.</p>
+    <p class="normal">Once we have the transformation we want to see, we can get the lines from the octree and the instances.</p>
+    <h3 id="_idParaDest-335" class="heading-3">Collecting the lines</h3>
+    <p class="normal">To store the<a id="_idIndexMarker612"/> lines before drawing, we add a <code class="inlineCode">private</code> variable named <code class="inlineCode">mOctreeLines</code> to the <code class="inlineCode">UserInterface</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    OGLLineMesh mOctreeLines{};
+</code></pre>
+    <p class="normal">After clearing the vertices vector inside <code class="inlineCode">mOctreeLines</code>, we get the octree lines:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mOctreeLines.vertices.<span class="hljs-built_in">clear</span>();
+  <span class="hljs-type">const</span> <span class="hljs-keyword">auto</span> treeBoxes =
+    modInstCamData.<span class="hljs-built_in">micOctreeGetBoxesCallback</span>();
+</code></pre>
+    <p class="normal">For every octree quadrant, we get a <code class="inlineCode">BoundingBox3D</code> object, containing the minimum and maximum point positions. A conversion to an <code class="inlineCode">AABB</code> is simple:</p>
+    <pre class="programlisting code"><code class="hljs-code">    AABB boxAABB{};
+    boxAABB.<span class="hljs-built_in">create</span>(box.<span class="hljs-built_in">getFrontTopLeft</span>());
+    boxAABB.<span class="hljs-built_in">addPoint</span>(box.<span class="hljs-built_in">getFrontTopLeft</span>() +
+      box.<span class="hljs-built_in">getSize</span>());
+</code></pre>
+    <p class="normal">Then, we use the <code class="inlineCode">getAABBLines()</code> method to create all lines for the AABB as an <code class="inlineCode">OGLLineMesh</code> and add the lines to the <code class="inlineCode">mOctreeLines</code> mesh:</p>
+    <pre class="programlisting code"><code class="hljs-code">    std::shared_ptr&lt;OGLLineMesh&gt; instanceLines =
+      boxAABB.<span class="hljs-built_in">getAABBLines</span>(white);
+    mOctreeLines.vertices.<span class="hljs-built_in">insert</span>(
+      mOctreeLines.vertices.<span class="hljs-built_in">end</span>(),
+      instanceLines-&gt;vertices.<span class="hljs-built_in">begin</span>(),
+      instanceLines-&gt;vertices.<span class="hljs-built_in">end</span>());
+</code></pre>
+    <p class="normal">Next, we get AABB lines for every instance, coloring colliding instances red and all other instances yellow. The currently selected instance also gets an additional green border to be able to stop the instance<a id="_idIndexMarker613"/> easily.</p>
+    <p class="normal">At the end of the loops over both the octants and the instances, <code class="inlineCode">mOctreeLines</code> contains vertices of all lines that should be drawn to the ImGui window. We now need to transform the vertices to match the selected scaling, rotation, and translation.</p>
+    <h3 id="_idParaDest-336" class="heading-3">Calculating the view and drawing the lines</h3>
+    <p class="normal">Since storing <a id="_idIndexMarker614"/>intermediate results is faster than allocating and <a id="_idIndexMarker615"/>calculating a new transformation matrix for the octree lines in every frame, we add three more <code class="inlineCode">private</code> member variables named <code class="inlineCode">mScaleMat</code>, <code class="inlineCode">mRotationMat</code>, and <code class="inlineCode">mOctreeViewMat</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    glm::mat3 mOctreeViewMat = glm::<span class="hljs-built_in">mat3</span>(<span class="hljs-number">1.0f</span>);
+    glm::mat4 mRotationMat = glm::<span class="hljs-built_in">mat4</span>(<span class="hljs-number">1.0f</span>);
+    glm::mat4 mScaleMat = glm::<span class="hljs-built_in">mat4</span>(<span class="hljs-number">1.0f</span>);
+</code></pre>
+    <p class="normal">Then, scaling and the two rotations are applied to create the final view matrix:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mScaleMat = glm::<span class="hljs-built_in">scale</span>(glm::<span class="hljs-built_in">mat4</span>(<span class="hljs-number">1.0f</span>),
+    glm::<span class="hljs-built_in">vec3</span>(mOctreeZoomFactor));
+  mRotationMat = glm::<span class="hljs-built_in">rotate</span>(mScaleMat,
+    glm::<span class="hljs-built_in">radians</span>(mOctreeRotation.x),
+    glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">1.0f</span>, <span class="hljs-number">0.0f</span>, <span class="hljs-number">0.0f</span>));
+  mOctreeViewMat = glm::<span class="hljs-built_in">rotate</span>(mRotationMat,
+    glm::<span class="hljs-built_in">radians</span>(mOctreeRotation.y),
+    glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>, <span class="hljs-number">1.0f</span>, <span class="hljs-number">0.0f</span>));
+</code></pre>
+    <p class="normal">Now we loop over the vertices in <code class="inlineCode">mOctreeLines</code> in groups of two since we need a starting point and ending point for each line:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">for</span> (<span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; mOctreeLines.vertices.<span class="hljs-built_in">size</span>(); i += <span class="hljs-number">2</span>) {
+</code></pre>
+    <p class="normal">Inside the loop, we <a id="_idIndexMarker616"/>extract the vertex pair for each line and transform the vertex positions <a id="_idIndexMarker617"/>by multiplication with the <code class="inlineCode">mOctreeViewMat</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    OGLLineVertex startVert = mOctreeLines.vertices.<span class="hljs-built_in">at</span>(i);
+    OGLLineVertex endVert = mOctreeLines.vertices.<span class="hljs-built_in">at</span>(i<span class="hljs-number">+1</span>);
+    glm::vec3 startPos = mOctreeViewMat *
+      startVert.position;
+    glm::vec3 endPos = mOctreeViewMat * endVert.position;
+</code></pre>
+    <p class="normal">Next, we add the point coordinates to the center of the drawing and add the translational part:</p>
+    <pre class="programlisting code"><code class="hljs-code">   ImVec2 pointStart =
+     <span class="hljs-built_in">ImVec2</span>(drawAreaCenter.x + startPos.x +
+       mOctreeTranslation.x,
+       drawAreaCenter.y + startPos.z +
+       mOctreeTranslation.y);
+    ImVec2 pointEnd =
+      <span class="hljs-built_in">ImVec2</span>(drawAreaCenter.x + endPos.x +
+        mOctreeTranslation.x,
+        drawAreaCenter.y + endPos.z +
+        mOctreeTranslation.y)
+</code></pre>
+    <p class="normal">We don’t need a separate translation matrix here because the movement of the octree lines is only related to the ImGui window, not the position of the vertices in 3D.</p>
+    <p class="normal">At the end of the loop, we draw an ImGui line from the start point to the end point using the colors of the line and a fixed alpha value:</p>
+    <pre class="programlisting code"><code class="hljs-code">    drawList-&gt;<span class="hljs-built_in">AddLine</span>(pointStart, pointEnd,
+    <span class="hljs-built_in">ImColor</span>(startVert.color.r, startVert.color.g,
+      startVert.color.b, <span class="hljs-number">0.6f</span>));
+</code></pre>
+    <p class="normal">If we start the application after these changes, the octree view can be rotated by pressing the right mouse button, moved around by pressing the middle mouse button, and zoomed in and out by using the mouse wheel.</p>
+    <p class="normal"><em class="italic">Figure 11.4</em> shows a view of the octree in the <strong class="screenText">Instance Positions</strong> window:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_11.4_B22428.png" alt="" width="941" height="1056"/></figure>
+    <p class="packt_figref">Figure 11.4: A rotated octree with instances and two subdivision levels</p>
+    <p class="normal">You can see the bounding boxes for all instances in three dimensions. Colliding instances are drawn in red, all other instances are yellow (the same colors as for the AABB debug lines), and the currently selected instance<a id="_idIndexMarker618"/> has an extra outline in green.</p>
+    <p class="normal">Another important <a id="_idIndexMarker619"/>fact to see is the subdivision level of the octree. At the root level of the octree, one subdivision is divided into eight octants – this has happened because of the number of instances. In the far lower right octant, another subdivision was needed to limit the instance count per octant.</p>
+    <p class="normal">When the application is running, the movement of the instances and changes in the octree subdivision can be seen in real time. And the view can be changed to focus on any interesting area of the octree.</p>
+    <p class="normal">One drawback of the default octree implementation is the growing overhead. A subdivision may produce a lot of empty nodes, especially if the threshold per node is small and the tree depth is high. For our implementation, each subdivision into eight octants adds a memory overhead of roughly one kilobyte in memory usage, even if we need to store only one or two instance AABBs in one of the child octants.</p>
+    <p class="normal">Also, each subdivision adds another step to the traversal costs. Even though the traversal complexity grows only on a logarithmic basis, the overhead in memory and traversal time may become significant in larger levels. In this case, a data structure such as a sparse voxel octree could be used instead. A link to a paper describing the principles of sparse voxel octrees is available in the <em class="italic">Additional resources</em> section.</p>
+    <p class="normal">A shortcoming of the current level loading is a missing “feeling” about the dimensions of the loaded level data. If the level is not flat but contains areas with different heights, it is hard to imagine the edges <a id="_idIndexMarker620"/>of the level data.</p>
+    <p class="normal">To get a better orientation, we <a id="_idIndexMarker621"/>will also add an AABB for the level data.</p>
+    <h2 id="_idParaDest-337" class="heading-2">Building an AABB for the level data</h2>
+    <p class="normal">Axis-aligned bounding boxes are a great tool to avoid estimating or guessing the dimensions of an object. We are using<a id="_idIndexMarker622"/> model instance AABBs as a solution to detect collisions by allowing the application to compare the maximum extents of two instances.</p>
+    <p class="normal">While unused areas <a id="_idIndexMarker623"/>between the vertices of the instances and the bounding box are a trade-off between speed and complexity for collision detection, the situation is different for level data. The AABB lines will help us to see the maximum extent of the level in all three dimensions, especially when the level data has large unused areas.</p>
+    <p class="normal">Creating the AABB is done quick and simple. First, we add a new private member variable called <code class="inlineCode">mLevelAABB</code> in the <code class="inlineCode">AssimpLevel.h</code> file to store the AABB:</p>
+    <pre class="programlisting code"><code class="hljs-code">    AABB mLevelAABB{};
+</code></pre>
+    <p class="normal">To generate and retrieve the bounding box data, we add two new public methods, <code class="inlineCode">generateAABB()</code> and <code class="inlineCode">getAABB()</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">generateAABB</span><span class="hljs-params">()</span>;
+    <span class="hljs-function">AABB </span><span class="hljs-title">getAABB</span><span class="hljs-params">()</span>;
+</code></pre>
+    <p class="normal">Splitting the generation of the AABB data from the retrieval is a clever idea as the levels may contain a lot of meshes and vertices. A recalculation is only needed if we adjust the level properties such as the scaling or position since the level data does not move or change other properties by itself.</p>
+    <p class="normal">We already have the transformation matrix for the level data, so calculating the bounding box for the level in <code class="inlineCode">generateAABB()</code> is only a loop over all vertices of all meshes:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-built_in">updateLevelRootMatrix</span>();
+  mLevelAABB.<span class="hljs-built_in">clear</span>();
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; mesh : mLevelMeshes) {
+    <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; vertex : mesh.vertices) {
+      mLevelAABB.<span class="hljs-built_in">addPoint</span>(mLevelRootMatrix *
+        glm::<span class="hljs-built_in">vec4</span>(glm::<span class="hljs-built_in">vec3</span>(vertex.position), <span class="hljs-number">1.0f</span>));
+    }
+  }
+</code></pre>
+    <p class="normal">A crucial step here is changing the <code class="inlineCode">w</code> element of the vertex position. We are using the last element of the position to transport one texture coordinate to the shader. For a correct matrix multiplication, we must set the last element of position to <code class="inlineCode">1.0f</code>.</p>
+    <p class="normal">To trigger an automatic update of the level AABB during property changes of the level, we add a simple callback to <code class="inlineCode">Callbacks.h</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">using</span> levelGenerateAABBCallback = std::function&lt;<span class="hljs-built_in">void</span>(<span class="hljs-type">void</span>)&gt;;
+</code></pre>
+    <p class="normal">In the <code class="inlineCode">ModelInstanceCamData</code> <code class="inlineCode">struct</code>, another callback function is added:</p>
+    <pre class="programlisting code"><code class="hljs-code">  levelGenerateAABBCallback
+    micLevelGenerateAABBCallbackFunction;
+</code></pre>
+    <p class="normal">We bind the <code class="inlineCode">micLevelGenerateAABBCallbackFunction</code> callback to the <code class="inlineCode">generateLevelAABB()</code> method in the <code class="inlineCode">init()</code> method of the renderer, along with the other level data callbacks.</p>
+    <p class="normal">To get a nice interactive display<a id="_idIndexMarker624"/> in the user interface, we add a Boolean named <code class="inlineCode">settingChangedForAABB</code> to the <strong class="screenText">Levels</strong> section. On every slider or checkbox change, or when pressing the <strong class="screenText">Reset Values to Zero</strong> button, we trigger a recalculation of the level’s AABB.</p>
+    <p class="normal">And what about other static level elements? These <a id="_idIndexMarker625"/>objects are called <strong class="keyWord">assets</strong> and can be added to a level. Assets also need <a id="_idIndexMarker626"/>collision checks to prevent the instances from running right through each other, but assets are mostly not animated; they remain in the place intended by the level designers.</p>
+    <p class="normal">We will use a shortcut here and utilize the non-animated models to mimic static level assets. For dynamic assets, such as buttons or doors, animated models can be used; see the <em class="italic">Level data does not move around</em> section for a brief explanation. In the <em class="italic">Practical sessions</em> section, a task to add dynamic assets to the virtual world is available.</p>
+    <p class="normal">So, let’s see what changes are needed for the non-animated models.</p>
+    <h2 id="_idParaDest-338" class="heading-2">Using non-animated models as assets</h2>
+    <p class="normal">To avoid adding a new <code class="inlineCode">AssimpAsset</code> class with mostly the same functionality as the non-animated models, we will <a id="_idIndexMarker627"/>extend the current <code class="inlineCode">AssimpModel</code> class and<a id="_idIndexMarker628"/> the renderer a bit.</p>
+    <p class="normal">For the model class, we change the <code class="inlineCode">getAABB()</code> method to return either a dynamic AABB for models with animations or a static AABB for models without animations:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-function">AABB </span><span class="hljs-title">AssimpModel::getAABB</span><span class="hljs-params">(InstanceSettings instSettings)</span><span class="hljs-function"> </span>{
+  <span class="hljs-keyword">if</span> (mNumAnimatedMeshes &gt; <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">getAnimatedAABB</span>(instSettings);
+  } <span class="hljs-keyword">else</span> {
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">getNonAnimatedAABB</span>(instSettings);
+  }
+}
+</code></pre>
+    <p class="normal">The new method, <code class="inlineCode">getAnimatedAABB()</code>, is just a new name for the old <code class="inlineCode">getAABB()</code> method, and it calculates the AABB from the lookup data as before. The other new method, <code class="inlineCode">getNonAnimatedAABB()</code>, is mostly the <code class="inlineCode">updateModelRootMatrix()</code> method from the <code class="inlineCode">AssimpInstance</code> class.</p>
+    <p class="normal">First, we calculate a separate matrix for scaling, rotation, axis swap, and translation:</p>
+    <pre class="programlisting code"><code class="hljs-code">  glm::<span class="hljs-type">mat4</span> localScaleMatrix = glm::scale(glm::<span class="hljs-type">mat4</span>(<span class="hljs-number">1.0</span>f),
+    glm::<span class="hljs-type">vec3</span>(instSettings.isScale));
+  glm::<span class="hljs-type">mat4</span> localSwapAxisMatrix;
+  <span class="hljs-keyword">if</span> (instSettings.isSwapYZAxis) {
+    glm::<span class="hljs-type">mat4</span> flipMatrix = glm::rotate(glm::<span class="hljs-type">mat4</span>(<span class="hljs-number">1.0</span>f),
+      glm::<span class="hljs-built_in">radians</span>(<span class="hljs-number">-90.0</span>f), glm::<span class="hljs-type">vec3</span>(<span class="hljs-number">0.0</span>f, <span class="hljs-number">0.0</span>f, <span class="hljs-number">1.0</span>f));
+    localSwapAxisMatrix = glm::rotate(flipMatrix,
+      glm::<span class="hljs-built_in">radians</span>(<span class="hljs-number">-90.0</span>f), glm::<span class="hljs-type">vec3</span>(<span class="hljs-number">0.0</span>f, <span class="hljs-number">1.0</span>f, <span class="hljs-number">0.0</span>f));
+  } <span class="hljs-keyword">else</span> {
+    localSwapAxisMatrix = glm::<span class="hljs-type">mat4</span>(<span class="hljs-number">1.0</span>f);
+  }
+  glm::<span class="hljs-type">mat4</span> localRotationMatrix = glm::mat4_cast(
+    glm::quat(glm::<span class="hljs-built_in">radians</span>(instSettings.isWorldRotation)));
+  glm::<span class="hljs-type">mat4</span> localTranslationMatrix =
+    glm::translate(glm::<span class="hljs-type">mat4</span>(<span class="hljs-number">1.0</span>f),
+    instSettings.isWorldPosition);
+</code></pre>
+    <p class="normal">Then, the transformation <a id="_idIndexMarker629"/>matrices and the root transformation<a id="_idIndexMarker630"/> matrix from the model file are combined into a single transform matrix:</p>
+    <pre class="programlisting code"><code class="hljs-code">  glm::<span class="hljs-type">mat4</span> localTransformMatrix =
+    localTranslationMatrix * localRotationMatrix *
+    localSwapAxisMatrix * localScaleMatrix *
+    mRootTransformMatrix;
+</code></pre>
+    <p class="normal">To create the bounding box data, all vertices of the model mesh are transformed to the new positions and the positions are added to a local variable named <code class="inlineCode">modelAABB</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  AABB modelAABB{};
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; mesh : mModelMeshes) {
+    <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; vertex : mesh.vertices) {
+      modelAABB.<span class="hljs-built_in">addPoint</span>(localTransformMatrix *
+        glm::<span class="hljs-built_in">vec4</span>(glm::<span class="hljs-built_in">vec3</span>(vertex.position), <span class="hljs-number">1.0f</span>));
+    }
+  }
+</code></pre>
+    <p class="normal">For the <code class="inlineCode">w</code> element of the vertex position, the same adjustment as for the level data AABB is needed. By setting the last value to <code class="inlineCode">1.0f</code>, we guarantee a correct matrix multiplication when computing the final position.</p>
+    <p class="normal">With the resulting AABB, the extents of the non-animated instance vertices are able to detect AABB collisions with animated models and to draw the debug lines.</p>
+    <div class="note">
+      <p class="normal"> Performance considerations for asset AABBs</p>
+      <p class="normal">Currently, the AABB for non-animated instances is calculated for every instance in every frame, like the AABB for the <a id="_idIndexMarker631"/>animated instances. If the calculation becomes a <a id="_idIndexMarker632"/>bottleneck, for example, if a lot of static assets are placed in the virtual world, changing the AABB computation only on property changes in the UI can be done easily.</p>
+    </div>
+    <p class="normal">Once the level data has<a id="_idIndexMarker633"/> been loaded and processed and the AABBs are calculated, we are ready to draw the level triangles to the screen.</p>
+    <p class="normal">Let’s extend the renderer to add the level data to the rendering process.</p>
+    <h1 id="_idParaDest-339" class="heading-1">Sending the level data to the GPU</h1>
+    <p class="normal">With every addition of new features, it becomes simpler to reuse code in the application. In the case of level data, mesh data is encapsulated in the <code class="inlineCode">AssimpLevel</code> class, and drawing the level’s triangles can be done in <a id="_idIndexMarker634"/>a small loop over all loaded levels.</p>
+    <p class="normal">As the first step, we create a new shader to draw the level data.</p>
+    <h2 id="_idParaDest-340" class="heading-2">Creating a new shader</h2>
+    <p class="normal">Since we need to draw the level triangles <a id="_idIndexMarker635"/>only once, using a separate shader for the level data is a clever idea. Add the <code class="inlineCode">private</code> shader named <code class="inlineCode">mAssimpLevelShader</code> to the header file of the renderer class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    Shader mAssimpLevelShader{};
+</code></pre>
+    <p class="normal">The shader will use the two new files, <code class="inlineCode">assimp_level.vert</code> for the vertex shader and <code class="inlineCode">assimp_level.frag</code> for the fragment shader. We load the files along with the other shaders in the <code class="inlineCode">init()</code> method of the renderer:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (!mAssimpLevelShader.<span class="hljs-built_in">loadShaders</span>(
+      <span class="hljs-string">"shader/assimp_level.vert"</span>,
+      <span class="hljs-string">"shader/assimp_level.frag"</span>)) {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+  }
+</code></pre>
+    <p class="normal">The fragment shader file, <code class="inlineCode">assimp_level.frag</code>, is just a copy of the <code class="inlineCode">assimp.frag</code> file without any changes. For the vertex shader file, <code class="inlineCode">assimp_level.vert</code>, we can copy the <code class="inlineCode">assimp.vert</code> file and keep the <code class="inlineCode">in</code> and <code class="inlineCode">out</code> layout portion and the <code class="inlineCode">Matrices</code> uniform buffer.</p>
+    <p class="normal">We don’t need the selection buffer since no visual selection has been implemented for the level data, and we can change the buffer at binding point <code class="inlineCode">1</code> to contain only a single 4x4 matrix:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">layout</span> (<span class="hljs-keyword">std430</span>, <span class="hljs-keyword">binding</span> = <span class="hljs-number">1</span>) <span class="hljs-keyword">readonly</span> <span class="hljs-keyword">restrict</span>
+    <span class="hljs-keyword">buffer</span> WorldTransformMatrix {
+  <span class="hljs-type">mat4</span> worldTransformMat;
+};
+</code></pre>
+    <p class="normal">Uploading only small data elements like a single matrix to a uniform buffer on the GPU is not the best idea as every upload may add a small delay to the frame. For a real game, or a game engine, the world transform matrix would be part of a bigger buffer, but for the sake of simplicity we just do the single upload here.</p>
+    <p class="normal">In the <code class="inlineCode">main()</code> method of the vertex shader, we use the <code class="inlineCode">worldTransformMat</code> to transform the position and normal vertices to the final position given by the matrix created from the level properties:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">main</span><span class="hljs-params">()</span><span class="hljs-function"> </span>{
+  gl_Position = projection * view * worldTransformMat *
+    <span class="hljs-built_in">vec4</span>(aPos.x, aPos.y, aPos.z, <span class="hljs-number">1.0</span>);
+  color = aColor;
+  normal = <span class="hljs-built_in">transpose</span>(<span class="hljs-built_in">inverse</span>(worldTransformMat)) *
+    <span class="hljs-built_in">vec4</span>(aNormal.x, aNormal.y, aNormal.z, <span class="hljs-number">1.0</span>);
+  texCoord = <span class="hljs-built_in">vec2</span>(aPos.w, aNormal.w);
+}
+</code></pre>
+    <p class="normal">Then, in the <code class="inlineCode">draw()</code> method of<a id="_idIndexMarker636"/> the renderer, we loop over all levels and skip the null level by checking for the existence of any triangles:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; level : mModelInstCamData.micLevels) {
+    <span class="hljs-keyword">if</span> (level-&gt;<span class="hljs-built_in">getTriangleCount</span>() == <span class="hljs-number">0</span>) {
+      <span class="hljs-keyword">continue</span>;
+    }
+</code></pre>
+    <p class="normal">As the last step of the level display process, the vertex drawing is triggered:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mAssimpLevelShader.<span class="hljs-built_in">use</span>();
+    mShaderModelRootMatrixBuffer.<span class="hljs-built_in">uploadSsboData</span>(
+      level-&gt;<span class="hljs-built_in">getWorldTransformMatrix</span>(), <span class="hljs-number">1</span>);
+    level-&gt;<span class="hljs-built_in">draw</span>();
+  }
+</code></pre>
+    <p class="normal">We use the new <code class="inlineCode">mAssimpLevelShader</code>, upload the transformation matrix of the level to the shader, and call the <code class="inlineCode">draw()</code> method of the <code class="inlineCode">AssimpLevel</code> object.</p>
+    <p class="normal">Drawing the level AABB on the screen requires a few more methods and member variables in the renderer.</p>
+    <h2 id="_idParaDest-341" class="heading-2">Drawing the level AABB</h2>
+    <p class="normal">The level AABB <a id="_idIndexMarker637"/>vertices are stored in a new <code class="inlineCode">private</code> member variable named <code class="inlineCode">mAllLevelAABB</code> in the renderer class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    AABB mAllLevelAABB{};
+</code></pre>
+    <p class="normal">Also, two new private methods named <code class="inlineCode">generateLevelAABB()</code> and <code class="inlineCode">drawLevelAABB()</code> are added to the renderer class:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">generateLevelAABB</span><span class="hljs-params">()</span>;
+    <span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">drawLevelAABB</span><span class="hljs-params">(glm::vec4 aabbColor)</span>;
+</code></pre>
+    <p class="normal">We also split generating and drawing the AABB lines here to avoid costly calculations in every frame we draw.</p>
+    <p class="normal">Generating the level AABB in <code class="inlineCode">generateLevelAABB()</code> is done in a simple loop. After clearing the level AABB data, we loop over all loaded levels:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mAllLevelAABB.<span class="hljs-built_in">clear</span>();
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; level : mModelInstCamData.micLevels) {
+    <span class="hljs-keyword">if</span> (level-&gt;<span class="hljs-built_in">getTriangleCount</span>() == <span class="hljs-number">0</span>) {
+      <span class="hljs-keyword">continue</span>;
+    }
+</code></pre>
+    <p class="normal">The check for a level without triangles skips the null level since there is nothing to draw to the screen. Then, we generate the AABB of each level and add the minimum and maximum extents of each level to <code class="inlineCode">mAllLevelAABB</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    level-&gt;<span class="hljs-built_in">generateAABB</span>();
+    mAllLevelAABB.<span class="hljs-built_in">addPoint</span>(level-&gt;<span class="hljs-built_in">getAABB</span>().<span class="hljs-built_in">getMinPos</span>());
+    mAllLevelAABB.<span class="hljs-built_in">addPoint</span>(level-&gt;<span class="hljs-built_in">getAABB</span>().<span class="hljs-built_in">getMaxPos</span>());
+  }
+</code></pre>
+    <p class="normal">The resulting AABB<a id="_idIndexMarker638"/> contains all the level data of all the loaded levels. If you want to have separate AABBs for each level, you could use a vector of AABBs instead the single AABB.</p>
+    <p class="normal">Drawing the level AABB in the <code class="inlineCode">drawLevelAABB()</code> method needs little explanation:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mAABBMesh = mAllLevelAABB.<span class="hljs-built_in">getAABBLines</span>(aabbColor);
+  mLineVertexBuffer.<span class="hljs-built_in">uploadData</span>(*mAABBMesh);
+  mLineShader.<span class="hljs-built_in">use</span>();
+  mLineVertexBuffer.<span class="hljs-built_in">bindAndDraw</span>(GL_LINES, <span class="hljs-number">0</span>,
+    mAABBMesh-&gt;vertices.<span class="hljs-built_in">size</span>());
+</code></pre>
+    <p class="normal">We use the <code class="inlineCode">getAABBLines()</code> method of the AABB to create the line data, upload the lines to the <code class="inlineCode">mLineVertexBuffer</code>, call <code class="inlineCode">use()</code> on <code class="inlineCode">LineShader</code>, and then call <code class="inlineCode">bindAndDraw()</code> on the <code class="inlineCode">mLineVertexBuffer</code> object to draw the axis-aligned bounding box of the level data.</p>
+    <p class="normal">Then, in the <code class="inlineCode">draw()</code> method of the renderer, we call <code class="inlineCode">drawLevelAABB()</code> when <code class="inlineCode">rdDrawLevelAABB </code> is set to <code class="inlineCode">true</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (mRenderData.rdDrawLevelAABB) {
+    glm::vec4 levelAABBColor =
+      glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>, <span class="hljs-number">1.0f</span>, <span class="hljs-number">0.5</span>, <span class="hljs-number">0.5f</span>);
+    <span class="hljs-built_in">drawLevelAABB</span>(levelAABBColor);
+  }
+</code></pre>
+    <p class="normal">The color has been chosen randomly, you may change the color value or even add a 3-element float slider to the UI to control the color value.</p>
+    <p class="normal">Showing the level AABB lines on screen is done by a new Boolean variable called <code class="inlineCode">rdDrawLevelAABB</code> in the <code class="inlineCode">OGLRenderData</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">OGLRenderData.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">bool</span> rdDrawLevelAABB = <span class="hljs-literal">false</span>;
+</code></pre>
+    <p class="normal">For the Vulkan version<a id="_idIndexMarker639"/> of the code, the variable will be created in the <code class="inlineCode">VKRenderData</code> struct in the <code class="inlineCode">VkRenderData.h</code> file.</p>
+    <p class="normal">In the <code class="inlineCode">UserInterface</code> class, we add a checkbox for <code class="inlineCode">rdDrawLevelAABB</code> in the <strong class="screenText">Levels</strong> section of the <code class="inlineCode">createSettingsWindow()</code> method, allowing us to toggle the level’s AABB lines.</p>
+    <p class="normal">That’s all! In <em class="italic">Figure 11.5</em>, an example map from Sketchfab has been loaded next to the woman model, and the level’s AABB was activated:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_11.5_B22428.png" alt="" width="1621" height="1034"/></figure>
+    <p class="packt_figref">Figure 11.5: Example map (unscaled) and an instance of the woman model (source: Counter Strike 1.6 map “de_dust” by Zarudko at https://skfb.ly/6QYJw)</p>
+    <p class="normal">As a gamer, you may know this map: It’s “de_dust” from Counter Strike 1.6. The map is available at Sketchfab in several versions and formats, along with other popular game maps.</p>
+    <p class="normal">The bounding box around the level data helps us to see the dimensions of the level. Especially for unused areas like in the front right of <em class="italic">Figure 11.5</em>, finding the boundaries of the level data would be hard without the AABB lines.</p>
+    <p class="normal">You will also notice the unusual size ratio between the level map and the model instance. The map and model have been loaded with their default scaling values, and the size values have been chosen arbitrarily by the author of the files. Resizing one or both objects is easy thanks to the scaling slider for <a id="_idIndexMarker640"/>model and level data, but getting a reasonable ratio between levels, models, and other objects from various sources and artists can become challenging.</p>
+    <p class="normal">To create a plausible virtual world, the sizes of the game character models must match the sizes of furniture, buildings, environmental objects, and so on. Even a small mismatch in the proportions of different objects will be visible when comparing game characters and objects with the real world. A good way to adjust the different elements is to use one fixed-size object with a known size, such as a block from Minecraft, which has a (virtual) edge length of one meter, or even a simple line of a defined length in the virtual world. By resizing all objects to their real-world sizes compared to the known object, models from different sources can be made to match visually.</p>
+    <h1 id="_idParaDest-342" class="heading-1">Summary</h1>
+    <p class="normal">In this chapter, we added static level data to the virtual world. After exploring the differences between level maps and models, we looked at suitable file formats for level data and how to find cool game maps. Then, we added support for level data to the application and replaced the quadtree with an octree to support collision detection in three dimensions. Finally, we added the new level data and a level AABB to the renderer. We will extend the level data in the next two chapters to create a virtual world where the instances can roam around freely and by themselves.</p>
+    <p class="normal">In the next chapter, we will continue the collision detection from <a href="Chapter_8.xhtml"><em class="italic">Chapter 8</em></a>. First, we will extend the existing code to support collisions between instances and the level geometry. To ensure the instances are always on the ground, we will introduce gravity in the virtual world. As the last step, we add inverse kinematics to the legs of the instances, allowing the model to climb stairs or slopes with natural motion.</p>
+    <h1 id="_idParaDest-343" class="heading-1">Practical sessions</h1>
+    <p class="normal">Here are some additions you could make to the code:</p>
+    <ul>
+      <li class="bulletList">Add a door or a button to the level.</li>
+    </ul>
+    <p class="normal-one">Since the animated level data is more like an animated character model placed at a fixed position in the level than static level data, you could try to add doors, switches, or buttons to the level, and instead of waving back on interaction, the button could play a “pressed” animation, and a door could revolve around the hinge or slide to one side.</p>
+    <ul>
+      <li class="bulletList">Add dynamic level loading.</li>
+    </ul>
+    <p class="normal-one">You could use the information about the current position of the playable character to decide when to load or unload parts of the level. Maybe add a new mapping of coordinates where a specified level data file is loaded, and another coordinate where the level data is removed from the application. If you have added animated level objects from the first task to the dynamic level part, make sure to save the status of these objects on unloading and restore the state when reloading the level data. The player could open a door or activate a switch, and upon returning to the level part, the player could see the object in the exact same state as they left it. To prevent crashes or data corruption caused by assets that are not fully loaded or destroyed, use atomic operations or locking mechanisms such as mutexes. Also, loading and level data and assets may need synchronization to restore the correct state of all elements.</p>
+    <ul>
+      <li class="bulletList">Expert difficulty: Load dynamic level parts asynchronously.</li>
+    </ul>
+    <p class="normal-one">Loading a level file, processing the data, and adding the vertex data takes some time, resulting in a visible hitch in the application. Use <code class="inlineCode">std::async</code> or a full worker thread to trigger the loading when a condition to load is met, for instance, when the player is at a specific world position. Be aware that adding any asynchronous code requires extra measures against data races.</p>
+    <h1 id="_idParaDest-344" class="heading-1">Additional resources</h1>
+    <ul>
+      <li class="bulletList">Efficient sparse voxel octrees: <a href="https://www.nvidia.com/docs/IO/88972/nvr-2010-001.pdf"><span class="url">https://www.nvidia.com/docs/IO/88972/nvr-2010-001.pdf</span></a></li>
+      <li class="bulletList">Blender map creation 1: <a href="https://www.youtube.com/watch?v=IKkOLeAuEHI"><span class="url">https://www.youtube.com/watch?v=IKkOLeAuEHI</span></a></li>
+      <li class="bulletList">Blender map creation 2: <a href="https://www.youtube.com/watch?v=hdyBgQ77Sdg"><span class="url">https://www.youtube.com/watch?v=hdyBgQ77Sdg</span></a></li>
+      <li class="bulletList">What is a lightmap?: <a href="http://wiki.polycount.com/wiki/Light_map"><span class="url">http://wiki.polycount.com/wiki/Light_map</span></a></li>
+      <li class="bulletList">Navigation mesh explanation: <a href="https://medium.com/@mscansian/a-with-navigation-meshes-246fd9e72424"><span class="url">https://medium.com/@mscansian/a-with-navigation-meshes-246fd9e72424</span></a></li>
+      <li class="bulletList">HLOD: <a href="https://gamma.cs.unc.edu/HLOD/"><span class="url">https://gamma.cs.unc.edu/HLOD/</span></a></li>
+      <li class="bulletList">How to write glTF custom extensions: <a href="https://gltf-transform.dev/extensions"><span class="url">https://gltf-transform.dev/extensions</span></a></li>
+      <li class="bulletList">itch.io Assets: <a href="https://itch.io/game-assets"><span class="url">https://itch.io/game-assets</span></a></li>
+      <li class="bulletList">Sketchfab for models, maps, and assets: <a href="https://sketchfab.com"><span class="url">https://sketchfab.com</span></a></li>
+      <li class="bulletList">Free3D: <a href="https://free3d.com"><span class="url">https://free3d.com</span></a></li>
+      <li class="bulletList">Counter Strike 1.6 map “de_dust” by Zarudko: <a href="https://skfb.ly/6QYJw"><span class="url">https://skfb.ly/6QYJw</span></a></li>
+    </ul>
+    <h1 id="_idParaDest-345" class="heading-1">Join our community on Discord</h1>
+    <p class="normal">Join our community’s Discord space for discussions with the author and other readers: <a href="https://packt.link/cppgameanimation"><span class="url">https://packt.link/cppgameanimation</span></a></p>
+    <p class="normal"><img src="../Images/QR_code_Discord.png" alt="A qr code with black squares  AI-generated content may be incorrect." width="150" height="150"/></p>
+  </div>
+</div></div></body></html>

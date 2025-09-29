@@ -1,0 +1,662 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><div id="_idContainer069" class="Basic-Text-Frame">
+    <h1 class="chapterNumber">6</h1>
+    <h1 id="_idParaDest-167" class="chapterTitle">Extending Camera Handling</h1>
+    <p class="normal">Welcome to <a href=""><em class="italic">Chapter 6</em></a>! In <a href="Chapter_5.xhtml"><em class="italic">Chapter 5</em></a>, we added the functionality to save and load the application configuration. First, we explored data types, file formats, and which data to save to a file. Then, we implemented a parser class to write and read configuration files in the YAML file format. At the end of the chapter, all models and instances plus the global settings were stored in a YAML file by using the <code class="inlineCode">yaml-cpp</code> library, and all data could be read back into the application, enabling us to resume building the virtual world.</p>
+    <p class="normal">In this chapter, we will enhance the camera configuration. As the first two steps, we will extend the application to handle more than one camera and add multiple camera types. Then, we’ll implement camera types for a first-person and third-person view, following a selected instance like in real games. Next, we will add stationary cameras, allowing a surveillance-style view of the virtual scenery. As the last step, we will add a hotkey to switch between cameras, along with orthogonal projection and mouse-wheel-based field of view adjustment.</p>
+    <p class="normal">In this chapter, we will cover the following topics:</p>
+    <ul>
+      <li class="bulletList">Adding multiple cameras</li>
+      <li class="bulletList">Creating different camera types</li>
+      <li class="bulletList">Implementing first- and third-person cameras</li>
+      <li class="bulletList">Adding stationary cameras</li>
+      <li class="bulletList">Switching between cameras and configurations</li>
+    </ul>
+    <h1 id="_idParaDest-168" class="heading-1">Technical requirements</h1>
+    <p class="normal">The example code is in the <code class="inlineCode">chapter06</code> folder, in the subfolders <code class="inlineCode">01_opengl_cameras</code> for OpenGL and <code class="inlineCode">02_vulkan_cameras</code> for Vulkan.</p>
+    <h1 id="_idParaDest-169" class="heading-1">Adding multiple cameras</h1>
+    <p class="normal">In <a href="Chapter_3.xhtml"><em class="italic">Chapter 3</em></a>, we added a <a id="_idIndexMarker248"/>button in the user interface to jump to any instance. But we still land at the same angle and distance for every instance we choose, and returning to a great composition of different models on a map is close to impossible. You may write down the camera values or take a screenshot, but that is far from perfect.</p>
+    <p class="normal">Being able to add a virtually unlimited number of cameras to our scene allows us to create stunning map and model combinations and return to that view whenever we want. By adding different camera types, we can even go several steps further – a camera chasing one instance in the third person; another camera presenting the entire map in an isometric view; and yet another camera to see the virtual world through the virtual eyes of an instance – all reachable by pressing a hotkey or selecting a menu.</p>
+    <p class="normal">All those points will be implemented at the end of the chapter. So, let’s start with the first step, and add multiple camera objects to the application.</p>
+    <h2 id="_idParaDest-170" class="heading-2">From a single camera to an array of cameras</h2>
+    <p class="normal">Right now, we have only a single camera in the application, defined in the <code class="inlineCode">Camera</code> class in the <code class="inlineCode">tools</code> folder. This camera<a id="_idIndexMarker249"/> provides a free view of the virtual world. We can move in all three axes and rotate around two of the three axes. Rotating the view around the axis pointing <em class="italic">into</em> the screen (roll) is less useful at this point for the model and animation viewer application since we would just see the effect of tilting our head to the side. In addition, navigating a camera in three dimensions without a fixed reference like the horizon could be quite difficult. So, we only implement up and down (Elevation) and rotation around the vertical axis (Azimuth). Upgrading the camera rotation and adding mouse or keyboard controls for a rotation around the third axis is left as an exercise for you.</p>
+    <p class="normal">The values for the camera position and the two rotation angles are stored in the <code class="inlineCode">OGLRenderData</code> struct for OpenGL and in the <code class="inlineCode">VkRenderData</code> struct for Vulkan:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">float</span> rdViewAzimuth = <span class="hljs-number">330.0</span>f;
+<span class="hljs-type">float</span> rdViewElevation = <span class="hljs-number">-20.0</span>f;
+glm::<span class="hljs-type">vec3</span> rdCameraWorldPosition =
+  glm::<span class="hljs-type">vec3</span>(<span class="hljs-number">2.0</span>f, <span class="hljs-number">5.0</span>f, <span class="hljs-number">7.0</span>f);
+</code></pre>
+    <p class="normal">To support multiple cameras, we need a simple <code class="inlineCode">std::vector</code> of the <code class="inlineCode">Camera</code> class elements and an <code class="inlineCode">int</code> value, stating which of the cameras is currently selected. Since these settings are closer to the models and model instances than the rendering, we will store the new camera vector in the <code class="inlineCode">ModelAndInstanceData</code> struct. To match the new contents, we will rename the <code class="inlineCode">ModelAndInstanceData</code> struct to <code class="inlineCode">ModelInstanceCamData</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">ModelInstanceCamData</span> {
+  ...
+  std::vector&lt;std::shared_ptr&lt;Camera&gt;&gt; micCameras{};
+  <span class="hljs-type">int</span> micSelectedCamera = <span class="hljs-number">0</span>;
+  ...
+</code></pre>
+    <p class="normal">By using the refactoring function of your IDE, renaming the <code class="inlineCode">ModelAndInstanceData</code> struct, along with the variables in classes and functions, is only a matter of some mouse clicks and a text edit.</p>
+    <p class="normal">In addition to the new struct name, we will also rename the file from <code class="inlineCode">ModelAndInstanceData.h</code> to <code class="inlineCode">ModelInstanceCamData.h</code> and move the file from the <code class="inlineCode">model</code> folder to the <code class="inlineCode">opengl</code> folder (the <code class="inlineCode">vulkan</code> folder for Vulkan). In the end, it is a matter of personal preference where to store the header file, but using a central location as the folder containing the renderer makes a lot of sense since<a id="_idIndexMarker250"/> we access the struct mostly from the renderer.</p>
+    <p class="normal">In the <code class="inlineCode">UserInterface</code> class, we add a combo box containing the names of the available cameras inside the definition of <code class="inlineCode">ImGui::CollapsingHeader</code> named <code class="inlineCode">Cameras</code>. The code for the combo box can be taken and adjusted from the model or animation clip selection.</p>
+    <h2 id="_idParaDest-171" class="heading-2">Extracting the camera settings</h2>
+    <p class="normal">Similar to the instance settings, we<a id="_idIndexMarker251"/> will extract the main camera settings to a separate struct called <code class="inlineCode">CameraSettings</code>. A separate struct containing the camera variables makes it easier to read out or to apply all camera-related settings at once, instead of accessing all settings by setters and getters.</p>
+    <p class="normal">The <code class="inlineCode">CameraSettings</code> struct resides in a header file, <code class="inlineCode">CameraSettings.h</code>, residing in the <code class="inlineCode">tools</code> folder:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">CameraSettings</span>{
+  std::string csCamName = <span class="hljs-string">"Camera"</span>;
+  glm::vec3 csWorldPosition = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+  <span class="hljs-type">float</span> csViewAzimuth = <span class="hljs-number">0.0f</span>;
+  <span class="hljs-type">float</span> csViewElevation = <span class="hljs-number">0.0f</span>
+};
+</code></pre>
+    <p class="normal">Next to a name for the camera, we start with the world position and the two view angles of the camera: Azimuth and elevation.</p>
+    <p class="normal">In the <code class="inlineCode">Camera</code> class, the new <code class="inlineCode">CameraSettings.h</code> header must be included, and a new private member variable called <code class="inlineCode">mCamSettings</code> will be added. The three old variables containing position, azimuth, and elevation can be removed. All methods accessing the three variables for position and the view angles must be changed to store and retrieve the values inside the new <code class="inlineCode">mCamSettings</code> variable.</p>
+    <p class="normal">We have to add a getter and a setter method for the new <code class="inlineCode">CameraSettings</code>. The getter and setter will allow us to handle the cameras like the model instances, manipulating the camera settings by simple variable assignments.</p>
+    <h2 id="_idParaDest-172" class="heading-2">Adjusting the renderer</h2>
+    <p class="normal">As the renderer needs to <a id="_idIndexMarker252"/>update the position and view of the camera, we also need to upgrade some methods to use the selected camera.</p>
+    <p class="normal">The first step is always to get a pointer to the current camera and read the <code class="inlineCode">CameraSettings</code> for easier access and changes:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::shared_ptr&lt;Camera&gt; cam =
+    mModelInstCamData.micCameras.<span class="hljs-built_in">at</span>(
+      mModelInstCamData.micSelectedCamera);
+  CameraSettings camSettings = cam-&gt;<span class="hljs-built_in">getCameraSettings</span>();
+</code></pre>
+    <p class="normal">If we changed any values, we must store the settings back to the camera:</p>
+    <pre class="programlisting code"><code class="hljs-code">  cam-&gt;<span class="hljs-built_in">setCameraSettings</span>(camSettings);
+</code></pre>
+    <p class="normal">Then, in the <code class="inlineCode">handleMousePositionEvents()</code> method, we change all variables from the old <code class="inlineCode">mRenderData</code> variable, as highlighted in the following code:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">    mRenderData.rdViewAzimuth</strong></span> += mouseMoveRelX / <span class="hljs-number">10.0</span>;
+</code></pre>
+    <p class="normal">The new <code class="inlineCode">camSettings</code> variable, containing the new camera settings, looks like this:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">    camSettings.csViewAzimuth</strong></span> += mouseMoveRelX / <span class="hljs-number">10.0f</span>;
+</code></pre>
+    <p class="normal">A similar change needs to be made in the <code class="inlineCode">draw()</code> method of the renderer.</p>
+    <p class="normal">First, we remove the private <code class="inlineCode">mCamera</code> member variable from the renderer class, as we will never use the single camera again. Then, we get the pointer to the camera and read the current camera settings.</p>
+    <p class="normal">Now, the update of the <a id="_idIndexMarker253"/>camera will be switched away from the old <code class="inlineCode">mCamera</code> variable:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">  mCamera.</strong></span><span class="hljs-built_in">updateCamera</span>(mRenderData, deltaTime);
+</code></pre>
+    <p class="normal">Instead, we update the currently selected camera via the <code class="inlineCode">cam</code> pointer:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">  cam-&gt;</strong></span><span class="hljs-built_in">updateCamera</span>(mRenderData, deltaTime);
+</code></pre>
+    <p class="normal">For the projection matrix, we use the new <code class="inlineCode">camSettings</code> variable to read the currently configured field of view:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mProjectionMatrix = glm::<span class="hljs-built_in">perspective</span>(
+    glm::<span class="hljs-built_in">radians</span>(<span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(
+      <span class="code-highlight"><strong class="hljs-slc">camSettings.</strong></span>csFieldOfView)),
+    <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(mRenderData.rdWidth) /
+    <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(mRenderData.rdHeight),
+  <span class="hljs-number">0.01f</span>, <span class="hljs-number">500.0f</span>);
+</code></pre>
+    <p class="normal">We read the updated view matrix also by accessing the <code class="inlineCode">cam</code> pointer:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mViewMatrix = <span class="code-highlight"><strong class="hljs-slc">cam-&gt;</strong></span><span class="hljs-built_in">getViewMatrix</span>();
+</code></pre>
+    <p class="normal">Finally, in the <code class="inlineCode">centerInstance()</code> method of the renderer, the call to the <code class="inlineCode">moveCameraTo()</code> method of the camera must be adjusted, too. We no longer use the old <code class="inlineCode">mCamera</code> variable, highlighted in the following code:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">  mCamera.</strong></span><span class="hljs-built_in">moveCameraTo</span>(...);
+</code></pre>
+    <p class="normal">Now, we access the current camera directly in the <code class="inlineCode">micCameras</code> vector:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="code-highlight"><strong class="hljs-slc">mModelInstCamData.micCameras.</strong><strong class="hljs-built_in-slc">at</strong><strong class="hljs-slc">(</strong></span>
+<span class="code-highlight"><strong class="hljs-slc">  mModelInstCamData.micSelectedCamera)-&gt;</strong></span><span class="hljs-built_in">moveCameraTo</span>(...);
+</code></pre>
+    <p class="normal">Extracting the pointer to the current camera makes no sense here since this is only a single operation on<a id="_idIndexMarker254"/> the <code class="inlineCode">camera</code> instance.</p>
+    <h2 id="_idParaDest-173" class="heading-2">Defining a free camera as the default camera</h2>
+    <p class="normal">Like the null model and the <a id="_idIndexMarker255"/>null instance, we should make sure to always have at least one camera in the <code class="inlineCode">micCameras</code> vector. Avoiding an empty array frees us from a lot of boundary checks, and the always-available free camera is a nice feature on a new configuration or after all existing cameras are removed.</p>
+    <p class="normal">To simplify the default free camera, a new method called <code class="inlineCode">loadDefaultFreeCam()</code> will be added to the renderer class:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">void</span><span class="hljs-function"> </span><span class="hljs-title">OGLRenderer::loadDefaultFreeCam</span><span class="hljs-params">()</span><span class="hljs-function"> </span>{
+  mModelInstCamData.micCameras.<span class="hljs-built_in">clear</span>();
+</code></pre>
+    <p class="normal">First, we clear the vector containing all the cameras. Then, we create a new camera settings object with some default values, apply the settings to the camera, and add the camera as the first instance:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::shared_ptr&lt;Camera&gt; freeCam =
+    std::<span class="hljs-built_in">make_shared</span>&lt;Camera&gt;();
+  CameraSettings freeCamSettings{};
+  freeCamSettings.csCamName = <span class="hljs-string">"FreeCam"</span>;
+  freeCamSettings.csWorldPosition = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">5.0f</span>);
+  freeCamSettings.csViewAzimuth = <span class="hljs-number">310.0f</span>;
+  freeCamSettings.csViewElevation = <span class="hljs-number">-15.0f</span>;
+  freeCam-&gt;<span class="hljs-built_in">setCameraSettings</span>(freeCamSettings);
+  mModelInstCamData.micCameras.<span class="hljs-built_in">emplace_back</span>(freeCam);
+  mModelInstCamData.micSelectedCamera = <span class="hljs-number">0</span>;
+}
+</code></pre>
+    <p class="normal">You can adjust the settings for the default free camera to your needs. The settings shown in the previous code snippet just center the origin of the world, making the first instance of a loaded model appear in the center of the screen.</p>
+    <p class="normal">Finally, we set the selected camera to zero, the index of our newly added camera.</p>
+    <p class="normal">Whenever we need to remove all cameras and add the default camera (i.e., when creating a new configuration), we can just call <code class="inlineCode">loadDefaultFreeCam()</code>.</p>
+    <p class="normal">For the user interface, we should disable name changes to the default free camera by surrounding the name field with calls to <code class="inlineCode">ImGui::BeginDisabled()</code> and <code class="inlineCode">ImGui::EndDisabled()</code> when the camera instance 0 is selected.</p>
+    <p class="normal"><em class="italic">Figure 6.1</em> shows the resulting user interface for the camera section:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_6.1_B22428.png" alt="" width="870" height="321"/></figure>
+    <p class="packt_figref">Figure 6.1: The new camera settings</p>
+    <p class="normal">Switching between cameras is now as simple as selecting a new base model or a new animation clip, for instance. In addition to the combo box, two arrows have been added, allowing us to directly<a id="_idIndexMarker256"/> select the previous and the next camera.</p>
+    <p class="normal">For real camera management, two functions are missing: creating a new camera and deleting an existing camera, with the exception of the default camera.</p>
+    <h2 id="_idParaDest-174" class="heading-2">Adding and deleting cameras</h2>
+    <p class="normal">To create a camera, two<a id="_idIndexMarker257"/> paths can be taken:</p>
+    <ul>
+      <li class="bulletList">Adding a camera at the origin, using default values</li>
+      <li class="bulletList">Cloning the currently selected camera and all settings except the name</li>
+    </ul>
+    <p class="normal">Forcing the user to return to the origin <a id="_idIndexMarker258"/>and move the new camera to the desired place in the virtual world feels a bit off. A much better solution is to be able to clone the currently selected camera since the user most probably wants to make the current view of the virtual world persistent.</p>
+    <p class="normal">Both cloning and deleting functions are handled by new callbacks, moving the burden of checks and all work to the renderer instead of the user interface. The new renderer methods, called <code class="inlineCode">cloneCamera()</code> and <code class="inlineCode">deleteCamera()</code>, are short and simple, so we skip the listing here.</p>
+    <p class="normal">However, handling camera names needs some extra attention. Duplicate names in the combo box will be confusing, so we have to find a solution to create unique names when cloning a camera. A simple way to create new names is to append a number to the name and raise the number by one on further clones.</p>
+    <p class="normal">The method handling the new names is called <code class="inlineCode">generateUniqueCameraName()</code>, defined in the renderer class. The method has a camera base name as the only parameter.</p>
+    <p class="normal">First, we copy the base name, since we will adjust the name during the <code class="inlineCode">while</code> loop if the camera name is already in use, and define a string named <code class="inlineCode">matches</code> containing all numbers from zero to nine:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::string camName = camBaseName;
+  <span class="hljs-function">std::string </span><span class="hljs-title">matches</span><span class="hljs-params">(</span><span class="hljs-string">"01234567890"</span><span class="hljs-params">)</span>;
+  <span class="hljs-keyword">while</span> (<span class="hljs-built_in">checkCameraNameUsed</span>(camName)) {
+</code></pre>
+    <p class="normal">In the loop, we check if the camera name already has a number as a suffix. If not, we simply append a 1:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">const</span> <span class="hljs-keyword">auto</span> iter = std::<span class="hljs-built_in">find_first_of</span>(camName.<span class="hljs-built_in">begin</span>(),
+    camName.<span class="hljs-built_in">end</span>(), matches.<span class="hljs-built_in">begin</span>(), matches.<span class="hljs-built_in">end</span>());
+ <span class="hljs-keyword">if</span> (iter == camName.<span class="hljs-built_in">end</span>()) {
+      camName.<span class="hljs-built_in">append</span>(<span class="hljs-string">"1"</span>);
+    } <span class="hljs-keyword">else</span> {
+</code></pre>
+    <p class="normal">If we find a number, then we save<a id="_idIndexMarker259"/> the camera name without the trailing number into <code class="inlineCode">cameraNameString</code>, convert the existing camera number to an <code class="inlineCode">int</code>, increment the number by one, convert the <a id="_idIndexMarker260"/>new number back to a string, and combine the original camera name and the new number:</p>
+    <pre class="programlisting code"><code class="hljs-code">      std::string cameraNameString = camName.<span class="hljs-built_in">substr</span>(<span class="hljs-number">0</span>,
+        std::<span class="hljs-built_in">distance</span>(camName.<span class="hljs-built_in">begin</span>(), iter));
+      std::string cameraNumString = camName.<span class="hljs-built_in">substr</span>(
+        std::<span class="hljs-built_in">distance</span>(camName.<span class="hljs-built_in">begin</span>(), iter));
+      <span class="hljs-type">int</span> cameraNumber = std::<span class="hljs-built_in">stoi</span>(cameraNumString);
+      camName = cameraNameString +
+        std::<span class="hljs-built_in">to_string</span>(++cameraNumber);
+    }
+  }
+</code></pre>
+    <p class="normal">This way, we can create unique but still understandable camera names when we clone an existing camera.</p>
+    <p class="normal">The <code class="inlineCode">while</code> loop in <code class="inlineCode">generateUniqueCameraName()</code> uses another new method called <code class="inlineCode">checkCameraNameUsed()</code>. Checking if the camera name is already in use is done by iterating over the existing cameras and comparing the camera names with the proposed new name:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">OGLRenderer::checkCameraNameUsed</span><span class="hljs-params">(std::string</span>
+<span class="hljs-params">    cameraName)</span><span class="hljs-function"> </span>{
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; cam : mModelInstCamData.micCameras) {
+    <span class="hljs-keyword">if</span> (cam-&gt;<span class="hljs-built_in">getCameraSettings</span>().csCamName == cameraName) {
+      <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>;
+    }
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+}
+</code></pre>
+    <p class="normal">The same <code class="inlineCode">checkCameraNameUsed()</code> method will be used in the user interface to detect a duplicate name when a camera is renamed. As in most places in the user interface, a callback to the renderer is used for the name check, moving the work to the renderer class.</p>
+    <p class="normal">In <em class="italic">Figure 6.2</em>, the new buttons to <a id="_idIndexMarker261"/>clone and delete the camera are shown, together with the result of <a id="_idIndexMarker262"/>pressing the <strong class="screenText">Clone Current Camera</strong> button several times:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_6.2_B22428.png" alt="" width="875" height="496"/></figure>
+    <p class="packt_figref">Figure 6.2: New buttons to clone and delete, plus some new cameras</p>
+    <p class="normal">As the last step for the transition away from a single camera, we must change the YAML-based configuration file to reflect the new camera configuration.</p>
+    <h2 id="_idParaDest-175" class="heading-2">Adjusting camera configuration load and save</h2>
+    <p class="normal">To load and save the <a id="_idIndexMarker263"/>new camera settings, we have to change the YAML parsing and emitting in the <code class="inlineCode">YamlParser</code> class in the <code class="inlineCode">tools</code> folder.</p>
+    <p class="normal">Decoding a YAML camera node can be achieved similarly to decoding <code class="inlineCode">glm::vec3</code> or <code class="inlineCode">InstanceSettings:</code>, by adding a new <code class="inlineCode">decode</code> method in a new <code class="inlineCode">convert</code> template block in the header file <code class="inlineCode">YamlParserTypes.h</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">Template&lt;&gt;
+  <span class="hljs-keyword">struct</span> <span class="hljs-title">convert</span>&lt;CameraSettings&gt; {
+  <span class="hljs-type">static</span><span class="hljs-function"> </span><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">decode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> Node&amp; node,</span>
+<span class="hljs-params">      CameraSettings&amp; rhs)</span><span class="hljs-function"> </span>{
+    CameraSettings defaultSettings = CameraSettings{};
+    rhs.csCamName =
+        node[<span class="hljs-string">"camera-name"</span>].<span class="hljs-built_in">as</span>&lt;std::string&gt;();
+     <span class="hljs-keyword">try</span> {
+      rhs.csWorldPosition =
+         node[<span class="hljs-string">"position"</span>].<span class="hljs-built_in">as</span>&lt;glm::vec3&gt;();
+    } <span class="hljs-built_in">catch</span> (...) {
+       rhs.csWorldPosition =
+         defaultSettings.csWorldPosition;
+    }
+     <span class="hljs-keyword">try</span> {
+      rhs.csViewAzimuth =
+          node[<span class="hljs-string">"view-azimuth"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+      } <span class="hljs-built_in">catch</span> (...) {
+        rhs.csViewAzimuth = defaultSettings.csViewAzimuth;
+     }
+    <span class="hljs-keyword">try</span> {
+        rhs.csViewElevation =
+          node[<span class="hljs-string">"view-elevation"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+     } <span class="hljs-built_in">catch</span> (...) {
+        rhs.csViewElevation =
+          defaultSettings.csViewElevation;
+     }
+</code></pre>
+    <p class="normal">Handling exceptions thrown while parsing nodes ensures recovering as much of the camera configuration as possible in case of malformed or missing keys. Being unable to parse the camera name still skips the <a id="_idIndexMarker264"/>entire camera to avoid naming trouble.</p>
+    <p class="normal">We also add the <code class="inlineCode">encode</code> method to make a full implementation of the template. With the <code class="inlineCode">decode</code> function available, we can read a node containing camera settings simply by passing the <code class="inlineCode">CameraSettings</code> type to the <code class="inlineCode">.as&lt;&gt;()</code> call:</p>
+    <pre class="programlisting code"><code class="hljs-code">... camNode.<span class="hljs-built_in">as</span>&lt;CameraSettings&gt;();
+</code></pre>
+    <p class="normal">For emitting camera configurations to a save file, we create a sequence and add a map for each of the cameras available:</p>
+    <pre class="programlisting code"><code class="hljs-code">  ...
+  mYamlEmit &lt;&lt; YAML::BeginMap;
+  mYamlEmit &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"cameras"</span>;
+  mYamlEmit &lt;&lt; YAML::Value;
+  mYamlEmit &lt;&lt; YAML::BeginSeq;
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; cam : modInstCamData.micCameras) {
+    CameraSettings settings = cam-&gt;<span class="hljs-built_in">getCameraSettings</span>();
+    mYamlEmit &lt;&lt; YAML::BeginMap;
+    mYamlEmit &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"camera-name"</span>;
+    mYamlEmit &lt;&lt; YAML::Value &lt;&lt; settings.csCamName;
+   ...
+  }
+  mYamlEmit &lt;&lt; YAML::EndSeq;
+  mYamlEmit &lt;&lt; YAML::EndMap;
+</code></pre>
+    <p class="normal">In the saved YAML <a id="_idIndexMarker265"/>configuration file, a new sequence will appear for each camera, storing all camera settings as key/value pairs:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-attr">cameras:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">camera-name:</span> <span class="hljs-string">FreeCam</span>
+    <span class="hljs-attr">position:</span> [<span class="hljs-number">2.9061296</span>, <span class="hljs-number">11.1587305</span>, <span class="hljs-number">64.1114578</span>]
+    <span class="hljs-attr">view-azimuth:</span> <span class="hljs-number">289.300262</span>
+    <span class="hljs-attr">view-elevation:</span> <span class="hljs-number">-34.4999695</span>
+</code></pre>
+    <p class="normal">Since we made essential changes to the configuration file, we should reflect the new on-disk format with a new version number.</p>
+    <h2 id="_idParaDest-176" class="heading-2">Bumping the configuration file version</h2>
+    <p class="normal">Adjusting the configuration file version number in the emitter is easy; we just have to raise the version number string from <code class="inlineCode">1.0</code> to something like <code class="inlineCode">1.1</code> or <code class="inlineCode">2.0</code>. From now on, all saved configuration files will have<a id="_idIndexMarker266"/> the new version number.</p>
+    <p class="normal">Loading a configuration file gets a bit more complex now. If we want to support the old file format, we must retain all methods that were used to parse the previous file version contents. After reading the version number of the file to parse, we must decide if we want to parse the new sequence style for multiple cameras, or get the settings for the single camera and apply those settings to the always-available default free camera. Saving the configuration could be done in the new version, resulting in a migration of a configuration file from the old to the new version.</p>
+    <p class="normal">Updating the configuration by supporting the reading of an older version is one of the tasks in the <em class="italic">Practical sessions</em> section.</p>
+    <p class="normal">We can create a bunch of free-floating cameras now, position the cameras in our virtual world, and switch between the cameras via the user interface. Still sounds a bit boring, doesn’t it? Let’s enhance the application more by adding different camera types.</p>
+    <h1 id="_idParaDest-177" class="heading-1">Creating different camera types</h1>
+    <p class="normal">Having the ability to add more than one camera in the virtual world is a good basis for adding a couple of predefined <a id="_idIndexMarker267"/>camera settings. The different camera types behave in different ways regarding the movement of the view and the movement of the camera itself.</p>
+    <p class="normal">We define a new <code class="inlineCode">enum</code> class named <code class="inlineCode">cameraType</code> in the <code class="inlineCode">Enums.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">cameraType</span> {
+  free = <span class="hljs-number">0</span>,
+  firstPerson,
+  thirdPerson,
+  stationary,
+  stationaryFollowing
+};
+</code></pre>
+    <p class="normal">In the <code class="inlineCode">CameraSettings</code> struct, a new variable of the <code class="inlineCode">cameraType</code> type must be added:</p>
+    <pre class="programlisting code"><code class="hljs-code">  cameraType csCamType = cameraType::free;
+</code></pre>
+    <p class="normal">The names already tell a lot about the purpose of the camera types. Here is what all the types are about:</p>
+    <ul>
+      <li class="bulletList">The <code class="inlineCode">free</code> camera is already known from previous code examples. We can freely move around the world in five degrees of freedom: three directions and two rotations. There are no movement restrictions for the camera or view.</li>
+      <li class="bulletList">The <code class="inlineCode">firstPerson</code> camera does what cameras in first-person games do: it allows you to see the virtual world through the eyes of the protagonist. In our application, we will attach the camera to the head of an instance and move both camera and view just as the instance does. However, there will be an option to unlock the view to avoid weird angles or motion sickness.</li>
+      <li class="bulletList">The <code class="inlineCode">thirdPerson</code> camera follows the selected instance like another person or a drone, showing the same angle of the virtual world as the instance sees but from the <em class="italic">outside</em> of the instance body. Some view adjustments are possible, like the distance from the instance, but both camera motion and view are controlled by the instance.</li>
+      <li class="bulletList">The <code class="inlineCode">stationary</code> camera can be compared to a fixed surveillance camera. The stationary camera can be placed anywhere in the world and at any angle, but once the camera is locked, no movement or view adjustment except the field of view is possible. The field of view setting is kept unlocked to allow zooming in and out, just like with a normal surveillance camera.</li>
+      <li class="bulletList">Finally, the <code class="inlineCode">stationaryFollowing</code> camera is a special type of surveillance camera. While both movement and view are not controllable by the user (again, with the exception of the field of view setting), this camera type will automatically center the selected instance, regardless of whether the instance is directly visible or not. And if the instance moves around, the camera will track that instance within the virtual world.</li>
+    </ul>
+    <p class="normal">Depending on the camera type, we must restrict parts of the camera settings in the renderer. Whenever we are unable to change specific camera settings, like the position, we will also disable the user interface control for the same settings.</p>
+    <p class="normal">We will start with the<a id="_idIndexMarker268"/> first- and third-person cameras because both camera types have large parts of behavior changes and data retrieval in common.</p>
+    <h1 id="_idParaDest-178" class="heading-1">Implementing first- and third-person cameras</h1>
+    <p class="normal">For a first-person camera, the <code class="inlineCode">CameraSettings</code> struct in the <code class="inlineCode">CameraSettings.h</code> header in the <code class="inlineCode">tools</code> folder needs <a id="_idIndexMarker269"/>some additional variables:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">bool</span> csFirstPersonLockView = <span class="hljs-literal">true</span>;
+  <span class="hljs-type">int</span> csFirstPersonBoneToFollow = <span class="hljs-number">0</span>;
+  std::vector&lt;std::string&gt; csFirstPersonBoneNames{};
+  glm::mat4 csFirstPersonBoneMatrix = glm::<span class="hljs-built_in">mat4</span>(<span class="hljs-number">1.0f</span>);
+  glm::vec3 csFirstPersonOffsets = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+</code></pre>
+    <p class="normal">The new variable <code class="inlineCode">csFirstPersonLockView</code> is used to control if the first-person view follows the motion of the instance bone or if we relax that restriction and enable a free view, but still at a fixed position. We need a bone of the model skeleton to attach the camera to; the variable <code class="inlineCode">csFirstPersonBoneToFollow</code> lets us set the bone we will follow. In the user interface, the contents of the <code class="inlineCode">csFirstPersonBoneNames</code> vector are used to present a combo box with all bone names, and the selected bone will be saved in <code class="inlineCode">csFirstPersonBoneToFollow</code>. The last variable, <code class="inlineCode">csFirstPersonOffsets</code>, can be used to slightly move the camera position around, preventing the camera from being placed at a strange point inside the head of the instance or suchlike.</p>
+    <p class="normal">As we are doing skeletal animations, we need to access the matrix containing translation, rotation, and scaling of the bone where the camera is virtually attached. We could get the matrix by re-implementing the animation code from the first chapter, or we can extract the bone matrix from the Shader Storage Buffer Object after the compute shader from <a href="Chapter_2.xhtml"><em class="italic">Chapter 2</em></a> has finished calculating the final matrix data.</p>
+    <p class="normal">For a real-world application, you should use a profiler to check the costs of both versions. In the example application, we will use the compute shader results to avoid making the same animation calculations again.</p>
+    <div class="note">
+      <p class="normal">Note on first-person models</p>
+      <p class="normal">For many first-person-style games, the first-person model will differ from the third-person model of the same character.</p>
+      <p class="normal">Sometimes, the head elements are removed or rotated away. This generates the <em class="italic">feeling</em> of having a virtual body if the player sees the arms, hands, and legs while having the head removed from interfering with the view. In other games, the body is removed entirely, and only a partial model like the lower arms or the arms up to the shoulder is drawn. The resulting view gives a simple but still <em class="italic">good enough</em> representation of the virtual body for a player.</p>
+      <p class="normal">We are using the same model for all camera types here, simply because swapping the model on the fly during camera switches will cause a lot of additional overhead. If you are interested in how much effort is needed to use another model in first-person, you are encouraged to add the logic to switch the models in parallel to the camera type.</p>
+    </div>
+    <p class="normal">Another addition to the <code class="inlineCode">CameraSettings</code> struct is a weak pointer to the instance we want to follow:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::weak_ptr&lt;AssimpInstance&gt; csInstanceToFollow{};
+</code></pre>
+    <p class="normal">Similar to the undo/redo settings, we use a <code class="inlineCode">std::weak_ptr</code> instead of a <code class="inlineCode">std::shared_ptr</code> to avoid trouble if the instance we follow gets removed.</p>
+    <p class="normal">Capturing the instance<a id="_idIndexMarker270"/> in the user interface can be done by adding a button that stores the currently selected instance in the <code class="inlineCode">csInstanceToFollow</code> variable of the camera settings. But be aware to check for the null instance or you will get unwanted results and have the camera centered at the origin.</p>
+    <h2 id="_idParaDest-179" class="heading-2">Retrieving the bone matrix for the first-person view</h2>
+    <p class="normal">The first part of the <a id="_idIndexMarker271"/>first-person magic is the retrieval of the final TRS of the bone we want to have our camera attached to. In the <code class="inlineCode">draw()</code> call of the renderer, right after the second computer shader, we extract the bone matrix from the <code class="inlineCode">mShaderBoneMatrixBuffer</code> SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code">glm::mat4 boneMatrix =
+  mShaderBoneMatrixBuffer.<span class="hljs-built_in">getSsboDataMat4</span>(
+  selectedInstance * numberOfBones + selectedBone, <span class="hljs-number">1</span>).<span class="hljs-built_in">at</span>(<span class="hljs-number">0</span>);
+</code></pre>
+    <p class="normal">We are using an overloaded <code class="inlineCode">getSsboDataMat4()</code> method to read a single <code class="inlineCode">glm::mat4</code> at the position of the selected bone of the selected instance. To be able to read more than one matrix from an SSBO, <code class="inlineCode">getSsboDataMat4()</code> returns a <code class="inlineCode">std::vector</code> of <code class="inlineCode">glm::mat4</code>. But since we only need a single matrix, we extract the first matrix of the vector by using <code class="inlineCode">.at(0)</code>.</p>
+    <p class="normal">The camera offset matrix is calculated with a simple <code class="inlineCode">glm::translate()</code> call:</p>
+    <pre class="programlisting code"><code class="hljs-code">glm::mat4 offsetMatrix = glm::<span class="hljs-built_in">translate</span>(glm::<span class="hljs-built_in">mat4</span>(<span class="hljs-number">1.0f</span>),
+  camSettings.csFirstPersonOffsets);
+</code></pre>
+    <p class="normal">Finally, a slightly monstrous call is used to calculate the position of the bone:</p>
+    <pre class="programlisting code"><code class="hljs-code">cam-&gt;<span class="hljs-built_in">setBoneMatrix</span>(
+  mWorldPosMatrices.<span class="hljs-built_in">at</span>(selectedInstance) *
+  boneMatrix * offsetMatrix *
+  glm::<span class="hljs-built_in">inverse</span>(modelType.second.<span class="hljs-built_in">at</span>(<span class="hljs-number">0</span>)
+    -&gt;<span class="hljs-built_in">getModel</span>()-&gt;<span class="hljs-built_in">getBoneList</span>().<span class="hljs-built_in">at</span>(selectedBone)
+    -&gt;<span class="hljs-built_in">getOffsetMatrix</span>()));
+</code></pre>
+    <p class="normal">By using the correct matrix multiplication order (depending on the library, GLM uses right to left), the following operations are done:</p>
+    <ol>
+      <li class="numberedList" value="1">Get the offset matrix of the selected bone from the model and calculate the inverse of the offset matrix. The offset matrix of a bone contains the offset of that bone between the skinning position and the default <strong class="keyWord">T-pose</strong>.</li>
+      <li class="numberedList">Multiply the inverse of the bone offset matrix by the camera position offset matrix, moving the camera slightly away from the bone offset.</li>
+      <li class="numberedList">Multiply the final bone TRS matrix by the previous product of the bone offset and camera matrices, moving the camera to the correct position of that bone relative to the model root.</li>
+      <li class="numberedList">Multiply the world <a id="_idIndexMarker272"/>position offset of the selected instance, moving the camera to the selected bone of our selected instance.</li>
+    </ol>
+    <p class="normal">After the bone matrix has been calculated, we need to update the camera and re-upload the view and projection matrix to the GPU:</p>
+    <pre class="programlisting code"><code class="hljs-code">      cam-&gt;<span class="hljs-built_in">updateCamera</span>(mRenderData, deltaTime);
+      mViewMatrix = cam-&gt;<span class="hljs-built_in">getViewMatrix</span>();
+     std::vector&lt;glm::mat4&gt; matrixData;
+     matrixData.<span class="hljs-built_in">emplace_back</span>(mViewMatrix);
+     matrixData.<span class="hljs-built_in">emplace_back</span>(mProjectionMatrix);
+     mUniformBuffer.<span class="hljs-built_in">uploadUboData</span>(matrixData, <span class="hljs-number">0</span>);
+</code></pre>
+    <p class="normal">Now, part two of the magic follows: calculating position, azimuth, and elevation.</p>
+    <h2 id="_idParaDest-180" class="heading-2">Computing first-person camera parameters</h2>
+    <p class="normal">To get the world <a id="_idIndexMarker273"/>position and the azimuth and elevation view angles from the rotation matrix of the bone, some tricks are required:</p>
+    <ol>
+      <li class="numberedList" value="1">First, we set the camera position from the matrix:
+        <pre class="programlisting code-one"><code class="hljs-code">mCamSettings.csWorldPosition = mFirstPersonBoneMatrix[<span class="hljs-number">3</span>];
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal-one">In a row-major rotation matrix, the translation is stored in the first three columns of the last row. By extracting the entire row and discarding the fourth value, we instantly get the translation of the bone.</p>
+    <ol>
+      <li class="numberedList" value="2">For the elevation view angle, we rotate a vector pointing upward by doing multiplication with the bone TRS matrix:
+        <pre class="programlisting code-one"><code class="hljs-code">glm::vec3 elevationVector =
+  glm::<span class="hljs-built_in">mat3</span>(mFirstPersonBoneMatrix) * mSideVector;
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal-one">The matrix-vector multiplication rotates the reference vector <code class="inlineCode">mSideVector</code> by the angles stored on the bone TRS matrix. In theory, we can use any vector as a reference; we are using a unit vector pointing to the positive Z axis here.</p>
+    <p class="normal-one">The resulting vector points to the direction that was applied to the selected bone during animation calculation.</p>
+    <ol>
+      <li class="numberedList" value="3">Next, we calculate the elevation angle:
+        <pre class="programlisting code-one"><code class="hljs-code">mCamSettings.csViewElevation =
+  glm::<span class="hljs-built_in">degrees</span>(std::<span class="hljs-built_in">atan2</span>(glm::<span class="hljs-built_in">length</span>(
+  glm::<span class="hljs-built_in">cross</span>(elevationVector, mWorldUpVector)),
+  glm::<span class="hljs-built_in">dot</span>(elevationVector, -mWorldUpVector))) - <span class="hljs-number">90.0f</span>
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal-one">By using the two-element arctangent, we can calculate the angle between two given vectors. We are using the upward-pointing <code class="inlineCode">mWorldUpVector</code> here as the second parameter since we are interested in the rotation angle relative to the vertical axis. Arctangent calculation<a id="_idIndexMarker274"/> combines the cosine and the sine angle calculation between the two angles. For details about the formula, a link is available in the <em class="italic">Additional resources</em> section.</p>
+    <p class="normal-one">After converting the resulting angle from radians to degrees, we subtract 90 degrees to get the angle relative to the horizon (<code class="inlineCode">mWorldUpVector</code> points upward). This method is numerically more stable for angles close to the reference vectors compared to the arccosine + dot product method that is usually used to calculate the angle between two vectors.</p>
+    <div class="note">
+      <p class="normal">Elevation angle limits</p>
+      <p class="normal">Be aware of an important limitation to the elevation angle: The total range for the elevation angle is only 180 degrees (from -90 <a id="_idIndexMarker275"/>degrees to 90 degrees). You cannot look more up than directly upward, or more down than directly downward. Trying to adjust the elevation angle outside the limits results in a rotation of 180 degrees around the <code class="inlineCode">X</code> axis – the azimuth angle will be adjusted, and the elevation angle will be still inside the limiting range.</p>
+    </div>
+    <p class="normal">At this point, the camera has the same up/down angle as our selected bone.</p>
+    <p class="normal">We can calculate the Azimuth in a similar way:</p>
+    <ol>
+      <li class="numberedList" value="1">First, we rotate a vector by doing a multiplication with the bone TRS matrix. We again use the vector <code class="inlineCode">mSideVector</code>, pointing toward the positive Z axis:
+        <pre class="programlisting code-one"><code class="hljs-code">glm::vec3 azimuthVector =
+  glm::<span class="hljs-built_in">mat3</span>(mFirstPersonBoneMatrix) * mSideVector;
+</code></pre>
+      </li>
+      <li class="numberedList">Then, we compute the angle between the rotated vector and another unit vector:
+        <pre class="programlisting code-one"><code class="hljs-code">mCamSettings.csViewAzimuth =
+  glm::<span class="hljs-built_in">degrees</span>(
+    glm::<span class="hljs-built_in">acos</span>(
+      glm::<span class="hljs-built_in">dot</span>(
+        glm::<span class="hljs-built_in">normalize</span>(
+          glm::<span class="hljs-built_in">vec3</span>(
+            azimuthVector.x, <span class="hljs-number">0.0f</span>, azimuthVector.z)),
+          -mSideVector
+        )
+     )
+  );
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal-one">Two major differences are needed here, compared to the elevation angle:</p>
+    <ul>
+      <li class="bulletList level-2">The dot product is not calculated from the entire rotated angle but mapped to two dimensions by setting the <code class="inlineCode">Y</code> coordinate to zero. The reason for this mapping may not be obvious – when using all three dimensions, the elevation part (up/down) may be smaller than the azimuth part (rotate around the vertical axis) and the dot product calculates the wrong angle. By eliminating the elevation part, we get the correct result.</li>
+      <li class="bulletList level-2">We calculate the <a id="_idIndexMarker276"/>dot product against a vector pointing in the opposite direction. This sign change is needed to get the correct value of the azimuth angle. Alternatively, we can negate the result of the dot product to get the same effect.</li>
+    </ul>
+    <ol>
+      <li class="numberedList" value="3">As the last step, we check if the <code class="inlineCode">x</code> component of the initially computed <code class="inlineCode">azimuthVector</code> vector is less than zero and adjust the rotation angle accordingly:
+        <pre class="programlisting code-one"><code class="hljs-code">          <span class="hljs-keyword">if</span> (azimuthVector.x &lt; <span class="hljs-number">0.0f</span>) {
+            mCamSettings.csViewAzimuth =
+              <span class="hljs-number">360.0f</span> - mCamSettings.csViewAzimuth;
+          }
+</code></pre>
+      </li>
+    </ol>
+    <p class="normal-one">Normally, we only get an angle between 0 and 180 degrees as the result of calling the inverse cosine function <code class="inlineCode">std::acos()</code>. By taking the direction of the resulting rotated vector into account, we can modify the calculations to retrieve the full angle between 0 and 360 degrees.</p>
+    <p class="normal">If we create the view direction from the computed elevation and azimuth values now, the camera looks in exactly the same direction as the selected bone:</p>
+    <pre class="programlisting code"><code class="hljs-code">        <span class="hljs-built_in">updateCameraView</span>(renderData, deltaTime);
+</code></pre>
+    <p class="normal"><em class="italic">Figure 6.3</em> shows the first-person view of a model doing the <strong class="screenText">Pickup</strong> animation:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_6.3_B22428.png" alt="" width="1648" height="1059"/></figure>
+    <p class="packt_figref">Figure 6.3: First-person view during the “pickup” animation</p>
+    <p class="normal">You can see that the instance <a id="_idIndexMarker277"/>squats and tries to get something on the ground, but you see the animation directly with the eyes of the instance, not from the outside. Be aware that the camera might end up somewhere inside the model, resulting in graphical artifacts since we draw only the outside faces of the triangles. For the third-person view, a different approach is needed.</p>
+    <h2 id="_idParaDest-181" class="heading-2">Moving the camera in a third-person view</h2>
+    <p class="normal">In a third-person view, we <a id="_idIndexMarker278"/>don’t need to follow any bone of the model. We just need to follow the model’s location. The location can be retrieved via the <code class="inlineCode">InstanceSettings</code> of the instance. But there is a catch: we must set the position of the camera to a place behind the instance.</p>
+    <p class="normal">First, we have to calculate the azimuth angle by using the rotation of the instance:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">float</span> rotationAngle = <span class="hljs-number">180.0f</span> -
+  instSettings.isWorldRotation.y;
+</code></pre>
+    <p class="normal">The offset of 180 degrees is needed due to the different angle ranges of instances and cameras. While the instance has a range of -180 to 180 degrees, the camera uses a range of 0 to 360 degrees. We also invert the direction of the instance rotation.</p>
+    <p class="normal">Next, we calculate the offset of the camera from the instance by using simple trigonometry:</p>
+    <pre class="programlisting code"><code class="hljs-code">glm::vec3 offset = glm::<span class="hljs-built_in">vec3</span>(
+  -glm::<span class="hljs-built_in">sin</span>(glm::<span class="hljs-built_in">radians</span>(rotationAngle)),
+   <span class="hljs-number">1.0f</span>,
+   glm::<span class="hljs-built_in">cos</span>(glm::<span class="hljs-built_in">radians</span>(rotationAngle))
+) * mCamSettings.csThirdPersonDistance;
+</code></pre>
+    <p class="normal">Using sine and cosine rotates the camera around the center of an imaginary unit circle. A unit circle has a radius of one, so using <code class="inlineCode">1.0f</code> for the <code class="inlineCode">Y</code> axis of the offset leads to the same height distance from the ground as the<a id="_idIndexMarker279"/> radius of the imaginary circle. By using a uniform scaling with the <code class="inlineCode">csThirdPersonDistance</code> variable, we can control the distance of the camera from the instance. And with the <code class="inlineCode">csThirdPersonHeightOffset</code> variable, we can separately adjust the height of the camera.</p>
+    <p class="normal">Next, we add the separate camera height offset and set the world position of the camera to the instance world position plus the offset:</p>
+    <pre class="programlisting code"><code class="hljs-code">offset.y += mCamSettings.csThirdPersonHeightOffset;
+mCamSettings.csWorldPosition =
+  instSettings.isWorldPosition + offset;
+</code></pre>
+    <p class="normal">Now, the camera is always placed behind the instance, and we can control the view distance and an additional camera height offset.</p>
+    <p class="normal">For the elevation angle of the view, we utilize the dot product again, this time between the vector from the camera to the instance and the upward-pointing <code class="inlineCode">mWorldUpVector</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">glm::vec3 viewDirection =
+  instSettings.isWorldPosition -
+  mCamSettings.csWorldPosition;
+mCamSettings.csViewElevation = (<span class="hljs-number">90.0f</span> -
+  glm::<span class="hljs-built_in">degrees</span>(
+    glm::<span class="hljs-built_in">acos</span>(
+      glm::<span class="hljs-built_in">dot</span>(
+        glm::<span class="hljs-built_in">normalize</span>(viewDirection), mWorldUpVector
+      )
+    )
+  )) / <span class="hljs-number">2.0f</span>;
+</code></pre>
+    <p class="normal">As a result, we get half the angle in degrees between the <code class="inlineCode">mWorldUpVector</code> and the view direction. The camera points slightly down to the world position of the instance, but still upward enough to look over the shoulders of the instance.</p>
+    <p class="normal"><em class="italic">Figure 6.4</em> shows the third-person view behind the selected model:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_6.4_B22428.png" alt="" width="1201" height="749"/></figure>
+    <p class="packt_figref">Figure 6.4: Third-person view</p>
+    <p class="normal">In addition to the calculation of camera position and view angles, we should disable the user-based camera movement. Ignoring <a id="_idIndexMarker280"/>the request to control the camera gives better feedback to the user than visibly resetting the camera changes in every frame.</p>
+    <h2 id="_idParaDest-182" class="heading-2">Disabling manual camera movement</h2>
+    <p class="normal">Ignoring the request to change the<a id="_idIndexMarker281"/> camera angle can be achieved by a simple addition. We only need to get the camera settings and surround the block, changing the <code class="inlineCode">mMouseLock</code> variable in <code class="inlineCode">handleMouseButtonEvents()</code> with the following condition:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (!(camSettings.csCamType ==
+      cameraType::thirdPerson ||
+    (camSettings.csCamType == cameraType::firstPerson &amp;&amp;
+    camSettings.csFirstPersonLockView)) &amp;&amp;
+    camSettings.csInstanceToFollow.<span class="hljs-built_in">lock</span>()) {
+  ...
+</code></pre>
+    <p class="normal">This complex condition can be broken down into the following rules: Only allow locking the mouse and moving the camera manually if:</p>
+    <ul>
+      <li class="bulletList">The camera type is not first-person or third-person.</li>
+      <li class="bulletList">For a first-person camera, the view is unlocked.</li>
+      <li class="bulletList">For both camera types, a target instance to follow is set.</li>
+    </ul>
+    <p class="normal">This means the camera can be freely moved on a free camera type, as long as no instance has been set as a target in first- and third-person, and the view of a first-person camera is not set to locked.</p>
+    <p class="normal">The condition line may look a bit scary, but creating the same conditions with opposite logic elements to avoid the initial exclamation mark negation creates a Boolean expression of similar complexity. So, we could<a id="_idIndexMarker282"/> happily stick with this expression.</p>
+    <p class="normal">Since we haven’t implemented the <em class="italic">roll</em> rotation, a rotation around the axis pointing toward the screen, the two new cameras may behave unexpectedly.</p>
+    <h2 id="_idParaDest-183" class="heading-2">Limits of current first-/third-person cameras</h2>
+    <p class="normal">If you rotate the currently locked instance about the <code class="inlineCode">X</code> and/or <code class="inlineCode">Z</code> axes on a first-person camera, the view will be rotated <a id="_idIndexMarker283"/>around wildly, only following the position of the selected bone and not the rotation. This behavior could be fixed by adding the third rotation to the camera and doing a <strong class="keyWord">roll</strong> around the axis pointing into the screen. After adding the sixth degree of freedom, all calculations have to be adjusted to include the new angle.</p>
+    <p class="normal">Also, the third-person camera may be placed incorrectly on models that are rotated in a different angle, or models that may need to have the <code class="inlineCode">Z</code> and <code class="inlineCode">Y</code> axes swapped.</p>
+    <p class="normal">Although adding the last rotation is possible, the use inside the application is limited to cases like the first-person view, since you can get the same results by reversing the roll rotation and rotating the map instead of the model. For the <em class="italic">wrong</em> rotated third-person models, additional fixed rotation checkboxes would be needed, or more offset rotations.</p>
+    <p class="normal">You are encouraged to extend the current code base and add instance settings that honor the edge cases mentioned in this section.</p>
+    <p class="normal">After adding cameras directly related to the instance position, let’s continue with the stationary cameras.</p>
+    <h1 id="_idParaDest-184" class="heading-1">Adding stationary cameras</h1>
+    <p class="normal">A stationary camera can be used in several situations. You made a great-looking composition of character models and props. Or, you want to have a top-down view of the entire game map you loaded and see where<a id="_idIndexMarker284"/> every character is placed. Maybe you even want to follow one of the instances wandering around the map. A perfect fit for stationary cameras.</p>
+    <p class="normal">For the pure stationary camera, the configuration is simple. Just add the camera type to the activation of the <code class="inlineCode">mMouseLock</code> Boolean in the <code class="inlineCode">handleMouseButtonEvents()</code> method of the renderer:</p>
+    <pre class="programlisting code"><code class="hljs-code">... &amp;&amp; camSettings.csCamType != cameraType::stationary ...
+</code></pre>
+    <p class="normal">And in <code class="inlineCode">updateCamera()</code> of the <code class="inlineCode">Camera</code> class, add the following line, right after checking for the zero <code class="inlineCode">deltaTime</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (mCamSettings.csCamType == cameraType::stationary) {
+    <span class="hljs-keyword">return</span>;
+  }
+</code></pre>
+    <p class="normal">That’s it! As soon as you select a stationary camera, the right-click of the mouse will be ignored, and the camera will also never receive any updates.</p>
+    <p class="normal">If a stationary camera should<a id="_idIndexMarker285"/> follow an instance, a bit more code is needed.</p>
+    <h2 id="_idParaDest-185" class="heading-2">Creating a stationary follow camera</h2>
+    <p class="normal">The first step for creating a<a id="_idIndexMarker286"/> stationary instance-follow camera is the same as for the pure stationary camera – add the camera type to the <code class="inlineCode">handleMouseButtonEvents()</code> method of the renderer class:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">if</span> (!((camSettings.csCamType ==
+  cameraType::stationaryFollowing
+</code></pre>
+    <p class="normal">We must add the camera type to the brackets for first- and third-person type checks since we only want to disable the camera manual movement if an instance to follow has been configured.</p>
+    <p class="normal">For the update of the camera position and view, a mix of the algorithms from first and third person will be created. You will recognize the code samples from the previous sections.</p>
+    <p class="normal">First, we get the instance and calculate the view direction from the camera to the instance position:</p>
+    <pre class="programlisting code"><code class="hljs-code">std::shared_ptr&lt;AssimpInstance&gt; instance =
+  mCamSettings.csInstanceToFollow.<span class="hljs-built_in">lock</span>();
+glm::vec3 viewDirection = instance-&gt;<span class="hljs-built_in">getWorldPosition</span>() -
+  mCamSettings.csWorldPosition;
+</code></pre>
+    <p class="normal">Next, we set the elevation angle of the view to the cosine of the angle between the view direction to the instance and the upward-pointing <code class="inlineCode">mWorldUpVector</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">mCamSettings.csViewElevation = <span class="hljs-number">90.0f</span> -
+  glm::<span class="hljs-built_in">degrees</span>(
+    glm::<span class="hljs-built_in">acos</span>(
+      glm::<span class="hljs-built_in">dot</span>(
+        glm::<span class="hljs-built_in">normalize</span>(viewDirection), mWorldUpVector
+      )
+    )
+  );
+</code></pre>
+    <p class="normal">Using the dot product between the view direction and the upward-pointing vector has been used in first- and third-person cameras in a very similar way.</p>
+    <p class="normal">Then, we map the same view direction vector to two dimensions and calculate the angle between the <em class="italic">flattened</em> view direction vector and a vector pointing toward the negative z axis:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">float</span> rotateAngle =
+glm::<span class="hljs-built_in">degrees</span>(
+  glm::<span class="hljs-built_in">acos</span>(
+    glm::<span class="hljs-built_in">dot</span>(
+      glm::<span class="hljs-built_in">normalize</span>(
+        glm::<span class="hljs-built_in">vec3</span>(viewDirection.x, <span class="hljs-number">0.0f</span>, viewDirection.z)),
+      glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>, <span class="hljs-number">0.0f</span>, <span class="hljs-number">-1.0f</span>)
+    )
+  )
+);
+</code></pre>
+    <p class="normal">Finally, we extend the azimuth angle to a full 360 degrees:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">if</span> (viewDirection.x &lt; <span class="hljs-number">0.0f</span>) {
+  rotateAngle = <span class="hljs-number">360.0f</span> – rotateAngle;
+}
+mCamSettings.csViewAzimuth = rotateAngle
+</code></pre>
+    <p class="normal">The 2D-mapped vector, the dot product, and the extension of the azimuth angle to 360 degrees instead of only the<a id="_idIndexMarker287"/> 180 degrees of the dot product are exactly the same as for the first-person camera.</p>
+    <p class="normal">When we now use the <code class="inlineCode">stationaryFollowing</code> type for a camera and select an instance as a target, the camera view will automatically follow the instance wherever we move it. But manual movement of both the camera and the camera view is prohibited.</p>
+    <p class="normal">Handling the new camera types already works well, but there is still room for improvement. So, let’s add some more features to the application.</p>
+    <h1 id="_idParaDest-186" class="heading-1">Switching between cameras and configurations</h1>
+    <p class="normal">For faster movement <a id="_idIndexMarker288"/>between the available cameras in the <code class="inlineCode">micCameras</code> vector, keyboard shortcuts are handy.</p>
+    <h2 id="_idParaDest-187" class="heading-2">Configuring keyboard shortcuts for camera selection</h2>
+    <p class="normal">All we have to do to add keyboard shortcuts is add a small piece of code to the <code class="inlineCode">handleKeyEvents()</code> method <a id="_idIndexMarker289"/>of the renderer:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (<span class="hljs-built_in">glfwGetKey</span>(mRenderData.rdWindow,
+      GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS) {
+    <span class="hljs-keyword">if</span> (mModelInstCamData.micSelectedCamera &gt; <span class="hljs-number">0</span>) {
+      mModelInstCamData.micSelectedCamera--;
+    }
+  }
+  <span class="hljs-keyword">if</span> (<span class="hljs-built_in">glfwGetKey</span>(mRenderData.rdWindow,
+      GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS) {
+    <span class="hljs-keyword">if</span> (mModelInstCamData.micSelectedCamera &lt;
+        mModelInstCamData.micCameras.<span class="hljs-built_in">size</span>() - <span class="hljs-number">1</span>) {
+      mModelInstCamData.micSelectedCamera++;
+    }
+  }
+</code></pre>
+    <p class="normal">In the previous code snippet, the square bracket keys are set as hotkeys to select the previous or next camera. An extended version could also be added (i.e., by directly selecting the first nine cameras by pressing<a id="_idIndexMarker290"/> the number keys <em class="italic">1</em> to <em class="italic">9</em>).</p>
+    <p class="normal">We also don’t limit the camera changes to edit mode to allow switching between cameras in the view mode.</p>
+    <p class="normal">Another cool addition is the orthogonal projection. While perspective projection tries to mimic the size reduction of objects farther away from the camera, orthogonal projection will retain the dimension of the objects.</p>
+    <h2 id="_idParaDest-188" class="heading-2">Adding orthogonal projection</h2>
+    <p class="normal">You may recognize a<a id="_idIndexMarker291"/> game similar to the picture in <em class="italic">Figure 6.5</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_6.5_B22428.png" alt="" width="1108" height="759"/></figure>
+    <p class="packt_figref">Figure 6.5: A small level in orthogonal projection</p>
+    <p class="normal">This version of the Stalkyard map from Half-Life was created by the user pancakesbassoondonut on Sketchfab. The map is available at <a href="https://skfb.ly/6ACOx"><span class="url">https://skfb.ly/6ACOx</span></a> and licensed under the Creative Commons Attribution license CC BY 4.0 (<a href="https://creativecommons.org/licenses/by/4.0/"><span class="url">https://creativecommons.org/licenses/by/4.0/</span></a>).</p>
+    <p class="normal">Older games used orthogonal projection only for aesthetic reasons. Without scaling the textures or changing the angle <a id="_idIndexMarker292"/>of the faces, very little computational power was required to create stunning-looking games.</p>
+    <p class="normal">To support orthogonal projection, we create a new <code class="inlineCode">enum</code> class named <code class="inlineCode">cameraProjection</code> in the <code class="inlineCode">Enums.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">cameraProjection</span> {
+  perspective = <span class="hljs-number">0</span>,
+  orthogonal
+};
+</code></pre>
+    <p class="normal">In the <code class="inlineCode">CameraSettings</code> struct, we add two new variables named <code class="inlineCode">csCamProjection</code> and <code class="inlineCode">csOrthoScale</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  cameraProjection csCamProjection =
+    cameraProjection::perspective;
+  <span class="hljs-type">float</span> csOrthoScale = <span class="hljs-number">20.0f</span>;
+</code></pre>
+    <p class="normal">While <code class="inlineCode">csCamProjection</code> is used to swap between perspective and orthogonal projection, the <code class="inlineCode">csOrthoScale</code> variable will define a zoom-level style setting of the orthogonal projection, similar to the field of view setting for perspective projection.</p>
+    <p class="normal">The current code to create the projection matrix in <code class="inlineCode">mProjectionMatrix</code> will be moved into a check for the new projection setting:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (camSettings.csCamProjection ==
+    cameraProjection::perspective) {
+ ...
+  } <span class="hljs-keyword">else</span> {
+</code></pre>
+    <p class="normal">And, if the orthogonal projection has been selected, we will use <code class="inlineCode">glm::ortho()</code> instead of <code class="inlineCode">glm::perspective()</code> to create the projection matrix. First, we read <code class="inlineCode">csOrthoScale</code> and use the value to scale the aspect ratio and the left and right plus near and far plane distances:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">float</span> orthoScaling = camSettings.csOrthoScale;
+    <span class="hljs-type">float</span> aspect = <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(mRenderData.rdWidth)/
+      <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(mRenderData.rdHeight) *
+      orthoScaling;
+    <span class="hljs-type">float</span> leftRight = <span class="hljs-number">1.0f</span> * orthoScaling;
+    <span class="hljs-type">float</span> nearFar = <span class="hljs-number">75.0f</span> * orthoScaling;
+</code></pre>
+    <p class="normal">The call to <code class="inlineCode">glm::ortho()</code> creates the orthogonal projection matrix, moving the origin of the virtual world to the origin of the screen:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mProjectionMatrix = glm::<span class="hljs-built_in">ortho</span>(-aspect, aspect,
+      -leftRight, leftRight, -nearFar, nearFar);
+</code></pre>
+    <p class="normal">By using the center of the virtual world as the center for the projection matrix, we get a nicely scaled result on the screen. Due to the camera position in the view matrix, we are even able to move the camera in the orthogonally drawn virtual world.</p>
+    <p class="normal">The only restriction here is the movement <em class="italic">into</em> the screen: While moving the camera left and right or up and down adjusts the view as expected, a forward and backward movement will show no changes in the first place. This missing reaction to a camera movement in the direction of the z axis is caused by the basic principle of the orthogonal projection. We don’t have a view frustum like in the perspective projection: the projection matrix creates a huge rectangular box instead, and every triangle inside that box is drawn.</p>
+    <p class="normal">Reaching a point with the<a id="_idIndexMarker293"/> camera where some triangles are behind the far z plane of the rectangular box requires us to move the camera far away from the origin of the virtual world. You can try to reach such a point by yourself, but it will take a lot of time, even with the faster camera movement.</p>
+    <p class="normal">Despite the cool-looking effect of an orthogonal projection, be aware that depth perception can be tricky in such a case. Our brain has learned that the size of an object will decrease if the distance to it grows, and objects with the same apparent sizes but different distances do not have the same sizes in real life. With all instances on the screen being the same size, you may be completely off when guessing which instances are closer to the camera.</p>
+    <h2 id="_idParaDest-189" class="heading-2">User interface controls for the projection settings</h2>
+    <p class="normal">To control which projection will be <a id="_idIndexMarker294"/>used, two radio buttons are added to the <code class="inlineCode">UserInterface</code> class. The first radio button is used to activate the perspective projection:</p>
+    <pre class="programlisting code"><code class="hljs-code">      ImGui::<span class="hljs-built_in">Text</span>(<span class="hljs-string">"Projection:      "</span>);
+      ImGui::<span class="hljs-built_in">SameLine</span>();
+      <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">RadioButton</span>(<span class="hljs-string">"Perspective"</span>,
+          settings.csCamProjection ==
+          cameraProjection::perspective)) {
+        settings.csCamProjection =
+          cameraProjection::perspective;
+      }
+</code></pre>
+    <p class="normal">The second radio button activates the orthogonal projection:</p>
+    <pre class="programlisting code"><code class="hljs-code">      ImGui::<span class="hljs-built_in">SameLine</span>();
+      <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">RadioButton</span>(<span class="hljs-string">"Orthogonal"</span>,
+          settings.csCamProjection ==
+          cameraProjection::orthogonal)) {
+        settings.csCamProjection =
+         cameraProjection::orthogonal;
+     }
+</code></pre>
+    <p class="normal">Right below the field of view slider, a slider for the orthogonal scaling will be created:</p>
+    <pre class="programlisting code"><code class="hljs-code">      ImGui::<span class="hljs-built_in">Text</span>(<span class="hljs-string">"Ortho Scaling:   "</span>);
+      ImGui::<span class="hljs-built_in">SameLine</span>();
+      ImGui::<span class="hljs-built_in">SliderFloat</span>(<span class="hljs-string">"</span><span class="hljs-string">##CamOrthoScale"</span>,
+        &amp;settings.csOrthoScale, <span class="hljs-number">1.0f</span>, <span class="hljs-number">50.0f</span>, <span class="hljs-string">"%.3f"</span>, flags);
+</code></pre>
+    <p class="normal">The checkboxes and sliders are also surrounded by checks for camera types or conflicting settings. Disabling or even hiding controls that could confuse a user is better than trying to explain why changing settings does not give the expected result.</p>
+    <p class="normal">By having multiple cameras and an extended camera handling available, exploring the virtual world and the model instances got a level-up. We can now place cameras in different areas of the world, and by using a<a id="_idIndexMarker295"/> first- or third-person camera, instances and instance animations can be viewed like in a real game.</p>
+    <div class="note">
+      <p class="normal">A note on cameras and large models</p>
+      <p class="normal">When working with large models or models with a high scaling factor, clipping issues may occur for different camera types because some parts of the model are outside of the near and far clipping planes for the scene depth. Model parts too close to the camera position appear to have holes in them and model parts too far away may just vanish from the screen. In these cases, you need to adjust the scaling of the model or the configuration of the near and far plane for the projection matrices in the renderer.</p>
+    </div>
+    <h1 id="_idParaDest-190" class="heading-1">Summary</h1>
+    <p class="normal">In this chapter, new camera functionality was implemented. First, we extended the current camera handling to support more than one camera object. Next, several camera types were defined and implemented, like first-person and third-person cameras. Finally, handy additions for handling cameras were made. Switching between the list of defined cameras by using keyboard shortcuts helps to simplify access, and the orthogonal projection creates interesting results for viewing the instances.</p>
+    <p class="normal">In the next chapter, we will add more life to our virtual world by enhancing the instance animations. By adding animations to different internal states of an instance, like walking, running, or jumping, we will be able to move the instance within the virtual world. And by blending animations between these states, the transition between the different states will be made smooth.</p>
+    <h1 id="_idParaDest-191" class="heading-1">Practical sessions</h1>
+    <p class="normal">There are some additions you could make to the code:</p>
+    <ul>
+      <li class="bulletList">Extend the YAML loader to migrate the configuration file.</li>
+    </ul>
+    <p class="normal-one">As mentioned in the section <em class="italic">Bumping the configuration file version</em>, add the functionality to load both the old and new versions of the configuration file. Saving the file could be done in the newest version.</p>
+    <ul>
+      <li class="bulletList">Add oscillation to the stationary camera.</li>
+    </ul>
+    <p class="normal-one">Like in real life, a security camera could have the additional ability to automatically move left and right, or up and down. Possible controls are the extent and speed of the movement.</p>
+    <ul>
+      <li class="bulletList">Add a rotation around the vertical axis of the third-person camera.</li>
+    </ul>
+    <p class="normal-one">Instead of just being able to view the instances from behind, add another property containing the rotation around the vertical axis. By rotating the camera 90 degrees, you would be able to create a three-dimensional side-scroller, and by rotating the camera 180 degrees, the instance would face you while walking or running.</p>
+    <ul>
+      <li class="bulletList">Add the roll rotation to the camera.</li>
+    </ul>
+    <p class="normal-one">Currently, the camera supports only elevation (look up and down) and azimuth (rotation around the vertical axis). Implement the third rotational axis to allow the camera to be moved to any arbitrary angle.</p>
+    <ul>
+      <li class="bulletList">Extend the third-person camera to be more action-like.</li>
+    </ul>
+    <p class="normal-one">You could try to add more features to the third-person camera. What about a camera mounted on a spring, only loosely following the motion of the instance? Or effects like zooming a bit more out on moving forward, following with a small delay on rotations, or even tilting a bit when walking sideways? Or you could add a small shake on collisions, like the instance running into an obstacle. Also, presets for those different types would be handy.</p>
+    <ul>
+      <li class="bulletList">Change camera implementation to quaternions.</li>
+    </ul>
+    <p class="normal-one">Adding the third dimension in the previous task will most probably lead to rotations resulting in a gimbal lock, thus losing one degree of freedom again because one axis is rotated or close to another axis. Changing the entire camera rotation to use quaternions instead of Euler angles should solve gimbal lock situations.</p>
+    <ul>
+      <li class="bulletList">Add spline-based camera and target paths.</li>
+    </ul>
+    <p class="normal-one">To create fly-by scenes, you could add splines for the camera position to follow along, including configurable speed and ping-pong movement. By adding splines as targets, you could create camera shots of the virtual worlds.</p>
+    <ul>
+      <li class="bulletList">Show the cameras as separate objects in edit mode.</li>
+    </ul>
+    <p class="normal-one">Similar to the arrows for the model manipulation, you could add a view frustum and a small box to depict the position and orientation of the cameras in the virtual world. Different camera types could be shown by different line colors.</p>
+    <ul>
+      <li class="bulletList">Make the camera symbols selectable with the mouse.</li>
+    </ul>
+    <p class="normal-one">After you finish the previous task, you could also add the camera symbols to the selection texture. Just reserve a range of values exclusively for the cameras, draw the boxes and/or frustum lines to the selection texture, and switch between instances and cameras, depending on the value you get back from the graphics card buffer.</p>
+    <ul>
+      <li class="bulletList">Expert difficulty: Add a <strong class="keyWord">picture-in-picture</strong> window.</li>
+    </ul>
+    <p class="normal-one">Most game engines have the ability to show a minimized version of another camera in a small window of the application screen. Creating a separate camera display requires some low-level additions to the renderer class since the entire scene has to be drawn twice by using the view and projection matrices of both cameras.</p>
+    <p class="normal-one"><strong class="keyWord">ImGui</strong> has the ability to draw a texture to the screen – you could render the second camera view to a texture and show the image in an ImGui window. Adding additional information like the camera name and type to the window title would enhance the picture-in-picture mode even more.</p>
+    <p class="normal-one">To avoid confusion when two different camera types are active, limiting the type-based restrictions to be only active in edit mode may be a good idea.</p>
+    <h1 id="_idParaDest-192" class="heading-1">Additional resources</h1>
+    <ul>
+      <li class="bulletList">3D Math Primer for Graphics and Game Development: <a href="https://gamemath.com/book/"><span class="url">https://gamemath.com/book/</span></a></li>
+      <li class="bulletList">How to calculate the angle between two vectors in 3D: <a href="https://www.quora.com/How-do-I-calculate-the-angle-between-two-vectors-in-3D-space-using-atan2"><span class="url">https://www.quora.com/How-do-I-calculate-the-angle-between-two-vectors-in-3D-space-using-atan2</span></a></li>
+    </ul>
+  </div>
+</div></div></body></html>

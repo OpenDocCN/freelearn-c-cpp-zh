@@ -1,0 +1,705 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer061">
+<h1 class="chapter-number" id="_idParaDest-101"><a id="_idTextAnchor101"/>7</h1>
+<h1 id="_idParaDest-102"><a id="_idTextAnchor102"/>Proceeding with Inter-Process Communication</h1>
+<p>The previous chapter presented many features of C++20 that allow you to execute tasks in parallel. Outside of the global variables, it didn’t cover ways to communicate between processes or threads. On a system level, most of the asynchronous calls are born in the continuous communication between processes and different <span class="No-Break">computer systems.</span></p>
+<p>In<a id="_idIndexMarker558"/> this chapter, you will learn about the <strong class="bold">inter-process communication</strong> (<strong class="bold">IPC</strong>) interfaces that Linux provides. Through them, you will get a full picture of possibilities to cover your system and software requirements. You’ll start by learning about <strong class="bold">message queues </strong>(<strong class="bold">MQs</strong>) as a <a id="_idIndexMarker559"/>continuation of the discussion about pipes in <a href="B20833_03.xhtml#_idTextAnchor047"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>. In addition, we will analyze in detail the work of<a id="_idIndexMarker560"/> the <strong class="bold">semaphore</strong> and <strong class="bold">mutex</strong> synchronization techniques. We will introduce you to some <a id="_idIndexMarker561"/>new C++20 features in this area that are easy to use, and you will no longer have to implement <span class="No-Break">such yourself.</span></p>
+<p>This allows us to proceed with <a id="_idIndexMarker562"/>the <strong class="bold">shared memory</strong> technique, which will give you the option to transfer large amounts of data fast. Finally, if you’re interested in communication between computer systems on the network, you’ll learn about sockets and network communication protocols. With this, we give you some practical and commands to administer your own system on <span class="No-Break">the network.</span></p>
+<p>We will build on the discussions started in this chapter in <a href="B20833_09.xhtml#_idTextAnchor129"><span class="No-Break"><em class="italic">Chapter 9</em></span></a><span class="No-Break">.</span></p>
+<p>In this chapter, we are going to cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li>Introducing MQs and the <span class="No-Break">pub/sub mechanism</span></li>
+<li>Guaranteeing atomic operations through semaphores and <span class="No-Break">mutual exclusions</span></li>
+<li>Using <span class="No-Break">shared memory</span></li>
+<li>Communicating through the network <span class="No-Break">with sockets</span></li>
+</ul>
+<h1 id="_idParaDest-103"><a id="_idTextAnchor103"/>Technical requirements</h1>
+<p>To run the code examples, you must prepare <span class="No-Break">the following:</span></p>
+<ul>
+<li>A Linux-based system capable of compiling and executing C++20 (for example, <strong class="bold">Linux </strong><span class="No-Break"><strong class="bold">Mint 21</strong></span><span class="No-Break">)</span></li>
+<li>A GCC 12.2 compiler (<a href="https://gcc.gnu.org/git/gcc.gitgcc-source">https://gcc.gnu.org/git/gcc.git gcc-source</a>) with the <strong class="source-inline">-std=c++2a</strong>, <strong class="source-inline">-lpthread</strong>, and <strong class="source-inline">-</strong><span class="No-Break"><strong class="source-inline">lrt</strong></span><span class="No-Break"> flags</span></li>
+<li>For all the examples, you can alternatively <span class="No-Break">use </span><a href="https://godbolt.org/"><span class="No-Break">https://godbolt.org/</span></a></li>
+<li>All code examples in this chapter are available for download <span class="No-Break">from </span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207</span></a></li>
+</ul>
+<h1 id="_idParaDest-104"><a id="_idTextAnchor104"/>Introducing MQs and the pub/sub mechanism</h1>
+<p>We’re glad to be back <a id="_idIndexMarker563"/>on the IPC topic. The last time we discussed it was in <a href="B20833_03.xhtml#_idTextAnchor047"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>, where we explained pipes and used some code examples. You learned about the basic mechanism of exchanging data between processes, but as you remember, there are some blocking points. As with any programming instrument, pipes have particular usage – they are fast, and they<a id="_idIndexMarker564"/> can help you<a id="_idIndexMarker565"/> send and receive data from both related (forked) processes (through <strong class="bold">anonymous pipes</strong>) and unrelated processes (through <span class="No-Break"><strong class="bold">named pipes</strong></span><span class="No-Break">).</span></p>
+<p>In a similar fashion, we could <a id="_idIndexMarker566"/>use MQs to transfer data, which are available to related and unrelated processes, too. They provide the ability to send a single message to multiple receiving processes. But as you saw, pipes are primitive in the sense of sending and receiving binary data as is, while MQs bring the notion of a <em class="italic">message</em> to the table. The policy of the transfer is still configured in the calling process – queue name, size, signal handling, priority, and so on – but its policy and ability to serialize data are now in the hands of the<a id="_idIndexMarker567"/> MQ’s implementation. This gives the programmer a relatively simple and flexible way to prepare and handle messages of data. Based on our software design, we could easily implement an asynchronous <a id="_idIndexMarker568"/>send-receive data transfer or a <strong class="bold">publish/subscribe</strong> (<strong class="bold">pub/sub</strong>) mechanism. Linux provides two different interfaces for MQs – one designed for local server applications (coming from System V) and one designed for real-time applications (coming from POSIX). For the purposes of the book, we prefer to use the POSIX interface as it is richer and cleaner in configuration. It is also a file-based mechanism, as discussed in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, and you can find a mounted queue through <span class="No-Break">the following:</span></p>
+<pre class="console">
+$ ls /dev/mqueue</pre> <p>This interface is available through the OS real-time functions library, <strong class="source-inline">librt</strong>, so you need to link it during compilation. The <a id="_idIndexMarker569"/>MQ itself can be visualized <span class="No-Break">as follows:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer055">
+<img alt="Figure 7.1 – Representation of IPC through the MQ" height="645" src="image/Figure_7.1_B20833.jpg" width="1452"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.1 – Representation of IPC through the MQ</p>
+<p>Let’s look at an <a id="_idIndexMarker570"/>example where we send data from one process to another. The exemplary data is already stored in a file and loaded to be sent through the MQ. The full example can be found <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207</span></a><span class="No-Break">:</span></p>
+<pre class="source-code">
+constexpr auto MAX_SIZE = 1024;
+string_view QUEUE_NAME  = "/test_queue";</pre> <p>We set our initial configuration together with the queue name as <span class="No-Break">the pathname:</span></p>
+<pre class="source-code">
+void readFromQueue() {
+...
+    mqd_t          mq   = { 0 };
+    struct mq_attr attr = { 0 };
+    array&lt;char, MAX_SIZE&gt; buffer{};
+    attr.mq_flags = 0;
+    attr.mq_maxmsg = 10;
+    attr.mq_msgsize = MAX_SIZE;
+    attr.mq_curmsgs = 0;
+    if (mq = mq_open(QUEUE_NAME.data(), O_CREAT | O_RDONLY,
+                     0700, &amp;attr); mq &gt; -1) { // {1}
+        for (;;) {
+            if (auto bytes_read = mq_receive(mq,
+                                             buffer.data(),
+                                             buffer.size(),
+                                             NULL);
+                                  bytes_read &gt; 0) { // {2}
+                buffer[bytes_read] = '\0';
+                cout &lt;&lt; "Received: "
+                     &lt;&lt; buffer.data()
+                     &lt;&lt; endl; // {3}
+            }
+            else if (bytes_read == -1) {
+                cerr &lt;&lt; "Receive message failed!";
+            }</pre> <p>Additional configuration is applied to the <a id="_idIndexMarker571"/>MQ and the receiving end is prepared. The <strong class="source-inline">mq_open()</strong>function is called in order to create the MQ on the filesystem and open its reading end. Through an endless loop, the data is received as it is read from a binary file and printed out (markers <strong class="source-inline">{2}</strong> and <strong class="source-inline">{3}</strong> in the preceding code) until the file is fully consumed. Then, the receiving ends and the reading end are closed (marker <strong class="source-inline">{4}</strong> in the following code). If there’s nothing else to be done, the MQ is deleted from the filesystem <span class="No-Break">through </span><span class="No-Break"><strong class="source-inline">mq_unlink()</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+            else {
+                cout &lt;&lt; "\n\n\n***Receiving ends***"
+                     &lt;&lt; endl;
+                mq_close(mq); // {4}
+                break;
+            }
+        }
+    }
+    else {
+        cerr &lt;&lt; "Receiver: Failed to load queue: "
+             &lt;&lt; strerror(errno);
+    }
+    mq_unlink(QUEUE_NAME.data());
+}</pre> <p>This example is implemented with two threads but could be done in the same fashion with two processes. The MQ functionality will remain the same. We call <strong class="source-inline">mq_open()</strong> again and open the MQ for writing (marker <strong class="source-inline">{5}</strong> in the following code). The created queue can fit up to 10 messages and each message can be 1,024 bytes in size – this is defined through the MQ attributes in the earlier code snippet. If you don’t want the MQ operations to be blocking, you could use the <strong class="source-inline">O_NONBLOCK</strong> flag in the attributes, or use <strong class="source-inline">mq_notify()</strong> prior to the <strong class="source-inline">mq_receive()</strong> call. That way, if the MQ is empty, the reader will be blocked, but <strong class="source-inline">mq_notify()</strong> will trigger a signal on message arrival and the process will <span class="No-Break">be resumed.</span></p>
+<p>Then, the locally stored file is opened with the test data and we read from it (markers <strong class="source-inline">{6}</strong> and <strong class="source-inline">{7}</strong> in the following code). While we read (you could use <strong class="source-inline">std::ofstream</strong> as well), we send its contents through the <a id="_idIndexMarker572"/>MQ (marker <strong class="source-inline">{8}</strong> in the following code). The message has the lowest priority possible, which means <strong class="source-inline">0</strong>. In a system with more messages in a queue, we could set a higher priority and they will be handled in a decreasing order. The maximum value is visible from <strong class="source-inline">sysconf(_SC_MQ_PRIO_MAX)</strong>, where, for Linux, this is <strong class="source-inline">32768</strong>, but POSIX enforces a range from 0 to 31 in order to be compliant with other OSs as well. Let’s check the following <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+void writeToQueue() {
+...
+   if (mq = mq_open(QUEUE_NAME.data(), O_WRONLY,
+                     0700, NULL); mq &gt; -1) { // {5}
+        int fd = open("test.dat", O_RDONLY); // {6}
+        if (fd &gt; 0) {
+            for (;;) {
+                // This could be taken from cin.
+                array&lt;char, MAX_SIZE&gt; buffer{};
+                if (auto bytes_to_send =
+                        read(fd,
+                             buffer.data(),
+                        buffer.size());
+                             bytes_to_send &gt; 0) { // {7}
+                    if (auto b_sent =
+                            mq_send(mq,
+                                    buffer.data(),
+                                    buffer.size(),
+                                    0);
+                                    b_sent == -1) {// {8}
+                        cerr &lt;&lt; "Sent failed!"
+                             &lt;&lt; strerror(errno);
+                    }</pre> <p>Then, we send<a id="_idIndexMarker573"/> a zero-sized message to indicate the end of the communication (<span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{9}</strong></span><span class="No-Break">):</span></p>
+<pre class="source-code">
+...
+                else if (bytes_to_send == 0) {
+                    cout &lt;&lt; "Sending ends...." &lt;&lt; endl;
+                    if (auto b_sent =
+                            mq_send(mq,
+                                    buffer.data(),
+                                    0,
+                                    0); b_sent == -1) {
+                                    // {9}
+                        cerr &lt;&lt; "Sent failed!"
+                             &lt;&lt; strerror(errno);</pre> <p>The result is the following (the printed data from the file is reduced <span class="No-Break">for readability):</span></p>
+<pre class="console">
+Thread READER starting...
+Thread WRITER starting...
+Sending ends....
+Received: This is a testing file...
+Received: ing fileThis is a testing file...
+***Receiving ends***
+Main: program completed. Exiting.</pre> <p>This is a very simple example<a id="_idIndexMarker574"/> considering we have only two workers – <strong class="source-inline">readFromQueue()</strong> and <strong class="source-inline">writeToQueue()</strong>. The MQs allow us to scale up and execute a many-to-many communication. This approach could be found on many embedded systems, as it’s also real-time compliant and doesn’t expect any synchronization primitives to be used. Many microservice architectures and serverless applications rely on it. In the next section, we are going to discuss one of the most popular patterns, based <span class="No-Break">on MQs.</span></p>
+<h2 id="_idParaDest-105"><a id="_idTextAnchor105"/>The pub/sub mechanism</h2>
+<p>You’ve <a id="_idIndexMarker575"/>probably figured out that one MQ could become a bottleneck while scaling up. As you observed in the previous example, there’s the message count and size limitation. Another issue is the fact that after a message is consumed, it is removed from the queue – there can be only one consumer of a given message at a time. The data provider (the producer) has to manage the correct message address as well, meaning adding extra data to help the consumers identify to whom the message is sent, and each consumer has to follow <span class="No-Break">that policy.</span></p>
+<p>A preferred approach is to create a separate MQ for each consumer. The producer will be aware of those MQs a priori, either at compile time (all MQs are listed in the data segment by the system programmer) or runtime (each consumer will send its MQ pathname at startup and the producer will handle this information). That way, the consumers are <em class="italic">subscribing</em> to receive data from a given producer, and the producer <em class="italic">publishes</em> its data to all MQs it’s aware of. Therefore, we<a id="_idIndexMarker576"/> call this a <span class="No-Break"><strong class="bold">publish-subscribe</strong></span><span class="No-Break"> mechanism.</span></p>
+<p>Of course, the exact implementations might vary, depending on the software design, but the idea will remain the same. In addition, there could be multiple producers sending data to multiple consumers, and we say this is<a id="_idIndexMarker577"/> a <strong class="bold">many-to-many</strong> realization. Take a <a id="_idIndexMarker578"/>look at the <span class="No-Break">following diagram:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer056">
+<img alt="Figure 7.2 – Representation of the MQ realization of the pub/sub mechanism" height="787" src="image/Figure_7.2_B20833.jpg" width="1650"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.2 – Representation of the MQ realization of the pub/sub mechanism</p>
+<p>As we <a id="_idIndexMarker579"/>proceed toward the decoupling of processes, we make our system more flexible. It becomes easier to scale as the subscribers don’t lose computational time identifying whether the messages are directed to them or not. It is also easy to add a new producer or consumer without disturbing others. The MQ is implemented on an OS level, thus we could take it as a robust IPC mechanism. One possible disadvantage, though, is the fact that producers usually don’t receive any health information from the subscribers. This leads to MQs being full of unconsumed data and the producers being blocked. Thus, additional implementation frameworks are implemented on a more abstract level, which takes care of such use cases. We encourage you to additionally <a id="_idIndexMarker580"/>research the <strong class="bold">Observer</strong> and<a id="_idIndexMarker581"/> <strong class="bold">Message Broker</strong> design patterns. In-house-developed pub/sub mechanisms are usually built on top of them and not always through MQs. Nonetheless, as you have probably guessed, sending large amounts of data is going to be a slow operation through such mechanisms. So, we need an instrument to get a big portion of data fast. Unfortunately, this requires additional synchronization management to avoid data races, similar to <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>. The next section is about the <span class="No-Break">synchronization primitives.</span></p>
+<h1 id="_idParaDest-106"><a id="_idTextAnchor106"/>Guaranteeing atomic operations through semaphores and mutual exclusions</h1>
+<p>Let’s try to <em class="italic">zoom in</em> on a shared <a id="_idIndexMarker582"/>resource and see what happens in the CPU. We will provide a simple <a id="_idIndexMarker583"/>and effective way to explain <a id="_idIndexMarker584"/>where exactly the data races start from. They were already thoroughly discussed in <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>. Everything we learn here should be considered as an addition, in a sense, but the analysis methodology of concurrent and parallel processing remains the same as earlier. But now, we focus on concrete low-level problems. </p>
+<p>Let’s look closely at the <span class="No-Break">following snippet:</span></p>
+<pre class="source-code">
+int shrd_res = 0; //Some shared resource.
+void thread_func(){
+    shrd_res ++;
+    std::cout &lt;&lt; shrd_res;
+}</pre> <p>It is a very simple piece of code in which a variable is incremented and printed out. According to C++ standards, such a modification is an undefined behavior in multithreaded environments. Let’s see how – instead of going through the process’s memory layout here, we will analyze its pseudo-assembly code side <span class="No-Break">by side:</span></p>
+<pre class="source-code">
+...
+int shrd_res = 0;      store 0
+shrd_res++;            load value
+                       add 1
+                       store value
+std::cout &lt;&lt; shrd_res; load value
+...</pre> <p>Suppose this increment procedure is in a thread function and there’s more than one thread executing it. The <strong class="source-inline">add 1</strong> instruction is done on the loaded value, and not on the actual memory location of <strong class="source-inline">shrd_res</strong>. The preceding code snippet will be executed multiple times, and most probably in parallel. If we note that the thread is a set of instructions, the intuition would be that the instructions are executed in a monolithic manner. In other words, each thread routine should be run without interruption, which is usually the case. However, there is a small particularity that we should keep in mind – the CPU is engineered to keep a small latency. It is not built for data parallelism. Therefore, figuratively speaking, its main goal is to load itself with a large number of small tasks. Each of our threads is executed in a separate processor; this could be a separate CPU, a CPU thread, or a CPU core – it really depends on the system. If the number of processors (CPUs, cores, or threads) is smaller than <em class="italic">N</em>, then the remaining threads are expected to queue themselves and wait until a processor is <span class="No-Break">freed up.</span></p>
+<p>Now, the initial<a id="_idIndexMarker585"/> threads’ instructions <a id="_idIndexMarker586"/>are already loaded<a id="_idIndexMarker587"/> there and executed as they are. Even when the CPU cores are architecturally the same, their goal is to be executed as fast as possible. This means that it is not expected for them to be equal in speed because of multiple hardware fluctuations. But <strong class="source-inline">shared_resource</strong> is a variable that is, well... a shared resource. This means that whoever gets to increment it first will do it and others will follow. Even if we don’t care about the <strong class="source-inline">std::cout</strong> result (for example, the printing order stops being sequential), we still have something to worry about. And you’ve probably guessed it! We don’t know which value we are actually going to increment – is it going to be the last stored value of <strong class="source-inline">shared_resource</strong> or the newly incremented one? How could this happen? </p>
+<p><span class="No-Break">Let’s see:</span></p>
+<pre class="console">
+Thread 1: shrd_res++; T1: load value
+                      T1: add 1
+Thread 2: shrd_res++; T2: load value
+                      T2: add 1
+                      T2: store value
+                      T1: store value</pre> <p>Did you follow what just happened? <strong class="source-inline">Thread 1</strong>’s sequence of instructions was disrupted, because of the execution of <strong class="source-inline">Thread 2</strong>. Now, can we predict what’s going to be printed? This is known as<a id="_idIndexMarker588"/> an <strong class="bold">undefined behavior</strong>. In some cases, it will be because <strong class="source-inline">Thread 2</strong> was never executed, as the last value to be stored in <strong class="source-inline">shared_resource</strong> will be the one <span class="No-Break">incremented in:</span></p>
+<pre class="console">
+T1: add 1</pre> <p>In other words, we <a id="_idIndexMarker589"/>lost one increment. There was<a id="_idIndexMarker590"/> nothing instructing the CPU that both procedures have to be called separately and continuously executed. It should be clear that a finite number of instruction combinations are possible, all of them leading to unexpected behavior, because<a id="_idIndexMarker591"/> it depends on the hardware’s state. Such an operation is called <strong class="bold">non-atomic</strong>. In order to handle parallelism correctly, we need to rely <a id="_idIndexMarker592"/>on <strong class="bold">atomic</strong> operations! It is the job of the software developer to consider this and inform the CPU about such sets of instructions. Mechanisms such as mutexes and semaphores are used to manage <em class="italic">atomic</em> scopes. We are<a id="_idIndexMarker593"/> going to analyze their roles thoroughly in the <span class="No-Break">next sections.</span></p>
+<h2 id="_idParaDest-107"><a id="_idTextAnchor107"/>Semaphore</h2>
+<p>If you make a questionnaire <a id="_idIndexMarker594"/>asking people in multiple professions what a <strong class="bold">semaphore</strong> is, you will get different answers. A person from the airport will tell you that this is a system for signaling someone through the use of flags. A police officer might tell you that this is just a traffic light. Asking a train driver will probably give you a similar response. Interestingly, this is where <em class="italic">our</em> semaphores come from. Overall, these answers should hint to you that this<a id="_idIndexMarker595"/> is a <span class="No-Break"><em class="italic">signaling</em></span><span class="No-Break"> mechanism.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">Programming semaphores were invented by Edsger Dijkstra and are mainly used to prevent race conditions. They help us signal when a resource is available or not and count how many shared resource units of a given kind <span class="No-Break">are available.</span></p>
+<p>Like the previously mentioned<a id="_idIndexMarker596"/> signaling mechanisms, semaphores don’t guarantee error-free code, as they do not prevent processes or threads from acquiring a resource unit – they just inform. In the same way that a train might ignore the signal and proceed to an occupied train track or a car could proceed at a busy crossroad, this might be catastrophic! Again, it is the software engineer’s task to figure out how to use semaphores for the system’s good health. Therefore, let’s get to <span class="No-Break">using them.</span></p>
+<p>Dijkstra provided us with two main functions surrounding a critical section: <strong class="source-inline">P(S)</strong> and <strong class="source-inline">V(S)</strong>. As you probably know, he was Dutch, so these functions’ names come from the Dutch words for <em class="italic">try</em> and<em class="italic"> increase</em> (<em class="italic">probeer</em> and<em class="italic"> vrhoog</em>, respectively), where <strong class="source-inline">S</strong> is the semaphore variable. Just by their names, you already get an idea about what they are going to do. Let’s look at them <span class="No-Break">in pseudocode:</span></p>
+<pre class="source-code">
+unsigned int S = 0;
+V(S):
+    S=S+1;
+P(S):
+    while(S==0):
+        // Do nothing.
+    S = S – 1;</pre> <p>So, <strong class="source-inline">P(S)</strong> will endlessly check whether the <a id="_idIndexMarker597"/>semaphore has signaled that the resource is available – the semaphore is incremented. As soon as <strong class="source-inline">S</strong> is incremented, the loop is stopped, and the semaphore value is decreased for some other code to be executed. Based<a id="_idIndexMarker598"/> on the increment’s value, we recognize two types<a id="_idIndexMarker599"/> of semaphores: <strong class="bold">binary</strong> and <strong class="bold">counting</strong>. The binary semaphore<a id="_idIndexMarker600"/> is often mistaken <a id="_idIndexMarker601"/>for a <strong class="bold">mutual exclusion</strong> (<strong class="bold">mutex</strong>) mechanism. The logic is the same – for <a id="_idIndexMarker602"/>example, whether the resource is free to be accessed and modified or not – but the nature of the technique is different, and as we explained earlier, nothing is stopping some bad concurrent design from ignoring a semaphore. We will get to that in a minute, but for now, let’s pay attention to what the semaphore does. Before we begin with the code, let’s put a disclaimer that there are a few semaphore interfaces on Unix-like OSs. The choice of usage depends on the level of abstraction and the standards. For example, not every system has POSIX, or it is not exposed fully. As we are going to focus on the C++20 usage, we will use the next examples just for reference. The full source code of the next examples can be found <span class="No-Break">at</span><span class="No-Break"><span class="hidden"> </span></span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207</span></a><span class="No-Break">.</span></p>
+<p>Let’s take a look at two <a id="_idIndexMarker603"/>common semaphore<a id="_idIndexMarker604"/> interfaces on Linux. The first one is the <strong class="bold">unnamed semaphore</strong> – we can present it through the <span class="No-Break">following interface:</span></p>
+<pre class="source-code">
+sem_t sem;
+sem_init(sem_t *sem, int pshared, unsigned int value);
+int sem_destroy(sem_t *sem);
+int sem_post(sem_t *sem);
+int sem_wait(sem_t *sem);</pre> <p>The <strong class="source-inline">sem</strong> variable is the semaphore, which is initialized and de-initialized by <strong class="source-inline">sem_init()</strong> and <strong class="source-inline">sem_destroy()</strong>, respectively. The <strong class="source-inline">P(S)</strong> function is represented by <strong class="source-inline">sem_wait()</strong> and the <strong class="source-inline">V(S)</strong> function by <strong class="source-inline">sem_post()</strong>. There are also <strong class="source-inline">sem_trywait()</strong>, if you want to report an error when the decrement doesn’t happen immediately, and <strong class="source-inline">sem_timedwait()</strong>, which is a blocking call for a time window in which the decrement could happen. This seems pretty clear, except for the initialization part. You’ve probably noticed the <strong class="source-inline">value</strong> and <strong class="source-inline">pshared</strong> arguments. The first one shows the initial value of the semaphore. For example, a binary semaphore could be <strong class="source-inline">0</strong> or <strong class="source-inline">1</strong>. The second is <span class="No-Break">more interesting.</span></p>
+<p>As you might recall, in <a href="B20833_02.xhtml#_idTextAnchor029"><span class="No-Break"><em class="italic">Chapter 2</em></span></a> we discussed memory segments. Imagine that we create the semaphore on the <strong class="bold">data</strong>, the <strong class="bold">BSS</strong>, or the <strong class="bold">heap</strong>. Then, it would be globally visible only for the threads in a single process but would not be able to be shared between processes. The question is how to use it for process synchronization; <strong class="source-inline">pshared</strong> is used exactly for this purpose. If it’s set to <strong class="source-inline">0</strong>, then the semaphore is local for the process, but if it is set to a non-zero value, then it is shared between processes. The catch is to create the semaphore on a globally visible region of memory, such as shmem, including the <a id="_idIndexMarker605"/>filesystem as a shared resource pool. Here is an<a id="_idIndexMarker606"/> overview of <span class="No-Break"><strong class="bold">named semaphores</strong></span><span class="No-Break">:</span></p>
+<ul>
+<li>The <strong class="bold">named semaphore</strong> is<a id="_idIndexMarker607"/> visible outside the process creator, as it <a id="_idIndexMarker608"/>resides in the filesystem, usually under <strong class="source-inline">/dev/shm</strong>. We treat it as a file. For example, the following code will create a semaphore with the name <strong class="source-inline">/sem</strong> and <strong class="source-inline">0644</strong> permissions – it will be readable and writable only by its owner, but only readable by others, and it will be visible on the filesystem until it is later removed <span class="No-Break">through code:</span><pre class="source-code">
+sem_t *global_sem = sem_open("/sem", O_CREAT, 0644,
+  0);</pre></li> <li>The <strong class="source-inline">P(S)</strong> and <strong class="source-inline">V(S)</strong> calls remain the same. After we finish, we must close the file, and remove it, if we don’t need <span class="No-Break">it anymore:</span><pre class="source-code">
+sem_close(global_sem);
+sem_unlink("/sem");</pre></li> </ul>
+<p>As mentioned in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, you see that the POSIX calls follow the same pattern through the <strong class="source-inline">&lt;object&gt;_open</strong>, <strong class="source-inline">&lt;object&gt;_close</strong>, <strong class="source-inline">&lt;object&gt;_unlink</strong>, and <strong class="source-inline">&lt;object&gt;_&lt;specific function&gt;</strong> suffixes. This makes their usage common for every POSIX object, as you probably already observed earlier in <span class="No-Break">the chapter.</span></p>
+<p>A quick remark is that there<a id="_idIndexMarker609"/> are <strong class="bold">lower-level semaphores</strong> where the <a id="_idIndexMarker610"/>system calls are strongly related to the OS types or are based on direct OS signal manipulations. Such approaches are complex to implement and maintain because they are specific and considered fine-tuning. Feel free to research more about your <span class="No-Break">own system.</span></p>
+<h3>A C++ semaphores primer</h3>
+<p>With this in <a id="_idIndexMarker611"/>mind, we’d<a id="_idIndexMarker612"/> like to continue leveling up the abstraction, and so we’ll discuss the C++ semaphore objects. This is a new feature in C++20 and it’s useful when you want to make the code more <a id="_idIndexMarker613"/>system-generic. Let’s check it out through the <strong class="bold">producer-consumer</strong> problem. We will need a variable that will be visible in the process scope and modified by multiple threads: <strong class="source-inline">atomic&lt;uint16_t&gt; shared_resource</strong>. As mentioned at the beginning of this section, the semaphores help in task synchronization, but we need a data race guard. The <strong class="source-inline">atomic</strong> type is making sure we follow the C++ memory model and the compiler will keep the sequence of CPU instructions as per <strong class="source-inline">std::memory_oder</strong>. You can revisit <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a> for a data <span class="No-Break">race explanation.</span></p>
+<p>We will continue by<a id="_idIndexMarker614"/> creating two global <strong class="source-inline">binary_semaphore</strong> objects in order to synchronize the access appropriately (like a ping-pong). The <strong class="source-inline">binary_semaphore</strong> object is an alias of the <strong class="source-inline">counting_semaphore</strong> object with a maximum value of <strong class="source-inline">1</strong>. We will need a program-ending rule so we will define a limit of iterations. We will ask the compiler to make it a constant, if possible, through the <strong class="source-inline">constexpr</strong> keyword. Last, but not least, we will create two threads that <a id="_idIndexMarker615"/>will act as a producer (incrementing the shared resource) and a consumer (decrementing it). Let’s look at the <span class="No-Break">code example:</span></p>
+<pre class="source-code">
+...
+uint32_t shared_resource = 0;
+binary_semaphore sem_to_produce(0);
+binary_semaphore sem_to_consume(0);
+constexpr uint32_t limit = 65536;</pre> <p>The semaphores are constructed and initialized. We proceed with the threads. The <strong class="source-inline">release()</strong> function increments an internal counter, which signals the others (marker <strong class="source-inline">{2}</strong> in the following code, similar to <strong class="source-inline">sem_post()</strong>). We use <strong class="source-inline">osyncstream(cout)</strong> to build a non-interleaved output. Here’s the <span class="No-Break">producer thread:</span></p>
+<pre class="source-code">
+void producer() {
+    for (auto i = 0; i &lt;= limit; i++) {
+        sem_to_produce.acquire(); // {1}
+        ++shared_resource;
+        osyncstream(cout) &lt;&lt; "Before: "
+                          &lt;&lt; shared_resource &lt;&lt; endl;
+        sem_to_consume.release(); // {2}
+        osyncstream(cout) &lt;&lt; "Producer finished!" &lt;&lt; endl;
+    }
+}</pre> <p>And here’s the <a id="_idIndexMarker616"/><span class="No-Break">consumer</span><span class="No-Break"><a id="_idIndexMarker617"/></span><span class="No-Break"> thread:</span></p>
+<pre class="source-code">
+void consumer() {
+    for (auto i = 0; i &lt;= limit; i++) {
+        osyncstream(cout)  &lt;&lt; "Waiting for data..."
+                           &lt;&lt; endl;
+        sem_to_consume.acquire();
+        --shared_resource;
+        osyncstream(cout)  &lt;&lt; "After: "
+                           &lt;&lt; shared_resource &lt;&lt; endl;
+        sem_to_produce.release();
+        osyncstream(cout)  &lt;&lt; "Consumer finished!" &lt;&lt; endl;
+    } }
+int main() {
+    sem_to_produce.release();
+    jthread t1(producer); jthread t2(consumer);
+    t1.join(); t2.join();}</pre> <p>As we do this iteratively, we see this output multiple times, depending <span class="No-Break">on </span><span class="No-Break"><strong class="source-inline">limit</strong></span><span class="No-Break">:</span></p>
+<pre class="console">
+Waiting for data...
+Before: 1
+Producer finished!
+After: 0
+Consumer finished!
+...</pre> <p>Going back to the code’s logic, we must emphasize that the C++ semaphores are considered lightweight and allow multiple concurrent accesses to the shared resource. But be careful: the provided code uses <strong class="source-inline">acquire()</strong> (marker <strong class="source-inline">{1}</strong>, similar to <strong class="source-inline">sem_wait()</strong>), which is a blocking call – for example, your task will be blocked until the semaphore is released. You could use <strong class="source-inline">try_acquire()</strong> for non-blocking purposes. We rely on both semaphores to create a predictable sequence of operations. We start the process (for example, the main thread) by releasing the producer semaphore, so the producer would be signaled to <span class="No-Break">start first.</span></p>
+<p>The code could be <a id="_idIndexMarker618"/>changed to use POSIX semaphores, just by removing the C++ primitives<a id="_idIndexMarker619"/> and adding the aforementioned system calls to the same places in the code. In addition, we encourage you to achieve the same effect with one semaphore. Think about using a helper variable or a condition variable. Keep in mind that such an action makes the synchronization heterogenous and on a large scale, which is hard <span class="No-Break">to manage.</span></p>
+<p>The current code is obviously not able to synchronize multiple processes, unlike the <strong class="bold">named semaphore</strong>, so it’s not<a id="_idIndexMarker620"/> really an alternative there. We also could want to be stricter on the shared resource access – for example, to have a single moment of access in a concurrent environment. Then, we’d need the help of the mutex, as described in the <span class="No-Break">next section.</span></p>
+<h2 id="_idParaDest-108"><a id="_idTextAnchor108"/>Mutual exclusion (mutex)</h2>
+<p>The mutex is a mechanism that comes from the operations of the OS. A shared resource is also known as<a id="_idIndexMarker621"/> a <strong class="bold">critical section</strong> and it needs to be accessed without the risk of race conditions. A mechanism that allows only a single task to modify the critical section at a given moment, excluding every other task’s request to do the same, is called<a id="_idIndexMarker622"/> a <strong class="bold">mutual exclusion</strong> or a <strong class="bold">mutex</strong>. The mutexes are implemented internally by the OS and remain hidden from the user space. They provide a <em class="italic">lock-unlock</em> access functionality<a id="_idIndexMarker623"/> and are considered stricter than the semaphores, although they are controlled as <span class="No-Break">binary semaphores.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">The calling thread locks the resource and is obliged to unlock it. There’s no guarantee that a higher entity in the system’s hierarchy would be able to override the lock and unblock the parallel functionality. It is advisable for each lock to be released as fast as possible to allow the system threads to scale up and save <span class="No-Break">idle time.</span></p>
+<p>A POSIX mutex<a id="_idIndexMarker624"/> is created and used in much the same way as the <span class="No-Break">unnamed semaphore:</span></p>
+<pre class="source-code">
+pthread_mutex_t global_lock;
+pthread_mutex_init(&amp;global_lock, NULL);
+pthread_mutex_destroy(&amp;global_lock);
+pthread_mutex_lock(&amp;global_lock);
+pthread_mutex_unlock(&amp;global_lock);</pre> <p>The pattern of the function names is followed again, so let’s focus on <strong class="source-inline">pthread_mutex_lock()</strong> and <strong class="source-inline">pthread_mutex_unlock()</strong>. We use them to lock and unlock a critical section for manipulation, but they cannot help us in the sequence of events. Locking the resource only guarantees there are no race conditions. The correct sequencing of events, if required, is designed by the system programmer. Bad sequencing might lead to <strong class="bold">deadlocks</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="bold">livelocks</strong></span><span class="No-Break">:</span></p>
+<ul>
+<li><strong class="bold">Deadlock</strong>: One or <a id="_idIndexMarker625"/>more threads are blocked and cannot change their state because they are waiting for an event that never occurs. A common bug is two (or more) threads being looped together – for example, one is waiting for a shared resource A while holding a lock on shared resource B, and a second thread holds a lock on A but will unlock it when B is unlocked. Both will remain blocked because neither will be the first to <em class="italic">give up on the resource</em>. Such a behavior could be caused even without mutexes. Another bug is to lock a mutex twice, which, in the case of Linux, is detectable by the OS. There are deadlock resolution algorithms, where locking a number of mutexes will not succeed at first because of the deadlock, but will be successful with a guarantee after a finite number <span class="No-Break">of attempts.</span><p class="list-inset">In the preceding code snippet, we set the mutex attributes to <strong class="source-inline">NULL</strong>, but we could use them to decide on the mutex kind. The default one, known as a <strong class="bold">fast mutex</strong>, is not <a id="_idIndexMarker626"/>deadlock-safe. The <strong class="bold">recursive mutex</strong> type<a id="_idIndexMarker627"/> will not cause a deadlock; it will count the number of lock requests by the same thread. The <strong class="bold">error-checking mutex</strong> will<a id="_idIndexMarker628"/> detect and mark a double lock. We encourage you to give them <span class="No-Break">a try.</span></p></li>
+<li><strong class="bold">Livelock</strong>: The threads <a id="_idIndexMarker629"/>are not blocked, but then again, they cannot change their state because they require the shared resource to continue forward. A good real-world example is two people meeting face to face at an entrance. Both will move aside out of politeness, but they will most probably move in the same direction as their counterpart. If that happens and they continue to do that all the time, then nobody will be blocked, but at the same time, they cannot <span class="No-Break">proceed forward.</span></li>
+</ul>
+<p>Both classes of bugs are common and could be reproduced with semaphores, as they are blocking too, and rarely happen on small-scale systems, where they are easy to debug. It is trivial to follow the code’s logic with just a few threads, and the processes are manageable. Large-scale systems with thousands of threads execute an enormous number of locks at the same time. The bug reproductions are usually a matter of bad timing and ambiguous task sequences. Therefore, they are hard to catch and debug, and we advise you to be careful when you lock a <span class="No-Break">critical section.</span></p>
+<p>C++ provides a <a id="_idIndexMarker630"/>flexible lock interface. It is constantly upgraded and we now have several behaviors to choose from. Let’s do a parallel increment of a variable. We use the <strong class="source-inline">increment()</strong> thread procedure for the sake of clarity, similar to the previous code, but we replace the semaphores with one mutex. And you’ve probably guessed that the code will be guarded against race conditions, but the sequence of the thread executions is undefined. We could arrange this sequence through an additional flag, condition variable, or just a simple sleep, but let’s keep it this way for the experiment. The updated code snippet is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+...
+uint32_t shared_resource = 0;
+mutex shres_guard;
+constexpr uint32_t limit = INT_MAX;</pre> <p>We defined<a id="_idIndexMarker631"/> our shared resource and the mutex. Let’s see how the <span class="No-Break">increment happens:</span></p>
+<pre class="source-code">
+void increment() {
+    for (auto i = 0; i &lt; limit; i++) {
+        lock_guard&lt;mutex&gt; lock(shres_guard); // {1}
+        ++shared_resource;
+    }
+    cout &lt;&lt; "\nIncrement finished!" &lt;&lt; endl;
+}
+...</pre> <p>The observed output is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+$ time ./test
+Increment finished!
+Increment finished!
+real    3m34,169s
+user    4m21,676s
+sys     2m43,331s</pre> <p>It’s obvious that incrementing the variable without multithreading will be much faster than this result. You could even try running it <span class="No-Break">until </span><span class="No-Break"><strong class="source-inline">UINT_MAX</strong></span><span class="No-Break">.</span></p>
+<p>So, the preceding code creates a globally visible mutex and uses a <strong class="source-inline">unique_lock</strong> object (marker <strong class="source-inline">{1}</strong>) to wrap it. It is similar to <strong class="source-inline">pthread_mutex_init()</strong> – it allows us to defer locking, do a recursive lock, transfer lock ownership, and carry out attempts to unlock it within certain time constraints. The lock is in effect for the scope block it is in – in the current example, it is the thread procedures’ scope. The lock takes ownership of the mutex. When it reaches the end of the scope, the lock is destroyed and the mutex is released. You should already know this approach as <strong class="bold">Resource Acquisition Is Initialization</strong> (<strong class="bold">RAII</strong>). You learned about it in detail in <a href="B20833_04.xhtml#_idTextAnchor060"><span class="No-Break"><em class="italic">Chapter 4</em></span></a>, and its role is crucial here – we will not be able to leave a resource locked by accident. You could use a <strong class="source-inline">scoped_lock</strong> object to lock multiple mutexes while avoiding a deadlock by <span class="No-Break">its design.</span></p>
+<p>There is something else you should consider when using a mutex. The mutex reaches the kernel level. The task states are affected by it directly and multiple locks will cause multiple <strong class="bold">context switches</strong>. As you <a id="_idIndexMarker632"/>recall from earlier, we will probably lose time in rescheduling. This means that the OS needs to jump from one memory region in RAM to another just to load another task’s instructions. You must consider what’s beneficial for you: many locks with small scopes leading to many switches, or a few locks with bigger scope blocks holding resources for <span class="No-Break">longer timespans.</span></p>
+<p>At the end of the day, our goal was just to instruct the CPU about an atomic region. If you remember, we used an <strong class="source-inline">atomic</strong> template in the semaphore example. We could update our code with an <strong class="source-inline">atomic</strong> variable and remove the mutex with <span class="No-Break">the lock:</span></p>
+<pre class="source-code">
+atomic&lt;uint32_t&gt; shared_resource = 0;</pre> <p>The result is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+$ time ./test
+Increment finished!
+Increment finished!
+real    0m0,003s
+user    0m0,002s
+sys     0m0,000s</pre> <p>As you can see, there is a significant time improvement just by the removal of the mutex. For the sake of argument, you could add the semaphores back and you will still observe a faster execution than the mutex. We advise you to look at the code’s disassembly for the three cases – just with the <strong class="source-inline">atomic</strong> variable, with the mutex, and with the semaphore. You will observe that an <strong class="source-inline">atomic</strong> object is very simple instruction-wise and is executed at a user level. As it is truly atomic, the CPU (or its core) will be kept busy during the increment. Bear in mind that any technique for resolving data races will inherently carry a performance cost. The best performance can be achieved by minimizing the places and their scope where synchronization primitives <span class="No-Break">are needed.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">C++20 provides exciting features for<a id="_idIndexMarker633"/> concurrent execution, such as <strong class="bold">jthread</strong>, <strong class="bold">coroutines</strong>, <strong class="bold">updated atomic types</strong>, and <strong class="bold">cooperative cancelation</strong>. Except for the first <a id="_idIndexMarker634"/>one, we <a id="_idIndexMarker635"/>will look at the others later in the book. In addition to these, Linu<a id="_idIndexMarker636"/>x has system calls for using the IPC entities, which are built for the purposes of multiprocessing data exchange. That said, we advise you to think about using an already existing mechanism for asynchronous work before you attempt combinations of mutexes, semaphores, flags, and conditional variables. All those C++ and Linux features are designed to scale up in a stable manner and save you time for <span class="No-Break">solution design.</span></p>
+<p>Everything we did until now is just to make sure we have atomic access to a critical section. Atomics, mutexes, and semaphores will give you this – a way to instruct the CPU about the scope of instructions. But two questions remain: Could we do it faster and lighter? Does being atomic mean we keep the order of the instructions? The answer to the first question is <em class="italic">Probably</em>. To the second one, the answer is <em class="italic">No</em>! Now we have the incentive to move and dive into<a id="_idIndexMarker637"/> the C++ <strong class="bold">memory model</strong> and <strong class="bold">memory order</strong>. If this <a id="_idIndexMarker638"/>interests you, we invite you to jump to <a href="B20833_09.xhtml#_idTextAnchor129"><span class="No-Break"><em class="italic">Chapter 9</em></span></a>, where we discuss more interesting concurrent tasks. Now, we will continue the topic of shared resources through <a id="_idIndexMarker639"/>the <strong class="bold">shmem </strong><span class="No-Break"><strong class="bold">IPC</strong></span><span class="No-Break"> mechanism.</span></p>
+<h1 id="_idParaDest-109"><a id="_idTextAnchor109"/>Using shared memory</h1>
+<p>As with pipes, the MQ data is lost once consumed. Duplex message data copying increases user space-kernel space calls, therefore an overhead is to be expected. The <strong class="bold">shmem</strong> mechanism is <a id="_idIndexMarker640"/>fast. As you learned in the previous chapter and the previous section, the synchronization of the data access is an issue that must be resolved by the system programmer, especially when it comes to <span class="No-Break">race conditions.</span></p>
+<p>An important remark is that the term <em class="italic">shared memory</em> is vague in itself. Is it a global variable that two threads could access simultaneously? Or is it a shared region of RAM, which multiple CPU cores use as a common ground to transfer data between each other? Is it a file in the filesystem that many processes modify? Great questions – thanks for asking! In general, all of those are kinds of shared resources, but when we speak about the term <em class="italic">memory</em>, we should really think about a region in<a id="_idIndexMarker641"/> the <strong class="bold">main memory</strong> that is visible to many processes and where multiple tasks could use it to exchange and modify data. Not only tasks but also different processor cores and core complexes (such as ARM) if they have access to the same predefined memory region. Such techniques require a specific configuration file – a memory map, which strictly depends on the processor and is implementation-specific. It<a id="_idIndexMarker642"/> provides the opportunity to use, for example, <strong class="bold">tightly coupled memory</strong> (<strong class="bold">TCM</strong>) to speed up, even more, the frequently used portions of code and data, or to use a portion of the RAM as shmem for data exchange between the cores. As this is too dependent on the processor, we are not going to continue discussing it. Instead, we will move on to discuss<a id="_idIndexMarker643"/> Linux’s <strong class="bold">shmem </strong><span class="No-Break"><strong class="bold">IPC</strong></span><span class="No-Break"> mechanism.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">The processes allocate a portion of<a id="_idIndexMarker644"/> their <strong class="bold">virtual memory</strong> as a shared segment. Traditionally, the OS forbids processes to access each other’s memory regions, but the shmem is a mechanism for the processes to ask for the removal of this restriction in the boundaries of the shmem. We use it to ingest and modify large portions of data quickly through simple read and write operations, or the already provided functions in POSIX. Such functionality is not possible through MQs <span class="No-Break">or pipes.</span></p>
+<p>In contrast to MQs, there’s no serialization or synchronization here. The system programmer is responsible for managing the IPC’s data transfer policy (again). But with the shared region being in the RAM, we have fewer context switches, thus we reduce the overhead. We can visualize it through the <span class="No-Break">following figure:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer057">
+<img alt="Figure 7.3 – Shmem presentation through the process’s memory segments" height="723" src="image/Figure_7.3_B20833.jpg" width="1650"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.3 – Shmem presentation through the process’s memory segments</p>
+<p>The<a id="_idIndexMarker645"/> shmem region is usually depicted between the two processes’ address spaces. The idea is to emphasize how that space is truly shared between the processes. In reality, this is implementation-specific and we leave it to the kernel – what we care about is the map to the shmem segments itself. It allows both processes to observe the same contents simultaneously. Let’s get to <span class="No-Break">it then.</span></p>
+<h2 id="_idParaDest-110"><a id="_idTextAnchor110"/>Learning about mmap() and shm_open()</h2>
+<p>The initial system call for the creation of a <a id="_idIndexMarker646"/>shmem mapping is <strong class="source-inline">shmget()</strong>. This is applicable to any Unix-based OS, but for POSIX-compliant systems, there are more comfortable approaches. If we imagine that we do a mapping between a process’s address space and a file, then the <strong class="source-inline">mmap()</strong> function<a id="_idIndexMarker647"/> will pretty much get the job done. It is POSIX-compliant and executes the read operation on demand. You can simply use <strong class="source-inline">mmap()</strong> to point to a regular file, but the data will remain there after the processes have finished their work. Do you remember the pipes from <a href="B20833_03.xhtml#_idTextAnchor047"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>? It’s a similar case here. There are <strong class="bold">anonymous pipes</strong>, which<a id="_idIndexMarker648"/> require two processes to have a <em class="italic">family relation</em>, or you can <a id="_idIndexMarker649"/>have <strong class="bold">named pipes</strong>, which allow two unrelated processes to share and transfer data. The <strong class="bold">shmem</strong> resolves <a id="_idIndexMarker650"/>a similar issue, just not through the same technique. Using shmem for<a id="_idIndexMarker651"/> IPC will mean that data persistence would probably not be required – all other mechanisms destroy the data after its consumption. But if persistence is what you want, then it’s all good – you could freely use the <strong class="source-inline">mmap()</strong> system call <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">fork()</strong></span><span class="No-Break">.</span></p>
+<p>If you have independent processes, then the only way for them to know how to address the shared region is through its pathname. The <strong class="source-inline">shm_open()</strong> function will provide you a file with a name, in the <a id="_idIndexMarker652"/>same way that <strong class="source-inline">mq_open()</strong> did – you could observe it in <strong class="source-inline">/dev/shm</strong>. It would require <strong class="source-inline">librt</strong> as well. Knowing this, you intuitively get that we limit the I/O overhead and the context switches because of the filesystem operations, as this file is in the RAM. Last but not least, this kind of shared memory is flexible in size and could be enlarged to gigabytes in size when needed. Its limitations are dependent on the system. The full version of the following example can be found <span class="No-Break">at </span><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207</span><span class="No-Break">:</span></p>
+<pre class="source-code">
+...
+string_view SHM_ID      = "/test_shm";
+string_view SEM_PROD_ID = "/test_sem_prod";
+string_view SEM_CONS_ID = "/test_sem_cons";
+constexpr auto SHM_SIZE = 1024;
+sem_t *sem_prod; sem_t *sem_cons;
+void process_creator() {
+...
+    if (int pid = fork(); pid == 0) {
+        // Child - used for consuming data.
+        if (fd = shm_open(SHM_ID.data(),
+                          O_RDONLY,
+                          0700); // {1}
+            fd == -1) {
+....</pre> <p>This example is<a id="_idIndexMarker653"/> very specific as we intentionally used processes instead of threads. This allows us to demonstrate<a id="_idIndexMarker654"/> the usage of <strong class="source-inline">shm_open()</strong> (marker <strong class="source-inline">{1})</strong> as the different processes use the shmem’s pathname (which is known at compile time) to access it. Let’s continue with reading <span class="No-Break">the data:</span></p>
+<pre class="source-code">
+        shm_addr = mmap(NULL, SHM_SIZE,
+                        PROT_READ, MAP_SHARED,
+                        fd, 0); // {2}
+        if (shm_addr == MAP_FAILED) {
+...
+        }
+        array&lt;char, SHM_SIZE&gt; buffer{};</pre> <p>We could use mutexes, but currently, we only need one process to signal to the other that its work is done, so we apply semaphores (markers <strong class="source-inline">{3}</strong> and <strong class="source-inline">{7}</strong> in the previous code block) <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+        sem_wait(sem_cons);
+        memcpy(buffer.data(),
+               shm_addr,
+               buffer.size()); // {3}
+        if(strlen(buffer.data()) != 0) {
+            cout &lt;&lt; "PID : " &lt;&lt; getpid()
+                 &lt;&lt; "consumed: " &lt;&lt; buffer.data();
+        }
+        sem_post(sem_prod); exit(EXIT_SUCCESS);</pre> <p>To make the memory <a id="_idIndexMarker655"/>region shared, we use the <strong class="source-inline">mmap()</strong> function<a id="_idIndexMarker656"/> with the <strong class="source-inline">MAP_SHARED</strong> option, and we mark the reader and the writer credentials accordingly through the following page settings: <strong class="source-inline">PROT_READ</strong> and <strong class="source-inline">PROT_WRITE</strong> (markers <strong class="source-inline">{2}</strong> and <strong class="source-inline">{6}</strong>). We also use the <strong class="source-inline">ftruncate()</strong> function to set the region’s size (marker <strong class="source-inline">{5}</strong>). In the given example, the information is written in the shmem, and someone has to read it. It’s a kind of a single-shot producer-consumer because after the writing is done, the writer gives the reader time (marker <strong class="source-inline">{8}</strong>), and then the shmem is set to zero (marker <strong class="source-inline">{9}</strong>) and deleted (marker <strong class="source-inline">{10}</strong>). Now, let’s proceed with the parent’s code - the producer of <span class="No-Break">the data:</span></p>
+<pre class="source-code">
+    else if (pid &gt; 0) {
+        // Parent - used for producing data.
+        fd = shm_open(SHM_ID.data(),
+                      O_CREAT | O_RDWR,
+                      0700); // {4}
+        if (fd == -1) {
+...
+        res = ftruncate(fd, SHM_SIZE); // {5}</pre> <p>Again, the shmem region <span class="No-Break">is mapped:</span></p>
+<pre class="source-code">
+        if (res == -1) {
+...
+        shm_addr = mmap(NULL, SHM_SIZE,
+                        PROT_WRITE, MAP_SHARED,
+                        fd, 0); // {6}
+        if (shm_addr == MAP_FAILED) {
+...
+        sem_wait(sem_prod);
+        string_view produced_data
+            {"Some test data, coming!"};
+        memcpy(shm_addr,
+               produced_data.data(),
+               produced_data.size());
+        sem_post(sem_cons);    // {7}
+        waitpid(pid, NULL, 0); // {8}
+        res = munmap(shm_addr, SHM_SIZE); // {9}
+        if (res == -1) {
+...
+        fd = shm_unlink(SHM_ID.data()); //{10}
+        if (fd == -1) {</pre> <p>As done previously, we use the <strong class="source-inline">sem_open()</strong> named semaphore (marker <strong class="source-inline">{11}</strong>) to allow both<a id="_idIndexMarker657"/> processes to synchronize. We wouldn’t be able to do so through the semaphores we discussed earlier in the chapter, as they don’t have a name and are known only in the context of a single process. At the end, we remove the semaphore from the filesystem as well (marker <strong class="source-inline">{12}</strong>), <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+...
+}
+int main() {
+    sem_prod = sem_open(SEM_PROD_ID.data(),
+                        O_CREAT, 0644, 0); // {11}
+...
+    sem_post(sem_prod);
+    process_creator();
+    sem_close(sem_prod); // {12}
+    sem_close(sem_cons);
+    sem_unlink(SEM_PROD_ID.data());
+    sem_unlink(SEM_CONS_ID.data());
+    return 0;
+}</pre> <p>The program’s result is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+PID 3530: consumed: "Some test data, coming!"</pre> <p>Shmem is <a id="_idIndexMarker658"/>an interesting topic, which we will return to in <a href="B20833_09.xhtml#_idTextAnchor129"><span class="No-Break"><em class="italic">Chapter 9</em></span></a>. One reason for being so is that C++ allows us to wrap the POSIX code appropriately and make the code safer. Similar to <a href="B20833_03.xhtml#_idTextAnchor047"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>, mixing system calls with C++ code should be well thought out. But it’s worthwhile to visit the <strong class="bold">condition variables</strong> mechanism<a id="_idIndexMarker659"/> and discuss the <strong class="bold">read/write locks</strong>. We will <a id="_idIndexMarker660"/>dive into some <strong class="source-inline">memory_order</strong> use cases as <a id="_idIndexMarker661"/>well. If <strong class="bold">jthreads</strong> or <strong class="bold">coroutines</strong> are not <a id="_idIndexMarker662"/>applicable to your use cases, then the currently discussed synchronization mechanisms, together with the <strong class="bold">smart pointers</strong>, give <a id="_idIndexMarker663"/>you the flexibility to design the best possible solution for your system. But before we get there, we need to talk about something else first. Let’s proceed to the communication between <span class="No-Break">computer systems.</span></p>
+<h1 id="_idParaDest-111"><a id="_idTextAnchor111"/>Communicating through the network with sockets</h1>
+<p>If the pipes, MQs, and the shmem could together overcome their problems, then why do we need sockets? This is a great question with a simple answer – we need them to communicate between different systems on the network. With this, we have our full set of instruments to exchange data. Before we understand sockets, we need to get a quick overview of network communication. No matter the network type or its medium, we must follow the design <a id="_idIndexMarker664"/>established by the <strong class="bold">Open Systems Interconnection</strong> (<strong class="bold">OSI</strong>) <strong class="bold">basic reference model</strong>. Nowadays, almost all OSs support the <strong class="bold">Internet Protocol</strong> (<strong class="bold">IP</strong>) family. The <a id="_idIndexMarker665"/>easiest way to set up communications with other computer systems is by using these protocols. They follow layering, as described in<a id="_idIndexMarker666"/> the <strong class="bold">ISO-OSI</strong> model, and now we are going to take a quick look <span class="No-Break">at that.</span></p>
+<h2 id="_idParaDest-112"><a id="_idTextAnchor112"/>Overview of the OSI model</h2>
+<p>The OSI model is typically represented<a id="_idIndexMarker667"/> as shown in the next table. System programmers usually require it to analyze where their communication is disturbed. Although sockets are intended to execute the network data transfer, they are also applicable for a local IPC. One reason is that the communication layers, especially on large systems, are separate utilities or abstraction layers over the applications. As we want to make them environmentally agnostic, meaning we don’t care whether the data is transferred locally or over the internet, then the sockets fit perfectly. That said, we must be aware of the channel we use and where our data is transported. Let’s take <span class="No-Break">a look:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer058">
+<img alt="Figure 7.4 – The OSI model represented as a table" height="1006" src="image/Figure_7.4_B20833.jpg" width="1583"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.4 – The OSI model represented as a table</p>
+<p>Global network communication, especially the internet, is a broad and complex topic, which we cannot grasp in a single section of the book. But it’s worthwhile to think about your system – what kind of hardware for network communication it has; maybe you should consider checking out the <em class="italic">Physical</em> and <em class="italic">Data Link</em> layers. A simple exercise is to configure your home network – connected devices, routers, and so on – yourself. Could the system be safely and securely addressed by the outside (if needed)? Then check the <em class="italic">Network</em>, <em class="italic">Presentation</em>, and <em class="italic">Application</em> layers. Try out some <strong class="bold">port forwarding</strong> and <a id="_idIndexMarker668"/>create an<a id="_idIndexMarker669"/> application with data exchange encryption. Could the software scale fast enough, with the current bandwidth and speed? Let’s see what the <em class="italic">Session</em> and <em class="italic">Transport</em> layers have to offer – we will look into them in the next paragraph. Is it robust and does it remain available if attacked? Then revisit all the layers. Of course, these are simple and one-sided observations, but they allow you to double-check <span class="No-Break">your requirements.</span></p>
+<p>So, if we ignore the role of the hardware and just focus on establishing a connection, we could get back to the sockets and the respective <em class="italic">Session</em> layer. You’ve probably noticed that some websites log you out automatically after some time. Ever wondered why? Well, the <strong class="bold">session</strong> is an<a id="_idIndexMarker670"/> established two-way link for information exchange between devices or ends. It’s highly recommended to apply time limits and requirements for a session to be destroyed. The opened connection means not only an opened channel for sniffing by attackers but also a used resource on the server side. This requires computational power, which could be redirected elsewhere. The server usually holds the current state and the session history, so we note this kind of communication as <em class="italic">stateful</em> – at least one of the devices keeps the state. But if we manage to handle requests without the need to know and keep previous data, we could proceed with <em class="italic">stateless</em> communication. Still, we require the session to build a connection-oriented data exchange. A known protocol for the job is found in the <em class="italic">Transport</em> layer – the <strong class="bold">Transmission Control Protocol</strong> (<strong class="bold">TCP</strong>). If we don’t want to establish a two-way information transfer <a id="_idIndexMarker671"/>channel but just want to implement a broadcast application, then we could proceed with the <a id="_idIndexMarker672"/>connectionless <a id="_idIndexMarker673"/>communication, provided through the <strong class="bold">User Datagram Protocol</strong> (<strong class="bold">UDP</strong>). Let’s check them out in the <span class="No-Break">following sections.</span></p>
+<h2 id="_idParaDest-113"><a id="_idTextAnchor113"/>Getting familiar with networking through UDP</h2>
+<p>As we said, this protocol could realize connectionless communication, although this doesn’t mean there’s no connection between the endpoints. It means that they don’t need to be constantly in connection to maintain the data transfer and interpret it on their ends. In other words, losing some packets (leading to not hearing someone well on the call while in an online meeting, for example) is probably not going to be crucial for the system’s behavior itself. It might be crucial to you, but let’s be honest, we bet you require the high speed more, and it comes with a cost. Network <a id="_idIndexMarker674"/>applications such as the <strong class="bold">Domain Name System</strong> (<strong class="bold">DNS</strong>), the <strong class="bold">Dynamic Host Configuration Protocol</strong> (<strong class="bold">DHCP</strong>), audio-video streaming platforms, and others use UDP. Discrepancies <a id="_idIndexMarker675"/>and loss of packets are usually handled by data retransmission, but this is realized on the <em class="italic">Application</em> layer and<a id="_idIndexMarker676"/> depends on the programmer’s implementation. Schematically, the system calls for establishing such a connection are <span class="No-Break">as follows:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer059">
+<img alt="Figure 7.5 – UDP system call realization" height="626" src="image/Figure_7.5_B20833.jpg" width="570"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.5 – UDP system call realization</p>
+<p>As you can see, it is truly simple – applications on both (or more) sides of the communication must only follow that sequence. The protocol doesn’t oblige you with the message order or the transfer quality, it’s just fast. Let’s see the following example, requesting a die roll from a socket <em class="italic">N</em> number of times. The full version of the code is found <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207</span></a><span class="No-Break">:</span></p>
+<pre class="source-code">
+...
+constexpr auto PORT     = 8080;
+constexpr auto BUF_SIZE = 16;
+auto die_roll() {
+...
+void process_creator() {
+    auto sockfd = 0;
+    array&lt;char, BUF_SIZE&gt; buffer{};
+    string_view stop{ "No more requests!" };
+    string_view request{ "Throw dice!" };
+    struct sockaddr_in servaddr {};
+    struct sockaddr_in cliaddr {};</pre> <p>As you can see, the communication configuration is fairly easy – one side has to bind to an address in order to be aware of where to receive data from (marker <strong class="source-inline">{3}</strong>), whereas the other only writes <a id="_idIndexMarker677"/>data directly to the socket. The socket configuration is described at <span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{1}</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+    servaddr.sin_family = AF_INET; // {1}
+    servaddr.sin_addr.s_addr = INADDR_ANY;
+    servaddr.sin_port = htons(PORT);
+    if (int pid = fork(); pid == 0) {
+        // Child
+        if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0))
+                &lt; 0) {
+            const auto ecode
+                { make_error_code(errc{errno}) };
+            cerr &lt;&lt; "Error opening socket!";
+            system_error exception{ ecode };
+            throw exception;
+        } // {2}
+        if (bind(sockfd,
+            (const struct sockaddr*)&amp;servaddr,
+            sizeof(servaddr)) &lt; 0) {
+            const auto ecode
+                { make_error_code(errc{errno}) };
+            cerr &lt;&lt; "Bind failed!";
+            system_error exception{ ecode };
+            throw exception;
+        } // {3}</pre> <p>The<a id="_idIndexMarker678"/> address family is defined as <strong class="source-inline">AF_INET</strong>, meaning we will rely on IPv4-compliant addresses. We could use <strong class="source-inline">AF_INET6</strong> for IPv6, or <strong class="source-inline">AF_BLUETOOTH</strong> for Bluetooth. We are using the UDP through the <strong class="source-inline">SOCK_DGRAM</strong> setting of the socket (markers <strong class="source-inline">{2}</strong> and <strong class="source-inline">{10}</strong>). Through this, we are transferring a number from one process to another. You could imagine them as a server and <span class="No-Break">a client:</span></p>
+<pre class="source-code">
+        socklen_t len = sizeof(cliaddr);
+        for (;;) {
+            if (auto bytes_received =
+                recvfrom(sockfd, buffer.data(),
+                    buffer.size(),
+                    MSG_WAITALL,
+                    (struct sockaddr*)&amp;cliaddr,
+                    &amp;len);
+                bytes_received &gt;= 0) { // {4}
+                buffer.data()[bytes_received] = '\0';
+                cout &lt;&lt; "Request received: "
+                     &lt;&lt; buffer.data() &lt;&lt; endl;
+                if (request.compare(0,
+                                    bytes_received,
+                                    buffer.data()) == 0) {
+                                                    // {5}
+                    string_view res_data
+                        { to_string(die_roll()) };</pre> <p>A request for a new die roll is received (marker <strong class="source-inline">{4}</strong>) and the request data is printed out. Then, the request string is compared to an immutable one, so we know that this request is just for a die roll (marker <strong class="source-inline">{5}</strong>). As you can see, we use the <strong class="source-inline">MSG_WAITALL</strong> setting, which means that the socket operation will block the calling process – usually when there is no incoming data. In addition, this is a UDP communication, therefore the packet order might not be followed, and receiving <strong class="source-inline">0</strong> bytes through <strong class="source-inline">recvfrom()</strong> is a valid use case. That said, we use additional messages to mark the ending of the communication (markers <strong class="source-inline">{6}</strong> and <strong class="source-inline">{14}</strong>). For simplicity, if the <strong class="source-inline">request.compare()</strong> result is not <strong class="source-inline">0</strong>, the<a id="_idIndexMarker679"/> communication is ended. Additional checks for multiple options could be added, though. We could use a similar handshake to start the communication in the first place – this is depending on the system programmer’s decision and the application requirements. Proceeding with the <span class="No-Break">client’s functionality:</span></p>
+<pre class="source-code">
+                    sendto(sockfd, res_data.data(),
+                           res_data.size(),
+                           MSG_WAITALL,
+                           (struct sockaddr*)&amp;cliaddr,
+                           len);
+                }
+                else break; // {6}
+...
+        }
+        if (auto res = close(sockfd); res == -1) { // {8}
+            const auto ecode
+                { make_error_code(errc{errno}) };
+            cerr &lt;&lt; "Error closing socket!";
+            system_error exception{ ecode };
+            throw exception;
+        }
+        exit(EXIT_SUCCESS);</pre> <p>The <strong class="source-inline">die_roll()</strong> function <a id="_idIndexMarker680"/>is called for <strong class="source-inline">dice_rolls</strong> a number of times (markers <strong class="source-inline">{10}</strong> and <strong class="source-inline">{11}</strong>) and the result is sent through the socket (marker <strong class="source-inline">{12}</strong>). After the results are received back (marker <strong class="source-inline">{13}</strong>), an ending message is sent (marker <strong class="source-inline">{14}</strong>). We have mostly used <strong class="source-inline">MSG_CONFIRM</strong> for this example, but you must be careful with this flag. It should be used when you expect a response from the same peer you send to. It is telling the Data Link layer of the OSI model that there’s a successful reply. We could change the <strong class="source-inline">recvfrom()</strong> setting to <strong class="source-inline">MSG_DONTWAIT</strong>, as in marker <strong class="source-inline">{12}</strong>, but it would be a good idea to implement our own retry mechanism, or switch <span class="No-Break">to TCP:</span></p>
+<pre class="source-code">
+       for (auto i = 1; i &lt;= dice_rolls; i++) { // {11}
+            if (auto b_sent = sendto(sockfd,
+                                     request.data(),
+                                     request.size(),
+                                     MSG_DONTWAIT,
+                                     (const struct
+                                      sockaddr*)&amp;servaddr,
+                                     sizeof(servaddr));
+                                     b_sent &gt;= 0) { // {12}
+...
+            if (auto b_recv =
+                    recvfrom(sockfd,
+                             buffer.data(),
+                             buffer.size(),
+                             MSG_WAITALL,
+...                             { // {13}
+                buffer.data()[b_recv] = '\0';
+                cout &lt;&lt; "Dice roll result for throw number"
+                     &lt;&lt; i &lt;&lt; " is "
+                     &lt;&lt; buffer.data() &lt;&lt; endl;
+            }</pre> <p>We close the <a id="_idIndexMarker681"/>communication after the closing statement (markers <strong class="source-inline">{8}</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">{15}</strong></span><span class="No-Break">):</span></p>
+<pre class="source-code">
+       sendto(sockfd,
+              stop.data(),
+              stop.size(),
+              MSG_CONFIRM,
+              (const struct sockaddr*)&amp;servaddr,
+              sizeof(servaddr)); // {14}
+       if (auto res = close(sockfd); res == -1) {
+            const auto ecode
+                { make_error_code(errc{errno}) };
+            cerr &lt;&lt; "Error closing socket!";
+            system_error exception{ ecode };
+            throw exception; // {15}
+        }
+...</pre> <p>The shortened version of the output is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+Choose a number of dice throws between 1 and 256.
+5
+Request received: Throw dice!
+Dice roll result for throw number 1 is 2
+....
+Dice roll result for throw number 5 is 6
+Request received: No more requests</pre> <p>We have to set the address and port where our server could be accessed from. Usually, server computers have many applications constantly running, some of which execute services for customers. These services bind with the ports of the server and users can call them to do some work – get an online store’s contents, check the weather, get some banking details, visualize a graphical website, and so on. Only one application (service) can work with a given port at a time. If you try to use it with another while the first one is active, you<a id="_idIndexMarker682"/> will get an <strong class="source-inline">Address already in use</strong> error (or similar). Currently, we’re using port <strong class="source-inline">8080</strong>, which is commonly opened for TCP/UDP (and HTTP). You could also try <strong class="source-inline">80</strong>, but on Linux, non-root users don’t have this capability – you will need higher user permissions to use ports less than <strong class="source-inline">1000</strong>. Last but not least, the IP address is set as <strong class="source-inline">INADDR_ANY</strong>. This is often used when we do the communication on a single system and we don’t care about its address. Still, we could use it, if we want, after we take it from the result of the <span class="No-Break">following command:</span></p>
+<pre class="console">
+$ ip addr show
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: ens32: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 00:0c:29:94:a5:25 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.136.128/24 brd 192.168.136.255 scope global dynamic noprefixroute ens32
+       valid_lft 1345sec preferred_lft 1345sec
+    inet6 fe80::b11f:c011:ba44:35e5/64 scope link noprefixroute
+       valid_lft forever preferred_lft forever...</pre> <p>In our case, this is <strong class="source-inline">192.168.136.128</strong>. We could update the code at marker <strong class="source-inline">{1}</strong> <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+servaddr.sin_addr.s_addr = inet_addr("192.168.136.128");</pre> <p>Another option <a id="_idIndexMarker683"/>is that the localhost address – <strong class="source-inline">127.0.0.1</strong> – could be used with the loopback device address: <strong class="source-inline">INADDR_LOOPBACK</strong>. We use it to run local servers, usually for testing purposes. But if we use an exact IP address, then this is done when we need to be very specific about the application’s endpoint, and if the IP address is a static one, we expect others on the local network to be able to call it. If we want to expose it to the outside world so we make our service available to others (let’s say we own an online shop and we want to provide our shopping service to the world), then<a id="_idIndexMarker684"/> we must think about <span class="No-Break"><strong class="bold">port forwarding</strong></span><span class="No-Break">.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">Nowadays, just exposing the port is considered unsafe because the device can be accessed by anybody. Instead, services are not only guarded by firewalls, encryption mechanisms, and so on but are also deployed on virtual machines. This creates an extra layer of security as the attacker will never have access to the real device, just to a very limited version of it. Such a decision also provides higher availability as the attacked surface could be immediately removed and the system administrator could bring up a new virtual machine from a healthy snapshot, making the service available again. Depending on the implementation, this could be automated <span class="No-Break">as well.</span></p>
+<p>One last thing – the file’s contents might be misplaced if we are transferring larger amounts of data. This is again expected from UDP, as expressed earlier, because of the packets’ ordering. If it does not suit your purpose and you require a more robust implementation, then you should check the TCP description in the <span class="No-Break">next section.</span></p>
+<h2 id="_idParaDest-114"><a id="_idTextAnchor114"/>Thinking about robustness through TCP</h2>
+<p>The alternative to UDP is TCP. It is considered reliable – the messages are ordered, it is <a id="_idIndexMarker685"/>connection-oriented, and it has a lengthened latency. Applications such as the <strong class="bold">World Wide Web</strong> (<strong class="bold">WWW</strong>), email, remote administration applications, and so on are based on this protocol. What you’ve probably noticed already (and you’re going to observe in <span class="No-Break"><em class="italic">Figure 7</em></span><em class="italic">.6</em>) is that the respective system calls are in the same sequence and have similar names as in other programming languages. This helps people with different areas of expertise to have a common ground for designing network applications and easily understand the sequence of events. This is a very simple way to help them follow the protocols in the OSI model, using those names as hints for where the communication is currently at. As we already mentioned in the previous section, sockets are used for environment-agnostic solutions, where systems have different OSs and the communicating applications are in different programming languages. For example, they are implemented in C, C++, Java, or Python, and their clients could be in PHP, JavaScript, and <span class="No-Break">so on.</span></p>
+<p>The system calls for <a id="_idIndexMarker686"/>TCP communication are represented in the <span class="No-Break">following diagram:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer060">
+<img alt="Figure 7.6 – TCP system call realization" height="1013" src="image/Figure_7.6_B20833.jpg" width="965"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.6 – TCP system call realization</p>
+<p>As you can see, it is <a id="_idIndexMarker687"/>more complicated than UDP, as was expected. How so? Well, we need to keep an established connection and the kernel acknowledges the packet transfer. If you remember, in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a> and <a href="B20833_02.xhtml#_idTextAnchor029"><span class="No-Break"><em class="italic">Chapter 2</em></span></a>, we discussed that sockets are files as well, and we could treat them as such. Instead of doing the <strong class="source-inline">send()</strong> and <strong class="source-inline">recv()</strong> calls, you could simply do <strong class="source-inline">write()</strong> and <strong class="source-inline">read()</strong> calls. The first ones are specialized in the role of network communication, while the latter are generally for all files. Using the <strong class="source-inline">read()</strong> and <strong class="source-inline">write()</strong> calls will be like communicating through a pipe but between computer systems, therefore it again depends on <span class="No-Break">your needs.</span></p>
+<p>Let’s look at the following example – a simple request-response exchange, which we will execute on different machines on the local network, as the IP address from earlier is valid only for our internal network. First, let’s see whether we can ping <span class="No-Break">the server:</span></p>
+<pre class="console">
+$ ping 192.168.136.128
+Pinging 192.168.136.128 with 32 bytes of data:
+Reply from 192.168.136.128: bytes=32 time&lt;1ms TTL=64
+Reply from 192.168.136.128: bytes=32 time&lt;1ms TTL=64
+Reply from 192.168.136.128: bytes=32 time&lt;1ms TTL=64</pre> <p>So, we have <a id="_idIndexMarker688"/>access to the machine. Now, let’s run the server as a separate application (the full code can be found at https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%207). The configuration is almost the same, so we skip those parts from <span class="No-Break">the snippet:</span></p>
+<pre class="source-code">
+...
+constexpr auto PORT     = 8080;
+constexpr auto BUF_SIZE = 256;
+constexpr auto BACKLOG  = 5;
+constexpr auto SIG_MAX  = 128;
+void exitHandler(int sig) {
+    cerr &lt;&lt; "Exit command called - terminating server!"
+         &lt;&lt; endl;
+    exit(SIG_MAX + sig);
+}
+int main() {
+    signal(SIGINT, exitHandler);
+    constexpr auto ip = "192.168.136.128";
+...</pre> <p>We open <span class="No-Break">the socket:</span></p>
+<pre class="source-code">
+    if (auto server_sock =
+            socket(AF_INET, SOCK_STREAM, 0);
+            server_sock &lt; 0) {</pre> <p>We use <strong class="source-inline">SOCK_STREAM</strong> to indicate this ias a TCP connection. We also use the hardcoded IP. After we bind to the address, we need to listen for a <strong class="source-inline">BACKLOG</strong> number of active connections. Each <a id="_idIndexMarker689"/>new connection could be accepted in general if the number of connections is smaller than the <span class="No-Break"><strong class="source-inline">BACKLOG</strong></span><span class="No-Break"> value:</span></p>
+<pre class="source-code">
+...
+        server_addr.sin_addr.s_addr = inet_addr(ip);
+        result = bind(server_sock,
+            (struct sockaddr*)&amp;server_addr,
+            sizeof(server_addr));
+...
+        result = listen(server_sock, BACKLOG);
+        if (result != 0) {
+            cerr &lt;&lt; "Cannot accept connection";
+        }
+        cout &lt;&lt; "Listening..." &lt;&lt; endl;
+        for (;;) {
+            addr_size = sizeof(client_addr);
+            client_sock =
+                accept(server_sock,
+                       (struct sockaddr*)&amp;client_addr,
+                       &amp;addr_size);</pre> <p>Until this<a id="_idIndexMarker690"/> point, we just have <span class="No-Break">the following:</span></p>
+<pre class="console">
+$ ./server
+Listening...</pre> <p>Now, let’s prepare to accept a client and handle its requests. We use the <strong class="source-inline">MSG_PEEK</strong> flag to check for incoming messages, and we send messages with <strong class="source-inline">MSG_DONTWAIT</strong>. We leave <strong class="source-inline">sendto()</strong> without a<a id="_idIndexMarker691"/> result check for simplicity <span class="No-Break">and readability:</span></p>
+<pre class="source-code">
+            if (client_sock &gt; 0) {
+                cout &lt;&lt; "Client connected." &lt;&lt; endl;
+                array&lt;char, BUF_SIZE&gt; buffer{};
+                if (auto b_recv = recv(client_sock,
+                                       buffer.data(),
+                                       buffer.size(),
+                                       MSG_PEEK);
+                                  b_recv &gt; 0) {
+                    buffer.data()[b_recv] = '\0';
+                    cout &lt;&lt; "Client request: "
+                         &lt;&lt; buffer.data() &lt;&lt; endl;
+                    string_view response =
+                        { to_string(getpid()) };
+                    cout &lt;&lt; "Server response: "
+                         &lt;&lt; response &lt;&lt; endl;
+                    send(client_sock,
+                         response.data(),
+                         response.size(),
+                         MSG_DONTWAIT);
+                }</pre> <p>And the socket is closed at <span class="No-Break">the end:</span></p>
+<pre class="source-code">
+...
+           if (auto res =
+                        close(client_sock); res == -1) {
+...</pre> <p>Now, let’s connect a <a id="_idIndexMarker692"/>client from another system. Its implementation is similar to the UDP one, except <strong class="source-inline">connect()</strong> must be called and must <span class="No-Break">be successful:</span></p>
+<pre class="source-code">
+...
+       if (auto res =
+                connect(serv_sock,
+                        (struct sockaddr*)&amp;addr,
+                        sizeof(addr)); res == -1) {
+            const auto ecode
+                { make_error_code(errc{errno}) };
+            cerr &lt;&lt; "Error connecting to socket!";
+            system_error exception{ ecode };
+            throw exception;
+        }
+        string_view req = { to_string(getpid()) };
+        cout &lt;&lt; "Client request: " &lt;&lt; req &lt;&lt; endl;</pre> <p>The server’s output changes <span class="No-Break">as follows:</span></p>
+<pre class="console">
+$ ./server
+Listening...
+Client connected.
+Client request: 12502
+Server response: 12501</pre> <p>Let’s continue the communication, sending <span class="No-Break">information back:</span></p>
+<pre class="source-code">
+        if (auto res =
+                send(serv_sock,
+                     req.data(),
+                     req.size(),
+                     MSG_DONTWAIT);
+                res &gt;= 0) {
+            array&lt;char, BUF_SIZE&gt; buffer{};
+            if (auto b_recv =
+                    recv(serv_sock,
+                         buffer.data(),
+                         buffer.size(),
+                         MSG_PEEK);
+                    res &gt; 0) {
+                buffer.data()[b_recv] = '\0';
+                cout &lt;&lt; "Server response: "
+                     &lt;&lt; buffer.data();
+...
+       if (auto res = close(serv_sock); res == -1) {
+...
+      cout &lt;&lt; "\nJob done! Disconnecting." &lt;&lt; endl;</pre> <p>We are closing <a id="_idIndexMarker693"/>the communication on the client side, including the socket. The client’s output is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+$ ./client
+Client request: 12502
+Server response: 12501
+Job done! Disconnecting.</pre> <p>As the client’s <a id="_idIndexMarker694"/>job is done, the process terminates and its socket is closed, but the server remains active for other clients, so if we call the client multiple times from different shells, we will have the following output for <span class="No-Break">the server:</span></p>
+<pre class="console">
+Listening...
+Client connected.
+Client request: 12502
+Server response: 12501
+Client connected.
+Client request: 12503
+Server response: 12501</pre> <p>The server will handle up to five client sessions in its backlog. If the clients don’t close their sockets or the server doesn’t forcefully terminate their connections after some timeout, it will not be able to accept new clients, and the <strong class="source-inline">Client connection failed</strong> message will be observed. In the next chapter, we will discuss different time-based techniques, so think about combining them with your implementation to provide a meaningful <span class="No-Break">session timeout.</span></p>
+<p>If we want to gracefully handle the server termination, we could simply implement a signal handler, as we did in <a href="B20833_03.xhtml#_idTextAnchor047"><span class="No-Break"><em class="italic">Chapter 3</em></span></a>. This time, we will handle the <em class="italic">Ctrl </em>+ <em class="italic">C</em> key combination, leading to the <span class="No-Break">following output:</span></p>
+<pre class="console">
+...
+Client request: 12503
+Server response: 12501
+^CExit command called - terminating server!</pre> <p>As mentioned earlier, ungraceful termination of servers and clients could lead to hanging sockets and opened ports. This will become problematic for a system, as simple application restarts will fail with <strong class="source-inline">Address already in use</strong>. If this happens, double-check for remaining processes through the <strong class="source-inline">ps</strong> command. You can terminate the running process through the <strong class="source-inline">kill</strong> command, as you learned in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a> and <a href="B20833_02.xhtml#_idTextAnchor029"><span class="No-Break"><em class="italic">Chapter 2</em></span></a>. Sometimes, this is not enough either, and servers should not be terminated that easily. Therefore, you could just change a port after checking which ports are opened. You could do that through<a id="_idIndexMarker695"/> the <span class="No-Break">following command:</span></p>
+<pre class="console">
+$ ss -tnlp
+State Recv-Q Send-Q Local Address:Port Peer Address:Port  Process
+LISTEN 0           5            192.168.136.128:8080 0.0.0.0:*      users:(("server",pid=9965,fd=3))
+LISTEN   0         4096         127.0.0.53%lo:53         0.0.0.0:*
+LISTEN   0         5            127.0.0.1:631            0.0.0.0:*
+LISTEN   0         5            [::1]:631                [::]:*</pre> <p>You can see the server is up and running on the respective address and port: <strong class="source-inline">192.168.136.128:8080</strong>. We can also check the connections to a certain port by using <span class="No-Break">the following:</span></p>
+<pre class="console">
+$ lsof -P -i:8080
+COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+server  10116  oem    3u  IPv4  94617      0t0  TCP oem-virtual-machine:8080 (LISTEN)</pre> <p>With multiple online services nowadays, we cannot escape network programming. We encourage you to use these examples as simple applications to start from. It’s also important to spend some time learning more about the multiple socket settings as they will help you cover your <span class="No-Break">specific requirements.</span></p>
+<h1 id="_idParaDest-115"><a id="_idTextAnchor115"/>Summary</h1>
+<p>In this chapter, you’ve learned about various ways to execute IPC. You got familiar with MQs as simple, real-time, and reliable instruments for sending small chunks of data. We also got into the details of fundamental synchronization mechanisms such as semaphores and mutexes, along with their C++20 interfaces. In combination with shmem, you observed how we could exchange large amounts of data fast. At the end, the network communication through sockets was introduced to you through the main protocols, UDP <span class="No-Break">and TCP.</span></p>
+<p>Complex applications usually rely on multiple IPC techniques to achieve their goals. It’s important to be aware of them – both their strengths and their disadvantages. This will help you decide on your particular implementation. Most of the time, we build layers on top of IPC solutions in order to guarantee the robustness of an application – for example, through retry mechanisms, polling, event-driven designs, and so on. We will revisit these topics in <a href="B20833_09.xhtml#_idTextAnchor129"><span class="No-Break"><em class="italic">Chapter 9</em></span></a>. The next chapter will give you the instruments to self-monitor your availability and performance through <span class="No-Break">different timers.</span></p>
+</div>
+</div></body></html>

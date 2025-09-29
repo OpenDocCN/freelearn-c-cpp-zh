@@ -1,0 +1,581 @@
+<html><head></head><body>
+<div id="_idContainer038">
+<h1 class="chapter-number" id="_idParaDest-158"><a id="_idTextAnchor163"/><span class="koboSpan" id="kobo.1.1">11</span></h1>
+<h1 id="_idParaDest-159"><a id="_idTextAnchor164"/><span class="koboSpan" id="kobo.2.1">Deferred Reclamation</span></h1>
+<p><span class="koboSpan" id="kobo.3.1">In </span><a href="B21071_09.xhtml#_idTextAnchor141"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.4.1">Chapter 9</span></em></span></a><span class="koboSpan" id="kobo.5.1">, we showed some examples of unusual memory allocation mechanisms and how they can be used, including how to react to errors to give our programs a form of “second chance” to continue, as well as how to use atypical or exotic memory through the mediation of the C++ language facilities. </span><span class="koboSpan" id="kobo.5.2">Then, in </span><a href="B21071_10.xhtml#_idTextAnchor153"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.6.1">Chapter 10</span></em></span></a><span class="koboSpan" id="kobo.7.1">, we examined arena-based allocation and some variants thereof with an eye on issues of speed, determinism, and control over </span><span class="No-Break"><span class="koboSpan" id="kobo.8.1">resource consumption.</span></span></p>
+<p><span class="koboSpan" id="kobo.9.1">What we will do in the current chapter is something that is not often done in C++ but that is common practice in programs written in many other languages, particularly those with integrated garbage collectors: we will write mechanisms that delay the destruction of dynamically allocated objects at selected moments in the execution of </span><span class="No-Break"><span class="koboSpan" id="kobo.10.1">a program.</span></span></p>
+<p><span class="koboSpan" id="kobo.11.1">We will </span><em class="italic"><span class="koboSpan" id="kobo.12.1">not</span></em><span class="koboSpan" id="kobo.13.1"> write a proper garbage collector, as that would involve deeper involvement in the inner workings of the compiler and impact the programming model that makes C++ such a wonderful tool. </span><span class="koboSpan" id="kobo.13.2">However, we will put together mechanisms for </span><strong class="bold"><span class="koboSpan" id="kobo.14.1">deferred reclamation</span></strong><span class="koboSpan" id="kobo.15.1">, in</span><a id="_idIndexMarker597"/><span class="koboSpan" id="kobo.16.1"> the sense that selected objects will deliberately be destroyed and see their underlying storage freed together at chosen moments, but without necessarily guaranteeing a destruction order. </span><span class="koboSpan" id="kobo.16.2">We will, of course, not provide an exhaustive overview of techniques to achieve this objective, but we will hopefully give you, dear reader, enough “food for thought” to build your own deferred reclamation mechanisms should you </span><span class="No-Break"><span class="koboSpan" id="kobo.17.1">need to.</span></span></p>
+<p><span class="koboSpan" id="kobo.18.1">The techniques in this chapter can be coupled with those seen in </span><a href="B21071_10.xhtml#_idTextAnchor153"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.19.1">Chapter 10</span></em></span></a><span class="koboSpan" id="kobo.20.1"> to make programs faster and reduce memory fragmentation, but we will cover deferred reclamation as a standalone topic to make our discourse clearer. </span><span class="koboSpan" id="kobo.20.2">After reading this chapter, you will be able to do </span><span class="No-Break"><span class="koboSpan" id="kobo.21.1">the following:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.22.1">Understand the trade-offs associated with deferred reclamation, as there are gains to be made but there are also costs involved (this is not </span><span class="No-Break"><span class="koboSpan" id="kobo.23.1">a panacea!)</span></span></li>
+<li><span class="koboSpan" id="kobo.24.1">Implement an almost transparent external wrapper to track the memory that needs to </span><span class="No-Break"><span class="koboSpan" id="kobo.25.1">be collected</span></span></li>
+<li><span class="koboSpan" id="kobo.26.1">Implement an almost transparent external wrapper to help finalize the objects that are subjected to </span><span class="No-Break"><span class="koboSpan" id="kobo.27.1">deferred reclamation</span></span></li>
+<li><span class="koboSpan" id="kobo.28.1">Implement a counting pointer akin to the reference counter of a </span><strong class="source-inline"><span class="koboSpan" id="kobo.29.1">std::shared_ptr</span></strong><span class="koboSpan" id="kobo.30.1"> object in order to identify objects that can be reclaimed at the end of a </span><span class="No-Break"><span class="koboSpan" id="kobo.31.1">chosen scope</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.32.1">The first step we need to take is to try to understand some problem domains where deferred reclamation can be helpful, including its relation to the (different but not entirely dissimilar) problem of </span><span class="No-Break"><span class="koboSpan" id="kobo.33.1">garbage collection.</span></span></p>
+<p class="callout-heading"><span class="koboSpan" id="kobo.34.1">Finalization? </span><span class="koboSpan" id="kobo.34.2">Reclamation?</span></p>
+<p class="callout"><span class="koboSpan" id="kobo.35.1">You will notice that, in this chapter, we will often use the word </span><em class="italic"><span class="koboSpan" id="kobo.36.1">finalization</span></em><span class="koboSpan" id="kobo.37.1"> instead of the word </span><em class="italic"><span class="koboSpan" id="kobo.38.1">destruction</span></em><span class="koboSpan" id="kobo.39.1">, as we seek to emphasize the fact that the code executed at the end of an object’s lifetime (its destructor) is distinct from the code that frees its underlying storage. </span><span class="koboSpan" id="kobo.39.2">As a bonus, </span><strong class="bold"><span class="koboSpan" id="kobo.40.1">finalization</span></strong><span class="koboSpan" id="kobo.41.1"> is</span><a id="_idIndexMarker598"/><span class="koboSpan" id="kobo.42.1"> also more common in garbage-collected languages, and garbage collection is a cousin of the techniques discussed in the sections that follow. </span><span class="koboSpan" id="kobo.42.2">Consider finalization (without reclamation) as the equivalent of calling the destructor of an object (without deallocating the </span><span class="No-Break"><span class="koboSpan" id="kobo.43.1">underlying storage).</span></span></p>
+<p class="callout"><span class="koboSpan" id="kobo.44.1">As stated earlier in this chapter, we will </span><a id="_idIndexMarker599"/><span class="koboSpan" id="kobo.45.1">name </span><strong class="bold"><span class="koboSpan" id="kobo.46.1">reclamation</span></strong><span class="koboSpan" id="kobo.47.1"> the act of freeing the memory for one or many objects at selected moments, for example, at the end of a scope or when reaching the end of a program’s execution. </span><span class="koboSpan" id="kobo.47.2">Again, this term is more common in garbage-collected languages than it is in C++, but the topic of this chapter is in some ways closer to what these languages do so, hopefully, using similar terms will help develop a common understanding of the ideas and </span><span class="No-Break"><span class="koboSpan" id="kobo.48.1">techniques involved.</span></span></p>
+<h1 id="_idParaDest-160"><span class="koboSpan" id="kobo.49.1">Technical requiremen</span><a id="_idTextAnchor165"/><span class="koboSpan" id="kobo.50.1">ts</span></h1>
+<p><span class="koboSpan" id="kobo.51.1">You can find the code files for this chapter in the book’s GitHub repository </span><span class="No-Break"><span class="koboSpan" id="kobo.52.1">here: </span></span><a href="https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter11"><span class="No-Break"><span class="koboSpan" id="kobo.53.1">https://github.com/PacktPublishing/C-Plus-Plus-Memory-Management/tree/main/chapter11</span></span></a><span class="No-Break"><span class="koboSpan" id="kobo.54.1">.</span></span></p>
+<h1 id="_idParaDest-161"><a id="_idTextAnchor166"/><span class="koboSpan" id="kobo.55.1">What do we mean by deferred reclamation?</span></h1>
+<p><span class="koboSpan" id="kobo.56.1">Why would one want to resort to </span><a id="_idIndexMarker600"/><span class="koboSpan" id="kobo.57.1">deferred reclamation? </span><span class="koboSpan" id="kobo.57.2">That’s a valid question indeed, so thanks </span><span class="No-Break"><span class="koboSpan" id="kobo.58.1">for asking!</span></span></p>
+<p><span class="koboSpan" id="kobo.59.1">The short answer is that it solves a real problem. </span><span class="koboSpan" id="kobo.59.2">Indeed, there are programs where it makes sense not to collect objects right after they stop being referred to by client code, or where it’s unclear whether they can be collected at all until we know for sure the code that could use them concludes. </span><span class="koboSpan" id="kobo.59.3">These programs are somewhat rare in C++ because of the way we reason about code in our language, but they are not rare when looking at the programming world </span><span class="No-Break"><span class="koboSpan" id="kobo.60.1">in general.</span></span></p>
+<p><span class="koboSpan" id="kobo.61.1">For example, consider a function in which there are circular references between some of the locally allocated objects, or one where there is a tree that one can navigate from the root node to its leaf nodes, but in which the leaves of the tree also have a reference to its root node. </span><span class="koboSpan" id="kobo.61.2">Sometimes, we can determine how to destroy the set of objects: for example, in the case of a tree, we could decide to start at the root and go down the branches. </span><span class="koboSpan" id="kobo.61.3">In other situations, if we know that a group of objects will not escape a given function, we can also use the knowledge that, at the end of that function, they all can be reclaimed as </span><span class="No-Break"><span class="koboSpan" id="kobo.62.1">a group.</span></span></p>
+<p><span class="koboSpan" id="kobo.63.1">If you are familiar with garbage-collected languages, you probably know that in most of them, the collector “reclaims the bytes,” freeing the underlying storage of the reclaimed objects (and sometimes compacting the memory as it proceeds), but does not finalize the objects. </span><span class="koboSpan" id="kobo.63.2">One reason for this is that it is difficult (in some cases, impossible) for an object in such a language to know which other objects still exist in the program since there is no order-of-finalization guarantee… and how could there be one if the garbage collector needs to deal with cycles of objects referring to each other? </span><span class="koboSpan" id="kobo.63.3">Not knowing which other objects still exist when an object reaches the end of its lifetime severely limits what finalization code </span><span class="No-Break"><span class="koboSpan" id="kobo.64.1">can do.</span></span></p>
+<p><span class="koboSpan" id="kobo.65.1">The fact that reclamation does not mean finalization in many languages simplifies the task of collecting the objects: one can conceptually call </span><strong class="source-inline"><span class="koboSpan" id="kobo.66.1">std::free()</span></strong><span class="koboSpan" id="kobo.67.1"> or some equivalent function and free memory without worrying about the objects therein. </span><span class="koboSpan" id="kobo.67.2">In languages that do guarantee finalization before reclamation, one often finds a class hierarchy rooted in a single, common base class (often called </span><strong class="source-inline"><span class="koboSpan" id="kobo.68.1">object</span></strong><span class="koboSpan" id="kobo.69.1"> or </span><strong class="source-inline"><span class="koboSpan" id="kobo.70.1">Object</span></strong><span class="koboSpan" id="kobo.71.1">), which makes it possible to call the equivalent of a </span><strong class="source-inline"><span class="koboSpan" id="kobo.72.1">virtual</span></strong><span class="koboSpan" id="kobo.73.1"> destructor on each object and polymorphically finalize it. </span><span class="koboSpan" id="kobo.73.2">Of course, what one can do when finalizing an object under such circumstances is limited since the order in which objects are finalized is </span><span class="No-Break"><span class="koboSpan" id="kobo.74.1">usually unknown.</span></span></p>
+<p><span class="koboSpan" id="kobo.75.1">What is more common in contemporary garbage-collected languages is to make finalization the responsibility of client code and leave the collection to the language itself. </span><span class="koboSpan" id="kobo.75.2">Such languages often use a special interface (</span><strong class="source-inline"><span class="koboSpan" id="kobo.76.1">IDisposable</span></strong><span class="koboSpan" id="kobo.77.1"> in C# and </span><strong class="source-inline"><span class="koboSpan" id="kobo.78.1">Closeable</span></strong><span class="koboSpan" id="kobo.79.1"> in Java come to mind) that is implemented by classes for which finalization is important (typically, classes that manage external resources), and client code will explicitly put in place the required mechanisms for the ordered finalization of objects. </span><span class="koboSpan" id="kobo.79.2">This moves part of the responsibility over resource management from the object itself (as is customary in C++ with the RAII idiom described in </span><a href="B21071_04.xhtml#_idTextAnchor062"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.80.1">Chapter 4</span></em></span></a><span class="koboSpan" id="kobo.81.1">) to the code that uses it, which is a reminder that garbage collectors tend to simplify memory management but, at the same time, tend to complicate the management of </span><span class="No-Break"><span class="koboSpan" id="kobo.82.1">other resources.</span></span></p>
+<p><span class="koboSpan" id="kobo.83.1">Examples of such client code-driven resource management include a </span><strong class="source-inline"><span class="koboSpan" id="kobo.84.1">try</span></strong><span class="koboSpan" id="kobo.85.1"> block accompanied by a </span><strong class="source-inline"><span class="koboSpan" id="kobo.86.1">finally</span></strong><span class="koboSpan" id="kobo.87.1"> block, which serves as the locus of cleanup code applied regardless of whether the </span><strong class="source-inline"><span class="koboSpan" id="kobo.88.1">try</span></strong><span class="koboSpan" id="kobo.89.1"> block concluded normally or some </span><strong class="source-inline"><span class="koboSpan" id="kobo.90.1">catch</span></strong><span class="koboSpan" id="kobo.91.1"> block was entered. </span><span class="koboSpan" id="kobo.91.2">There are also simplified syntaxes that perform the same thing in a less burdensome manner for client code. </span><span class="koboSpan" id="kobo.91.3">For example, Java uses try-with blocks and implicitly calls </span><strong class="source-inline"><span class="koboSpan" id="kobo.92.1">close()</span></strong><span class="koboSpan" id="kobo.93.1"> on selected </span><strong class="source-inline"><span class="koboSpan" id="kobo.94.1">Closeable</span></strong><span class="koboSpan" id="kobo.95.1"> objects at </span><em class="italic"><span class="koboSpan" id="kobo.96.1">end of scope</span></em><span class="koboSpan" id="kobo.97.1">, and C# uses </span><strong class="source-inline"><span class="koboSpan" id="kobo.98.1">using</span></strong><span class="koboSpan" id="kobo.99.1"> blocks likewise in order to implicitly call </span><strong class="source-inline"><span class="koboSpan" id="kobo.100.1">Dispose()</span></strong><span class="koboSpan" id="kobo.101.1"> on selected </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.102.1">IDisposable</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.103.1"> objects.</span></span></p>
+<p><span class="koboSpan" id="kobo.104.1">C++ does not have </span><strong class="source-inline"><span class="koboSpan" id="kobo.105.1">finally</span></strong><span class="koboSpan" id="kobo.106.1"> blocks, nor does it use intrusive techniques such as special interfaces known to the language that receive special treatment or a common base class to all types. </span><span class="koboSpan" id="kobo.106.2">In C++, objects are usually made responsible for the management of their resources through the </span><a id="_idIndexMarker601"/><span class="koboSpan" id="kobo.107.1">RAII idiom; this leads to a different mindset and different programming techniques when compared to other </span><span class="No-Break"><span class="koboSpan" id="kobo.108.1">popular languages.</span></span></p>
+<p><span class="koboSpan" id="kobo.109.1">In this chapter, we will face a similar yet different situation to the one faced in garbage-collected languages: if we want to use deferred reclamation of objects, we cannot guarantee that during destruction, one of the reclaimed objects will be able to access other objects reclaimed in the same group, so one should not try to do this. </span><span class="koboSpan" id="kobo.109.2">On the other hand, the fact that we will choose to apply deferred reclamation to </span><em class="italic"><span class="koboSpan" id="kobo.110.1">selected</span></em><span class="koboSpan" id="kobo.111.1"> objects (instead of doing so for all objects) means that objects not part of this group and known to survive that group’s reclamation can still be accessed during the finalization of reclaimed objects. </span><span class="koboSpan" id="kobo.111.2">It’s a benefit of not having a one-size-fits-all solution, really: C++ is nothing if not versatile, as you probably knew even before starting to read </span><span class="No-Break"><span class="koboSpan" id="kobo.112.1">this book.</span></span></p>
+<p><span class="koboSpan" id="kobo.113.1">Not having a common base class to all types means that we will have to either forego finalization (and this can work if we limit ourselves to allocating objects of trivially destructible types, something we could validate at compile time) or that we will have to find some other way to remember the types of the objects we allocated and call the appropriate destructor when the time comes. </span><span class="koboSpan" id="kobo.113.2">In this chapter, we will show how one can implement </span><span class="No-Break"><span class="koboSpan" id="kobo.114.1">both approaches.</span></span></p>
+<p><span class="koboSpan" id="kobo.115.1">Contrary to popular belief, some garbage collectors have been implemented for C++. </span><span class="koboSpan" id="kobo.115.2">One of the best-known ones (the Boehm-Demers-Weiser collector made by Hans Boehm, Alan Demers, and Mark Weiser) does not finalize objects in general but allows the registration of chosen finalizers from user code. </span><span class="koboSpan" id="kobo.115.3">This is done through a facility named </span><strong class="source-inline"><span class="koboSpan" id="kobo.116.1">GC_register_finalizer</span></strong><span class="koboSpan" id="kobo.117.1">, but the authors warn users of this facility that what such a finalizer can do is limited, as is the case in garbage-collected languages (and discussed earlier in </span><span class="No-Break"><span class="koboSpan" id="kobo.118.1">this section).</span></span></p>
+<p class="callout-heading"><span class="koboSpan" id="kobo.119.1">Further reading</span></p>
+<p class="callout"><span class="koboSpan" id="kobo.120.1">To explore further, please </span><span class="No-Break"><span class="koboSpan" id="kobo.121.1">check </span></span><a href="https://www.hboehm.info/gc/"><span class="No-Break"><span class="koboSpan" id="kobo.122.1">https://www.hboehm.info/gc/</span></span></a><span class="No-Break"><span class="koboSpan" id="kobo.123.1">.</span></span></p>
+<p><span class="koboSpan" id="kobo.124.1">We will use other</span><a id="_idIndexMarker602"/><span class="koboSpan" id="kobo.125.1"> techniques in this chapter. </span><span class="koboSpan" id="kobo.125.2">As is always the case in this book, the intent is to present ideas from which you can experiment and build the kind of solution your code needs. </span><span class="koboSpan" id="kobo.125.3">We will show three </span><span class="No-Break"><span class="koboSpan" id="kobo.126.1">different examples:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.127.1">Code that reclaims selected objects at the end of program execution but does not finalize them, limiting deferred reclamation to trivially </span><span class="No-Break"><span class="koboSpan" id="kobo.128.1">destructible objects</span></span></li>
+<li><span class="koboSpan" id="kobo.129.1">Code that reclaims and finalizes selected objects at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.130.1">program execution</span></span></li>
+<li><span class="koboSpan" id="kobo.131.1">Code that reclaims and finalizes selected objects at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.132.1">selected scopes</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.133.1">We will proceed differently in each case, to give you a broader perspective on what can be done. </span><span class="koboSpan" id="kobo.133.2">In all three cases, we will store the pointers in a globally accessible object. </span><span class="koboSpan" id="kobo.133.3">Yes, a singleton, but that’s the correct tool here as we are discussing a feature that impacts the whole program. </span><span class="koboSpan" id="kobo.133.4">Ready? </span><span class="koboSpan" id="kobo.133.5">Here </span><span class="No-Break"><span class="koboSpan" id="kobo.134.1">we go!</span></span></p>
+<p class="callout-heading"><span class="koboSpan" id="kobo.135.1">Things we sometimes do to make examples readable…</span></p>
+<p class="callout"><span class="koboSpan" id="kobo.136.1">The code in the following sections can seem strange to some readers. </span><span class="koboSpan" id="kobo.136.2">In an effort to focus on the deferred reclamation aspects of the code and keep the overall presentation readable, I chose not to</span><a id="_idIndexMarker603"/><span class="koboSpan" id="kobo.137.1"> go into aspects of thread safety, although this is essential in contemporary code. </span><span class="koboSpan" id="kobo.137.2">In the GitHub repository for this chapter, however, you will find both the code presented in this book and the thread-safe equivalent for </span><span class="No-Break"><span class="koboSpan" id="kobo.138.1">each example.</span></span></p>
+<h1 id="_idParaDest-162"><a id="_idTextAnchor167"/><span class="koboSpan" id="kobo.139.1">Reclamation (without finalization) at the end of the program</span></h1>
+<p><span class="koboSpan" id="kobo.140.1">Our first implementation </span><a id="_idIndexMarker604"/><span class="koboSpan" id="kobo.141.1">will provide reclamation but not finalization at the end of program execution. </span><span class="koboSpan" id="kobo.141.2">For this reason, it will not accept managing objects of some type </span><strong class="source-inline"><span class="koboSpan" id="kobo.142.1">T</span></strong><span class="koboSpan" id="kobo.143.1"> if </span><strong class="source-inline"><span class="koboSpan" id="kobo.144.1">T</span></strong><span class="koboSpan" id="kobo.145.1"> is not trivially destructible since objects of that type have a destructor that might have to be executed to avoid leaks or other problems along </span><span class="No-Break"><span class="koboSpan" id="kobo.146.1">the way.</span></span></p>
+<p><span class="koboSpan" id="kobo.147.1">With this example, as with the others in this chapter, we will start with our test code, and then go on to see how the reclamation mechanics are implemented. </span><span class="koboSpan" id="kobo.147.2">Our test code will go </span><span class="No-Break"><span class="koboSpan" id="kobo.148.1">as follows:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.149.1">We will declare two types, </span><strong class="source-inline"><span class="koboSpan" id="kobo.150.1">NamedThing</span></strong><span class="koboSpan" id="kobo.151.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.152.1">Identifier</span></strong><span class="koboSpan" id="kobo.153.1">. </span><span class="koboSpan" id="kobo.153.2">The former will not be trivially destructible as its destructor will contain user code that prints out debugging information, but the latter will be, as it will only contain trivially destructible non-static data members and offer no </span><span class="No-Break"><span class="koboSpan" id="kobo.154.1">user-provided destructor.</span></span></li>
+<li><span class="koboSpan" id="kobo.155.1">We will provide two </span><strong class="source-inline"><span class="koboSpan" id="kobo.156.1">g()</span></strong><span class="koboSpan" id="kobo.157.1"> functions. </span><span class="koboSpan" id="kobo.157.2">The first one will be commented out as it tries to allocate </span><strong class="source-inline"><span class="koboSpan" id="kobo.158.1">NamedThing</span></strong><span class="koboSpan" id="kobo.159.1"> objects through our reclamation system, something that would not compile as type </span><strong class="source-inline"><span class="koboSpan" id="kobo.160.1">NamedThing</span></strong><span class="koboSpan" id="kobo.161.1"> does not meet our requirement of trivial destructibility. </span><span class="koboSpan" id="kobo.161.2">The second one will be used as the objects it allocates are of a type that meets </span><span class="No-Break"><span class="koboSpan" id="kobo.162.1">those requirements.</span></span></li>
+<li><span class="koboSpan" id="kobo.163.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.164.1">f()</span></strong><span class="koboSpan" id="kobo.165.1">, </span><strong class="source-inline"><span class="koboSpan" id="kobo.166.1">g()</span></strong><span class="koboSpan" id="kobo.167.1">, and </span><strong class="source-inline"><span class="koboSpan" id="kobo.168.1">main()</span></strong><span class="koboSpan" id="kobo.169.1"> functions will construct objects at various levels in the call stack of our program. </span><span class="koboSpan" id="kobo.169.2">However, the reclaimable objects will only be at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.170.1">program execution.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.171.1">The client</span><a id="_idIndexMarker605"/><span class="koboSpan" id="kobo.172.1"> code in this case would be </span><span class="No-Break"><span class="koboSpan" id="kobo.173.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.174.1">
+// ...
+</span><strong class="bold"><span class="koboSpan" id="kobo.175.1">// note: not trivially destructible</span></strong><span class="koboSpan" id="kobo.176.1">
+struct NamedThing {
+   const char *name;
+   NamedThing(const char *name) : name{ name } {
+      std::print("{} ctor\n", name);
+   }
+   ~NamedThing() {
+      std::print("{} dtor\n", name);
+   }
+};
+struct Identifier {
+   int value;
+};
+</span><strong class="bold"><span class="koboSpan" id="kobo.177.1">// would not compile</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.178.1">/*</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.179.1">void g() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.180.1">   [[maybe_unused]] auto p = gcnew&lt;NamedThing&gt;("hi");</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.181.1">   [[maybe_unused]] auto q = gcnew&lt;NamedThing&gt;("there");</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.182.1">}</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.183.1">*/</span></strong><span class="koboSpan" id="kobo.184.1">
+void g() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.185.1">   [[maybe_unused]] auto p = gcnew&lt;Identifier&gt;(2);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.186.1">   [[maybe_unused]] auto q = gcnew&lt;Identifier&gt;(3);</span></strong><span class="koboSpan" id="kobo.187.1">
+}
+auto h() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.188.1">   struct X {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.189.1">      int m() const { return 123; }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.190.1">   };</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.191.1">   return gcnew&lt;X&gt;();</span></strong><span class="koboSpan" id="kobo.192.1">
+}
+</span><strong class="bold"><span class="koboSpan" id="kobo.193.1">auto f() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.194.1">   g();</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.195.1">   return h();</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.196.1">}</span></strong><span class="koboSpan" id="kobo.197.1">
+int main() {
+   std::print("Pre\n");
+   std::print("{}\n", </span><strong class="bold"><span class="koboSpan" id="kobo.198.1">f()-&gt;m()</span></strong><span class="koboSpan" id="kobo.199.1">);
+   std::print("Post\n");
+}</span></pre> <p><span class="koboSpan" id="kobo.200.1">With this code and the (so far missing) deferred reclamation code, this program will print </span><span class="No-Break"><span class="koboSpan" id="kobo.201.1">the following:</span></span></p>
+<pre class="console"><span class="koboSpan" id="kobo.202.1">
+Pre
+123
+Post
+~GC with 3 objects to deallocate</span></pre> <p><span class="koboSpan" id="kobo.203.1">Note that </span><strong class="source-inline"><span class="koboSpan" id="kobo.204.1">f()</span></strong><span class="koboSpan" id="kobo.205.1"> allocates</span><a id="_idIndexMarker606"/><span class="koboSpan" id="kobo.206.1"> and returns an object from which </span><strong class="source-inline"><span class="koboSpan" id="kobo.207.1">main()</span></strong><span class="koboSpan" id="kobo.208.1"> calls the </span><strong class="source-inline"><span class="koboSpan" id="kobo.209.1">m()</span></strong><span class="koboSpan" id="kobo.210.1"> member function without explicitly resorting to a smart pointer, yet this program does not leak memory. </span><span class="koboSpan" id="kobo.210.2">Objects allocated through the </span><strong class="source-inline"><span class="koboSpan" id="kobo.211.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.212.1"> function are registered in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.213.1">GC</span></strong><span class="koboSpan" id="kobo.214.1"> object, and the destructor of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.215.1">GC</span></strong><span class="koboSpan" id="kobo.216.1"> object will ensure the registered memory blocks will </span><span class="No-Break"><span class="koboSpan" id="kobo.217.1">be deallocated.</span></span></p>
+<p><span class="koboSpan" id="kobo.218.1">How does </span><strong class="source-inline"><span class="koboSpan" id="kobo.219.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.220.1"> work, then, and why write such a function instead of simply overloading </span><strong class="source-inline"><span class="koboSpan" id="kobo.221.1">operator new()</span></strong><span class="koboSpan" id="kobo.222.1">? </span><span class="koboSpan" id="kobo.222.2">Well, remember that </span><strong class="source-inline"><span class="koboSpan" id="kobo.223.1">operator new()</span></strong><span class="koboSpan" id="kobo.224.1"> intervenes in the overall allocation process as an allocation function – one that trades in raw memory, not one that knows what the type of object to create will be. </span><span class="koboSpan" id="kobo.224.2">In this example, we want (a) memory to be allocated for the new object, (b) the object to be constructed (hence the need for the type and the arguments that will be passed to the constructor), and (c) to reject types that are not trivially destructible. </span><span class="koboSpan" id="kobo.224.3">We need to know the type of object to construct, something </span><strong class="source-inline"><span class="koboSpan" id="kobo.225.1">operator new()</span></strong><span class="koboSpan" id="kobo.226.1"> is not </span><span class="No-Break"><span class="koboSpan" id="kobo.227.1">aware of.</span></span></p>
+<p><span class="koboSpan" id="kobo.228.1">To be able to reclaim the memory for these objects at the end of program execution, we will need a form of globally available storage where we will put the pointers that have been allocated. </span><span class="koboSpan" id="kobo.228.2">We will call such pointers </span><strong class="source-inline"><span class="koboSpan" id="kobo.229.1">roots</span></strong><span class="koboSpan" id="kobo.230.1"> and store them in a singleton of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.231.1">GC</span></strong><span class="koboSpan" id="kobo.232.1"> type (inspired by the nickname typically associated with garbage collectors, even though this is not exactly what we are implementing – that name will convey the intent well, and it’s short enough not to get in </span><span class="No-Break"><span class="koboSpan" id="kobo.233.1">the way).</span></span></p>
+<p><span class="koboSpan" id="kobo.234.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.235.1">GC::add_root&lt;T&gt;(args...)</span></strong><span class="koboSpan" id="kobo.236.1"> member function will ensure that </span><strong class="source-inline"><span class="koboSpan" id="kobo.237.1">T</span></strong><span class="koboSpan" id="kobo.238.1"> is a trivially destructible type, allocate a chunk of </span><strong class="source-inline"><span class="koboSpan" id="kobo.239.1">sizeof(T)</span></strong><span class="koboSpan" id="kobo.240.1"> bytes, construct </span><strong class="source-inline"><span class="koboSpan" id="kobo.241.1">T(args...)</span></strong><span class="koboSpan" id="kobo.242.1"> at that location, store an abstract pointer (a </span><strong class="source-inline"><span class="koboSpan" id="kobo.243.1">void*</span></strong><span class="koboSpan" id="kobo.244.1">) to that object in </span><strong class="source-inline"><span class="koboSpan" id="kobo.245.1">roots</span></strong><span class="koboSpan" id="kobo.246.1">, and return a </span><strong class="source-inline"><span class="koboSpan" id="kobo.247.1">T*</span></strong><span class="koboSpan" id="kobo.248.1"> object to the newly created object. </span><span class="koboSpan" id="kobo.248.2">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.249.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.250.1"> function will allow user code to interface with </span><strong class="source-inline"><span class="koboSpan" id="kobo.251.1">GC::add_root&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.252.1"> in a simplified manner; since we want user code to use </span><strong class="source-inline"><span class="koboSpan" id="kobo.253.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.254.1">, we will qualify </span><strong class="source-inline"><span class="koboSpan" id="kobo.255.1">GC::add_root&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.256.1"> as </span><strong class="source-inline"><span class="koboSpan" id="kobo.257.1">private</span></strong><span class="koboSpan" id="kobo.258.1"> and make </span><strong class="source-inline"><span class="koboSpan" id="kobo.259.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.260.1"> a </span><strong class="source-inline"><span class="koboSpan" id="kobo.261.1">friend</span></strong><span class="koboSpan" id="kobo.262.1"> of the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.263.1">GC</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.264.1"> class.</span></span></p>
+<p><span class="koboSpan" id="kobo.265.1">Note that the </span><strong class="source-inline"><span class="koboSpan" id="kobo.266.1">GC</span></strong><span class="koboSpan" id="kobo.267.1"> class itself is not a generic class (it’s not a template). </span><span class="koboSpan" id="kobo.267.2">It exposes template member functions, but structurally only stores raw addresses (</span><strong class="source-inline"><span class="koboSpan" id="kobo.268.1">void*</span></strong><span class="koboSpan" id="kobo.269.1"> objects), which makes </span><a id="_idIndexMarker607"/><span class="koboSpan" id="kobo.270.1">this class mostly type-agnostic. </span><span class="koboSpan" id="kobo.270.2">This all leads to the </span><span class="No-Break"><span class="koboSpan" id="kobo.271.1">following code:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.272.1">
+#include &lt;vector&gt;
+#include &lt;memory&gt;
+#include &lt;string&gt;
+#include &lt;print&gt;
+#include &lt;type_traits&gt;
+class GC {
+</span><strong class="bold"><span class="koboSpan" id="kobo.273.1">   std::vector&lt;void*&gt; roots;</span></strong><span class="koboSpan" id="kobo.274.1">
+   GC() = default;
+   static auto &amp;get() {
+      static GC gc;
+      return gc;
+   }
+</span><strong class="bold"><span class="koboSpan" id="kobo.275.1">   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.275.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.276.1">      T *add_root(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.276.2">args) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.277.1">         // there will be no finalization</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.278.1">         static_assert(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.279.1">            std::is_trivially_destructible_v&lt;T&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.280.1">         );</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.281.1">         return static_cast&lt;T*&gt;(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.282.1">            roots.emplace_back(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.283.1">               new T(std::forward&lt;Args&gt;(args)...)</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.284.1">            )</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.285.1">         );</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.286.1">      }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.287.1">   // provide access privileges to gcnew&lt;T&gt;()</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.288.1">   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.288.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.289.1">      friend T* gcnew(Args&amp;&amp;...);</span></strong><span class="koboSpan" id="kobo.290.1">
+public:
+</span><strong class="bold"><span class="koboSpan" id="kobo.291.1">   ~GC() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.292.1">      std::print("~GC with {} objects to deallocate",</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.293.1">                 std::size(roots));</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.294.1">      for(auto p : roots) std::free(p);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.295.1">   }</span></strong><span class="koboSpan" id="kobo.296.1">
+   GC(const GC &amp;) = delete;
+   GC&amp; operator=(const GC &amp;) = delete;
+};
+</span><strong class="bold"><span class="koboSpan" id="kobo.297.1">template &lt;class T, class ... </span><span class="koboSpan" id="kobo.297.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.298.1">   T *gcnew(Args &amp;&amp;...args) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.299.1">      return GC::get().add_root&lt;T&gt;(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.300.1">         std::forward&lt;Args&gt;(args)...</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.301.1">      );</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.302.1">   }</span></strong></pre> <p><span class="koboSpan" id="kobo.303.1">As expected, </span><strong class="source-inline"><span class="koboSpan" id="kobo.304.1">GC::~GC()</span></strong><span class="koboSpan" id="kobo.305.1"> calls </span><strong class="source-inline"><span class="koboSpan" id="kobo.306.1">std::free()</span></strong><span class="koboSpan" id="kobo.307.1"> but invokes no destructor, as this implementation reclaims memory but does not </span><span class="No-Break"><span class="koboSpan" id="kobo.308.1">finalize objects.</span></span></p>
+<p><span class="koboSpan" id="kobo.309.1">This example shows a way to group memory reclamation as a single block to be executed at the end of a program. </span><span class="koboSpan" id="kobo.309.2">In code where there is more available memory than what the program requires, this can lead to a more streamlined program execution, albeit at the cost of a slight slowdown at program termination (of course, if you want to try this, please measure to see whether there are actual benefits for your code base!). </span><span class="koboSpan" id="kobo.309.3">It can also help us write analysis tools that examine how memory has been allocated throughout program execution and can be enhanced to collate additional information such as memory block size and alignment: we simply would need to keep pairs – or tuples, depending on the needs – instead of single </span><strong class="source-inline"><span class="koboSpan" id="kobo.310.1">void*</span></strong><span class="koboSpan" id="kobo.311.1"> objects in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.312.1">roots</span></strong><span class="koboSpan" id="kobo.313.1"> container to aggregate the </span><span class="No-Break"><span class="koboSpan" id="kobo.314.1">desired data.</span></span></p>
+<p><span class="koboSpan" id="kobo.315.1">Of course, not</span><a id="_idIndexMarker608"/><span class="koboSpan" id="kobo.316.1"> being able to finalize objects allocated through this mechanism can be a severe limitation, as no non-trivially destructible type can benefit from our efforts. </span><span class="koboSpan" id="kobo.316.2">Let’s see how we could add finalization support to </span><span class="No-Break"><span class="koboSpan" id="kobo.317.1">our design.</span></span></p>
+<h1 id="_idParaDest-163"><a id="_idTextAnchor168"/><span class="koboSpan" id="kobo.318.1">Reclamation and finalization at the end of the program</span></h1>
+<p><span class="koboSpan" id="kobo.319.1">Our second implementation</span><a id="_idIndexMarker609"/><span class="koboSpan" id="kobo.320.1"> will not only free the underlying storage for the objects allocated through our deferred reclamation system but will also finalize them by calling their destructors. </span><span class="koboSpan" id="kobo.320.2">To do so, we will need to remember the type of each object that goes through our system. </span><span class="koboSpan" id="kobo.320.3">There are, of course, many ways to achieve this, and we will see one </span><span class="No-Break"><span class="koboSpan" id="kobo.321.1">of them.</span></span></p>
+<p><span class="koboSpan" id="kobo.322.1">By ensuring the finalization of reclaimed objects, we can get rid of the trivially destructible requirement of our previous implementation. </span><span class="koboSpan" id="kobo.322.2">We still will not guarantee the order in which objects are finalized, so it’s important that reclaimed objects do not refer to each other during finalization if we are to have sound programs, but that’s a constraint many other popular programming languages also share. </span><span class="koboSpan" id="kobo.322.3">This implementation will, however, keep the singleton approach and finalize and then deallocate objects and their underlying storage at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.323.1">program execution.</span></span></p>
+<p><span class="koboSpan" id="kobo.324.1">As in the previous section, we will first look at client code. </span><span class="koboSpan" id="kobo.324.2">In this case, we will be using (and benefitting from) non-trivially destructible objects and use them to print out information during finalization: this will simplify the task of tracing program execution. </span><span class="koboSpan" id="kobo.324.3">Of course, we will also use trivially destructible types (such as </span><strong class="source-inline"><span class="koboSpan" id="kobo.325.1">struct X</span></strong><span class="koboSpan" id="kobo.326.1">, local to the </span><strong class="source-inline"><span class="koboSpan" id="kobo.327.1">h()</span></strong><span class="koboSpan" id="kobo.328.1"> function) as there is no reason not to support these too. </span><span class="koboSpan" id="kobo.328.2">Note that, often (but not always), non-trivially destructible types will be RAII types (see </span><a href="B21071_04.xhtml#_idTextAnchor062"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.329.1">Chapter 4</span></em></span></a><span class="koboSpan" id="kobo.330.1">) whose objects need to free resources before their life ends, but we just want a simple example here so doing anything non-trivial such as printing out some value (which is what we are doing with </span><strong class="source-inline"><span class="koboSpan" id="kobo.331.1">NamedThing</span></strong><span class="koboSpan" id="kobo.332.1">) will suffice in demonstrating that we handle non-trivially-destructible </span><span class="No-Break"><span class="koboSpan" id="kobo.333.1">types correctly.</span></span></p>
+<p><span class="koboSpan" id="kobo.334.1">We will use nested function calls to highlight the local aspect of construction and allocation, as well </span><a id="_idIndexMarker610"/><span class="koboSpan" id="kobo.335.1">as the non-local aspect of object destruction and deallocation since these will happen at program termination time. </span><span class="koboSpan" id="kobo.335.2">Our example code will be </span><span class="No-Break"><span class="koboSpan" id="kobo.336.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.337.1">
+// ...
+</span><strong class="bold"><span class="koboSpan" id="kobo.338.1">// note: not trivially destructible</span></strong><span class="koboSpan" id="kobo.339.1">
+struct NamedThing {
+   const char *name;
+   NamedThing(const char *name) : name{ name } {
+      std::print("{} ctor\n", name);
+   }
+   ~NamedThing() {
+      std::print("{} dtor\n", name);
+   }
+};
+void g() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.340.1">   [[maybe_unused]] auto p = gcnew&lt;NamedThing&gt;("hi");</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.341.1">   [[maybe_unused]] auto q = gcnew&lt;NamedThing&gt;("there");</span></strong><span class="koboSpan" id="kobo.342.1">
+}
+auto h() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.343.1">   struct X {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.344.1">      int m() const { return 123; }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.345.1">   };</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.346.1">   return gcnew&lt;X&gt;();</span></strong><span class="koboSpan" id="kobo.347.1">
+}
+</span><strong class="bold"><span class="koboSpan" id="kobo.348.1">auto f() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.349.1">   g();</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.350.1">   return h();</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.351.1">}</span></strong><span class="koboSpan" id="kobo.352.1">
+int main() {
+   std::print("Pre\n");
+   std::print("{}\n", </span><strong class="bold"><span class="koboSpan" id="kobo.353.1">f()-&gt;m()</span></strong><span class="koboSpan" id="kobo.354.1">);
+   std::print("Post\n");
+}</span></pre> <p><span class="koboSpan" id="kobo.355.1">When executed, you </span><a id="_idIndexMarker611"/><span class="koboSpan" id="kobo.356.1">should expect the following information to be printed on </span><span class="No-Break"><span class="koboSpan" id="kobo.357.1">the screen:</span></span></p>
+<pre class="console"><span class="koboSpan" id="kobo.358.1">
+Pre
+hi ctor
+there ctor
+123
+Post
+hi dtor
+there dtor</span></pre> <p><span class="koboSpan" id="kobo.359.1">As can be seen, the constructors happen when invoked in the source code, but the destructors are called at program termination (after the end of </span><strong class="source-inline"><span class="koboSpan" id="kobo.360.1">main()</span></strong><span class="koboSpan" id="kobo.361.1">) as we had announced we </span><span class="No-Break"><span class="koboSpan" id="kobo.362.1">would do.</span></span></p>
+<p class="callout-heading"><span class="koboSpan" id="kobo.363.1">On the importance of interfaces</span></p>
+<p class="callout"><span class="koboSpan" id="kobo.364.1">You might </span><a id="_idIndexMarker612"/><span class="koboSpan" id="kobo.365.1">notice that user code essentially did not change between the non-object-finalizing implementation and this one. </span><span class="koboSpan" id="kobo.365.2">The beauty here is that our upgrade, or so to say, is completely achieved in the implementation, leaving the interface stable and, as such, the differences transparent to client code. </span><span class="koboSpan" id="kobo.365.3">Being able to change the implementation without impacting interfaces is a sign of low coupling and is a noble objective for one to seek </span><span class="No-Break"><span class="koboSpan" id="kobo.366.1">to attain.</span></span></p>
+<p><span class="koboSpan" id="kobo.367.1">How did we get from a non-finalizing implementation to a finalizing one? </span><span class="koboSpan" id="kobo.367.2">Well, this implementation</span><a id="_idIndexMarker613"/><span class="koboSpan" id="kobo.368.1"> will also use a singleton named </span><strong class="source-inline"><span class="koboSpan" id="kobo.369.1">GC</span></strong><span class="koboSpan" id="kobo.370.1"> where “object roots” will be stored. </span><span class="koboSpan" id="kobo.370.2">In this case, however, we will store semantically enhanced objects, not just raw addresses (</span><strong class="source-inline"><span class="koboSpan" id="kobo.371.1">void*</span></strong><span class="koboSpan" id="kobo.372.1"> objects) as we did in the </span><span class="No-Break"><span class="koboSpan" id="kobo.373.1">previous implementation.</span></span></p>
+<p><span class="koboSpan" id="kobo.374.1">We will achieve this objective through a set of old yet </span><span class="No-Break"><span class="koboSpan" id="kobo.375.1">useful tricks:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.376.1">Our </span><strong class="source-inline"><span class="koboSpan" id="kobo.377.1">GC</span></strong><span class="koboSpan" id="kobo.378.1"> class will not be a generic class, as it would force us to write </span><strong class="source-inline"><span class="koboSpan" id="kobo.379.1">GC&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.380.1"> instead of just </span><strong class="source-inline"><span class="koboSpan" id="kobo.381.1">GC</span></strong><span class="koboSpan" id="kobo.382.1"> in our code, and find a way to have a distinct </span><strong class="source-inline"><span class="koboSpan" id="kobo.383.1">GC&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.384.1"> object for each </span><strong class="source-inline"><span class="koboSpan" id="kobo.385.1">T</span></strong><span class="koboSpan" id="kobo.386.1"> type. </span><span class="koboSpan" id="kobo.386.2">What we want is for a single </span><strong class="source-inline"><span class="koboSpan" id="kobo.387.1">GC</span></strong><span class="koboSpan" id="kobo.388.1"> object to store the required information for all objects that require deferred reclamation, regardless </span><span class="No-Break"><span class="koboSpan" id="kobo.389.1">of type.</span></span></li>
+<li><span class="koboSpan" id="kobo.390.1">In </span><strong class="source-inline"><span class="koboSpan" id="kobo.391.1">GC</span></strong><span class="koboSpan" id="kobo.392.1">, instead of storing objects of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.393.1">void*</span></strong><span class="koboSpan" id="kobo.394.1"> type, we will store objects of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.395.1">GC::GcRoot*</span></strong><span class="koboSpan" id="kobo.396.1"> type. </span><span class="koboSpan" id="kobo.396.2">These objects will not be generic either but will be polymorphic, exposing a </span><strong class="source-inline"><span class="koboSpan" id="kobo.397.1">destroy()</span></strong><span class="koboSpan" id="kobo.398.1"> service to destroy (call the destructor, then free the underlying </span><span class="No-Break"><span class="koboSpan" id="kobo.399.1">storage) objects.</span></span></li>
+<li><span class="koboSpan" id="kobo.400.1">There will be classes that derive from </span><strong class="source-inline"><span class="koboSpan" id="kobo.401.1">GC::GcRoot</span></strong><span class="koboSpan" id="kobo.402.1">. </span><span class="koboSpan" id="kobo.402.2">We will call such classes </span><strong class="source-inline"><span class="koboSpan" id="kobo.403.1">GC::GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.404.1"> and there will be one for each type </span><strong class="source-inline"><span class="koboSpan" id="kobo.405.1">T</span></strong><span class="koboSpan" id="kobo.406.1"> in a program that is involved in our deferred reclamation mechanism. </span><span class="koboSpan" id="kobo.406.2">These are where the type-specific code will </span><span class="No-Break"><span class="koboSpan" id="kobo.407.1">be “hidden.”</span></span></li>
+<li><span class="koboSpan" id="kobo.408.1">By keeping </span><strong class="source-inline"><span class="koboSpan" id="kobo.409.1">GC::GcRoot*</span></strong><span class="koboSpan" id="kobo.410.1"> objects as roots but storing </span><strong class="source-inline"><span class="koboSpan" id="kobo.411.1">GC::GcNode&lt;T&gt;*</span></strong><span class="koboSpan" id="kobo.412.1"> in practice, we will be able to deallocate and finalize the </span><strong class="source-inline"><span class="koboSpan" id="kobo.413.1">T</span></strong> <span class="No-Break"><span class="koboSpan" id="kobo.414.1">object appropriately.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.415.1">The code for this </span><span class="No-Break"><span class="koboSpan" id="kobo.416.1">implementation follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.417.1">
+#include &lt;vector&gt;
+#include &lt;memory&gt;
+#include &lt;print&gt;
+class GC {
+</span><strong class="bold"><span class="koboSpan" id="kobo.418.1">   class GcRoot {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.419.1">      void *p;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.420.1">   public:</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.421.1">      auto get() const noexcept { return p; }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.422.1">      GcRoot(void *p) : p{ p } {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.423.1">      }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.424.1">      GcRoot(const GcRoot &amp;) = delete;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.425.1">      GcRoot&amp; operator=(const GcRoot &amp;) = delete;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.426.1">      virtual void destroy(void *) const noexcept = 0;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.427.1">      virtual ~GcRoot() = default;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.428.1">   };</span></strong><span class="koboSpan" id="kobo.429.1">
+   // ...</span></pre> <p><span class="koboSpan" id="kobo.430.1">As can be</span><a id="_idIndexMarker614"/><span class="koboSpan" id="kobo.431.1"> seen, </span><strong class="source-inline"><span class="koboSpan" id="kobo.432.1">GC::GcRoot</span></strong><span class="koboSpan" id="kobo.433.1"> is an abstraction that trades in raw pointers (objects of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.434.1">void*</span></strong><span class="koboSpan" id="kobo.435.1"> type) and contains no type-specific information, </span><span class="No-Break"><span class="koboSpan" id="kobo.436.1">per se.</span></span></p>
+<p><span class="koboSpan" id="kobo.437.1">The type-specific information is held in derived classes of the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.438.1">GcNode&lt;T&gt;</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.439.1"> type:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.440.1">
+   // ...
+</span><strong class="bold"><span class="koboSpan" id="kobo.441.1">   template &lt;class T&gt; class GcNode : public GcRoot {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.442.1">      void destroy(void* q) const noexcept override {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.443.1">         delete static_cast&lt;T*&gt;(q);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.444.1">      }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.445.1">   public:</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.446.1">      template &lt;class ... </span><span class="koboSpan" id="kobo.446.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.447.1">         GcNode(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.447.2">args) :</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.448.1">            GcRoot(new T(std::forward&lt;Args&gt;(args)...)) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.449.1">         }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.450.1">      ~GcNode() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.451.1">         destroy(get());</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.452.1">      }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.453.1">   };</span></strong><span class="koboSpan" id="kobo.454.1">
+   // ...</span></pre> <p><span class="koboSpan" id="kobo.455.1">As we can see, a </span><strong class="source-inline"><span class="koboSpan" id="kobo.456.1">GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.457.1"> object can be constructed with any sequence of arguments suitable for type </span><strong class="source-inline"><span class="koboSpan" id="kobo.458.1">T</span></strong><span class="koboSpan" id="kobo.459.1">, perfectly forwarding them to the constructor of a </span><strong class="source-inline"><span class="koboSpan" id="kobo.460.1">T</span></strong><span class="koboSpan" id="kobo.461.1"> object. </span><span class="koboSpan" id="kobo.461.2">The actual (raw) pointers are stored in the base class part of the object (the </span><strong class="source-inline"><span class="koboSpan" id="kobo.462.1">GcRoot</span></strong><span class="koboSpan" id="kobo.463.1"> but the destructor of a </span><strong class="source-inline"><span class="koboSpan" id="kobo.464.1">GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.465.1"> invokes </span><strong class="source-inline"><span class="koboSpan" id="kobo.466.1">destroy()</span></strong><span class="koboSpan" id="kobo.467.1"> on that raw pointer, which casts </span><a id="_idIndexMarker615"/><span class="koboSpan" id="kobo.468.1">the </span><strong class="source-inline"><span class="koboSpan" id="kobo.469.1">void*</span></strong><span class="koboSpan" id="kobo.470.1"> to the appropriate </span><strong class="source-inline"><span class="koboSpan" id="kobo.471.1">T*</span></strong><span class="koboSpan" id="kobo.472.1"> type before invoking </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.473.1">operator delete()</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.474.1">.</span></span></p>
+<p><span class="koboSpan" id="kobo.475.1">Through the </span><strong class="source-inline"><span class="koboSpan" id="kobo.476.1">GcRoot</span></strong><span class="koboSpan" id="kobo.477.1"> abstraction, a </span><strong class="source-inline"><span class="koboSpan" id="kobo.478.1">GC</span></strong><span class="koboSpan" id="kobo.479.1"> object is kept apart from type-specific details of the objects it needs to reclaim at a later point. </span><span class="koboSpan" id="kobo.479.2">This implementation can be seen as a form of </span><strong class="bold"><span class="koboSpan" id="kobo.480.1">external polymorphism</span></strong><span class="koboSpan" id="kobo.481.1">, where</span><a id="_idIndexMarker616"/><span class="koboSpan" id="kobo.482.1"> we use a polymorphic hierarchy “underneath the covers” to implement functionality in such a way as to keep client </span><span class="No-Break"><span class="koboSpan" id="kobo.483.1">code unaware.</span></span></p>
+<p><span class="koboSpan" id="kobo.484.1">Given what we have written so far, our work is </span><span class="No-Break"><span class="koboSpan" id="kobo.485.1">almost done:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.486.1">Lifetime management can be delegated to smart pointers, as the finalization code is found in the destructor of </span><strong class="source-inline"><span class="koboSpan" id="kobo.487.1">GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.488.1"> objects. </span><span class="koboSpan" id="kobo.488.2">Here, we will be using </span><strong class="source-inline"><span class="koboSpan" id="kobo.489.1">std::unique_ptr&lt;GcRoot&gt;</span></strong><span class="koboSpan" id="kobo.490.1"> objects (simple </span><span class="No-Break"><span class="koboSpan" id="kobo.491.1">and efficient).</span></span></li>
+<li><span class="koboSpan" id="kobo.492.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.493.1">add_root()</span></strong><span class="koboSpan" id="kobo.494.1"> function will create </span><strong class="source-inline"><span class="koboSpan" id="kobo.495.1">GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.496.1"> objects, store them in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.497.1">roots</span></strong><span class="koboSpan" id="kobo.498.1"> container as pointers to their base class, </span><strong class="source-inline"><span class="koboSpan" id="kobo.499.1">GcRoot</span></strong><span class="koboSpan" id="kobo.500.1">, and return the </span><strong class="source-inline"><span class="koboSpan" id="kobo.501.1">T*</span></strong><span class="koboSpan" id="kobo.502.1"> pointing to the newly constructed object. </span><span class="koboSpan" id="kobo.502.2">Thus, it installs lifetime management mechanisms while exposing pointers in ways that look natural to users of </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.503.1">operator new()</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.504.1">.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.505.1">That part of</span><a id="_idIndexMarker617"/><span class="koboSpan" id="kobo.506.1"> the </span><span class="No-Break"><span class="koboSpan" id="kobo.507.1">code follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.508.1">
+   // ...
+</span><strong class="bold"><span class="koboSpan" id="kobo.509.1">   std::vector&lt;std::unique_ptr&lt;GcRoot&gt;&gt; roots;</span></strong><span class="koboSpan" id="kobo.510.1">
+   GC() = default;
+   static auto &amp;get() {
+      static GC gc;
+      return gc;
+   }
+</span><strong class="bold"><span class="koboSpan" id="kobo.511.1">   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.511.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.512.1">      T *add_root(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.512.2">args) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.513.1">         return static_cast&lt;T*&gt;(roots.emplace_back(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.514.1">            std::make_unique&lt;GcNode&lt;T&gt;&gt;(</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.515.1">               std::forward&lt;Args&gt;(args)...)</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.516.1">         )-&gt;get());</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.517.1">      }</span></strong><span class="koboSpan" id="kobo.518.1">
+   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.518.2">Args&gt;
+      friend T* gcnew(Args&amp;&amp;...);
+public:
+   GC(const GC &amp;) = delete;
+   GC&amp; operator=(const GC &amp;) = delete;
+};
+template &lt;class T, class ... </span><span class="koboSpan" id="kobo.518.3">Args&gt;
+   T *gcnew(Args &amp;&amp;...args) {
+      return GC::get().add_root&lt;T&gt;(
+         std::forward&lt;Args&gt;(args)...
+</span><span class="koboSpan" id="kobo.518.4">      );
+   }
+// ...</span></pre> <p><span class="koboSpan" id="kobo.519.1">So, there we have it: a way to create objects at selected points, and destroy and reclaim them all at program termination, with the corresponding upsides and downsides, of course. </span><span class="koboSpan" id="kobo.519.2">These tools are useful, but they are also niche tools that you should use (and customize to your needs) if there is indeed a need to </span><span class="No-Break"><span class="koboSpan" id="kobo.520.1">do so.</span></span></p>
+<p><span class="koboSpan" id="kobo.521.1">So far, we have </span><a id="_idIndexMarker618"/><span class="koboSpan" id="kobo.522.1">seen deferred reclamation facilities that terminate (and finalize, depending on the tool) at program termination. </span><span class="koboSpan" id="kobo.522.2">We still need a mechanism for reclamation at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.523.1">selected scopes.</span></span></p>
+<h1 id="_idParaDest-164"><a id="_idTextAnchor169"/><span class="koboSpan" id="kobo.524.1">Reclamation and finalization at the end of the scope</span></h1>
+<p><span class="koboSpan" id="kobo.525.1">Our third and last </span><a id="_idIndexMarker619"/><span class="koboSpan" id="kobo.526.1">implementation for this chapter will ensure reclamation and finalization at the end of the scope, but only on demand. </span><span class="koboSpan" id="kobo.526.2">By this, we mean that if a user wants to reclaim unused objects that are subject to deferred reclamation at the end of a scope, it will be possible to do so. </span><span class="koboSpan" id="kobo.526.3">Objects subject to deferred reclamation that are still considered in use will not be reclaimed, and objects that are not in use will not be reclaimed if the user code does not ask for it. </span><span class="koboSpan" id="kobo.526.4">Of course, at program termination, all remaining objects that are subject to deferred reclamation will be claimed, as we want to </span><span class="No-Break"><span class="koboSpan" id="kobo.527.1">avoid leaks.</span></span></p>
+<p><span class="koboSpan" id="kobo.528.1">This implementation will be more subtle than the previous ones, as we will need to consider (a) whether an object is still being referred to at a given point in program execution and (b) whether there is a need to collect objects that are not being referred to at </span><span class="No-Break"><span class="koboSpan" id="kobo.529.1">that time.</span></span></p>
+<p><span class="koboSpan" id="kobo.530.1">To get to that point, we will inspire ourselves from </span><strong class="source-inline"><span class="koboSpan" id="kobo.531.1">std::shared_ptr</span></strong><span class="koboSpan" id="kobo.532.1">, a type we provided an academic and simplified version of in </span><a href="B21071_06.xhtml#_idTextAnchor096"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.533.1">Chapter 6</span></em></span></a><span class="koboSpan" id="kobo.534.1">, and will write a </span><strong class="source-inline"><span class="koboSpan" id="kobo.535.1">counting_ptr&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.536.1"> type that, instead of destroying the pointee when its last client disconnects, will mark it as ready to </span><span class="No-Break"><span class="koboSpan" id="kobo.537.1">be reclaimed.</span></span></p>
+<p><span class="koboSpan" id="kobo.538.1">The client code for this example follows. </span><span class="koboSpan" id="kobo.538.2">Pay attention to the presence of objects of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.539.1">scoped_collect</span></strong><span class="koboSpan" id="kobo.540.1"> type in some scopes. </span><span class="koboSpan" id="kobo.540.2">These represent requests made by client code to reclaim objects </span><a id="_idIndexMarker620"/><span class="koboSpan" id="kobo.541.1">not in use anymore at the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.542.1">that scope:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.543.1">
+// ...
+</span><strong class="bold"><span class="koboSpan" id="kobo.544.1">// note: not trivially destructible</span></strong><span class="koboSpan" id="kobo.545.1">
+struct NamedThing {
+   const char *name;
+   NamedThing(const char *name) : name{ name } {
+      std::cout &lt;&lt; name &lt;&lt; " ctor" &lt;&lt; std::endl;
+   }
+   ~NamedThing() {
+      std::cout &lt;&lt; name &lt;&lt; " dtor" &lt;&lt; std::endl;
+   }
+};
+auto g() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.546.1">   auto _ = scoped_collect{};</span></strong><span class="koboSpan" id="kobo.547.1">
+   [[maybe_unused]] auto p = gcnew&lt;NamedThing&gt;("hi");
+   auto q = gcnew&lt;NamedThing&gt;("there");
+   return q;
+} </span><strong class="bold"><span class="koboSpan" id="kobo.548.1">// a reclamation will occur here</span></strong><span class="koboSpan" id="kobo.549.1">
+auto h() {
+   struct X {
+      int m() const { return 123; }
+   };
+   return gcnew&lt;X&gt;();
+}
+auto f() {
+</span><strong class="bold"><span class="koboSpan" id="kobo.550.1">   auto _ = scoped_collect{};</span></strong><span class="koboSpan" id="kobo.551.1">
+   auto p = g();
+   std::cout &lt;&lt; '\"' &lt;&lt; p-&gt;name &lt;&lt; '\"' &lt;&lt; std::endl;
+} </span><strong class="bold"><span class="koboSpan" id="kobo.552.1">// a reclamation will occur here</span></strong><span class="koboSpan" id="kobo.553.1">
+int main() {
+   using namespace std;
+   cout &lt;&lt; "Pre" &lt;&lt; endl;
+   f();
+   cout &lt;&lt; h()-&gt;m() &lt;&lt; endl;
+   cout &lt;&lt; "Post" &lt;&lt; endl;
+} </span><strong class="bold"><span class="koboSpan" id="kobo.554.1">// a reclamation will occur here (end of program)</span></strong></pre> <p><span class="koboSpan" id="kobo.555.1">The end of a scope where a </span><strong class="source-inline"><span class="koboSpan" id="kobo.556.1">scoped_collect</span></strong><span class="koboSpan" id="kobo.557.1"> object lives will lead to the reclamation of all objects allocated through </span><strong class="source-inline"><span class="koboSpan" id="kobo.558.1">gcnew&lt;T&gt;()</span></strong><span class="koboSpan" id="kobo.559.1"> that are not referenced anymore at that point; this holds regardless of whether they were allocated in that scope or somewhere else in the program. </span><span class="koboSpan" id="kobo.559.2">The</span><a id="_idIndexMarker621"/><span class="koboSpan" id="kobo.560.1"> intent here is that the end of such as scope is a point where we are willing to “pay” the time and effort required to collect a group of objects. </span><span class="koboSpan" id="kobo.560.2">Do not use a </span><strong class="source-inline"><span class="koboSpan" id="kobo.561.1">scoped_collect</span></strong><span class="koboSpan" id="kobo.562.1"> object in a scope where either speed or deterministic behavior is of </span><span class="No-Break"><span class="koboSpan" id="kobo.563.1">the essence!</span></span></p>
+<p><span class="koboSpan" id="kobo.564.1">Executing this code, we end up with </span><span class="No-Break"><span class="koboSpan" id="kobo.565.1">the following:</span></span></p>
+<pre class="console"><span class="koboSpan" id="kobo.566.1">
+Pre
+hi ctor
+there ctor
+hi dtor
+"there"
+there dtor
+123
+Post</span></pre> <p><span class="koboSpan" id="kobo.567.1">As we can see, objects that are still being referred to remain available, and objects that are not being referred to are collected either when the destructor of a </span><strong class="source-inline"><span class="koboSpan" id="kobo.568.1">scoped_collect</span></strong><span class="koboSpan" id="kobo.569.1"> object is called, or at program termination if there are still some reclaimable objects in the program at </span><span class="No-Break"><span class="koboSpan" id="kobo.570.1">that point.</span></span></p>
+<p><span class="koboSpan" id="kobo.571.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.572.1">scoped_collect</span></strong><span class="koboSpan" id="kobo.573.1"> type itself is very simple, its main role being to interact with the </span><strong class="source-inline"><span class="koboSpan" id="kobo.574.1">GC</span></strong><span class="koboSpan" id="kobo.575.1"> global object. </span><span class="koboSpan" id="kobo.575.2">It is simply a non-copiable, non-movable RAII object that invokes a reclamation at </span><a id="_idIndexMarker622"/><span class="koboSpan" id="kobo.576.1">the end of </span><span class="No-Break"><span class="koboSpan" id="kobo.577.1">its lifetime:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.578.1">
+// ...
+</span><span class="koboSpan" id="kobo.578.2">struct scoped_collect {
+   scoped_collect() = default;
+   scoped_collect(const scoped_collect &amp;) = delete;
+   scoped_collect(scoped_collect &amp;&amp;) = delete;
+   scoped_collect&amp;
+      operator=(const scoped_collect &amp;) = delete;
+   scoped_collect &amp;operator=(scoped_collect &amp;&amp;) = delete;
+</span><strong class="bold"><span class="koboSpan" id="kobo.579.1">   ~scoped_collect() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.580.1">      GC::get().collect();</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.581.1">   }</span></strong><span class="koboSpan" id="kobo.582.1">
+};
+// ...</span></pre> <p><span class="koboSpan" id="kobo.583.1">How does this whole infrastructure work? </span><span class="koboSpan" id="kobo.583.2">Let’s take it step by step. </span><span class="koboSpan" id="kobo.583.3">We will inspire ourselves from the previous sections of this chapter, where we initially collect all objects at the end of program execution, and then add finalization for these objects. </span><span class="koboSpan" id="kobo.583.4">The novelty in this section is that we will add the possibility of collecting objects at various times in program execution and implement the required code to track references </span><span class="No-Break"><span class="koboSpan" id="kobo.584.1">to objects.</span></span></p>
+<p><span class="koboSpan" id="kobo.585.1">To track references to objects, we will use objects of the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.586.1">counting_ptr&lt;T&gt;</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.587.1"> type:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.588.1">
+#include &lt;vector&gt;
+#include &lt;memory&gt;
+#include &lt;string&gt;
+#include &lt;iostream&gt;
+#include &lt;atomic&gt;
+#include &lt;functional&gt;
+#include &lt;utility&gt;</span></pre> <p><span class="koboSpan" id="kobo.589.1">As can be seen, we can (and do!) implement this type solely through standard tools. </span><span class="koboSpan" id="kobo.589.2">Note that the </span><strong class="source-inline"><span class="koboSpan" id="kobo.590.1">count</span></strong><span class="koboSpan" id="kobo.591.1"> data member</span><a id="_idIndexMarker623"/><span class="koboSpan" id="kobo.592.1"> is a pointer as it might be shared between instances </span><span class="No-Break"><span class="koboSpan" id="kobo.593.1">of </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.594.1">counting_ptr&lt;T&gt;</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.595.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.596.1">
+template &lt;class T&gt;
+   class counting_ptr {
+</span><strong class="bold"><span class="koboSpan" id="kobo.597.1">      using count_type = std::atomic&lt;int&gt;;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.598.1">      T *p;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.599.1">      count_type *count;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.600.1">      std::function&lt;void()&gt; mark;</span></strong><span class="koboSpan" id="kobo.601.1">
+   public:
+      template &lt;</span><strong class="bold"><span class="koboSpan" id="kobo.602.1">class M</span></strong><span class="koboSpan" id="kobo.603.1">&gt;
+         constexpr counting_ptr(T *p</span><strong class="bold"><span class="koboSpan" id="kobo.604.1">, M mark</span></strong><span class="koboSpan" id="kobo.605.1">) try :
+            p{ p }</span><strong class="bold"><span class="koboSpan" id="kobo.606.1">, mark{ mark }</span></strong><span class="koboSpan" id="kobo.607.1"> {
+               count = new count_type{ 1 };
+         } catch(...) {
+            delete p;
+            throw;
+         }
+      T&amp; operator*() noexcept {
+         return *p;
+      }
+      const T&amp; operator*() const noexcept {
+         return *p;
+      }
+      T* operator-&gt;() noexcept {
+         return p;
+      }
+      const T* operator-&gt;() const noexcept {
+         return p;
+      }
+      constexpr bool
+         operator==(const counting_ptr &amp;other) const {
+         return p == other.p;
+      }
+</span><strong class="bold"><span class="koboSpan" id="kobo.608.1">      // operator!= can be omitted since C++20</span></strong><span class="koboSpan" id="kobo.609.1">
+      constexpr bool
+         operator!=(const counting_ptr &amp;other) const {
+         return !(*this == other);
+      }
+</span><strong class="bold"><span class="koboSpan" id="kobo.610.1">      // we allow comparing counting_ptr&lt;T&gt; objects</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.611.1">      // to objects of type U* or counting_ptr&lt;U&gt; to</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.612.1">      // simplify the handling of types in a class</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.613.1">      // hierarchy</span></strong><span class="koboSpan" id="kobo.614.1">
+      template &lt;class U&gt;
+         constexpr bool
+           operator==(const counting_ptr&lt;U&gt; &amp;other) const {
+            return p == &amp;*other;
+         }
+      template &lt;class U&gt;
+         constexpr bool
+           operator!=(const counting_ptr&lt;U&gt; &amp;other) const {
+            return !(*this == other);
+         }
+      template &lt;class U&gt;
+         constexpr bool operator==(const U *q) const {
+            return p == q;
+         }
+      template &lt;class U&gt;
+         constexpr bool operator!=(const U *q) const {
+            return !(*this == q);
+         }
+       // ...</span></pre> <p><span class="koboSpan" id="kobo.615.1">Now that the </span><a id="_idIndexMarker624"/><span class="koboSpan" id="kobo.616.1">relational operators are in place, we can implement copy and move semantics for </span><span class="No-Break"><span class="koboSpan" id="kobo.617.1">our type:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.618.1">
+      // ...
+</span><span class="koboSpan" id="kobo.618.2">      void swap(counting_ptr &amp;other) {
+         using std::swap;
+         swap(p, other.p);
+         swap(count, other.count);
+         </span><strong class="bold"><span class="koboSpan" id="kobo.619.1">swap(mark, other.mark);</span></strong><span class="koboSpan" id="kobo.620.1">
+      }
+      constexpr operator bool() const noexcept {
+         return p != nullptr;
+      }
+      counting_ptr(counting_ptr &amp;&amp;other) noexcept
+         : p{ std::exchange(other.p, nullptr) },
+           count{ std::exchange(other.count, nullptr) },
+           </span><strong class="bold"><span class="koboSpan" id="kobo.621.1">mark{ other.mark }</span></strong><span class="koboSpan" id="kobo.622.1"> {
+      }
+      counting_ptr &amp;
+         operator=(counting_ptr &amp;&amp;other) noexcept {
+         counting_ptr{ std::move(other) }.swap(*this);
+         return *this;
+      }
+      counting_ptr(const counting_ptr &amp;other)
+         : p{ other.p }, count{ other.count },
+           mark{ other.mark } {
+         if (count) ++(*count);
+      }
+      counting_ptr &amp;operator=(const counting_ptr &amp;other) {
+         counting_ptr{ other }.swap(*this);
+         return *this;
+      }
+      ~counting_ptr() {
+         if (count) {
+            if ((*count)-- == 1) {
+</span><strong class="bold"><span class="koboSpan" id="kobo.623.1">               mark();</span></strong><span class="koboSpan" id="kobo.624.1">
+               delete count;
+            }
+         }
+      }
+   };
+namespace std {
+   template &lt;class T, class M&gt;
+      void swap(counting_ptr&lt;T&gt; &amp;a, counting_ptr&lt;T&gt; &amp;b) {
+         a.swap(b);
+      }
+}
+// ...</span></pre> <p><span class="koboSpan" id="kobo.625.1">Instead of destroying the counter and the pointee like a </span><strong class="source-inline"><span class="koboSpan" id="kobo.626.1">shared_ptr&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.627.1"> would, </span><strong class="source-inline"><span class="koboSpan" id="kobo.628.1">counting_ptr&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.629.1"> will delete the counter but “mark” the pointee, making it a candidate for </span><span class="No-Break"><span class="koboSpan" id="kobo.630.1">ulterior reclamation.</span></span></p>
+<p><span class="koboSpan" id="kobo.631.1">The general </span><strong class="source-inline"><span class="koboSpan" id="kobo.632.1">GC</span></strong><span class="koboSpan" id="kobo.633.1">, </span><strong class="source-inline"><span class="koboSpan" id="kobo.634.1">GC::GcRoot</span></strong><span class="koboSpan" id="kobo.635.1">, and </span><strong class="source-inline"><span class="koboSpan" id="kobo.636.1">GC::GcNode&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.637.1"> approach from the previous section remains, but is enhanced </span><span class="No-Break"><span class="koboSpan" id="kobo.638.1">as follows:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.639.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.640.1">roots</span></strong><span class="koboSpan" id="kobo.641.1"> container couples a </span><strong class="source-inline"><span class="koboSpan" id="kobo.642.1">unique_ptr&lt;GcRoot&gt;</span></strong><span class="koboSpan" id="kobo.643.1"> with a “mark” data member of </span><span class="No-Break"><span class="koboSpan" id="kobo.644.1">type </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.645.1">bool</span></strong></span></li>
+<li><span class="koboSpan" id="kobo.646.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.647.1">make_collectable(p)</span></strong><span class="koboSpan" id="kobo.648.1"> member function marks the root associated with the </span><strong class="source-inline"><span class="koboSpan" id="kobo.649.1">p</span></strong><span class="koboSpan" id="kobo.650.1"> pointer </span><span class="No-Break"><span class="koboSpan" id="kobo.651.1">as collectable</span></span></li>
+<li><span class="koboSpan" id="kobo.652.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.653.1">collect()</span></strong><span class="koboSpan" id="kobo.654.1"> member functions reclaim all the roots that are marked </span><span class="No-Break"><span class="koboSpan" id="kobo.655.1">as collectable</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.656.1">What this </span><a id="_idIndexMarker625"/><span class="koboSpan" id="kobo.657.1">implementation does is (a) associate a Boolean mark (collect or do not collect) with each reclaimable pointer, (b) use </span><strong class="source-inline"><span class="koboSpan" id="kobo.658.1">counting_ptr&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.659.1"> object with each </span><strong class="source-inline"><span class="koboSpan" id="kobo.660.1">T*</span></strong><span class="koboSpan" id="kobo.661.1"> to keep track of how each pointee is being used, and (c) collect reclaimable pointees as a group whenever a collection request arrives. </span><span class="koboSpan" id="kobo.661.2">The easiest way to request such a collection is to reach the destructor of a </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.662.1">scoped_collect</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.663.1"> object.</span></span></p>
+<p><span class="koboSpan" id="kobo.664.1">The code for this</span><a id="_idIndexMarker626"/><span class="koboSpan" id="kobo.665.1"> somewhat more sophisticated version is </span><span class="No-Break"><span class="koboSpan" id="kobo.666.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.667.1">
+// ...
+</span><span class="koboSpan" id="kobo.667.2">class GC {
+   class GcRoot {
+      void *p;
+   public:
+      auto get() const noexcept { return p; }
+      GcRoot(void *p) : p{ p } {
+      }
+      GcRoot(const GcRoot&amp;) = delete;
+      GcRoot&amp; operator=(const GcRoot&amp;) = delete;
+      virtual void destroy(void*) const noexcept = 0;
+      virtual ~GcRoot() = default;
+   };
+   template &lt;class T&gt; class GcNode : public GcRoot {
+      void destroy(void *q) const noexcept override {
+         delete static_cast&lt;T*&gt;(q);
+      }
+   public:
+      template &lt;class ... </span><span class="koboSpan" id="kobo.667.3">Args&gt;
+         GcNode(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.667.4">args)
+            : GcRoot(new T(std::forward&lt;Args&gt;(args)...)) {
+         }
+      ~GcNode() {
+         destroy(get());
+      }
+   };
+</span><strong class="bold"><span class="koboSpan" id="kobo.668.1">   std::vector&lt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.669.1">      std::pair&lt;std::unique_ptr&lt;GcRoot&gt;, bool&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.670.1">   &gt; roots;</span></strong><span class="koboSpan" id="kobo.671.1">
+   GC() = default;
+   static auto &amp;get() {
+      static GC gc;
+      return gc;
+   }</span></pre> <p><span class="koboSpan" id="kobo.672.1">The collection</span><a id="_idIndexMarker627"/><span class="koboSpan" id="kobo.673.1"> functions in this case would be </span><span class="No-Break"><span class="koboSpan" id="kobo.674.1">as follows:</span></span></p>
+<pre class="source-code">
+<strong class="bold"><span class="koboSpan" id="kobo.675.1">   void make_collectable(void *p) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.676.1">      for (auto &amp;[q, coll] : roots)</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.677.1">         if (static_cast&lt;GcRoot*&gt;(p) == q.get())</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.678.1">            coll = true;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.679.1">   }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.680.1">   void collect() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.681.1">      for (auto p = std::begin(roots);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.682.1">           p != std::end(roots); ) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.683.1">         if (auto &amp;[ptr, collectible] = *p; collectible) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.684.1">            ptr = nullptr;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.685.1">            p = roots.erase(p);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.686.1">         } else {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.687.1">            ++p;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.688.1">         }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.689.1">      }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.690.1">   }</span></strong><span class="koboSpan" id="kobo.691.1">
+   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.691.2">Args&gt;
+      auto add_root(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.691.3">args) {
+         auto q = static_cast&lt;T*&gt;(roots.emplace_back(
+            std::make_unique&lt;GcNode&lt;T&gt;&gt;(
+               std::forward&lt;Args&gt;(args)...
+</span><span class="koboSpan" id="kobo.691.4">            )</span><strong class="bold"><span class="koboSpan" id="kobo.692.1">, false</span></strong><span class="koboSpan" id="kobo.693.1">
+         ).first-&gt;get());
+</span><strong class="bold"><span class="koboSpan" id="kobo.694.1">         // the marking function is implemented as</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.695.1">         // a lambda expression that iterates through</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.696.1">         // the roots, then finds and marks for</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.697.1">         // reclamation pointer q. </span><span class="koboSpan" id="kobo.697.2">It is overly</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.698.1">         // simplified (linear search) and you are</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.699.1">         // welcome to do something better!</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.700.1">         return counting_ptr{</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.701.1">            q, [&amp;,q]() {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.702.1">               for (auto &amp;[p, coll] : roots)</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.703.1">                  if (static_cast&lt;void*&gt;(q) ==</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.704.1">                      p.get()-&gt;get()) {</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.705.1">                     coll = true;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.706.1">                     return;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.707.1">                  }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.708.1">            }</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.709.1">         };</span></strong><span class="koboSpan" id="kobo.710.1">
+      }
+</span><strong class="bold"><span class="koboSpan" id="kobo.711.1">   template &lt;class T, class ... </span><span class="koboSpan" id="kobo.711.2">Args&gt;</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.712.1">      friend counting_ptr&lt;T&gt; gcnew(Args&amp;&amp;...);</span></strong>
+<strong class="bold"><span class="koboSpan" id="kobo.713.1">   friend struct scoped_collect;</span></strong><span class="koboSpan" id="kobo.714.1">
+public:
+   GC(const GC &amp;) = delete;
+   GC&amp; operator=(const GC &amp;) = delete;
+};
+// ...
+</span><span class="koboSpan" id="kobo.714.2">template &lt;class T, class ... </span><span class="koboSpan" id="kobo.714.3">Args&gt;
+   counting_ptr&lt;T&gt; gcnew(Args &amp;&amp;... </span><span class="koboSpan" id="kobo.714.4">args) {
+      return GC::get().add_root&lt;T&gt;(
+         std::forward&lt;Args&gt;(args)...
+</span><span class="koboSpan" id="kobo.714.5">      );
+   }
+// ...</span></pre> <p><span class="koboSpan" id="kobo.715.1">As you can see, dear reader, this last example would benefit from several optimizations, but it works and is meant to be simple enough to understand </span><span class="No-Break"><span class="koboSpan" id="kobo.716.1">and improve.</span></span></p>
+<p><span class="koboSpan" id="kobo.717.1">We now</span><a id="_idIndexMarker628"/><span class="koboSpan" id="kobo.718.1"> know it is possible to reclaim objects in groups in C++, as it is in other popular languages. </span><span class="koboSpan" id="kobo.718.2">It might not be idiomatic C++ code, but deferred reclamation can be achieved with reasonable effort, on an opt-in basis. </span><span class="No-Break"><span class="koboSpan" id="kobo.719.1">Not bad!</span></span></p>
+<h1 id="_idParaDest-165"><a id="_idTextAnchor170"/><span class="koboSpan" id="kobo.720.1">Summary</span></h1>
+<p><span class="koboSpan" id="kobo.721.1">This chapter took us in the territory of deferred reclamation, a territory that’s unfamiliar to many C++ programmers. </span><span class="koboSpan" id="kobo.721.2">We saw ways in which we can reclaim objects in groups at specific points in a program, discussed restrictions on what could be done when reclaiming such objects, and examined various techniques to finalize objects before freeing their associated </span><span class="No-Break"><span class="koboSpan" id="kobo.722.1">memory storage.</span></span></p>
+<p><span class="koboSpan" id="kobo.723.1">We are now ready to look at how memory management interacts with C++ containers, an important topic that will occupy us in the next </span><span class="No-Break"><span class="koboSpan" id="kobo.724.1">three chapters.</span></span></p>
+<p><span class="koboSpan" id="kobo.725.1">Indeed, we could write containers that handle memory explicitly, but in general, that would be counterproductive (for example, if we tied </span><strong class="source-inline"><span class="koboSpan" id="kobo.726.1">std::vector&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.727.1"> to </span><strong class="source-inline"><span class="koboSpan" id="kobo.728.1">new</span></strong><span class="koboSpan" id="kobo.729.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.730.1">delete</span></strong><span class="koboSpan" id="kobo.731.1">, how could </span><strong class="source-inline"><span class="koboSpan" id="kobo.732.1">std::vector&lt;T&gt;</span></strong><span class="koboSpan" id="kobo.733.1"> handle some type </span><strong class="source-inline"><span class="koboSpan" id="kobo.734.1">T</span></strong><span class="koboSpan" id="kobo.735.1"> for which allocation and deallocation have to be done through </span><span class="No-Break"><span class="koboSpan" id="kobo.736.1">other means?).</span></span></p>
+<p><span class="koboSpan" id="kobo.737.1">There are, of course, quite a few ways to get there. </span><span class="koboSpan" id="kobo.737.2">Want to know some of them? </span><span class="koboSpan" id="kobo.737.3">Let’s take a deep breath and </span><span class="No-Break"><span class="koboSpan" id="kobo.738.1">dive in…</span></span></p>
+</div>
+
+
+<div class="Content" epub:type="part" id="_idContainer039">
+<h1 id="_idParaDest-166" lang="en-US" xml:lang="en-US"><a id="_idTextAnchor171"/><span class="koboSpan" id="kobo.1.1">Part 4: Writing Generic Containers (and a Bit More)</span></h1>
+<p><span class="koboSpan" id="kobo.2.1">In this part, we will focus on writing efficient generic containers, doing so through explicit memory management, then through implicit memory management, and finally, through allocators, under the various guises these types have held over the years. </span><span class="koboSpan" id="kobo.2.2">Leveraging our deeper understanding of memory management techniques and facilities, we will express two types of containers (one that uses contiguous memory and another that uses linked nodes) in ways that can sometimes be much more efficient than a simpler, more naïve implementation would be. </span><span class="koboSpan" id="kobo.2.3">We end this part with a look to the near future in memory management </span><span class="No-Break"><span class="koboSpan" id="kobo.3.1">with C++.</span></span></p>
+<p><span class="koboSpan" id="kobo.4.1">This part has the </span><span class="No-Break"><span class="koboSpan" id="kobo.5.1">following chapters:</span></span></p>
+<ul>
+<li><a href="B21071_12.xhtml#_idTextAnchor172"><em class="italic"><span class="koboSpan" id="kobo.6.1">Chapter 12</span></em></a><span class="koboSpan" id="kobo.7.1">, </span><em class="italic"><span class="koboSpan" id="kobo.8.1">Writing Generic Containers with Explicit Memory Management</span></em></li>
+<li><a href="B21071_13.xhtml#_idTextAnchor187"><em class="italic"><span class="koboSpan" id="kobo.9.1">Chapter 13</span></em></a><span class="koboSpan" id="kobo.10.1">, </span><em class="italic"><span class="koboSpan" id="kobo.11.1">Writing Generic Containers with Implicit Memory Management</span></em></li>
+<li><a href="B21071_14.xhtml#_idTextAnchor199"><em class="italic"><span class="koboSpan" id="kobo.12.1">Chapter 14</span></em></a><span class="koboSpan" id="kobo.13.1">, </span><em class="italic"><span class="koboSpan" id="kobo.14.1">Writing Generic Containers with Allocator Support</span></em></li>
+<li><a href="B21071_15.xhtml#_idTextAnchor213"><em class="italic"><span class="koboSpan" id="kobo.15.1">Chapter 15</span></em></a><span class="koboSpan" id="kobo.16.1">, </span><em class="italic"><span class="koboSpan" id="kobo.17.1">Contemporary Issues</span></em></li>
+</ul>
+</div>
+<div>
+<div id="_idContainer040">
+</div>
+</div>
+<div>
+<div class="Basic-Graphics-Frame" id="_idContainer041">
+</div>
+</div>
+</body></html>

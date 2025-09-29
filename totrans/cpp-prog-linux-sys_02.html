@@ -1,0 +1,391 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer026">
+<h1 class="chapter-number" id="_idParaDest-31"><a id="_idTextAnchor029"/>2</h1>
+<h1 id="_idParaDest-32"><a id="_idTextAnchor030"/>Learning More about Process Management</h1>
+<p>You became familiar with the concept of processes in the previous chapter. Now, it’s time to get into details. It is important to understand how process management is related to the system’s overall behavior. In this chapter, we will emphasize fundamental OS mechanisms that are used specifically for process control and resource access management. We will use this opportunity to show you how to use some C++ <span class="No-Break">features too.</span></p>
+<p>Once we’ve investigated the program and its corresponding process as system entities, we are going to discuss the states that one process goes through during its lifetime. You are going to learn about spawning new processes and threads. You are also going to see the underlying problems of such activities. Later we are going to check out some examples while slowly introducing the multithreaded code. By doing so, you will have the opportunity to learn the basics of some POSIX and C++ techniques that are related to <span class="No-Break">asynchronous execution.</span></p>
+<p>Regardless of your C++ experience, this chapter will help you to understand some of the traps that you could end up in at the system level. You can use your knowledge of various language features to enhance your execution control and <span class="No-Break">process predictability.</span></p>
+<p>In this chapter, we are going to cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li>Investigating the nature of <span class="No-Break">the process</span></li>
+<li>Continuing with the process states and some <span class="No-Break">scheduling mechanisms</span></li>
+<li>Learning more about <span class="No-Break">process creation</span></li>
+<li>Introducing the system calls for thread manipulation <span class="No-Break">in C++</span></li>
+</ul>
+<h1 id="_idParaDest-33"><a id="_idTextAnchor031"/>Technical requirements</h1>
+<p>To run the code examples in this chapter, you must prepare <span class="No-Break">the following:</span></p>
+<ul>
+<li>A Linux-based system capable of compiling and executing C++20 (for example, <strong class="bold">Linux </strong><span class="No-Break"><strong class="bold">Mint 21</strong></span><span class="No-Break">)</span></li>
+<li>The GCC12.2 compiler (<a href="https://gcc.gnu.org/git/gcc.gitgcc-source">https://gcc.gnu.org/git/gcc.gitgcc-source</a>) with the <strong class="source-inline">-std=c++2a</strong> and <strong class="source-inline">-</strong><span class="No-Break"><strong class="source-inline">lpthread</strong></span><span class="No-Break"> flags</span></li>
+<li>Alternatively, for all the examples, you can <span class="No-Break">use </span><a href="https://godbolt.org/"><span class="No-Break">https://godbolt.org/</span></a></li>
+<li>All code examples in this chapter are available for download <span class="No-Break">from: </span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%202"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%202</span></a><span class="No-Break">.</span></li>
+</ul>
+<h1 id="_idParaDest-34"><a id="_idTextAnchor032"/>Disassembling process creation</h1>
+<p>As we<a id="_idIndexMarker117"/> mentioned in the previous chapter, a process is a running instance of a program that contains its respective metadata, occupied memory, opened files, and so on. It is the main job executor in the OS. Recall that the overall goal of programming is to transform one type of data into another type of data, or count. What we do via programming languages is provide instructions to the hardware. Often, we <em class="italic">tell</em> the CPU what to do, including moving pieces of data throughout different portions of memory. In other words, the computer must <em class="italic">compute</em>, and we must tell it how to do this. This understanding is crucial and independent of the programming languages or OSs that <span class="No-Break">are used.</span></p>
+<p>With this, we have come back to the topic of system programming and understanding system behavior. Let’s immediately state that process creation and execution is neither simple nor fast. And neither is the process switching. It is rarely observable through the naked eye, but if you must design a highly scalable system or have a strict timeline for events during the system’s execution, then you will get to process interaction analysis sooner or later. Again, this is how the computer works and this knowledge is useful when you get into <span class="No-Break">resource optimization.</span></p>
+<p>Speaking of resources, let’s remind ourselves of the fact that our process was initially just a program. It is usually stored<a id="_idIndexMarker118"/> on <strong class="bold">non-volatile memory</strong> (<strong class="bold">NVM</strong>). Depending on the system, this could be a hard drive, SSD, ROM, EEPROM, Flash, and so on. We have mentioned these devices as they have different physical characteristics, such as speed, storage space, write access, and fragmentation. Each of these is an important factor when it comes to the system’s durability, but for this chapter, we care mostly <span class="No-Break">about speed.</span></p>
+<p>Again, as <a id="_idIndexMarker119"/>we already mentioned in the previous chapter, a program, just like all other OS resources, is a file. The C++ program is an executable object file, which contains the code – for example, the instructions – that must be given to the CPU. This file is the result of a compilation. The compiler is another program that converts the C++ code into machine instructions. It is crucial to be aware of what instructions our system supports. The OS and the compiler are prerequisites for the integrated standards, libraries, language features, and so on, and there is a good chance that the compiled object file is not going to run on another system that’s not exactly matching ours. Moreover, the same code, compiled on another system or through another compiler, would <a id="_idIndexMarker120"/>most probably have a different executable object file size. The bigger the size, the longer the time to load the program from <strong class="bold">NVM</strong> to the <strong class="bold">main memory</strong> (<strong class="bold">Random Access Memory</strong> (<strong class="bold">RAM</strong>) is used the most). To analyze the speed of our code and optimize it as best as possible for a given system, we will look at a generic diagram regarding the full path along which our data or an instruction goes along. This is slightly off-topic, so bear <span class="No-Break">with us:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer021">
+<img alt="Figure 2.1 – Loading a program and its sequence of instruction execution events" height="565" src="image/Figure_02.1_B20833.jpg" width="1250"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.1 – Loading a program and its sequence of instruction execution events</p>
+<p>A generalized CPU overview has been provided here as different architectures will have different layouts. L1 and L2 caches<a id="_idIndexMarker121"/> are <strong class="bold">Static RAM</strong> (<strong class="bold">SRAM</strong>) elements, making them extremely fast, but expensive. Therefore, we must keep them small. We also keep them small to achieve small CPU latency. The L2 cache has a bigger capacity to make a shared space between <a id="_idIndexMarker122"/>the <strong class="bold">Arithmetic Logic Units</strong> (<strong class="bold">ALUs</strong>) – a frequent example is two hardware threads in a single core, where the L2 cache plays the shared memory role. The L3 cache doesn’t always exist, but it’s usually based <a id="_idIndexMarker123"/>on <strong class="bold">Dynamic RAM</strong> (<strong class="bold">DRAM</strong>) elements. It is <a id="_idIndexMarker124"/>slower than the L1 and the L2 caches but allows the CPU to have one more level of cache, just for speed-up purposes. One example would be instructing the CPU to guess and prefetch data from the RAM, thus sparing time in RAM-to-CPU loads. Modern C++ features can use this mechanism a lot, leading to significant speed-ups in <span class="No-Break">process execution.</span></p>
+<p>In addition, depending on their roles, three types of caches are<a id="_idIndexMarker125"/> recognized: the <strong class="bold">instruction cache</strong>, <strong class="bold">data cache</strong>, and <strong class="bold">Translation Lookaside Buffer</strong> (<strong class="bold">TLB</strong>). The first<a id="_idIndexMarker126"/> two are <a id="_idIndexMarker127"/>self-explanatory, whereas the <strong class="bold">TLB</strong> is not directly related to CPU caches – it is a separate unit. It’s used for addresses of both data and instructions, but its role is to speed up virtual-to-physical address translation, which we’ll discuss later in <span class="No-Break">this chapter.</span></p>
+<p>RAM is often used, and mostly involves <strong class="bold">Double Data Rate Synchronous Dynamic RAM</strong> (<strong class="bold">DDR SDRAM</strong>) memory circuits. This <a id="_idIndexMarker128"/>is a very important point because different DDR bus configurations have different speeds. And no matter the speed, it is still not as fast as CPU internal transfers. Even with a 100%-loaded CPU, the DDR is rarely fully utilized, thus becoming our <em class="italic">first significant bottleneck</em>. As mentioned in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, NVM is way slower than DDR, which is its <em class="italic">second significant bottleneck</em>. We encourage you to analyze your system and see the <span class="No-Break">speed differences.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">Your programs’ sizes matter. The process of optimizing the sequence of events for executing program instructions or loading data is a permanent and continuous balancing act. You must be aware of your system’s hardware and OS before thinking of <span class="No-Break">code optimization!</span></p>
+<p>If you’re still not convinced, then think about the following: if we have a program to visualize some data on some screen, it might not be an issue for a desktop PC user if it’s there after 1 second or 10 seconds. But if this is a pilot on an airplane, then showing data within a strict time window is a safety compliance feature. And the size of our program matters. We believe the next few sections will give you the tools you’ll need to analyze your environment. So, what happens with our program during execution? Let’s <span class="No-Break">find out.</span></p>
+<h2 id="_idParaDest-35"><a id="_idTextAnchor033"/>Memory segments</h2>
+<p><em class="italic">Memory segments</em> are <a id="_idIndexMarker129"/>also known as <em class="italic">memory layouts</em> or <em class="italic">memory sections</em>. These are just areas of memory and should not be mistaken for segmented memory architecture. Some experts prefer to use <em class="italic">sections</em> when the compile-time operations are discussed and <em class="italic">layout</em> for the runtime. Choose whatever you like, so long as it describes the same thing. The main segments are <strong class="bold">text</strong> (or <strong class="bold">code</strong>), <strong class="bold">data</strong>, <strong class="bold">BSS</strong>, <strong class="bold">stack</strong>, and <strong class="bold">heap</strong>, where <strong class="bold">BSS</strong> stands for <strong class="bold">Block Started by Symbol</strong> or <strong class="bold">Block Starting Symbol</strong>. Let’s <a id="_idIndexMarker130"/>take a <span class="No-Break">closer look:</span></p>
+<ul>
+<li><strong class="bold">Text</strong>: This is <a id="_idIndexMarker131"/>the code that will be executed on the machine. It is created at compile time. When it gets to runtime, it is the read-only portion of the process. The current machine instructions are found there, and depending on the compiler, you could find the <strong class="source-inline">const</strong> variables there <span class="No-Break">as well.</span></li>
+<li><strong class="bold">Data</strong>: This <a id="_idIndexMarker132"/>segment is created at compile time as well and consists of initialized global, static, or both global and static data. It is used for preliminary allocated storage, whenever you don’t want to depend on <span class="No-Break">runtime allocation.</span></li>
+<li><strong class="bold">BSS</strong>: In <a id="_idIndexMarker133"/>contrast to the <strong class="bold">data</strong> segment, <strong class="bold">BSS</strong> does not allocate<a id="_idIndexMarker134"/> space in the object file – it only marks the required storage if the program gets to runtime. It consists of uninitialized global, static, or both global and static data. This segment is created at compile time. Its data is considered initialized to <strong class="source-inline">0</strong>, theoretically as per the language standard, but it is practically set to <strong class="source-inline">0</strong> by the OS’s program loader during <span class="No-Break">process startup.</span></li>
+<li><strong class="bold">Stack</strong>: The <a id="_idIndexMarker135"/>program stack is a memory segment that represents the running program routines – it holds their local variables and tracks where to continue from when a called function returns. It is constructed at runtime and follows<a id="_idIndexMarker136"/> the <strong class="bold">Last-in, First-Out</strong> (<strong class="bold">LIFO</strong>) policy. We want to keep it small <span class="No-Break">and fast.</span></li>
+<li><strong class="bold">Heap</strong>: This is <a id="_idIndexMarker137"/>another runtime-created segment that is used for dynamic memory allocation. For many embedded systems, it is considered forbidden, but we are going to explore it further later in this book. There are interesting lessons to be learned and it is not always possible to <span class="No-Break">avoid it.</span></li>
+</ul>
+<p>In <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.1</em>, you can observe two processes that are running the same executable and are being loaded to the main memory at runtime. We can see that for Linux, the <strong class="bold">text</strong> segment <a id="_idIndexMarker138"/>is copied only once since it should be the same for both processes. The <strong class="bold">heap</strong> is missing as we <a id="_idIndexMarker139"/>are not focusing on it right now. As you can see, the <strong class="bold">stack</strong> is <a id="_idIndexMarker140"/>not endless. Of course, its size depends on many factors, but we guess that you’ve already seen the <em class="italic">stack overflow</em> message a few times in practice. It is an unpleasant runtime event as the program flow is ungracefully ruined and there’s the chance of it causing an issue at the <span class="No-Break">system level:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer022">
+<img alt="Figure 2.2 – The memory segments of two processes" height="456" src="image/Figure_02.2_B20833.jpg" width="795"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.2 – The memory segments of two processes</p>
+<p>The main memory<a id="_idIndexMarker141"/> at the top in <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.2</em> represents the <strong class="bold">virtual address space</strong>, where the OS uses a data structure, called a <strong class="bold">page table</strong>, to<a id="_idIndexMarker142"/> map the process’s memory layout to the physical memory addresses. It is an important technique to generalize the way the OS manages memory resources. That way, we don’t have to think about the device’s specific characteristics or interfaces. At an abstract level, it is quite like the way we accessed files in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>. We will get back to this discussion later in <span class="No-Break">this chapter.</span></p>
+<p>Let’s use the following code sample <span class="No-Break">for analysis:</span></p>
+<pre class="source-code">
+void test_func(){}
+int main(){
+     test_func(); return 0;
+}</pre> <p>This is a very simple program, where a function is called right after the entry point. There’s nothing special here. Let’s compile it for C++20 without <span class="No-Break">any optimizations:</span></p>
+<pre class="console">
+$ g++ mem_layout_example.cpp -std=c++2a -O0 -o test</pre> <p>The resulting binary object is called <strong class="source-inline">test</strong>. Let’s analyze it through the <span class="No-Break"><strong class="source-inline">size</strong></span><span class="No-Break"> command:</span></p>
+<pre class="console">
+$ size test
+ text       data        bss        dec        hex    filename
+ 2040        640          8       2688        a80    test</pre> <p>The overall size is 2,688 bytes, 2,040 of which are the instructions, 640 are the <strong class="bold">data</strong>, and 8 are for <strong class="bold">BSS</strong>. As you <a id="_idIndexMarker143"/>can see, we don’t have any<a id="_idIndexMarker144"/> global or static data, but still, 648 bytes have gone there. Keep in mind that the compiler is still doing its job, so there are some allocated symbols there, which we could analyze further <span class="No-Break">when required:</span></p>
+<pre class="console">
+$ readelf -s test</pre> <p>Now, let’s focus on something else and edit the code <span class="No-Break">as such:</span></p>
+<pre class="source-code">
+void test_func(){
+    static uint32_t test_var;
+}</pre> <p>A static variable that’s not initialized must cause <strong class="bold">BSS</strong> <span class="No-Break">to grow:</span></p>
+<pre class="console">
+$ size test
+text       data        bss        dec        hex    filename
+2040        640         16       2696        a88    test</pre> <p>So, <strong class="bold">BSS</strong> is bigger – not <a id="_idIndexMarker145"/>by 4 bytes, but with 8. Let’s double-check the size of our <span class="No-Break">new variable:</span></p>
+<pre class="console">
+$ nm -S test | grep test_var
+0000000000004018 0000000000000004 b _ZZ9test_funcvE8test_var</pre> <p>Everything is fine – the unsigned 32-bit integer is for 4 bytes, as expected, but the compiler has put some extra symbols there. We can also see that it is in the <strong class="bold">BSS</strong> section, which is indicated by the letter <strong class="source-inline">b</strong> in front of the symbol. Now, let’s change the <span class="No-Break">code again:</span></p>
+<pre class="source-code">
+void test_func(){
+    static uint32_t test_var = 10;}</pre> <p>We have initialized<a id="_idIndexMarker146"/> the variable. Now, we expect it to be in<a id="_idIndexMarker147"/> the <span class="No-Break"><strong class="bold">data</strong></span><span class="No-Break"> segment:</span></p>
+<pre class="console">
+$ size test
+text       data        bss        dec        hex    filename
+2040        644          4       2688        a80    test
+$ nm -S test | grep test_var
+0000000000004010 0000000000000004 d _ZZ9test_funcvE8test_var</pre> <p>As expected, the <strong class="bold">data</strong> segment has been enlarged by 4 bytes and our variable is there (see the letter <strong class="source-inline">d</strong> in front of the symbol). You can also see that the compiler has shrunk <strong class="bold">BSS</strong> usage to 4 bytes and that the overall object file size is smaller – just <span class="No-Break"><strong class="source-inline">2688</strong></span><span class="No-Break"> bytes.</span></p>
+<p>Let’s make a <span class="No-Break">final change:</span></p>
+<pre class="source-code">
+void test_func(){
+    const static uint32_t test_var = 10;}</pre> <p>Since <strong class="source-inline">const</strong> cannot be changed during the program’s execution, it has to be marked as read-only. For this, it could be put into <a id="_idIndexMarker148"/>the <strong class="bold">text</strong> segment. Note that this is system implementation-dependent. Let’s check <span class="No-Break">it out:</span></p>
+<pre class="console">
+$ size test
+ text       data        bss        dec        hex    filename
+ 2044        640          8       2692        a84    test
+$ nm -S test | grep test_var
+0000000000002004 0000000000000004 r _ZZ9test_funcvE8test_var</pre> <p>Correct! We can see the letter <strong class="source-inline">r</strong> in front of the symbol and that the <strong class="bold">text</strong> size is <strong class="source-inline">2044</strong> and not <strong class="source-inline">2040</strong>, as it was previously. It seems rather funny that the compiler has generated an 8-byte <strong class="bold">BSS</strong> again, but <a id="_idIndexMarker149"/>we can live with it. What would happen to the sizes if we removed <strong class="source-inline">static</strong> from the definition? We encourage you to try <span class="No-Break">this out.</span></p>
+<p>At this point, you’ve <a id="_idIndexMarker150"/>probably made the connection that the bigger compile-time sections generally mean a bigger executable. And a bigger executable means more time for the program to be started because copying the data from NVM to the main memory is significantly slower than copying data from the main memory to the CPU’s caches. We will get back to this discussion later when we discuss context switching. If we want to keep our startup fast, then we should consider smaller compile-time sections, but larger runtime ones. This is a balancing act that is usually done by the software architects, or someone who has a good system overview and knowledge. Prerequisites such as NVM read/write speed, DDR configuration, CPU and RAM loads during system startup, normal work and shutdown, the number of active processes, and so on must <span class="No-Break">be considered.</span></p>
+<p>We will revisit this topic later in this book. For now, let’s focus on the meaning of the memory segments in the sense of new process creation. Their meaning will be discussed later in <span class="No-Break">this chapter.</span></p>
+<h1 id="_idParaDest-36"><a id="_idTextAnchor034"/>Continuing with process states and some scheduling mechanisms</h1>
+<p>In the previous section, we discussed to how initiate a new process. But what happens with it under the hood? As mentioned in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, processes and threads are considered tasks in Linux’s scheduler. Their states are generic, and their understanding is important for correct procedure planning. A task, when expecting a resource, might <a id="_idIndexMarker151"/>have to wait or even stopped. We can affect this behavior through synchronization mechanisms as well, such as semaphores and mutexes, which we’ll discuss later in this chapter. We believe that understanding these fundamentals is crucial for system programmers as bad task state management can lead to unpredictability and overall system degradation. This is strongly observable in <span class="No-Break">large-scale systems.</span></p>
+<p>For now, let’s step aside for a bit and try to simplify the code’s goals – it needs to instruct the CPU to perform an operation and modify the data. Our task is to think about what the correct instructions would be so that we can save time in rescheduling or doing nothing by blocking resources. Let’s look at the states our process could find <span class="No-Break">itself in:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer023">
+<img alt="Figure 2.3 – Linux task states and their dependencies" height="975" src="image/Figure_02.3_B20833.jpg" width="1650"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.3 – Linux task states and their dependencies</p>
+<p>The states in the preceding figure are detailed, but Linux presents them to the user in four general <span class="No-Break">letter denotations:</span></p>
+<ul>
+<li><strong class="bold">Executing (R – Running and Runnable)</strong>: A processor (core or thread) is provided <a id="_idIndexMarker152"/>for the instructions of the process – the task is running. The scheduling algorithm might force it to give the execution. Then, the task becomes runnable, and it’s added to a queue of <em class="italic">runnables</em>, waiting their turn. Both states are distinct but are denoted as <em class="italic">processes </em><span class="No-Break"><em class="italic">in execution</em></span><span class="No-Break">.</span></li>
+<li><strong class="bold">Sleeping (D – Uninterruptible and S – Interruptible)</strong>: Remember the example <a id="_idIndexMarker153"/>with file read/write from the previous chapter? That was a form of uninterruptable sleeping that was caused by waiting for external resources. Sleep cannot be interrupted through signals until the resource is available and the process is available for execution again. Interruptible sleep is not only dependent on resource availability but allows the process to be controlled <span class="No-Break">by signals.</span></li>
+<li><strong class="bold">Stopped (T)</strong>: Have<a id="_idIndexMarker154"/> you ever used <em class="italic">Ctrl</em> + <em class="italic">Z</em> to stop a process? That’s the signal putting the process in a stopped state, but depending on the signal request, it could be ignored, and the process will continue. Alternatively, the process could be stopped until it is signaled to continue again. We will discuss signals later in <span class="No-Break">this book.</span></li>
+<li><strong class="bold">Zombie (Z)</strong>: We<a id="_idIndexMarker155"/> saw this state in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a> – the process is terminated, but it is still visible in the OS’s <span class="No-Break">task vector.</span></li>
+</ul>
+<p>Using the <strong class="source-inline">top</strong> command, you will see the letter <strong class="source-inline">S</strong> on the top row of the process <span class="No-Break">information columns:</span></p>
+<pre class="console">
+$ top
+. . .
+PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND</pre> <p>It will show you the letter denotation for the state of each process. Another option is the <strong class="source-inline">ps</strong> command, where the <strong class="source-inline">STAT</strong> column will give you the <span class="No-Break">current states:</span></p>
+<pre class="console">
+$ ps a
+PID TTY STAT TIME COMMAND</pre> <p>With that, we know what states the tasks end up in, but not how and why they switch between them. We’ll continue this discussion in the <span class="No-Break">next section.</span></p>
+<h2 id="_idParaDest-37"><a id="_idTextAnchor035"/>Scheduling mechanisms</h2>
+<p>Modern Linux distributions<a id="_idIndexMarker156"/> provide many scheduling mechanisms. Their sole purpose is to help the OS decide which task must be executed next in an optimized fashion. Should it be the one with the highest priority or the one that will finish fastest, or just a mix of both? There are other criteria as well, so don’t fall under the false apprehension that one will solve all your problems. Scheduling algorithms are especially important when there are more processes in the <strong class="bold">R</strong> state than the available processors on the system. To manage this task, the OS <a id="_idIndexMarker157"/>has a <strong class="bold">scheduler</strong> – a fundamental module that every OS implements in some form. It is usually a separate kernel process that acts like a load balancer, which means it keeps the computer resources busy and provides service to multiple users. It can be configured to aim at small latency, fair execution, max throughput, or minimal wait time. In real-time OSs, it must guarantee that deadlines are met. These factors are obviously in conflict, and the scheduler must resolve these through a suitable compromise. System programmers can configure the system’s preferences based on the users’ needs. But how does <span class="No-Break">this happen?</span></p>
+<h2 id="_idParaDest-38"><a id="_idTextAnchor036"/>Scheduling at a high level</h2>
+<p>We request the OS to <a id="_idIndexMarker158"/>start a program. First, we must load it from NVM. This scheduling level considers the execution of the <strong class="bold">program loader</strong>. The <a id="_idIndexMarker159"/>destination of the program is provided to it by the OS. The <strong class="bold">text</strong> and <strong class="bold">data</strong> segments are loaded into the main memory. Most modern OSs will load the program <em class="italic">on demand</em>. This enables a faster process startup and means that only the currently required code is provided at a given moment. The <strong class="bold">BSS</strong> data is allocated and initialized there as well. Then, the virtual address space is mapped. The new process, which carries the instructions, is created and the required fields, such as process ID, user ID, group ID, and others, are initialized. The <strong class="bold">program counter</strong> is <a id="_idIndexMarker160"/>set to the entry point of the program and control is passed to the loaded code. This overhead is considerably significant in the process’s lifetime because of the hardware constraints of <strong class="bold">NVM</strong>. Let’s see what happens after the program reaches <span class="No-Break">the RAM.</span></p>
+<h2 id="_idParaDest-39"><a id="_idTextAnchor037"/>Scheduling at a low level</h2>
+<p>This is a<a id="_idIndexMarker161"/> collection of techniques that try to provide the best order of task execution. Although we don’t mention the term <strong class="bold">scheduling</strong> much<a id="_idIndexMarker162"/> in this book, be sure that every manipulation we do causes tasks to state switch, which means we cause the scheduler to act. Such an action is known<a id="_idIndexMarker163"/> as a <strong class="bold">context switch</strong>. The switch takes time too as the scheduling algorithm may need to reorder the queue of tasks, and newly started task instructions must be copied from the RAM to the <span class="No-Break">CPU cache.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">Multiple running tasks, parallel or not, could lead to time spent in rescheduling instead of procedure executions. This is another balancing act that depends on the system <span class="No-Break">programmer’s design.</span></p>
+<p>Here is a <span class="No-Break">basic overview:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer024">
+<img alt="Figure 2.4 – Ready /blocked task queues" height="450" src="image/Figure_02.4_B20833.jpg" width="1222"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.4 – Ready /blocked task queues</p>
+<p>The algorithm must pick a task from the queue and place it for execution. At a system level, the basic hierarchy is as (from highest priority to lowest) scheduler -&gt; block devices -&gt; file management -&gt; character devices -&gt; <span class="No-Break">user processes.</span></p>
+<p>Depending on the queue’s data structure implementation and the <strong class="bold">scheduler’s</strong> configuration, we could execute different algorithms. Here are some <span class="No-Break">of them:</span></p>
+<ul>
+<li><strong class="bold">First-come-first-serve</strong> (<strong class="bold">FCFS</strong>): Nowadays, this<a id="_idIndexMarker164"/> is rarely used because longer tasks might <a id="_idIndexMarker165"/>stall the system’s performance and important processes might never <span class="No-Break">be executed.</span></li>
+<li><strong class="bold">Shortest job first</strong> (<strong class="bold">SJF</strong>): This <a id="_idIndexMarker166"/>provides a shorter <a id="_idIndexMarker167"/>time to wait than FCFS, but longer tasks may never be called. It <span class="No-Break">lacks predictability.</span></li>
+<li><strong class="bold">Highest priority first</strong> (<strong class="bold">HPF</strong>): Here, tasks<a id="_idIndexMarker168"/> have priority, where<a id="_idIndexMarker169"/> the highest one will be executed. But who sets the priority value and who decides if an incoming<a id="_idIndexMarker170"/> process will cause rescheduling or not? The Kleinrock rules are one such discipline where priority is increased linearly, while the task stays in the queue. Depending on the run-stay ratio, different orders are executed – FCFS, Last-CFS, SJF, and so on. An interesting article on this matter can be found <span class="No-Break">here: </span><a href="https://dl.acm.org/doi/10.1145/322261.322266"><span class="No-Break">https://dl.acm.org/doi/10.1145/322261.322266</span></a><span class="No-Break">.</span></li>
+<li><strong class="bold">Round-robin</strong>: This<a id="_idIndexMarker171"/> is a resource starvation-free and preemptive algorithm, where each task gets a time quantum in an equal portion. Tasks <a id="_idIndexMarker172"/>are executed in circular order. Each of them gets a CPU time slot, equal to the time quantum. When it expires, the task is pushed to the back of the queue. As you have probably deduced, the queue’s length and the quantum’s value (usually between 10 and 300ms) are of great significance. An additional technique to maintain fairness is to enrich this algorithm in modern <span class="No-Break">OS schedulers.</span></li>
+<li><strong class="bold">Completely fair scheduling</strong> (<strong class="bold">CFS</strong>): This<a id="_idIndexMarker173"/> is the <a id="_idIndexMarker174"/>current Linux scheduling mechanism. It applies a combination of the aforementioned algorithms, depending on the <span class="No-Break">system’s state:</span><pre class="source-code">
+$ chrt -m
+SCHED_OTHER   the standard round-robin time-sharing policy
+SCHED_BATCH   for "batch" style execution of processes
+SCHED_IDLE    for running very low priority background jobs.
+SCHED_FIFO    a first-in, first-out policy
+SCHED_RR      a round-robin policy</pre></li> </ul>
+<p>This approach is complex and deserves a book on <span class="No-Break">its own.</span></p>
+<p>What we care about here is <span class="No-Break">the following:</span></p>
+<ul>
+<li><strong class="bold">Priority</strong>: Its<a id="_idIndexMarker175"/> value is the actual task priority, and it’s used for scheduling. Values between 0 and 99 are dedicated to real-time processes, whereas values between 100 and 139 are for <span class="No-Break">user processes.</span></li>
+<li><strong class="bold">Nice</strong>: Its value is meaningful at the user-space level and adjusts the process’s priority at runtime. The root user can set it from -20 to +19 and a simple user could set it from 0 to +19, where a <a id="_idIndexMarker176"/>higher <strong class="bold">nice</strong> value means lower priority. The default <span class="No-Break">is 0.</span></li>
+</ul>
+<p>Their dependency is that priority = nice + 20 for user processes and priority = -1 – real_time_priority for real-time processes. The higher the priority value, the lower the scheduling priority. We cannot change the base priority of a process, but we can start it with a different <strong class="bold">nice</strong> value. Let’s call <strong class="source-inline">ps</strong> with a <span class="No-Break">new priority:</span></p>
+<pre class="console">
+$ nice -5 ps</pre> <p>Here, <strong class="source-inline">-5</strong> means <strong class="source-inline">5</strong>. Making <a id="_idIndexMarker177"/>it <strong class="source-inline">5</strong> requires <span class="No-Break"><strong class="bold">sudo</strong></span><span class="No-Break"> permissions:</span></p>
+<pre class="console">
+$ sudo nice -5 ps</pre> <p>Changing the priority of a process runtime can be done with the <strong class="source-inline">renice</strong> command <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">pid</strong></span><span class="No-Break">:</span></p>
+<pre class="console">
+$ sudo renice -n -10 -p 9610</pre> <p>This will set the <strong class="source-inline">nice</strong> value <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">-10</strong></span><span class="No-Break">.</span></p>
+<p>To start a real-time process or set and retrieve the real-time attributes of <strong class="source-inline">pid</strong>, you must use the <strong class="source-inline">chrt</strong> command. For example, let’s use it to start a real-time process with a priority <span class="No-Break">of </span><span class="No-Break"><strong class="source-inline">99</strong></span><span class="No-Break">:</span></p>
+<pre class="console">
+$ sudo chrt --rr 99 ./test</pre> <p>We encourage <a id="_idIndexMarker178"/>you to take a look <a id="_idIndexMarker179"/>at<a id="_idIndexMarker180"/> other <a id="_idIndexMarker181"/>algorithms, such as <strong class="bold">Feedback</strong>, <strong class="bold">Adaptive Partition Scheduling</strong> (<strong class="bold">APS</strong>), <strong class="bold">Shortest Remaining Time</strong> (<strong class="bold">SRT</strong>), and <strong class="bold">Highest Response Ratio </strong><span class="No-Break"><strong class="bold">Next</strong></span><span class="No-Break"> (</span><span class="No-Break"><strong class="bold">HRRN</strong></span><span class="No-Break">).</span></p>
+<p>The topic of scheduling algorithms is wide and not only concerns the OS task’s execution but other areas, such as network data management. We cannot go through its entirety here, but it was important to illustrate how to initially handle it and learn about your system’s strengths. That said, let’s continue by looking at <span class="No-Break">process management.</span></p>
+<h1 id="_idParaDest-40"><a id="_idTextAnchor038"/>Learning more about process creation</h1>
+<p>A common practice<a id="_idIndexMarker182"/> in system programming is to follow a strict timeline for process creation and execution. Programmers use either daemons, such as <strong class="source-inline">systemd</strong> and other in-house developed solutions, or startup scripts. We can use the Terminal as well but this is mostly for when we repair the system’s state and restore it, or test a given functionality. Another way to initiate processes from our code is through system calls. You probably know some of them, such as <strong class="source-inline">fork()</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">vfork()</strong></span><span class="No-Break">.</span></p>
+<h2 id="_idParaDest-41"><a id="_idTextAnchor039"/>Introducing fork()</h2>
+<p>Let’s look <a id="_idIndexMarker183"/>at an example; we’ll <a id="_idIndexMarker184"/>discuss <span class="No-Break">it afterward:</span></p>
+<pre class="source-code">
+#include &lt;iostream&gt;
+#include &lt;unistd.h&gt;
+using namespace std;
+void process_creator() {
+    if (fork() == 0) // {1}
+        cout &lt;&lt; "Child with pid: " &lt;&lt; getpid() &lt;&lt; endl;
+    else
+        cout &lt;&lt; "Parent with pid: " &lt;&lt; getpid() &lt;&lt; endl;
+}
+int main() {
+    process_creator();
+    return 0;
+}</pre> <p>Yes, we are <a id="_idIndexMarker185"/>aware that you’ve probably seen a similar example before and it’s <a id="_idIndexMarker186"/>clear what should be given as output – a new process is initiated by <strong class="source-inline">fork()</strong> [<strong class="source-inline">1</strong>] and both <strong class="source-inline">pid</strong> values are <span class="No-Break">printed out:</span></p>
+<pre class="console">
+Parent with pid: 92745
+Child with pid: 92746</pre> <p>In <strong class="source-inline">Parent</strong>, <strong class="source-inline">fork()</strong> will return the ID of the newly created process; that way, the parent is aware of its children. In <strong class="source-inline">Child</strong>, <strong class="source-inline">0</strong> will be returned. This mechanism is important for process management because <strong class="source-inline">fork()</strong> creates a duplicate of the calling process. Theoretically, the compile-time segments (<strong class="bold">text</strong>, <strong class="bold">data</strong>, and <strong class="bold">BSS</strong>) are created anew in the main memory. The new <strong class="bold">stack</strong> starts to unwind from the same entry point of the program, but it branches at the fork call. Then, one logical path is followed by the parent, and another by the child. Each uses its own <strong class="bold">data</strong>, <strong class="bold">BSS</strong>, <span class="No-Break">and </span><span class="No-Break"><strong class="bold">heap</strong></span><span class="No-Break">.</span></p>
+<p>You’re probably thinking that large compile-time segments and stacks will cause unnecessary memory usage because of duplication, especially when we don’t change them. And you’re correct! Luckily for us, we are using a virtual address space. This allows the OS to have extra management and abstraction over the memory. In the previous section, we discussed that processes with the same <strong class="bold">text</strong> segments will share a single copy as it is read-only. There is an optimization that Linux adapts, where <strong class="bold">data</strong> and <strong class="bold">BSS</strong> will be <em class="italic">shared</em> through their single instances. If none of the processes update them, duplication is deferred until the first write. Whoever does this initiates copy creation and works with it. This technique is<a id="_idIndexMarker187"/> called <strong class="bold">copy-on-write</strong>. So, the only penalty for process creation would be the time and memory for the child’s metadata and the parent’s page tables. Still, make sure your code doesn’t <strong class="source-inline">fork()</strong> endlessly as this will cause a so-called <strong class="bold">fork bomb</strong>, leading<a id="_idIndexMarker188"/> to a denial of system service and resource starvation. The next section will cover creating a child process in its own address space <span class="No-Break">through </span><span class="No-Break"><strong class="source-inline">exec</strong></span><span class="No-Break">.</span></p>
+<h2 id="_idParaDest-42"><a id="_idTextAnchor040"/>exec and clone()</h2>
+<p>The <strong class="source-inline">exec</strong> function<a id="_idIndexMarker189"/> call is not really a system call, but a group of system <a id="_idIndexMarker190"/>calls with the <strong class="source-inline">execXX(&lt;args&gt;)</strong> pattern. Each has a specific role, but most importantly, they create a new process through its filesystem path, known as <strong class="bold">pathname</strong>. The <a id="_idIndexMarker191"/>caller process’s memory segments are completely replaced and initialized. Let’s call the binary executable for our fork example from the previous section, leaving its<a id="_idIndexMarker192"/> command-line arguments set to <strong class="source-inline">NULL</strong>. This code is similar to the previous example, but a few changes have <span class="No-Break">been made:</span></p>
+<pre class="source-code">
+. . .
+void process_creator() {
+    if (execv("./test_fork", NULL) == -1) // {1}
+        cout &lt;&lt; "Process creation failed!" &lt;&lt; endl;
+    else
+        cout &lt;&lt; "Process called!" &lt;&lt; endl;
+}
+. . .</pre> <p>The result is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+Parent with pid: 12191
+Child with pid: 12192</pre> <p>You can probably see that something’s missing from the printed output. Where’s the <strong class="source-inline">"Process called!"</strong> message? If something went wrong, such as the executable not being found, then we will observe <strong class="source-inline">"Process creation failed!"</strong>. But in this case, we know it has been run because of the parent and child outputs. The answer to this can be found in the paragraph before this code example – the memory segments are replaced with the ones <span class="No-Break">from </span><span class="No-Break"><strong class="source-inline">test_fork</strong></span><span class="No-Break">.</span></p>
+<p>Similarly to <strong class="source-inline">exec</strong>, <strong class="source-inline">clone()</strong> is a wrapper function to the real <strong class="source-inline">clone()</strong> system call. It creates a new process, such as <strong class="source-inline">fork()</strong>, but allows you to precisely<a id="_idIndexMarker193"/> manage the way the new process is instantiated. A few examples are virtual address space sharing, signal handles, file descriptors, and so on. <strong class="source-inline">vfork()</strong>, as mentioned earlier, is a special variant of <strong class="source-inline">clone()</strong>. We encourage you to spend some time and take a look at some examples, although we believe that most of the time, <strong class="source-inline">fork()</strong> and <strong class="source-inline">execXX()</strong> will <span class="No-Break">be enough.</span></p>
+<p>As you can <a id="_idIndexMarker194"/>see, we’ve chosen the <strong class="source-inline">execv()</strong> function {<strong class="source-inline">1</strong>} for the given example. We’ve used this for simplicity and also because it’s related to <span class="No-Break"><em class="italic">Figure 2</em></span><em class="italic">.5</em>. But before we look at this figure, there are other functions we can use as well: <strong class="source-inline">execl()</strong>, <strong class="source-inline">execle()</strong>, <strong class="source-inline">execip()</strong>, <strong class="source-inline">execve()</strong>, and <strong class="source-inline">execvp()</strong>. Following the <strong class="source-inline">execXX()</strong> pattern, we need to be compliant<a id="_idIndexMarker195"/> with the <span class="No-Break">given requirement:</span></p>
+<ul>
+<li><strong class="source-inline">e</strong> requires the function to use an array of pointers to the environmental variables of the system, which are passed to the newly <span class="No-Break">created process.</span></li>
+<li><strong class="source-inline">l</strong> requires the command-line arguments to be stored in a temporary array and have them passed to the function call. This is just for convenience while handling the <span class="No-Break">array’s size.</span></li>
+<li><strong class="source-inline">p</strong> requires the path’s environment variable (seen as <strong class="source-inline">PATH</strong> in Unix) to be passed to the newly <span class="No-Break">loaded process.</span></li>
+<li><strong class="source-inline">v</strong> was used earlier in this book – it requires the command-line arguments to be provided to the function call, but they are passed as an array of pointers. In our example, we are setting it to <strong class="source-inline">NULL</strong> <span class="No-Break">for simplicity.</span></li>
+</ul>
+<p>Let’s see what this looks <span class="No-Break">like now:</span></p>
+<pre class="source-code">
+int execl(const char* path, const char* arg, …)
+int execlp(const char* file, const char* arg, …)
+int execle(const char* path, const char* arg, …, char*
+  const envp[])
+int execv(const char* path, const char* argv[])
+int execvp(const char* file, const char* argv[])
+int execvpe(const char* file, const char* argv[], char
+  *const envp[])</pre> <p>In a nutshell, their implementation is the same when it comes to how we create a new process. The choice of whether or not to use them strictly depends on your needs and software design. We will revisit the topic of process creation several times in the next few chapters, especially when it goes to shared resources, so this will not be the last time we <span class="No-Break">mention it.</span></p>
+<p>Let’s take a look at a<a id="_idIndexMarker196"/> trivial example: suppose we have a process-system command that’s initiated through the <a id="_idIndexMarker197"/>command-line Terminal – <strong class="bold">shell</strong>. It is not run in the background – from the previous chapter, we know that in this case, we don’t end the line with <strong class="source-inline">&amp;</strong>. This can be expressed through the <span class="No-Break">following graph:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer025">
+<img alt="Figure 2.5 – Executing commands from the shell" height="651" src="image/Figure_02.5_B20833.jpg" width="947"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 2.5 – Executing commands from the shell</p>
+<p>We have <a id="_idIndexMarker198"/>used this figure to emphasize the non-visible system calls for parent-child relationships between processes in Linux. In the background, the <strong class="bold">shell</strong> provides the executable’s <strong class="bold">pathname</strong> to <strong class="source-inline">exec()</strong>. The kernel takes control and goes to the entry point of the application, where <strong class="source-inline">main()</strong> is called. The executable does its work and when <strong class="source-inline">main()</strong> returns, the process is ended. The ending routine is implementation-specific, but you can trigger it yourself in a controlled manner through the <strong class="source-inline">exit()</strong> and <strong class="source-inline">_exit()</strong> system calls. In the meantime, the <strong class="bold">shell</strong> is put to wait. Now, we’ll cover how to terminate <span class="No-Break">a process.</span></p>
+<h2 id="_idParaDest-43"><a id="_idTextAnchor041"/>Terminating a process</h2>
+<p>Usually, <strong class="source-inline">exit()</strong> is seen <a id="_idIndexMarker199"/>as a library function that’s implemented on top of <strong class="source-inline">_exit()</strong>. It does some extra work, such as buffer cleanup and closing streams. Using <strong class="source-inline">return</strong> in <strong class="source-inline">main()</strong> could be considered the equivalent of calling <strong class="source-inline">exit()</strong>. <strong class="source-inline">_exit()</strong> will handle the process termination by deallocating the data and the stack segments, destructing kernel objects (shared memory, semaphores, and so on), closing the files, and informing the parent about its status change (the <strong class="source-inline">SIGCHLD</strong> signal will be triggered). Their interfaces are <span class="No-Break">as follows:</span></p>
+<ul>
+<li><strong class="source-inline">void </strong><span class="No-Break"><strong class="source-inline">_exit(int status)</strong></span></li>
+<li><strong class="source-inline">void </strong><span class="No-Break"><strong class="source-inline">exit(int status)</strong></span></li>
+</ul>
+<p>It’s a common notion that the <strong class="source-inline">status</strong> value, when set to <strong class="source-inline">0</strong>, means a normal process termination, whereas others indicate a termination caused by an internal process issue. Therefore, the <strong class="source-inline">EXIT_SUCCESS</strong> and <strong class="source-inline">EXIT_FAILURE</strong> symbols are defined in <strong class="source-inline">stdlib.h</strong>. To demonstrate this, we could modify our fork example from earlier <span class="No-Break">like so:</span></p>
+<pre class="source-code">
+...
+#include &lt;stdlib.h&gt;
+...
+    if (fork() == 0) {
+        cout &lt;&lt; "Child process id: " &lt;&lt; getpid() &lt;&lt; endl;
+        exit(EXIT_SUCCESS); // {1}
+    }
+    else {
+        cout &lt;&lt; "Parent process id: " &lt;&lt; getpid() &lt;&lt; endl;
+    }
+...</pre> <p>So, the child will proceed as expected because nothing in particular happens, but we enable it to manage its termination policy better. The output will be the same as in the previous example. We will enrich this even further with a code snippet in the <span class="No-Break">next section.</span></p>
+<p>But before we <a id="_idIndexMarker200"/>do that, let’s note that both functions are usually related to a controlled manner of process termination. <strong class="source-inline">abort()</strong> will lead a process to termination in a similar fashion, but the <strong class="source-inline">SIGABRT</strong> signal will be triggered. As discussed in the next chapter, some signals should be handled and not ignored – this one is a good example of gracefully handling the exit routine of a process. In the meantime, what does the parent do and could it be affected by the child’s exit code? <span class="No-Break">Let’s see.</span></p>
+<h2 id="_idParaDest-44"><a id="_idTextAnchor042"/>Blocking a calling process</h2>
+<p>As you may <a id="_idIndexMarker201"/>have noticed in <span class="No-Break"><em class="italic">Figure 2</em></span>.5, a process might be set to wait. Using the <strong class="source-inline">wait()</strong>, <strong class="source-inline">waitid()</strong>, or <strong class="source-inline">waitpid()</strong> system calls will cause the calling process to be blocked until it receives a signal or one of its children changes its state: it is terminated, it is stopped by a signal, or it is resumed by a signal. We use <strong class="source-inline">wait()</strong> to instruct the system to release the resources related to the child; otherwise, it becomes a <strong class="bold">zombie</strong>, as <a id="_idIndexMarker202"/>discussed in the previous chapter. These three methods are almost the same, but the latter two are compliant with POSIX and provide more precise control over the monitored child process. The three interfaces are <span class="No-Break">as follows:</span></p>
+<ul>
+<li><strong class="source-inline">pid_t </strong><span class="No-Break"><strong class="source-inline">wait(int *status);</strong></span></li>
+<li><strong class="source-inline">pid_t waitpid(pid_t pid, int *status, </strong><span class="No-Break"><strong class="source-inline">int options);</strong></span></li>
+<li><strong class="source-inline">int waitid(idtype_t idtype, id_t id, siginfo_t * infop , </strong><span class="No-Break"><strong class="source-inline">int options);</strong></span></li>
+</ul>
+<p>The <strong class="source-inline">status</strong> argument has the same role for the first two functions. <strong class="source-inline">wait()</strong> could be represented as <strong class="source-inline">waitpid(-1, &amp;status, 0)</strong>, meaning the process caller must wait for any child process that terminates and receive its status. Let’s take a look at one example directly <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">waitpid()</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+#include &lt;sys/wait.h&gt;
+...
+void process_creator() {
+    pid_t pids[2] = {0};
+    if ((pids[0] = fork()) == 0) {
+        cout &lt;&lt; "Child process id: " &lt;&lt; getpid() &lt;&lt; endl;
+        exit(EXIT_SUCCESS); // {1}
+    }
+    if ((pids[1] = fork()) == 0) {
+        cout &lt;&lt; "Child process id: " &lt;&lt; getpid() &lt;&lt; endl;
+        exit(EXIT_FAILURE); // {2}
+    }
+    int status = 0;
+    waitpid(pids[0], &amp;status, 0); // {3}
+    if (WIFEXITED(status)) // {4}
+        cout &lt;&lt; "Child " &lt;&lt; pids[0]
+             &lt;&lt; " terminated with: "
+             &lt;&lt; status &lt;&lt; endl;
+    waitpid(pids[1], &amp;status, 0); // {5}
+    if (WIFEXITED(status)) // {6}
+        cout &lt;&lt; "Child " &lt;&lt; pids[1]
+             &lt;&lt; " terminated with: "
+             &lt;&lt; status &lt;&lt; endl;
+...</pre> <p>The result from this execution is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+Child process id: 33987
+Child process id: 33988
+Child 33987 terminated with: 0
+Child 33988 terminated with: 256</pre> <p>As you can <a id="_idIndexMarker203"/>see, we are creating two child processes and we set one of them to exit successfully and the other with a failure ([<strong class="source-inline">1</strong>] and [<strong class="source-inline">2</strong>]). We set the parent to wait for their exit statuses ([<strong class="source-inline">1</strong>] and [<strong class="source-inline">5</strong>]). When the child exits, the parent is notified through a signal accordingly, as described earlier, and the exit statuses are printed out ([<strong class="source-inline">4</strong>] <span class="No-Break">and [</span><span class="No-Break"><strong class="source-inline">6</strong></span><span class="No-Break">]).</span></p>
+<p>In addition, <strong class="source-inline">idtype</strong> and the <strong class="source-inline">waitid()</strong> system call allow us to wait not only for a certain process but also for a group of processes. Its status argument provides detailed information<a id="_idIndexMarker204"/> about the actual status update. Let’s modify the <span class="No-Break">example again:</span></p>
+<pre class="source-code">
+...
+void process_creator() {
+...
+    if ((pids[1] = fork()) == 0) {
+        cout &lt;&lt; "Child process id: " &lt;&lt; getpid() &lt;&lt; endl;
+        abort(); // {1}
+    }
+    siginfo_t status = {0}; // {2}
+    waitid(P_PID, pids[1], &amp;status, WEXITED); // {3}
+    if (WIFSIGNALED(status)) // {4}
+        cout &lt;&lt; "Child " &lt;&lt; pids[1]
+             &lt;&lt; " aborted: "
+             &lt;&lt; "\nStatus update with SIGCHLD: "
+             &lt;&lt; status.si_signo
+             &lt;&lt; "\nTermination signal - SIGABRT: "
+             &lt;&lt; status.si_status
+             &lt;&lt; "\nTermination code - _exit(2): "
+             &lt;&lt; status.si_code &lt;&lt; endl;
+}...</pre> <p>The output is <span class="No-Break">as follows:</span></p>
+<pre class="console">
+Child process id: 48368
+Child process id: 48369
+Child 48369 aborted:
+Status update with SIGCHLD: 20
+Termination signal - SIGABRT: 6
+Termination code - _exit(2): 2</pre> <p>We changed <strong class="source-inline">exit()</strong> to <strong class="source-inline">abort()</strong> ([<strong class="source-inline">1</strong>]), which caused the child process to receive <strong class="source-inline">SIGABRT</strong> and exit with default handling (not exactly what we advised earlier). We used the <strong class="source-inline">struct</strong> status ([<strong class="source-inline">2</strong>]) to collect more meaningful status change information. The <strong class="source-inline">waitid()</strong> system call is used to monitor a single process and is set to wait for it to exit ([<strong class="source-inline">3</strong>]). If the child <a id="_idIndexMarker205"/>process signals its exit, then we print out the meaningful information ([<strong class="source-inline">4</strong>]), which in our case proves that we get <strong class="source-inline">SIGABRT</strong> (with a value of <strong class="source-inline">6</strong>), the update comes with <strong class="source-inline">SIGCHLD</strong> (with a value of <strong class="source-inline">20</strong>) and the exit code is <strong class="source-inline">2</strong>, as per <span class="No-Break">the documentation.</span></p>
+<p>The <strong class="source-inline">waitid()</strong> system <a id="_idIndexMarker206"/>call has various options and through it, you can monitor your spawned processes in real time. We will not delve deeper here, but you can find more information on the manual pages should it suit your <span class="No-Break">needs: </span><a href="https://linux.die.net/man/2/waitid"><span class="No-Break">https://linux.die.net/man/2/waitid</span></a><span class="No-Break">.</span></p>
+<p>An important remark is that with POSIX and Linux’s thread management policy, which we discussed earlier, by default, a thread will wait on children of other threads in the same thread group. That said, we’ll get into some thread management in the <span class="No-Break">next section.</span></p>
+<h1 id="_idParaDest-45"><a id="_idTextAnchor043"/>Introducing the system calls for thread manipulation 
+in C++</h1>
+<p>As discussed in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>, we <a id="_idIndexMarker207"/>use threads to execute separate procedures in parallel. They exist only in the scope of a process and their creation overhead is bigger than the thread’s one, so we consider them lightweight, although <a id="_idIndexMarker208"/>they have their own stack and <strong class="source-inline">task_struct</strong>. They are almost self-sufficient, except they rely on the parent process to exist. That process is also known as <em class="italic">the main thread</em>. All others that are created by it need to join it to be initiated. You could create thousands of threads simultaneously on the system, but they will not run in parallel. You can run only <em class="italic">n</em> parallel tasks, where <em class="italic">n</em> is the number of the system’s concurrent ALUs (occasionally, these are the hardware’s concurrent threads). The others will be scheduled according to the OS’s task-scheduling mechanism. Let’s look at the simplest example of a POSIX <span class="No-Break">thread interface:</span></p>
+<pre class="source-code">
+pthread_t new_thread;
+pthread_create(&amp;new_thread, &lt;attributes&gt;,
+               &lt;procedure to execute&gt;,
+               &lt;procedure arguments&gt;);
+pthread_join(new_thread, NULL);</pre> <p>Of course, there <a id="_idIndexMarker209"/>are other system calls we could use to manage the POSIX threads further, such as exiting a thread, receiving the called procedure’s returned value, detaching from the main thread, and so on. Let’s take a look at C++’s <span class="No-Break">thread realization:</span></p>
+<pre class="source-code">
+std::thread new_thread(&lt;procedure to execute&gt;);
+new.join();</pre> <p>This looks simpler, but it provides the same operations as the POSIX thread. To be consistent with the language, we advise you to use the C++ thread object. Now, let’s see how these tasks are executed. Since we’ll cover the newly added C++20 <strong class="bold">jthreads</strong> feature<a id="_idIndexMarker210"/> in <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>, we will provide a system programming overview in the next <span class="No-Break">few sections.</span></p>
+<h2 id="_idParaDest-46"><a id="_idTextAnchor044"/>Joining and detaching threads</h2>
+<p>Regardless of <a id="_idIndexMarker211"/>whether you join threads through POSIX system calls or C++, you require this action to execute a routine through a given thread and wait for its termination. One remark, though – on Linux, the thread <a id="_idIndexMarker212"/>object of <strong class="source-inline">pthread_join()</strong> must be joinable, and the C++ thread object is not joinable by default. It is a good practice to join threads separately since joining them simultaneously leads to undefined behavior. It works the same way as the <strong class="source-inline">wait()</strong> system call does, except it relates to threads instead <span class="No-Break">of processes.</span></p>
+<p>And the<a id="_idIndexMarker213"/> same way processes could be<a id="_idIndexMarker214"/> run as daemons, threads can become daemons as well through detaching – <strong class="source-inline">pthread_detach()</strong> for POSIX or <strong class="source-inline">thread::detach()</strong> in C++. We are going to see this in the following example, but we are also going to analyze the joinable setting of <span class="No-Break">the threads:</span></p>
+<pre class="source-code">
+#include &lt;iostream&gt;
+#include &lt;chrono&gt;
+#include &lt;thread&gt;
+using namespace std;
+using namespace std::chrono;
+void detached_routine() {
+    cout &lt;&lt; "Starting detached_routine thread.\n";
+    this_thread::sleep_for(seconds(2));
+    cout &lt;&lt; "Exiting detached_routine thread.\n";
+}
+void joined_routine() {
+    cout &lt;&lt; "Starting joined_routine thread.\n";
+    this_thread::sleep_for(seconds(2));
+    cout &lt;&lt; "Exiting joined_routine thread.\n";
+}
+void thread_creator() {
+    cout &lt;&lt; "Starting thread_creator.\n";
+    thread t1(detached_routine);
+    cout &lt;&lt; "Before - Is the detached thread joinable: "
+         &lt;&lt; t1.joinable() &lt;&lt; endl;
+    t1.detach();
+    cout &lt;&lt; "After - Is the detached thread joinable: "
+         &lt;&lt; t1.joinable() &lt;&lt; endl;
+    thread t2(joined_routine);
+    cout &lt;&lt; "Before - Is the joined thread joinable: "
+         &lt;&lt; t2.joinable() &lt;&lt; endl;
+    t2.join();
+    cout &lt;&lt; "After - Is the joined thread joinable: "
+         &lt;&lt; t2.joinable() &lt;&lt; endl;
+    this_thread::sleep_for(chrono::seconds(1));
+    cout &lt;&lt; "Exiting thread_creator.\n";
+}
+int main() {
+    thread_creator();
+}</pre> <p>The <a id="_idIndexMarker215"/>respective output is <span class="No-Break">as </span><span class="No-Break"><a id="_idIndexMarker216"/></span><span class="No-Break">follows:</span></p>
+<pre class="console">
+Starting thread_creator.
+Before - Is the detached thread joinable: 1
+After - Is the detached thread joinable: 0
+Before - Is the joined thread joinable: 1
+Starting joined_routine thread.
+Starting detached_routine thread.
+Exiting joined_routine thread.
+Exiting detached_routine thread.
+After - Is the joined thread joinable: 0
+Exiting thread_creator.</pre> <p>The <a id="_idIndexMarker217"/>preceding <a id="_idIndexMarker218"/>example is fairly simple – we create two thread objects: one is to be detached from the main thread handle (<strong class="source-inline">detached_routine()</strong>), while the other (<strong class="source-inline">joined_thread()</strong>) will join the main thread after exit. We check their joinable status at creation and after setting them to work. As expected, after the threads get to their routines, they are no longer joinable until they <span class="No-Break">are terminated.</span></p>
+<h2 id="_idParaDest-47"><a id="_idTextAnchor045"/>Thread termination</h2>
+<p>Linux (POSIX) provides<a id="_idIndexMarker219"/> two ways to end a thread’s routine in a controlled manner from the inside of the thread: <strong class="source-inline">pthread_cancel()</strong> and <strong class="source-inline">pthread_exit()</strong>. As you have probably guessed from their names, the second one terminates the caller thread and is expected to always succeed. In <a id="_idIndexMarker220"/>contrast with the process <strong class="source-inline">exit()</strong> system call, during this one’s execution, no process-shared resources, such as semaphores, file descriptors, mutexes, and so on, will be released, so make sure you manage them before the thread exits. Canceling the thread is a more flexible way to do this, but it ends up with <strong class="source-inline">pthread_exit()</strong>. Since the thread cancelation request is sent to the thread object, it has the opportunity to execute a cancelation cleanup and call thread-specific <span class="No-Break">data destructors.</span></p>
+<p>As C++ is an abstraction on top of the system call interface, it uses the thread object’s scope to manage its lifetime and does this well. Of course, whatever happens in the background is implementation-specific and depends on the system and the compiler. We are revisiting this topic later in this book as well, so use this opportunity to familiarize yourself with <span class="No-Break">the interfaces.</span></p>
+<h1 id="_idParaDest-48"><a id="_idTextAnchor046"/>Summary</h1>
+<p>In this chapter, we walked through the low-level events that occur during process or thread creation and manipulation. We discussed the processes’ memory layout and its significance. You also learned some important points about the OS’s way of task scheduling and what happens in the background during process and thread state updates. We will use these fundamentals later in this book. The next chapter will cover filesystem management and will provide you with some interesting C++ instruments in <span class="No-Break">that domain.</span></p>
+</div>
+</div></body></html>

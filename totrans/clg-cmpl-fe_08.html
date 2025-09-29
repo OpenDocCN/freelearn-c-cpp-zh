@@ -1,0 +1,660 @@
+<html><head></head><body>
+<div id="book-content" class="calibre2">
+<div id="sbo-rt-content" class="calibre3"><section id="chapter-6-advanced-code-analysis" class="level" data-number="2.2">
+<h1 data-number="2.2" class="calibre5"><span>6</span></h1>
+<h1 id="sigil_toc_id_99" class="calibre5"><a id="x1-1170006" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Advanced Code Analysis</h1>
+<p class="hidden">Clang-Tidy checks, as discussed in the previous chapter, rely on advanced matching provided by the AST. However, this approach might not be sufficient for detecting more complex problems, such as lifetime issues (that is, when an object or resource is accessed or referenced after it has been deallocated or has gone out of scope, potentially leading to unpredictable behavior or crashes). In this chapter, we will introduce advanced code analysis tools <a id="dx1-117001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>based on the <strong class="calibre12">Control Flow Graph </strong>(<strong class="calibre12">CFG</strong>). The Clang Static Analyzer is an excellent example of such tools, and Clang-Tidy also integrates some aspects of CFGs. We will begin with typical usage examples and then delve into the implementation details. The chapter will conclude with a custom check that employs advanced techniques and extends the concept of class complexity to method implementations. We will define cyclomatic complexity and demonstrate how to calculate it using the CFG library provided by Clang. In this chapter, we will explore the following topics:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">What static analysis is</p></li>
+<li class="calibre14"><p class="calibre15">Gaining knowledge of CFGs – the basic data structure used for static analysis</p></li>
+<li class="calibre14"><p class="calibre15">How CFGs can be used in a custom Clang-Tidy check</p></li>
+<li class="calibre14"><p class="calibre15">What analysis tools are provided in Clang and what are their limitations</p></li>
+</ul>
+<p class="hidden"><a id="x1-117002r364" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<section id="technical-requirements-5" class="level" data-number="2.2.1">
+<h2 data-number="2.2.1" id="sigil_toc_id_100" class="likechapterhead"><span>6.1 </span> <a id="x1-1180001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Technical requirements</h2>
+<p class="hidden">The source code for this chapter is located in the <code class="calibre13">chapter6 </code>folder of the book’s GitHub repository: <a href="https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter6</a>. <a id="x1-118001r366" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="static-analysis" class="level" data-number="2.2.2">
+<h2 data-number="2.2.2" id="sigil_toc_id_101" class="likechapterhead"><span>6.2 </span> <a id="x1-1190002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Static analysis</h2>
+<p class="hidden">Static analysis is a crucial technique in software development that involves inspecting the code without actually running the program. This method focuses on analyzing either the source code or its compiled <a id="dx1-119001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>version to detect a variety of issues, such as errors, vulnerabilities, and deviations from coding standards. Unlike dynamic analysis, which requires the execution of the program, static analysis allows for examining the code in a non-runtime environment.</p>
+<p class="hidden">More generally, static analysis aims to check a specific property of a computer program based on its meaning; that is, it can be considered a part of semantic analysis (see <a href="B19722_02.xhtml#x1-390002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Figure</em><em class="calibre11"> 2.6</em></a><em class="calibre11">, Parser</em>). For instance, if <span>𝒞 </span>is the set of all C/C++ programs and <span>𝒫 </span>is a property of such a program, then the goal of static analysis is to check the property for a specific program <span>P </span><span>∈𝒞</span>, that is, to answer the question of whether <span>𝒫</span>(<span>P</span>) is true or false.</p>
+<p class="hidden">Our Clang-Tidy check from the previous chapter (see <a href="B19722_05.xhtml#x1-1090004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Section</em><em class="calibre11"> 5.4</em></a><em class="calibre11">, Custom</em> <em class="calibre11">Clang-Tidy check</em>) is a good example of such a property. In reality, it takes C++ code with a class definition and decides whether the class is complex or not based on the number of methods it has.</p>
+<p class="hidden">It’s worth noting that not all properties of a program can be checked. The most obvious example is the famous halting problem [<a href="B19722_Bib.xhtml#XTuring1936" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">31</a>].</p>
+
+<p class="hidden"><span>Important note</span></p>
+
+<p class="hidden">The halting problem can be formulated as follows: Given a program <span>P </span>and an input <span>I</span>, determine whether <span>P </span>halts or continues to run indefinitely when executed with <span>I</span>.</p>
+<p class="hidden">Formally, the problem is to decide, for a given program <span>P </span>and an input <span>I</span>, whether the computation of <span>P</span>(<span>I</span>) eventually stops (halts) or will never terminate (loops indefinitely).</p>
+<p class="hidden">Alan Turing proved that there is no general algorithmic method for solving this problem for all possible program-input pairs. This result implies that there is no single algorithm that can correctly determine for every pair (<span>P,I</span>) whether <span>P </span>halts when run with <span>I</span>.</p>
+
+<p class="hidden">Despite the fact that not all properties of programs can be proven, it can be done for some cases. There is a reasonable number of such cases that make static analysis a practical tool for usage. Thus, we can use the tools in these cases to systematically scan the code to determine properties of the code. These tools are adept at identifying issues ranging from simple <a id="dx1-119002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>syntax errors to more complex potential bugs. One of the key benefits of static analysis is its ability to catch problems early in the development cycle. This early detection is not only efficient but also resource-saving, as it helps identify and rectify issues before the software is run or deployed.</p>
+<p class="hidden">Static analysis plays a significant role in ensuring the quality and compliance of software. It checks that the code adheres to prescribed coding standards and guidelines, which is particularly important in large-scale projects or industries with strict regulatory requirements. Moreover, it is highly effective in uncovering common security vulnerabilities such as buffer overflows, SQL injection flaws, and cross-site scripting vulnerabilities.</p>
+<p class="hidden">Additionally, static analysis contributes to code refactoring and optimization by pinpointing areas of redundancy, unnecessary complexity, and opportunities for improvement. It’s a common practice to integrate these tools into the development process, including continuous integration pipelines. This integration allows for ongoing analysis of the code with each new commit or build, ensuring continual quality assurance.</p>
+<p class="hidden">The Clang-Tidy checks that we created in the last chapter can be considered an example of a static analysis program. In this chapter, we will consider more advanced topics involving data structures such as CFGs, which we will see next. <a id="x1-119003r367" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="cfg" class="level" data-number="2.2.3">
+<h2 data-number="2.2.3" id="sigil_toc_id_102" class="likechapterhead"><span>6.3 </span> <a id="x1-1200003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>CFG</h2>
+<p class="hidden">A <strong class="calibre12">CFG </strong>is a fundamental <a id="dx1-120001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>data structure in compiler design and static program analysis, representing all paths that might be traversed through a program during execution.</p>
+<p class="hidden">A CFG consists of the following key components:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Nodes</strong>: Correspond to <a id="dx1-120002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>basic blocks, a straight-line sequence of operations with one entry and one exit point</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Edges</strong>: Represent the <a id="dx1-120003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>flow of control from one block to another, including both conditional and unconditional branches</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Start and end nodes</strong>: Every CFG has a <a id="dx1-120004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>unique entry node <a id="dx1-120005" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>and one or more exit nodes</p></li>
+</ul>
+<p class="hidden">As an example of a CFG, consider the function to calculate the maximum of two integer numbers that we used as an example before; see <a href="B19722_02.xhtml#x1-37021r5" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 2.5</a>:</p>
+<pre class="source-code"><span>1 </span>int max(int a, int b) { 
+ 
+<span>2 </span>  if (a &gt; b) 
+ 
+
+<span>3 </span>    return a; 
+ 
+<span>4 </span>  return b; 
+ 
+<span>5 </span>}</pre>
+<p class="hidden"><a id="x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-120013" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.1</strong>: CFG example C++ code: max.cpp </p>
+<p class="hidden">The corresponding CFG can be represented as follows:</p>
+<div class="tableofcontents">
+<div class="tableofcontents">
+<img src="../media/Figure6.2_B19722.png" alt="Figure 6.2: CFG example for max.cpp " class="calibre39"/>
+</div>
+<p class="hidden"><span id="Figure6.2"><strong class="calibre12">Figure 6.2</strong>: </span>CFG example for max.cpp </p>
+</div>
+<p class="hidden">The diagram shown in <a href="#Figure6.2" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.2</a> visually represents a CFG for the <span><code class="calibre13">max</code></span> function (from <a href="#x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.1</a>) with a series of <a id="dx1-120016" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>connected nodes and directed edges:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Entry node</strong>: At the top, there is an “<strong class="calibre12">entry</strong>” node, representing the starting point of the function’s execution.</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Conditional node</strong>: Below the entry node, there is a node labeled “<strong class="calibre12">a</strong> <strong class="calibre12">&gt; b</strong>”. This node represents the conditional statement in the function, where the comparison between <i class="calibre11">a</i> and <i class="calibre11">b</i> is made.</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Branches for true and false conditions</strong>:</p>
+<ul class="calibre9">
+<li class="calibre14"><p class="calibre15">On the true branch (left side), there is a node labeled “<strong class="calibre12">Return</strong> <strong class="calibre12">a</strong>”, connected by an edge from the “<strong class="calibre12">a &gt; b</strong>” node. This edge is labeled “<strong class="calibre12">true</strong>”, indicating that if <i class="calibre11">a</i> is greater than <i class="calibre11">b</i>, the flow goes to this node.</p></li>
+<li class="calibre14"><p class="calibre15">On the false branch (right side), there is a node labeled “<strong class="calibre12">Return</strong> <strong class="calibre12">b</strong>”, connected by an edge from the “<strong class="calibre12">a &gt; b</strong>” node. This edge is labeled “<strong class="calibre12">false</strong>”, indicating that if <i class="calibre11">a</i> is not greater than <i class="calibre11">b</i>, the flow goes to this node.</p></li>
+</ul></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Exit node</strong>: Below both the “<strong class="calibre12">Return a</strong>” and “<strong class="calibre12">Return b</strong>” nodes, converging at a point, there is an “<strong class="calibre12">exit</strong>” node. This represents the termination point of the function, where the control flow exits the function after returning either <i class="calibre11">a</i> or <i class="calibre11">b</i>.</p></li>
+</ul>
+<p class="hidden">This CFG effectively illustrates how the <span><code class="calibre13">max</code></span> function processes input and reaches a decision on which value to return based on the comparison.</p>
+<p class="hidden">The CFG representation can <a id="dx1-120017" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>also be used to estimate function complexity. In brief, a more complex picture corresponds to a more complex system. We will use a precise definition of complexity known as cyclomatic complexity, or <span>M </span>[<a href="B19722_Bib.xhtml#XMcCabe1976" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">28</a>], which can be calculated as follows:</p>
+<table class="tabular">
+<colgroup class="calibre40">
+<col class="calibre41"/>
+<col class="calibre41"/>
+</colgroup>
+<tbody class="calibre19">
+<tr class="odd">
+<td class="calibre20"><div class="tableofcontents">
+<i class="calibre11">M = E - N + 2P</i>
+<a id="x1-120014r3" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>
+</div>
+</td>
+<td class="calibre20"/>
+</tr>
+</tbody>
+</table>
+<p class="hidden">where:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15"><span>E </span>is the number of edges in the graph</p></li>
+<li class="calibre14"><p class="calibre15"><span>N </span>is the number of nodes in the graph</p></li>
+<li class="calibre14"><p class="calibre15"><span>P </span>is the number of connected components (for a single CFG, <span>P </span>is usually 1)</p></li>
+</ul>
+<p class="hidden">For the <span><code class="calibre13">max</code></span> function discussed earlier, the CFG can be analyzed as follows:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Nodes (N)</strong>: There are five nodes (Entry, <i class="calibre11">a &gt; b</i>, Return <i class="calibre11">a</i>, <i class="calibre11">b</i>, Exit)</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Edges (E)</strong>: There are five edges (from Entry to <i class="calibre11">a &gt; b</i>, from <i class="calibre11">a &gt; b</i> to Return <i class="calibre11">a</i>, from <i class="calibre11">a &gt; b</i> to Return <i class="calibre11">b</i>, from Return <i class="calibre11">a</i> to Exit, and from Return <i class="calibre11">b</i> to Exit)</p></li>
+<li class="calibre14"><p class="calibre15"><strong class="calibre12">Connected components (P)</strong>: As it’s a single function, <i class="calibre11">P</i> = 1</p></li>
+</ul>
+<p class="hidden">Substituting these values into the formula, we get the following:</p>
+<div class="tableofcontents">
+𝑀 = 5 − 5 + 2 × 1 = 2
+</div>
+<p class="hidden">Thus, the cyclomatic complexity of the <span><code class="calibre13">max</code></span> function, based on the given CFG, is 2. This indicates that there are two linearly independent paths through the code, corresponding to the two branches of the if statement.</p>
+<p class="hidden">Our next step will be to create a Clang-Tidy check that uses a CFG to calculate cyclomatic complexity. <a id="x1-120018r368" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="custom-cfg-check" class="level" data-number="2.2.4">
+<h2 data-number="2.2.4" id="sigil_toc_id_103" class="likechapterhead"><span>6.4 </span> <a id="x1-1210004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Custom CFG check</h2>
+<p class="hidden">We are going to use the knowledge gained in <a href="B19722_05.xhtml#x1-1090004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Section</em><em class="calibre11"> 5.4</em></a><em class="calibre11">, Custom Clang-Tidy</em> <em class="calibre11">check</em> to create a custom CFG check. As mentioned previously, the check will use Clang’s CFG to calculate cyclomatic complexity. The check <a id="dx1-121001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>should issue a warning if the calculated complexity exceeds a threshold. This threshold will be set up as a configuration parameter, allowing us to change it during our tests. Let’s start with the creation of the project skeleton. <a id="x1-121002r352" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<section id="creating-the-project-skeleton" class="level" data-number="2.2.4.1">
+<h3 data-number="2.2.4.1" id="sigil_toc_id_104" class="likesectionhead"><span>6.4.1 </span> <a id="x1-1220001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Creating the project skeleton</h3>
+<p class="hidden">We will use <code class="calibre13">cyclomaticcomplexity </code>as the name <a id="dx1-122001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>for our check, and our project skeleton can be created as follows:</p>
+<pre id="verbatim-95" class="console">$ ./clang-tools-extra/clang-tidy/add_new_check.py misc cyclomaticcomplexity</pre>
+<p class="hidden"><a id="x1-122002r3" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-122003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.3</strong>: Creating a skeleton for the misc-cyclomaticcomplexity check </p>
+<p class="hidden">As a result of the run, we will get a number of modified and new files. The most important ones for us are the following two files located in the <code class="calibre13">clang-tools-extra/clang-tidy/misc/ </code>folder:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15"><code class="calibre13">misc/CyclomaticcomplexityCheck.h </code>: This is the header file for our check</p></li>
+<li class="calibre14"><p class="calibre15"><code class="calibre13">misc/CyclomaticcomplexityCheck.cpp </code>: This file will house the implementation of our check</p></li>
+</ul>
+<p class="hidden">These files need to be modified to achieve the required functionality for the check. <a id="x1-122004r373" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="check-implementation" class="level" data-number="2.2.4.2">
+<h3 data-number="2.2.4.2" id="sigil_toc_id_105" class="likesectionhead"><span>6.4.2 </span> <a id="x1-1230002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Check implementation</h3>
+<p class="hidden">For the header file, we aim to <a id="dx1-123001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>add a private function to calculate the cyclomatic complexity. Specifically, the following code needs to be inserted:</p>
+<pre class="source-code"><span>27 </span>private: 
+ 
+<span>28 </span>  unsigned calculateCyclomaticComplexity(const CFG *cfg);</pre>
+<p class="hidden"><a id="x1-123005r4" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-123006" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.4</strong>: Modifications to CyclomaticcomplexityCheck.h </p>
+<p class="hidden">More substantial modifications <a id="dx1-123007" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>are required in the <code class="calibre13">.cpp </code>file. We will begin with the implementation of the <span><code class="calibre13">registerMatchers</code></span> method, as follows:</p>
+<pre class="source-code"><span>17 </span>void CyclomaticcomplexityCheck::registerMatchers(MatchFinder *Finder) { 
+ 
+
+<span>18 </span>  Finder-&gt;addMatcher(functionDecl().bind("func"), this); 
+ 
+
+<span>19 </span>}</pre>
+<p class="hidden"><a id="x1-123012r5" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-123013" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.5</strong>: Modifications to CyclomaticcomplexityCheck.cpp: registerMatchers implementation </p>
+<p class="hidden">Based on the code, our check will be applied only to function declarations, <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">FunctionDecl</code></span>. The code can also be extended to support other C++ constructs.</p>
+<p class="hidden">The implementation of the <span><code class="calibre13">check</code></span> method is presented in <a href="#x1-123030r6" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.6</a>. At <em class="calibre11">Lines 22-23</em>, we perform basic checks on the matched AST node, <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">FunctionDecl</code></span> in our case. At <em class="calibre11">Lines 25-26</em>, we create the CFG object using the <span><code class="calibre13">CFG</code><code class="calibre13">::</code><code class="calibre13">buildCFG</code></span> method. The first two parameters specify the declaration (<span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">Decl</code></span>) and the statement for the declaration (<span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">Stmt</code></span>). At <em class="calibre11">Line 30</em>, we calculate the cyclomatic complexity using the threshold, which can be obtained as the <span><code class="calibre13">"</code><code class="calibre13">Threshold</code><code class="calibre13">"</code></span> option of our check. This provides flexibility in testing for different input programs. <em class="calibre11">Lines 31-34 </em>contain the implementation of the check result printout.</p>
+<pre class="source-code"><span>21 </span>void CyclomaticcomplexityCheck::check(const MatchFinder::MatchResult &amp;Result) { 
+ 
+
+<span>22 </span>  const auto *Func = Result.Nodes.getNodeAs&lt;FunctionDecl&gt;("func"); 
+ 
+
+<span>23 </span>  if (!Func || !Func-&gt;hasBody()) return; 
+ 
+<span>24 </span> 
+ 
+
+<span>25 </span>  std::unique_ptr&lt;CFG&gt; cfg = 
+ 
+<span>26 </span>      CFG::buildCFG(Func, Func-&gt;getBody(), Result.Context, CFG::BuildOptions()); 
+ 
+
+<span>27 </span>  if (!cfg) return; 
+ 
+<span>28 </span> 
+ 
+<span>29 </span>  unsigned Threshold = Options.get("Threshold", 5); 
+ 
+
+<span>30 </span>  unsigned complexity = calculateCyclomaticComplexity(cfg.get()); 
+ 
+
+<span>31 </span>  if (complexity &gt; Threshold) { 
+ 
+
+<span>32 </span>    diag(Func-&gt;getLocation(), "function %0 has high cyclomatic complexity (%1)") 
+ 
+
+<span>33 </span>        &lt;&lt; Func &lt;&lt; complexity; 
+ 
+<span>34 </span>  } 
+ 
+<span>35 </span>}</pre>
+<p class="hidden"><a id="x1-123030r6" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-123031" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.6</strong>: Modifications to CyclomaticcomplexityCheck.cpp: check implementation </p>
+<p class="hidden">The <span><code class="calibre13">calculateCyclomaticComplexity</code></span> method is used to calculate the cyclomatic complexity. It takes the created <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">CFG</code></span> object as an input parameter. The implementation is shown in the following figure:</p>
+<pre class="source-code"><span>37 </span>unsigned CyclomaticcomplexityCheck::calculateCyclomaticComplexity( 
+ 
+
+<span>38 </span>    const CFG *cfg) { 
+ 
+<span>39 </span>  unsigned edges = 0; 
+ 
+
+<span>40 </span>  unsigned nodes = 0; 
+ 
+<span>41 </span> 
+ 
+<span>42 </span>  for (const auto *block : *cfg) { 
+ 
+
+<span>43 </span>    edges += block-&gt;succ_size(); 
+ 
+<span>44 </span>    ++nodes; 
+ 
+<span>45 </span>  } 
+ 
+<span>46 </span> 
+ 
+
+<span>47 </span>  return edges - nodes + 2;  // Simplified formula 
+ 
+<span>48 </span>}</pre>
+<p class="hidden"><a id="x1-123045r7" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-123046" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.7</strong>: Modifications to CyclomaticcomplexityCheck.cpp: calculateCyclomaticComplexity implementation </p>
+<p class="hidden">We iterate over all CFG blocks at <em class="calibre11">Lines 42-45</em>. The number of blocks corresponds to the number of nodes, denoted as <span>N </span>in <a href="#x1-120014r3" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.2</a>. We sum up the number of successors for each block to calculate the <a id="dx1-123047" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>number of edges, denoted as <span>E</span>. We assume that the number of connected components, denoted as <span>P</span>, is equal to one for our simplified example.</p>
+<p class="hidden">After implementing the check, it’s time to build and run our new check on our example; see <a href="#x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.1</a>. <a id="x1-123048r375" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="building-and-testing-the-cyclomatic-complexity-check" class="level" data-number="2.2.4.3">
+<h3 data-number="2.2.4.3" id="sigil_toc_id_106" class="likesectionhead"><span>6.4.3 </span> <a id="x1-1240003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Building and testing the cyclomatic complexity check</h3>
+<p class="hidden">We will use the basic <a id="dx1-124001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>build configuration <a id="dx1-124002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>specified in <a href="B19722_01.xhtml#x1-27004r4" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 1.4</a> and build Clang-Tidy using the standard command from <a href="B19722_05.xhtml#x1-102004r2" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 5.2</a>:</p>
+<pre id="verbatim-96" class="console">$ ninja install-clang-tidy</pre>
+<p class="hidden">Assuming the build configuration from <a href="B19722_01.xhtml#x1-27004r4" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 1.4</a>, this command will install the Clang-Tidy binary in the <code class="calibre13">&lt;...&gt;/llvm-project/install/bin </code>folder.</p>
+
+<p class="hidden"><span>Important note</span></p>
+
+<p class="hidden">If you use a build configuration with shared libraries (with the <code class="calibre13">BUILD</code><code class="calibre13">_SHARED</code><code class="calibre13">_LIBS </code>flag set to <code class="calibre13">ON </code>), as shown in <a href="B19722_01.xhtml#x1-30003r12" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 1.12</a>, then you might need to install and built all artifacts with <code class="calibre13">ninja</code> <code class="calibre13">install </code>.</p>
+
+<p class="hidden">We will run our check on the example program shown in <a href="#x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.1</a>. As we previously calculated, the cyclomatic complexity for the test is 2, which is lower than the default value of 5 specified at <em class="calibre11">Line 29 </em>in our <span><code class="calibre13">check</code></span> method implementation, as seen in <a href="#x1-123030r6" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.6</a>. Thus, we need to <a id="dx1-124003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>override the default value to 1 to be able to see a warning in our test program. This can be done using the <code class="calibre13">-config </code>option, which we <a id="dx1-124004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>previously used for <code class="calibre13">classchecker </code>check tests, as shown in <a href="B19722_05.xhtml#x1-111061r20" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 5.20</a>. The command for the test will look as follows:</p>
+<pre id="listing-43" class="source-code">1$ &lt;...&gt;/llvm-project/install/bin/clang-tidy                         \ 
+ 
+
+<span>2 </span>  -checks="-*,misc-cyclomaticcomplexity"                            \ 
+ 
+
+
+
+
+<span>3 </span>  -config="{CheckOptions:                                           \ 
+ 
+
+<span>4 </span>            [{key: misc-cyclomaticcomplexity.Threshold, value: ’1’}]}" \ 
+ 
+
+<span>5 </span>  max.cpp                                                          \ 
+ 
+
+<span>6 </span>  -- -std=c++17</pre>
+<p class="hidden"><a id="x1-124011r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-124012" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.8</strong>: Testing cyclomatic complexity on the max.cpp example </p>
+<p class="hidden"><em class="calibre11">Line 2 </em>in <a href="#x1-124011r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.8</a> indicates that we want to run only one Clang-Tidy check: <code class="calibre13">misc-cyclomaticcomplexity </code>. At <em class="calibre11">lines 3-4</em>, we set up the required threshold. <em class="calibre11">Line 5 </em>specifies the name of the file being tested (<code class="calibre13">max.cpp </code>in our case), and the final line, <em class="calibre11">Line 6</em>, contains some compilation flags for our program.</p>
+<p class="hidden">We will get the following output if we run the command from <a href="#x1-124011r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.8</a>:</p>
+<pre id="verbatim-97" class="console">max.cpp:1:5: warning: function ’max’ has high cyclomatic complexity (2) ...
+int max(int a, int b) {
+    ^</pre>
+<p class="hidden"><a id="x1-124013r9" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-124014" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.9</strong>: Testing cyclomatic complexity on the max.cpp example: output </p>
+<p class="hidden">The following question might arise: How does Clang build the CFG? We can use a debugger to investigate the process. <a id="x1-124015r372" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+</section>
+<section id="cfg-on-clang" class="level" data-number="2.2.5">
+<h2 data-number="2.2.5" id="sigil_toc_id_107" class="likechapterhead"><span>6.5 </span> <a id="x1-1250005" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>CFG on Clang</h2>
+<p class="hidden">A CFG is the basic data structure for advanced static analysis using Clang tools. Clang constructs the CFG for a <a id="dx1-125001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>function from its AST, identifying basic blocks and control flow edges. Clang’s CFG construction handles various C/C++ constructs, including loops, conditional statements, switch cases, and complex constructs such as <code class="calibre13">setjmp/longjmp </code>and C++ exceptions. Let’s consider the process using our example from <a href="#x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.1</a>. <a id="x1-125002r384" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<section id="cfg-construction-by-example" class="level" data-number="2.2.5.1">
+<h3 data-number="2.2.5.1" id="sigil_toc_id_108" class="likesectionhead"><span>6.5.1 </span> <a id="x1-1260001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>CFG construction by example</h3>
+<p class="hidden">Our example from <a href="#x1-120012r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.1</a> has <a id="dx1-126001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>five nodes, as shown in <a href="#Figure6.2" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.2</a>. Lets run a debugger to investigate the process, as follows:</p>
+<pre id="listing-44" class="source-code">1$ lldb &lt;...&gt;/llvm-project/install/bin/clang-tidy --                   \ 
+ 
+
+<span>2 </span>  -checks="-*,misc-cyclomaticcomplexity"                              \ 
+ 
+
+<span>3 </span>  -config="{CheckOptions:                                             \ 
+ 
+
+<span>4 </span>             [{key: misc-cyclomaticcomplexity.Threshold, value: ’1’}]}" \ 
+ 
+
+<span>5 </span>  max.cpp                                                             \ 
+ 
+
+<span>6 </span>  -- -std=c++17 -Wno-all</pre>
+<p class="hidden"><a id="x1-126008r10" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-126009" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.10</strong>: Debugger session running to investigate the CFG creation process </p>
+<p class="hidden">We used the same command as in <a href="#x1-124011r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.8</a> but changed the first line of the command to run the check via a debugger. We also changed the last line to suppress all warnings from the compiler.</p>
+
+<p class="hidden"><span>Important note</span></p>
+
+<p class="hidden">Advanced static analysis is a part of semantic analysis. For example, warnings are printed if Clang detects unreachable code, controlled by the <code class="calibre13">-Wunreachable-code </code>option. The detector is a part of Clang’s semantic analysis and utilizes CFGs, in addition to ASTs, as the basic data structures to detect such issues. We can suppress these warnings and, as a result, disable CFG initialization in Clang by specifying the special <code class="calibre13">-Wno-all </code>command-line option, which suppresses all warnings generated by the compiler.</p>
+
+<p class="hidden">We will set a <a id="dx1-126010" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>breakpoint at the <span><code class="calibre13">CFGBuilder</code><code class="calibre13">::</code><code class="calibre13">createBlock</code></span> function, which creates a CFG block.</p>
+<pre id="listing-45" class="source-code">$ lldb &lt;...&gt;/llvm-project/install/bin/clang-tidy --                   \ 
+ 
+
+  -checks="-*,misc-cyclomaticcomplexity"                              \ 
+ 
+
+  -config="{CheckOptions:                                             \ 
+ 
+
+             [{key: misc-cyclomaticcomplexity.Threshold, value: ’1’}]}" \ 
+ 
+
+  max.cpp                                                             \ 
+ 
+
+  -- -std=c++17 -Wno-all 
+ 
+... 
+ 
+(lldb) b CFGBuilder::createBlock 
+ 
+
+Breakpoint 1: where = ...CFGBuilder::createBlock(bool) const ...</pre>
+<p class="hidden"><a id="x1-126020r11" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-126021" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.11</strong>: Running debugger and setting breakpoint for CFGBuilder::createBlock </p>
+<p class="hidden">If we run the debugger, we will see <a id="dx1-126022" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>that the function is called five times for our example; that is, five CFG blocks are created for our <span><code class="calibre13">max</code></span> function:</p>
+<pre id="listing-46" class="source-code">1(lldb) r 
+ 
+<span>2 </span>... 
+ 
+<span>3 </span>    frame #0: ...CFGBuilder::createBlock... 
+ 
+
+<span>4 </span>   1690 /// createBlock - Used to lazily create blocks that are connected 
+ 
+
+<span>5 </span>   1691 ///  to the current (global) successor. 
+ 
+
+<span>6 </span>   1692 CFGBlock *CFGBuilder::createBlock(bool add_successor) { 
+ 
+
+<span>7 </span>-&gt; 1693   CFGBlock *B = cfg-&gt;createBlock(); 
+ 
+
+<span>8 </span>   1694   if (add_successor &amp;&amp; Succ) 
+ 
+
+<span>9 </span>   1695     addSuccessor(B, Succ); 
+ 
+
+<span>10 </span>   1696   return B; 
+ 
+<span>11 </span> 
+ 
+<span>12 </span>(lldb) c 
+ 
+<span>13 </span>... 
+ 
+
+<span>14 </span>(lldb) c 
+ 
+<span>15 </span>... 
+ 
+<span>16 </span>(lldb) c 
+ 
+<span>17 </span>... 
+ 
+<span>18 </span>(lldb) c 
+ 
+
+<span>19 </span>... 
+ 
+<span>20 </span>(lldb) c 
+ 
+<span>21 </span>... 
+ 
+<span>221 </span> warning generated. 
+ 
+
+<span>23 </span>max.cpp:1:5: warning: function ’max’ has high cyclomatic complexity (2) [misc-cyclomaticcomplexity] 
+ 
+
+<span>24 </span>int max(int a, int b) { 
+ 
+<span>25 </span>    ^ 
+ 
+<span>26 </span>Process ... exited with status = 0 (0x00000000)</pre>
+<p class="hidden"><a id="x1-126049r12" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-126050" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.12</strong>: Creation of CFG blocks, with breakpoints highlighted </p>
+<p class="hidden">The debugger session shown in <a href="#x1-126049r12" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.12</a> can be <a id="dx1-126051" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>considered the entry point to the CFG creation process. Now, it’s time to delve deeply into the implementation details. <a id="x1-126052r388" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="cfg-construction-implementation-details" class="level" data-number="2.2.5.2">
+<h3 data-number="2.2.5.2" id="sigil_toc_id_109" class="likesectionhead"><span>6.5.2 </span> <a id="x1-1270002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>CFG construction implementation details</h3>
+<p class="hidden">The blocks are created in <a id="dx1-127001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>reverse order, as seen in <a href="#x1-127017r13" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.13</a>. The first block to be created is the exit block, as shown in <a href="#x1-127017r13" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.13</a>, <em class="calibre11">Line 4</em>. Then, the CFG builder traverses the <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">Stmt</code></span> object passed as a parameter (<em class="calibre11">Line 9</em>). The entry block is created last, at <em class="calibre11">Line 12</em>:</p>
+<pre id="listing-47" class="source-code">1std::unique_ptr&lt;CFG&gt; CFGBuilder::buildCFG(const Decl *D, Stmt *Statement) { 
+ 
+
+<span>2 </span>  ... 
+ 
+<span>3 </span>  // Create an empty block that will serve as the exit block for the CFG. 
+ 
+
+<span>4 </span>  Succ = createBlock(); 
+ 
+<span>5 </span>  assert(Succ == &amp;cfg-&gt;getExit()); 
+ 
+
+<span>6 </span>  Block = nullptr;  // the EXIT block is empty.  ... 
+ 
+
+<span>7 </span>  ... 
+ 
+<span>8 </span>  // Visit the statements and create the CFG. 
+ 
+
+<span>9 </span>  CFGBlock *B = Visit(Statement, ...); 
+ 
+<span>10 </span>  ... 
+ 
+
+<span>11 </span>  // Create an empty entry block that has no predecessors. 
+ 
+
+<span>12 </span>  cfg-&gt;setEntry(createBlock()); 
+ 
+<span>13 </span>  ... 
+ 
+
+<span>14 </span>  return std::move(cfg); 
+ 
+<span>15 </span>}</pre>
+<p class="hidden"><a id="x1-127017r13" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-127018" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.13</strong>: Simplified buildCFG implementation from clang/lib/Analysis/CFG.cpp </p>
+<p class="hidden">The visitor uses the <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">Stmt</code><code class="calibre13">::</code><code class="calibre13">getStmtClass</code></span> method to implement an ad hoc visitor based on the type of the statement, as shown in the following code snippet:</p>
+<pre id="listing-48" class="source-code">1CFGBlock *CFGBuilder::Visit(Stmt * S, ...) { 
+ 
+
+<span>2 </span>  ... 
+ 
+<span>3 </span>  switch (S-&gt;getStmtClass()) { 
+ 
+
+<span>4 </span>    ... 
+ 
+<span>5 </span>    case Stmt::CompoundStmtClass: 
+ 
+
+<span>6 </span>      return VisitCompoundStmt(cast&lt;CompoundStmt&gt;(S), ...); 
+ 
+
+<span>7 </span>    ... 
+ 
+<span>8 </span>    case Stmt::IfStmtClass: 
+ 
+
+<span>9 </span>      return VisitIfStmt(cast&lt;IfStmt&gt;(S)); 
+ 
+
+<span>10 </span>    ... 
+ 
+<span>11 </span>    case Stmt::ReturnStmtClass: 
+ 
+<span>12 </span>    ... 
+ 
+
+<span>13 </span>      return VisitReturnStmt(S); 
+ 
+<span>14 </span>    ... 
+ 
+<span>15 </span>  } 
+ 
+<span>16 </span>}</pre>
+<p class="hidden"><a id="x1-127035r14" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-127036" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.14</strong>: Statement visitor implementation; the cases used for our example are highlighted, the code was taken from clang/lib/Analysis/CFG.cpp </p>
+<p class="hidden">Our example includes two <a id="dx1-127037" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>return statements and one <code class="calibre13">if </code>statement, which are combined into a compound statement. The relevant parts of the visitor are shown in <a href="#x1-127035r14" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.14</a>.</p>
+<p class="hidden">In our case, the passed statement is a compound statement; therefore, <em class="calibre11">Line 6</em> from <a href="#x1-127035r14" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.14</a> is activated. The following code is then executed:</p>
+<pre id="listing-49" class="source-code">1CFGBlock *CFGBuilder::VisitCompoundStmt(CompoundStmt *C, ...) { 
+ 
+
+<span>2 </span>  ... 
+ 
+<span>3 </span>  CFGBlock *LastBlock = Block; 
+ 
+<span>4 </span> 
+ 
+
+<span>5 </span>  for (Stmt *S : llvm::reverse(C-&gt;body())) { 
+ 
+
+<span>6 </span>   // If we hit a segment of code just containing ’;’ (NullStmts), we can 
+ 
+
+<span>7 </span>   // get a null block back.  In such cases, just use the LastBlock 
+ 
+
+<span>8 </span>   CFGBlock *newBlock = Visit(S, ...); 
+ 
+<span>9 </span> 
+ 
+
+<span>10 </span>   if (newBlock) 
+ 
+<span>11 </span>     LastBlock = newBlock; 
+ 
+<span>12 </span> 
+ 
+
+<span>13 </span>   if (badCFG) 
+ 
+<span>14 </span>     return nullptr; 
+ 
+<span>15 </span>   ... 
+ 
+<span>16 </span>  } 
+ 
+<span>17 </span> 
+ 
+
+<span>18 </span>  return LastBlock; 
+ 
+<span>19 </span>}</pre>
+<p class="hidden"><a id="x1-127057r15" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-127058" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.15</strong>: Compound statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp </p>
+<p class="hidden">Several constructions are visited <a id="dx1-127059" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>while the CFG is being created for our example. The first one is <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">IfStmt</code></span>. The relevant parts are shown in the following figure:</p>
+<pre id="listing-50" class="source-code">1CFGBlock *CFGBuilder::VisitIfStmt(IfStmt *I) { 
+ 
+
+<span>2 </span>  ... 
+ 
+<span>3 </span>  // Process the true branch. 
+ 
+
+<span>4 </span>  CFGBlock *ThenBlock; 
+ 
+<span>5 </span>  { 
+ 
+<span>6 </span>    Stmt *Then = I-&gt;getThen(); 
+ 
+
+<span>7 </span>    ... 
+ 
+<span>8 </span>    ThenBlock = Visit(Then, ...); 
+ 
+<span>9 </span>    ... 
+ 
+
+<span>10 </span>  } 
+ 
+<span>11 </span> 
+ 
+<span>12 </span>  // Specially handle "if (expr1 || ...)" and "if (expr1 &amp;&amp; ...)" 
+ 
+
+<span>13 </span>  // ... 
+ 
+<span>14 </span>  if (Cond &amp;&amp; Cond-&gt;isLogicalOp()) 
+ 
+<span>15 </span>    ... 
+ 
+
+<span>16 </span>  else { 
+ 
+<span>17 </span>    // Now create a new block containing the if statement. 
+ 
+
+<span>18 </span>    Block = createBlock(false); 
+ 
+<span>19 </span>    ... 
+ 
+<span>20 </span>  } 
+ 
+<span>21 </span>  ... 
+ 
+<span>22 </span>}</pre>
+<p class="hidden"><a id="x1-127082r16" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-127083" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.16</strong>: If statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp </p>
+<p class="hidden">A special block for the <code class="calibre13">if </code>statement is created at <em class="calibre11">Line 18</em>. We also <a id="dx1-127084" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>visit the ’then’ condition at <em class="calibre11">Line 8</em>.</p>
+<p class="hidden">The ’then’ condition leads to visiting a return statement. The corresponding code is as follows:</p>
+<pre id="listing-51" class="source-code">1CFGBlock *CFGBuilder::VisitReturnStmt(Stmt *S) { 
+ 
+
+<span>2 </span>  // Create the new block. 
+ 
+
+<span>3 </span>  Block = createBlock(false); 
+ 
+<span>4 </span>  ... 
+ 
+
+<span>5 </span>  // Visit children 
+ 
+
+<span>6 </span>  if (ReturnStmt *RS = dyn_cast&lt;ReturnStmt&gt;(S)) { 
+ 
+
+<span>7 </span>    if (Expr *O = RS-&gt;getRetValue()) 
+ 
+
+<span>8 </span>      return Visit(O, ...); 
+ 
+<span>9 </span>    return Block; 
+ 
+<span>10 </span>  } 
+ 
+
+<span>11 </span>  ... 
+ 
+<span>12 </span>}</pre>
+<p class="hidden"><a id="x1-127097r17" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-127098" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 6.17</strong>: Return statement visitor, the code was taken from clang/lib/Analysis/CFG.cpp </p>
+<p class="hidden">For our example, it creates a block at <em class="calibre11">Line 3 </em>and visits the return expression at <em class="calibre11">Line 8</em>. Our return expression is a trivial one <a id="dx1-127099" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>that does not necessitate the creation of a new block.</p>
+<p class="hidden">The code fragments presented in <a href="#x1-127017r13" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.13</a> to <a href="#x1-127097r17" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 6.17</a> show only the block creation procedure. Some important parts were omitted for simplicity. Notably, the build procedure also involves the following:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">Edge creation: A typical block can have one or more successors. The list of nodes (blocks) with a list of successors (edges) for each block maintains the entire graph structure, representing symbolic program execution.</p></li>
+<li class="calibre14"><p class="calibre15">Storing meta-information: Each block stores additional meta-information associated with it. For instance, each block keeps a list of statements in the block.</p></li>
+<li class="calibre14"><p class="calibre15">Processing edge cases: C++ is a complex language with many different language constructs that require special processing.</p></li>
+</ul>
+<p class="hidden">The CFG is a fundamental data structure for advanced code analysis. Clang has several tools created using CFGs. Let’s briefly look at them. <a id="x1-127100r387" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+</section>
+<section id="brief-description-of-clang-analysis-tools" class="level" data-number="2.2.6">
+<h2 data-number="2.2.6" id="sigil_toc_id_110" class="likechapterhead"><span>6.6 </span> <a id="x1-1280006" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Brief description of Clang analysis tools</h2>
+<p class="hidden">As mentioned earlier, the CFG is foundational for other analysis tools in Clang, several of which have been created atop the CFG. These <a id="dx1-128001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>tools also employ advanced mathematics to analyze various cases. The most notable tools are as follows [<a href="B19722_Bib.xhtml#XClangDataFlow2020" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">32</a>]:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">LivenessAnalysis: Determines whether a computed value will be used before being overwritten, producing liveness sets for each statement and CFGBlock</p></li>
+<li class="calibre14"><p class="calibre15">UninitializedVariables: Identifies the use of uninitialized variables through multiple passes, including initial categorization of statements and subsequent calculation of variable usages</p></li>
+<li class="calibre14"><p class="calibre15">Thread Safety Analysis: Analyzes annotated functions and variables to ensure thread safety</p></li>
+</ul>
+<p class="hidden">LivenessAnalysis in Clang is essential for optimizing code by determining whether a value computed at one point will be used before being overwritten. It produces liveness sets for each statement and CFGBlock, indicating potential future use of variables or expressions. This backward ”may” analysis simplifies read/write categorization by treating variable declarations and assignments as writes, and other contexts as reads, regardless of aliasing or field usage. Valuable in dead code elimination and compiler optimizations, such as efficient register allocation, it helps free up memory resources and improve program efficiency. Despite challenges with corner cases and documentation, its straightforward implementation and the ability to cache and query results make it a vital tool in enhancing software performance and resource management.</p>
+
+<p class="hidden"><span>Important note</span></p>
+
+<p class="hidden">Forward analysis is a method used in programming to check how data moves through a program from start to finish. Following the data path step by step as the program runs allows us to see how it changes or where it goes. This method is instrumental for identifying issues such as improperly set-up variables or tracking data flow in the program. It contrasts with backward analysis, which starts at the end of the program and works backward.</p>
+
+<p class="hidden">UninitializedVariables analysis in Clang, designed to detect the use of variables before initialization, operates as a forward ”must” analysis. It involves multiple passes, including initial code scanning for statement classification and subsequent use of a fix-point algorithm to propagate information through the CFG. Handling more sophisticated scenarios than LivenessAnalysis, it faces challenges <a id="dx1-128002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>such as lacking support for record fields and non-reusable analysis results, limiting its efficiency in certain situations.</p>
+<p class="hidden">Thread Safety Analysis in Clang, a forward analysis, focuses on ensuring proper synchronization in multithreaded code. It computes sets of locked mutexes for each statement in a block and utilizes annotations to indicate guarded variables or functions. Translating Clang expressions into TIL (Typed Intermediate Language)[<a href="B19722_Bib.xhtml#XClangDataFlow2020" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">32</a>], it effectively handles the complexity of C++ expressions and annotations. Despite strong C++ support and a sophisticated understanding of variable interactions, it faces limitations, such as lack of support for aliasing, which can lead to false positives. <a id="x1-128003r398" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="knowing-the-limitations-of-analysis" class="level" data-number="2.2.7">
+<h2 data-number="2.2.7" id="sigil_toc_id_111" class="likechapterhead"><span>6.7 </span> <a id="x1-1290007" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Knowing the limitations of analysis</h2>
+<p class="hidden">It’s worth mentioning some limitations of the analysis that can be conducted with Clang’s AST and CFG. The most <a id="dx1-129001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>notable ones are mentioned here [<a href="B19722_Bib.xhtml#XCIR" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">2</a>]:</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">Limitations of Clang’s AST: Clang’s AST is unsuitable for data flow analysis and control flow reasoning, leading to inaccurate results and inefficient analysis due to the loss of vital language information. Soundness of analysis is also a consideration, where the precision of certain analyses, such as liveness analysis, can be valuable if they are precise enough rather than always being conservative.</p></li>
+<li class="calibre14"><p class="calibre15">Issues with Clang’s CFG: While Clang’s CFG aims to bridge the gap between AST and LLVM IR, it encounters known problems, has limited interprocedural capabilities, and lacks adequate testing coverage.</p></li>
+</ul>
+<p class="hidden">One example mentioned in [<a href="B19722_Bib.xhtml#XCIR" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">2</a>] relates to C++ coroutines, a new feature introduced in C++20. Some aspects of this functionality are implemented outside the Clang frontend and are not visible with tools such as Clang’s AST and CFG. This limitation makes analysis, especially lifetime analysis, tricky for such functionalities.</p>
+<p class="hidden">Despite these limitations, Clang’s CFG remains a powerful tool widely used in compiler and compiler tool development. There is also <a id="dx1-129002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>active development of other tools [<a href="B19722_Bib.xhtml#XCIR_upstream" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">27</a>] that aim to close the gaps in Clang’s CFG capabilities. <a id="x1-129003r399" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="summary-5" class="level" data-number="2.2.8">
+<h2 data-number="2.2.8" id="sigil_toc_id_112" class="likechapterhead"><span>6.8 </span> <a id="x1-1300008" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Summary</h2>
+<p class="hidden">In this chapter, we investigated Clang’s CFG, a powerful data structure that represents the symbolic execution of a program. We created a simple Clang-Tidy check using a CFG to calculate cyclomatic complexity, a metric useful for estimating code complexity. Additionally, we explored the details of CFG creation and the formation of its basic internal structures. We discussed some tools developed with CFGs, which are useful for detecting lifetime issues, thread safety, and uninitialized variables. We also briefly described the limitations of CFGs and how other tools can address these limitations.</p>
+<p class="hidden">The next chapter will cover refactoring tools. These tools can perform complex code modifications using the AST provided by the Clang compiler. <a id="x1-130001r400" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="future-reading" class="level" data-number="2.2.9">
+<h2 data-number="2.2.9" id="sigil_toc_id_113" class="likechapterhead"><span>6.9 </span> <a id="x1-1310009" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Future reading</h2>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">Flemming Nielson, Hanne Riis Nielson, and Chris Hankin, <em class="calibre11">Principles</em> <em class="calibre11">of Program Analysis</em>, Springer, 2005 [<a href="B19722_Bib.xhtml#XNielson2005Principles" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">29</a>]</p></li>
+<li class="calibre14"><p class="calibre15">Xavier Rival and Kwangkeun Yi, <em class="calibre11">Introduction to Static Analysis: An</em> <em class="calibre11">Abstract</em> <em class="calibre11">Interpretation Perspective</em>, The MIT Press, 2020 [<a href="B19722_Bib.xhtml#XRivalYi2020StaticAnalysis" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">30</a>]</p></li>
+<li class="calibre14"><p class="calibre15">Kristóf Umann <em class="calibre11">A survey of dataflow analyses in Clang</em>: <a href="https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://lists.llvm.org/pipermail/cfe-dev/2020-October/066937.html</a></p></li>
+<li class="calibre14"><p class="calibre15">Bruno Cardoso Lopes and Nathan Lanza <em class="calibre11">An MLIR based Clang IR</em> <em class="calibre11">(CIR)</em>: <a href="https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://discourse.llvm.org/t/rfc-an-mlir-based-clang-ir-cir/63319</a></p></li>
+</ul>
+<p class="hidden"><a id="x1-131001r365" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+</section>
+</div>
+</div>
+</body></html>

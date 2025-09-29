@@ -1,0 +1,512 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer067">
+<h1 class="chapter-number" id="_idParaDest-166"><a id="_idTextAnchor178"/>11</h1>
+<h1 id="_idParaDest-167"><a id="_idTextAnchor179"/>Temporal Anti-Aliasing</h1>
+<p>In this chapter, we will expand on a concept touched on in the previous one when we talked about temporal reprojection. One of the most common ways to improve image quality is to sample more data (super-sampling) and filter it down to the needed <span class="No-Break">sampling frequency.</span></p>
+<p>The primary technique used in<a id="_idIndexMarker567"/> rendering is <strong class="bold">Multi-Sample Anti-Aliasing</strong>, or <strong class="bold">MSAA</strong>. Another technique used for super-sampling is temporal super-sampling or using the samples from two or more frames to reconstruct a <span class="No-Break">higher-quality image.</span></p>
+<p>In the Volumetric Fog technique, a similar approach is used to remove banding given by the low resolution of the Volume Texture in a very effective way. We will see how we can achieve better image quality using <strong class="bold">Temporal </strong><span class="No-Break"><strong class="bold">Anti-Aliasing</strong></span><span class="No-Break"> (</span><span class="No-Break"><strong class="bold">TAA</strong></span><span class="No-Break">).</span></p>
+<p>This technique has become widely used in recent years after more and more games started using Deferred Rendering at their core and because of the difficulty in applying MSAA on it. There were various attempts to make MSAA and Deferred Rendering work together, but performance (both time- and memory-wise) has always been proven to not be feasible at the time and thus alternative solutions started to <span class="No-Break">be developed.</span></p>
+<p>Enter <strong class="bold">Post-Process Anti-Aliasing</strong> and its <a id="_idIndexMarker568"/>plethora of acronyms. The first one<a id="_idIndexMarker569"/> to be widely used was <strong class="bold">Morphological Anti-Aliasing</strong>, or <strong class="bold">MLAA</strong>, developed by Alexander Reshetov, working at Intel at the time, and presented at High-Performance Graphics <span class="No-Break">in 2009.</span></p>
+<p>The algorithm was developed to work on the CPU using Intel’s <strong class="bold">Streaming SIMD Extensions</strong> (<strong class="bold">SSE</strong>) instructions <a id="_idIndexMarker570"/>and introduced some interesting solutions to find and improve geometrical edge rendering, which fueled successive implementations. Later, Sony Santa Monica adopted MLAA for God of War III using <a id="_idIndexMarker571"/>the Cell <strong class="bold">Synergisic Processing Unit</strong> (<strong class="bold">SPUs</strong>) to be performed with <span class="No-Break">real-time performances.</span></p>
+<p>Post-Process Anti-Aliasing finally found a GPU implementation developed by Jorge Jimenez and others in 2011, opening a new rendering research field. Various other game studios started developing custom Post Process Anti-Aliasing techniques and sharing <span class="No-Break">their details.</span></p>
+<p>All those techniques were based on geometrical edge recognition and <span class="No-Break">image enhancement.</span></p>
+<p>Another aspect that started to emerge was the reuse of information from previous frames to further enhance visual quality, such as in <strong class="bold">Sharp Morphological Anti-Aliasing</strong>, or <strong class="bold">SMAA</strong>, which <a id="_idIndexMarker572"/>started adding a temporal component to enhance the <span class="No-Break">final image.</span></p>
+<p>The most adopted anti-aliasing technique is TAA, which comes with its own set of challenges but fits nicely within the rendering pipeline and lets other techniques (such as Volumetric Fog) increase their visual quality by reducing banding with the introduction of <span class="No-Break">animated dithering.</span></p>
+<p>TAA is now the standard in most game engines, both commercial and private. It comes with its own challenges, such as handling transparent objects and image blurriness, but we will see how to tackle those problems <span class="No-Break">as well.</span></p>
+<p>In the rest of the chapter, we will first see an overview of the algorithm and then dive into the implementation. We will also create an initial, incredibly simple implementation just to show the basic building blocks of the algorithm, allowing you to understand how to write a custom TAA implementation from scratch. Finally, we will see the different areas of improvement within <span class="No-Break">the algorithm.</span></p>
+<p>Let’s see an example scene and highlight the <span class="No-Break">TAA improvements:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer062">
+<img alt="Figure 11.1 – Temporally anti-aliased scene" height="756" src="image/B18395_11_01.jpg" width="523"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.1 – Temporally anti-aliased scene</p>
+<p>The following are a couple of screenshots of the final result, with and without <span class="No-Break">TAA enabled.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer063">
+<img alt="Figure 11.2 – Details of Figure 11.1 without (left) and with (right) TAA" height="276" src="image/B18395_11_02.jpg" width="312"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.2 – Details of Figure 11.1 without (left) and with (right) TAA</p>
+<p>In this chapter, we will have a look at the <span class="No-Break">following topics:</span></p>
+<ul>
+<li>Creating the simplest <span class="No-Break">TAA implementation</span></li>
+<li>Step-by-step improvement of <span class="No-Break">the technique</span></li>
+<li>Overview of image-sharpening techniques outside <span class="No-Break">of TAA</span></li>
+<li>Improving banding in different image areas with noise <span class="No-Break">and TAA</span></li>
+</ul>
+<h1 id="_idParaDest-168"><a id="_idTextAnchor180"/>Technical requirements</h1>
+<p>The code for this chapter can be found at the following <span class="No-Break">URL: </span><a href="https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter11"><span class="No-Break">https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter11</span></a><span class="No-Break">.</span></p>
+<h1 id="_idParaDest-169"><a id="_idTextAnchor181"/>Overview</h1>
+<p>In this section, we<a id="_idIndexMarker573"/> will see the algorithm overview of the TAA <span class="No-Break">rendering technique.</span></p>
+<p>TAA is based on the collection of samples over time by applying small offsets to the camera projection matrix and applying some filters to generate the final image, <span class="No-Break">like so:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer064">
+<img alt="Figure 11.3 – Frustum jitter" height="954" src="image/B18395_11_03.jpg" width="629"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.3 – Frustum jitter</p>
+<p>There are various numerical sequences that can be used to offset the camera, as we will see in the implementation section. Moving the camera is <a id="_idIndexMarker574"/>called <strong class="bold">jittering</strong>, and by jittering the camera, we gather additional data that we can use to enhance <span class="No-Break">the image.</span></p>
+<p>The following is an overview of the <span class="No-Break">TAA shader:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer065">
+<img alt="Figure 11.4 – TAA algorithm overview" height="798" src="image/B18395_11_04.jpg" width="1650"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.4 – TAA algorithm overview</p>
+<p>Based on <span class="No-Break"><em class="italic">Figure 11</em></span><em class="italic">.4</em>, we’ve <a id="_idIndexMarker575"/>separated the algorithm into steps (blue rectangles) and texture reads (<span class="No-Break">yellow ellipses:.</span></p>
+<ol>
+<li>We calculate the coordinates to <a id="_idIndexMarker576"/>read the velocity from, represented by the <strong class="bold">Velocity </strong><span class="No-Break"><strong class="bold">Coordinates</strong></span><span class="No-Break"> block.</span></li>
+</ol>
+<p>This is normally done by reading a neighborhood of 3x3 pixels around the current pixel position and finding the closest pixel, using the current frame’s <strong class="bold">Depth Texture</strong>. Reading<a id="_idIndexMarker577"/> from a 3x3 neighborhood has been proven to decrease ghosting and improve <span class="No-Break">edge quality.</span></p>
+<ol>
+<li value="2">We read the velocity using the newly found coordinates from the <strong class="bold">Velocity Texture</strong> block, paying <a id="_idIndexMarker578"/>attention to use a linear sampler, as velocity is not just in increments of pixels, but can be <span class="No-Break">in-between pixels.</span></li>
+<li>We read the color information<a id="_idIndexMarker579"/> from the <strong class="bold">History Texture</strong> block. This is basically the last frame’s TAA output. We can optionally apply a filter to read the texture to further enhance <span class="No-Break">the quality.</span></li>
+<li>We will read the current scene color. In this step, we will also cache information again by reading a neighborhood around the current pixel position to constrain the history color we read previously and guide the final <span class="No-Break">resolve phase.</span></li>
+<li>History constraint. We try to limit the previous frame color inside an area of the current color to reject invalid samples coming from occlusion or disocclusion. Without doing that there would be a lot <span class="No-Break">of ghosting.</span></li>
+<li>The sixth and final step is <strong class="bold">Resolve</strong>. We combine the current color and the constraint history color to generate the final pixel color by applying some <span class="No-Break">additional filters.</span></li>
+</ol>
+<p>The result of the current frame’s TAA will be the next frame history texture, so we simply switch the textures (history and TAA result) every frame without the need to copy the results <a id="_idIndexMarker580"/>over, as seen in <span class="No-Break">some implementations.</span></p>
+<p>Now that we have seen an overview of the algorithm, we can start by implementing an initial <span class="No-Break">TAA shader.</span></p>
+<h1 id="_idParaDest-170"><a id="_idTextAnchor182"/>The simplest TAA implementation</h1>
+<p>The best way to<a id="_idIndexMarker581"/> understand this technique is to build a basic implementation missing some important steps and to have a blurry or jittery rendering as it is easy <span class="No-Break">to do.</span></p>
+<p>The basic ingredients for this technique are simple if done correctly, but each must be done in a precise way. We will first add jittering to the camera so that we can render slightly different points of view of the scene and gather <span class="No-Break">additional data.</span></p>
+<p>We will then add motion vectors so that we can read the previous frame color information in the right place. Finally, we will reproject, or simply put, read the history frame color data and combine it with current <span class="No-Break">f<a id="_idTextAnchor183"/>rame data.</span></p>
+<p>Let us see the <span class="No-Break">different steps.</span></p>
+<h2 id="_idParaDest-171"><a id="_idTextAnchor184"/>Jittering the camera</h2>
+<p>The objective<a id="_idIndexMarker582"/> of this step is to translate the projection camera by a small amount in both the <em class="italic">x</em> and <span class="No-Break"><em class="italic">y</em></span><span class="No-Break"> axes.</span></p>
+<p>We have added some utility code in the <span class="No-Break"><strong class="source-inline">GameCamera</strong></span><span class="No-Break"> class:</span></p>
+<pre class="source-code">
+void GameCamera::apply_jittering( f32 x, f32 y ) {
+    // Reset camera projection
+    camera.calculate_projection_matrix();
+    // Calculate jittering translation matrix and modify
+       projection matrix
+    mat4s jittering_matrix = glms_translate_make( { x, y,
+                                                  0.0f } );
+    camera.projection = glms_mat4_mul( jittering_matrix,
+                                       camera.projection );
+    camera.calculate_view_projection();
+}</pre>
+<p>Every step is important and error prone, so <span class="No-Break">be careful.</span></p>
+<p>We first want to reset the projection matrix, as we will manually modify it. We then build a translation matrix with the jittering values in <strong class="source-inline">x</strong> and <strong class="source-inline">y</strong>, and we will see later how to <span class="No-Break">calculate them.</span></p>
+<p>Finally, we multiply the projection matrix by the jittering matrix and calculate the new view-projection matrix. Beware of multiplication order, as if this is wrong you will see a jittery blurry mess even when not moving <span class="No-Break">the camera!</span></p>
+<p>Having this working, we can optimize the code by removing the matrix construction and multiplication, having cleaner and less error-prone code, <span class="No-Break">like so:</span></p>
+<pre class="source-code">
+void GameCamera::apply_jittering( f32 x, f32 y ) {
+   camera.calculate_projection_matrix();
+   // Perform the same calculations as before, with the
+      observation that
+   // we modify only 2 elements in the projection matrix:
+   camera.projection.m20 += x;
+   camera.projection.m21 += y;
+   camera.calculate_view_projection();
+}</pre>
+<h2 id="_idParaDest-172"><a id="_idTextAnchor185"/>Choosing jittering sequences</h2>
+<p>We will <a id="_idIndexMarker583"/>now build a sequence of <strong class="source-inline">x</strong> and <strong class="source-inline">y</strong> values to jitter the camera. Normally there are different sequences that <span class="No-Break">are used:</span></p>
+<ul>
+<li><span class="No-Break">Halton</span></li>
+<li><span class="No-Break">Hammersley</span></li>
+<li>Martin <span class="No-Break">Robert’s R2</span></li>
+<li><span class="No-Break">Interleaved gradients</span></li>
+</ul>
+<p>There are all the implementations for the preceding sequences in the code, and each can give a slightly different look to the image, as it changes how we collect samples <span class="No-Break">over time.</span></p>
+<p>There is plenty of material on using the different sequences that we will provide links to at the end of the chapter; right now what is important is to know that we have a sequence of two numbers that we repeat after a few frames to jitter<a id="_idTextAnchor186"/> <span class="No-Break">the camera.</span></p>
+<p>Let us say that we choose the Halton sequence. We first want to calculate the values for <strong class="source-inline">x</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">y</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+   f32 jitter_x = halton( jitter_index, 2 );
+   f32 jitter_y = halton( jitter_index, 3 );</pre>
+<p>These values are in the <strong class="source-inline">[0,1]</strong> range, but we want to jitter in both directions, so we map it to the <strong class="source-inline">[-</strong><span class="No-Break"><strong class="source-inline">1.1]</strong></span><span class="No-Break"> range:</span></p>
+<pre class="source-code">
+    f32 jitter_offset_x = jitter_x * 2 - 1.0f;
+    f32 jitter_offset_y = jitter_y * 2 - 1.0f;</pre>
+<p>We now apply them to the apply <strong class="source-inline">jitter</strong> method, with a caveat: we want to add sub-pixel jittering, thus we need to divide these offsets by the <span class="No-Break">screen resolution:</span></p>
+<pre class="source-code">
+game_camera.apply_jittering( jitter_offset_x / gpu.swapchain_width, jitter_offset_y / gpu.swapchain_height );</pre>
+<p>Finally, we have a jitter period to choose after how many frames we repeat the jittering numbers, updated <span class="No-Break">like this:</span></p>
+<pre class="source-code">
+jitter_index = ( jitter_index + 1 ) % jitter_period;</pre>
+<p>A good period is normally four frames, but in the accompanying code, there is the possibility to change this number and see the effect on the <span class="No-Break">rendering image.</span></p>
+<p>Another fundamental thing to do is to cache previous and current jittering values and send them to<a id="_idIndexMarker584"/> the GPU, so that motion vectors take into consideration the <span class="No-Break">full movement.</span></p>
+<p>We’ve added <strong class="source-inline">jitter_xy</strong> and <strong class="source-inline">previous_jitter_xy</strong> as variables in the scene uniforms to be accessed in <span class="No-Break">all shaders.</span></p>
+<h2 id="_idParaDest-173"><a id="_idTextAnchor187"/>Adding motion vectors</h2>
+<p>Now that we<a id="_idIndexMarker585"/> correctly jittered the camera and saved the offsets, it is time to add motion vectors to properly read the color data from the previous frame. There are two sources of motion: camera motion and dynamic <span class="No-Break">object motion.</span></p>
+<p>We added a velocity texture with R16G16 format to store the per-pixel velocity. For each frame, we clear that to <strong class="source-inline">(0,0)</strong> and we calculate the diff<a id="_idTextAnchor188"/>erent motions. For camera motion, we will calculate the current and previous screen space position, considering the jitter and the <span class="No-Break">motion vector.</span></p>
+<p>We will perform this in a <span class="No-Break">compute shader:</span></p>
+<pre class="source-code">
+layout (local_size_x = 8, local_size_y = 8, local_size_z =
+        1) in;
+void main() {
+    ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+    // Read the raw depth and reconstruct NDC coordinates.
+    const float raw_depth = texelFetch(global_textures[
+        nonuniformEXT(depth_texture_index)], pos.xy, 0).r;
+    const vec2 screen_uv = uv_nearest(pos.xy, resolution);
+    vec4 current_position_ndc = vec4(
+        ndc_from_uv_raw_depth( screen_uv, raw_depth ), 1.0f
+        );
+    // Reconstruct world position and previous NDC position
+    const vec3 pixel_world_position =
+        world_position_from_depth
+           (screen_uv, raw_depth, inverse_view_projection);
+    vec4 previous_position_ndc = previous_view_projection *
+        vec4(pixel_world_position, 1.0f);
+    previous_position_ndc.xyz /= previous_position_ndc.w;
+    // Calculate the jittering difference.
+    vec2 jitter_difference = (jitter_xy –
+                              previous_jitter_xy)* 0.5f;
+    // Pixel velocity is given by the NDC [-1,1] difference
+       in X and Y axis
+    vec2 velocity = current_position_ndc.xy –
+                    previous_position_ndc.xy;
+    // Take in account jittering
+    velocity -= jitter_difference;
+    imageStore( motion_vectors, pos.xy, vec4(velocity, 0,
+                                             0) );</pre>
+<p>Dynamic meshes need an additional output to be written in the vertex or mesh shaders, with similar calculations done in the camera <span class="No-Break">motion shader:</span></p>
+<pre class="source-code">
+// Mesh shader version
+gl_MeshVerticesNV[ i ].gl_Position = view_projection *
+    (model * vec4(position, 1));
+vec4 world_position = model * vec4(position, 1.0);
+vec4 previous_position_ndc = previous_view_projection *
+    vec4(world_position, 1.0f);
+previous_position_ndc.xyz /= previous_position_ndc.w;
+vec2 jitter_difference = (jitter_xy - previous_jitter_xy) *
+                          0.5f;
+vec2 velocity = gl_MeshVerticesNV[ i ].gl_Position.xy –
+    previous_position_ndc.xy - jitter_difference;
+vTexcoord_Velocity[i] = velocity;</pre>
+<p>And after this, just writing the velocity to its own render target will be all that <span class="No-Break">is needed.</span></p>
+<p>Now that we <a id="_idIndexMarker586"/>have the motion vectors, we can finally see the im<a id="_idTextAnchor189"/>plementation of an extremely basic <span class="No-Break">TAA shader.</span></p>
+<h2 id="_idParaDest-174"><a id="_idTextAnchor190"/>First implementation code</h2>
+<p>We again run a <a id="_idIndexMarker587"/>compute shader to calculate TAA. The implementation of the simplest possible shader is <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+vec3 taa_simplest( ivec2 pos ) {
+    const vec2 velocity = sample_motion_vector( pos );
+    const vec2 screen_uv = uv_nearest(pos, resolution);
+    const vec2 reprojected_uv = screen_uv - velocity;
+    vec3 current_color = sample_color(screen_uv.xy).rgb;
+    vec3 history_color =
+        sample_history_color(reprojected_uv).rgb;
+    // source_weight is normally around 0.9.
+    return mix(current_color, previous_color,
+               source_weight);
+}</pre>
+<p>Going through the code, the steps <span class="No-Break">are simple:</span></p>
+<ol>
+<li value="1">Sample the velocity at the <span class="No-Break">pixel position.</span></li>
+<li>Sample the current color at the <span class="No-Break">pixel position.</span></li>
+<li>Sample the history color at the previous pixel position, calculated using the <span class="No-Break">motion vectors.</span></li>
+<li>Mix the colors, taking something like 10% of the current <span class="No-Break">frame colors.</span></li>
+</ol>
+<p>Before moving<a id="_idIndexMarker588"/> on to any improvement it is paramount to have this <span class="No-Break">working perfectly.</span></p>
+<p>You should see a blurrier image with a big problem: ghosting when moving the camera or an object. If the camera and the scene are static, there should be no pixel movement. This is fundamental to knowing that jittering and reprojection are <span class="No-Break">working properly.</span></p>
+<p>With this implementation working, we are now ready to see the different improvement areas to have a more <span class="No-Break">solid TAA.</span></p>
+<h1 id="_idParaDest-175">Improving T<a id="_idTextAnchor191"/>AA</h1>
+<p>There are <a id="_idIndexMarker589"/>five areas to improve TAA: reprojection, history sampling, scene sampling, history constraint, <span class="No-Break">and resolve.</span></p>
+<p>Each one has different parameters to be tweaked that can suit the rendering needs of a project – TAA is not exact or perfect, thus some extra care from a visual perspective needs to be taken <span class="No-Break">into account.</span></p>
+<p>Let’s see the <a id="_idIndexMarker590"/>different areas in detail so that the accompanying code will <span class="No-Break">be clearer.</span></p>
+<h2 id="_idParaDest-176"><a id="_idTextAnchor192"/>Reprojection</h2>
+<p>The first thing to<a id="_idIndexMarker591"/> do is to improve reprojection and thus calculate the coordinates to read the velocity to drive the <em class="italic">History </em><span class="No-Break"><em class="italic">sampling</em></span><span class="No-Break"> section.</span></p>
+<p>To calculate the history texture pixel coordinates, the most common solution is to get the closest pixel in a 3x3 square around the current pixel, as an idea by Brian Karis. We will read the depth texture and use the depth value as a way to determine the closest pixel, and cache the <strong class="source-inline">x</strong> and <strong class="source-inline">y</strong> position of <span class="No-Break">that pixel:</span></p>
+<pre class="source-code">
+void find_closest_fragment_3x3(ivec2 pixel, out ivec2
+                               closest_position, out
+                               float closest_depth) {
+    closest_depth = 1.0f;
+    closest_position = ivec2(0,0);
+    for (int x = -1; x &lt;= 1; ++x ) {
+        for (int y = -1; y &lt;= 1; ++y ) {
+            ivec2 pixel_position = pixel + ivec2(x, y);
+                pixel_position = clamp(pixel_position,
+                    ivec2(0), ivec2(resolution.x - 1,
+                        resolution.y - 1));
+            float current_depth =
+                texelFetch(global_textures[
+                    nonuniformEXT(depth_texture_index)],
+                        pixel_position, 0).r;
+            if ( current_depth &lt; closest_depth ) {
+                closest_depth = current_depth;
+                closest_position = pixel_position;
+            }
+        }
+    }
+}</pre>
+<p>By just using the found pixel position as the read coordinate for the motion vectors, ghosting will be <a id="_idIndexMarker592"/>much less visible, and edges will <span class="No-Break">be smoother:</span></p>
+<pre class="source-code">
+        float closest_depth = 1.0f;
+        ivec2 closest_position = ivec2(0,0);
+        find_closest_fragment_3x3( pos.xy,
+                                   closest_position,
+                                   closest_depth );
+        const vec2 velocity = sample_motion_vector
+            (closest_position.xy);
+        // rest of the TAA shader</pre>
+<p>There can be other ways of reading the velocity, but this has proven to be the best trade-off between quality and performance. Another way to experiment would be to use the maximum velocity in a similar 3x3 neighborhood <span class="No-Break">of pixels.</span></p>
+<p>There is no perfect solution, and thus experimentation and parametrization of the rendering technique are highly encouraged. After we have calculated the pixel position of the history texture to read, we can finally <span class="No-Break">sample it.</span></p>
+<h2 id="_idParaDest-177"><a id="_idTextAnchor193"/>History sampling</h2>
+<p>In this case, the <a id="_idIndexMarker593"/>simplest thing to do is to just read the history texture at the calculated position. The reality is that we can apply a filter to enhance the visual quality of the read <span class="No-Break">as well.</span></p>
+<p>In the code, we’ve added options to try different filters, and the standard choice here is to use a Catmull-Rom filter to enhance <span class="No-Break">the sampling:</span></p>
+<pre class="source-code">
+   // Sample motion vectors.
+    const vec2 velocity = sample_motion_vector_point(
+                          closest_position );
+    const vec2 screen_uv = uv_nearest(pos.xy, resolution);
+    const vec2 reprojected_uv = screen_uv - velocity;
+    // History sampling: read previous frame samples and
+       optionally apply a filter to it.
+    vec3 history_color = vec3(0);
+    history_color = sample_history_color(
+                    reprojected_uv ).rgb;
+    switch (history_sampling_filter) {
+        case HistorySamplingFilterSingle:
+            history_color = sample_history_color(
+                            reprojected_uv ).rgb;
+            break;
+        case HistorySamplingFilterCatmullRom:
+            history_color = sample_texture_catmull_rom(
+                            reprojected_uv,
+                            history_color_texture_index );
+            break;
+    }</pre>
+<p>After we have the history color, we will sample the current scene color and cache information <a id="_idIndexMarker594"/>needed for both the history constraint and the final <span class="No-Break">resolve phase.</span></p>
+<p>Using the history color without further processing would result <span class="No-Break">in ghosting.</span></p>
+<h2 id="_idParaDest-178"><a id="_idTextAnchor194"/>Scene sampling</h2>
+<p>At this point, ghosting<a id="_idIndexMarker595"/> is less noticeable but still present, so with a similar mentality to searching for the closest pixel, we can search around the current pixel to calculate color information and apply a filter <span class="No-Break">to it.</span></p>
+<p>Basically, we are treating a pixel like a signal instead of a simple color. The subject can be quite long and interesting and at the end of the chapter, there will be resources to dive deeper into this. Also, in this step, we will cache information used for the history boundaries used to constrain the color coming from the <span class="No-Break">previous frames.</span></p>
+<p>What we need to know is that we sample another 3x3 area around the current pixel and calculate the information necessary for the constr<a id="_idTextAnchor195"/>aint to happen. The most valuable information is the minimum and maximum color in this area, and Variance Clipping (which we will look at later on) also requires mean color and square mean color (known as <strong class="bold">moments</strong>) to be calculated to aid history constraint. Finally, we will also apply some filtering to the sampling of <span class="No-Break">the color.</span></p>
+<p>Let’s see <span class="No-Break">the code:</span></p>
+<pre class="source-code">
+// Current sampling: read a 3x3 neighborhood and cache
+   color and other data to process history and final
+   resolve.
+    // Accumulate current sample and weights.
+    vec3 current_sample_total = vec3(0);
+    float current_sample_weight = 0.0f;
+    // Min and Max used for history clipping
+    vec3 neighborhood_min = vec3(10000);
+    vec3 neighborhood_max = vec3(-10000);
+    // Cache of moments used in the constraint phase
+    vec3 m1 = vec3(0);
+    vec3 m2 = vec3(0);
+    for (int x = -1; x &lt;= 1; ++x ) {
+        for (int y = -1; y &lt;= 1; ++y ) {
+            ivec2 pixel_position = pos + ivec2(x, y);
+            pixel_position = clamp(pixel_position,
+                ivec2(0), ivec2(resolution.x - 1,
+                    resolution.y - 1));
+            vec3 current_sample =
+            sample_current_color_point(pixel_position).rgb;
+            vec2 subsample_position = vec2(x * 1.f, y *
+                                           1.f);
+            float subsample_distance = length(
+                                       subsample_position
+                                       );
+            float subsample_weight = subsample_filter(
+                                     subsample_distance );
+            current_sample_total += current_sample *
+                                    subsample_weight;
+            current_sample_weight += subsample_weight;
+            neighborhood_min = min( neighborhood_min,
+                                    current_sample );
+            neighborhood_max = max( neighborhood_max,
+                                     current_sample );
+            m1 += current_sample;
+            m2 += current_sample * current_sample;
+        }
+    }
+vec3 current_sample = current_sample_total /
+                      current_sample_weight;</pre>
+<p>What all this code<a id="_idIndexMarker596"/> does is sample color, filter it, and cache information for the history constraint, and thus we are ready to move on to the <span class="No-Break">next phase.</span></p>
+<h2 id="_idParaDest-179"><a id="_idTextAnchor196"/>The history constraint</h2>
+<p>Finally, we <a id="_idIndexMarker597"/>arrived at the constraint of the history sampled color. Based on previous steps we have created a range of possible color values that we consider valid. If we think of each color channel as a value, we basically created an area of valid colors that we will <span class="No-Break">constraint against.</span></p>
+<p>A constraint is a way of accepting or discarding color information coming from the history texture, reducing ghosting to almost nothing. Over time, different ways to constrain history sampled color were developed in search of better criteria to <span class="No-Break">discard colors.</span></p>
+<p>Some implementations also tried relying on depth or velocity differences, but this seems to be the more <span class="No-Break">robust solution.</span></p>
+<p>We have added four constraints <span class="No-Break">to test:</span></p>
+<ul>
+<li><span class="No-Break">RGB clamp</span></li>
+<li><span class="No-Break">RGB clip</span></li>
+<li><span class="No-Break">Variance clip</span></li>
+<li>Variance clip with <span class="No-Break">clamped RGB</span></li>
+</ul>
+<p>The best quality is given by variance clip with the clamped RGB, but it is interesting to see the other<a id="_idIndexMarker598"/> ones, as they are the ones that were employed in the <span class="No-Break">first implementations.</span></p>
+<p>Here is <span class="No-Break">the code:</span></p>
+<pre class="source-code">
+    switch (history_clipping_mode) {
+        // This is the most complete and robust history
+           clipping mode:
+        case HistoryClippingModeVarianceClipClamp:
+        default: {
+            // Calculate color AABB using color moments m1
+               and m2
+            float rcp_sample_count = 1.0f / 9.0f;
+            float gamma = 1.0f;
+            vec3 mu = m1 * rcp_sample_count;
+            vec3 sigma = sqrt(abs((m2 * rcp_sample_count) –
+                         (mu * mu)));
+            vec3 minc = mu - gamma * sigma;
+            vec3 maxc = mu + gamma * sigma;
+            // Clamp to new AABB
+            vec3 clamped_history_color = clamp(
+                                         history_color.rgb,
+                                         neighborhood_min,
+                                         neighborhood_max
+                                         );
+            history_color.rgb = clip_aabb(minc, maxc,
+                                vec4(clamped_history_color,
+                                1), 1.0f).rgb;
+            break;
+        }
+    }</pre>
+<p>The <strong class="source-inline">clip_aabb</strong> function<a id="_idIndexMarker599"/> is the method that constrains the sampled history color within minimum and maximum <span class="No-Break">color values.</span></p>
+<p>In brief, we are trying to build an AABB in colorspace to limit the history color to be within that range, so that the final color is more plausible compared to the <span class="No-Break">current one.</span></p>
+<p>The last step in the TAA shader is resolve, or combining current and history colors and applying some filters to generate the final <span class="No-Break">pixel color.</span></p>
+<h2 id="_idParaDest-180"><a id="_idTextAnchor197"/>Resolve</h2>
+<p>Once again, we <a id="_idIndexMarker600"/>will apply some additional filters to decide whether the previous pixel is usable or not and by <span class="No-Break">how much.</span></p>
+<p>By default, we start with using just 10% of the current frame pixel and rely on history, so without any of those filters the image will be <span class="No-Break">quite blurry:</span></p>
+<pre class="source-code">
+// Resolve: combine history and current colors for final
+   pixel color
+    vec3 current_weight = vec3(0.1f);
+    vec3 history_weight = vec3(1.0 - current_weight);</pre>
+<p>The first filter we will see is the temporal one, which uses the cached neighborhood minimum and maximum colors to calculate how much to blend the current and <span class="No-Break">previous colors:</span></p>
+<pre class="source-code">
+    // Temporal filtering
+    if (use_temporal_filtering() ) {
+        vec3 temporal_weight = clamp(abs(neighborhood_max –
+                                      neighborhood_min) /
+                                      current_sample,
+                                      vec3(0), vec3(1));
+        history_weight = clamp(mix(vec3(0.25), vec3(0.85),
+                               temporal_weight), vec3(0),
+                               vec3(1));
+        current_weight = 1.0f - history_weight;
+    }</pre>
+<p>The next two filters are linked; thus, we have <span class="No-Break">them together.</span></p>
+<p>They both work with luminance, with one used to <a id="_idIndexMarker601"/>suppress so-called <strong class="bold">fireflies</strong>, or very bright single pixels that can exist in images when there is a strong source of light, while the second uses the difference in luminance to further steer the weight toward either the current or <a id="_idIndexMarker602"/><span class="No-Break">previous colors:</span></p>
+<pre class="source-code">
+    // Inverse luminance filtering
+    if (use_inverse_luminance_filtering() ||
+        use_luminance_difference_filtering() ) {
+        // Calculate compressed colors and luminances
+        vec3 compressed_source = current_sample /
+            (max(max(current_sample.r, current_sample.g),
+                current_sample.b) + 1.0f);
+        vec3 compressed_history = history_color /
+            (max(max(history_color.r, history_color.g),
+                history_color.b) + 1.0f);
+        float luminance_source = use_ycocg() ?
+            compressed_source.r :
+                luminance(compressed_source);
+        float luminance_history = use_ycocg() ?
+            compressed_history.r :
+                luminance(compressed_history);
+        if ( use_luminance_difference_filtering() ) {
+            float unbiased_diff = abs(luminance_source –
+            luminance_history) / max(luminance_source,
+            max(luminance_history, 0.2));
+            float unbiased_weight = 1.0 - unbiased_diff;
+            float unbiased_weight_sqr = unbiased_weight *
+                                        unbiased_weight;
+            float k_feedback = mix(0.0f, 1.0f,
+                                   unbiased_weight_sqr);
+            history_weight = vec3(1.0 - k_feedback);
+            current_weight = vec3(k_feedback);
+        }
+        current_weight *= 1.0 / (1.0 + luminance_source);
+        history_weight *= 1.0 / (1.0 + luminance_history);
+    }</pre>
+<p>We combine the <a id="_idIndexMarker603"/>result using the newly calculated weights, and finally, we output <span class="No-Break">the color:</span></p>
+<pre class="source-code">
+    vec3 result = ( current_sample * current_weight +
+                    history_color * history_weight ) /
+                    max( current_weight + history_weight,
+                    0.00001 );
+    return result;</pre>
+<p>At this point, the shader is complete and ready to be used. In the accompanying demo, there will be many tweaking parameters to learn the differences between the different filters and <span class="No-Break">steps involved.</span></p>
+<p>One of the most common complaints about TAA is the blurriness of the image. We will see a couple of ways to improve <span class="No-Break">that next.</span></p>
+<h1 id="_idParaDest-181"><a id="_idTextAnchor198"/>Sharpening the image</h1>
+<p>One thing that <a id="_idIndexMarker604"/>can be noticed in the most basic implementation, and a problem often linked to TAA, is a decrease in the sharpness of <span class="No-Break">the image.</span></p>
+<p>We have already improved it by using a filter when sampling the scene, but we can work on the final image appearance outside of TAA in different ways. We will briefly discuss three different ways to improve the sharpening of <span class="No-Break">the image.</span></p>
+<h2 id="_idParaDest-182"><a id="_idTextAnchor199"/>Sharpness post-processing</h2>
+<p>One of the<a id="_idIndexMarker605"/> ways to improve the sharpness of the image is to add a simple sharpening shader in the <span class="No-Break">post-process chain.</span></p>
+<p>The code is simple, and it is <span class="No-Break">luminance based:</span></p>
+<pre class="source-code">
+    vec4 color = texture(global_textures[
+                 nonuniformEXT(texture_id)], vTexCoord.xy);
+    float input_luminance = luminance(color.rgb);
+    float average_luminance = 0.f;
+    // Sharpen
+    for (int x = -1; x &lt;= 1; ++x ) {
+        for (int y = -1; y &lt;= 1; ++y ) {
+            vec3 sampled_color = texture(global_textures[
+                nonuniformEXT(texture_id)], vTexCoord.xy +
+                    vec2( x / resolution.x, y /
+                        resolution.y )).rgb;
+            average_luminance += luminance( sampled_color
+                                          );
+        }
+    }
+    average_luminance /= 9.0f;
+    float sharpened_luminance = input_luminance –
+                                average_luminance;
+    float final_luminance = input_luminance +
+                            sharpened_luminance *
+                            sharpening_amount;
+    color.rgb = color.rgb * (final_luminance /
+                input_luminance);</pre>
+<p>Based on this code, when<a id="_idIndexMarker606"/> the sharpening amount is <strong class="source-inline">0</strong> the image is not sharpened. The standard value <span class="No-Break">is </span><span class="No-Break"><strong class="source-inline">1</strong></span><span class="No-Break">.</span></p>
+<h2 id="_idParaDest-183"><a id="_idTextAnchor200"/>Negative mip bias</h2>
+<p>A global way to <a id="_idIndexMarker607"/>reduce blurriness is to modify the <strong class="source-inline">mipLodBias</strong> field in the <strong class="source-inline">VkSamplerCreateInfo</strong> structure to be a negative number, such as <strong class="source-inline">–0.25</strong>, thus shifting the texture <strong class="bold">mip,</strong> the<a id="_idIndexMarker608"/> pyramid of progressively smaller images of a texture to <span class="No-Break">higher values.</span></p>
+<p>This should be done by considering the performance difference, as we are sampling at a higher MIP level, and if the level is too high, we could <span class="No-Break">re-introduce aliasing.</span></p>
+<p>A global engine option to tweak would be a great solution <span class="No-Break">to this.</span></p>
+<h2 id="_idParaDest-184"><a id="_idTextAnchor201"/>Unjitter texture UVs</h2>
+<p>Another<a id="_idIndexMarker609"/> possible fix to sample sharper textures is to calculate the UVs as the camera was without any jittering, <span class="No-Break">like so:</span></p>
+<pre class="source-code">
+vec2 unjitter_uv(float uv, vec2 jitter) {
+    return uv - dFdxFine(uv) * jitter.x + dFdyFine(uv) *
+        jitter.y;
+}</pre>
+<p>I personally did not try this method but found it interesting and something to experiment with. It was written about by Emilio Lopez in his TAA article, linked in the <em class="italic">Reference</em> section, also citing a colleague named Martin Sobek who came up with <span class="No-Break">the idea.</span></p>
+<p>The combination of TAA and sharpening drastically improves the edges of the image while retaining <a id="_idIndexMarker610"/>the details inside <span class="No-Break">the objects.</span></p>
+<p>We need to look at one last aspect of the <span class="No-Break">image: banding.</span></p>
+<h1 id="_idParaDest-185"><a id="_idTextAnchor202"/>Improving banding</h1>
+<p>Banding is a <a id="_idIndexMarker611"/>problem affecting various steps in the rendering of a frame. It affects Volumetric Fog and lighting calculations, <span class="No-Break">for example.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer066">
+<img alt="Figure 11.5 – Banding problem detail in Volumetric Fog" height="573" src="image/B18395_11_05.jpg" width="632"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 11.5 – Banding problem detail in Volumetric Fog</p>
+<p>We can see in <span class="No-Break"><em class="italic">Figure 11</em></span><em class="italic">.5</em> how this can be present in Volumetric Fog if no solution is implemented. A solution to remove banding in visuals is to add some dithering to various passes of the frame, but that also adds visual noise to <span class="No-Break">the image.</span></p>
+<p>Dithering is defined as the intentional addition of noise specifically to remove banding. Different type of noises can be used, as we will see in the accompaining code. Adding temporal reprojection smoothens the noise added, thus becoming one of the best ways to improve the visual quality of <span class="No-Break">the image.</span></p>
+<p>In <a href="B18395_10.xhtml#_idTextAnchor152"><span class="No-Break"><em class="italic">Chapter 10</em></span></a>, <em class="italic">Adding Volumetric Fog</em>, we saw a very simple temporal reprojection scheme, and we have also added noise to various steps of the algorithm. We have now seen a more complex implementation of a temporal reprojection scheme to enhance the image, and it should be clearer on reasoning behind animated dithering: animating dithering gives effectively more samples, and thanks to temporal reprojection, uses them effectively. Dithering is linked to its own temporal reprojection, thus in the Volumetric Fog steps, the dithering scale can be too large to be cleaned up <span class="No-Break">by TAA.</span></p>
+<p>When applying<a id="_idIndexMarker612"/> Volumetric Fog to the scene though, we can add a small, animated dithering that increases the fog visuals while being cleaned up by TAA. Another dithering application is in the lighting shader, again at the per-pixel level and thus eligible to be cleaned up <span class="No-Break">by TAA.</span></p>
+<p class="callout-heading">Note</p>
+<p class="callout">Trying to get a noise-free image is hard as the temporal reprojection uses more than one frame, thus it is not possible to show here in an image what appears banding-free in the <span class="No-Break">accompanying application.</span></p>
+<h1 id="_idParaDest-186"><a id="_idTextAnchor203"/>Summary</h1>
+<p>In this chapter, we introduced the TAA <span class="No-Break">rendering technique.</span></p>
+<p>We gave an overview of the algorithm by trying to highlight the different shader steps involved. We then moved on to create the simplest possible TAA shader: an exercise to give us a deeper understanding of the <span class="No-Break">technique itself.</span></p>
+<p>Following that, we started enhancing the various steps using filters and information taken from the current scene. We encourage you to add custom filters and tweak parameters and different scenes to understand and develop the <span class="No-Break">technique further.</span></p>
+<p>An idea to experiment with could also be to apply the history constraint to the temporal reprojection phase of the Volumetric Fog, as suggested by my friend Marco Vallario a few <span class="No-Break">months ago.</span></p>
+<p>In the next chapter, we will add support for ray tracing to the Raptor Engine, a recent technological advancement that unlocks high-quality illumination techniques, which we will cover in the <span class="No-Break">following chapters.</span></p>
+<h1 id="_idParaDest-187"><a id="_idTextAnchor204"/>Further reading</h1>
+<p>We touched on several topics in this chapter, from the history of post-process anti-aliasing to implementations of TAA, to banding <span class="No-Break">and noise.</span></p>
+<p>Thanks to the graphics community, which shares a lot of information on their findings, it is possible to sharpen our knowledge on <span class="No-Break">this subject.</span></p>
+<p>The following are some links <span class="No-Break">to read:</span></p>
+<ul>
+<li>For an index of the evolution of Post-Process Anti-Aliasing <span class="No-Break">techniques: </span><a href="http://www.iryoku.com/research-impact-retrospective-mlaa-from-2009-to-2017"><span class="No-Break">http://www.iryoku.com/research-impact-retrospective-mlaa-from-2009-to-2017</span></a><span class="No-Break">.</span></li>
+<li>The first MLAA <span class="No-Break">paper: </span><a href="https://www.intel.com/content/dam/develop/external/us/en/documents/z-shape-arm-785403.pdf"><span class="No-Break">https://www.intel.com/content/dam/develop/external/us/en/documents/z-shape-arm-785403.pdf</span></a><span class="No-Break">.</span></li>
+<li>An MLAA GPU <span class="No-Break">implementation: </span><a href="http://www.iryoku.com/mlaa/"><span class="No-Break">http://www.iryoku.com/mlaa/</span></a><span class="No-Break">.</span></li>
+<li>SMAA, an evolution of <span class="No-Break">MLAA: </span><a href="http://www.iryoku.com/smaa/"><span class="No-Break">http://www.iryoku.com/smaa/</span></a><span class="No-Break">.</span></li>
+<li>The best article on signal processing and anti-aliasing by Matt <span class="No-Break">Pettineo: </span><a href="https://therealmjp.github.io/posts/msaa-resolve-filters/"><span class="No-Break">https://therealmjp.github.io/posts/msaa-resolve-filters/</span></a><span class="No-Break">.</span></li>
+<li>Temporal Reprojection Anti-Aliasing in Inside, containing the first full documentation of a TAA technique. Includes information about history constraints and AABB <span class="No-Break">clipping: </span><a href="http://s3.amazonaws.com/arena-attachments/655504/c5c71c5507f0f8bf344252958254fb7d.pdf?1468341463"><span class="No-Break">http://s3.amazonaws.com/arena-attachments/655504/c5c71c5507f0f8bf344252958254fb7d.pdf?1468341463</span></a><span class="No-Break">.</span></li>
+<li>High-Quality Temporal Supersampling, Unreal Engine TAA <span class="No-Break">implementation: </span><a href="https://de45xmedrsdbp.cloudfront.net/Resources/files/TemporalAA_small-59732822.pdf"><span class="No-Break">https://de45xmedrsdbp.cloudfront.net/Resources/files/TemporalAA_small-59732822.pdf</span></a><span class="No-Break">.</span></li>
+<li>An excursion in temporal super-sampling, introducing variance <span class="No-Break">clipping: </span><a href="https://developer.download.nvidia.com/gameworks/events/GDC2016/msalvi_temporal_supersampling.pdf"><span class="No-Break">https://developer.download.nvidia.com/gameworks/events/GDC2016/msalvi_temporal_supersampling.pdf</span></a><span class="No-Break">.</span></li>
+<li>A TAA article, with tips, such as UV unjittering and Mip <span class="No-Break">bias: </span><a href="https://www.elopezr.com/temporal-aa-and-the-quest-for-the-holy-trail/"><span class="No-Break">https://www.elopezr.com/temporal-aa-and-the-quest-for-the-holy-trail/</span></a><span class="No-Break">.</span></li>
+<li>Another great TAA article with a full <span class="No-Break">implementation: </span><a href="https://alextardif.com/TAA.xhtml"><span class="No-Break">https://alextardif.com/TAA.xhtml</span></a><span class="No-Break">.</span></li>
+<li>Banding in <span class="No-Break">games: </span><a href="https://loopit.dk/banding_in_games.pdf"><span class="No-Break">https://loopit.dk/banding_in_games.pdf</span></a><span class="No-Break">.</span></li>
+</ul>
+</div>
+</div></body></html>

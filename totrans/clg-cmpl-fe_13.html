@@ -1,0 +1,365 @@
+<html><head></head><body>
+<div id="book-content" class="calibre2">
+<div id="sbo-rt-content" class="calibre3"><section id="chapter-10-appendix-2-build-speed-optimization" class="level" data-number="3.2">
+<h1 data-number="3.2" class="calibre5"><span>Appendix 2</span></h1>
+<h1 id="sigil_toc_id_157" class="calibre5"><a id="x1-19000010" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Build Speed Optimization</h1>
+<p class="hidden">Clang has implemented several features with the goal of improving build speed for large projects. One of the most interesting features is precompiled headers and modules. They can be considered techniques that allow caching some parts of the AST and reusing it for different compiler invocations. Caching can significantly improve build speed for your project, and some of these features can be used to speed up different Clang tool executions. For instance, precompiled headers are used as the primary Clangd optimization for document editing.</p>
+<p class="hidden">In this appendix, we will cover two primary topics</p>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">Precompiled headers</p></li>
+<li class="calibre14"><p class="calibre15">Modules</p></li>
+</ul>
+<p class="hidden"><a id="x1-190001r569" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<section id="technical-requirements-8" class="level" data-number="3.2.1">
+<h2 data-number="3.2.1" id="sigil_toc_id_158" class="likechapterhead"><span>10.1 </span> <a id="x1-1910001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Technical requirements</h2>
+<p class="hidden">The source code for this appendix is located in the <code class="calibre13">chapter10 </code>folder of the book’s GitHub repository: <a href="https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter10" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://github.com/PacktPublishing/Clang-Compiler-Frontend-Packt/tree/main/chapter10</a>. <a id="x1-191001r571" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="precompiled-headers" class="level" data-number="3.2.2">
+<h2 data-number="3.2.2" id="sigil_toc_id_159" class="likechapterhead"><span>10.2 </span> <a id="x1-1920002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Precompiled headers</h2>
+<p class="hidden"><strong class="calibre12">Precompiled headers PCH</strong>, are a Clang feature designed to improve Clang’s frontend performance. The basic <a id="dx1-192001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>idea is to create an AST <a id="dx1-192002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> (Abstract Syntax Tree) for a header file and reuse this AST during compilation for sources that include the header file.</p>
+<p class="hidden">Generating a precompiled header file is simple [<a href="B19722_Bib.xhtml#Xclang_user_manual" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">5</a>]. Suppose you have the following header file, <code class="calibre13">header.h </code>:</p>
+<pre class="source-code"><span>1 </span>#pragma once 
+ 
+<span>2 </span> 
+ 
+<span>3 </span>void foo() { 
+ 
+<span>4 </span>}</pre>
+<p class="hidden"><a id="x1-192008r1" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-192009" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.1</strong>: Header file to be compiled to PCH </p>
+<p class="hidden">You can generate a PCH for it with the following command:</p>
+<pre id="verbatim-127" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1 -emit-pch        \
+                                        -x c++-header header.h \
+                                        -o header.pch</pre>
+<p class="hidden">Here, we use the <code class="calibre13">-x c++-header </code>option to specify that the header file should be treated as a C++ header file. The output file will be named <code class="calibre13">header.pch</code> .</p>
+<p class="hidden">Simply generating precompiled headers is not enough; you need to start using them. A typical C++ source file that includes the header may look like this:</p>
+<pre class="source-code"><span>1 </span>#include "header.h" 
+ 
+<span>2 </span> 
+ 
+<span>3 </span>int main() { 
+ 
+<span>4 </span>  foo(); 
+ 
+
+<span>5 </span>  return 0; 
+ 
+<span>6 </span>}</pre>
+<p class="hidden"><a id="x1-192017r2" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-192018" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.2</strong>: Source file that includes header.h </p>
+<p class="hidden">As you can see, the header is included as follows:</p>
+<pre class="source-code"><span>1 </span>#include "header.h"</pre>
+<p class="hidden"><a id="x1-192023r3" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-192024" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.3</strong>: Header header.h inclusion </p>
+<p class="hidden">By default, Clang will not use a PCH, and you <a id="dx1-192025" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>have to specify it explicitly with the following command:</p>
+<pre id="verbatim-128" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1 -emit-obj        \
+                                       -include-pch header.pch \
+                                       main.cpp -o main.o</pre>
+<p class="hidden">Here, we use <code class="calibre13">-include-pch </code>to specify the included precompiled header: <code class="calibre13">header.pch </code>.</p>
+<p class="hidden">You can check this command with a debugger, and it will give you the following output:</p>
+<pre id="listing-79" class="source-code">1$ lldb &lt;...&gt;/llvm-project/install/bin/clang -- -cc1 -emit-obj -include-pch header.pch main.cpp -o main.o 
+ 
+
+<span>2 </span>... 
+ 
+<span>3 </span>(lldb) b clang::ASTReader::ReadAST 
+ 
+<span>4 </span>... 
+ 
+<span>5 </span>(lldb) r 
+ 
+
+<span>6 </span>... 
+ 
+<span>7 </span>-&gt; 4431   llvm::TimeTraceScope scope("ReadAST", FileName); 
+ 
+
+<span>8 </span>   4432 
+ 
+<span>9 </span>   4433   llvm::SaveAndRestore SetCurImportLocRAII(CurrentImportLoc, ImportLoc); 
+ 
+
+<span>10 </span>   4434   llvm::SaveAndRestore&lt;std::optional&lt;ModuleKind&gt;&gt; SetCurModuleKindRAII( 
+ 
+
+<span>11 </span>(lldb) p FileName 
+ 
+<span>12 </span>(llvm::StringRef)  (Data = "header.pch", Length = 10)</pre>
+<p class="hidden"><a id="x1-192038r4" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-192039" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.4</strong>: Loading precompiled header at clang::ASTReader::ReadAST </p>
+<p class="hidden">From this example, you can <a id="dx1-192040" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>see that Clang reads the AST from the precompiled header file. It’s important to note that the precompiled header is read before parsing, allowing Clang to obtain all symbols from the header file before parsing the main source file. This makes explicit header inclusion unnecessary. Therefore, you can remove the <span><code class="calibre13">#</code><code class="calibre13">include</code> <code class="calibre13">"</code><code class="calibre13">header</code><code class="calibre13">.</code><code class="calibre13">h</code><code class="calibre13">"</code></span> directive from the source file and achieve successful compilation.</p>
+<p class="hidden">This is impossible without precompiled headers, where you would encounter the following compilation error:</p>
+<pre id="verbatim-129" class="console">main.cpp:4:3: error: use of undeclared identifier ’foo’
+    4 |   foo();
+      |   ^
+<span>1 </span> error generated.</pre>
+<p class="hidden"><a id="x1-192041r5" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-192042" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.5</strong>: Compilation error generated due to missing includes </p>
+<p class="hidden">It’s worth noting that only the first <code class="calibre13">--include-pch </code>option will be processed; all others will be ignored. This reflects the fact that there can be only one precompiled header for a translation unit. On the other hand, a precompiled header can include another precompiled header. This functionality is <a id="dx1-192043" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>known as chained precompiled headers [<a href="B19722_Bib.xhtml#Xllvm_pchinternals" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">3</a>], as it creates a chain of dependencies where one precompiled header depends on another precompiled header.</p>
+<p class="hidden">The usage of precompiled <a id="dx1-192044" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>headers is not limited to regular compilation. As we saw in <a href="B19722_08.xhtml#x1-1760001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Figure</em><em class="calibre11"> 8.38</em></a><em class="calibre11">, AST build at Clangd</em>, precompiled headers are actively used for performance optimizations in Clangd as placeholders for a cache for the preamble that contains included headers.</p>
+<p class="hidden">Precompiled headers are a technique that has been used for a long time, but they have some limitations. One of the most important limitations is that there can be only one precompiled header, which significantly limits the usage of PCH in real projects. Modules address some of the problems related to precompiled header. Lets explore them. <a id="x1-192045r572" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+<section id="clang-modules" class="level" data-number="3.2.3">
+<h2 data-number="3.2.3" id="sigil_toc_id_160" class="likechapterhead"><span>10.3 </span> <a id="x1-1930003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Clang modules</h2>
+<p class="hidden">Modules, or <strong class="calibre12">Precompiled Modules </strong>(<strong class="calibre12">PCMs</strong>), can be considered <a id="dx1-193001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>the next step in the evolution of precompiled headers. They also <a id="dx1-193002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>represent a parsed AST in binary form but form a DAG (tree), meaning one module can include more than one other module.</p>
+<p class="hidden">This is a major improvement compared to precompiled headers, where only one precompiled header can be introduced for each compilation unit.</p>
+<p class="hidden">The C++20 standard [<a href="B19722_Bib.xhtml#Xstandard_cpp20" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">21</a>] introduced two concepts related to modules. The first one is ordinary modules, described in <em class="calibre11">section 10 </em>of [<a href="B19722_Bib.xhtml#Xstandard_cpp20" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">21</a>]. The other one is the so-called header unit <a id="dx1-193003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>, mostly described in <em class="calibre11">section 15.5</em>. Header units can be considered an intermediate step between ordinary headers and modules and allow the use of the <code class="calibre13">import </code>directive to import ordinary headers.</p>
+<p class="hidden">We will focus on Clang modules, which <a id="dx1-193004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>can be considered an implementation of header units from the C++ standard. There are two different options to use Clang modules. The first <a id="dx1-193005" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>one is called <strong class="calibre12">explicit modules</strong>. The <a id="dx1-193006" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>second is called <strong class="calibre12">implicit modules</strong>. We will explore both cases but will start with a description of a test project for which we want to use the modules.</p>
+<section id="test-project-description" class="level" data-number="3.2.3.1">
+<h4 class="sigil_not_in_toc" data-number="3.2.3.1"><a id="x1-1940003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Test project description</h4>
+<p class="hidden">For experiments <a id="dx1-194001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>with modules, we will <a id="dx1-194002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>consider an example with two header files: <code class="calibre13">header1.h </code>and <code class="calibre13">header2.h </code>, which define the <span><code class="calibre13">void</code> <code class="calibre13">foo1</code><code class="calibre13">()</code></span> and <span><code class="calibre13">void</code> <code class="calibre13">foo2</code><code class="calibre13">()</code></span> functions, respectively, as shown:</p>
+<div class="tableofcontents">
+<pre class="source-code"><span>1 </span>#pragma once 
+ 
+<span>2 </span> 
+ 
+
+<span>3 </span>void foo1() {}</pre>
+<p class="hidden"><strong class="calibre12"/>Header file: header1.h </p>
+</div>
+<div class="tableofcontents">
+<pre class="source-code"><span>1 </span>#pragma once 
+ 
+<span>2 </span> 
+ 
+
+<span>3 </span>void foo2() {}</pre>
+<p class="hidden"><strong class="calibre12"/>Header file: header2.h </p>
+</div>
+<p class="hidden"><a id="x1-194011r6" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-194012" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.6</strong>: Header files to be used for the tests </p>
+<p class="hidden">These header files will be used in the following source file:</p>
+<pre class="source-code"><span>1 </span>#include "header1.h" 
+ 
+<span>2 </span>#include "header2.h" 
+ 
+<span>3 </span> 
+ 
+
+<span>4 </span>int main() { 
+ 
+<span>5 </span>  foo1(); 
+ 
+<span>6 </span>  foo2(); 
+ 
+<span>7 </span>  return 0; 
+ 
+<span>8 </span>}</pre>
+<p class="hidden"><a id="x1-194022r7" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-194023" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.7</strong>: Source file: main.cpp </p>
+<p class="hidden">We are going to <a id="dx1-194024" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>organize our header <a id="dx1-194025" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>files into modules. Clang uses a special file that contains the logical structure, which is <a id="dx1-194026" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>called a <strong class="calibre12">modulemap </strong>file. Let’s see what the file looks like for our test project.</p>
+</section>
+<section id="modulemap-file" class="level" data-number="3.2.3.2">
+<h4 class="sigil_not_in_toc" data-number="3.2.3.2"><a id="x1-1950003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Modulemap file</h4>
+<p class="hidden">The modulemap <a id="dx1-195001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>file for our <a id="dx1-195002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>project will be named <code class="calibre13">module.modulemap </code>and has the following content:</p>
+<pre class="source-code"><span>1 </span>module header1 { 
+ 
+<span>2 </span>  header "header1.h" 
+ 
+<span>3 </span>  export * 
+ 
+
+<span>4 </span>} 
+ 
+<span>5 </span>module header2 { 
+ 
+<span>6 </span>  header "header2.h" 
+ 
+<span>7 </span>  export * 
+ 
+
+<span>8 </span>}</pre>
+<p class="hidden"><a id="x1-195012r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-195013" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.8</strong>: Modulemap file: module.modulemap </p>
+<p class="hidden">As shown in <a href="#x1-195012r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 10.8</a>, we have defined two modules, <strong class="calibre12">header1 </strong>and <strong class="calibre12">header2</strong>.</p>
+<p class="hidden">Each of them contains only one header and exports all symbols from it.</p>
+<p class="hidden">Now that we have collected all the necessary parts, we are ready to build and use the modules. Modules can be built explicitly or implicitly. Let’s start with explicit builds.</p>
+</section>
+<section id="explicit-modules" class="level" data-number="3.2.3.3">
+<h4 class="sigil_not_in_toc" data-number="3.2.3.3"><a id="x1-1960003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Explicit modules</h4>
+<p class="hidden">The module’s structure is described by the modulemap file, as seen in <a href="#x1-195012r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 10.8</a>. Each of our modules has <a id="dx1-196001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>only one header, but a real module might include several headers. Thus, to build a module, we have to specify the structure of the modules (the modulemap file) and the module name we want to build. For instance, for the <strong class="calibre12">header1 </strong>module, we can use the following build command:</p>
+<pre id="verbatim-130" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1            \
+        -emit-module -o header1.pcm                    \
+        -fmodules module.modulemap -fmodule-name=header1 \
+        -x c++-header -fno-implicit-modules</pre>
+<p class="hidden">There are several important aspects in the compile command. The first one is the <strong class="calibre12">-cc1 </strong>option, which indicates that we are calling only the compiler frontend. For more information, please refer to <a href="B19722_02.xhtml#x1-410003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Section</em><em class="calibre11"> 2.3</em></a><em class="calibre11">, Clang driver overview</em>. Additionally, we specify that we want to create a build artifact (module) named <code class="calibre13">header1.pcm </code>by using the following option: <code class="calibre13">-emit-module -o header1.pcm </code>. The logical structure and the required modules to be built are specified in the <code class="calibre13">module.modulemap </code>file, which has to be specified as a compile argument with the <code class="calibre13">-fmodule-name=header1 </code>option. Enabling the modules functionality is done using the <code class="calibre13">-fmodules </code>flag, and we also specify that our headers are C++ headers with the <code class="calibre13">-x c++-header </code>option. To explicitly disable implicit modules, we include <code class="calibre13">-fno-implicit-modules </code>in the command because implicit modules, which we will investigate later in <a href="#x1-1970003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Figure</em><em class="calibre11"> 10.9</em></a><em class="calibre11">, Implicit</em> <em class="calibre11">modules</em>, are enabled by default, but we don’t want to use them at the moment.</p>
+<p class="hidden">The second module (<code class="calibre13">header2 </code>) has a similar compilation command:</p>
+<pre id="verbatim-131" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1            \
+        -emit-module -o header2.pcm                    \
+        -fmodules module.modulemap -fmodule-name=header2 \
+        -x c++-header -fno-implicit-modules</pre>
+<p class="hidden">The next step is to compile <code class="calibre13">main.cpp </code>using the <a id="dx1-196002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>generated modules, which can be done as follows:</p>
+<pre id="verbatim-132" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1       \
+       -emit-obj main.cpp                         \
+       -fmodules -fmodule-map-file=module.modulemap \
+       -fmodule-file=header1=header1.pcm          \
+       -fmodule-file=header2=header2.pcm          \
+       -o main.o -fno-implicit-modules</pre>
+<p class="hidden">As we can see, both the module name and build artifacts (PCM files) are specified using the <code class="calibre13">-fmodule-file </code>compile option. The format used, such as <code class="calibre13">header1=header1.pcm </code>, indicates that <code class="calibre13">header1.pcm </code>corresponds to the <code class="calibre13">header1 </code>module. We also specify the modulemap file with the <code class="calibre13">-fmodule-map-file </code>option. It’s worth noting that we created two build artifacts: <code class="calibre13">header1.pcm </code>and <code class="calibre13">header2.pcm </code>, and used them together for the compilation. This is impossible in the case of precompiled headers because only one precompiled header is allowed, as mentioned in <a href="#x1-1920002" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"><em class="calibre11">Section</em><em class="calibre11"> 10.2</em></a><em class="calibre11">, Precompiled</em> <em class="calibre11">headers</em>.</p>
+<p class="hidden">We emitted an object file, <code class="calibre13">main.o </code>, as a result of the compilation command. The object file can be linked as follows:</p>
+<pre id="verbatim-133" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang main.o -o main -lstdc++</pre>
+<p class="hidden">Let’s verify that the modules <a id="dx1-196003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>were loaded during compilation. This can be done with LLDB as follows:</p>
+<pre id="listing-80" class="source-code">1$ lldb &lt;...&gt;/llvm-project/install/bin/clang -- -cc1 -emit-obj main.cpp -fmodules -fmodule-map-file=module.modulemap -fmodule-file=header1=header1.pcm -fmodule-file=header2=header2.pcm -o main.o -fno-implicit-modules 
+ 
+
+<span>2 </span>... 
+ 
+<span>3 </span>(lldb) b clang::CompilerInstance::findOrCompileModuleAndReadAST 
+ 
+
+<span>4 </span>... 
+ 
+<span>5 </span>(lldb) r 
+ 
+<span>6 </span>... 
+ 
+<span>7 </span>Process 135446 stopped 
+ 
+
+<span>8 </span>* thread #1, name = ’clang’, stop reason = breakpoint 1.1 
+ 
+
+<span>9 </span>    frame #0: ... findOrCompileModuleAndReadAST(..., ModuleName=(Data = "header1", Length = 7), ... 
+ 
+
+<span>10 </span>... 
+ 
+<span>11 </span>(lldb) c 
+ 
+<span>12 </span>Process 135446 stopped 
+ 
+
+<span>13 </span>* thread #1, name = ’clang’, stop reason = breakpoint 1.1 
+ 
+
+<span>14 </span>    frame #0: ... findOrCompileModuleAndReadAST(..., ModuleName=(Data = "header2", Length = 7), .... 
+ 
+
+<span>15 </span>... 
+ 
+<span>16 </span>(lldb) c 
+ 
+<span>17 </span>Process 135446 resumed 
+ 
+
+<span>18 </span>Process 135446 exited with status = 0 (0x00000000)</pre>
+<p class="hidden"><a id="x1-196022r9" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-196023" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.9</strong>: Explicit module load </p>
+<p class="hidden">We set a breakpoint at <span><code class="calibre13">clang</code><code class="calibre13">::</code><code class="calibre13">CompilerInstance</code><code class="calibre13">::</code><code class="calibre13">findOrCompileModuleAndReadAST</code></span>, as shown in <em class="calibre11">Line 3 </em>of <a href="#x1-196022r9" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 10.9</a>. We hit the breakpoint twice: first at <em class="calibre11">Line 9</em> for the module named <code class="calibre13">header1 </code>, and then at <em class="calibre11">Line 14 </em>for the module named <code class="calibre13">header2 </code>.</p>
+<p class="hidden">You must explicitly define the build artifacts and specify the path where they will be stored in all compile commands when using explicit modules, as we have just discovered. However, all the required information is <a id="dx1-196024" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>stored within the modulemap file (refer to <a href="#x1-195012r8" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">Figure 10.8</a>). The compiler can utilize this information to create all the necessary build artifacts automatically. The answer to the question is affirmative, and this functionality is provided by implicit modules. Let’s explore it.</p>
+</section>
+<section id="implicit-modules" class="level" data-number="3.2.3.4">
+<h4 class="sigil_not_in_toc" data-number="3.2.3.4"><a id="x1-1970003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Implicit modules</h4>
+<p class="hidden">As mentioned earlier, the modulemap <a id="dx1-197001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>file contains all the information required to build all modules (<code class="calibre13">header1 </code>and <code class="calibre13">header2 </code>) and use them for dependent file (<code class="calibre13">main.cpp </code>) building. Thus, we have to specify a path to the modulemap file and a folder where the build artifacts will be stored. This can be done as follows:</p>
+<pre id="verbatim-134" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1 \
+      -emit-obj main.cpp                  \
+      -fmodules                           \
+      -fmodule-map-file=module.modulemap  \
+      -fmodules-cache-path=./cache        \
+      -o main.o</pre>
+<p class="hidden">As we can see, we didn’t specify <code class="calibre13">-fno-implicit-modules </code>, and we also specified the path for build artifacts with <code class="calibre13">-fmodules-cache-path=./cache</code> . If we examine the path, we will be able to see the created modules:</p>
+<pre id="verbatim-135" class="console">$ tree ./cache
+./cache
+|-- 2AL78TH69W6HR
+    |-- header1-R65CPR1VCRM1.pcm
+    |-- header2-R65CPR1VCRM1.pcm
+    |-- modules.idx
+<span>2 </span> directories, 3 files</pre>
+<p class="hidden"><a id="x1-197002r10" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-197003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.10</strong>: The cache generated by Clang for implicit modules </p>
+<p class="hidden">Clang will monitor the cache folder (<code class="calibre13">./cache </code>in our case) and delete build artifacts that have not been used for a long time. It will also rebuild the modules if their dependencies (for instance, included headers) have changed.</p>
+<p class="hidden">Modules are a very powerful tool, but like <a id="dx1-197004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>every powerful tool, they can introduce non-trivial problems. Let’s explore the most interesting problem that can be caused by modules.</p>
+</section>
+<section id="some-problems-related-to-modules" class="level" data-number="3.2.3.5">
+<h4 class="sigil_not_in_toc" data-number="3.2.3.5"><a id="x1-1980003" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Some problems related to modules</h4>
+<p class="hidden">The code that uses <a id="dx1-198001" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>modules can introduce some non-trivial behavior into your program. Consider a project that consists of two headers, as shown:</p>
+<div class="tableofcontents">
+<pre class="source-code"><span>1 </span>#pragma once 
+ 
+<span>2 </span> 
+ 
+
+<span>3 </span>int h1 = 1;</pre>
+<p class="hidden"><strong class="calibre12"/>Header file: header1.h </p>
+</div>
+<div class="tableofcontents">
+<pre class="source-code"><span>1 </span>#pragma once 
+ 
+<span>2 </span> 
+ 
+
+<span>3 </span>int h2 = 2;</pre>
+<p class="hidden"><strong class="calibre12"/>Header file: header2.h </p>
+</div>
+<p class="hidden"><a id="x1-198010r11" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-198011" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.11</strong>: Header files that will be used for the test </p>
+<p class="hidden">The only <code class="calibre13">header1.h </code>is included in <code class="calibre13">main.cpp </code>, as follows</p>
+<pre class="source-code"><span>1 </span>#include "header1.h" 
+ 
+<span>2 </span> 
+ 
+<span>3 </span>int main() { 
+ 
+
+<span>4 </span>  int h = h1 + h2; 
+ 
+<span>5 </span>  return 0; 
+ 
+<span>6 </span>}</pre>
+<p class="hidden"><a id="x1-198019r12" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-198020" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.12</strong>: Source file: main.cpp </p>
+<p class="hidden">The code will not compile:</p>
+<pre id="verbatim-136" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang  main.cpp -o main -lstdc++
+main.cpp:4:16: error: use of undeclared identifier ’h2’
+  int h = h1 + h2;
+               ^
+<span>1 </span> error generated.</pre>
+<p class="hidden"><a id="x1-198021r13" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-198022" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.13</strong>: Compilation error generated due to a missing header file </p>
+<p class="hidden">The error is obvious because we didn’t <a id="dx1-198023" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>include the second header that contains a definition for the <code class="calibre13">h2 </code>variable.</p>
+<p class="hidden">The situation would be different if we were using implicit modules. Consider the following <code class="calibre13">module.modulemap </code>file:</p>
+<pre class="source-code"><span>1 </span>module h1 { 
+ 
+<span>2 </span>  header "header1.h" 
+ 
+<span>3 </span>  export * 
+ 
+
+<span>4 </span>  module h2 { 
+ 
+<span>5 </span>    header "header2.h" 
+ 
+<span>6 </span>    export * 
+ 
+
+<span>7 </span>  } 
+ 
+<span>8 </span>}</pre>
+<p class="hidden"><a id="x1-198033r14" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-198034" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.14</strong>: Modulemap file that introduces implicit dependencies </p>
+<p class="hidden">This file creates two modules, <code class="calibre13">h1 </code>and <code class="calibre13">h2 </code>. The second module is included within the first one.</p>
+<p class="hidden">If we compile it as follows, the compilation will be successful:</p>
+<pre id="verbatim-137" class="console">$ &lt;...&gt;/llvm-project/install/bin/clang -cc1 \
+        -emit-obj main.cpp                \
+        -fmodules                         \
+        -fmodule-map-file=module.modulemap\
+        -fmodules-cache-path=./cache      \
+        -o main.o
+$ &lt;...&gt;/llvm-project/install/bin/clang main.o -o main -lstdc++</pre>
+<p class="hidden"><a id="x1-198035r15" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/> <a id="x1-198036" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+<p class="hidden"><strong class="calibre12">Figure 10.15</strong>: Successful compilation for a file with a missing header but with implicit modules enabled </p>
+<p class="hidden">The compilation completed without <a id="dx1-198037" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>any errors because the modulemap implicitly added <code class="calibre13">header2.h </code>to the used module (<code class="calibre13">h1 </code>). We also exported all symbols using the <code class="calibre13">export * </code>directive. Thus, when Clang encounters <span><code class="calibre13">#</code><code class="calibre13">include</code> <code class="calibre13">"</code><code class="calibre13">header1</code><code class="calibre13">.</code><code class="calibre13">h</code><code class="calibre13">"</code></span>, it loads the corresponding <code class="calibre13">h1 </code>module, and therefore implicitly loads symbols defined in the <code class="calibre13">h2 </code>module and <code class="calibre13">header2.h </code>header.</p>
+<p class="hidden">The example illustrates how the visibility scope can be leaked when modules are used in the project. This can lead to unexpected behavior for the project build, when it builds with modules enabled and disabled. <a id="x1-198038r581" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/></p>
+</section>
+</section>
+<section id="further-reading-8" class="level" data-number="3.2.4">
+<h2 data-number="3.2.4" id="sigil_toc_id_161" class="likechapterhead"><span>10.4 </span> <a id="x1-1990004" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8"/>Further reading</h2>
+<ul class="calibre6">
+<li class="calibre14"><p class="calibre15">Clang modules: <a href="https://clang.llvm.org/docs/Modules.html" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://clang.llvm.org/docs/Modules.html</a></p></li>
+<li class="calibre14"><p class="calibre15">Precompiled header and modules internals: <a href="https://clang.llvm.org/docs/PCHInternals.html" class="pcalibre1 pcalibre2 pcalibre3 pcalibre calibre8">https://clang.llvm.org/docs/PCHInternals.html</a></p></li>
+</ul>
+</section>
+</section>
+</div>
+</div>
+</body></html>

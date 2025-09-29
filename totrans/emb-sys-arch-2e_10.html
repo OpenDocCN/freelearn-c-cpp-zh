@@ -1,0 +1,1014 @@
+<html><head></head><body>
+<div id="_idContainer063">
+<h1 class="chapter-number" id="_idParaDest-220"><a id="_idTextAnchor357"/><span class="koboSpan" id="kobo.1.1">10</span></h1>
+<h1 id="_idParaDest-221"><a id="_idTextAnchor358"/><span class="koboSpan" id="kobo.2.1">Parallel Tasks and Scheduling</span></h1>
+<p><span class="koboSpan" id="kobo.3.1">When the complexity of the system increases and the software has to manage multiple peripherals and events at the same time, it is more convenient to rely on an operating system to coordinate and synchronize all the different operations. </span><span class="koboSpan" id="kobo.3.2">Separating the application logic into different threads offers a few important architectural advantages. </span><span class="koboSpan" id="kobo.3.3">Each component performs the designed operation within its running unit, and it may release the CPU while it is suspended, or waiting for input or a </span><span class="No-Break"><span class="koboSpan" id="kobo.4.1">timeout event.</span></span></p>
+<p><span class="koboSpan" id="kobo.5.1">In this chapter, the mechanisms used to implement a multithreading embedded operating system will be covered. </span><span class="koboSpan" id="kobo.5.2">This will be done through the development of a minimalistic operating system tailored to the reference platform, and written step by step from scratch, providing a working scheduler to run multiple tasks </span><span class="No-Break"><span class="koboSpan" id="kobo.6.1">in parallel.</span></span></p>
+<p><span class="koboSpan" id="kobo.7.1">The scheduler’s internals are mostly implemented within system service calls, and its design impacts the system’s performance and other features, such as different priority levels and time constraints for real-time-dependent tasks. </span><span class="koboSpan" id="kobo.7.2">Some of the possible scheduling policies, for different contexts, will be explained and implemented in the </span><span class="No-Break"><span class="koboSpan" id="kobo.8.1">example code.</span></span></p>
+<p><span class="koboSpan" id="kobo.9.1">Running multiple threads in parallel implies that resources can be shared, and there is the possibility of concurrent access to the same memory. </span><span class="koboSpan" id="kobo.9.2">Most microprocessors designed to run multithreading systems provide primitive functions, accessible through specific assembly instructions, to implement locking mechanisms such as semaphores. </span><span class="koboSpan" id="kobo.9.3">Our example operating system exposes mutex and semaphore primitives that can be used by the threads to control access to </span><span class="No-Break"><span class="koboSpan" id="kobo.10.1">shared resources.</span></span></p>
+<p><span class="koboSpan" id="kobo.11.1">By introducing memory protection mechanisms, it is possible to provide a separation of the resources based on their addresses and let the kernels supervise all the operations involving the hardware through a system call interface. </span><span class="koboSpan" id="kobo.11.2">Most real-time embedded operating systems prefer a flat model with no segmentation to keep the kernel code as small as possible, and with a minimal API to optimize the resources available for the applications. </span><span class="koboSpan" id="kobo.11.3">The example kernel will show us how to create a system call API to centralize the control of the resources, using physical memory segmentation to protect the resources of the kernel, the system control block, the mapped peripherals, and the other tasks, to increase the level of safety of </span><span class="No-Break"><span class="koboSpan" id="kobo.12.1">the system.</span></span></p>
+<p><span class="koboSpan" id="kobo.13.1">This chapter is split into the </span><span class="No-Break"><span class="koboSpan" id="kobo.14.1">following sections:</span></span></p>
+<ul>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.15.1">Task management</span></span></li>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.16.1">Scheduler implementation</span></span></li>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.17.1">Synchronization</span></span></li>
+<li><span class="koboSpan" id="kobo.18.1">System </span><span class="No-Break"><span class="koboSpan" id="kobo.19.1">resource separation</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.20.1">By the end of this chapter, you will have learned how to build a multithreaded </span><span class="No-Break"><span class="koboSpan" id="kobo.21.1">embedded environment.</span></span></p>
+<h1 id="_idParaDest-222"><a id="_idTextAnchor359"/><span class="koboSpan" id="kobo.22.1">Technical requirements</span></h1>
+<p><span class="koboSpan" id="kobo.23.1">You can find the code files for this chapter on GitHub </span><span class="No-Break"><span class="koboSpan" id="kobo.24.1">at </span></span><a href="https://github.com/PacktPublishing/Embedded-Systems-Architecture-Second-Edition/tree/main/Chapter10"><span class="No-Break"><span class="koboSpan" id="kobo.25.1">https://github.com/PacktPublishing/Embedded-Systems-Architecture-Second-Edition/tree/main/Chapter10</span></span></a><span class="No-Break"><span class="koboSpan" id="kobo.26.1">.</span></span></p>
+<h1 id="_idParaDest-223"><a id="_idTextAnchor360"/><span class="koboSpan" id="kobo.27.1">Task management</span></h1>
+<p><span class="koboSpan" id="kobo.28.1">An operating system provides the abstraction of parallel running processes and threads by alternating </span><a id="_idIndexMarker698"/><span class="koboSpan" id="kobo.29.1">the applications to run in parallel. </span><span class="koboSpan" id="kobo.29.2">In fact, on systems with a single CPU, there can only be one running thread at a time. </span><span class="koboSpan" id="kobo.29.3">While the running thread executes, all the others are waiting in line until the next </span><span class="No-Break"><span class="koboSpan" id="kobo.30.1">task switch.</span></span></p>
+<p><span class="koboSpan" id="kobo.31.1">In a cooperative model, switching the task is always a voluntary action requested by the thread </span><a id="_idIndexMarker699"/><span class="koboSpan" id="kobo.32.1">implementation. </span><span class="koboSpan" id="kobo.32.2">The opposite approach, known as </span><strong class="bold"><span class="koboSpan" id="kobo.33.1">preemption</span></strong><span class="koboSpan" id="kobo.34.1">, requires that the kernel periodically interrupts tasks at any point of their execution, to temporarily save the status and resume the next task </span><span class="No-Break"><span class="koboSpan" id="kobo.35.1">in line.</span></span></p>
+<p><span class="koboSpan" id="kobo.36.1">Switching the running task consists of storing the values of the CPU registers in RAM, and loading from memory </span><a id="_idIndexMarker700"/><span class="koboSpan" id="kobo.37.1">those of the next task that has been selected for running. </span><span class="koboSpan" id="kobo.37.2">This operation is better known as </span><strong class="bold"><span class="koboSpan" id="kobo.38.1">context switching</span></strong><span class="koboSpan" id="kobo.39.1"> and is the core of the </span><span class="No-Break"><span class="koboSpan" id="kobo.40.1">scheduling syste</span><a id="_idTextAnchor361"/><span class="koboSpan" id="kobo.41.1">m.</span></span></p>
+<h2 id="_idParaDest-224"><a id="_idTextAnchor362"/><span class="koboSpan" id="kobo.42.1">The task block</span></h2>
+<p><span class="koboSpan" id="kobo.43.1">Tasks are represented in the system in the form of a task block structure. </span><span class="koboSpan" id="kobo.43.2">This object contains all the </span><a id="_idIndexMarker701"/><span class="koboSpan" id="kobo.44.1">information needed for the scheduler to keep track of the state of the task at all times and is dependent on the design of the scheduler. </span><span class="koboSpan" id="kobo.44.2">Tasks might be defined at compile time and started after the kernel boots, or spawned and terminated while the system </span><span class="No-Break"><span class="koboSpan" id="kobo.45.1">is running.</span></span></p>
+<p><span class="koboSpan" id="kobo.46.1">Each task block may contain a pointer to the start function, which defines the beginning of the code that is executed when the task is spawned, and a set of optional arguments. </span><span class="koboSpan" id="kobo.46.2">Memory is assigned for each task to use as its private stack region. </span><span class="koboSpan" id="kobo.46.3">This way, the execution context of each thread and process is separated from all the others, and the values of the registers can be stored in a task-specific memory area when the task is interrupted. </span><span class="koboSpan" id="kobo.46.4">The task-specific stack pointer is stored in the task block structure, and it is used to store the values of the CPU register upon </span><span class="No-Break"><span class="koboSpan" id="kobo.47.1">context switches.</span></span></p>
+<p><span class="koboSpan" id="kobo.48.1">Running with separate stacks requires that some memory is reserved in advance, and associated with each task. </span><span class="koboSpan" id="kobo.48.2">In the simplest case, all tasks using a stack of the same size are created before the scheduler starts and cannot be terminated. </span><span class="koboSpan" id="kobo.48.3">This way, the memory that has been reserved to be associated with private stacks can be contiguous and associated with each new task. </span><span class="koboSpan" id="kobo.48.4">The memory region used for the stack areas can be defined in the </span><span class="No-Break"><span class="koboSpan" id="kobo.49.1">linker script.</span></span></p>
+<p><span class="koboSpan" id="kobo.50.1">The reference platform has a separate core-coupled memory, mapped at </span><strong class="source-inline"><span class="koboSpan" id="kobo.51.1">0x10000000</span></strong><span class="koboSpan" id="kobo.52.1">. </span><span class="koboSpan" id="kobo.52.2">Among the many ways to arrange the memory sections, we have decided to map the start of the stack space, used to associate stack areas with the threads, at the beginning of the CCRAM. </span><span class="koboSpan" id="kobo.52.3">The remaining CCRAM space is used as a stack for the kernel, which leaves all the SRAM, excluding the </span><strong class="source-inline"><span class="koboSpan" id="kobo.53.1">.data</span></strong><span class="koboSpan" id="kobo.54.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.55.1">.bss</span></strong><span class="koboSpan" id="kobo.56.1"> sections, for heap allocation. </span><span class="koboSpan" id="kobo.56.2">The pointers are exported by the linker script with the following </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.57.1">PROVIDE</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.58.1"> instructions:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.59.1">
+PROVIDE(_end_stack = ORIGIN(CCRAM) + LENGTH(CCRAM));
+PROVIDE(stack_space = ORIGIN(CCRAM));
+PROVIDE(_start_heap = _end);</span></pre>
+<p><span class="koboSpan" id="kobo.60.1">In the kernel source, </span><strong class="source-inline"><span class="koboSpan" id="kobo.61.1">stack_space</span></strong><span class="koboSpan" id="kobo.62.1"> is declared as external, because it is exported by the linker script. </span><span class="koboSpan" id="kobo.62.2">We also declare the amount of space reserved for the execution stack of each task (expressed in </span><span class="No-Break"><span class="koboSpan" id="kobo.63.1">four-byte words):</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.64.1">
+extern uint32_t stack_space;
+#define STACK_SIZE (256)</span></pre>
+<p><span class="koboSpan" id="kobo.65.1">Every time a new task is created, the next kilobyte in the stack space is assigned as its execution stack, and the initial stack pointer is set at the highest address in the area since the execution stack </span><span class="No-Break"><span class="koboSpan" id="kobo.66.1">grows backward:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer058">
+<span class="koboSpan" id="kobo.67.1"><img alt="Figure 10.1 – Memory configuration used to provide separate execution stacks to tasks" src="image/B18730_10_01.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.68.1">Figure 10.1 – Memory configuration used to provide separate execution stacks to tasks</span></p>
+<p><span class="koboSpan" id="kobo.69.1">A simple task block structure </span><a id="_idIndexMarker702"/><span class="koboSpan" id="kobo.70.1">can then be declared, </span><span class="No-Break"><span class="koboSpan" id="kobo.71.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.72.1">
+#define TASK_WAITING 0
+#define TASK_READY 1
+#define TASK_RUNNING 2
+#define TASK_NAME_MAXLEN 16;
+struct task_block {
+  char name[TASK_NAME_MAXLEN];
+  int id;
+  int state;
+  void (*start)(void *arg);
+  void *arg;
+  uint32_t *sp;
+};</span></pre>
+<p><span class="koboSpan" id="kobo.73.1">A global array is defined to contain all the task blocks of the system. </span><span class="koboSpan" id="kobo.73.2">We must use a global index to keep track of the tasks already created so that we can use the position in memory relative to the task identifier and the ID of the currently </span><span class="No-Break"><span class="koboSpan" id="kobo.74.1">running task:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.75.1">
+#define MAX_TASKS 8
+static struct task_block TASKS[MAX_TASKS];
+static int n_tasks = 1;
+static int running_task_id = 0;
+#define kernel TASKS[0]</span></pre>
+<p><span class="koboSpan" id="kobo.76.1">With this model, the task block is pre-allocated in the data section, and the fields are initialized in place, keeping track of the index. </span><span class="koboSpan" id="kobo.76.2">The first element of the array is reserved for the task block of the kernel, which is the currently </span><span class="No-Break"><span class="koboSpan" id="kobo.77.1">running process.</span></span></p>
+<p><span class="koboSpan" id="kobo.78.1">In our example, tasks are created by invoking the </span><strong class="source-inline"><span class="koboSpan" id="kobo.79.1">task_create</span></strong><span class="koboSpan" id="kobo.80.1"> function and providing a name, an </span><a id="_idIndexMarker703"/><span class="koboSpan" id="kobo.81.1">entry point, and its argument. </span><span class="koboSpan" id="kobo.81.2">For a static configuration with a predefined number of tasks, this is done when the kernel is initialized, but more advanced schedulers may allow us to allocate new control blocks to spawn new processes at runtime, while the scheduler </span><span class="No-Break"><span class="koboSpan" id="kobo.82.1">is running:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.83.1">
+struct task_block *task_create(char *name, void (*start)(void *arg), void *arg)
+{
+  struct task_block *t;
+  int i;
+  if (n_tasks &gt;= MAX_TASKS)
+    return NULL;
+  t = &amp;TASKS[n_tasks];
+  t-&gt;id = n_tasks++;
+  for (i = 0; i &lt; TASK_NAME_MAXLEN; i++) {
+    t-&gt;name[i] = name[i];
+    if (name[i] == 0)
+      break;
+  }
+  t-&gt;state = TASK_READY;
+  t-&gt;start = start;
+  t-&gt;arg = arg;
+  t-&gt;sp = ((&amp;stack_space) + n_tasks * STACK_SIZE);
+  </span><strong class="bold"><span class="koboSpan" id="kobo.84.1">task_stack_init(t);</span></strong><span class="koboSpan" id="kobo.85.1">
+  return t;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.86.1">To implement the </span><strong class="source-inline"><span class="koboSpan" id="kobo.87.1">task_stack_init</span></strong><span class="koboSpan" id="kobo.88.1"> function, which initializes the values in the stack for the </span><a id="_idIndexMarker704"/><span class="koboSpan" id="kobo.89.1">process to start running, we need to understand how the context switch works, and how new tasks are started when the scheduler </span><span class="No-Break"><span class="koboSpan" id="kobo.90.1">is run</span><a id="_idTextAnchor363"/><span class="koboSpan" id="kobo.91.1">ning.</span></span></p>
+<h2 id="_idParaDest-225"><a id="_idTextAnchor364"/><span class="koboSpan" id="kobo.92.1">Context switch</span></h2>
+<p><span class="koboSpan" id="kobo.93.1">The context switch procedure consists of getting the values of the CPU register during the execution and saving </span><a id="_idIndexMarker705"/><span class="koboSpan" id="kobo.94.1">them at the bottom of the stack of the </span><a id="_idIndexMarker706"/><span class="koboSpan" id="kobo.95.1">currently running task. </span><span class="koboSpan" id="kobo.95.2">Then, we must restore the values for the next task to resume its execution. </span><span class="koboSpan" id="kobo.95.3">This operation must happen in the interrupt context, and its internal mechanisms are CPU-specific. </span><span class="koboSpan" id="kobo.95.4">On the reference platform, any interrupt handler can replace the currently running task and restore another context, but this operation is more often done within interrupt service routines associated with system events. </span><span class="koboSpan" id="kobo.95.5">Cortex-M provides two CPU exceptions that are designed to provide the basic support for context switching because they can be arbitrarily triggered in </span><span class="No-Break"><span class="koboSpan" id="kobo.96.1">any context:</span></span></p>
+<ul>
+<li><strong class="bold"><span class="koboSpan" id="kobo.97.1">PendSV</span></strong><span class="koboSpan" id="kobo.98.1">: This is the default way for a preemptive kernel to force an interrupt in the immediate </span><a id="_idIndexMarker707"/><span class="koboSpan" id="kobo.99.1">future, after setting one bit in a specific register within the system control block, and it is usually associated with the context switch of the </span><span class="No-Break"><span class="koboSpan" id="kobo.100.1">next task.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.101.1">SVCall</span></strong><span class="koboSpan" id="kobo.102.1">: This is the main entry point for the user application to submit a formal request to access </span><a id="_idIndexMarker708"/><span class="koboSpan" id="kobo.103.1">a resource that is managed by the kernel. </span><span class="koboSpan" id="kobo.103.2">This feature is designed to provide an API to access the kernel safely to request operations from a component or a driver. </span><span class="koboSpan" id="kobo.103.3">As the result of the operation may be not immediately available, SVCall can also permit preempting the calling task to provide the abstraction of blocking </span><span class="No-Break"><span class="koboSpan" id="kobo.104.1">system calls.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.105.1">The routines </span><a id="_idIndexMarker709"/><span class="koboSpan" id="kobo.106.1">used to store and restore the values of the </span><a id="_idIndexMarker710"/><span class="koboSpan" id="kobo.107.1">CPU registers to/from memory during the context switch are partially implemented in hardware on the Cortex-M CPU. </span><span class="koboSpan" id="kobo.107.2">This means that, when the interrupt </span><a id="_idIndexMarker711"/><span class="koboSpan" id="kobo.108.1">is entered, a copy of part of the register is automatically pushed into the stack. </span><span class="koboSpan" id="kobo.108.2">The copy of the registers in the stack is called the </span><strong class="bold"><span class="koboSpan" id="kobo.109.1">stack frame</span></strong><span class="koboSpan" id="kobo.110.1">, and contains registers </span><strong class="bold"><span class="koboSpan" id="kobo.111.1">R0</span></strong><span class="koboSpan" id="kobo.112.1"> to </span><strong class="bold"><span class="koboSpan" id="kobo.113.1">R3</span></strong><span class="koboSpan" id="kobo.114.1">, </span><strong class="bold"><span class="koboSpan" id="kobo.115.1">R12</span></strong><span class="koboSpan" id="kobo.116.1">, </span><strong class="bold"><span class="koboSpan" id="kobo.117.1">LR</span></strong><span class="koboSpan" id="kobo.118.1">, </span><strong class="bold"><span class="koboSpan" id="kobo.119.1">PC</span></strong><span class="koboSpan" id="kobo.120.1">, and </span><strong class="bold"><span class="koboSpan" id="kobo.121.1">xPSR</span></strong><span class="koboSpan" id="kobo.122.1">, in the order shown in the </span><span class="No-Break"><span class="koboSpan" id="kobo.123.1">following figure:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer059">
+<span class="koboSpan" id="kobo.124.1"><img alt="Figure 10.2 – Registers are automatically copied to the stack when entering an interrupt handler" src="image/B18730_10_02.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.125.1">Figure 10.2 – Registers are automatically copied to the stack when entering an interrupt handler</span></p>
+<p><span class="koboSpan" id="kobo.126.1">The stack pointer, however, does not include the other half of the CPU registers – that is, R4 to R11. </span><span class="koboSpan" id="kobo.126.2">For this reason, to complete the context switch successfully, a system handler that intends to replace the running process must store the extra stack frame containing the value for these registers, and restore the extra stack frame of the next task just before returning from the handler. </span><span class="koboSpan" id="kobo.126.3">ARM Thumb-2 assembly provides instructions on how to push the value of contiguous CPU registers to the stack and pop them back in place. </span><span class="koboSpan" id="kobo.126.4">The following two functions are used to push and pop the extra stack frame in </span><span class="No-Break"><span class="koboSpan" id="kobo.127.1">the stack:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.128.1">
+static void __attribute__((naked)) store_context(void)
+{
+  asm volatile("mrs r0, msp");
+  asm volatile("stmdb r0!, {r4-r11}");
+  asm volatile("msr msp, r0");
+  asm volatile("bx lr");
+}
+static void __attribute__((naked)) restore_context(void)
+{
+  asm volatile("mrs r0, msp");
+  asm volatile("ldmfd r0!, {r4-r11}");
+  asm volatile("msr msp, r0");
+  asm volatile("bx lr");
+}</span></pre>
+<p><span class="koboSpan" id="kobo.129.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.130.1">((naked))</span></strong><span class="koboSpan" id="kobo.131.1"> attribute is used to prevent GCC from putting prologue and epilogue sequences, consisting of a few assembly instructions each, into the compiled code. </span><span class="koboSpan" id="kobo.131.2">The prologue would </span><a id="_idIndexMarker712"/><span class="koboSpan" id="kobo.132.1">change the values of some of the registers in the </span><a id="_idIndexMarker713"/><span class="koboSpan" id="kobo.133.1">extra stack frame area, which would be restored in the epilogue, and this conflicts with the purpose of the functions accessing register values using assembly instructions. </span><span class="koboSpan" id="kobo.133.2">Due to the missing epilogue, the </span><strong class="source-inline"><span class="koboSpan" id="kobo.134.1">naked</span></strong><span class="koboSpan" id="kobo.135.1"> functions return by jumping back to the calling instruction, which is stored in the </span><span class="No-Break"><span class="koboSpan" id="kobo.136.1">LR register.</span></span></p>
+<p><span class="koboSpan" id="kobo.137.1">As a result of the assembly push operation, this is how the stack of the process being </span><span class="No-Break"><span class="koboSpan" id="kobo.138.1">preempted looks:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer060">
+<span class="koboSpan" id="kobo.139.1"><img alt="Figure 10.3 – The remaining register values are copied to the stack to complete the co﻿ntext switch" src="image/B18730_10_03.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.140.1">Figure 10.3 – The remaining register values are copied to the stack to complete the co</span><a id="_idTextAnchor365"/><span class="koboSpan" id="kobo.141.1">ntext switch</span></p>
+<h2 id="_idParaDest-226"><a id="_idTextAnchor366"/><span class="koboSpan" id="kobo.142.1">Creating tasks</span></h2>
+<p><span class="koboSpan" id="kobo.143.1">When the system is running, all the tasks except the one running are in a </span><em class="italic"><span class="koboSpan" id="kobo.144.1">wait</span></em><span class="koboSpan" id="kobo.145.1"> state, which means </span><a id="_idIndexMarker714"/><span class="koboSpan" id="kobo.146.1">that the full stack frame is saved at the bottom of the stack, and the stack pointer is stored in the control block to be used by the scheduler to resume </span><span class="No-Break"><span class="koboSpan" id="kobo.147.1">each process.</span></span></p>
+<p><span class="koboSpan" id="kobo.148.1">A newly created task will wake up for the first time in the middle of the context switch. </span><span class="koboSpan" id="kobo.148.2">At that point, the task is expected to have preserved the previous state of its CPU registers, but obviously, a new task does not have such a thing. </span><span class="koboSpan" id="kobo.148.3">Upon stack creation, a forged stack frame is pushed to the end of the stack so that when the task resumes, the values stored are copied into the system registers, and the task can resume from its </span><span class="No-Break"><span class="koboSpan" id="kobo.149.1">entry point.</span></span></p>
+<p><span class="koboSpan" id="kobo.150.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.151.1">task_create</span></strong><span class="koboSpan" id="kobo.152.1"> function relies on a stack initialization function, </span><strong class="source-inline"><span class="koboSpan" id="kobo.153.1">task_stack_init</span></strong><span class="koboSpan" id="kobo.154.1">, which pushes the initial values for the system registers to allow the task to be restored and moves the stored stack pointer to the beginning of the extra frame, which can be left uninitialized. </span><span class="koboSpan" id="kobo.154.2">To easily access the stored register in the stack frame, we must declare a </span><strong class="source-inline"><span class="koboSpan" id="kobo.155.1">stack_frame</span></strong><span class="koboSpan" id="kobo.156.1"> structure that uses one field per register, and an </span><strong class="source-inline"><span class="koboSpan" id="kobo.157.1">extra_frame</span></strong><span class="koboSpan" id="kobo.158.1"> structure, just </span><span class="No-Break"><span class="koboSpan" id="kobo.159.1">for completeness:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.160.1">
+struct stack_frame {
+  uint32_t r0, r1, r2, r3, r12, lr, pc, xpsr;
+};
+struct extra_frame {
+  uint32_t r4, r5, r6, r7, r8, r9, r10, r11;
+};
+static void task_stack_init(struct task_block *t)
+{
+  struct stack_frame *tf;
+  t-&gt;sp -= sizeof(struct stack_frame);
+  tf = (struct stack_frame *)(t-&gt;sp);
+  tf-&gt;r0 = (uint32_t) t-&gt;arg;
+  tf-&gt;pc = (uint32_t) t-&gt;start;
+  tf-&gt;lr = (uint32_t) task_terminated;
+  tf-&gt;xpsr = (1 &lt;&lt; 24);
+  t-&gt;sp -= sizeof(struct extra_frame);
+}</span></pre>
+<p><span class="koboSpan" id="kobo.161.1">Once the </span><a id="_idIndexMarker715"/><span class="koboSpan" id="kobo.162.1">context has been restored, the exception handler return procedure automatically restores the context from the stack frame we are forging. </span><span class="koboSpan" id="kobo.162.2">The registers for the starting task are initialized </span><span class="No-Break"><span class="koboSpan" id="kobo.163.1">as follows:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.164.1">The </span><strong class="bold"><span class="koboSpan" id="kobo.165.1">program counter</span></strong><span class="koboSpan" id="kobo.166.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.167.1">PC</span></strong><span class="koboSpan" id="kobo.168.1">) contains the address of the start function, where the system </span><a id="_idIndexMarker716"/><span class="koboSpan" id="kobo.169.1">will jump to switch to this task for the </span><span class="No-Break"><span class="koboSpan" id="kobo.170.1">first time.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.171.1">R0-R3</span></strong><span class="koboSpan" id="kobo.172.1"> may contain </span><a id="_idIndexMarker717"/><span class="koboSpan" id="kobo.173.1">optional arguments to pass to the start function, according to the ABI of the CPU. </span><span class="koboSpan" id="kobo.173.2">In our case, we carry the value of the single argument given for the start function by the caller </span><span class="No-Break"><span class="koboSpan" id="kobo.174.1">of </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.175.1">task_create</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.176.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.177.1">The </span><strong class="bold"><span class="koboSpan" id="kobo.178.1">execution program status register</span></strong><span class="koboSpan" id="kobo.179.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.180.1">xPSR</span></strong><span class="koboSpan" id="kobo.181.1">) must be programmed to have </span><a id="_idIndexMarker718"/><span class="koboSpan" id="kobo.182.1">only the mandatory thumb flag set at </span><span class="No-Break"><span class="koboSpan" id="kobo.183.1">bit 24.</span></span></li>
+<li><span class="koboSpan" id="kobo.184.1">The </span><strong class="bold"><span class="koboSpan" id="kobo.185.1">link register</span></strong><span class="koboSpan" id="kobo.186.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.187.1">LR</span></strong><span class="koboSpan" id="kobo.188.1">) contains the pointer to the procedure that is called when the start </span><a id="_idIndexMarker719"/><span class="koboSpan" id="kobo.189.1">function returns. </span><span class="koboSpan" id="kobo.189.2">In our case, tasks are not allowed to return from the start function, so the </span><strong class="source-inline"><span class="koboSpan" id="kobo.190.1">task_terminated</span></strong><span class="koboSpan" id="kobo.191.1"> function is just an infinite loop, and it is considered a system error. </span><span class="koboSpan" id="kobo.191.2">In other cases, if tasks are allowed to terminate, a function can be set as a common exit point for the tasks, to perform the cleanup operations required upon returning from the </span><span class="No-Break"><span class="koboSpan" id="kobo.192.1">start function.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.193.1">Once the initial </span><a id="_idIndexMarker720"/><span class="koboSpan" id="kobo.194.1">stack frame has been created, the task can participate in multitasking, and can be picked by the scheduler at any time to resume the execution, from the same state as all the other tasks </span><span class="No-Break"><span class="koboSpan" id="kobo.195.1">not running:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer061">
+<span class="koboSpan" id="kobo.196.1"><img alt="Figure 10.4 – Stack pointers of three tasks during different execution states" src="image/B18730_10_04.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.197.1">Figure 10.4 – Stack pointers of three tasks during different execution states</span></p>
+<p><span class="koboSpan" id="kobo.198.1">Our simple kernel main function can now create processes and prepare the stack but is not yet actually </span><a id="_idIndexMarker721"/><span class="koboSpan" id="kobo.199.1">able to run them until we implement the scheduler internals. </span><span class="koboSpan" id="kobo.199.2">Timekeeping is useful in this case, so </span><strong class="source-inline"><span class="koboSpan" id="kobo.200.1">SysTick</span></strong><span class="koboSpan" id="kobo.201.1"> is enabled at startup to keep track of time in the system. </span><span class="koboSpan" id="kobo.201.2">The task block of the kernel is initialized, and two new tasks </span><span class="No-Break"><span class="koboSpan" id="kobo.202.1">are created:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.203.1">
+void main(void) {
+  clock_pll_on(0);
+  systick_enable();
+  led_setup();
+  kernel.name[0] = 0;
+  kernel.id = 0;
+  kernel.state = TASK_RUNNING;
+  task_create("test0",task_test0, NULL);
+  task_create("test1",task_test1, NULL);
+  while(1) {
+    schedule();
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.204.1">The two main tasks are created so that they point to different start functions, and both have </span><strong class="source-inline"><span class="koboSpan" id="kobo.205.1">NULL</span></strong><span class="koboSpan" id="kobo.206.1"> as argument. </span><span class="koboSpan" id="kobo.206.2">Both </span><a id="_idIndexMarker722"/><span class="koboSpan" id="kobo.207.1">functions should never return and can be interrupted and resumed according to the implemented </span><span class="No-Break"><span class="koboSpan" id="kobo.208.1">scheduler policy.</span></span></p>
+<p><span class="koboSpan" id="kobo.209.1">To proceed from this point, the scheduler’s internals need to be implemented to start and alternate the execution of the parallel ta</span><a id="_idTextAnchor367"/><span class="koboSpan" id="kobo.210.1">sks we </span><span class="No-Break"><span class="koboSpan" id="kobo.211.1">just defined.</span></span></p>
+<h1 id="_idParaDest-227"><a id="_idTextAnchor368"/><span class="koboSpan" id="kobo.212.1">Scheduler implementation</span></h1>
+<p><span class="koboSpan" id="kobo.213.1">The architecture </span><a id="_idIndexMarker723"/><span class="koboSpan" id="kobo.214.1">of the system depends on the way the scheduler is implemented. </span><span class="koboSpan" id="kobo.214.2">Tasks can be running in a cooperative model until they voluntarily decide to yield the CPU to the next task, or the OS can decide to trigger an interrupt to swap the running task behind the scenes, applying a specific policy to decide the interval in between task switches and the priority for the selection of the next task. </span><span class="koboSpan" id="kobo.214.3">In both cases, the context switch happens within one of the supervisor calls available, set to </span><a id="_idIndexMarker724"/><span class="koboSpan" id="kobo.215.1">decide which tasks to schedule next, and to perform the context switch. </span><span class="koboSpan" id="kobo.215.2">In this section, the full context switch procedure through PendSV will be added to our example, and then a few of the possible scheduling policies will be ana</span><a id="_idTextAnchor369"/><span class="koboSpan" id="kobo.216.1">lyzed </span><span class="No-Break"><span class="koboSpan" id="kobo.217.1">and implemented.</span></span></p>
+<h2 id="_idParaDest-228"><a id="_idTextAnchor370"/><span class="koboSpan" id="kobo.218.1">Supervisor calls</span></h2>
+<p><span class="koboSpan" id="kobo.219.1">The core component of the scheduler consists of the exception handler associated with the system </span><a id="_idIndexMarker725"/><span class="koboSpan" id="kobo.220.1">interrupt events, such as PendSV and SVCall. </span><span class="koboSpan" id="kobo.220.2">On Cortex-M, a PendSV exception can be triggered at any time by the software by setting the </span><strong class="source-inline"><span class="koboSpan" id="kobo.221.1">PENDSET</span></strong><span class="koboSpan" id="kobo.222.1"> flag, corresponding to bit 28 of the interrupt control and state register, located in the SCB at address </span><strong class="source-inline"><span class="koboSpan" id="kobo.223.1">0xE000ED04</span></strong><span class="koboSpan" id="kobo.224.1">. </span><span class="koboSpan" id="kobo.224.2">A simple macro is defined to initiate the context switch by setting </span><span class="No-Break"><span class="koboSpan" id="kobo.225.1">the flag:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.226.1">
+#define SCB_ICSR (*((volatile uint32_t *)0xE000ED04))
+#define schedule() SCB_ICSR |= (1 &lt;&lt; 28)</span></pre>
+<p><span class="koboSpan" id="kobo.227.1">The call to schedule from the kernel, and all the subsequent calls, will cause a context switch, which can now be implemented in the PendSV handler. </span><span class="koboSpan" id="kobo.227.2">To complete a context switch, the handler has to perform the </span><span class="No-Break"><span class="koboSpan" id="kobo.228.1">following steps:</span></span></p>
+<ol>
+<li value="1"><span class="koboSpan" id="kobo.229.1">Store the current stack pointer from the SP register in the </span><span class="No-Break"><span class="koboSpan" id="kobo.230.1">task block.</span></span></li>
+<li><span class="koboSpan" id="kobo.231.1">Push the extra stack frame to the stack by </span><span class="No-Break"><span class="koboSpan" id="kobo.232.1">calling </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.233.1">store_context</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.234.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.235.1">Change the state of the current task </span><span class="No-Break"><span class="koboSpan" id="kobo.236.1">to </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.237.1">TASK_READY</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.238.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.239.1">Select a new task </span><span class="No-Break"><span class="koboSpan" id="kobo.240.1">to resume.</span></span></li>
+<li><span class="koboSpan" id="kobo.241.1">Change the state of the new task </span><span class="No-Break"><span class="koboSpan" id="kobo.242.1">to </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.243.1">TASK_RUNNING</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.244.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.245.1">Retrieve the new stack pointer from the associated </span><span class="No-Break"><span class="koboSpan" id="kobo.246.1">task block.</span></span></li>
+<li><span class="koboSpan" id="kobo.247.1">Pop the extra stack frame from the stack by </span><span class="No-Break"><span class="koboSpan" id="kobo.248.1">calling </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.249.1">restore_context</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.250.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.251.1">Set a special return value for the interrupt handler to activate thread mode at the end of the PendSV </span><span class="No-Break"><span class="koboSpan" id="kobo.252.1">service routine.</span></span></li>
+</ol>
+<p><span class="koboSpan" id="kobo.253.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.254.1">isr_pendsv</span></strong><span class="koboSpan" id="kobo.255.1"> function must be naked because it accesses the CPU register directly through the </span><strong class="source-inline"><span class="koboSpan" id="kobo.256.1">store</span></strong><span class="koboSpan" id="kobo.257.1"> and </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.258.1">restore_context</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.259.1"> functions:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.260.1">
+void __attribute__((naked)) isr_pendsv(void)
+{
+  store_context();
+  asm volatile("mrs %0, msp" : "=r"(
+          TASKS[running_task_id].sp));
+  TASKS[running_task_id].state = TASK_READY;
+  running_task_id++;
+  if (running_task_id &gt;= n_tasks)
+    running_task_id = 0;
+  TASKS[running_task_id].state = TASK_RUNNING;
+  asm volatile("msr msp, %0"::"r"(
+                 TASKS[running_task_id].sp));
+  restore_context();
+  asm volatile("mov lr, %0" ::"r"(0xFFFFFFF9));
+  asm volatile("bx lr");
+}</span></pre>
+<p><span class="koboSpan" id="kobo.261.1">The value that is loaded in the LR before returning is used to indicate that we are returning to </span><a id="_idIndexMarker726"/><span class="koboSpan" id="kobo.262.1">thread mode at the end of this interrupt. </span><span class="koboSpan" id="kobo.262.2">Depending on the value of the last 3 bits, the service routine informs the CPU which stack pointer to use when returning from the interrupt. </span><span class="koboSpan" id="kobo.262.3">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.263.1">0xFFFFFFF9</span></strong><span class="koboSpan" id="kobo.264.1"> value used in this case corresponds to thread mode using the main stack pointer. </span><span class="koboSpan" id="kobo.264.2">Different values will be needed later on when the example is expanded to support separate stack pointers between the kernel and </span><span class="No-Break"><span class="koboSpan" id="kobo.265.1">the process.</span></span></p>
+<p><span class="koboSpan" id="kobo.266.1">With that, the complete context has been implemented inside the PendSV service routine, which for now is simply selecting the next task and wraps around to execute the kernel with an ID of </span><strong class="source-inline"><span class="koboSpan" id="kobo.267.1">0</span></strong><span class="koboSpan" id="kobo.268.1"> after the last task in the array. </span><span class="koboSpan" id="kobo.268.2">The service routine is triggered to run in </span><a id="_idIndexMarker727"/><span class="koboSpan" id="kobo.269.1">handler mode every time the </span><a id="_idTextAnchor371"/><span class="koboSpan" id="kobo.270.1">schedule macro </span><span class="No-Break"><span class="koboSpan" id="kobo.271.1">is called.</span></span></p>
+<h2 id="_idParaDest-229"><a id="_idTextAnchor372"/><span class="koboSpan" id="kobo.272.1">Cooperative scheduler</span></h2>
+<p><span class="koboSpan" id="kobo.273.1">Different </span><a id="_idIndexMarker728"/><span class="koboSpan" id="kobo.274.1">policies can be defined to alternate the execution of the tasks in the system. </span><span class="koboSpan" id="kobo.274.2">In the simplest case, the main functions of each task voluntarily suspend its execution by invoking the </span><span class="No-Break"><span class="koboSpan" id="kobo.275.1">schedule macro.</span></span></p>
+<p><span class="koboSpan" id="kobo.276.1">In this example implementation, two threads have been defined. </span><span class="koboSpan" id="kobo.276.2">Both will turn on an LED and hold the CPU in a busy loop for 1 second before turning off the LED and explicitly calling the </span><strong class="source-inline"><span class="koboSpan" id="kobo.277.1">schedule()</span></strong><span class="koboSpan" id="kobo.278.1"> function to trigger a </span><span class="No-Break"><span class="koboSpan" id="kobo.279.1">context switch:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.280.1">
+void task_test0(void *arg)
+{
+  uint32_t now = jiffies;
+  blue_led_on();
+  while(1) {
+    if ((jiffies - now) &gt; 1000) {
+      blue_led_off();
+      schedule();
+      now = jiffies;
+      blue_led_on();
+    }
+  }
+}
+void task_test1(void *arg)
+{
+  uint32_t now = jiffies;
+  red_led_on();
+  while(1) {
+    if ((jiffies - now) &gt; 1000) {
+      red_led_off();
+      schedule();
+      now = jiffies;
+      red_led_on();
+    }
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.281.1">The little operating system is finally working, and the kernel is scheduling the two tasks in sequence. </span><span class="koboSpan" id="kobo.281.2">The task with an ID of </span><strong class="source-inline"><span class="koboSpan" id="kobo.282.1">0</span></strong><span class="koboSpan" id="kobo.283.1"> is also resumed at the beginning of each loop, but in this simple case, the kernel task is only calling the schedule in a loop, immediately resuming the task with an ID of </span><strong class="source-inline"><span class="koboSpan" id="kobo.284.1">1</span></strong><span class="koboSpan" id="kobo.285.1">. </span><span class="koboSpan" id="kobo.285.2">With this design, the reactivity of the system depends entirely on the implementation of the tasks, as each task can hold the CPU indefinitely, and prevent other tasks from running. </span><span class="koboSpan" id="kobo.285.3">The cooperative model is only used in very specific scenarios, where each task is directly responsible for regulating its CPU cycles and cooperating with the other threads, and may impact the responsiveness and the fairness of the </span><span class="No-Break"><span class="koboSpan" id="kobo.286.1">entire system.</span></span></p>
+<p><span class="koboSpan" id="kobo.287.1">For the sake of simplicity, this implementation does not take into account the wrap-around of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.288.1">jiffies</span></strong><span class="koboSpan" id="kobo.289.1"> variable. </span><span class="koboSpan" id="kobo.289.2">If incremented every millisecond, </span><strong class="source-inline"><span class="koboSpan" id="kobo.290.1">jiffies</span></strong><span class="koboSpan" id="kobo.291.1"> would overflow its </span><a id="_idIndexMarker729"/><span class="koboSpan" id="kobo.292.1">maximum value after about 42 days. </span><span class="koboSpan" id="kobo.292.2">Real operating systems, unlike our simplistic example, must implement an appropriate mechanism to compare time variables, not shown here, that can detect the wrap-around while ca</span><a id="_idTextAnchor373"/><span class="koboSpan" id="kobo.293.1">lculating </span><span class="No-Break"><span class="koboSpan" id="kobo.294.1">time differences.</span></span></p>
+<h2 id="_idParaDest-230"><a id="_idTextAnchor374"/><span class="koboSpan" id="kobo.295.1">Concurrency and timeslices</span></h2>
+<p><span class="koboSpan" id="kobo.296.1">A different </span><a id="_idIndexMarker730"/><span class="koboSpan" id="kobo.297.1">approach consists of assigning short intervals of CPU time to each task and continuously swapping processes at very </span><a id="_idIndexMarker731"/><span class="koboSpan" id="kobo.298.1">short intervals. </span><span class="koboSpan" id="kobo.298.2">A preemptive scheduler autonomously interrupts the running task to resume the next one without an explicit request from the task itself. </span><span class="koboSpan" id="kobo.298.3">It can also impose its policy regarding the selection of the next task to run and the duration of the interval where the CPU is assigned to each task, namely </span><span class="No-Break"><span class="koboSpan" id="kobo.299.1">its timeslice.</span></span></p>
+<p><span class="koboSpan" id="kobo.300.1">From the task’s point of view, the execution can now be continuous and completely independent from the scheduler, which acts behind the scenes to interrupt and resume each task </span><a id="_idIndexMarker732"/><span class="koboSpan" id="kobo.301.1">continuously, giving the illusion that all the tasks are running at the same time. </span><span class="koboSpan" id="kobo.301.2">The threads can be redefined to blink the LEDs at two </span><span class="No-Break"><span class="koboSpan" id="kobo.302.1">different intervals:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.303.1">
+void task_test0(void *arg)
+{
+  uint32_t now = jiffies;
+  blue_led_on();
+  while(1) {
+    if ((jiffies - now) &gt; 500) {
+      blue_led_toggle();
+      now = jiffies;
+    }
+  }
+}
+void task_test1(void *arg)
+{
+  uint32_t now = jiffies;
+  red_led_on();
+  while(1) {
+    if ((jiffies - now) &gt; 125) {
+      red_led_toggle();
+      now = jiffies;
+    }
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.304.1">To alternate tasks in a round-robin fashion, we can trigger the execution of PendSV from within the SysTick handler, which results in a task switch that occurs at regular intervals. </span><span class="koboSpan" id="kobo.304.2">The new SysTick handler triggers a context switch every </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.305.1">TIMESLICE</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.306.1"> milliseconds:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.307.1">
+#define TIMESLICE (20)
+void isr_systick(void)
+{
+  if ((++jiffies % TIMESLICE) == 0)
+  schedule();
+}</span></pre>
+<p><span class="koboSpan" id="kobo.308.1">In this new </span><a id="_idIndexMarker733"/><span class="koboSpan" id="kobo.309.1">configuration, we now have a more complete model, allowing multiple tasks to run independently, and the scheduling to be super</span><a id="_idTextAnchor375"/><span class="koboSpan" id="kobo.310.1">vised completely by </span><span class="No-Break"><span class="koboSpan" id="kobo.311.1">the kernel.</span></span></p>
+<h2 id="_idParaDest-231"><a id="_idTextAnchor376"/><span class="koboSpan" id="kobo.312.1">Blocking tasks</span></h2>
+<p><span class="koboSpan" id="kobo.313.1">The simple scheduler we have implemented so far provides only two states for the tasks: </span><strong class="source-inline"><span class="koboSpan" id="kobo.314.1">TASK_READY</span></strong><span class="koboSpan" id="kobo.315.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.316.1">TASK_RUNNING</span></strong><span class="koboSpan" id="kobo.317.1">. </span><span class="koboSpan" id="kobo.317.2">A third state can be implemented to define a task that does not need to be resumed because it has been blocked and is waiting for an event or a timeout. </span><span class="koboSpan" id="kobo.317.3">A task can be waiting for a system event of some type, such as </span><span class="No-Break"><span class="koboSpan" id="kobo.318.1">the following:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.319.1">Interrupt </span><a id="_idIndexMarker734"/><span class="koboSpan" id="kobo.320.1">events from an </span><strong class="bold"><span class="koboSpan" id="kobo.321.1">input/output</span></strong><span class="koboSpan" id="kobo.322.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.323.1">I/O</span></strong><span class="koboSpan" id="kobo.324.1">) device in use by </span><span class="No-Break"><span class="koboSpan" id="kobo.325.1">the task</span></span></li>
+<li><span class="koboSpan" id="kobo.326.1">Communication from another task, such as the </span><span class="No-Break"><span class="koboSpan" id="kobo.327.1">TCP/IP stack</span></span></li>
+<li><span class="koboSpan" id="kobo.328.1">Synchronization mechanisms, such as a mutex or a semaphore, to access a shared resource in the system that is </span><span class="No-Break"><span class="koboSpan" id="kobo.329.1">currently unavailable</span></span></li>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.330.1">Timeout events</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.331.1">To manage the different states, the scheduler may implement two or more lists to separate the tasks currently running, or ready to run, from those waiting for an event. </span><span class="koboSpan" id="kobo.331.2">The scheduler then selects the next task among those in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.332.1">TASK_READY</span></strong><span class="koboSpan" id="kobo.333.1"> state, and ignores the ones in the list of </span><span class="No-Break"><span class="koboSpan" id="kobo.334.1">blocked tasks:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer062">
+<span class="koboSpan" id="kobo.335.1"><img alt="Figure 10.5 – State machine describing the task’s execution states" src="image/B18730_10_05.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.336.1">Figure 10.5 – State machine describing the task’s execution states</span></p>
+<p><span class="koboSpan" id="kobo.337.1">This second version of the scheduler keeps track of the currently running task using a global pointer, instead of the index of the array, and organizes the tasks into </span><span class="No-Break"><span class="koboSpan" id="kobo.338.1">two lists:</span></span></p>
+<ul>
+<li><strong class="source-inline"><span class="koboSpan" id="kobo.339.1">tasklist_active</span></strong><span class="koboSpan" id="kobo.340.1">: This contains the task block for the running task and all the tasks in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.341.1">TASK_READY</span></strong><span class="koboSpan" id="kobo.342.1"> state, waiting to </span><span class="No-Break"><span class="koboSpan" id="kobo.343.1">be scheduled</span></span></li>
+<li><strong class="source-inline"><span class="koboSpan" id="kobo.344.1">tasklist_waiting</span></strong><span class="koboSpan" id="kobo.345.1">: This contains the task block of the tasks </span><span class="No-Break"><span class="koboSpan" id="kobo.346.1">currently blocked</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.347.1">The easiest showcase to implement for this new mechanism is a </span><strong class="source-inline"><span class="koboSpan" id="kobo.348.1">sleep_ms</span></strong><span class="koboSpan" id="kobo.349.1"> function, which can be used by tasks to temporarily switch to a waiting state and set up a resume point in the future to be scheduled again. </span><span class="koboSpan" id="kobo.349.2">Providing this kind of facility allows our tasks to sleep in between LED toggle actions, instead </span><a id="_idIndexMarker735"/><span class="koboSpan" id="kobo.350.1">of running a busy loop that repeatedly checks whether the timer expired. </span><span class="koboSpan" id="kobo.350.2">These new tasks are not only more efficient, because they do not waste CPU cycles in a busy loop, but are also </span><span class="No-Break"><span class="koboSpan" id="kobo.351.1">more readable:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.352.1">
+void task_test0(void *arg){
+  blue_led_on();
+  while(1) {
+    sleep_ms(500);
+    blue_led_toggle();
+  }
+}
+void task_test1(void *arg)
+{
+  red_led_on();
+  while(1) {
+    sleep_ms(125);
+    red_led_toggle();
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.353.1">To arrange the task blocks into lists, a pointer to the next element must be added to the structure so that the two lists are populated at runtime. </span><span class="koboSpan" id="kobo.353.2">To manage the </span><strong class="source-inline"><span class="koboSpan" id="kobo.354.1">sleep_ms</span></strong><span class="koboSpan" id="kobo.355.1"> function, a new field must be added to keep </span><a id="_idIndexMarker736"/><span class="koboSpan" id="kobo.356.1">track of the system time when the task is supposed to be put in the active list to </span><span class="No-Break"><span class="koboSpan" id="kobo.357.1">be resumed:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.358.1">
+struct task_block {
+  char name[TASK_NAME_MAXLEN];
+  int id;
+  int state;
+  void (*start)(void *arg);
+  void *arg;
+  uint8_t *sp;
+  uint32_t wakeup_time;
+  struct task_block *next;
+};</span></pre>
+<p><span class="koboSpan" id="kobo.359.1">These lists can be managed with two simple functions to the </span><span class="No-Break"><span class="koboSpan" id="kobo.360.1">insert/delete elements:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.361.1">
+struct task_block *tasklist_active = NULL;
+struct task_block *tasklist_waiting = NULL;
+static void tasklist_add(struct task_block **list,struct task_block *el)
+{
+  el-&gt;next = *list;
+  *list = el;
+}
+static int tasklist_del(struct task_block **list, struct task_block *delme)
+{
+  struct task_block *t = *list;
+  struct task_block *p = NULL;
+  while (t) {
+    if (t == delme) {
+      if (p == NULL)
+        *list = t-&gt;next;
+      else
+        p-&gt;next = t-&gt;next;
+      return 0;
+    }
+    p = t;
+    t = t-&gt;next;
+  }
+  return -1;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.362.1">Two additional functions must be added to move the tasks from the active list to the waiting list and vice versa, which additionally change the state of the </span><span class="No-Break"><span class="koboSpan" id="kobo.363.1">task itself:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.364.1">
+static void task_waiting(struct task_block *t)
+{
+  if (tasklist_del(&amp;tasklist_active, t) == 0) {
+    tasklist_add(&amp;tasklist_waiting, t);
+    t-&gt;state = TASK_WAITING;
+  }
+}
+static void task_ready(struct task_block *t)
+{
+  if (tasklist_del(&amp;tasklist_waiting, t) == 0) {
+    tasklist_add(&amp;tasklist_active, t);
+    t-&gt;state = TASK_READY;
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.365.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.366.1">sleep_ms</span></strong><span class="koboSpan" id="kobo.367.1"> function sets the resume time and moves the task to the waiting state, then activates the </span><a id="_idIndexMarker737"/><span class="koboSpan" id="kobo.368.1">scheduler so that the task </span><span class="No-Break"><span class="koboSpan" id="kobo.369.1">is preempted:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.370.1">
+void sleep_ms(int ms)
+{
+  if (ms &lt; TASK_TIMESLICE)
+    return;
+  t_cur-&gt;wakeup_time = jiffies + ms;
+  task_waiting(t_cur);
+  schedule();
+}</span></pre>
+<p><span class="koboSpan" id="kobo.371.1">The new PendSV handler selects the next task to run from the active list, which is assumed to always contain at least one task as the kernel main task is never put in the waiting state. </span><span class="koboSpan" id="kobo.371.2">The new thread is selected through the </span><strong class="source-inline"><span class="koboSpan" id="kobo.372.1">tasklist_next_ready</span></strong><span class="koboSpan" id="kobo.373.1"> function, which also ensures that if the current task has been moved from the active list, or is the last in line, the head of the active list is selected for the </span><span class="No-Break"><span class="koboSpan" id="kobo.374.1">next timeslice:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.375.1">
+static inline struct task_block *tasklist_next_ready(struct task_block *t)
+{
+  if ((t-&gt;next == NULL) || (t-&gt;next-&gt;state != TASK_READY))
+    return tasklist_active;
+  return t-&gt;next;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.376.1">This small function is the core of the new scheduler based on the double list, and is invoked in the middle of each context switch to select the next active task </span><span class="No-Break"><span class="koboSpan" id="kobo.377.1">in PendSV:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.378.1">
+void __attribute__((naked)) isr_pendsv(void)
+{
+  store_context();
+  asm volatile("mrs %0, msp" : "=r"(t_cur-&gt;sp));
+  if (t_cur-&gt;state == TASK_RUNNING) {
+    t_cur-&gt;state = TASK_READY;
+  }
+  t_cur = tasklist_next_ready(t_cur);
+  t_cur-&gt;state = TASK_RUNNING;
+  asm volatile("msr msp, %0" ::"r"(t_cur-&gt;sp));
+  restore_context();
+  asm volatile("mov lr, %0" ::"r"(0xFFFFFFF9));
+  asm volatile("bx lr");
+}</span></pre>
+<p><span class="koboSpan" id="kobo.379.1">Finally, to check the wake-up time of each sleeping task, the kernel visits the list of waiting tasks and moves the task blocks back to the active list whenever the wake-up time has elapsed. </span><span class="koboSpan" id="kobo.379.2">The kernel initialization now includes a few extra steps to ensure that the kernel task itself is put in the list of running tasks </span><span class="No-Break"><span class="koboSpan" id="kobo.380.1">at boot:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.381.1">
+void main(void) {
+  clock_pll_on(0);
+  led_setup();
+  button_setup();
+  systick_enable();
+  kernel.name[0] = 0;
+  kernel.id = 0;
+  kernel.state = TASK_RUNNING;
+  kernel.wakeup_time = 0;
+  tasklist_add(&amp;tasklist_active, &amp;kernel);
+  task_create("test0",task_test0, NULL);
+  task_create("test1",task_test1, NULL);
+  task_create("test2",task_test2, NULL);
+  while(1) {
+    struct task_block *t = tasklist_waiting;
+    while (t) {
+      if (t-&gt;wakeup_time &amp;&amp; (t-&gt;wakeup_time &lt; jiffies)) {
+        t-&gt;wakeup_time = 0;
+        task_ready(t);
+      }
+      t</span><a id="_idTextAnchor377"/><span class="koboSpan" id="kobo.382.1"> = t-&gt;next;
+    }
+    WFI();
+  }
+}</span></pre>
+<h2 id="_idParaDest-232"><a id="_idTextAnchor378"/><span class="koboSpan" id="kobo.383.1">Waiting for resources</span></h2>
+<p><span class="koboSpan" id="kobo.384.1">Blocking at a given time interval is only one of the possibilities for a task to be temporarily </span><a id="_idIndexMarker738"/><span class="koboSpan" id="kobo.385.1">excluded from the active list. </span><span class="koboSpan" id="kobo.385.2">The kernel may implement other event and interrupt handlers to bring the tasks back into the scheduler loop so that the task may block, waiting for I/O events from a specific set of resources while in a </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.386.1">TASK_WAITING</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.387.1"> state.</span></span></p>
+<p><span class="koboSpan" id="kobo.388.1">In our example code, a read function can be implemented to retrieve the status of the button from a task, which would block and only return once the button is pressed. </span><span class="koboSpan" id="kobo.388.2">Until then, the calling task remains on the waiting list and is never scheduled. </span><span class="koboSpan" id="kobo.388.3">A task that toggles the green LED every time the button is pressed relies on </span><strong class="source-inline"><span class="koboSpan" id="kobo.389.1">button_read()</span></strong><span class="koboSpan" id="kobo.390.1"> as its </span><span class="No-Break"><span class="koboSpan" id="kobo.391.1">blocking point:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.392.1">
+#define BUTTON_DEBOUNCE_TIME 120
+void task_test2(void *arg)
+{
+  uint32_t toggle_time = 0;
+  green_led_off();
+  while(1) {
+    if (button_read()) {
+      if((jiffies - toggle_time) &gt; BUTTON_DEBOUNCE_TIME)
+      {
+        green_led_toggle();
+        toggle_time = jiffies;
+      }
+    }
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.393.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.394.1">button_read</span></strong><span class="koboSpan" id="kobo.395.1"> function keeps track of the calling task, so the </span><strong class="source-inline"><span class="koboSpan" id="kobo.396.1">button_task</span></strong><span class="koboSpan" id="kobo.397.1"> pointer </span><a id="_idIndexMarker739"/><span class="koboSpan" id="kobo.398.1">is used to wake it up when the button is pressed. </span><span class="koboSpan" id="kobo.398.2">The task is moved to the waiting list and the read operation is initiated in the driver, and then the task </span><span class="No-Break"><span class="koboSpan" id="kobo.399.1">is preempted:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.400.1">
+struct task_block *button_task = NULL;
+int button_read(void)
+{
+  if (button_task)
+    return 0;
+  button_task = t_cur;
+  task_waiting(t_cur);
+  button_start_read();
+  schedule();
+  return 1;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.401.1">To notify the scheduler whenever the button is pressed, the driver uses a callback, specified by the kernel during initialization, and passes it as an argument </span><span class="No-Break"><span class="koboSpan" id="kobo.402.1">to </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.403.1">button_setup</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.404.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.405.1">
+static void (*button_callback)(void) = NULL;
+void button_setup(void (*callback)(void))
+{
+  AHB1_CLOCK_ER |= GPIOA_AHB1_CLOCK_ER;
+  GPIOA_MODE &amp;= ~ (0x03 &lt;&lt; (BUTTON_PIN * 2));
+  EXTI_CR0 &amp;= ~EXTI_CR_EXTI0_MASK;
+  button_callback = callback;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.406.1">The kernel associates the </span><strong class="source-inline"><span class="koboSpan" id="kobo.407.1">button_wakeup</span></strong><span class="koboSpan" id="kobo.408.1"> function with the driver callback so that when </span><a id="_idIndexMarker740"/><span class="koboSpan" id="kobo.409.1">an event occurs, if a task is awaiting the button press notification, it is moved back to the active tasks list and resumes as soon as the scheduler selects it </span><span class="No-Break"><span class="koboSpan" id="kobo.410.1">to run:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.411.1">
+void button_wakeup(void)
+{
+  if (button_task) {
+    task_ready(button_task);
+    button_task = NULL;
+    schedule();
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.412.1">In the button driver, to initiate the blocking operation, the interrupt is enabled and associated with the rising edge of a signal, which corresponds to the button </span><span class="No-Break"><span class="koboSpan" id="kobo.413.1">press event:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.414.1">
+void button_start_read(void)
+{
+  EXTI_IMR |= (1 &lt;&lt; BUTTON_PIN);
+  EXTI_EMR |= (1 &lt;&lt; BUTTON_PIN);
+  EXTI_RTSR |= (1 &lt;&lt; BUTTON_PIN);
+  nvic_irq_enable(NVIC_EXTI0_IRQN);
+}</span></pre>
+<p><span class="koboSpan" id="kobo.415.1">The callback is executed in the interrupt context when the event is detected. </span><span class="koboSpan" id="kobo.415.2">The interrupt </span><a id="_idIndexMarker741"/><span class="koboSpan" id="kobo.416.1">is disabled until the next call </span><span class="No-Break"><span class="koboSpan" id="kobo.417.1">to </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.418.1">button_start_read</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.419.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.420.1">
+void isr_exti0(void)
+{
+  nvic_irq_disable(NVIC_EXTI0_IRQN);
+  EXTI_PR |= (1 &lt;&lt; BUTTON_PIN);
+  if (button_callback)
+    button_callback();
+}</span></pre>
+<p><span class="koboSpan" id="kobo.421.1">Any device driver or system module that relies on interrupt handling to unlock the associated task may use a callback mechanism to interact with the scheduler. </span><span class="koboSpan" id="kobo.421.2">Using a similar blocking strategy, read and write operations can be implemented to keep the calling task on the waiting list until the desired event is detected and handled toward a callback in the </span><span class="No-Break"><span class="koboSpan" id="kobo.422.1">scheduler code.</span></span></p>
+<p><span class="koboSpan" id="kobo.423.1">Other system components and libraries designed for bare-metal embedded applications may require an additional layer to integrate into the operating system with blocking calls. </span><span class="koboSpan" id="kobo.423.2">Embedded TCP/IP stack implementations, such as lwIP and picoTCP, provide a portable </span><a id="_idIndexMarker742"/><span class="koboSpan" id="kobo.424.1">RTOS integration layer, including blocking socket calls, implemented by running the loop functions in a dedicated task, which manages the communication with the socket API used in the other tasks. </span><span class="koboSpan" id="kobo.424.2">Locking mechanisms, such as mutexes and semaphores, are expected to implement blocking calls, which would suspend the task when the resource requested </span><span class="No-Break"><span class="koboSpan" id="kobo.425.1">is unavailable.</span></span></p>
+<p><span class="koboSpan" id="kobo.426.1">The scheduling policy we have implemented so far is very reactive and gives a perfect level of interaction </span><a id="_idIndexMarker743"/><span class="koboSpan" id="kobo.427.1">among tasks, but it does not foresee priority levels, which is nec</span><a id="_idTextAnchor379"/><span class="koboSpan" id="kobo.428.1">essary when designing </span><span class="No-Break"><span class="koboSpan" id="kobo.429.1">real-time systems.</span></span></p>
+<h2 id="_idParaDest-233"><a id="_idTextAnchor380"/><span class="koboSpan" id="kobo.430.1">Real-time scheduling</span></h2>
+<p><span class="koboSpan" id="kobo.431.1">One of the key requirements for real-time operating systems is the ability to react to a selected </span><a id="_idIndexMarker744"/><span class="koboSpan" id="kobo.432.1">number of events by executing the associated code within a short and predictable amount of time. </span><span class="koboSpan" id="kobo.432.2">To implement features with strict timing requirements, the operating system must focus on quick interrupt handling and dispatching, rather than other metrics, such as throughput or fairness. </span><span class="koboSpan" id="kobo.432.3">Each task might have specific requirements, such as </span><em class="italic"><span class="koboSpan" id="kobo.433.1">deadlines</span></em><span class="koboSpan" id="kobo.434.1">, indicating the exact time when the execution must start or stop, or related to shared resources that might introduce dependencies to other tasks in the system. </span><span class="koboSpan" id="kobo.434.2">A system that can execute tasks with a </span><em class="italic"><span class="koboSpan" id="kobo.435.1">deterministic</span></em><span class="koboSpan" id="kobo.436.1"> time requirement must be able to meet the deadlines within a measurable, fixed amount </span><span class="No-Break"><span class="koboSpan" id="kobo.437.1">of time.</span></span></p>
+<p><span class="koboSpan" id="kobo.438.1">Approaching real-time scheduling is a complex matter. </span><span class="koboSpan" id="kobo.438.2">Authoritative literature exists on the topic, so the subject will not be extensively explained here. </span><span class="koboSpan" id="kobo.438.3">Research has indicated that several approaches based on </span><em class="italic"><span class="koboSpan" id="kobo.439.1">priorities</span></em><span class="koboSpan" id="kobo.440.1"> assigned to each task, combined with an appropriate strategy used to switch the tasks at runtime, provide a sufficient approximation to provide a generic solution to </span><span class="No-Break"><span class="koboSpan" id="kobo.441.1">real-time requirements.</span></span></p>
+<p><span class="koboSpan" id="kobo.442.1">To support hard real-time tasks with deterministic deadlines, an operating system should consider implementing the </span><span class="No-Break"><span class="koboSpan" id="kobo.443.1">following characteristics:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.444.1">A fast context switch procedure implemented in </span><span class="No-Break"><span class="koboSpan" id="kobo.445.1">the scheduler</span></span></li>
+<li><span class="koboSpan" id="kobo.446.1">Measurable intervals where the system runs with the </span><span class="No-Break"><span class="koboSpan" id="kobo.447.1">interrupts disabled</span></span></li>
+<li><span class="koboSpan" id="kobo.448.1">Short </span><span class="No-Break"><span class="koboSpan" id="kobo.449.1">interrupt handlers</span></span></li>
+<li><span class="koboSpan" id="kobo.450.1">Support for </span><span class="No-Break"><span class="koboSpan" id="kobo.451.1">interrupt priorities</span></span></li>
+<li><span class="koboSpan" id="kobo.452.1">Support for task priorities to minimize the latency of hard </span><span class="No-Break"><span class="koboSpan" id="kobo.453.1">real-time tasks</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.454.1">From the point of view of task scheduling, the latency for real-time tasks is mostly related to the ability of the system to resume the task when an external </span><span class="No-Break"><span class="koboSpan" id="kobo.455.1">event occurs.</span></span></p>
+<p><span class="koboSpan" id="kobo.456.1">To guarantee a deterministic delay for a selected group of tasks, RTOSs often implement fixed-priority levels, which are assigned to tasks upon creation, and determine the order in which the next task is selected at each execution of the supervisor call of </span><span class="No-Break"><span class="koboSpan" id="kobo.457.1">the scheduler.</span></span></p>
+<p><span class="koboSpan" id="kobo.458.1">Time-critical operations should be implemented in tasks with a higher priority. </span><span class="koboSpan" id="kobo.458.2">Many scheduler </span><a id="_idIndexMarker745"/><span class="koboSpan" id="kobo.459.1">policies have been researched to optimize the reaction time of real-time tasks while keeping the system responsive and allowing issues related to the possible starvation of the tasks with a lower priority. </span><span class="koboSpan" id="kobo.459.2">Finding an optimal scheduling policy for a specific scenario can be very hard; the details regarding deterministically calculating the latency and jitter of a real-time system are outside the scope of </span><span class="No-Break"><span class="koboSpan" id="kobo.460.1">this book.</span></span></p>
+<p><span class="koboSpan" id="kobo.461.1">One of the proposed approaches is very popular among real-time operating systems. </span><span class="koboSpan" id="kobo.461.2">It provides immediate context switches for real-time tasks by selecting the task with the highest priority among those ready for execution, upon every invocation of the scheduler supervisor call. </span><span class="koboSpan" id="kobo.461.3">This scheduling policy, known as </span><strong class="bold"><span class="koboSpan" id="kobo.462.1">static priority-driven preemptive scheduling</span></strong><span class="koboSpan" id="kobo.463.1">, is not optimal in all cases, as the latency of the tasks depends </span><a id="_idIndexMarker746"/><span class="koboSpan" id="kobo.464.1">on the number of tasks at the same priority level, and foresees no mechanism to prevent potential starvation of tasks with a lower priority in the case of higher system loads. </span><span class="koboSpan" id="kobo.464.2">However, the mechanism is simple enough that it can be easily implemented to demonstrate the impact of priority mechanisms on the latency of </span><span class="No-Break"><span class="koboSpan" id="kobo.465.1">real-time tasks.</span></span></p>
+<p><span class="koboSpan" id="kobo.466.1">Another possible approach would consist of reassigning priorities dynamically at runtime, based on the characteristics of the tasks. </span><span class="koboSpan" id="kobo.466.2">Real-time schedulers may benefit from a mechanism that ensures that the task with the closest deadline is selected first. </span><span class="koboSpan" id="kobo.466.3">This approach, known as </span><strong class="bold"><span class="koboSpan" id="kobo.467.1">earliest-deadline-first</span></strong><span class="koboSpan" id="kobo.468.1"> scheduling, or simply </span><strong class="bold"><span class="koboSpan" id="kobo.469.1">EDF</span></strong><span class="koboSpan" id="kobo.470.1">, is more efficient in </span><a id="_idIndexMarker747"/><span class="koboSpan" id="kobo.471.1">meeting real-time deadlines in a system under a heavier load. </span><span class="koboSpan" id="kobo.471.2">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.472.1">SCHED_DEADLINE</span></strong><span class="koboSpan" id="kobo.473.1"> scheduler, included in Linux starting from version 3.14, is an implementation of this mechanism, which is less popular in embedded operating systems despite being relatively simple </span><span class="No-Break"><span class="koboSpan" id="kobo.474.1">to implement.</span></span></p>
+<p><span class="koboSpan" id="kobo.475.1">This example shows a simplistic implementation of a static priority-driven scheduler. </span><span class="koboSpan" id="kobo.475.2">We are using four separate lists to store the active tasks, one for each priority level supported on the system. </span><span class="koboSpan" id="kobo.475.3">A priority level is assigned to each task upon creation, and the kernel is kept at priority </span><strong class="source-inline"><span class="koboSpan" id="kobo.476.1">0</span></strong><span class="koboSpan" id="kobo.477.1">, with its main task running only when all the other tasks are sleeping, and whose unique purpose is to check the timers of the sleeping tasks. </span><span class="koboSpan" id="kobo.477.2">Tasks can </span><a id="_idIndexMarker748"/><span class="koboSpan" id="kobo.478.1">be inserted into the active task list with the corresponding priority level when they become ready, and they are moved to the waiting list when they are blocked. </span><span class="koboSpan" id="kobo.478.2">To keep track of the static priority of the task, the priority field is added to the </span><span class="No-Break"><span class="koboSpan" id="kobo.479.1">task block:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.480.1">
+struct task_block {
+  char name[TASK_NAME_MAXLEN];
+  int id;
+  int state;
+  void (*start)(void *arg);
+  void *arg;
+  uint8_t *sp;
+  uint32_t wakeup_time;
+  uint8_t priority;
+  struct task_block *next;
+};</span></pre>
+<p><span class="koboSpan" id="kobo.481.1">Two shortcut functions must be defined to quickly add and remove the task block from the list of tasks with the </span><span class="No-Break"><span class="koboSpan" id="kobo.482.1">same priority:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.483.1">
+static void tasklist_add_active(struct task_block *el)
+{
+  tasklist_add(&amp;tasklist_active[el-&gt;priority], el);
+}
+static int tasklist_del_active(struct task_block *el)
+{
+  return tasklist_del(&amp;tasklist_active[el-&gt;priority], el);
+}</span></pre>
+<p><span class="koboSpan" id="kobo.484.1">They can then be used in the new versions of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.485.1">task_waiting</span></strong><span class="koboSpan" id="kobo.486.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.487.1">task_ready</span></strong><span class="koboSpan" id="kobo.488.1"> functions </span><a id="_idIndexMarker749"/><span class="koboSpan" id="kobo.489.1">when the task is removed or inserted into the corresponding list of active tasks at the </span><span class="No-Break"><span class="koboSpan" id="kobo.490.1">given priority:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.491.1">
+static void task_waiting(struct task_block *t)
+{
+  if (tasklist_del_active(t) == 0) {
+    tasklist_add(&amp;tasklist_waiting, t);
+    t-&gt;state = TASK_WAITING;
+  }
+}
+static void task_ready(struct task_block *t)
+{
+  if (tasklist_del(&amp;tasklist_waiting, t) == 0) {
+    tasklist_add_active(t);
+    t-&gt;state = TASK_READY;
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.492.1">The three tasks are created on the system, but the one that would block upon the button press event is created with a higher </span><span class="No-Break"><span class="koboSpan" id="kobo.493.1">priority level:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.494.1">
+void main(void) {
+  clock_pll_on(0);
+  led_setup();
+  button_setup(button_wakeup);
+  systick_enable();
+  kernel.name[0] = 0;
+  kernel.id = 0;
+  kernel.state = TASK_RUNNING;
+  kernel.wakeup_time = 0;
+  kernel.priority = 0;
+  tasklist_add_active(&amp;kernel);
+  task_create("test0",task_test0, NULL, 1);
+  task_create("test1",task_test1, NULL, 1);
+  task_create("test2",task_test2, NULL, 3);
+  while(1) {
+    struct task_block *t = tasklist_waiting;
+    while (t) {
+      if (t-&gt;wakeup_time &amp;&amp; (t-&gt;wakeup_time &lt; jiffies)) {
+        t-&gt;wakeup_time = 0;
+        task_ready(t);
+      }
+      t = t-&gt;next;
+    }
+    WFI();
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.495.1">The function that selects the next task is reworked to find the task with the highest priority among those ready to run. </span><span class="koboSpan" id="kobo.495.2">To do so, the priority lists are visited, from highest to lowest. </span><span class="koboSpan" id="kobo.495.3">If the list with the highest priority is the same as one of the current tasks, the next task in the same level is selected, if possible, to guarantee a round-robin mechanism in the case of tasks competing for the CPU within the same priority level. </span><span class="koboSpan" id="kobo.495.4">In any other case, the first task in the list with the highest priority </span><span class="No-Break"><span class="koboSpan" id="kobo.496.1">is selected:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.497.1">
+static int idx;
+static inline struct task_block *
+tasklist_next_ready(struct task_block *t)
+{
+ for (idx = MAX_PRIO - 1; idx &gt;= 0; idx--) {
+    if ((idx == t-&gt;priority) &amp;&amp; (t-&gt;next != NULL) &amp;&amp;
+        (t-&gt;next-&gt;state == TASK_READY))
+      return t-&gt;next;
+    if (tasklist_active[idx])
+      return tasklist_active[idx];
+  }
+  return t;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.498.1">The major </span><a id="_idIndexMarker750"/><span class="koboSpan" id="kobo.499.1">difference between this scheduler and the one with a single priority level in terms of reacting to the button press event in the task with an ID equal to </span><strong class="source-inline"><span class="koboSpan" id="kobo.500.1">2</span></strong><span class="koboSpan" id="kobo.501.1"> is the time interval between the button press event and the reaction from the task itself. </span><span class="koboSpan" id="kobo.501.2">Both schedulers implement preemption by immediately putting the task back into the ready state within the interrupt handler of the </span><span class="No-Break"><span class="koboSpan" id="kobo.502.1">button event.</span></span></p>
+<p><span class="koboSpan" id="kobo.503.1">However, in the first case, the task comes back to the carousel of the tasks being scheduled to compete with the other tasks on the same priority level, which can cause a delay in the reaction of the task. </span><span class="koboSpan" id="kobo.503.2">We can estimate this to be </span><em class="italic"><span class="koboSpan" id="kobo.504.1">N</span></em><span class="koboSpan" id="kobo.505.1"> * </span><strong class="source-inline"><span class="koboSpan" id="kobo.506.1">TIMESLICE</span></strong><span class="koboSpan" id="kobo.507.1"> in the worst-case scenario, where </span><em class="italic"><span class="koboSpan" id="kobo.508.1">N</span></em><span class="koboSpan" id="kobo.509.1"> is the number of processes ready to run at the moment when the </span><span class="No-Break"><span class="koboSpan" id="kobo.510.1">interrupt occurs.</span></span></p>
+<p><span class="koboSpan" id="kobo.511.1">With the priority-driven scheduling approach, there is a degree of certainty that the real-time task is the first one to be scheduled after the interrupt occurs so that the time required from the interrupt to resuming the task is measurable, and in the order of a few microseconds, as the CPU executes a predictable amount of instructions to perform all the actions </span><span class="No-Break"><span class="koboSpan" id="kobo.512.1">in between.</span></span></p>
+<p><span class="koboSpan" id="kobo.513.1">Real-time embedded OSs are fundamental to implementing life-critical systems, mostly in the transport and medical industries. </span><span class="koboSpan" id="kobo.513.2">On the other hand, they rely on simplified models to keep the basic system operations as lightweight as possible, and with minimum </span><a id="_idIndexMarker751"/><span class="koboSpan" id="kobo.514.1">overhead for system call interfaces and system APIs. </span><span class="koboSpan" id="kobo.514.2">An opposite approach could consist of increasing the complexity of the kernel to introduce optimizations in terms of throughput, task interaction, memory safety improvements, and other performance indicators, which may be a better fit in embedded systems with loose or non-existent real-time requirements. </span><span class="koboSpan" id="kobo.514.3">Stricter priority-based scheduling policies improve latency and guarantee real-time responses in well-controlled scenarios but are less flexible to use in a general-purpose embedded system where other constraints are more compelling than task latency, where a time-based preemption</span><a id="_idTextAnchor381"/><span class="koboSpan" id="kobo.515.1">-scheduling approach may provide </span><span class="No-Break"><span class="koboSpan" id="kobo.516.1">better results.</span></span></p>
+<h1 id="_idParaDest-234"><a id="_idTextAnchor382"/><span class="koboSpan" id="kobo.517.1">Synchronization</span></h1>
+<p><span class="koboSpan" id="kobo.518.1">In a multithreaded environment where memory, peripherals, and system accesses are shared, a system </span><a id="_idIndexMarker752"/><span class="koboSpan" id="kobo.519.1">should provide synchronization mechanisms to allow the tasks to cooperate on the arbitration of the access to system-wide </span><span class="No-Break"><span class="koboSpan" id="kobo.520.1">available resources.</span></span></p>
+<p><span class="koboSpan" id="kobo.521.1">Mutexes and semaphores are two of the most commonly used mechanisms of synchronization </span><a id="_idIndexMarker753"/><span class="koboSpan" id="kobo.522.1">between parallel threads as they provide the minimal set to solve most </span><a id="_idIndexMarker754"/><span class="koboSpan" id="kobo.523.1">concurrency problems. </span><span class="koboSpan" id="kobo.523.2">Functions that could block the calling tasks must be able to interact with the scheduler, to move the task to the waiting state whenever the resource is not available and until th</span><a id="_idTextAnchor383"/><span class="koboSpan" id="kobo.524.1">e lock is released or the semaphore </span><a id="_idIndexMarker755"/><span class="No-Break"><span class="koboSpan" id="kobo.525.1">is incremented.</span></span></p>
+<h2 id="_idParaDest-235"><a id="_idTextAnchor384"/><span class="koboSpan" id="kobo.526.1">Semaphores</span></h2>
+<p><span class="koboSpan" id="kobo.527.1">A semaphore is the </span><a id="_idIndexMarker756"/><span class="koboSpan" id="kobo.528.1">most common synchronization primitive, which </span><a id="_idIndexMarker757"/><span class="koboSpan" id="kobo.529.1">provides a counter with exclusive access, and it is used by two or more threads to cooperate on the arbitration of the usage of a specific shared resource. </span><span class="koboSpan" id="kobo.529.2">The API provided to the tasks must guarantee that the object can be used to implement a counter with exclusive access, which, in general, requires some auxiliary features on the CPU. </span><span class="koboSpan" id="kobo.529.3">For this reason, the internal implementation of the synchronization strategies is dependent on the microcode implemented in the </span><span class="No-Break"><span class="koboSpan" id="kobo.530.1">target processor.</span></span></p>
+<p><span class="koboSpan" id="kobo.531.1">On Cortex-M3/M4, the implementation of locking mechanisms relies on instructions provided by the CPU to perform exclusive operations. </span><span class="koboSpan" id="kobo.531.2">The instruction set of the reference platform provides the following </span><span class="No-Break"><span class="koboSpan" id="kobo.532.1">two instructions:</span></span></p>
+<ul>
+<li><strong class="bold"><span class="koboSpan" id="kobo.533.1">Load Register Exclusive</span></strong><span class="koboSpan" id="kobo.534.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.535.1">LDREX</span></strong><span class="koboSpan" id="kobo.536.1">): Loads a value from an address in memory </span><a id="_idIndexMarker758"/><span class="koboSpan" id="kobo.537.1">into a </span><span class="No-Break"><span class="koboSpan" id="kobo.538.1">CPU register.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.539.1">Store Register Exclusive</span></strong><span class="koboSpan" id="kobo.540.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.541.1">STREX</span></strong><span class="koboSpan" id="kobo.542.1">): Attempts to store the new value contained in </span><a id="_idIndexMarker759"/><span class="koboSpan" id="kobo.543.1">the register in an address in memory corresponding to the last LDREX instruction. </span><span class="koboSpan" id="kobo.543.2">If the STREX succeeds, the CPU guarantees that writing the value in memory happened exclusively and that the value has not been modified since the last LDREX call. </span><span class="koboSpan" id="kobo.543.3">Between two concurrent LDREX/STREX sections, only one will result in a successful write to the register; the second STREX instruction will fail, </span><span class="No-Break"><span class="koboSpan" id="kobo.544.1">returning zero.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.545.1">The characteristics of these instructions guarantee exclusive access to a counter, which is then used to implement the primitive functions at the base of semaphores </span><span class="No-Break"><span class="koboSpan" id="kobo.546.1">and mutexes.</span></span></p>
+<p><span class="koboSpan" id="kobo.547.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.548.1">sem_trywait</span></strong><span class="koboSpan" id="kobo.549.1"> function attempts to decrement the value of the semaphore. </span><span class="koboSpan" id="kobo.549.2">The operation is always </span><a id="_idIndexMarker760"/><span class="koboSpan" id="kobo.550.1">allowed unless the value of the semaphore is </span><strong class="source-inline"><span class="koboSpan" id="kobo.551.1">0</span></strong><span class="koboSpan" id="kobo.552.1">, which results in an immediate failure. </span><span class="koboSpan" id="kobo.552.2">The function returns </span><strong class="source-inline"><span class="koboSpan" id="kobo.553.1">0</span></strong><span class="koboSpan" id="kobo.554.1"> upon success, and </span><strong class="source-inline"><span class="koboSpan" id="kobo.555.1">-1</span></strong><span class="koboSpan" id="kobo.556.1"> if the semaphore value is zero, and it is impossible to decrement the semaphore value at </span><span class="No-Break"><span class="koboSpan" id="kobo.557.1">this time.</span></span></p>
+<p><span class="koboSpan" id="kobo.558.1">The sequence of the events in </span><strong class="source-inline"><span class="koboSpan" id="kobo.559.1">sem_trywait</span></strong><span class="koboSpan" id="kobo.560.1"> is </span><span class="No-Break"><span class="koboSpan" id="kobo.561.1">as follows:</span></span></p>
+<ol>
+<li value="1"><span class="koboSpan" id="kobo.562.1">The value of </span><a id="_idIndexMarker761"/><span class="koboSpan" id="kobo.563.1">the semaphore variable (an integer accessed with exclusive load and store instructions) is read from the memory pointed to by the function argument into the </span><span class="No-Break"><span class="koboSpan" id="kobo.564.1">register, R1.</span></span></li>
+<li><span class="koboSpan" id="kobo.565.1">If the value of R1 is </span><strong class="source-inline"><span class="koboSpan" id="kobo.566.1">0</span></strong><span class="koboSpan" id="kobo.567.1">, the semaphore cannot be acquired, and the function </span><span class="No-Break"><span class="koboSpan" id="kobo.568.1">returns </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.569.1">-1</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.570.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.571.1">The value of R1 is decremented </span><span class="No-Break"><span class="koboSpan" id="kobo.572.1">by one.</span></span></li>
+<li><span class="koboSpan" id="kobo.573.1">The value of R1 is stored in the memory pointed to by the function argument, and the result of the STREX operation is put </span><span class="No-Break"><span class="koboSpan" id="kobo.574.1">into R2.</span></span></li>
+<li><span class="koboSpan" id="kobo.575.1">If the operation succeeds, R2 contains </span><strong class="source-inline"><span class="koboSpan" id="kobo.576.1">0</span></strong><span class="koboSpan" id="kobo.577.1">, the semaphore is acquired and successfully decremented, and the function can return with a </span><span class="No-Break"><span class="koboSpan" id="kobo.578.1">success status.</span></span></li>
+<li><span class="koboSpan" id="kobo.579.1">If the store operation fails (concurrent access is attempted), the procedure is immediately repeated for a </span><span class="No-Break"><span class="koboSpan" id="kobo.580.1">second attempt.</span></span></li>
+</ol>
+<p><span class="koboSpan" id="kobo.581.1">Here is the </span><a id="_idIndexMarker762"/><span class="koboSpan" id="kobo.582.1">assembly routine implementing all of the steps, returning </span><strong class="source-inline"><span class="koboSpan" id="kobo.583.1">0</span></strong><span class="koboSpan" id="kobo.584.1"> upon </span><a id="_idIndexMarker763"/><span class="koboSpan" id="kobo.585.1">success and </span><strong class="source-inline"><span class="koboSpan" id="kobo.586.1">-1</span></strong><span class="koboSpan" id="kobo.587.1"> when the </span><span class="No-Break"><span class="koboSpan" id="kobo.588.1">decrement fails:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.589.1">
+sem_trywait:
+  LDREX r1, [r0]
+  CMP r1, #0
+  BEQ sem_trywait_fail
+  SUBS r1, #1
+  STREX r2, r1, [r0]
+  CMP r2, #0
+  BNE sem_trywait
+  DMB
+  MOVS r0, #0
+  BX lr
+sem_trywait_fail:
+  DMB
+  MOV r0, #-1
+  BX lr</span></pre>
+<p><span class="koboSpan" id="kobo.590.1">The following code is the corresponding function to increase the semaphore, which is similar to the wait routine, except that the counting semaphore is increased instead, and the operation is eventually going to succeed, even if multiple tasks are trying to access the semaphore at the same time. </span><span class="koboSpan" id="kobo.590.2">The function returns </span><strong class="source-inline"><span class="koboSpan" id="kobo.591.1">0</span></strong><span class="koboSpan" id="kobo.592.1"> on success, except if the value before </span><a id="_idIndexMarker764"/><span class="koboSpan" id="kobo.593.1">the counter was zero, in which case it returns </span><strong class="source-inline"><span class="koboSpan" id="kobo.594.1">1</span></strong><span class="koboSpan" id="kobo.595.1">, to remind </span><a id="_idIndexMarker765"/><span class="koboSpan" id="kobo.596.1">the caller to notify any listener in a wait state that the value has increased and the associated resource is </span><span class="No-Break"><span class="koboSpan" id="kobo.597.1">now available:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.598.1">
+.global sem_dopost
+sem_dopost:
+  LDREX r1, [r0]
+  ADDS r1, #1
+  STREX r2, r1, [r0]
+  CMP r2, #0
+  BNE sem_dopost
+  CMP r0, #1
+  DMB
+  BGE sem_signal_up
+  MOVS r0, #0
+  BX lr
+sem_signal_up:
+  MOVS r0, #1
+  BX lr</span></pre>
+<p><span class="koboSpan" id="kobo.599.1">To integrate the blocking status of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.600.1">sem_wait</span></strong><span class="koboSpan" id="kobo.601.1"> function into the scheduler, the semaphore interface exposed by the OS to the tasks wraps the non-blocking </span><strong class="source-inline"><span class="koboSpan" id="kobo.602.1">sem_trywait</span></strong><span class="koboSpan" id="kobo.603.1"> call into its blocking version, which blocks the task when the value of the semaphore </span><span class="No-Break"><span class="koboSpan" id="kobo.604.1">is zero.</span></span></p>
+<p><span class="koboSpan" id="kobo.605.1">To implement a blocking version of the semaphore interface, the </span><strong class="source-inline"><span class="koboSpan" id="kobo.606.1">semaphore</span></strong><span class="koboSpan" id="kobo.607.1"> object may keep track of the tasks accessing the resources and waiting for a post event. </span><span class="koboSpan" id="kobo.607.2">In this case, the identifiers of the tasks are stored in an array </span><span class="No-Break"><span class="koboSpan" id="kobo.608.1">named </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.609.1">listeners</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.610.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.611.1">
+#define MAX_LISTENERS 4
+struct semaphore {
+  uint32_t value;
+  uint8_t listeners[MAX_LISTENERS];
+};
+typedef struct semaphore semaphore;</span></pre>
+<p><span class="koboSpan" id="kobo.612.1">When a wait </span><a id="_idIndexMarker766"/><span class="koboSpan" id="kobo.613.1">operation fails, the task is blocked and it will try again </span><a id="_idIndexMarker767"/><span class="koboSpan" id="kobo.614.1">only after a successful post operation from another task. </span><span class="koboSpan" id="kobo.614.2">The task identifier is added to the array of listeners for </span><span class="No-Break"><span class="koboSpan" id="kobo.615.1">this resource:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.616.1">
+int sem_wait(semaphore *s)
+{
+  int i;
+  if (s == NULL)
+    return -1;
+  if (sem_trywait(s) == 0)
+    return 0;
+  for (i = 0; i &lt; MAX_LISTENERS; i++) {
+    if (!s-&gt;listeners[i])
+      s-&gt;listeners[i] = t_cur-&gt;id;
+    if (s-&gt;listeners[i] == t_cur-&gt;id)
+      break;
+  }
+  task_waiting(t_cur);
+  schedule();
+  return sem_wait(s);}</span></pre>
+<p><span class="koboSpan" id="kobo.617.1">The assembly routine, </span><strong class="source-inline"><span class="koboSpan" id="kobo.618.1">sem_dopost</span></strong><span class="koboSpan" id="kobo.619.1">, returns a positive value if the post operation has triggered an </span><a id="_idIndexMarker768"/><span class="koboSpan" id="kobo.620.1">increment from zero to one, which means that the </span><a id="_idIndexMarker769"/><span class="koboSpan" id="kobo.621.1">listeners, if present, must be </span><a id="_idTextAnchor385"/><span class="koboSpan" id="kobo.622.1">resumed to try to acquire the resource that just </span><span class="No-Break"><span class="koboSpan" id="kobo.623.1">became available.</span></span></p>
+<h2 id="_idParaDest-236"><a id="_idTextAnchor386"/><span class="koboSpan" id="kobo.624.1">Mutexes</span></h2>
+<p><strong class="bold"><span class="koboSpan" id="kobo.625.1">Mutex</span></strong><span class="koboSpan" id="kobo.626.1"> is short for </span><strong class="bold"><span class="koboSpan" id="kobo.627.1">mutual exclusion</span></strong><span class="koboSpan" id="kobo.628.1"> and is closely related to the semaphore, to the point that it can </span><a id="_idIndexMarker770"/><span class="koboSpan" id="kobo.629.1">be implemented using the same assembly routines. </span><span class="koboSpan" id="kobo.629.2">A mutex is </span><a id="_idIndexMarker771"/><span class="koboSpan" id="kobo.630.1">nothing but a binary semaphore that is initialized with a value of </span><strong class="source-inline"><span class="koboSpan" id="kobo.631.1">1</span></strong><span class="koboSpan" id="kobo.632.1"> to allow the first </span><span class="No-Break"><span class="koboSpan" id="kobo.633.1">lock operation.</span></span></p>
+<p><span class="koboSpan" id="kobo.634.1">Due to the property of the semaphore, which would fail any attempt to decrement its counter after its value has reached </span><strong class="source-inline"><span class="koboSpan" id="kobo.635.1">0</span></strong><span class="koboSpan" id="kobo.636.1">, our quick implementation of the mutex interface renames the semaphore primitives </span><strong class="source-inline"><span class="koboSpan" id="kobo.637.1">sem_wait</span></strong><span class="koboSpan" id="kobo.638.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.639.1">sem_post</span></strong><span class="koboSpan" id="kobo.640.1"> to </span><strong class="source-inline"><span class="koboSpan" id="kobo.641.1">mutex_lock</span></strong><span class="koboSpan" id="kobo.642.1"> and </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.643.1">mutex_unlock</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.644.1">, respectively.</span></span></p>
+<p><span class="koboSpan" id="kobo.645.1">Two tasks can try to decrement an unlocked mutex at the same time, but only one will succeed; the other will fail. </span><span class="koboSpan" id="kobo.645.2">In the blocking version of the mutex for the example scheduler, the wrappers for the mutex API built on top of the semaphore functions are </span><span class="No-Break"><span class="koboSpan" id="kobo.646.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.647.1">
+typedef semaphore mutex;
+#define mutex_init(m) sem_init(m, 1)
+#define mutex_trylock(m) sem_trywait(m)
+#define mutex_lock(x) sem_wait(x)
+#define mutex_unlock(x) sem_post(x)</span></pre>
+<p><span class="koboSpan" id="kobo.648.1">For both </span><a id="_idIndexMarker772"/><span class="koboSpan" id="kobo.649.1">semaphores and mutexes, the example operating system </span><a id="_idIndexMarker773"/><span class="koboSpan" id="kobo.650.1">written so far offers a comp</span><a id="_idTextAnchor387"/><span class="koboSpan" id="kobo.651.1">lete API for synchronization mechanisms integrated with </span><span class="No-Break"><span class="koboSpan" id="kobo.652.1">the scheduler.</span></span></p>
+<h2 id="_idParaDest-237"><a id="_idTextAnchor388"/><span class="koboSpan" id="kobo.653.1">Priority inversion</span></h2>
+<p><span class="koboSpan" id="kobo.654.1">A phenomenon that is often encountered when developing operating systems with preemptive, priority-based </span><a id="_idIndexMarker774"/><span class="koboSpan" id="kobo.655.1">schedulers using integrated synchronization </span><a id="_idIndexMarker775"/><span class="koboSpan" id="kobo.656.1">mechanisms is priority inversion. </span><span class="koboSpan" id="kobo.656.2">This condition affects the reactivity time of the real-time tasks that share resources with other tasks with a lower priority, and, in some cases, may cause the higher-priority tasks to starve for an unpredictable amount of time. </span><span class="koboSpan" id="kobo.656.3">This event occurs when the high-priority task is waiting for a resource to be freed by a lower-priority one, which in the meanwhile may be preempted by other unrelated tasks in </span><span class="No-Break"><span class="koboSpan" id="kobo.657.1">the system.</span></span></p>
+<p><span class="koboSpan" id="kobo.658.1">In particular, the sequence of events that might trigger this phenomenon is </span><span class="No-Break"><span class="koboSpan" id="kobo.659.1">as follows:</span></span></p>
+<ol>
+<li value="1"><span class="koboSpan" id="kobo.660.1">T1, T2, and T3 are three of the running tasks, with priority 1, 2, and </span><span class="No-Break"><span class="koboSpan" id="kobo.661.1">3, respectively.</span></span></li>
+<li><span class="koboSpan" id="kobo.662.1">T1 acquires a lock using a mutex on </span><span class="No-Break"><span class="koboSpan" id="kobo.663.1">resource </span></span><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.664.1">X</span></em></span><span class="No-Break"><span class="koboSpan" id="kobo.665.1">.</span></span></li>
+<li><span class="koboSpan" id="kobo.666.1">T1 is preempted by T3, which has a </span><span class="No-Break"><span class="koboSpan" id="kobo.667.1">higher priority.</span></span></li>
+<li><span class="koboSpan" id="kobo.668.1">T3 tries to access the shared resource, </span><em class="italic"><span class="koboSpan" id="kobo.669.1">X</span></em><span class="koboSpan" id="kobo.670.1">, and blocks on </span><span class="No-Break"><span class="koboSpan" id="kobo.671.1">the mutex.</span></span></li>
+<li><span class="koboSpan" id="kobo.672.1">T1 resumes the execution in the </span><span class="No-Break"><span class="koboSpan" id="kobo.673.1">critical section.</span></span></li>
+<li><span class="koboSpan" id="kobo.674.1">T1 is preempted by T2, which has a </span><span class="No-Break"><span class="koboSpan" id="kobo.675.1">higher priority.</span></span></li>
+<li><span class="koboSpan" id="kobo.676.1">An arbitrary number of tasks with priorities greater than 1 can interrupt the execution of T1 before it can release the lock and wake </span><span class="No-Break"><span class="koboSpan" id="kobo.677.1">up T3.</span></span></li>
+</ol>
+<p><span class="koboSpan" id="kobo.678.1">One of the possible mechanisms that can be implemented to avoid this situation is called </span><strong class="bold"><span class="koboSpan" id="kobo.679.1">priority inheritance</span></strong><span class="koboSpan" id="kobo.680.1">. </span><span class="koboSpan" id="kobo.680.2">This mechanism consists of temporarily increasing the priority of a task </span><a id="_idIndexMarker776"/><span class="koboSpan" id="kobo.681.1">sharing a resource to the highest priority of all the tasks accessing the resource. </span><span class="koboSpan" id="kobo.681.2">This way, a task with a lower priority does not cause scheduling delays fo</span><a id="_idTextAnchor389"/><span class="koboSpan" id="kobo.682.1">r the higher-priority ones, and the real-time requirements are </span><span class="No-Break"><span class="koboSpan" id="kobo.683.1">still met.</span></span></p>
+<h1 id="_idParaDest-238"><a id="_idTextAnchor390"/><span class="koboSpan" id="kobo.684.1">System resource separation</span></h1>
+<p><span class="koboSpan" id="kobo.685.1">The example operating system we have built throughout this chapter already has many interesting features, but it is still characterized by a flat model, with no memory segmentation or privilege separation. </span><span class="koboSpan" id="kobo.685.2">Minimalist systems do not provide any mechanisms to </span><a id="_idIndexMarker777"/><span class="koboSpan" id="kobo.686.1">separate system resources and regulate access to the memory space. </span><span class="koboSpan" id="kobo.686.2">Instead, tasks in the system are allowed to perform any privileged operation, including reading and altering other tasks’ memory, executing operations in the address space of the kernel, and directly accessing peripherals and CPU registers </span><span class="No-Break"><span class="koboSpan" id="kobo.687.1">at runtime.</span></span></p>
+<p><span class="koboSpan" id="kobo.688.1">Different approaches are available on the target platform, aimed at increasing the level of safety on the system by introducing a limited number of modifications to the </span><span class="No-Break"><span class="koboSpan" id="kobo.689.1">kernel to:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.690.1">Implement kernel/process </span><span class="No-Break"><span class="koboSpan" id="kobo.691.1">privilege separation</span></span></li>
+<li><span class="koboSpan" id="kobo.692.1">Integrate memory protection in </span><span class="No-Break"><span class="koboSpan" id="kobo.693.1">the scheduler</span></span></li>
+<li><span class="koboSpan" id="kobo.694.1">Provide a system call interface thr</span><a id="_idTextAnchor391"/><span class="koboSpan" id="kobo.695.1">ough the supervisor call to </span><span class="No-Break"><span class="koboSpan" id="kobo.696.1">access resources</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.697.1">Let’s discuss each </span><span class="No-Break"><span class="koboSpan" id="kobo.698.1">in detail.</span></span></p>
+<h2 id="_idParaDest-239"><a id="_idTextAnchor392"/><span class="koboSpan" id="kobo.699.1">Privilege levels</span></h2>
+<p><span class="koboSpan" id="kobo.700.1">The Cortex-M CPU is designed to run code with two different levels of privilege. </span><span class="koboSpan" id="kobo.700.2">Privilege separation </span><a id="_idIndexMarker778"/><span class="koboSpan" id="kobo.701.1">is important whenever untrusted application code is running on the system, allowing the kernel to keep control of the execution at all times, and prevent system failures due to a misbehaving user thread. </span><span class="koboSpan" id="kobo.701.2">The default execution level at boot is privileged, to allow the kernel to boot. </span><span class="koboSpan" id="kobo.701.3">Applications can be configured to execute at the user level and use a different stack-pointer register during the context </span><span class="No-Break"><span class="koboSpan" id="kobo.702.1">switch operations.</span></span></p>
+<p><span class="koboSpan" id="kobo.703.1">Changing privilege levels is possible only during an exception handler, and it is done using the special exception return value, which is stored in LR before it is returned from an exception handler that performed the context switch. </span><span class="koboSpan" id="kobo.703.2">The flag that controls the privilege level is the lowest bit of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.704.1">CONTROL</span></strong><span class="koboSpan" id="kobo.705.1"> register, which can be changed during context switches before returning from the exception handler, to relegate application threads to run at the user </span><span class="No-Break"><span class="koboSpan" id="kobo.706.1">privilege level.</span></span></p>
+<p><span class="koboSpan" id="kobo.707.1">Moreover, most </span><a id="_idIndexMarker779"/><span class="koboSpan" id="kobo.708.1">Cortex-M CPUs provide two separate </span><a id="_idIndexMarker780"/><span class="koboSpan" id="kobo.709.1">stack-pointer </span><span class="No-Break"><span class="koboSpan" id="kobo.710.1">CPU registers:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.711.1">A </span><strong class="bold"><span class="koboSpan" id="kobo.712.1">Master Stack </span></strong><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.713.1">Pointer</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.714.1"> (</span></span><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.715.1">MSP</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.716.1">)</span></span></li>
+<li><span class="koboSpan" id="kobo.717.1">A </span><strong class="bold"><span class="koboSpan" id="kobo.718.1">Process Stack </span></strong><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.719.1">Pointer</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.720.1"> (</span></span><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.721.1">PSP</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.722.1">)</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.723.1">Following the ARM recommendation, operating systems must use PSP to execute user threads, while MSP is used by interrupt handlers and the kernel. </span><span class="koboSpan" id="kobo.723.2">The stack selection depends on the special return value at the end of the exception handler. </span><span class="koboSpan" id="kobo.723.3">The scheduler we have implemented so far has this value hardcoded to </span><strong class="source-inline"><span class="koboSpan" id="kobo.724.1">0xFFFFFFF9</span></strong><span class="koboSpan" id="kobo.725.1">, which is used to return in thread mode after an interrupt and keeps executing the code at a privileged level. </span><span class="koboSpan" id="kobo.725.2">Returning the </span><strong class="source-inline"><span class="koboSpan" id="kobo.726.1">0xFFFFFFFD</span></strong><span class="koboSpan" id="kobo.727.1"> value from the interrupt handler tells the CPU to select the PSP as a stack-pointer register when returning to </span><span class="No-Break"><span class="koboSpan" id="kobo.728.1">thread mode.</span></span></p>
+<p><span class="koboSpan" id="kobo.729.1">To implement privilege separation properly, the PendSV handler used for switching tasks </span><a id="_idIndexMarker781"/><span class="koboSpan" id="kobo.730.1">has to be modified to save and restore the context using the right stack pointer for the task being preempted and the stack selected. </span><span class="koboSpan" id="kobo.730.2">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.731.1">store_context</span></strong><span class="koboSpan" id="kobo.732.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.733.1">restore_context</span></strong><span class="koboSpan" id="kobo.734.1"> functions we have used so far are renamed to </span><strong class="source-inline"><span class="koboSpan" id="kobo.735.1">store_kernel_context</span></strong><span class="koboSpan" id="kobo.736.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.737.1">restore_kernel_context</span></strong><span class="koboSpan" id="kobo.738.1">, respectively, because the kernel is still using the master stack pointer. </span><span class="koboSpan" id="kobo.738.2">Two new functions are added to the store and restore thread contexts from the new context switch routine, which uses the PSP register instead, for storing and restoring the contexts of </span><span class="No-Break"><span class="koboSpan" id="kobo.739.1">the threads:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.740.1">
+static void __attribute__((naked)) store_user_context(void)
+{
+  asm volatile("mrs r0, psp");
+  asm volatile("stmdb r0!, {r4-r11}");
+  asm volatile("msr psp, r0");
+  asm volatile("bx lr");
+}
+static void __attribute__((naked)) restore_user_context(void)
+{
+  asm volatile("mrs r0, psp");
+  asm volatile("ldmfd r0!, {r4-r11}");
+  asm volatile("msr psp, r0");
+  asm volatile("bx lr");
+}</span></pre>
+<p><span class="koboSpan" id="kobo.741.1">In the safe version of the scheduler, the PendSV service routine selects the correct stack pointer for storing and restoring the context and calls the associated routines. </span><span class="koboSpan" id="kobo.741.2">Depending on the new context, the return value stored in LR is used to select the register </span><a id="_idIndexMarker782"/><span class="koboSpan" id="kobo.742.1">used as a new stack pointer, and the privilege level is set in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.743.1">CONTROL</span></strong><span class="koboSpan" id="kobo.744.1"> register to switch to the user or privileged level in the upcoming thread mode, using values of </span><strong class="source-inline"><span class="koboSpan" id="kobo.745.1">1</span></strong><span class="koboSpan" id="kobo.746.1"> or </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.747.1">0</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.748.1">, respectively:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.749.1">
+void __attribute__((naked)) isr_pendsv(void)
+{
+  if (t_cur-&gt;id == 0) {
+    store_kernel_context();
+    asm volatile("mrs %0, msp" : "=r"(t_cur-&gt;sp));
+  } else {
+    store_user_context();
+    asm volatile("mrs %0, psp" : "=r"(t_cur-&gt;sp));
+  }
+  if (t_cur-&gt;state == TASK_RUNNING) {
+    t_cur-&gt;state = TASK_READY;
+  }
+  t_cur = tasklist_next_ready(t_cur);
+  t_cur-&gt;state = TASK_RUNNING;
+  if (t_cur-&gt;id == 0) {
+    asm volatile("msr msp, %0" ::"r"(t_cur-&gt;sp));
+    restore_kernel_context();
+    asm volatile("mov lr, %0" ::"r"(0xFFFFFFF9));
+    asm volatile("msr CONTROL, %0" ::"r"(0x00));
+  } else {
+    asm volatile("msr psp, %0" ::"r"(t_cur-&gt;sp));
+    restore_user_context();
+    asm volatile("mov lr, %0" ::"r"(0xFFFFFFFD));
+    asm volatile("msr CONTROL, %0" ::"r"(0x01));
+  }
+  asm volatile("bx lr");
+}</span></pre>
+<p><span class="koboSpan" id="kobo.750.1">A task running with the privilege mode bit set in the </span><strong class="source-inline"><span class="koboSpan" id="kobo.751.1">CONTROL</span></strong><span class="koboSpan" id="kobo.752.1"> register has restricted access to the resources of the system. </span><span class="koboSpan" id="kobo.752.2">In particular, threads cannot access registers in the SCB region, which means that some basic operations, such as enabling and disabling interrupts </span><a id="_idIndexMarker783"/><span class="koboSpan" id="kobo.753.1">through the NVIC, are reserved for the exclusive use of the kernel. </span><span class="koboSpan" id="kobo.753.2">When used in combination with the MPU, privilege separation improves the safety of the system even further by imposing memory separation a</span><a id="_idTextAnchor393"/><span class="koboSpan" id="kobo.754.1">t the access level, which can detect and interrupt misbehaving </span><span class="No-Break"><span class="koboSpan" id="kobo.755.1">application code.</span></span></p>
+<h2 id="_idParaDest-240"><a id="_idTextAnchor394"/><span class="koboSpan" id="kobo.756.1">Memory segmentation</span></h2>
+<p><span class="koboSpan" id="kobo.757.1">Dynamic memory segmentation strategies can be integrated into the scheduler to ensure </span><a id="_idIndexMarker784"/><span class="koboSpan" id="kobo.758.1">that the single tasks do not access memory regions associated with system-critical components and that the resources that require kernel supervision can be accessed from </span><span class="No-Break"><span class="koboSpan" id="kobo.759.1">user space.</span></span></p>
+<p><span class="koboSpan" id="kobo.760.1">In </span><a href="B18730_05.xhtml#_idTextAnchor149"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.761.1">Chapter 5</span></em></span></a><span class="koboSpan" id="kobo.762.1">, </span><em class="italic"><span class="koboSpan" id="kobo.763.1">Memory Management</span></em><span class="koboSpan" id="kobo.764.1">, we saw how the MPU can be used to delimit contiguous segments of memory and disallow access to specific areas by any of the code running on the systems. </span><span class="koboSpan" id="kobo.764.2">The MPU controller provides a permission mask to change the attributes of the single-memory regions with more granularity. </span><span class="koboSpan" id="kobo.764.3">In particular, we can only allow access to some areas if the CPU is running at a privileged level, which is an efficient way of preventing user applications from accessing certain areas of the system without the supervision of the kernel. </span><span class="koboSpan" id="kobo.764.4">A safe operating system may decide to completely exclude the application tasks from accessing the peripheral region and the system registers by using kernel-only permission flags for these areas. </span><span class="koboSpan" id="kobo.764.5">The values associated with specific permissions in the MPU region attribute register can be defined </span><span class="No-Break"><span class="koboSpan" id="kobo.765.1">as follows:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.766.1">
+#define RASR_KERNEL_RW (1 &lt;&lt; 24)
+#define RASR_KERNEL_RO (5 &lt;&lt; 24)
+#define RASR_RDONLY (6 &lt;&lt; 24)
+#define RASR_NOACCESS (0 &lt;&lt; 24)
+#define RASR_USER_RW (3 &lt;&lt; 24)
+#define RASR_USER_RO (2 &lt;&lt; 24)</span></pre>
+<p><span class="koboSpan" id="kobo.767.1">The MPU configuration can be enforced at boot by the kernel. </span><span class="koboSpan" id="kobo.767.2">In this example, we have set the flash </span><a id="_idIndexMarker785"/><span class="koboSpan" id="kobo.768.1">region to be globally readable, as region </span><strong class="source-inline"><span class="koboSpan" id="kobo.769.1">0</span></strong><span class="koboSpan" id="kobo.770.1">, using </span><strong class="source-inline"><span class="koboSpan" id="kobo.771.1">RASR_RDONLY</span></strong><span class="koboSpan" id="kobo.772.1">, and the SRAM region to be globally accessible, as region </span><strong class="source-inline"><span class="koboSpan" id="kobo.773.1">1</span></strong><span class="koboSpan" id="kobo.774.1">, mapped at an address </span><span class="No-Break"><span class="koboSpan" id="kobo.775.1">of </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.776.1">0x20000000</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.777.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.778.1">
+int mpu_enable(void)
+{
+  volatile uint32_t type;
+  volatile uint32_t start;
+  volatile uint32_t attr;
+  type = MPU_TYPE;
+  if (type == 0)
+    return -1;
+  MPU_CTRL = 0;
+  start = 0;
+  attr = RASR_ENABLED | MPUSIZE_256K | RASR_SCB | 
+         RASR_RDONLY;
+  mpu_set_region(0, start, attr);
+  start = 0x20000000;
+  attr = RASR_ENABLED | MPUSIZE_128K | RASR_SCB |         RASR_USER_RW | RASR_NOEXEC;
+  mpu_set_region(1, start, attr);</span></pre>
+<p><span class="koboSpan" id="kobo.779.1">A stricter policy may even restrict the usage of the SRAM by the user tasks in non-privileged mode, but it would require a reorganization of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.780.1">.data</span></strong><span class="koboSpan" id="kobo.781.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.782.1">.bss</span></strong><span class="koboSpan" id="kobo.783.1"> regions that are mapped when the task is started. </span><span class="koboSpan" id="kobo.783.2">In this example, we are simply demonstrating how to integrate the per-task memory protection policy into the scheduler to prevent access to system resources and protect the stack areas of the other tasks. </span><span class="koboSpan" id="kobo.783.3">The CCRAM is the area </span><a id="_idIndexMarker786"/><span class="koboSpan" id="kobo.784.1">we want to protect as it contains the execution stack of the kernel, as well as those of the other tasks in the system. </span><span class="koboSpan" id="kobo.784.2">To do so, the CCRAM area must be marked to be of exclusive access of the kernel as region </span><strong class="source-inline"><span class="koboSpan" id="kobo.785.1">2</span></strong><span class="koboSpan" id="kobo.786.1">. </span><span class="koboSpan" id="kobo.786.2">Later, an exception must be created for the selected task during the context switch, to permit access to its own </span><span class="No-Break"><span class="koboSpan" id="kobo.787.1">stack space:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.788.1">
+  start = 0x10000000;
+  attr = RASR_ENABLED | MPUSIZE_64K | RASR_SCB |
+         RASR_KERNEL_RW | RASR_NOEXEC;
+  mpu_set_region(2, start, attr);</span></pre>
+<p><span class="koboSpan" id="kobo.789.1">Peripheral regions and system registers are restricted areas in our system, so they too are marked for exclusive kernel access at runtime. </span><span class="koboSpan" id="kobo.789.2">In our safe OS design, tasks that want to access peripherals must use system calls to perform supervised </span><span class="No-Break"><span class="koboSpan" id="kobo.790.1">privileged operations:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.791.1">
+  start = 0x40000000;
+  attr = RASR_ENABLED | MPUSIZE_1G | RASR_SB |
+         RASR_KERNEL_RW | RASR_NOEXEC;
+  mpu_set_region(4, start, attr);
+  start = 0xE0000000;
+  attr = RASR_ENABLED | MPUSIZE_256M | RASR_SB |
+         RASR_KERNEL_RW | RASR_NOEXEC;
+  mpu_set_region(5, start, attr);
+  SHCSR |= MEMFAULT_ENABLE;
+  MPU_CTRL = 1;
+  return 0;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.792.1">During the context switch, just before returning from the </span><strong class="source-inline"><span class="koboSpan" id="kobo.793.1">isr_pendsv</span></strong><span class="koboSpan" id="kobo.794.1"> service routine, the scheduler can invoke the function that is exported by our custom MPU module to temporarily permit access to the stack area of the task selected to run next in </span><span class="No-Break"><span class="koboSpan" id="kobo.795.1">non-privileged mode:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.796.1">
+void mpu_task_stack_permit(void *start)
+{
+  uint32_t attr = RASR_ENABLED | MPUSIZE_1K |
+           RASR_SCB | RASR_USER_RW;
+  MPU_CTRL = 0;
+  DMB();
+  mpu_set_region(3, (uint32_t)start, attr);
+  MPU_CTRL = 1;
+}</span></pre>
+<p><span class="koboSpan" id="kobo.797.1">These </span><a id="_idIndexMarker787"/><span class="koboSpan" id="kobo.798.1">further restrictions have limited the possibility for the currently implemented tasks to access any resources directly. </span><span class="koboSpan" id="kobo.798.2">To maintain the same functionalities as before, the examp</span><a id="_idTextAnchor395"/><span class="koboSpan" id="kobo.799.1">le system must now export a new safe API for the tasks to request </span><span class="No-Break"><span class="koboSpan" id="kobo.800.1">system operations.</span></span></p>
+<h2 id="_idParaDest-241"><a id="_idTextAnchor396"/><span class="koboSpan" id="kobo.801.1">System calls</span></h2>
+<p><span class="koboSpan" id="kobo.802.1">The latest </span><a id="_idIndexMarker788"/><span class="koboSpan" id="kobo.803.1">evolution of the example operating system we have implemented in this chapter no longer allows our tasks to control system resources, such as input and output peripherals, and does not even allow the tasks to block voluntarily as the </span><strong class="source-inline"><span class="koboSpan" id="kobo.804.1">sleep_ms</span></strong><span class="koboSpan" id="kobo.805.1"> function is not allowed to set the pending flag to initiate a </span><span class="No-Break"><span class="koboSpan" id="kobo.806.1">context switch.</span></span></p>
+<p><span class="koboSpan" id="kobo.807.1">The operating system exports an API that is accessible by the tasks through a system call mechanism via the SVCall exception, which is handled by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.808.1">isr_svc</span></strong><span class="koboSpan" id="kobo.809.1"> service routine, and triggered at any time from tasks through the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.810.1">svc</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.811.1"> instruction.</span></span></p>
+<p><span class="koboSpan" id="kobo.812.1">In this simple example, we are using the </span><strong class="source-inline"><span class="koboSpan" id="kobo.813.1">svc 0</span></strong><span class="koboSpan" id="kobo.814.1"> assembly instruction to switch to handler mode by defining a shortcut </span><span class="No-Break"><span class="koboSpan" id="kobo.815.1">macro, </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.816.1">SVC()</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.817.1">:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.818.1">
+#define SVC() asm volatile ("svc 0")</span></pre>
+<p><span class="koboSpan" id="kobo.819.1">We wrap this instruction within a C function so that we can pass arguments to it. </span><span class="koboSpan" id="kobo.819.2">The ABI for the platform provides the first four arguments of the call across the mode switch inside the R0-R3 registers. </span><span class="koboSpan" id="kobo.819.3">Our example API does not allow us to pass any arguments to the system calls, but uses the first argument in R0 to identify the request that has been passed from the application to </span><span class="No-Break"><span class="koboSpan" id="kobo.820.1">the kernel:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.821.1">
+static int syscall(int arg0)
+{
+  SVC();
+}</span></pre>
+<p><span class="koboSpan" id="kobo.822.1">This way, we implement the entire system call interface for this operating system, which consists of the following system calls with no arguments. </span><span class="koboSpan" id="kobo.822.2">Each system call has an associated identification number, passed as </span><strong class="source-inline"><span class="koboSpan" id="kobo.823.1">arg0</span></strong><span class="koboSpan" id="kobo.824.1">. </span><span class="koboSpan" id="kobo.824.2">The list of system calls is the contract for the interface between the tasks and the kernel, and the only way for the tasks to use the protected resources in </span><span class="No-Break"><span class="koboSpan" id="kobo.825.1">the system:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.826.1">
+#define SYS_SCHEDULE 0
+#define SYS_BUTTON_READ 1
+#define SYS_BLUELED_ON 2
+#define SYS_BLUELED_OFF 3
+#define SYS_BLUELED_TOGGLE 4
+#define SYS_REDLED_ON 5
+#define SYS_REDLED_OFF 6
+#define SYS_REDLED_TOGGLE 7
+#define SYS_GREENLED_ON 8
+#define SYS_GREENLED_OFF 9
+#define SYS_GREENLED_TOGGLE 10</span></pre>
+<p><span class="koboSpan" id="kobo.827.1">Each of these system calls must be handled in </span><strong class="source-inline"><span class="koboSpan" id="kobo.828.1">isr_svc</span></strong><span class="koboSpan" id="kobo.829.1">. </span><span class="koboSpan" id="kobo.829.2">Controlling peripherals and system block registers can be done by calling the driver functions in the handler context, even if this is done just for brevity here. </span><span class="koboSpan" id="kobo.829.3">In a proper design, operations that take more than a few instructions to complete should be deferred to be run by the kernel task the next time it is scheduled. </span><span class="koboSpan" id="kobo.829.4">The following code has been used just to show a possible implementation of </span><strong class="source-inline"><span class="koboSpan" id="kobo.830.1">isr_svc</span></strong><span class="koboSpan" id="kobo.831.1"> that reacts to user requests allowed by the system API, to control the LED and the button on the board, while also providing a mechanism that can be expanded to implement blocking </span><span class="No-Break"><span class="koboSpan" id="kobo.832.1">system calls.</span></span></p>
+<p><span class="koboSpan" id="kobo.833.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.834.1">svc</span></strong><span class="koboSpan" id="kobo.835.1"> service routine executes the requested command, passed as an argument to the </span><a id="_idIndexMarker789"/><span class="koboSpan" id="kobo.836.1">handler itself. </span><span class="koboSpan" id="kobo.836.2">If the system call is blocking, such as the </span><strong class="source-inline"><span class="koboSpan" id="kobo.837.1">SYS_SCHEDULE</span></strong><span class="koboSpan" id="kobo.838.1"> system call, a new task is selected to complete a task switch within </span><span class="No-Break"><span class="koboSpan" id="kobo.839.1">the handler.</span></span></p>
+<p><span class="koboSpan" id="kobo.840.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.841.1">svc</span></strong><span class="koboSpan" id="kobo.842.1"> routine can now handle internal commands, as shown in the following example </span><span class="No-Break"><span class="koboSpan" id="kobo.843.1">handler function:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.844.1">
+void __attribute__((naked)) isr_svc(int arg)
+{
+   store_user_context();
+   asm volatile("mrs %0, psp" : "=r"(t_cur-&gt;sp));
+   if (t_cur-&gt;state == TASK_RUNNING) {
+       t_cur-&gt;state = TASK_READY;
+   }
+   switch(arg) {
+    case SYS_BUTTON_READ: /* cmd to read button value */
+       button_start_read();
+       break;
+    case SYS_SCHEDULE: /* cmd to schedule the next task */
+       t_cur = tasklist_next_ready(t_cur);
+       t_cur-&gt;state = TASK_RUNNING;
+       break;
+    case SYS_BLUELED_ON: /* cmd to turn on blue LED */
+       blue_led_on();
+       break;
+    /* case ... </span><span class="koboSpan" id="kobo.844.2">(more LED related cmds follow) */
+}</span></pre>
+<p><span class="koboSpan" id="kobo.845.1">The </span><a id="_idIndexMarker790"/><span class="koboSpan" id="kobo.846.1">context is resumed at the end of the routine, in the same way as within </span><strong class="source-inline"><span class="koboSpan" id="kobo.847.1">PendSV</span></strong><span class="koboSpan" id="kobo.848.1">. </span><span class="koboSpan" id="kobo.848.2">Though it is optional, a task switch might occur if the call </span><span class="No-Break"><span class="koboSpan" id="kobo.849.1">must block:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.850.1">
+   if (t_cur-&gt;id == 0) {
+       asm volatile("msr msp, %0" ::"r"(t_cur-&gt;sp));
+       restore_kernel_context();
+       asm volatile("mov lr, %0" ::"r"(0xFFFFFFF9));
+       asm volatile("msr CONTROL, %0" ::"r"(0x00));
+   } else {
+       asm volatile("msr psp, %0" ::"r"(t_cur-&gt;sp));
+       restore_user_context();
+       mpu_task_stack_permit(((uint8_t *)((&amp;stack_space))
+            +(t_cur-&gt;id &lt;&lt; 10)));            asm volatile("mov lr, %0" ::"r"(0xFFFFFFFD));
+       asm volatile("msr CONTROL, %0" ::"r"(0x01));
+   }
+   asm volatile("bx lr");}</span></pre>
+<p><span class="koboSpan" id="kobo.851.1">While limited in its functionalities, the new system exports all the APIs needed for our application </span><a id="_idIndexMarker791"/><span class="koboSpan" id="kobo.852.1">threads to run again, once all the prohibited privileged calls have been removed from the task code, and the newly created system calls are </span><span class="No-Break"><span class="koboSpan" id="kobo.853.1">invoked instead:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.854.1">
+void task_test0(void *arg)
+{
+  while(1) {
+    syscall(SYS_BLUELED_ON);
+    mutex_lock(&amp;m);
+    sleep_ms(500);
+    syscall(SYS_BLUELED_OFF);
+    mutex_unlock(&amp;m);
+    sleep_ms(1000);
+  }
+}
+void task_test1(void *arg)
+{
+  syscall(SYS_REDLED_ON);
+  while(1) {
+    sleep_ms(50);
+    mutex_lock(&amp;m);
+    syscall(SYS_REDLED_TOGGLE);
+    mutex_unlock(&amp;m);
+  }
+}
+void task_test2(void *arg)
+{
+  uint32_t toggle_time = 0;
+  syscall(SYS_GREENLED_OFF);
+  while(1) {
+    button_read();
+    if ((jiffies - toggle_time) &gt; 120) {
+      syscall(SYS_GREENLED_TOGGLE);
+      toggle_time = jiffies;
+    }
+  }
+}</span></pre>
+<p><span class="koboSpan" id="kobo.855.1">The code size of a safe operating system may grow quickly if it implements all the operations </span><a id="_idIndexMarker792"/><span class="koboSpan" id="kobo.856.1">in kernel space and has to provide the implementation of all the system calls allowed. </span><span class="koboSpan" id="kobo.856.2">On the other hand, it provides physical memory separation among tasks, and it protects system resources and other memory areas from accidental errors in the </span><span class="No-Break"><span class="koboSpan" id="kobo.857.1">application code.</span></span></p>
+<h1 id="_idParaDest-242"><a id="_idTextAnchor397"/><span class="koboSpan" id="kobo.858.1">Embedded operating systems</span></h1>
+<p><span class="koboSpan" id="kobo.859.1">As illustrated in the previous sections of this chapter, building a scheduler tailored to a custom solution </span><a id="_idIndexMarker793"/><span class="koboSpan" id="kobo.860.1">from scratch is not impossible and, if done properly, would provide the closest approximation of the desired architecture and focus on the specific characteristics offered by the target hardware. </span><span class="koboSpan" id="kobo.860.2">In a real-life scenario, however, it is advisable to consider one of the many embedded operating systems options available and ready to be integrated into the architecture among those supporting the selected hardware platform, and providing the features that we have learned about in </span><span class="No-Break"><span class="koboSpan" id="kobo.861.1">this chapter.</span></span></p>
+<p><span class="koboSpan" id="kobo.862.1">Many of the available kernel implementations for microcontrollers are open source and in a healthy </span><a id="_idIndexMarker794"/><span class="koboSpan" id="kobo.863.1">development state, so they are deserving of their well-established role in the embedded market. </span><span class="koboSpan" id="kobo.863.2">A few of them are sufficiently popular and widely tested to provide a foundation for building reliable embedded </span><span class="No-Break"><span class="koboSpan" id="kobo.864.1">multitasking applications.</span></span></p>
+<h2 id="_idParaDest-243"><a id="_idTextAnchor398"/><span class="koboSpan" id="kobo.865.1">OS selection</span></h2>
+<p><span class="koboSpan" id="kobo.866.1">Selecting the operating system that best fits the purpose and the platform under development is a </span><a id="_idIndexMarker795"/><span class="koboSpan" id="kobo.867.1">delicate task that impacts the overall architecture, may have consequences on the whole development model, and may introduce API lock-ins in the application code base. </span><span class="koboSpan" id="kobo.867.2">The criteria for selection vary according to the hardware characteristics, the integration with the other components, such as third-party libraries, the facilities offered to interact with peripherals and interfaces, and, most importantly, the range of use cases that the system is designed </span><span class="No-Break"><span class="koboSpan" id="kobo.868.1">to cover.</span></span></p>
+<p><span class="koboSpan" id="kobo.869.1">With a few exceptions, operating systems include, alongside the scheduler and the memory management, a set of integrated libraries, modules, and tools. </span><span class="koboSpan" id="kobo.869.2">Depending on the purpose, an embedded OS may provide a suite that covers several areas, including </span><span class="No-Break"><span class="koboSpan" id="kobo.870.1">the following:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.871.1">Platform-specific hardware </span><span class="No-Break"><span class="koboSpan" id="kobo.872.1">abstraction layers</span></span></li>
+<li><span class="koboSpan" id="kobo.873.1">Device drivers for </span><span class="No-Break"><span class="koboSpan" id="kobo.874.1">common peripherals</span></span></li>
+<li><span class="koboSpan" id="kobo.875.1">TCP/IP stack integration </span><span class="No-Break"><span class="koboSpan" id="kobo.876.1">for connectivity</span></span></li>
+<li><span class="koboSpan" id="kobo.877.1">Filesystems and </span><span class="No-Break"><span class="koboSpan" id="kobo.878.1">file abstractions</span></span></li>
+<li><span class="koboSpan" id="kobo.879.1">Integrated power </span><span class="No-Break"><span class="koboSpan" id="kobo.880.1">management systems</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.881.1">Depending on the implementation of the thread model in the scheduler, some systems are expected to run with a fixed amount of predefined tasks, configured at compile time, while others opt for more complex processes and thread hierarchies that allow us to create new threads at runtime, and terminate them at any point in the execution. </span><span class="koboSpan" id="kobo.881.2">However, dynamic task creation and termination are rarely a requirement on embedded systems, and in most of these cases, an alternative design may help us work </span><span class="No-Break"><span class="koboSpan" id="kobo.882.1">around it.</span></span></p>
+<p><span class="koboSpan" id="kobo.883.1">More complex systems introduce some overhead due to the additional logic in the system exceptions code and are less fit for critical real-time operations, which is the reason why most successful RTOSs nowadays maintain their simple architecture, providing the bare minimum to run multiple threads with a flat-memory mode that is easy to manage and does not require additional context switches to manage the privilege of the operations, keeping the latency low and measurable to comply with </span><span class="No-Break"><span class="koboSpan" id="kobo.884.1">real-time requirements.</span></span></p>
+<p><span class="koboSpan" id="kobo.885.1">Due to the many options available and the continuous evolution following technological progress, providing an exhaustive list of operating systems for embedded devices is outside the scope of this book. </span><span class="koboSpan" id="kobo.885.2">Unlike the PC domain, where less than a handful of operating systems dominate the entire market, the several embedded OSs are all very different from each other in terms of their design, APIs, drivers, supported hardware, and </span><span class="No-Break"><span class="koboSpan" id="kobo.886.1">build tools.</span></span></p>
+<p><span class="koboSpan" id="kobo.887.1">In this last section of this chapter, we will explore two of the most popular open-source operating </span><a id="_idIndexMarker796"/><span class="koboSpan" id="kobo.888.1">systems for embedded devices, FreeRTOS and Riot OS, by comparing their design choices for parallel task execution, memory management, and accessory </span><span class="No-Break"><span class="koboSpan" id="kobo.889.1">features available.</span></span></p>
+<h2 id="_idParaDest-244"><a id="_idTextAnchor399"/><span class="koboSpan" id="kobo.890.1">FreeRTOS</span></h2>
+<p><span class="koboSpan" id="kobo.891.1">Possibly the most popular among the open-source operating systems for embedded devices, approaching </span><a id="_idIndexMarker797"/><span class="koboSpan" id="kobo.892.1">20 years of active development at the time of writing, FreeRTOS is extremely </span><a id="_idIndexMarker798"/><span class="koboSpan" id="kobo.893.1">portable across many embedded platforms, with tens of available hardware ports and support for most, if not all, embedded </span><span class="No-Break"><span class="koboSpan" id="kobo.894.1">CPU architectures.</span></span></p>
+<p><span class="koboSpan" id="kobo.895.1">Designed with a small code footprint and simple interfaces in mind, this system does not offer a complete driver’s platform or advanced CPU-specific features, but rather focuses on two things: real-time scheduling of the threads and heap memory management. </span><span class="koboSpan" id="kobo.895.2">The simplicity of its design allows it to be ported to a large number of platforms and keeps the development focus on a restricted amount of well-tested and </span><span class="No-Break"><span class="koboSpan" id="kobo.896.1">reliable operations.</span></span></p>
+<p><span class="koboSpan" id="kobo.897.1">On the other hand, third-party libraries and example code provided by hardware manufacturers often integrate FreeRTOS into their software kit, most of the time as the only alternative to the bare-metal approach for test applications and examples. </span><span class="koboSpan" id="kobo.897.2">Since third-party code is not directly included in FreeRTOS, this promotes competition among different solutions, as, for example, it is possible to integrate it with many TCP/IP stack implementations to provide networking support, even though none of them are part of the core system or tightly integrated with the kernel. </span><span class="koboSpan" id="kobo.897.3">Device drivers are not included in the kernel, but there are several demos of complete systems based on the integration of FreeRTOS with board support packages both distributed by the manufacturers or as part of a broader ecosystem, where FreeRTOS is included as </span><span class="No-Break"><span class="koboSpan" id="kobo.898.1">a kernel.</span></span></p>
+<p><span class="koboSpan" id="kobo.899.1">The scheduler is preemptive, with fixed priority levels and priority inheritance through shared mutexes. </span><span class="koboSpan" id="kobo.899.2">Priority levels and stack space sizes for all threads are decided upon when the thread is created. </span><span class="koboSpan" id="kobo.899.3">A typical FreeRTOS application starts from its </span><strong class="source-inline"><span class="koboSpan" id="kobo.900.1">main</span></strong><span class="koboSpan" id="kobo.901.1"> function, which is in charge of initializing the threads and starting the scheduler. </span><span class="koboSpan" id="kobo.901.2">A new task can be spawned using the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.902.1">xTaskCreate</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.903.1"> function:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.904.1">
+xTaskCreate(task_entry_fn, "TaskName", task_stack_size,
+      ( void * ) custom_params, priority, task_handle);</span></pre>
+<p><span class="koboSpan" id="kobo.905.1">The first parameter is a pointer to the </span><strong class="source-inline"><span class="koboSpan" id="kobo.906.1">main</span></strong><span class="koboSpan" id="kobo.907.1"> function, which will be the entry point for the task. </span><span class="koboSpan" id="kobo.907.2">When the entry point of the task is invoked, the custom parameters, which are specified as the fourth parameter here, will be passed as the sole argument for the function, allowing us to share a user-defined parameter with the thread upon task creation. </span><span class="koboSpan" id="kobo.907.3">The second argument of </span><strong class="source-inline"><span class="koboSpan" id="kobo.908.1">xTaskCreate</span></strong><span class="koboSpan" id="kobo.909.1"> is just the name of the task in a printable string, which is used for debugging purposes. </span><span class="koboSpan" id="kobo.909.2">The third and fifth parameters specify the </span><a id="_idIndexMarker799"/><span class="koboSpan" id="kobo.910.1">stack size and the priority for this task, respectively. </span><span class="koboSpan" id="kobo.910.2">Finally, the last </span><a id="_idIndexMarker800"/><span class="koboSpan" id="kobo.911.1">argument is an optional pointer to the internal struct of the task that will be populated when </span><strong class="source-inline"><span class="koboSpan" id="kobo.912.1">xTaskCreate</span></strong><span class="koboSpan" id="kobo.913.1"> returns, if a valid pointer was provided. </span><span class="koboSpan" id="kobo.913.2">This object, which is of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.914.1">TaskHandle_t</span></strong><span class="koboSpan" id="kobo.915.1"> type, is required to access some of the task functionalities, such as task notifications or generic </span><span class="No-Break"><span class="koboSpan" id="kobo.916.1">task utilities.</span></span></p>
+<p><span class="koboSpan" id="kobo.917.1">Once the application has created its tasks, the main function invokes the main scheduler by calling </span><span class="No-Break"><span class="koboSpan" id="kobo.918.1">the following:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.919.1">
+    vTaskStartScheduler();</span></pre>
+<p><span class="koboSpan" id="kobo.920.1">If everything goes well, this function never returns and the main function of the application becomes the actual kernel task, which is in charge of scheduling the tasks defined earlier and newer tasks that can be added </span><span class="No-Break"><span class="koboSpan" id="kobo.921.1">later on.</span></span></p>
+<p><span class="koboSpan" id="kobo.922.1">One of the most interesting features offered by FreeRTOS is heap memory management, which is available in five flavors optimized for </span><span class="No-Break"><span class="koboSpan" id="kobo.923.1">different designs:</span></span></p>
+<ul>
+<li><strong class="bold"><span class="koboSpan" id="kobo.924.1">Heap 1</span></strong><span class="koboSpan" id="kobo.925.1">: Allows only one-time, static allocation in the heap, with no possibility of freeing </span><a id="_idIndexMarker801"/><span class="koboSpan" id="kobo.926.1">up the memory. </span><span class="koboSpan" id="kobo.926.2">This is useful if the applications can allocate all the space needed at the beginning, as the memory will never become available to the </span><span class="No-Break"><span class="koboSpan" id="kobo.927.1">system again.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.928.1">Heap 2</span></strong><span class="koboSpan" id="kobo.929.1">: Allows freeing memory, but does not reassemble the freed blocks. </span><span class="koboSpan" id="kobo.929.2">This mechanism is suitable for implementations with a limited number of heap allocations, especially if they keep the same size as previously freed objects. </span><span class="koboSpan" id="kobo.929.3">If used improperly, this model may result in a heavily fragmented stack with the risk of running out of heap in the long run, even if the total size of the allocated object does not increase, due to the lack of </span><span class="No-Break"><span class="koboSpan" id="kobo.930.1">memory reorganization.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.931.1">Heap 3</span></strong><span class="koboSpan" id="kobo.932.1">: This method is a wrapper for a </span><strong class="source-inline"><span class="koboSpan" id="kobo.933.1">malloc</span></strong><span class="koboSpan" id="kobo.934.1">/</span><strong class="source-inline"><span class="koboSpan" id="kobo.935.1">free</span></strong><span class="koboSpan" id="kobo.936.1"> implementation provided by a third-party library that ensures that the wrapped memory operations become thread-safe when used within the FreeRTOS multithreading context. </span><span class="koboSpan" id="kobo.936.2">This model allows us to define a custom memory management method by defining the </span><strong class="source-inline"><span class="koboSpan" id="kobo.937.1">malloc</span></strong><span class="koboSpan" id="kobo.938.1">/</span><strong class="source-inline"><span class="koboSpan" id="kobo.939.1">free</span></strong><span class="koboSpan" id="kobo.940.1"> function in a separate model, or by using the library implementation and attaching the </span><strong class="source-inline"><span class="koboSpan" id="kobo.941.1">sbrk()</span></strong><span class="koboSpan" id="kobo.942.1"> system call, as seen in </span><a href="B18730_05.xhtml#_idTextAnchor149"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.943.1">Chapter 5</span></em></span></a><span class="koboSpan" id="kobo.944.1">, </span><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.945.1">Memory Management</span></em></span><span class="No-Break"><span class="koboSpan" id="kobo.946.1">.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.947.1">Heap 4</span></strong><span class="koboSpan" id="kobo.948.1">: This is a more advanced memory manager with support for memory coalescence. </span><span class="koboSpan" id="kobo.948.2">Contiguous </span><strong class="source-inline"><span class="koboSpan" id="kobo.949.1">free</span></strong><span class="koboSpan" id="kobo.950.1"> blocks are merged and some housekeeping is done to optimize the use of the heap across heterogeneous allocations from different threads. </span><span class="koboSpan" id="kobo.950.2">This method limits the fragmentation of the heap and improves memory usage in the </span><span class="No-Break"><span class="koboSpan" id="kobo.951.1">long run.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.952.1">Heap 5</span></strong><span class="koboSpan" id="kobo.953.1">: This method uses the same mechanism as heap 4, but allows us to define multiple non-contiguous memory regions to be part of the same heap space. </span><span class="koboSpan" id="kobo.953.2">This </span><a id="_idIndexMarker802"/><span class="koboSpan" id="kobo.954.1">method is a ready-to-use solution for physical fragmentation, provided that the regions are defined during initialization time and provided to the system through the </span><span class="No-Break"><span class="koboSpan" id="kobo.955.1">available API.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.956.1">Selecting a specific heap model consists of including one of the available source files defining the same functions with different implementations. </span><span class="koboSpan" id="kobo.956.2">These files are part of the FreeRTOS distribution under recognizable names (</span><strong class="source-inline"><span class="koboSpan" id="kobo.957.1">heap_1.c</span></strong><span class="koboSpan" id="kobo.958.1">, </span><strong class="source-inline"><span class="koboSpan" id="kobo.959.1">heap_2.c</span></strong><span class="koboSpan" id="kobo.960.1">, and so on). </span><span class="koboSpan" id="kobo.960.2">Only one is chosen and must be linked to the final application to </span><span class="No-Break"><span class="koboSpan" id="kobo.961.1">manage memory.</span></span></p>
+<p><span class="koboSpan" id="kobo.962.1">The important functions that are exposed by the heap memory manager in FreeRTOS are </span><strong class="source-inline"><span class="koboSpan" id="kobo.963.1">pvPortMalloc</span></strong><span class="koboSpan" id="kobo.964.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.965.1">pvPortFree</span></strong><span class="koboSpan" id="kobo.966.1">, both of which have similar signatures and effects as the </span><strong class="source-inline"><span class="koboSpan" id="kobo.967.1">malloc</span></strong><span class="koboSpan" id="kobo.968.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.969.1">free</span></strong><span class="koboSpan" id="kobo.970.1"> functions that we saw in </span><a href="B18730_05.xhtml#_idTextAnchor149"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.971.1">Chapter 5</span></em></span></a><span class="koboSpan" id="kobo.972.1">, </span><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.973.1">Memory Management</span></em></span><span class="No-Break"><span class="koboSpan" id="kobo.974.1">.</span></span></p>
+<p><span class="koboSpan" id="kobo.975.1">Support for MPU and thread mode is available, and threads can be run in restricted mode, where </span><a id="_idIndexMarker803"/><span class="koboSpan" id="kobo.976.1">the only memory that is accessible is the </span><a id="_idIndexMarker804"/><span class="koboSpan" id="kobo.977.1">one assigned to the specific thread. </span><span class="koboSpan" id="kobo.977.2">When running threads in restricted mode, the system API is still available as the system functions are mapped in a specific area in memory. </span><span class="koboSpan" id="kobo.977.3">The main safety strategy consists of voluntarily placing tasks in restricted mode and defining memory access boundaries by allowing the task to only access its own stack and up to three configurable regions in the </span><span class="No-Break"><span class="koboSpan" id="kobo.978.1">mapped memory.</span></span></p>
+<p><span class="koboSpan" id="kobo.979.1">Low-power management is limited to sleep mode, and no deep sleep mechanism is implemented by default. </span><span class="koboSpan" id="kobo.979.2">The system, however, allows us to redefine the scheduler callback functions to enter custom low-power modes, which may be used as starting points to implement tailored </span><span class="No-Break"><span class="koboSpan" id="kobo.980.1">power-saving strategies.</span></span></p>
+<p><span class="koboSpan" id="kobo.981.1">Recent versions of FreeRTOS include specific distributions with third-party code as a starting point for building a secure connected platform for IoT systems. </span><span class="koboSpan" id="kobo.981.2">The same authors have created a TCP/IP stack that is designed for FreeRTOS, and it is distributed in a FreeRTOS Plus bundle package alongside the kernel and wolfSSL library to support secure </span><span class="No-Break"><span class="koboSpan" id="kobo.982.1">socket communication.</span></span></p>
+<h2 id="_idParaDest-245"><a id="_idTextAnchor400"/><span class="koboSpan" id="kobo.983.1">RIOT OS</span></h2>
+<p><span class="koboSpan" id="kobo.984.1">Mostly built on top of constrained microcontrollers, such as the Cortex-M0, low-power embedded systems </span><a id="_idIndexMarker805"/><span class="koboSpan" id="kobo.985.1">are often little, battery-powered, or energy-harvesting </span><a id="_idIndexMarker806"/><span class="koboSpan" id="kobo.986.1">devices, sporadically connecting to remote services using wireless technologies. </span><span class="koboSpan" id="kobo.986.2">These small, inexpensive systems are used in both IoT projects and install-and-forget scenarios, where they can operate for years on a single integrated power source with nearly no </span><span class="No-Break"><span class="koboSpan" id="kobo.987.1">maintenance costs.</span></span></p>
+<p><span class="koboSpan" id="kobo.988.1">Bare-metal architectures are still very popular in these use cases. </span><span class="koboSpan" id="kobo.988.2">However, a few very lightweight operating systems have been designed to organize and synchronize tasks using as few resources as possible, while still keeping a specific focus on power saving and connectivity. </span><span class="koboSpan" id="kobo.988.3">The challenge when developing this kind of operating system is to find a way to fit complex networking protocols into a few kilobytes of memory. </span><span class="koboSpan" id="kobo.988.4">Future-proof systems designed for the IoT services offer native IPv6 networking, often through 6LoWPAN, and fully equipped yet minimalist TCP/IP stacks, designed to sacrifice throughput in favor of smaller </span><span class="No-Break"><span class="koboSpan" id="kobo.989.1">memory footprints.</span></span></p>
+<p><span class="koboSpan" id="kobo.990.1">Due to their small code size, these systems may lack some advanced features by design. </span><span class="koboSpan" id="kobo.990.2">For example, they may not provide any memory safety strategies, or have a limited connectivity stack to save resources. </span><span class="koboSpan" id="kobo.990.3">It is not uncommon to have these kinds of systems run on a UDP-only </span><span class="No-Break"><span class="koboSpan" id="kobo.991.1">network stack.</span></span></p>
+<p><span class="koboSpan" id="kobo.992.1">Riot OS has a fast-growing community of enthusiasts and system developers. </span><span class="koboSpan" id="kobo.992.2">The goal of the project is to provide a system designed for low power consumption, taking into account the requirements to integrate the device into larger distributed systems. </span><span class="koboSpan" id="kobo.992.3">The core system is very scalable, as single components can be excluded at </span><span class="No-Break"><span class="koboSpan" id="kobo.993.1">compile time.</span></span></p>
+<p><span class="koboSpan" id="kobo.994.1">The approach used by Riot OS differs from the minimalist concept we saw in FreeRTOS, where the bare minimum amount of code is part of the core operating system, and everything else is integrated as external components. </span><span class="koboSpan" id="kobo.994.2">Riot OS offers a wide selection of libraries and device support code, including network stacks and wireless drivers communication, which makes this system particularly IoT-friendly. </span><span class="koboSpan" id="kobo.994.3">Components that are not part of the core functionality of the OS are divided into optional modules, with a custom, makefile-based build system designed to facilitate the inclusion of the modules in </span><span class="No-Break"><span class="koboSpan" id="kobo.995.1">the application.</span></span></p>
+<p><span class="koboSpan" id="kobo.996.1">From an API point of view, the choice of the Riot community is an attempt to mimic the POSIX interface as much as possible. </span><span class="koboSpan" id="kobo.996.2">This improves the experience of embedded application </span><a id="_idIndexMarker807"/><span class="koboSpan" id="kobo.997.1">development for programmers coming from different backgrounds </span><a id="_idIndexMarker808"/><span class="koboSpan" id="kobo.998.1">and is used to write code using the APIs offered by the standard C language to access the resources on the system. </span><span class="koboSpan" id="kobo.998.2">The system, however, still runs on a flat model. </span><span class="koboSpan" id="kobo.998.3">Privilege separation is not implemented at the system level, and user space applications are still supposed to access system resources by referencing the system </span><span class="No-Break"><span class="koboSpan" id="kobo.999.1">memory directly.</span></span></p>
+<p><span class="koboSpan" id="kobo.1000.1">As an additional safety measure, the MPU can be used to detect stack overflows in the single threads by placing a small read-only area at the bottom of the stack, which triggers an exception if threads are attempting to write past the limit of their assigned </span><span class="No-Break"><span class="koboSpan" id="kobo.1001.1">stack space.</span></span></p>
+<p><span class="koboSpan" id="kobo.1002.1">Riot implements a few communication stacks as modules, including a minimalist IP stack called </span><strong class="bold"><span class="koboSpan" id="kobo.1003.1">GNRC</span></strong><span class="koboSpan" id="kobo.1004.1">. </span><span class="koboSpan" id="kobo.1004.2">GNRC is an IPv6-only </span><a id="_idIndexMarker809"/><span class="koboSpan" id="kobo.1005.1">implementation tailored to the features of the underlying 802.15.4 network and provides a socket implementation to write lightweight IoT applications. </span><span class="koboSpan" id="kobo.1005.2">The support for networking includes a lwIP compatibility layer. </span><span class="koboSpan" id="kobo.1005.3">lwIP is included as a module to provide more complete TCP/IP implementations when required. </span><span class="koboSpan" id="kobo.1005.4">WolfSSL is also available in a module, opening up possibilities for securing socket communication using the latest TLS version, as well as utilizing cryptography functionality to secure data at rest, </span><span class="No-Break"><span class="koboSpan" id="kobo.1006.1">for example.</span></span></p>
+<p><span class="koboSpan" id="kobo.1007.1">One of the features offered by Riot is access to the configuration of low-power modes, which is integrated into the system through the power management module. </span><span class="koboSpan" id="kobo.1007.2">This module provides an abstraction for managing platform-specific features, such as the stop and standby modes on Cortex-M platforms. </span><span class="koboSpan" id="kobo.1007.3">Low-power modes can be activated at runtime from the application code to facilitate the integration of low-power strategies in the architecture. </span><span class="koboSpan" id="kobo.1007.4">This is done using the real-time clock, the watchdog timer, or other external signals to return to normal </span><span class="No-Break"><span class="koboSpan" id="kobo.1008.1">running mode.</span></span></p>
+<p><span class="koboSpan" id="kobo.1009.1">The scheduler in Riot OS is tickless and based mostly on cooperation. </span><span class="koboSpan" id="kobo.1009.2">Tasks can suspend themselves explicitly by calling the </span><strong class="source-inline"><span class="koboSpan" id="kobo.1010.1">task_yield</span></strong><span class="koboSpan" id="kobo.1011.1"> function, or by calling any of the blocking </span><a id="_idIndexMarker810"/><span class="koboSpan" id="kobo.1012.1">functions to access kernel features (such as IPC and timers) and hardware </span><a id="_idIndexMarker811"/><span class="koboSpan" id="kobo.1013.1">peripherals. </span><span class="koboSpan" id="kobo.1013.2">Riot OS does not enforce any concurrency based on timeslices; a task is forcibly interrupted uniquely in case a hardware interrupt is received. </span><span class="koboSpan" id="kobo.1013.3">Programming applications with this scheduler requires particular attention, because accidentally creating a busy loop in one task may lock up the entire system </span><span class="No-Break"><span class="koboSpan" id="kobo.1014.1">to starvation.</span></span></p>
+<p><span class="koboSpan" id="kobo.1015.1">Tasks in Riot OS can be created through the </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.1016.1">thread_create</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.1017.1"> function:</span></span></p>
+<pre class="source-code"><span class="koboSpan" id="kobo.1018.1">
+ thread_create(task_stack_mem, task_stack_size, priority, 
+     flags, task_entry_fn, (void*)custom_args, "TaskName");</span></pre>
+<p><span class="koboSpan" id="kobo.1019.1">While the syntax of </span><strong class="source-inline"><span class="koboSpan" id="kobo.1020.1">thread_create</span></strong><span class="koboSpan" id="kobo.1021.1"> may look similar to that of the equivalent function in FreeRTOS, we can spot a few differences in the approach to the two schedulers. </span><span class="koboSpan" id="kobo.1021.2">In Riot OS, for example, the memory reserved for the stack space of the task being created must be allocated by the caller. </span><span class="koboSpan" id="kobo.1021.3">The stack space cannot be automatically allocated upon task creation, which means more code in the caller but also more flexibility for customizing the location of each stack space in memory. </span><span class="koboSpan" id="kobo.1021.4">As we mentioned previously, the scheduler is tickless, so there is no necessity to start it manually. </span><span class="koboSpan" id="kobo.1021.5">Tasks can be created and stopped at any time during </span><span class="No-Break"><span class="koboSpan" id="kobo.1022.1">the execution.</span></span></p>
+<p><span class="koboSpan" id="kobo.1023.1">Being designed for embedded targets with little RAM available, the use of dynamically allocated memory is discouraged in Riot OS. </span><span class="koboSpan" id="kobo.1023.2">However, the system offers three different approaches for heap </span><span class="No-Break"><span class="koboSpan" id="kobo.1024.1">memory management:</span></span></p>
+<ul>
+<li><strong class="bold"><span class="koboSpan" id="kobo.1025.1">One-time static allocation</span></strong><span class="koboSpan" id="kobo.1026.1">: Similar to the FreeRTOS “heap 1” model, this allocator does </span><a id="_idIndexMarker812"/><span class="koboSpan" id="kobo.1027.1">not offer any facilities to </span><a id="_idIndexMarker813"/><span class="koboSpan" id="kobo.1028.1">free or reuse memory areas. </span><span class="koboSpan" id="kobo.1028.2">Once allocated, the memory is reserved and never released. </span><span class="koboSpan" id="kobo.1028.3">By default, the </span><strong class="source-inline"><span class="koboSpan" id="kobo.1029.1">malloc</span></strong><span class="koboSpan" id="kobo.1030.1"> function uses this implementation, and the </span><strong class="source-inline"><span class="koboSpan" id="kobo.1031.1">free</span></strong><span class="koboSpan" id="kobo.1032.1"> function has </span><span class="No-Break"><span class="koboSpan" id="kobo.1033.1">no effect.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.1034.1">Memory-array allocator</span></strong><span class="koboSpan" id="kobo.1035.1">: A statically allocated buffer can be used as a memory </span><a id="_idIndexMarker814"/><span class="koboSpan" id="kobo.1036.1">pool for pseudo-dynamic allocation requests of a fixed, predefined size. </span><span class="koboSpan" id="kobo.1036.2">This allocator may be useful in those scenarios where multiple buffers of the same size are handled by the application. </span><span class="koboSpan" id="kobo.1036.3">This allocator has a custom API and does not modify the behavior of the default </span><span class="No-Break"><span class="koboSpan" id="kobo.1037.1">malloc function.</span></span></li>
+<li><strong class="bold"><span class="koboSpan" id="kobo.1038.1">Two-level segregate fit (TLSF) allocator</span></strong><span class="koboSpan" id="kobo.1039.1">: This allocator supports multiple memory </span><a id="_idIndexMarker815"/><span class="koboSpan" id="kobo.1040.1">pools based on an algorithm optimized for RTOS and provides dynamic memory support while dealing with real-time deadlines. </span><span class="koboSpan" id="kobo.1040.2">The support for TLSF </span><strong class="source-inline"><span class="koboSpan" id="kobo.1041.1">malloc</span></strong><span class="koboSpan" id="kobo.1042.1"> is available as an optional module. </span><span class="koboSpan" id="kobo.1042.2">When compiled in, the module replaces the </span><strong class="source-inline"><span class="koboSpan" id="kobo.1043.1">malloc</span></strong><span class="koboSpan" id="kobo.1044.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.1045.1">free</span></strong><span class="koboSpan" id="kobo.1046.1"> functions provided by the one-time allocator, which is </span><span class="No-Break"><span class="koboSpan" id="kobo.1047.1">then disabled.</span></span></li>
+</ul>
+<p><span class="koboSpan" id="kobo.1048.1">Riot OS is an interesting </span><a id="_idIndexMarker816"/><span class="koboSpan" id="kobo.1049.1">choice as a starting point for IoT </span><a id="_idIndexMarker817"/><span class="koboSpan" id="kobo.1050.1">systems. </span><span class="koboSpan" id="kobo.1050.2">It provides a wide range of device drivers and modules, built and inte</span><a id="_idTextAnchor401"/><span class="koboSpan" id="kobo.1051.1">grated on top of a lightweight and energy-aware core system, including a microkernel with a </span><span class="No-Break"><span class="koboSpan" id="kobo.1052.1">pre-emptive scheduler.</span></span></p>
+<h1 id="_idParaDest-246"><a id="_idTextAnchor402"/><span class="koboSpan" id="kobo.1053.1">Summary</span></h1>
+<p><span class="koboSpan" id="kobo.1054.1">In this chapter, we explored the typical components of an embedded operating system by implementing one from scratch, with the only purpose of studying the internals of the system, how the various mechanisms can be integrated into the scheduler, and how blocking calls, driver APIs, and synchronization mechanisms can be provided </span><span class="No-Break"><span class="koboSpan" id="kobo.1055.1">to tasks.</span></span></p>
+<p><span class="koboSpan" id="kobo.1056.1">We then analyzed the components of two of the many very popular open-source, real-time operating systems for embedded microcontrollers, namely FreeRTOS and Riot OS, to highlight the differences in the design choices, implementation, and APIs provided for the applications to work with threads and </span><span class="No-Break"><span class="koboSpan" id="kobo.1057.1">memory management.</span></span></p>
+<p><span class="koboSpan" id="kobo.1058.1">At this point, we can select the most appropriate OS for our architecture, and even write one ourselves when needed, by implementing our favorite scheduling, priority mechanisms, privilege separation between tasks and the kernel itself, and </span><span class="No-Break"><span class="koboSpan" id="kobo.1059.1">memory segmentation.</span></span></p>
+<p><span class="koboSpan" id="kobo.1060.1">In the next chapter, we will take a closer look at </span><strong class="bold"><span class="koboSpan" id="kobo.1061.1">Trusted Execution Environments</span></strong><span class="koboSpan" id="kobo.1062.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.1063.1">TEEs</span></strong><span class="koboSpan" id="kobo.1064.1">), with a particular focus on the TrustZone-M features recently introduced by ARM in their latest family of microcontrollers, which adds a new orthogonal level of </span><span class="No-Break"><span class="koboSpan" id="kobo.1065.1">privilege separation.</span></span></p>
+</div>
+</body></html>

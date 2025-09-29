@@ -1,0 +1,835 @@
+<html><head></head><body>
+<div id="_idContainer050">
+<h1 class="chapter-number" id="_idParaDest-227"><a id="_idTextAnchor264"/><span class="koboSpan" id="kobo.1.1">5</span></h1>
+<h1 id="_idParaDest-228"><a id="_idTextAnchor265"/><span class="koboSpan" id="kobo.2.1">Deciphering Order-Independent Transparency</span></h1>
+<p><span class="koboSpan" id="kobo.3.1">Rendering transparent objects isn’t always easy. </span><span class="koboSpan" id="kobo.3.2">While opaque objects can be rendered in any order, transparent objects need to be rendered from farthest to nearest relative to the camera, which implies an extra sorting step before performing the actual rendering. </span><span class="koboSpan" id="kobo.3.3">This depth sorting ensures that more distant objects are blended into the frame buffer first, followed by nearer objects, allowing for accurate composition of </span><span class="No-Break"><span class="koboSpan" id="kobo.4.1">transparent layers.</span></span></p>
+<p><span class="koboSpan" id="kobo.5.1">Sorting can become computationally expensive and error-prone, especially when dealing with complex scenes, intersecting objects, or real-time rendering scenarios. </span><span class="koboSpan" id="kobo.5.2">Additionally, sorting fails to solve the problem of cyclic overlaps, where multiple objects interpenetrate in such a way that no single depth-sorting order can accurately represent their </span><span class="No-Break"><span class="koboSpan" id="kobo.6.1">visual appearance.</span></span></p>
+<p><span class="koboSpan" id="kobo.7.1">Order-independent transparency techniques try to solve these problems by accumulating transparency information in a way that doesn’t depend on the order in which objects are processed. </span><span class="koboSpan" id="kobo.7.2">This chapter delves into the complexities and challenges of rendering transparent objects, a task that requires precision and careful execution. </span><span class="koboSpan" id="kobo.7.3">In contrast to opaque objects, which can be rendered in any order, transparent objects necessitate rendering based on their depth in relation to the camera, from the farthest to the nearest. </span><span class="koboSpan" id="kobo.7.4">This involves an additional sorting step, which, while ensuring accurate composition of transparent layers, can prove to be computationally intensive and prone </span><span class="No-Break"><span class="koboSpan" id="kobo.8.1">to errors.</span></span></p>
+<p><span class="koboSpan" id="kobo.9.1">In this chapter we’re going to cover the following </span><span class="No-Break"><span class="koboSpan" id="kobo.10.1">main topics:</span></span></p>
+<ul>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.11.1">Implementing Depth-Peeling</span></span></li>
+<li><span class="koboSpan" id="kobo.12.1">Implementing </span><span class="No-Break"><span class="koboSpan" id="kobo.13.1">Dual Depth-Peeling</span></span></li>
+<li><span class="koboSpan" id="kobo.14.1">Implementing Linked-List </span><span class="No-Break"><span class="koboSpan" id="kobo.15.1">Order-Independent Transparency</span></span></li>
+<li><span class="koboSpan" id="kobo.16.1">Implementing Weighted </span><span class="No-Break"><span class="koboSpan" id="kobo.17.1">Order-Independent Transparency</span></span></li>
+</ul>
+<h1 id="_idParaDest-229"><a id="_idTextAnchor266"/><span class="koboSpan" id="kobo.18.1">Technical requirements</span></h1>
+<p><span class="koboSpan" id="kobo.19.1">For this chapter, you will need to make sure you have VS 2022 installed along with the Vulkan SDK. </span><span class="koboSpan" id="kobo.19.2">Basic familiarity with the C++ programming language and an understanding of OpenGL or any other graphics API will be useful. </span><span class="koboSpan" id="kobo.19.3">Please revisit </span><a href="B18491_01.xhtml#_idTextAnchor019"><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.20.1">Chapter 1</span></em></span></a><em class="italic"><span class="koboSpan" id="kobo.21.1">, Vulkan Core Concepts</span></em><span class="koboSpan" id="kobo.22.1">, under the </span><em class="italic"><span class="koboSpan" id="kobo.23.1">Technical requirements </span></em><span class="koboSpan" id="kobo.24.1">section for details on setting up and building executables for this chapter. </span><span class="koboSpan" id="kobo.24.2">All recipes for this chapter are encapsulated in a single executable and can be launched using </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.25.1">Chapter05_Transparency.exe</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.26.1"> executable.</span></span></p>
+<h1 id="_idParaDest-230"><a id="_idTextAnchor267"/><span class="koboSpan" id="kobo.27.1">Implementing Depth-Peeling</span></h1>
+<p><strong class="bold"><span class="koboSpan" id="kobo.28.1">Depth Peeling</span></strong><span class="koboSpan" id="kobo.29.1"> was introduced in 2001 by Cass Everitt as a solution to</span><a id="_idIndexMarker413"/><span class="koboSpan" id="kobo.30.1"> render semi-transparent geometry without the need to sort the geometry from back-to-front. </span><span class="koboSpan" id="kobo.30.2">The technique consists of rendering the scene multiple times (passes). </span><span class="koboSpan" id="kobo.30.3">At each pass, only the nearest fragments to the camera are rendered and their depth is collected to be used on the next pass. </span><span class="koboSpan" id="kobo.30.4">On each pass, except for the first pass, fragments closer than the ones in the depth pass collected in the previous iteration are discarded. </span><span class="koboSpan" id="kobo.30.5">This process </span><em class="italic"><span class="koboSpan" id="kobo.31.1">peels</span></em><span class="koboSpan" id="kobo.32.1"> the scene into consecutive layers, from front to back. </span><span class="koboSpan" id="kobo.32.2">At the end of the process, all layers are blended into one final image, which is then blended once more with </span><span class="No-Break"><span class="koboSpan" id="kobo.33.1">the background.</span></span></p>
+<h2 id="_idParaDest-231"><a id="_idTextAnchor268"/><span class="koboSpan" id="kobo.34.1">Getting ready</span></h2>
+<p><span class="koboSpan" id="kobo.35.1">In the repository mentioned in </span><em class="italic"><span class="koboSpan" id="kobo.36.1">Technical requirements</span></em><span class="koboSpan" id="kobo.37.1">, the Depth Peeling algorithm is implemented by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.38.1">DepthPeeling</span></strong><span class="koboSpan" id="kobo.39.1"> class, located in </span><strong class="source-inline"><span class="koboSpan" id="kobo.40.1">source/enginecore/passes/DepthPeeling.hpp</span></strong><span class="koboSpan" id="kobo.41.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.42.1">cpp</span></strong><span class="koboSpan" id="kobo.43.1"> files. </span><span class="koboSpan" id="kobo.43.2">In this recipe, you will learn how to peel away or progressively remove layers of transparent objects in your rendering process. </span><span class="koboSpan" id="kobo.43.3">This technique ensures accurate rendering by handling each layer individually from the farthest to the nearest, thus improving the overall visual quality of scenes with complex </span><span class="No-Break"><span class="koboSpan" id="kobo.44.1">overlapping transparencies.</span></span></p>
+<p><span class="koboSpan" id="kobo.45.1">The algorithm consists of rendering the scene repeatedly, storing the depth map at the end of each pass. </span><span class="koboSpan" id="kobo.45.2">The fragments nearest to the camera are blended with the previous pass (or an empty framebuffer for the first pass). </span><span class="koboSpan" id="kobo.45.3">The current pass fragment depth is discarded if it is smaller than the depth from the last pass, as summarized in </span><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.46.1">Figure 5</span></em></span><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.47.1">.1</span></em></span><span class="No-Break"><span class="koboSpan" id="kobo.48.1">:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer048">
+<span class="koboSpan" id="kobo.49.1"><img alt="Figure 5.1 –Depth Peeling algorithm with 3 planes" src="image/B18491_05_01.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.50.1">Figure 5.1 –Depth Peeling algorithm with 3 planes</span></p>
+<p><span class="koboSpan" id="kobo.51.1">We’ve provided a foundational understanding of this technique in the preceding section. </span><span class="koboSpan" id="kobo.51.2">Moving forward, we will delve deeper, guiding you through a detailed, step-by-step process on how to practically implement this technique </span><span class="No-Break"><span class="koboSpan" id="kobo.52.1">using Vulkan.</span></span></p>
+<h2 id="_idParaDest-232"><a id="_idTextAnchor269"/><span class="koboSpan" id="kobo.53.1">How to do it…</span></h2>
+<p><span class="koboSpan" id="kobo.54.1">The algorithm uses</span><a id="_idIndexMarker414"/><span class="koboSpan" id="kobo.55.1"> two sets of depth maps and two sets of color attachments to perform a ping-pong operation between passes. </span><span class="koboSpan" id="kobo.55.2">The depth map obtained during one pass is used as a reference depth map on the next, while a second depth map is then used as a depth attachment. </span><span class="koboSpan" id="kobo.55.3">The same thing is done with two color attachments: one is used to store the blending of the current pass, while the other is used as the reference, generated in the previous pass. </span><span class="koboSpan" id="kobo.55.4">The subsequent steps will guide you through the actual execution of these operations. </span><span class="koboSpan" id="kobo.55.5">With the help of a detailed diagram provided below, you will be able to visualize and better understand the intricate workings of </span><span class="No-Break"><span class="koboSpan" id="kobo.56.1">this algorithm.</span></span></p>
+<p><span class="No-Break"><em class="italic"><span class="koboSpan" id="kobo.57.1">Figure 5</span></em></span><em class="italic"><span class="koboSpan" id="kobo.58.1">.2</span></em><span class="koboSpan" id="kobo.59.1"> effectively illustrates the described process, aiding in your comprehension and application of this </span><span class="No-Break"><span class="koboSpan" id="kobo.60.1">intricate technique:</span></span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer049">
+<span class="koboSpan" id="kobo.61.1"><img alt="Figure 5.2 – Depth peeling algorithm" src="image/B18491_05_02.jpg"/></span>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.62.1">Figure 5.2 – Depth peeling algorithm</span></p>
+<p><span class="koboSpan" id="kobo.63.1">Now we will go</span><a id="_idIndexMarker415"/><span class="koboSpan" id="kobo.64.1"> through steps on how to perform </span><span class="No-Break"><span class="koboSpan" id="kobo.65.1">this recipe.</span></span></p>
+<ol>
+<li><span class="koboSpan" id="kobo.66.1">The algorithm is performed by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.67.1">DepthPeeling::draw</span></strong><span class="koboSpan" id="kobo.68.1"> method, which starts by clearing the depth map 1 and both </span><span class="No-Break"><span class="koboSpan" id="kobo.69.1">color attachments:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.70.1">
+void DepthPeeling::draw(
+    VkCommandBuffer commandBuffer, int index,
+    const std::vector&lt;
+        std::shared_ptr&lt;VulkanCore::Buffer&gt;&gt;
+        &amp;buffers,
+    uint32_t numMeshes) {
+  {
+    // Clear Depth 1
+    vkCmdClearDepthStencilImage(
+        commandBuffer,
+        depthTextures_[1]-&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;clearDepth, 1, &amp;range);
+  }
+  {
+    // Clear color attachments
+    vkCmdClearColorImage(
+        commandBuffer,
+        colorTextures_[0]-&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;clearColor, 1, &amp;range);
+    vkCmdClearColorImage(
+        commandBuffer,
+        colorTextures_[1]-&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;clearColor, 1, &amp;range);
+  }</span></pre></li> <li><span class="koboSpan" id="kobo.71.1">Both the color</span><a id="_idIndexMarker416"/><span class="koboSpan" id="kobo.72.1"> and depth attachments start with the color and depth attachments with index equal </span><span class="No-Break"><span class="koboSpan" id="kobo.73.1">to 0:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.74.1">
+  VulkanCore::DynamicRendering::
+      AttachmentDescription colorAttachmentDesc{
+          .imageView =
+              colorTextures_[0]-&gt;vkImageView(),
+          .imageLayout =
+              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .attachmentLoadOp =
+              VK_ATTACHMENT_LOAD_OP_LOAD,
+          .attachmentStoreOp =
+              VK_ATTACHMENT_STORE_OP_STORE,
+          .clearValue = clearValues[0],
+      };
+  VulkanCore::DynamicRendering::
+      AttachmentDescription depthAttachmentDesc{
+          .imageView =
+              depthTextures_[0]-&gt;vkImageView(),
+          .imageLayout =
+              VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          .attachmentLoadOp =
+              VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .attachmentStoreOp =
+              VK_ATTACHMENT_STORE_OP_STORE,
+          .clearValue = clearValues[1],
+      };</span></pre></li> <li><span class="koboSpan" id="kobo.75.1">The algorithm</span><a id="_idIndexMarker417"/><span class="koboSpan" id="kobo.76.1"> repeats a number of times, equal to the number of passes. </span><span class="koboSpan" id="kobo.76.2">Care must be taken to transition each attachment to the correct layout, obeying the ping-ponging mechanism: a texture used as a color attachment before needs to be transitioned to a texture that will be read </span><a id="_idIndexMarker418"/><span class="koboSpan" id="kobo.77.1">by a shader </span><span class="No-Break"><span class="koboSpan" id="kobo.78.1">and vice-versa:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.79.1">
+  for (uint32_t currentPeel = 0;
+       currentPeel &lt; numPeels_; ++currentPeel) {
+    colorTextures_[currentPeel % 2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorTextures_[(currentPeel + 1) % 2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    depthTextures_[currentPeel % 2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    depthTextures_[(currentPeel + 1) % 2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    colorAttachmentDesc.imageView =
+        colorTextures_[currentPeel % 2]
+            -&gt;vkImageView();
+    depthAttachmentDesc.imageView =
+        depthTextures_[currentPeel % 2]
+            -&gt;vkImageView();</span></pre></li> <li><span class="koboSpan" id="kobo.80.1">Then we begin the </span><a id="_idIndexMarker419"/><span class="koboSpan" id="kobo.81.1">render pass, issue the draw call, and end </span><span class="No-Break"><span class="koboSpan" id="kobo.82.1">the pass:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.83.1">
+    VulkanCore::DynamicRendering::beginRenderingCmd(
+        commandBuffer,
+        colorTextures_[currentPeel % 2]
+            -&gt;vkImage(),
+        0,
+        {{0, 0},
+         {colorTextures_[currentPeel % 2]
+              -&gt;vkExtents()
+              .width,
+          colorTextures_[currentPeel % 2]
+              -&gt;vkExtents()
+              .height}},
+        1, 0, {colorAttachmentDesc},
+        &amp;depthAttachmentDesc, nullptr,
+        colorTextures_[currentPeel % 2]
+            -&gt;vkLayout(),
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkCmdSetViewport(commandBuffer, 0, 1,
+                     &amp;viewport_);
+    vkCmdSetScissor(commandBuffer, 0, 1,
+                    &amp;scissor_);
+    pipeline_-&gt;bind(commandBuffer);
+    ... </span><span class="koboSpan" id="kobo.83.2">// Perform the draw call
+    VulkanCore::DynamicRendering::endRenderingCmd(
+        commandBuffer,
+        colorTextures_[currentPeel % 2]
+            -&gt;vkImage(),
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_UNDEFINED);</span></pre></li> <li><span class="koboSpan" id="kobo.84.1">The images are transitioned to the correct layout by the render pass, so all we need to do is copy </span><a id="_idIndexMarker420"/><span class="koboSpan" id="kobo.85.1">the result of the current pass into the other texture that will be used as the color attachment during the </span><span class="No-Break"><span class="koboSpan" id="kobo.86.1">next pass:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.87.1">
+    vkCmdBlitImage(
+        commandBuffer,
+        colorTextures_[currentPeel % 2]
+            -&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        colorTextures_[(currentPeel + 1) % 2]
+            -&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+        &amp;region, VK_FILTER_NEAREST);</span></pre></li> <li><span class="koboSpan" id="kobo.88.1">The vertex fragment is not special for depth peeling, but the fragment shader must discard fragments that are closer to the camera than the fragments collected in the previous pass. </span><span class="koboSpan" id="kobo.88.2">The fragment shader also performs the blending into the </span><span class="No-Break"><span class="koboSpan" id="kobo.89.1">current</span></span><span class="No-Break"><a id="_idIndexMarker421"/></span><span class="No-Break"><span class="koboSpan" id="kobo.90.1"> attachment:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.91.1">
+#version 460
+layout(set = 1,
+       binding = 0) uniform ObjectProperties {
+  vec4 color;
+  mat4 model;
+}objectProperties;
+layout(set = 2,
+       binding = 0) uniform sampler2D depth;
+layout(set = 2, binding = 2) uniform sampler2D
+    temporaryColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+  float fragDepth = gl_FragCoord.z;
+  float peelDepth =
+      texture(depth, gl_FragCoord.xy /
+                         textureSize(depth, 0))
+          .r;
+  if (fragDepth &lt;= peelDepth) {
+    discard;
+  }
+  vec4 tmpColor =
+      texture(temporaryColor,
+              gl_FragCoord.xy /
+                  textureSize(temporaryColor, 0));
+  vec3 mulTmpColor = tmpColor.xyz * tmpColor.a;
+  vec3 mulObjProp = objectProperties.color.xyz *
+                    (1.0 - tmpColor.a);
+  outColor = vec4(
+      tmpColor.a * (objectProperties.color.a *
+                    objectProperties.color.rgb) +
+          tmpColor.rgb,
+      (1 - objectProperties.color.a) *
+          tmpColor.a);
+}</span></pre><p class="list-inset"><span class="koboSpan" id="kobo.92.1">The blending </span><a id="_idIndexMarker422"/><span class="koboSpan" id="kobo.93.1">equation is a special one, used for front-to-back compositing, as described by Louis Bavoil and Kevin Myers in 2008 in their </span><em class="italic"><span class="koboSpan" id="kobo.94.1">Order Independent Transparency with Dual Depth Peeling</span></em><span class="koboSpan" id="kobo.95.1"> paper. </span><span class="koboSpan" id="kobo.95.2">The blending </span><span class="No-Break"><span class="koboSpan" id="kobo.96.1">equation is:</span></span></p><p class="list-inset"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.97.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.98.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.99.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.100.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.101.1">t</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.102.1">=</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.103.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.104.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.105.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.106.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.107.1">t</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.108.1">(</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.109.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.110.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.111.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.112.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.113.1">c</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.114.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.115.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.116.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.117.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.118.1">c</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.119.1">)</span></span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.120.1">+</span></span><span class="_-----MathTools-_Math_Space"> </span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.121.1">C</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.122.1"> </span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.123.1">d</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.124.1">s</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.125.1">t</span></span></span></p><p class="list-inset"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.126.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.127.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.128.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.129.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.130.1">t</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.131.1">=</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.132.1">(</span></span><span class="_-----MathTools-_Math_Number"><span class="koboSpan" id="kobo.133.1">1</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.134.1">−</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.135.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.136.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.137.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.138.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.139.1">c</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.140.1">)</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.141.1">A</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.142.1"> </span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.143.1">d</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.144.1">s</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.145.1">t</span></span></span></p></li> </ol>
+<p><span class="koboSpan" id="kobo.146.1">In the following recipe, we will explore how to enhance the depth-peeling technique, making it </span><span class="No-Break"><span class="koboSpan" id="kobo.147.1">more efficient.</span></span></p>
+<h1 id="_idParaDest-233"><a id="_idTextAnchor270"/><span class="koboSpan" id="kobo.148.1">Implementing Dual Depth-Peeling</span></h1>
+<p><span class="koboSpan" id="kobo.149.1">One of the main </span><a id="_idIndexMarker423"/><span class="koboSpan" id="kobo.150.1">drawbacks of the Depth Peeling algorithm is that it requires multiple passes, each of which may consist of rasterizing the entire scene. </span><span class="koboSpan" id="kobo.150.2">The </span><strong class="bold"><span class="koboSpan" id="kobo.151.1">Dual Depth-Peeling</span></strong><span class="koboSpan" id="kobo.152.1"> algorithm extends the original Depth Peeling algorithm by peeling two layers at the same time, almost effectively cutting the number of passes by half. </span><span class="koboSpan" id="kobo.152.2">In this recipe, we will focus on implementing the Dual Depth-Peeling algorithm. </span><span class="koboSpan" id="kobo.152.3">We will address one of the key limitations of the Depth Peeling algorithm, namely its requirement for multiple passes which may involve rasterizing the entire scene. </span><span class="koboSpan" id="kobo.152.4">You’ll learn how the Dual Depth-Peeling algorithm improves upon the original by peeling two layers concurrently, thus potentially reducing the number of passes by nearly half. </span><span class="koboSpan" id="kobo.152.5">This insight will empower you to handle complex scenes with greater efficiency </span><span class="No-Break"><span class="koboSpan" id="kobo.153.1">and speed.</span></span></p>
+<h2 id="_idParaDest-234"><a id="_idTextAnchor271"/><span class="koboSpan" id="kobo.154.1">Getting ready</span></h2>
+<p><span class="koboSpan" id="kobo.155.1">In the repository, the Depth Peeling algorithm is implemented by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.156.1">DualDepthPeeling</span></strong><span class="koboSpan" id="kobo.157.1"> class, located in </span><strong class="source-inline"><span class="koboSpan" id="kobo.158.1">source/enginecore/passes/DualDepthPeeling.hpp</span></strong><span class="koboSpan" id="kobo.159.1"> and </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.160.1">cpp</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.161.1"> files.</span></span></p>
+<p><span class="koboSpan" id="kobo.162.1">Before we begin, we need to set the </span><strong class="source-inline"><span class="koboSpan" id="kobo.163.1">VkPhysicalDeviceFeatures::independentBlend</span></strong><span class="koboSpan" id="kobo.164.1"> property to true. </span><span class="koboSpan" id="kobo.164.2">This property allows us to use different blending equations for each attachment associated with a </span><span class="No-Break"><span class="koboSpan" id="kobo.165.1">graphics pipeline.</span></span></p>
+<p><span class="koboSpan" id="kobo.166.1">On each pass, a depth map with two components, R and G (in the code we use the </span><strong class="source-inline"><span class="koboSpan" id="kobo.167.1">VK_FORMAT_R32G32_SFLOAT</span></strong><span class="koboSpan" id="kobo.168.1"> format), is used to store both the front and the back peels simultaneously. </span><span class="koboSpan" id="kobo.168.2">The blend equation used with the map is </span><strong class="source-inline"><span class="koboSpan" id="kobo.169.1">VK_BLEND_OP_MAX</span></strong><span class="koboSpan" id="kobo.170.1">. </span><span class="koboSpan" id="kobo.170.2">When storing the current fragment’s depth, we encode it as </span><strong class="source-inline"><span class="koboSpan" id="kobo.171.1">vec2(-depth, depth)</span></strong><span class="koboSpan" id="kobo.172.1">. </span><span class="koboSpan" id="kobo.172.2">The R component stores the negative depth of the front peel, while the G component stores the actual depth of the back peel, The </span><strong class="source-inline"><span class="koboSpan" id="kobo.173.1">Max</span></strong><span class="koboSpan" id="kobo.174.1"> blending equation ensures that we only store the nearest front peel by negating it. </span><span class="koboSpan" id="kobo.174.2">The back peels are guaranteed to always be the farthest because they are stored as </span><span class="No-Break"><span class="koboSpan" id="kobo.175.1">positive depths.</span></span></p>
+<p><span class="koboSpan" id="kobo.176.1">The front peel is blended with the modified </span><span class="No-Break"><span class="koboSpan" id="kobo.177.1">blend equation:</span></span></p>
+<p><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.178.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.179.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.180.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.181.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.182.1">t</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.183.1">=</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.184.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.185.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.186.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.187.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.188.1">t</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.189.1">(</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.190.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.191.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.192.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.193.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.194.1">c</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.195.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.196.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.197.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.198.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.199.1">c</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.200.1">)</span></span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.201.1">+</span></span><span class="_-----MathTools-_Math_Space"> </span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.202.1">C</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.203.1"> </span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.204.1">d</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.205.1">s</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.206.1">t</span></span></span></p>
+<p><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.207.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.208.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.209.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.210.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.211.1">t</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.212.1">=</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.213.1">(</span></span><span class="_-----MathTools-_Math_Number"><span class="koboSpan" id="kobo.214.1">1</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.215.1">−</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.216.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.217.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.218.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.219.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.220.1">c</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.221.1">)</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.222.1">A</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.223.1"> </span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.224.1">d</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.225.1">s</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.226.1">t</span></span></span></p>
+<p><span class="koboSpan" id="kobo.227.1">While the back peel is blended with the regular back-to-front </span><span class="No-Break"><span class="koboSpan" id="kobo.228.1">blend equation</span></span></p>
+<p><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.229.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.230.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.231.1">d</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.232.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.233.1">t</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.234.1">=</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.235.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.236.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.237.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.238.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.239.1">c</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.240.1">C</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.241.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.242.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.243.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.244.1">c</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.245.1">+</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.246.1">(</span></span><span class="_-----MathTools-_Math_Number"><span class="koboSpan" id="kobo.247.1">1</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Operator"><span class="koboSpan" id="kobo.248.1">−</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.249.1">A</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.250.1"> </span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.251.1">s</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.252.1">r</span></span><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.253.1">c</span></span><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.254.1">)</span></span><span class="_-----MathTools-_Math_Base"> </span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.255.1">C</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Base"><span class="koboSpan" id="kobo.256.1"> </span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.257.1">d</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.258.1">s</span></span></span><span class="No-Break"><span class="_-----MathTools-_Math_Variable"><span class="koboSpan" id="kobo.259.1">t</span></span></span></p>
+<p><span class="koboSpan" id="kobo.260.1">With the preparatory steps outlined, you are now ready to delve into the implementation of the Dual Depth-Peeling algorithm. </span><span class="koboSpan" id="kobo.260.2">In the next section, we will guide you through the step-by-step process of executing this algorithm, using the insights and techniques </span><span class="No-Break"><span class="koboSpan" id="kobo.261.1">discussed above.</span></span></p>
+<h2 id="_idParaDest-235"><a id="_idTextAnchor272"/><span class="koboSpan" id="kobo.262.1">How to do it…</span></h2>
+<p><span class="koboSpan" id="kobo.263.1">The algorithm in Vulkan consists of using 2 color attachments, one for the front peel and one for the back peel. </span><span class="koboSpan" id="kobo.263.2">It also uses 2 depth buffers with the same format. </span><span class="koboSpan" id="kobo.263.3">One is used for the even numbered </span><a id="_idIndexMarker424"/><span class="koboSpan" id="kobo.264.1">passes, while the other for the odd </span><span class="No-Break"><span class="koboSpan" id="kobo.265.1">even passes.</span></span></p>
+<ol>
+<li><span class="koboSpan" id="kobo.266.1">We start by specifying the blend operations for </span><span class="No-Break"><span class="koboSpan" id="kobo.267.1">each attachment:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.268.1">
+const VkPipelineColorBlendAttachmentState
+    depthBlendState = {
+    .blendEnable = true,
+    .srcColorBlendFactor =
+        VK_BLEND_FACTOR_SRC_ALPHA,
+    .dstColorBlendFactor =
+        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    .colorBlendOp = VK_BLEND_OP_MAX,
+    .srcAlphaBlendFactor =
+        VK_BLEND_FACTOR_SRC_ALPHA,
+    .dstAlphaBlendFactor =
+        VK_BLEND_FACTOR_DST_ALPHA,
+    .alphaBlendOp = VK_BLEND_OP_MAX,
+    .colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT,
+};
+const VkPipelineColorBlendAttachmentState
+    frontBlendState = {
+    // front color attachment
+    .blendEnable = true,
+    .srcColorBlendFactor =
+        VK_BLEND_FACTOR_DST_ALPHA,
+    .dstColorBlendFactor =
+        VK_BLEND_FACTOR_ONE,
+    .colorBlendOp = VK_BLEND_OP_ADD,
+    .srcAlphaBlendFactor =
+        VK_BLEND_FACTOR_ZERO,
+    .dstAlphaBlendFactor =
+        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    .alphaBlendOp = VK_BLEND_OP_ADD,
+    .colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT,
+};
+const VkPipelineColorBlendAttachmentState
+    backBlendState = {
+    // back color attachment
+    .blendEnable = true,
+    .srcColorBlendFactor =
+        VK_BLEND_FACTOR_SRC_ALPHA,
+    .dstColorBlendFactor =
+        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    .colorBlendOp = VK_BLEND_OP_ADD,
+    .srcAlphaBlendFactor =
+        VK_BLEND_FACTOR_ZERO,
+    .dstAlphaBlendFactor =
+        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+    .alphaBlendOp = VK_BLEND_OP_ADD,
+    .colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT |
+        VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT |
+        VK_COLOR_COMPONENT_A_BIT,
+};</span></pre><p class="list-inset"><span class="koboSpan" id="kobo.269.1">These instances </span><a id="_idIndexMarker425"/><span class="koboSpan" id="kobo.270.1">of the </span><strong class="source-inline"><span class="koboSpan" id="kobo.271.1">VkPipelineColorBlendAttachmentState</span></strong><span class="koboSpan" id="kobo.272.1"> structure are added to the </span><strong class="source-inline"><span class="koboSpan" id="kobo.273.1">VkPipelineColorBlendStateCreateInfo</span></strong><span class="koboSpan" id="kobo.274.1"> structure when creating a graphics pipeline and are provided in the order the attachments will be set in </span><span class="No-Break"><span class="koboSpan" id="kobo.275.1">the framebuffers.</span></span></p></li> <li><span class="koboSpan" id="kobo.276.1">The algorithm, implemented by </span><strong class="source-inline"><span class="koboSpan" id="kobo.277.1">DualDepthPeeling::draw</span></strong><span class="koboSpan" id="kobo.278.1"> method, starts by clearing the depth buffers and the </span><span class="No-Break"><span class="koboSpan" id="kobo.279.1">color attachments:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.280.1">
+void DualDepthPeeling::draw(
+    VkCommandBuffer commandBuffer, int index,
+    const std::vector&lt;
+        std::shared_ptr&lt;VulkanCore::Buffer&gt;&gt;
+        &amp;buffers,
+    uint32_t numMeshes) {
+  // Clear Depth 0
+  {
+    vkCmdClearColorImage(
+        commandBuffer,
+        depthMinMaxTextures_[0]-&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;clearColor, 1, &amp;range);
+  }
+  // Clear Depth 1
+  {
+    vkCmdClearColorImage(
+        commandBuffer,
+        depthMinMaxTextures_[1]-&gt;vkImage(),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &amp;clearColor, 1, &amp;range);
+  }
+  // Clear color attachments
+  {
+    for (uint32_t i = 0;
+         i &lt; colorTextures_.size(); ++i) {
+      vkCmdClearColorImage(
+          commandBuffer,
+          colorTextures_[i]-&gt;vkImage(),
+          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          &amp;clearColor, 1, &amp;range);
+    }
+  }</span></pre></li> <li><span class="koboSpan" id="kobo.281.1">The depth textures are then transitioned for the </span><span class="No-Break"><span class="koboSpan" id="kobo.282.1">first pass:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.283.1">
+  depthMinMaxTextures_[0]-&gt;transitionImageLayout(
+      commandBuffer,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  depthMinMaxTextures_[1]-&gt;transitionImageLayout(
+      commandBuffer,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);</span></pre></li> <li><span class="koboSpan" id="kobo.284.1">Both the front </span><a id="_idIndexMarker426"/><span class="koboSpan" id="kobo.285.1">and back textures are bound as attachments and are loaded and stored for each pass. </span><span class="koboSpan" id="kobo.285.2">One of the depth textures is also bound as an attachment and is cleared to </span><strong class="source-inline"><span class="koboSpan" id="kobo.286.1">(-99,999; 99,999)</span></strong><span class="koboSpan" id="kobo.287.1"> and stored after each pass. </span><span class="koboSpan" id="kobo.287.2">The other depth texture is bound as a texture for read by the </span><span class="No-Break"><span class="koboSpan" id="kobo.288.1">fragment shader:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.289.1">
+  VulkanCore::DynamicRendering::AttachmentDescription
+      colorAttachmentDesc_Front{
+          .imageView = colorTextures_[0]
+                           -&gt;vkImageView(),
+          .imageLayout =
+              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .attachmentLoadOp =
+              VK_ATTACHMENT_LOAD_OP_LOAD,
+          .attachmentStoreOp =
+              VK_ATTACHMENT_STORE_OP_STORE,
+      };
+  VulkanCore::DynamicRendering::AttachmentDescription
+      colorAttachmentDesc_Back{
+          .imageView = colorTextures_[1]
+                           -&gt;vkImageView(),
+          .imageLayout =
+              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .attachmentLoadOp =
+              VK_ATTACHMENT_LOAD_OP_LOAD,
+          .attachmentStoreOp =
+              VK_ATTACHMENT_STORE_OP_STORE,
+      };
+  const VkClearValue clearDepthMinMax = {
+      .color = {-99999.0f, -99999.0f, 0.0f,
+                0.0f},
+  };
+  VulkanCore::DynamicRendering::AttachmentDescription
+      depthMinMaxAttachmentDesc{
+          .imageView =
+              depthMinMaxTextures_[0]
+                  -&gt;vkImageView(),
+          .imageLayout =
+              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .attachmentLoadOp =
+              VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .attachmentStoreOp =
+              VK_ATTACHMENT_STORE_OP_STORE,
+          .clearValue = clearDepthMinMax,
+      };</span></pre></li> <li><span class="koboSpan" id="kobo.290.1">For each pass we </span><a id="_idIndexMarker427"/><span class="koboSpan" id="kobo.291.1">start by transitioning the color and depth attachments to the </span><span class="No-Break"><span class="koboSpan" id="kobo.292.1">correct layouts:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.293.1">
+  for (uint32_t currentPeel = 0;
+       currentPeel &lt; numPeels_;
+       ++currentPeel) {
+    const uint32_t readIdx = currentPeel % 2;
+    colorTextures_[0]-&gt;transitionImageLayout(
+        commandBuffer,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    colorTextures_[1]-&gt;transitionImageLayout(
+        commandBuffer,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    depthMinMaxTextures_[currentPeel % 2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    depthMinMaxTextures_[(currentPeel + 1) %
+                         2]
+        -&gt;transitionImageLayout(
+            commandBuffer,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    depthMinMaxAttachmentDesc.imageView =
+        depthMinMaxTextures_[readIdx]
+            -&gt;vkImageView();</span></pre></li> <li><span class="koboSpan" id="kobo.294.1">The attachments are provided for the render pass using dynamic rendering, the scene is</span><a id="_idIndexMarker428"/><span class="koboSpan" id="kobo.295.1"> rendered, and the pass </span><span class="No-Break"><span class="koboSpan" id="kobo.296.1">is completed:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.297.1">
+    VulkanCore::DynamicRendering::
+        beginRenderingCmd(
+            commandBuffer,
+            colorTextures_[0]-&gt;vkImage(), 0,
+            {{0, 0},
+             {colorTextures_[0]
+                  -&gt;vkExtents()
+                  .width,
+              colorTextures_[0]
+                  -&gt;vkExtents()
+                  .height}},
+            1, 0,
+            {depthMinMaxAttachmentDesc,
+             colorAttachmentDesc_Front,
+             colorAttachmentDesc_Back},
+            &amp;depthAttachmentDesc, nullptr,
+            colorTextures_[0]-&gt;vkLayout(),
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkCmdSetViewport(commandBuffer, 0, 1,
+                     &amp;viewport_);
+    vkCmdSetScissor(commandBuffer, 0, 1,
+                    &amp;scissor_);
+    pipeline_-&gt;bind(commandBuffer);
+    // Draw geometry
+    VulkanCore::DynamicRendering::
+        endRenderingCmd(
+            commandBuffer,
+            colorTextures_[0]-&gt;vkImage(),
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_UNDEFINED);
+  }</span></pre></li> <li><span class="koboSpan" id="kobo.298.1">Once all the passes</span><a id="_idIndexMarker429"/><span class="koboSpan" id="kobo.299.1"> are completed, one last step remains which is consists of blending the last front and back peels. </span><span class="koboSpan" id="kobo.299.2">The front peel is provided as a color attachment and as a texture for the shader, while the back color is only provided as a texture for reading by </span><span class="No-Break"><span class="koboSpan" id="kobo.300.1">the shader.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.301.1">
+  {
+    VulkanCore::DynamicRendering::
+        beginRenderingCmd(...);
+    vkCmdSetViewport(commandBuffer, 0, 1,
+                     &amp;viewport_);
+    vkCmdSetScissor(commandBuffer, 0, 1,
+                    &amp;scissor_);
+    pipelineFinal_-&gt;bind(commandBuffer);
+    vkCmdDraw(commandBuffer, 4, 1, 0, 0);
+    VulkanCore::DynamicRendering::
+        endRenderingCmd(...);
+  }
+}</span></pre><p class="list-inset"><span class="koboSpan" id="kobo.302.1">This last pass consists of drawing a rectangle the size of the viewport and used solely for blending the </span><span class="No-Break"><span class="koboSpan" id="kobo.303.1">two peels</span></span></p></li> <li><span class="koboSpan" id="kobo.304.1">The main dual </span><a id="_idIndexMarker430"/><span class="koboSpan" id="kobo.305.1">depth peeling fragment shader reads the depth value of the fragment output from the previous pass, decodes it, and decided whether the fragment should be discarded </span><span class="No-Break"><span class="koboSpan" id="kobo.306.1">or not:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.307.1">
+#version 460
+const float MAX_DEPTH = 99999.0;
+void main() {
+  float fragDepth = gl_FragCoord.z;
+  vec2 lastDepth =
+      texture(depth,
+              gl_FragCoord.xy /
+                  textureSize(depth, 0)).rg;
+  depthMinMax.rg = vec2(-MAX_DEPTH);
+  frontColorOut = vec4(0.0f);
+  backColorOut = vec4(0.0f);
+  float nearestDepth = -lastDepth.x;
+  float furthestDepth = lastDepth.y;
+  float alphaMultiplier = 1.0 - lastFrontColor.a;
+  if (fragDepth &lt; nearestDepth ||
+      fragDepth &gt; furthestDepth) {
+    return;
+  }
+  if (fragDepth &gt; nearestDepth &amp;&amp;
+      fragDepth &lt; furthestDepth) {
+    depthMinMax = vec2(-fragDepth, fragDepth);
+    return;
+  }
+  vec4 color = objectProperties.color;
+  if (fragDepth == nearestDepth) {
+    frontColorOut = vec4(
+        color.rgb * color.a, color.a);
+  } else {
+    backColorOut = color;
+  }
+}</span></pre></li> <li><span class="koboSpan" id="kobo.308.1">The final pass, where the front </span><a id="_idIndexMarker431"/><span class="koboSpan" id="kobo.309.1">and back peels are blended, uses a simple </span><span class="No-Break"><span class="koboSpan" id="kobo.310.1">fragment shader:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.311.1">
+#version 460
+layout(set = 0, binding = 0)
+    uniform sampler2D front;
+layout(set = 0, binding = 1)
+    uniform sampler2D back;
+layout(location = 0) in vec2
+    fragTexCoord;
+layout(location = 0) out vec4 outColor;
+void main() {
+  const vec4 frontColor =
+      texture(front, fragTexCoord);
+  const vec4 backColor =
+      texture(back, fragTexCoord);
+  outColor =
+      vec4(((backColor)*frontColor.a +
+            frontColor)
+               .rgb,
+           (1.0 - backColor.a) *
+               frontColor.a);
+}</span></pre></li> </ol>
+<p><span class="koboSpan" id="kobo.312.1">Having delved into the </span><a id="_idIndexMarker432"/><span class="koboSpan" id="kobo.313.1">intricacies of the Dual Depth-Peeling algorithm, we will now shift our focus to another advanced technique in the </span><span class="No-Break"><span class="koboSpan" id="kobo.314.1">next recipe.</span></span></p>
+<h1 id="_idParaDest-236"><a id="_idTextAnchor273"/><span class="koboSpan" id="kobo.315.1">Implementing Linked-List Order-Independent Transparency</span></h1>
+<p><strong class="bold"><span class="koboSpan" id="kobo.316.1">Order Independent Transparency</span></strong><span class="koboSpan" id="kobo.317.1"> uses a per pixel linked list to handle transparency, it </span><a id="_idIndexMarker433"/><span class="koboSpan" id="kobo.318.1">makes use of data structures, specifically linked lists, to store fragments for each pixel. </span><span class="koboSpan" id="kobo.318.2">Each node of the list contains information about a fragment’s color and depth value, and the nodes are connected in a way that follows the order of fragments arrival, thus making </span><span class="No-Break"><span class="koboSpan" id="kobo.319.1">sorting unnecessary.</span></span></p>
+<p><span class="koboSpan" id="kobo.320.1">This approach effectively eliminates overdrawing, and artifacts associated with depth sorting. </span><span class="koboSpan" id="kobo.320.2">By focusing on the depth value of each fragment, the approach provides a more accurate, visually pleasing representation of transparent objects. </span><span class="koboSpan" id="kobo.320.3">In this recipe, we will delve into the detailed process of implementing</span><a id="_idIndexMarker434"/><span class="koboSpan" id="kobo.321.1"> the Linked-List </span><strong class="bold"><span class="koboSpan" id="kobo.322.1">Order-Independent Transparency</span></strong><span class="koboSpan" id="kobo.323.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.324.1">OIT</span></strong><span class="koboSpan" id="kobo.325.1">) technique. </span><span class="koboSpan" id="kobo.325.2">You’ll learn how this technique leverages per pixel linked lists to efficiently manage transparency, eliminating the issues of overdrawing and depth </span><span class="No-Break"><span class="koboSpan" id="kobo.326.1">sorting artifacts.</span></span></p>
+<h2 id="_idParaDest-237"><a id="_idTextAnchor274"/><span class="koboSpan" id="kobo.327.1">Getting ready</span></h2>
+<p><span class="koboSpan" id="kobo.328.1">In the repository, the Linked list algorithm is implemented by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.329.1">OitLinkedListPass</span></strong><span class="koboSpan" id="kobo.330.1"> class, located in </span><strong class="source-inline"><span class="koboSpan" id="kobo.331.1">source/enginecore/passes/</span></strong> <strong class="source-inline"><span class="koboSpan" id="kobo.332.1">OitLinkedListPass.hpp</span></strong><span class="koboSpan" id="kobo.333.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.334.1">cpp</span></strong><span class="koboSpan" id="kobo.335.1"> files. </span><span class="koboSpan" id="kobo.335.2">The corresponding shaders are </span><strong class="source-inline"><span class="koboSpan" id="kobo.336.1">source/enginecore/resources/shaders/OitLinkedListBuildPass.frag</span></strong><span class="koboSpan" id="kobo.337.1"> and </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.338.1">source/enginecore/resources/shaders/ OITLinkedListCompositePass.frag</span></strong></span></p>
+<p><span class="koboSpan" id="kobo.339.1">The algorithm begins by initializing an empty list for each pixel, and as the scene is rendered, it adds nodes to the list in the order in which they are processed. </span><span class="koboSpan" id="kobo.339.2">This is done in a two-pass rendering stage. </span><span class="koboSpan" id="kobo.339.3">In the first pass, also known as the build pass, each fragment’s depth, color, and next-node pointer are written into a buffer. </span><span class="koboSpan" id="kobo.339.4">The second pass, also known as resolve or composite pass, goes through the list from back-to-front for each pixel and blends the colors based on depth values, resulting in the final </span><span class="No-Break"><span class="koboSpan" id="kobo.340.1">pixel color.</span></span></p>
+<h2 id="_idParaDest-238"><a id="_idTextAnchor275"/><span class="koboSpan" id="kobo.341.1">How to do it…</span></h2>
+<p><span class="koboSpan" id="kobo.342.1">To implement a per pixel linked list, we need to maintain </span><span class="No-Break"><span class="koboSpan" id="kobo.343.1">various buffers.</span></span></p>
+<ol>
+<li><span class="koboSpan" id="kobo.344.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.345.1">OitLinkedListPass::init</span></strong><span class="koboSpan" id="kobo.346.1"> method is tasked with initializing a variety of resources. </span><span class="koboSpan" id="kobo.346.2">It establishes both the Build pass and the Composite pass pipelines. </span><span class="koboSpan" id="kobo.346.3">Furthermore, it arranges the necessary resources for the Build pass pipeline. </span><span class="koboSpan" id="kobo.346.4">The code snippet below highlights some key resources configured during the </span><span class="No-Break"><span class="koboSpan" id="kobo.347.1">initialization phase.</span></span><ol><li class="Alphabets"><strong class="source-inline"><span class="koboSpan" id="kobo.348.1">atomicCounterBuffer_</span></strong><span class="koboSpan" id="kobo.349.1">: This buffer is created to hold an atomic counter. </span><span class="koboSpan" id="kobo.349.2">The counter is used to allocate slots in the linked list buffer for storing </span><span class="No-Break"><span class="koboSpan" id="kobo.350.1">new fragments.</span></span></li><li class="Alphabets"><strong class="source-inline"><span class="koboSpan" id="kobo.351.1">linkedListBuffer_</span></strong><span class="koboSpan" id="kobo.352.1">: This is the main buffer that holds the linked lists of fragments for each pixel. </span><span class="koboSpan" id="kobo.352.2">Each pixel can have multiple fragments, and each fragment is </span><a id="_idIndexMarker435"/><span class="koboSpan" id="kobo.353.1">represented as a </span><strong class="source-inline"><span class="koboSpan" id="kobo.354.1">Node</span></strong><span class="koboSpan" id="kobo.355.1"> in the linked list. </span><span class="koboSpan" id="kobo.355.2">The size of this buffer is determined by the number of pixels in the swapchain’s extent (its width and height), the number of slots per pixel, and the size of the </span><span class="No-Break"><span class="koboSpan" id="kobo.356.1">Node structure.</span></span></li><li class="Alphabets"><strong class="source-inline"><span class="koboSpan" id="kobo.357.1">linkedListHeadPtrTexture_</span></strong><span class="koboSpan" id="kobo.358.1">: This buffer stores the head pointers for the linked lists of each pixel. </span><span class="koboSpan" id="kobo.358.2">A head pointer points to the first Node of a linked list. </span><span class="koboSpan" id="kobo.358.3">This buffer is created as a 2D texture (image) because it needs to store a pointer for each pixel in the swapchain’s extents. </span><span class="koboSpan" id="kobo.358.4">The format </span><strong class="source-inline"><span class="koboSpan" id="kobo.359.1">VK_FORMAT_R32_UINT</span></strong><span class="koboSpan" id="kobo.360.1"> indicates that each element in the texture is a 32-bit unsigned integer, which is suitable for representing </span><span class="No-Break"><span class="koboSpan" id="kobo.361.1">a pointer.</span></span></li></ol><pre class="source-code"><span class="koboSpan" id="kobo.362.1">
+atomicCounterBuffer_ = context-&gt;createBuffer(
+    sizeof(AtomicCounter), ...);
+auto bufferSize = width * height *
+                  slotsPerPixel *
+                  sizeof(Node);
+linkedListBuffer_ = context_-&gt;createBuffer(
+    bufferSize, ...);
+linkedListHeadPtrTexture_ =
+    context-&gt;createTexture(...);</span></pre></li> <li><span class="koboSpan" id="kobo.363.1">The actual magic of the algorithm happens during the </span><strong class="source-inline"><span class="koboSpan" id="kobo.364.1">draw</span></strong><span class="koboSpan" id="kobo.365.1"> function. </span><span class="koboSpan" id="kobo.365.2">As a first step, we are setting the pixels in </span><strong class="source-inline"><span class="koboSpan" id="kobo.366.1">linkedListHeadPtrTexture_</span></strong><span class="koboSpan" id="kobo.367.1"> to zero with </span><strong class="source-inline"><span class="koboSpan" id="kobo.368.1">vkCmdClearColorImage</span></strong><span class="koboSpan" id="kobo.369.1"> function, and filling the </span><strong class="source-inline"><span class="koboSpan" id="kobo.370.1">linkedListBuffer_</span></strong><span class="koboSpan" id="kobo.371.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.372.1">atomicCounterBuffer_</span></strong><span class="koboSpan" id="kobo.373.1"> with zeros using </span><strong class="source-inline"><span class="koboSpan" id="kobo.374.1">vkCmdFillBuffer</span></strong><span class="koboSpan" id="kobo.375.1">, just</span><a id="_idIndexMarker436"/><span class="koboSpan" id="kobo.376.1"> to reset everything to null state before we begin writing </span><span class="No-Break"><span class="koboSpan" id="kobo.377.1">to it.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.378.1">
+vkCmdClearColorImage(
+    commandBuffer,
+    linkedListHeadPtrTexture_
+        -&gt;vkImage(),
+    VK_IMAGE_LAYOUT_GENERAL,
+    &amp;clearColor, 1, &amp;auxClearRanges);
+vkCmdFillBuffer(
+    commandBuffer,
+    linkedListBuffer_-&gt;vkBuffer(), 0,
+    VK_WHOLE_SIZE, 0);
+vkCmdFillBuffer(
+    commandBuffer,
+    atomicCounterBuffer_-&gt;vkBuffer(), 0,
+    VK_WHOLE_SIZE, 0);</span></pre></li> <li><span class="koboSpan" id="kobo.379.1">The next step is to set up correct memory barriers. </span><span class="koboSpan" id="kobo.379.2">These barriers ensure that all clear operations finish before the shader starts reading from or writing to the buffers. </span><span class="koboSpan" id="kobo.379.3">The first </span><a id="_idIndexMarker437"/><span class="koboSpan" id="kobo.380.1">barrier is a </span><span class="No-Break"><span class="koboSpan" id="kobo.381.1">memory barrier:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.382.1">
+const VkPipelineStageFlags
+    srcStageFlags =
+        VK_PIPELINE_STAGE_TRANSFER_BIT;
+const VkPipelineStageFlags dstStageFlags =
+    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+{
+  const VkMemoryBarrier barrier = {
+      .sType =
+          VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+      .srcAccessMask =
+          VK_ACCESS_TRANSFER_WRITE_BIT,
+      .dstAccessMask =
+          VK_ACCESS_SHADER_READ_BIT |
+          VK_ACCESS_SHADER_WRITE_BIT,
+  };
+  vkCmdPipelineBarrier(
+      commandBuffer, srcStageFlags,
+      dstStageFlags,
+      0,
+      1, &amp;barrier,
+      0, VK_NULL_HANDLE,
+      0, VK_NULL_HANDLE);</span></pre></li> <li><span class="koboSpan" id="kobo.383.1">The other two barriers are buffer barriers, one for the linked list buffer and one for the atomic </span><a id="_idIndexMarker438"/><span class="No-Break"><span class="koboSpan" id="kobo.384.1">counter buffer:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.385.1">
+  const VkBufferMemoryBarrier bufferBarriers[2] = {
+      {
+          .sType =
+              VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+          .srcAccessMask =
+              VK_ACCESS_TRANSFER_WRITE_BIT,
+          .dstAccessMask =
+              VK_ACCESS_SHADER_READ_BIT |
+              VK_ACCESS_SHADER_WRITE_BIT,
+          .buffer = linkedListBuffer_-&gt;vkBuffer(),
+          .size = linkedListBuffer_-&gt;size(),
+      },
+      {
+          .sType =
+              VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+          .srcAccessMask =
+              VK_ACCESS_TRANSFER_WRITE_BIT,
+          .dstAccessMask =
+              VK_ACCESS_SHADER_READ_BIT |
+              VK_ACCESS_SHADER_WRITE_BIT,
+          .buffer = atomicCounterBuffer_-&gt;vkBuffer(),
+          .size = atomicCounterBuffer_-&gt;size(),
+      },
+  };
+  vkCmdPipelineBarrier(
+      commandBuffer, srcStageFlags,
+      dstStageFlags, 0, 0, nullptr, 2,
+      &amp;bufferBarriers[0], 0, nullptr);
+}</span></pre></li> <li><span class="koboSpan" id="kobo.386.1">In the next step descriptor sets are bound, updated, and the vertex and index buffers are bound to </span><a id="_idIndexMarker439"/><span class="koboSpan" id="kobo.387.1">the pipeline. </span><span class="koboSpan" id="kobo.387.2">Then the indexed draw command is issued for </span><span class="No-Break"><span class="koboSpan" id="kobo.388.1">each mesh.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.389.1">
+pipeline_-&gt;bind(commandBuffer);
+for (uint32_t meshIdx = 0;
+     meshIdx &lt; numMeshes; ++meshIdx) {
+  // ...
+</span><span class="koboSpan" id="kobo.389.2">  vkCmdDrawIndexed(commandBuffer,
+                   vertexCount, 1, 0, 0,
+                   0);
+}</span></pre></li> <li><span class="koboSpan" id="kobo.390.1">The vertex fragment is not special, but the fragment shader must maintain a linked list along with head pointer. </span><span class="koboSpan" id="kobo.390.2">Below we present the code breakdown for </span><strong class="source-inline"><span class="koboSpan" id="kobo.391.1">OitLinkedListBuildPass.frag</span></strong><span class="koboSpan" id="kobo.392.1"> which is responsible for the build pass of the linked list </span><span class="No-Break"><span class="koboSpan" id="kobo.393.1">OIT algorithm:</span></span><ol><li class="Alphabets"><span class="koboSpan" id="kobo.394.1">We start by defining a Node struct, which represents a node in a linked list for handling transparency. </span><span class="koboSpan" id="kobo.394.2">It contains the color and the index of the previous node. </span><span class="koboSpan" id="kobo.394.3">Afterwards, we declare several uniform and buffer variables, used for object properties, an atomic counter, a linked list of nodes, and an image for </span><span class="No-Break"><span class="koboSpan" id="kobo.395.1">head </span></span><span class="No-Break"><a id="_idIndexMarker440"/></span><span class="No-Break"><span class="koboSpan" id="kobo.396.1">pointers.</span></span></li></ol><pre class="source-code"><span class="koboSpan" id="kobo.397.1">
+struct Node {
+  vec4 color;
+  uint previousIndex;
+  float depth;
+  uint padding1; // add 4 byte padding
+                 // for alignment
+  uint padding2; // add 4 byte padding
+                 // for alignment
+};
+layout(set = 1, binding = 0) uniform
+    ObjectProperties {
+  vec4 color;
+  mat4 model;
+}
+objectProperties;
+layout(set = 2, binding = 0) buffer
+    AtomicCounter {
+  uint counter;
+};
+layout(set = 2,
+       binding = 1) buffer LinkedList {
+  Node transparencyList[];
+}
+transparencyLinkedList;
+layout(set = 2, binding = 2,
+       r32ui) uniform coherent uimage2D
+    headPointers;</span></pre><ol><li class="Alphabets" value="2"><span class="koboSpan" id="kobo.398.1">The main function performs an atomic add operation on the atomic counter to get a unique index for each fragment. </span><span class="koboSpan" id="kobo.398.2">After calculating the size of the image and ensuring the new node index doesn’t exceed the maximum size of the linked list, it performs an atomic exchange operation to insert the new node at the</span><a id="_idIndexMarker441"/><span class="koboSpan" id="kobo.399.1"> beginning of the linked list. </span><span class="koboSpan" id="kobo.399.2">Finally, it sets the properties of the new node in the </span><span class="No-Break"><span class="koboSpan" id="kobo.400.1">linked list.</span></span></li></ol><pre class="source-code"><span class="koboSpan" id="kobo.401.1">void main() {
+  // Set the output color to transparent
+  outputColor = vec4(0.0);
+  // Atomic operation to get unique
+  // index for each fragment, don't
+  // return 0 since that will be used as
+  // ll terminator
+  uint newNodeIndex =
+      atomicAdd(counter, 1) + 1;
+  ivec2 size = imageSize(headPointers);
+  // max size of linked list * width *
+  // height
+  if (newNodeIndex &gt;
+      (10 * size.x * size.y) - 1) {
+    return;
+  }
+  // Atomic operation to insert the new
+  // node at the beginning of the linked
+  // list
+  uint oldHeadIndex =
+      imageAtomicExchange(
+          headPointers,
+          ivec2(gl_FragCoord.xy),
+          newNodeIndex);
+  transparencyLinkedList
+      .transparencyList[newNodeIndex]
+      .previousIndex = oldHeadIndex;
+  transparencyLinkedList
+      .transparencyList[newNodeIndex]
+      .color = objectProperties.color;
+  transparencyLinkedList
+      .transparencyList[newNodeIndex]
+      .depth = gl_FragCoord.z;
+  transparencyLinkedList
+      .transparencyList[newNodeIndex]
+      .padding1 = 0;
+  transparencyLinkedList
+      .transparencyList[newNodeIndex]
+      .padding2 = 0;
+}</span></pre></li> <li><span class="koboSpan" id="kobo.402.1">The next and final step is to draw a full screen quad. </span><span class="koboSpan" id="kobo.402.2">Before performing the full screen quad pass, we set up memory and buffer barriers to ensure synchronization for the </span><strong class="source-inline"><span class="koboSpan" id="kobo.403.1">linkedListBuffer_</span></strong><span class="koboSpan" id="kobo.404.1"> and the </span><strong class="source-inline"><span class="koboSpan" id="kobo.405.1">linkedListHeadPtrTexture_</span></strong><span class="koboSpan" id="kobo.406.1"> since these resources are used during the </span><span class="No-Break"><span class="koboSpan" id="kobo.407.1">composite pass.</span></span></li>
+<li><span class="koboSpan" id="kobo.408.1">Lastly, the composite pass fragment shader starts by first getting the head of the linked list for </span><a id="_idIndexMarker442"/><span class="koboSpan" id="kobo.409.1">the current pixel. </span><span class="koboSpan" id="kobo.409.2">The list is stored in a buffer, and each pixel corresponds to the first node of a linked list of all fragments that affect that pixel. </span><span class="koboSpan" id="kobo.409.3">An array to temporarily store the nodes for sorting is created. </span><span class="koboSpan" id="kobo.409.4">We then iterate over the linked list, retrieving each node and storing it in the temporary array. </span><span class="koboSpan" id="kobo.409.5">It continues until it reaches the end of the list (denoted by </span><strong class="source-inline"><span class="koboSpan" id="kobo.410.1">nodeIndex</span></strong><span class="koboSpan" id="kobo.411.1"> being 0) or when it has retrieved </span><span class="No-Break"><span class="koboSpan" id="kobo.412.1">20 nodes:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.413.1">
+void main() {
+  outputColor = vec4(0.0);
+  // Get the head of the linked list for
+  // the current pixel
+  uint nodeIndex = imageLoad(headPointers,
+                ivec2(gl_FragCoord.xy)).x;
+  // Create a temporary array to store
+  // the nodes for sorting
+  Node nodes[20]; // Assuming a maximum
+                  // of 20 overlapping
+                  // fragments
+  int numNodes = 0;
+  // Iterate over the linked list
+  while (nodeIndex != 0 &amp;&amp;
+         numNodes &lt; 20) {
+    nodes[numNodes] = transparencyLinkedList.transparencyList[nodeIndex];
+    nodeIndex = nodes[numNodes].previousIndex;
+    numNodes++;
+  }</span></pre></li> <li><span class="koboSpan" id="kobo.414.1">The nodes in the array are sorted in descending order based on their depth values using a simple bubble sort algorithm. </span><span class="koboSpan" id="kobo.414.2">This ensures that the nodes closest to the camera </span><a id="_idIndexMarker443"/><span class="koboSpan" id="kobo.415.1">are </span><span class="No-Break"><span class="koboSpan" id="kobo.416.1">blended last:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.417.1">
+  for (int i = 0; i &lt; numNodes; i++) {
+    for (int j = i + 1; j &lt; numNodes; j++) {
+      if (nodes[j].depth &gt; nodes[i].depth) {
+        Node temp = nodes[i];
+        nodes[i] = nodes[j];
+        nodes[j] = temp;
+      }
+    }
+  }</span></pre></li> <li><span class="koboSpan" id="kobo.418.1">Finally, the colors of each node are blended from back to front using the </span><span class="No-Break"><span class="koboSpan" id="kobo.419.1">mix function:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.420.1">
+  // Blend the colors from back to front
+  for (int i = 0; i &lt; numNodes; i++) {
+    outputColor = mix(outputColor, nodes[i].color,
+            nodes[i].color.a);
+  }
+}</span></pre></li> </ol>
+<p><span class="koboSpan" id="kobo.421.1">This algorithm gives a very good result and is an excellent option if you value correctness. </span><span class="koboSpan" id="kobo.421.2">It’s a bit slower than the one presented in the next recipe, but it is by far the most intuitive</span><a id="_idIndexMarker444"/><span class="koboSpan" id="kobo.422.1"> algorithm amongst all the different algorithms we discussed in </span><span class="No-Break"><span class="koboSpan" id="kobo.423.1">this chapter.</span></span></p>
+<h2 id="_idParaDest-239"><a id="_idTextAnchor276"/><span class="koboSpan" id="kobo.424.1">There’s more…</span></h2>
+<p><span class="koboSpan" id="kobo.425.1">We would like to note an additional technique, known as </span><strong class="bold"><span class="koboSpan" id="kobo.426.1">Tail Blending</span></strong><span class="koboSpan" id="kobo.427.1">, that can be effectively </span><a id="_idIndexMarker445"/><span class="koboSpan" id="kobo.428.1">combined with the technique discussed above. </span><span class="koboSpan" id="kobo.428.2">One of the limitations of our approach is the maximum number of fragments that can be accommodated for each pixel, which is typically dictated by the anticipated depth complexity of the scene and the memory available. </span><span class="koboSpan" id="kobo.428.3">In more intricate scenes with numerous overlapping transparent objects, the fragment count for a pixel may surpass this limit. </span><span class="koboSpan" id="kobo.428.4">That’s when Tail Blending becomes handy. </span><span class="koboSpan" id="kobo.428.5">When a linked list reaches its capacity, any extra fragments are directly blended with the color of the last node in the list, also known as the </span><em class="italic"><span class="koboSpan" id="kobo.429.1">tail</span></em><span class="koboSpan" id="kobo.430.1">, hence the term </span><em class="italic"><span class="koboSpan" id="kobo.431.1">Tail Blending</span></em><span class="koboSpan" id="kobo.432.1">. </span><span class="koboSpan" id="kobo.432.2">The benefit of tail blending is its ability to process scenes with extremely high depth complexity without the need to expand the maximum length of the linked list, thereby conserving memory. </span><span class="koboSpan" id="kobo.432.3">However, a potential drawback is that it might yield less precise results since blending is order-dependent and the fragments blended with the tail aren’t arranged in relation to the other fragments in </span><span class="No-Break"><span class="koboSpan" id="kobo.433.1">the list.</span></span></p>
+<h2 id="_idParaDest-240"><a id="_idTextAnchor277"/><span class="koboSpan" id="kobo.434.1">See also</span></h2>
+<p><span class="koboSpan" id="kobo.435.1">Please see the following </span><span class="No-Break"><span class="koboSpan" id="kobo.436.1">link on:</span></span></p>
+<ul>
+<li><span class="koboSpan" id="kobo.437.1">Exploring and Expanding the Continuum of OIT </span><span class="No-Break"><span class="koboSpan" id="kobo.438.1">Algorithms: </span></span><a href="http://cwyman.org/papers/hpg16_oitContinuum.pdf"><span class="No-Break"><span class="koboSpan" id="kobo.439.1">http://cwyman.org/papers/hpg16_oitContinuum.pdf</span></span></a></li>
+</ul>
+<h1 id="_idParaDest-241"><a id="_idTextAnchor278"/><span class="koboSpan" id="kobo.440.1">Implementing Weighted Order-Independent Transparency</span></h1>
+<p><strong class="bold"><span class="koboSpan" id="kobo.441.1">Weighted Order-Independent Transparency</span></strong><span class="koboSpan" id="kobo.442.1"> (</span><strong class="bold"><span class="koboSpan" id="kobo.443.1">WOIT</span></strong><span class="koboSpan" id="kobo.444.1">) uses a different idea to tackle </span><a id="_idIndexMarker446"/><span class="koboSpan" id="kobo.445.1">transparency, by using the concept of weighted averages rather than using data structures like linked lists or layers like </span><span class="No-Break"><span class="koboSpan" id="kobo.446.1">depth peeling.</span></span></p>
+<p><span class="koboSpan" id="kobo.447.1">This method doesn’t require sorting or linked lists or multiple passes, reducing the overhead associated with those operations. </span><span class="koboSpan" id="kobo.447.2">The final color is calculated by normalizing the color buffer with the weight buffer, which provides an aggregate view of the colors and their weights. </span><span class="koboSpan" id="kobo.447.3">Although it may not be as accurate as per-pixel linked lists in complex scenarios, WOIT offers a performance-efficient solution for handling transparency in scenes with lower depth complexity. </span><span class="koboSpan" id="kobo.447.4">In this recipe, you will gain an understanding of the WOIT technique. </span><span class="koboSpan" id="kobo.447.5">We will explore how this method employs weighted averages to handle transparency, eschewing the need for data structures like linked lists or multiple passes, thereby reducing </span><span class="No-Break"><span class="koboSpan" id="kobo.448.1">associated overhead.</span></span></p>
+<h2 id="_idParaDest-242"><a id="_idTextAnchor279"/><span class="koboSpan" id="kobo.449.1">Getting ready</span></h2>
+<p><span class="koboSpan" id="kobo.450.1">In the repository, the WOIT algorithm is implemented by the </span><strong class="source-inline"><span class="koboSpan" id="kobo.451.1">OitWeightedPass</span></strong><span class="koboSpan" id="kobo.452.1"> class, located in source </span><strong class="source-inline"><span class="koboSpan" id="kobo.453.1">/enginecore/passes/</span></strong> <strong class="source-inline"><span class="koboSpan" id="kobo.454.1">OitWeightedPass.hpp</span></strong><span class="koboSpan" id="kobo.455.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.456.1">cpp</span></strong><span class="koboSpan" id="kobo.457.1"> files. </span><span class="koboSpan" id="kobo.457.2">The corresponding shaders are </span><strong class="source-inline"><span class="koboSpan" id="kobo.458.1">source/enginecore/resources/shaders/OitWeighted.frag</span></strong><span class="koboSpan" id="kobo.459.1"> and </span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.460.1">source/enginecore/resources/shaders/ OITWeightedComposite.frag</span></strong></span></p>
+<p><span class="koboSpan" id="kobo.461.1">The WOIT algorithm begins by initializing two empty buffers for each pixel, one for accumulating color and the other for accumulating weights. </span><span class="koboSpan" id="kobo.461.2">As the scene is rendered, the algorithm processes each transparent fragment and updates these buffers in a single rendering pass. </span><span class="koboSpan" id="kobo.461.3">During this pass, each fragment’s color is multiplied by its alpha value (the weight) and added to the color buffer, while the alpha value itself is added to the weight buffer. </span><span class="koboSpan" id="kobo.461.4">This process continues for all fragments, accumulating and blending their contributions based on their opacity. </span><span class="koboSpan" id="kobo.461.5">Once all fragments are processed, a final composite step is performed where the accumulated color in the color buffer is divided by the total weight in the weight buffer. </span><span class="koboSpan" id="kobo.461.6">This results in the final pixel color, providing a composite view of all transparent fragments based on </span><span class="No-Break"><span class="koboSpan" id="kobo.462.1">their weights.</span></span></p>
+<h2 id="_idParaDest-243"><a id="_idTextAnchor280"/><span class="koboSpan" id="kobo.463.1">How to do it…</span></h2>
+<p><span class="koboSpan" id="kobo.464.1">The following steps provides a guide on implementing the WOIT technique using the </span><span class="No-Break"><span class="koboSpan" id="kobo.465.1">Vulkan API.</span></span></p>
+<ol>
+<li><span class="koboSpan" id="kobo.466.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.467.1">OitWeightedPass::init</span></strong><span class="koboSpan" id="kobo.468.1"> method is tasked with initializing a variety of resources. </span><span class="koboSpan" id="kobo.468.2">It establishes both the Accumulation pass and the Composite pass pipelines. </span><span class="koboSpan" id="kobo.468.3">Furthermore, it arranges the necessary resources for the accumulation </span><span class="No-Break"><span class="koboSpan" id="kobo.469.1">pass pipeline.</span></span><p class="list-inset"><span class="koboSpan" id="kobo.470.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.471.1">colorTexture_</span></strong><span class="koboSpan" id="kobo.472.1"> uses the </span><strong class="source-inline"><span class="koboSpan" id="kobo.473.1">VK_FORMAT_R16G16B16A16_SFLOAT</span></strong><span class="koboSpan" id="kobo.474.1"> format. </span><span class="koboSpan" id="kobo.474.2">This format represents 4 channels (R, G, B, A) of 16-bit floating point numbers, providing high precision for color representation. </span><span class="koboSpan" id="kobo.474.3">It’s important for the color buffer to have a high precision format because during the accumulation</span><a id="_idIndexMarker447"/><span class="koboSpan" id="kobo.475.1"> pass, colors from various fragments are </span><span class="No-Break"><span class="koboSpan" id="kobo.476.1">added together:</span></span></p><pre class="source-code"><span class="koboSpan" id="kobo.477.1">
+colorTexture_ =
+      context-&gt;createTexture(VK_IMAGE_TYPE_2D, VK_FORMAT_R16G16B16A16_SFLOAT ...</span></pre></li> <li><span class="koboSpan" id="kobo.478.1">The </span><strong class="source-inline"><span class="koboSpan" id="kobo.479.1">alphaTexture</span></strong><span class="koboSpan" id="kobo.480.1">_ uses the </span><strong class="source-inline"><span class="koboSpan" id="kobo.481.1">VK_FORMAT_R16_SFLOAT</span></strong><span class="koboSpan" id="kobo.482.1"> format, which is a single 16-bit floating point number. </span><span class="koboSpan" id="kobo.482.2">This is adequate because we’re only storing the alpha (</span><span class="No-Break"><span class="koboSpan" id="kobo.483.1">opacity) value:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.484.1">
+alphaTexture_ =
+      context-&gt;createTexture(VK_IMAGE_TYPE_2D, VK_FORMAT_R16_SFLOAT ...</span></pre></li> <li><span class="koboSpan" id="kobo.485.1">Since WOIT depends upon blending, it’s important to set up blending attachments correctly. </span><span class="koboSpan" id="kobo.485.2">The pipeline descriptor </span><strong class="source-inline"><span class="koboSpan" id="kobo.486.1">gpDesc</span></strong><span class="koboSpan" id="kobo.487.1"> below is created with two </span><strong class="source-inline"><span class="koboSpan" id="kobo.488.1">VkPipelineColorBlendAttachmentState</span></strong><span class="koboSpan" id="kobo.489.1"> structures, one for each attachment. </span><span class="koboSpan" id="kobo.489.2">For the first blend attachment (corresponding to the color texture), the blend factors are set to </span><strong class="source-inline"><span class="koboSpan" id="kobo.490.1">VK_BLEND_FACTOR_ONE</span></strong><span class="koboSpan" id="kobo.491.1"> for both the source and destination, and the blend operation is </span><strong class="source-inline"><span class="koboSpan" id="kobo.492.1">VK_BLEND_OP_ADD</span></strong><span class="koboSpan" id="kobo.493.1">. </span><span class="koboSpan" id="kobo.493.2">This effectively implements additive blending, where the new fragment’s color is added to the existing color in the </span><span class="No-Break"><span class="koboSpan" id="kobo.494.1">color buffer.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.495.1">
+const VulkanCore::Pipeline::
+  GraphicsPipelineDescriptor gpDesc = {
+    .blendAttachmentStates_ = {
+      VkPipelineColorBlendAttachmentState{
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor =
+          VK_BLEND_FACTOR_ONE,
+        .dstColorBlendFactor =
+          VK_BLEND_FACTOR_ONE,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor =
+          VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor =
+          VK_BLEND_FACTOR_ONE,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask =
+          VK_COLOR_COMPONENT_R_BIT |
+          VK_COLOR_COMPONENT_G_BIT |
+          VK_COLOR_COMPONENT_B_BIT |
+          VK_COLOR_COMPONENT_A_BIT,
+      },</span></pre></li> <li><span class="koboSpan" id="kobo.496.1">For the second blend </span><a id="_idIndexMarker448"/><span class="koboSpan" id="kobo.497.1">attachment (corresponding to the alpha texture), the source alpha blend factor is </span><strong class="source-inline"><span class="koboSpan" id="kobo.498.1">VK_BLEND_FACTOR_ZERO</span></strong><span class="koboSpan" id="kobo.499.1">, and the destination alpha blend factor is </span><strong class="source-inline"><span class="koboSpan" id="kobo.500.1">VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR</span></strong><span class="koboSpan" id="kobo.501.1">. </span><span class="koboSpan" id="kobo.501.2">This configuration ensures that the new fragment’s alpha (or weight) is accumulated in the </span><span class="No-Break"><span class="koboSpan" id="kobo.502.1">alpha buffer:</span></span><pre class="source-code"><span class="koboSpan" id="kobo.503.1">
+         VkPipelineColorBlendAttachmentState{
+          .blendEnable = VK_TRUE,
+          .srcColorBlendFactor =
+            VK_BLEND_FACTOR_ZERO,
+          .dstColorBlendFactor =
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+          .colorBlendOp = VK_BLEND_OP_ADD,
+          .srcAlphaBlendFactor =
+            VK_BLEND_FACTOR_ZERO,
+          .dstAlphaBlendFactor =
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+          .alphaBlendOp = VK_BLEND_OP_ADD,
+          .colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT |
+            VK_COLOR_COMPONENT_G_BIT |
+            VK_COLOR_COMPONENT_B_BIT |
+            VK_COLOR_COMPONENT_A_BIT,
+        },
+      },
+};</span></pre></li> <li><span class="koboSpan" id="kobo.504.1">Next, we need to </span><a id="_idIndexMarker449"/><span class="koboSpan" id="kobo.505.1">initialize the composite pipeline. </span><span class="koboSpan" id="kobo.505.2">This could be implemented as a Vulkan subpass, but for simplicity we have kept it as a separate pass. </span><span class="koboSpan" id="kobo.505.3">The composite pipeline is created with </span><strong class="source-inline"><span class="koboSpan" id="kobo.506.1">VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA</span></strong><span class="koboSpan" id="kobo.507.1"> as </span><strong class="source-inline"><span class="koboSpan" id="kobo.508.1">srcColorBlendFactor</span></strong><span class="koboSpan" id="kobo.509.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.510.1">VK_BLEND_FACTOR_SRC_ALPHA</span></strong> <span class="No-Break"><span class="koboSpan" id="kobo.511.1">as </span></span><span class="No-Break"><strong class="source-inline"><span class="koboSpan" id="kobo.512.1">dstColorBlendFactor</span></strong></span><span class="No-Break"><span class="koboSpan" id="kobo.513.1">.</span></span><p class="list-inset"><span class="koboSpan" id="kobo.514.1">This configuration causes the incoming fragment’s color and alpha values to be blended with the current color and alpha in the frame buffer, with the incoming fragment’s alpha value controlling how much of the incoming color overwrites the </span><span class="No-Break"><span class="koboSpan" id="kobo.515.1">existing color.</span></span></p></li>
+<li><span class="koboSpan" id="kobo.516.1">The draw function is where the actual rendering occurs, the implementation is straightforward and uses </span><strong class="source-inline"><span class="koboSpan" id="kobo.517.1">vkCmdDrawIndexed</span></strong><span class="koboSpan" id="kobo.518.1"> to draw multiple meshes. </span><span class="koboSpan" id="kobo.518.2">Below we present the fragment shader used during this step. </span><span class="koboSpan" id="kobo.518.3">In this fragment shader, the view-space depth is scaled to provide depth weight; closer fragments are assigned larger weights. </span><span class="koboSpan" id="kobo.518.4">Then, the maximum color component multiplied by alpha is calculated to weigh vibrant pixels more. </span><span class="koboSpan" id="kobo.518.5">The calculated color weight is ensured to be no more than 1.0 and compared with the alpha to take the maximum value. </span><span class="koboSpan" id="kobo.518.6">The depth weight is then calculated and clamped within a specific range. </span><span class="koboSpan" id="kobo.518.7">The final weight is the product of color and depth weights. </span><span class="koboSpan" id="kobo.518.8">The color is then premultiplied by its alpha value to prevent over-saturation during</span><a id="_idIndexMarker450"/><span class="koboSpan" id="kobo.519.1"> blending. </span><span class="koboSpan" id="kobo.519.2">This shader outputs the weighted color and the original alpha of </span><span class="No-Break"><span class="koboSpan" id="kobo.520.1">the fragment.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.521.1">
+void main() {
+  const float scaledDepth =
+      -(inViewSpaceDepth * 3.0) / 200;
+  float maxColorComponent =
+      max(max(objectProperties.color.r,
+              objectProperties.color.g),
+          objectProperties.color.b);
+  float weightedColor =
+      maxColorComponent *
+      objectProperties.color.a;
+  float weightedColorAlpha =
+      max(min(1.0, weightedColor),
+          objectProperties.color.a);
+  float depthWeight =
+      0.03 /
+      (1e-5 + pow(scaledDepth, 4.0));
+  depthWeight =
+      clamp(depthWeight, 0.01, 4000);
+  const float weight =
+      weightedColorAlpha * depthWeight;
+  outputColor =
+      vec4(objectProperties.color.rgb *
+               objectProperties.color.a,
+           objectProperties.color.a) *
+      weight;
+  outputAlpha =
+      objectProperties.color.a;
+}</span></pre></li> <li><span class="koboSpan" id="kobo.522.1">The final step is </span><a id="_idIndexMarker451"/><span class="koboSpan" id="kobo.523.1">drawing a full screen quad using composite pipeline, it reads the accumulated color and alpha from two textures (</span><strong class="source-inline"><span class="koboSpan" id="kobo.524.1">colorData</span></strong><span class="koboSpan" id="kobo.525.1"> and </span><strong class="source-inline"><span class="koboSpan" id="kobo.526.1">alphaData</span></strong><span class="koboSpan" id="kobo.527.1">) for the current fragment. </span><span class="koboSpan" id="kobo.527.2">The accumulated color (</span><strong class="source-inline"><span class="koboSpan" id="kobo.528.1">accumulateColor</span></strong><span class="koboSpan" id="kobo.529.1">) is the sum of the product of color, alpha, and weight for each fragment from the previous step. </span><span class="koboSpan" id="kobo.529.2">The alpha value (alpha) is the original alpha value of the fragment. </span><span class="koboSpan" id="kobo.529.3">In the output color (</span><strong class="source-inline"><span class="koboSpan" id="kobo.530.1">outColor</span></strong><span class="koboSpan" id="kobo.531.1">), the RGB components of the accumulated color are divided by the accumulated alpha value to normalize them, with a minimum limit of 0.0001 to prevent division by zero. </span><span class="koboSpan" id="kobo.531.2">This is because the accumulated color was premultiplied by the alpha value (and weight) in the </span><span class="No-Break"><span class="koboSpan" id="kobo.532.1">previous steps.</span></span><pre class="source-code"><span class="koboSpan" id="kobo.533.1">
+void main() {
+  vec4 accumulateColor =
+      texture(colorData, fragTexCoord);
+  float alpha =
+      texture(alphaData, fragTexCoord)
+          .r;
+  outColor = vec4(
+      accumulateColor.rgb /
+          max(accumulateColor.a, .0001),
+      alpha);
+}</span></pre></li> </ol>
+<p><span class="koboSpan" id="kobo.534.1">This technique is faster than the linked-list one presented in recipe </span><em class="italic"><span class="koboSpan" id="kobo.535.1">Implementing Linked-List Order-Independent Transparency</span></em><span class="koboSpan" id="kobo.536.1">, but it has its drawbacks, such as the weighting function </span><a id="_idIndexMarker452"/><span class="koboSpan" id="kobo.537.1">which is prone to add artifacts to the result if not well designed </span><span class="No-Break"><span class="koboSpan" id="kobo.538.1">and tested.</span></span></p>
+<h2 id="_idParaDest-244"><a id="_idTextAnchor281"/><span class="koboSpan" id="kobo.539.1">There’s more…</span></h2>
+<p><span class="koboSpan" id="kobo.540.1">In this chapter, we have explored various techniques for handling transparency. </span><span class="koboSpan" id="kobo.540.2">The following table highlights</span><a id="_idIndexMarker453"/><span class="koboSpan" id="kobo.541.1"> the advantages and disadvantages of </span><span class="No-Break"><span class="koboSpan" id="kobo.542.1">each method:</span></span></p>
+<table class="No-Table-Style _idGenTablePara-1" id="table001-2">
+<colgroup>
+<col/>
+<col/>
+<col/>
+<col/>
+</colgroup>
+<thead>
+<tr class="No-Table-Style">
+<td class="No-Table-Style T---Body">
+<p><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.543.1">Technique</span></strong></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.544.1">Memory</span></strong></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.545.1">Performance</span></strong></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="No-Break"><strong class="bold"><span class="koboSpan" id="kobo.546.1">Physically correct</span></strong></span></p>
+</td>
+</tr>
+</thead>
+<tbody>
+<tr class="No-Table-Style">
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.547.1">Linked </span><span class="No-Break"><span class="koboSpan" id="kobo.548.1">list OIT</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.549.1">High, depends upon scene complexity as well as maintained </span><span class="No-Break"><span class="koboSpan" id="kobo.550.1">LinkedList size</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.551.1">Moderate speed, only requires </span><span class="No-Break"><span class="koboSpan" id="kobo.552.1">two passes</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.553.1">Highly accurate, handles complex overlapping geometry </span><span class="No-Break"><span class="koboSpan" id="kobo.554.1">very well</span></span></p>
+</td>
+</tr>
+<tr class="No-Table-Style">
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.555.1">Dual Depth </span><span class="No-Break"><span class="koboSpan" id="kobo.556.1">Peeling OIT</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.557.1">Moderate, requires storage of two </span><span class="No-Break"><span class="koboSpan" id="kobo.558.1">depth buffer</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.559.1">Slower, since it requires </span><span class="No-Break"><span class="koboSpan" id="kobo.560.1">multiple passes</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.561.1">Moderate accuracy, struggles with highly </span><span class="No-Break"><span class="koboSpan" id="kobo.562.1">complex scene.</span></span></p>
+</td>
+</tr>
+<tr class="No-Table-Style">
+<td class="No-Table-Style T---Body">
+<p><span class="No-Break"><span class="koboSpan" id="kobo.563.1">WOIT</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.564.1">Low, only needs to store weights &amp; colors for </span><span class="No-Break"><span class="koboSpan" id="kobo.565.1">each fragment.</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.566.1">Fast, since only single pass </span><span class="No-Break"><span class="koboSpan" id="kobo.567.1">is required</span></span></p>
+</td>
+<td class="No-Table-Style T---Body">
+<p><span class="koboSpan" id="kobo.568.1">Low accuracy, requires careful weight management that can depend </span><span class="No-Break"><span class="koboSpan" id="kobo.569.1">upon scene.</span></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US"><span class="koboSpan" id="kobo.570.1">Table 5.1 – Comparison of various techniques</span></p>
+<p><span class="koboSpan" id="kobo.571.1">We hope </span><em class="italic"><span class="koboSpan" id="kobo.572.1">Table 5.1</span></em><span class="koboSpan" id="kobo.573.1"> will help </span><a id="_idIndexMarker454"/><span class="koboSpan" id="kobo.574.1">you decide which technique to use based upon your </span><span class="No-Break"><span class="koboSpan" id="kobo.575.1">use case.</span></span></p>
+<h2 id="_idParaDest-245"><a id="_idTextAnchor282"/><span class="koboSpan" id="kobo.576.1">See also</span></h2>
+<p><span class="koboSpan" id="kobo.577.1">Please see following</span><a id="_idIndexMarker455"/><span class="koboSpan" id="kobo.578.1"> link for more details </span><span class="No-Break"><span class="koboSpan" id="kobo.579.1">on WOIT:</span></span></p>
+<ul>
+<li><span class="No-Break"><span class="koboSpan" id="kobo.580.1">WOIT: </span></span><span class="No-Break"><span class="koboSpan" id="kobo.581.1">https://jcgt.org/published/0002/02/09/</span></span></li>
+</ul>
+</div>
+</body></html>

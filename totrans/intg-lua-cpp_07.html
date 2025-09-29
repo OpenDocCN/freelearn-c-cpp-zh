@@ -1,0 +1,410 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer052">
+<h1 class="chapter-number" id="_idParaDest-155"><a id="_idTextAnchor157"/>7</h1>
+<h1 id="_idParaDest-156"><a id="_idTextAnchor158"/>Working with C++ Types</h1>
+<p>In the previous chapter, we learned how to call C++ code from Lua and how to register C++ modules. You might have observed that you can create objects in C++ and register them to Lua, but how about creating C++ objects freely in Lua? This is what we will set out to achieve in <span class="No-Break">this chapter.</span></p>
+<p>We will learn about the following topics and export C++ types to Lua in a <span class="No-Break">top-down approach:</span></p>
+<ul>
+<li>How to use the <span class="No-Break">Lua registry</span></li>
+<li>How to <span class="No-Break">use userdata</span></li>
+<li>Exporting C++ type <span class="No-Break">to Lua</span></li>
+</ul>
+<h1 id="_idParaDest-157"><a id="_idTextAnchor159"/>Technical requirements</h1>
+<p>Here are the technical requirements for <span class="No-Break">this chapter:</span></p>
+<ul>
+<li>You can access the source code for this chapter <span class="No-Break">at </span><a href="https://github.com/PacktPublishing/Integrate-Lua-with-CPP/tree/main/Chapter07"><span class="No-Break">https://github.com/PacktPublishing/Integrate-Lua-with-CPP/tree/main/Chapter07</span></a><span class="No-Break">.</span></li>
+<li>The previous chapter showed you how to register C++ modules; you must have finished coding the questions. You can check out the answers in the <strong class="source-inline">begin</strong> folder, which can be found in this book’s <span class="No-Break">GitHub repository.</span></li>
+<li>In this chapter, due to its complexity, we are adopting a top-down approach so that you only get a working implementation toward the end of this chapter. You can always check the <strong class="source-inline">end</strong> folder in this book’s GitHub repository if you prefer to see the complete code from <span class="No-Break">the beginning.</span></li>
+</ul>
+<h1 id="_idParaDest-158"><a id="_idTextAnchor160"/>How to use the Lua registry</h1>
+<p>The <strong class="bold">Lua registry</strong> is a <a id="_idIndexMarker322"/>global table that can be accessed by all C/C++ code. It is one of the places that C++ code can keep state across different function calls. You cannot access this table in Lua code unless you use the Lua <em class="italic">debug</em> library. However, you should not use the debug library in production code; so, the registry is for C/C++ <span class="No-Break">code only.</span></p>
+<p class="callout-heading">The registry versus upvalues</p>
+<p class="callout">In the previous chapter, we learned about Lua <em class="italic">upvalues</em>. An <em class="italic">upvalue</em> keeps a state for a specific Lua C function across calls. The <em class="italic">registry</em>, on the other hand, can be accessed by all Lua <span class="No-Break">C functions.</span></p>
+<p>To export C++ types to Lua, we will use Lua userdata to represent the type and the registry so that we have a metatable for functions for the type. We will learn about the registry first, then the userdata, and finally put everything together to export C++ types <span class="No-Break">to Lua.</span></p>
+<p>Let’s add support for the registry in our Lua executor so that we know how to <span class="No-Break">use it.</span></p>
+<h2 id="_idParaDest-159"><a id="_idTextAnchor161"/>Supporting the registry</h2>
+<p>Since <a id="_idIndexMarker323"/>the registry is a table, we must get a value with a key and set a value with a key. We can use <strong class="source-inline">LuaValue</strong> to represent different types of <span class="No-Break">Lua values.</span></p>
+<p>In <strong class="source-inline">LuaExecutor.h</strong>, add the following <span class="No-Break">function declarations:</span></p>
+<pre class="source-code">
+class LuaExecutor
+{
+public:
+    LuaValue getRegistry(const LuaValue &amp;key);
+    void setRegistry(const LuaValue &amp;key,
+                     const LuaValue &amp;value);
+};</pre>
+<p><strong class="source-inline">getRegistry</strong> will return the value from the registry for <strong class="source-inline">key</strong>. <strong class="source-inline">setRegistry</strong> will set <strong class="source-inline">value</strong> with <strong class="source-inline">key</strong> to <span class="No-Break">the registry.</span></p>
+<p>Now, let’s implement them and learn which Lua library functions can be used. In <strong class="source-inline">LuaExecutor.cc</strong>, implement <strong class="source-inline">getRegistry</strong>, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+LuaValue LuaExecutor::getRegistry(const LuaValue &amp;key)
+{
+    pushValue(key);
+    lua_gettable(L, LUA_REGISTRYINDEX);
+    return popValue();
+}</pre>
+<p>This looks<a id="_idIndexMarker324"/> simple, right? It reuses two pieces of knowledge we have come across from the <span class="No-Break">previous chapters:</span></p>
+<ul>
+<li>We use <strong class="source-inline">lua_gettable</strong> to get a value from a table, where the top of the stack is the key and the table is located in the position in the stack specified by the function parameter. We learned about this in <span class="No-Break"><em class="italic">Chapter 5</em></span><span class="No-Break">.</span></li>
+<li>Similar to upvalues, the registry is a special use case regarding the Lua stack, so it also has a pseudo-index called <strong class="source-inline">LUA_REGISTRYINDEX</strong>. We first encountered this pseudo-index in <span class="No-Break"><em class="italic">Chapter 6</em></span><span class="No-Break">.</span></li>
+<li>By combining these two points, we get an even simpler implementation compared to getting a value for a normal table. This is because we do not need to push the table onto <span class="No-Break">the stack.</span></li>
+</ul>
+<p>Next, we will implement <strong class="source-inline">setRegistry</strong>. In <strong class="source-inline">LuaExecutor.cc</strong>, add the <span class="No-Break">following code:</span></p>
+<pre class="source-code">
+void LuaExecutor::setRegistry(const LuaValue &amp;key,
+                              const LuaValue &amp;value)
+{
+    pushValue(key);
+    pushValue(value);
+    lua_settable(L, LUA_REGISTRYINDEX);
+}</pre>
+<p>This only <a id="_idIndexMarker325"/>needs to call one Lua library function: <strong class="source-inline">lua_settable</strong>. <strong class="source-inline">value</strong> is located on top of the stack and <strong class="source-inline">key</strong> is located second to the top. This simplicity is due to the great design of the Lua API regarding <span class="No-Break">the pseudo-index.</span></p>
+<p>With our Lua executor extended, let’s test it to see how the <span class="No-Break">registry works.</span></p>
+<h2 id="_idParaDest-160"><a id="_idTextAnchor162"/>Testing the registry</h2>
+<p>In <strong class="source-inline">main.cpp</strong>, replace<a id="_idIndexMarker326"/> the test code, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+int main()
+{
+    auto listener = std::make_unique&lt;
+        LoggingLuaExecutorListener&gt;();
+    auto lua = std::make_unique&lt;LuaExecutor&gt;(*listener);
+    auto key = LuaString::make("darabumba");
+    lua-&gt;setRegistry(key,
+        LuaString::make("gwentuklutar"));
+    auto v1 = lua-&gt;getRegistry(key);
+    lua-&gt;setRegistry(key, LuaString::make("wanghaoran"));
+    auto v2 = lua-&gt;getRegistry(key);
+    std::cout &lt;&lt; getLuaValueString(key)
+              &lt;&lt; " -&gt; " &lt;&lt; getLuaValueString(v1)
+              &lt;&lt; " -&gt; " &lt;&lt; getLuaValueString(v2);
+    return 0;
+}</pre>
+<p>The test code is doing the following, separated <span class="No-Break">by newlines:</span></p>
+<ul>
+<li>Creates <strong class="source-inline">LuaExecutor</strong> and a listener, <span class="No-Break">as usual</span></li>
+<li>Sets the registry with a key-value pair using <span class="No-Break">some strings</span></li>
+<li>Sets the key to <span class="No-Break">another value</span></li>
+<li>Prints out the key, the initial value, and the <span class="No-Break">current value</span></li>
+</ul>
+<p>If you have <a id="_idIndexMarker327"/>done everything correctly, you should see the <span class="No-Break">following output:</span></p>
+<pre class="source-code">
+darabumba -&gt; gwentuklutar -&gt; wanghaoran</pre>
+<p>In the previous chapter, we used an upvalue to store a light userdata. Now, let’s test light userdata with the registry. Replace the registry operations with <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+auto regkey = LuaLightUserData::make(listener.get());
+lua-&gt;setRegistry(regkey, LuaString::make(
+    "a LuaExecutorListener implementation"));
+auto regValue = lua-&gt;getRegistry(regkey);
+std::cout &lt;&lt; std::hex &lt;&lt; listener.get() &lt;&lt; " is "
+          &lt;&lt; getLuaValueString(regValue);</pre>
+<p>Here, we used light userdata as the key and a string as a value explaining what the key is. You should see an output similar to <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+0x14f7040d0 is a LuaExecutorListener implementation</pre>
+<p>Your key address will differ in <span class="No-Break">each run.</span></p>
+<p>Now that we’ve covered the registry and reviewed light userdata, let’s learn about <span class="No-Break">Lua userdata.</span></p>
+<h1 id="_idParaDest-161"><a id="_idTextAnchor163"/>How to use userdata</h1>
+<p>From this <a id="_idIndexMarker328"/>section onwards, we will transform the <strong class="source-inline">Destinations</strong> class from the previous chapter and register it to Lua as a type so that Lua code can create objects from it. Before we dive into the details, let’s make some high-level changes to show what we want at the <span class="No-Break">project level.</span></p>
+<h2 id="_idParaDest-162"><a id="_idTextAnchor164"/>Preparing the C++ type</h2>
+<p>In the previous <a id="_idIndexMarker329"/>chapter, we passed a name to the constructor for the <strong class="source-inline">Destinations</strong> class because we created its instances in C++ and needed to set a name to Lua for <span class="No-Break">each instance.</span></p>
+<p>In this<a id="_idIndexMarker330"/> chapter, we will export the C++ type to Lua. Lua will create the object and assign it a name. All changes will be in the <strong class="source-inline">Destinations</strong> class. The mechanism we implemented in the Lua executor to register C++ modules is flexible enough to support the registration of C++ types <span class="No-Break">as well.</span></p>
+<p>To reflect this change and difference, we will change the constructor and how the module name is provided. In <strong class="source-inline">Destinations.h</strong>, change the constructor, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+class Destinations : public LuaModule
+{
+public:
+    Destinations();
+};</pre>
+<p>Then, delete the following private <span class="No-Break">member variable:</span></p>
+<pre class="source-code">
+class Destinations : public LuaModule
+private:
+    std::string name;
+};</pre>
+<p>We will register a type instead of an instance. We can use a static variable for the Lua table name. You can change the constructor in <span class="No-Break"><strong class="source-inline">Destinations.cc</strong></span><span class="No-Break"> accordingly:</span></p>
+<pre class="source-code">
+Destinations::Destinations() : wishlist({}) {}</pre>
+<p>Now, let’s reimplement how to provide the Lua type/table name. In <strong class="source-inline">Destinations.cc</strong>, change <strong class="source-inline">luaName</strong> so that it uses a <span class="No-Break">static variable:</span></p>
+<pre class="source-code">
+namespace
+{
+    const std::string NAME("Destinations");
+}
+const std::string &amp;Destinations::luaName() const
+{
+    return NAME;
+}</pre>
+<p>Add a <a id="_idIndexMarker331"/>string<a id="_idIndexMarker332"/> constant called <strong class="source-inline">NAME</strong> with a value of <strong class="source-inline">Destinations</strong> at the beginning of the anonymous namespace and return it <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">luaName</strong></span><span class="No-Break">.</span></p>
+<p>Finally, change the test code in <strong class="source-inline">main.cpp</strong>, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+int main()
+{
+    auto listener = std::make_unique&lt;
+        LoggingLuaExecutorListener&gt;();
+    auto lua = std::make_unique&lt;LuaExecutor&gt;(*listener);
+    auto wishlist = std::make_unique&lt;Destinations&gt;<strong class="bold">()</strong>;
+    lua-&gt;registerModule(*wishlist.get());
+    lua-&gt;executeFile("script.lua");
+    return 0;
+}</pre>
+<p>Compared to the code at the end of <span class="No-Break"><em class="italic">Chapter 6</em></span>, the only change here is that we removed the parameter to the constructor for the <span class="No-Break"><strong class="source-inline">Destinations</strong></span><span class="No-Break"> class.</span></p>
+<p>This is what we want on the C++ side. Make sure it compiles. From now on, we will focus on re-wrapping <a id="_idIndexMarker333"/>the <strong class="source-inline">Destinations</strong> class and making <strong class="source-inline">script.lua</strong> create <a id="_idIndexMarker334"/>objects <span class="No-Break">from it.</span></p>
+<p>Next, let’s learn <span class="No-Break">about userdata.</span></p>
+<h2 id="_idParaDest-163"><a id="_idTextAnchor165"/>What is userdata?</h2>
+<p>In the previous<a id="_idIndexMarker335"/> chapter, we exported an instance of the class as a table and the class member functions as table functions. To export a type directly, we will create a userdata instead of <span class="No-Break">a table.</span></p>
+<p>In <span class="No-Break"><em class="italic">Chapter 2</em></span>, we learned that userdata is one of the basic types in Lua, but we did not dive into the details. In the previous chapter, we used lightuserdata. Is there any difference between userdata <span class="No-Break">and lightuserdata?</span></p>
+<p>A userdata is an arbitrary sequence of data that’s created from C/C++ code by calling the Lua library and Lua treats it transparently. On the other hand, lightuserdata must be a <span class="No-Break">C/C++ pointer.</span></p>
+<p>What makes userdata more suitable to represent new types, is that, like a table, you can set metamethods and metatables to it. This is how you provide type functions and make it a useful type <span class="No-Break">in Lua.</span></p>
+<p class="callout-heading">Object-oriented programming in Lua</p>
+<p class="callout">In <span class="No-Break"><em class="italic">Chapter 5</em></span>, we learned about object-oriented programming in Lua and the <strong class="source-inline">__index</strong> metatable. If this sounds unfamiliar, please revisit that chapter <span class="No-Break">before continuing.</span></p>
+<p>Now, let’s look at what we should put into the userdata so that we can export <span class="No-Break">C++ types.</span></p>
+<h2 id="_idParaDest-164"><a id="_idTextAnchor166"/>Designing the userdata</h2>
+<p>To create<a id="_idIndexMarker336"/> userdata, Lua provides the <span class="No-Break">following function:</span></p>
+<pre class="source-code">
+void *lua_newuserdatauv (
+    lua_State *L, size_t size, int nuvalue);</pre>
+<p>This function allocates a consecutive memory block with a length of <strong class="source-inline">size</strong> bytes as a userdata and pushes a reference to the userdata onto the stack. You can also attach user values to the userdata. The count of user values is passed in <strong class="source-inline">nuvalue</strong>. We will not use user values, so we will pass <strong class="source-inline">0</strong>. <strong class="source-inline">lua_newuserdatauv</strong> returns the address of the raw memory that’s <span class="No-Break">been allocated.</span></p>
+<p>Since<a id="_idIndexMarker337"/> Lua is written in C, you can use <strong class="source-inline">lua_newuserdatauv</strong> to allocate a C array or structure. Lua will even take care of deallocating it during <span class="No-Break">garbage collection.</span></p>
+<p>With C++, we want the userdata to represent a class. It is not portable or convenient to call this Lua library function to allocate a C++ class. So, we will take matters into our own hands – we will create the C++ object on our own and make the userdata a pointer to <span class="No-Break">the object.</span></p>
+<p class="callout-heading">Decoupling</p>
+<p class="callout">Although we are integrating Lua into C++, we have chosen to decouple the C++ side and the Lua side as much as possible and only expose the necessary interfaces. C++ memory management is a complex topic already. We have chosen to let C++ manage the C++ object creation and only use Lua userdata to keep a pointer and as a garbage <span class="No-Break">collection signal.</span></p>
+<p>Let’s start by writing a Lua C function for object creation. In <strong class="source-inline">Destinations.cc</strong>, at the end of the anonymous namespace, add a function called <strong class="source-inline">luaNew</strong>. Add it to the <strong class="source-inline">REGS</strong> vector <span class="No-Break">as well:</span></p>
+<pre class="source-code">
+int luaNew(lua_State *L);
+const std::vector&lt;luaL_Reg&gt; REGS = {
+    {"new", luaNew},
+    ...
+    {NULL, NULL}};
+int luaNew(lua_State *L)
+{
+    Destinations *obj = new Destinations();
+    Destinations **userdata =
+        reinterpret_cast&lt;Destinations **&gt;(
+            lua_newuserdatauv(L, sizeof(obj), 0));
+    *userdata = obj;
+    return 1;
+}</pre>
+<p><strong class="source-inline">luaNew</strong> will be <a id="_idIndexMarker338"/>responsible for creating <strong class="source-inline">Destinations</strong> instances. This is a <span class="No-Break">three-step process:</span></p>
+<p>First, we create an instance of the class in the heap with <strong class="source-inline">new</strong> and store its pointer <span class="No-Break">in </span><span class="No-Break"><strong class="source-inline">obj</strong></span><span class="No-Break">.</span></p>
+<p>Then, we call <strong class="source-inline">lua_newuserdatauv</strong> to create a userdata to hold the pointer in <strong class="source-inline">obj</strong>. <strong class="source-inline">userdata</strong> will have a size of <strong class="source-inline">sizeof(obj)</strong>, which is the size of a C++ object pointer. Because <strong class="source-inline">lua_newuserdatauv</strong> returns the pointer to the raw memory and we have made this memory hold a pointer to the <strong class="source-inline">Destinations</strong> instance, we need to save the address of the allocated memory as a pointer to <span class="No-Break">a pointer.</span></p>
+<p>Finally, we make <strong class="source-inline">*userdata</strong> point to <strong class="source-inline">obj</strong>. Since <strong class="source-inline">userdata</strong> is already on top of the stack, we can return <strong class="source-inline">1</strong> to return the allocated userdata <span class="No-Break">to Lua.</span></p>
+<p>When Lua code creates a <strong class="source-inline">Destinations</strong> instance via <strong class="source-inline">luaNew</strong>, the Lua side will get <span class="No-Break">a userdata.</span></p>
+<p class="callout-heading">A pointer to a pointer</p>
+<p class="callout">C++ allows you to create a pointer to a pointer. In such a case, one pointer holds the address of the other pointer. This is not frequently used in pure C++ code but can be useful for interacting with C APIs. The Lua library is a <span class="No-Break">C library.</span></p>
+<p>Next, let’s <a id="_idIndexMarker339"/>prepare <strong class="source-inline">script.lua</strong> so that it can use the <span class="No-Break">C++ type.</span></p>
+<h2 id="_idParaDest-165"><a id="_idTextAnchor167"/>Preparing the Lua script</h2>
+<p>Replace the <a id="_idIndexMarker340"/>content of <strong class="source-inline">script.lua</strong>, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+dst = Destinations.new()
+dst:wish("London", "Paris", "Amsterdam")
+dst:went("Paris")
+print("Visited:", dst:list_visited())
+print("Unvisited:", dst:list_unvisited())
+dst = Destinations.new()
+dst:wish("Beijing")
+dst:went("Berlin")
+print("Visited:", dst:list_visited())
+print("Unvisited:", dst:list_unvisited())</pre>
+<p>This first part of the script is similar to the script we used for the previous chapter, except that we changed to <strong class="source-inline">Destinations.new()</strong> with the new table name and we switched to use the object calling convention with colons. The second part of the script is a repetition of the first part with different city names. This is to demonstrate that we can create many <strong class="source-inline">Destinations</strong> instances <span class="No-Break">in Lua.</span></p>
+<p>If you run the project at this point, you will see the <span class="No-Break">following error:</span></p>
+<pre class="source-code">
+[LuaExecutor] Failed to execute: script.lua:2: attempt to index a userdata value (global 'dst')</pre>
+<p>For now, this is expected. Because we returned a userdata instead of a table to Lua, so far, it is just a raw piece of memory that’s transparent to Lua. Lua does not know how to call a method on a piece of raw memory. As explained earlier, we need to set a metatable to the userdata for this to work. We will do this next to put <span class="No-Break">everything together.</span></p>
+<h1 id="_idParaDest-166"><a id="_idTextAnchor168"/>Exporting C++ types to Lua</h1>
+<p>In the<a id="_idIndexMarker341"/> previous section, we returned the pointer to the class instance to Lua as a userdata. In this section, we will export member functions for the userdata. To do this, we need to set the metatable for <span class="No-Break">the userdata.</span></p>
+<h2 id="_idParaDest-167"><a id="_idTextAnchor169"/>Setting a metatable for the userdata</h2>
+<p>In <span class="No-Break"><em class="italic">Chapter 5</em></span>, we<a id="_idIndexMarker342"/> learned that each table can have a metatable. Similarly, each userdata can also have a metatable. In <span class="No-Break"><em class="italic">Chapter 2</em></span>, we learned that in Lua code, the metatable needs to be set during <span class="No-Break">object creation.</span></p>
+<p>Here, we need to set the metatable during object creation in C++ code. Instead of creating a new metatable for each object, we can create a single metatable and store it in the registry. Then, each object only needs to reference this single metatable. This will increase efficiency and reduce memory footprint. The Lua library even provides helper functions <span class="No-Break">for this.</span></p>
+<p>First, let’s see the code; an explanation will follow. Replace the content for <strong class="source-inline">luaNew</strong>, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+const std::string METATABLE_NAME(
+    "Destinations.Metatable");
+int luaNew(lua_State *L)
+{
+    Destinations *obj = new Destinations();
+    Destinations **userdata =
+        reinterpret_cast&lt;Destinations **&gt;(
+            lua_newuserdatauv(L, sizeof(obj), 0));
+    *userdata = obj;
+    int type = luaL_getmetatable(
+        L, METATABLE_NAME.c_str());
+    if (type == LUA_TNIL)
+    {
+        lua_pop(L, 1);
+        luaL_newmetatable(L, METATABLE_NAME.c_str());
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -2, "__index");
+        luaL_setfuncs(L, REGS.data(), 0);
+    }
+    lua_setmetatable(L, 1);
+    return 1;
+}</pre>
+<p>As you <a id="_idIndexMarker343"/>can see, the code here is separated by newlines. In this case, we have only inserted the second section. The rest of the code is kept as-is. Additionally, we declared a new constant called <strong class="source-inline">METATABLE_NAME</strong>. You can put this after the <strong class="source-inline">NAME</strong> constant. The second code section does <span class="No-Break">the following:</span></p>
+<ol>
+<li>First, it gets the metatable containing the <strong class="source-inline">METATABLE_NAME</strong> key from the registry. The <strong class="source-inline">luaL_getmetatable</strong> library function is used <span class="No-Break">for this.</span></li>
+<li>If it’s not found, the metatable is created. We will expand on this <span class="No-Break">detail later.</span></li>
+<li>Finally, the code section sets the metatable to the userdata with <strong class="source-inline">lua_setmetatable</strong>. This library function expects the metatable to be on top of the stack. In our case, the position of the userdata in the stack is specified via the <strong class="source-inline">1</strong> parameter. <strong class="source-inline">lua_setmetatable</strong> will pop the metatable from <span class="No-Break">the stack.</span></li>
+</ol>
+<p>To understand this better, see the <span class="No-Break">following figure:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer049">
+<img alt="Figure 7.1 – Setting the metatable" height="298" src="image/B20927_07_01.jpg" width="1084"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.1 – Setting the metatable</p>
+<p>The <a id="_idIndexMarker344"/>preceding figure shows how the stack’s state changes when the metatable is already in <span class="No-Break">the registry.</span></p>
+<p>Next, let’s look at the case when the metatable is not in <span class="No-Break">the registry.</span></p>
+<h2 id="_idParaDest-168"><a id="_idTextAnchor170"/>Creating a metatable for the userdata</h2>
+<p>In our<a id="_idIndexMarker345"/> implementation, the metatable is created when a class instance is created from Lua for the first time. Specifically, the code to create the metatable is as follows; this was copied from the previous <span class="No-Break">code listing:</span></p>
+<pre class="source-code">
+    if (type == LUA_TNIL)
+    {
+        lua_pop(L, 1);
+        luaL_newmetatable(L, METATABLE_NAME.c_str());
+        lua_pushvalue(L, -1);
+        lua_setfield(L, -2, "__index");
+        luaL_setfuncs(L, REGS.data(), 0);
+    }</pre>
+<p>When we need to create the metatable, the stack’s state changes, as shown in the <span class="No-Break">following figure:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer050">
+<img alt="Figure 7.2 – Creating the metatable" height="690" src="image/B20927_07_02.jpg" width="1081"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.2 – Creating the metatable</p>
+<p>Eight steps <a id="_idIndexMarker346"/>are involved in this process. Steps 4 to 7 deal with creating the <span class="No-Break">new metatable.</span></p>
+<ol>
+<li>Creates a userdata with <strong class="source-inline">lua_newuserdatauv</strong> that holds a pointer to the <span class="No-Break">class instance.</span></li>
+<li>Tries to get a metatable from the registry with <strong class="source-inline">luaL_getmetatable</strong>. The metatable does not exist yet, so we will get a <span class="No-Break">nil value.</span></li>
+<li>Pops the nil value from the stack with <strong class="source-inline">lua_pop</strong>. Because it is not useful and is on top of the userdata in the stack, we need to return the userdata as the top of <span class="No-Break">the stack.</span></li>
+<li>Creates an empty metatable in the registry <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">luaL_newmetatable</strong></span><span class="No-Break">.</span></li>
+<li>Pushes a copy of the reference to the metatable onto the stack with <strong class="source-inline">lua_pushvalue</strong>. Now, we have two references to the same metatable; we will use these in the <span class="No-Break">next step.</span></li>
+<li>Sets the <strong class="source-inline">__index</strong> field of the metatable as itself with <strong class="source-inline">lua_setfield</strong>. This ensures that we do not need to create another table for the <span class="No-Break"><strong class="source-inline">__index</strong></span><span class="No-Break"> field.</span></li>
+<li>Sets the type functions in <strong class="source-inline">REGS</strong> to the metatable <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">luaL_setfuncs</strong></span><span class="No-Break">.</span></li>
+<li>Sets the metatable to the userdata <span class="No-Break">with </span><span class="No-Break"><strong class="source-inline">lua_setmetatable</strong></span><span class="No-Break">.</span></li>
+</ol>
+<p>With this, when<a id="_idIndexMarker347"/> the Lua code calls a method on the userdata object, it will dispatch to the proper Lua C <span class="No-Break">function wrapper.</span></p>
+<p>How can we get the object in C++ in the Lua C <span class="No-Break">wrapper function?</span></p>
+<p>In the previous chapter, we used upvalue. Although this can still work, it is no longer suitable here. Let’s make object retrieval in C++ <span class="No-Break">work again.</span></p>
+<h2 id="_idParaDest-169"><a id="_idTextAnchor171"/>Getting the object in C++</h2>
+<p>In <strong class="source-inline">script.lua</strong>, we <a id="_idIndexMarker348"/>have changed the Lua code so that it uses the object calling convention with colons. This means that the object will be passed to the Lua C functions as the <span class="No-Break">first argument.</span></p>
+<p>To get the object reference, rewrite the <strong class="source-inline">getObj</strong> function, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+inline Destinations *getObj(lua_State *L)
+{
+    luaL_checkudata(L, 1, METATABLE_NAME.c_str());
+    return *reinterpret_cast&lt;Destinations **&gt;(
+        lua_touserdata(L, 1));
+}</pre>
+<p>This function is called from Lua C wrapper functions to get the object reference. This was first implemented in the previous chapter using <span class="No-Break">an upvalue.</span></p>
+<p>First, using the Lua <strong class="source-inline">luaL_checkudata</strong> library function, we check that the first argument is a userdata with a metatable in the <strong class="source-inline">METATABLE_NAME</strong> registry. This is a security measure to ensure that the Lua code does not pass an object of another type. The check on the metatable’s name works because only C/C++ code can access <span class="No-Break">the registry.</span></p>
+<p>Then, we return the first argument as a userdata cast to <strong class="source-inline">Destinations **</strong> and dereferenced to get the <span class="No-Break">object pointer.</span></p>
+<p>Since we <a id="_idIndexMarker349"/>are now passing the object from Lua in the calls, we need to modify our wrapper <span class="No-Break">functions slightly.</span></p>
+<h2 id="_idParaDest-170"><a id="_idTextAnchor172"/>Making wrappers work again</h2>
+<p>In <strong class="source-inline">luaWish</strong> and <strong class="source-inline">luaWent</strong>, we were expecting a list of cities. Now, we need to exclude the first argument. There<a id="_idIndexMarker350"/> is only one character to change. Rewrite <strong class="source-inline">luaWish</strong>, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+int luaWish(lua_State *L)
+{
+    Destinations *obj = getObj(L);
+    std::vector&lt;std::string&gt; places;
+    int nArgs = lua_gettop(L);
+    for (int i = <strong class="bold">2</strong>; i &lt;= nArgs; i++)
+    {
+        places.push_back(lua_tostring(L, i));
+    }
+    obj-&gt;wish(places);
+    return 0;
+}</pre>
+<p>We only changed <strong class="source-inline">i = 1</strong> to <strong class="source-inline">i = 2</strong> for the <strong class="source-inline">for</strong> loop. You can do the same <span class="No-Break">for </span><span class="No-Break"><strong class="source-inline">luaWent</strong></span><span class="No-Break">.</span></p>
+<p>Now that we have exported the <strong class="source-inline">Destinations</strong> C++ type to Lua, let’s <span class="No-Break">test it.</span></p>
+<h2 id="_idParaDest-171"><a id="_idTextAnchor173"/>Testing it out</h2>
+<p>Since we<a id="_idIndexMarker351"/> have adopted a top-down approach in this chapter, all the test code is complete. Now, we only need to run <span class="No-Break">the project.</span></p>
+<p>If you’ve been following along, you should see the <span class="No-Break">following output:</span></p>
+<pre class="source-code">
+[Lua] Visited: Paris
+[Lua] Unvisited: Amsterdam London
+[Lua] Visited: Berlin
+[Lua] Unvisited: Beijing</pre>
+<p>The first <a id="_idIndexMarker352"/>two lines are from the first object that was created in <strong class="source-inline">script.lua</strong>. The last two lines are from the second object that <span class="No-Break">was created.</span></p>
+<p>If you have made any errors in the code, you will see some error output here. Go back and see what you have missed. In this chapter, the code is a continuation of the previous chapter, but the stack’s state is <span class="No-Break">quite complex.</span></p>
+<p>Should we say, “Congratulations”? Wait a moment; have you discovered something we missed in the <span class="No-Break">exported type?</span></p>
+<p>Let’s print something in the constructor and the destructor to trace the object’s life cycle. Rewrite the constructor and the destructor, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+Destinations::Destinations() : wishlist({})
+{
+    std::cout &lt;&lt; "Destinations instance created: "
+              &lt;&lt; std::hex &lt;&lt; this &lt;&lt; std::endl;
+}
+Destinations::~Destinations()
+{
+    std::cout &lt;&lt; "Destinations instance destroyed: "
+              &lt;&lt; std::hex &lt;&lt; this &lt;&lt; std::endl;
+}</pre>
+<p>The constructor and the destructor simply output the object pointer value in <span class="No-Break">hex format.</span></p>
+<p>Run the project again and see what you get. You should see something similar to the <span class="No-Break">following</span><span class="No-Break"><a id="_idIndexMarker353"/></span><span class="No-Break"> output:</span></p>
+<pre class="source-code">
+Destinations instance created: 0x12df07150
+Destinations instance created: 0x12f804170
+[Lua] Visited: Paris
+[Lua] Unvisited: Amsterdam London
+Destinations instance created: 0x12f8043a0
+[Lua] Visited: Berlin
+[Lua] Unvisited: Beijing
+Destinations instance destroyed: 0x12df07150</pre>
+<p>Three instances are created, but only one is destroyed! The one that gets destroyed is the one that was created in <strong class="source-inline">main.cpp</strong> and was serving as the prototype for the <strong class="source-inline">Destinations</strong> type. This means that we are leaking objects <span class="No-Break">in Lua!</span></p>
+<p>We need to <span class="No-Break">fix this!</span></p>
+<h2 id="_idParaDest-172"><a id="_idTextAnchor174"/>Providing a finalizer</h2>
+<p>Are<a id="_idIndexMarker354"/> you wondering why there is a <span class="No-Break">memory leak?</span></p>
+<p>This is because Lua uses garbage collection. We allocate a userdata and use it as a pointer. It is this pointer that gets garbage collected when the userdata is out of scope in Lua. The C++ object itself is <span class="No-Break">not deleted.</span></p>
+<p>Lua supports using userdata in this way perfectly fine, but you need to help Lua delete the object when the associated userdata is garbage collected. To help Lua, you can provide a <strong class="source-inline">__gc</strong> metamethod in the metatable. This is called a <strong class="bold">finalizer</strong>. It is invoked during the garbage collection process to delete your <span class="No-Break">real object.</span></p>
+<p>Let’s provide a finalizer named <strong class="source-inline">luaDelete</strong> for the <strong class="source-inline">Destinations</strong> type. Add another Lua C function <span class="No-Break">above </span><span class="No-Break"><strong class="source-inline">luaNew</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+int luaDelete(lua_State *L)
+{
+    Destinations *obj = getObj(L);
+    delete obj;
+    return 0;
+}</pre>
+<p>Easy, right? Lua <a id="_idIndexMarker355"/>passes the userdata object to the finalizer during <span class="No-Break">garbage collection.</span></p>
+<p>Now, let’s register it. In <strong class="source-inline">luaNew</strong>, add two more lines, <span class="No-Break">as follows:</span></p>
+<pre class="source-code">
+int luaNew(lua_State *L)
+{
+    ....
+    if (type == LUA_TNIL)
+    {
+        ...
+        <strong class="bold">lua_pushcfunction(L, luaDelete);</strong>
+        <strong class="bold">lua_setfield(L, -2, "__gc");</strong>
+    }
+    ...
+}</pre>
+<p>This sets the <strong class="source-inline">__gc</strong> metamethod for the metatable to our <span class="No-Break"><strong class="source-inline">luaDelete</strong></span><span class="No-Break"> function.</span></p>
+<p>The interactions between Lua and C++ can be seen in the <span class="No-Break">following diagram:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer051">
+<img alt="Figure 7.3 – Object creation and destruction" height="843" src="image/B20927_07_03.jpg" width="482"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 7.3 – Object creation and destruction</p>
+<p>When Lua<a id="_idIndexMarker356"/> code creates an object of the <strong class="source-inline">Destinations</strong> class, it triggers a call to <strong class="source-inline">luaNew</strong>, which creates the C++ object and returns its pointer as a userdata. When Lua is done with the object, after a while, garbage collection is triggered and the <strong class="source-inline">luaDelete</strong> C++ finalizer <span class="No-Break">is called.</span></p>
+<p>Let’s run the project again. You should see an output similar to <span class="No-Break">the following:</span></p>
+<pre class="source-code">
+Destinations instance created: 0x14c609a60
+Destinations instance created: 0x14c704170
+[Lua] Visited: Paris
+[Lua] Unvisited: Amsterdam London
+Destinations instance created: 0x14c7043a0
+[Lua] Visited: Berlin
+[Lua] Unvisited: Beijing
+Destinations instance destroyed: 0x14c609a60
+Destinations instance destroyed: 0x14c7043a0
+Destinations instance destroyed: 0x14c704170</pre>
+<p>With that, we <a id="_idIndexMarker357"/>have created three instances and destroyed <span class="No-Break">three instances.</span></p>
+<p><span class="No-Break">Congratulations!</span></p>
+<h1 id="_idParaDest-173"><a id="_idTextAnchor175"/>Summary</h1>
+<p>In this chapter, we learned how to export C++ types to Lua so that Lua code can create C++ objects. We also learned about the registry and the userdata type. Last but not least, we implemented a finalizer for <span class="No-Break">garbage collection.</span></p>
+<p>The work in this chapter is based on registering C++ modules from the previous chapter. You can choose to export a C++ class or C++ class instances. It is a matter of design choice and your <span class="No-Break">project’s needs.</span></p>
+<p>In the next chapter, we will learn how to implement a template class to help export C++ types <span class="No-Break">to Lua.</span></p>
+<h1 id="_idParaDest-174"><a id="_idTextAnchor176"/>Exercise</h1>
+<p>In <strong class="source-inline">main.cpp</strong>, we created an instance of <strong class="source-inline">Destinations</strong> and registered it to Lua. In Lua code, this instance is used to create more instances. This is fine, considering that Lua uses prototype-based object-oriented programming as well. If you want to make your C++ code more like C++’s way of doing things, you can create a factory class for <strong class="source-inline">Destinations</strong> and register the factory to Lua. Do this and make the factory only export the <strong class="source-inline">luaNew</strong> function. You shouldn’t need to change <strong class="source-inline">script.lua</strong> or the Lua C wrapper <span class="No-Break">function implementations.</span></p>
+</div>
+</div></body></html>

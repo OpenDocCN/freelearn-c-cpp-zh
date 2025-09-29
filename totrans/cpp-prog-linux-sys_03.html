@@ -1,0 +1,487 @@
+<html><head></head><body>
+<div id="sbo-rt-content"><div id="_idContainer035">
+<h1 class="chapter-number" id="_idParaDest-49"><a id="_idTextAnchor047"/>3</h1>
+<h1 id="_idParaDest-50"><a id="_idTextAnchor048"/>Navigating through the Filesystems</h1>
+<p>In this chapter, we will revisit the concepts of a file, which were discussed briefly in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>. You will learn in detail about the <strong class="bold">filesystem</strong> (<strong class="bold">FS</strong>) in Linux and its specifics. We will not go to certain filesystem implementations, as you will see there’re many, but we will establish the fundamentals of working with them. You will learn more about Linux’s FS hierarchy – its partitions, object types, and some frequently <span class="No-Break">used operations.</span></p>
+<p>You will get familiar with<a id="_idIndexMarker221"/> the <strong class="bold">filesystem library</strong> in C++, allowing you to execute system operations independently from the platform. We will use C++ examples to show you simple applications for file management. You’re also going to learn about <strong class="source-inline">string_views</strong>. Some of the operations you learn about here will be revisited again in <a href="B20833_05.xhtml#_idTextAnchor075"><span class="No-Break"><em class="italic">Chapter 5</em></span></a>, when we will discuss <span class="No-Break">error handling.</span></p>
+<p>Last but not least, you will learn hands-on about the fundamental <strong class="bold">inter-process communication </strong>(<strong class="bold">IPC</strong>) mechanism known<a id="_idIndexMarker222"/> as <strong class="bold">pipes</strong>. We will also discuss signals as system entities and their impact on communication. If you’re unfamiliar with data transfers between processes, then this is where you should start. If you are experienced, then you may notice that the code could be much more complicated – implementing server-client applications with pipes, for example. We are aware of that, but we believe that the examples are a good basis to start from – additional scalability of this mechanism has unwanted knock-on effects. We discuss this more in <a href="B20833_07.xhtml#_idTextAnchor101"><span class="No-Break"><em class="italic">Chapter 7</em></span></a><span class="No-Break">.</span></p>
+<p>In this chapter, we will cover the following <span class="No-Break">main topics:</span></p>
+<ul>
+<li>Going through Linux’s <span class="No-Break">filesystem fundamentals</span></li>
+<li>Executing filesystem operations <span class="No-Break">with C++</span></li>
+<li>IPC through anonymous pipes and <span class="No-Break">named pipes</span></li>
+<li>Briefly observing the <span class="No-Break">signal handling</span></li>
+</ul>
+<h1 id="_idParaDest-51"><a id="_idTextAnchor049"/>Technical requirements</h1>
+<p>In order to run the code examples, the reader must prepare <span class="No-Break">the following:</span></p>
+<ul>
+<li>A Linux-based system capable of compiling and executing C and C++20 (for example, Linux <span class="No-Break">Mint 21):</span><ul><li><strong class="bold">gcc12.2</strong> compiler: <a href="https://gcc.gnu.org/git/gcc.gitgcc-source"><span class="No-Break">https://gcc.gnu.org/git/gcc.git gcc-source</span></a></li><li><strong class="bold">g++</strong> with <strong class="bold">-std=c++2a</strong> flags for the <span class="No-Break">C++ code</span></li><li><strong class="bold">gcc </strong>without flags for the <span class="No-Break">C code</span></li></ul></li>
+<li>For all the examples, you can alternatively <span class="No-Break">use </span><a href="https://godbolt.org/%0D"><span class="No-Break">https://godbolt.org/</span><span class="No-Break">.</span></a></li>
+<li>Code examples could be found <span class="No-Break">here: </span><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%203"><span class="No-Break">https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%203</span></a><a href="https://github.com/PacktPublishing/C-Programming-for-Linux-Systems/tree/main/Chapter%203%0D"/></li>
+</ul>
+<h1 id="_idParaDest-52"><a id="_idTextAnchor050"/>Going through Linux’s filesystem fundamentals</h1>
+<p>We went through some of the Unix (and Linux) filesystem definitions in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>. Let’s see how<a id="_idIndexMarker223"/> they really matter in the bigger picture of system programming. You probably remember what types of files there are in the Linux system – regular files, directories, special files, links, sockets, and named pipes. We are going to deal with most of them in this chapter and learn about what purpose they serve. One way to think about files in Unix, including Linux, is the following <span class="No-Break">simple statement:</span></p>
+<p>“<em class="italic">On a UNIX system, everything is a file; if something is not a file, it is </em><span class="No-Break"><em class="italic">a process.</em></span><span class="No-Break">”</span></p>
+<p>So, everything that’s not a process has an API, which includes file operation system calls. Let’s agree that a file is the main instrument for the logical organization of data. Then there must be something that is the main instrument for file organization. Well, this is where the file management system, or simply <a id="_idIndexMarker224"/>the FS, comes into play. It looks after the files’ layout on the physical medium – the <strong class="bold">non-volatile memory </strong>(<strong class="bold">NVM</strong>), their <a id="_idIndexMarker225"/>organization on that medium, the operation abstraction (<strong class="source-inline">open()</strong>, <strong class="source-inline">write()</strong>), and <span class="No-Break">so on.</span></p>
+<p>The FS also allows the user to forget the hardware’s specifics for a moment and focus on data operations, as well as using the FS like an ordered catalog. It helps with the files’ structure and data visualization on the UI or CLI, access permissions, and the effective usage of resources. While the user has the chance to focus on file creation, deletion, modifications, and <a id="_idIndexMarker226"/>sharing, the FS cares more about data accuracy, device driver error handling, multiple user accesses, and so on. This is an important point, as we will observe some error states later in the book – for example, in <a href="B20833_05.xhtml#_idTextAnchor075"><span class="No-Break"><em class="italic">Chapter 5</em></span></a>, where the FS is the entity that creates the exception cases. And it also affects task scheduling, as we mentioned earlier. Let’s look at the FS structure and its specifics <span class="No-Break">in Linux.</span></p>
+<h2 id="_idParaDest-53"><a id="_idTextAnchor051"/>Linux’s FS</h2>
+<p>We have to mention <a id="_idIndexMarker227"/>that there are many kinds of FSs. Each of them suits its own purposes, as the user experience implies multiple preferences, and not all of them exist together. Linux has the strength to support over 100 FSes. A combination of them can run simultaneously on a single system. This provides an opportunity for the user to operate with them optimally and benefit from all of them. If the FS is required just to organize the file structure, then an ordinary one could do the trick – for example, <strong class="source-inline">ext2</strong> or <strong class="source-inline">FAT</strong>. If we want file consistency and less error-prone operations, then<a id="_idIndexMarker228"/> a <strong class="bold">journaling FS</strong> is required, such as <strong class="source-inline">ext4</strong>, <strong class="source-inline">ReiserFS</strong>, or <strong class="source-inline">XFS</strong>. For online data <a id="_idIndexMarker229"/>stores, <strong class="bold">network FSes</strong>, such as <strong class="source-inline">NFS</strong> and <strong class="source-inline">CIFS</strong>, might come in handy. Large files and a large number of small files require specific <a id="_idIndexMarker230"/>management, too, so <strong class="bold">volume management FSes</strong>, such as <strong class="source-inline">ZFS</strong> and <strong class="source-inline">btrfs</strong>, are useful. Last, but not least, there are FSes that are not backed by physical storage but represent entities in the <strong class="bold">main memory</strong>, which<a id="_idIndexMarker231"/> are particularly useful to the system programmers – <strong class="source-inline">proc</strong>, <strong class="source-inline">sys</strong>, <strong class="source-inline">ram</strong>, and <strong class="source-inline">tmp</strong>. However, at an abstract level, the file operations seem to be the same. So, we can have a unified interface. It not only allows system programmers to use the different FSes in the same way but also allows the OS’s UI to visualize the file structure – all of the files and directories – under the same FS tree. Linux realizes this through<a id="_idIndexMarker232"/> the <strong class="bold">virtual filesystem</strong> (<strong class="bold">VFS</strong>). It is also referred to<a id="_idIndexMarker233"/> as <strong class="bold">virtual FS switch</strong> – a layer residing in the kernel, providing a generic interface for the programs. Before we go into detail, let’s see how it looks from a <span class="No-Break">design standpoint.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer027">
+<img alt="Figure 3.1 – A VFS software layer in Linux kernel" height="993" src="image/Figure_3.1_B20833.jpg" width="630"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.1 – A VFS software layer in Linux kernel</p>
+<p>Additionally, the <a id="_idIndexMarker234"/>VFS is object-oriented. This will not help us much with C++ code, unfortunately. Still, it is a good example of object-oriented programming in C, as the objects are actually of a <strong class="source-inline">struct</strong> type, containing file data and function pointers to the file operations. We will talk about those objects a bit later in the chapter. Let’s look at the directory structure and standardized <span class="No-Break">partitioning now.</span></p>
+<h2 id="_idParaDest-54"><a id="_idTextAnchor052"/>Directory structure and partitioning</h2>
+<p>The directory structure<a id="_idIndexMarker235"/> in Linux is well <a id="_idIndexMarker236"/>presented in the <strong class="bold">Filesystem Hierarchy Standard</strong> (<strong class="bold">FHS</strong>). Still, it is important to note that the files, including directories, are arranged in branches of a tree structure. Their character names are case-sensitive, and file suffixes (called <em class="italic">extensions</em> in Windows) might be useless in some cases – remember that regular files are treated as binary files and their extensions are mostly to help the user about their roles. This can be confusing for newcomers, especially if they use the Terminal and not the OS’s UI. The true file type is determined internally through <em class="italic">magic numbers</em>, or <em class="italic">Magic Bytes</em>. For example, executable scripts start with <strong class="source-inline">#!</strong>. You can read more about them by executing <span class="No-Break">this command:</span></p>
+<pre class="console">
+$ man magic</pre> <p>Getting back to the FS structure – it starts with the <strong class="source-inline">root</strong> directory, denoted with <strong class="source-inline">/</strong>. The <strong class="source-inline">root</strong> FS is mounted on that directory in the early stages of the system’s boot sequence. Every other <a id="_idIndexMarker237"/>FS is mounted during the OS startup or even later during normal operations. You can check your own configuration <span class="No-Break">as follows:</span></p>
+<pre class="console">
+$ cat /etc/fstab
+# /etc/fstab: static file system information.
+...
+# &lt;file system&gt; &lt;mount point&gt;   &lt;type&gt;  &lt;options&gt;       &lt;dump&gt;  &lt;pass&gt;
+# / was on /dev/sda5 during installation
+UUID=618800a5-57e8-43c1-9856-0a0a14ebf344 /               ext4    errors=remount-ro 0       1
+# /boot/efi was on /dev/sda1 during installation
+UUID=D388-FA76  /boot/efi       vfat    umask=0077      0       1
+/swapfile                                 none            swap    sw              0       0</pre> <p>It provides information about the <em class="italic">mount points</em> and the respective FS types. Outside this file, the FSes will be visible in the system as separate directories with their exact paths. Every one of them can be accessed through the <strong class="source-inline">root</strong> directory. An important point is that <strong class="source-inline">/</strong> and <strong class="source-inline">/root</strong> are different directories, as the first is the <strong class="source-inline">root</strong> directory and the latter is the home directory of the <em class="italic">root user</em>. Some other important partitions and directories are <span class="No-Break">the following:</span></p>
+<ul>
+<li><strong class="source-inline">/bin</strong>: Includes common <span class="No-Break">user executables.</span></li>
+<li><strong class="source-inline">/boot</strong>: Includes the Linux system startup files, the static part of the kernel, and the <span class="No-Break">bootloader configuration.</span></li>
+<li><strong class="source-inline">/dev</strong>: Includes references to all peripheral hardware, which is represented through files with a special file type, <strong class="source-inline">'c'</strong> or <strong class="source-inline">'b'</strong>, and they provide access to the real devices. We mentioned these special file types in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a><span class="No-Break">.</span></li>
+<li><strong class="source-inline">/etc</strong>: Includes the system <span class="No-Break">configuration files.</span></li>
+<li><strong class="source-inline">/home</strong>: This is the top-level directory, which is available for user files, and all users have their respective common <span class="No-Break">subdirectory there.</span></li>
+<li><strong class="source-inline">/lib</strong>: This includes shared library files that are needed to start <span class="No-Break">the system.</span></li>
+<li><strong class="source-inline">/mnt</strong>: The temporary mount point for external FSes. It makes a good combination with <strong class="source-inline">/media</strong>, where media devices such as USB flash drives <span class="No-Break">are mounted.</span></li>
+<li><strong class="source-inline">/opt</strong>: This consists of optional files and third-party <span class="No-Break">software applications.</span></li>
+<li><strong class="source-inline">/proc</strong>: This contains information about the <span class="No-Break">system resources.</span></li>
+<li><strong class="source-inline">/tmp</strong>: This is a temporary directory used by the OS and several programs for temporal storage – it will be cleaned up <span class="No-Break">after reboot.</span></li>
+<li><strong class="source-inline">/sbin</strong>: This includes the system binary files, usually utilized by the <span class="No-Break">system administrator.</span></li>
+<li><strong class="source-inline">/usr</strong>: This includes read-only files most of the time, but there are exceptions. It is for programs, libraries and binaries, <em class="italic">man</em> files, <span class="No-Break">and documentation.</span></li>
+<li><strong class="source-inline">/var</strong>: This includes variable data files – usually log files, database files, archived e-mails, and <span class="No-Break">so on.</span></li>
+</ul>
+<p>Let’s <a id="_idIndexMarker238"/>get back to <strong class="bold">mount points</strong> and <strong class="bold">FS partitions</strong>. As <a id="_idIndexMarker239"/>not many people are familiar with those, we will take the <a id="_idIndexMarker240"/>opportunity to briefly explain them. A good reason for this is that, as already mentioned, system programmers work with many FSes at a time, and some of them are related to network drives or <span class="No-Break">different devices.</span></p>
+<p>Linux does not assign a letter to a partition as Windows does; therefore, you can easily confuse a separate device for a simple directory. Most of the time, this shouldn’t be a big deal, but it might become a problem when you care about resource management, resiliency, and security. For example, vehicles overall have strict requirements for hardware durability, which extends to 10-15 years of serviceability. With this in mind, you must be aware of a device’s characteristics, especially if you write on it frequently or fill its entire space meaninglessly. The way an FS manages the data is also crucial to a peripheral’s memory exhaustion in time, so this choice <span class="No-Break">is important.</span></p>
+<p><strong class="source-inline">fstab</strong> shows <a id="_idIndexMarker241"/>where FSes are mounted, but it also describes something else. First of all, let’s remember that <strong class="bold">FS partitions</strong> have <a id="_idIndexMarker242"/>the purpose of separating a single device – a hard drive, for example – into multiple partitions. This is used mostly in embedded systems with safety requirements. However, Linux also <a id="_idIndexMarker243"/>provides <strong class="bold">Logical Volume Manager</strong> (<strong class="bold">LVM</strong>), which allows flexible setups. In other words, FSes can easily get shrunk or enlarged, which is preferable on <span class="No-Break">larger-scale systems.</span></p>
+<p>The creation of multiple FSs serves not only as a user data grouping tool but also allows other partitions to remain intact if one goes out due to failure. Another usage is when a device’s storage is unavailable – often, it’s just full of data. The entire system might stop working because it also relies on storage space. Therefore, it is better to fill only a single FS entirely and raise an error. The other FS will be left intact, and the system will continue working. From that point of view, it is a secure and robust solution. Just keep in mind that it doesn’t protect you from overall device failure. For that reason, many network storage devices rely on<a id="_idIndexMarker244"/> a <strong class="bold">Redundant Array of Inexpensive Disks </strong>(<strong class="bold">RAID</strong>). We will not deal with it here, but we encourage you to read more <span class="No-Break">about it.</span></p>
+<p>Now, you probably observed some additional data in the <strong class="source-inline">fstab</strong> output earlier. Except for the <strong class="bold">root partition</strong>, we <a id="_idIndexMarker245"/>actually divide the partition types into <strong class="bold">data</strong> and <span class="No-Break"><strong class="bold">swap</strong></span><span class="No-Break"> partitions:</span></p>
+<ul>
+<li><strong class="bold">The data partition</strong>: This <a id="_idIndexMarker246"/>includes the root partition, together with all necessary information for system startup and normal run. It also includes standard data <span class="No-Break">on Linux.</span></li>
+<li><strong class="bold">The swap partition</strong>: This is <a id="_idIndexMarker247"/>indicated with <strong class="source-inline">swap</strong> in <strong class="source-inline">fstab</strong>, and it provides the system with the option to move data from the main memory to the NVM in cases of memory overflow. It is visible only to the system itself. This doesn’t mean you should overflow your RAM, but just keep it for extra flexibility in order to not compromise the system’s availability. Just remember, the NVM is much slower than the main <span class="No-Break">memory chips!</span></li>
+</ul>
+<p class="callout-heading">Important note</p>
+<p class="callout">The system administrator generally configures the partitions’ layout. Sometimes, one partition is spread across multiple NVM devices. This design is strictly related to the system’s purpose. Once the partitions are available to you as a user, you can only add more. We strongly discourage you from changing their properties unless you’re well aware of what you’re doing <span class="No-Break">and why.</span></p>
+<p>What <a id="_idIndexMarker248"/>about the <strong class="bold">mount points</strong>? The<a id="_idIndexMarker249"/> partitions are attached to the system through the mount points. This is how the FS recognizes a given space for particular data – the best example is the list of directories, as we mentioned earlier. You could display the information for the available mount points on the system, except <a id="_idIndexMarker250"/>the <strong class="bold">swap partitions</strong>, using the <strong class="source-inline">df</strong> command. In our case, this is <span class="No-Break">the following:</span></p>
+<pre class="console">
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev            5,9G     0  5,9G   0% /dev
+tmpfs           1,2G  1,3M  1,2G   1% /run
+/dev/sda5        39G   24G   14G  64% /
+tmpfs           6,0G     0  6,0G   0% /dev/shm
+tmpfs           5,0M  4,0K  5,0M   1% /run/lock
+tmpfs           6,0G     0  6,0G   0% /sys/fs/cgroup
+/dev/sda1       511M  4,0K  511M   1% /boot/efi
+tmpfs           1,2G   16K  1,2G   1% /run/user/29999</pre> <p>It is easy to see the relationship between the FS type and the mount point, for example, the <strong class="source-inline">Filesystem</strong> and <strong class="source-inline">Mounted on</strong> columns. We will not go into more detail on this, but we encourage you to read more about the <strong class="source-inline">parted</strong> tool, which is used exactly for the creation and editing <span class="No-Break">of partitions.</span></p>
+<h2 id="_idParaDest-55"><a id="_idTextAnchor053"/>Linux FS objects</h2>
+<p>As we already <a id="_idIndexMarker251"/>mentioned in the previous section, the FS is realized through objects, and there are four main types we <span class="No-Break">care about:</span></p>
+<ul>
+<li><strong class="bold">Superblock</strong>: This <a id="_idIndexMarker252"/>represents the mounted FS metadata – the respective device, the modification flags, the corresponding FS type, the FS access permissions, the modified files, and <span class="No-Break">so on.</span></li>
+<li><strong class="bold">Index node (i-node or inode)</strong>: Each <a id="_idIndexMarker253"/>file has its own <strong class="bold">inode</strong> that <a id="_idIndexMarker254"/>refers to the file itself through a unique number and stores its metadata. This object contains the functions that the VFS can call but not the user-level code, such as <strong class="source-inline">open()</strong>, <strong class="source-inline">create()</strong>, <strong class="source-inline">lookup()</strong>, <strong class="source-inline">mkdir()</strong>. Regular<a id="_idIndexMarker255"/> files, special files, directories, and <strong class="bold">named pipes</strong> are represented through <strong class="bold">inodes</strong>. In other words, all entities in the FS have an <strong class="bold">inode</strong> that contains metadata about them. You can visualize this through the <span class="No-Break"><strong class="source-inline">stat</strong></span><span class="No-Break"> command:</span><pre class="source-code">
+$ stat test
+  File: test
+  Size: 53248         Blocks: 104        IO Block: 4096   regular file
+Device: 805h/2053d    Inode: 696116      Links: 1
+Access: (0775/-rwxrwxr-x)  Uid: (29999/     oem)   Gid: (29999/     oem)
+...</pre><p class="list-inset">Now, look at the permission bits – <strong class="source-inline">0775/-rwxrwxr-x</strong>. Both the numbers and the symbol flags have the same meaning but are different representations. <strong class="source-inline">-</strong> means the flag is not set. <strong class="source-inline">r</strong> means the file is readable by the current user, group, or everyone (reading left to right). <strong class="source-inline">w</strong> means <strong class="bold">writable</strong>, and <strong class="source-inline">x</strong> stands for <strong class="bold">executable</strong>. The leftmost bit has a specific role – if there is an extra <strong class="source-inline">p</strong> in front, it marks this file as a <strong class="bold">pipe</strong>. You can see this later in the chapter. If not, you can proceed forward and check the permissions bits of the <strong class="bold">symbolic link</strong> in the respective example later. Note that its permission bits start with <strong class="source-inline">1</strong>. Other symbols you might see during your operations are <strong class="source-inline">d</strong> for <strong class="bold">directories</strong>, <strong class="source-inline">b</strong> for <strong class="bold">block devices</strong>, <strong class="source-inline">c</strong> for <strong class="bold">character devices</strong>, and <strong class="source-inline">s</strong> <span class="No-Break">for </span><span class="No-Break"><strong class="bold">sockets</strong></span><span class="No-Break">.</span></p></li> <li><strong class="bold">Directory entry (dentry)</strong>: For <a id="_idIndexMarker256"/>usability, we<a id="_idIndexMarker257"/> will not refer to physical files using numbers as the inode does but, instead, using names and locations. So, we need a translation table, mapping symbolic names (for users) to inode numbers (for the kernel). The easiest way to represent this is through the pathname, such as <span class="No-Break">the following:</span><pre class="source-code">
+$ ls -li test
+696116 -rwxrwxr-x 1 oem oem 53248 Jul 30 08:29 test</pre><p class="list-inset">As you can see, the inode is the same as the previous example – <strong class="source-inline">696116</strong>, and the symbolic name <span class="No-Break">is </span><span class="No-Break"><strong class="source-inline">test</strong></span><span class="No-Break">.</span></p></li> <li><strong class="bold">File</strong>: This<a id="_idIndexMarker258"/> object type is used to represent the content of an opened file to a process. It is created through <strong class="source-inline">open()</strong> and destroyed at <strong class="source-inline">close()</strong>. Some of the members this object contains are the <strong class="bold">dentry</strong> pointer, <strong class="bold">uid</strong> and <strong class="bold">gid</strong>, the file<a id="_idIndexMarker259"/> position pointer, and the inode method set, which<a id="_idIndexMarker260"/> relates to the methods<a id="_idIndexMarker261"/> and which the specific FS can execute for this exact file. The kernel allocates the new file structure and its unique file descriptor. The dentry pointer is initialized as well as the set of methods defined by the inode. The <strong class="source-inline">open()</strong> method is called for the specific FS realization, and the file is placed into the file descriptor table of the calling process. In user-space, the file descriptor is used for the application’s <span class="No-Break">file operations.</span></li>
+</ul>
+<p>The following diagram provides an overview of single-file access through <span class="No-Break">multiple processes:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer028">
+<img alt="Figure 3.2 – File access organization" height="1075" src="image/Figure_3.2_B20833.jpg" width="1656"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.2 – File access organization</p>
+<p>We <a id="_idIndexMarker262"/>can see a<a id="_idIndexMarker263"/> few interesting things here. Although the processes open the same file, they go through different execution paths before reaching the real data. First of all, the processes have their <a id="_idIndexMarker264"/>own <strong class="bold">open file table</strong>; therefore, they have their own descriptors. Whenever a process calls <strong class="source-inline">fork()</strong>, the child gets the same <strong class="bold">open file table</strong>. The independent process points to a separate one. Then, let’s say we have two <strong class="bold">dentries</strong> for the same file and our file objects point to it. Such a situation occurs when we reach the same physical file through different pathnames. As we work with the same file, the entries will point to a single inode and <strong class="bold">superblock</strong> instances. From then on, the exact FS, where the file resides, will take over with its <span class="No-Break">specific functions.</span></p>
+<p>One disclaimer, though – the OS is not an arbiter of simultaneous file updates by multiple processes. It will schedule those operations by the rules we discussed in the previous chapter. If you want to make a specific policy for such actions, then this must be designed and applied explicitly. Although the FS provides file locking as a <strong class="bold">mutual exclusion</strong> technique, which <a id="_idIndexMarker265"/>you will learn later in the book, Linux usually doesn’t automatically lock open files. If you remove files using <strong class="source-inline">sudo rm -rf</strong>, you might delete ones that are currently in use. This can lead to irreversible system issues. We use file locking to ensure safe, concurrent access to the file’s contents. It allows only one process to access the file at a given time, thus avoiding possible race conditions, which you will learn about in <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>. Linux supports two kinds of file locks – advisory locks and mandatory locks, which you can read more about <span class="No-Break">here: </span><a href="https://www.kernel.org/doc/html/next/filesystems/locking.xhtml"><span class="No-Break">https://www.kernel.org/doc/html/next/filesystems/locking.xhtml</span></a><span class="No-Break">.</span></p>
+<p class="callout-heading">Important note</p>
+<p class="callout">The unique numbers for physical file identification through the respective inodes are not endless. The VFS might contain so many tiny files that it exhausts its abilities to create new files, while there’s still free space on the NVM. This error is observed on high-scale systems more often than you <span class="No-Break">may think.</span></p>
+<p>You’ve probably also wondered about the ways to reach the same file through different pathnames. Well, do <a id="_idIndexMarker266"/>you recall our discussion on link files in <a href="B20833_01.xhtml#_idTextAnchor014"><span class="No-Break"><em class="italic">Chapter 1</em></span></a>? We talked about <strong class="bold">hard links</strong> and <strong class="bold">symbolic links</strong>. The <a id="_idIndexMarker267"/>first ones are always available for a given file – for example, when there’s at least one hard link, related to a piece of data, then the corresponding file is considered to exist in the FS. Through it, a pathname is directly associated with the point on the NVM where the file resides and can be opened from. Multiple pathnames to the same point on the device lead to multiple hard link constructions. Let’s check it out. First, we will list the data for some of <span class="No-Break">our files:</span></p>
+<pre class="console">
+$ ls -li some_data
+695571 -rw-rw-r-- 1 oem 5 May 28 18:13 some_data</pre> <p>Then, we will create a hard link for the same file through the <strong class="source-inline">ln</strong> command, and list <span class="No-Break">both files:</span></p>
+<pre class="console">
+$ ln some_data some_data_hl
+$ ls -li some_data some_data_hl
+695571 -rw-rw-r-- 2 oem oem 5 May 28 18:13 some_data
+695571 -rw-rw-r-- 2 oem oem 5 May 28 18:13 some_data_hl</pre> <p>As you can see, they both have the same inode because they have different character names, but they are the same file. The only true representation of the file is the <strong class="bold">inode</strong> number – <strong class="source-inline">695571</strong>. This means they truly point to the same block of the hard drive. Then, we see that the hard link counter has increased from <strong class="source-inline">1</strong> to <strong class="source-inline">2</strong> (between the access permissions and the <span class="No-Break"><strong class="source-inline">uid</strong></span><span class="No-Break"> columns).</span></p>
+<p><strong class="bold">Symbolic links</strong> are<a id="_idIndexMarker268"/> files that point to other files or directories through their respective pathnames, known as targets. The FS creates a new file, which only contains the pathname to the target, and deleting all symbolic links to a file will not cause its deletion from the system. Let’s create a symbolic link through the <strong class="source-inline">ln</strong> command again, but this time we will add the <strong class="source-inline">-s</strong> option. We will list all of the files <span class="No-Break">so far:</span></p>
+<pre class="console">
+$ ln -s some_data some_data_sl
+$ ls -li some_data some_data_hl some_data_sl
+695571 -rw-rw-r-- 2 oem oem 5 May 28 18:13 some_data
+695571 -rw-rw-r-- 2 oem oem 5 May 28 18:13 some_data_hl
+694653 lrwxrwxrwx 1 oem oem 9 May 28 18:16 some_data_sl -&gt; some_data</pre> <p>You can easily see that the new file – <strong class="source-inline">some_data_sl</strong> – has a different inode from the original file and its <a id="_idIndexMarker269"/>hard link. It points to a new location in the NVM and has its own access permissions. In addition, it shows visually which pathname it truly points to. Even if there’s a symbolic link to a symbolic link, <strong class="source-inline">ls -li</strong> will still present the file a symbolic link is set to point to, such as <span class="No-Break">the following:</span></p>
+<pre class="console">
+696063 -rw-rw-r--  1 oem oem  4247 Jul  2 13:25 test.dat
+696043 lrwxrwxrwx  1 oem oem     8 Aug  6 10:07 testdat_sl -&gt; test.dat
+696024 lrwxrwxrwx  1 oem oem    10 Aug  6 10:07 testdat_sl2 -&gt; testdat_sl</pre> <p>And check out the sizes in bytes – the original file is only <strong class="source-inline">4247</strong> bytes in size, while the symbolic link is <strong class="source-inline">8</strong> bytes, and the next is <strong class="source-inline">10</strong>. Actually, the original file size doesn’t matter for the symbolic link’s size, but something else does – you could figure it out by counting the number of characters in the referred <span class="No-Break">file’s </span><span class="No-Break"><strong class="bold">pathname</strong></span><span class="No-Break">.</span></p>
+<p>All of the preceding filenames will provide you with the ability to access and modify the file. They also provide you with the flexibility to get data from multiple access points without duplication and meaningless usage of extra storage space. Many system programmers use symbolic links to reorder the FS, just for the purposes of easier data management for some specialized user processes. The Linux system itself does that, just to reorder the FS hierarchy for <a id="_idIndexMarker270"/>the same reasons. Let’s <a id="_idIndexMarker271"/>create an overview of this example through the <span class="No-Break">following diagram:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer029">
+<img alt="Figure 3.3 – A hard link and symbolic link overview" height="387" src="image/Figure_3.3_B20833.jpg" width="1166"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.3 – A hard link and symbolic link overview</p>
+<p class="callout-heading">Important note</p>
+<p class="callout">Even if the original file is moved or deleted, the symbolic link will continue to point to its pathname as a target, while the hard link must point to an existing file. The symbolic link will work across partitions, but the hard link doesn’t link paths on different volumes <span class="No-Break">or FSes.</span></p>
+<p>In the next section, we will continue to manipulate files, but this time through <span class="No-Break">C++ code.</span></p>
+<h1 id="_idParaDest-56"><a id="_idTextAnchor054"/>Executing FS operations with C++</h1>
+<p>With C++17 FS operations<a id="_idIndexMarker272"/> that are closer to the system programming are facilitated. The FS library allows the C++ developer to distinguish <a id="_idIndexMarker273"/>between the Linux fs types and perform certain operations with them. Let’s take a look at an <span class="No-Break">exemplary interface:</span></p>
+<pre class="source-code">
+bool is_directory(const std::filesystem::path&amp; p)</pre> <p>This method checks whether a given pathname is a <strong class="bold">directory</strong>. In a similar fashion, we can do the other type checks – <strong class="source-inline">is_fifo()</strong>, <strong class="source-inline">is_regular_file()</strong>, <strong class="source-inline">is_socket()</strong>, and <strong class="source-inline">is_symlink()</strong>. Can you tell why we don’t have the <strong class="source-inline">is_hardlink()</strong> method? That’s right – if two files with different character names point to a single inode, then both of them provide access to the same content. It doesn’t matter whether the inode’s hard link counter is higher than one, although we could get it through the <span class="No-Break"><strong class="source-inline">hard_link_count()</strong></span><span class="No-Break"> method.</span></p>
+<p>As the C++ language is compilable on multiple OSes, the FS functions are also dependent on the respective FSes for those exact systems. For example, FAT does not support symbolic links; therefore, the methods related to them will fail, and the error handling is left to the system programmer. You can use the <strong class="source-inline">std::filesystem::filesystem_error</strong> exception object to get details about the current error’s FS error state. Such discussions are available in <a href="B20833_05.xhtml#_idTextAnchor075"><span class="No-Break"><em class="italic">Chapter 5</em></span></a><span class="No-Break">.</span></p>
+<p>We <a id="_idIndexMarker274"/>mentioned earlier that the concurrent file access has <a id="_idIndexMarker275"/>to be managed by the software engineer, or the OS will schedule the operations as it sees fit. The same goes for this library, too. Don’t expect it to handle race conditions or modification conflicts itself. Now, let’s see how some of the operations can be used. One disclaimer though – as mentioned, error conditions will be discussed later, so we will not focus on <span class="No-Break">them here.</span></p>
+<p>We will create a new directory (marker <strong class="source-inline">{1}</strong> in the following <span class="No-Break">code segment):</span></p>
+<pre class="source-code">
+#include &lt;iostream&gt;
+#include &lt;filesystem&gt;
+using namespace std;
+using namespace std::filesystem;
+int main() {
+    auto result = create_directory("test_dir"); // {1}
+    if (result)
+        cout &lt;&lt; "Directory created successfully!\n";
+    else
+        cout &lt;&lt; "Directory creation failed!\n";
+    return 0;
+}</pre> <p>Now, let’s see what happened on <span class="No-Break">the FS:</span></p>
+<pre class="console">
+$ ./create_dir
+Directory created successfully!</pre> <p>If you call the program again, it will fail, as the directory <span class="No-Break">already exists:</span></p>
+<pre class="console">
+.$ /create_dir
+Directory creation failed!</pre> <p>We<a id="_idIndexMarker276"/> populate the new directory, as described in the example earlier (<em class="italic">see </em><span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.3</em>), but this time with C++ code (markers <strong class="source-inline">{1}</strong> and <strong class="source-inline">{2}</strong> in the <span class="No-Break">following code):</span></p>
+<pre class="source-code">
+...
+int main() {
+    if (exists("some_data")) {
+       create_hard_link("some_data", "some_data_hl");// {1}
+       create_symlink("some_data", "some_data_sl"); // {2}
+    }
+...</pre> <p>Of course, it is <a id="_idIndexMarker277"/>important to call the program from the directory, where <strong class="source-inline">some_data</strong> is, or provide its pathname accordingly – through the <strong class="bold">absolute</strong> or <strong class="bold">relative</strong> path to it. If all is fine, then we proceed. This time, we’ve added some more characters to <strong class="source-inline">some_data</strong>, so it’s <strong class="source-inline">9</strong> bytes in size. Still, the picture is almost the same – of course, the inodes <span class="No-Break">are different:</span></p>
+<pre class="console">
+79105062 rw-rw-r-- 2 oem oem 9 May 29 16:33 some_data
+79105062 rw-rw-r-- 2 oem oem 9 May 29 16:33 some_data_hl
+79112163 lrwxrwxrwx 1 oem oem 9 May 29 17:04 some_data_sl  -&gt; some_data</pre> <p>We also create by hand a new inner directory, called <strong class="source-inline">inner_test_dir</strong>, with a new file, called <strong class="source-inline">inner_some_data</strong>. Let’s iterate through the directory, both non-recursively (marker <strong class="source-inline">{1}</strong> in the following code) and recursively, and print out the directory contents (marker <strong class="source-inline">{2}</strong> in the <span class="No-Break">following code):</span></p>
+<pre class="source-code">
+...
+int main() {
+    const path path_to_iterate{"test_dir"};
+    for (auto const&amp; dir_entry :
+        directory_iterator{path_to_iterate}) { // {1}
+        cout &lt;&lt; dir_entry.path() &lt;&lt; endl;
+    }
+    cout &lt;&lt; endl;
+    for (auto const&amp; dir_entry :
+        recursive_directory_iterator{path_to_iterate}) {
+        cout &lt;&lt; dir_entry.path() &lt;&lt; endl; // {2}
+    }
+    return 0;
+}</pre> <p>The<a id="_idIndexMarker278"/> output <a id="_idIndexMarker279"/>is <span class="No-Break">not surprising:</span></p>
+<pre class="console">
+"test_dir/inner_test_dir"
+"test_dir/some_data"
+"test_dir/some_data_sl"
+"test_dir/some_data_hl"
+"test_dir/inner_test_dir"
+"test_dir/inner_test_dir/inner_some_data"
+"test_dir/some_data"
+"test_dir/some_data_sl"
+"test_dir/some_data_hl"</pre> <p>Now, we<a id="_idIndexMarker280"/> want to check whether some of the files are <a id="_idIndexMarker281"/>symbolic links (marker <strong class="source-inline">{1}</strong> in the following code), and if so, let’s print out <span class="No-Break">their targets:</span></p>
+<pre class="source-code">
+...
+int main() {
+    const path path_to_iterate{"test_dir"};
+    for (auto const&amp; dir_entry :
+        recursive_directory_iterator{path_to_iterate}) {
+        auto result = is_symlink(dir_entry.path()); // {1}
+        if (result) cout &lt;&lt; read_symlink(dir_entry.path());
+    }
+}</pre> <p>Again, the output is as expected – the target is the initial <span class="No-Break">source file:</span></p>
+<pre class="console">
+$ ./sym_link_check
+"some_data"</pre> <p>Let’s try to rename the symbolic link file (marker <strong class="source-inline">{1}</strong> in the following code segment), before we continue with some <span class="No-Break">other modifications:</span></p>
+<pre class="source-code">
+...
+int main() {
+    if (exists("some_data_sl")) {
+        rename("some_data_sl", "some_data_sl_rndm"); // {1}
+    }
+...</pre> <p>We see that the renaming <span class="No-Break">is successful:</span></p>
+<pre class="console">
+79112163 lrwxrwxrwx 1 oem oem 9 May 29 17:04 some_data_sl_rndm -&gt; some_data</pre> <p>Let’s<a id="_idIndexMarker282"/> remove the initial file – <strong class="source-inline">some_data</strong> (marker <strong class="source-inline">{2}</strong> in the following code), and observe the<a id="_idIndexMarker283"/> free space on the system changing (markers <strong class="source-inline">{1}</strong> and <strong class="source-inline">{3}</strong> in the <span class="No-Break">following code):</span></p>
+<pre class="source-code">
+...
+int main() {
+    if (exists("some_data")) {
+        std::filesystem::space_info space_obj =
+            space(current_path());// {1}
+        cout &lt;&lt; "Capacity: "
+            &lt;&lt; space_obj.capacity &lt;&lt; endl;
+        cout &lt;&lt; "Free: "
+            &lt;&lt; space_obj.free &lt;&lt; endl;
+        cout &lt;&lt; "Available: "
+            &lt;&lt; space_obj.available &lt;&lt; endl;
+        remove("some_data"); // {2}
+        space_obj = space(current_path()); // {3}
+        cout &lt;&lt; "Capacity: "
+            &lt;&lt; space_obj.capacity &lt;&lt; endl;
+        cout &lt;&lt; "Free: "
+            &lt;&lt; space_obj.free &lt;&lt; endl;
+        cout &lt;&lt; "Available: "
+            &lt;&lt; space_obj.available &lt;&lt; endl;
+    }
+...</pre> <p>And here’s <span class="No-Break">the output:</span></p>
+<pre class="console">
+Capacity: 41678012416
+Free: 16555171840
+Available: 14689452032
+Capacity: 41678012416
+Free: 16555175936
+Available: 14689456128</pre> <p>As <a id="_idIndexMarker284"/>you can see <strong class="source-inline">4096</strong> bytes have been freed, although the <a id="_idIndexMarker285"/>file was only <strong class="source-inline">9</strong> bytes in size. This is because the minimum value we actually use is the size of one NVM block – the smallest unit of data the OS can write in or read from a file. In this case, it is 4 KB. If the details are not interesting to you, but you only want to check whether the space values have been updated, then with C++ 20, you also have the <strong class="source-inline">==</strong> operator overload; thus you can directly compare the two <strong class="source-inline">space_info</strong> objects, which are actually behind the returned values of <strong class="source-inline">space()</strong> (markers <strong class="source-inline">{1}</strong> <span class="No-Break">and </span><span class="No-Break"><strong class="source-inline">{3}</strong></span><span class="No-Break">).</span></p>
+<p>We used these code examples to go quickly through the C++ filesystem library. We hope it is a good overview for you, although we have jumped a bit from function to function. It should be useful in your work. The next section deals with something very important – the fundamentals of multi-process communication. As you already know from the beginning of this chapter, Linux treats everything that’s not a process as a file. The same goes for communication resources, and we will delve into them armed with our C++ knowledge. There will be a bit more theory, so stay <span class="No-Break">with us!</span></p>
+<h1 id="_idParaDest-57"><a id="_idTextAnchor055"/>IPC through anonymous pipes and named pipes</h1>
+<p>Before we <a id="_idIndexMarker286"/>even start working on this topic, let us ask you this. Have you ever done <span class="No-Break">the following:</span></p>
+<pre class="console">
+$ cat some_data | grep data
+some data</pre> <p>If yes, then you probably call <strong class="source-inline">|</strong> a <strong class="bold">pipe</strong>. Where does this come from? Well, you actually <em class="italic">pipe</em> the output from one process as an input to another. You can do it with your own code as well – we are not limited to the system’s applications. And we can program this <strong class="bold">pipe</strong> communication in our own code, too. This is a fundamental instrument for the data transfer between <a id="_idIndexMarker287"/>processes. Do you remember reading earlier <a id="_idIndexMarker288"/>about <strong class="bold">FIFO files</strong> and named pipes? Yes, that’s right – they are the same thing, but is the <strong class="source-inline">|</strong>-symbolled pipe the same as them? No! That’s an anonymous pipe. System programmers differentiate between the so-called <strong class="bold">anonymous pipes</strong> and the <strong class="bold">named pipes</strong>. They have different purposes, so both of them are found on Linux systems nowadays. They are created and managed by <strong class="source-inline">pipefs</strong>, while the user executes the standard VFS system calls. We are going to use pipes as examples to visualize some observations for the FS as well. Let’s get into <span class="No-Break">it then!</span></p>
+<h2 id="_idParaDest-58"><a id="_idTextAnchor056"/>Anonymous or unnamed pipes</h2>
+<p><strong class="bold">Anonymous pipes</strong> cannot <a id="_idIndexMarker289"/>be observed in the FS, as they don’t have character names. They are created through a special system call, as you will see in the next example. They reside in the kernel, where<a id="_idIndexMarker290"/> a specific file buffer is created. From the example with the <strong class="source-inline">|</strong> symbol, you can easily conclude that such implementation is related more to short-term communication, and it is not persistent in time. Anonymous pipes have two endpoints – a read one and a write one. Both of these are represented by a file descriptor. As soon as both endpoints are closed, the pipe will be destroyed, as there are no more ways to reference it through an open file descriptor. In addition, this type of communication is known as a simplex FIFO communication – for example, it creates a one-way-only data transfer – most often from a parent process to a child. Let’s see one example, which uses the system calls to create an anonymous pipe and a simple <span class="No-Break">data transfer:</span></p>
+<pre class="source-code">
+#include &lt;iostream&gt;
+#include &lt;unistd.h&gt;
+#include &lt;string.h&gt;
+using namespace std;
+constexpr auto BUFF_LEN = 64;
+constexpr auto pipeIn   = 0;
+constexpr auto pipeOut  = 1;</pre> <p>We <a id="_idIndexMarker291"/>require an<a id="_idIndexMarker292"/> integer array to hold the file descriptors, representing the pipe’s <em class="italic">in</em> and <em class="italic">out</em> endpoints – <strong class="source-inline">a_pipe</strong>. Then, this array is passed to the <strong class="source-inline">pipe()</strong> system call, which will return <strong class="source-inline">-1</strong> if there is an error, or <strong class="source-inline">0</strong> on success (see <span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{1}</strong></span><span class="No-Break">):</span></p>
+<pre class="source-code">
+int main() {
+   int a_pipe[2]{};
+   char buff[BUFF_LEN + 1]{};
+   if (pipe(a_pipe) == -1) {  // {1}
+       perror("Pipe creation failed");
+       exit(EXIT_FAILURE);
+   }
+   else {
+      if (int pid = fork(); pid == -1) {
+         perror("Process creation failed");
+         exit(EXIT_FAILURE);
+      }
+      else if (pid == 0) {
+         // Child: will be the reader!
+         sleep(1); // Just to give some extra time!
+         close(a_pipe[pipeOut]); // {2}
+         read(a_pipe[pipeIn], buff, BUFF_LEN); // {3}
+         cout &lt;&lt; "Child: " &lt;&lt; buff &lt;&lt; endl;
+     }</pre> <p>We create a new process through <strong class="source-inline">fork()</strong>, as we did in <a href="B20833_02.xhtml#_idTextAnchor029"><span class="No-Break"><em class="italic">Chapter 2</em></span></a>. Knowing this, can you tell how many pipes are created at the end? That’s right – one pipe is created, and the file descriptors are shared between <span class="No-Break">the processes.</span></p>
+<p>As the<a id="_idIndexMarker293"/> data <a id="_idIndexMarker294"/>transfer is one-way, we need to close the unused endpoint for each process – markers <strong class="source-inline">{2}</strong> and <strong class="source-inline">{4}</strong>. If the process writes and reads its own <strong class="bold">pipe</strong> in and out file descriptors, it will only get the information that it has written <span class="No-Break">there beforehand:</span></p>
+<pre class="source-code">
+      else {
+         // Parent: will be the writer!
+         close(a_pipe[pipeIn]); // {4}
+         const char *msg = {"Sending message to child!"};
+         write(a_pipe[pipeOut], msg, strlen(msg) + 1);
+         // {5}
+      }
+   }
+   return 0;
+}</pre> <p>In other words, we forbid the child from <em class="italic">talking</em><em class="italic"> back</em> to the parent, and the parent can only send data to the child. The data is sent simply by writing it into a file and reading from it (see markers <strong class="source-inline">{3}</strong> and <strong class="source-inline">{5}</strong>). This is a very simple piece of code, and usually, the communication through anonymous pipes is that simple. However, be careful – <strong class="source-inline">write()</strong> and <strong class="source-inline">read()</strong> are blocking calls; if there’s nothing to be read from the pipe (the pipe buffer is empty), the respective process-reader will be blocked. If the pipe capacity is exhausted (the pipe buffer is full), the process-writer will be blocked. If there’s no reader to consume the data, <strong class="source-inline">SIGPIPE</strong> will be triggered. We will provide such an example in the last section of this chapter. There’s no risk of race conditions in the way we will present them in <a href="B20833_06.xhtml#_idTextAnchor086"><span class="No-Break"><em class="italic">Chapter 6</em></span></a>, but synchronization of data creation and consumption is still in the programmer’s hands. The next diagram provides you with some additional information on what happens when we use the <span class="No-Break">anonymous pipe:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer030">
+<img alt="Figure 3.4 – An anonymous pipe communication mechanism" height="633" src="image/Figure_3.4_B20833.jpg" width="1044"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.4 – An anonymous pipe communication mechanism</p>
+<p>In the<a id="_idIndexMarker295"/> background, at <a id="_idIndexMarker296"/>the kernel level, there are a few more operations <span class="No-Break">going on:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer031">
+<img alt="Figure 3.5 – Anonymous pipe creation" height="667" src="image/Figure_3.5_B20833.jpg" width="993"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.5 – Anonymous pipe creation</p>
+<p>The pipe’s capacity can be checked and set using the <strong class="source-inline">fcntl(fd, F_GETPIPE_SZ)</strong> and <strong class="source-inline">F_SETPIPE_SZ</strong> operations, respectively. You can see that the pipe has 16 <em class="italic">pages</em> by default. The <em class="italic">page</em> is the smallest unit of data the <em class="italic">virtual memory</em> can manage. If a single page is 4,096 KB, then it could transfer 65,536 bytes of data before it overflows. We will discuss this later in the chapter. However, keep in mind that some systems may vary, and the info from <span class="No-Break"><em class="italic">Figure 3</em></span><em class="italic">.5</em> might be wrong for you. In a similar fashion, we can represent what happens at a lower level during <strong class="source-inline">read()</strong> and <span class="No-Break"><strong class="source-inline">write()</strong></span><span class="No-Break"> operations.</span></p>
+<p>In the following<a id="_idIndexMarker297"/> diagram, the question of using an FS as a shared (global) memory arises. Note that although the FS has its own protection mechanisms through mutexes, this will not help us at a user level to synchronize the data correctly. Simply modifying a regular file through <a id="_idIndexMarker298"/>multiple processes will cause trouble, as mentioned earlier. Doing so with a pipe will cause less trouble, but we are still not on the safe side. As you can see, the <strong class="bold">scheduler</strong> is<a id="_idIndexMarker299"/> involved, and we might end up in a <strong class="bold">deadlock</strong> of <a id="_idIndexMarker300"/>constantly waiting processes. This is easier to avoid with anonymous pipes than with <span class="No-Break">named pipes.</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer032">
+<img alt="Figure 3.6 – Pipe read and write operations" height="859" src="image/Figure_3.6_B20833.jpg" width="986"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.6 – Pipe read and write operations</p>
+<p>Now that we have our communication established, why do we need an additional file type such as the named pipe? We will discuss this in the <span class="No-Break">next section.</span></p>
+<h2 id="_idParaDest-59"><a id="_idTextAnchor057"/>Named pipes</h2>
+<p>Named pipes <a id="_idIndexMarker301"/>are <em class="italic">a bit more complex</em> than anonymous pipes, as there’s more programable <a id="_idIndexMarker302"/>context to them. For example, they have character names and are observable by a user in an FS. They are not destroyed after a process finishes working with them but, instead, when a specific system call for the file removal is executed – <strong class="source-inline">unlink()</strong>. Therefore, we can say that they provide <em class="italic">persistency</em>. In a similar fashion to anonymous pipes, we can demonstrate named pipes in the following CLI command, creating <strong class="source-inline">fifo_example</strong> as <span class="No-Break">a result:</span></p>
+<pre class="console">
+$ ./test &gt; fifo_example
+$ cat fifo_example
+$ Child: Sending message to child!</pre> <p>Also, the<a id="_idIndexMarker303"/> communication is duplexed – for example, the data transfer could work both ways. Still, your work might push you in the<a id="_idIndexMarker304"/> direction of wrapping system calls with C++ code. The next example provides a sample overview, with the disclaimer that it is exemplary, and as C++ context is added to the code, the program becomes larger in size. Let’s get an example from the <strong class="bold">pipe</strong> from earlier, which we can modify with C++ code, but the behavior remains <span class="No-Break">the same:</span></p>
+<pre class="source-code">
+#include &lt;sys/stat.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;array&gt;
+#include &lt;iostream&gt;
+#include &lt;filesystem&gt;
+#include &lt;string_view&gt;
+using namespace std;
+using namespace std::filesystem;
+static string_view fifo_name     = "example_fifo"; // {1}
+static constexpr size_t buf_size = 64;
+void write(int out_fd,
+           string_view message) { // {2}
+    write(out_fd,
+          message.data(),
+          message.size());
+}</pre> <p>At marker <strong class="source-inline">{1}</strong>, we introduce the <strong class="source-inline">string_view</strong> object. It represents a pair of pointers to a string or an array, and its respective size. As it is a <strong class="source-inline">view-handle</strong> class type, we preferably <a id="_idIndexMarker305"/>and cheaply pass it by value (see marker <strong class="source-inline">{2}</strong>), together with the expected substring <a id="_idIndexMarker306"/>operation interface. It is always <strong class="source-inline">const</strong>, so you don’t need to declare it as such. So, it’s an object and it’s bigger in size, but it has the benefit of being unconditionally safe – taking care of typical C string error cases, such as <strong class="source-inline">NULL-termination</strong>. Any issue will be handled at compile time. In our case, we can simply use it as a <strong class="source-inline">const char*</strong> or <strong class="source-inline">const string</strong> alternative. Let’s proceed with <span class="No-Break">the reader:</span></p>
+<pre class="source-code">
+string read(int in_fd) { // {3}
+    array &lt;char, buf_size&gt; buffer;
+    size_t bytes = read(in_fd,
+                        buffer.data(),
+                        buffer.size());
+    if (bytes &gt; 0) {
+        return {buffer.data(), bytes}; // {4}
+    }
+    return {};
+}
+int main() {
+    if (!exists(fifo_name))
+        mkfifo(fifo_name.data(), 0666); // {5}
+    if (pid_t childId = fork(); childId == -1) {
+        perror("Process creation failed");
+        exit(EXIT_FAILURE);
+    }</pre> <p>Markers <strong class="source-inline">{2}</strong> and <strong class="source-inline">{3}</strong> show the C++ wrappers of <strong class="source-inline">write()</strong> and <strong class="source-inline">read()</strong> respectively. You can see that instead of doing <strong class="source-inline">strlen()</strong> or <strong class="source-inline">sizeof()</strong> acrobatics, we use the <strong class="source-inline">string_view</strong>’s and the <strong class="source-inline">array</strong>’s <strong class="source-inline">data()</strong> and <strong class="source-inline">size()</strong>, respectively, because they are packed together through the respective object. One important point is that we use <strong class="source-inline">array&lt;char, buf_size&gt;</strong> to be specific about the buffer size and type. Similarly, we can use <strong class="source-inline">string</strong> instead of <strong class="source-inline">array</strong>, as it is defined as <strong class="source-inline">basic_string&lt;char&gt;</strong>, and we can limit its size with <strong class="source-inline">reserve(buf_size)</strong>. The choice really depends on your<a id="_idIndexMarker307"/> needs later in the function. In our case, we will use <strong class="source-inline">array</strong> as a direct representation of reading a fixed-sized <strong class="source-inline">char</strong> buffer from the pipe. We construct the resultant <strong class="source-inline">string</strong> afterward or leave it empty (see <span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{4}</strong></span><span class="No-Break">).</span></p>
+<p>Now, we will <a id="_idIndexMarker308"/>use the already known <strong class="source-inline">exists()</strong> function to discard a second <strong class="source-inline">mkfifo()</strong> call by the process that arrives second. Then, we check whether the file is truly a FIFO (see <span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{6}</strong></span><span class="No-Break">):</span></p>
+<pre class="source-code">
+    else {
+        if(is_fifo(fifo_name)) { // {6}
+            if (childId == 0) {
+                if (int named_pipe_fd =
+                        open(fifo_name.data(), O_RDWR);
+                    named_pipe_fd &gt;= 0) { // {7}
+                    string message;
+                    message.reserve(buf_size);
+                    sleep(1);
+                    message = read(named_pipe_fd); // {8}
+                    string_view response_msg
+                        = "Child printed the message!";
+                    cout &lt;&lt; "Child: " &lt;&lt; message &lt;&lt; endl;
+                    write(named_pipe_fd,
+                          response_msg); // {9}
+                    close(named_pipe_fd);
+                }</pre> <p>Now, look<a id="_idIndexMarker309"/> at markers <strong class="source-inline">{7}</strong> and <strong class="source-inline">{10}</strong>. Do you see where we open the pipe, where we keep this result, and where we check its value? Correct – we keep these operations packed together in the <strong class="source-inline">if</strong> statement, thus focusing our scope on the same logical place. Then, we <a id="_idIndexMarker310"/>read from the pipe through the newly added function wrapper (markers <strong class="source-inline">{8}</strong> and <strong class="source-inline">{12}</strong>). And then we write to the pipe through the <strong class="source-inline">write()</strong> wrapper (markers <strong class="source-inline">{9}</strong> and <strong class="source-inline">{11}</strong>). Note that at marker <strong class="source-inline">{9}</strong>, we pass <strong class="source-inline">string_view</strong> to the function, while at marker <strong class="source-inline">{11}</strong>, we pass a <strong class="source-inline">string</strong>. It works for both cases, thus additionally proving our point of using <strong class="source-inline">string_views</strong> for such interfaces, instead of <strong class="source-inline">const string</strong>, <strong class="source-inline">const char *</strong>, and <span class="No-Break">so on:</span></p>
+<pre class="source-code">
+                else {
+                    cout &lt;&lt; "Child cannot open the pipe!"
+                         &lt;&lt; endl;
+                }
+            }
+            else if (childId &gt; 0) {
+                if (int named_pipe_fd =
+                        open(fifo_name.data(), O_RDWR);
+                    named_pipe_fd &gt;= 0) { // {10}
+                    string message
+                    = "Sending some message to the child!";
+                    write(named_pipe_fd,
+                          message); // {11}
+                    sleep(1);
+                    message = read(named_pipe_fd); // {12}
+                    cout &lt;&lt; "Parent: " &lt;&lt; message &lt;&lt; endl;
+                    close(named_pipe_fd);
+                }
+            }
+            else {
+                cout &lt;&lt; "Fork failed!";
+      }</pre> <p>The pipe is<a id="_idIndexMarker311"/> removed at marker <strong class="source-inline">{13}</strong>, but we will keep it for experiments. For example, we can list the <span class="No-Break">named pipe:</span></p>
+<pre class="console">
+$ ls -la example_fifo
+prw-r--r-- 1 oem oem 0 May 30 13:45 example_fifo</pre> <p>Please <a id="_idIndexMarker312"/>observe that its size is <strong class="source-inline">0</strong>. This means that everything written in was consumed. On <strong class="source-inline">close()</strong>, the kernel will flush the file descriptors and will destroy the FIFO object in the main memory, as it did for the anonymous pipe. It is possible sometimes that the <em class="italic">reader</em> doesn’t consume the data fully. As you may remember, it can store data for 16 pages. That’s why we encourage you to use the number of bytes, returned by the <strong class="source-inline">read()</strong> and <strong class="source-inline">write()</strong> functions, to decide whether the processes have to be terminated or not. Now, look at the permission bits – do you see something interesting there? Yes – there is an extra <strong class="source-inline">p</strong> in front of them, which marks this file as a pipe. Did you observe this somewhere earlier in the chapter? If not, you can go back and check the permissions bits of the inode. </p>
+<p>Let’s continue with the last <span class="No-Break">code snippet:</span></p>
+<pre class="source-code">
+            remove(fifo_name); // {13}
+        }
+    }
+    return 0;
+}</pre> <p>This is a simple one-time ping-pong application with the <span class="No-Break">following output:</span></p>
+<pre class="console">
+Child: Sending some message to the child!
+Parent: Child printed the message!</pre> <p>You can still use <a id="_idIndexMarker313"/>an IO operation to send the message, but then <strong class="source-inline">string_view</strong> wouldn’t do. In the next section, we will provide a brief overview of what happens when communication through a pipe is disturbed. To keep the focus on system calls, we will put aside C++ <span class="No-Break">for now.</span></p>
+<p>Let’s now <a id="_idIndexMarker314"/>return to the C++ filesystem library. We can check whether the current file is truly a FIFO file through the library operations. If so, let’s delete it with the <strong class="source-inline">remove()</strong> function. It will be the same as <strong class="source-inline">unlink()</strong>, although one level of abstraction over the system call itself. Again, this will give us some <span class="No-Break">platform independency:</span></p>
+<pre class="source-code">
+...
+int main() {
+    if (exists("example_fifo") &amp;&amp; is_fifo("example_fifo")){
+        remove("example_fifo");
+        cout &lt;&lt; "FIFO is removed";
+    } ...</pre> <p>As you see, we use the already known methods, which were explained earlier in the chapter. Let’s see what happens at the VFS and kernel <span class="No-Break">levels now:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer033">
+<img alt="Figure 3.7 – Named pipe creation system operations" height="862" src="image/Figure_3.7_B20833.jpg" width="767"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.7 – Named pipe creation system operations</p>
+<p>This diagram, as <a id="_idIndexMarker315"/>well as the next one, gives you an example of why the anonymous pipe is considered a bit more lightweight. See how many functions calls there are between the initial system call from the process caller until the actual FS inode operation is executed. That said, together with the additional effort to close and delete files, it is easy to conclude<a id="_idIndexMarker316"/> that even the related code is larger. Still, the named pipe is used for persistency and communication between different processes, including ones that don’t have a parent-child relationship. Just think about it – you have the communication resource endpoint in the FS, you know its character name, and then you only have to open it from two independent processes, and start the data transfer. A similar approach is used by other IPC mechanisms, as we will discuss later in <a href="B20833_07.xhtml#_idTextAnchor101"><span class="No-Break"><em class="italic">Chapter 7</em></span></a>. Until then, check out the following diagram to see how many operations there are between the simple <strong class="source-inline">open()</strong> function and the creation of the FIFO buffer in <span class="No-Break">the kernel:</span></p>
+<div>
+<div class="IMG---Figure" id="_idContainer034">
+<img alt="Figure 3.8 – Named pipe opening and transformation to pipe" height="886" src="image/Figure_3.8_B20833.jpg" width="671"/>
+</div>
+</div>
+<p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 3.8 – Named pipe opening and transformation to pipe</p>
+<p>The <a id="_idIndexMarker317"/>filesystem<a id="_idIndexMarker318"/> library doesn’t allow you to directly work with the file descriptors. At the same time, the system calls expect them. Someday, it might be different in the <span class="No-Break">C++ Standard.</span></p>
+<p class="callout-heading">Note</p>
+<p class="callout">There’s an already known non-standard approach to associating a file descriptor with <strong class="source-inline">iostream</strong>. You can refer to it <span class="No-Break">here: </span><a href="http://www.josuttis.com/cppcode/fdstream.xhtml"><span class="No-Break">http://www.josuttis.com/cppcode/fdstream.xhtml</span></a><span class="No-Break">.</span></p>
+<p>We will use the next section to provide a brief overview of what happens when communication through a pipe <span class="No-Break">is disturbed.</span></p>
+<h1 id="_idParaDest-60"><a id="_idTextAnchor058"/>Briefly observing signal handling</h1>
+<p>Signals in<a id="_idIndexMarker319"/> Linux <a id="_idIndexMarker320"/>are a powerful and simple way to synchronize processes through software interrupts sent to them, indicating that an important event has occurred. They have a different nature, depending on their roles. Some of them are ignorable, while others are not and cause a process to be blocked, unblocked, or terminated. We discussed those behaviors in the previous chapter, but is there something we could do to gracefully handle them? We will use the anonymous pipe example to trigger a <strong class="source-inline">SIGPIPE</strong> signal. </p>
+<p>Let’s see the <span class="No-Break">following example:</span></p>
+<pre class="source-code">
+...
+void handle_sigpipe(int sig) { // {1}
+   printf("SIGPIPE handled!\n");
+}
+int main() {
+   int an_pipe[2] = {0};
+   char buff[BUFF_LEN + 1] = {0};
+   if (pipe(an_pipe) == 0) {
+      int pid = fork();
+      if (pid == 0) {
+         close(an_pipe[pipeOut]); // {2}
+         close(an_pipe[pipeIn]);
+      }</pre> <p>We define a <strong class="source-inline">SIGPIPE</strong> handler (marker <strong class="source-inline">{1}</strong>), where we could provide additional functionality if this signal is triggered. We intentionally close both the pipe endpoints of the child, so there’s no process that would read from it. Then, we declare a signal action, which maps<a id="_idIndexMarker321"/> the signal handler to the action itself (markers <strong class="source-inline">{3}</strong> and <strong class="source-inline">{4}</strong>). We provide some time for the child to close the file descriptors, and then we try to write in <span class="No-Break">the </span><span class="No-Break"><strong class="bold">pipe</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+      else {
+         struct sigaction act = {0};
+         sigemptyset(&amp;act.sa_mask);
+         act.sa_handler = handle_sigpipe; // {3}
+         if(sigaction(SIGPIPE, &amp;act, 0) == -1) {// {4}
+            perror("sigaction"); return (1);
+         }
+         close(an_pipe[pipeIn]);
+         sleep(1);
+         const char *msg = {"Sending message to child!"};
+         write(an_pipe[pipeOut], msg, strlen(msg) + 1);
+// {5} ...</pre> <p>The kernel will trigger <strong class="source-inline">SIGPIPE</strong>, which intends to block the parent until there’s someone to read from it. In this case, we print out a message, telling the user that the signal is received and the parent process will be terminated. Actually, this is the default behavior to handle such a signal. We use the handle to inform the <span class="No-Break">user accordingly:</span></p>
+<pre class="console">
+$ ./sighandler_test
+SIGPIPE handled!</pre> <p>However, we can also ignore the signal through the following simple change on <span class="No-Break">marker </span><span class="No-Break"><strong class="source-inline">{3}</strong></span><span class="No-Break">:</span></p>
+<pre class="source-code">
+act.sa_handler = SIG_IGN; // {3}</pre> <p>Calling the program once again will not trigger the handler, which means that the signal is ignored and <a id="_idIndexMarker322"/>the process will continue as per its workflow. You can use both approaches in your code, but be careful – some signals cannot be ignored. We will use this knowledge later in <span class="No-Break">the book.</span></p>
+<h1 id="_idParaDest-61"><a id="_idTextAnchor059"/>Summary</h1>
+<p>In this chapter, we didn’t show any examples of file data modifications through C++. Our goals were mostly related to explaining the different Linux FS entities. We use the C++ filesystem library to enrich the knowledge in this direction – for example, improving system programming awareness. You learned about the roles of the different FS objects and their specifics. You also have the C++ instruments to manage file resources and level up your abstraction. There were also some hands-on examples of how to communicate between processes through anonymous and named pipes. Their implementation at the OS level was discussed as well, and we briefly explored signal handling <span class="No-Break">in Linux.</span></p>
+<p>In the next chapter, we will finally dive deeper into the C++ language, laying the foundations for its safe and secure usage, according to the latest standard. Later in the book, we will revisit some code segments shown in this chapter. We will continuously improve them through the usage of new <span class="No-Break">C++ features.</span></p>
+</div>
+</div></body></html>

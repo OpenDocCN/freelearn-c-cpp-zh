@@ -1,0 +1,598 @@
+<html><head></head><body>
+		<div id="_idContainer026">
+			<h1 id="_idParaDest-123" class="chapter-number" lang="en-GB"><a id="_idTextAnchor131"/><a id="_idTextAnchor132"/>13</h1>
+			<h1 id="_idParaDest-124" lang="en-GB"><a id="_idTextAnchor133"/>How to Test Floating-Point and Custom Values</h1>
+			<p lang="en-GB">We first encountered the need to test floating-point values in <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a>, <em class="italic" lang="">Adding More Confirm Types</em>, and created a simple solution that would let us compare floating-point values within a margin of error. We need the small margin because floating-point values that are close and might even look identical when displayed are almost always not exactly equal. These small differences make it hard to verify <span class="No-Break" lang="">test results.</span></p>
+			<p lang="en-GB">The main topics in this chapter are <span class="No-Break" lang="">as follows:</span></p>
+			<ul>
+				<li lang="en-GB">More precise <span class="No-Break" lang="">floating-point comparisons</span></li>
+				<li lang="en-GB">Adding floating-point <span class="No-Break" lang="">Hamcrest matchers</span></li>
+				<li lang="en-GB">Writing custom <span class="No-Break" lang="">Hamcrest matchers</span></li>
+			</ul>
+			<p lang="en-GB">We’re going to improve the simple solution developed earlier into a much better way to compare floating-point values that is more precise and works for both small and big values. We’ll use the better comparison for both the earlier classical-style confirmations and the new <span class="No-Break" lang="">Hamcrest-style confirmations.</span></p>
+			<p lang="en-GB">You’ll also learn how to create your own Hamcrest matchers in this chapter. We’ll be creating a new matcher to test for inequality instead of always testing for equality, and you’ll see how to contain one matcher inside another so that you can better reuse a matcher without needing to duplicate all the matcher <span class="No-Break" lang="">template specializations.</span></p>
+			<p lang="en-GB">Finally, you’ll learn how to create another custom simple matcher that will be slightly different than the other matchers so far because the new matcher will not need an <span class="No-Break" lang="">expected value.</span></p>
+			<h1 id="_idParaDest-125" lang="en-GB"><a id="_idTextAnchor134"/>Technical requirements</h1>
+			<p lang="en-GB">All code in this chapter uses standard C++ that builds on any modern C++ 20 or later compiler and standard library. The code is based on and continues enhancing the testing library from <em class="italic" lang="">Part 1</em> of this book, <span class="No-Break" lang=""><em class="italic" lang="">Testing MVP</em></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">You can find all the code for this chapter in the following <span class="No-Break" lang="">GitHub repository:</span></p>
+			<p lang="en-GB"><a href="https://github.com/PacktPublishing/Test-Driven-Development-with-CPP&#13;"><span class="No-Break" lang="">https://github.com/PacktPublishing/Test-Driven-Development-with-CPP</span></a></p>
+			<h1 id="_idParaDest-126" lang="en-GB"><a id="_idTextAnchor135"/>More precise floating-point comparisons</h1>
+			<p lang="en-GB">Whenever improvements<a id="_idIndexMarker490"/> are needed, one of the first things to look for is a way to measure the current design. Back in <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a>,<em class="italic" lang=""> Adding More Confirm Types</em>, we examined floating-point numbers and I explained that comparing any floating-point type value—float, double, or long double—directly with another floating-point value is a bad idea. The comparison is too sensitive to small rounding errors and will usually result in the two values comparing <span class="No-Break" lang="">not equal.</span></p>
+			<p lang="en-GB">In <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a>, I showed you how to add a small margin to the comparison so that an accumulation of errors would not throw off the comparison as long as the two numbers being compared were close enough in value to each other. In other words, two values can compare equal as long as they are close enough to <span class="No-Break" lang="">each other.</span></p>
+			<p lang="en-GB">But what margin should be used? We simply picked some small numbers, and that solution worked. We’re going to improve that solution. And now that you’re becoming familiar with <strong class="bold" lang="">test-driven development</strong> (<strong class="bold" lang="">TDD</strong>), we’re<a id="_idIndexMarker491"/> going to create some functions to help test our solution. All these functions will go at the top <span class="No-Break" lang="">of </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Hamcrest.cpp</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">The first function will convert a floating-point value into a fraction by dividing by a constant. We’ll divide by <strong class="source-inline" lang="">10</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+T calculateFraction (T input)
+{
+    T denominator {10};
+    return input / denominator;
+}</pre>
+			<p lang="en-GB">This is a template, so it will work for float, double, and long double types. The intent is for the input to be a whole number, and this function will turn the number into tenths. Remember from <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a> that tenths don’t have exact representations in binary. There will be a slight error introduced but not much because we only do one <span class="No-Break" lang="">division calculation.</span></p>
+			<p lang="en-GB">We’ll need another function that will generate bigger margins of error by doing more work, like <span class="No-Break" lang="">this function:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+T accumulateError (T input)
+{
+    // First add many small amounts.
+    T partialAmount {0.1};
+    for (int i = 0; i &lt; 10; ++i)
+    {
+        input += partialAmount;
+    }
+    // Then subtract to get back to the original.
+    T wholeAmount {1};
+    input -= wholeAmount;
+    return input;
+}</pre>
+			<p lang="en-GB">This function adds <strong class="source-inline" lang="">1</strong> and then <a id="_idIndexMarker492"/>subtracts <strong class="source-inline" lang="">1</strong>, so the input should remain unchanged. But because we add many small amounts that will all equal <strong class="source-inline" lang="">1</strong>, the function introduces many errors during the calculations. The result that gets returned should be close to the original <strong class="source-inline" lang="">input</strong> but not <span class="No-Break" lang="">the same.</span></p>
+			<p lang="en-GB">The last helper function will call the first two functions many times for many different values and count how many times the results are equal. The function looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+int performComparisons (int totalCount)
+{
+    int passCount {0};
+    for (int i = 0; i &lt; totalCount; ++i)
+    {
+        T expected = static_cast&lt;T&gt;(i);
+        expected = calculateFraction(expected);
+        T actual = accumulateError(expected);
+        if (actual == expected)
+        {
+            ++passCount;
+        }
+    }
+    return passCount;
+}</pre>
+			<p lang="en-GB">The function uses the fraction as the <strong class="source-inline" lang="">expected</strong> value since it should have the fewest errors. The <strong class="source-inline" lang="">expected</strong> value is compared with the <strong class="source-inline" lang="">actual</strong> value, which we get from accumulating many small errors. The two values should be close but not exactly equal. They should be close enough to be counted as <span class="No-Break" lang="">equal, though.</span></p>
+			<p lang="en-GB">Who defines what is close<a id="_idIndexMarker493"/> enough? That’s really up to you to decide. The tests we’re creating in this book might be allowing more errors than your application can tolerate. You’ll understand after reading this section how to modify your code if you need more or less tolerance. There is no right answer for how to compare floating-point values that will work for all applications. The best you can do is to be aware of your own needs and adapt the code to fit <span class="No-Break" lang="">those needs.</span></p>
+			<p lang="en-GB">The <strong class="source-inline" lang="">performComparisons</strong> function also uses the <strong class="source-inline" lang="">==</strong> operator without any type of margin. The results should have a lot of unequal results. But how many? Let’s write a test to <span class="No-Break" lang="">find out!</span></p>
+			<p lang="en-GB">Add this test to the end <span class="No-Break" lang="">of </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Hamcrest.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test many float comparisons")
+{
+    int totalCount {1'000};
+    int passCount = performComparisons&lt;float&gt;(totalCount);
+    CONFIRM_THAT(passCount, Equals(totalCount));
+}</pre>
+			<p lang="en-GB">The test will cycle through <strong class="source-inline" lang="">1,000</strong> values, turning each one into tenths, introducing errors, and counting how many compared equal. The results are <span class="No-Break" lang="">really bad:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test many float comparisons</strong>
+<strong class="bold" lang="">Failed confirm on line 125</strong>
+<strong class="bold" lang="">    Expected: 1000</strong>
+<strong class="bold" lang="">    Actual  : 4</strong></pre>
+			<p lang="en-GB">Only four values were close enough to be considered equal with the standard equality operator. You might get slightly different results depending on your computer and your compiler. If you do get different results, then that should be more evidence about how unreliable floating-point comparisons are. How about double and long double types? Add these two tests to <span class="No-Break" lang="">find out:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test many double comparisons")
+{
+    int totalCount {1'000};
+    int passCount = performComparisons&lt;double&gt;(totalCount);
+    CONFIRM_THAT(passCount, Equals(totalCount));
+}
+TEST("Test many long double comparisons")
+{
+    int totalCount {1'000};
+    int passCount = performComparisons&lt;long                     double&gt;(totalCount);
+    CONFIRM_THAT(passCount, Equals(totalCount));
+}</pre>
+			<p lang="en-GB">The results are just as bad <a id="_idIndexMarker494"/>and look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test many double comparisons</strong>
+<strong class="bold" lang="">Failed confirm on line 132</strong>
+<strong class="bold" lang="">    Expected: 1000</strong>
+<strong class="bold" lang="">    Actual  : 4</strong>
+<strong class="bold" lang="">------- Test: Test many long double comparisons</strong>
+<strong class="bold" lang="">Failed confirm on line 139</strong>
+<strong class="bold" lang="">    Expected: 1000</strong>
+<strong class="bold" lang="">    Actual  : 0</strong></pre>
+			<p lang="en-GB">Let’s add a margin to the equality comparison to see how much better the comparisons become. We’ll start with the values used in the existing <strong class="source-inline" lang="">confirm</strong> overloads in <strong class="source-inline" lang="">Test.h</strong>. One of the overloads looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+inline void confirm (
+    float expected,
+    float actual,
+    int line)
+{
+    if (actual &lt; (expected - 0.0001f) ||
+        actual &gt; (expected + 0.0001f))
+    {
+        throw ActualConfirmException(
+            std::to_string(expected),
+            std::to_string(actual),
+            line);
+    }
+}</pre>
+			<p lang="en-GB">The value we are interested in is the hardcoded literal floating-point value. In this case, it’s <strong class="source-inline" lang="">0.0001f</strong>. All we need to do is create three more helper functions that return these values. Note that the double and long double overloads have a different value than the float type. Place these three helper functions in <strong class="source-inline" lang="">Hamcrest.cpp</strong>, right before the <strong class="source-inline" lang="">performComparisons</strong> function, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+constexpr float getMargin (float)
+{
+    return 0.0001f;
+}
+constexpr double getMargin (double)
+{
+    return 0.000001;
+}
+constexpr long double getMargin (long double)
+{
+    return 0.000001L;
+}</pre>
+			<p lang="en-GB">These three helper functions will let us customize the margin for each type. They each take a floating-point type <a id="_idIndexMarker495"/>parameter that is only used to determine which function to call. We don’t actually need or use the parameter value passed to the function. We’ll call these helper functions from within the <strong class="source-inline" lang="">performComparisons</strong> template, which will know the type to be used based on how the template <span class="No-Break" lang="">was constructed.</span></p>
+			<p lang="en-GB">We’re also going to slightly change how we compare with a margin. Here’s an example of how the confirm <span class="No-Break" lang="">functions compare:</span></p>
+			<pre class="source-code" lang="en-GB">
+    if (actual &lt; (expected - 0.0001f) ||
+        actual &gt; (expected + 0.0001f))</pre>
+			<p lang="en-GB">Instead of this, we’re going to subtract the <strong class="source-inline" lang="">expected</strong> value from the <strong class="source-inline" lang="">actual</strong> value and then compare the absolute value of that subtraction result with the margin. We need to include <strong class="source-inline" lang="">cmath</strong> at the top of <strong class="source-inline" lang="">Hamcrest.cpp</strong> for the <strong class="source-inline" lang="">abs</strong> function, and we’re going to need <strong class="source-inline" lang="">limits</strong> soon also, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include "../Test.h"
+#include &lt;cmath&gt;
+#include &lt;limits&gt;</pre>
+			<p lang="en-GB">And now, we can change the <strong class="source-inline" lang="">performComparisons</strong> function to use the margin, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+int performComparisons (int totalCount)
+{
+    int passCount {0};
+    for (int i = 0; i &lt; totalCount; ++i)
+    {
+        T expected = static_cast&lt;T&gt;(i);
+        expected = calculateFraction(expected);
+        T actual = accumulateError(expected);
+        if (std::abs(actual - expected) &lt; getMargin(actual))
+        {
+            ++passCount;
+        }
+    }
+    return passCount;
+}</pre>
+			<p lang="en-GB">After making these changes, all the<a id="_idIndexMarker496"/> tests pass, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test many float comparisons</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test many double comparisons</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test many long double comparisons</strong>
+<strong class="bold" lang="">Passed</strong></pre>
+			<p lang="en-GB">This means that all <strong class="source-inline" lang="">1,000</strong> values are now matching within a small margin of error. This is the same solution explained in <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a>. We should be good, right? <span class="No-Break" lang="">Not quite.</span></p>
+			<p lang="en-GB">The problem is that the margin value is quite big for small numbers and too small for big numbers. All the tests are passing, but that’s just because we have a margin that’s big enough to let a lot of comparisons be treated <span class="No-Break" lang="">as equal.</span></p>
+			<p lang="en-GB">To see this, let’s refactor the comparison out of the <strong class="source-inline" lang="">performComparisons</strong> function so that the check is in its own function, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+bool compareEq (T lhs, T rhs)
+{
+    return std::abs(lhs - rhs) &lt; getMargin(lhs);
+}
+template &lt;typename T&gt;
+int performComparisons (int totalCount)
+{
+    int passCount {0};
+    for (int i = 0; i &lt; totalCount; ++i)
+    {
+        T expected = static_cast&lt;T&gt;(i);
+        expected = calculateFraction(expected);
+        T actual = accumulateError(expected);
+        if (compareEq(actual, expected))
+        {
+            ++passCount;
+        }
+    }
+    return passCount;
+}</pre>
+			<p lang="en-GB">And then we can write a couple<a id="_idIndexMarker497"/> tests to call <strong class="source-inline" lang="">compareEq</strong> directly, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test small float values")
+{
+    // Based on float epsilon = 1.1920928955078125e-07
+    bool result = compareEq(0.000001f, 0.000002f);
+    CONFIRM_FALSE(result);
+}
+TEST("Test large float values")
+{
+    // Based on float epsilon = 1.1920928955078125e-07
+    bool result = compareEq(9'999.0f, 9'999.001f);
+    CONFIRM_TRUE(result);
+}</pre>
+			<p lang="en-GB">The test for small float values compares two numbers that are obviously different, yet the comparison function will consider them equal and the test fails. The fixed margin considers any float values within <strong class="source-inline" lang="">0.0001f</strong> to be equal. We want the two values to compare not equal, but our margin is big enough that they are considered to <span class="No-Break" lang="">be equal.</span></p>
+			<p lang="en-GB">What is the <em class="italic" lang="">epsilon</em> value that the comment refers to? We’ll start using the actual epsilon values in just a moment, and this is why I suggested that you include <strong class="source-inline" lang="">limits</strong>. Floating-point numbers have a concept called epsilon, which is a value defined in <strong class="source-inline" lang="">limits</strong> for each floating-point type. The<a id="_idIndexMarker498"/> epsilon value represents the smallest distance between adjacent floating-point values for values between 1.0 and 2.0. Remember that floating-point values can’t represent every possible fractional number, so there are gaps between the numbers that can <span class="No-Break" lang="">be represented.</span></p>
+			<p lang="en-GB">You can see the same thing<a id="_idIndexMarker499"/> yourself if you write down numbers with only a fixed number of decimal places on paper. Let’s say that you limit yourself to only using two digits after the decimal point. You could write <strong class="source-inline" lang="">1.00</strong> and <strong class="source-inline" lang="">1.01</strong> and <strong class="source-inline" lang="">1.02</strong>. Those are adjacent values. In fact, <strong class="source-inline" lang="">1.00</strong> and <strong class="source-inline" lang="">1.02</strong> are the closest numbers you can represent to <strong class="source-inline" lang="">1.01</strong> by using only two digits after the decimal place. What about a number such as <strong class="source-inline" lang="">1.011</strong>? It’s definitely closer to <strong class="source-inline" lang="">1.01</strong> than <strong class="source-inline" lang="">1.02</strong> but we can’t write <strong class="source-inline" lang="">1.011</strong> because it needs three digits after the decimal point. The epsilon value for our experiment is <strong class="source-inline" lang="">0.01</strong>. Floating-point numbers have a similar problem except that the value of epsilon is smaller and not a simple value such <span class="No-Break" lang="">as </span><span class="No-Break" lang=""><strong class="source-inline" lang="">0.01</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">Another complication is that the distance between adjacent floating-point numbers increases as the numbers get larger, and the distance decreases as the numbers get smaller. The test for small float values uses small values, but the values are much bigger than epsilon. Because the numbers are much bigger than epsilon, we want the test to fail. The test passes because our fixed margin is even bigger <span class="No-Break" lang="">than epsilon.</span></p>
+			<p lang="en-GB">The test for large float values also fails. It uses two values that are different by <strong class="source-inline" lang="">0.001f</strong>, which would be a really big difference if we were comparing <strong class="source-inline" lang="">1.0f</strong> with <strong class="source-inline" lang="">1.001f</strong>. At small values, a difference of <strong class="source-inline" lang="">0.001f</strong> would be enough to cause the values to compare not equal. But we’re not dealing with small values—we’re dealing with values that are almost 10,000! We now want the larger values to be considered equal because the fractional part makes up a smaller percentage of the larger numbers. The test fails because our fixed margin doesn’t consider that the values are larger and only looks at the difference, which is greater than the fixed <span class="No-Break" lang="">margin allows.</span></p>
+			<p lang="en-GB">We can also test the other floating-point types. Add these two similar tests for double right after the two tests added for small and large float values, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test small double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    bool result = compareEq(0.000000000000001,                   0.000000000000002);
+    CONFIRM_FALSE(result);
+}
+TEST("Test large double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    bool result = compareEq(1'500'000'000'000.0,                   1'500'000'000'000.0003);
+    CONFIRM_TRUE(result);
+}</pre>
+			<p lang="en-GB">For the double type, we have a <a id="_idIndexMarker500"/>different epsilon value that’s much smaller than the epsilon for floats, and we also have many more significant digits to work with, so we can use numbers with more digits. We were limited to only about 7 digits when working with floats. With doubles, we can use numbers with about 16 digits. Notice that with doubles, we need a large value in the trillions in order to see a difference of <strong class="source-inline" lang="">0.0003</strong> that should be compared <span class="No-Break" lang="">as equal.</span></p>
+			<p lang="en-GB">If you are wondering how I arrived at these test numbers, I just picked small numbers just one decimal place bigger than epsilon for the small value tests. And for the large values, I choose a bigger number that I multiplied by (1 + epsilon) to arrive at the other number to be compared with. I then rounded the other number a bit so that it would be a bit closer. I had to choose a big number to start with that would stay within the number of digits allowed for <span class="No-Break" lang="">each type.</span></p>
+			<p lang="en-GB">Since we’re using the double epsilon value for long doubles, the tests for small and large long doubles look similar to the tests for double. The long double tests look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test small long double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    bool result = compareEq(0.000000000000001L,                   0.000000000000002L);
+    CONFIRM_FALSE(result);
+}
+TEST("Test large long double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    bool result = compareEq(1'500'000'000'000.0L,                   1'500'000'000'000.0003L);
+    CONFIRM_TRUE(result);
+}</pre>
+			<p lang="en-GB">The only difference between the double tests and the long double tests is the long double suffix <strong class="source-inline" lang="">L</strong> at the end of the long double <span class="No-Break" lang="">literal values.</span></p>
+			<p lang="en-GB">After adding all six tests for small and large floating-point type tests, they all fail <span class="No-Break" lang="">when run.</span></p>
+			<p lang="en-GB">The reason for the failures is the same for each type. The small value tests all fail because the fixed margin considers the values to be equal when they should not be equal, and the large value tests consider the values to be not equal when they really are close, considering the large<a id="_idIndexMarker501"/> value. In fact, the large values are all within a single epsilon value from each other. The large values are as close as they can possibly get without being exactly equal. Sure—the long double large values could have been closer, but we’re simplifying long doubles a bit by using the bigger epsilon from the <span class="No-Break" lang="">double type.</span></p>
+			<p lang="en-GB">We need to enhance the <strong class="source-inline" lang="">compareEq</strong> function so that the margin can be smaller for small values and bigger for big values. The moment we take on the responsibilities of comparing floating-point values, there are a lot of details that need to be handled. We skipped the extra details in <a href="B18567_05.xhtml#_idTextAnchor045"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 5</em></span></a>. We’re also going to skip some of the details even here. If you haven’t realized it yet, dealing with floating-point values is really hard. The moment you think everything is working is when another detail comes along that <span class="No-Break" lang="">changes everything.</span></p>
+			<p lang="en-GB">Let’s first fix the <strong class="source-inline" lang="">getMargin</strong> functions to return the real <strong class="source-inline" lang="">epsilon</strong> values modified slightly for each type, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+constexpr float getMargin (float)
+{
+    // 4 is chosen to pass a reasonable amount of error.
+    return std::numeric_limits&lt;float&gt;::epsilon() * 4;
+}
+constexpr double getMargin (double)
+{
+    // 4 is chosen to pass a reasonable amount of error.
+    return std::numeric_limits&lt;double&gt;::epsilon() * 4;
+}
+constexpr long double getMargin (long double)
+{
+    // Use double epsilon instead of long double epsilon.
+    // Double epsilon is already much bigger than
+    // long double epsilon so we don't need to multiply it.
+    return std::numeric_limits&lt;double&gt;::epsilon();
+}</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">getMargin</strong> functions now use the <strong class="source-inline" lang="">epsilon</strong> values for the types as defined in <strong class="source-inline" lang="">numeric_limits</strong>. The margins are tuned for our needs. You might want to multiply by different numbers, and you might want to use the real <strong class="source-inline" lang="">epsilon</strong> value for long doubles. The reason we want bigger margins than <strong class="source-inline" lang="">epsilon</strong> itself is that we want to consider values to be equal that are more than just one <strong class="source-inline" lang="">epsilon</strong> value greater or lesser away from each other. We want a little more room for the accumulation of at least a few calculation errors. We <a id="_idIndexMarker502"/>multiply <strong class="source-inline" lang="">epsilon</strong> by <strong class="source-inline" lang="">4</strong> to give that extra room, and we use the double <strong class="source-inline" lang="">epsilon</strong> for long doubles, which might really be too much already. But these margins work for what <span class="No-Break" lang="">we need.</span></p>
+			<p lang="en-GB">We’ll use the more accurate margin values in the new <strong class="source-inline" lang="">compareEq</strong> function, which looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+bool compareEq (T lhs, T rhs)
+{
+    // Check for an exact match with operator == first.
+    if (lhs == rhs)
+    {
+        return true;
+    }
+    // Subnormal diffs near zero are treated as equal.
+    T diff = std::abs(lhs - rhs);
+    if (diff &lt;= std::numeric_limits&lt;T&gt;::min())
+    {
+        return true;
+    }
+    // The margin should get bigger with bigger absolute values.
+    // We scale the margin up by the larger value or
+    // leave the margin unchanged if larger is less than 1.
+    lhs = std::abs(lhs);
+    rhs = std::abs(rhs);
+    T larger = (lhs &gt; rhs) ? lhs : rhs;
+    larger = (larger &lt; 1.0) ? 1.0 : larger;
+    return diff &lt;= getMargin(lhs) * larger;
+}</pre>
+			<p lang="en-GB">I like to use parameter names <strong class="source-inline" lang="">lhs</strong> and <strong class="source-inline" lang="">rhs</strong> for operator-type functions such as this. The abbreviations stand for left-hand side and right-hand side, respectively. </p>
+			<p lang="en-GB">Consider these <span class="No-Break" lang="">two numbers:</span></p>
+			<pre class="source-code" lang="en-GB">
+3 == 4</pre>
+			<p lang="en-GB">When making a comparison of <a id="_idIndexMarker503"/>these, <strong class="source-inline" lang="">3</strong> is on the left side of the operator and would be the <strong class="source-inline" lang="">lhs</strong> argument, while <strong class="source-inline" lang="">4</strong> is on the right and would be the <span class="No-Break" lang=""><strong class="source-inline" lang="">rhs</strong></span><span class="No-Break" lang=""> argument.</span></p>
+			<p lang="en-GB">There’s always a chance that the two numbers being compared are exactly equal to each other. So, the first thing we check is for an exact match using the <strong class="source-inline" lang="">==</strong> <span class="No-Break" lang="">operator.</span></p>
+			<p lang="en-GB">The <strong class="source-inline" lang="">compareEq</strong> function goes on to check the difference between the two numbers for a <em class="italic" lang="">subnormal</em> result. Remember I said that floating-point numbers are complicated? There could be an entire book written about floating-point math, and there are probably several books already written. I won’t go into much explanation about subnormal values except to say that this is how floating-point values are represented when they are extremely close to zero. We’ll consider any two subnormal values to <span class="No-Break" lang="">be equal.</span></p>
+			<p lang="en-GB">Subnormal values are also a good reason to <em class="italic" lang="">compare your numbers with each other</em> instead of <em class="italic" lang="">comparing their difference with zero</em>. You might wonder what the problem is. Doesn’t the code in the <strong class="source-inline" lang="">compareEq</strong> function subtract one value from the other to arrive at the difference? Yes, it does. But our <strong class="source-inline" lang="">compareEq</strong> function doesn’t try to compare the difference with zero directly. We figure out which of the two values is bigger and then scale the margin by multiplying the margin with the bigger value. We also avoid scaling the margin down when we are comparing values less <span class="No-Break" lang="">than </span><span class="No-Break" lang=""><strong class="source-inline" lang="">1.0</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">If you have two values to compare and instead of passing them to <strong class="source-inline" lang="">compareEq</strong>, you pass their difference and compare the difference with zero, then you remove the ability of the <strong class="source-inline" lang="">compareEq</strong> function to do the scaling because the <strong class="source-inline" lang="">compareEq</strong> function would then only see a small difference and zero <span class="No-Break" lang="">being compared.</span></p>
+			<p lang="en-GB">The lesson here is to always pass your numbers to be compared directly to the <strong class="source-inline" lang="">compareEq</strong> function and let it figure out how much the two numbers are different by taking into account how big the numbers are. You’ll get more <span class="No-Break" lang="">accurate comparisons.</span></p>
+			<p lang="en-GB">We could make the <strong class="source-inline" lang="">compareEq</strong> function even more elaborate. Maybe we could consider the sign of subnormal values instead of considering all of them to be equal, or maybe we could scale the margin down more so that we get very precise when dealing with subnormal values. This is not a book about math, so we’re going to stop adding more to the <span class="No-Break" lang=""><strong class="source-inline" lang="">compareEq</strong></span><span class="No-Break" lang=""> function.</span></p>
+			<p lang="en-GB">After making the changes to <strong class="source-inline" lang="">compareEq</strong>, all the tests pass. We now have a solution that allows small amounts of <a id="_idIndexMarker504"/>accumulated errors and lets two numbers compare equal when they are close enough. The solution works for both really small numbers and really big numbers. The next section will turn the code we explored here into a better Hamcrest <span class="No-Break" lang="">equality matcher.</span></p>
+			<h1 id="_idParaDest-127" lang="en-GB"><a id="_idTextAnchor136"/>Adding floating-point Hamcrest matchers</h1>
+			<p lang="en-GB">We explored better floating-point <a id="_idIndexMarker505"/>comparisons in the previous section, and now it’s time to use the comparison code in the unit test library. Some of the code should be moved into <strong class="source-inline" lang="">Test.h</strong> where it fits better and can then be used by the test library. The rest of the code that was written should stay in <strong class="source-inline" lang="">Hamcrest.cpp</strong> because it’s code that supports <span class="No-Break" lang="">the tests.</span></p>
+			<p lang="en-GB">The code that needs to be moved is the <strong class="source-inline" lang="">compareEq</strong> function and the three <strong class="source-inline" lang="">getMargin</strong> functions that <strong class="source-inline" lang="">compareEq</strong> calls to get the margins. We also need to move the includes of <strong class="source-inline" lang="">cmath</strong> and <strong class="source-inline" lang="">limits</strong> into <strong class="source-inline" lang="">Test.h</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include &lt;cmath&gt;
+#include &lt;cstring&gt;
+#include &lt;limits&gt;
+#include &lt;map&gt;
+#include &lt;ostream&gt;
+#include &lt;string_view&gt;
+#include &lt;type_traits&gt;
+#include &lt;vector&gt;</pre>
+			<p lang="en-GB">The three <strong class="source-inline" lang="">getMargin</strong> functions and the <strong class="source-inline" lang="">compareEq</strong> function can be moved into <strong class="source-inline" lang="">Test.h</strong>, right before the first override of the <strong class="source-inline" lang="">confirm</strong> function that accepts Booleans. None of the code in the moved functions needs to change. Just cut the includes and the functions out of <strong class="source-inline" lang="">Hamcrest.cpp</strong> and paste the code <span class="No-Break" lang="">into </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Test.h</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">We might as well fix the existing floating-point classic <strong class="source-inline" lang="">confirm</strong> functions. This is why I had you move the <strong class="source-inline" lang="">compareEq</strong> function into <strong class="source-inline" lang="">Test.h</strong> immediately before the first <strong class="source-inline" lang="">confirm</strong> function. The change to the existing floating-point <strong class="source-inline" lang="">confirm</strong> functions is simple. They need to call <strong class="source-inline" lang="">compareEq</strong> instead of using hardcoded margins that don’t scale. The <strong class="source-inline" lang="">confirm</strong> function for float types looks like this after <span class="No-Break" lang="">the change:</span></p>
+			<pre class="source-code" lang="en-GB">
+inline void confirm (
+    float expected,
+    float actual,
+    int line)
+{
+    if (not compareEq(actual, expected))
+    {
+        throw ActualConfirmException(
+            std::to_string(expected),
+            std::to_string(actual),
+            line);
+    }
+}</pre>
+			<p lang="en-GB">The other two <strong class="source-inline" lang="">confirm</strong> functions that accept double and long double types should be changed to look similar. All three <strong class="source-inline" lang="">confirm</strong> functions will create the correct template of <strong class="source-inline" lang="">compareEq</strong> based on the <strong class="source-inline" lang="">expected</strong> and <strong class="source-inline" lang="">actual</strong> <span class="No-Break" lang="">parameter types.</span></p>
+			<p lang="en-GB">We should build and run the test application to make sure nothing broke with this small refactoring. And all the tests pass. We now have updated classic style <strong class="source-inline" lang="">confirm</strong> functions that will work<a id="_idIndexMarker506"/> better with <span class="No-Break" lang="">floating-point comparisons.</span></p>
+			<p lang="en-GB">We can make the code slightly better, though. We have three almost identical functions that are different only by their parameter types. The only reason for the three functions is that we want to override the <strong class="source-inline" lang="">confirm</strong> function for floating-point types. But since we’re using C++20, let’s use <em class="italic" lang="">concepts</em> instead! Concepts are a new feature that we’ve already started using when we specialized the <strong class="source-inline" lang="">Equals</strong> matcher to work with char arrays and char pointers in the previous chapter. Concepts allow us to tell the compiler which types are acceptable for template parameters and even function parameters. In the previous chapter, we were only using the requires keyword to place some restrictions on the template parameters. We’ll be using more well-known concepts here in <span class="No-Break" lang="">this chapter.</span></p>
+			<p lang="en-GB">We need to include <strong class="source-inline" lang="">concepts</strong> like this <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Test.h</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include &lt;concepts&gt;
+#include &lt;cmath&gt;
+#include &lt;cstring&gt;
+#include &lt;limits&gt;
+#include &lt;map&gt;
+#include &lt;ostream&gt;
+#include &lt;string_view&gt;
+#include &lt;type_traits&gt;
+#include &lt;vector&gt;</pre>
+			<p lang="en-GB">And then, we can replace the three <strong class="source-inline" lang="">confirm</strong> functions that accept float, double, and long double types with a single template that uses the <strong class="source-inline" lang="">floating_point</strong> concept, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;std::floating_point T&gt;
+void confirm (
+    T expected,
+    T actual,
+    int line)
+{
+    if (not compareEq(actual, expected))
+    {
+        throw ActualConfirmException(
+            std::to_string(expected),
+            std::to_string(actual),
+            line);
+    }
+}</pre>
+			<p lang="en-GB">This new template will only<a id="_idIndexMarker507"/> accept floating-point types, and by making both <strong class="source-inline" lang="">expected</strong> and <strong class="source-inline" lang="">actual</strong> share the same type <strong class="source-inline" lang="">T</strong>, then both types must be the same. The definition of <strong class="source-inline" lang="">floating_point</strong> is one of the well-known concepts defined in the <span class="No-Break" lang=""><strong class="source-inline" lang="">concepts</strong></span><span class="No-Break" lang=""> header.</span></p>
+			<p lang="en-GB">Now that we have the classic style confirmations working, let’s get the Hamcrest <strong class="source-inline" lang="">Equals</strong> matcher working for floating-point values. We can first change the three large floating-point tests in <strong class="source-inline" lang="">Hamcrest.cpp</strong> to stop calling <strong class="source-inline" lang="">compareEq</strong> directly and instead use the <strong class="source-inline" lang="">CONFIRM_THAT</strong> macro so that they look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test large float values")
+{
+    // Based on float epsilon = 1.1920928955078125e-07
+    CONFIRM_THAT(9'999.0f, Equals(9'999.001f));
+}
+TEST("Test large double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(1'500'000'000'000.0,                 Equals(1'500'000'000'000.0003));
+}
+TEST("Test large long double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(1'500'000'000'000.0L,             Equals(1'500'000'000'000.0003L));
+}</pre>
+			<p lang="en-GB">We’re not going to change the tests for the small floating-point values yet because we don’t have a matcher that does inequality comparisons. The solution might be as simple as putting the <strong class="source-inline" lang="">not</strong> keyword in front of <strong class="source-inline" lang="">Equals</strong>, but let’s hold off on that for just a moment because we’ll be exploring our options in the <span class="No-Break" lang="">next section.</span></p>
+			<p lang="en-GB">With the change to the<a id="_idIndexMarker508"/> tests, they should fail because we haven’t yet specialized the <strong class="source-inline" lang="">Equals</strong> matcher to do anything different for floating-point types. Building and running the test application shows that the three tests do fail, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test large float values</strong>
+<strong class="bold" lang="">Failed confirm on line 152</strong>
+<strong class="bold" lang="">    Expected: 9999.000977</strong>
+<strong class="bold" lang="">    Actual  : 9999.000000</strong>
+<strong class="bold" lang="">------- Test: Test small double values</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test large double values</strong>
+<strong class="bold" lang="">Failed confirm on line 165</strong>
+<strong class="bold" lang="">    Expected: 1500000000000.000244</strong>
+<strong class="bold" lang="">    Actual  : 1500000000000.000000</strong>
+<strong class="bold" lang="">------- Test: Test small long double values</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test large long double values</strong>
+<strong class="bold" lang="">Failed confirm on line 178</strong>
+<strong class="bold" lang="">    Expected: 1500000000000.000300</strong>
+<strong class="bold" lang="">    Actual  : 1500000000000.000000</strong></pre>
+			<p lang="en-GB">Notice how the expected values printed in the summary report don’t exactly match the literal values given in the tests for the float and the double types. The long double does display a value that matches the value given in the test. The discrepancy is because floating-point variables are unable to always match exact values. The differences become more visible with floats, a little less visible with doubles, and closer to the desired values with <span class="No-Break" lang="">long doubles.</span></p>
+			<p lang="en-GB">The steps we just went through follow TDD. We modified existing tests instead of creating new tests because we don’t expect callers to use <strong class="source-inline" lang="">compareEq</strong> directly. The tests were initially written to call <strong class="source-inline" lang="">compareEq</strong> directly to show that we had a solution for floating-point types that worked. Modifying the tests to the desired usage is the right thing to do, and then, by running the tests, we can see the failures. This is good because we expected the tests to fail. Had the tests passed instead, then we would need to find the reason for the <span class="No-Break" lang="">unexpected success.</span></p>
+			<p lang="en-GB">Let’s get the tests to <a id="_idIndexMarker509"/>pass again! We need a version of <strong class="source-inline" lang="">Equals</strong> that knows how to work with floating-point types. We’ll use the concept <strong class="source-inline" lang="">floating_point</strong> that we just used for the classic style confirmations to create another version of <strong class="source-inline" lang="">Equals</strong> that will call <strong class="source-inline" lang="">compareEq</strong> for floating-point types. Place this new <strong class="source-inline" lang="">Equals</strong> specialization in <strong class="source-inline" lang="">Test.h</strong> right after <strong class="source-inline" lang="">Equals</strong> that works with char pointers, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;std::floating_point T&gt;
+class Equals&lt;T&gt; : public Matcher
+{
+public:
+    Equals (T const &amp; expected)
+    : mExpected(expected)
+    { }
+    bool pass (T const &amp; actual) const
+    {
+        return compareEq(actual, mExpected);
+    }
+    std::string to_string () const override
+    {
+        return std::to_string(mExpected);
+    }
+private:
+    T mExpected;
+};</pre>
+			<p lang="en-GB">That’s all we need to change to get the tests passing again. The new <strong class="source-inline" lang="">Equals</strong> specialization accepts any floating-point type and will be preferred by the compiler for floating-point types instead of the general-purpose <strong class="source-inline" lang="">Equals</strong> template. The floating-point version of <strong class="source-inline" lang="">Equals</strong> calls <strong class="source-inline" lang="">compareEq</strong> to do the comparison. We also don’t need to worry about which types will be passed to <strong class="source-inline" lang="">to_string</strong> and can simply call <strong class="source-inline" lang="">std::to_string</strong> since we know that we will have one of the built-in floating-point types. The <strong class="source-inline" lang="">to_string</strong> assumption could fail if the user passes in some other type that has been created to be a <strong class="source-inline" lang="">floating_point</strong> concept type, but let’s keep the code as simple as it can be for now and not worry about custom <span class="No-Break" lang="">floating-point types.</span></p>
+			<p lang="en-GB">The next section will <a id="_idIndexMarker510"/>start by creating a solution to test for inequality instead. We’ll use the solution we create in the next section to modify the small floating-point <span class="No-Break" lang="">Hamcrest tests.</span></p>
+			<h1 id="_idParaDest-128" lang="en-GB"><a id="_idTextAnchor137"/>Writing custom Hamcrest matchers</h1>
+			<p lang="en-GB">The previous section <a id="_idIndexMarker511"/>ended with the <strong class="source-inline" lang="">Equals</strong> matcher specialized to call <strong class="source-inline" lang="">compareEq</strong> for floating-point types. We also modified the tests for large floating-point values because they could use the Hamcrest style and the <span class="No-Break" lang=""><strong class="source-inline" lang="">Equals</strong></span><span class="No-Break" lang=""> matcher.</span></p>
+			<p lang="en-GB">We left the tests for small floating-point values unchanged because those tests need to make sure that the actual and expected values are <span class="No-Break" lang="">not equal.</span></p>
+			<p lang="en-GB">We want to update the small floating-point value tests and need a way to test for not equal values. Maybe we could create a new matcher called <strong class="source-inline" lang="">NotEquals</strong>, or we could put the <strong class="source-inline" lang="">not</strong> keyword in front of the <span class="No-Break" lang=""><strong class="source-inline" lang="">Equals</strong></span><span class="No-Break" lang=""> matcher.</span></p>
+			<p lang="en-GB">I’d like to avoid the need for a new matcher if possible. We don’t really need any new behavior—we just need to flip the results of the existing <strong class="source-inline" lang="">Equals</strong> matcher. Let’s try modifying the small floating-point value tests to look like this <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Hamcrest.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test small float values")
+{
+    // Based on float epsilon = 1.1920928955078125e-07
+    CONFIRM_THAT(0.000001f, not Equals(0.000002f));
+}
+TEST("Test small double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(0.000000000000001,             not Equals(0.000000000000002));
+}
+TEST("Test small long double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(0.000000000000001L,             not Equals(0.000000000000002L));
+}</pre>
+			<p lang="en-GB">The only changes are to stop calling <strong class="source-inline" lang="">compareEq</strong> directly and to use the <strong class="source-inline" lang="">CONFIRM_THAT</strong> macro with the <strong class="source-inline" lang="">Equals</strong> matcher. Notice that we flip the results of the <strong class="source-inline" lang="">Equals</strong> matcher by <a id="_idIndexMarker512"/>placing the <strong class="source-inline" lang="">not</strong> keyword <span class="No-Break" lang="">in front.</span></p>
+			<p lang="en-GB">Does it build? No. We get compile errors similar <span class="No-Break" lang="">to this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">MereTDD/tests/Hamcrest.cpp:145:29: error: no match for 'operator!' (operand type is 'MereTDD::Equals&lt;float&gt;')</strong>
+<strong class="bold" lang="">  145 |     CONFIRM_THAT(0.000001f, not Equals(0.000002f));</strong>
+<strong class="bold" lang="">      |                             ^~~~~~~~~~~~~~~~~~~~~</strong></pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">not</strong> keyword in C++ is a shortcut for <strong class="source-inline" lang="">operator !</strong>. Normally with TDD, the next step would be to modify the code so that the tests can build. But we have a problem. The <strong class="source-inline" lang="">not</strong> keyword expects the class to have an <strong class="source-inline" lang="">operator !</strong> method or some way to cast the class to a Boolean. Either option requires that the class be able to generate a bool value, and that’s not how the matchers work. In order for a matcher to know whether the result should pass or not, it needs to know the <strong class="source-inline" lang="">actual</strong> value. The <strong class="source-inline" lang="">confirm_that</strong> function passes the matcher the needed <strong class="source-inline" lang="">actual</strong> value as an argument to the <strong class="source-inline" lang="">pass</strong> method. We can’t turn a matcher by itself into a <span class="No-Break" lang="">bool result.</span></p>
+			<p lang="en-GB">We’re going to have to create a <strong class="source-inline" lang="">NotEquals</strong> matcher. While not my first preference, a new matcher is acceptable from a test perspective. Let’s change the tests to look like <span class="No-Break" lang="">this instead:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test small float values")
+{
+    // Based on float epsilon = 1.1920928955078125e-07
+    CONFIRM_THAT(0.000001f, NotEquals(0.000002f));
+}
+TEST("Test small double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(0.000000000000001,             NotEquals(0.000000000000002));
+}
+TEST("Test small long double values")
+{
+    // Based on double epsilon = 2.2204460492503130808e-16
+    CONFIRM_THAT(0.000000000000001L,             NotEquals(0.000000000000002L));
+}</pre>
+			<p lang="en-GB">Another reason that I<a id="_idIndexMarker513"/> wanted to avoid a new matcher is to avoid the need to specialize the new matcher as we did for the <strong class="source-inline" lang="">Equals</strong> matcher, but there is a way to create a matcher called <strong class="source-inline" lang="">NotEquals</strong> and base its implementation on all the work we did for the <strong class="source-inline" lang="">Equals</strong> matcher. All we need to do is contain the <strong class="source-inline" lang="">Equals</strong> matcher and flip the <strong class="source-inline" lang="">pass</strong> result, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;typename T&gt;
+class NotEquals : public Matcher
+{
+public:
+    NotEquals (T const &amp; expected)
+    : mExpected(expected)
+    { }
+    template &lt;typename U&gt;
+    bool pass (U const &amp; actual) const
+    {
+        return not mExpected.pass(actual);
+    }
+    std::string to_string () const override
+    {
+        return "not " + mExpected.to_string();
+    }
+private:
+    Equals&lt;T&gt; mExpected;
+};</pre>
+			<p lang="en-GB">Add the <strong class="source-inline" lang="">NotEquals</strong> matcher right after all the template specializations of the <strong class="source-inline" lang="">Equals</strong> matcher <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Test.h</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">The <strong class="source-inline" lang="">NotEquals</strong> matcher is a new matcher type that contains an <strong class="source-inline" lang="">Equals</strong> matcher for its <strong class="source-inline" lang="">mExpected</strong> data member. This will give us all the specialization we did for the <strong class="source-inline" lang="">Equals</strong> matcher. Whenever the <strong class="source-inline" lang="">NotEquals::pass</strong> method is called, we just call the <strong class="source-inline" lang="">mExpected.pass</strong> method and flip the result. And whenever the <strong class="source-inline" lang="">to_string</strong> method is called, we just add <strong class="source-inline" lang="">"not "</strong> to whichever string <span class="No-Break" lang=""><strong class="source-inline" lang="">mExpected</strong></span><span class="No-Break" lang=""> provides.</span></p>
+			<p lang="en-GB">One interesting thing to notice is that the <strong class="source-inline" lang="">pass</strong> method is itself a template based on a type <strong class="source-inline" lang="">U</strong>. This will let us construct a <strong class="source-inline" lang="">NotEquals</strong> matcher given a string literal and then call the <strong class="source-inline" lang="">pass</strong> method <span class="No-Break" lang="">with </span><span class="No-Break" lang=""><strong class="source-inline" lang="">std::string</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">We should add a test for using the NotEquals matcher with a string literal and std::string or, even better, to extend <a id="_idIndexMarker514"/>an existing test. We have two tests already that work with strings, string literals, and char pointers. Both tests are in <strong class="source-inline" lang="">Hamcrest.cpp</strong>. The first test should look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test hamcrest style string confirms")
+{
+    std::string s1 = "abc";
+    std::string s2 = "abc";
+    CONFIRM_THAT(s1, Equals(s2));       // string vs. string
+    CONFIRM_THAT(s1, Equals("abc"));    // string vs. literal
+    CONFIRM_THAT("abc", Equals(s1));    // literal vs. string
+    // Probably not needed, but this works too.
+    CONFIRM_THAT("abc", Equals("abc")); // literal vs. literal
+    std::string s3 = "def";
+    CONFIRM_THAT(s1, NotEquals(s3));       // string vs. string
+    CONFIRM_THAT(s1, NotEquals("def"));    // string vs. literal
+    CONFIRM_THAT("def", NotEquals(s1));    // literal vs. string
+}</pre>
+			<p lang="en-GB">And the second test should<a id="_idIndexMarker515"/> be modified to look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test hamcrest style string pointer confirms")
+{
+    char const * sp1 = "abc";
+    std::string s1 = "abc";
+    char const * sp2 = s1.c_str();    // avoid sp1 and sp2 being same
+    CONFIRM_THAT(sp1, Equals(sp2));   // pointer vs. pointer
+    CONFIRM_THAT(sp2, Equals("abc")); // pointer vs. literal
+    CONFIRM_THAT("abc", Equals(sp2)); // literal vs. pointer
+    CONFIRM_THAT(sp1, Equals(s1));    // pointer vs. string
+    CONFIRM_THAT(s1, Equals(sp1));    // string vs. pointer
+    char const * sp3 = "def";
+    CONFIRM_THAT(sp1, NotEquals(sp3));   // pointer vs. pointer
+    CONFIRM_THAT(sp1, NotEquals("def")); // pointer vs. literal
+    CONFIRM_THAT("def", NotEquals(sp1)); // literal vs. pointer
+    CONFIRM_THAT(sp3, NotEquals(s1));    // pointer vs. string
+    CONFIRM_THAT(s1, NotEquals(sp3));    // string vs. pointer
+}</pre>
+			<p lang="en-GB">Building and running the test application shows that all the tests pass. Instead of adding new tests, we were able to modify the existing tests because the two existing tests were focused on the string and char pointer types. The <strong class="source-inline" lang="">NotEquals</strong> matcher fit right into the <span class="No-Break" lang="">existing tests.</span></p>
+			<p lang="en-GB">Having both <strong class="source-inline" lang="">Equals</strong> and <strong class="source-inline" lang="">NotEquals</strong> matchers gives us more than we had with the classic style confirmations, and we can go further by creating another matcher. You can also create matchers to do whatever you want in your test projects. We’re going to create a new matcher in the <strong class="source-inline" lang="">MereTDD</strong> namespace but you can put yours in your own namespace. The matcher <a id="_idIndexMarker516"/>we’ll be creating will test to make sure that an integral number is even. We’ll call the matcher <strong class="source-inline" lang="">IsEven</strong>, and we can write a couple of tests in <strong class="source-inline" lang="">Hamcrest.cpp</strong> to look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test even integral value")
+{
+    CONFIRM_THAT(10, IsEven&lt;int&gt;());
+}
+TEST("Test even integral value confirm failure")
+{
+    CONFIRM_THAT(11, IsEven&lt;int&gt;());
+}</pre>
+			<p lang="en-GB">You’ll notice something different about the <strong class="source-inline" lang="">IsEven</strong> matcher: it doesn’t require an expected value. The matcher only needs the actual value passed to it in order to confirm whether the actual value is even or not. Because there’s nothing to pass to the constructor when creating an <strong class="source-inline" lang="">IsEven</strong> matcher in the test, we need to specify the type, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+IsEven&lt;int&gt;()</pre>
+			<p lang="en-GB">The second test should fail, and we’ll use the failure to get the exact error message so that we can turn the test into an expected failure. But we first need to create an <strong class="source-inline" lang="">IsEven</strong> matcher. The <strong class="source-inline" lang="">IsEven</strong> class can go in <strong class="source-inline" lang="">Test.h</strong> immediately after the <strong class="source-inline" lang="">NotEquals</strong> matcher, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+template &lt;std::integral T&gt;
+class IsEven : public Matcher
+{
+public:
+    IsEven ()
+    { }
+    bool pass (T const &amp; actual) const
+    {
+        return actual % 2 == 0;
+    }
+    std::string to_string () const override
+    {
+        return "is even";
+    }
+};</pre>
+			<p lang="en-GB">I wanted to show you an example of a really simple custom matcher so that you’ll know that they don’t all need to be complicated or have multiple template specializations. The <strong class="source-inline" lang="">IsEven</strong> matcher just tests the <strong class="source-inline" lang="">actual</strong> value in the <strong class="source-inline" lang="">pass</strong> method to make sure it’s even, and the <strong class="source-inline" lang="">to_string</strong> method returns a <span class="No-Break" lang="">fixed string.</span></p>
+			<p lang="en-GB">Building and running shows the even value test passes while the intended failure test fails, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test even integral value</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test even integral value confirm failure</strong>
+<strong class="bold" lang="">Failed confirm on line 185</strong>
+<strong class="bold" lang="">    Expected: is even</strong>
+<strong class="bold" lang="">    Actual  : 11</strong></pre>
+			<p lang="en-GB">With the error message, we can<a id="_idIndexMarker517"/> modify the even confirm failure test so that it will pass with an expected failure, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test even integral value confirm failure")
+{
+    std::string reason = "    Expected: is even\n";
+    reason += "    Actual  : 11";
+    setExpectedFailureReason(reason);
+    CONFIRM_THAT(11, IsEven&lt;int&gt;());
+}</pre>
+			<p lang="en-GB">Building and running now shows that both tests pass. One passes successfully and the other passes with an expected failure, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test even integral value</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Test even integral value confirm failure</strong>
+<strong class="bold" lang="">Expected failure</strong>
+<strong class="bold" lang="">    Expected: is even</strong>
+<strong class="bold" lang="">    Actual  : 11</strong></pre>
+			<p lang="en-GB">That’s all there is to making custom matchers! You can make matchers for your own classes or add custom matchers for new behaviors. Maybe you want to verify that a number has only a certain number of digits, that a string begins with some given text prefix, or that a log message contains a certain tag. Remember how in <a href="B18567_10.xhtml#_idTextAnchor096"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 10</em></span></a>, <em class="italic" lang="">The TDD Process in Depth</em>, we had to verify tags by writing to a file and then scanning the file to make sure the line just written contained a tag? We could have a custom matcher that looks for a <span class="No-Break" lang="">tag instead.</span></p>
+			<h1 id="_idParaDest-129" lang="en-GB"><a id="_idTextAnchor138"/>Summary</h1>
+			<p lang="en-GB">One of the main benefits of the Hamcrest style confirmations is their ability to be extended through custom matchers. What better way to explore this ability than through floating-point confirmations? Because there is no single best way to compare floating-point values, you might need a solution that’s tuned to your specific needs. You learned about a good general-purpose floating-point comparison technique in this chapter that scales a small margin of error so that bigger floating-point values are allowed to differ by greater amounts as the values get bigger and still be considered to <span class="No-Break" lang="">be equal.</span></p>
+			<p lang="en-GB">If this general solution doesn’t meet your needs, you now know how to create your own matcher that will do exactly what <span class="No-Break" lang="">you need.</span></p>
+			<p lang="en-GB">And the ability to extend matchers doesn’t stop at floating-point values. You might have your own custom behavior that you need to confirm, and after reading this chapter, you now know how to create a custom matcher to do what <span class="No-Break" lang="">you need.</span></p>
+			<p lang="en-GB">Not all matchers need to be big and complicated and have multiple template specializations. You saw an example of a very simple custom matcher that confirms whether a number is even <span class="No-Break" lang="">or not.</span></p>
+			<p lang="en-GB">We also made good use of the concepts feature, new in C++20, which allows you to easily specify requirements on your template types. We made good use of concepts in this chapter to make sure that the floating-point matcher only works for floating-point types and that the <strong class="source-inline" lang="">IsEven</strong> matcher only works for integral types. You can use concepts in your matchers too, which will help you control how your matchers can <span class="No-Break" lang="">be used.</span></p>
+			<p lang="en-GB">The next chapter will explore how to test services and will introduce a new service project that uses all the code developed so far in <span class="No-Break" lang="">this book.</span></p>
+		</div>
+	</body></html>

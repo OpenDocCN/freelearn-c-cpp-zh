@@ -1,0 +1,768 @@
+<html><head></head><body><div id="book-content"><div id="sbo-rt-content"><div id="_idContainer077" class="Basic-Text-Frame">
+    <h1 class="chapterNumber">7</h1>
+    <h1 id="_idParaDest-194" class="chapterTitle">Enhancing Animation Controls</h1>
+    <p class="normal">Welcome to <a href=""><em class="italic">Chapter 7</em></a>! In the previous chapter, we added some camera functions. We started by implementing support for multiple camera objects and added new camera types. We also set keyboard shortcuts to allow the simple selection of the existing cameras. As the last step, we added an orthogonal camera configuration, which enabled us to create entirely different views of the model instances and the virtual worlds.</p>
+    <p class="normal">In this chapter, we will update animation blending and controls to a new level. First, we will implement blending between two animations in the existing transformation compute shader. Also, we will move the calculation of translation, scaling, and rotation for each node to lookup tables onto the GPU. Next, we will add new instance states to the code, storing the kind of actions the instance could do, like walking, running, and jumping, plus the direction of movement. Then, we will create UI controls, allowing us to map the existing animation clips to instance actions. Finally, we will add the logic for the mapping between animations and actions.</p>
+    <p class="normal">In this chapter, we will cover the following topics:</p>
+    <ul>
+      <li class="bulletList">Blending between animations with style</li>
+      <li class="bulletList">Adding new states to the code</li>
+      <li class="bulletList">Linking states and animations</li>
+      <li class="bulletList">Saving and loading the states</li>
+    </ul>
+    <h1 id="_idParaDest-195" class="heading-1">Technical requirements</h1>
+    <p class="normal">The example code in the <code class="inlineCode">chapter07</code> folder, in the <code class="inlineCode">01_opengl_animations</code> folder for OpenGL and the <code class="inlineCode">02_vulkan_animations</code> folder for Vulkan.</p>
+    <h1 id="_idParaDest-196" class="heading-1">Blending between animations with style</h1>
+    <p class="normal">If you solved the second and<a id="_idIndexMarker296"/> third tasks in the <em class="italic">Practical sessions</em> section in <a href="Chapter_2.xhtml"><em class="italic">Chapter 2</em></a> and moved more parts of the animation blending to the GPU, parts of this section may be familiar to you. But do not worry if you skipped the tasks, as the process of moving the transformation data to lookup tables and doing the interpolation calculations on the GPU is straightforward.</p>
+    <p class="normal">Let’s start with the lookup table data.</p>
+    <h2 id="_idParaDest-197" class="heading-2">The power of lookup tables</h2>
+    <p class="normal">Currently, the data for the animation keyframes and the corresponding node transformations is extracted during model loading, and all the data is stored in arrays inside <code class="inlineCode">AssimpAnimChannel</code> objects.</p>
+    <p class="normal">For every node in every<a id="_idIndexMarker297"/> frame, six lookups are needed to extract the translation, scaling, and rotation for the previous and current keyframe time. Then, the values are interpolated pairwise to calculate the final transformation for the specified node.</p>
+    <p class="normal">However, doing the same calculations repeatedly is time-consuming. A better solution is to generate all the interpolated transforms when the model is loaded, and only do a lookup of the final transform value when playing the animation.</p>
+    <p class="normal">The trade-off here is clear: GPU memory versus CPU computing power. Setting the size of the lookup tables too small will cause visible artifacts, while setting the size of the lookup table data too large will waste precious GPU memory without having any visual benefits. You can experiment with the lookup table size, but ~1,000 elements for the transform values should be a good balance between visuals and memory size.</p>
+    <div class="note">
+      <p class="normal"> An alternative lookup solution</p>
+      <p class="normal">A more memory-friendly version of the lookup table can be achieved by creating a table for the keyframe times and using the extracted data as the index into the original transformation data. You may use this variation if you have a lot of nodes and animation clips to save GPU memory. Or you could use these sparser lookups if there are only a few keyframes per animation. On the downside of this version, you need to calculate the pair-wise interpolations between the values per keyframe again, adding more computing load to the GPU.</p>
+    </div>
+    <p class="normal">In addition to the new transform data storage, we will scale all animation clips to have the same time length. Without the need to scale the length of two animation clips, blending between two clips becomes much simpler.</p>
+    <h2 id="_idParaDest-198" class="heading-2">Creating the lookup tables</h2>
+    <p class="normal">As preparation for the lookup <a id="_idIndexMarker298"/>tables, we must find the maximum length of all animation clips. Before adding the animation clips to the <code class="inlineCode">loadModel()</code> method of the <code class="inlineCode">AssimpModel</code> class, we iterate over all animations and store the maximum length in a new <code class="inlineCode">private</code> member variable called <code class="inlineCode">mMaxClipDuration</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> numAnims = scene-&gt;mNumAnimations;
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; numAnims; ++i) {
+    <span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; animation = scene-&gt;Animations[i];
+    mMaxClipDuration =
+      std::<span class="hljs-built_in">max</span>(mMaxClipDuration,
+      <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(animation-&gt;mDuration));
+ }
+</code></pre>
+    <p class="normal">Then, the maximum value is used as an additional parameter to the <code class="inlineCode">addChannels()</code> call:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; numAnims; ++i) {
+  ...
+    animClip-&gt;<span class="hljs-built_in">addChannels</span>(animation, mMaxClipDuration,
+      mBoneList);
+  ...
+  }
+</code></pre>
+    <p class="normal">Finally, inside the <code class="inlineCode">addChannels()</code> method, we hand over the maximum duration to every channel we are extracting:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">for</span> (<span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; animation-&gt;mNumChannels; ++i) {
+  ...
+  channel-&gt;<span class="hljs-built_in">loadChannelData</span>(animation-&gt;Channels[i],
+    maxClipDuration);
+  ...
+}
+</code></pre>
+    <p class="normal">Creating the lookup table data itself will be shown in the following code snippets by using the code to create the translation <a id="_idIndexMarker299"/>data as an example. For scaling and rotation, the same principle applies.</p>
+    <p class="normal">The first step for every lookup table is the extraction of the minimum and the maximum keyframe times:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mMinTranslateTime =
+    <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(nodeAnim-&gt;mPositionKeys[<span class="hljs-number">0</span>].mTime);
+  mMaxTranslateTime =
+   <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(
+   nodeAnim-&gt;mPositionKeys[mNumTranslations - <span class="hljs-number">1</span>].mTime);
+</code></pre>
+    <p class="normal">Then, we calculate three scaling factors:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> translateScaleFactor = maxClipDuration /
+    mMaxTranslateTime;
+  mTranslateTimeScaleFactor = maxClipDuration /
+    <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(LOOKUP_TABLE_WIDTH);
+  mInvTranslateTimeScaleFactor = <span class="hljs-number">1.0f</span> /
+    mTranslateTimeScaleFactor;
+</code></pre>
+    <p class="normal">These include:</p>
+    <ul>
+      <li class="bulletList">The first variable, <code class="inlineCode">translateScaleFactor</code>, stores the ratio between the maximum clip duration and the maximum keyframe time. We need the first scaling factor when we advance the time in the lookup table data creation.</li>
+      <li class="bulletList">In <code class="inlineCode">mTranslateTimeScaleFactor</code>, we calculate the ratio between the maximum clip duration and the size of our lookup table. The second scaling factor is simply the keyframe time step width of the lookup table entries.</li>
+      <li class="bulletList">As the last scaling factor, <code class="inlineCode">mInvTranslateTimeScaleFactor</code> stores the inverse of the <code class="inlineCode">mTranslateTimeScaleFactor</code> value. We will use the third scaling factor in the compute shader to <a id="_idIndexMarker300"/>calculate the right index position in the lookup table from the keyframe time.</li>
+    </ul>
+    <p class="normal">Next, we set a helper variable named <code class="inlineCode">timeIndex</code> to <code class="inlineCode">0</code> and iterate over our lookup table entries:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">int</span> timeIndex = <span class="hljs-number">0</span>;
+  <span class="hljs-keyword">for</span> (<span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; LOOKUP_TABLE_WIDTH; ++i) {
+</code></pre>
+    <p class="normal">For every lookup table entry, we extract the translation data from the <code class="inlineCode">mPositionKeys</code> array of the <code class="inlineCode">aNodeAnim</code> object for the current and next keyframe times into a <code class="inlineCode">glm::vec4</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    glm::vec4 currentTranslate = glm::<span class="hljs-built_in">vec4</span>(
+      nodeAnim-&gt;mPositionKeys[timeIndex].mValue.x,
+      nodeAnim-&gt;mPositionKeys[timeIndex].mValue.y,
+      nodeAnim-&gt;mPositionKeys[timeIndex].mValue.z, <span class="hljs-number">1.0f</span>);
+    glm::vec4 nextTranslate = glm::<span class="hljs-built_in">vec4</span>(
+      nodeAnim-&gt;mPositionKeys[timeIndex + <span class="hljs-number">1</span>].mValue.x,
+      nodeAnim-&gt;mPositionKeys[timeIndex + <span class="hljs-number">1</span>].mValue.y,
+      nodeAnim-&gt;mPositionKeys[timeIndex + <span class="hljs-number">1</span>].mValue.z,
+      <span class="hljs-number">1.0f</span>);
+</code></pre>
+    <p class="normal">Even though we only need the first three values for the translation, a four-element vector is used for proper data alignment in the Shader Storage Buffer Object.</p>
+    <p class="normal">Now, we extract the time values for the current and next keyframes, plus the current time of the animation:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">float</span> currentKey = <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(
+      nodeAnim-&gt;mPositionKeys[timeIndex].mTime);
+    <span class="hljs-type">float</span> nextKey = <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">float</span>&gt;(
+      nodeAnim-&gt;mPositionKeys[timeIndex + <span class="hljs-number">1</span>].mTime);
+    <span class="hljs-type">float</span> currentTime = i * mTranslateTimeScaleFactor /
+      translateScaleFactor;
+</code></pre>
+    <p class="normal">For the current time, two scaling factors are used.</p>
+    <p class="normal">By using the two translation vectors and the time values, we can create an interpolated <code class="inlineCode">glm::vec4</code> of the two translations at the time stamp of the lookup table entry:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mTranslations.<span class="hljs-built_in">emplace_back</span>(glm::<span class="hljs-built_in">mix</span>(
+      currentTranslate,
+      nextTranslate,
+      (currentTime - currentKey) / (nextKey - currentKey)));
+</code></pre>
+    <p class="normal">Finally, we check whether the current time of the lookup table entry is longer than the time of the next keyframe. If it is, we increment our time index:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">if</span> (currentTime &gt; nextKey) {
+      <span class="hljs-keyword">if</span> (timeIndex &lt; mNumTranslations - <span class="hljs-number">1</span>) {
+        ++timeIndex;
+      }
+    }
+  }
+</code></pre>
+    <p class="normal">The <code class="inlineCode">mTranslations</code> vector now contains interpolated translation values for every time point of the animation clip in a step <a id="_idIndexMarker301"/>width defined by <code class="inlineCode">mTranslateTimeScaleFactor</code>, and by using the inverse value, <code class="inlineCode">mInvTranslateTimeScaleFactor</code>, we can access the corresponding lookup table entry if we know the replay time of the clip.</p>
+    <h2 id="_idParaDest-199" class="heading-2">Uploading the data tables to the GPU</h2>
+    <p class="normal">Once all animation clips have been converted to lookup tables, we can upload the array data to an SSBO. The buffer preparation part is longer as we must ensure all nodes are initialized properly, even the non-animated <a id="_idIndexMarker302"/>nodes. We will only explore the translation<a id="_idIndexMarker303"/> steps here since the logic for scaling and rotation is mostly identical. The biggest difference is the already known utilization of a four-element vector to transport the quaternion data of the rotations to the compute shader.</p>
+    <p class="normal">As the first step, we create a <code class="inlineCode">std::vector</code> of <code class="inlineCode">glm::vec4</code> to hold the data for all node transformations:</p>
+    <pre class="programlisting code"><code class="hljs-code">    std::vector&lt;glm::vec4&gt; animLookupData{};
+</code></pre>
+    <p class="normal">Then, we define the size of the lookup table data:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">const</span> <span class="hljs-type">int</span> LOOKUP_SIZE = <span class="hljs-number">1023</span> + <span class="hljs-number">1</span>;
+</code></pre>
+    <p class="normal">The addition of <code class="inlineCode">1023 </code>and <code class="inlineCode">1</code> instead of the number <code class="inlineCode">1024</code> is a hint of what happens next:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-function">std::vector&lt;glm::vec4&gt; </span><span class="hljs-title">emptyTranslateVector</span><span class="hljs-params">(</span>
+<span class="hljs-params">      LOOKUP_SIZE, glm::vec4(</span><span class="hljs-number">0.0f</span><span class="hljs-params">))</span>;
+    emptyTranslateVector.<span class="hljs-built_in">at</span>(<span class="hljs-number">0</span>) = glm::<span class="hljs-built_in">vec4</span>(<span class="hljs-number">0.0f</span>);
+</code></pre>
+    <p class="normal">We create an empty vector of <code class="inlineCode">LOOKUP_SIZE</code> length and initialize the vector with a zeroed four-element vector. Using zeroes for the translation makes sure non-animated nodes will have no translational transformations.</p>
+    <p class="normal">At the first position of the vector, we do another explicit setting to zero for documentation purposes because we will use the <code class="inlineCode">x</code> component of the first position in every lookup table to store the <code class="inlineCode">mTranslateTimeScaleFactor</code>. It may look a bit redundant to store the inverse scale factor in every vector, but because we integrated the value directly into the lookup data, the compute shader will find all the data in one place.</p>
+    <p class="normal">After creating appropriate empty vectors for scaling and rotation, we create a triplet of translation, rotation, and scaling for every bone in the bone list:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">for</span> (<span class="hljs-type">int</span> i = <span class="hljs-number">0</span>; i &lt; mBoneList.<span class="hljs-built_in">size</span>() *
+      mAnimClips.<span class="hljs-built_in">at</span>(<span class="hljs-number">0</span>)-&gt;<span class="hljs-built_in">getNumChannels</span>(); ++i) {
+      animLookupData.<span class="hljs-built_in">insert</span>(animLookupData.<span class="hljs-built_in">end</span>(),
+        emptyTranslateVector.<span class="hljs-built_in">begin</span>(),
+        emptyTranslateVector.<span class="hljs-built_in">end</span>());
+      animLookupData.<span class="hljs-built_in">insert</span>(animLookupData.<span class="hljs-built_in">end</span>(),
+        emptyRotateVector.<span class="hljs-built_in">begin</span>(),
+        emptyRotateVector.<span class="hljs-built_in">end</span>());
+      animLookupData.<span class="hljs-built_in">insert</span>(animLookupData.<span class="hljs-built_in">end</span>(),
+        emptyScaleVector.<span class="hljs-built_in">begin</span>(),
+        emptyScaleVector.<span class="hljs-built_in">end</span>());
+    }
+</code></pre>
+    <p class="normal">By using the full number of bones in the array we may waste a couple of kilobytes, but we don’t need to add extra logic inside the <a id="_idIndexMarker304"/>compute shader to choose between animated and non-animated logic.</p>
+    <p class="normal">Now we loop over all <a id="_idIndexMarker305"/>animation clips, and for every clip, over all channels. Since we have already initialized all the data with default values, we only need to upload the data for the animated bones:</p>
+    <pre class="programlisting code"><code class="hljs-code">        <span class="hljs-type">int</span> boneId = channel-&gt;<span class="hljs-built_in">getBoneId</span>();
+        <span class="hljs-keyword">if</span> (boneId &gt;= <span class="hljs-number">0</span>) {
+</code></pre>
+    <p class="normal">The <code class="inlineCode">offset</code> value is calculated by using the bone list size and <code class="inlineCode">LOOKUP_SIZE</code> to find the position of the translation data for the channel’s bone in the current animation clip:</p>
+    <pre class="programlisting code"><code class="hljs-code">          <span class="hljs-type">int</span> offset = clipId * mBoneList.<span class="hljs-built_in">size</span>() *
+            LOOKUP_SIZE * <span class="hljs-number">3</span> + boneId * LOOKUP_SIZE * <span class="hljs-number">3</span>;
+</code></pre>
+    <p class="normal">Next, we set the <code class="inlineCode">mTranslateTimeScaleFactor</code> value of the channel at the <code class="inlineCode">x</code> component of the first position, get the translation data for the channel, and copy the data into the lookup data vector:</p>
+    <pre class="programlisting code"><code class="hljs-code">          animLookupData.<span class="hljs-built_in">at</span>(offset) =
+            glm::<span class="hljs-built_in">vec4</span>(channel-&gt;<span class="hljs-built_in">getInvTranslationScaling</span>(),
+            <span class="hljs-number">0.0f</span>, <span class="hljs-number">0.0f</span>, <span class="hljs-number">0.0f</span>);
+          <span class="hljs-type">const</span> std::vector&lt;glm::vec4&gt;&amp; translations =
+            channel-&gt;<span class="hljs-built_in">getTranslationData</span>();
+          std::<span class="hljs-built_in">copy</span>(translations.<span class="hljs-built_in">begin</span>(),
+            translations.<span class="hljs-built_in">end</span>(),
+            animLookupData.<span class="hljs-built_in">begin</span>() + offset + <span class="hljs-number">1</span>);
+</code></pre>
+    <p class="normal">Then, the <code class="inlineCode">offset</code> value is advanced to the next lookup data position before storing the next transformation data:</p>
+    <pre class="programlisting code"><code class="hljs-code">          offset += LOOKUP_SIZE;
+</code></pre>
+    <p class="normal">After all the translation, scaling, and rotation data is stored in the <code class="inlineCode">animLookupData</code> vector, we can upload the data to the SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mAnimLookupBuffer.<span class="hljs-built_in">uploadSsboData</span>(animLookupData);
+</code></pre>
+    <p class="normal">Now, the animation lookup <a id="_idIndexMarker306"/>data for the loaded model is available on the GPU. When<a id="_idIndexMarker307"/> we need to access the transformation data in the compute shader, we can simply bind the SSBO.</p>
+    <h2 id="_idParaDest-200" class="heading-2">Adjusting the renderer code and the compute shader</h2>
+    <p class="normal">To be able to tell the <a id="_idIndexMarker308"/>compute shader which animation to play and/or blend, we define a new <code class="inlineCode">struct</code> called <code class="inlineCode">PerInstanceAnimData</code> in the <code class="inlineCode">OGLRenderData.h</code> file in the <code class="inlineCode">opengl</code> folder for <a id="_idIndexMarker309"/>OpenGL:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">PerInstanceAnimData</span> {
+  <span class="hljs-type">uint32_t</span> firstAnimClipNum;
+  <span class="hljs-type">uint32_t</span> secondAnimClipNum;
+  <span class="hljs-type">float</span> firstClipReplayTimestamp;
+  <span class="hljs-type">float</span> secondClipReplayTimestamp;
+  <span class="hljs-type">float</span> blendFactor;
+};
+</code></pre>
+    <p class="normal">For Vulkan, the file is named <code class="inlineCode">VkRenderData.h</code> and resides in the <code class="inlineCode">vulkan</code> folder.</p>
+    <p class="normal">Here, we simply store the first clip number plus the timestamp of the current frame we want to render from the first clip. Also, a possible second animation clip, the time stamp for the second clip, and the blending factor between the two clips can be sent to the compute shader.</p>
+    <p class="normal">In the renderer, we define two new <code class="inlineCode">private</code> data members:</p>
+    <pre class="programlisting code"><code class="hljs-code">    std::vector&lt;PerInstanceAnimData&gt; mPerInstanceAnimData{};
+    ShaderStorageBuffer mPerInstanceAnimDataBuffer{};
+</code></pre>
+    <p class="normal">The <code class="inlineCode">mPerInstanceAnimData</code> variable stores the clip numbers, time stamp, and blending factor for every instance, and <code class="inlineCode">mPerInstanceAnimDataBuffer</code> is the CPU-side handle for the animation data SSBO.</p>
+    <p class="normal">Then, in the instance loop in the <code class="inlineCode">draw()</code> call of the renderer, we update the per-instance animation data with the values of the instances:</p>
+    <pre class="programlisting code"><code class="hljs-code">          PerInstanceAnimData animData{};
+          animData.firstAnimClipNum =
+            instSettings.isFirstAnimClipNr;
+          animData.secondAnimClipNum =
+            instSettings.isSecondAnimClipNr;
+          animData.firstClipReplayTimestamp =
+            instSettings.isFirstClipAnimPlayTimePos;
+          animData.secondClipReplayTimestamp =
+            instSettings.isSecondClipAnimPlayTimePos;
+          animData.blendFactor =
+            instSettings.isAnimBlendFactor;
+          mPerInstanceAnimData.<span class="hljs-built_in">at</span>(i) = animData;
+</code></pre>
+    <p class="normal">When preparing the first <a id="_idIndexMarker310"/>compute shader, we bind the animation lookup data and upload the instance animation data:</p>
+    <pre class="programlisting code"><code class="hljs-code">        mAssimpTransformComputeShader.<span class="hljs-built_in">use</span>();
+        mUploadToUBOTimer.<span class="hljs-built_in">start</span>();
+        modelType.second.<span class="hljs-built_in">at</span>(<span class="hljs-number">0</span>-&gt;<span class="hljs-built_in">getModel</span>()
+          -&gt;<span class="hljs-built_in">bindAnimLookupBuffer</span>(<span class="hljs-number">0</span>);
+        mPerInstanceAnimDataBuffer.<span class="hljs-built_in">uploadSsboData</span>(
+          mPerInstanceAnimData, <span class="hljs-number">1</span>);
+        mShaderTRSMatrixBuffer.<span class="hljs-built_in">bind</span>(<span class="hljs-number">2</span>);
+</code></pre>
+    <p class="normal">Now, all the data we need for the<a id="_idIndexMarker311"/> compute shader is ready to be computed.</p>
+    <p class="normal">In the <code class="inlineCode">assimp_instance_transform.comp</code> compute shader, in the <code class="inlineCode">shader</code> folder, we also need to define the <code class="inlineCode">PerInstanceAnimData</code> <code class="inlineCode">struct</code> to be able to access the SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">PerInstanceAnimData</span> {
+  uint firstAnimClipNum;
+  uint secondAnimClipNum;
+  <span class="hljs-type">float</span> firstClipReplayTimestamp;
+  <span class="hljs-type">float</span> secondClipReplayTimestamp;
+  <span class="hljs-type">float</span> blendFactor;
+};
+</code></pre>
+    <p class="normal">And we declare the two buffer bindings using the same binding points as in the renderer code:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">layout</span> (<span class="hljs-keyword">std430</span>, <span class="hljs-keyword">binding</span> = <span class="hljs-number">0</span>) <span class="hljs-keyword">readonly</span> <span class="hljs-keyword">restrict</span>
+    <span class="hljs-keyword">buffer</span> AnimLookup {
+  <span class="hljs-type">vec4</span> lookupData[];
+};
+<span class="hljs-keyword">layout</span> (<span class="hljs-keyword">std430</span>, <span class="hljs-keyword">binding</span> = <span class="hljs-number">1</span>) <span class="hljs-keyword">readonly</span> <span class="hljs-keyword">restrict</span>
+    <span class="hljs-keyword">buffer</span> InstanceAnimData {
+  PerInstanceAnimData instAnimData[];
+};
+</code></pre>
+    <p class="normal">In the <code class="inlineCode">main()</code> method of the compute shader, we define the same lookup table size and offset calculation as in the <code class="inlineCode">AssimpModel</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="code-highlight"><strong class="hljs-type-slc">int</strong><strong class="hljs-slc"> lookupWidth = </strong><strong class="hljs-number-slc">1023</strong><strong class="hljs-slc"> + </strong><strong class="hljs-number-slc">1</strong><strong class="hljs-slc">;</strong></span>
+  <span class="hljs-type">uint</span> node = <span class="hljs-built_in">gl_GlobalInvocationID</span>.x;
+  <span class="hljs-type">uint</span> instance = <span class="hljs-built_in">gl_GlobalInvocationID</span>.y;
+  <span class="hljs-type">uint</span> numberOfBones = <span class="hljs-built_in">gl_NumWorkGroups</span>.x;
+  <span class="code-highlight"><strong class="hljs-type-slc">uint</strong><strong class="hljs-slc"> boneOffset = lookupWidth * </strong><strong class="hljs-number-slc">3</strong></span>;
+  <span class="code-highlight"><strong class="hljs-type-slc">uint</strong><strong class="hljs-slc"> clipOffset = numberOfBones * boneOffset</strong></span>;
+</code></pre>
+    <p class="normal">We can now access all the animation settings for each instance by using the <code class="inlineCode">instance</code> variable as the index in the <code class="inlineCode">InstanceAnimData</code> SSBO:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">uint</span> firstClip = instAnimData[instance].firstAnimClipNum;
+  <span class="hljs-type">uint</span> secondClip =
+    instAnimData[instance].secondAnimClipNum;
+  <span class="hljs-type">float</span> blendFactor = instAnimData[instance].blendFactor;
+</code></pre>
+    <p class="normal">For instance, to get the <code class="inlineCode">mTranslateTimeScaleFactor</code> value for the translation data, we must use the same <a id="_idIndexMarker312"/>formula as in C++ to access the first element of the translation lookup<a id="_idIndexMarker313"/> data for the clip:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> firstTransInvScaleFactor = lookupData[firstClip *
+    clipOffset + node * boneOffset].x;
+</code></pre>
+    <p class="normal">Even slight differences between C++ and shader formulae or data types could lead to discrepancies in the transferred data, so we need to be strict here to do exactly the same operations and use the same data types.</p>
+    <p class="normal">Then, we use the inverse time scale factor to calculate the correctly scaled index in the translation lookup data:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">int</span> firstTransLookupIndex =
+    <span class="hljs-type">int</span>(instAnimData[instance].firstClipReplayTimestamp *
+    transInvScaleFactor) + <span class="hljs-number">1</span>;
+</code></pre>
+    <p class="normal">The per-node translation data for the first and second animation clip can also be calculated as in C++:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">vec4</span> firstTranslation = lookupData[firstClip *
+    clipOffset + node * boneOffset +
+    firstTransLookupIndex];
+  ...
+  <span class="hljs-type">vec4</span> secondTanslation = lookupData[secondClip *
+    clipOffset + node * boneOffset +
+    secondTransLookupIndex];
+</code></pre>
+    <p class="normal">Now we can interpolate between the two animation clip translations:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">vec4</span> finalTranslation = <span class="hljs-built_in">mix</span>(firstTanslation,
+    secondTanslation, blendFactor);
+</code></pre>
+    <p class="normal">We do the same lookup and interpolation for the scaling values. For rotation, the same code as the GLM implementation for SLERP is used.</p>
+    <p class="normal">Finally, the product of all three transformation matrices is stored in the SSBO containing the resulting TRS matrices of all instances:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">uint</span> <span class="hljs-keyword">index</span> = node + numberOfBones * instance;
+  trsMat[<span class="hljs-keyword">index</span>] =
+    createTranslationMatrix(finalTranslation) *
+    createRotationMatrix(finalRotation) *
+    createScaleMatrix(finalScale);
+</code></pre>
+    <p class="normal">At this point, the <code class="inlineCode">mShaderTRSMatrixBuffer</code> SSBO in the renderer contains the same data as we had with the CPU-based transformation calculations.</p>
+    <p class="normal">But all we need to upload to the compute shader is the data of the animations we want to draw. So, the transformation calculation in the <code class="inlineCode">updateAnimation()</code> method of the <code class="inlineCode">AssimpInstance</code> class can be <a id="_idIndexMarker314"/>removed, leaving the following three lines to be <a id="_idIndexMarker315"/>executed when we update the animation of the instance:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mInstanceSettings.isFirstClipAnimPlayTimePos +=
+    deltaTime *
+    mInstanceSettings.isAnimSpeedFactor * <span class="hljs-number">1000.0f</span>;
+  mInstanceSettings.isAnimPlayTimePos =
+    std::<span class="hljs-built_in">fmod</span>(mInstanceSettings.isFirstClipAnimPlayTimePos,
+    mAssimpMode-&gt;<span class="hljs-built_in">getMaxClipDuration</span>());
+  mModelRootMatrix = mLocalTransformMatrix *
+    mAssimpModel-&gt;<span class="hljs-built_in">getRootTranformationMatrix</span>();
+</code></pre>
+    <p class="normal">We simply advance the clip time by the delta time and update the instance root matrix.</p>
+    <p class="normal">If you compile and run the code now, the only visible difference is a much lower matrix generation time when the number of instances goes up. For a recent computer model, reaching 10,000 or even 20,000 animated instances of the basic model should be no problem. We don’t need so many instances in the virtual world, but the lower CPU usage for animations and animation blending gives us more freedom to implement more features in the remaining chapters of the book.</p>
+    <p class="normal">Now that we have a fast and easy-to-use animation calculation, we can implement a state-based system to organize the behavior of each instance. By defining different states, like a movement direction or an action the instance will do, we create the first steps on the path to an animation system where we can control the instance as we would do in a simple game.</p>
+    <p class="normal">So, let’s continue by adding new instance states.</p>
+    <h1 id="_idParaDest-201" class="heading-1">Adding new states to the code</h1>
+    <p class="normal">Our future game character should be able to perform typical actions for a character in a game: wait idle for player input, walk in all four <a id="_idIndexMarker316"/>main directions, run forward, plus a bunch of other actions. Depending on the available animations, we could add a state for jumping or rolling, punching, or waving.</p>
+    <p class="normal">For maximum flexibility, we will allow characters of all models to perform all the configured actions. Then we can use the UI to map an animation clip to each action we want to use for a specific model. Without a mapped <a id="_idIndexMarker317"/>animation clip, the requested action will be simply ignored.</p>
+    <h2 id="_idParaDest-202" class="heading-2">Using bit fields and plain enums</h2>
+    <p class="normal">We will add two <a id="_idIndexMarker318"/>different <code class="inlineCode">enum</code> <code class="inlineCode">class</code> definitions to <a id="_idIndexMarker319"/>the <code class="inlineCode">Enums.h</code> file. The first <code class="inlineCode">enum</code> called <code class="inlineCode">moveDirection</code> is a bit field:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">moveDirection</span> : <span class="hljs-type">uint8_t</span> {
+  none = <span class="hljs-number">0x00</span>,
+  forward = <span class="hljs-number">0x01</span>,
+  back = <span class="hljs-number">0x02</span>,
+  right = <span class="hljs-number">0x04</span>,
+  left = <span class="hljs-number">0x08</span>,
+  any = <span class="hljs-number">0xff</span>
+};
+</code></pre>
+    <p class="normal">For every direction, a different bit can be set in a variable. A bit field is needed when multiple values can appear at the same time. In our case, it would be normal to have the character running forward and to the left at the same time.</p>
+    <p class="normal">The two additional <code class="inlineCode">enum</code> values, <code class="inlineCode">none</code> and <code class="inlineCode">any</code>, are special placeholders. If the character is just idling, forcing a direction for the idle state would be strange since the character cannot “idle forward” or “idle to the left.” So, the separate <code class="inlineCode">enum</code> value <code class="inlineCode">none</code> for not moving at all will help us to keep the code a bit simpler. The value <code class="inlineCode">any</code> can be used as a wildcard or fallback for walking states. For example, we could set a generic walk animation for all directions, and instead of configuring all four directions with identical animation clips, we use the <code class="inlineCode">any</code> direction to use this one clip for all walk movements.</p>
+    <p class="normal">To be able to work with the values of the <code class="inlineCode">moveDirection</code> <code class="inlineCode">enum</code> in a real bit field manner, we have to define the bitwise Boolean operators <code class="inlineCode">OR</code> and <code class="inlineCode">AND</code> for the new data type. The declaration is short and simple, as the following code for the logical <code class="inlineCode">AND</code> operator between two movement directions shows:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">inline</span> moveDirection <span class="hljs-keyword">operator</span> | (moveDirection lhs,
+     moveDirection rhs) {
+  <span class="hljs-keyword">using</span> T = std::<span class="hljs-type">underlying_type_t</span> &lt;moveDirection&gt;;
+  <span class="hljs-keyword">return</span> <span class="hljs-built_in">static_cast</span>&lt;moveDirection&gt;(<span class="hljs-built_in">static_cast</span>&lt;T&gt;(lhs) |
+    <span class="hljs-built_in">static_cast</span>&lt;T&gt;(rhs));
+}
+</code></pre>
+    <p class="normal">A second <code class="inlineCode">enum</code> <code class="inlineCode">class</code> named <code class="inlineCode">moveState</code> takes care of the possible character actions:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">moveState</span>  {
+  idle = <span class="hljs-number">0</span>,
+  walk,
+  run,
+  hop,
+  jump,
+  ...
+  wave,
+  NUM
+};
+</code></pre>
+    <p class="normal">Here, no bit field is needed. We may be able to <code class="inlineCode">run</code> and <code class="inlineCode">jump</code> at the same time and will handle these cases in the code. But most of the actions cannot be executed at the same time.</p>
+    <p class="normal">We simply list all possible movement states in the <code class="inlineCode">moveState</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code>. The final value, <code class="inlineCode">NUM</code>, can be utilized to iterate over all the <code class="inlineCode">enum</code> values in a <code class="inlineCode">for</code> loop, i.e., starting from the first action with the value zero (<code class="inlineCode">idle</code>) and ending at the last valid action <code class="inlineCode">wave</code>.</p>
+    <p class="normal">Having not just <a id="_idIndexMarker320"/>numbers for movement directions and state will become handy in the UI and for debug <a id="_idIndexMarker321"/>messages, so we add two new maps from the <code class="inlineCode">enum</code> <code class="inlineCode">class</code> values to strings in the <code class="inlineCode">ModelInstanceCamData</code> struct in the <code class="inlineCode">ModelInstanceCamData.h</code> file:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::unordered_map&lt;moveDirection, std::string&gt;
+    micMoveDirectionMap{};
+  std::unordered_map&lt;moveState, std::string&gt;
+    micMoveStateMap{};
+</code></pre>
+    <p class="normal">We will fill the two state maps in the <code class="inlineCode">init()</code> method of the renderer with appropriate string values. Next, we must extend the settings structs for instances and models.</p>
+    <h2 id="_idParaDest-203" class="heading-2">Extending model and instance settings</h2>
+    <p class="normal">The special handling of the idle, walk, and run animation<a id="_idIndexMarker322"/> clips requires a new <code class="inlineCode">struct</code> called <code class="inlineCode">IdleWalkRunBlending</code> in a new <code class="inlineCode">ModelSettings.h</code> file in the <code class="inlineCode">model</code> folder:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">IdleWalkRunBlending</span> {
+  <span class="hljs-type">int</span> iwrbIdleClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">float</span> iwrbIdleClipSpeed = <span class="hljs-number">1.0f</span>;
+  <span class="hljs-type">int</span> iwrbWalkClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">float</span> iwrbWalkClipSpeed = <span class="hljs-number">1.0f</span>;
+  <span class="hljs-type">int</span> iwrbRunClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">float</span> iwrbRunClipSpeed = <span class="hljs-number">1.0f</span>;
+};
+</code></pre>
+    <p class="normal">Here, we simply store the clip numbers and replay speeds for the three movements.</p>
+    <p class="normal">The new <code class="inlineCode">IdleWalkRunBlending</code> struct will be added to another new <code class="inlineCode">struct</code> called <code class="inlineCode">ModelSettings</code>, along with the model’s name and file name:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">ModelSettings</span> {
+  std::string msModelFilenamePath;
+  std::string msModelFilename;
+  std::map&lt;moveDirection, IdleWalkRunBlending&gt;
+    msIWRBlendings;
+};
+</code></pre>
+    <p class="normal">The <code class="inlineCode">AssimpModel</code> class needs a new <code class="inlineCode">private</code> data member of type <code class="inlineCode">ModelSettings</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    ModelSettings mModelSettings;
+</code></pre>
+    <p class="normal">Both the model’s file name and name will be relocated from the <code class="inlineCode">AssimpModel</code> class to the new <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> to have all the “variable” parts of a model accessible with simple getter and setter calls, similar to the instances.</p>
+    <p class="normal">Before we can use the new<a id="_idIndexMarker323"/> states and animation features in an instance, we must add variables of the two new <code class="inlineCode">enum</code> <code class="inlineCode">class</code> types to the <code class="inlineCode">InstanceSettings</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">InstanceSettings.h</code> file in the <code class="inlineCode">model</code> folder:</p>
+    <pre class="programlisting code"><code class="hljs-code">  moveDirection isMoveDirection = moveDirection::none;
+  moveState isMoveState = moveState::idle;
+</code></pre>
+    <p class="normal">In addition, we must adjust the instance settings for the animation clips. Since we can have two different animations plus animation blending, we need two clip variables instead of only one, and the blending factor as a per-instance setting:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> isFirstAnimClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> isSecondAnimClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">float</span> isAnimBlendFactor = <span class="hljs-number">0.0f</span>;
+</code></pre>
+    <p class="normal">We also store the values for the speed and acceleration of the instance:</p>
+    <pre class="programlisting code"><code class="hljs-code">  glm::vec3 isAccel = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+  glm::vec3 isSpeed = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+</code></pre>
+    <p class="normal">The speed of the specific instance will be used to select the correct idle, walk, or run animation clip. By using an acceleration-based movement, we achieve a more natural appearance of the character instances. In real life, we also accelerate and decelerate while moving, instead of jumping directly from idle to run speed.</p>
+    <h2 id="_idParaDest-204" class="heading-2">Adding the idle/walk/run logic</h2>
+    <p class="normal">The blending logic for idle/walk/run animation clips is defined in the method called <code class="inlineCode">playIdleWalkRunAnimation()</code> in the <code class="inlineCode">AssimpInstance</code> class.</p>
+    <p class="normal">After a sanity check <a id="_idIndexMarker324"/>for the model of the instance, we calculate the absolute speed of the instance, read the model settings containing a map with the blending settings, and create a new, empty variable blend of type <code class="inlineCode">IdleWalkRunBlending</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> instanceSpeed =
+    glm::<span class="hljs-built_in">length</span>(mInstanceSettings.isSpeed);
+  ModelSettings modSettings =
+    mAssimpMode-&gt;<span class="hljs-built_in">getModelSettings</span>();
+  IdleWalkRunBlending blend;
+</code></pre>
+    <p class="normal">Next, we check whether we have configured direction-specific animation clips:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (modSettings.msIWRBlendings.<span class="hljs-built_in">count</span>(
+      mInstanceSettings.isMoveDirection) &gt; <span class="hljs-number">0</span> ) {
+    blend = modSettings.msIWRBlendings[
+      mInstanceSettings.isMoveDirection];
+  } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (modSettings.msIWRBlendings.<span class="hljs-built_in">count</span>(
+      moveDirection::any) &gt; <span class="hljs-number">0</span>) {
+    blend = modSettings.msIWRBlendings[moveDirection::any];
+  } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (modSettings.msIWRBlendings.<span class="hljs-built_in">count</span>(
+      moveDirection::none) &gt; <span class="hljs-number">0</span>) {
+    blend = modSettings.msIWRBlendings[moveDirection::none];
+  } <span class="hljs-keyword">else</span> {
+    <span class="hljs-keyword">return</span>;
+  }
+</code></pre>
+    <p class="normal">If such a direction clip is found, the blend variable is filled with the appropriate settings. If no direction-specific clip was found, we check for the special <code class="inlineCode">any</code> and <code class="inlineCode">none</code> directions too, trying to use a generic animation for <a id="_idIndexMarker325"/>all directions. And if we don’t find the generic animation clips, we return from the method. Without a configured clip for idle/walk/run, it makes no sense to play any animation.</p>
+    <p class="normal">Controlling whether to blend between idle and walk or between walk and run animations is done by using the <code class="inlineCode">instanceSpeed</code> variable:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (instanceSpeed &lt;= <span class="hljs-number">1.0f</span>) {
+    mInstanceSettings.isFirstAnimClipNr =
+      blend.iwrbIdleClipNr;
+    mInstanceSettings.isSecondAnimClipNr =
+      blend.iwrbWalkClipNr;
+    mInstanceSettings.isAnimSpeedFactor = glm::<span class="hljs-built_in">mix</span>(
+      blend.iwrbIdleClipSpeed,
+      blend.iwrbWalkClipSpeed, instanceSpeed);
+    mInstanceSettings.isAnimBlendFactor = instanceSpeed;
+  } <span class="hljs-keyword">else</span> {
+</code></pre>
+    <p class="normal">Here, we scale speed factors and blend between the idle and walk animations based on the <code class="inlineCode">instanceSpeed</code> value. By using a value of <code class="inlineCode">0.0f</code> for idle and <code class="inlineCode">1.0f</code> (inclusive) for full walk speed, the animation will be blended smoothly between the instance standing still and walking around.</p>
+    <p class="normal">To blend the instance animations from walking to running, we use an <code class="inlineCode">instanceSpeed</code> range between <code class="inlineCode">1.0f</code> (exclusive) and <code class="inlineCode">2.0f</code>. The logic stays the same; we must only subtract <code class="inlineCode">1.0f</code> from the speed factor and the blending for the linear interpolation between the walk and run clips:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mInstanceSettings.isFirstAnimClipNr =
+      blend.iwrbWalkClipNr;
+    mInstanceSettings.isSecondAnimClipNr =
+      blend.iwrbRunClipNr;
+    mInstanceSettings.isAnimSpeedFactor = glm::<span class="hljs-built_in">mix</span>(
+      blend.iwrbWalkClipSpeed,
+      blend.iwrbRunClipSpeed, instanceSpeed – <span class="hljs-number">1.0f</span>);
+    mInstanceSettings.isAnimBlendFactor =
+      instanceSpeed – <span class="hljs-number">1.0f</span>;
+  }
+</code></pre>
+    <p class="normal">The <code class="inlineCode">instanceSpeed</code> values of <code class="inlineCode">1.0f</code> for walk speed and <code class="inlineCode">2.0f</code> for run speed were chosen because they work best<a id="_idIndexMarker326"/> for linear interpolation between the clips. Any other ranges are possible; you just must adjust the scaling for the animation blending accordingly.</p>
+    <h2 id="_idParaDest-205" class="heading-2">Using acceleration and deceleration</h2>
+    <p class="normal">As our instances should move in the virtual world, we need to control the speed of the instance we control. But instead of using the speed directly, we will go for an acceleration-based speed model. Using a separate <a id="_idIndexMarker327"/>acceleration value to speed up or slow down the instance gives more natural results. Like <a id="_idIndexMarker328"/>real physical bodies, our model instances in the virtual world have their inertia working against speed changes.</p>
+    <p class="normal">First, the <code class="inlineCode">AssimpInstance</code> class needs three new <code class="inlineCode">private</code> <code class="inlineCode">float</code> variables named <code class="inlineCode">MAX_ACCEL</code>, <code class="inlineCode">MAX_ABS_SPEED</code>, and <code class="inlineCode">MIN_STOP_SPEED</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-type">const</span> <span class="hljs-type">float</span> MAX_ACCEL = <span class="hljs-number">4.0f</span>;
+    <span class="hljs-type">const</span> <span class="hljs-type">float</span> MAX_ABS_SPEED = <span class="hljs-number">1.0f</span>;
+    <span class="hljs-type">const</span> <span class="hljs-type">float</span> MIN_STOP_SPEED = <span class="hljs-number">0.01f</span>;
+</code></pre>
+    <p class="normal">In <code class="inlineCode">MAX_ACCEL</code>, we store the maximum acceleration our model can achieve, and <code class="inlineCode">MAX_ABS_SPEED</code> limits the speed of the instance. Acceleration and speed are three-component vectors, and moving in different directions may add up to larger values. Limiting both values helps to prevent instances from moving too fast in the virtual world.</p>
+    <p class="normal">An acceleration-based model has a major drawback: stopping an instance can become difficult. Since we only add and subtract the acceleration values from the speed, reaching the exact value of zero is hard. To achieve a full stop, we define a minimal speed in the <code class="inlineCode">MIN_STOP_SPEED</code> variable. If the current speed of the instance is lower than the value of <code class="inlineCode">MIN_STOP_SPEED</code>, we set acceleration and speed to zero, eventually stopping the instance.</p>
+    <p class="normal">Instance acceleration is controlled in the <code class="inlineCode">updateInstanceState()</code> method of <code class="inlineCode">AssimpInstance</code> class. Basically, we check for a movement direction and set the corresponding <code class="inlineCode">x</code> or <code class="inlineCode">z</code> components of <code class="inlineCode">isAccel</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (state == moveState::walk || state == moveState::run) {
+    <span class="hljs-keyword">if</span> ((dir &amp; moveDirection::forward) ==
+        moveDirection::forward) {
+      mInstanceSettings.isMoveKeyPressed = <span class="hljs-literal">true</span>;
+      mInstanceSettings.isAccel.x = <span class="hljs-number">5.0f</span>;
+    }
+    ...
+</code></pre>
+    <p class="normal">If a direction key is pressed, we set <code class="inlineCode">isMoveKeyPressed</code> to true and apply the acceleration.</p>
+    <p class="normal">When we release all movement keys, the deceleration of the instance kicks in. The slowdown logic happens in the <code class="inlineCode">updateInstanceSpeed()</code> method of the <code class="inlineCode">AssimpInstance</code> class:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> currentSpeed =
+    glm::<span class="hljs-built_in">length</span>(mInstanceSettings.isSpeed);
+  <span class="hljs-type">static</span> <span class="hljs-type">float</span> maxSpeed = MAX_ABS_SPEED;
+</code></pre>
+    <p class="normal">We also save the<a id="_idIndexMarker329"/> maximum speed of the instance locally. Using a <code class="inlineCode">static</code> variable helps to keep track of accelerating and slowing down the instance between walk and run speed.</p>
+    <p class="normal">First, we calculate the length of the 3-component <code class="inlineCode">isSpeed</code> vector. The resulting length is then used to check whether we are<a id="_idIndexMarker330"/> still moving when no movement key is being pressed:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (!mInstanceSettings.isMoveKeyPressed) {
+    <span class="hljs-keyword">if</span> (currentSpeed &gt; <span class="hljs-number">0.0f</span>) {
+      <span class="hljs-keyword">if</span> (mInstanceSettings.isSpeed.x &gt; <span class="hljs-number">0.0f</span>) {
+        mInstanceSettings.isAccel.x = <span class="hljs-number">-2.5f</span>;
+      }
+      ...
+</code></pre>
+    <p class="normal">For the possible move directions of the instance, we check whether any speed is left and use an acceleration in the opposite direction of the speed to slow down the instance.</p>
+    <p class="normal">And if we are slower than <code class="inlineCode">MIN_STOP_SPEED</code>, we forcibly set speed and acceleration to zero, movement state to <code class="inlineCode">idle</code>, and move direction to <code class="inlineCode">none</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    <span class="hljs-keyword">if</span> (currentSpeed &lt; MIN_STOP_SPEED) {
+      currentSpeed = <span class="hljs-number">0.0f</span>;
+      mInstanceSettings.isAccel = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+      mInstanceSettings.isSpeed = glm::<span class="hljs-built_in">vec3</span>(<span class="hljs-number">0.0f</span>);
+      mInstanceSettings.isMoveState = moveState::idle;
+      mInstanceSettings.isMoveDirection =
+        moveDirection::none;
+    }
+  }
+</code></pre>
+    <p class="normal">Limiting speed and acceleration to the maximum values is a two-step process. If we exceed the maximum value, we normalize the vector:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-type">float</span> currentAccel =
+    glm::<span class="hljs-built_in">length</span>(mInstanceSettings.isAccel);
+  <span class="hljs-keyword">if</span> (currentAccel &gt; MAX_ACCEL) {
+    mInstanceSettings.isAccel =
+      glm::<span class="hljs-built_in">normalize</span>(mInstanceSettings.isAccel);
+</code></pre>
+    <p class="normal">Now the length of the <code class="inlineCode">isAccel</code> vector equals <code class="inlineCode">1.0f</code>. Then, we scale the vector to the maximum length:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mInstanceSettings.isAccel *= MAX_ACCEL;
+</code></pre>
+    <p class="normal">After the multiplication, all three <a id="_idIndexMarker331"/>components of <code class="inlineCode">isAccel</code> are scaled down to a resulting length of <code class="inlineCode">MAX_ACCEL</code>.</p>
+    <p class="normal">Updating the instance<a id="_idIndexMarker332"/> speed is done by adding the <code class="inlineCode">deltaTime</code> fraction of the acceleration in <code class="inlineCode">isAccel</code> to <code class="inlineCode">isSpeed</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mInstanceSettings.isSpeed +=
+    mInstanceSettings.isAccel * deltaTime;
+</code></pre>
+    <p class="normal">To reach run speed, we double the <code class="inlineCode">maxSpeed</code> value:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (mInstanceSettings.isMoveState == moveState::run) {
+    maxSpeed = MAX_ABS_SPEED * <span class="hljs-number">2.0f</span>;
+  }
+</code></pre>
+    <p class="normal">If we no longer run but are over <code class="inlineCode">maxSpeed</code>, we slow down to walk speed:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (currentSpeed &gt; maxSpeed) {
+    <span class="hljs-keyword">if</span> (mInstanceSettings.isMoveState != moveState::run) {
+      maxSpeed -=
+        glm::<span class="hljs-built_in">length</span>(mInstanceSettings.isAccel) * deltaTime;
+      <span class="hljs-keyword">if</span> (maxSpeed &lt;= MAX_ABS_SPEED) {
+        maxSpeed = MAX_ABS_SPEED;
+      }
+    }
+</code></pre>
+    <p class="normal">The example code uses a simple linear interpolation to reach the desired instance speed. You might want to experiment with other techniques like ease-in/ease-out curves, or cubic curves to adjust the interpolation between different instance speeds.</p>
+    <p class="normal">And if we are faster than <code class="inlineCode">maxSpeed</code> while accelerating to walk or run speed, we limit the instance speed <code class="inlineCode">isSpeed</code> to <code class="inlineCode">maxSpeed</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">    mInstanceSettings.isSpeed =
+      glm::<span class="hljs-built_in">normalize</span>(mInstanceSettings.isSpeed);
+    mInstanceSettings.isSpeed *= maxSpeed;
+</code></pre>
+    <p class="normal">At this point, the currently selected instance would move smoothly from the idle animation clip to the walk animation clip, and even get a speedup to the run animation if we switch to the <code class="inlineCode">run</code> state. Sadly, we cannot see anything yet since there is no mapping between movement states, directions, and animation clips.</p>
+    <p class="normal">So, let’s link the animation clips to existing states.</p>
+    <h1 id="_idParaDest-206" class="heading-1">Linking states and animations</h1>
+    <p class="normal">We start with the connections <a id="_idIndexMarker333"/>between the three states (idle, walk, and run), and map the corresponding model animation clips to these three states. The <code class="inlineCode">IdleWalkRunBlending</code> <code class="inlineCode">struct</code> and the <code class="inlineCode">msIWRBlendings</code> member variable in the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> are already in place, so we only have to take care of the UI.</p>
+    <h2 id="_idParaDest-207" class="heading-2">Mapping idle/walk/run animations</h2>
+    <p class="normal"><em class="italic">Figure 7.1</em> shows the mapping <a id="_idIndexMarker334"/>section of the <strong class="screenText">Control</strong> window for the three states: idle, walk, and run:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_7.1_B22428.png" alt="" width="990" height="409"/></figure>
+    <p class="packt_figref">Figure 7.1: Mapping between move direction, move state, and animation clip</p>
+    <p class="normal">We will step through the control elements from top to bottom and explore the new code in the <code class="inlineCode">createSettingsWindow()</code> method of the <code class="inlineCode">UserInterface</code> class:</p>
+    <ul>
+      <li class="bulletList">The <strong class="screenText">Dir</strong> combo box shows the names of the available entries of the <code class="inlineCode">moveDirection</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code>. The combo box is filled by using the <code class="inlineCode">micMoveDirectionMap</code> map from the <code class="inlineCode">ModelInstanceCamData</code> <code class="inlineCode">struct</code>. We store the selected entry in a <code class="inlineCode">static</code> <code class="inlineCode">moveDirection</code> type variable to retain the value.</li>
+      <li class="bulletList">For the three combo boxes named <strong class="screenText">Idle</strong>, <strong class="screenText">Walk</strong>, and <strong class="screenText">Run</strong>, we extract the animation clips from the model of the instance and store the selected clip in a <code class="inlineCode">static</code> <code class="inlineCode">int</code> for each state. The replay speed slider allows us to set individual replay speeds for every clip. We had the same combo box/float slider combination in the (now removed) <strong class="screenText">Animations</strong> part of the <strong class="screenText">Control</strong> window.</li>
+      <li class="bulletList">To store the current combination of direction, clips, and speeds, press the <strong class="screenText">Save</strong> button. The <code class="inlineCode">UserInterface</code> code simply creates or updates the <code class="inlineCode">msIWRBlendings</code> entry for the selected direction.</li>
+      <li class="bulletList">Below the combo boxes, all saved mappings are listed. If you press the <strong class="screenText">Edit</strong> button on one of the entries, the corresponding line will be loaded into the combo boxes and speed sliders. By pressing <strong class="screenText">Remove</strong>, the entry will be deleted.</li>
+      <li class="bulletList">To enable a preview for the current mappings, check the <strong class="screenText">Enable Preview</strong> checkbox. In testing mode, the active mapping settings are used to animate the currently selected instance and blend between the three states. Make sure to disable preview mode once you have found good settings for the mappings.</li>
+      <li class="bulletList">Above the <strong class="screenText">Test</strong> slider, the names of the three animation clips for the three states, idle/walk/run, are shown. You can see the names changing if you select a different animation clip in any of the combo boxes. The <strong class="screenText">Test</strong> slider allows you to preview the animation blending between the three selected clips when the test mode is enabled in the <strong class="screenText">Model</strong> section. Moving the slider to the left plays the idle animation clip; if the slider is in the middle position, the walk animation clip is shown; and on the right, the run animation is played. Between these three slider positions, linear interpolations<a id="_idIndexMarker335"/> between idle and walk as well as between walk and run are generated and drawn.</li>
+    </ul>
+    <p class="normal">One interesting addition to the <code class="inlineCode">UserInterface</code> code is the automated creation of button IDs for every mapping by using <code class="inlineCode">ImGui::PushID()</code> and <code class="inlineCode">ImGui::PopID()</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">        ImGui::<span class="hljs-built_in">PushID</span>(buttonId++);
+        <span class="hljs-keyword">if</span> (ImGui::<span class="hljs-built_in">Button</span>(<span class="hljs-string">"Edit##Blending"</span>)) {
+          ...
+        }
+        ImGui::<span class="hljs-built_in">PopID</span>();
+</code></pre>
+    <p class="normal">ImGui needs a unique identifier for every control element. Failing to provide a unique ID leads to unwanted results, since triggering one control element also triggers the other element(s) containing the same ID.</p>
+    <p class="normal">By using an incrementing integer value as an identifier, every mapping line will have unique <strong class="screenText">Edit</strong> and <strong class="screenText">Remove</strong> buttons, and the buttons will only affect <em class="italic">their</em> mapping line.</p>
+    <p class="normal">Another nice ImGui feature is the ability to close a <code class="inlineCode">CollapsingHeader</code> element from another part of the code:</p>
+    <pre class="programlisting code"><code class="hljs-code">    ImGui::<span class="hljs-built_in">GetStateStorage</span>()-&gt;<span class="hljs-built_in">SetInt</span>(
+      ImGui::<span class="hljs-built_in">GetID</span>(<span class="hljs-string">"Model Animation Mappings"</span>), <span class="hljs-number">0</span>);
+</code></pre>
+    <p class="normal">The internal state storage of ImGui saves information about the elements of the current ImGui window. With the <code class="inlineCode">SetInt()</code> call and the <code class="inlineCode">CollapsingHeader</code> name, we can control the open/close state of any header in the current ImGui window.</p>
+    <p class="normal">This way, we forcibly close the other two mapping <code class="inlineCode">CollapsingHeader</code> elements. We are changing the animation clip settings in all three mapping headers, and ImGui applies the settings multiple times, leading to unwanted results.</p>
+    <p class="normal">After all idle/walk/run animation clips have been set, we continue with the actions.</p>
+    <h2 id="_idParaDest-208" class="heading-2">Mapping actions to animation clips</h2>
+    <p class="normal">In the <code class="inlineCode">moveState</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code>, we have defined several actions for the instances, next to the already configured <code class="inlineCode">idle</code>, <code class="inlineCode">walk</code>, and <code class="inlineCode">run</code> states. Depending on the animations in a model file, not all actions may be <a id="_idIndexMarker336"/>available for all models. But there is no need to worry: the code will ignore actions without a configured animation. Pressing the action key will result in no animation or action.</p>
+    <p class="normal">All configured action mappings are saved to the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> in the <code class="inlineCode">ModelSettings.h</code> file in a new map called <code class="inlineCode">msActionClipMappings</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::map&lt;moveState, ActionAnimation&gt;
+    msActionClipMappings;
+</code></pre>
+    <p class="normal">The new <code class="inlineCode">ActionAnimation</code> <code class="inlineCode">struct</code> contains the clip number and the replay speed:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">struct</span> <span class="hljs-title">ActionAnimation</span> {
+  <span class="hljs-type">int</span> aaClipNr = <span class="hljs-number">0</span>;
+  <span class="hljs-type">float</span> aaClipSpeed = <span class="hljs-number">1.0f</span>;
+};
+</code></pre>
+    <p class="normal">We will start again with the UI part. In <em class="italic">Figure 7.2</em>, the <code class="inlineCode">CollapsingHeader</code> for the action mapping is shown:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_7.2_B22428.png" alt="" width="1000" height="358"/></figure>
+    <p class="packt_figref">Figure 7.2: Mapping movement states to animation clips and speeds</p>
+    <p class="normal">The <code class="inlineCode">UserInterface</code> code for this mapping type is similar to the idle/walk/run mapping as we do essentially the same kind of mapping. We have the following elements:</p>
+    <ul>
+      <li class="bulletList">A combo box for the elements of the <code class="inlineCode">moveState</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code>, filled with the values of the <code class="inlineCode">micMoveStateMap</code> map</li>
+      <li class="bulletList">A second combo box for the clips, generated from the animation clips of the model</li>
+      <li class="bulletList">A speed slider defining the replay speed of the clip</li>
+      <li class="bulletList">A <strong class="screenText">Save</strong> button to add the current mapping to the <code class="inlineCode">msActionClipMappings</code> map</li>
+      <li class="bulletList">A list of saved mappings, and every mapping line has two buttons to <strong class="screenText">Edit</strong> or <strong class="screenText">Remove</strong> the current line</li>
+    </ul>
+    <p class="normal">The note from the idle/walk/run mapping also applies here. When a mapping for the <code class="inlineCode">none</code> movement direction exists in the <strong class="screenText">Model Idle/Walk/Run Blendings</strong> section, the currently selected clip is <em class="italic">not</em> playing. To see a preview of the animation clip, you need to temporarily remove the <code class="inlineCode">none</code> direction.</p>
+    <p class="normal">To blend between the idle/walk/run state and any action in the <code class="inlineCode">AssimpInstance</code> class, we can use the clip number <a id="_idIndexMarker337"/>and replay speed from the <code class="inlineCode">msActionClipMappings</code> map and use the clip as the destination clip for a blending operation:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mInstanceSettings.isSecondAnimClipNr =
+    modSettings.msActionClipMappings[mActionMoveState]
+    .aaClipNr;
+  <span class="hljs-type">float</span> animSpeed =
+    modSettings.msActionClipMappings[mActionMoveState]
+    .aaClipSpeed;
+</code></pre>
+    <p class="normal">If we want our model to change to an action, we call the <code class="inlineCode">setNextInstanceState()</code> method of the <code class="inlineCode">AssimpInstance</code> class. The renderer uses this call in the <code class="inlineCode">handleMovementKeys()</code> method to request a state change of the selected instance:</p>
+    <pre class="programlisting code"><code class="hljs-code">      moveState nextState = moveState::idle;
+      ..
+      <span class="hljs-keyword">if</span> (<span class="hljs-built_in">glfwGetKey</span>(mRenderData.rdWindow, GLFW_KEY_E) ==
+          GLFW_PRESS) {
+        nextState = moveState::punch;
+      }
+      ...
+      currentInstance-&gt;<span class="hljs-built_in">setNextInstanceState</span>(nextState);
+</code></pre>
+    <p class="normal">Before we dive into the animation blending logic, let’s finish the UI part by looking at how to set allowed clip sequences.</p>
+    <h2 id="_idParaDest-209" class="heading-2">Defining allowed state changes</h2>
+    <p class="normal">While previewing the different animation clips of the models, you will notice that some clips only work when the instance stands still, while other animations are only usable if the instance is walking or running.</p>
+    <p class="normal">To prevent unwanted and unnatural transitions between clips, for instance, from an idle model to a full-speed jump <a id="_idIndexMarker338"/>animation, we define which action state changes are allowed. The <strong class="screenText">Destination</strong> state can only be triggered when the <strong class="screenText">Source</strong> state is the current active state.</p>
+    <p class="normal"><em class="italic">Figure 7.3</em> shows some allowed state changes:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_7.3_B22428.png" alt="" width="996" height="682"/></figure>
+    <p class="packt_figref">Figure 7.3: Allowed state changes of a model</p>
+    <p class="normal">The state order is saved in the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> using a <code class="inlineCode">std::set</code> containing <code class="inlineCode">std::pair</code> elements of <code class="inlineCode">moveState</code> entries:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::set&lt;std::pair&lt;moveState, moveState&gt;&gt;
+    msAllowedStateOrder;
+</code></pre>
+    <p class="normal">A <code class="inlineCode">std::map</code> would <a id="_idIndexMarker339"/>not work here as we need to configure multiple destination states for the same source state.</p>
+    <p class="normal">After all the states are mapped to animation clips and the dependencies between states have been configured, we will explore the way the model actions are concatenated to give (mostly) smooth blending and transition effects.</p>
+    <h2 id="_idParaDest-210" class="heading-2">Using a finite state machine to control the animation flow</h2>
+    <p class="normal">The task of maintaining states <a id="_idIndexMarker340"/>over time and transitions from one state to another state after an event can be solved best by using a <strong class="keyWord">finite state machine</strong>. And in C++, such a state machine can be modeled with a simple <code class="inlineCode">switch</code>/<code class="inlineCode">case</code> statement.</p>
+    <p class="normal">Before we start the implementation, let’s look at the states and transitions of the state machine in <em class="italic">Figure 7.4</em>:</p>
+    <figure class="mediaobject"><img src="../Images/Figure_7.4_B22428.png" alt="" width="1268" height="1118"/></figure>
+    <p class="packt_figref">Figure 7.4: State machine of the <code class="inlineCode">mAnimState</code> variable in the <code class="inlineCode">AssimpInstance</code> class</p>
+    <p class="normal">These five states and the<a id="_idIndexMarker341"/> transitions between the states can be explained as follows:</p>
+    <ol>
+      <li class="numberedList" value="1">We start at the state machine at <code class="inlineCode">playIdleWalkRun</code>. Here, the default, instance-speed-based blending between the movement states, idle, walk, and run, is played.</li>
+      <li class="numberedList">Once an action is requested, we check whether source (current state) and destination (action state) are in the <code class="inlineCode">msAllowedStateOrder</code> map. If yes, we prepare the directional clips and change to the <code class="inlineCode">transitionFromIdleWalkRun</code> state.</li>
+      <li class="numberedList">The <code class="inlineCode">transitionFromIdleWalkRun</code> state is needed to smooth the transition from idle/walk/run to the requested action. Most animation clips start from a similar pose of body, arms, and legs. By blending the current idle, walk, or run animation to the starting point of the same animation clip, the instance is adjusted back to its starting pose. After reaching the starting pose, we advance to the <code class="inlineCode">transitionToAction</code> state.</li>
+      <li class="numberedList">In <code class="inlineCode">transitionToAction</code>, we blend from the initial pose of the idle, walk, or run animation clip to the action state animation clip. This transition is only a few frames long and adds a smooth blending to the action clip. Once the transition to the action clip is done, we change to <code class="inlineCode">playActionAnim</code>.</li>
+      <li class="numberedList">Once we are in <code class="inlineCode">playActionAnim</code>, the animation for the requested action state is played at the configured replay speed until the end of the clip is reached. When the action animation clip is played, keyboard requests to switch to other animation clips or to return to the idle/walk/run cycle are ignored. Once the action animation clip is finished and no new requests for an action have been issued, the state is changed to <code class="inlineCode">transitionToIdleWalkRun</code>.</li>
+    </ol>
+    <p class="normal">Similar to <code class="inlineCode">transitionToAction</code>, the <code class="inlineCode">transitionToIdleWalkRun</code> state is used to blend between the action clip and the idle/walk/run clip. The destination clip (idle, walk, or run) is chosen via the instance speed. For a smooth animation cycle, the positions of the body, arms, and legs are the same as the start and end of the clip. By blending the end of the action clip with the start of an idle/walk/run clip, we have a smooth transition back to the initial state. After the blending is finished, we change the state back to <code class="inlineCode">playIdleWalkRun</code>.</p>
+    <p class="normal">For the animation clip transitions, we create a new <code class="inlineCode">enum</code> <code class="inlineCode">struct</code> called <code class="inlineCode">animationState</code> in the <code class="inlineCode">Enums.h</code> file containing the states of the finite state machine:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-keyword">enum class</span> <span class="hljs-title">animationState</span> : <span class="hljs-type">uint8_t</span> {
+  playIdleWalkRun = <span class="hljs-number">0</span>,
+  transitionFromIdleWalkRun,
+  transitionToAction,
+  playActionAnim,
+  transitionToIdleWalkRun
+};
+</code></pre>
+    <p class="normal">The state machine is defined in the <code class="inlineCode">updateAimStateMachine()</code> method of the <code class="inlineCode">AssimpInstance</code> class. The <a id="_idIndexMarker342"/>states are built as switch/case statements moving forward on the conditions outlined in <em class="italic">Figure 7.4</em>:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">switch</span> (mAnimState) {
+    <span class="hljs-keyword">case</span> animationState::playIdleWalkRun:
+      <span class="hljs-built_in">playIdleWalkRunAnimation</span>();
+      ...
+      <span class="hljs-keyword">break</span>;
+    <span class="hljs-keyword">case</span> animationState::transitionFromIdleWalkRun:
+      <span class="hljs-built_in">blendIdleWalkRunAnimation</span>(deltaTime);
+      <span class="hljs-keyword">break</span>;
+    <span class="hljs-keyword">case</span> animationState::transitionToAction:
+      <span class="hljs-built_in">blendActionAnimation</span>(deltaTime);
+      <span class="hljs-keyword">break</span>;
+    <span class="hljs-keyword">case</span> animationState::playActionAnim:
+      <span class="hljs-built_in">playActionAnimation</span>();
+      ...
+      <span class="hljs-keyword">break</span>;
+    <span class="hljs-keyword">case</span> animationState::transitionToIdleWalkRun:
+      <span class="hljs-built_in">blendActionAnimation</span>(deltaTime, <span class="hljs-literal">true</span>);
+      <span class="hljs-keyword">break</span>;
+  }
+</code></pre>
+    <p class="normal">You can check the details of the finite state machine in the <code class="inlineCode">updateAnimStateMachine()</code> method of the <code class="inlineCode">AssimpInstance</code> class. The code is simple and straightforward: we just replay and blend between various animation clips.</p>
+    <p class="normal">With the blending code and the finite state machine in place, you can change to the view mode of the application by pressing <code class="inlineCode">F10</code>. If you press a key for an action while you are at an allowed source state, the action clip will be played. Right after the action clip, the instance goes back to the previous idle/walk/run state.</p>
+    <p class="normal">To complete this<a id="_idIndexMarker343"/> chapter’s features, we need to make the state and clip mappings permanent by adding the contents of the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> and all related custom data types to the configuration file.</p>
+    <h1 id="_idParaDest-211" class="heading-1">Saving and loading the states</h1>
+    <p class="normal">We can reuse some <a id="_idIndexMarker344"/>of the save and load code we created in the previous chapters when saving and loading the<a id="_idIndexMarker345"/> current state of custom data types. The <code class="inlineCode">moveState</code> and <code class="inlineCode">moveDirection</code> <code class="inlineCode">enum</code> <code class="inlineCode">class</code> types will be stored as integer values in the YAML configuration file of the application. The three new <code class="inlineCode">struct</code> types, <code class="inlineCode">IdleWalkRunBlending</code>, <code class="inlineCode">ActionAnimation</code>, and <code class="inlineCode">ModelSettings</code>, are deconstructed into their elements when saving them to the configuration file and reassembled when reading the values. The C++ maps and sets are created by using the known combination of YAML sequences and YAML maps.</p>
+    <h2 id="_idParaDest-212" class="heading-2">Storing the new data types</h2>
+    <p class="normal">For the <code class="inlineCode">moveState</code> and <code class="inlineCode">moveDirection</code> structs, we<a id="_idIndexMarker346"/> create a new <code class="inlineCode">convert</code> template in the <code class="inlineCode">YamlParserTypes.h</code> file in the <code class="inlineCode">tools</code> folder that will simply cast to <code class="inlineCode">int</code> and back:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">template</span>&lt;&gt;
+  <span class="hljs-keyword">struct</span> <span class="hljs-title">convert</span>&lt;moveState&gt; {
+    <span class="hljs-type">static</span><span class="hljs-function"> Node </span><span class="hljs-title">encode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> moveState&amp; rhs)</span><span class="hljs-function"> </span>{
+      Node node;
+      node = <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">int</span>&gt;(rhs);
+      <span class="hljs-keyword">return</span> node;
+    }
+    <span class="hljs-type">static</span><span class="hljs-function"> </span><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">decode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> Node&amp; node, moveState&amp; rhs)</span><span class="hljs-function"> </span>{
+      rhs = <span class="hljs-built_in">static_cast</span>&lt;moveState&gt;(node.<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">int</span>&gt;());
+      <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>;
+    }
+  };
+</code></pre>
+    <p class="normal">The YAML emitter overloads for <code class="inlineCode">moveState</code> and <code class="inlineCode">moveDirection</code> in the <code class="inlineCode">YamlParser.cpp</code> file in the <code class="inlineCode">tools</code> folder are <a id="_idIndexMarker347"/>also casting the values to <code class="inlineCode">int</code>:</p>
+    <pre class="programlisting code"><code class="hljs-code">YAML::Emitter&amp; <span class="hljs-keyword">operator</span>&lt;&lt;(YAML::Emitter&amp; out,
+    <span class="hljs-type">const</span> moveState&amp; state) {
+  out &lt;&lt; YAML::Flow;
+  out &lt;&lt; <span class="hljs-built_in">static_cast</span>&lt;<span class="hljs-type">int</span>&gt;(state);
+  <span class="hljs-keyword">return</span> out;
+}
+</code></pre>
+    <p class="normal">Now we can read and write the new data types like every other type when we generate or parse our YAML configuration file.</p>
+    <p class="normal">Both struct types, <code class="inlineCode">IdleWalkRunBlending</code> and <code class="inlineCode">ActionAnimation</code>, only use int and float values, so the main task here is to find good names for the YAML nodes. For example, the <code class="inlineCode">ActionAnimation</code> values are stored as <code class="inlineCode">clip</code> and <code class="inlineCode">clip-speed</code> in the YAML file:</p>
+    <pre class="programlisting code"><code class="hljs-code"><span class="hljs-type">static</span><span class="hljs-function"> </span><span class="hljs-type">bool</span><span class="hljs-function"> </span><span class="hljs-title">decode</span><span class="hljs-params">(</span><span class="hljs-type">const</span><span class="hljs-params"> Node&amp; node, ActionAnimation&amp; rhs)</span><span class="hljs-function"> </span>{
+  rhs.aaClipNr = node[<span class="hljs-string">"clip"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">int</span>&gt;();
+  rhs.aaClipSpeed = node[<span class="hljs-string">"clip-speed"</span>].<span class="hljs-built_in">as</span>&lt;<span class="hljs-type">float</span>&gt;();
+  <span class="hljs-keyword">return</span> <span class="hljs-literal">true</span>;
+}
+</code></pre>
+    <p class="normal">Saving the contents of the <code class="inlineCode">ModelSettings</code> <code class="inlineCode">struct</code> is also straightforward. We simply output all the values and iterate over the <code class="inlineCode">msIWRBlendings</code> and <code class="inlineCode">msActionClipMappings</code> maps and the <code class="inlineCode">msAllowedStateOrder</code> set by using <code class="inlineCode">for</code> loops:</p>
+    <pre class="programlisting code"><code class="hljs-code">  ...
+  <span class="hljs-keyword">if</span> (settings.msActionClipMappings.<span class="hljs-built_in">size</span>() &gt; <span class="hljs-number">0</span>) {
+    out &lt;&lt; YAML::Key &lt;&lt; <span class="hljs-string">"action-clips"</span>;
+    out &lt;&lt; YAML::Value;
+    out &lt;&lt; YAML::BeginSeq;;
+    <span class="hljs-keyword">for</span> (<span class="hljs-keyword">auto</span>&amp; setting : settings.msActionClipMappings) {
+      out &lt;&lt; YAML::BeginMap;
+      out &lt;&lt; YAML::Key &lt;&lt; setting.first;
+      out &lt;&lt; YAML::Value &lt;&lt; setting.second;
+      out &lt;&lt; YAML::EndMap;
+    }
+    out &lt;&lt; YAML::EndSeq;
+  }
+  ...
+</code></pre>
+    <p class="normal">Reading back the <code class="inlineCode">ModelSettings</code> is done in the <code class="inlineCode">getModelConfigs()</code> method of the <code class="inlineCode">YamlParser</code> class. The YAML parsing inside <code class="inlineCode">getModelConfigs()</code> method is identical to the parsing of the <code class="inlineCode">InstanceSettings</code> or <code class="inlineCode">CameraSettings</code> <code class="inlineCode">struct</code>. By using the <code class="inlineCode">convert</code> template, all we must do<a id="_idIndexMarker348"/> is instruct <code class="inlineCode">yaml-cpp</code> to use the correct data type when filling the temporary <code class="inlineCode">modeSettings</code> vector:</p>
+    <pre class="programlisting code"><code class="hljs-code">modSettings.<span class="hljs-built_in">emplace_back</span>(modelsNode[i].
+  <span class="hljs-built_in">as</span>&lt;ModelSettings&gt;());
+</code></pre>
+    <p class="normal">Parsing the C++ maps and sets is a bit tricky. We need to iterate over the node containing the sequence, get every entry as a <code class="inlineCode">std::map</code>, and add the map to the corresponding map of the <code class="inlineCode">ModelSettings</code> type:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">if</span> (Node clipNode = node[<span class="hljs-string">"idle-walk-run-clips"</span>]) {
+    <span class="hljs-keyword">for</span> (<span class="hljs-type">size_t</span> i = <span class="hljs-number">0</span>; i &lt; clipNode.<span class="hljs-built_in">size</span>(); ++i) {
+      std::map&lt;moveDirection, IdleWalkRunBlending&gt; entry =
+        clipNode[i].as&lt;std::map&lt;moveDirection,
+        IdleWalkRunBlending&gt;&gt;();
+      rhs.msIWRBlendings.<span class="hljs-built_in">insert</span>(entry.<span class="hljs-built_in">begin</span>(),
+        entry.<span class="hljs-built_in">end</span>());
+    }
+  }
+</code></pre>
+    <h2 id="_idParaDest-213" class="heading-2">Reading back the model settings in the renderer</h2>
+    <p class="normal">Saving the model settings is entirely done by the YAML emitter; no changes to the <code class="inlineCode">saveConfigFile()</code> method of the <a id="_idIndexMarker349"/>renderer are needed. To get the model settings back into the application in the <code class="inlineCode">loadConfigFile()</code> method, we use the <code class="inlineCode">getModelConfigs()</code> method of the YAML parser:</p>
+    <pre class="programlisting code"><code class="hljs-code">  std::vector&lt;ModelSettings&gt; savedModelSettings =
+    parser.<span class="hljs-built_in">getModelConfigs</span>();
+</code></pre>
+    <p class="normal">Then, we loop over the contents of the vector and we try to add the models using the file name and path found in the loaded model settings:</p>
+    <pre class="programlisting code"><code class="hljs-code">  <span class="hljs-keyword">for</span> (<span class="hljs-type">const</span> <span class="hljs-keyword">auto</span>&amp; modSetting : savedModelSettings) {
+    <span class="hljs-keyword">if</span> (!<span class="hljs-built_in">addModel</span>(modSetting.msModelFilenamePath,
+        <span class="hljs-literal">false</span>, <span class="hljs-literal">false</span>)) {
+      <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+    }
+</code></pre>
+    <p class="normal">If the model cannot be loaded, we stop the loading process. If we want to have more relaxed file handling in case of errors, we <a id="_idIndexMarker350"/>can store the models that failed to load, skip the instances of the failed models, and inform the user in a dialog that an error has occurred.</p>
+    <p class="normal">Next, we get the model by the file name again and restore the model settings:</p>
+    <pre class="programlisting code"><code class="hljs-code">    std::shared_ptr&lt;AssimpModel&gt; model =
+      <span class="hljs-built_in">getModel</span>(modSetting.msModelFilenamePath);
+    model-&gt;<span class="hljs-built_in">setModelSettings</span>(modSetting);
+</code></pre>
+    <p class="normal">Finally, we restore the model that was selected when the configuration was saved:</p>
+    <pre class="programlisting code"><code class="hljs-code">  mModelInstCamData.micSelectedModel =
+    parser.<span class="hljs-built_in">getSelectedModelNum</span>();
+</code></pre>
+    <p class="normal">Now, all animation clip mappings and the state sequences are restored. The application user can take a break from creating a virtual world at any time without losing progress.</p>
+    <p class="normal">With the additions from this chapter, we can bring the instances on the screen to life. Depending on the available animations in the model file, the instance can not only walk and run, but also do additional actions like jumping up or forward, rolling around, punching targets, waving, or interacting with the environment. The animations are also blended between the different movements and actions, creating a game-like feeling.</p>
+    <h1 id="_idParaDest-214" class="heading-1">Summary</h1>
+    <p class="normal">In this chapter, we improved animation processing efficiency and added gameplay-like controls to map animation clips to the current animation state. We started by moving the computational work of animation blending from the CPU to the GPU and created lookup tables to reduce the amount of work for the GPU (at the cost of memory usage). Then, we added the different movement states to the code, including a UI-based mapping between states and animation clips. As the last step, we added the new mappings to the YAML configuration file, allowing us to save and restore the mappings.</p>
+    <p class="normal">In the next chapter, we will take a closer look at collision detection. After we can move the instance in the virtual world, we need to avoid just <em class="italic">running through</em> other instances on the screen. As the first step, we will explore the theoretical background of collision detection and discuss the problems of a naive implementation. Then, we will add spatial partitioning to the virtual world and instance simplifications to reduce the complexity of the collision detection checks. Finally, we will implement multi-level collision detection, allowing us to detect collisions between instances with minimal costs.</p>
+    <h1 id="_idParaDest-215" class="heading-1">Practical sessions</h1>
+    <p class="normal">There are some additions you could make to the code:</p>
+    <ul>
+      <li class="bulletList">Use root motion to control instance movement.</li>
+    </ul>
+    <p class="normal-one">Instead of moving the position of the instances around the virtual world and playing the animation at a specific rate, so-called <strong class="screenText">Root Motion</strong> can be used to let the animation clips control the movement of the character. In root motion, the movement of the model’s root bone is coordinated by the animation and not by us, allowing a better sync of the feet on the ground. However, root motion data must be baked into model animations to work. Updating the animations is beyond the scope of the book.</p>
+    <ul>
+      <li class="bulletList">Add a second direction for the idle/walk/run mapping.</li>
+    </ul>
+    <p class="normal-one">Right now, only animations for the four main directions (forward, backward, left, and right) plus the special wildcards <code class="inlineCode">none</code> and <code class="inlineCode">any</code> can be configured. Moving diagonally may look a bit awkward when the feet are not synchronized with the instance movement.</p>
+    <ul>
+      <li class="bulletList">Add animation blending for diagonal movement.</li>
+    </ul>
+    <p class="normal-one">Similarly to the previous task, instead of adding multiple directions, you can try to blend between the forward/backward and left/right animation clips when the instance is moving in a diagonal direction.</p>
+    <ul>
+      <li class="bulletList">Add a preview for the state order configuration.</li>
+    </ul>
+    <p class="normal-one">To preview the transition from <strong class="screenText">Source</strong> to <strong class="screenText">Destination</strong> state, the finite state machine would need to be adjusted with some sort of testing mode. The source state must be set and played for a while, i.e., until the animation clip is restarted. Then, the transition to the destination state must be triggered. Plus, we need to forbid the instance from moving; all transitions must happen without changing the world position of the instance.</p>
+    <ul>
+      <li class="bulletList">Allow animation clips to be played in the reverse direction.</li>
+    </ul>
+    <p class="normal-one">The woman model has a clip with a <strong class="keyWord">sit-down</strong> animation. To make the instance stand up again, you could add a Boolean to play the clip either forward or in reverse direction.</p>
+    <ul>
+      <li class="bulletList">Add more speed interpolation functions and make them selectable.</li>
+    </ul>
+    <p class="normal-one">As mentioned in the <em class="italic">Using acceleration and deceleration </em>section, the interpolation between different speeds is done by a simple linear interpolation. Try to add more advanced interpolation variants here, like separate ease-in and ease-out functions based on curves. You could also add an extra field to the model settings that stores the interpolation function and make additional fields in the UI to choose an interpolation to use.</p>
+    <ul>
+      <li class="bulletList">Use a graphical tool to draw nodes and connections.</li>
+    </ul>
+    <p class="normal-one">The <strong class="screenText">Graph Editor</strong> from ImGuizmo (see the link in the <em class="italic">Addition resources</em> section) adds nodes and connections to ImGui. You could change the mapping configurations to have nodes for states and animation clips and use the connections to define mappings.</p>
+    <h1 id="_idParaDest-216" class="heading-1">Additional resources</h1>
+    <p class="normal">ImGuizmo GitHub repo: <a href="https://github.com/CedricGuillemet/ImGuizmo"><span class="url">https://github.com/CedricGuillemet/ImGuizmo</span></a></p>
+    <h1 id="_idParaDest-217" class="heading-1">Join our community on Discord</h1>
+    <p class="normal">Join our community’s Discord space for discussions with the author and other readers: <a href="https://packt.link/cppgameanimation"><span class="url">https://packt.link/cppgameanimation</span></a></p>
+    <p class="normal"><img src="../Images/QR_code_Discord.png" alt="A qr code with black squares  AI-generated content may be incorrect." width="150" height="150"/></p>
+  </div>
+</div></div></body></html>

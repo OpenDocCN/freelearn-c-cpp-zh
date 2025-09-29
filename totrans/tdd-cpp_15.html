@@ -1,0 +1,1212 @@
+<html><head></head><body>
+		<div id="_idContainer028">
+			<h1 id="_idParaDest-137" class="chapter-number" lang="en-GB"><a id="_idTextAnchor149"/><a id="_idTextAnchor150"/><a id="_idTextAnchor151"/>15</h1>
+			<h1 id="_idParaDest-138" lang="en-GB"><a id="_idTextAnchor152"/>How to Test With Multiple Threads</h1>
+			<p lang="en-GB">Multi-threading is one of the most difficult aspects of writing software. Something that’s often overlooked is how we can test multiple threads. And can we use TDD to help design software that uses multiple threads? Yes, TDD can help and you’ll find useful and practical guidance in this chapter that will show you how to use TDD with <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">The main topics in this chapter are <span class="No-Break" lang="">as follows:</span></p>
+			<ul>
+				<li lang="en-GB">Using multiple threads <span class="No-Break" lang="">in tests</span></li>
+				<li lang="en-GB">Making the logging <span class="No-Break" lang="">library thread-safe</span></li>
+				<li lang="en-GB">The need to justify <span class="No-Break" lang="">multiple threads</span></li>
+				<li lang="en-GB">Changing the service <span class="No-Break" lang="">return type</span></li>
+				<li lang="en-GB">Making multiple <span class="No-Break" lang="">service calls</span></li>
+				<li lang="en-GB">How to test multiple threads <span class="No-Break" lang="">without sleep</span></li>
+				<li lang="en-GB">Fixing one last problem detected <span class="No-Break" lang="">with logging</span></li>
+			</ul>
+			<p lang="en-GB">First, we’ll examine what problems you’ll find when using multiple threads in your tests. You’ll learn how to use a special helper class in the testing library to simplify the extra steps needed when testing with <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">Once we can use multiple threads inside of a test, we’ll use that ability to call into the logging library from multiple threads at the same time and see what happens. I’ll give you a hint: some changes will need to be made to the logging library to make the library behave well when called from <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">Then, we’ll go back to the simple service we developed in the previous chapter and you’ll learn how to use TDD to design a service that uses multiple threads in a way that can support <span class="No-Break" lang="">reliable testing.</span></p>
+			<p lang="en-GB">We’ll be working with each project in turn in this chapter. First, we will be using the testing library project. Then, we’ll switch over to the logging library project. Finally, we’ll use the simple <span class="No-Break" lang="">service project.</span></p>
+			<h1 id="_idParaDest-139" lang="en-GB"><a id="_idTextAnchor153"/>Technical requirements</h1>
+			<p lang="en-GB">All the code in this chapter uses standard C++, which builds on any modern C++ 20 or later compiler and standard library. The code in this chapter uses all three projects developed in this book: the testing library from <em class="italic" lang="">Part 1</em>, <em class="italic" lang="">Testing MVP</em>, the logging library from <em class="italic" lang="">Part 2</em>, <em class="italic" lang="">Logging Library</em>, and the simple service from the <span class="No-Break" lang="">previous chapter.</span></p>
+			<p lang="en-GB">You can find all the code for this chapter in this book’s GitHub <span class="No-Break" lang="">repository: </span><a href="https://github.com/PacktPublishing/Test-Driven-Development-with-CPP"><span class="No-Break" lang="">https://github.com/PacktPublishing/Test-Driven-Development-with-CPP</span></a><span class="No-Break" lang="">.</span></p>
+			<h1 id="_idParaDest-140" lang="en-GB"><a id="_idTextAnchor154"/>Using multiple threads in tests</h1>
+			<p lang="en-GB">Adding multiple threads to <a id="_idIndexMarker544"/>your tests presents challenges that you need to be aware of. I’m not talking about running the tests themselves in multiple threads. The testing library registers and runs the tests and it will remain single-threaded. What you need to understand are the problems that can arise when multiple threads are created inside of <span class="No-Break" lang="">a test.</span></p>
+			<p lang="en-GB">To understand these problems, let’s create a test that uses multiple threads so that you can see exactly what happens. We’ll be working with the unit test library project in this section so, first, add a new test file called <strong class="source-inline" lang="">Thread.cpp</strong>. The project structure should look like this after you’ve added the <span class="No-Break" lang="">new file:</span></p>
+			<pre class="source-code" lang="en-GB">
+MereTDD project root folder
+    Test.h
+    tests folder
+        main.cpp
+        Confirm.cpp
+        Creation.cpp
+        Hamcrest.cpp
+        Setup.cpp
+        Thread.cpp</pre>
+			<p lang="en-GB">Inside the <strong class="source-inline" lang="">Thread.cpp</strong> file, add the <span class="No-Break" lang="">following code:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include "../Test.h"
+#include &lt;atomic&gt;
+#include &lt;thread&gt;
+using namespace MereTDD;
+TEST("Test can use additional threads")
+{
+    std::atomic&lt;int&gt; count {0};
+    std::thread t1([&amp;count]()
+    {
+        for (int i = 0; i &lt; 100'000; ++i)
+        {
+            ++count;
+        }
+        CONFIRM_THAT(count, NotEquals(100'001));
+    });
+    std::thread t2([&amp;count]()
+    {
+        for (int i = 0; i &lt; 100'000; ++i)
+        {
+            --count;
+        }
+        CONFIRM_THAT(count, NotEquals(-100'001));
+    });
+    t1.join();
+    t2.join();
+    CONFIRM_THAT(count, Equals(0));
+}</pre>
+			<p lang="en-GB">The preceding code includes <strong class="source-inline" lang="">atomic</strong> so that we can safely modify a <strong class="source-inline" lang="">count</strong> variable from multiple threads. We need to include <strong class="source-inline" lang="">thread</strong> to bring in the definition of the thread class. The test creates two threads. The first thread increments <strong class="source-inline" lang="">count</strong>, while the second thread decrements the same <strong class="source-inline" lang="">count</strong>. The final result should return <strong class="source-inline" lang="">count</strong> to zero because we<a id="_idIndexMarker545"/> increment and decrement the same number <span class="No-Break" lang="">of times.</span></p>
+			<p lang="en-GB">If you build and run the test application, everything will pass. The new test causes no problem at all. Let’s change the third <strong class="source-inline" lang="">CONFIRM_THAT</strong> macro so that we can try to confirm that <strong class="source-inline" lang="">count</strong> is not equal to <strong class="source-inline" lang="">0</strong> at the end of the test, <span class="No-Break" lang="">like so:</span></p>
+			<pre class="source-code" lang="en-GB">
+    t1.join();
+    t2.join();
+    CONFIRM_THAT(count, NotEquals(0));</pre>
+			<p lang="en-GB">With this change, the test fails with <span class="No-Break" lang="">this result:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test can use additional threads</strong>
+<strong class="bold" lang="">Failed confirm on line 30</strong>
+<strong class="bold" lang="">    Expected: not 0</strong>
+<strong class="bold" lang="">    Actual  : 0</strong></pre>
+			<p lang="en-GB">So far, we have a test that uses multiple threads and it works as expected. We added some confirmations that can detect and report when a value does not match the expected value. You might be wondering what problems multiple threads can cause when the threads seem to be working okay <span class="No-Break" lang="">so far.</span></p>
+			<p lang="en-GB">Here’s the quick answer: creating one or more threads inside of a test causes no problem at all – that is, assuming that the threads are managed correctly such as making sure they are joined before the test ends. Confirmations work as expected from the main test thread itself. You can even have confirmations inside the additional threads. One type of problem <a id="_idIndexMarker546"/>comes when a confirmation inside one of the additional threads fails. To see this, let’s put the final confirmation back to <strong class="source-inline" lang="">Equals</strong> and change the first confirmation to <strong class="source-inline" lang="">Equals</strong> too, <span class="No-Break" lang="">like so:</span></p>
+			<pre class="source-code" lang="en-GB">
+        for (int i = 0; i &lt; 100'000; ++i)
+        {
+            ++count;
+        }
+        CONFIRM_THAT(count, Equals(100'001));</pre>
+			<p lang="en-GB"><strong class="source-inline" lang="">count</strong> should never reach <strong class="source-inline" lang="">100'001</strong> because we only increment <strong class="source-inline" lang="">100'000</strong> times. The confirmation always passed before this change, which is why it did not cause a problem. But with this change, the confirmation will fail right away. If this was a confirmation in the main test thread, then the failure would cause the test to fail with a summary message that describes the problem. But we’re not in the main test <span class="No-Break" lang="">thread now.</span></p>
+			<p lang="en-GB">Remember that failed confirmations throw exceptions and that an unhandled exception inside of a thread will terminate an application. When we confirm that the count equals <strong class="source-inline" lang="">100'001</strong>, we cause an exception to be thrown. The main test thread is managed by the testing library and the main thread is ready to catch any confirmation exceptions so that they can be reported. However, our additional thread inside the test lambda has no protection against thrown exceptions. So, when we build and run the test application, it terminates <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test can use additional threads</strong>
+<strong class="bold" lang="">terminate called after throwing an instance of 'MereTDD::ActualConfirmException'</strong>
+<strong class="bold" lang="">Abort trap: 6</strong></pre>
+			<p lang="en-GB">You might get a slightly different message, depending on what computer you’re using. What you won’t get is a test application that runs and reports the results of all the tests. The application terminates soon after the confirmation inside the additional thread fails and throws <span class="No-Break" lang="">an exception.</span></p>
+			<p lang="en-GB">Other than confirmations inside a thread failing and throwing exceptions, are there any other problems with <a id="_idIndexMarker547"/>using multiple threads inside of a test? Yes. Threads need to be managed properly – that is, we need to make sure they are either joined or detached before going out of scope. You’re unlikely to need to detach a thread that was created in a test, so you’re left with making sure that all the threads created inside of a test are joined before the test ends. Notice that the test we’re using manually joins <span class="No-Break" lang="">both threads.</span></p>
+			<p lang="en-GB">If the test has other confirmations, then you need to be sure that a failed confirmation doesn’t cause the test to skip the thread joins. This is because leaving a test without joining will also cause the application to terminate. Let’s see this by putting the first confirmation back to using <strong class="source-inline" lang="">NotEquals</strong> so that it will not cause any problems. Then, we will add a new confirmation that will fail before <span class="No-Break" lang="">the joins:</span></p>
+			<pre class="source-code" lang="en-GB">
+    CONFIRM_TRUE(false);
+    t1.join();
+    t2.join();
+    CONFIRM_THAT(count, Equals(0));</pre>
+			<p lang="en-GB">The confirmations inside the additional threads no longer cause any problems. However, the new <strong class="source-inline" lang="">CONFIRM_TRUE</strong> confirmation will cause the joins to be skipped. The result is <span class="No-Break" lang="">another termination:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test can use additional threads</strong>
+<strong class="bold" lang="">terminate called without an active exception</strong>
+<strong class="bold" lang="">Abort trap: 6</strong></pre>
+			<p lang="en-GB">We’re not going to do anything to help solve this second type of termination. You’ll need to make sure that any threads that are created are joined properly. You might want to use the new <em class="italic" lang="">jthread</em> in C++20, which will make sure that the threads are joined. Alternatively, you might just need to be careful about where you put confirmations in the main test thread to make sure that all the joins <span class="No-Break" lang="">happen first.</span></p>
+			<p lang="en-GB">We can remove the <strong class="source-inline" lang="">CONFIRM_TRUE</strong> confirmation now so that we can focus on fixing the first problem of confirmations failing inside <span class="No-Break" lang="">the threads.</span></p>
+			<p lang="en-GB">What can we do to<a id="_idIndexMarker548"/> fix this problem? We could put a try/catch block in the thread, which would at least stop <span class="No-Break" lang="">the termination:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test can use additional threads")
+{
+    std::atomic&lt;int&gt; count {0};
+    std::thread t([&amp;count]()
+    {
+        try
+        {
+            for (int i = 0; i &lt; 100'000; ++i)
+            {
+                ++count;
+            }
+            CONFIRM_THAT(count, NotEquals(100'001));
+        }
+        catch (...)
+        { }
+    });
+    t.join();
+    CONFIRM_THAT(count, Equals(100'000));
+}</pre>
+			<p lang="en-GB">To simplify the code, I removed the second thread. The test now uses a single additional thread to increment the count. The result after the thread finishes is that <strong class="source-inline" lang="">count</strong> should be equal to <strong class="source-inline" lang="">100'000</strong>. At no point should <strong class="source-inline" lang="">count</strong> reach <strong class="source-inline" lang="">100'001</strong>, which is confirmed inside the thread. Let’s say we change the confirmation inside the thread so that it <span class="No-Break" lang="">will fail:</span></p>
+			<pre class="source-code" lang="en-GB">
+            CONFIRM_THAT(count, Equals(100'001));</pre>
+			<p lang="en-GB">Here, the exception is caught and the test fails normally and reports the result. Or does it? Building and running this code shows that all the tests pass. The confirmation inside the thread is detecting the mismatched values but the exception has no way to be reported back to the main test thread. We can’t throw anything inside the catch block because that will just terminate the <span class="No-Break" lang="">application again.</span></p>
+			<p lang="en-GB">We know that we can avoid the test application terminating by catching the confirmation exception. And we also know from the first threading test that a confirmation that doesn’t throw is also okay. The bigger problem we need to solve is how to let the main test thread know about any confirmation failures in the additional threads that have been created. Maybe we can inform the main thread in the catch block by using a variable passed to <span class="No-Break" lang="">the thread.</span></p>
+			<p lang="en-GB">I want to emphasize this point. If you’re creating threads inside of a test simply to divide the work and speed up a test and don’t need to confirm anything inside the threads, then you don’t need to <a id="_idIndexMarker549"/>do anything special. All you need to manage is the normal thread concerns, such as making sure you join all threads before the test ends and that none of the threads have unhandled exceptions. The only reason to use the following guidance is when you want to put confirmations inside of the <span class="No-Break" lang="">additional threads.</span></p>
+			<p lang="en-GB">After trying out a few alternatives, here is what I came <span class="No-Break" lang="">up with:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test can use additional threads")
+{
+    ThreadConfirmException threadEx;
+    std::atomic&lt;int&gt; count {0};
+    std::thread t([&amp;threadEx, &amp;count]()
+    {
+        try
+        {
+            for (int i = 0; i &lt; 100'000; ++i)
+            {
+                ++count;
+            }
+            CONFIRM_THAT(count, Equals(100'001));
+        }
+        catch (ConfirmException const &amp; ex)
+        {
+            threadEx.setFailure(ex.line(), ex.reason());
+        }
+    });
+    t.join();
+    threadEx.checkFailure();
+    CONFIRM_THAT(count, Equals(100'000));
+}</pre>
+			<p lang="en-GB">This is the TDD style. Modify the test until you’re happy with the code and then get it working. The test assumes a new exception type called <strong class="source-inline" lang="">ThreadConfirmException</strong> and it creates a local instance called <strong class="source-inline" lang="">threadEx</strong>. The <strong class="source-inline" lang="">threadEx</strong> variable is captured by reference in the thread lambda so that the thread can <span class="No-Break" lang="">access </span><span class="No-Break" lang=""><strong class="source-inline" lang="">threadEx</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">The thread can use all the normal confirmations it wants, so long as everything is inside a try block with a catch block that is looking for the <strong class="source-inline" lang="">ConfirmException</strong> type. If a confirmation fails, then it will throw an exception that will be caught. We can use the line number and reason to set a failure mode in the <span class="No-Break" lang=""><strong class="source-inline" lang="">threadEx</strong></span><span class="No-Break" lang=""> variable.</span></p>
+			<p lang="en-GB">Once the thread has finished and we’re back in the main thread, we can call another method to check for a <a id="_idIndexMarker550"/>failure in the <strong class="source-inline" lang="">threadEx</strong> variable. If a failure was set, then the <strong class="source-inline" lang="">checkFailure</strong> method should throw an exception, just like how a regular confirmation throws an exception. Because we’re back in the main test thread, any confirmation exception that gets thrown will be detected and reported in the test <span class="No-Break" lang="">summary report.</span></p>
+			<p lang="en-GB">Now, we need to implement the <strong class="source-inline" lang="">ThreadConfirmException</strong> class in <strong class="source-inline" lang="">Test.h</strong>, which can go right after the <strong class="source-inline" lang="">ConfirmException</strong> base class, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+class ThreadConfirmException : public ConfirmException
+{
+public:
+    ThreadConfirmException ()
+    : ConfirmException(0)
+    { }
+    void setFailure (int line, std::string_view reason)
+    {
+        mLine = line;
+        mReason = reason;
+    }
+    void checkFailure () const
+    {
+        if (mLine != 0)
+        {
+            throw *this;
+        }
+    }
+};</pre>
+			<p lang="en-GB">If we build and run now, then the confirmation inside the thread will detect that <strong class="source-inline" lang="">count</strong> does not equal <strong class="source-inline" lang="">100'001</strong> and the failure will be reported in the summary results, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">------- Test: Test can use additional threads</strong>
+<strong class="bold" lang="">Failed confirm on line 20</strong>
+<strong class="bold" lang="">    Expected: 100001</strong>
+<strong class="bold" lang="">    Actual  : 100000</strong></pre>
+			<p lang="en-GB">The question now is, is<a id="_idIndexMarker551"/> there any way to simplify the test? The current test looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test can use additional threads")
+{
+    ThreadConfirmException threadEx;
+    std::atomic&lt;int&gt; count {0};
+    std::thread t([&amp;threadEx, &amp;count]()
+    {
+        try
+        {
+            for (int i = 0; i &lt; 100'000; ++i)
+            {
+                ++count;
+            }
+            CONFIRM_THAT(count, Equals(100'001));
+        }
+        catch (ConfirmException const &amp; ex)
+        {
+            threadEx.setFailure(ex.line(), ex.reason());
+        }
+    });
+    t.join();
+    threadEx.checkFailure();
+    CONFIRM_THAT(count, Equals(100'000));
+}</pre>
+			<p lang="en-GB">Here, we have a new <strong class="source-inline" lang="">ThreadConfirmException</strong> type, which is good. However, the test author still needs to pass an instance of this type to the thread function, similar to how <strong class="source-inline" lang="">threadEx</strong> is captured by the lambda. The thread function still needs a try/catch block and needs to call <strong class="source-inline" lang="">setFailure</strong> if an exception is caught. Finally, the test needs to check for a failure once it’s back in the main test thread. All of these steps are shown in <span class="No-Break" lang="">the test.</span></p>
+			<p lang="en-GB">We might be able to use a few macros to hide the try/catch block, but this seems fragile. The test author will likely have slightly different needs. For example, let’s go back to two threads and see<a id="_idIndexMarker552"/> what the test will look like with multiple threads. Change the test so that it looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Test can use additional threads")
+{
+    std::vector&lt;ThreadConfirmException&gt; threadExs(2);
+    std::atomic&lt;int&gt; count {0};
+    std::vector&lt;std::thread&gt; threads;
+    for (int c = 0; c &lt; 2; ++c)
+    {
+        threads.emplace_back(
+            [&amp;threadEx = threadExs[c], &amp;count]()
+        {
+            try
+            {
+                for (int i = 0; i &lt; 100'000; ++i)
+                {
+                    ++count;
+                }
+                CONFIRM_THAT(count, Equals(200'001));
+            }
+            catch (ConfirmException const &amp; ex)
+            {
+                threadEx.setFailure(ex.line(), ex.reason());
+            }
+        });
+    }
+    for (auto &amp; t : threads)
+    {
+        t.join();
+    }
+    for (auto const &amp; ex: threadExs)
+    {
+        ex.checkFailure();
+    }
+    CONFIRM_THAT(count, Equals(200'000));
+}</pre>
+			<p lang="en-GB">This test is different than the original two-thread test at the beginning of this section. I wrote the test differently to show that there are lots of ways to write a multi-threaded test. Because we have more code inside the thread to handle the confirmation exceptions, I made each thread similar. Instead of one thread incrementing the count while another thread decrements, both threads now increment. Also, instead of naming each thread <strong class="source-inline" lang="">t1</strong> and <strong class="source-inline" lang="">t2</strong>, the new test puts the threads in a vector. We also have a vector of <strong class="source-inline" lang="">ThreadConfirmException</strong> with each thread getting a reference to its <span class="No-Break" lang="">own </span><span class="No-Break" lang=""><strong class="source-inline" lang="">ThreadConfirmException</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">One thing to notice about this solution is that while each thread will fail its confirmation and both <strong class="source-inline" lang="">ThreadConfirmationException</strong> instances will have a failure set, only one failure will be reported. In the loop at the end of the test that goes through the <strong class="source-inline" lang="">threadExs</strong> collection, the moment one <strong class="source-inline" lang="">ThreadConfirmationException</strong> fails the check, an exception will be thrown. I thought about extending the testing library to support multiple failures but decided against the <span class="No-Break" lang="">added complexity.</span></p>
+			<p lang="en-GB">If you have a test <a id="_idIndexMarker553"/>with multiple threads, then they will likely be working with different sets of data. If there happens to be an error that causes multiple threads to fail in the same test run, then only one failure will be reported in the test application. Fixing that failure and running again may then report the next failure. It’s a little tedious to fix problems one after another but not a likely scenario that justifies the added complexity to the <span class="No-Break" lang="">testing library.</span></p>
+			<p lang="en-GB">The new test structure with two threads highlights the difficulty of creating reasonable macros that can hide all the thread confirmation handling. So far, all three versions of the test have been different. There doesn’t seem to be a common way to write multi-threaded tests that we would be able to wrap up in some macros. I think we’ll stick with what we have now – a <strong class="source-inline" lang="">ThreadConfirmException</strong> type that can be passed to a thread. The thread will need to catch the <strong class="source-inline" lang="">ConfirmException</strong> type and call <strong class="source-inline" lang="">setFailure</strong>. The main test thread can then check each <strong class="source-inline" lang="">ThreadConfirmException</strong>, which will throw if the failure was set. Before we move on, let’s change the confirmation inside the thread lambda so that it tests for a count not equal to <strong class="source-inline" lang="">200'001</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+                CONFIRM_THAT(count, NotEquals(200'001));</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">NotEquals</strong> confirmation will let the test <span class="No-Break" lang="">pass again.</span></p>
+			<p lang="en-GB">With the understanding you’ve gained from this section, you’ll be able to write tests that use multiple threads inside the test. You can continue to use the same <strong class="source-inline" lang="">CONFIRM</strong> and <strong class="source-inline" lang="">CONFIRM_THAT</strong> macros to verify the results. The next section will use multiple threads to log messages so that we can make sure that the logging library is thread-safe. You’ll also learn what it means for code to <span class="No-Break" lang="">be thread-safe.</span></p>
+			<h1 id="_idParaDest-141" lang="en-GB"><a id="_idTextAnchor155"/>Making the logging library thread-safe</h1>
+			<p lang="en-GB">We don’t know if a project that uses the<a id="_idIndexMarker554"/> logging library will be trying to log from multiple threads or a single thread. With an application, we’re in full control and can choose to use multiple threads or not. But a library, especially a logging library, often needs to be <em class="italic" lang="">thread-safe</em>. This means that the logging library needs to behave well when an application uses the library from multiple threads. Making code thread-safe adds some extra overhead to the code and is not needed if the library will only be used from a <span class="No-Break" lang="">single thread.</span></p>
+			<p lang="en-GB">What we need is a test that calls <strong class="source-inline" lang="">log</strong> from multiple threads that are all running at the same time. Let’s write a test with the code we have now and see what happens. We’re going to be using the logging project in this section and adding a new file to the <strong class="source-inline" lang="">tests</strong> folder called <strong class="source-inline" lang="">Thread.cpp</strong>. The project structure will look like this with the new <span class="No-Break" lang="">file added:</span></p>
+			<pre class="source-code" lang="en-GB">
+MereMemo project root folder
+    MereTDD folder
+        Test.h
+    MereMemo folder
+        Log.h
+        tests folder
+            main.cpp
+            Construction.cpp
+            LogTags.h
+            Tags.cpp
+            Thread.cpp
+            Util.cpp
+            Util.h</pre>
+			<p lang="en-GB">Inside the <strong class="source-inline" lang="">Thread.cpp</strong> file, let’s add a test that calls <strong class="source-inline" lang="">log</strong> from several threads, <span class="No-Break" lang="">like so:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include "../Log.h"
+#include "Util.h"
+#include &lt;MereTDD/Test.h&gt;
+#include &lt;thread&gt;
+TEST("log can be called from multiple threads")
+{
+    // We'll have 3 threads with 50 messages each.
+    std::vector&lt;std::string&gt; messages;
+    for (int i = 0; i &lt; 150; ++i)
+    {
+        std::string message = std::to_string(i);
+        message += " thread-safe message ";
+        message += Util::randomString();
+        messages.push_back(message);
+    }
+    std::vector&lt;std::thread&gt; threads;
+    for (int c = 0; c &lt; 3; ++c)
+    {
+        threads.emplace_back(
+            [c, &amp;messages]()
+        {
+            int indexStart = c * 50;
+            for (int i = 0; i &lt; 50; ++i)
+            {
+                MereMemo::log() &lt;&lt; messages[indexStart + i];
+            }
+        });
+    }
+    for (auto &amp; t : threads)
+    {
+        t.join();
+    }
+    for (auto const &amp; message: messages)
+    {
+        bool result = Util::isTextInFile(message,              "application.log");
+        CONFIRM_TRUE(result);
+    }
+}</pre>
+			<p lang="en-GB">This test does three things. First, it creates <strong class="source-inline" lang="">150</strong> messages. We’ll get the messages ready before we start the threads so that the threads will be able to call <strong class="source-inline" lang="">log</strong> as quickly as possible many times in <span class="No-Break" lang="">a loop.</span></p>
+			<p lang="en-GB">Once the messages are ready, the test starts <strong class="source-inline" lang="">3</strong> threads, and each thread will log part of the messages that <a id="_idIndexMarker555"/>have already been formatted. The first thread will log messages <strong class="source-inline" lang="">0</strong> to <strong class="source-inline" lang="">49</strong>. The second thread will log messages <strong class="source-inline" lang="">50</strong> to <strong class="source-inline" lang="">99</strong>. Finally, the third thread will log messages <strong class="source-inline" lang="">100</strong> to <strong class="source-inline" lang="">149</strong>. We don’t do any confirmations in <span class="No-Break" lang="">the threads.</span></p>
+			<p lang="en-GB">Once everything has been logged and the threads have been joined, then the test confirms that all <strong class="source-inline" lang="">150</strong> messages appear in the <span class="No-Break" lang="">log file.</span></p>
+			<p lang="en-GB">Building and running this will almost certainly fail. This type of test goes against one of the points that makes a good test, as explained in <a href="B18567_08.xhtml#_idTextAnchor074"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 8</em></span></a>, <em class="italic" lang="">What Makes A Good Test?</em> The reason this is not the best type of test is that the test is not completely reproducible. Each time the test application is run, you’ll get a slightly different result. You might even find that this test causes other tests <span class="No-Break" lang="">to fail!</span></p>
+			<p lang="en-GB">Even though we’re not basing the behavior of the test on random numbers, we’re using threads. And thread scheduling is unpredictable. The only way to make this test mostly reliable is to log many messages like we’re doing already. The test does everything it can to set the threads up for conflicts. This is why the messages are preformatted. I wanted the threads to immediately go into a loop of logging messages and not spend any extra time <span class="No-Break" lang="">formatting messages.</span></p>
+			<p lang="en-GB">When the test fails, it’s because the log file is jumbled. One portion of the log file looks like this for one of my <span class="No-Break" lang="">test runs:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">2022-08-16T04:54:54.635 100 thread-safe message 4049</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.635 100 thread-safe message 4049</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.635 0 thread-safe message 8866</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 101 thread-safe message 8271</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 1 thread-safe message 3205</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 102 thread-safe message 7514</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 51 thread-safe message 7405</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 2 thread-safe message 5723</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 52 thread-safe message 4468</strong>
+<strong class="bold" lang="">2022-08-16T04:54:54.637 52 thread-safe message 4468</strong></pre>
+			<p lang="en-GB">I removed the <strong class="source-inline" lang="">color</strong> and <strong class="source-inline" lang="">log_level</strong> tags so that you can see the messages better. The first thing you’ll notice is that some messages are repeated. Number <strong class="source-inline" lang="">100</strong> appears twice, and number <strong class="source-inline" lang="">50</strong> seems to be <span class="No-Break" lang="">missing completely.</span></p>
+			<p lang="en-GB">To be honest, I expected the log file to be even more jumbled than it is. The interleaving between message groups <strong class="source-inline" lang="">0-49</strong> and <strong class="source-inline" lang="">50-99</strong> and <strong class="source-inline" lang="">100-149</strong> is to be expected. We do have three threads running at the same time. For example, once message number <strong class="source-inline" lang="">51</strong> is logged, we should expect to have already seen <span class="No-Break" lang="">number </span><span class="No-Break" lang=""><strong class="source-inline" lang="">50</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">Let’s fix the logging code to get the test to pass. It still won’t be the best test but it will have a good chance of finding a bug if the logging library is <span class="No-Break" lang="">not thread-safe.</span></p>
+			<p lang="en-GB">The fix is simple: we <a id="_idIndexMarker556"/>need a mutex and then we need to lock the mutex. First, let’s include the <strong class="source-inline" lang="">mutex</strong> standard header at the top of <strong class="source-inline" lang="">Log.h</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include &lt;algorithm&gt;
+#include &lt;chrono&gt;
+#include &lt;ctime&gt;
+#include &lt;filesystem&gt;
+#include &lt;fstream&gt;
+#include &lt;iomanip&gt;
+#include &lt;map&gt;
+#include &lt;memory&gt;
+#include &lt;mutex&gt;
+#include &lt;ostream&gt;
+#include &lt;sstream&gt;
+#include &lt;string&gt;
+#include &lt;string_view&gt;
+#include &lt;vector&gt;</pre>
+			<p lang="en-GB">Then, we need a place to place a global mutex. Since the logging library is a single header file, we can’t declare a global variable without getting a linker error. We might be able to declare a global mutex as inline. This is a new feature in C++ that I haven’t used that lets you declare inline variables, just like how we can declare inline functions. I’m more comfortable with a function that uses a static variable. Add the following function to the top of <strong class="source-inline" lang="">Log.h</strong>, right after the opening namespace <span class="No-Break" lang="">of </span><span class="No-Break" lang=""><strong class="source-inline" lang="">MereMemo</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+inline std::mutex &amp; getLoggingMutex ()
+{
+    static std::mutex m;
+    return m;
+}</pre>
+			<p lang="en-GB">Now, we need to lock the mutex at the proper spot. At first, I added a lock to the <strong class="source-inline" lang="">log</strong> function, but that had no effect. This is because the <strong class="source-inline" lang="">log</strong> function returns a <strong class="source-inline" lang="">LogStream</strong> without actually doing any logging. So, the <strong class="source-inline" lang="">log</strong> function obtained the lock and then released the lock before any logging happened. The logging is done in the <strong class="source-inline" lang="">LogStream</strong> destructor, so that’s where we need to put <span class="No-Break" lang="">the lock:</span></p>
+			<pre class="source-code" lang="en-GB">
+    ~LogStream ()
+    {
+        if (not mProceed)
+        {
+            return;
+        }
+        const std::lock_guard&lt;std::mutex&gt;               lock(getLoggingMutex());
+        auto &amp; outputs = getOutputs();
+        for (auto const &amp; output: outputs)
+        {
+            output-&gt;sendLine(this-&gt;str());
+        }
+    }</pre>
+			<p lang="en-GB">The lock tries to obtain the<a id="_idIndexMarker557"/> mutex and will block if another thread already owns the mutex. Only one thread at a time can proceed after the lock and the lock is released after the text is sent to all <span class="No-Break" lang="">the outputs.</span></p>
+			<p lang="en-GB">If we build and run, the threading problem will be fixed. However, when I ran the test application, one of the tests failed. At first, I thought there was still a problem with the threads, but the failure was in another test. This is the test <span class="No-Break" lang="">that failed:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST("Overridden default tag not used to filter messages")
+{
+    MereTDD::SetupAndTeardown&lt;TempFilterClause&gt; filter;
+    MereMemo::addFilterLiteral(filter.id(), info);
+    std::string message = "message ";
+    message += Util::randomString();
+    MereMemo::log(debug) &lt;&lt; message;
+    bool result = Util::isTextInFile(message,          "application.log");
+    CONFIRM_FALSE(result);
+}</pre>
+			<p lang="en-GB">This test has nothing to do with the multiple thread test. So, why did it fail? Well, the problem is that this test is confirming that a particular message does not appear in the log file. But the message is just the word <strong class="source-inline" lang="">"message "</strong>, followed by a random number string. We just added an extra 150 logged messages, which all have the same text followed by a random <span class="No-Break" lang="">number string.</span></p>
+			<p lang="en-GB">We have a problem with the tests themselves. The tests can sometimes fail due to random numbers. The problem wasn’t noticed when we had a few log messages but it’s more noticeable now that we have many more chances for duplicate <span class="No-Break" lang="">random numbers.</span></p>
+			<p lang="en-GB">We could either increase the size of the random number strings added to each log message or make the tests more specific so that they all use a different base <span class="No-Break" lang="">message string.</span></p>
+			<p lang="en-GB">At this point, you might be <a id="_idIndexMarker558"/>wondering why my test has a simple base message when we’ve been using unique messages in each test ever since the logging library was first created in <a href="B18567_09.xhtml#_idTextAnchor085"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 9</em></span></a>, <em class="italic" lang="">Using Tests</em>. That’s because the code starting in <a href="B18567_09.xhtml#_idTextAnchor085"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 9</em></span></a>, <em class="italic" lang="">Using Tests</em>, originally did have simple, common log messages. I could have left those common messages as-is and waited until now to have you go back and change all of them. However, I edited the chapters to fix the problem from the beginning. It seems like a waste to go through all the tests now just to change a string. Therefore, I added an explanation to <a href="B18567_09.xhtml#_idTextAnchor085"><span class="No-Break" lang=""><em class="italic" lang="">Chapter 9</em></span></a>, <em class="italic" lang="">Using Tests</em>. We don’t need to change any of the test messages now because they’ve already <span class="No-Break" lang="">been fixed.</span></p>
+			<p lang="en-GB">Okay, back to the threading – the new test passes now and the sample from the log file looks <span class="No-Break" lang="">much better:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">2022-08-16T06:20:36.807 0 thread-safe message 6269</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.807 50 thread-safe message 1809</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.807 100 thread-safe message 6297</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.808 1 thread-safe message 848</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.808 51 thread-safe message 4103</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.808 101 thread-safe message 5570</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.808 2 thread-safe message 6156</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.809 102 thread-safe message 4213</strong>
+<strong class="bold" lang="">2022-08-16T06:20:36.809 3 thread-safe message 6646</strong></pre>
+			<p lang="en-GB">Again, this sample has been modified to remove the <strong class="source-inline" lang="">color</strong> and <strong class="source-inline" lang="">log_level</strong> tags. This change makes each line shorter so that you can see the messages better. The messages within each thread are ordered, even though the messages are mixed between threads – that is, message number <strong class="source-inline" lang="">0</strong> is followed at some point by message number <strong class="source-inline" lang="">1</strong> and then by number <strong class="source-inline" lang="">2</strong>; message number <strong class="source-inline" lang="">50</strong> is followed later by number <strong class="source-inline" lang="">51</strong>, and message number <strong class="source-inline" lang="">100</strong> is followed by number <strong class="source-inline" lang="">101</strong>. Each following numbered message might not immediately follow the previous message. This sample looks better because there are no duplicates and no <span class="No-Break" lang="">missing messages.</span></p>
+			<p lang="en-GB">One final thought is about the thread-safety of the logging library. We tested that multiple threads <a id="_idIndexMarker559"/>can all safely call <strong class="source-inline" lang="">log</strong> without worrying about problems. But we didn’t test if multiple threads can manage default tags or filtering, or add new outputs. The logging library will likely need more work to be fully thread-safe. It will work for our purposes <span class="No-Break" lang="">for now.</span></p>
+			<p lang="en-GB">Now that the logging library is mostly thread-safe, the next section will go back to the <strong class="source-inline" lang="">SimpleService</strong> project and begin exploring how to test code that uses <span class="No-Break" lang="">multiple threads.</span></p>
+			<h1 id="_idParaDest-142" lang="en-GB"><a id="_idTextAnchor156"/>The need to justify multiple threads</h1>
+			<p lang="en-GB">So far in this chapter, you’ve<a id="_idIndexMarker560"/> learned how to write tests that use multiple threads and how to use these extra threads to test the logging library. The logging library doesn’t use multiple threads itself, but we needed to make sure that the logging library is safe to use with <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">The remainder of this chapter will provide some guidance on how to test code that does use multiple threads. To test multi-threaded code, we need some code that uses multiple threads. For this, we’ll use the <strong class="source-inline" lang="">SimpleService</strong> project from the <span class="No-Break" lang="">previous chapter.</span></p>
+			<p lang="en-GB">We need to modify the simple service so that it uses multiple threads. Right now, the simple service is an example of a greeting service that responds to a greeting request with a reply based on the user making the request being identified. There’s not much of a need for multiple threads in a greeting service. We’re going to need <span class="No-Break" lang="">something different.</span></p>
+			<p lang="en-GB">This brings us to the first guidance: we need to make sure there is a valid need for multiple threads before we try to add multiple threads. Writing multi-threaded code is hard and should be avoided if only a single thread is needed. If you only need a single thread, then make sure that you follow the advice from the previous section and make your code thread-safe if it will be used by <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">What you want to do is write as much of your code as possible so that it’s single-threaded. If you can identify a particular way to calculate a result that only needs some input data to arrive at an output, then make that a single-threaded calculation if possible. If the amount of input data is large and can be divided and calculated separately, then break up the input and pass smaller pieces to your calculation. Keep the calculation single-threaded and focused on working with the input provided. Then, you can create multiple threads where each thread is given a portion of the input data to calculate. This will separate your multi-threaded code from <span class="No-Break" lang="">your calculations.</span></p>
+			<p lang="en-GB">Isolating your single-threaded code will let you design and test the code without you having to worry about thread management. Sure, you might need to make sure the code is thread-safe, but that’s easier when thread-safety is all you need to <span class="No-Break" lang="">worry about.</span></p>
+			<p lang="en-GB">Testing multiple<a id="_idIndexMarker561"/> threads is harder because of the randomness of the thread scheduling. If possible, try to avoid clunky methods such as <em class="italic" lang="">sleeping</em> to coordinate tests. You want to avoid putting actual code threads to sleep to coordinate the order between threads. When a thread goes to sleep, it stops running for a while, depending on how long of a delay is specified in the sleep call. Other threads that are not sleeping can then be scheduled <span class="No-Break" lang="">to run.</span></p>
+			<p lang="en-GB">We’ll design the code in this chapter to let the test control the thread’s synchronization so that we can remove the randomness and make the tests predictable. Instead of starting this section with a test, let’s look at a modified service that has a reason to use multiple threads. The modified <strong class="source-inline" lang="">handleRequest</strong> method looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+std::string SimpleService::Service::handleRequest (
+    std::string const &amp; user,
+    std::string const &amp; path,
+    std::string const &amp; request)
+{
+    MereMemo::log(debug, User(user), LogPath(path))
+        &lt;&lt; "Received: " &lt;&lt; Request(request);
+    std::string response;
+    if (request == "Calculate")
+    {
+        response = "token";
+    }
+    if (request == "Status")
+    {
+        response = "result";
+    }
+    else
+    {
+        response = "Unrecognized request.";
+    }
+    MereMemo::log(debug, User(user), LogPath(path))
+        &lt;&lt; "Sending: " &lt;&lt; Response(response);
+    return response;
+}</pre>
+			<p lang="en-GB">When following TDD, you’ll normally want to start with tests first. So, why am I showing you a modified service first? Because our goal is to test multi-threaded code. In your projects, you should avoid the desire to use some technology without having a good reason. Our reason<a id="_idIndexMarker562"/> is that we need an example to learn from. So, we’re starting with a backward need to <span class="No-Break" lang="">use multi-threading.</span></p>
+			<p lang="en-GB">I tried to think of a good reason for a greeting service to use multiple threads and nothing came to mind. So, we’re going to change the service to something a little more complicated; I want to explain this new idea before we begin <span class="No-Break" lang="">writing tests.</span></p>
+			<p lang="en-GB">The new service is still as simple as I can make it. We’ll continue ignoring all the networking and message routing. We’ll need to change the request and response types to structs and we’ll continue to ignore serializing the data structs for transmission to and from <span class="No-Break" lang="">the service.</span></p>
+			<p lang="en-GB">The new service will simulate the calculation of a difficult problem. One valid reason to create a new thread is to let the new thread perform some work while the original thread continues what it was doing. The idea of the new service is that a <strong class="source-inline" lang="">Calculate</strong> request can take a long time to complete and we don’t want the caller to time out while waiting for the result. So, the service will create a new thread to perform the calculation and immediately return a token to the caller. The caller can use this token to call back into the service with a different <strong class="source-inline" lang="">Status</strong> request, which will check on the progress of the calculation that was just begun. If the calculation is not done yet, then the response to the <strong class="source-inline" lang="">Status</strong> request will let the caller know approximately how much has been completed. If the calculation is done, then the response will contain <span class="No-Break" lang="">the answer.</span></p>
+			<p lang="en-GB">We now have a justification for multiple threads and can write some tests. Let’s take care of an unrelated test that should have been added already. We want to make sure that anybody calling the service with an unrecognized request will get an unrecognized response. Put the following test in the <strong class="source-inline" lang="">Message.cpp</strong> file in the <strong class="source-inline" lang="">tests</strong> folder of the <span class="No-Break" lang=""><strong class="source-inline" lang="">SimpleService</strong></span><span class="No-Break" lang=""> project:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Unrecognized request is handled properly", "Service 1")
+{
+    std::string user = "123";
+    std::string path = "";
+    std::string request = "Hello";
+    std::string expectedResponse = "Unrecognized request.";
+    std::string response = gService1.service().handleRequest(
+        user, path, request);
+    CONFIRM_THAT(response, Equals(expectedResponse));
+}</pre>
+			<p lang="en-GB">I put this test at the top of <strong class="source-inline" lang="">Message.cpp</strong>. All it does is send the previous greeting request but with an unrecognized <span class="No-Break" lang="">expected response.</span></p>
+			<p lang="en-GB">Let’s also change the name<a id="_idIndexMarker563"/> of the test suite to <strong class="source-inline" lang="">"Calculation Service"</strong> like this <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">SetupTeardown.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+MereTDD::TestSuiteSetupAndTeardown&lt;ServiceSetup&gt;
+gService1("Calculation Service", "Service 1");</pre>
+			<p lang="en-GB">Now, let’s remove the greeting test and add the following simple test, which makes sure we get something other than the <span class="No-Break" lang="">unrecognized response:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Calculate request can be sent and recognized", "Service 1")
+{
+    std::string user = "123";
+    std::string path = "";
+    std::string request = "Calculate";
+    std::string unexpectedResponse = "Unrecognized request.";
+    std::string response = gService1.service().handleRequest(
+        user, path, request);
+    CONFIRM_THAT(response, NotEquals(unexpectedResponse));
+}</pre>
+			<p lang="en-GB">This test is the opposite of the unrecognized test and makes sure that the response is something other than unrecognized. Normally, it’s better to confirm that a result matches what you expect to happen instead of confirming that a result is not what you don’t expect. A double negative is not only harder to think about, but can lead to problems because it’s not possible to catch all the ways something can go wrong. By confirming what you want to happen, you can eliminate all the possible error conditions, which are too many to <span class="No-Break" lang="">catch individually.</span></p>
+			<p lang="en-GB">This test is a little<a id="_idIndexMarker564"/> different, though. We’re not interested in the response. The test only intends to confirm that the request was recognized. Confirming that the response is not unrecognized is appropriate, even though it seems similar to the double negative trap we <span class="No-Break" lang="">just described.</span></p>
+			<p lang="en-GB">Building and running this code shows that the unrecognized test passes but the <strong class="source-inline" lang="">Calculate</strong> <span class="No-Break" lang="">request fails:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">Running 1 test suites</strong>
+<strong class="bold" lang="">--------------- Suite: Service 1</strong>
+<strong class="bold" lang="">------- Setup: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Unrecognized request is handled properly</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Calculate request can be sent and recognized</strong>
+<strong class="bold" lang="">Failed confirm on line 30</strong>
+<strong class="bold" lang="">    Expected: not Unrecognized request.</strong>
+<strong class="bold" lang="">    Actual  : Unrecognized request.</strong>
+<strong class="bold" lang="">------- Teardown: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">-----------------------------------</strong>
+<strong class="bold" lang="">Tests passed: 3</strong>
+<strong class="bold" lang="">Tests failed: 1</strong></pre>
+			<p lang="en-GB">It seems that we’re getting an unrecognized response for a request that should be valid. This is the value of adding simple tests at the beginning of a project. The tests help catch simple errors right away. The problem is in the <strong class="source-inline" lang="">handleRequest</strong> method. I added the second check for a valid request by copying the first check and forgot to change the <strong class="source-inline" lang="">if</strong> statement to an <strong class="source-inline" lang="">else if</strong> statement. The fix for this is <span class="No-Break" lang="">as follows:</span></p>
+			<pre class="source-code" lang="en-GB">
+    if (request == "Calculate")
+    {
+        response = "token";
+    }
+    else if (request == "Status")
+    {
+        response = "result";
+    }
+    else
+    {
+        response = "Unrecognized request.";
+    }</pre>
+			<p lang="en-GB">To continue further, we’re going to send and receive more than strings. When we send a <strong class="source-inline" lang="">Calculate</strong> request, we should get back a token value that we can pass to the <strong class="source-inline" lang="">Status</strong> request. The <strong class="source-inline" lang="">Status</strong> response should then contain either the answer or an estimate of how much progress has been <a id="_idIndexMarker565"/>made. Let’s take this one step at a time and define the <strong class="source-inline" lang="">Calculate</strong> request and response structures. Add the following two struct definitions to the top of <strong class="source-inline" lang="">Service.h</strong> inside the <span class="No-Break" lang=""><strong class="source-inline" lang="">SimpleService</strong></span><span class="No-Break" lang=""> namespace:</span></p>
+			<pre class="source-code" lang="en-GB">
+struct CalculateRequest
+{
+    int mSeed;
+};
+struct CalculateResponse
+{
+    std::string mToken;
+};</pre>
+			<p lang="en-GB">This will let us pass some initial value to be calculated; in return, we will get a token that we can use to eventually get the answer. But we have a problem. If the <strong class="source-inline" lang="">Calculate</strong> request is changed to return a struct, then that will break the existing test, which expects a string. We should change the tests so that they use the structs, but that leads to another problem: most of the time, we need to return the correct response struct. And we need to return an error response for <span class="No-Break" lang="">error cases.</span></p>
+			<p lang="en-GB">What we need is a response that can represent both a good response and an error response. Since we’re going to have a response that can serve multiple purposes, why not let it also handle a struct for the <strong class="source-inline" lang="">Status</strong> response? This means we’ll have a single response type that can be either an error response, a calculate response, or a status response. And since we have a multi-purpose response type, why not create a multi-purpose request type? Let’s change <span class="No-Break" lang="">the tests.</span></p>
+			<p lang="en-GB">We’re going to use <strong class="source-inline" lang="">std::variant</strong> to hold the different types of requests and responses. We can remove the test that sent a request string that was not valid. We can still get an invalid request but only with mismatched service versions between the caller and the service. That’s a little more involved, so we’ll ignore the possibility that a service can be called with a different idea of what requests are available than the service knows about. If you’re writing a real service, then this is a possibility that needs to be addressed and tested. You’ll probably want to use something different than a variant too. A good choice would be something such as Google’s <em class="italic" lang="">Protocol Buffers</em>, where the service would accept <a id="_idIndexMarker566"/>Protocol Buffer messages. While using Protocol Buffers is a better choice than simple structs, the design is also a lot more complicated and would make this explanation <span class="No-Break" lang="">much longer.</span></p>
+			<p lang="en-GB">We’ll have a single test in <strong class="source-inline" lang="">Message.cpp</strong> that will look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Calculate request can be sent", "Service 1")
+{
+    std::string user = "123";
+    std::string path = "";
+    SimpleService::RequestVar request =
+        SimpleService::CalculateRequest {
+            .mSeed = 5
+        };
+    std::string emptyResponse = "";
+    std::string response = gService1.service().handleRequest(
+        user, path, request);
+    CONFIRM_THAT(response, NotEquals(emptyResponse));
+}</pre>
+			<p lang="en-GB">This test focuses on the request type first and leaves the response type as a string. We’ll make the changes one step at a time. This is especially good advice when working with <strong class="source-inline" lang="">std::variant</strong> because it can be challenging if you’re not familiar with variants. We’ll have a variant type called <strong class="source-inline" lang="">RequestVar</strong> that can be initialized with a specific request type. We’re initializing the request with a <strong class="source-inline" lang="">CalculateRequest</strong> and using the <em class="italic" lang="">designated initializer</em> syntax to set the <strong class="source-inline" lang="">mSeed</strong> value. The designated initializer syntax is fairly new to C++. It lets us set data member values based on the name by putting a dot in front of the data <span class="No-Break" lang="">member’s name.</span></p>
+			<p lang="en-GB">Now, let’s define the request types <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Service.h</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+#ifndef SIMPLESERVICE_SERVICE_H
+#define SIMPLESERVICE_SERVICE_H
+#include &lt;string&gt;
+#include &lt;variant&gt;
+namespace SimpleService
+{
+struct CalculateRequest
+{
+    int mSeed;
+};
+struct StatusRequest
+{
+    std::string mToken;
+};
+using RequestVar = std::variant&lt;
+    CalculateRequest,
+    StatusRequest
+    &gt;;</pre>
+			<p lang="en-GB">Note that we need to include the standard <strong class="source-inline" lang="">variant</strong> header file. The <strong class="source-inline" lang="">RequestVar</strong> type can now only be either a <strong class="source-inline" lang="">CalculateRequest</strong> or a <strong class="source-inline" lang="">StatusRequest</strong>. We need to make one more change in <strong class="source-inline" lang="">Service.h</strong> to the <strong class="source-inline" lang="">handleRequest</strong> method in the <span class="No-Break" lang=""><strong class="source-inline" lang="">Service</strong></span><span class="No-Break" lang=""> class:</span></p>
+			<pre class="source-code" lang="en-GB">
+class Service
+{
+public:
+    void start ();
+    std::string handleRequest (std::string const &amp; user,
+        std::string const &amp; path,
+        RequestVar const &amp; request);
+};</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">Service.cpp</strong> file <a id="_idIndexMarker567"/>needs to be changed so that it updates the <strong class="source-inline" lang="">handleRequest</strong> method, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+std::string SimpleService::Service::handleRequest (
+    std::string const &amp; user,
+    std::string const &amp; path,
+    RequestVar const &amp; request)
+{
+    std::string response;
+    if (auto const * req = std::get_       if&lt;CalculateRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Calculate request for: "
+            &lt;&lt; std::to_string(req-&gt;mSeed);
+        response = "token";
+    }
+    else if (auto const * req = std::get_            if&lt;StatusRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Status request for: "
+            &lt;&lt; req-&gt;mToken;
+        response = "result";
+    }
+    else
+    {
+        response = "Unrecognized request.";
+    }
+    MereMemo::log(debug, User(user), LogPath(path))
+        &lt;&lt; "Sending: " &lt;&lt; Response(response);
+    return response;
+}</pre>
+			<p lang="en-GB">The updated <strong class="source-inline" lang="">handleRequest</strong> method continues to check for an unknown request type. All the responses are strings that will need to change. We’re not looking at the seed or token values yet, but <a id="_idIndexMarker568"/>we have enough that can be built <span class="No-Break" lang="">and tested.</span></p>
+			<p lang="en-GB">Now that the single test passes, in the next section, we will look at the responses and use structs instead of <span class="No-Break" lang="">response strings.</span></p>
+			<h1 id="_idParaDest-143" lang="en-GB"><a id="_idTextAnchor157"/>Changing the service return type</h1>
+			<p lang="en-GB">We’ll be making a similar change in<a id="_idIndexMarker569"/> this section to move away from strings and use a struct in the service request handling. The previous section changed the service request type; this section will change the service return type. We need to make these changes so that we can get the service to a level of functionality where it can support the need for an <span class="No-Break" lang="">additional thread.</span></p>
+			<p lang="en-GB">The <strong class="source-inline" lang="">SimpleService</strong> project that we’re using started as a greeting service and I could not think of any reason for such a simple service to need another thread. We started adapting the service to a calculation service in the previous section; now, we need to modify the return types that the service returns when <span class="No-Break" lang="">handling requests.</span></p>
+			<p lang="en-GB">First, let’s define the return <a id="_idIndexMarker570"/>type structs in <strong class="source-inline" lang="">Service.h</strong>, which come right after the request types. Add the following code <span class="No-Break" lang="">to </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Service.h</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+struct ErrorResponse
+{
+    std::string mReason;
+};
+struct CalculateResponse
+{
+    std::string mToken;
+};
+struct StatusResponse
+{
+    bool mComplete;
+    int mProgress;
+    int mResult;
+};
+using ResponseVar = std::variant&lt;
+    ErrorResponse,
+    CalculateResponse,
+    StatusResponse
+    &gt;;</pre>
+			<p lang="en-GB">These structs and the variant are following the same pattern that was used for the requests. One small difference is that we now have an <strong class="source-inline" lang="">ErrorResponse</strong> type, which will be returned for any errors. We can modify the test in <strong class="source-inline" lang="">Message.cpp</strong> so that it looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Calculate request can be sent", "Service 1")
+{
+    std::string user = "123";
+    std::string path = "";
+    SimpleService::RequestVar request =
+        SimpleService::CalculateRequest {
+            .mSeed = 5
+        };
+    auto const responseVar = gService1.service().handleRequest(
+        user, path, request);
+    auto const response =
+        std::get_if&lt;SimpleService::CalculateResponse&gt;(&amp;responseVar);
+    CONFIRM_TRUE(response != nullptr);
+}</pre>
+			<p lang="en-GB">This test will call the service as it did previously with a calculate request; the response that comes back is tested to see if it is a <span class="No-Break" lang="">calculate response.</span></p>
+			<p lang="en-GB">For the code to compile, we<a id="_idIndexMarker571"/> need to change the <strong class="source-inline" lang="">handleRequest</strong> declaration in <strong class="source-inline" lang="">Service.h</strong> so that it returns the new type, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+class Service
+{
+public:
+    void start ();
+    
+    ResponseVar handleRequest (std::string const &amp; user,
+        std::string const &amp; path,
+        RequestVar const &amp; request);
+};</pre>
+			<p lang="en-GB">Then, we need to change the implementation of <strong class="source-inline" lang="">handleRequest</strong> <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Service.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+SimpleService::ResponseVar SimpleService::Service::handleRequest (
+    std::string const &amp; user,
+    std::string const &amp; path,
+    RequestVar const &amp; request)
+{
+    ResponseVar response;
+    if (auto const * req = std::get_       if&lt;CalculateRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Calculate request for: "
+            &lt;&lt; std::to_string(req-&gt;mSeed);
+        response = SimpleService::CalculateResponse {
+            .mToken = "token"
+        };
+    }
+    else if (auto const * req = std::get_            if&lt;StatusRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Status request for: "
+            &lt;&lt; req-&gt;mToken;
+        response = SimpleService::StatusResponse {
+            .mComplete = false,
+            .mProgress = 25,
+            .mResult = 0
+        };
+    }
+    else
+    {
+        response = SimpleService::ErrorResponse {
+            .mReason = "Unrecognized request."
+        };
+    }
+    return response;
+}</pre>
+			<p lang="en-GB">The code is getting a little more complicated. I removed the log at the end, which was used to log the response before returning. We could put the log back in but that would require the ability to convert a <strong class="source-inline" lang="">ResponseVar</strong> into a string. Alternatively, we would need to log the response in multiple places like the code does for the request. That’s a detail that we <span class="No-Break" lang="">can skip.</span></p>
+			<p lang="en-GB">The new <strong class="source-inline" lang="">handleRequest</strong> method does almost the same things it used to do except that it now initializes a <strong class="source-inline" lang="">ResponseVar</strong> type instead of returning a string. This allows us to return different types with<a id="_idIndexMarker572"/> more detailed information than before when we were returning a string for both the requests and <span class="No-Break" lang="">the error.</span></p>
+			<p lang="en-GB">To add a test for an unrecognized request, we would need to add a new request type to <strong class="source-inline" lang="">RequestVar</strong> but ignore the new request type in the <strong class="source-inline" lang="">if</strong> statements inside the <strong class="source-inline" lang="">handleRequest</strong> method. We’re going to skip that test too because we really should be using something other than <span class="No-Break" lang="">a </span><span class="No-Break" lang=""><strong class="source-inline" lang="">std::variant</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">The only reason we’re using <strong class="source-inline" lang="">std::variant</strong> for this example is to avoid extra complexity. We’re trying to get the code ready to support <span class="No-Break" lang="">another thread.</span></p>
+			<p lang="en-GB">In the next section, we will add a test that uses both request types. The first request will begin a calculation, while the <a id="_idIndexMarker573"/>second request will check the status of the calculation and get the result when the calculation <span class="No-Break" lang="">is complete.</span></p>
+			<h1 id="_idParaDest-144" lang="en-GB"><a id="_idTextAnchor158"/>Making multiple service calls</h1>
+			<p lang="en-GB">If you’re considering using<a id="_idIndexMarker574"/> multiple threads to speed up a calculation, then I recommend that you get the code tested and working with a single thread before taking on the additional complexity of <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">For the service we’re working on, the reason to add a second thread is not to increase the speed of anything. We need to avoid a timeout for a calculation that might take a long time. The additional thread we’re going to add is not designed to make the calculation any faster. Once we get the calculation working with one additional thread, we can consider adding more threads to speed up <span class="No-Break" lang="">the calculation.</span></p>
+			<p lang="en-GB">The need to create a thread to do some work while the original thread continues with something else is common. This is not an optimization that should be done later. This is part of the design and the additional thread should be included from the <span class="No-Break" lang="">very beginning.</span></p>
+			<p lang="en-GB">Let’s begin by adding a new test to <strong class="source-inline" lang="">Message.cpp</strong> that looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Status request generates result", "Service 1")
+{
+    std::string user = "123";
+    std::string path = "";
+    SimpleService::RequestVar calcRequest =
+        SimpleService::CalculateRequest {
+            .mSeed = 5
+        };
+    auto responseVar = gService1.service().handleRequest(
+        user, path, calcRequest);
+    auto const calcResponse =
+        std::get_if&lt;SimpleService::CalculateResponse&gt;        (&amp;responseVar);
+    CONFIRM_TRUE(calcResponse != nullptr);
+    SimpleService::RequestVar statusRequest =
+        SimpleService::StatusRequest {
+            .mToken = calcResponse-&gt;mToken
+        };
+    int result {0};
+    for (int i = 0; i &lt; 5; ++i)
+    {
+        responseVar = gService1.service().handleRequest(
+            user, path, statusRequest);
+        auto const statusResponse =
+            std::get_if&lt;SimpleService::StatusResponse&gt;            (&amp;responseVar);
+        CONFIRM_TRUE(statusResponse != nullptr);
+        if (statusResponse-&gt;mComplete)
+        {
+            result = statusResponse-&gt;mResult;
+            break;
+        }
+    }
+    CONFIRM_THAT(result, Equals(50));
+}</pre>
+			<p lang="en-GB">All the code is already in place <a id="_idIndexMarker575"/>for this new test to compile. Now, we can run the tests to see what happens. The test will fail, <span class="No-Break" lang="">as follows:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">Running 1 test suites</strong>
+<strong class="bold" lang="">--------------- Suite: Service 1</strong>
+<strong class="bold" lang="">------- Setup: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Calculate request can be sent</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Status request generates result</strong>
+<strong class="bold" lang="">Failed confirm on line 62</strong>
+<strong class="bold" lang="">    Expected: 50</strong>
+<strong class="bold" lang="">    Actual  : 0</strong>
+<strong class="bold" lang="">------- Teardown: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">-----------------------------------</strong>
+<strong class="bold" lang="">Tests passed: 3</strong>
+<strong class="bold" lang="">Tests failed: 1</strong></pre>
+			<p lang="en-GB">What does the test do? First, it creates a calculate request l and gets back a hardcoded token value. There is no calculation for when the service begins yet, so when we make a status request with the token, the service responds with a hardcoded response that says the calculation is not done yet. The test is looking for a status response that says the calculation is complete. The test tries making a status request five times before giving up, which causes the confirmation at the end of the test to fail because we didn’t get the expected result. Note that even trying multiple times is not the best way to proceed. Threads are unpredictable and <a id="_idIndexMarker576"/>your computer may make all five attempts before the service can complete the request. You might need to increase the number of attempts if your test continues to fail or wait for a reasonable amount of time. Our calculation will eventually multiply the seed by <strong class="source-inline" lang="">10</strong>. So, when we give an initial seed of <strong class="source-inline" lang="">5</strong>, we should expect a final result <span class="No-Break" lang="">of </span><span class="No-Break" lang=""><strong class="source-inline" lang="">50</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">We need to implement the calculation and status request handling in the service so that we can use a thread to get the test to pass. The first thing we need to do is include <strong class="source-inline" lang="">mutex</strong>, <strong class="source-inline" lang="">thread</strong>, and <strong class="source-inline" lang="">vector</strong> at the top of <strong class="source-inline" lang="">Service.cpp</strong>. We also need to add an unnamed namespace, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include "Service.h"
+#include "LogTags.h"
+#include &lt;MereMemo/Log.h&gt;
+#include &lt;mutex&gt;
+#include &lt;thread&gt;
+#include &lt;vector&gt;
+namespace
+{
+}</pre>
+			<p lang="en-GB">We’re going to need some locking so that we don’t try to read the calculation status while the status is being updated by a thread. To do the synchronization, we’ll use a mutex and a lock, as we did in the logging library. There are other designs you might want to explore, such as locking data for different calculation requests separately. We’re going to use a simple approach and have a single lock for everything. Add the following function inside the <span class="No-Break" lang="">unnamed namespace:</span></p>
+			<pre class="source-code" lang="en-GB">
+    std::mutex &amp; getCalcMutex ()
+    {
+        static std::mutex m;
+        return m;
+    }</pre>
+			<p lang="en-GB">We need something to keep track of the completion status, the progress, and the result for each calculation request. We’ll create a class to hold this information called <strong class="source-inline" lang="">CalcRecord</strong> inside the <a id="_idIndexMarker577"/>unnamed namespace, right after the <strong class="source-inline" lang="">getCalcMutex</strong> function, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+    class CalcRecord
+    {
+    public:
+        CalcRecord ()
+        { }
+        CalcRecord (CalcRecord const &amp; src)
+        {
+            const std::lock_guard&lt;std::mutex&gt;                   lock(getCalcMutex());
+            mComplete = src.mComplete;
+            mProgress = src.mProgress;
+            mResult = src.mResult;
+        }
+        void getData (bool &amp; complete, int &amp; progress, int &amp;                      result)
+        {
+            const std::lock_guard&lt;std::mutex&gt;                   lock(getCalcMutex());
+            complete = mComplete;
+            progress = mProgress;
+            result = mResult;
+        }
+        void setData (bool complete, int progress, int result)
+        {
+            const std::lock_guard&lt;std::mutex&gt;                   lock(getCalcMutex());
+            mComplete = complete;
+            mProgress = progress;
+            mResult = result;
+        }
+        CalcRecord &amp;
+        operator = (CalcRecord const &amp; rhs) = delete;
+    private:
+        bool mComplete {false};
+        int mProgress {0};
+        int mResult {0};
+    };</pre>
+			<p lang="en-GB">It looks like there’s a lot more to this class, but it’s fairly simple. The default constructor doesn’t need to do anything because the data members already define their default values. The only reason we need a default constructor is that we also have a copy constructor. And the only reason we need a copy constructor is so that we can lock the mutex before copying the <span class="No-Break" lang="">data members.</span></p>
+			<p lang="en-GB">Then, we have a method to get the data members all at once and another method to set the data members. Both the <a id="_idIndexMarker578"/>getter and the setter need to acquire the lock <span class="No-Break" lang="">before proceeding.</span></p>
+			<p lang="en-GB">There should be no need to assign one <strong class="source-inline" lang="">CalcRecord</strong> to another, so the assignment operator has <span class="No-Break" lang="">been deleted.</span></p>
+			<p lang="en-GB">The last thing we need in the unnamed namespace is a vector of <strong class="source-inline" lang="">CalcRecord</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+    std::vector&lt;CalcRecord&gt; calculations;</pre>
+			<p lang="en-GB">We’re going to add a <strong class="source-inline" lang="">CalcRecord</strong> to the <strong class="source-inline" lang="">calculations</strong> collection every time a calculation request is made. A real service would want to clean up or reuse <span class="No-Break" lang=""><strong class="source-inline" lang="">CalcRecord</strong></span><span class="No-Break" lang=""> entries.</span></p>
+			<p lang="en-GB">We need to modify the request handling in <strong class="source-inline" lang="">Service.cpp</strong> so that a thread gets created to use a new <strong class="source-inline" lang="">CalcRecord</strong> every time we get a calculation request, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+    if (auto const * req = std::get_       if&lt;CalculateRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Calculate request for: "
+            &lt;&lt; std::to_string(req-&gt;mSeed);
+        calculations.emplace_back();
+        int calcIndex = calculations.size() - 1;
+        std::thread calcThread([calcIndex] ()
+        {
+            calculations[calcIndex].setData(true, 100, 50);
+        });
+        calcThread.detach();
+        response = SimpleService::CalculateResponse {
+            .mToken = std::to_string(calcIndex)
+        };
+    }</pre>
+			<p lang="en-GB">What happens when we get a calculation request? First, we add a new <strong class="source-inline" lang="">CalcRecord</strong> to the end of the <strong class="source-inline" lang="">calculations</strong> vector. We’ll use the index of <strong class="source-inline" lang="">CalcRecord</strong> as the token that gets returned in the response. This is the simplest design I could think of to identify a calculation request. A <a id="_idIndexMarker579"/>real service would want to use a more secure token. The request handler then starts a thread to do the calculation and detaches from <span class="No-Break" lang="">the thread.</span></p>
+			<p lang="en-GB">Most threading code that you’ll write will create a thread and then join the thread. It’s not very common to create a thread and then detach from the thread. Alternatively, you can use a pool of threads when you want to do some work and not worry about joining. The reason for detaching is that I wanted the most simple example without bringing in <span class="No-Break" lang="">thread pools.</span></p>
+			<p lang="en-GB">The thread itself is very simple because it immediately sets <strong class="source-inline" lang="">CalcRecord</strong> to complete with a progress of <strong class="source-inline" lang="">100</strong> and a result <span class="No-Break" lang="">of </span><span class="No-Break" lang=""><strong class="source-inline" lang="">50</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">We can build and run the test application now, but we will get the same failure we did previously. That’s because the status request handling still returns a hardcoded response. We need to modify the request handler like this for the <span class="No-Break" lang="">status request:</span></p>
+			<pre class="source-code" lang="en-GB">
+    else if (auto const * req = std::get_            if&lt;StatusRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Status request for: "
+            &lt;&lt; req-&gt;mToken;
+        int calcIndex = std::stoi(req-&gt;mToken);
+        bool complete;
+        int progress;
+        int result;
+        calculations[calcIndex].getData(complete, progress,                                 result);
+        response = SimpleService::StatusResponse {
+            .mComplete = complete,
+            .mProgress = progress,
+            .mResult = result
+        };
+    }</pre>
+			<p lang="en-GB">With this change, the status request converts the token into an index that it uses to find the correct <strong class="source-inline" lang="">CalcRecord</strong>. Then, it gets the current data from <strong class="source-inline" lang="">CalcRecord</strong> to be returned in <span class="No-Break" lang="">the response.</span></p>
+			<p lang="en-GB">You may also want to consider adding sleep to the test loop that attempts five service call requests so that the total time given to the service is reasonable. The current test will fail if all five attempts are made quickly before the service has time to complete even a <span class="No-Break" lang="">simple calculation.</span></p>
+			<p lang="en-GB">All the tests pass after <a id="_idIndexMarker580"/>building and running the test application. Are we done now? Not yet. All of these changes let the service calculate a result in a separate thread while continuing to handle requests on the main thread. The whole point of adding another thread is to avoid timeouts due to calculations that take a long time. But our calculation is very quick. We need to slow the calculation down so that we can test the service with a reasonable <span class="No-Break" lang="">response time.</span></p>
+			<p lang="en-GB">How will we slow down the thread? And what amount of time should the calculation require to complete? These are the questions that we’ve been building code to answer in this chapter. The next section will explain how you can test services that use multiple threads. And now that we have a service that uses another thread for the calculation, we can explore the best way to test <span class="No-Break" lang="">this situation.</span></p>
+			<p lang="en-GB">I’d also like to clarify that what the next section does is different than adding a delay to the five service call attempts. A delay in the test loop will improve the reliability of the test we have now. The next section will remove the loop completely and show you how to coordinate a test with another thread so that both the test and the thread <span class="No-Break" lang="">proceed together.</span></p>
+			<h1 id="_idParaDest-145" lang="en-GB"><a id="_idTextAnchor159"/>How to test multiple threads without sleep</h1>
+			<p lang="en-GB">Earlier in this chapter, in the <em class="italic" lang="">The need to justify multiple threads</em> section, I mentioned that you should try to do as much work as possible with single threads. We’re going to follow this advice now. In the current request handling for the calculate request, the code creates a thread that does a simple calculation, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+        std::thread calcThread([calcIndex] ()
+        {
+            calculations[calcIndex].setData(true, 100, 50);
+        });</pre>
+			<p lang="en-GB">Okay, maybe a simple calculation is<a id="_idIndexMarker581"/> the wrong way to describe what the thread does. The thread sets the result to a hardcoded value. We know this is temporary code and that we’ll need to change the code to multiply the seed value by <strong class="source-inline" lang="">10</strong>, which is what the <span class="No-Break" lang="">tests expect.</span></p>
+			<p lang="en-GB">Where should the calculation be done? It would be easy to do the calculation in the thread lambda, but that would go against the advice of doing as much work as possible with a <span class="No-Break" lang="">single thread.</span></p>
+			<p lang="en-GB">What we want to do is create a calculation function that the thread can call. This will let us test the calculation function separately without worrying about any threading issues and make sure that the calculation <span class="No-Break" lang="">is correct.</span></p>
+			<p lang="en-GB">And here’s the really interesting part: creating a function to do the calculation will help us test the thread management too! How? Because we’re going to create two <span class="No-Break" lang="">calculation functions.</span></p>
+			<p lang="en-GB">One function will be the real calculation function, which can be tested independently of any threads. For our project, the real calculation will still be simple and fast. We’re not going to try to do a lot of work to slow down the calculation and we’re not going to put the thread to sleep either. And we’re not going to write a bunch of tests to make sure the calculation is correct. This is just an example of a pattern that you can follow in <span class="No-Break" lang="">your projects.</span></p>
+			<p lang="en-GB">The other function will be a test calculation function and will do some fake calculations designed to match the real calculation result. The test calculation function will also contain some thread management code designed to coordinate the thread’s activity. We’ll use the thread management code in the test calculation function to slow down the thread so that we can simulate a calculation that takes a <span class="No-Break" lang="">long time.</span></p>
+			<p lang="en-GB">What we’re doing is mocking the real calculation with code that is less focused on the calculation and more focused on the thread’s behavior. Any test that wants to test the real calculation can use the real calculation function, while any test that wants to test the thread timing and coordination can use the test <span class="No-Break" lang="">calculation function.</span></p>
+			<p lang="en-GB">First, we’ll declare the two functions in <strong class="source-inline" lang="">Service.h</strong> right before the <strong class="source-inline" lang="">Service</strong> class, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+void normalCalc (int seed, int &amp; progress, int &amp; result);
+void testCalc (int seed, int &amp; progress, int &amp; result);</pre>
+			<p lang="en-GB">You can define your calculation functions in your projects to do whatever you need. Your functions will likely be<a id="_idIndexMarker582"/> different. The main point to understand is that they should have the same signature so that the test function can be substituted for the <span class="No-Break" lang="">real function.</span></p>
+			<p lang="en-GB">The <strong class="source-inline" lang="">Service</strong> class needs to be changed so that one of these functions can be injected into the service. We’ll set up the calculation function in the constructor and use the real function as the default, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+class Service
+{
+public:
+    using CalcFunc = void (*) (int, int &amp;, int &amp;);
+    Service (CalcFunc f = normalCalc)
+    : mCalc(f)
+    { }
+    void start ();
+    ResponseVar handleRequest (std::string const &amp; user,
+        std::string const &amp; path,
+        RequestVar const &amp; request);
+private:
+    CalcFunc mCalc;
+};</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">Service</strong> class now has a member function pointer that will point to one of the calculation functions. Which one will be called is determined when the <strong class="source-inline" lang="">Service</strong> class <span class="No-Break" lang="">is created.</span></p>
+			<p lang="en-GB">Let’s implement the two functions in <strong class="source-inline" lang="">Service.cpp</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+void SimpleService::normalCalc (
+    int seed, int &amp; progress, int &amp; result)
+{
+    progress = 100;
+    result = seed * 10;
+}
+void SimpleService::testCalc (
+    int seed, int &amp; progress, int &amp; result)
+{
+    progress = 100;
+    result = seed * 10;
+}</pre>
+			<p lang="en-GB">At the moment, both functions are the same. We’ll take this one step at a time. Each function just sets <strong class="source-inline" lang="">progress</strong> to <strong class="source-inline" lang="">100</strong> and <strong class="source-inline" lang="">result</strong> to <strong class="source-inline" lang="">seed</strong> times <strong class="source-inline" lang="">10</strong>. We’re going to leave the real or <a id="_idIndexMarker583"/>normal function as-is. Eventually, we’ll change the test function so that it controls <span class="No-Break" lang="">the thread.</span></p>
+			<p lang="en-GB">Now, we can change the calculate request handler in <strong class="source-inline" lang="">Service.cpp</strong> so that it uses the calculation function, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+    if (auto const * req = std::get_       if&lt;CalculateRequest&gt;(&amp;request))
+    {
+        MereMemo::log(debug, User(user), LogPath(path))
+            &lt;&lt; "Received Calculate request for: "
+            &lt;&lt; std::to_string(req-&gt;mSeed);
+        calculations.emplace_back();
+        int calcIndex = calculations.size() - 1;
+        int seed = req-&gt;mSeed;
+        std::thread calcThread([this, calcIndex, seed] ()
+        {
+            int progress;
+            int result;
+            mCalc(seed, progress, result);
+            calculations[calcIndex].setData(true, progress,                                     result);
+        });
+        calcThread.detach();
+        response = SimpleService::CalculateResponse {
+            .mToken = std::to_string(calcIndex)
+        };
+    }</pre>
+			<p lang="en-GB">In the thread lambda, we call <strong class="source-inline" lang="">mCalc</strong> instead of setting <strong class="source-inline" lang="">progress</strong> and <strong class="source-inline" lang="">result</strong> to hardcoded values. Which calculation function is called depends on which function <strong class="source-inline" lang="">mCalc</strong> <span class="No-Break" lang="">points to.</span></p>
+			<p lang="en-GB">If we build and run the test application, we’ll see that the tests pass. But there’s something wrong with how we’re calling <strong class="source-inline" lang="">mCalc</strong>. We want to get intermediate progress so that a caller can make status requests and see the progress increasing until the calculation is finally complete. By calling <strong class="source-inline" lang="">mCalc</strong> once, we only give the function one chance to do something. We should<a id="_idIndexMarker584"/> be calling the <strong class="source-inline" lang="">mCalc</strong> function in a loop until <strong class="source-inline" lang="">progress</strong> reaches <strong class="source-inline" lang="">100</strong> percent. Let’s change the <span class="No-Break" lang="">lambda code:</span></p>
+			<pre class="source-code" lang="en-GB">
+        std::thread calcThread([this, calcIndex, seed] ()
+        {
+            int progress {0};
+            int result {0};
+            while (true)
+            {
+                mCalc(seed, progress, result);
+                if (progress == 100)
+                {
+                    calculations[calcIndex].setData(true,                     progress, result);
+                    break;
+                }
+                else
+                {
+                    calculations[calcIndex].setData(false,                     progress, result);
+                }
+            }
+        });</pre>
+			<p lang="en-GB">This change does not affect the tests because the <strong class="source-inline" lang="">mCalc</strong> function currently sets <strong class="source-inline" lang="">progress</strong> to <strong class="source-inline" lang="">100</strong> on the first call; therefore, the while loop will only run once. We don’t want the thread to take too long to run without some synchronization with the tests because we’ll never join with the thread. If this was a real project, we would want to use threads from a thread pool and wait for the threads to complete before stopping <span class="No-Break" lang="">the service.</span></p>
+			<p lang="en-GB">Making a change that does not affect the tests is a great way to verify changes. Take small steps instead of trying to do everything in one giant set <span class="No-Break" lang="">of changes.</span></p>
+			<p lang="en-GB">Next, we’re going to duplicate the test that generates a result except we will use the test calculation function in the duplicate test. The test will need to be modified slightly so that it can use the test<a id="_idIndexMarker585"/> calculation function. But for the most part, the test should remain almost identical. The new test goes in <strong class="source-inline" lang="">Message.cpp</strong> and looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Status request to test service generates result", "Service 2")
+{
+    std::string user = "123";
+    std::string path = "";
+    SimpleService::RequestVar calcRequest =
+        SimpleService::CalculateRequest {
+            .mSeed = 5
+        };
+    auto responseVar = gService2.service().handleRequest(
+        user, path, calcRequest);
+    auto const calcResponse =
+        std::get_if&lt;SimpleService::CalculateResponse&gt;        (&amp;responseVar);
+    CONFIRM_TRUE(calcResponse != nullptr);
+    SimpleService::RequestVar statusRequest =
+        SimpleService::StatusRequest {
+            .mToken = calcResponse-&gt;mToken
+        };
+    int result {0};
+    for (int i = 0; i &lt; 5; ++i)
+    {
+        responseVar = gService2.service().handleRequest(
+            user, path, statusRequest);
+        auto const statusResponse =
+            std::get_if&lt;SimpleService::StatusResponse&gt;            (&amp;responseVar);
+        CONFIRM_TRUE(statusResponse != nullptr);
+        if (statusResponse-&gt;mComplete)
+        {
+            result = statusResponse-&gt;mResult;
+            break;
+        }
+    }
+    CONFIRM_THAT(result, Equals(40));
+}</pre>
+			<p lang="en-GB">The only changes are to give the test a different name so that it uses a new test suite called <strong class="source-inline" lang="">"Service 2"</strong>, and then use a different global service called <strong class="source-inline" lang="">gService2</strong>. Here, we expect a slightly different result. We’ll be changing this test soon so that it will eventually contribute more value than it does now, and we’ll be removing the loop that tries to make the request<a id="_idIndexMarker586"/> five times. Making these changes in small steps will let us verify that we don’t break anything major. And expecting a slightly different result will let us verify that we are using a different <span class="No-Break" lang="">calculation function.</span></p>
+			<p lang="en-GB">To build the project, we need to define <strong class="source-inline" lang="">gService2</strong>, which will use a new setup and teardown class. Add the following code <span class="No-Break" lang="">to </span><span class="No-Break" lang=""><strong class="source-inline" lang="">SetupTeardown.h</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+class TestServiceSetup
+{
+public:
+    TestServiceSetup ()
+    : mService(SimpleService::testCalc)
+    { }
+    void setup ()
+    {
+        mService.start();
+    }
+    void teardown ()
+    {
+    }
+    SimpleService::Service &amp; service ()
+    {
+        return mService;
+    }
+private:
+    SimpleService::Service mService;
+};
+extern MereTDD::TestSuiteSetupAndTeardown&lt;TestServiceSetup&gt;
+gService2;</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">TestServiceSetup</strong> class defines a constructor that initializes the <strong class="source-inline" lang="">mService</strong> data member with the <strong class="source-inline" lang="">testCalc</strong> function. The <strong class="source-inline" lang="">gService2</strong> declaration uses <strong class="source-inline" lang="">TestServiceSetup</strong>. We need to make a small change in <strong class="source-inline" lang="">SetupTeardown.cpp</strong> for <strong class="source-inline" lang="">gService2</strong>, <span class="No-Break" lang="">like so:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include "SetupTeardown.h"
+MereTDD::TestSuiteSetupAndTeardown&lt;ServiceSetup&gt;
+gService1("Calculation Service", "Service 1");
+MereTDD::TestSuiteSetupAndTeardown&lt;TestServiceSetup&gt;
+gService2("Calculation Test Service", "Service 2");</pre>
+			<p lang="en-GB">The <strong class="source-inline" lang="">SetupTeardown.cpp</strong> file is short and<a id="_idIndexMarker587"/> only needs to define instances of <strong class="source-inline" lang="">gService1</strong> <span class="No-Break" lang="">and </span><span class="No-Break" lang=""><strong class="source-inline" lang="">gService2</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">We need to change the <strong class="source-inline" lang="">testCalc</strong> function so that it will multiply by <strong class="source-inline" lang="">8</strong> to give an expected result of <strong class="source-inline" lang="">40</strong> instead of <strong class="source-inline" lang="">50</strong>. Here are both calculation functions <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Service.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+void SimpleService::normalCalc (
+    int seed, int &amp; progress, int &amp; result)
+{
+    progress = 100;
+    result = seed * 10;
+}
+void SimpleService::testCalc (
+    int seed, int &amp; progress, int &amp; result)
+{
+    progress = 100;
+    result = seed * 8;
+}</pre>
+			<p lang="en-GB">Building and running the test application shows that all the tests pass. We now have two test suites. The output looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">Running 2 test suites</strong>
+<strong class="bold" lang="">--------------- Suite: Service 1</strong>
+<strong class="bold" lang="">------- Setup: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Calculate request can be sent</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Status request generates result</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Teardown: Calculation Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">--------------- Suite: Service 2</strong>
+<strong class="bold" lang="">------- Setup: Calculation Test Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Test: Status request to test service generates result</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">------- Teardown: Calculation Test Service</strong>
+<strong class="bold" lang="">Passed</strong>
+<strong class="bold" lang="">-----------------------------------</strong>
+<strong class="bold" lang="">Tests passed: 7</strong>
+<strong class="bold" lang="">Tests failed: 0</strong></pre>
+			<p lang="en-GB">Here, we introduced a new service that uses a slightly different calculation function and can use both services in the tests. The tests pass with minimal changes. Now, we’re ready to make more changes to coordinate the threads. This is a better approach than jumping directly into the thread management code and adding the new service and <span class="No-Break" lang="">calculation function.</span></p>
+			<p lang="en-GB">When following TDD, the process is always the same: get the tests to pass, make small changes to the tests or add new tests, and get the tests to <span class="No-Break" lang="">pass again.</span></p>
+			<p lang="en-GB">The next step will complete this section. We’re going to control the speed at which the <strong class="source-inline" lang="">testCalc</strong> function works so that we can make multiple status requests to get a complete result. We’ll wait inside the test calculation function so that the test has time to verify that the progress<a id="_idIndexMarker588"/> does indeed increase over time until the result is finally calculated once the progress <span class="No-Break" lang="">reaches 100%.</span></p>
+			<p lang="en-GB">Let’s start with the test. We’re going to signal the calculation thread from within the test thread so that the calculation thread will progress in-step with the test. This is what I meant by testing multiple threads without using sleep. Sleeping within a thread is not a good solution because it’s not reliable. You might be able to get a test to pass only to have the same test fail later when the timing changes. The solution you’ll learn here can be applied to <span class="No-Break" lang="">your testing.</span></p>
+			<p lang="en-GB">All you need to do is create a test version of part of your code that can be substituted for the real code. In our case, we have a <strong class="source-inline" lang="">testCalc</strong> function that can be substituted for the <strong class="source-inline" lang="">normalCalc</strong> function. Then, you can add one or more <em class="italic" lang="">condition variables</em> to your test and wait on those condition variables from within the test version of your code. A condition variable is a standard and supported way in C++ to let one thread wait until a condition is met before proceeding. The test calculation function will wait on the condition variable. The test will notify the condition variable when it’s ready for the calculation to continue. Notifying the condition variable will unblock the waiting calculation thread at<a id="_idIndexMarker589"/> exactly the right time so that the test can verify the proper thread behavior. Then, the test will wait until the calculation has been completed before continuing. We’ll need to include <strong class="source-inline" lang="">condition_variable</strong> at the top of <strong class="source-inline" lang="">Service.h</strong>, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#ifndef SIMPLESERVICE_SERVICE_H
+#define SIMPLESERVICE_SERVICE_H
+#include &lt;condition_variable&gt;
+#include &lt;string&gt;
+#include &lt;variant&gt;</pre>
+			<p lang="en-GB">Then, we need to declare a mutex, two condition variables, and two bools in <strong class="source-inline" lang="">Service.h</strong> so that they can be used by the test calculation function and by the test. Let’s declare the mutex, condition variables, and the bools right before the test calculation function, <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+void normalCalc (int seed, int &amp; progress, int &amp; result);
+extern std::mutex service2Mutex;
+extern std::condition_variable testCalcCV;
+extern std::condition_variable testCV;
+extern bool testCalcReady;
+extern bool testReady;
+void testCalc (int seed, int &amp; progress, int &amp; result);</pre>
+			<p lang="en-GB">Here is the modified test <span class="No-Break" lang="">in </span><span class="No-Break" lang=""><strong class="source-inline" lang="">Message.cpp</strong></span><span class="No-Break" lang="">:</span></p>
+			<pre class="source-code" lang="en-GB">
+TEST_SUITE("Status request to test service generates result", "Service 2")
+{
+    std::string user = "123";
+    std::string path = "";
+    SimpleService::RequestVar calcRequest =
+        SimpleService::CalculateRequest {
+            .mSeed = 5
+        };
+    auto responseVar = gService2.service().handleRequest(
+        user, path, calcRequest);
+    auto const calcResponse =
+        std::get_if&lt;SimpleService::CalculateResponse&gt;        (&amp;responseVar);
+    CONFIRM_TRUE(calcResponse != nullptr);
+    // Make a status request right away before the service
+    // is allowed to do any calculations.
+    SimpleService::RequestVar statusRequest =
+        SimpleService::StatusRequest {
+            .mToken = calcResponse-&gt;mToken
+        };
+    responseVar = gService2.service().handleRequest(
+        user, path, statusRequest);
+    auto statusResponse =
+        std::get_if&lt;SimpleService::StatusResponse&gt;        (&amp;responseVar);
+    CONFIRM_TRUE(statusResponse != nullptr);
+    CONFIRM_FALSE(statusResponse-&gt;mComplete);
+    CONFIRM_THAT(statusResponse-&gt;mProgress, Equals(0));
+    CONFIRM_THAT(statusResponse-&gt;mResult, Equals(0));
+    // Notify the service that the test has completed the first
+    // confirmation so that the service can proceed with the
+    // calculation.
+    {
+        std::lock_guard&lt;std::mutex&gt;              lock(SimpleService::service2Mutex);
+        SimpleService::testReady = true;
+    }
+    SimpleService::testCV.notify_one();
+    // Now wait until the service has completed the calculation.
+    {
+        std::unique_lock&lt;std::mutex&gt;              lock(SimpleService::service2Mutex);
+        SimpleService::testCalcCV.wait(lock, []
+        {
+            return SimpleService::testCalcReady;
+        });
+    }
+    // Make another status request to get the completed result.
+    responseVar = gService2.service().handleRequest(
+        user, path, statusRequest);
+    statusResponse =
+        std::get_if&lt;SimpleService::StatusResponse&gt;        (&amp;responseVar);
+    CONFIRM_TRUE(statusResponse != nullptr);
+    CONFIRM_TRUE(statusResponse-&gt;mComplete);
+    CONFIRM_THAT(statusResponse-&gt;mProgress, Equals(100));
+    CONFIRM_THAT(statusResponse-&gt;mResult, Equals(40));
+}</pre>
+			<p lang="en-GB">The test is a bit longer than it used to be. We’re no longer making status requests in a loop while looking for a completed response. This test takes a more deliberate approach and knows exactly what it expects at each step. The initial calculation request and calculation response are the same. The test knows that the calculation will be paused, so the first status request will return an uncompleted response with <span class="No-Break" lang="">zero progress.</span></p>
+			<p lang="en-GB">After the first status request <a id="_idIndexMarker590"/>has been confirmed, the test notifies the calculation thread that it can continue and then the test waits. Once the calculation is complete, the calculation thread will notify the test that the test can continue. At all times, the test and the calculation thread are taking turns, which lets the test confirm each step. There is a small race condition in the test calculation thread that I’ll explain after you’ve seen the code. A race condition is a problem where two or more threads can interfere with each other and the result is not <span class="No-Break" lang="">completely predictable.</span></p>
+			<p lang="en-GB">Let’s look at the other half now – the test calculation function. We need to declare the mutex, condition variables, and the bools too. The variables and the test calculation function should look <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+std::mutex SimpleService::service2Mutex;
+std::condition_variable SimpleService::testCalcCV;
+std::condition_variable SimpleService::testCV;
+bool SimpleService::testCalcReady {false};
+bool SimpleService::testReady {false};
+void SimpleService::testCalc (
+    int seed, int &amp; progress, int &amp; result)
+{
+    // Wait until the test has completed the first status request.
+    {
+        std::unique_lock&lt;std::mutex&gt; lock(service2Mutex);
+        testCV.wait(lock, []
+        {
+            return testReady;
+        });
+    }
+    progress = 100;
+    result = seed * 8;
+    // Notify the test that the calculation is ready.
+    {
+        std::lock_guard&lt;std::mutex&gt; lock(service2Mutex);
+        testCalcReady = true;
+    }
+    testCalcCV.notify_one();
+}</pre>
+			<p lang="en-GB">The first thing that the test calculation function does is wait. No calculation progress will be made until the test has a chance to confirm the initial status. Once the test calculation thread is allowed to proceed, it needs to notify the test before returning so that the test can make <a id="_idIndexMarker591"/>another <span class="No-Break" lang="">status request.</span></p>
+			<p lang="en-GB">The most important thing to understand about this process is that the test calculation function should be the only code interacting with the test. You shouldn’t put any waits or notifications in the main service response handler or even in the lambda that is defined in the response handler. Only the test calculation function that gets swapped out for the real calculation function should have any awareness that a test is being run. In other words, you should put all the waiting and condition variable notifications in <strong class="source-inline" lang="">testCalc</strong>. This is the source of the race condition that I mentioned. When the <strong class="source-inline" lang="">testCalc</strong> function notifies the test thread that the calculation is complete, it’s not completely correct. The calculation is only complete when <strong class="source-inline" lang="">setData</strong> finishes updating <strong class="source-inline" lang="">CalcRecord</strong>. However, we don’t want to send the notification after calling <strong class="source-inline" lang="">setData</strong> because that would put the notification outside of the <span class="No-Break" lang=""><strong class="source-inline" lang="">testCalc</strong></span><span class="No-Break" lang=""> function.</span></p>
+			<p lang="en-GB">Ideally, we would change the design so that the calculation function is called one additional time after completing the calculation. We could say that this gives the calculation function a chance to clean up any resources used during the calculation. Or maybe we can create another set of functions for cleaning up. One cleanup function could be the normal cleanup, while the other function could be substituted for test cleanup. Either approach would let us notify the test that the calculation has finished, which would eliminate the <span class="No-Break" lang="">race condition.</span></p>
+			<p lang="en-GB">Building and running these<a id="_idIndexMarker592"/> tests shows that all the tests continue to pass. We’re almost done. We’ll leave the race condition as-is because fixing it would only add extra complexity to this explanation. The only remaining task is to fix a problem that I noticed in the log file. I’ll explain more about this new problem in the <span class="No-Break" lang="">next section.</span></p>
+			<h1 id="_idParaDest-146" lang="en-GB"><a id="_idTextAnchor160"/>Fixing one last problem detected with logging</h1>
+			<p lang="en-GB">There’s a big reason why I <a id="_idIndexMarker593"/>choose to build a logging library in <em class="italic" lang="">Part 2</em>, <em class="italic" lang="">Logging Library</em>, of this book. Logging can be a huge help when debugging known problems. Something that’s often overlooked is the benefit that logging provides when looking for bugs that haven’t been <span class="No-Break" lang="">detected yet.</span></p>
+			<p lang="en-GB">I’ll often look at the log file after running tests to make sure the messages match what I expect. After making the enhancements in the previous section for the thread coordination between the test and the test calculation thread, I noticed something strange in the log file. The log file looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">2022-08-27T05:00:50.409 Service is starting.</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.410 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Status request for: 1</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 Service is starting.</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 Service is starting.</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Status request for: 2</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Status request for: 2</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Status request for: 2</strong>
+<strong class="bold" lang="">2022-08-27T05:00:50.411 user="123" Received Status request for: 2</strong></pre>
+			<p lang="en-GB">I removed the <strong class="source-inline" lang="">log_level</strong> and <strong class="source-inline" lang="">logpath</strong> tags just to shorten the messages so that you can see the important parts better. The first strange thing that I noticed is that the service was started three times. We only have <strong class="source-inline" lang="">gService1</strong> and <strong class="source-inline" lang="">gService2</strong>, so the service should only have been <span class="No-Break" lang="">started twice.</span></p>
+			<p lang="en-GB">The first four lines in the log file make sense. We start <strong class="source-inline" lang="">gService1</strong> and then run a simple test that requests a calculation and checks that the response is of the proper type. Then, we run another test that makes a status request up to five times while looking for a complete response. The first status request finds the complete response, so no additional status requests are needed. The token for the first status request <span class="No-Break" lang="">is </span><span class="No-Break" lang=""><strong class="source-inline" lang="">1</strong></span><span class="No-Break" lang="">.</span></p>
+			<p lang="en-GB">Line 5 in the log file, which<a id="_idIndexMarker594"/> is where the service is started for the second time, is where the log file begins to look strange. We should only need to start the second service, make a single additional request, and then make two status requests. It looks like the log file is getting duplicate messages from line 5 until <span class="No-Break" lang="">the end.</span></p>
+			<p lang="en-GB">After a little debugging and the hint that we’re duplicating log messages, I found the problem. When I originally designed the service, I configured the logging in the <strong class="source-inline" lang="">Service::start</strong> method. I should have kept the logging configuration in the <strong class="source-inline" lang="">main</strong> function. Everything worked until we needed to create and start a second service so that the second service could be configured to use a test calculation function. Well, the second service was also configuring the logging when it started, and it added another file output. The second file’s output caused all the log messages to be sent to the log file twice. The solution is simple: we need to configure the logging in <strong class="source-inline" lang="">main</strong> <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+#include &lt;MereMemo/Log.h&gt;
+#include &lt;MereTDD/Test.h&gt;
+#include &lt;iostream&gt;
+int main ()
+{
+    MereMemo::FileOutput appFile("logs");
+    MereMemo::addLogOutput(appFile);
+    return MereTDD::runTests(std::cout);
+}</pre>
+			<p lang="en-GB">Then, we need to remove the logging configuration from the service <strong class="source-inline" lang="">start</strong> method so that it looks <span class="No-Break" lang="">like this:</span></p>
+			<pre class="source-code" lang="en-GB">
+void SimpleService::Service::start ()
+{
+    MereMemo::log(info) &lt;&lt; "Service is starting.";
+}</pre>
+			<p lang="en-GB">With these changes, the tests still pass and the log file looks better. Again, I removed some tags to shorten the log message lines. Now, the content of the log file is <span class="No-Break" lang="">as follows:</span></p>
+			<pre class="source-code" lang="en-GB">
+<strong class="bold" lang="">2022-08-27T05:35:30.573 Service is starting.</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 user="123" Received Status request for: 1</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 Service is starting.</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 user="123" Received Calculate request for: 5</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.574 user="123" Received Status request for: 2</strong>
+<strong class="bold" lang="">2022-08-27T05:35:30.575 user="123" Received Status request for: 2</strong></pre>
+			<p lang="en-GB">While the problem ended <a id="_idIndexMarker595"/>up being a mistake in how the logging was configured, the point I wanted to make is to remind you to look through the log files periodically and make sure the log messages <span class="No-Break" lang="">make sense.</span></p>
+			<h1 id="_idParaDest-147" lang="en-GB"><a id="_idTextAnchor161"/>Summary</h1>
+			<p lang="en-GB">This is the last chapter of this book and it explained one of the most confusing and difficult aspects of writing software: how to test multiple threads. You’ll find a lot of books that explain multi-threading but fewer will give you advice and show you effective ways to test <span class="No-Break" lang="">multiple threads.</span></p>
+			<p lang="en-GB">Because the target customer of this book is a microservices C++ developer who wants to learn how to use TDD to design better software, this chapter tied everything in this book together to explain how to test <span class="No-Break" lang="">multi-threaded services.</span></p>
+			<p lang="en-GB">First, you learned how to use multiple threads in your tests. You need to make sure you handle exceptions inside tests that start additional threads. Exceptions are important because the testing library uses exceptions to handle failed confirmations. You also learned how to use a special helper class to report failed confirmations that arise in <span class="No-Break" lang="">additional threads.</span></p>
+			<p lang="en-GB">Threads must also be considered when writing and using libraries. You saw how to test a library to make sure <span class="No-Break" lang="">it’s thread-safe.</span></p>
+			<p lang="en-GB">Finally, you learned how to test multi-threaded services in a fast and reliable manner that avoids putting threads to sleep in an attempt to coordinate the actions of multiple threads. You learned how to refactor your code so that you can test as much as possible in a single-threaded manner and then how to substitute the normal code for special test-aware code that works with a test. You can use this technique any time you need a test and multi-threaded code to work together so that the test can take specific and reliable steps and confirm your expectations along <span class="No-Break" lang="">the way.</span></p>
+			<p lang="en-GB">Congratulations on reaching the end of this book! This chapter visited all the projects we’ve been working on. We enhanced the unit testing library to help you use multiple threads in your tests. We also made the logging library thread-safe. Finally, we enhanced the service so that it can coordinate multiple threads between the service and the tests. You now have all the skills you’ll need to apply TDD to <span class="No-Break" lang="">your projects.</span></p>
+		</div>
+	</body></html>
