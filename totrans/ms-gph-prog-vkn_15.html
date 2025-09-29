@@ -1,51 +1,50 @@
 <html><head></head><body>
-<div id="sbo-rt-content"><div id="_idContainer089">
-<h1 class="chapter-number" id="_idParaDest-227"><a id="_idTextAnchor280"/>15</h1>
+<div><div><h1 class="chapter-number" id="_idParaDest-227"><a id="_idTextAnchor280"/>15</h1>
 <h1 id="_idParaDest-228"><a id="_idTextAnchor281"/>Adding Reflections with Ray Tracing</h1>
-<p>In this chapter, we are going to implement reflections using ray tracing. Before ray tracing hardware was introduced, applications implemented reflections using screen-space techniques. However, this technique has drawbacks as it can only use information from what’s visible on the screen. If one of the rays goes outside the visible geometry on the screen, we usually fall back to an environment map. Because of this limitation, the rendered reflections can be inconsistent, depending on the <span class="No-Break">camera position.</span></p>
-<p>By introducing ray tracing hardware, we can overcome this limitation as we now have access to geometry that is not visible on the screen. The downside is that we might need to perform some expensive lighting computations. If the reflected geometry is outside the screen, this means we don’t have the data from the G-buffer and we need to compute the color, light, and shadow data <span class="No-Break">from scratch.</span></p>
-<p>To lower the cost of this technique, developers usually trace reflections at half resolution or use ray tracing only if screen-space reflection fails. Another approach is to use lower-resolution geometry in the ray tracing path to lower the cost of ray traversal. In this chapter, we are going to implement a ray tracing-only solution, as this gives the best-quality results. Then, it will be easy to implement the optimizations mentioned previously on top <span class="No-Break">of it.</span></p>
-<p>In this chapter, we’ll cover the following <span class="No-Break">main topics:</span></p>
+<p>In this chapter, we are going to implement reflections using ray tracing. Before ray tracing hardware was introduced, applications implemented reflections using screen-space techniques. However, this technique has drawbacks as it can only use information from what’s visible on the screen. If one of the rays goes outside the visible geometry on the screen, we usually fall back to an environment map. Because of this limitation, the rendered reflections can be inconsistent, depending on the camera position.</p>
+<p>By introducing ray tracing hardware, we can overcome this limitation as we now have access to geometry that is not visible on the screen. The downside is that we might need to perform some expensive lighting computations. If the reflected geometry is outside the screen, this means we don’t have the data from the G-buffer and we need to compute the color, light, and shadow data from scratch.</p>
+<p>To lower the cost of this technique, developers usually trace reflections at half resolution or use ray tracing only if screen-space reflection fails. Another approach is to use lower-resolution geometry in the ray tracing path to lower the cost of ray traversal. In this chapter, we are going to implement a ray tracing-only solution, as this gives the best-quality results. Then, it will be easy to implement the optimizations mentioned previously on top of it.</p>
+<p>In this chapter, we’ll cover the following main topics:</p>
 <ul>
-<li>How screen-space <span class="No-Break">reflections work</span></li>
-<li>Implementing <span class="No-Break">ray-traced reflections</span></li>
-<li>Implementing a denoiser to make the ray-traced <span class="No-Break">output usable</span></li>
+<li>How screen-space reflections work</li>
+<li>Implementing ray-traced reflections</li>
+<li>Implementing a denoiser to make the ray-traced output usable</li>
 </ul>
 <h1 id="_idParaDest-229"><a id="_idTextAnchor282"/>Technical requirements</h1>
-<p>By the end of the chapter, you will have a good understanding of the different solutions available for reflections. You will also learn how to implement ray-traced reflections and how to improve the final result with the help of <span class="No-Break">a denoiser.</span></p>
-<p>The code for this chapter can be found at the following <span class="No-Break">URL: </span><a href="https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15"><span class="No-Break">https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15</span></a><span class="No-Break">.</span></p>
+<p>By the end of the chapter, you will have a good understanding of the different solutions available for reflections. You will also learn how to implement ray-traced reflections and how to improve the final result with the help of a denoiser.</p>
+<p>The code for this chapter can be found at the following URL: <a href="https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15">https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter15</a>.</p>
 <h1 id="_idParaDest-230"><a id="_idTextAnchor283"/>How screen-space reflections work</h1>
-<p>Reflections are an important rendering element that can provide a better sense of immersion <a id="_idIndexMarker797"/>in the scene. For this reason, developers have developed a few techniques over the years to include this effect, even before ray tracing hardware <span class="No-Break">was available.</span></p>
-<p>One of the most common approaches is to ray-march the scene after the G-buffer data becomes available. Whether a surface will produce reflections is determined by the material’s roughness. Only materials with a low roughness will emit a reflection. This also helps reduce the cost of this technique since usually, only a low number of surfaces will satisfy <span class="No-Break">this requirement.</span></p>
-<p>Ray marching is a technique similar to ray tracing and was introduced in <a href="B18395_10.xhtml#_idTextAnchor152"><span class="No-Break"><em class="italic">Chapter 10</em></span></a>, <em class="italic">Adding Volumetric Fog</em>. As a quick reminder, ray marching works similarly to ray tracing. Instead of traversing the scene to determine whether the ray hit any geometry, we move in the ray’s direction by small increments for a fixed number <span class="No-Break">of iterations.</span></p>
-<p>This has both advantages and disadvantages. The advantage is that this technique has a fixed cost independent of the scene’s complexity as the maximum number of iterations per ray is pre-determined. The downside is that the quality of the results depends on the step size and the number <span class="No-Break">of iterations.</span></p>
-<p>For the best quality, we want a large number of iterations and a small step size, but this would make the technique too expensive. The compromise is to use a step size that gives good enough results and then pass the result through a denoising filter to try and reduce the artifacts introduced by the <span class="No-Break">low-frequency sampling.</span></p>
-<p>As the <a id="_idIndexMarker798"/>name implies, this technique works in screen space, similar to other techniques such as <strong class="bold">Screen-Space Ambient Occlusion</strong> (<strong class="bold">SSAO</strong>). For a given fragment, we start by determining whether it produces a reflection or not. If it does, we determine the reflected ray’s direction based on the surface normal and <span class="No-Break">view direction.</span></p>
-<p>Next, we move along the reflected ray direction for the given number of iterations and step size. At each step, we check against the depth buffer to determine whether we hit any geometry. Since the depth buffer has a limited resolution, usually, we define a delta value that determines whether we consider a given iteration <span class="No-Break">a hit.</span></p>
-<p>If the difference between the ray depth and the value stored in the depth buffer is under this delta, we can exit the loop; otherwise, we must continue. The size of this delta can vary, depending on the scene’s complexity, and is usually <span class="No-Break">tweaked manually.</span></p>
-<p>If the ray marching loop hits visible geometry, w<a id="_idTextAnchor284"/>e look up the color value at that fragment and use it as the reflected color. Otherwise, we either return black or determine the reflected color using an <span class="No-Break">environment map.</span></p>
-<p>We are skipping over some implementation details here as they are not relevant to this chapter. We have provided resources that go into mor<a id="_idTextAnchor285"/>e detail in the <em class="italic">Further </em><span class="No-Break"><em class="italic">reading</em></span><span class="No-Break"> section.</span></p>
-<p>As mentioned previously, this technique is limited to information that is visible on screen. The main drawback is that reflections will disappear as the camera moves if the reflected <a id="_idIndexMarker799"/>geometry is no longer rendered on the screen. The other downside comes from ray marching as we have limited resolution in terms of the number and size of steps we <span class="No-Break">can take.</span></p>
-<p>This can introduce holes in the reflection, which is usually addressed through aggressive filtering. This can result in blurry reflections and makes it difficult to obtain crisp reflections, depending on the scene <span class="No-Break">and viewpoint.</span></p>
-<p>In this section, we introduced screen space reflections. We explained the main ideas behind this technique and some of its shortcomings. In the next section, we are going to implement ray-traced reflections, which can reduce some of the limitations of <span class="No-Break">this technique.</span></p>
+<p>Reflections are an important rendering element that can provide a better sense of immersion <a id="_idIndexMarker797"/>in the scene. For this reason, developers have developed a few techniques over the years to include this effect, even before ray tracing hardware was available.</p>
+<p>One of the most common approaches is to ray-march the scene after the G-buffer data becomes available. Whether a surface will produce reflections is determined by the material’s roughness. Only materials with a low roughness will emit a reflection. This also helps reduce the cost of this technique since usually, only a low number of surfaces will satisfy this requirement.</p>
+<p>Ray marching is a technique similar to ray tracing and was introduced in <a href="B18395_10.xhtml#_idTextAnchor152"><em class="italic">Chapter 10</em></a>, <em class="italic">Adding Volumetric Fog</em>. As a quick reminder, ray marching works similarly to ray tracing. Instead of traversing the scene to determine whether the ray hit any geometry, we move in the ray’s direction by small increments for a fixed number of iterations.</p>
+<p>This has both advantages and disadvantages. The advantage is that this technique has a fixed cost independent of the scene’s complexity as the maximum number of iterations per ray is pre-determined. The downside is that the quality of the results depends on the step size and the number of iterations.</p>
+<p>For the best quality, we want a large number of iterations and a small step size, but this would make the technique too expensive. The compromise is to use a step size that gives good enough results and then pass the result through a denoising filter to try and reduce the artifacts introduced by the low-frequency sampling.</p>
+<p>As the <a id="_idIndexMarker798"/>name implies, this technique works in screen space, similar to other techniques such as <strong class="bold">Screen-Space Ambient Occlusion</strong> (<strong class="bold">SSAO</strong>). For a given fragment, we start by determining whether it produces a reflection or not. If it does, we determine the reflected ray’s direction based on the surface normal and view direction.</p>
+<p>Next, we move along the reflected ray direction for the given number of iterations and step size. At each step, we check against the depth buffer to determine whether we hit any geometry. Since the depth buffer has a limited resolution, usually, we define a delta value that determines whether we consider a given iteration a hit.</p>
+<p>If the difference between the ray depth and the value stored in the depth buffer is under this delta, we can exit the loop; otherwise, we must continue. The size of this delta can vary, depending on the scene’s complexity, and is usually tweaked manually.</p>
+<p>If the ray marching loop hits visible geometry, w<a id="_idTextAnchor284"/>e look up the color value at that fragment and use it as the reflected color. Otherwise, we either return black or determine the reflected color using an environment map.</p>
+<p>We are skipping over some implementation details here as they are not relevant to this chapter. We have provided resources that go into mor<a id="_idTextAnchor285"/>e detail in the <em class="italic">Further </em><em class="italic">reading</em> section.</p>
+<p>As mentioned previously, this technique is limited to information that is visible on screen. The main drawback is that reflections will disappear as the camera moves if the reflected <a id="_idIndexMarker799"/>geometry is no longer rendered on the screen. The other downside comes from ray marching as we have limited resolution in terms of the number and size of steps we can take.</p>
+<p>This can introduce holes in the reflection, which is usually addressed through aggressive filtering. This can result in blurry reflections and makes it difficult to obtain crisp reflections, depending on the scene and viewpoint.</p>
+<p>In this section, we introduced screen space reflections. We explained the main ideas behind this technique and some of its shortcomings. In the next section, we are going to implement ray-traced reflections, which can reduce some of the limitations of this technique.</p>
 <h1 id="_idParaDest-231"><a id="_idTextAnchor286"/>Implementing ray-traced reflections</h1>
-<p>In this section, we are going to leverage the hardware ray tracing capabilities to implement <a id="_idIndexMarker800"/>reflections. Before diving into the code, here’s an overview of <span class="No-Break">the algorithm:</span></p>
+<p>In this section, we are going to leverage the hardware ray tracing capabilities to implement <a id="_idIndexMarker800"/>reflections. Before diving into the code, here’s an overview of the algorithm:</p>
 <ol>
-<li>We start with the G-buffer data. We check whether the roughness for a given fragment is below a certain threshold. If it is, we move to the next step. Otherwise, we don’t process this fragment <span class="No-Break">any further.</span></li>
-<li>To make this technique viable in real time, we cast only one reflection ray per fragment. We will demonstrate two ways to pick the reflection’s ray direction: one that simulates a mirror-like surface and another that samples the GGX distribution for a <span class="No-Break">given fragment.</span></li>
-<li>If the reflection ray hits some geometry, we need to compute its surface color. We shoot another ray toward a light that has been selected through importance sampling. If the selected light is visible, we compute the color for the surface using our standard <span class="No-Break">lighting model.</span></li>
-<li>Since we <a id="_idIndexMarker801"/>are using only one sample per fragment, the final output will be noisy, especially since we are randomly selecting the reflected direction at each frame. For this reason, the output of the ray <a id="_idIndexMarker802"/>tracing step will be processed by a denoiser. We have implemented a technique called <strong class="bold">spatiotemporal variance-guided filtering</strong> (<strong class="bold">SVGF</strong>), which has been developed specifically for this use case. The algorithm will make use of spatial and temporal data to produce a result that contains only a small amount <span class="No-Break">of noise.</span></li>
-<li>Finally, we use the denoised data during our lighting computation to retrieve the <span class="No-Break">specular color.</span></li>
+<li>We start with the G-buffer data. We check whether the roughness for a given fragment is below a certain threshold. If it is, we move to the next step. Otherwise, we don’t process this fragment any further.</li>
+<li>To make this technique viable in real time, we cast only one reflection ray per fragment. We will demonstrate two ways to pick the reflection’s ray direction: one that simulates a mirror-like surface and another that samples the GGX distribution for a given fragment.</li>
+<li>If the reflection ray hits some geometry, we need to compute its surface color. We shoot another ray toward a light that has been selected through importance sampling. If the selected light is visible, we compute the color for the surface using our standard lighting model.</li>
+<li>Since we <a id="_idIndexMarker801"/>are using only one sample per fragment, the final output will be noisy, especially since we are randomly selecting the reflected direction at each frame. For this reason, the output of the ray <a id="_idIndexMarker802"/>tracing step will be processed by a denoiser. We have implemented a technique called <strong class="bold">spatiotemporal variance-guided filtering</strong> (<strong class="bold">SVGF</strong>), which has been developed specifically for this use case. The algorithm will make use of spatial and temporal data to produce a result that contains only a small amount of noise.</li>
+<li>Finally, we use the denoised data during our lighting computation to retrieve the specular color.</li>
 </ol>
-<p>Now that you have a good overview of the steps involved, let’s dive in! The first step is checking whether the roughness for a given fragment is above a <span class="No-Break">certain threshold:</span></p>
+<p>Now that you have a good overview of the steps involved, let’s dive in! The first step is checking whether the roughness for a given fragment is above a certain threshold:</p>
 <pre class="source-code">
 if ( roughness &lt;= 0.3 ) {</pre>
-<p>We have selected <strong class="source-inline">0.3</strong> as it gives us the results we are looking for, though feel free to experiment with other values. If this fragment is contributing to the reflection computation, we initialize our random number generator and compute the two values needed to sample the <span class="No-Break">GGX distribution:</span></p>
+<p>We have selected <code>0.3</code> as it gives us the results we are looking for, though feel free to experiment with other values. If this fragment is contributing to the reflection computation, we initialize our random number generator and compute the two values needed to sample the GGX distribution:</p>
 <pre class="source-code">
 rng_state = seed( gl_LaunchIDEXT.xy ) + current_frame;
 float U1 = rand_pcg() * rnd_normalizer;
 float U2 = rand_pcg() * rnd_normalizer;</pre>
-<p>The two random functions can be implemented <span class="No-Break">as follows:</span></p>
+<p>The two random functions can be implemented as follows:</p>
 <pre class="source-code">
 uint seed(uvec2 p) {
     return 19u * p.x + 47u * p.y + 101u;
@@ -57,25 +56,23 @@ uint rand_pcg() {
                   277803737u;
     return (word &gt;&gt; 22u) ^ word;
 }</pre>
-<p>These two <a id="_idIndexMarker803"/>functions have been taken from the wonderful <em class="italic">Hash Functions for GPU Rendering</em> paper, which we highly recommend. It contains many other functions that you can experiment with. We selected this seed function so that we can use the <span class="No-Break">fragment’s position.</span></p>
-<p>Next, we need to pick our reflection vector. As mentioned previously, we have implemented two techniques. For the first technique, we simply reflect the view vector around the surface normal for a mirror-like surface. This can be computed <span class="No-Break">as follows:</span></p>
+<p>These two <a id="_idIndexMarker803"/>functions have been taken from the wonderful <em class="italic">Hash Functions for GPU Rendering</em> paper, which we highly recommend. It contains many other functions that you can experiment with. We selected this seed function so that we can use the fragment’s position.</p>
+<p>Next, we need to pick our reflection vector. As mentioned previously, we have implemented two techniques. For the first technique, we simply reflect the view vector around the surface normal for a mirror-like surface. This can be computed as follows:</p>
 <pre class="source-code">
 vec3 reflected_ray = normalize( reflect( incoming, normal ) );</pre>
-<p>When using this method, we get the <span class="No-Break">following output:</span></p>
-<div>
-<div class="IMG---Figure" id="_idContainer085">
-<img alt="Figure 15.1 – Mirror-like reflections " height="688" src="image/B18395_15_01.jpg" width="1100"/>
+<p>When using this method, we get the following output:</p>
+<div><div><img alt="Figure 15.1 – Mirror-like reflections " height="688" src="img/B18395_15_01.jpg" width="1100"/>
 </div>
 </div>
 <p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 15.1 – Mirror-like reflections </p>
-<p>The other <a id="_idIndexMarker804"/>method computes the normal by randomly sampling the <span class="No-Break">GGX distribution:</span></p>
+<p>The other <a id="_idIndexMarker804"/>method computes the normal by randomly sampling the GGX distribution:</p>
 <pre class="source-code">
 vec3 normal = sampleGGXVNDF( incoming, roughness, roughness, 
                              U1, U2 );
 vec3 reflected_ray = normalize( reflect( incoming, normal ) );</pre>
-<p>The <strong class="source-inline">sampleGGXVNDF</strong> function has been taken from the <em class="italic">Sampling the GGX Distribution of Visible Normals</em> paper. Its implementation is clearly described in this paper; we suggest you read it for <span class="No-Break">more details.</span></p>
-<p>In brief, this method computes a random normal according to the BRDF of the material and the view direction. This process is needed to make sure the computed reflection is more <span class="No-Break">physically accurate.</span></p>
-<p>Next, we must trace a ray in <span class="No-Break">the scene:</span></p>
+<p>The <code>sampleGGXVNDF</code> function has been taken from the <em class="italic">Sampling the GGX Distribution of Visible Normals</em> paper. Its implementation is clearly described in this paper; we suggest you read it for more details.</p>
+<p>In brief, this method computes a random normal according to the BRDF of the material and the view direction. This process is needed to make sure the computed reflection is more physically accurate.</p>
+<p>Next, we must trace a ray in the scene:</p>
 <pre class="source-code">
 traceRayEXT( as, // topLevel
             gl_RayFlagsOpaqueEXT, // rayFlags
@@ -89,13 +86,13 @@ traceRayEXT( as, // topLevel
             100.0, // Tmax
             0 // payload index
         );</pre>
-<p>If the ray has a hit, we use importance sampling to select a light for our final color computation. The main idea behind importance sampling is to determine which element, which light in our case, is more likely to be selected based on a given <span class="No-Break">probability distribution.</span></p>
-<p>We have <a id="_idIndexMarker805"/>adopted the importance value described in the <em class="italic">Importance Sampling of Many Lights on the GPU</em> chapter from the book <em class="italic">Ray </em><span class="No-Break"><em class="italic">Tracing Gems</em></span><span class="No-Break">.</span></p>
-<p>We start by looping through all the lights in <span class="No-Break">the scene:</span></p>
+<p>If the ray has a hit, we use importance sampling to select a light for our final color computation. The main idea behind importance sampling is to determine which element, which light in our case, is more likely to be selected based on a given probability distribution.</p>
+<p>We have <a id="_idIndexMarker805"/>adopted the importance value described in the <em class="italic">Importance Sampling of Many Lights on the GPU</em> chapter from the book <em class="italic">Ray </em><em class="italic">Tracing Gems</em>.</p>
+<p>We start by looping through all the lights in the scene:</p>
 <pre class="source-code">
 for ( uint l = 0; l &lt; active_lights; ++l ) {
     Light light = lights[ l ];</pre>
-<p>Next, we compute the angle between the light and the normal of the triangle that has <span class="No-Break">been hit:</span></p>
+<p>Next, we compute the angle between the light and the normal of the triangle that has been hit:</p>
 <pre class="source-code">
     vec3 p_to_light = light.world_position - p_world.xyz;
     float point_light_angle = dot( normalize( p_to_light ), 
@@ -109,31 +106,31 @@ for ( uint l = 0; l &lt; active_lights; ++l ) {
 <pre class="source-code">
     bool light_active = ( point_light_angle &gt; 1e-4 ) &amp;&amp; ( 
                           distance_sq &lt;= r_sq );</pre>
-<p>The next <a id="_idIndexMarker806"/>step involves computing an orientation parameter. This tells us whether the light is shining directly on the fragment or at <span class="No-Break">an angle:</span></p>
+<p>The next <a id="_idIndexMarker806"/>step involves computing an orientation parameter. This tells us whether the light is shining directly on the fragment or at an angle:</p>
 <pre class="source-code">
     float theta_u = asin( light.radius / sqrt( distance_sq 
     ) );
     float theta_prime = max( 0, theta_i - theta_u );
     float orientation = abs( cos( theta_prime ) );</pre>
-<p>Finally, we must compute the importance value by also taking into account the intensity of <span class="No-Break">the light:</span></p>
+<p>Finally, we must compute the importance value by also taking into account the intensity of the light:</p>
 <pre class="source-code">
     float importance = ( light.intensity * orientation ) / 
                          distance_sq; 
     float final_value = light_active ? importance : 0.0;
     lights_importance[ l ] = final_value;</pre>
-<p>If the given light is not considered active for this fragment, its importance will have a value of <strong class="source-inline">0</strong>. Finally, we must accumulate the importance value for <span class="No-Break">this light:</span></p>
+<p>If the given light is not considered active for this fragment, its importance will have a value of <code>0</code>. Finally, we must accumulate the importance value for this light:</p>
 <pre class="source-code">
     total_importance += final_value;
 }</pre>
-<p>Now that we have the importance values, we need to normalize them. Like any other probability distribution function, our values need to sum <span class="No-Break">to </span><span class="No-Break"><strong class="source-inline">1</strong></span><span class="No-Break">:</span></p>
+<p>Now that we have the importance values, we need to normalize them. Like any other probability distribution function, our values need to sum to <code>1</code>:</p>
 <pre class="source-code">
 for ( uint l = 0; l &lt; active_lights; ++l ) {
     lights_importance[ l ] /= total_importance;
 }</pre>
-<p>We can now select the light to be used for this frame. First, we must generate a new <span class="No-Break">random value:</span></p>
+<p>We can now select the light to be used for this frame. First, we must generate a new random value:</p>
 <pre class="source-code">
 float rnd_value = rand_pcg() * rnd_normalizer;</pre>
-<p>Next, we must <a id="_idIndexMarker807"/>loop through the lights and accumulate the importance of each light. Once the accumulated value is greater than our random value, we have found the light <span class="No-Break">to use:</span></p>
+<p>Next, we must <a id="_idIndexMarker807"/>loop through the lights and accumulate the importance of each light. Once the accumulated value is greater than our random value, we have found the light to use:</p>
 <pre class="source-code">
 for ( ; light_index &lt; active_lights; ++light_index ) {
     accum_probability += lights_importance[ light_index ];
@@ -141,32 +138,30 @@ for ( ; light_index &lt; active_lights; ++light_index ) {
         break;
     }
 }</pre>
-<p>Now that we have selected the light, we must cast a ray toward it to determine whether it’s visible or not. If it’s visible, we compute the final color for the reflected surface using our <span class="No-Break">lighting model.</span></p>
-<p>We compute the shadow factor as described in <a href="B18395_13.xhtml#_idTextAnchor213"><span class="No-Break"><em class="italic">Chapter 13</em></span></a>, <em class="italic">Revisiting Shadows with Ray Tracing</em>, and the color is calculated in the same way as in <a href="B18395_14.xhtml#_idTextAnchor241"><span class="No-Break"><em class="italic">Chapter 14</em></span></a>, <em class="italic">Adding Dynamic Diffuse Global Illumination with </em><span class="No-Break"><em class="italic">Ray Tracing</em></span><span class="No-Break">.</span></p>
-<p>This is <span class="No-Break">the result:</span></p>
-<div>
-<div class="IMG---Figure" id="_idContainer086">
-<img alt="Figure 15.2 – The noisy output of the ray tracing step" height="800" src="image/B18395_15_02.jpg" width="1280"/>
+<p>Now that we have selected the light, we must cast a ray toward it to determine whether it’s visible or not. If it’s visible, we compute the final color for the reflected surface using our lighting model.</p>
+<p>We compute the shadow factor as described in <a href="B18395_13.xhtml#_idTextAnchor213"><em class="italic">Chapter 13</em></a>, <em class="italic">Revisiting Shadows with Ray Tracing</em>, and the color is calculated in the same way as in <a href="B18395_14.xhtml#_idTextAnchor241"><em class="italic">Chapter 14</em></a>, <em class="italic">Adding Dynamic Diffuse Global Illumination with </em><em class="italic">Ray Tracing</em>.</p>
+<p>This is the result:</p>
+<div><div><img alt="Figure 15.2 – The noisy output of the ray tracing step" height="800" src="img/B18395_15_02.jpg" width="1280"/>
 </div>
 </div>
 <p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 15.2 – The noisy output of the ray tracing step</p>
-<p>In this section, we illustrated our implementation of ray-traced reflections. First, we described <a id="_idIndexMarker808"/>two ways to select a ray direction. Then, we demonstrated how to use importance sampling to select the light to use in our computation. Finally, we described how the selected light is used to determine the final color of the <span class="No-Break">reflected surface.</span></p>
-<p>The result of this step will be noisy and cannot be used directly in our lighting computation. In the next section, we will implement a denoiser that will help us remove most of <span class="No-Break">this noise.</span></p>
+<p>In this section, we illustrated our implementation of ray-traced reflections. First, we described <a id="_idIndexMarker808"/>two ways to select a ray direction. Then, we demonstrated how to use importance sampling to select the light to use in our computation. Finally, we described how the selected light is used to determine the final color of the reflected surface.</p>
+<p>The result of this step will be noisy and cannot be used directly in our lighting computation. In the next section, we will implement a denoiser that will help us remove most of this noise.</p>
 <h1 id="_idParaDest-232"><a id="_idTextAnchor287"/>Implementing a denoiser</h1>
-<p>To make the <a id="_idIndexMarker809"/>output of our reflection pass usable for lighting computations, we need to pass it through a denoiser. We have implemented an algorithm called SVGF, which has been developed to reconstruct color data for <span class="No-Break">path tracing.</span></p>
-<p>SVGF consists of three <span class="No-Break">main passes:</span></p>
+<p>To make the <a id="_idIndexMarker809"/>output of our reflection pass usable for lighting computations, we need to pass it through a denoiser. We have implemented an algorithm called SVGF, which has been developed to reconstruct color data for path tracing.</p>
+<p>SVGF consists of three main passes:</p>
 <ol>
-<li value="1">First, we compute the integrated color and moments for luminance. This is the temporal step of the algorithm. We combine the data from the previous frame with the result of the <span class="No-Break">current frame.</span></li>
-<li>Next, we compute an estimate for variance. This is done using the first and second moment values we computed in the <span class="No-Break">first step.</span></li>
-<li>Finally, we perform five passes of a wavelet filter. This is the spatial step of the algorithm. At each iteration, we apply a 5x5 filter to reduce the remaining noise as much <span class="No-Break">as possible.</span></li>
+<li value="1">First, we compute the integrated color and moments for luminance. This is the temporal step of the algorithm. We combine the data from the previous frame with the result of the current frame.</li>
+<li>Next, we compute an estimate for variance. This is done using the first and second moment values we computed in the first step.</li>
+<li>Finally, we perform five passes of a wavelet filter. This is the spatial step of the algorithm. At each iteration, we apply a 5x5 filter to reduce the remaining noise as much as possible.</li>
 </ol>
-<p>Now that you <a id="_idIndexMarker810"/>have an idea of the main algorithm, we can proceed with the code details. We start by computing the moments for the <span class="No-Break">current frame:</span></p>
+<p>Now that you <a id="_idIndexMarker810"/>have an idea of the main algorithm, we can proceed with the code details. We start by computing the moments for the current frame:</p>
 <pre class="source-code">
 float u_1 = luminance( reflections_color );
 float u_2 = u_1 * u_1;
 vec2 moments = vec2( u_1, u_2 );</pre>
-<p>Next, we use the motion vectors value – the same values we computed in <a href="B18395_11.xhtml#_idTextAnchor178"><span class="No-Break"><em class="italic">Chapter 11</em></span></a>, <em class="italic">Temporal Anti-Aliasing</em> – to determine whether we can combine the data for the current frame with the <span class="No-Break">previous frame.</span></p>
-<p>First, we compute the position on the screen of the <span class="No-Break">previous frame:</span></p>
+<p>Next, we use the motion vectors value – the same values we computed in <a href="B18395_11.xhtml#_idTextAnchor178"><em class="italic">Chapter 11</em></a>, <em class="italic">Temporal Anti-Aliasing</em> – to determine whether we can combine the data for the current frame with the previous frame.</p>
+<p>First, we compute the position on the screen of the previous frame:</p>
 <pre class="source-code">
 bool check_temporal_consistency( uvec2 frag_coord ) {
     vec2 frag_coord_center = vec2( frag_coord ) + 0.5; 
@@ -175,14 +170,14 @@ bool check_temporal_consistency( uvec2 frag_coord ) {
                          ivec2( frag_coord ), 0 ).rg; 
     vec2 prev_frag_coord = frag_coord_center + 
                            motion_vector;</pre>
-<p>Next, we check whether the old fragment coordinates <span class="No-Break">are valid:</span></p>
+<p>Next, we check whether the old fragment coordinates are valid:</p>
 <pre class="source-code">
     if ( any( lessThan( prev_frag_coord, vec2( 0 ) ) ) || 
           any( greaterThanEqual( prev_frag_coord, 
                                  resolution ) ) ) {
               return false;
     }</pre>
-<p>Then, we check whether the mesh ID is consistent with the <span class="No-Break">previous frame:</span></p>
+<p>Then, we check whether the mesh ID is consistent with the previous frame:</p>
 <pre class="source-code">
     uint mesh_id = texelFetch( global_utextures[ 
                                mesh_id_texture_index ], 
@@ -194,7 +189,7 @@ bool check_temporal_consistency( uvec2 frag_coord ) {
     if ( mesh_id != prev_mesh_id ) {
         return false;
     }</pre>
-<p>Next, we check <a id="_idIndexMarker811"/>for large depth discontinuities, which can be caused by disocclusion from the previous frame. We make use of the difference between the current and previous frame’s depth, and also of the screen space derivative of the depth for the <span class="No-Break">current frame:</span></p>
+<p>Next, we check <a id="_idIndexMarker811"/>for large depth discontinuities, which can be caused by disocclusion from the previous frame. We make use of the difference between the current and previous frame’s depth, and also of the screen space derivative of the depth for the current frame:</p>
 <pre class="source-code">
         float z = texelFetch( global_textures[ 
                               depth_texture_index ], 
@@ -213,7 +208,7 @@ bool check_temporal_consistency( uvec2 frag_coord ) {
     if ( depth_diff &gt; 10 ) {
         return false;
     }</pre>
-<p>The last <a id="_idIndexMarker812"/>consistency check is done by using the <span class="No-Break">normal value:</span></p>
+<p>The last <a id="_idIndexMarker812"/>consistency check is done by using the normal value:</p>
 <pre class="source-code">
     float normal_diff = distance( normal, prev_normal ) / ( 
                                   depth_normal_dd.y + 1e-2 
@@ -221,7 +216,7 @@ bool check_temporal_consistency( uvec2 frag_coord ) {
     if ( normal_diff &gt; 16.0 ) {
         return false;
     }</pre>
-<p>If all of these tests pass, this means the values from the previous frame can be used for <span class="No-Break">temporal accumulation:</span></p>
+<p>If all of these tests pass, this means the values from the previous frame can be used for temporal accumulation:</p>
 <pre class="source-code">
 if ( is_consistent ) {
     vec3 history_reflections_color = texelFetch( 
@@ -236,23 +231,21 @@ if ( is_consistent ) {
     ( 1 - alpha ) * history_reflections_color;
     integrated_moments_out = moments * alpha + ( 1 - alpha 
     ) * moments;</pre>
-<p>If the <a id="_idIndexMarker813"/>consistency check fails, we will only use the data from the <span class="No-Break">current frame:</span></p>
+<p>If the <a id="_idIndexMarker813"/>consistency check fails, we will only use the data from the current frame:</p>
 <pre class="source-code">
 } else {
     integrated_color_out = reflections_color;
     integrated_moments_out = moments;
 }</pre>
-<p>This concludes the accumulation pass. This is the output <span class="No-Break">we obtain:</span></p>
-<div>
-<div class="IMG---Figure" id="_idContainer087">
-<img alt="Figure 15.3 – The color output after the accumulation step" height="688" src="image/B18395_15_03.jpg" width="1100"/>
+<p>This concludes the accumulation pass. This is the output we obtain:</p>
+<div><div><img alt="Figure 15.3 – The color output after the accumulation step" height="688" src="img/B18395_15_03.jpg" width="1100"/>
 </div>
 </div>
 <p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 15.3 – The color output after the accumulation step</p>
-<p>The next step is to compute the variance. This can easily be done <span class="No-Break">as follows:</span></p>
+<p>The next step is to compute the variance. This can easily be done as follows:</p>
 <pre class="source-code">
 float variance = moments.y - pow( moments.x, 2 );</pre>
-<p>Now that we <a id="_idIndexMarker814"/>have our accumulated value, we can start implementing the wavelet filter. As mentioned previously, this is a 5x5 cross-bilateral filter. We start with the familiar double loop, being careful not to access <span class="No-Break">out-of-bounds values:</span></p>
+<p>Now that we <a id="_idIndexMarker814"/>have our accumulated value, we can start implementing the wavelet filter. As mentioned previously, this is a 5x5 cross-bilateral filter. We start with the familiar double loop, being careful not to access out-of-bounds values:</p>
 <pre class="source-code">
 for ( int y = -2; y &lt;= 2; ++y) {
     for( int x = -2; x &lt;= 2; ++x ) {
@@ -264,18 +257,18 @@ for ( int y = -2; y &lt;= 2; ++y) {
              {
                  continue;
         }</pre>
-<p>Next, we compute the filter kernel value and weighting <span class="No-Break">value, </span><span class="No-Break"><strong class="source-inline">w</strong></span><span class="No-Break">:</span></p>
+<p>Next, we compute the filter kernel value and weighting value, <code>w</code>:</p>
 <pre class="source-code">
         float h_q = h[ x + 2 ] * h[ y + 2 ];
         float w_pq = compute_w( frag_coord, q );
         float sample_weight = h_q * w_pq;</pre>
-<p>We’ll explain <a id="_idIndexMarker815"/>the implementation of the weighting function in a moment. Next, we load the integrated color and variance for the <span class="No-Break">given fragment:</span></p>
+<p>We’ll explain <a id="_idIndexMarker815"/>the implementation of the weighting function in a moment. Next, we load the integrated color and variance for the given fragment:</p>
 <pre class="source-code">
         vec3 c_q = texelFetch( global_textures[ 
         integrated_color_texture_index ], q, 0 ).rgb;
         float prev_variance = texelFetch( global_textures[ 
         variance_texture_index ], q, 0 ).r;</pre>
-<p>Lastly, we accumulate the new color and <span class="No-Break">variance values:</span></p>
+<p>Lastly, we accumulate the new color and variance values:</p>
 <pre class="source-code">
         new_filtered_color += h_q * w_pq * c_q;
         color_weight += sample_weight;
@@ -285,13 +278,13 @@ for ( int y = -2; y &lt;= 2; ++y) {
         variance_weight += pow( sample_weight, 2 );
     }
 }</pre>
-<p>Before storing the newly computed values, we need to divide them by the <span class="No-Break">accumulated weight:</span></p>
+<p>Before storing the newly computed values, we need to divide them by the accumulated weight:</p>
 <pre class="source-code">
     new_filtered_color /= color_weight;
     new_variance /= variance_weight;</pre>
-<p>We repeat this process five times. The resulting color output will be used for our lighting computation for the <span class="No-Break">specular color.</span></p>
-<p>As promised, we are now going to look at the weight computation. There are three elements to the weight: normal, depth, and luminance. In the code, we tried to follow the naming <a id="_idIndexMarker816"/>from the paper so that it’s easier to match with our implementation of <span class="No-Break">the formulas.</span></p>
-<p>We start with <span class="No-Break">the normals:</span></p>
+<p>We repeat this process five times. The resulting color output will be used for our lighting computation for the specular color.</p>
+<p>As promised, we are now going to look at the weight computation. There are three elements to the weight: normal, depth, and luminance. In the code, we tried to follow the naming <a id="_idIndexMarker816"/>from the paper so that it’s easier to match with our implementation of the formulas.</p>
+<p>We start with the normals:</p>
 <pre class="source-code">
 vec2 encoded_normal_p = texelFetch( global_textures[ 
                         normals_texture_index ], p, 0 ).rg;
@@ -302,8 +295,8 @@ vec2 encoded_normal_q = texelFetch( global_textures[
 vec3 n_q = octahedral_decode( encoded_normal_q );
  
 float w_n = pow( max( 0, dot( n_p, n_q ) ), sigma_n );</pre>
-<p>We compute the cosine between the normal of the current fragment and the fragment from the filter to determine the weight of the <span class="No-Break">normal component.</span></p>
-<p>We look at <span class="No-Break">depth next:</span></p>
+<p>We compute the cosine between the normal of the current fragment and the fragment from the filter to determine the weight of the normal component.</p>
+<p>We look at depth next:</p>
 <pre class="source-code">
 float z_dd = texelFetch( global_textures[ depth_normal_dd_
                          texture_index ], p, 0 ).r;
@@ -314,8 +307,8 @@ float z_q = texelFetch( global_textures[ depth_texture_index ],
  
 float w_z = exp( -( abs( z_p – z_q ) / ( sigma_z * abs( 
             z_dd ) + 1e-8 ) ) );</pre>
-<p>In a similar fashion to the accumulation step, we make use of the difference between the depth values between two fragments. The screen-space derivative is also included. As before, we want to penalize large <span class="No-Break">depth discontinuities.</span></p>
-<p>The last weight element is luminance. We start by computing the luminance for the fragments we <span class="No-Break">are processing:</span></p>
+<p>In a similar fashion to the accumulation step, we make use of the difference between the depth values between two fragments. The screen-space derivative is also included. As before, we want to penalize large depth discontinuities.</p>
+<p>The last weight element is luminance. We start by computing the luminance for the fragments we are processing:</p>
 <pre class="source-code">
 vec3 c_p = texelFetch( global_textures[ integrated_color_
                        texture_index ], p, 0 ).rgb;
@@ -324,7 +317,7 @@ vec3 c_q = texelFetch( global_textures[ integrated_color_
  
 float l_p = luminance( c_p );
 float l_q = luminance( c_q );</pre>
-<p>Next, we pass <a id="_idIndexMarker817"/>the variance value through a Gaussian filter to <span class="No-Break">reduce instabilities:</span></p>
+<p>Next, we pass <a id="_idIndexMarker817"/>the variance value through a Gaussian filter to reduce instabilities:</p>
 <pre class="source-code">
 float g = 0.0;
 const int radius = 1;
@@ -337,41 +330,39 @@ for ( int yy = -radius; yy &lt;= radius; yy++ ) {
         g += v * k;
     }
 }</pre>
-<p>Finally, we compute the luminance weight and combine it with the other two <span class="No-Break">weight values:</span></p>
+<p>Finally, we compute the luminance weight and combine it with the other two weight values:</p>
 <pre class="source-code">
 float w_l = exp( -( abs( l_p - l_q ) / ( sigma_l * sqrt
             ( g ) + 1e-8 ) ) );
  
 return w_z * w_n * w_l;</pre>
-<p>This concludes our implementation of the SVGF algorithm. After five passes, we get the <span class="No-Break">following output:</span></p>
-<div>
-<div class="IMG---Figure" id="_idContainer088">
-<img alt="Figure 15.4 – The output at the end of the denoising step" height="800" src="image/B18395_15_04.jpg" width="1280"/>
+<p>This concludes our implementation of the SVGF algorithm. After five passes, we get the following output:</p>
+<div><div><img alt="Figure 15.4 – The output at the end of the denoising step" height="800" src="img/B18395_15_04.jpg" width="1280"/>
 </div>
 </div>
 <p class="IMG---Caption" lang="en-US" xml:lang="en-US">Figure 15.4 – The output at the end of the denoising step</p>
-<p>In this section, we described how to implement a common denoising algorithm. The algorithm <a id="_idIndexMarker818"/>consists of three passes: an accumulation phase for the color and luminance moments, a step for computing luminance variance, and a step for the wavelet filter, which is repeated <span class="No-Break">five times.</span></p>
+<p>In this section, we described how to implement a common denoising algorithm. The algorithm <a id="_idIndexMarker818"/>consists of three passes: an accumulation phase for the color and luminance moments, a step for computing luminance variance, and a step for the wavelet filter, which is repeated five times.</p>
 <h1 id="_idParaDest-233"><a id="_idTextAnchor288"/>Summary</h1>
-<p>In this chapter, we described how to implement ray-traced reflections. We started with an overview of screen-space reflection, a technique that was used for many years before ray tracing hardware was available. We explained how it works and some of <span class="No-Break">its limitations.</span></p>
-<p>Next, we described our ray tracing implementation to determine reflection values. We provided two methods to determine the reflected ray direction and explained how the reflected color is computed if a hit <span class="No-Break">is returned.</span></p>
-<p>Since we only use one sample per fragment, the result of this step is noisy. To reduce as much of this noise as possible, we implemented a denoiser based on SVGF. This technique consists of three passes. First, there’s a temporal accumulation step to compute color and luminance moments. Then, we compute the luminance variance. Finally, we process the color output by passing it through five iterations of a <span class="No-Break">wavelet filter.</span></p>
-<p>This chapter also concludes our book! We hope you enjoyed reading it as much as we had fun writing it. When it comes to modern graphics techniques, there is only so much that can be covered in a single book. We have included what we thought are some of the most interesting features and techniques when it comes to implementing them in Vulkan. Our goal is to provide you with a starting set of tools that you can build and expand upon. We wish you a wonderful journey on the path to mastering <span class="No-Break">graphics programming!</span></p>
-<p>We very much welcome your feedback and corrections, so please feel free to reach out <span class="No-Break">to us.</span></p>
+<p>In this chapter, we described how to implement ray-traced reflections. We started with an overview of screen-space reflection, a technique that was used for many years before ray tracing hardware was available. We explained how it works and some of its limitations.</p>
+<p>Next, we described our ray tracing implementation to determine reflection values. We provided two methods to determine the reflected ray direction and explained how the reflected color is computed if a hit is returned.</p>
+<p>Since we only use one sample per fragment, the result of this step is noisy. To reduce as much of this noise as possible, we implemented a denoiser based on SVGF. This technique consists of three passes. First, there’s a temporal accumulation step to compute color and luminance moments. Then, we compute the luminance variance. Finally, we process the color output by passing it through five iterations of a wavelet filter.</p>
+<p>This chapter also concludes our book! We hope you enjoyed reading it as much as we had fun writing it. When it comes to modern graphics techniques, there is only so much that can be covered in a single book. We have included what we thought are some of the most interesting features and techniques when it comes to implementing them in Vulkan. Our goal is to provide you with a starting set of tools that you can build and expand upon. We wish you a wonderful journey on the path to mastering graphics programming!</p>
+<p>We very much welcome your feedback and corrections, so please feel free to reach out to us.</p>
 <h1 id="_idParaDest-234"><a id="_idTextAnchor289"/>Further reading</h1>
-<p>We have only provided a brief introduction to screen-space reflections. The following articles go into more detail about their implementation, their limitations, and how to improve the <span class="No-Break">final results:</span></p>
+<p>We have only provided a brief introduction to screen-space reflections. The following articles go into more detail about their implementation, their limitations, and how to improve the final results:</p>
 <ul>
-<li><a href="https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml"><span class="No-Break">https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml</span></a></li>
-<li><a href="https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/"><span class="No-Break">https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/</span></a></li>
-<li><a href="https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/"><span class="No-Break">https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/</span></a></li>
+<li><a href="https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml">https://lettier.github.io/3d-game-shaders-for-beginners/screen-space-reflection.xhtml</a></li>
+<li><a href="https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/">https://bartwronski.com/2014/01/25/the-future-of-screenspace-reflections/</a></li>
+<li><a href="https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/">https://bartwronski.com/2014/03/23/gdc-follow-up-screenspace-reflections-filtering-and-up-sampling/</a></li>
 </ul>
-<p>We have only used one of the many hashing techniques presented in the paper <em class="italic">Hash Functions for GPU </em><span class="No-Break"><em class="italic">Rendering</em></span><span class="No-Break">: </span><a href="https://jcgt.org/published/0009/03/02/"><span class="No-Break">https://jcgt.org/published/0009/03/02/</span></a><span class="No-Break">.</span></p>
-<p>This link contains more details about the sampling technique we used to determine the reflection vector by sampling the BRDF – <em class="italic">Sampling the GGX Distribution of Visible </em><span class="No-Break"><em class="italic">Normals</em></span><span class="No-Break">: </span><a href="https://jcgt.org/published/0007/04/01/"><span class="No-Break">https://jcgt.org/published/0007/04/01/</span></a><span class="No-Break">.</span></p>
-<p>For more details about the SVGF algorithm we presented, we recommend reading the original paper and supporting <span class="No-Break">material: </span><a href="https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced"><span class="No-Break">https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced</span></a><span class="No-Break">.</span></p>
-<p>We used importance sampling to determine which light to use at each frame. Another technique that has become popular in the last few years is <strong class="bold">Reservoir Spatio-Temporal Importance Resampling</strong> (<strong class="bold">ReSTIR</strong>). We highly recommend reading the original paper and looking up the other techniques that have been inspired by <span class="No-Break">it: </span><a href="https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct"><span class="No-Break">https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct</span></a><span class="No-Break">.</span></p>
-<p>In this chapter, we implemented the SVGF algorithm from scratch for pedagogical purposes. Our implementation is a good starting point to build upon, but we also recommend looking at production denoisers from AMD and Nvidia to <span class="No-Break">compare results:</span></p>
+<p>We have only used one of the many hashing techniques presented in the paper <em class="italic">Hash Functions for GPU </em><em class="italic">Rendering</em>: <a href="https://jcgt.org/published/0009/03/02/">https://jcgt.org/published/0009/03/02/</a>.</p>
+<p>This link contains more details about the sampling technique we used to determine the reflection vector by sampling the BRDF – <em class="italic">Sampling the GGX Distribution of Visible </em><em class="italic">Normals</em>: <a href="https://jcgt.org/published/0007/04/01/">https://jcgt.org/published/0007/04/01/</a>.</p>
+<p>For more details about the SVGF algorithm we presented, we recommend reading the original paper and supporting material: <a href="https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced">https://research.nvidia.com/publication/2017-07_spatiotemporal-variance-guided-filtering-real-time-reconstruction-path-traced</a>.</p>
+<p>We used importance sampling to determine which light to use at each frame. Another technique that has become popular in the last few years is <strong class="bold">Reservoir Spatio-Temporal Importance Resampling</strong> (<strong class="bold">ReSTIR</strong>). We highly recommend reading the original paper and looking up the other techniques that have been inspired by it: <a href="https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct">https://research.nvidia.com/publication/2020-07_spatiotemporal-reservoir-resampling-real-time-Ray-Tracing-dynamic-direct</a>.</p>
+<p>In this chapter, we implemented the SVGF algorithm from scratch for pedagogical purposes. Our implementation is a good starting point to build upon, but we also recommend looking at production denoisers from AMD and Nvidia to compare results:</p>
 <ul>
-<li><a href="https://gpuopen.com/fidelityfx-denoiser/"><span class="No-Break">https://gpuopen.com/fidelityfx-denoiser/</span></a></li>
-<li><a href="https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers"><span class="No-Break">https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers</span></a></li>
+<li><a href="https://gpuopen.com/fidelityfx-denoiser/">https://gpuopen.com/fidelityfx-denoiser/</a></li>
+<li><a href="https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers">https://developer.nvidia.com/rtx/Ray-Tracing/rt-denoisers</a></li>
 </ul>
 </div>
 </div></body></html>
