@@ -1,1055 +1,1530 @@
 - en: '4'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: '4'
 - en: Implementing a Frame Graph
+  id: totrans-1
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 实现帧图
 - en: In this chapter, we are introducing **frame graphs**, a new system to control
     the rendering steps for a given frame. As the name implies, we are going to organize
     the steps (passes) required to render a frame in a **Directed Acyclic Graph**
     (**DAG**). This will allow us to determine the order of execution of each pass
     and which passes can be executed in parallel.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们介绍了**帧图**，这是一种新的系统，用于控制给定帧的渲染步骤。正如其名所示，我们将组织渲染帧所需的步骤（通道）在一个**有向无环图**（**DAG**）中。这将使我们能够确定每个通道的执行顺序以及哪些通道可以并行执行。
 - en: 'Having a graph also provides us with many other benefits, such as the following:'
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
+  zh: 拥有一个图也为我们提供了许多其他好处，例如以下内容：
 - en: It allows us to automate the creation and management of render passes and frame
     buffers, as each pass defines the input resources it will read from and which
     resources it will write to.
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 它允许我们自动化渲染通道和帧缓冲区的创建和管理，因为每个通道定义了它将从中读取的输入资源以及它将写入的资源。
 - en: It helps us reduce the memory required for a frame with a technique called **memory
     aliasing**. We can determine how long a resource will be in use by analyzing the
     graph. After the resource is no longer needed, we can reuse its memory for a new
     resource.
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 它帮助我们通过一种称为**内存别名**的技术减少帧所需的内存。我们可以通过分析图来确定资源将使用多长时间。在资源不再需要后，我们可以将其内存重新用于新的资源。
 - en: Finally, we’ll be able to let the graph manage the insertion of memory barriers
     and layout transitions during its execution. Each input and output resource defines
     how it will be used (texture versus attachment, for instance), and we can infer
     its next layout with this information.
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 最后，我们将在执行过程中让图来管理内存屏障和布局转换的插入。每个输入和输出资源定义了它将被如何使用（例如，纹理与附加），我们可以根据这些信息推断出其下一个布局。
 - en: 'In summary, in this chapter, we’re going to cover the following main topics:'
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
+  zh: 总结来说，在本章中，我们将涵盖以下主要主题：
 - en: Understanding the structure of a frame graph and the details of our implementations
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解帧图的结构和我们的实现细节
 - en: Implementing a topological sort to make sure the passes execute in the right
     order
+  id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 实现拓扑排序以确保通道按正确顺序执行
 - en: Using the graph to drive rendering and automate resource management and layout
     transitions
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用图驱动渲染和自动化资源管理和布局转换
 - en: Technical requirements
+  id: totrans-11
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 技术要求
 - en: 'The code for this chapter can be found at the following URL: [https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter4](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter4).'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章的代码可以在以下URL找到：[https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter4](https://github.com/PacktPublishing/Mastering-Graphics-Programming-with-Vulkan/tree/main/source/chapter4)。
 - en: Understanding frame graphs
+  id: totrans-13
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 理解帧图
 - en: So far, the rendering in the Raptor Engine has consisted of one pass only. While
     this approach has served us well for the topics we have covered, it won’t scale
     for some of the later chapters. More importantly, it wouldn’t be representative
     of how modern rendering engines organize their work. Some games and engines implement
     hundreds of passes, and having to manually manage them can become tedious and
     error-prone.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，Raptor引擎中的渲染只包含一个通道。虽然这种方法在我们所涵盖的主题中表现良好，但它无法扩展到一些后续章节。更重要的是，它不会代表现代渲染引擎组织工作的方式。一些游戏和引擎实现了数百个通道，手动管理它们可能会变得繁琐且容易出错。
 - en: Thus, we decided this was a good time in the book to introduce a frame graph.
     In this section, we are going to present the structure of our graph and the main
     interfaces to manipulate it in the code.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，我们决定在本书中介绍帧图是合适的时间。在本节中，我们将展示我们图的架构以及如何在代码中操作它的主要接口。
 - en: Let’s start with the basic concepts of a graph.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从图的基本概念开始。
 - en: Building a graph
+  id: totrans-17
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 构建图
 - en: Before we present our solution and implementation for the frame graph, we would
     like to provide some of the building blocks that we are going to use throughout
     the chapter. If you’re familiar with frame graphs, or graphs in general, feel
     free to skim through this section.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们介绍帧图的解决方案和实现之前，我们希望提供一些我们将贯穿本章使用的构建块。如果您熟悉帧图或一般图，请随意浏览本节。
 - en: 'A graph is defined by two elements: **nodes** (or vertices) and **edges**.
     Each node can be connected to one or more nodes, and each connection is defined
     by an edge.'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 图由两个元素定义：**节点**（或顶点）和**边**。每个节点可以连接到一个或多个节点，每个连接由一条边定义。
 - en: '![Figure 4.1 – An edge from node A to B](img/B18395_04_01.jpg)'
+  id: totrans-20
   prefs: []
   type: TYPE_IMG
+  zh: '![图 4.1 – 从节点 A 到 B 的边](img/B18395_04_01.jpg)'
 - en: Figure 4.1 – An edge from node A to B
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 4.1 – 从节点 A 到 B 的边
 - en: 'In the introduction of this chapter, we mentioned that a frame graph is a DAG.
     It’s important that our frame graph has these properties as otherwise, we wouldn’t
     be able to execute it:'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章的介绍中，我们提到帧图是一个有向无环图（DAG）。我们的帧图具有这些属性非常重要，否则我们无法执行它：
 - en: '**Directed**: This means that the edges have a direction. If, for instance,
     we define an edge to go from node *A* to node *B*, we can’t use the same edge
     to go from *B* to *A*. We would need a different edge to go from *B* to *A*.'
+  id: totrans-23
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**有向**：这意味着边有方向。例如，如果我们定义一个从节点 *A* 到节点 *B* 的边，我们不能使用相同的边从 *B* 到 *A*。我们需要一个不同的边从
+    *B* 到 *A*。'
 - en: '![Figure 4.2 – Connecting A to B and B to A in a directed graph](img/B18395_04_02.jpg)'
+  id: totrans-24
   prefs: []
   type: TYPE_IMG
+  zh: '![图 4.2 – 有向图中从 A 连接到 B 和从 B 连接到 A](img/B18395_04_02.jpg)'
 - en: Figure 4.2 – Connecting A to B and B to A in a directed graph
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 4.2 – 有向图中从 A 连接到 B 和从 B 连接到 A
 - en: '**Acyclic**: This means that there can’t be any cycles in the graph. A cycle
     is introduced when we can go back to a given node after following the path from
     one of its children. If this happens, our frame graph will enter an infinite loop.'
+  id: totrans-26
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**无环**：这意味着图中不能有任何环。当我们沿着从一个子节点开始的路径返回到给定的节点时，就会引入一个环。如果发生这种情况，我们的帧图将进入无限循环。'
 - en: '![Figure 4.3 – An example of a graph containing a cycle](img/B18395_04_03.jpg)'
+  id: totrans-27
   prefs: []
   type: TYPE_IMG
+  zh: '![图 4.3 – 包含环的图的示例](img/B18395_04_03.jpg)'
 - en: Figure 4.3 – An example of a graph containing a cycle
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 4.3 – 包含环的图的示例
 - en: 'In the case of a frame graph, each node represents a rendering pass: depth
     prepass, g-buffer, lighting, and so on. We don’t define the edges explicitly.
     Instead, each node will define a number of outputs and, if needed, a number of
     inputs. An edge is then implied when the output of a given pass is used as input
     in another pass.'
+  id: totrans-29
   prefs: []
   type: TYPE_NORMAL
+  zh: 在帧图的情况下，每个节点代表一个渲染过程：深度预扫描、g-缓冲区、光照等。我们不显式地定义边。相反，每个节点将定义多个输出，如果需要，还可以定义多个输入。当给定过程的输出被用作另一个过程的输入时，就隐含了一个边。
 - en: '![Figure 4.4 – An example of a full frame graph](img/B18395_04_04.jpg)'
+  id: totrans-30
   prefs: []
   type: TYPE_IMG
+  zh: '![图 4.4 – 全帧图的示例](img/B18395_04_04.jpg)'
 - en: Figure 4.4 – An example of a full frame graph
+  id: totrans-31
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 4.4 – 全帧图的示例
 - en: These two concepts, nodes and edges, are all that is needed to understand a
     frame graph. Next, we are going to present how we decided to encode this data
     structure.
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两个概念，节点和边，就是理解帧图所需的所有内容。接下来，我们将展示我们如何决定编码这个数据结构。
 - en: A data-driven approach
+  id: totrans-33
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 数据驱动方法
 - en: Some engines only provide a code interface to build a frame graph, while others
     let developers specify the graph in a human-readable format – JSON for example
     – so that making changes to the graph doesn’t necessarily require code changes.
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 一些引擎只提供代码接口来构建帧图，而其他引擎允许开发者以人类可读的格式（例如 JSON）指定图，这样更改图就不一定需要代码更改。
 - en: 'After some consideration, we have decided to define our graph in JSON and implement
     a parser to instantiate the classes required. There are a few reasons we opted
     for this approach:'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: 经过一些考虑，我们决定在 JSON 中定义我们的图，并实现一个解析器来实例化所需的类。我们选择这种方法有几个原因：
 - en: It allows us to make some changes to the graph without having to recompile the
     code. If, for instance, we want to change the size or format of a render target,
     all we have to do is make the change in the JSON definition of the graph and rerun
     the program.
+  id: totrans-36
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 这允许我们在不重新编译代码的情况下对图进行一些更改。例如，如果我们想更改渲染目标的尺寸或格式，我们只需要在图的 JSON 定义中进行更改，然后重新运行程序。
 - en: We can also reorganize the graph and remove some of its nodes without making
     changes to the code.
+  id: totrans-37
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 我们还可以重新组织图，并删除其中的一些节点，而无需更改代码。
 - en: It’s easier to understand the flow of the graph. Depending on the implementation,
     the definition of the graph in code could be spread across different code locations
     or even different files. This makes it harder to determine the graph structure.
+  id: totrans-38
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 理解图的流程更容易。根据实现方式，代码中对图的定义可能分布在不同的代码位置，甚至不同的文件中。这使得确定图结构变得更加困难。
 - en: It’s easier for non-technical contributors to make changes. The graph definition
     could also be done through a visual tool and translated into JSON. The same approach
     wouldn’t be feasible if the graph definition was done purely in code.
+  id: totrans-39
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于非技术贡献者来说，更改更容易。图定义也可以通过可视化工具完成，并将其转换为 JSON。如果图定义完全在代码中完成，这种方法是不可行的。
 - en: 'We can now have a look at a node in our frame graph:'
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，我们可以看看我们的帧图中的一个节点：
 - en: '[PRE0]'
+  id: totrans-41
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'A node is defined by three variables:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 节点由三个变量定义：
 - en: '`name`: This helps us identify the node during execution, and it also gives
     us a meaningful name for other elements, for instance, the render pass associated
     with this node.'
+  id: totrans-43
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`name`: 这有助于我们在执行期间识别节点，同时也为其他元素提供了有意义的名称，例如，与该节点关联的渲染通道。'
 - en: '`inputs`: This lists the inputs for this node. These are resources that have
     been produced by another node. Note that it would be an error to define an input
     that has not been produced by another node in the graph. The only exceptions are
     external resources, which are managed outside the render graph, and the user will
     have to provide them to the graph at runtime.'
+  id: totrans-44
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`inputs`: 这列出了该节点的输入。这些是其他节点产生的资源。请注意，在图中定义一个未由其他节点产生的输入将是一个错误。唯一的例外是外部资源，这些资源在渲染图中外部管理，并且用户必须在运行时将它们提供给图。'
 - en: '`outputs`: These are the resources produced by a given node.'
+  id: totrans-45
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`outputs`: 这些是由给定节点产生的资源。'
 - en: 'We have defined four different types of resources depending on their use:'
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们根据其用途定义了四种不同类型的资源：
 - en: '`attachment`: The list of attachments is used to determine the render pass
     and framebuffer composition of a given node. As you noticed in the previous example,
     attachments can be defined both for inputs and outputs. This is needed to continue
     working on a resource in multiple nodes. After we run a depth prepass, for instance,
     we want to load the depth data and use it during the g-buffer pass to avoid shading
     pixels for objects that are hidden behind other objects.'
+  id: totrans-47
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`attachment`: 附件列表用于确定给定节点的渲染通道和帧缓冲区组成。正如你在前面的示例中注意到的，附件可以定义在输入和输出中。这是在多个节点上继续处理资源所必需的。例如，在运行深度预通道之后，我们希望加载深度数据并在g缓冲区通道中使用它，以避免为隐藏在其他物体后面的物体着色像素。'
 - en: '`texture`: This type is used to distinguish images from attachments. An attachment
     has to be part of the definition of the render pass and framebuffer for a node,
     while a texture is read during the pass and is part of a shader data definition.'
+  id: totrans-48
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`texture`: 这种类型用于区分图像和附件。附件必须是节点渲染通道和帧缓冲区定义的一部分，而纹理在通道期间读取，是着色器数据定义的一部分。'
 - en: This distinction is also important to determine which images need to be transitioned
     to a different layout and require an image barrier. We’ll cover this in more detail
     later in the chapter.
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种区分对于确定哪些图像需要过渡到不同的布局并需要图像屏障也很重要。我们将在本章后面更详细地介绍这一点。
 - en: We don’t need to specify the size and format of the texture here, as we had
     already done so when we first defined the resource as an output.
+  id: totrans-50
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们在这里不需要指定纹理的大小和格式，因为我们已经在第一次定义资源为输出时这样做过了。
 - en: '`buffer`: This type represents a storage buffer that we can write to or read
     from. As with textures, we will need to insert memory barriers to ensure the writes
     from a previous pass are completed before accessing the buffer data in another
     pass.'
+  id: totrans-51
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`buffer`: 这种类型表示我们可以写入或读取的存储缓冲区。与纹理一样，我们需要插入内存屏障以确保在另一个通道访问缓冲区数据之前完成上一个通道的写入。'
 - en: '`reference`: This type is used exclusively to ensure the right edges between
     nodes are computed without creating a new resource.'
+  id: totrans-52
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`reference`: 这种类型仅用于确保在节点之间计算正确的边缘，而不创建新的资源。'
 - en: 'All types are quite intuitive, but we feel that the reference type deserves
     an example to better understand why we need this type:'
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: 所有类型都很直观，但我们认为引用类型需要举例说明，以便更好地理解为什么我们需要这种类型：
 - en: '[PRE1]'
+  id: totrans-54
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: In this case, lighting is an input resource of the `attachment` type. When processing
     the graph, we will correctly link the node that produced the lighting resource
     to this node. However, we also need to make sure that the next node that makes
     use of the lighting resource creates a connection to this node, as otherwise,
     the node ordering would be incorrect.
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这种情况下，光照是`attachment`类型的输入资源。在处理图时，我们将正确地将产生光照资源的节点链接到这个节点。然而，我们还需要确保使用光照资源的下一个节点创建到这个节点的连接，否则，节点顺序将是不正确的。
 - en: For this reason, we add a reference to the lighting resource in the output of
     the transparent pass. We can’t use the `attachment` type here as otherwise, we
     would double count the lighting resource in the creation of the render pass and
     framebuffer.
+  id: totrans-56
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，我们在透明通道的输出中添加了对光照资源的引用。我们在这里不能使用`attachment`类型，否则，在创建渲染通道和帧缓冲区时，我们会重复计算光照资源。
 - en: Now that you have a good understanding of the frame graph structure, it’s time
     to look at some code!
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在你已经很好地理解了帧图结构，是时候看看一些代码了！
 - en: Implementing the frame graph
+  id: totrans-58
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现帧图
 - en: In this section, we are going to define the data structures that are going to
     be used throughout the chapter, namely resources and nodes. Next, we are going
     to parse the JSON definition of the graph to create resources and nodes that will
     be used for subsequent steps.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将定义将在本章中使用的整个数据结构，即资源和节点。接下来，我们将解析图的JSON定义以创建用于后续步骤的资源节点。
 - en: Let’s start with the definition of our data structures.
+  id: totrans-60
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们从我们数据结构的定义开始。
 - en: Resources
+  id: totrans-61
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 资源
 - en: '**Resources** define an input or an output of a node. They determine the use
     of the resource for a given node and, as we will explain later, they are used
     to define edges between the frame graph nodes. A resource is structured as follows:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: '**资源**定义了一个节点的输入或输出。它们决定了给定节点对资源的使用，并且正如我们稍后将要解释的，它们用于定义帧图节点之间的边。资源结构如下：'
 - en: '[PRE2]'
+  id: totrans-63
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: 'A resource can be either an input or an output of a node. It’s worth going
     through each field in the following list:'
+  id: totrans-64
   prefs: []
   type: TYPE_NORMAL
+  zh: 资源可以是节点的输入或输出。以下列表中的每个字段都值得仔细研究：
 - en: '`type`: Defines whether we are dealing with an image or a buffer.'
+  id: totrans-65
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`type`：定义了我们是否在处理图像或缓冲区。'
 - en: '`resource_info`: Contains the details about the resource (such as size, format,
     and so on) based on `type`.'
+  id: totrans-66
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`resource_info`：包含基于`type`的资源详细信息（例如大小、格式等）。'
 - en: '`producer`: Stores a reference to the node that outputs a resource. This will
     be used to determine the edges of the graph.'
+  id: totrans-67
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`producer`：存储输出资源的节点的引用。这将用于确定图的边。'
 - en: '`output_handle`: Stores the parent resource. It will become clearer later why
     we need this field.'
+  id: totrans-68
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`output_handle`：存储父资源。稍后我们将更清楚地了解为什么需要这个字段。'
 - en: '`ref_count`: Will be used when computing which resources can be aliased. Aliasing
     is a technique that allows multiple resources to share the same memory. We will
     provide more details on how this works later in this chapter.'
+  id: totrans-69
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`ref_count`：在计算哪些资源可以被别名化时使用。别名化是一种允许多个资源共享相同内存的技术。我们将在本章稍后提供更多关于它是如何工作的详细信息。'
 - en: '`name`: Contains the name of the resource as defined in JSON. This is useful
     for debugging and also to retrieve the resource by name.'
+  id: totrans-70
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`name`：包含资源在JSON中定义的名称。这对于调试和通过名称检索资源非常有用。'
 - en: 'Next, we are going to look at a graph node:'
+  id: totrans-71
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们将查看一个图节点：
 - en: '[PRE3]'
+  id: totrans-72
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: A node stores the list of inputs it will use during execution and the outputs
     it will produce. Each input and output is a different instance of `FrameGraphResource`.
     The `output_handle` field is used to link an input to its output resource. We
     need separate resources because their type might differ; an image might be used
     as an output attachment and then used as an input texture. This is an important
     detail that will be used to automate memory barrier placement.
+  id: totrans-73
   prefs: []
   type: TYPE_NORMAL
+  zh: 节点存储了它在执行期间将使用的输入列表和它将产生的输出。每个输入和输出都是`FrameGraphResource`的不同实例。`output_handle`字段用于将输入与其输出资源链接起来。我们需要单独的资源，因为它们的类型可能不同；一个图像可能被用作输出附件，然后用作输入纹理。这是一个重要的细节，将被用于自动化内存屏障放置。
 - en: A node also stores a list of the nodes it is connected to, its name, the framebuffer,
     and the render pass created according to the definition of its inputs and outputs.
     Like resources, a node also stores its name as defined on JSON.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 节点还存储了一个列表，列出了它连接到的节点、它的名称、根据其输入和输出的定义创建的帧缓冲区和渲染通道。像资源一样，节点也存储了在JSON中定义的名称。
 - en: Finally, a node contains a pointer to the rendering implementation. We’ll discuss
     later how we link a node to its rendering pass.
+  id: totrans-75
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，一个节点包含指向渲染实现的指针。我们将在稍后讨论如何将节点与其渲染通道链接起来。
 - en: These are the main data structures used to define our frame graph. We have also
     created a `FrameGraphBuilder` helper class that will be used by the `FrameGraph`
     class. The `FrameGraphBuilder` helper class contains the functionality to create
     nodes and resources.
+  id: totrans-76
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些是我们用来定义帧图的主要数据结构。我们还创建了一个`FrameGraphBuilder`辅助类，该类将被`FrameGraph`类使用。`FrameGraphBuilder`辅助类包含创建节点和资源的功能。
 - en: Let’s see how these building blocks are used to define our frame graph!
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们看看这些构建块是如何用来定义我们的帧图的！
 - en: Parsing the graph
+  id: totrans-78
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 解析图
 - en: 'Now that we have defined the data structures that make our graph, we need to
     parse the JSON definition of the graph to fill those structures and create our
     frame graph definition. Here are the steps that need to be executed to parse the
     frame graph:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经定义了构成我们图的数据结构，我们需要解析图的JSON定义来填充这些结构并创建我们的帧图定义。以下是执行解析帧图所需的步骤：
 - en: 'We start by initializing a `FrameGraphBuilder` and `FrameGraph` class:'
+  id: totrans-80
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们首先初始化一个`FrameGraphBuilder`和`FrameGraph`类：
 - en: '[PRE4]'
+  id: totrans-81
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: '[PRE5]'
+  id: totrans-82
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: '[PRE6]'
+  id: totrans-83
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: '[PRE7]'
+  id: totrans-84
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Next, we call the `parse` method to read the JSON definition of the graph and
     create the resources and nodes for it:'
+  id: totrans-85
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，我们调用`parse`方法来读取图的JSON定义，并为其创建资源和节点：
 - en: '[PRE8]'
+  id: totrans-86
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: '[PRE9]'
+  id: totrans-87
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: 'Once we have our graph definition, we have our compile step:'
+  id: totrans-88
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 一旦我们有了图定义，我们就有了编译步骤：
 - en: '[PRE10]'
+  id: totrans-89
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: This step is where the magic happens. We analyze the graph to compute the edges
     between nodes, create the framebuffer and render passes for each class, and determine
     which resources can be aliased. We are going to explain each of these steps in
     detail in the next section.
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 这一步是魔法发生的地方。我们分析图以计算节点之间的边，为每个类创建帧缓冲区和渲染过程，并确定哪些资源可以被别名化。我们将在下一节中详细解释这些步骤。
 - en: 'Once we have compiled our graph, we need to register our rendering passes:'
+  id: totrans-91
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 一旦我们编译了我们的图，我们需要注册我们的渲染过程：
 - en: '[PRE11]'
+  id: totrans-92
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: '[PRE12]'
+  id: totrans-93
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: '[PRE13]'
+  id: totrans-94
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: '[PRE14]'
+  id: totrans-95
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: '[PRE15]'
+  id: totrans-96
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: '[PRE16]'
+  id: totrans-97
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: '[PRE17]'
+  id: totrans-98
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: '[PRE18]'
+  id: totrans-99
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: '[PRE19]'
+  id: totrans-100
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: '[PRE20]'
+  id: totrans-101
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: This allows us to test different implementations for each pass by simply swapping
     which class we register for a given pass. It’s even possible to swap these passes
     at runtime.
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 这允许我们通过简单地交换为给定过程注册的类来测试每个过程的不同实现。甚至可以在运行时交换这些过程。
 - en: 'Finally, we are ready to render our scene:'
+  id: totrans-103
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们准备好渲染我们的场景：
 - en: '[PRE21]'
+  id: totrans-104
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: We are now going to look at the `compile` and `render` methods in detail.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们将详细查看`compile`和`render`方法。
 - en: Implementing topological sort
+  id: totrans-106
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 实现拓扑排序
 - en: As we mentioned in the preceding section, the most interesting aspects of the
     frame graph implementation are inside the `compile` method. We have abbreviated
     some of the code for clarity in the following sections.
+  id: totrans-107
   prefs: []
   type: TYPE_NORMAL
+  zh: 正如我们在前一节中提到的，帧图实现中最有趣的部分在`compile`方法中。为了清晰起见，我们在以下章节中简化了一些代码。
 - en: Please refer to the GitHub link mentioned in the *Technical requirements* section
     of the chapter for the full implementation.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 请参阅章节中提到的*技术要求*部分的GitHub链接以获取完整的实现。
 - en: 'Here is a breakdown of the algorithm that we use to compute the edges between
     nodes:'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面是我们用来计算节点之间边的算法的分解：
 - en: 'The first step we perform is to create the edges between nodes:'
+  id: totrans-110
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们执行的第一步是创建节点之间的边：
 - en: '[PRE22]'
+  id: totrans-111
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: '[PRE23]'
+  id: totrans-112
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: '[PRE24]'
+  id: totrans-113
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: '[PRE25]'
+  id: totrans-114
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: '[PRE26]'
+  id: totrans-115
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: '[PRE27]'
+  id: totrans-116
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: '[PRE28]'
+  id: totrans-117
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: We accomplish this by iterating through each input and retrieving the corresponding
     output resource. Note that internally, the graph stores the outputs in a map keyed
     by name.
+  id: totrans-118
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们通过遍历每个输入并检索相应的输出资源来完成此操作。请注意，在内部，图按名称键存储输出。
 - en: 'Next, we save the details of the output in the input resource. This way we
     have direct access to this data in the input as well:'
+  id: totrans-119
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，我们将输出细节保存到输入资源中。这样我们就可以在输入中直接访问这些数据：
 - en: '[PRE29]'
+  id: totrans-120
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: '[PRE30]'
+  id: totrans-121
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: '[PRE31]'
+  id: totrans-122
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: '[PRE32]'
+  id: totrans-123
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: '[PRE33]'
+  id: totrans-124
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: 'Finally, we create an edge between the node that produces this input and the
     node we are currently processing:'
+  id: totrans-125
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们在产生此输入的节点和当前正在处理的节点之间创建一个边：
 - en: '[PRE34]'
+  id: totrans-126
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: '[PRE35]'
+  id: totrans-127
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: '[PRE36]'
+  id: totrans-128
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: '[PRE37]'
+  id: totrans-129
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: '[PRE38]'
+  id: totrans-130
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: '[PRE39]'
+  id: totrans-131
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: '[PRE40]'
+  id: totrans-132
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: '[PRE41]'
+  id: totrans-133
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: At the end of this loop, each node will contain the list of nodes it is connected
     to. While we currently don’t do this, at this stage, it would be possible to remove
     nodes that have no edges from the graph.
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个循环结束时，每个节点将包含它连接的节点列表。虽然我们目前没有这样做，但在这一阶段，可以删除图中没有边的节点。
 - en: Now that we have computed the connection between nodes, we can sort them in
     topological order. At the end of this step, we will obtain the list of nodes ordered
     to ensure that nodes that produce an output come before the nodes that make use
     of that output.
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在我们已经计算了节点之间的连接，我们可以按拓扑顺序对它们进行排序。在这个步骤结束时，我们将获得一个节点列表，以确保产生输出的节点在利用该输出的节点之前。
 - en: 'Here is a breakdown of the sorting algorithm where we have highlighted the
     most relevant sections of the code:'
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 下面是排序算法的分解，我们突出显示了代码中最相关的部分：
 - en: 'The `sorted_node` array will contain the sorted nodes in reverse order:'
+  id: totrans-137
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`sorted_node`数组将包含按逆序排序的节点：'
 - en: '[PRE42]'
+  id: totrans-138
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: '[PRE43]'
+  id: totrans-139
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: 'The `visited` array will be used to mark which nodes we have already processed.
     We need to keep track of this information to avoid infinite loops:'
+  id: totrans-140
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将使用`visited`数组来标记我们已经处理过的节点。我们需要跟踪这些信息以避免无限循环：
 - en: '[PRE44]'
+  id: totrans-141
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: '[PRE45]'
+  id: totrans-142
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: '[PRE46]'
+  id: totrans-143
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: '[PRE47]'
+  id: totrans-144
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: 'Finally, the `stack` array is used to keep track of which nodes we still have
     to process. We need this data structure as our implementation doesn’t make use
     of recursion:'
+  id: totrans-145
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，`stack`数组用于跟踪我们还需要处理的节点。我们需要这个数据结构，因为我们的实现没有使用递归：
 - en: '[PRE48]'
+  id: totrans-146
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: '[PRE49]'
+  id: totrans-147
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: 'The graph is traversed by using **depth-first search** (**DFS**). The code
     that follows performs exactly this task:'
+  id: totrans-148
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 图是通过使用**深度优先搜索**（**DFS**）遍历的。下面的代码执行了这项任务：
 - en: '[PRE50]'
+  id: totrans-149
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: '[PRE51]'
+  id: totrans-150
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE51]'
 - en: 'We iterate through each node and add it to the stack. We do this to ensure
     we process all the nodes in the graph:'
+  id: totrans-151
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们遍历每个节点并将其添加到栈中。我们这样做是为了确保我们处理图中的所有节点：
 - en: '[PRE52]'
+  id: totrans-152
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE52]'
 - en: '[PRE53]'
+  id: totrans-153
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE53]'
 - en: '[PRE54]'
+  id: totrans-154
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE54]'
 - en: 'We then have a second loop that will be active until we have processed all
     nodes that are connected to the node we just added to the stack:'
+  id: totrans-155
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后，我们有一个第二个循环，它将在我们处理完刚刚添加到栈中的节点的所有连接节点后才会停止：
 - en: '[PRE55]'
+  id: totrans-156
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE55]'
 - en: '[PRE56]'
+  id: totrans-157
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE56]'
 - en: '[PRE57]'
+  id: totrans-158
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE57]'
 - en: '[PRE58]'
+  id: totrans-159
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE58]'
 - en: If a node has already been visited and added to the list of sorted nodes, we
     simply remove it from the stack and continue processing other nodes. Traditional
     graph processing implementations don’t have this step.
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果一个节点已经被访问并添加到排序节点的列表中，我们只需将其从栈中移除并继续处理其他节点。传统的图处理实现没有这一步。
 - en: We had to add it as a node might produce multiple outputs. These outputs, in
     turn, might link to multiple nodes, and we don’t want to add the producing node
     multiple times to the sorted node list.
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们必须将其作为节点可能会产生多个输出。这些输出反过来可能会链接到多个节点，我们不希望将产生节点多次添加到排序节点列表中。
 - en: 'If the node we are currently processing has already been visited and we got
     to it in the stack, it means we processed all of its children, and it can be added
     to the list of sorted nodes. As mentioned in the following code, we also mark
     it as added so that we won’t add it multiple times to the list:'
+  id: totrans-162
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 如果我们当前正在处理的节点已经被访问并且是通过栈到达的，这意味着我们已经处理了它的所有子节点，并且它可以被添加到排序节点的列表中。正如以下代码中提到的，我们也会将其标记为已添加，这样我们就不会多次将其添加到列表中：
 - en: '[PRE59]'
+  id: totrans-163
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE59]'
 - en: '[PRE60]'
+  id: totrans-164
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE60]'
 - en: '[PRE61]'
+  id: totrans-165
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE61]'
 - en: '[PRE62]'
+  id: totrans-166
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE62]'
 - en: '[PRE63]'
+  id: totrans-167
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE63]'
 - en: '[PRE64]'
+  id: totrans-168
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE64]'
 - en: 'When we first get to a node, we mark it as `visited`. As mentioned in the following
     code block, this is needed to make sure we don’t process the same node multiple
     times:'
+  id: totrans-169
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 当我们第一次到达一个节点时，我们将其标记为`已访问`。正如以下代码块中提到的，这是为了确保我们不会多次处理相同的节点：
 - en: '[PRE65]'
+  id: totrans-170
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE65]'
 - en: 'If the node we are processing has no edges, we continue to iterate:'
+  id: totrans-171
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 如果我们正在处理的节点没有边，我们继续迭代：
 - en: '[PRE66]'
+  id: totrans-172
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE66]'
 - en: '[PRE67]'
+  id: totrans-173
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE67]'
 - en: '[PRE68]'
+  id: totrans-174
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE68]'
 - en: '[PRE69]'
+  id: totrans-175
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE69]'
 - en: '[PRE70]'
+  id: totrans-176
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE70]'
 - en: '[PRE71]'
+  id: totrans-177
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE71]'
 - en: '[PRE72]'
+  id: totrans-178
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE72]'
 - en: '[PRE73]'
+  id: totrans-179
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE73]'
 - en: '[PRE74]'
+  id: totrans-180
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE74]'
 - en: On the other hand, if the node is connected to other nodes, we add them to the
     stack for processing and then iterate again. If this is the first time you’ve
     seen an iterative implementation of graph traversal, it might not be immediately
     clear how it relates to the recursive implementation. We suggest going through
     the code a few times until you understand it; it’s a powerful technique that will
     come in handy at times!
+  id: totrans-181
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 另一方面，如果节点连接到其他节点，我们将它们添加到栈中以供处理，然后再次迭代。如果你第一次看到图遍历的迭代实现，可能不会立即清楚它与递归实现的关系。我们建议多次阅读代码，直到你理解它；这是一个在关键时刻非常有用的强大技术！
 - en: '[PRE75]'
+  id: totrans-182
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE75]'
 - en: '[PRE76]'
+  id: totrans-183
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE76]'
 - en: '[PRE77]'
+  id: totrans-184
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE77]'
 - en: '[PRE78]'
+  id: totrans-185
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE78]'
 - en: '[PRE79]'
+  id: totrans-186
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE79]'
 - en: '[PRE80]'
+  id: totrans-187
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE80]'
 - en: '[PRE81]'
+  id: totrans-188
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE81]'
 - en: 'The final step is to iterate through the sorted nodes array and add them to
     the graph nodes in reverse order:'
+  id: totrans-189
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后一步是遍历排序节点数组并将它们以相反的顺序添加到图节点中：
 - en: '[PRE82]'
+  id: totrans-190
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE82]'
 - en: '[PRE83]'
+  id: totrans-191
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE83]'
 - en: '[PRE84]'
+  id: totrans-192
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE84]'
 - en: We have now completed the topological sorting of the graph! With the nodes sorted,
     we can now proceed to analyze the graph to identify which resources can be aliased.
+  id: totrans-193
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们现在已经完成了图的拓扑排序！节点排序后，我们可以继续分析图以确定哪些资源可以被别名化。
 - en: Computing resource aliasing
+  id: totrans-194
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 计算资源别名
 - en: Large frame graphs must deal with hundreds of nodes and resources. The lifetime
     of these resources might not span the full graph, and this gives us an opportunity
     to reuse memory for resources that are no longer needed. This technique is called
     **memory aliasing**, as multiple resources can point to the same memory allocation.
+  id: totrans-195
   prefs: []
   type: TYPE_NORMAL
+  zh: 大型框架图必须处理数百个节点和资源。这些资源的生命周期可能不会跨越整个图，这为我们提供了重用不再需要的资源内存的机会。这种技术被称为**内存别名**，因为多个资源可以指向相同的内存分配。
 - en: '![Figure 4.5 – An example of resource lifetime across the frame](img/B18395_04_05.jpg)'
+  id: totrans-196
   prefs: []
   type: TYPE_IMG
+  zh: '![图 4.5 – 框架中资源生命周期的示例](img/B18395_04_05.jpg)'
 - en: Figure 4.5 – An example of resource lifetime across the frame
+  id: totrans-197
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 4.5 – 框架中资源生命周期的示例
 - en: In this example, we can see that the `gbuffer_colour` resource is not needed
     for the full frame, and its memory can be reused, for instance, for the `final`
     resource.
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这个例子中，我们可以看到`gbuffer_colour`资源对于整个帧不是必需的，其内存可以被重用，例如，用于`final`资源。
 - en: We first need to determine the first and last nodes that use a given resource.
     Once we have the information, we can determine whether a given node can reuse
     existing memory for its resources. The code that follows implements this technique.
+  id: totrans-199
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先需要确定使用给定资源的第一个和最后一个节点。一旦我们有了这些信息，我们就可以确定给定节点是否可以为其资源重用现有内存。以下代码实现了这一技术。
 - en: 'We start by allocating a few helper arrays:'
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先分配几个辅助数组：
 - en: '[PRE85]'
+  id: totrans-201
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE85]'
 - en: They are not strictly needed by the algorithm, but they are helpful for debugging
     and ensuring our implementation doesn’t have a bug. The `allocations` array will
     track on which node a given resource was allocated.
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 它们对于算法来说不是严格必需的，但它们对调试和确保我们的实现没有错误很有帮助。`allocations`数组将跟踪给定资源是在哪个节点上分配的。
 - en: Similarly, the `deallocations` array contains the node at which a given resource
     can be deallocated. Finally, `free_list` will contain the resources that have
     been freed and can be reused.
+  id: totrans-203
   prefs: []
   type: TYPE_NORMAL
+  zh: 同样，`deallocations`数组包含可以解除分配给定资源的节点。最后，`free_list`将包含已被释放并可重复使用的资源。
 - en: 'Next, we are going to look at the algorithm that tracks the allocations and
     deallocations of resources:'
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们将查看跟踪资源分配和解除分配的算法：
 - en: '[PRE86]'
+  id: totrans-205
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE86]'
 - en: 'First, we loop through all the input resources and increase their reference
     count each time they are used as input. We also mark which node allocates the
     resource in the `allocations` array:'
+  id: totrans-206
   prefs: []
   type: TYPE_NORMAL
+  zh: 首先，我们遍历所有输入资源，每次它们作为输入使用时，都会增加它们的引用计数。我们还在`allocations`数组中标记哪个节点分配了资源：
 - en: '[PRE87]'
+  id: totrans-207
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE87]'
 - en: 'The next step is to iterate through all the nodes and their outputs. The code
     that follows is responsible for performing the memory allocations:'
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 下一步是遍历所有节点及其输出。以下代码负责执行内存分配：
 - en: '[PRE88]'
+  id: totrans-209
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE88]'
 - en: For each output resource, we first check whether there are any available resources
     that can be reused. If so, we pass the free resource to the `TextureCreation`
     structure. Internally, `GpuDevice` will use the memory from this resource and
     bind it to the newly created resource. If no free resources are available, we
     proceed by creating a new resource.
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于每个输出资源，我们首先检查是否有任何可重用的可用资源。如果有，我们将空闲资源传递给`TextureCreation`结构。内部，`GpuDevice`将使用该资源的内存并将其绑定到新创建的资源。如果没有可用的空闲资源，我们继续创建新的资源。
 - en: 'The last part of the loop takes care of determining which resources can be
     freed and added to the free list:'
+  id: totrans-211
   prefs: []
   type: TYPE_NORMAL
+  zh: 循环的最后一部分负责确定哪些资源可以被释放并添加到空闲列表中：
 - en: '[PRE89]'
+  id: totrans-212
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE89]'
 - en: We iterate over the inputs one final time and decrease the reference count of
     each resource. If the reference count reaches `0`, it means this is the last node
     that uses the resource. We save the node in the `deallocations` array and add
     the resource to the free list, ready to be used for the next node we are going
     to process.
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们再次遍历输入，并减少每个资源的引用计数。如果引用计数达到`0`，这意味着这是最后一个使用该资源的节点。我们将节点保存在`deallocations`数组中，并将资源添加到空闲列表中，以便用于我们接下来要处理的下一个节点。
 - en: This concludes the implementation of the graph analysis. The resources we have
     created are used to create the `framebuffer` object, at which point the graph
     is ready for rendering!
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就完成了图分析的实施。我们创建的资源用于创建`framebuffer`对象，此时图就准备好进行渲染了！
 - en: We are going to cover the execution of the graph in the next section.
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将在下一节中介绍图的执行。
 - en: Driving rendering with the frame graph
+  id: totrans-216
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用帧图驱动渲染
 - en: 'After the graph has been analyzed, we have all the details we need for rendering.
     The following code is responsible for executing each node and ensuring all the
     resources are in the correct state for use by that node:'
+  id: totrans-217
   prefs: []
   type: TYPE_NORMAL
+  zh: 在分析完图之后，我们拥有了渲染所需的所有详细信息。以下代码负责执行每个节点并确保所有资源都处于正确的状态，以便该节点可以使用：
 - en: '[PRE90]'
+  id: totrans-218
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE90]'
 - en: We first iterate through all the inputs of a node. If the resource is a texture,
     we insert a barrier to transition that resource from an attachment layout (for
     use in a render pass) to a shader stage layout (for use in a fragment shader).
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们首先遍历节点的所有输入。如果资源是纹理，我们插入一个屏障，将资源从附件布局（用于渲染通道）转换为着色器阶段布局（用于片段着色器）。
 - en: 'This step is important to make sure any previous writes have completed before
     we access this resource for reading:'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 此步骤很重要，以确保在读取此资源之前，任何之前的写入都已完成：
 - en: '[PRE91]'
+  id: totrans-221
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE91]'
 - en: Next, we iterate over the outputs of the node. Once again, we need to make sure
     the resource is in the correct state to be used as an attachment in the render
     pass. After this step, our resources are ready for rendering.
+  id: totrans-222
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们遍历节点的输出。再次强调，我们需要确保资源处于正确的状态，以便在渲染通道中使用。完成此步骤后，我们的资源就准备好进行渲染了。
 - en: 'The render targets of each node could all have different resolutions. The following
     code ensures that our scissor and viewport sizes are correct:'
+  id: totrans-223
   prefs: []
   type: TYPE_NORMAL
+  zh: 每个节点的渲染目标可能具有不同的分辨率。以下代码确保我们的裁剪和视口大小是正确的：
 - en: '[PRE92]'
+  id: totrans-224
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE92]'
 - en: 'Once the viewport and scissor are set correctly, we call the `pre_render` method
     on each node. This allows each node to perform any operations that must happen
     outside a render pass. For instance, the render pass for the depth-of-field effect
     takes the input texture and computes the MIP maps for that resource:'
+  id: totrans-225
   prefs: []
   type: TYPE_NORMAL
+  zh: 一旦视口和剪刀设置正确，我们就在每个节点上调用`pre_render`方法。这允许每个节点执行必须在渲染通道外发生的任何操作。例如，用于景深效果的渲染通道会获取输入纹理并计算该资源的MIP贴图：
 - en: '[PRE93]'
+  id: totrans-226
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE93]'
 - en: 'Finally, we bind the render pass for this node, call the `render` method of
     the rendering pass that we registered for this node, and end the loop by ending
     the render pass:'
+  id: totrans-227
   prefs: []
   type: TYPE_NORMAL
+  zh: 最后，我们绑定该节点的渲染通道，调用为该节点注册的渲染通道的`render`方法，并通过结束渲染通道来结束循环：
 - en: '[PRE94]'
+  id: totrans-228
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE94]'
 - en: 'This concludes the code overview for this chapter! We have covered a lot of
     ground; this is a good time for a brief recap: we started with the definition
     of the main data structures used by our frame graph implementation. Next, we explained
     how the graph is parsed to compute the edges between nodes by using inputs and
     outputs.'
+  id: totrans-229
   prefs: []
   type: TYPE_NORMAL
+  zh: 这就完成了本章的代码概述！我们已经覆盖了很多内容；现在是简要回顾的好时机：我们首先定义了我们帧图实现所使用的主要数据结构。接下来，我们解释了如何通过使用输入和输出计算节点之间的边来解析图。
 - en: Once this step is completed, we can sort the nodes in topological order to ensure
     they are executed in the correct order. We then create the resources needed to
     execute the graph and make use of memory aliasing to optimize memory usage. Finally,
     we iterate over each node for rendering, making sure that all resources are in
     the correct state for that node.
+  id: totrans-230
   prefs: []
   type: TYPE_NORMAL
+  zh: 完成这一步后，我们可以按拓扑顺序对节点进行排序，以确保它们按正确的顺序执行。然后，我们创建执行图所需的资源，并利用内存别名优化内存使用。最后，我们遍历每个节点进行渲染，确保所有资源都处于正确的状态。
 - en: There are some features that we haven’t implemented and that could improve the
     functionality and robustness of our frame graph. For example, we should ensure
     there are no loops in the graph and that an input isn’t being produced by the
     same node it’s being used in.
+  id: totrans-231
   prefs: []
   type: TYPE_NORMAL
+  zh: 有些功能我们还没有实现，这些功能可以提高我们帧图的功能性和健壮性。例如，我们应该确保图中没有循环，并且输入不是由同一节点产生的，该节点正在使用这个输入。
 - en: For the memory aliasing implementation, we use a greedy approach and simply
     pick the first free resource that can accommodate a new resource. This can lead
     to fragmentation and suboptimal use of memory.
+  id: totrans-232
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于内存别名实现，我们采用贪婪策略，简单地选择第一个可以容纳新资源的空闲资源。这可能导致碎片化和内存使用不优化。
 - en: We encourage you to experiment with the code and improve on it!
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们鼓励你尝试修改代码并对其进行改进！
 - en: Summary
+  id: totrans-234
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we implemented a frame graph to improve the management of rendering
     passes and make it easier to expand our rendering pipeline in future chapters.
     We started by covering the basic concepts, nodes and edges, that define a graph.
+  id: totrans-235
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们实现了一个帧图来改进渲染通道的管理，并使我们在未来章节中扩展渲染管道变得更加容易。我们首先介绍了定义图的基礎概念、节点和边。
 - en: Next, we gave an overview of the structure of our graph and how it’s encoded
     in JSON format. We also mentioned why we went for this approach as opposed to
     defining the graph fully in code.
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: 接下来，我们概述了我们的图结构及其在JSON格式中的编码方式。我们还提到了为什么我们选择这种方法而不是在代码中完全定义图。
 - en: In the last part, we detailed how the graph is processed and made ready for
     execution. We gave an overview of the main data structures used for the graph,
     and covered how the graph is parsed to create nodes and resources, and how edges
@@ -1058,24 +1533,34 @@
     strategy, which allows us to reuse memory from resources that are no longer needed
     at given nodes. Finally, we provided an overview of the rendering loop and how
     we ensure that resources are in the correct state for rendering.
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 在最后一部分，我们详细说明了如何处理图并使其准备就绪执行。我们概述了用于图的 主要数据结构，并介绍了如何解析图以创建节点和资源，以及如何计算边。接下来，我们解释了节点的拓扑排序，这确保了它们按正确的顺序执行。随后，我们介绍了内存分配策略，这允许我们从不再需要的节点资源中重用内存。最后，我们概述了渲染循环以及我们如何确保资源处于正确的渲染状态。
 - en: In the next chapter, we are going to take advantage of the techniques we have
     developed in the last two chapters. We are going to leverage multithreading and
     our frame graph implementation to demonstrate how to use compute and graphics
     pipelines in parallel for cloth simulation.
+  id: totrans-238
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一章中，我们将利用在前两章中开发的技巧。我们将利用多线程和我们的帧图实现来展示如何并行使用计算和图形管线进行布料模拟。
 - en: Further reading
+  id: totrans-239
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 进一步阅读
 - en: 'Our implementation has been heavily inspired by the implementation of a frame
     graph in the Frostbite engine, and we recommend watching this presentation: [https://www.gdcvault.com/play/1024045/FrameGraph-Extensible-Rendering-Architecture-in](https://www.gdcvault.com/play/1024045/FrameGraph-Extensible-Rendering-Architecture-in).'
+  id: totrans-240
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们的实现受到了Frostbite引擎中帧图实现的极大启发，我们推荐您观看这个演示：[https://www.gdcvault.com/play/1024045/FrameGraph-Extensible-Rendering-Architecture-in](https://www.gdcvault.com/play/1024045/FrameGraph-Extensible-Rendering-Architecture-in)。
 - en: Many other engines implement a frame graph to organize and optimize their rendering
     pipeline. We encourage you to look at other implementations and find the solution
     that best fits your needs!
+  id: totrans-241
   prefs: []
   type: TYPE_NORMAL
+  zh: 许多其他引擎都实现了帧图来组织和优化它们的渲染管线。我们鼓励您查看其他实现，并找到最适合您需求的解决方案！
