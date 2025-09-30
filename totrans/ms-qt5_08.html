@@ -1,0 +1,594 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;8.&#xA0; Animations - Its Alive, Alive!"><div class="titlepage" id="aid-2D7TI2"><div><div><h1 class="title"><a id="ch08"/>Chapter 8.    Animations - Its Alive, Alive!   </h1></div></div></div><p>In the previous chapter, you learned how to create a custom Qt Designer plugin. This chapter will push things further and teach you how to create a distributable Software Development Kit (SDK) to third-party developers, how the plugin system works with Qt, and how to make your application more attractive using fancy animations.</p><p>The example project will be a reimplementation of the project from <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>. You will build the same image processing application, but with the ability to import the filters from plugins.</p><p>This chapter will teach you how to do the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Create an SDK using the Qt Plugin system</li><li class="listitem">Implement custom plugins using the SDK</li><li class="listitem">Factorize build tasks using <code class="literal">.pri</code></li><li class="listitem">Dynamically load plugins in your final application</li><li class="listitem">Understand the Qt Animation framework</li><li class="listitem">Use simple, sequential, and parallel animations</li><li class="listitem">Apply custom effects using <code class="literal">QPropertyAnimation</code> and <code class="literal">QGraphics</code> effects</li></ul></div><div class="section" title="Preparing an SDK"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec74"/>Preparing an SDK</h1></div></div></div><p>Before diving into the code, we have to take a moment to reflect on how we are going to structure it. This chapter has two goals:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Cover the Qt Plugin system in more depth</li><li class="listitem">Study and integrate the Qt Animation Framework</li></ul></div><p>The first part of the chapter will focus on the plugin system. What we aim to do is provide a way to build plugins that can be integrated in our application to third-party developers. These plugins should be dynamically loaded. The application will be a direct offspring of the example project from <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>. The features will be exactly the same, except it will be using this new plugin system and will have fancy animations.</p><p>The structure of the project will be as follows:</p><div class="mediaobject"><img src="../Images/image00416.jpeg" alt="Preparing an SDK"/></div><p style="clear:both; height: 1em;"> </p><p>The parent project is <code class="literal">ch08-image-animation</code>, which is composed of the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">filter-plugin-original</code>: A library project, which is the implementation of the original filter</li><li class="listitem"><code class="literal">filter-plugin-grayscale</code>: A library project, which is the implementation of the grayscale filter</li><li class="listitem"><code class="literal">filter-plugin-blur</code>: A library project, which is the implementation of the blur filter</li><li class="listitem"><code class="literal">image-animation</code>: A Qt Widgets application, which will load the plugins needed to display them and make it possible to apply each one to a loaded picture</li></ul></div><p>We will develop each one of these plugins, but keep in mind that they might have been created by a third-party developer. To achieve this openness, an SDK will be available for each plugin. This SDK relies on the Qt Plugin system.</p><p>It is crucial to think about what should be handled by the plugin. Our application is an image processing piece of software. We chose to limit the responsibility of the plugin to the picture processing part, but this is definitely a design choice.</p><p>Another approach could have been to let the plugin developer provide its own UI to configure the plugin (for example, to vary the intensity of the blur). In this chapter, we have kept it simple by focusing only on the plugin development itself. It is really up to you and how you want to design your application. By opening up the range of what the plugin can do, you also increase the burden for the plugin developer. There is always a trade-off; giving more choice tends to increase the complexity. It is a well-known fact that we developers are a bunch of lazy people. At least, we want to be lazy while the computer is working for us.</p><p>We will start by building the SDK that will be deployed in each plugin. Execute the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a <span class="strong"><strong>Subdirs project</strong></span> named <code class="literal">ch08-image-animation</code> (do not add a sub-project at the end of the wizard).</li><li class="listitem">In your filesystem explorer, open the <code class="literal">ch08-image-animation</code> directory and create an <code class="literal">sdk</code> directory.</li><li class="listitem">Inside <code class="literal">sdk</code>, create an empty <code class="literal">Filter.h</code> file.</li></ol><div style="height:10px; width: 1px"/></div><p>Our SDK will consist of a single file, <code class="literal">Filter.h</code>, the interface (or header) that should be implemented with each plugin. Each plugin is responsible for returning the modified picture according to its desired features. Because this SDK is not linked to any particular project, we will simply display it in Qt Creator under the special folder <span class="strong"><strong>Other files</strong></span>. To do so, update <code class="literal">ch08-image-animation.pro</code>:</p><pre class="programlisting">TEMPLATE = subdirs 
+ 
+CONFIG += c++14 
+ 
+OTHER_FILES += \ 
+            sdk/Filter.h 
+</pre><p>After <code class="literal">ch08-image-animation.pro</code> has been parsed by Qt Creator, you should see the following in the <span class="strong"><strong>Projects</strong></span> tab:</p><div class="mediaobject"><img src="../Images/image00417.jpeg" alt="Preparing an SDK"/></div><p style="clear:both; height: 1em;"> </p><p>The <code class="literal">Filter.h</code> file is available at the parent project level. As a result, it will be easier to factorize the SDK plumbing code between our various plugins. Let's implement <code class="literal">Filter.h</code>:</p><pre class="programlisting">#include &lt;QImage&gt; 
+ 
+class Filter 
+{ 
+public: 
+    virtual ~Filter() {} 
+    virtual QString name() const = 0; 
+    virtual QImage process(const QImage&amp; image) = 0; 
+}; 
+ 
+#define Filter_iid "org.masteringqt.imageanimation.filters.Filter" 
+Q_DECLARE_INTERFACE(Filter, Filter_iid) 
+</pre><p>Let's break down this interface: a <code class="literal">Filter</code> subclass must provide a name by implementing <code class="literal">name()</code> and returning a processed image when implementing <code class="literal">process()</code>. As you can see, <code class="literal">Filter.h</code> is indeed very close to the version seen in <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>.</p><p>However, the really new stuff comes right after the class definition:</p><pre class="programlisting">#define Filter_iid "org.masteringqt.imageanimation.filters.Filter" 
+Q_DECLARE_INTERFACE(Filter, Filter_iid) 
+</pre><p>The <code class="literal">Filter_iid</code> is a unique identifier to let Qt know the interface name. This will be enforced on the implementer side, which will also have to state this identifier.</p><div class="note" title="Note"><h3 class="title"><a id="tip37"/>Tip</h3><p>For a real-world use case, you should add a version number to this unique identifier. This will let you properly handle the versioning of your SDK and the attached plugins.</p></div><p>The <code class="literal">Q_DECLARE_INTERFACE</code> macro associates the class to the given identifier. It will give Qt the ability to check that the loaded plugin can be safely casted to the <code class="literal">Filter</code> type.</p><div class="note" title="Note"><h3 class="title"><a id="tip38"/>Tip</h3><p>In production code, it is safer to declare your interfaces inside a namespace. You never know the code environment in which your SDK will be deployed. This, way, you avoid potential name collision. If you do declare in a namespace, make sure that the <code class="literal">Q_DECLARE_INTERFACE</code> macro is outside the namespace scope.</p></div></div></div>
+<div class="section" title="Creating your plugins"><div class="titlepage" id="aid-2E6E42"><div><div><h1 class="title"><a id="ch08lvl1sec75"/>Creating your plugins</h1></div></div></div><p>The SDK was painless to create. We can now proceed to create our first plugin. We already know that all our plugins will include the SDK we just completed. Fortunately, this can be easily factorized in a <code class="literal">.pri</code> file (PRoject Include). A <code class="literal">.pri</code> file behaves exactly like a <code class="literal">.pro</code> file; the only difference is that it is intended to be included inside <code class="literal">.pro</code> files.</p><p>In the <code class="literal">ch08-image-animation</code> directory, create a file named <code class="literal">plugins-common.pri</code> that contains the following code:</p><pre class="programlisting">INCLUDEPATH += $$PWD/sdk 
+DEPENDPATH += $$PWD/sdk 
+</pre><p>This file will be included in each <code class="literal">.pro</code> plugin. It aims to tell the compiler where it can find the headers of the SDK and where to look to resolve dependencies between headers and sources. This will enhance the modification detection and properly compile the sources when needed.</p><p>To see this file in the project, we have to add it to the <code class="literal">OTHER_FILES</code> macro in <code class="literal">ch08-image-animation.pro</code>:</p><pre class="programlisting">OTHER_FILES += \ 
+            sdk/Filter.h \ 
+            plugins-common.pri 
+</pre><p>The most straightforward plugin to build is <code class="literal">filter-plugin-original</code> as it does not perform any specific processing on the image. Let's create this plugin with the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new <span class="strong"><strong>Subproject</strong></span> in <code class="literal">ch08-image-animation</code>.</li><li class="listitem">Select <span class="strong"><strong>Library</strong></span> |<span class="strong"><strong> C++ Library</strong></span> | <span class="strong"><strong>Choose...</strong></span>.</li><li class="listitem">Choose a <span class="strong"><strong>Shared Library</strong></span>, name it <code class="literal">filter-plugin-original</code>, and then click on <span class="strong"><strong>Next</strong></span>.</li><li class="listitem">Select <span class="strong"><strong>QtCore</strong></span> and go to <span class="strong"><strong>QtWidgets</strong></span> | <span class="strong"><strong>Next</strong></span>.</li><li class="listitem">Name the created class <code class="literal">FilterOriginal</code> and click on <span class="strong"><strong>Next</strong></span>.</li><li class="listitem">Add it as a <span class="strong"><strong>subproject</strong></span> to <code class="literal">ch08-image-animation</code> then click on <span class="strong"><strong>Finish</strong></span>.</li></ol><div style="height:10px; width: 1px"/></div><p>Qt Creator creates a lot of boilerplate code for us, but in this case, we do not need it. Update <code class="literal">filter-plugin-original.pro</code> like so:</p><pre class="programlisting">QT       += core widgets 
+ 
+TARGET = $$qtLibraryTarget(filter-plugin-original) 
+TEMPLATE = lib 
+CONFIG += plugin 
+ 
+SOURCES += \ 
+    FilterOriginal.cpp 
+ 
+HEADERS += \ 
+    FilterOriginal.h 
+ 
+include(../plugins-common.pri) 
+</pre><p>We start by specifying that the <code class="literal">TARGET</code> should be properly named according to the OS convention with <code class="literal">$$qtLibraryTarget()</code>. The <code class="literal">CONFIG</code> property adds the <code class="literal">plugin</code> directive, which tells the generated <code class="literal">Makefile</code> to include the necessary instructions to compile a dll/so/dylib (pick your OS).</p><p>We removed the unnecessary <code class="literal">DEFINES</code> and <code class="literal">FilterOriginal_global.h</code>. Nothing specific to the plugin should be exposed to the caller, and therefore, there is no need to handle the symbol export.</p><p>We can now proceed to <code class="literal">FilterOriginal.h</code>:</p><pre class="programlisting">#include &lt;QObject&gt; 
+ 
+#include &lt;Filter.h&gt; 
+ 
+class FilterOriginal : public QObject, Filter 
+{ 
+    Q_OBJECT 
+    Q_PLUGIN_METADATA(IID "org.masteringqt.imageanimation.filters.Filter") 
+    Q_INTERFACES(Filter) 
+ 
+public: 
+    FilterOriginal(QObject* parent = 0); 
+    ~FilterOriginal(); 
+ 
+    QString name() const override; 
+    QImage process(const QImage&amp; image) override; 
+}; 
+</pre><p>The <code class="literal">FilterOriginal</code> class must first inherit <code class="literal">QObject</code>; when the plugin will be loaded, it will first be a <code class="literal">QObject</code> class before being casted to the real type, <code class="literal">Filter</code>.</p><p>The <code class="literal">Q_PLUGIN_METADATA</code> macro is stated to export the proper implemented interface identifier to Qt. It annotates the class to let the Qt metasystem know about it. We meet the unique identifier we defined in <code class="literal">Filter.h</code> again.</p><p>The <code class="literal">Q_INTERFACES</code> macro tells the Qt metaobject system which interface the class implements.</p><p>Finally, the <code class="literal">FilterOriginal.cpp</code> barely deserves to be printed:</p><pre class="programlisting">FilterOriginal::FilterOriginal(QObject* parent) : 
+    QObject(parent) 
+{ 
+} 
+ 
+FilterOriginal::~FilterOriginal() 
+{ 
+} 
+ 
+QString FilterOriginal::name() const 
+{ 
+    return "Original"; 
+} 
+ 
+QImage FilterOriginal::process(const QImage&amp; image) 
+{ 
+    return image; 
+} 
+</pre><p>As you can see, its implementation is a no-op. The only thing we added to the version from <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>, is the <code class="literal">name()</code> function, which returns <code class="literal">Original</code>.</p><p>We will now implement the grayscale filter. As we did in <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>, we will rely on the OpenCV library to process the picture. The same can be said for the following plugin, the blur.</p><p>Since these two projects have their own <code class="literal">.pro</code> file, you can already foresee that the OpenCV linking will be the same. This is a perfect use-case for a <code class="literal">.pri</code> file.</p><p>Inside the <code class="literal">ch08-image-animation</code> directory, create a new file called <code class="literal">plugins-common-opencv.pri</code>. Do not forget to add it to <code class="literal">OTHER_FILES</code> in <code class="literal">ch08-image-animation.pro</code>:</p><pre class="programlisting">OTHER_FILES += \ 
+            sdk/Filter.h \ 
+            plugins-common.pri \ 
+            plugins-common-opencv.pri 
+</pre><p>Here is the content of <code class="literal">plugins-common-opencv.pri</code>:</p><pre class="programlisting">windows { 
+    INCLUDEPATH += $$(OPENCV_HOME)/../../include 
+    LIBS += -L$$(OPENCV_HOME)/lib \ 
+        -lopencv_core2413 \ 
+        -lopencv_imgproc2413 
+} 
+ 
+linux { 
+    CONFIG += link_pkgconfig 
+    PKGCONFIG += opencv 
+} 
+ 
+macx { 
+    INCLUDEPATH += /usr/local/Cellar/opencv/2.4.13/include/ 
+ 
+    LIBS += -L/usr/local/lib \ 
+        -lopencv_core \ 
+        -lopencv_imgproc 
+} 
+</pre><p>The content of <code class="literal">plugins-common-opencv.pri</code> is a direct copy of what we made in <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>.</p><p>All the plumbing is now ready; we can now go ahead with the <code class="literal">filter-plugin-grayscale</code> project. As with <code class="literal">filter-plugin-original</code>, we will build it the following way:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a <span class="strong"><strong>C++ Library Subproject</strong></span> of <code class="literal">ch08-image-animation</code> with the <span class="strong"><strong>Shared Library</strong></span> type.</li><li class="listitem">Create a class named <code class="literal">FilterGrayscale</code>.</li><li class="listitem">In the <span class="strong"><strong>Required Modules</strong></span>, select <span class="strong"><strong>QtCore</strong></span> and <span class="strong"><strong>QWidgets</strong></span>.</li></ol><div style="height:10px; width: 1px"/></div><p>Here is the updated version of <code class="literal">filter-plugin-grayscale.pro</code>:</p><pre class="programlisting">QT       += core widgets 
+ 
+TARGET = $$qtLibraryTarget(filter-plugin-grayscale) 
+TEMPLATE = lib 
+CONFIG += plugin 
+ 
+SOURCES += \ 
+    FilterGrayscale.cpp 
+ 
+HEADERS += \ 
+    FilterGrayscale.h 
+ 
+include(../plugins-common.pri) 
+include(../plugins-common-opencv.pri) 
+</pre><p>The content is very much like <code class="literal">filter-plugin-original.pro</code>. We only added <code class="literal">plugins-common-opencv.pri</code> to let our plugin link with OpenCV.</p><p>As for <code class="literal">FilterGrayscale</code>, the header is exactly like <code class="literal">FilterOriginal.h</code>. Here are the relevant pieces on <code class="literal">FilterGrayscale.cpp</code>:</p><pre class="programlisting">#include &lt;opencv/cv.h&gt; 
+ 
+// Constructor &amp; Destructor here 
+... 
+ 
+QString FilterOriginal::name() const 
+{ 
+    return "Grayscale"; 
+} 
+ 
+QImage FilterOriginal::process(const QImage&amp; image) 
+{ 
+    // QImage =&gt; cv::mat 
+    cv::Mat tmp(image.height(), 
+                image.width(), 
+                CV_8UC4, 
+                (uchar*)image.bits(), 
+                image.bytesPerLine()); 
+ 
+    cv::Mat resultMat; 
+    cv::cvtColor(tmp, resultMat, CV_BGR2GRAY); 
+ 
+    // cv::mat =&gt; QImage 
+    QImage resultImage((const uchar *) resultMat.data, 
+                       resultMat.cols, 
+                       resultMat.rows, 
+                       resultMat.step, 
+                       QImage::Format_Grayscale8); 
+    return resultImage.copy(); 
+} 
+</pre><p>The inclusion of <code class="literal">plugins-common-opencv.pri</code> lets us properly include the <code class="literal">cv.h</code> header.</p><p>The last plugin we will implement is the blur plugin. Once again, create a <span class="strong"><strong>C++ Library </strong></span>
+<span class="strong"><strong>Subproject</strong></span> and create the <code class="literal">FilterBlur</code> class. The project structure and the content of the <code class="literal">.pro</code> file are the same. Here is <code class="literal">FilterBlur.cpp</code>:</p><pre class="programlisting">QString FilterOriginal::name() const 
+{ 
+    return "Blur"; 
+} 
+ 
+QImage FilterOriginal::process(const QImage&amp; image) 
+{ 
+    // QImage =&gt; cv::mat 
+    cv::Mat tmp(image.height(), 
+                image.width(), 
+                CV_8UC4, 
+                (uchar*)image.bits(), 
+                image.bytesPerLine()); 
+ 
+    int blur = 17; 
+    cv::Mat resultMat; 
+    cv::GaussianBlur(tmp, 
+                     resultMat, 
+                     cv::Size(blur, blur), 
+                     0.0, 
+                     0.0); 
+ 
+    // cv::mat =&gt; QImage 
+    QImage resultImage((const uchar *) resultMat.data, 
+                       resultMat.cols, 
+                       resultMat.rows, 
+                       resultMat.step, 
+                       QImage::Format_RGB32); 
+    return resultImage.copy(); 
+} 
+</pre><p>The amount of blur is hard-coded at <code class="literal">17</code>. In a production application, it could have been compelling to make this amount variable from the application.</p><div class="note" title="Note"><h3 class="title"><a id="tip39"/>Tip</h3><p>If you want to push the project further, try to include a layout in the SDK that contains a way to configure the plugin properties.</p></div></div>
+<div class="section" title="Loading your plugins dynamically"><div class="titlepage" id="aid-2F4UM2"><div><div><h1 class="title"><a id="ch08lvl1sec76"/>Loading your plugins dynamically</h1></div></div></div><p>We will now deal with the application loading these plugins:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new <span class="strong"><strong>Subproject</strong></span> inside <code class="literal">ch08-image-animation</code>.</li><li class="listitem">Select the type <span class="strong"><strong>Qt Widgets Application</strong></span>.</li><li class="listitem">Name it <code class="literal">image-animation</code> and accept the default <span class="strong"><strong>Class Information settings</strong></span>.</li></ol><div style="height:10px; width: 1px"/></div><p>We have a few last things to do in the <code class="literal">.pro</code> files. First, <code class="literal">image-animation</code> will try to load the plugins from somewhere in its output directory. Because each filter plugin project is independent, its output directory is separated from <code class="literal">image-animation</code>. Thus, each time you modify a plugin, you will have to copy yourself the compiled shared library inside the proper <code class="literal">image-animation</code> directory. This works to make it available to the <code class="literal">image-animation</code> application, but we are lazy developers, right?</p><p>We can automate this by updating <code class="literal">plugins-common-pri</code> like so:</p><pre class="programlisting">INCLUDEPATH += $$PWD/sdk 
+DEPENDPATH += $$PWD/sdk 
+ 
+windows { 
+    CONFIG(debug, debug|release) { 
+        target_install_path = $$OUT_PWD/../image-animation/debug/plugins/ 
+    } else { 
+        target_install_path = $$OUT_PWD/../image-animation/release/plugins/ 
+    } 
+ 
+} else { 
+    target_install_path = $$OUT_PWD/../image-animation/plugins/ 
+} 
+ 
+# Check Qt file 'spec_post.prf' for more information about '$$QMAKE_MKDIR_CMD' 
+createPluginsDir.path = $$target_install_path 
+createPluginsDir.commands = $$QMAKE_MKDIR_CMD $$createPluginsDir.path 
+INSTALLS += createPluginsDir 
+ 
+target.path = $$target_install_path 
+INSTALLS += target 
+</pre><p>In a nutshell, the output library is deployed in the output <code class="literal">image-animation/plugins</code> directory. Windows has a different output project structure; that is why we have to have a platform-specific section.</p><p>Even better, the <code class="literal">plugins</code> directory is automatically created with the instruction <code class="literal">createPluginsDir.commands = $$QMAKE_MKDIR_CMD $$createPluginsDir.path</code>. Instead of using a system command (<code class="literal">mkdir</code>), we have to use the special <code class="literal">$$QMAKE_MKDIR_CMD</code> command. Qt will then replace it with the correct shell command (depending on your OS) to create the directory only if it does not already exist. Do not forget to add the <code class="literal">make install</code> build step to execute this task!</p><p>The last thing to do in the <code class="literal">.pro</code> files concerns <code class="literal">image-animation</code>. The application will manipulate <code class="literal">Filter</code> instances. As a consequence, it needs to access the SDK. Add the following to <code class="literal">image-animation.pro</code>:</p><pre class="programlisting">INCLUDEPATH += $$PWD/../sdk 
+DEPENDPATH += $$PWD/../sdk 
+</pre><p>Fasten your seatbelt. We will now load our freshly baked plugins. In <code class="literal">image-animation</code>, create a new class named <code class="literal">FilterLoader</code>. Here is the <code class="literal">FilterLoader.h</code> content:</p><pre class="programlisting">#include &lt;memory&gt; 
+#include &lt;vector&gt; 
+ 
+#include &lt;Filter.h&gt; 
+ 
+class FilterLoader 
+{ 
+ 
+public: 
+    FilterLoader(); 
+    void loadFilters(); 
+ 
+    const std::vector&lt;std::unique_ptr&lt;Filter&gt;&gt;&amp; filters() const; 
+ 
+private: 
+    std::vector&lt;std::unique_ptr&lt;Filter&gt;&gt; mFilters; 
+}; 
+</pre><p>This class is responsible for loading the plugins. Once again, we rely on C++11 smart pointers with <code class="literal">unique_ptr</code> to explicate the ownership of the <code class="literal">Filter</code> instances. The <code class="literal">FilterLoader</code> class will be the owner with <code class="literal">mFilters</code> and provides a getter to the <code class="literal">vector</code> with <code class="literal">filters()</code>.</p><p>Note that <code class="literal">filter()</code> returns a <code class="literal">const&amp;</code> to the <code class="literal">vector</code>. This semantic brings two benefits:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The reference makes sure that the <code class="literal">vector</code> is not copied. Without it, the compiler would have barked something like "<code class="literal">FilterLoader</code> is not the owner anymore of <code class="literal">mFilters</code> content!" at us. Of course, because it deals with C++ templates, the compiler error would have looked rather like an astounding insult to the English language.</li><li class="listitem">The <code class="literal">const</code> keyword makes sure that the <code class="literal">vector</code> type cannot be modified by callers.</li></ul></div><p>Now we can create the <code class="literal">FilterLoader.cpp</code>: file:</p><pre class="programlisting">#include "FilterLoader.h" 
+ 
+#include &lt;QApplication&gt; 
+#include &lt;QDir&gt; 
+#include &lt;QPluginLoader&gt; 
+ 
+FilterLoader::FilterLoader() : 
+    mFilters() 
+{ 
+} 
+ 
+void FilterLoader::loadFilters() 
+{ 
+    QDir pluginsDir(QApplication::applicationDirPath()); 
+#ifdef Q_OS_MAC 
+    pluginsDir.cdUp(); 
+    pluginsDir.cdUp(); 
+    pluginsDir.cdUp(); 
+#endif 
+    pluginsDir.cd("plugins"); 
+ 
+    for(QString fileName: pluginsDir.entryList(QDir::Files)) { 
+        QPluginLoader pluginLoader( 
+                      pluginsDir.absoluteFilePath(fileName)); 
+        QObject* plugin = pluginLoader.instance(); 
+        if (plugin) { 
+            mFilters.push_back(std::unique_ptr&lt;Filter&gt;( 
+                        qobject_cast&lt;Filter*&gt;(plugin) 
+            )); 
+        } 
+    } 
+} 
+ 
+const std::vector&lt;std::unique_ptr&lt;Filter&gt;&gt;&amp; FilterLoader::filters() const 
+{ 
+    return mFilters; 
+} 
+</pre><p>The meat of the class lies in <code class="literal">loadFilter()</code>. We start by moving in the <code class="literal">plugins</code> directory with <code class="literal">pluginsDir</code>, located in the output directory of <code class="literal">image-animation</code>. A special case is handled for the Mac platform: <code class="literal">QApplication::applicationDirPath()</code> returns a path inside the bundle of the generated application. The only way to get out is to climb our way up three times with the <code class="literal">cdUp()</code> instruction.</p><p>For each <code class="literal">fileName</code> in this directory, we try to load a <code class="literal">QPluginLoader</code> loader. A <code class="literal">QPluginLoader</code> provides access to a Qt plugin. It is the cross-platform way to load a shared library. Moreover, the <code class="literal">QPluginLoader</code> loader has the following benefits:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">It checks that the plugin is linked with the same version of Qt as the host application</li><li class="listitem">It simplifies the loading of the plugin by providing direct access to the plugin via <code class="literal">instance()</code> rather than relying on C functions</li></ul></div><p>We then proceed to try to load the plugin using <code class="literal">pluginLoader.instance()</code>. This will try to load the root component of the plugin. In our case, the root component is either <code class="literal">FilerOriginal</code>, <code class="literal">FilterGrayscale</code>, or <code class="literal"> FilterBlur</code>. This function always returns a <code class="literal">QObject*</code>; if the plugin could not be loaded, it returns <code class="literal">0</code>. This is the reason why we inherited the <code class="literal">QObject</code> class in our custom plugins.</p><p>The call to <code class="literal">instance()</code> implicitly tries to load the plugin. Once this has been done, the <code class="literal">QPluginLoader</code> does not handle the memory of the <code class="literal">plugin</code>. From here, we cast the plugin to <code class="literal">Filter*</code> using <code class="literal">qobject_cast()</code>.</p><p>The <code class="literal">qobject_cast()</code> function behaves similarly to the standard C++ <code class="literal">dynamic_cast()</code>; the difference is that it does not require <span class="strong"><strong>RTTI</strong></span> (<span class="strong"><strong>runtime type information</strong></span>).</p><p>Last but not least, the <code class="literal">Filter*</code> casted <code class="literal">plugin</code> is wrapped inside a <code class="literal">unique_ptr</code> and added to <code class="literal">mFilters</code> vector.</p></div>
+<div class="section" title="Using the plugins inside the application"><div class="titlepage" id="aid-2G3F82"><div><div><h1 class="title"><a id="ch08lvl1sec77"/>Using the plugins inside the application</h1></div></div></div><p>Now that the plugins are properly loaded, they have to be reachable from the UI of the application. To do so, we are going to take some inspiration (shameless stealing) from the <code class="literal">FilterWidget</code> class of <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>.</p><p>Create a new Qt Designer <span class="strong"><strong>Form Class</strong></span> using the <span class="strong"><strong>Widget</strong></span> template named <code class="literal">FilterWidget</code>. The <code class="literal">FilterWidget.ui</code> file is exactly the same as the one completed in <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>.</p><p>Create the <code class="literal">FilterWidget.h</code> file like this:</p><pre class="programlisting">#include &lt;QWidget&gt; 
+#include &lt;QImage&gt; 
+ 
+namespace Ui { 
+class FilterWidget; 
+} 
+ 
+class Filter; 
+ 
+class FilterWidget : public QWidget 
+{ 
+    Q_OBJECT 
+ 
+public: 
+    explicit FilterWidget(Filter&amp; filter, QWidget *parent = 0); 
+    ~FilterWidget(); 
+ 
+    void process(); 
+ 
+    void setSourcePicture(const QImage&amp; sourcePicture); 
+    void setSourceThumbnail(const QImage&amp; sourceThumbnail); 
+    void updateThumbnail(); 
+ 
+    QString title() const; 
+ 
+signals: 
+    void pictureProcessed(const QImage&amp; picture); 
+ 
+protected: 
+    void mousePressEvent(QMouseEvent*) override; 
+ 
+private: 
+    Ui::FilterWidget *ui; 
+    Filter&amp; mFilter; 
+ 
+    QImage mDefaultSourcePicture; 
+    QImage mSourcePicture; 
+    QImage mSourceThumbnail; 
+ 
+    QImage mFilteredPicture; 
+    QImage mFilteredThumbnail; 
+}; 
+</pre><p>Overall, we trimmed everything concerning the Qt Designer plugin and simply passed the <code class="literal">mFilter</code> value by reference to the constructor. The <code class="literal">FilterWidget</code> class is not the owner of the <code class="literal">Filter</code> anymore; it is rather the client that calls it. Remember that the owner of <code class="literal">Filter</code> (aka the plugin) is <code class="literal">FilterLoader</code>.</p><p>The other modification is the new <code class="literal">setThumbnail()</code> function. It should be called in place of the old <code class="literal">updateThumbnail()</code>. The new <code class="literal">updateThumbnail()</code> now only performs the thumbnail processing and does not touch the source thumbnail. This division is done to prepare the work for the coming animation section. The thumbnail update will be done only once the animation has been finished.</p><div class="note" title="Note"><h3 class="title"><a id="note40"/>Note</h3><p>Please refer to the source code of the chapter to see <code class="literal">FilterWidget.cpp</code>.</p></div><p>All the low layers have been completed. The next step is to fill <code class="literal">MainWindow</code>. Once again, it follows the same pattern we covered in <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>. The sole difference with <code class="literal">MainWindow.ui</code> is that <code class="literal">filtersLayout</code> is empty. Obviously, the plugin is loaded dynamically, so we have nothing to put inside it at compile time.</p><p>Let's cover <code class="literal">MainWindow.h</code>:</p><pre class="programlisting">#include &lt;QMainWindow&gt; 
+#include &lt;QImage&gt; 
+#include &lt;QVector&gt; 
+ 
+#include "FilterLoader.h" 
+ 
+namespace Ui { 
+class MainWindow; 
+} 
+ 
+class FilterWidget; 
+ 
+class MainWindow : public QMainWindow 
+{ 
+    Q_OBJECT 
+ 
+public: 
+    explicit MainWindow(QWidget *parent = 0); 
+    ~MainWindow(); 
+ 
+    void loadPicture(); 
+ 
+protected: 
+    void resizeEvent(QResizeEvent* event) override; 
+ 
+private slots: 
+    void displayPicture(const QImage&amp; picture); 
+    void saveAsPicture(); 
+ 
+private: 
+    void initFilters(); 
+    void updatePicturePixmap(); 
+ 
+private: 
+    Ui::MainWindow *ui; 
+    QImage mSourcePicture; 
+    QImage mSourceThumbnail; 
+    QImage&amp; mFilteredPicture; 
+    QPixmap mCurrentPixmap; 
+ 
+    FilterLoader mFilterLoader; 
+    FilterWidget* mCurrentFilter; 
+    QVector&lt;FilterWidget*&gt; mFilters; 
+}; 
+</pre><p>The only notable thing is the addition of <code class="literal">mFilterLoader</code> as a member variable. In <code class="literal">MainWindow.cpp</code>, we will focus on the changes only:</p><pre class="programlisting">void MainWindow::initFilters() 
+{ 
+    mFilterLoader.loadFilters(); 
+ 
+    auto&amp; filters = mFilterLoader.filters(); 
+    for(auto&amp; filter : filters) { 
+        FilterWidget* filterWidget = new FilterWidget(*filter); 
+        ui-&gt;filtersLayout-&gt;addWidget(filterWidget); 
+        connect(filterWidget, &amp;FilterWidget::pictureProcessed, 
+                this, &amp;MainWindow::displayPicture); 
+        mFilters.append(filterWidget); 
+    } 
+ 
+    if (mFilters.length() &gt; 0) { 
+        mCurrentFilter = mFilters[0]; 
+    } 
+} 
+</pre><p>The <code class="literal">initFilters()</code> function does not load the filters from the <code class="literal">ui</code> content. Rather, it starts by calling the <code class="literal">mFilterLoader.loadFilters()</code> function to dynamically load the plugins from the <code class="literal">plugins</code> directory.</p><p>After that, an <code class="literal">auto&amp;</code> filter is assigned with <code class="literal">mFilterLoader.filters()</code>. Note that it is much more readable to use <code class="literal">auto</code> keyword. The real type is <code class="literal">std::vector&lt;std::unique_ptr&lt;Filter&gt;&gt;&amp;</code>, which looks more like a cryptic incantation than a simple object type.</p><p>For each of these filters, we create a <code class="literal">FilterWidget*</code> and pass it the reference of the <code class="literal">filter</code>. Here, <code class="literal">filter</code> is effectively a <code class="literal">unique_ptr</code>. The people behind C++11 wisely modified the dereferencing operator, making it transparent to the new <code class="literal">FilterWidget(*filter)</code>. The combination of the <code class="literal">auto</code> keyword and the overload of the <code class="literal">-&gt;</code> operator, or the dereference operator, makes the use of new C++ features much more enjoyable.</p><p>Look at the for loop. For each <code class="literal">filter</code> we do the following tasks:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a <code class="literal">FilterWidget</code> template.</li><li class="listitem">Add the <code class="literal">FilterWidget</code> template to the <code class="literal">filtersLayout</code> children.</li><li class="listitem">Connect the <code class="literal">FilterWidget::pictureProcessed</code> signal to the <code class="literal">MainWindow::displayPicture</code> slot.</li><li class="listitem">Add the new <code class="literal">FilterWidget</code> template to the <code class="literal">QVector</code><code class="literal">mFilters</code>.</li></ol><div style="height:10px; width: 1px"/></div><p>In the end, the first <code class="literal">FilterWidget</code> is selected.</p><p>The only other modification to <code class="literal">MainWindow.cpp</code> is the implementation of <code class="literal">loadPicture()</code>:</p><pre class="programlisting"> void MainWindow::loadPicture() 
+{ 
+    ... 
+    for (int i = 0; i &lt;mFilters.size(); ++i) { 
+        mFilters[i]-&gt;setSourcePicture(mSourcePicture); 
+        mFilters[i]-&gt;setSourceThumbnail(mSourceThumbnail); 
+        mFilters[i]-&gt;updateThumbnail(); 
+    } 
+    mCurrentFilter-&gt;process(); 
+} 
+</pre><p>The <code class="literal">updateThumbnail()</code> function has been split into two functions, and here is where it is used.</p><p>The application can now be tested. You should be able to execute it and see the dynamic plugins loaded and displaying the processed default Lenna picture.</p></div>
+<div class="section" title="Discovering the Animation Framework"><div class="titlepage" id="aid-2H1VQ2"><div><div><h1 class="title"><a id="ch08lvl1sec78"/>Discovering the Animation Framework</h1></div></div></div><p>Your application works like a charm. It is now time to look at how we can make it jump and move, or, in a word, live. The Qt Animation Framework can be used to create and start animations of Qt properties. The property value will be smoothly interpolated by an internal global timer handle by Qt. You can animate anything as long as it is a Qt property. You can even create a property for your own object using <code class="literal">Q_PROPERTY</code>. If you forgot about <code class="literal">Q_PROPERTY</code>, please refer to <span><a class="link" title="Chapter 7.  Third-Party Libraries Without a Headache" href="part0071.xhtml#aid-23MNU1">Chapter 7</a></span>, <span class="emphasis"><em>Third-Party Libraries Without a Headache</em></span>.</p><p>Three main classes are provided to build animations:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">QPropertyAnimation</code>: This class animates one Qt property animation</li><li class="listitem"><code class="literal">QParallelAnimationGroup</code>: This class animates multiple animations in parallel (all the animations start together)</li><li class="listitem"><code class="literal">QSequentialAnimationGroup</code>: This class animates multiple animations in sequence (the animations run one by one in a defined order)</li></ul></div><p>All those classes inherit <code class="literal">QAbstractAnimation</code>. Here is a diagram from the official Qt documentation:</p><div class="mediaobject"><img src="../Images/image00418.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>Please notice that <code class="literal">QAbstractAnimation</code>, <code class="literal">QVariantAnimation</code>, and <code class="literal">QAnimationGroup</code> are abstract classes. Here is a simple example of a Qt animation:</p><pre class="programlisting">QLabel label; 
+QPropertyAnimation animation; 
+ 
+animation.setTargetObject(&amp;label); 
+animation.setPropertyName("geometry"); 
+animation.setDuration(4000); 
+animation.setStartValue(QRect(0, 0, 150, 50)); 
+animation.setEndValue(QRect(300, 200, 150, 50)); 
+animation.start(); 
+</pre><p>The preceding snippet moves a <code class="literal">QLabel</code> label from the 0 x 0 position to 300 x 200 in four seconds. The first thing to do is to define the target object and its property. In our case, the target object is <code class="literal">label</code> and we want to animate the property called <code class="literal">geometry</code>. Then, we set the animation duration in milliseconds: <code class="literal">4000</code> milliseconds for four seconds. Finally, we can decide the start and end values of the <code class="literal">geometry</code> property, which is a <code class="literal">QRect</code>, defined like this:</p><pre class="programlisting">QRect(x, y, width, height) 
+</pre><p>The <code class="literal">label</code> object starts with the 0 x 0 position and ends with 300 x 200. In this example, the size is fixed (150 x 50), but you can also animate the width and the height if you want.</p><p>Finally, we call the <code class="literal">start()</code> function to begin the animation. In four seconds, the animation smoothly moves the label from the 0 x 0 position to 300 x 200. By default, the animation uses a linear interpolation to provide intermediate values, so, after two seconds, the <code class="literal">label</code> will be at the 150 x 100 position. The linear interpolation of the value looks like the following schema:</p><div class="mediaobject"><img src="../Images/image00419.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>In our case, the <code class="literal">label</code> object will move with a constant speed from the start to the end position. An easing function is a mathematical function that describes the evolution of a value over time. The easing curve is the visual representation of the mathematical function. The default linear interpolation is a good start, but Qt provides plenty of easing curves to control the speed behavior of your animation. Here is the updated example:</p><pre class="programlisting">QLabel label; 
+QPropertyAnimation animation(&amp;label, "geometry"); 
+animation.setDuration(4000); 
+animation.setStartValue(QRect(0, 0, 150, 50)); 
+animation.setEndValue(QRect(300, 200, 150, 50)); 
+animation.setEasingCurve(QEasingCurve::InCirc); 
+animation.start(); 
+</pre><p>You can set the target object and the property name directly using the <code class="literal">QPropertyAnimation</code> constructor. As a result, we removed the <code class="literal">setTargetObject()</code> and <code class="literal">setPropertyName()</code> functions. After that, we use <code class="literal">setEasingCurve()</code> to specify a curve for this animation. The <code class="literal">InCirc</code> looks like the following:</p><div class="mediaobject"><img src="../Images/image00420.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>With this easing curve, the label starts to move really slowly but accelerates progressively during the animation.</p><p>Another way is to define the intermediate key steps yourself, using the <code class="literal">setKeyValueAt()</code> function. Let's update our example:</p><pre class="programlisting">QLabel label; 
+QPropertyAnimation animation(&amp;label, "geometry"); 
+animation.setDuration(4000); 
+animation.setKeyValueAt(0, QRect(0, 0, 150, 50)); 
+animation.setKeyValueAt(0.25, QRect(225, 112.5, 150, 50)); 
+animation.setKeyValueAt(1, QRect(300, 200, 150, 50)); 
+animation.start(); 
+</pre><p>We are now setting key frames using <code class="literal">setKeyValueAt()</code>. The first argument is the time step in the range 0 to 1. In our case, step 1 means four seconds. The key frames at step 0 and step 1 provide the same positions as the start/end positions of the first example. As you can see, we also add a key frame at step 0.25 (that's one second for us) with the position 225 x 112.5. The next schema illustrates this:</p><div class="mediaobject"><img src="../Images/image00421.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>You can clearly distinguish the three key frames created with <code class="literal">setKeyValueAt()</code>. In our example, our <code class="literal">label</code> will quickly reach the 225 x 112.5 position in one second. Then the label will slowly move to the 300 x 200 position during the remaining three seconds.</p><p>If you have more than one <code class="literal">QPropertyAnimation</code> object, you can use groups to create more complex sequences. Let's see an example:</p><pre class="programlisting">QPropertyAnimation animation1(&amp;label1, "geometry"); 
+QPropertyAnimation animation2(&amp;label2, "geometry"); 
+... 
+QSequentialAnimationGroup animationGroup; 
+animationGroup.addAnimation(&amp;anim1); 
+animationGroup.addAnimation(&amp;anim2); 
+animationGroup.start(); 
+</pre><p>In this example, we are using a <code class="literal">QSequentialAnimationGroup</code> to run animations one by one. The first thing to do is to add animations to <code class="literal">animationGroup</code>. Then, when we call <code class="literal">start()</code> on our animation group, <code class="literal">animation1</code> is <code class="literal">launched</code>. When <code class="literal">animation1</code> is finished, <code class="literal">animationGroup</code> runs <code class="literal">animation2</code>. A <code class="literal">QSequentialAnimationGroup</code> is finished when the last animation of the list ends. The next schema depicts this behavior:</p><div class="mediaobject"><img src="../Images/image00422.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>The second animation group, <code class="literal">QParallelAnimationGroup</code>, is initialized and started in the same way as <code class="literal">QSequentialAnimationGroup</code>. But the behavior is different: it starts all the animations in parallel, waiting for the longest animation to end. Here is an illustration of this:</p><div class="mediaobject"><img src="../Images/image00423.jpeg" alt="Discovering the Animation Framework"/></div><p style="clear:both; height: 1em;"> </p><p>Keep in mind that an animation group is itself an animation (it inherits <code class="literal">QAbstractAnimation</code>). As a consequence, you can add animation groups to other animation groups to create a very complex animation sequence!</p></div>
+<div class="section" title="Making your thumbnails jump" id="aid-2I0GC1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec79"/>Making your thumbnails jump</h1></div></div></div><p>Let's apply what we learned about the Qt Animation Framework to our project. Each time the user clicks on a filter thumbnail, we want to poke it. All modifications will be done on the <code class="literal">FilterWidget</code> class. Let's start with <code class="literal">FilterWidget.h</code>:</p><pre class="programlisting">#include &lt;QPropertyAnimation&gt; 
+ 
+class FilterWidget : public QWidget 
+{ 
+    Q_OBJECT 
+ 
+public: 
+    explicit FilterWidget(Filter&amp; filter, QWidget *parent = 0); 
+    ~FilterWidget(); 
+    ... 
+ 
+private: 
+    void initAnimations(); 
+    void startSelectionAnimation(); 
+ 
+private: 
+    ... 
+    QPropertyAnimation mSelectionAnimation; 
+}; 
+</pre><p>The first function, <code class="literal">initAnimations()</code>, initializes the animations used by <code class="literal">FilterWidget</code>. The second function, <code class="literal">startSelectionAnimation()</code>, performs tasks required to start this animation correctly. As you can see, we are also declaring a <code class="literal">QPropertyAnimation</code> class, as covered in the previous section.</p><p>We can now update <code class="literal">FilterWidget.cpp</code>. Let's update the constructor:</p><pre class="programlisting">FilterWidget::FilterWidget(Filter&amp; filter, QWidget *parent) : 
+    QWidget(parent), 
+    ... 
+    mSelectionAnimation() 
+{ 
+    ... 
+    initAnimations(); 
+    updateThumbnail(); 
+} 
+</pre><p>We initialize our <code class="literal">QPropertyAnimation</code> called <code class="literal">mSelectionAnimation</code>. The constructor also calls <code class="literal">initAnimations()</code>. Here is its implementation:</p><pre class="programlisting">void FilterWidget::initAnimations() 
+{ 
+    mSelectionAnimation.setTargetObject(ui-&gt;thumbnailLabel); 
+    mSelectionAnimation.setPropertyName("geometry"); 
+    mSelectionAnimation.setDuration(200); 
+} 
+</pre><p>You should be familiar with these animation initialization steps now. The target object is the <code class="literal">thumbnailLabel</code> displaying the filter plugin preview. The property name to animate is <code class="literal">geometry</code>, because we want to update the position of this <code class="literal">QLabel</code>. Finally, we set the animation duration to 200 ms. Like jokes, keep it short and sweet.</p><p>Update the existing mouse event handler like this:</p><pre class="programlisting">void FilterWidget::mousePressEvent(QMouseEvent*) 
+{ 
+    process(); 
+    startSelectionAnimation(); 
+} 
+</pre><p>Each time the user clicks on the thumbnail, the selection animation moving the thumbnail will be called. We can now add this most important function like this:</p><pre class="programlisting">void FilterWidget::startSelectionAnimation() 
+{ 
+    if (mSelectionAnimation.state() == 
+        QAbstractAnimation::Stopped) { 
+ 
+        QRect currentGeometry = ui-&gt;thumbnailLabel-&gt;geometry(); 
+        QRect targetGeometry = ui-&gt;thumbnailLabel-&gt;geometry(); 
+        targetGeometry.setY(targetGeometry.y() - 50.0); 
+ 
+        mSelectionAnimation.setKeyValueAt(0, currentGeometry); 
+        mSelectionAnimation.setKeyValueAt(0.3, targetGeometry); 
+        mSelectionAnimation.setKeyValueAt(1, currentGeometry); 
+        mSelectionAnimation.start(); 
+    } 
+} 
+</pre><p>The first thing to do is to retrieve the current geometry of <code class="literal">thumbnailLabel</code> called <code class="literal">currentGeometry</code>. Then, we create a <code class="literal">targetGeometry</code> object with the same <code class="literal">x</code>, <code class="literal">width</code>, and <code class="literal">height</code> values. We only reduce the <code class="literal">y</code> position by 50, so the target position is always above the current position.</p><p>After that, we define our key frames:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong>At step 0</strong></span>, the value is the current position.</li><li class="listitem"><span class="strong"><strong>At step 0.3</strong></span> (60 ms, because the total duration is 200 ms), the value is the target position.</li><li class="listitem"><span class="strong"><strong>At step 1</strong></span> (the end of the animation), we bring it to back the original position. The thumbnail will quickly reach the target position, then slowly fall down to its original position.</li></ul></div><p>These key frames must be initialized before each animation starts. Because the layout is dynamic, the position (and so the geometry) could have been updated when the user resizes the main window.</p><p>Please note that we are preventing the animation from starting again if the current state is not stopped. Without this precaution, the thumbnail could move to the top again and again if the user clicks like a mad man on the widget.</p><p>You can now test your application and click on a filter effect. The filter thumbnail will jump to respond to your click!</p></div>
+<div class="section" title="Fading the picture in" id="aid-2IV0U1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec80"/>Fading the picture in</h1></div></div></div><p>When the user opens a picture, we want to fade in the image by playing with its opacity. The classes <code class="literal">QLabel</code> or <code class="literal">QWidget</code> do not provide an opacity property. However, we can add a visual effect to any <code class="literal">QWidget</code> using a <code class="literal">QGraphicsEffect</code>. For this animation, we will use <code class="literal">QGraphicsOpacityEffect</code> to provide an <code class="literal">opacity</code> property.</p><p>Here is a schema to describe the role of each one:</p><div class="mediaobject"><img src="../Images/image00424.jpeg" alt="Fading the picture in"/></div><p style="clear:both; height: 1em;"> </p><p>In our case, the <code class="literal">QWidget</code> class is our <code class="literal">QLabel</code> and the <code class="literal">QGraphicsEffect</code> class is <code class="literal">QGraphicsOpacityEffect</code>. Qt provides the Graphics Effect system to alter the rendering of a <code class="literal">QWidget</code> class. The abstract class <code class="literal">QGraphicsEffect</code> has a pure virtual method <code class="literal">draw()</code> that is implemented by each graphics effect.</p><p>We can now update the <code class="literal">MainWindow.h</code> according to the next snippet:</p><pre class="programlisting">#include &lt;QPropertyAnimation&gt; 
+#include &lt;QGraphicsOpacityEffect&gt; 
+ 
+class MainWindow : public QMainWindow 
+{ 
+    ... 
+private: 
+    ... 
+    void initAnimations(); 
+private: 
+    ... 
+    QPropertyAnimation mLoadPictureAnimation; 
+    QGraphicsOpacityEffect mPictureOpacityEffect; 
+}; 
+</pre><p>The <code class="literal">initAnimations()</code> private function is in charge of all the animation initializations. The  <code class="literal">mLoadPictureAnimation</code> member variable performs the fade-in animation on the loaded picture. Finally, we declare <code class="literal">mPictureOpacityEffect</code>, the mandatory <code class="literal">QGraphicsOpacityEffect</code>.</p><p>Let's switch to the implementation part with the <code class="literal">MainWindow.cpp</code> constructor:</p><pre class="programlisting">MainWindow::MainWindow(QWidget *parent) : 
+    QMainWindow(parent), 
+    ... 
+    mLoadPictureAnimation(), 
+    mPictureOpacityEffect() 
+{ 
+    ... 
+    initFilters(); 
+    initAnimations(); 
+} 
+</pre><p>No surprises here. We use the initializer list to construct our two new member variables. The <code class="literal">MainWindow</code> constructor also calls <code class="literal">initAnimations()</code>.</p><p>Let's look at how this animation is initialized:</p><pre class="programlisting">void MainWindow::initAnimations() 
+{ 
+    ui-&gt;pictureLabel-&gt;setGraphicsEffect(&amp;mPictureOpacityEffect); 
+    mLoadPictureAnimation.setTargetObject(&amp;mPictureOpacityEffect); 
+    mLoadPictureAnimation.setPropertyName("opacity"); 
+    mLoadPictureAnimation.setDuration(500); 
+    mLoadPictureAnimation.setStartValue(0); 
+    mLoadPictureAnimation.setEndValue(1); 
+    mLoadPictureAnimation.setEasingCurve(QEasingCurve::InCubic); 
+} 
+</pre><p>The first thing to do is to link our <code class="literal">QGraphicsOpacityEffect</code> with our <code class="literal">QLabel</code>. This can be easily done by calling the <code class="literal">setGraphicsEffect()</code> function on <code class="literal">pictureLabel</code>.</p><p>Now we can set our animation up. In this case, <code class="literal">mLoadPictureAnimation</code> targets <code class="literal">mPictureOpacityEffect</code> and will affect its property named <code class="literal">opacity</code>. The animation duration is <code class="literal">500</code> milliseconds. Next, we set the opacity value when the animation starts and ends:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">At the beginning, the picture is completely transparent (<code class="literal">opacity</code> value is <code class="literal">0</code>)</li><li class="listitem">At the end, the picture is fully visible (<code class="literal">opacity</code> value is <code class="literal">1</code>)</li></ul></div><p>For this animation, we use the easing curve <code class="literal">InCubic</code>. This curve looks like this:</p><div class="mediaobject"><img src="../Images/image00425.jpeg" alt="Fading the picture in"/></div><p style="clear:both; height: 1em;"> </p><p>Feel free to try other curves to find the one that looks the best for you.</p><div class="note" title="Note"><h3 class="title"><a id="note41"/>Note</h3><p>You can get the list of all easing curves with a visual preview here:<span><a class="ulink" href="http://doc.qt.io/qt-5/qeasingcurve.html">http://doc.qt.io/qt-5/qeasingcurve.html</a></span></p></div><p>The last step is to start the animation at the right place:</p><pre class="programlisting">void MainWindow::loadPicture() 
+{ 
+    ... 
+    mCurrentFilter-&gt;process(); 
+    mLoadPictureAnimation.start(); 
+} 
+</pre><p>You can now start your application and load a picture. You should see your picture fade in over 500 milliseconds!</p></div>
+<div class="section" title="Flashing the thumbnail in a sequence"><div class="titlepage" id="aid-2JTHG2"><div><div><h1 class="title"><a id="ch08lvl1sec81"/>Flashing the thumbnail in a sequence</h1></div></div></div><p>For this last animation, we want to display a blue flash on each filter preview when the thumbnail is updated. We do not want to flash all previews at the same time, but in a sequence, one by one. This feature will be achieved in two parts:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Create a color animation in <code class="literal">FilterWidget</code> to display a blue flash</li><li class="listitem">Build a sequential animation group in <code class="literal">MainWindow</code> containing all <code class="literal">FilterWidget</code> color animations</li></ul></div><p>Let's start to add the color animation. Update <code class="literal">FilterWidget.h</code> as shown in the following snippet:</p><pre class="programlisting">#include &lt;QGraphicsColorizeEffect&gt; 
+ 
+class FilterWidget : public QWidget 
+{ 
+    Q_OBJECT 
+ 
+public: 
+    explicit FilterWidget(Filter&amp; filter, QWidget *parent = 0); 
+    ~FilterWidget(); 
+    ... 
+    QPropertyAnimation* colorAnimation(); 
+ 
+private: 
+    ... 
+    QPropertyAnimation mSelectionAnimation; 
+    QPropertyAnimation* mColorAnimation; 
+    QGraphicsColorizeEffect mColorEffect; 
+}; 
+</pre><p>This time we do not want to affect the opacity, but rather colorize the thumbnail in blue. Thus, we use another Qt standard effect: <code class="literal">QGraphicsColorizeEffect</code>. We also declare a new <code class="literal">QPropertyAnimation</code> named <code class="literal">mColorAnimation</code> and its corresponding getter, <code class="literal">colorAnimation()</code>. We declare <code class="literal">mColorAnimation</code> as a pointer because the ownership will be taken by the animation group of <code class="literal">MainWindow</code>. This topic will be covered soon.</p><p>Let's update the constructor in <code class="literal">FilterWidget.cpp</code>:</p><pre class="programlisting">FilterWidget::FilterWidget(Filter&amp; filter, QWidget *parent) : 
+    QWidget(parent), 
+    ... 
+    mColorAnimation(new QPropertyAnimation()), 
+    mColorEffect() 
+{ 
+    ... 
+} 
+</pre><p>We just have to construct our two new member variables, <code class="literal">mColorAnimation</code> and <code class="literal">mColorEffect</code>. Let's look at the amazing complexity of the getter:</p><pre class="programlisting">QPropertyAnimation* FilterWidget::colorAnimation() 
+{ 
+    return mColorAnimation; 
+} 
+</pre><p>It was a lie: we always try to write comprehensive code!</p><p>Now that the preliminaries are done, we can initialize the color animation by updating the  <code class="literal">initAnimations()</code> function like this:</p><pre class="programlisting">void FilterWidget::initAnimations() 
+{ 
+    ... 
+    mColorEffect.setColor(QColor(0, 150, 150)); 
+    mColorEffect.setStrength(0.0); 
+    ui-&gt;thumbnailLabel-&gt;setGraphicsEffect(&amp;mColorEffect); 
+ 
+    mColorAnimation-&gt;setTargetObject(&amp;mColorEffect); 
+    mColorAnimation-&gt;setPropertyName("strength"); 
+    mColorAnimation-&gt;setDuration(200); 
+    mColorAnimation-&gt;setStartValue(1.0); 
+    mColorAnimation-&gt;setEndValue(0.0); 
+} 
+</pre><p>The first part sets the color filter up. Here, we chose a kind of turquoise color for the flash effect. The colorize effect is handled by its <code class="literal">strength</code> property. By default, the value is <code class="literal">1.0</code>, so, we set it to <code class="literal">0.0</code> to keep it from affecting our default thumbnail of Lenna. Finally, we link the <code class="literal">thumbnailLabel</code> with this <code class="literal">mColorEffect</code> calling <code class="literal">setGraphicsEffect()</code>.</p><p>The second part is the color animation preparation. This animation targets the color effect and its property, named <code class="literal">strength</code>. This is a short flash; <code class="literal">200</code> milliseconds is enough:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">We want to start with a full strength effect, so we put the start value at <code class="literal">1.0</code></li><li class="listitem">During the animation, the colorize effect will decrease until it reaches <code class="literal">0.0</code></li></ul></div><p>The default linear interpolation is fine here, so we do not use any easing curve.</p><p>Here we are. The color effect/animation is initialized and we provided a <code class="literal">colorAnimation()</code> getter. We can now begin the second part of this feature, Updating <code class="literal">MainWindow.h</code>:</p><pre class="programlisting">#include &lt;QSequentialAnimationGroup&gt; 
+ 
+class MainWindow : public QMainWindow 
+{ 
+    Q_OBJECT 
+    ... 
+ 
+private: 
+    ... 
+    QSequentialAnimationGroup mFiltersGroupAnimation; 
+}; 
+</pre><p>We declare a <code class="literal">QSequentialAnimationGroup</code> class to trigger, one by one, all <code class="literal">FilterWidget</code> color animations displaying the blue flash. Let's update the constructor in <code class="literal">MainWindow.cpp</code>:</p><pre class="programlisting">MainWindow::MainWindow(QWidget *parent) : 
+    QMainWindow(parent), 
+    ... 
+    mFiltersGroupAnimation() 
+{ 
+    ... 
+} 
+</pre><p>A new member variable means a new construction in the initializer list: that is the rule!</p><p>We can now update <code class="literal">initAnimations()</code> to prepare our animation group:</p><pre class="programlisting">void MainWindow::initAnimations() 
+{ 
+    ... 
+    for (FilterWidget* filterWidget : mFilters) { 
+        mFiltersGroupAnimation.addAnimation( 
+            filterWidget-&gt;colorAnimation()); 
+    } 
+} 
+</pre><p>Do you remember that an animation group is only an animation container? As a consequence, we iterate on every <code class="literal">FilterWidget</code> to get its color animation and fill our <code class="literal">mFiltersGroupAnimation</code> calling <code class="literal">addAnimation()</code>. Thanks to C++11's range-based for loop, it is really readable. Keep in mind that when you add an animation to an animation group, the group takes ownership of this animation.</p><p>Our animation group is ready. We can now start it:</p><pre class="programlisting">void MainWindow::loadPicture() 
+{ 
+    ... 
+    mCurrentFilter-&gt;process(); 
+    mLoadPictureAnimation.start(); 
+    mFiltersGroupAnimation.start(); 
+} 
+</pre><p>Start your application and open a picture. You can see that all filter thumbnails will flash one by one from left to right. This is what we intended, but it's still not perfect because all the thumbnails are already updated before the flashes. We have this behavior because the <code class="literal">loadPicture()</code> function actually sets and updates all thumbnails, and then finally starts the sequential animation group. Here is a schema illustrating the current behavior:</p><div class="mediaobject"><img src="../Images/image00426.jpeg" alt="Flashing the thumbnail in a sequence"/></div><p style="clear:both; height: 1em;"> </p><p>The schema only describes the behavior for two thumbnails, but the principle is the same with three thumbnails. Here is the targeted behavior:</p><div class="mediaobject"><img src="../Images/image00427.jpeg" alt="Flashing the thumbnail in a sequence"/></div><p style="clear:both; height: 1em;"> </p><p>We must only update the thumbnail when the flash animation is over. Fortunately, <code class="literal">QPropertyAnimation</code> emits the <code class="literal">finished</code> signal when the animation is over, so we only have to make a few changes. Update <code class="literal">loadPicture()</code> function from <code class="literal">MainWindow.cpp</code>:</p><pre class="programlisting">void MainWindow::loadPicture() 
+{ 
+    ... 
+    for (int i = 0; i &lt;mFilters.size(); ++i) { 
+        mFilters[i]-&gt;setSourcePicture(mSourcePicture); 
+        mFilters[i]-&gt;setSourceThumbnail(mSourceThumbnail); 
+        //mFilters[i]-&gt;updateThumbnail(); 
+    } 
+    ... 
+} 
+</pre><p>As you can see, we kept the set and only removed the update thumbnail when a new picture is opened by the user. At this stage, all <code class="literal">FilterWidget</code> instances have the correct thumbnail, but they don't display it. Let's fix this by updating <code class="literal">FilterWidget.cpp</code>:</p><pre class="programlisting">void FilterWidget::initAnimations() 
+{ 
+    ... 
+    mColorAnimation-&gt;setTargetObject(&amp;mColorEffect); 
+    mColorAnimation-&gt;setPropertyName("strength"); 
+    mColorAnimation-&gt;setDuration(200); 
+    mColorAnimation-&gt;setStartValue(1.0); 
+    mColorAnimation-&gt;setEndValue(0.0); 
+    connect(mColorAnimation, &amp;QPropertyAnimation::finished, [this]  
+    { 
+        updateThumbnail(); 
+    }); 
+} 
+</pre><p>We connect a <code class="literal">lambda</code> function to the finished signal of the color animation. This <code class="literal">lambda</code> simply updates the thumbnail. You can now start your application again and load a picture. You should see that we not only animate the sequential blue flash, but also the thumbnail update.</p></div>
+<div class="section" title="Summary" id="aid-2KS221"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec82"/>Summary</h1></div></div></div><p>In this chapter, you defined a <code class="literal">Filter</code> interface in your own SDK. Your filters are now plugins. You know how to create and load a new plugin, so your application is now modular and can be easily extended. We have also enhanced the application with the Qt Animation Framework. You know how to animate the position, the color, and the opacity of any <code class="literal">QWidget</code>, using <code class="literal">QGraphicsEffect</code> if necessary. We created a sequential animation that starts three animations one by one with <code class="literal">QSequentialAnimationGroup</code>.</p><p>In the next chapter, we will talk about a big subject: threading. The Qt framework can help you build a robust and reliable multithreading application. To illustrate the chapter, we will create a Mandelbrot fractal generator using threadpools.</p></div></body></html>

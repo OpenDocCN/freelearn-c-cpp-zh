@@ -1,0 +1,771 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;6.&#xA0; Even Qt Deserves a Slice of Raspberry Pi"><div class="titlepage" id="aid-1P71O2"><div><div><h1 class="title"><a id="ch06"/>Chapter 6.        Even Qt Deserves a Slice of Raspberry Pi       </h1></div></div></div><p>In the previous chapter, we created a QML UI targeted at Android and iOS. We will continue our journey in the embedded world by discovering how we can deploy a Qt application on a Raspberry Pi. The example project to illustrate this topic will be a snake game using the Qt3D modules. The player will control a snake trying to eat apples to get as big as possible.</p><p>In this chapter, you will learn:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The architecture of the Qt3D modules</li><li class="listitem">The basic principles of cross-compilation</li><li class="listitem">How to build your own Qt Creator kit to compile and deploy your game on a Raspberry Pi</li><li class="listitem">How to handle the differences and limitations of various platforms (desktop, Raspberry Pi)</li><li class="listitem">The Factory design pattern</li><li class="listitem">How to write a complete game engine using JavaScript and QML</li><li class="listitem">The usage of the QML Profiler</li></ul></div><div class="section" title="Discovering Qt3D"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec53"/>Discovering Qt3D</h1></div></div></div><p>The example project of this chapter will rely on 3D rendering. For this, we will use Qt3D. This part of the framework is divided into various Qt modules that enable the application to have a near-real time simulation of a 3D environment. Built on OpenGL, Qt3D offers a high-level API to describe complex scenes without having to resort to writing low-level OpenGL instructions. Qt3D supports the following basic features:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">2D and 3D rendering for C++ and Qt Quick</li><li class="listitem">Meshes</li><li class="listitem">Materials</li><li class="listitem">GLSL shaders</li><li class="listitem">Shadow mapping</li><li class="listitem">Deferred rendering</li><li class="listitem">Instance rendering</li><li class="listitem">Uniform Buffer Object</li></ul></div><p>All these features are implemented in the <span class="strong"><strong>ECS</strong></span> (<span class="strong"><strong>entity component system</strong></span>) architecture. Each mesh, material, or shader that you define is a component. The aggregation of these components makes an entity. If you wanted to draw a 3D red apple, you would need the following components:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">A mesh component, holding the vertices of your apple</li><li class="listitem">A material component, applying a texture on the mesh or coloring it</li></ul></div><p>These two components will then be regrouped to define the entity Apple. You see here the two parts of the ECS: entities and components. The overall architecture looks like this:</p><div class="mediaobject"><img src="../Images/image00389.jpeg" alt="Discovering Qt3D"/></div><p style="clear:both; height: 1em;"> </p><p>Each of these components can be regrouped in aspects. An aspect is a "slice" of multiple components working on the same part (rendering, audio, logic, and physics). When the graph of all your entities is processed by the Qt3D engine, each layer of aspects is processed sequentially.</p><p>The underlying approach is to favor composition over inheritance. In a game, an entity (an apple, a player, an enemy) can have various states during its life cycle: spawning, animating for a given state, dying animation, and so on. Using inheritance to describe these states will lead to a nerve-wracking tree: <code class="literal">AppleSpawn</code>, <code class="literal">AppleAnimationShiny</code>, <code class="literal">AppleDeath</code>, and so on. It would become quickly unmaintainable. Any modification to a class could have huge impact on many other classes and the number of possible combinations of states would get out of hand. Saying that a state is simply a component for a given entity, gives the flexibility to easily swap components and still keep the entity abstraction; an apple <code class="literal">Entity</code> element is still an apple, even though it is using the <code class="literal">AnimationShiny</code><code class="literal">Component</code> instead of the <code class="literal">AnimationSpawn</code><code class="literal">Component</code>.</p><p>Let's see how to define a basic <code class="literal">Entity</code> element in QML. Imagine that this is the apple we have been talking about. The <code class="literal">Apple.qml</code> file would look like this:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+Entity { 
+ 
+    property alias position: transform.translation 
+    PhongMaterial { 
+        id: material 
+        diffuse: "red" 
+    } 
+ 
+    SphereMesh { 
+        id: mesh 
+    } 
+ 
+    Transform { 
+        id: transform 
+    } 
+ 
+    components: [material, mesh, transform] 
+} 
+</pre><p>In a very few lines, you describe every aspect of the <code class="literal">Entity</code> element:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">Entity</code>: This is the root object of the file; it follows the same QML pattern we studied in <span><a class="link" title="Chapter 5.  Dominating the Mobile UI" href="part0048.xhtml#aid-1DOR02">Chapter 5</a></span>, <span class="emphasis"><em>Dominating the Mobile UI</em></span>.</li><li class="listitem"><code class="literal">PhongMaterial</code>: This defines how the surface will be rendered. Here, it uses the Phong shading technique to achieve smooth surfaces. It inherits <code class="literal">QMaterial</code>, which is the base class for all the material classes.</li><li class="listitem"><code class="literal">CuboidMesh</code>: This defines what type of mesh will be used. It inherits <code class="literal">QGeometryRenderer</code>, which also gives the ability to load custom models (exported from 3D modeling software).</li><li class="listitem"><code class="literal">Transform</code>: This defines the transformation matrix of the component. It can customize the translation, scale, and position of the <code class="literal">Entity</code> element.</li><li class="listitem"><code class="literal">Position</code>: This is a property to expose <code class="literal">transform.translation</code> for a given caller/parent. This might quickly become handy if we want to move the apple around.</li><li class="listitem"><code class="literal">Components</code>: This is the array containing all the IDs of all the components for the <code class="literal">Entity</code> element.</li></ul></div><p>If we want to make this <code class="literal">Apple</code> a child of another <code class="literal">Entity</code>, it is simply a matter of defining the Apple inside this new <code class="literal">Entity</code> element. Let's call it <code class="literal">World.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+Entity { 
+    id: sceneRoot 
+     RenderSettings { 
+        id: frameFraph 
+        activeFrameGraph: ForwardRenderer { 
+            clearColor: Qt.rgba(0, 0, 0, 1) 
+        } 
+    } 
+ 
+    Apple { 
+        id: apple 
+        position: Qt.vector3d(3.0, 0.0, 2.0) 
+    } 
+ 
+    components: [frameGraph] 
+} 
+</pre><p>Here, the <code class="literal">World Entity</code> has no visual representation; we want it to be the root of our 3D scene. It only contains the <code class="literal">Apple</code> we defined earlier. The <span class="emphasis"><em>x</em></span>, <span class="emphasis"><em>y</em></span>, <span class="emphasis"><em>z</em></span> coordinates of the apple are relative to the parent. When the parent makes a translation, the same translation will be applied to the apple.</p><p>This is how the hierarchy of entities/components is defined. If you write your Qt3D code in C++, the same logic applies to the equivalent C++ classes (<code class="literal">QEntity</code>, <code class="literal">QComponent</code>, and so on).</p><p>Because we decided to use the <code class="literal">World.qml</code> file as the root of our scene, it has to define how the scene will be rendered. The Qt3D rendering algorithm is data-driven. In other words, there is a clear separation between <span class="emphasis"><em>what</em></span> should be rendered (the tree of entities and components) and <span class="emphasis"><em>how</em></span> it should be rendered.</p><p>The <span class="emphasis"><em>how</em></span> relies on a similar tree structure using <code class="literal">framegraph</code>. In Qt Quick, a single method of rendering is used and it covers the 2D drawing. On the other hand, in 3D, the need for flexible rendering makes it necessary to decouple the rendering techniques.</p><p>Consider this example: you play a game where you control your avatar and you encounter a mirror. The same 3D scene must be rendered from multiple viewports. If the rendering technique is fixed, this poses multiple problems: which viewport should be drawn first? Is it possible to parallelize the rendering of the viewports in the GPU? What if we need to make multiple passes for the rendering?</p><p>In this code snippet, we use the traditional OpenGL rendering technique with the <code class="literal">ForwardRenderer</code> tree, where each object is rendered directly on the back buffer, one at a time. Qt3D offers the possibility to choose the renderer (<code class="literal">ForwardRenderer</code>, <code class="literal">DeferredRenderer</code>, and so on) and configure how the scene should be rendered.</p><p>OpenGL typically uses the double-buffering technique to render its content. The front-buffer is what is displayed on the screen and the back-buffer is where the scene is being rendered. When the back-buffer is ready, the two buffers are swapped.</p><p>One last thing to notice at the top of each <code class="literal">Entity</code> element is that we specified the following:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+</pre><p>There are only Qt3D modules in the import section. Qt3D classes do not inherit <code class="literal">Item</code> so cannot be directly mixed with QML components. This inheritance tree of the basic Qt3D building blocks is:</p><div class="mediaobject"><img src="../Images/image00390.jpeg" alt="Discovering Qt3D"/></div><p style="clear:both; height: 1em;"> </p><p>The <code class="literal">QNode</code> class is the base class of all Qt3D node classes. It relies on the <code class="literal">QObject</code> class to define the parenting relationship. Each <code class="literal">QNode</code> class instance also adds a unique <code class="literal">id</code> variable, which allows it to be recognized from other instances.</p><p>Even though <code class="literal">QNode</code> cannot be mixed with Qt Quick types, they can be added to a <code class="literal">Q3DScene</code> element (or <code class="literal">Scene3D</code> in QML), which serves as the canvas for Qt3D content and can be added to a Qt Quick <code class="literal">Item</code>. Adding <code class="literal">World.qml</code> to a scene is as simple as this:</p><pre class="programlisting">Rectangle { 
+ 
+    Scene3D { 
+        id: scene 
+        anchors.fill: parent 
+        focus: true 
+ 
+        World { } 
+    } 
+} 
+</pre><p>The <code class="literal">Scene3D</code> element includes a <code class="literal">World</code> instance and defines common Qt Quick properties (<code class="literal">anchors</code>, <code class="literal">focus</code>).</p></div></div>
+<div class="section" title="Configuring Qt for your Raspberry Pi"><div class="titlepage" id="aid-1Q5IA2"><div><div><h1 class="title"><a id="ch06lvl1sec54"/>Configuring Qt for your Raspberry Pi</h1></div></div></div><p>This project targets a new embedded platform: the Raspberry Pi. Qt officially supports the Raspberry Pi 2, but we got the project running without any trouble on a Raspberry Pi 3. If you do not have one of these devices, it might be nonetheless interesting to read this section to know how the cross-compilation works and how to configure your own kit in Qt Creator. The rest of the chapter will work on a Desktop platform anyway.</p><p>Before diving into the Raspberry Pi configuration, let's take a step back to understand our aim. Your computer is probably running on an x86 CPU architecture. This means that every program you run will be executed with the x86 instructions set of your CPU. In Qt Creator, this translates to your available kits. A kit must match your target platform. On startup, Qt Creator searches for available kits in your computer and loads them for you.</p><p>In <span><a class="link" title="Chapter 5.  Dominating the Mobile UI" href="part0048.xhtml#aid-1DOR02">Chapter 5</a></span>, <span class="emphasis"><em>Dominating the Mobile UI</em></span>, we targeted different platforms: Android and iOS. These platforms are running on a different CPU instruction set: ARM. Luckily, the people behind Qt automatically configured for us the necessary nuts and bolts to make it work.</p><p>The Raspberry Pi also runs on ARM but it is not ready for Qt by default. We have to prepare it before playing with it in Qt Creator. Note that the following commands are run from a Linux box, but you should be able to run them from Mac or Windows with Cygwin.</p><div class="note" title="Note"><h3 class="title"><a id="note30"/>Note</h3><p>Please follow the complete guide to prepare your Raspberry Pi for Qt at <span><a class="ulink" href="https://wiki.qt.io/RaspberryPi2EGLFS">https://wiki.qt.io/RaspberryPi2EGLFS</a></span>, or simply download a precompiled bundle from <span><a class="ulink" href="http://www.qtrpi.com">http://www.qtrpi.com</a></span>.</p></div><p>The complete Raspberry Pi installation guide is outside the scope of the book. It is interesting nonetheless to sum up the main steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Add development packages to the Raspberry Pi.</li><li class="listitem">Retrieve the complete toolchain, including the cross-compiler that will be executed from your machine.</li><li class="listitem">Create a <code class="literal">sysroot</code> folder on your machine that will mirror the necessary directories from the Raspberry Pi.</li><li class="listitem">Compile Qt with the cross-compiler in the <code class="literal">sysroot</code> folder.</li><li class="listitem">Synchronize this <code class="literal">sysroot</code> with the Raspberry Pi.</li></ol><div style="height:10px; width: 1px"/></div><p>A <code class="literal">sysroot</code> is simply a directory containing a minimal filesystem for a given platform. It typically contains the <code class="literal">/usr/lib</code> and <code class="literal">/usr/include</code> directories. Having this directory on your machine enables the cross-compiler to properly compile and link the output binary without being executed from the Raspberry Pi.</p><p>All these steps are done to avoid compiling anything directly on the Raspberry Pi. Being a low-powered device, the execution of any compilation would take a very, very long time. Compiling Qt on a Raspberry Pi would easily take more than 40 hours. Knowing this, the time spent on configuring the cross-compiler seems much easier to bear.</p><p>The <code class="literal">qopenglwidget</code> example mentioned in the wiki should be properly running before proceeding. Once this has been done, we have to cross-compile a few more Qt modules to have our project running:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">Qtdeclarative</code>: This model is used to access Qt Quick</li><li class="listitem"><code class="literal">qt3d</code>: This model is used to construct a 3D world</li><li class="listitem"><code class="literal">qtquickcontrols</code>: This model is used to include interesting controls (Label)</li><li class="listitem"><code class="literal">qtquickcontrols2</code>: This model is used to make some new layouts available</li></ul></div><p>For each of these modules, execute the following commands (from your <code class="literal">~/raspi</code> directory):</p><pre class="programlisting">
+<span class="strong"><strong>git clone git://code.qt.io/qt/&lt;modulename&gt;.git -b 5.7</strong></span>
+<span class="strong"><strong>cd &lt;modulename&gt;</strong></span>
+<span class="strong"><strong>~/raspi/qt5/bin/qmake -r</strong></span>
+<span class="strong"><strong>make</strong></span>
+<span class="strong"><strong>make install</strong></span>
+</pre><div class="note" title="Note"><h3 class="title"><a id="tip31"/>Tip</h3><p>You can speed up the compilation by adding the parameter <code class="literal">-j</code> (or <code class="literal">--jobs</code>) to <code class="literal">make</code>. The <code class="literal">make</code> command will try to parallelize the compilations jobs over your CPU cores, if you have four cores, use <code class="literal">make -j 4</code>, eight cores, <code class="literal">make -j 8</code>, and so on.</p></div><p>When everything has been compiled, synchronize your <code class="literal">sysroot</code> directory again with:</p><pre class="programlisting">
+<span class="strong"><strong>rsync -avz qt5pi pi@IP:/usr/local</strong></span>
+</pre><p>In the previous command, you must replace the <code class="literal">IP</code> with the real Raspberry Pi address.</p><p>The Raspberry Pi is ready to execute our Qt code. However, we have to create our own kit in Qt Creator to be able to compile and deploy our program on it. A kit is composed of the following parts:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">A <span class="strong"><strong>compiler</strong></span> that will compile your code using the CPU instruction set of the target platform</li><li class="listitem">A <span class="strong"><strong>debugger</strong></span> that will know the instruction set of the target platform to properly break and read the memory content</li><li class="listitem">A <span class="strong"><strong>Qt version</strong></span> compiled for the targeted platform to compile and link your binary to the target platform's shared objects</li><li class="listitem">A <span class="strong"><strong>device</strong></span> to which Qt Creator can connect to deploy and execute your program</li></ul></div><p>We will start with the compiler. In Qt Creator:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Go to <span class="strong"><strong>Tools</strong></span> | <span class="strong"><strong>Options</strong></span> | <span class="strong"><strong>Build &amp; Run</strong></span> | <span class="strong"><strong>Compilers</strong></span>.</li><li class="listitem">Click on <span class="strong"><strong>Add</strong></span> |<span class="strong"><strong>GCC</strong></span>.</li><li class="listitem">Browse to <code class="literal">~/raspi/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/bin/arm-linux-gnueabihf-g++</code>.</li><li class="listitem">Rename the compiler to <code class="literal">Rpi GCC</code>.</li></ol><div style="height:10px; width: 1px"/></div><p>This strange binary name makes it easier for Qt to parse the <span class="strong"><strong>ABI</strong></span> (<span class="strong"><strong>application binary interface</strong></span>) to find out the platform architecture, file format, and so on. It should look like this:</p><div class="mediaobject"><img src="../Images/image00391.jpeg" alt="Configuring Qt for your Raspberry Pi"/></div><p style="clear:both; height: 1em;"> </p><p>Now for the debugger. As we said earlier, we are building this project from a Linux box (Ubuntu). Cross-compilation and embedded development tend to be easier on Linux but you should be able to do the same on a Windows or Mac with a few additional steps.</p><p>On Ubuntu Linux, just install a multi-architecture <code class="literal">gdb</code> with the command <code class="literal">sudo apt-get install gdb-multiarch</code>. In Qt Creator, add this new debugger in the <span class="strong"><strong>Debuggers</strong></span> tab:</p><div class="mediaobject"><img src="../Images/image00392.jpeg" alt="Configuring Qt for your Raspberry Pi"/></div><p style="clear:both; height: 1em;"> </p><p>Next, add the cross-compiled Qt explained on the wiki page in the <span class="strong"><strong>Qt Versions</strong></span> tab. Click on <span class="strong"><strong>Add</strong></span> and browse to <code class="literal">~/raspi/qt5/bin/qmake</code>. This is the resulting Qt Version:</p><div class="mediaobject"><img src="../Images/image00393.jpeg" alt="Configuring Qt for your Raspberry Pi"/></div><p style="clear:both; height: 1em;"> </p><p>We are almost there! Before building the kit, we simply have to configure Raspberry Pi device access. In <span class="strong"><strong>Options</strong></span> | <span class="strong"><strong>Devices</strong></span>, follow this procedure:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Click on <span class="strong"><strong>Add..</strong></span> | <span class="strong"><strong>Generic Linux Device</strong></span> | <span class="strong"><strong>Start Wizard</strong></span>.</li><li class="listitem">The name will be <code class="literal">Rpi 2</code> (or 3 if you have one).</li><li class="listitem">Enter the IP address of your device (indeed, you have to be connected to your local network!).</li><li class="listitem">The default username is <span class="strong"><strong>pi</strong></span>.</li><li class="listitem">The default password is "raspberry".</li><li class="listitem">Click on <span class="strong"><strong>Next</strong></span> to test the connection to the device.</li></ol><div style="height:10px; width: 1px"/></div><p>If everything went well, this is your new device:</p><div class="mediaobject"><img src="../Images/image00394.jpeg" alt="Configuring Qt for your Raspberry Pi"/></div><p style="clear:both; height: 1em;"> </p><p>Finally, the kit will compose all these parts into a valid Qt Creator platform. Go back to <span class="strong"><strong>Build &amp; Run</strong></span> | <span class="strong"><strong>Kits</strong></span>. From here you simply have to point to each of the parts we built previously. Here is the resulting kit:</p><div class="mediaobject"><img src="../Images/image00395.jpeg" alt="Configuring Qt for your Raspberry Pi"/></div><p style="clear:both; height: 1em;"> </p><p>Note that the <span class="strong"><strong>Sysroot</strong></span> filed should point to the <code class="literal">sysroot</code> folder we previously created at <code class="literal">~/raspi/sysroot</code>.</p><div class="note" title="Note"><h3 class="title"><a id="tip32"/>Tip</h3><p>If you click on the button to the right of <span class="strong"><strong>Name</strong></span>, you can choose a custom picture for a kit, such as the Raspberry Pi logo.</p></div><p>Everything is now ready to make an awesome snake game.</p></div>
+<div class="section" title="Creating an entry point for your Qt3D code"><div class="titlepage" id="aid-1R42S2"><div><div><h1 class="title"><a id="ch06lvl1sec55"/>Creating an entry point for your Qt3D code</h1></div></div></div><p>For those who did not play the snake game in their youth, here is a quick reminder of the gameplay:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">You control a snake moving in an empty area</li><li class="listitem">This area is surrounded by walls</li><li class="listitem">An apple spawns randomly in the game area</li><li class="listitem">If the snake eats the apple, it grows and you gain a point. Right after, another apple spawns in the game area</li><li class="listitem">If the snake touches a wall or a part of its own body, you lose</li></ul></div><p>The goal is to eat as many apples as possible to have the highest score. The longer the snake, the harder it will become to avoid the wall and its own tail. Oh, and the snake goes faster and faster each time it eats an apple. The architecture of the game will be the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">All the game items will be defined using Qt3D in QML</li><li class="listitem">All the game logic will be done in JavaScript, which will communicate with the QML elements</li></ul></div><p>We will keep the 2D feel of the original snake game by placing the camera above the game area but we will spice things up with 3D models and some shaders.</p><p>Alright, we spent an awful lot of pages preparing for this moment. It is now time to begin the snake project. Create a new <span class="strong"><strong>Qt Quick Controls Application</strong></span> named <code class="literal">ch06-snake</code>. In the project details:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Select <span class="strong"><strong>Qt 5.6</strong></span> for the <span class="strong"><strong>minimal required Qt version</strong></span> field.</li><li class="listitem">Uncheck <span class="strong"><strong>With ui.qml file</strong></span>.</li><li class="listitem">Uncheck <span class="strong"><strong>Enable native styling</strong></span>.</li><li class="listitem">Click on <span class="strong"><strong>Next</strong></span> and select the following kits:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">RaspberryPi 2</li><li class="listitem"><span class="strong"><strong>Desktop</strong></span></li></ul></div></li><li class="listitem">Click on<span class="strong"><strong> Next</strong></span> | <span class="strong"><strong>Finish</strong></span>.</li></ol><div style="height:10px; width: 1px"/></div><p>We have to add the Qt3D modules. Modify <code class="literal">ch06-snake.pro</code> like this:</p><pre class="programlisting">TEMPLATE = app 
+ 
+QT += qml quick 3dcore 3drender 3dquick 3dinput 3dextras 
+CONFIG += c++11 
+ 
+SOURCES += main.cpp 
+ 
+RESOURCES += \ 
+    snake.qrc 
+ 
+HEADERS += 
+ 
+target.files = ch06-snake 
+target.path = /home/pi 
+INSTALLS += target 
+</pre><p>We have to prepare the entry point of the application to have a proper OpenGL context with which Qt3D can work. Open and update <code class="literal">main.cpp</code> like so:</p><pre class="programlisting">#include &lt;QGuiApplication&gt; 
+#include &lt;QtGui/QOpenGLContext&gt; 
+#include &lt;QtQuick/QQuickView&gt; 
+#include &lt;QtQml/QQmlEngine&gt; 
+ 
+int main(int argc, char *argv[]) 
+{ 
+    QGuiApplication app(argc, argv); 
+ 
+    qputenv("QT3D_GLSL100_WORKAROUND", ""); 
+ 
+    QSurfaceFormat format; 
+    if (QOpenGLContext::openGLModuleType() == 
+        QOpenGLContext::LibGL) { 
+        format.setVersion(3, 2); 
+        format.setProfile(QSurfaceFormat::CoreProfile); 
+    } 
+    format.setDepthBufferSize(24); 
+    format.setStencilBufferSize(8); 
+ 
+    QQuickView view; 
+    view.setFormat(format); 
+    view.setResizeMode(QQuickView::SizeRootObjectToView); 
+    QObject::connect(view.engine(), &amp;QQmlEngine::quit,  
+                     &amp;app, &amp;QGuiApplication::quit); 
+    view.setSource(QUrl("qrc:/main.qml")); 
+    view.show(); 
+ 
+    return app.exec(); 
+} 
+</pre><p>The idea is to configure a <code class="literal">QSurfaceFormat</code> to properly handle OpenGL and to give it to a custom <code class="literal">QQuickView view</code>. This <code class="literal">view</code> will use this format to paint itself.</p><p>The <code class="literal">qputenv("QT3D_GLSL100_WORKAROUND", "")</code> instruction is a workaround related to Qt3D shaders on some embedded Linux devices, such as the Raspberry Pi. It will enable a separate GLSL 1.00 snippet for the lights required by some embedded devices. If you do not use this workaround, you will get a black screen and will not be able to properly run the project on Raspberry Pi.</p><div class="note" title="Note"><h3 class="title"><a id="tip33"/>Tip</h3><p>The details of the Qt3d lights workaround are here:<span><a class="ulink" href="https://codereview.qt-project.org/#/c/143136/">https://codereview.qt-project.org/#/c/143136/</a>.</span></p></div><p>We chose to handle the view using Qt Quick. Another approach would be to create a C++ class that inherits <code class="literal">QMainWindow</code> and make it the parent of the QML content. This approach can be found in many Qt3D example projects. Both are valid and work. You tend to write more code with the <code class="literal">QMainWindow</code> approach, but it allows you to create 3D scenes with C++ only.</p><p>Note that <code class="literal">view</code> from the <code class="literal">main.cpp</code> file tries to load a <code class="literal">main.qml</code> file. You can see it coming; here is the <code class="literal">main.qml</code>:</p><pre class="programlisting">import QtQuick 2.6 
+import QtQuick.Controls 1.4 
+ 
+Item { 
+    id: mainView 
+ 
+    property int score: 0 
+    readonly property alias window: mainView 
+ 
+    width: 1280; height: 768 
+    visible: true 
+ 
+    Keys.onEscapePressed: { 
+        Qt.quit() 
+    } 
+ 
+    Rectangle { 
+        id: hud 
+ 
+        color: "#31363b" 
+        anchors.left: parent.left 
+        anchors.right: parent.right 
+        anchors.top : parent.top 
+        height: 60 
+ 
+        Label { 
+            id: snakeSizeText 
+            anchors.centerIn: parent 
+            font.pointSize: 25 
+            color: "white" 
+            text: "Score: " + score 
+        } 
+    } 
+} 
+</pre><p>Here we define the <span class="strong"><strong>HUD</strong></span> (<span class="strong"><strong>heads up display</strong></span>) at the top of the screen, where the score (the number of apples eaten) will be displayed. Note that we bound the Escape key to the <code class="literal">Qt.quit()</code> signal. This signal is connected in <code class="literal">main.cpp</code> to the <code class="literal">QGuiApplication::quit()</code> signal to quit the application.</p><p>The QML context is now ready to welcome Qt3D content. Modify <code class="literal">main.qml</code> like so:</p><pre class="programlisting">import QtQuick 2.6 
+import QtQuick.Controls 1.4 
+import QtQuick.Scene3D 2.0 
+ 
+Item { 
+    ... 
+ 
+    Rectangle { 
+        id: hud 
+        ... 
+    } 
+ 
+    Scene3D { 
+        id: scene 
+        anchors.top: hud.bottom 
+        anchors.bottom: parent.bottom 
+        anchors.left: parent.left 
+        anchors.right: parent.right 
+        focus: true 
+        aspects: "input" 
+    } 
+} 
+</pre><p>The <code class="literal">Scene3D</code> element takes all the available space below the <code class="literal">hud</code> object. It takes the focus of the window to be able to intercept keyboard events. It also enables the input aspect to let the Qt3D engine process keyboard events in its graph traversal.</p></div>
+<div class="section" title="Setting up the scene" id="aid-1S2JE1"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec56"/>Setting up the scene</h1></div></div></div><p>We can now start writing Qt3D code. The first step is to define the root of the scene. Create a new file named <code class="literal">GameArea.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+Entity { 
+    id: root 
+ 
+    property alias gameRoot: root 
+ 
+    Camera { 
+        id: camera 
+        property real x: 24.5 
+        property real y: 14.0 
+ 
+        projectionType: CameraLens.PerspectiveProjection 
+        fieldOfView: 45 
+        aspectRatio: 16/9 
+        nearPlane : 0.1 
+        farPlane : 1000.0 
+        position: Qt.vector3d( x, y, 33.0 ) 
+        upVector: Qt.vector3d( 0.0, 1.0, 0.0 ) 
+        viewCenter: Qt.vector3d( x, y, 0.0 ) 
+    } 
+ 
+ 
+ 
+    RenderSettings { 
+        id: frameFraph 
+        activeFrameGraph: ForwardRenderer { 
+            clearColor: Qt.rgba(0, 0, 0, 1) 
+            camera: camera 
+        } 
+    } 
+ 
+    components: [frameFraph] 
+} 
+</pre><p>The first thing we do is create a camera and position it. Remember that, in OpenGL, the coordinates follow the thumb on your right hand points left!:</p><div class="mediaobject"><img src="../Images/image00396.jpeg" alt="Setting up the scene"/></div><p style="clear:both; height: 1em;"> </p><p>By placing the camera at <code class="literal">Qt.vector3d(x, y, 33)</code>, we make it come "out of the screen" to be able to express our yet-to-be-created entitiy's coordinates with the simple <code class="literal">x</code>, <code class="literal">y</code> axis. The <code class="literal">upVector: Qt.vector3d(0.0, 1.0, 0.0)</code> specifies the up vector of the camera,  in our case it is the <code class="literal">Y</code> axis. Finally, we point at <code class="literal">Qt.vector(x, y, 0)</code>, meaning the center of the screen.</p><p>The overall goal is to simplify coordinate expression. By positioning the camera this way, placing an object at the coordinate 0, 0 will put it in the bottom-left part of the window, whereas the coordinates 50, 28 mean the top-right part of the window.</p><p>We also configure <code class="literal">RenderSettings</code> with a <code class="literal">ForwardRendered</code> that defines two properties:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">clearColor</code>: This property <code class="literal">Qt.rgba(0, 0, 0, 1)</code> means that the background will be pitch-black</li><li class="listitem"><code class="literal">camera</code>: This property is used to determine the viewport to be rendered</li></ul></div><p>The scene is ready to be rendered, but we need to handle user input, namely the keyboard. To capture keyboard events, modify <code class="literal">GameArea.qml</code> to look like this:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Input 2.0 
+ 
+Entity { 
+    ... 
+    RenderSettings { 
+        ... 
+    } 
+ 
+    KeyboardDevice { 
+        id: keyboardController 
+    } 
+ 
+    InputSettings { id: inputSettings } 
+ 
+    KeyboardHandler { 
+        id: input 
+        sourceDevice: keyboardController 
+        focus: true 
+        onPressed: { } 
+    } 
+ 
+    components: [frameFraph, input] 
+} 
+</pre><p>The <code class="literal">KeyboardDevice</code> element is in charge of dispatching key events to the active <code class="literal">KeyboardHandler</code>, namely <code class="literal">input</code>. The <code class="literal">KeyboardHandler</code> component is attached to the controller and the <code class="literal">onPressed()</code> function will be called each time a key is pressed. The <code class="literal">KeyboardHandler</code> is a component; therefore it needs to be added to the list of components for <code class="literal">GameArea</code>.</p><p>The last missing part of <code class="literal">GameArea</code> is preapring the engine execution (initialization and update):</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Input 2.0 
+import QtQuick 2.6 as QQ2 
+ 
+Entity { 
+    id: root 
+ 
+    property alias gameRoot: root 
+    property alias timerInterval: timer.interval 
+    property int initialTimeInterval: 80 
+    property int initialSnakeSize: 5 
+    property string state: "" 
+    ... 
+ 
+    KeyboardDevice { 
+        id: keyboardController 
+    } 
+ 
+    QQ2.Component.onCompleted: { 
+        console.log("Start game..."); 
+        timer.start() 
+    } 
+ 
+    QQ2.Timer { 
+        id: timer 
+        interval: initialTimeInterval 
+        repeat: true 
+        onTriggered: {} 
+    } 
+ 
+    components: [frameFraph, input] 
+}  
+</pre><p>Here we mix Qt Quick elements with Qt3D. Due to possible name collisions, we have to import the module using the alias <code class="literal">QQ2</code>. We already met <code class="literal">Component.onCompleted</code> in <span><a class="link" title="Chapter 5.  Dominating the Mobile UI" href="part0048.xhtml#aid-1DOR02">Chapter 5</a></span>, <span class="emphasis"><em>Dominating the Mobile UI</em></span>. Its job will be to start the game engine and start the <code class="literal">timer</code> defined right after.</p><p>This <code class="literal">timer</code> variable will repeat every 80 milliseconds (as defined in the <code class="literal">initialTimeInterval</code> property) and call the engine's <code class="literal">update()</code> function. This function will be covered when we build the engine code, later in this chapter. The goal is to emulate the original snake game as closely as possible. The whole game logic will be updated at this interval and not at the normal frame refresh interval. After each call to <code class="literal">update()</code>, the snake will advance. As a result, the snake's movement will not be smooth but rather jerky. This is clearly a design choice we made to have a retro-gaming feeling.</p><p>Each time the snake eats an apple, two things happen:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <code class="literal">interval</code> of the timer will be reduced by the engine (accessed by the <code class="literal">timerInterval</code> property).</li><li class="listitem">The snake will grow. Its initial size is defined in the <code class="literal">intialSnakeSize</code> property.</li></ul></div><p>Reducing the timer interval will make the snake advance faster until it becomes very hard to manage its direction.</p></div>
+<div class="section" title="Assembling your Qt3D entities"><div class="titlepage" id="aid-1T1402"><div><div><h1 class="title"><a id="ch06lvl1sec57"/>Assembling your Qt3D entities</h1></div></div></div><p>We will now proceed to create the building blocks of the game, each in the form of an <code class="literal">Entity</code> element:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">Wall</code>: This represents the limit of where the snake cannot go</li><li class="listitem"><code class="literal">SnakePart</code>: This represents a part of the snake's body</li><li class="listitem"><code class="literal">Apple</code>: This represents the apple (no way!) spawned at a random location</li><li class="listitem"><code class="literal">Background</code>: This represents a good-looking background behind the snake and the apple</li></ul></div><p>Each entity will be placed on a grid handled by the engine and will have a type identifier to make it easier to find. To factorize these properties, let's create a parent QML file named <code class="literal">GameEntity.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+ 
+Entity { 
+    property int type: 0 
+    property vector2d gridPosition: Qt.vector2d(0, 0) 
+} 
+</pre><p>This <code class="literal">Entity</code> element only defines a <code class="literal">type</code> property and a <code class="literal">gridPosition</code> property , which will be used by the engine to lay out the content on the grid.</p><p>The first item we will build is the <code class="literal">Wall.qml</code> file:</p><pre class="programlisting">import Qt3D.Core 2.0 
+ 
+GameEntity { 
+    id: root 
+ 
+    property alias position: transform.translation 
+ 
+    Transform { 
+        id: transform 
+    } 
+ 
+    components: [transform] 
+} 
+</pre><p>As you can see, the <code class="literal">Wall</code> type does not have any visual representation. Because we target a Raspberry Pi device, we have to be very careful with the CPU/GPU consumption. The game area will be a grid where each cell contains an instance of one of our entities. The snake will be surrounded by <code class="literal">Wall</code> instances. The Raspberry Pi is much slower than your average computer, to the extent that the game would become unbearably slow if we displayed all the walls.</p><p>To address this issue, the walls are invisible. They will be placed outside the visible viewport and the borders of the window will act as the visual limit of the snake. Of course, if you do not target the Raspberry Pi, but rather your computer, it is fine to display the walls and make them look fancier than just nothing.</p><p>The next <code class="literal">Entity</code> element we will implement is <code class="literal">SnakePart.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+GameEntity { 
+    id: root 
+ 
+    property alias position: transform.translation 
+ 
+    PhongMaterial { 
+        id: material 
+        diffuse: "green" 
+    } 
+ 
+    CuboidMesh { 
+        id: mesh 
+    } 
+ 
+    Transform { 
+        id: transform 
+    } 
+ 
+    components: [material, mesh, transform] 
+} 
+</pre><p>If added to the <code class="literal">GameArea</code> scene, the <code class="literal">SnakePart</code> block will display a single green cube. The <code class="literal">SnakePart</code> block is not the complete snake, rather a part of its body. Remember that the snake grows each time it eats an apple. Growing means adding a new instance of <code class="literal">SnakePart</code> to a list of <code class="literal">SnakePart</code>.</p><p>Let's proceed with the <code class="literal">Apple.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+GameEntity { 
+    id: root 
+ 
+    property alias position: transform.translation 
+    property alias color: material.diffuse 
+ 
+    Transform { 
+        id: transform 
+        scale: 0.5 
+    } 
+ 
+    Mesh { 
+        id: mesh 
+        source: "models/apple.obj" 
+    } 
+ 
+    DiffuseMapMaterial { 
+        id: material 
+        diffuse: "qrc:/models/apple-texture.png" 
+    } 
+ 
+    components: [material, mesh, transform] 
+} 
+</pre><p>This snippet starts with introducing more complex yet easy-to-use features of Qt3D, namely a custom mesh and a texture applied to it. Qt3D supports the Wavefront <code class="literal">obj</code> format to load custom meshes. Here we added a home-cooked apple to the <code class="literal">.qrc</code> file of the application and we just have to provide the path to this resource to load it.</p><p>The same principle is applied for the <code class="literal">DiffuseMapMaterial</code> element. We added a custom texture and added it as a source of the component.</p><p>As you can see, the <code class="literal">Entity</code> definition and its components look very much the same. Yet we effortlessly traded a Qt3D <code class="literal">CuboidMesh</code> with a custom model.</p><p>We will push things even further with <code class="literal">Background.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+import Qt3D.Extras 2.0 
+ 
+Entity { 
+    id: root 
+ 
+    property alias position: transform.translation 
+    property alias scale3D: transform.scale3D 
+ 
+    MaterialBackground { 
+        id: material 
+    } 
+ 
+    CuboidMesh { 
+        id: mesh 
+    } 
+ 
+    Transform { 
+        id: transform 
+    } 
+ 
+    components: [material, mesh, transform] 
+} 
+</pre><p>The <code class="literal">Background</code> block will be displayed behind the snake and the apple. At first sight, this entity looks very much like <code class="literal">SnakePart</code>. However, <code class="literal">Material</code> is not a Qt3D class. It is a custom defined <code class="literal">Material</code> that relies on shaders. Let's see <code class="literal">MaterialBackground.qml</code>:</p><pre class="programlisting">import Qt3D.Core 2.0 
+import Qt3D.Render 2.0 
+ 
+Material { 
+    id: material 
+ 
+    effect: Effect { 
+        techniques: [ 
+            Technique { 
+                graphicsApiFilter { 
+                    api: GraphicsApiFilter.OpenGL 
+                    majorVersion: 3 
+                    minorVersion: 2 
+                } 
+                renderPasses: RenderPass { 
+                    shaderProgram: ShaderProgram { 
+                        vertexShaderCode:   
+                        loadSource("qrc:/shaders/gl3/grass.vert") 
+                        fragmentShaderCode:  
+                        loadSource("qrc:/shaders/gl3/grass.frag") 
+                    } 
+                } 
+            } 
+        ] 
+    } 
+} 
+</pre><p>If you are not familiar with shaders, we can summarize them in the following statement: shaders are computer programs written in a C-style syntax that are executed by the GPU. Data from your logic will be fed by the CPU and made available to the GPU memory where your shaders will run. Here we manipulate two types of shader:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong>Vertex shader</strong></span>, which is executed on each vertex of the source of your mesh</li><li class="listitem"><span class="strong"><strong>Fragment</strong></span>, which is executed on each pixel to produce the final rendering</li></ul></div><p>By being executed on the GPU, these shaders utilize the huge parallelization power of the GPU (which is orders-of-magnitude higher than your CPU). It enables modern games to have such stunning visual rendering. Covering shaders and the OpenGL pipeline is beyond the scope of this book (you can fill several bookshelves on this subject alone). We will limit ourselves to showing you how you can use shaders in Qt3D.</p><div class="note" title="Note"><h3 class="title"><a id="note34"/>Note</h3><p>If you want to delve into OpenGL or sharpen your skills with shaders, we recommend the <span class="emphasis"><em>OpenGL SuperBible</em></span>, by Graham Sellers, Richard S Wright Jr., and Nicholas Haemel.</p></div><p>Qt3D supports shaders in a very convenient way. Simply add your shader file to the <code class="literal">.qrc</code> resource file and load it in the <code class="literal">effect</code> property of a given <code class="literal">Material</code>.</p><p>In this snippet, we specify that this shader <code class="literal">Technique</code> should be run only on OpenGL 3.2. This is indicated in the <code class="literal">graphicsApiFilter</code> block. This version of OpenGL targets your desktop machine. Because the performance gap between your desktop and your Raspberry Pi is very marked, we have the ability to execute different shaders depending on the platform.</p><p>Thus, here is the Raspberry Pi-compatible technique:</p><pre class="programlisting">Technique { 
+    graphicsApiFilter { 
+        api: GraphicsApiFilter.OpenGLES 
+        majorVersion: 2 
+        minorVersion: 0 
+    } 
+ 
+    renderPasses: RenderPass { 
+        shaderProgram: ShaderProgram { 
+            vertexShaderCode:  
+                loadSource("qrc:/shaders/es2/grass.vert") 
+            fragmentShaderCode:  
+                loadSource("qrc:/shaders/es2/grass.frag") 
+        } 
+    } 
+} 
+</pre><p>You just have to add it to the <code class="literal">techniques</code> property of the <code class="literal">Material</code>. Note that the targeted OpenGL version is OpenGLES 2.0, which will run fine on your Raspberry Pi and even your iOS/Android phone.</p><p>A last thing to cover is how parameters can be passed to shaders. Here is an example:</p><pre class="programlisting">Material { 
+    id: material 
+ 
+    parameters:  [ 
+        Parameter { 
+            name: "score"; value: score 
+        } 
+    ] 
+    ... 
+} 
+</pre><p>The <code class="literal">score</code> variable will be accessible in the shader with this simple section. Please take a look at the source code for the chapter to see the complete content of this <code class="literal">Material</code> element. We had the fun of writing a shader displaying a moving and glowing wave over a grass texture.</p><p>The only fixed element of the game is the background. We can directly add it to <code class="literal">GameArea.qml</code>:</p><pre class="programlisting">Entity { 
+    id: root 
+    ... 
+ 
+    Background { 
+        position: Qt.vector3d(camera.x, camera.y, 0) 
+        scale3D: Qt.vector3d(camera.x * 2, camera.y * 2, 0) 
+    } 
+ 
+    components: [frameFraph, input] 
+} 
+</pre><p>The <code class="literal">Background</code> element is positioned to cover the whole visible area behind the snake and the apple. Being defined inside <code class="literal">GameArea</code>, it will be automatically added to the entity/component tree and will be drawn right away.</p></div>
+<div class="section" title="Preparing the board game" id="aid-1TVKI1"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec58"/>Preparing the board game</h1></div></div></div><p>Even if our game has a 3D representation, we will implement 2D gameplay like the original snake game. Our game items are born, will live, and die in a 2D area. Like chess, this board will be composed of rows and columns. But in our snake game, each square can be:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">An apple</li><li class="listitem">A snake</li><li class="listitem">A wall</li><li class="listitem">Empty</li></ul></div><p>Here is an example of a board representation from the point of view of the engine:</p><div class="mediaobject"><img src="../Images/image00397.jpeg" alt="Preparing the board game"/></div><p style="clear:both; height: 1em;"> </p><p>This is a small 10x8 board; even if the size does not matter, you will be able to define a bigger one. Your game, your rules! We have walls (<span class="strong"><strong>W</strong></span>) surrounding the game area. An apple (<span class="strong"><strong>A</strong></span>) is spawned at 7x2. Finally, we have a snake (<span class="strong"><strong>S</strong></span>) beginning at 3x4 and ending at 5x5.</p><p>It is time to create our board class. Please create a JS file called <code class="literal">board.js</code>:</p><pre class="programlisting">function Board(columnCount, rowCount, blockSize) { 
+    this.columnCount = columnCount; 
+    this.rowCount = rowCount; 
+    this.blockSize = blockSize; 
+    this.maxIndex = columnCount * rowCount; 
+    this.data = new Array(this.maxIndex); 
+} 
+</pre><p>This object constructor function required three parameters. The <code class="literal">columnCount</code> and <code class="literal">rowCount</code> parameters will help you to choose the board dimension. The last parameter, <code class="literal">blockSize</code>, is the size of a board square in the OpenGL world. For example, we can set <code class="literal">blockSize</code> to 10. In this case, the apple in 7x2 on the board we be displayed with <code class="literal">x = 70</code> and <code class="literal">y = 20</code> in the OpenGL world. In this chapter, we will use a <code class="literal">blockSize</code> of 1, so the board coordinates match OpenGL coordinates.</p><p>Let's add some utility functions to <code class="literal">board.js</code>:</p><pre class="programlisting">Board.prototype.init = function() { 
+    for (var i = 0; i &lt; this.data.length; i++) { 
+        this.data[i] = null; 
+    } 
+} 
+ 
+Board.prototype.index = function(column, row) { 
+    return column + (row * this.columnCount); 
+} 
+ 
+Board.prototype.setData = function(data, column, row) { 
+    this.data[this.index(column, row)] = data; 
+} 
+ 
+Board.prototype.at = function(column, row) { 
+    return this.data[this.index(column, row)]; 
+} 
+</pre><p>Defining a class in JavaScript can be disturbing for a C++ developer. Every JavaScript object has a prototype object to which you can add functions. We are using it to add class methods to <code class="literal">Board</code>.</p><p>Here is a summary of the purpose of each function of the <code class="literal">Board</code> class:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">init()</code>: This function initializes all array values to the <code class="literal">null</code> value</li><li class="listitem"><code class="literal">index()</code>: This function returns the array index from column/row coordinates</li><li class="listitem"><code class="literal">setData()</code>: This function assigns the <code class="literal">data</code> value on the board from column/row coordinates</li><li class="listitem"><code class="literal">at()</code>: This function retrieves the <code class="literal">data</code> value in an array from column/row coordinates</li></ul></div><p>Please note that, in our case, a <code class="literal">null</code> square means an empty square.</p></div>
+<div class="section" title="Crafting entities from the factory" id="aid-1UU541"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec59"/>Crafting entities from the factory</h1></div></div></div><p>Now that we have a board to receive items, we will create the game items factory. The factory is a design pattern that allows us to create an object without exposing the creation logic to the caller. This factory can be seen as a helper class that will handle all the dirty tasks required when you want to create a new game item from JavaScript. Do you remember <code class="literal">GameEntity.qml</code>? It is the parent class of <code class="literal">Apple.qml</code>, <code class="literal">Snake.qml</code>, and <code class="literal">Wall.qml</code>. The factory will be able to create a specific entity for a given a type and coordinates. We will use the property type to identify an entity kind. Here is the factory pattern schema used in our snake game:</p><div class="mediaobject"><img src="../Images/image00398.jpeg" alt="Crafting entities from the factory"/></div><p style="clear:both; height: 1em;"> </p><p>We can now create the <code class="literal">factory.js</code> file, which begins like this:</p><pre class="programlisting">var SNAKE_TYPE = 1; 
+var WALL_TYPE  = 2; 
+var APPLE_TYPE = 3; 
+ 
+var snakeComponent = Qt.createComponent("Snake.qml"); 
+var wallComponent = Qt.createComponent("Wall.qml"); 
+var appleComponent = Qt.createComponent("Apple.qml"); 
+</pre><p>First of all, we define all the game entity types. In our case we have apple, snake, and wall types. Then, we create game item components from QML files. These components will be use by the factory to dynamically create new game entities.</p><p>We can now add the constructor and a <code class="literal">removeAllEntities()</code> utility function to remove all instantiated entities:</p><pre class="programlisting">function GameFactory() { 
+ 
+    this.board = null; 
+    this.parentEntity = null; 
+    this.entities = []; 
+} 
+ 
+GameFactory.prototype.removeAllEntities = function() { 
+    for(var i = 0; i &lt; this.entities.length; i++) { 
+        this.entities[i].setParent(null); 
+    } 
+</pre><p>This factory has three member variables:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">A reference to the game <code class="literal">board</code> described in the previous section</li><li class="listitem">A reference to the <code class="literal">parentEntity</code> variable, that is, the game area</li><li class="listitem">An <code class="literal">entities</code> array that keeps a reference to created items</li></ul></div><p>The <code class="literal">removeAllEntities()</code> function will remove the items from their parent (that is, the game area) and create a new empty entities array. This ensures that old entities are deleted by the garbage collector.</p><p>Let's add the core function <code class="literal">createGameEnity()</code> in the factory:</p><pre class="programlisting">GameFactory.prototype.createGameEntity = function(type, column, row) { 
+    var component; 
+    switch(type) { 
+    case SNAKE_TYPE: 
+        component = snakeComponent; 
+        break; 
+ 
+    case WALL_TYPE: 
+        component = wallComponent; 
+        break; 
+ 
+    case APPLE_TYPE: 
+        component = appleComponent; 
+        break; 
+    } 
+    var gameEntity = component.createObject(this.parentEntity); 
+    gameEntity.setParent(this.parentEntity); 
+ 
+    this.board.setData(gameEntity, column, row); 
+    gameEntity.gridPosition = Qt.vector2d(column, row); 
+    gameEntity.position.x = column * this.board.blockSize; 
+    gameEntity.position.y = row * this.board.blockSize; 
+ 
+    this.entities.push(gameEntity); 
+    return gameEntity; 
+} 
+</pre><p>As you can see, the caller provides an entity <code class="literal">type</code> and board coordinates (<code class="literal">column</code> and <code class="literal">row</code>). The first part is a switch to select the correct QML component. Once we have the component, we can call <code class="literal">component.createObject()</code> to create an instance of this component. The parent of this new component will be <code class="literal">this.parentEntity</code>, in our case, <code class="literal">GameArea</code>. Then, we can update the board, update the entity position, and add this new entity in the <code class="literal">entities</code> array.</p><p>The last thing to do is to update our QML game entities with the proper factory type. Please open <code class="literal">Apple.qml</code> and update the file like this:</p><pre class="programlisting">import "factory.js" as Factory 
+ 
+GameEntity { 
+ 
+    id: root 
+    type: Factory.APPLE_TYPE 
+    ... 
+} 
+</pre><p>You can now update <code class="literal">Snake.qml</code> with the <code class="literal">Factory.SNAKE_TYPE</code> type and <code class="literal">Wall.qml</code> with the <code class="literal">Factory.WALL_TYPE</code> type.</p></div>
+<div class="section" title="Building a snake engine in JavaScript"><div class="titlepage" id="aid-1VSLM2"><div><div><h1 class="title"><a id="ch06lvl1sec60"/>Building a snake engine in JavaScript</h1></div></div></div><p>It is time to get your hands dirty. Let's see how to create an engine in JavaScript to manage a snake game using our board, our factory, and the power of QML.</p><p>Please create a new <code class="literal">engine.js</code> file with the following snippet:</p><pre class="programlisting">.import "factory.js" as Factory 
+.import "board.js" as Board 
+ 
+var COLUMN_COUNT = 50; 
+var ROW_COUNT = 29; 
+var BLOCK_SIZE = 1; 
+ 
+var factory = new Factory.GameFactory(); 
+var board = new Board.Board(COLUMN_COUNT, ROW_COUNT, BLOCK_SIZE); 
+ 
+var snake = []; 
+var direction; 
+</pre><p>The first lines are the Qt way to import a JavaScript file from another JavaScript file. Then, we can easily instantiate a <code class="literal">factory</code> variable and a 50x29 <code class="literal">board</code> variable. The <code class="literal">snake</code> array contains all the snake game items instantiated. This array will be useful to move our snake. Finally, the <code class="literal">direction</code> variable is a 2d vector handling the current snake direction.</p><p>This is the first function of our engine:</p><pre class="programlisting">function start() { 
+    initEngine(); 
+ 
+    createSnake(); 
+    createWalls(); 
+ 
+    spawnApple(); 
+    gameRoot.state = "PLAY"; 
+} 
+</pre><p>This gives you a summary of what is done when we start the engine:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Initialize the engine.</li><li class="listitem">Create the initial snake.</li><li class="listitem">Create walls surrounding the game area.</li><li class="listitem">Spawn the first apple.</li><li class="listitem">Switch the <code class="literal">GameArea</code> state to <code class="literal">PLAY</code>.</li></ol><div style="height:10px; width: 1px"/></div><p>Let's begin with the <code class="literal">initEngine()</code> function:</p><pre class="programlisting">function initEngine() { 
+    timer.interval = initialTimeInterval; 
+    score = 0; 
+ 
+    factory.board = board; 
+    factory.parentEntity = gameRoot; 
+    factory.removeAllEntities(); 
+ 
+    board.init(); 
+    direction = Qt.vector2d(-1, 0); 
+} 
+</pre><p>This function initializes and resets all the variables. The first task is to set the <code class="literal">GameArea</code> timer interval to its initial value. Each time the snake eats an apple, this interval is reduced, increasing the game speed and thus the snake's movement speed. Logically, we reset the score of the player to <code class="literal">0</code>. Then we initialize the factory, giving the board and <code class="literal">gameRoot</code> references. The <code class="literal">gameRoot</code> refers to the <code class="literal">GameArea</code>; this entity will be the parent of all items instantiated by the factory. Then, we remove all the existing entities from the factory and call the board's <code class="literal">init()</code> function to clear the board. Finally, we set a default direction for the snake. The vector <code class="literal">-1,0</code> means that the snake will begin moving to the left. If you want the snake to start moving up, you can set the vector to <code class="literal">0, 1</code>.</p><p>The next function is creating the snake:</p><pre class="programlisting">function createSnake() { 
+    snake = []; 
+    var initialPosition = Qt.vector2d(25, 12); 
+    for (var i = 0; i &lt; initialSnakeSize; i++) { 
+       snake.push(factory.createGameEntity(Factory.SNAKE_TYPE, 
+                                 initialPosition.x + i, 
+                                 initialPosition.y)); 
+    } 
+} 
+</pre><p>No big deal here, we reset and initialize the <code class="literal">snake</code> array. The first snake item will be created at 25x12. We then proceed to create as many snake items as we need to spawn a snake with the correct initial size. Please note that other snake items will be created to the right of the first item (26x12, 27x12, and so on). You can see how easy it is to call our factory and request a new snake item instance.</p><p>Let's add the <code class="literal">createWalls()</code> function to <code class="literal">engine.js</code>:</p><pre class="programlisting">function createWalls() { 
+    for (var x = 0; x &lt; board.columnCount; x++) { 
+        factory.createGameEntity(Factory.WALL_TYPE, x, 0); 
+        factory.createGameEntity(Factory.WALL_TYPE, x, board.rowCount - 1); 
+    } 
+    for (var y = 1; y &lt; board.rowCount - 1; y++) { 
+        factory.createGameEntity(Factory.WALL_TYPE, 0, y); 
+        factory.createGameEntity(Factory.WALL_TYPE, board.columnCount - 1, y); 
+    } 
+} 
+</pre><p>The first loop creates the top and bottom walls. The second loop creates the left and right walls. The indexes of the second loop are different from the first one to avoid creating the corners twice.</p><p>Let's see now how to implement the <code class="literal">spawnApple()</code> function in <code class="literal">engine.js</code>:</p><pre class="programlisting">function spawnApple() { 
+    var isFound = false; 
+    var position; 
+    while (!isFound) { 
+        position = Qt.vector2d(Math.floor(Math.random()  
+                                    * board.columnCount), 
+                               Math.floor(Math.random()  
+                                    * board.rowCount)); 
+        if (board.at(position.x, position.y) == null) { 
+            isFound = true; 
+        } 
+    } 
+    factory.createGameEntity(Factory.APPLE_TYPE, position.x, position.y); 
+ 
+    if (timerInterval &gt; 10) { 
+        timerInterval -= 2; 
+    } 
+} 
+</pre><p>The first step is to find an empty square. The while loop will generate a random board position and check whether a square is empty. As soon as an empty square is found, we request the factory to create an apple entity at this position. Finally, we reduce the <code class="literal">timerInverval</code> value of <code class="literal">GameArea</code> to speed up the game.</p><p>We will now add some utility functions related to the snake position in <code class="literal">engine.js</code>:</p><pre class="programlisting">function setPosition(item, column, row) { 
+    board.setData(item, column, row); 
+    item.gridPosition = Qt.vector2d(column, row); 
+    item.position.x = column * board.blockSize; 
+    item.position.y = row * board.blockSize; 
+} 
+ 
+function moveSnake(column, row) { 
+    var last = snake.pop(); 
+    board.setData(null, last.gridPosition.x, last.gridPosition.y); 
+    setPosition(last, column, row); 
+    snake.unshift(last); 
+} 
+</pre><p>The <code class="literal">setPosition()</code> function handles all the necessary tasks when we want to move a game item. We first assign the game item to the correct board square, then we update the <code class="literal">gridPosition</code> property (from <code class="literal">GameEntity</code>) but also the OpenGL <code class="literal">position.x</code> and <code class="literal">position.y</code>.</p><p>The second function, <code class="literal">moveSnake()</code>, moves the snake to an adjacent square. Let's dissect all the steps performed by this function:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The <code class="literal">snake</code> is our global array containing all the snake items. The <code class="literal">pop()</code> method removes and returns the last element that we store in the <code class="literal">last</code> variable.</li><li class="listitem">The <code class="literal">last</code> variable contains the snake's tail's grid position. We set this board square to <code class="literal">null</code>; that means an empty square for us.</li><li class="listitem">The <code class="literal">last</code> variable is now put on the adjacent square requested by the caller.</li><li class="listitem">The <code class="literal">last</code> variable is finally inserted at the beginning of the <code class="literal">snake</code> array.</li></ol><div style="height:10px; width: 1px"/></div><p>The next schema illustrates the <code class="literal">moveSnake()</code> process when a snake is moving on the left. We also name snake items with a letter to visualize how the tail becomes the head, simulating a moving snake:</p><div class="mediaobject"><img src="../Images/image00399.jpeg" alt="Building a snake engine in JavaScript"/></div><p style="clear:both; height: 1em;"> </p><p>Now that we can move our snake, we must handle key events to move the snake in the correct direction. Please add this new function to <code class="literal">engine.js</code>:</p><pre class="programlisting">function handleKeyEvent(event) { 
+    switch(event.key) { 
+        // restart game 
+        case Qt.Key_R: 
+            start(); 
+            break; 
+ 
+        // direction UP 
+        case Qt.Key_I: 
+            if (direction != Qt.vector2d(0, -1)) { 
+                direction = Qt.vector2d(0, 1); 
+            } 
+            break; 
+ 
+        // direction RIGHT 
+        case Qt.Key_L: 
+            if (direction != Qt.vector2d(-1, 0)) { 
+                direction = Qt.vector2d(1, 0); 
+            } 
+            break; 
+ 
+        // direction DOWN 
+        case Qt.Key_K: 
+            if (direction != Qt.vector2d(0, 1)) { 
+                direction = Qt.vector2d(0, -1); 
+            } 
+            break; 
+ 
+        // direction LEFT 
+        case Qt.Key_J: 
+            if (direction != Qt.vector2d(1, 0)) { 
+                direction = Qt.vector2d(-1, 0); 
+            } 
+            break; 
+    } 
+} 
+</pre><p>In this game, we use the <code class="literal">I-J-K-L</code> keys to update the snake direction vector. Like the original snake game, you can't reverse your direction. A check is performed to avoid this behavior. Please notice that pressing the <code class="literal">R</code> key will call <code class="literal">start()</code> and so restart the game. We will see soon how to bind this function with the QML keyboard controller.</p><p>Here we are, the last (but not least) function, the <code class="literal">update()</code> function of <code class="literal">engine.js</code>:</p><pre class="programlisting">function update() { 
+    if (gameRoot.state == "GAMEOVER") { 
+        return; 
+    } 
+ 
+    var headPosition = snake[0].gridPosition; 
+    var newPosition = Qt.vector2d(headPosition.x + direction.x, 
+                                  headPosition.y + direction.y); 
+    var itemOnNewPosition = board.at(newPosition.x, 
+                                     newPosition.y); 
+ 
+   ... 
+} 
+</pre><p>This function will be called at regular intervals by QML. As you can see, if the <code class="literal">gameRoot</code> (that is <code class="literal">GameArea</code>) <code class="literal">state</code> variable equals <code class="literal">GAMEOVER</code>, this function does nothing and returns immediately. Then, three important steps are performed:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Retrieve the grid position of the snake's head in <code class="literal">headPosition</code>.</li><li class="listitem">Process where the snake goes using the <code class="literal">direction</code> vector in <code class="literal">newPosition</code>.</li><li class="listitem">Put the item where the snake is going in <code class="literal">itemOnNewPosition</code>.</li></ol><div style="height:10px; width: 1px"/></div><p>The second part of the <code class="literal">update()</code> function is the following snippet:</p><pre class="programlisting">function update() { 
+    ... 
+    if(itemOnNewPosition == null) { 
+        moveSnake(newPosition.x, newPosition.y); 
+        return; 
+    } 
+ 
+    switch(itemOnNewPosition.type) { 
+        case Factory.SNAKE_TYPE: 
+            gameRoot.state = "GAMEOVER"; 
+            break; 
+ 
+        case Factory.WALL_TYPE: 
+            gameRoot.state = "GAMEOVER"; 
+            break; 
+ 
+        case Factory.APPLE_TYPE: 
+            itemOnNewPosition.setParent(null); 
+            board.setData(null, newPosition.x, newPosition.y); 
+            snake.unshift(factory.createGameEntity( 
+                   Factory.SNAKE_TYPE, 
+                   newPosition.x, 
+                   newPosition.y)); 
+            spawnApple(); 
+            score++; 
+            break; 
+    } 
+} 
+</pre><p>If the snake is going to an empty square (<code class="literal">itemOnNewPosition</code> is <code class="literal">null</code>), it is alright and we only move the snake to <code class="literal">newPosition</code>.</p><p>If the square is not empty, we must apply the correct rule depending on the item type. If the next square is a snake part or a wall, we update the state to <code class="literal">GAMEOVER</code>. On the other hand, if the next square is an apple, several steps are performed:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Detach the apple item from <code class="literal">GameArea</code>, setting its parent to <code class="literal">null</code>.</li><li class="listitem">Remove the apple from the board, setting the board square to <code class="literal">null</code>.</li><li class="listitem">Grow the snake, creating a snake part at the beginning of the <code class="literal">snake</code> array.</li><li class="listitem">Spawn a new apple in a random empty square.</li><li class="listitem">Increment the score.</li></ol><div style="height:10px; width: 1px"/></div><p>Our snake engine is now complete. The last step is to call some engine functions from QML. Please update <code class="literal">GameArea.qml</code>:</p><pre class="programlisting">... 
+import "engine.js" as Engine 
+ 
+Entity { 
+    ... 
+    QQ2.Component.onCompleted: { 
+        console.log("Start game..."); 
+        Engine.start(); 
+        timer.start() 
+    } 
+ 
+    QQ2.Timer { 
+        id: timer 
+        interval: initialTimeInterval 
+        repeat: true 
+        onTriggered: Engine.update() 
+    } 
+ 
+    KeyboardInput { 
+        id: input 
+        controller: keyboardController 
+        focus: true 
+        onPressed: Engine.handleKeyEvent(event) 
+    } 
+    ... 
+} 
+</pre><p>You can already play the game. If you eat an apple, the snake grows and you get one point. When you hit yourself or a wall, the game state switches to <code class="literal">GAMEOVER</code> and the game stops. Finally, if you press the <code class="literal">R</code> key, the game restarts. The game looks like the next screenshot on to null Raspberry Pi:</p><div class="mediaobject"><img src="../Images/image00400.jpeg" alt="Building a snake engine in JavaScript"/></div><p style="clear:both; height: 1em;"> </p></div>
+<div class="section" title="Varying the HUD with QML states" id="aid-20R681"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec61"/>Varying the HUD with QML states</h1></div></div></div><p>We will now create a "Game Over" HUD, displayed when you lose the game. Create a new file <code class="literal">GameOverItem.qml</code>:</p><pre class="programlisting">Item { 
+    id: root 
+    anchors.fill: parent 
+ 
+    onVisibleChanged: { 
+        scoreLabel.text = "Your score: " + score 
+    } 
+ 
+    Rectangle { 
+        anchors.fill: parent 
+        color: "black" 
+        opacity: 0.75 
+    } 
+ 
+    Label { 
+        id: gameOverLabel 
+        anchors.centerIn: parent 
+        color: "white" 
+        font.pointSize: 50 
+        text: "Game Over" 
+    } 
+ 
+    Label { 
+        id: scoreLabel 
+        width: parent.width 
+        anchors.top: gameOverLabel.bottom 
+        horizontalAlignment: "AlignHCenter" 
+        color: "white" 
+        font.pointSize: 20 
+    } 
+ 
+    Label { 
+        width: parent.width 
+        anchors.bottom: parent.bottom 
+        anchors.bottomMargin: 50 
+        horizontalAlignment: "AlignHCenter" 
+        color: "white" 
+        font.pointSize: 30 
+        text:"Press R to restart the game" 
+    } 
+} 
+</pre><p>Let's examine the items of this Game Over screen:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">A black rectangle filling the entire screen with an <code class="literal">opacity</code> value of 75%. As a consequence, the game area will still be visible at 25% behind the game over screen.</li><li class="listitem">A <code class="literal">gameOverLabel</code> label displaying the text "Game Over". This is a traditional video game message but you can edit this label with text such as "Loser!" or "Too bad!".</li><li class="listitem">A dynamic <code class="literal">scoreLabel</code> label that will display the final score.</li><li class="listitem">A label explaining to the player how he can restart the game.</li></ul></div><p>Please notice that, when the visibility of the root item changes, the <code class="literal">scoreLabel</code> text is updated with the current <code class="literal">score</code> variable from <code class="literal">main.qml</code>.</p><p>Qt Quick provides an interesting feature related to UI states. You can define several states for an item and describe the behaviors for each state. We will now use this feature and our <code class="literal">GameOverItem</code> in a new file called <code class="literal">OverlayItem.qml</code>:</p><pre class="programlisting">Item { 
+    id: root 
+ 
+    states: [ 
+        State { 
+            name: "PLAY" 
+            PropertyChanges { target: root; visible: false } 
+        }, 
+        State { 
+            name: "GAMEOVER" 
+            PropertyChanges { target: root; visible: true } 
+            PropertyChanges { target: gameOver; visible: true } 
+        } 
+    ] 
+ 
+    GameOverItem { 
+        id: gameOver 
+    } 
+} 
+</pre><p>You can see that the <code class="literal">states</code> element is an <code class="literal">Item</code> property. By default, the <code class="literal">states</code> element contains an empty string state. Here we are defining two <code class="literal">State</code> items named <code class="literal">PLAY</code> and <code class="literal">GAMEOVER</code>. We are using the same naming convention as in <code class="literal">engine.js</code>. Afterwards we can bind property values to a state. In our case, when the state is <code class="literal">GAMEOVER</code>, we set the visibility to <code class="literal">true</code> for this <code class="literal">OverlayItem</code> and its <code class="literal">GameOverItem</code>. Otherwise, for the state <code class="literal">PLAY</code>, we hide it.</p><p>The overlay HUD and its "Game Over" screen are ready to be used. Please update your <code class="literal">mail.qml</code> with the following snippet:</p><pre class="programlisting">Item { 
+    id: mainView 
+    property int score: 0 
+    readonly property alias window: mainView 
+    ... 
+    OverlayItem { 
+        id: overlayItem 
+        anchors.fill: mainView 
+        visible: false 
+ 
+        Connections { 
+            target: gameArea 
+            onStateChanged: { 
+                overlayItem.state = gameArea.state; 
+            } 
+        } 
+    } 
+} 
+</pre><p>Our <code class="literal">OverlayItem</code> element fits the screen and is not visible by default. Like a C++ Qt Widgets signal/slot connection, you can perform a QML connection. The target property contains the item that will send the signal. Then you can use the QML slot syntax:</p><pre class="programlisting">on&lt;PropertyName&gt;Changed 
+</pre><p>In our case, the target is <code class="literal">gameArea</code>. This item contains the <code class="literal">state</code> variable, so we can be notified when the state variable is updated using <code class="literal">onStateChanged</code>. Then, we switch the state of <code class="literal">OverlayItem</code>. This assignation will trigger all <code class="literal">ProperyChanged</code> defined in <code class="literal">OverlayItem</code> element and display or hide our <code class="literal">GameOverItem</code>.</p><p>You can now lose the game and enjoy your Game Over overlay:</p><div class="mediaobject"><img src="../Images/image00401.jpeg" alt="Varying the HUD with QML states"/></div><p style="clear:both; height: 1em;"> </p></div>
+<div class="section" title="Profiling your QML application"><div class="titlepage" id="aid-21PMQ2"><div><div><h1 class="title"><a id="ch06lvl1sec62"/>Profiling your QML application</h1></div></div></div><p>Qt Creator provides a QML profiler to collect useful data on your application during the runtime. You can use it on a desktop and also on a remote target such as our Raspberry Pi. Let's check that your debug build configuration allows QML debugging and profiling. Click on <span class="strong"><strong>Projects</strong></span> | <span class="strong"><strong>Rpi 2</strong></span> | <span class="strong"><strong>Build</strong></span>. Then you can click on <span class="strong"><strong>Details</strong></span> of <span class="strong"><strong>qmake</strong></span> from <span class="strong"><strong>Build Steps</strong></span>. You should also check it for your desktop kit:</p><div class="mediaobject"><img src="../Images/image00402.jpeg" alt="Profiling your QML application"/></div><p style="clear:both; height: 1em;"> </p><p>By default, data is only sent from target to host when you stop profiling. You can flush data periodically: <span class="strong"><strong>Tools</strong></span> | <span class="strong"><strong>Options</strong></span> | <span class="strong"><strong>Analyser</strong></span> | <span class="strong"><strong>QML Profiler</strong></span>.</p><p>Keep in mind that flushing data while profiling frees memory on the target device but takes time. Thus, it can affect your profiling result and analysis.</p><p>While we are using Qt Creator kits, we can start the QML profiler in the same way for desktops or remote devices. Switch to a kit and click on <span class="strong"><strong>Analyze</strong></span> | <span class="strong"><strong>QML Profiler</strong></span> to start the QML profiling. If you are profiling an application running on your desktop, Qt Creator starts your software with an argument such as this:</p><pre class="programlisting">-qmljsdebugger=file:/tmp/QtCreator.OU7985 
+</pre><p>If you're profiling an application on a remote device (such as a Raspberry Pi), Qt Creator uses a TCP socket to retrieve data, adding an argument such as this:</p><pre class="programlisting">-qmljsdebugger=port:10000 
+</pre><p>For both targets, the QML profiler will afterwards try to connect to your application. Another way to start the QML profiler on a remote device is to start the application yourself with the <code class="literal">-qmljsdebugger</code> argument, for example:</p><pre class="programlisting">./ch06-snake -qmljsdebugger=port:3768 
+</pre><p>Then, you can click on <span class="strong"><strong>Analyze</strong></span> | <span class="strong"><strong>QML Profiler (External)</strong></span>. Select your remote kit (such as Rpi 2), set the <span class="strong"><strong>port</strong></span> to <code class="literal">3768</code>, and click on <span class="strong"><strong>OK</strong></span>.</p><p>Great, the QML profiler is started, a new toolbar appears. You can play the game for a few seconds and click on the <span class="strong"><strong>Stop</strong></span> button from the QML Profiler toolbar. Then the QML profiler processes data and displays something like this:</p><div class="mediaobject"><img src="../Images/image00403.jpeg" alt="Profiling your QML application"/></div><p style="clear:both; height: 1em;"> </p><p>Let's begin analyzing the top buttons from left to right:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Start QML profiler.</li><li class="listitem">Stop the application and the QML profiler.</li><li class="listitem">Enable/disable profiling. You can also select an event to capture.</li><li class="listitem">Discard data to clean your profiling session.</li><li class="listitem">Search timeline event notes.</li><li class="listitem">Hide or show event categories.</li><li class="listitem"><span class="strong"><strong>Elapsed</strong></span> indicates the session duration.</li><li class="listitem"><span class="strong"><strong>Views</strong></span> hides or shows the <span class="strong"><strong>Timeline</strong></span>, <span class="strong"><strong>Statistics</strong></span>, and <span class="strong"><strong>Flamegraph</strong></span> tabs.</li></ol><div style="height:10px; width: 1px"/></div><p>To learn to use the QML profiler, we will take a real case. Restarting the game is a little slow on the Raspberry Pi. Let's find with the QML profiler what requires several seconds to restart the game!</p><p>Please follow this operational mode to gather data from the QML profiler:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Select the Raspberry Pi kit.</li><li class="listitem">Start the QML profiler.</li><li class="listitem">Wait for the snake to hit a wall.</li><li class="listitem">Press the <span class="emphasis"><em>
+<span class="strong"><strong>R</strong></span>
+</em></span> key to restart the game.</li><li class="listitem">Wait for the game to restart and the snake to move again.</li><li class="listitem">Stop the QML profiler.</li></ol><div style="height:10px; width: 1px"/></div><p>Let's begin our investigation using the <span class="strong"><strong>timeline</strong></span> tab. This view displays a chronological view of events, grouped by event type. The JavaScript row dissects your code and displays useful information. You can click on an item to get some details. Identify in the timeline when you restart the game. The JavaScript row can be read as a call stack, from top to bottom:</p><div class="mediaobject"><img src="../Images/image00404.jpeg" alt="Profiling your QML application"/></div><p style="clear:both; height: 1em;"> </p><p>In our case, we restarted the game around 3.5 seconds after the application started. Here is the stack with durations provided by the QML profiler. Here is the stack with durations provided by the QML profiler. Let's track all functions called when we restart the game pressing the R key:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <code class="literal">onPressed()</code> function from <code class="literal">GameArea.qml</code></li><li class="listitem">The <code class="literal">handleKetEvent()</code> function from <code class="literal">engine.js</code></li><li class="listitem">The <code class="literal">start()</code> function from <code class="literal">engine.js</code> at 4.2 seconds<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">initEngine()</code> at 80 ms</li><li class="listitem"><code class="literal">createSnake()</code> at 120 ms</li><li class="listitem"><code class="literal">createWalls()</code> at 4.025 seconds!</li></ul></div></li></ul></div><p>Here we are, <code class="literal">createWalls()</code> takes ~4 seconds on the Raspberry Pi when we restart the game.</p><p>Let's switch to the <span class="strong"><strong>Statistics</strong></span> view:</p><div class="mediaobject"><img src="../Images/image00405.jpeg" alt="Profiling your QML application"/></div><p style="clear:both; height: 1em;"> </p><p>The <span class="strong"><strong>Statistics</strong></span> view displays numbers concerning the call count of an event. An event can be a QML binding, creation, signal triggered, or a JavaScript function. The bottom part shows QML callers and callees.</p><p>A caller is the source of a change in a binding. For example, the JS function <code class="literal">createWalls()</code> is a caller.</p><p>A callee is the affected item that a binding triggers. For example, the QML item <code class="literal">Wall.qml</code> is a callee.</p><p>Once again, <code class="literal">createWalls()</code> requesting many factory item creation seems responsible for the slow restart of the game on Raspberry Pi.</p><p>Take a look at the last view of the QML profiler, the <span class="strong"><strong>Flamegraph</strong></span>:</p><div class="mediaobject"><img src="../Images/image00406.jpeg" alt="Profiling your QML application"/></div><p style="clear:both; height: 1em;"> </p><p>The <span class="strong"><strong>Flamegraph</strong></span> view is a compact summary of your QML and JavaScript code while running the game. You can see the call count and the amount of time relative to the total duration. Like the <span class="strong"><strong>Timeline</strong></span> view, you can see the call stack but from bottom to top!</p><p>Again, the profiler indicates <code class="literal">createWalls()</code>  is a heavy function. On a profiling session of 10 seconds with one game restart, 77% of the time is spent in <code class="literal">engine.createWalls()</code>.</p><p>You will now be able to profile a QML application. You can try to edit the code to speed up the restart. Here are some hints:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Create the walls only once at application startup; do not delete and recreate them on each restart.</li><li class="listitem">Implement a common design pattern in video games: an object pool of preloaded items. Request a wall when needed, and return the wall to the pool when you do not use it.</li></ul></div></div>
+<div class="section" title="Summary" id="aid-22O7C1"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec63"/>Summary</h1></div></div></div><p>In this chapter, we discovered how to use the Qt3D module. You also learned how to configure Qt Creator to create a new kit for an embedded Linux device. Your Raspberry Pi can now run your Qt applications. We created a snake game using QML views and an engine in JavaScript. We also covered the Factory design pattern to easily create new game items from the engine. Finally, you are now able to investigate the bad behavior of QML software using the powerful QML profiler.</p><p>Even if Qt is a powerful framework, sometimes you need to use a third-party library. In the next chapter, we will see how to integrate the OpenCV library into your Qt application.</p></div></body></html>
