@@ -1,0 +1,740 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;11.&#xA0;Don't Touch the Red Button! &#x2013; Implementing the GUI"><div class="titlepage"><div><div><h1 class="title"><a id="ch11"/>Chapter 11. Don't Touch the Red Button! – Implementing the GUI</h1></div></div></div><p>We covered the fundamentals and created the building blocks necessary for graphical user interface assembly in the course of the last chapter. Although that might seem like lots of code, a lot more goes into making it tick. Proper management of interfaces, good support from the rest of the code base, and user-friendly semantics of the GUI system itself are all paramount. Let's finish our goal set in <a class="link" href="ch10.html" title="Chapter 10. Can I Click This? – GUI Fundamentals">Chapter 10</a>, <span class="emphasis"><em>Can I Click This? – GUI Fundamentals</em></span>, and finally provide our users with a means of interfacing.</p><p>In this chapter, we will cover the following topics:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Management of interfaces and their events</li><li class="listitem" style="list-style-type: disc">Expansion of the event manager class for additional GUI support</li><li class="listitem" style="list-style-type: disc">Creation of our first element type</li><li class="listitem" style="list-style-type: disc">Integration and use of our GUI system</li></ul></div><p>With all the pieces in place, let's bring our interfaces to life!</p><div class="section" title="The GUI manager"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec92"/>The GUI manager</h1></div></div></div><p>The puppet <a id="id474" class="indexterm"/>master in the background, in charge of the entire show in this case, has to be the <code class="literal">GUI_Manager</code> class. It is responsible for storing all the interfaces in the application as well as maintaining their states. All mouse input processing originates from this class and is passed down the ownership tree. Let's begin by getting some type definitions out of the way:</p><div class="informalexample"><pre class="programlisting">using GUI_Interfaces = std::unordered_map&lt;std::string,
+  GUI_Interface*&gt;;
+using GUI_Container = std::unordered_map&lt;StateType,
+  GUI_Interfaces&gt;;
+using GUI_Events = std::unordered_map&lt;StateType,
+  std::vector&lt;GUI_Event&gt;&gt;;
+using GUI_Factory = std::unordered_map&lt;GUI_ElementType,
+  std::function&lt;GUI_Element*(GUI_Interface*)&gt;&gt;;
+using GUI_ElemTypes = std::unordered_map&lt;std::string,
+  GUI_ElementType&gt;;</pre></div><p>We will use the <code class="literal">std::unordered_map</code> data structure that indexes them by name to store the interface<a id="id475" class="indexterm"/> data. The interface data containers also need to be grouped by game states, which is what the next type definition is for. Similarly, GUI events need to be indexed by their relevant game state. The events themselves are stored in a <code class="literal">std::vector</code>.</p><p>Additionally, since we will be creating elements in a factory-like fashion, much like we did before, a factory type definition is created. The main difference here is that the <code class="literal">lambda</code> functions we'll be storing need to take in a pointer to the owner interface in order to be constructed correctly.</p><p>Lastly, we're going to be mapping element type strings to actual enumeration values for the same. Once again, the <code class="literal">std::unordered_map</code> type comes to the rescue.</p><p>Now, here is the class definition itself:</p><div class="informalexample"><pre class="programlisting">struct SharedContext; // Forward declaration.
+class GUI_Manager{
+  friend class GUI_Interface;
+public:
+  GUI_Manager(EventManager* l_evMgr, SharedContext* l_context);
+  ~GUI_Manager();
+  ...
+  template&lt;class T&gt;
+  void RegisterElement(const GUI_ElementType&amp; l_id){
+    m_factory[l_id] = [](GUI_Interface* l_owner) -&gt; GUI_Element*
+    { return new T("",l_owner); };
+  }
+private:
+  GUI_Element* CreateElement(const GUI_ElementType&amp; l_id,
+    GUI_Interface* l_owner);
+  GUI_ElementType StringToType(const std::string&amp; l_string);
+  bool LoadStyle(const std::string&amp; l_file,
+    GUI_Element* l_element);
+
+  GUI_Container m_interfaces;
+  GUI_Events m_events;
+  SharedContext* m_context;
+  StateType m_currentState;
+  GUI_Factory m_factory;
+  GUI_ElemTypes m_elemTypes;
+};</pre></div><p>Right off the bat, we can tell that the factory method for elements is going to be used due to the presence of a <code class="literal">RegisterElement</code> method. It stores a <code class="literal">lambda</code> function with an owner interface pointer as its sole argument, which returns a <code class="literal">GUI_Element</code> type with a blank name, constructed from a given type denoted by the <code class="literal">l_id</code> argument. Its private method friend, <code class="literal">CreateElement</code>, will use the stored <code class="literal">lambda</code> functions and return pointers to newly created memory.</p><p>One last<a id="id476" class="indexterm"/> thing to note before diving into the implementation of this class is the existence of a <code class="literal">LoadStyle</code> method that takes in a <code class="literal">GUI_Element</code> type. The manager class is responsible for de-serializing style files and properly setting up elements based on them to avoid cluttering up the element and interface classes.</p><div class="section" title="Implementing the GUI manager"><div class="titlepage"><div><div><h2 class="title"><a id="ch11lvl2sec55"/>Implementing the GUI manager</h2></div></div></div><p>With the <a id="id477" class="indexterm"/>class header out of the way, we can dive right into implementing our GUI manager. The constructor of the <code class="literal">GUI_Manager</code> class is defined like this:</p><div class="informalexample"><pre class="programlisting">GUI_Manager::GUI_Manager(EventManager* l_evMgr,
+  SharedContext* l_shared): m_eventMgr(l_evMgr),
+  m_context(l_shared), m_currentState(StateType(0))
+{
+  RegisterElement&lt;GUI_Label&gt;(GUI_ElementType::Label);
+  RegisterElement&lt;GUI_Scrollbar&gt;(GUI_ElementType::Scrollbar);
+  RegisterElement&lt;GUI_Textfield&gt;(GUI_ElementType::Textfield);
+  m_elemTypes.emplace("Label", GUI_ElementType::Label);
+  m_elemTypes.emplace("Button", GUI_ElementType::Button);
+  m_elemTypes.emplace("Scrollbar", GUI_ElementType::Scrollbar);
+  m_elemTypes.emplace("TextField", GUI_ElementType::Textfield);
+  m_elemTypes.emplace("Interface", GUI_ElementType::Window);
+
+  m_eventMgr-&gt;AddCallback(StateType(0),
+    "Mouse_Left", &amp;GUI_Manager::HandleClick, this);
+  m_eventMgr-&gt;AddCallback(StateType(0),
+    "Mouse_Left_Release", &amp;GUI_Manager::HandleRelease, this);
+  m_eventMgr-&gt;AddCallback(StateType(0),
+    "Text_Entered", &amp;GUI_Manager::HandleTextEntered, this);
+}</pre></div><p>It requires a pointer to the event manager and shared context structures as arguments and sets them up through the initializer list, along with a default value for the current state. Inside the body, we can see that this class first registers three element types that we're going to be working with. It also populates the element type map, which will be used for checks further down the line. Finally, it registers three callbacks: two for the left mouse button being pressed and released and one for text being entered. Note that these callbacks are registered to be called regardless of the state the application is in.</p><div class="informalexample"><pre class="programlisting">GUI_Manager::~GUI_Manager(){
+  m_eventMgr-&gt;RemoveCallback(StateType(0), "Mouse_Left");
+  m_eventMgr-&gt;RemoveCallback(StateType(0), "Mouse_Left_Release");
+  m_eventMgr-&gt;RemoveCallback(StateType(0), "Text_Entered");
+
+  for (auto &amp;itr : m_interfaces){
+    for (auto &amp;itr2 : itr.second){
+      delete itr2.second;
+    }
+  }
+}</pre></div><p>The destructor<a id="id478" class="indexterm"/> removes all of the callbacks registered in the constructor and iterates over every single interface for proper de-allocation of dynamically allocated memory. The interface and event containers are then cleared.</p><p>Let's take a look at how an interface is added to the GUI manager:</p><div class="informalexample"><pre class="programlisting">bool GUI_Manager::AddInterface(const StateType&amp; l_state,
+  const std::string&amp; l_name)
+{
+  auto s = m_interfaces.emplace(l_state, GUI_Interfaces()).first;
+  GUI_Interface* temp = new GUI_Interface(l_name, this);
+  if (s-&gt;second.emplace(l_name, temp).second){ return true; }
+  delete temp;
+  return false;
+}</pre></div><p>Dynamic memory for an interface is allocated and an attempt to insert it is made when a valid application state and an unused interface name is provided. Any issues when inserting are caught by the return value of the <code class="literal">emplace</code> method, which gets stored in the <code class="literal">i </code>variable. If it fails, the memory is de-allocated and <code class="literal">false</code> is returned to signify failure. Otherwise, <code class="literal">true</code> is returned.</p><p>Obtaining an interface is as simple as it gets:</p><div class="informalexample"><pre class="programlisting">GUI_Interface* GUI_Manager::GetInterface(const StateType&amp; l_state,
+  const std::string&amp; l_name)
+{
+  auto s = m_interfaces.find(l_state);
+  if (s == m_interfaces.end()){ return nullptr; }
+  auto i = s-&gt;second.find(l_name);
+  return (i != s-&gt;second.end() ? i-&gt;second : nullptr);
+}</pre></div><p>If a state provided as an argument is found, and an interface with the name provided is also located, it gets returned. Failure to find either a valid state or the correct interface is represented by a return value of <code class="literal">nullptr</code>.</p><p>Removing an<a id="id479" class="indexterm"/> interface is achieved by manipulating the container structure:</p><div class="informalexample"><pre class="programlisting">bool GUI_Manager::RemoveInterface(const StateType&amp; l_state,
+  const std::string&amp; l_name)
+{
+  auto s = m_interfaces.find(l_state);
+  if (s == m_interfaces.end()){ return false; }
+  auto i = s-&gt;second.find(l_name);
+  if (i == s-&gt;second.end()){ return false; }
+  delete i-&gt;second;
+  return s-&gt;second.erase(l_name);
+}</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note13"/>Note</h3><p>Note that the <code class="literal">delete</code> keyword appears if both the state and the interface are found. Sometimes, it's very easy to forget the de-allocation of no longer used memory on the heap, which results in memory leaks.</p></div></div><p>Since the GUI manager needs to keep track of the current application state, the following method is necessary:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::SetCurrentState(const StateType&amp; l_state){
+  if (m_currentState == l_state){ return; }
+  HandleRelease(nullptr);
+  m_currentState = l_state;
+}</pre></div><p>In addition to changing the current state data member, it also invokes the <code class="literal">HandleRelease</code> method to prevent sticky interface and element states. If an element is clicked and the state suddenly changes, that same element will remain in the <code class="literal">CLICKED</code> state until it is hovered over unless <code class="literal">HandleRelease</code> is called.</p><p>Now, let's handle the mouse input to provide interaction with our interfaces:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::HandleClick(EventDetails* l_details){
+  auto state = m_interfaces.find(m_currentState);
+  if (state == m_interfaces.end()){ return; }
+  sf::Vector2i mousePos = m_eventMgr-&gt;
+    GetMousePos(m_context-&gt;m_wind-&gt;GetRenderWindow());
+  for (auto itr = state-&gt;second.rbegin();
+    itr != state-&gt;second.rend(); ++itr)
+  {
+    if (!itr-&gt;second-&gt;IsInside(sf::Vector2f(mousePos))){continue;}
+    if (!itr-&gt;second-&gt;IsActive()){ return; }
+    itr-&gt;second-&gt;OnClick(sf::Vector2f(mousePos));
+    itr-&gt;second-&gt;Focus();
+    if (itr-&gt;second-&gt;IsBeingMoved()){itr-&gt;second-&gt;BeginMoving();}
+    return;
+  }
+}</pre></div><p>This<a id="id480" class="indexterm"/> method, just like its <code class="literal">HandleRelease</code> brother, takes in a single argument of the type<code class="literal"> EventDetails</code>. For now, simply ignore that as it does not affect <code class="literal">GUI_Manager</code> at all and will be dealt later in this chapter.</p><p>Firstly, it obtains the current mouse position relative to the window. Next, an iterator to the interface container is obtained and checked for validity. Every interface that belongs to the current state is then iterated over in reverse order, which gives newly added interfaces priority. If it is active and the mouse position falls within its boundaries, its <code class="literal">OnClick</code> method is invoked, with the mouse position passed in as the argument. The interface's <code class="literal">m_beingMoved</code> flag is then checked because the click might've been within the boundaries of its title bar. If so, the <code class="literal">BeginMoving</code> method is called to complete the drag operation. At this point, we simply return from the method in order to prevent a left click from affecting more than one interface at a time.</p><p>Handling the left mouse button release follows the same convention:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::HandleRelease(EventDetails* l_details){
+  auto state = m_interfaces.find(m_currentState);
+  if (state == m_interfaces.end()){ return; }
+  for (auto &amp;itr : state-&gt;second){
+    GUI_Interface* i = itr.second;
+    if (!i-&gt;IsActive()){ continue; }
+    if (i-&gt;GetState() == GUI_ElementState::Clicked)
+    {
+      i-&gt;OnRelease();
+    }
+    if (i-&gt;IsBeingMoved()){ i-&gt;StopMoving(); }
+  }
+}</pre></div><p>The only difference here is that every interface which is in a <code class="literal">Clicked</code> state has its <code class="literal">OnRelease</code> method called, as well as the <code class="literal">StopMoving</code> method if it is in a state of being dragged.</p><p>Lastly, let's not forget about our text field elements as they need to be notified whenever some text is entered:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::HandleTextEntered(EventDetails* l_details){
+  auto state = m_interfaces.find(m_currentState);
+  if (state == m_interfaces.end()){ return; }
+  for (auto &amp;itr : state-&gt;second){
+    if (!itr.second-&gt;IsActive()){ continue; }
+    if (!itr.second-&gt;IsFocused()){ continue; }
+    itr.second-&gt;OnTextEntered(l_details-&gt;m_textEntered);
+    return;
+  }
+}</pre></div><p>This is a<a id="id481" class="indexterm"/> quite simple snippet of code. Whenever text is entered, we attempt to find an active and focused element. Once we find one, its <code class="literal">OnTextEntered</code> method is invoked with the text information passed in as the argument.</p><p>Adding GUI events is as simple as pushing them back onto a <code class="literal">std::vector</code> data structure:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::AddEvent(GUI_Event l_event){
+    m_events[m_currentState].push_back(l_event);
+}</pre></div><p>In order to properly handle these events, we must have a way to obtain them:</p><div class="informalexample"><pre class="programlisting">bool GUI_Manager::PollEvent(GUI_Event&amp; l_event){
+  if (m_events[m_currentState].empty()){ return false; }
+  l_event = m_events[m_currentState].back();
+  m_events[m_currentState].pop_back();
+  return true;
+}</pre></div><p>This is similar to the way SFML handles events, in that it takes in a reference to a <code class="literal">GUI_Event</code> data type and overwrites it with the last event in the event vector, right before popping it. It also returns a Boolean value to provide an easy way for it to be used in a <code class="literal">while</code> loop.</p><p>Next, let's work on updating the interfaces:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::Update(float l_dT){
+  sf::Vector2i mousePos = m_eventMgr-&gt;
+    GetMousePos(m_context-&gt;m_wind-&gt;GetRenderWindow());
+
+  auto state = m_interfaces.find(m_currentState);
+  if (state == m_interfaces.end()){ return; }
+  for (auto itr = state-&gt;second.rbegin();
+    itr != state-&gt;second.rend(); ++itr)
+  {
+    GUI_Interface* i = itr-&gt;second;
+    if (!i-&gt;IsActive()){ continue; }
+    i-&gt;Update(l_dT);
+    if (i-&gt;IsBeingMoved()){ continue; }
+    if (i-&gt;IsInside(sf::Vector2f(mousePos)))
+    {
+      if (i-&gt;GetState() == GUI_ElementState::Neutral){
+        i-&gt;OnHover(sf::Vector2f(mousePos));
+      }
+      return;
+    } else if (i-&gt;GetState() == GUI_ElementState::Focused){
+      i-&gt;OnLeave();
+    }
+  }
+}</pre></div><p>After the <a id="id482" class="indexterm"/>current mouse position is obtained, every interface that belongs to the current application state is iterated over. If the interface is currently active, it gets updated. The <code class="literal">Hover</code> and <code class="literal">Leave</code> events are only considered if the interface in question is not currently being dragged, as we did with the smaller GUI elements inside interfaces.</p><p>Now it's time to draw all of these interfaces onto the screen:</p><div class="informalexample"><pre class="programlisting">void GUI_Manager::Render(sf::RenderWindow* l_wind){
+  auto state = m_interfaces.find(m_currentState);
+  if (state == m_interfaces.end()){ return; }
+  for (auto &amp;itr : state-&gt;second){
+    GUI_Interface* i = itr.second;
+    if (!i-&gt;IsActive()){ continue; }
+    if (i-&gt;NeedsRedraw()){ i-&gt;Redraw(); }
+    if (i-&gt;NeedsContentRedraw()){ i-&gt;RedrawContent(); }
+    if (i-&gt;NeedsControlRedraw()){ i-&gt;RedrawControls(); }
+    i-&gt;Draw(l_wind);
+  }
+}</pre></div><p>Once again, this method iterates over all interfaces that belong to the current application state. If they're active, each re-draw flag is checked and the appropriate re-draw methods are invoked. Finally, a pointer to the <code class="literal">sf::RenderWindow</code> is passed into the <code class="literal">Draw</code> method of an interface so it can draw itself.</p><p>It would be good to have a method for creating these types automatically because we're working with factory-produced element types:</p><div class="informalexample"><pre class="programlisting">GUI_Element* GUI_Manager::CreateElement(
+  const GUI_ElementType&amp; l_id, GUI_Interface* l_owner)
+{
+  if (l_id == GUI_ElementType::Window){ 
+    return new GUI_Interface("", this);
+  }
+  auto f = m_factory.find(l_id);
+  return (f != m_factory.end() ? f-&gt;second(l_owner) : nullptr);
+}</pre></div><p>If the provided element type is a <code class="literal">Window</code>, a new interface is created, to which a pointer of <code class="literal">GUI_Manager</code> is passed as its second argument. In the case of any other element type being passed in, the factory container is searched and the stored <code class="literal">lambda</code> function is invoked with the <code class="literal">l_owner</code> argument passed in to it.</p><p>Lastly, let's<a id="id483" class="indexterm"/> discuss the de-serialization of interfaces. A method is needed to load files formatted in this way:</p><div class="informalexample"><pre class="programlisting">Interface name Style.style 0 0 Immovable NoTitle "Title"
+Element Label name 100 0 Style.style "Label text"
+...</pre></div><p>Next, let's work on loading our interfaces from a file. We're not going to cover how the file itself is read as it's pretty much identical to how we usually do it:</p><div class="informalexample"><pre class="programlisting">bool GUI_Manager::LoadInterface(const StateType&amp; l_state,const std::string&amp; l_interface, const std::string&amp; l_name)
+{
+    ...
+}</pre></div><p>Let's start with creating an interface:</p><div class="informalexample"><pre class="programlisting">if (key == "Interface"){
+  std::string style;
+  keystream &gt;&gt; InterfaceName &gt;&gt; style;
+  if (!AddInterface(l_state, l_name)){
+    std::cout &lt;&lt; "Failed adding interface: " 
+      &lt;&lt; l_name &lt;&lt; std::endl;
+    return false;
+  }
+  GUI_Interface* i = GetInterface(l_state, l_name);
+  keystream &gt;&gt; *i;
+  if (!LoadStyle(style, i)){
+    std::cout &lt;&lt; "Failed loading style file: "
+      &lt;&lt; style &lt;&lt; " for interface " &lt;&lt; l_name &lt;&lt; std::endl;
+  }
+  i-&gt;SetContentSize(i-&gt;GetSize());
+} else if ...</pre></div><p>As suggested by the file format, it first needs to read in its name and the name of the style file. If adding an interface with the loaded name fails, an error is printed out and the file reading is stopped. Otherwise, a pointer to this freshly added window is obtained and its overloaded <span class="strong"><strong>&gt;&gt;</strong></span> operator is used to read in additional information from the stream, which we covered back in the interface section of this chapter.</p><p>Next, an attempt is made to load the style file that was read in earlier by calling the <code class="literal">LoadStyle</code> method, which we will be covering shortly. If it fails, an error message is printed out. Lastly, its content size is adjusted based on its current style.</p><p>Handling element <a id="id484" class="indexterm"/>de-serialization, in its most basic form, is quite similar:</p><div class="informalexample"><pre class="programlisting">} else if (key == "Element"){
+  if (InterfaceName == ""){
+    std::cout &lt;&lt; "Error: 'Element' outside or before 
+      declaration of 'Interface'!" &lt;&lt; std::endl;
+    continue;
+  }
+  std::string type;
+  std::string name;
+  sf::Vector2f position;
+  std::string style;
+  keystream &gt;&gt; type &gt;&gt; name &gt;&gt; position.x &gt;&gt; position.y &gt;&gt; style;
+  GUI_ElementType eType = StringToType(type);
+  if (eType == GUI_ElementType::None){
+    std::cout &lt;&lt; "Unknown element('" &lt;&lt; name
+      &lt;&lt; "') type: '" &lt;&lt; type &lt;&lt; "'" &lt;&lt; std::endl;
+    continue;
+  }
+
+  GUI_Interface* i = GetInterface(l_state, l_name);
+  if (!i){ continue; }
+  if (!i-&gt;AddElement(eType, name)){ continue; }
+  GUI_Element* e = i-&gt;GetElement(name);
+  keystream &gt;&gt; *e;
+  e-&gt;SetPosition(position);
+  if (!LoadStyle(style, e)){
+    std::cout &lt;&lt; "Failed loading style file: " &lt;&lt; style
+      &lt;&lt; " for element " &lt;&lt; name &lt;&lt; std::endl;
+    continue;
+  }
+}</pre></div><p>The element type, the name, position, and the style values are read in from the file. An element type is obtained after running the text that was read into the <code class="literal">type</code> variable through our helper method <code class="literal">StringToType</code>. An interface that the element needs to be added to is obtained by using the name passed in as an argument to the <code class="literal">LoadInterface</code> method. The <code class="literal">AddElement</code> method of the obtained interface is called in order to create the appropriate element type on the heap. If it's successful, the element is obtained by name and its additional information is read in by utilizing its overloaded <code class="literal">&gt;&gt;</code> operator. The <code class="literal">LoadStyle</code> method is invoked once again in order to read the style of an element from a file. Let's take a look at what this looks like:</p><div class="informalexample"><pre class="programlisting">State Neutral
+Size 64 32
+TextColor 0 0 0 255
+TextSize 12
+Font Main
+TextPadding 0 0
+/State
+
+State Hover
+TextColor 255 255 255 255
+/State
+
+State Clicked
+TextColor 255 0 0 255
+/State</pre></div><p>With this<a id="id485" class="indexterm"/> serving as an example, it's time to try and read it in. Once again, we're going to skip the code that reads the file as it is redundant. With that in mind, let's take a look:</p><div class="informalexample"><pre class="programlisting">bool GUI_Manager::LoadStyle(const std::string&amp; l_file,
+  GUI_Element* l_element)
+{
+  ...
+  std::string currentState;
+  GUI_Style ParentStyle;
+  GUI_Style TemporaryStyle;
+  ...
+}</pre></div><p>Note the two <code class="literal">GUI_Style</code> structures that are set up here: they keep track of the main style that serves as a parent and the temporary style that's currently being read in. Let's keep moving further down this method, inside the actual <code class="literal">while</code> loop:</p><div class="informalexample"><pre class="programlisting">if (type == "State"){
+  if (currentState != ""){
+    std::cout &lt;&lt; "Error: 'State' keyword found 
+      inside another state!" &lt;&lt; std::endl;
+    continue;
+  }
+  keystream &gt;&gt; currentState;
+} else if ...</pre></div><p>If a <code class="literal">State</code> keyword is encountered and <code class="literal">currentState</code> is not set up, the name of the state is read in. Otherwise, we print out an error message:</p><div class="informalexample"><pre class="programlisting">} else if (type == "/State"){
+  if (currentState == ""){
+    std::cout &lt;&lt; "Error: '/State' keyword found 
+      prior to 'State'!" &lt;&lt; std::endl;
+    continue;
+  }
+  GUI_ElementState state = GUI_ElementState::Neutral;
+  if (currentState == "Hover"){state = GUI_ElementState::Focused;}
+  else if (currentState == "Clicked"){
+    state = GUI_ElementState::Clicked;
+  }
+
+  if (state == GUI_ElementState::Neutral){
+    ParentStyle = TemporaryStyle;
+    l_element-&gt;UpdateStyle(
+      GUI_ElementState::Neutral, TemporaryStyle);
+    l_element-&gt;UpdateStyle(
+      GUI_ElementState::Focused, TemporaryStyle);
+    l_element-&gt;UpdateStyle(
+      GUI_ElementState::Clicked, TemporaryStyle);
+  } else {
+    l_element-&gt;UpdateStyle(state, TemporaryStyle);
+  }
+  TemporaryStyle = ParentStyle;
+  currentState = "";
+} else { ...</pre></div><p>When <a id="id486" class="indexterm"/>encountering a <code class="literal">/State</code> keyword, we can safely assume that the style currently being processed has ceased. The state is then determined based on the string that was read in denoting it.</p><p>If the state is <code class="literal">Neutral</code>, we need to set it to be the parent style, which means that every unset property of the other styles will also be inherited from this one. The <code class="literal">UpdateStyle</code> method is then invoked for each of the three supported states in order to overwrite the default values. If it is anything other than <code class="literal">Neutral</code>, the <code class="literal">UpdateStyle</code> method is only invoked once for that state. The <code class="literal">TemporaryStyle</code> variable is then overwritten with <code class="literal">ParentStyle</code> to simulate inheritance.</p><p>Finally, let's see how every different style feature is supported:</p><div class="informalexample"><pre class="programlisting">} else {
+  // Handling style information.
+  if (currentState == ""){
+    std::cout &lt;&lt; "Error: '" &lt;&lt; type
+      &lt;&lt; "' keyword found outside of a state!" &lt;&lt; std::endl;
+    continue;
+  }
+  if (type == "Size"){
+    keystream &gt;&gt;TemporaryStyle.m_size.x &gt;&gt;TemporaryStyle.m_size.y;
+  } else if (type == "BgColor"){
+    int r, g, b, a = 0;
+    keystream &gt;&gt; r &gt;&gt; g &gt;&gt; b &gt;&gt; a;
+    TemporaryStyle.m_backgroundColor = sf::Color(r,g,b,a);
+  } else if (type == "BgImage"){
+    keystream &gt;&gt; TemporaryStyle.m_backgroundImage;
+  } else if (type == "BgImageColor"){
+    int r, g, b, a = 0;
+    keystream &gt;&gt; r &gt;&gt; g &gt;&gt; b &gt;&gt; a;
+    TemporaryStyle.m_backgroundImageColor = sf::Color(r, g, b, a);
+  } else if (type == "TextColor"){
+    int r, g, b, a = 0;
+    keystream &gt;&gt; r &gt;&gt; g &gt;&gt; b &gt;&gt; a;
+    TemporaryStyle.m_textColor = sf::Color(r, g, b, a);
+  } else if (type == "TextSize"){
+    keystream &gt;&gt; TemporaryStyle.m_textSize;
+  } else if (type == "TextOriginCenter"){
+    TemporaryStyle.m_textCenterOrigin = true;
+  } else if (type == "Font"){
+    keystream &gt;&gt; TemporaryStyle.m_textFont;
+  } else if (type == "TextPadding"){
+    keystream &gt;&gt; TemporaryStyle.m_textPadding.x
+      &gt;&gt; TemporaryStyle.m_textPadding.y;
+  } else if (type == "ElementColor"){
+    int r, g, b, a = 0;
+    keystream &gt;&gt; r &gt;&gt; g &gt;&gt; b &gt;&gt; a;
+    TemporaryStyle.m_elementColor = sf::Color(r, g, b, a);
+  } else if (type == "Glyph"){
+    keystream &gt;&gt; TemporaryStyle.m_glyph;
+  } else if (type == "GlyphPadding"){
+    Keystream &gt;&gt; TemporaryStyle.m_glyphPadding.x
+      &gt;&gt; TemporaryStyle.m_glyphPadding.y;
+  } else {
+    std::cout &lt;&lt; "Error: style tag '" &lt;&lt; type
+      &lt;&lt; "' is unknown!" &lt;&lt; std::endl;
+  }
+}</pre></div><p>Every <a id="id487" class="indexterm"/>color value is first read in as four separate integers and then stored in a <code class="literal">sf::Color</code> structure which gets assigned to the appropriate data member of the style structure. Padding and text values are simply streamed in. One exception to this is the <code class="literal">TextOriginCenter</code> tag. It does not contain any additional information and its mere existence simply means that the origin of the text element should <a id="id488" class="indexterm"/>always be centered.</p></div></div></div>
+<div class="section" title="The label element"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec93"/>The label element</h1></div></div></div><p>A label <a id="id489" class="indexterm"/>element is the simplest GUI type yet. It supports all of the default stylistic features but it doesn't do much else other than contain a certain string value that can be loaded in or set at runtime.</p><p>Let's take a look at its constructor and destructor:</p><div class="informalexample"><pre class="programlisting">GUI_Label::GUI_Label(const std::string&amp; l_name,
+  GUI_Interface* l_owner)
+  : GUI_Element(l_name, GUI_ElementType::Label, l_owner){}</pre></div><p>This is nothing short of child's play in comparison to the code we've written before. Its name, type, and owner are set up in the initializer list and there's nothing else to it.</p><p>The de-serialization of this type of element is also fairly simple. Recall the following line from an interface file:</p><div class="informalexample"><pre class="programlisting">Element Label TestLabel 0 0 Default.style "Some text"</pre></div><p>Since the <code class="literal">GUI_Manager</code> class takes care of all of this information except the last part, the <code class="literal">ReadIn</code> method of this element might look like this:</p><div class="informalexample"><pre class="programlisting">void GUI_Label::ReadIn(std::stringstream&amp; l_stream){
+    std::string content;
+    Utils::ReadQuotedString(l_stream, content);
+    m_visual.m_text.setString(content);
+}</pre></div><p>Now, we have to implement the event methods of this element. In this case, it's nothing more than simply adjusting the state of the label:</p><div class="informalexample"><pre class="programlisting">void GUI_Label::OnClick(const sf::Vector2f&amp; l_mousePos){
+  SetState(GUI_ElementState::Clicked);
+}
+void GUI_Label::OnRelease(){
+  SetState(GUI_ElementState::Neutral);
+}
+void GUI_Label::OnHover(const sf::Vector2f&amp; l_mousePos){
+  SetState(GUI_ElementState::Focused);
+}
+void GUI_Label::OnLeave(){
+  SetState(GUI_ElementState::Neutral);
+}</pre></div><p>The final bit of code is responsible for how this element is drawn:</p><div class="informalexample"><pre class="programlisting">void GUI_Label::Draw(sf::RenderTarget* l_target){
+  l_target-&gt;draw(m_visual.m_backgroundSolid);
+  if (m_style[m_state].m_glyph != ""){
+    l_target-&gt;draw(m_visual.m_glyph);
+  }
+  l_target-&gt;draw(m_visual.m_text);
+}</pre></div><p>After<a id="id490" class="indexterm"/> the background rectangle is drawn, the glyph is checked to see whether it needs to be drawn as well. Lastly, the text is rendered right on top of the last two visual attributes.</p></div>
+<div class="section" title="The text field element"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec94"/>The text field element</h1></div></div></div><p>In order <a id="id491" class="indexterm"/>to implement a text field element successfully, we need to define how it responds to input correctly. Firstly, let's set up a new element type by creating the text field element class and implementing the constructor, as shown here:</p><div class="informalexample"><pre class="programlisting">GUI_Textfield::GUI_Textfield(const std::string&amp; l_name,
+  GUI_Interface* l_owner)
+  : GUI_Element(l_name, GUI_ElementType::Textfield , l_owner){}</pre></div><p>This element can also have a default text value when loaded, so let's express that by providing a custom version of the <code class="literal">ReadIn</code> method:</p><div class="informalexample"><pre class="programlisting">void GUI_Textfield::ReadIn(std::stringstream&amp; l_stream){
+  std::string content;
+  Utils::ReadQuotedString(l_stream, content);
+  m_visual.m_text.setString(content);
+}</pre></div><p>As you probably know, text fields do not change state if a mouse button is released. This allows them to be focused until a mouse click is registered elsewhere. We have already implemented that functionality in the <code class="literal">GUI_Interface</code> class as the <code class="literal">DefocusTextfields</code> method. All that's left to do now is ignore release events:</p><div class="informalexample"><pre class="programlisting">void GUI_Textfield::OnRelease(){}</pre></div><p>Lastly, let's take a look at drawing this element:</p><div class="informalexample"><pre class="programlisting">void GUI_Textfield::Draw(sf::RenderTarget* l_target){
+  l_target-&gt;draw(m_visual.m_backgroundSolid);
+  if (m_style[m_state].m_glyph != ""){
+    l_target-&gt;draw(m_visual.m_glyph);
+  }
+  l_target-&gt;draw(m_visual.m_text);
+}</pre></div><p>It is quite simple in nature. So far, we have only worried about drawing the background solid behind the text that this element holds. The glyph is also supported here but we're not going<a id="id492" class="indexterm"/> to be using it.</p></div>
+<div class="section" title="The scrollbar element"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec95"/>The scrollbar element</h1></div></div></div><p>All of that <a id="id493" class="indexterm"/>support for interface scrolling and control elements implies the existence of the scrollbar element. Its purpose is to move around the visible area of the content texture in order to reveal elements that are positioned further out than its size allows, which could be along any axis. With that knowledge, let's take a stab at working out the basic class definition of the scrollbar element:</p><div class="informalexample"><pre class="programlisting">enum class SliderType{ Horizontal, Vertical };
+
+class GUI_Scrollbar : public GUI_Element{
+public:
+  ...
+  void SetPosition(const sf::Vector2f&amp; l_pos);
+  void ApplyStyle();
+  void UpdateStyle(const GUI_ElementState&amp; l_state,
+    const GUI_Style&amp; l_style);
+private:
+  SliderType m_sliderType;
+  sf::RectangleShape m_slider;
+  sf::Vector2f m_moveMouseLast;
+  int m_percentage;
+};</pre></div><p>Firstly, we enumerate both possible types of sliders: horizontal and vertical. The actual <code class="literal">GUI_Scrollbar</code> class overwrites three of the original methods the parent class provides, in addition to implementing all of the purely virtual ones.</p><p>Among its private data members, the scrollbar keeps track of its own type, which contains another drawable object to represent the slider and maintains information about the last known mouse coordinates, as well as the percentage value of scroll it's currently at.</p><p>Let's start with the easy part – the constructor:</p><div class="informalexample"><pre class="programlisting">GUI_Scrollbar::GUI_Scrollbar(const std::string&amp; l_name,
+  GUI_Interface* l_owner)
+  : GUI_Element(l_name, GUI_ElementType::Scrollbar, l_owner)
+{
+  m_isControl = true;
+}</pre></div><p>It's pretty straightforward so far. The element type is set to <code class="literal">Scrollbar</code> and the <code class="literal">m_isControl</code> flag is set to <code class="literal">true</code> to tell the owner interface which layer to draw it on.</p><p>Next up, the <code class="literal">SetPosition</code> method needs to be overwritten to make sure that the scrollbar is positioned correctly:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::SetPosition(const sf::Vector2f&amp; l_pos){
+  GUI_Element::SetPosition(l_pos);
+  if (m_sliderType == SliderType::Horizontal){ m_position.x = 0; }
+  else { m_position.y = 0; }
+}</pre></div><p>Due to<a id="id494" class="indexterm"/> the nature of this particular element, one axis has to be always set to <code class="literal">0</code> in order to keep it positioned on the right edge.</p><p>For now, the type of a scrollbar will be read in from the interface file. To make that happen, we may want to handle de-serialization like this:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::ReadIn(std::stringstream&amp; l_stream){
+  std::string type;
+  l_stream &gt;&gt; type;
+  if (type == "Horizontal"){m_sliderType =SliderType::Horizontal;}
+  else { m_sliderType = SliderType::Vertical; }
+
+  if (m_sliderType == SliderType::Horizontal){
+    m_slider.setPosition(0, GetPosition().y);
+  }
+  else { m_slider.setPosition(GetPosition().x, 0); }
+}</pre></div><p>Let's handle the events next, starting with <code class="literal">OnClick</code>:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::OnClick(const sf::Vector2f&amp; l_mousePos){
+  if (!m_slider.getGlobalBounds().contains(
+    l_mousePos - m_owner-&gt;GetPosition()))
+  {
+    return;
+  }
+  SetState(GUI_ElementState::Clicked);
+  m_moveMouseLast = l_mousePos;
+}</pre></div><p>Since we only want scrolling to happen when the slider part is being dragged, the state of this element is only set to <code class="literal">Clicked</code> if the mouse coordinates are inside the slider. They then get stored in the <code class="literal">m_moveMouseLast</code> data member to prevent the slider from jumping.</p><p>The remaining three events are not needed for anything other than adjusting the state:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::OnRelease(){
+  SetState(GUI_ElementState::Neutral);
+}
+void GUI_Scrollbar::OnHover(const sf::Vector2f&amp; l_mousePos){
+  SetState(GUI_ElementState::Focused);
+}
+void GUI_Scrollbar::OnLeave(){
+  SetState(GUI_ElementState::Neutral);
+}</pre></div><p>The style <a id="id495" class="indexterm"/>updating also has to be altered to maintain the desired functionality of the scrollbar:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::UpdateStyle(const GUI_ElementState&amp; l_state,
+  const GUI_Style&amp; l_style)
+{
+  GUI_Element::UpdateStyle(l_state, l_style);
+  if (m_sliderType == SliderType::Horizontal){
+    m_style[l_state].m_size.x = m_owner-&gt;GetSize().x;
+  }
+  else { m_style[l_state].m_size.y = m_owner-&gt;GetSize().y; }
+}</pre></div><p>The size of the scrollbar is set to match the size of the owner interface on the relevant axis after the parent <code class="literal">UpdateStyle</code> is called.</p><p>Next, we have to define a custom way of applying style attributes to scrollbar elements, due to their unique nature:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::ApplyStyle(){
+  GUI_Element::ApplyStyle();
+  m_slider.setFillColor(m_style[m_state].m_elementColor);
+  bool horizontal = m_sliderType == SliderType::Horizontal;
+  auto&amp; bgSolid = m_visual.m_backgroundSolid;
+  SetPosition((horizontal ?
+    sf::Vector2f(0, m_owner-&gt;GetSize().y - bgSolid.getSize().y) :
+    sf::Vector2f(m_owner-&gt;GetSize().x - bgSolid.getSize().x, 0)));
+  bgSolid.setSize((horizontal ?
+   sf::Vector2f(m_owner-&gt;GetSize().x,m_style[m_state].m_size.y) :
+   sf::Vector2f(m_style[m_state].m_size.x,m_owner-&gt;GetSize().y)));
+  m_slider.setPosition(
+    (horizontal ? m_slider.getPosition().x : GetPosition().x),
+    (horizontal ? GetPosition().y : m_slider.getPosition().y));
+  float SizeFactor = (horizontal ?
+    m_owner-&gt;GetContentSize().x / m_owner-&gt;GetSize().x :
+    m_owner-&gt;GetContentSize().y / m_owner-&gt;GetSize().y);
+  if (SizeFactor &lt; 1.f){ SizeFactor = 1.f; }
+  float SliderSize = (horizontal ?
+    m_owner-&gt;GetSize().x : m_owner-&gt;GetSize().y) / SizeFactor;
+  m_slider.setSize((horizontal ?
+    sf::Vector2f(SliderSize,bgSolid.getSize().y):
+    sf::Vector2f(bgSolid.getSize().x, SliderSize)));
+  bgSolid.setPosition(GetPosition());
+}</pre></div><p>After the <a id="id496" class="indexterm"/>parent <code class="literal">ApplyStyle</code> is invoked and the slider color is set, the position of the element is overwritten to keep it at 0 on the axis of action and right near the edge on the perpendicular axis. The size of the background solid is determined by the size of the interface on the scroll axis. Its style attributes determine the other size value.</p><p>The position of the slider is modified on the non-operational axis to always match the position of the element itself. Calculating its size along the scrolling axis is as simple as dividing the size of the owner window by the result of dividing its content size by the same window size.</p><p>With the style part of this element complete, let's work on moving it and affecting its owner interface:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::Update(float l_dT){
+  // Mouse-drag code.
+  if (GetState() != GUI_ElementState::Clicked){ return; }
+  SharedContext* context = m_owner-&gt;GetManager()-&gt;GetContext();
+  sf::Vector2f mousePos = 
+    sf::Vector2f(context-&gt;m_eventManager-&gt;GetMousePos(
+    context-&gt;m_wind-&gt;GetRenderWindow()));
+  if (m_moveMouseLast == mousePos){ return; }
+  sf::Vector2f difference = mousePos - m_moveMouseLast;
+  m_moveMouseLast = mousePos;
+
+  bool horizontal = m_sliderType == SliderType::Horizontal;
+  m_slider.move((horizontal ? difference.x : 0),
+    (horizontal ? 0 : difference.y));
+  if (horizontal &amp;&amp; m_slider.getPosition().x &lt; 0){
+    m_slider.setPosition(0, m_slider.getPosition().y);
+  } else if (m_slider.getPosition().y &lt; 0){
+    m_slider.setPosition(m_slider.getPosition().x, 0);
+  }
+  if (horizontal&amp;&amp;(m_slider.getPosition().x+m_slider.getSize().x &gt;
+    m_owner-&gt;GetSize().x))
+  {
+    m_slider.setPosition(
+      m_owner-&gt;GetSize().x - m_slider.getSize().x,
+      m_slider.getPosition().y);
+  } else if (m_slider.getPosition().y + m_slider.getSize().y &gt;
+    m_owner-&gt;GetSize().y)
+  {
+    m_slider.setPosition(m_slider.getPosition().x,
+      m_owner-&gt;GetSize().y - m_slider.getSize().y);
+  }
+  float WorkArea = (horizontal ?
+    m_owner-&gt;GetSize().x - m_slider.getSize().x :
+    m_owner-&gt;GetSize().y - m_slider.getSize().y);
+  int percentage = ((horizontal ?
+    m_slider.getPosition().x : m_slider.getPosition().y) /
+    WorkArea) * 100;
+  if (horizontal){ m_owner-&gt;UpdateScrollHorizontal(percentage); }
+  else { m_owner-&gt;UpdateScrollVertical(percentage); }
+  SetRedraw(true);
+}</pre></div><p>All of the <a id="id497" class="indexterm"/>code above only needs to be executed if the state of this element is <code class="literal">Clicked</code>. It's then obvious that the slider of the scrollbar is being dragged up and down. If the current mouse position is not the same as the last position from a previous iteration, the difference between them is calculated and the current position of the mouse is stored for later reference.</p><p>Firstly, the slider is moved by the difference of the mouse positions between the last two iterations. It is then checked to see if it is outside the boundaries of the interface, in which case, its position gets reset to the closest edge.</p><p>Lastly, the scroll percentage value is calculated by dividing the slider's position on the relevant axis by the difference of the window size and the slider size. The relevant update method for scrolling is then invoked and this element is marked to be re-drawn to reflect its changes.</p><p>The last thing we need to do is define how the scrollbar element is drawn:</p><div class="informalexample"><pre class="programlisting">void GUI_Scrollbar::Draw(sf::RenderTarget* l_target){
+    l_target-&gt;draw(m_visual.m_backgroundSolid);
+    l_target-&gt;draw(m_slider);
+}</pre></div><p>For now, it only uses two rectangle shapes, however, this can easily be expanded to support textures as well.</p></div>
+<div class="section" title="Integrating the GUI system"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec96"/>Integrating the GUI system</h1></div></div></div><p>In order<a id="id498" class="indexterm"/> to use the GUI system, it needs to first exist. Just like in previous chapters, we need to instantiate and update the GUI classes we built. Let's start by adding the GUI manager and the font manager to the <code class="literal">SharedContext.h</code> file:</p><div class="informalexample"><pre class="programlisting">struct SharedContext{
+  SharedContext():
+    ...
+    m_fontManager(nullptr),
+    ...
+    m_guiManager(nullptr){}
+     ...
+     FontManager* m_fontManager;
+  GUI_Manager* m_guiManager;
+};</pre></div><p>We need<a id="id499" class="indexterm"/> to keep a pointer to the GUI manager and the font manager in the <code class="literal">Game</code> class, as with all of the other classes that are shared through the <code class="literal">SharedContext</code> structure, starting with the header:</p><div class="informalexample"><pre class="programlisting">class Game{
+public:
+    ...
+private:
+    ...
+    FontManager m_fontManager;
+    ...
+    GUI_Manager m_guiManager;
+};</pre></div><p>These pointers are, of course meaningless, unless they actually point to valid objects in memory. Let's take care of the allocation and de-allocation of resources in the <code class="literal">Game.cpp</code> file:</p><div class="informalexample"><pre class="programlisting">Game::Game() : m_window("Chapter 11", sf::Vector2u(800, 600)),
+  m_entityManager(&amp;m_systemManager, &amp;m_textureManager),
+  m_stateManager(&amp;m_context),
+  m_guiManager(m_window.GetEventManager(),&amp;m_context)
+{
+  ...
+  m_context.m_guiManager = &amp;m_guiManager;
+  ...
+  m_fontManager.RequireResource("Main");
+}
+Game::~Game(){ 
+  m_fontManager.ReleaseResource("Main");
+}</pre></div><p>Next, we can look at updating all of the interfaces in the application and handling GUI events:</p><div class="informalexample"><pre class="programlisting">void Game::Update(){
+    ...
+    m_context.m_guiManager-&gt;Update(m_elapsed.asSeconds());
+    GUI_Event guiEvent;
+    while (m_context,m_guiManager-&gt;PollEvent(guiEvent)){
+        m_window.GetEventManager()-&gt;HandleEvent(guiEvent);
+    }
+}</pre></div><p>Note<a id="id500" class="indexterm"/> that the <code class="literal">GUI_Event</code> instance is forwarded to the <code class="literal">EventManager</code> class. We're going to be expanding it soon.</p><p>Finally, let's handle drawing our interfaces:</p><div class="informalexample"><pre class="programlisting">void Game::Render(){
+    ...
+    m_stateManager.Draw();
+
+    sf::View CurrentView = m_window.GetRenderWindow()-&gt;getView();
+    m_window.GetRenderWindow()-&gt;setView(m_window.GetRenderWindow()-&gt;getDefaultView());
+    m_context.m_guiManager-&gt;Render(m_window-&gt;GetRenderWindow());
+    m_window.GetRenderWindow()-&gt;setView(CurrentView);
+
+    m_window.EndDraw();
+}</pre></div><p>In order for the GUI to be always drawn above the rest of the scene, the window view has to be set to the default before the interfaces are drawn. It then needs to be set back in order to maintain a consistent camera position, which might look something like this:</p><div class="mediaobject"><img src="graphics/B04284_11_01.jpg" alt="Integrating the GUI system"/></div></div>
+<div class="section" title="Expanding the event manager"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec97"/>Expanding the event manager</h1></div></div></div><p>GUI <a id="id501" class="indexterm"/>events need to be handled for every possible state of the application in order to keep them from piling up, much like SFML events. In order to avoid writing all of that extra code, we're going to use something that was built solely for the purpose of handling them: the event manager.</p><p>Let's start by expanding the <code class="literal">EventType</code> enumeration to support GUI events:</p><div class="informalexample"><pre class="programlisting">enum class EventType{ 
+  ...
+  Keyboard = sf::Event::Count + 1, Mouse, Joystick,
+  GUI_Click, GUI_Release, GUI_Hover, GUI_Leave
+};</pre></div><p>It's important to keep these custom event types at the very bottom of the structure because of the way the code we've written in the past works.</p><p>Our previous raw implementation of the <code class="literal">EventManager</code> class relied on the fact that any given event can be represented simply by a numeric value. Most SFML events, such as key bindings, fit into that category but a lot of other event types, especially custom events, require additional information in order to be processed correctly. </p><p>Instead of using numbers, we need to switch to a lightweight data structure like this:</p><div class="informalexample"><pre class="programlisting">struct EventInfo{
+    EventInfo(){ l_code = 0; }
+    EventInfo(int l_event){ l_code = l_event; }
+    EventInfo(GUI_Event l_guiEvent){ l_gui = l_guiEvent; }
+    union{
+        int l_code;
+        GUI_Event l_gui;
+    };
+};</pre></div><p>The union ensures that no memory is wasted and that we can still use numeric representations of event types, as well as custom data-types, such as the <code class="literal">GUI_Event</code> structure. <code class="literal">GUI_Event</code> belongs to a union, which is why it couldn't use <code class="literal">std::string</code> typed data members.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="tip21"/>Tip</h3><p>If the boost library is used, all of this code can be reduced to <code class="literal">boost::variant&lt;int, GUI_Event&gt;</code>.</p></div></div><p>One additional change is that we want to be able to pass the GUI event information to the callback methods<a id="id502" class="indexterm"/> that are registered. This information will also be held by our <code class="literal">EventDetails</code> structure:</p><div class="informalexample"><pre class="programlisting">struct EventDetails{
+    EventDetails(const std::string&amp; l_bindName)
+        : m_name(l_bindName){ Clear(); }
+    ...
+    std::string m_guiInterface; // GUI interface name.
+    std::string m_guiElement; // GUI element name.
+    GUI_EventType m_guiEvent; // GUI event type.
+
+    void Clear(){
+        ...
+        m_guiInterface = "";
+        m_guiElement = "";
+        m_guiEvent = GUI_EventType::None;
+    }
+};</pre></div><p>Now, let's adjust the <code class="literal">Binding</code> structure:</p><div class="informalexample"><pre class="programlisting">struct Binding{
+  Binding(const std::string&amp; l_name): m_name(l_name),
+    m_details(l_name), c(0){}
+  ~Binding(){
+    // GUI portion.
+    for (auto itr = m_events.begin();
+      itr != m_events.end(); ++itr)
+    {
+      if (itr-&gt;first == EventType::GUI_Click ||
+        itr-&gt;first == EventType::GUI_Release ||
+        itr-&gt;first == EventType::GUI_Hover ||
+        itr-&gt;first == EventType::GUI_Leave)
+      {
+        delete [] itr-&gt;second.m_gui.m_interface;
+        delete [] itr-&gt;second.m_gui.m_element;
+      }
+    }
+  }
+  ...
+};</pre></div><p>We had to use <code class="literal">const char*</code> data types to hold element and interface names because of union restrictions. While that only applies to GUI-related events, this memory still needs to be de-allocated. When a binding is being destroyed, all of the event information is iterated over and checked to see if it is any of the four GUI event types, in which case the memory is safely de-allocated.</p><p>Next, we need a separate method that handles just the GUI events. Overloading the <code class="literal">HandleEvent</code> method with a different argument type seems like a good choice here:</p><div class="informalexample"><pre class="programlisting">void HandleEvent(sf::Event&amp; l_event);
+void HandleEvent(GUI_Event&amp; l_event);</pre></div><p>We need <a id="id503" class="indexterm"/>to make sure that no GUI events are processed in the original <code class="literal">HandleEvent</code> method:</p><div class="informalexample"><pre class="programlisting">void EventManager::HandleEvent(sf::Event&amp; l_event){
+  ...
+  for(auto &amp;e_itr : bind-&gt;m_events){
+    EventType sfmlEvent = (EventType)l_event.type;
+    if (e_itr.first == EventType::GUI_Click ||
+      e_itr.first == EventType::GUI_Release ||
+      e_itr.first == EventType::GUI_Hover ||
+      e_itr.first == EventType::GUI_Leave)
+    {
+      <span class="strong"><strong>continue;</strong></span>
+    }
+    ...
+  }
+  ...
+}</pre></div><p>If the event is of one of the four GUI types, the iteration is skipped. Handling the GUI events themselves is quite simple and can be done in this manner:</p><div class="informalexample"><pre class="programlisting">void EventManager::HandleEvent(GUI_Event&amp; l_event){
+  for (auto &amp;b_itr : m_bindings){
+    Binding* bind = b_itr.second;
+    for (auto &amp;e_itr : bind-&gt;m_events)
+    {
+      if (e_itr.first != EventType::GUI_Click &amp;&amp;
+        e_itr.first != EventType::GUI_Release &amp;&amp;
+        e_itr.first != EventType::GUI_Hover &amp;&amp;
+        e_itr.first != EventType::GUI_Leave)
+      { continue; }
+      if ((e_itr.first == EventType::GUI_Click &amp;&amp;
+        l_event.m_type != GUI_EventType::Click) ||
+        (e_itr.first == EventType::GUI_Release &amp;&amp;
+        l_event.m_type != GUI_EventType::Release) ||
+        (e_itr.first == EventType::GUI_Hover &amp;&amp;
+        l_event.m_type != GUI_EventType::Hover) ||
+        (e_itr.first == EventType::GUI_Leave &amp;&amp;
+        l_event.m_type != GUI_EventType::Leave))
+      { continue; }
+      if (strcmp(e_itr.second.m_gui.m_interface,
+        l_event.m_interface) ||
+        strcmp(e_itr.second.m_gui.m_element, l_event.m_element))
+      { continue; }
+      bind-&gt;m_details.m_guiInterface = l_event.m_interface;
+      bind-&gt;m_details.m_guiElement = l_event.m_element;
+      ++(bind-&gt;c);
+    }
+  }
+}</pre></div><p>While iterating <a id="id504" class="indexterm"/>over the events inside bindings, their types are checked. Anything that is not a GUI event is skipped over. If the type of a processed event matches the type inside the binding, additional information is checked in the <code class="literal">EventInfo</code> structure, namely the interface and element names. If those match too, they are recorded as event details and the event count is incremented.</p><p>The last chunk of code that needs attention is the <code class="literal">LoadBindings</code> method. We need to adjust it to support interface and element name-loading from the <code class="literal">keys.cfg</code> file, which should look something like this:</p><div class="informalexample"><pre class="programlisting">Key_X 5:23
+MainMenu_Play 27:MainMenu:Play</pre></div><p>The first line represents a normal type of event, while the second line is a GUI event, which requires two identifiers to be loaded instead of just one. Let's adjust it:</p><div class="informalexample"><pre class="programlisting">void EventManager::LoadBindings(){
+  ...
+  while(!keystream.eof()){
+    std::string keyval;
+    keystream &gt;&gt; keyval;
+    int start = 0;
+    int end = keyval.find(delimiter);
+    if (end == std::string::npos){
+      delete bind;
+      bind = nullptr;
+      break;
+    }
+    EventType type = EventType(
+      stoi(keyval.substr(start, end-start)));
+
+    EventInfo eventInfo;
+    if (type==EventType::GUI_Click ||
+      type==EventType::GUI_Release ||
+      type == EventType::GUI_Hover ||
+      type == EventType::GUI_Leave)
+    {
+      start = end + delimiter.length();
+      end = keyval.find(delimiter, start);
+      std::string window = keyval.substr(start, end - start);
+      std::string element;
+      if (end != std::string::npos){
+        start = end + delimiter.length();
+        end = keyval.length();
+        element = keyval.substr(start, end);
+      }
+      <span class="strong"><strong>char* w = new char[window.length() + 1]; // +1 for \0</strong></span>
+<span class="strong"><strong>      char* e = new char[element.length() + 1];</strong></span>
+
+<span class="strong"><strong>      // Size in bytes is the same as character length.1 char = 1B.</strong></span>
+<span class="strong"><strong>      strcpy_s(w, window.length() + 1, window.c_str());</strong></span>
+<span class="strong"><strong>      strcpy_s(e, element.length() + 1, element.c_str());</strong></span>
+
+<span class="strong"><strong>      eventInfo.m_gui.m_interface = w;</strong></span>
+<span class="strong"><strong>      eventInfo.m_gui.m_element = e;</strong></span>
+    } else {
+      int code = stoi(keyval.substr(end + delimiter.length(),
+        keyval.find(delimiter,end + delimiter.length())));
+      eventInfo.m_code = code;
+    }
+    bind-&gt;BindEvent(type, eventInfo);
+  }
+  ...
+}</pre></div><p>After the <a id="id505" class="indexterm"/>event type is loaded in as usual, it is checked to see if it matches any of the four GUI events. The window and element strings are then read in and copied to the newly allocated memory of <code class="literal">char*</code> via the <code class="literal">std::strcpy</code> method.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note14"/>Note</h3><p>Keep in mind that when memory for <code class="literal">char*</code> types is allocated to match a given string, it also needs an additional space for the null-terminating character at the end.</p></div></div></div>
+<div class="section" title="Re-implementing the main menu"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec98"/>Re-implementing the main menu</h1></div></div></div><p>In<a id="id506" class="indexterm"/> order to demonstrate how much easier it is building interactivity in this way, let's re-construct the main menu, starting by creating its <code class="literal">.interface</code> file:</p><div class="informalexample"><pre class="programlisting">Interface MainMenu MainMenu.style 0 0 Immovable NoTitle "Main menu"
+Element Label Title 100 0 MainMenuTitle.style "Main menu:"
+Element Label Play 0 32 MainMenuLabel.style "PLAY"
+Element Label Credits 0 68 MainMenuLabel.style "CREDITS"
+Element Label Quit 0 104 MainMenuLabel.style "EXIT"</pre></div><p>The interface is set to have zero padding on both axes, be immovable, and have no title bar. All three buttons in this interface, as well as its title, can be represented by labels with different styles. Speaking of which, let's take a look at the style of our main menu interface:</p><div class="informalexample"><pre class="programlisting">State Neutral
+Size 300 150
+TextSize 12
+Font Main
+/State</pre></div><p>As you can see, it only defines the most basic attributes and does not aim to be visually responsive by itself. The button label style, however, is a little different:</p><div class="informalexample"><pre class="programlisting">State Neutral
+Size 300 32
+BgColor 255 0 0 255
+TextColor 255 255 255 255
+TextSize 14
+Font Main
+TextPadding 150 16
+TextOriginCenter
+/State
+
+State Hover
+BgColor 255 100 0 255
+/State
+
+State Clicked
+BgColor 255 150 0 255
+/State</pre></div><p>When its state changes, the label's background color is adjusted as well, unlike the label that represents the title of the main menu:</p><div class="informalexample"><pre class="programlisting">State Neutral
+Size 118 32
+TextColor 255 255 255 255
+TextSize 24
+Font Main
+/State</pre></div><p>With all<a id="id507" class="indexterm"/> of the visual elements out of the way, let's adjust the main menu state to load and maintain this interface:</p><div class="informalexample"><pre class="programlisting">class State_MainMenu : public BaseState{
+public:
+    ...
+    void Play(EventDetails* l_details); // Callback.
+    void Quit(EventDetails* l_details); // Callback.
+};</pre></div><p>In addition to all of the required methods that a state has to implement, we only need two callbacks to handle GUI clicks. This is all set up in the <code class="literal">OnCreate</code> method of the main menu state:</p><div class="informalexample"><pre class="programlisting">void State_MainMenu::OnCreate(){
+  GUI_Manager* gui = m_stateMgr-&gt;GetContext()-&gt;m_guiManager;
+  gui-&gt;LoadInterface(StateType::MainMenu,
+    "MainMenu.interface", "MainMenu");
+  gui-&gt;GetInterface(StateType::MainMenu,
+    "MainMenu")-&gt;SetPosition(sf::Vector2f(250.f, 168.f));
+  EventManager* eMgr = m_stateMgr-&gt;GetContext()-&gt;m_eventManager;
+  eMgr-&gt;AddCallback(StateType::MainMenu,
+    "MainMenu_Play", &amp;State_MainMenu::Play, this);
+  eMgr-&gt;AddCallback(StateType::MainMenu,
+    "MainMenu_Quit", &amp;State_MainMenu::Quit, this);
+}</pre></div><p>Firstly, the main menu interface is loaded from a file and placed on screen. The event manager is then used to set up callbacks for the <span class="strong"><strong>Play</strong></span> and <span class="strong"><strong>Quit</strong></span> button actions. This is already much cleaner than the previous approach.</p><p>Once the state is destroyed, the interface and two callbacks must be removed, as shown here:</p><div class="informalexample"><pre class="programlisting">void State_MainMenu::OnDestroy(){
+  m_stateMgr-&gt;GetContext()-&gt;m_guiManager-&gt;
+    RemoveInterface(StateType::MainMenu, "MainMenu");
+  EventManager* eMgr = m_stateMgr-&gt;GetContext()-&gt;m_eventManager;
+  eMgr-&gt;RemoveCallback(StateType::MainMenu, "MainMenu_Play");
+  eMgr-&gt;RemoveCallback(StateType::MainMenu, "MainMenu_Quit");
+}</pre></div><p>The text of the <span class="strong"><strong>Play</strong></span> button must be changed if a <code class="literal">GAME</code> state exists:</p><div class="informalexample"><pre class="programlisting">void State_MainMenu::Activate(){
+  auto&amp; play = *m_stateMgr-&gt;GetContext()-&gt;m_guiManager-&gt;
+    GetInterface(StateType::MainMenu, "MainMenu")-&gt;
+    GetElement("Play");
+  if (m_stateMgr-&gt;HasState(StateType::Game)){
+    // Resume
+    play.SetText("Resume");
+  } else {
+    // Play
+    play.SetText("Play");
+  }
+}</pre></div><p>That leaves<a id="id508" class="indexterm"/> us with our two callbacks, which look like this:</p><div class="informalexample"><pre class="programlisting">void State_MainMenu::Play(EventDetails* l_details){
+    m_stateMgr-&gt;SwitchTo(StateType::Game);
+}
+void State_MainMenu::Quit(EventDetails* l_details){
+    m_stateMgr-&gt;GetContext()-&gt;m_wind-&gt;Close();
+}</pre></div><p>This illustrates perfectly how easy it is to use our new GUI with an improved event manager for fast and responsive results. The main menu was created with roughly 20 lines of code, or fewer, and looks like this:</p><div class="mediaobject"><img src="graphics/B04284_11_02.jpg" alt="Re-implementing the main menu"/></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch11lvl1sec99"/>Summary</h1></div></div></div><p>At the beginning of <a class="link" href="ch10.html" title="Chapter 10. Can I Click This? – GUI Fundamentals">Chapter 10</a>, <span class="emphasis"><em>Can I Click This? – GUI Fundamentals</em></span>, our main goal was to achieve a simple yet powerful means of interfacing with our own application. Throughout this chapter, additional topics such as interface and event management, creation and integration of new element types, and expansion of existing code were covered in depth. The effectiveness of all the work that was put into the GUI cannot be measured in any other way but success. We are now left with a system that is capable of producing efficient, responsive, and fast results with the minimum amount of effort and code. Furthermore, you should now have the skills necessary to build even more element types that will enable this system to do amazing things.</p><p>In the next chapter, we're going to be covering the management and usage of sound and music elements in SFML. See you there!</p></div></body></html>
