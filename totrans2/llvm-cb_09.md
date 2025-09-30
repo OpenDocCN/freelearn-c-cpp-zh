@@ -1,0 +1,396 @@
+# Chapter 9. Using LLVM for Various Useful Projects
+
+In this chapter, we will cover the following recipes:
+
+*   Exception handling in LLVM
+*   Using sanitizers
+*   Writing the garbage collector with LLVM
+*   Converting LLVM IR to JavaScript
+*   Using the Clang Static Analyzer
+*   Using bugpoint
+*   Using LLDB
+*   Using LLVM utility passes
+
+# Introduction
+
+Until now, you have learned how to write the frontend of a compiler, write optimizations and create a backend. In this chapter, the last of this book, we will look into some other features that the LLVM infrastructure provides and how we can use them in our projects. We won't be diving very deep into the details of the topics in this chapter. The main point is to let you know about these important tools and techniques, which are hot points in LLVM.
+
+# Exception handling in LLVM
+
+In this recipe, we will look into the exception handling infrastructure of LLVM. We will discuss how the exception handling information looks in the IR and the intrinsic functions provided by LLVM for exception handling.
+
+## Getting ready...
+
+You must understand how exception handling works normally and the concepts of `try`, `catch` and `throw` and so on. You must also have Clang and LLVM installed in your path.
+
+## How to do it…
+
+We will take an example to describe how exception handling works in LLVM:
+
+1.  Open a file to write down the source code, and enter the source code to test exception handling:
+
+    [PRE0]
+
+2.  Generate the bitcode file using the following command:
+
+    [PRE1]
+
+3.  To view the IR on the screen, run the following command, which will give you the output as shown:
+
+    [PRE2]
+
+## How it works…
+
+In LLVM, if an exception is thrown, the runtime tries its best to find a handler. It tries to find an exception frame corresponding to the function where the exception was thrown. This exception frame contains a reference to the exception table, which contains the implementation—how to handle the exception when a programming language supports exception handling. When the language does not support exception handling, the information on how to unwind the current activation and restore the state of the prior activation is found in this exception frame.
+
+Let's look at the preceding example to see how to generate exception handling code with LLVM.
+
+The `try` block is translated to invoke instruction in LLVM:
+
+[PRE3]
+
+The preceding line tells the compiler how it should handle an exception if the `throw_exception` function throws it. If no exception is thrown, then normal execution will take place through the `%5` label. But if an exception is thrown, it will branch into the `%6` label, which is the landing pad. This corresponds roughly to the `catch` portion of a `try`/`catch` sequence. When execution resumes at a landing pad, it receives an exception structure and a selector value corresponding to the type of exception thrown. The selector is then used to determine which `catch` function should actually process the exception. In this case, it looks something like this:
+
+[PRE4]
+
+The `%7` in the preceding code snippet represents the information describing the exception. The `{ i8*, i32 }` part of the code describes the type of information. The `i8*` part of the code represents the exception pointer part, and `i32` is the selector value. In this case, we have only one selector value, as the `catch` function accepts all types of exception objects thrown. The `@__gxx_personality_v0` function is the `personality` function. It receives the context of the exception, an exception structure containing the exception object type and value, and a reference to the exception table for the current function. The personality function for the current compile unit is specified in a common exception frame. In our case, the `@__gxx_personality_v0` function represents the fact that we are dealing with C++ exceptions.
+
+So, the `%8 = extractvalue { i8*, i32 } %7, 0` will represent the exception object, and `%9 = extractvalue { i8*, i32 } %7, 1` represents the selector value.
+
+The following are some noteworthy IR functions:
+
+*   `__cxa_throw`: This is a function used to throw an exception
+*   `__cxa_begin_catch`: This takes an exception structure reference as an argument and returns the value of the exception object
+*   `__cxa_end_catch`: This locates the most recently caught exception and decrements its handler count, removing the exception from the caught state if this counter goes down to zero
+
+## See also
+
+*   To understand the exception format used by LLVM, go to [http://llvm.org/docs/ExceptionHandling.html#llvm-code-generation](http://llvm.org/docs/ExceptionHandling.html#llvm-code-generation).
+
+# Using sanitizers
+
+You might have used tools such as **Valgrind** for memory debugging. LLVM also provides us with tools for memory debugging, such as the address sanitizer, memory sanitizer, and so on. These tools are very fast compared to Valgrind, even though they are not as mature as Valgrind. Most of these tools are in their experimental stage, so if you want, you can contribute to the open source development of these tools.
+
+## Getting ready
+
+To make use of these sanitizers, we need to check out the code for `compiler-rt` from the LLVM SVN:
+
+[PRE5]
+
+Build LLVM as we did in [Chapter 1](part0015.xhtml#aid-E9OE1 "Chapter 1. LLVM Design and Use"), *LLVM Design and Use*. By doing so, we get the runtime libraries required.
+
+## How to do it…
+
+Now, we will test the address sanitizer on a test code.
+
+1.  Write a test case to check the address sanitizer:
+
+    [PRE6]
+
+2.  Compile the test code using the `fsanitize=address` `command-line argument` for using the address sanitizer:
+
+    [PRE7]
+
+3.  Generate the output of running the address sanitizer using the following command:
+
+    [PRE8]
+
+    Here's the output:
+
+    ![How to do it…](img/image00268.jpeg)
+
+## How it works…
+
+The LLVM address sanitizer works on the principle of code instrumentation. The tool consists of a compiler instrumentation module and a runtime library. The code instrumentation part is done by the pass of LLVM, which runs on passing the `fsanitize=address` command-line argument, as is done in the preceding example. The runtime library replaces the `malloc` and `free` functions in the code with custom-made code. Before we go ahead and discuss the details of how code instrumentation is done, here we must know that the virtual address space is divided into two disjointed classes: the main application memory, which is used by the regular application code; and the shadow memory, which contains the shadow values (or metadata).
+
+The shadow memory and the main application memory are linked to each other. Poisoning a byte in the main memory means writing a special value into the corresponding shadow memory.
+
+Let's come back to the address sanitizer; the memory around the regions allocated by the `malloc` function is poisoned. The memory freed by the `free` function is placed in quarantine and is also poisoned. Every memory access in the program is transformed by the compiler in the following way.
+
+At first, it is like this:
+
+[PRE9]
+
+After transformation, it becomes the following:
+
+[PRE10]
+
+This means that if it finds any invalid access to this memory, it reports an error.
+
+In the preceding example, we wrote a piece of code for a buffer overrun, accessing an array that is out of bounds. Here, the instrumentation of code is done on the address just before and after the array. So, when we access the array beyond its upper bound, we try accessing the red zone. Hence, the address sanitizer gives us a stack buffer overflow report.
+
+## See also…
+
+*   You can check out the documentation page at [http://clang.llvm.org/docs/AddressSanitizer.html](http://clang.llvm.org/docs/AddressSanitizer.html) for more information.
+*   You can also check out the other sanitizers in LLVM using the following links:
+
+    [http://clang.llvm.org/docs/MemorySanitizer.html](http://clang.llvm.org/docs/MemorySanitizer.html)
+
+    [http://clang.llvm.org/docs/ThreadSanitizer.html](http://clang.llvm.org/docs/ThreadSanitizer.html)
+
+    [https://code.google.com/p/address-sanitizer/wiki/LeakSanitizer](https://code.google.com/p/address-sanitizer/wiki/LeakSanitizer)
+
+# Writing the garbage collector with LLVM
+
+Garbage collection is a technique of memory management where the collector tries to reclaim the memory occupied by objects that are no longer in use. This frees the programmer from of being required to keep track of the lifetimes of heap objects.
+
+In this recipe, we will see how to integrate LLVM into a compiler for a language that supports garbage collection. LLVM does not itself provide a garbage collector, but provides a framework for describing the garbage collector's requirements to the compiler.
+
+## Getting ready
+
+LLVM must be built and installed.
+
+## How to do it…
+
+We will see in the following recipe how the LLVM IR code, with garbage collection intrinsic functions, is converted to the corresponding machine assembly code:
+
+1.  Write the test code:
+
+    [PRE11]
+
+2.  Use the `llc` tool to generate the assembly code and view the assembly code using the `cat` command:
+
+    [PRE12]
+
+## How it works…
+
+In the preceding code, in the main function, we are using the built-in GC collector strategy called `shadow-stack`, which maintains a linked list of stack `roots()`:
+
+[PRE13]
+
+It mirrors the machine stack. We can provide any other technique, if we want to, by specifying its name after the function name in this format, `gc "strategy name"`. This strategy name can either be the built-in strategy or our own custom strategy for garbage collection.
+
+To identify the roots, that is, the references to the heap object, LLVM makes use of the intrinsic function `@llvm.gcroot` or `the .statepoint` relocation sequence. The `llvm.gcroot` intrinsic function informs LLVM that a stack variable references an object on the heap and it needs to be tracked by the collector. In the preceding code, the following line is the call to the `llvm.gcroot` function to mark the `%tmp.1` stack variable:
+
+[PRE14]
+
+The `llvm.gcwrite` function is a write barrier. This means that whenever a program on which garbage collection is being done, it writes a pointer to a field of a heap object, the collector is informed about that. The `llvm.gcread` intrinsic function is also present, which informs the garbage collector when the program reads a pointer to a field of a heap object. The following line of code writes the `%A.1` value to the `%B.upgrd` heap object:
+
+[PRE15]
+
+### Note
+
+Note that LLVM does not provide a garbage collector. It should be a part of the runtime library of the language. The preceding explanation deals with the infrastructure that LLVM provides for describing garbage collector requirements to the compiler.
+
+## See also
+
+*   See [http://llvm.org/docs/GarbageCollection.html](http://llvm.org/docs/GarbageCollection.html) for the documentation on garbage collection.
+*   Also, check out [http://llvm.org/docs/Statepoints.html](http://llvm.org/docs/Statepoints.html) for an alternative method of garbage collection.
+
+# Converting LLVM IR to JavaScript
+
+In this recipe, we will briefly discuss how we can convert LLVM IR to JavaScript.
+
+## Getting ready
+
+To convert IR to JavaScript, perform the following steps:
+
+1.  We will make use of the `emscripten` LLVM to JavaScript compiler. You need to download the SDK provided at [https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html](https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html) . You can also build it from the source code, but just for experimenting, you can use the SDK that comes with the toolchain.
+2.  After downloading the SDK, extract it to a location and go to the root folder of the download.
+3.  Install the `default-jre`, `nodejs`, `cmake`, `build-essential`, and `git` dependencies.
+4.  Execute the following commands to install the SDK:
+
+    [PRE16]
+
+5.  See the `~/emscripten` script to check whether it has the correct values, and if not, update it accordingly.
+
+## How to do it…
+
+Perform the following steps:
+
+1.  Write the test code for the conversion:
+
+    [PRE17]
+
+2.  Convert the code to the LLVM IR:
+
+    [PRE18]
+
+3.  Now use the `emcc` executable located in the `emsdk_portable/emscripten/master` directory to take this `.ll` file as the input and convert it into JavaScript:
+
+    [PRE19]
+
+4.  The output file generated is the `a.out.js` file. We can execute this file using the following command:
+
+    [PRE20]
+
+## See more
+
+*   To know more details, visit [https://github.com/kripken/emscripten](https://github.com/kripken/emscripten)
+
+# Using the Clang Static Analyzer
+
+In this recipe, you will learn about the static analysis of code, which is carried out by the **Clang Static Analyzer**. It is built on top of Clang and LLVM. The static analysis engine used by the Clang Static Analyzer is a Clang library, and it has the capability to be reused in different contexts by different clients.
+
+We will take the example of the divide-by-zero defect and show you how the Clang Static Analyzer handles this defect.
+
+## Getting ready
+
+You need to build and install LLVM along with Clang.
+
+## How to do it…
+
+Perform the following steps:
+
+1.  Create a test file and write the test code in it:
+
+    [PRE21]
+
+2.  Run the Clang Static Analyzer by passing the command-line options shown in the following command, and get the output on the screen:
+
+    [PRE22]
+
+## How it works…
+
+The static analyzer core performs the symbolic execution of the program. The input values are represented by symbolic values. The values of the expressions are calculated by the analyzer using the input symbol and the path. The execution of the code is path-sensitive, and hence every possible path is analyzed.
+
+While executing, the execution traces are represented by an exploded graph. Each node of this `ExplodedGraph` is called `ExplodedNode`. It consists of a `ProgramState` object, which represents the abstract state of the program; and a `ProgramPoint` object, which represents the corresponding location in the program.
+
+For each type of bug, there is an associated checker. Each of these checkers is linked to the core in a way by which they contribute to the `ProgramState` construction. Each time the analyzer engine explores a new statement, it notifies each checker registered to listen for that statement, giving it an opportunity to either report a bug or modify the state.
+
+Each checker registers for some events and callbacks such as `PreCall` (prior to the call of the function), `DeadSymbols` (when a symbol goes dead), and so on. They are notified in the case of the requested events, and they implement the action to be taken for such events.
+
+In this recipe, we looked at a divide-by-zero checker, which reports when a divide-by-zero condition occurs. The checker, in this case, registers for the `PreStmt` callback, before a statement gets executed. It then checks the operator of the next statement to be executed, and if it finds a division operator, it looks for a zero value. If it finds such a possible value, it reports a bug.
+
+## See also
+
+*   For more detailed information about the static analyzer and checkers, visit [http://clang-analyzer.llvm.org/checker_dev_manual.html](http://clang-analyzer.llvm.org/checker_dev_manual.html)
+
+# Using bugpoint
+
+In this recipe, you will learn about a useful tool provided by LLVM infrastructure, known as bugpoint. Bugpoint allows us to narrow down the source of problems in the LLVM's tools and passes. It is helpful in debugging optimizer crashes, miscompilations by optimizers, or bad native code generation. Using this, we can get a small test case for our problem and work on that.
+
+## Getting ready
+
+You need to build and install LLVM.
+
+## How to do it…
+
+Perform the following steps:
+
+1.  Write the test cases using the bugpoint tool:
+
+    [PRE23]
+
+2.  Use bugpoint in this test case to view the results :
+
+    [PRE24]
+
+3.  Now, to see the reduced test case, use the `llvm-dis` command to convert the `crash-narrowfunctiontest.ll.tmp-reduced-simplified.bc` file to the `.ll` form. Then, view the reduced test case:
+
+    [PRE25]
+
+## How it works…
+
+The bugpoint tool runs all the passes specified in the command line on the test program. If any of these passes crash, bugpoint starts the crash debugger. The crash debugger tries to reduce the list of passes that cause this crash. Then it tries to removes unnecessary functions. Once able to reduce the test program to a single function, it tries to deletes the edges of the control flow graph to reduce the size of the function. After this, it proceeds to remove the individual LLVM instructions whose absence does not impact the failure. In the end, bugpoint gives the output showing which pass is causing the crash and a simplified reduced test case.
+
+If the `–output` option wasn't specified, then bugpoint runs the program on a `"safe"` backend and generated reference output. It then compares the output generated by the selected code generator. If there is a crash, it runs the crash debugger as explained in the previous paragraph. Other than this, if the output generated by the code generator differs from the reference output, it starts the code generator debugger, which reduces the test case through techniques similar to those of the crash debugger.
+
+Finally, if the output generated by the code generator and the reference output are the same, then bugpoint runs all the LLVM passes and checks the output against the reference output. If there is any mismatch, then it runs the miscompilation debugger. The miscompilation debugger works by splitting the test program into two pieces. It runs the optimizations as specified on one piece, then links the two pieces back together, and finally executes the result. It tries to narrow down to the pass that is causing miscompilation from the list of passes, and then pinpoints the portion of the test program that is being miscompiled. It outputs the reduced case that is causing the miscompilation.
+
+In the preceding test case, bugpoint checks for the crash in all functions, and ends up knowing that the problem lies in the test function. It also tries to reduce the instructions within the function. The output for every stage is displayed on the terminal, which is self-explanatory. In the end, it produces a simplified reduced test case in the bitcode format, which we can convert to the LLVM IR and get the reduced test case.
+
+## See also
+
+*   To read more on bugpoint, go to [http://llvm.org/docs/Bugpoint.html](http://llvm.org/docs/Bugpoint.html)
+
+# Using LLDB
+
+In this recipe, you will learn how to use the debugger known as `LLDB`, provided by LLVM. LLDB is a next-generation, high-performance debugger. It is essentially built as a set of reusable components that have advantages over the existing libraries in the larger LLVM project. You might find it quite similar to the `gdb` debugging tool.
+
+## Getting ready
+
+We will need the following before working with LLDB:
+
+1.  To use LLDB, we need to check out the LLDB source code in the `llvm/tools` folder:
+
+    [PRE26]
+
+2.  Build and install LLVM, which will also build LLDB simultaneously.
+
+## How to do it…
+
+Perform the following steps:
+
+1.  Write a test case for a simple example using LLDB:
+
+    [PRE27]
+
+2.  Compile the code using Clang with the `–g` flag to generate the debug information:
+
+    [PRE28]
+
+3.  Debug the output file generated in the previous file with LLDB. To load the output file, we need to pass its name to LLDB:
+
+    [PRE29]
+
+4.  Set a breakpoint in the main function:
+
+    [PRE30]
+
+5.  To look at the list of breakpoints set, use the following command:
+
+    [PRE31]
+
+6.  Add a command to be executed when a breakpoint is hit. Here, let's add the back trace `bt` command when the breakpoint on the main function is hit:
+
+    [PRE32]
+
+7.  Run the executable using the following command. This will hit the breakpoint on the `main` function and execute the back trace(`bt`) command, as set in the earlier step:
+
+    [PRE33]
+
+8.  To set `watchpoint` on the global variable, use the following command:
+
+    [PRE34]
+
+9.  To stop the execution when the value of `globalvar` becomes `3`, use the `watch` command:
+
+    [PRE35]
+
+10.  To continue execution after the main function, use the following command. The executable will stop when the value of `globalvar` becomes `3`, inside the `func2` function:
+
+    [PRE36]
+
+11.  To continue the execution of the executable use the `thread continue` command, which will execute till the end as no other breakpoints are met:
+
+    [PRE37]
+
+12.  To exit LLDB, use the following command:
+
+    [PRE38]
+
+## See also
+
+*   Check out [http://lldb.llvm.org/tutorial.html](http://lldb.llvm.org/tutorial.html) for an exhaustive list of LLDB commands.
+
+# Using LLVM utility passes
+
+In this recipe, you will learn about LLVM's utility passes. As the name signifies, they are of much utility to users who want to understand certain things about LLVM that are not easy to understand by going through code. We will look into two utility passes that represent the CFG of a program.
+
+## Getting ready
+
+You need to build and install LLVM, and install the `graphviz` tool. You can download `graphviz` from [http://www.graphviz.org/Download.php](http://www.graphviz.org/Download.php), or install it from your machine's package manager, if it is in the list of available packages.
+
+## How to do it...
+
+Perform the following steps:
+
+1.  Write the test code required for running the utility passes. This test code consists of `if` blocks, it will create a new edge in the CFG:
+
+    [PRE39]
+
+2.  Run the `view-cfg-only` pass to view the CFG of a function without the function body:
+
+    [PRE40]
+
+3.  Now, view the `dot` file formed using the `graphviz` tool:![How to do it...](img/image00269.jpeg)
+4.  Run the `view-dom` pass to view the **Dominator tree** of a function:
+
+    [PRE41]
+
+5.  View the `dot` file formed using the `graphviz` tool:![How to do it...](img/image00270.jpeg)
+
+## See also
+
+*   A list of the other utility passes is available at [http://llvm.org/docs/Passes.html#utility-passes](http://llvm.org/docs/Passes.html#utility-passes)

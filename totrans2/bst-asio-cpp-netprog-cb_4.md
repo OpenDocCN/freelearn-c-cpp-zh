@@ -1,0 +1,419 @@
+# Chapter 4. Implementing Server Applications
+
+In this chapter, we will cover the following topics:
+
+*   Implementing a synchronous iterative TCP server
+*   Implementing a synchronous parallel TCP server
+*   Implementing an asynchronous TCP server
+
+# Introduction
+
+A **server** is a part of a distributed application that provides a service or services that are consumed by other parts of this application—**clients**. Clients communicate with the server in order to consume services provided by it.
+
+Usually, a server application plays a passive role in the client-server communication process. During start-up, a server application attaches to a particular well-known port (meaning, it is known to the potential clients or at least it can be obtained by the clients at runtime from some well-known registry) on the host machine. After this, it passively waits for incoming requests arriving to that port from the clients. When the request arrives, the server processes it (serves) by performing actions according to the specification of the service it provides.
+
+Depending on the services that particular server provides, the request processing may mean a different thing. An HTTP server, for example, would usually read the content of a file specified in the request message and send it back to the client. A proxy server would simply redirect a client's request to a different server for the actual processing (or maybe for another round of redirection). Other more specific servers may provide services that perform complex computations on the data provided by the client in the request and return results of such computations back to the client.
+
+Not all servers play a passive role. Some server applications may send messages to the clients without waiting for the clients to first send a request. Usually, such servers act as *notifiers*, and they *notify* clients of some interesting events. In this case, clients may not need to send any data to the server at all. Instead, they passively wait for notifications from the server and having received one, they react accordingly. Such a communication model is called *push-style communication*. This model is gaining popularity in modern web applications, providing additional flexibility.
+
+So, the first way to classify a server application is by the function (or functions) they perform or a service (or services) they provide to their clients.
+
+Another obvious classification dimension is the transport layer protocol used by the server to communicate with the clients.
+
+TCP protocol is very popular today and many general purpose server applications use it for communication. Other, more specific servers may use UDP protocol. Hybrid server applications that provide their services through both TCP and UDP protocols at the same time fall under the third category and are called **multiprotocol servers**. In this chapter, we will consider several types of TCP servers.
+
+One more characteristic of a server is a manner in which it serves clients. An **iterative server** serves clients in one-by-one fashion, meaning that it does not start serving the next client before it completes serving the one it is currently serving. A **parallel server** can serve multiple clients in parallel. On a single-processor computer, a parallel server interleaves different stages of communication with several clients running them on a single processor. For example, having connected to one client and while waiting for the request message from it, the server can switch to connecting the second client, or read the request from the third one; after this, it can switch back to the first client to continue serving it. Such parallelism is called pseudo parallelism, as a processor is merely switching between several clients, but does not serve them truly simultaneously, which is impossible with a single processor.
+
+On multiprocessor computers, the true parallelism is possible, when a server serves more than one client at the same time using different hardware threads for each client.
+
+Iterative servers are relatively simple to implement and can be used when the request rate is low enough so that the server has time to finish processing one request before the next one arrives. It is clear that iterative servers are not scalable; adding more processors to the computer running such a server will not increase the server's throughput. Parallel servers, on the other hand, can handle higher request rates; if properly implemented, they are scalable. A truly parallel server running on a multiprocessor computer can handle higher request rates than the same server running on a single processor computer.
+
+Another way to classify server applications, from an implementation's point of view, is according to whether the server is synchronous or asynchronous. A **synchronous server** uses synchronous socket API calls that block the thread of execution until the requested operation is completed, or else an error occurs. Thus, a typical synchronous TCP server would use methods such as `asio::ip::tcp::acceptor::accept()` to accept the client connection request, `asio::ip::tcp::socket::read_some()` to receive the request message from the client, and then `asio::ip::tcp::socket::write_some()` to send the response message back to the client. All three methods are blocking. They block the thread of execution until the requested operation is completed, or an error occurs, which makes the server using these operations **synchronous**.
+
+An **asynchronous server application**, as opposed to the synchronous one, uses asynchronous socket API calls. For example, an asynchronous TCP server may use the `asio::ip::tcp::acceptor::async_accept()` method to asynchronously accept the client connection request, the `asio::ip::tcp::socket::async_read_some()` method or the `asio::async_read()` free function to asynchronously receive the request message from the client, and then the `asio::ip::tcp::socket::async_write_some()` method or the `asio::async_write()` free function to asynchronously send a response message back to the client.
+
+Because the structure of a synchronous server application significantly differs from that of an asynchronous one, the decision as to which approach to apply should be made early at the server application design stage, and this decision should be based on the careful analysis of the application requirements. Besides, the possible application evolution paths and new requirements that may appear in the future should be considered and taken into account.
+
+As usually, each approach has its advantages and disadvantages. When a synchronous approach yields better results in one situation, it may be absolutely unacceptable in another; in this case, an asynchronous approach might be the right choice. Let's compare two approaches to better understand the strengths and weaknesses of each of them.
+
+The main advantage of a synchronous approach as compared to an asynchronous one is its *simplicity*. A synchronous server is significantly easier to implement, debug, and support than a functionally equal asynchronous one. Asynchronous servers are more complex due to the fact that asynchronous operations used by them complete in other places in code than they are initiated. Usually, this requires allocating additional data structures in the free memory to keep the context of the request, implementing callback functions, thread synchronization, and other extras that may make the application structure quite complex and error-prone. Most of these extras are not required in synchronous servers. Besides, an asynchronous approach brings in additional computational and memory overheads, which may make it less efficient than a synchronous one in some situations.
+
+However, a synchronous approach has some functional limitations, which often makes it unacceptable. These limitations consist of the inability to cancel a synchronous operation after it has started, or to assign it a timeout so that it gets interrupted if it is running for too long. As opposed to synchronous operations, asynchronous ones can be canceled at any moment after the operation has been initiated.
+
+The fact that synchronous operations cannot be canceled significantly limits the area of the application of synchronous servers. Publicly available servers that use synchronous operations are vulnerable to the attacks of a culprit. If such a server is single-threaded, a single malicious client is enough to block the server, not allowing other clients to communicate with it. Malicious client used by a culprit connects to the server and does not send any data to it, while the latter is blocked in one of the synchronous reading functions or methods, which does not allow it to serve other clients.
+
+Such servers would usually be used in safe and protected environments in private networks, or as an internal part of an application running on a single computer using such a server for interprocess communication. Another possible application area of synchronous servers is, of course, the implementation of throwaway prototypes.
+
+Besides the difference in the structural complexity and functionality described above, the two approaches differ in the efficiency and scalability when it comes to serving large numbers of clients sending requests at high rates. Servers using asynchronous operations are more efficient and scalable than synchronous servers especially when they run on multiprocessor computers with operating systems natively supporting an asynchronous network I/O.
+
+## The sample protocol
+
+In this chapter, we are going to consider three recipes describing how to implement the synchronous iterative TCP server, synchronous parallel TCP server, and asynchronous TCP server. In all the recipes, it is assumed that the server communicates with clients using the following intentionally trivialized (for the sake of clarity) application layer protocol.
+
+A server application accepts request messages represented as ASCII strings containing a sequence of symbols ending with a new-line ASCII symbol. All the symbols coming after the new-line symbol are ignored by the server.
+
+Having received a request, the server performs some dummy operations and replies with a constant message as follows:
+
+[PRE0]
+
+Such a trivial protocol allows us to concentrate on the implementation of the *server* and not the *service* provided by it.
+
+# Implementing a synchronous iterative TCP server
+
+A synchronous iterative TCP server is a part of a distributed application that satisfies the following criteria:
+
+*   Acts as a server in the client-server communication model
+*   Communicates with client applications over TCP protocol
+*   Uses I/O and control operations that block the thread of execution until the corresponding operation completes, or an error occurs
+*   Handles clients in a serial, one-by-one fashion
+
+A typical synchronous iterative TCP server works according to the following algorithm:
+
+1.  Allocate an acceptor socket and bind it to a particular TCP port.
+2.  Run a loop until the server is stopped:
+
+    1.  Wait for the connection request from a client.
+    2.  Accept the client's connection request when one arrives.
+    3.  Wait for the request message from the client.
+    4.  Read the request message.
+    5.  Process the request.
+    6.  Send the response message to the client.
+    7.  Close the connection with the client and deallocate the socket.
+
+This recipe demonstrates how to implement a synchronous iterative TCP server application with Boost.Asio.
+
+## How to do it…
+
+We begin implementing our server application by defining a class responsible for handling a single client by reading the request message, processing it, and then sending back the response message. This class represents a single service provided by the server application and, therefore, we will give it a name `Service`:
+
+[PRE1]
+
+To keep things simple, in our sample server application, we implement a dummy service, which only emulates the execution of certain operations. The request processing emulation consists of performing many increment operations to emulate operations that intensively consume CPU and then putting the thread of control to sleep for some time to emulate such operations as reading a file or communicating with a peripheral device synchronously.
+
+### Note
+
+The `Service` class is quite simple and contains only one method. However, classes representing services in real-world applications would usually be more complex and richer in functionality, though the main idea would stay the same.
+
+Next, we define another class that represents a high-level *acceptor* concept (as compared to the low-level concept represented by the `asio::ip::tcp::acceptor` class). This class is responsible for accepting connection requests arriving from clients and instantiating objects of the `Service` class, which will provide the service to the connected clients. Let's name this class correspondingly—`Acceptor`:
+
+[PRE2]
+
+This class owns an object of the `asio::ip::tcp::acceptor` class named `m_acceptor`, which is used to synchronously accept incoming connection requests.
+
+Also, we define a class that represents the server itself. The class is named correspondingly—`Server`:
+
+[PRE3]
+
+This class provides an interface comprised by two methods—`Start()` and `Stop()` that are used to start and stop the server correspondingly. The loop runs in a separate tread spawned by the `Start()` method. The `Start()` method is nonblocking, while the `Stop()` method blocks the caller thread until the server is stopped.
+
+Thorough inspection of the `Server` class reveals one serious drawback of the implementation of the server—the `Stop()` method may never return under some circumstances. The discussion of this problem and the ways to resolve it is provided later in this recipe.
+
+Eventually, we implement the application entry point function `main()` that demonstrates how to use the `Server` class:
+
+[PRE4]
+
+## How it works…
+
+The sample server application consists of four components—the `Server`, `Acceptor`, and `Service` classes and the application entry point function `main()`. Let's consider how each of these components work.
+
+### The Service class
+
+The `Service` class is the key functional component in the whole application. While other components are infrastructural in their purpose, this class implements the actual function (or service) provided by the server to the clients.
+
+This class is simple and consists of a single `HandleClient()` method. This method accepts an object representing a socket connected to the client as its input argument and handles that particular client.
+
+In our sample, such handling is trivial. Firstly, the request message is synchronously read from the socket until a new line ASCII symbol `\n` is encountered. Then, the request is processed. In our case, we emulate processing by running a dummy loop performing one million increment operations and then putting the thread to sleep for half a second. After this, the response message is prepared and synchronously sent back to the client.
+
+The exceptions that may be thrown by Boost.Asio I/O functions and methods are caught and handled in the `HandleClient()` method and are not propagated to the method caller so that if the handling of one client fails, the server continues working.
+
+Depending on the needs of a particular application, the `Service` class can be extended and enriched with a functionality to provide the needed service.
+
+### The Acceptor class
+
+The `Acceptor` class is a part of the server application infrastructure. When constructed, it instantiates an acceptor socket object `m_acceptor` and calls its `listen()` method to start listening for connection requests from clients.
+
+This class exposes a single public method named `Accept()`. This method when called, instantiates an object of the `asio::ip::tcp::socket` class named `sock`, representing an active socket, and tries to accept a connection request. If there are pending connection requests available, the connection request is processed and the active socket `sock` is connected to the new client. Otherwise, this method blocks until a new connection request arrives.
+
+Then, an instance of the `Service` object is created and its `HandleClient()` method is called. The `sock` object connected to the client is passed to this method. The `HandleClient()` method blocks until communication with the client and request processing completes, or an error occurs. When the `HandleClient()` method returns, the `Accept()` method of the `Acceptor` class returns too. Now, *the acceptor* is ready to accept the next connection request.
+
+One execution of the class's `Accept()`method performs the full handling cycle of one client.
+
+### The Server class
+
+The `Server` class, as its name suggests, represents a *server* that can be controlled through class's interface methods `Start()`and `Stop()`.
+
+The `Start()` method initiates the start-up of the server. It spawns a new thread, which starts its execution from the `Server` class's `Run()` private method and returns. The `Run()` method accepts a single argument named `port_num` specifying the number of protocol port on which the acceptor socket should listen for incoming connection requests. When invoked, the method first instantiates an object of the `Acceptor` class and then starts a loop in which the `Accept()` method of the `Acceptor` object is called. The loop terminates when the value of the `m_stop` atomic variable becomes `true`, which happens when the `Stop()` method is invoked on the corresponding instance of the `Server` class.
+
+The `Stop()` method synchronously stops the server. It does not return until the loop started in the `Run()` method is interrupted and the thread spawned by the `Start()` method finishes its execution. To interrupt the loop, the value of the atomic variable `m_stop` is set to `true`. After this, the `Stop()` method calls the `join()` method on the `m_thread` object representing the thread running the loop in the `Run()` method to wait until it exits the loop and finishes its execution.
+
+The presented implementation has a significant drawback consisting in the fact that the server may not be stopped immediately. More than that, there is a possibility that the server will not be stopped at all and the `Stop()` method will block its caller forever. The root cause of the problem is that the server has a hard dependency on the behavior of the clients.
+
+If the `Stop()` method is called and the value of the atomic variable `m_stop` is set to `true` just before the loop termination condition in the `Run()` method is checked, the server is stopped almost immediately and no problem appears. However, if the `Stop()` method is called while the server's thread is blocked in the `acc.Accept()` method waiting for the next connection request from the client, or in one of the synchronous I/O operations inside the `Service` class waiting for the request message from the connected client, or for the client to receive the response message, the server cannot be stopped until these blocking operations are completed. Hence, for example, if at the moment, when the `Stop()` method is called, there are no pending connection requests, the server will not be stopped until a new client connects and gets handled, which in general case may never happen and will lead to the server being blocked forever.
+
+Later, in this section, we will consider the possible ways to tackle this drawback.
+
+### The main() entry point function
+
+This function demonstrates the usage of the server. It creates an instance of the `Server` class named `srv` and calls its `Start()` method to start the server. Because the server is represented as an active object running in its own thread of control, the `Start()` method returns immediately and the thread running method `main()` continues execution. To let the server run for some time, the main thread is put to sleep for 60 seconds. After the main thread wakes up, it calls the `Stop()` method on the `srv` object to stop the server. When the `Stop()` method returns, the `main()` function returns too and our sample application exits.
+
+Of course, in the real application, the server would be stopped as a reaction to a user input or any other relevant event, rather than after dummy 60 seconds, after the server's start-up run out.
+
+### Eliminating the drawbacks
+
+As it has already been mentioned, the presented implementation has two drawbacks that significantly limit its applicability. The first problem is that it may be impossible to stop the server if the `Stop()` method is called while the server thread is blocked waiting for the incoming connection request, no connection requests arrive. The second problem is that the server can be easily hung by a single malicious (or buggy) client, making it unavailable to other clients. To hang the server, the client application can simply connect to the server and never send any request to it, which will make the server application hang in the blocking input operation forever.
+
+The root cause of both the issues is the usage of blocking operations in the server (which is natural for synchronous servers). A reasonable and simple solution to both these issues would be to assign a timeout to the blocking operations, which would guarantee that the server would unblock periodically to check whether the stop command has been issued and also to forcefully discard clients that do not send requests for a long period of time. However, Boost.Asio does not provide a way to cancel synchronous operations, or to assign timeouts to them. Therefore, we should try to find other ways to make our synchronous server more responsive and stable.
+
+Let's consider ways to tackle each of the two drawbacks.
+
+#### Stopping a server in reasonable amount of time
+
+As the only legitimate way to make the `accept()`synchronous method of an acceptor socket unblock when there are no pending connection requests is to send a dummy connection request to the port on which the acceptor is listening, we can do the following trick to solve our problem.
+
+In the `Server` class's `Stop()` method, after setting the value of the `m_stop` atomic variable to `true`, we can create a dummy active socket, connect it to this same server, and send some dummy request. This will guarantee that the server thread will leave the `accept()` method of the acceptor socket and will eventually check the value of the `m_stop` atomic variable to find out that its value is equal to `true`, which will lead to termination of the loop and completion of the `Acceptor::Accept()` method.
+
+In the described method, it is assumed that the server stops itself by sending a message to itself (actually a message is sent from an I/O thread to the worker thread). Another approach would be to have a special client (separate application) that would connect and send a special service message (for example, `stop\n`) to the server, which will be interpreted by the server as a signal to stop. In this case, the server would be controlled externally (from a different application) and the `Server` class would not need to have the `Stop()` method.
+
+#### Dealing with the server's vulnerability
+
+Unfortunately, the nature of blocking the I/O operation without the timeout assigned to it is such that it can be used to easily hang the iterative server that uses such operations and make it inaccessible to other clients.
+
+Obviously, to protect the server from this vulnerability, we need to redesign it so that it never gets blocked by I/O operations. One way to achieve this is to use nonblocking sockets (which will turn our server into reactive) or use asynchronous I/O operations. Both the options mean that our server stops being synchronous. We will consider some of these solutions in other recipes of this chapter.
+
+### Analyzing the results
+
+Vulnerabilities that are inherent in the synchronous iterative servers implemented with Boost.Asio described above do not allow using them in public networks, where there is a risk of misuse of the server by a culprit. Usually, synchronous servers would be used in closed and protected environments where clients are carefully designed so that they do not hang the server.
+
+Another limitation of the iterative synchronous server is that they are not scalable and cannot take advantage of a multiprocessor hardware. However, their advantage—simplicity—is the reason why this type of a server is a good choice in many cases.
+
+## See also
+
+*   [Chapter 2](ch02.html "Chapter 2. I/O Operations"), *I/O Operations*, includes recipes providing detailed discussions on how to perform synchronous I/O.
+
+# Implementing a synchronous parallel TCP server
+
+A synchronous parallel TCP server is a part of a distributed application that satisfies the following criteria:
+
+*   Acts as a server in the client-server communication model
+*   Communicates with client applications over TCP protocol
+*   Uses I/O and control operations that block the thread of execution until the corresponding operation completes, or an error occurs
+*   May handle more than one client simultaneously
+
+A typical synchronous parallel TCP server works according to the following algorithm:
+
+1.  Allocate an acceptor socket and bind it to a particular TCP port.
+2.  Run a loop until the server is stopped:
+
+    *   Wait for the incoming connection request from a client
+    *   Accept the client's connection request
+    *   Spawn a thread of control and in the context of this thread:
+
+        *   Wait for the request message from the client
+        *   Read the request message
+        *   Process the request
+        *   Send a response message to the client
+        *   Close the connection with the client and deallocate the socket
+
+This recipe demonstrates how to implement a synchronous parallel TCP server application with Boost.Asio.
+
+## How to do it…
+
+We begin implementing our server application by defining the class responsible for handling a single client by reading the request message, processing it, and then sending back the response message. This class represents a single service provided by the server application and, therefore, we will name it `Service`:
+
+[PRE5]
+
+To keep things simple, in our sample server application, we implement a dummy service, which only emulates the execution of certain operations. The request processing emulation consists of performing many increment operations to emulate operations that intensively consume CPU and then putting the thread of control to sleep for some time to emulate I/O operations such as reading a file or communicating with a peripheral device synchronously.
+
+### Note
+
+The `Service` class is quite simple and contains only one method. However, classes representing services in real-world applications would usually be more complex and richer in functionality, though the main idea would stay the same.
+
+Next, we define another class that represents a high-level *acceptor* concept (as compared to the low-level concept represented by the `asio::ip::tcp::acceptor` class). This class is responsible for accepting the connection requests arriving from clients and instantiating the objects of the `Service` class, which will provide the service to connected clients. Let's name it `Acceptor`:
+
+[PRE6]
+
+This class owns an object of the `asio::ip::tcp::acceptor` class named `m_acceptor`, which is used to synchronously accept incoming connection requests.
+
+Also, we define a class that represents the server itself. The class is named correspondingly—`Server`:
+
+[PRE7]
+
+This class provides an interface comprised of two methods—`Start()` and `Stop()` that are used to start and stop the server correspondingly. The loop runs in a separate thread spawned by the `Start()` method. The `Start()` method is nonblocking, while the `Stop()` method is. It blocks the caller thread until the server is stopped.
+
+Thorough inspection of the `Server` class reveals one serious drawback of the implementation of the server—the `Stop()` method may block forever. The discussion of this problem and ways to resolve it is provided below.
+
+Eventually, we implement the application entry point function `main()` that demonstrates how to use the `Server` class:
+
+[PRE8]
+
+## How it works…
+
+The sample server application consists of four components—the `Server`, `Acceptor`, and `Service` classes and the application entry point function `main()`. Let's consider how each of these components work.
+
+### The Service class
+
+The `Service` class is the key functional component in the whole application. While other components constitute the infrastructure of the server, this class implements the actual function (or service) provided by the server to the clients.
+
+This class has a single method in its interface called `StartHandlingClient()`. This method accepts a pointer to an object representing a TCP socket connected to the client as its input argument and starts handling that particular client.
+
+This method spawns a thread of control, which starts its execution from the class's `HandleClient()` private method, where the actual synchronous handling is performed. Having spawned the thread, the `StartHandlingClient()` method "lets it go" by detaching the thread from the `std::thread` object representing it. After this, the `StartHandlingClient()` method returns.
+
+The `HandleClient()` private method, as its name suggests, handles the client. In our sample, such handling is trivial. Firstly, the request message is synchronously read from the socket until a new line ASCII symbol `\n` is encountered. Then, the request is processed. In our case, we emulate processing by running a dummy loop performing one million increment operations and then putting the thread to sleep for half a second. After this, the response message is prepared and sent back to the client.
+
+When the response message is sent, the object of the `Service` class associated with the `HandleClient()` method, which is currently running, is deleted by the `delete` operator. Of course, the design of the class assumes that its instances will be allocated in free memory by a `new` operator rather than on the stack.
+
+Depending on the needs of a particular application, the `Service` class can be extended and enriched with the functionality to provide the needed service.
+
+### The Acceptor class
+
+The `Acceptor` class is a part of the server application infrastructure. When constructed, it instantiates an acceptor socket object `m_acceptor` and calls its `listen()` method to start listening for connection requests from clients.
+
+This class exposes a single `Accept()` public method. This method when called, instantiates an object of the `asio::ip::tcp::socket` class named `sock`, representing an active socket, and tries to accept a connection request. If there are pending connection requests available, the connection request is processed and the active socket `sock` is connected to the new client. Otherwise, this method blocks until a new connection request arrives.
+
+Then, an instance of the `Service` object is allocated in free memory and its `StartHandlingClient()` method is called. The `sock` object is passed to this method as an input argument. The `StartHandlingClient()` method spawns a thread in the context of which the client will be handled and returns immediately. When the `StartHandlingClient()` method returns, the `Accept()` method of the `Acceptor` class returns too. Now, *the acceptor* is ready to accept the next connection request.
+
+Note that `Acceptor` does not take the ownership of the object of the `Service` class. Instead, the object of the `Service` class will destroy itself when it completes its job.
+
+### The Server class
+
+The `Server` class, as its name suggests, represents a *server* that can be controlled through the class's interface `Start()`and `Stop()` methods.
+
+The `Start()` method initiates the start-up of the server. It spawns a new thread that begins its execution from the `Server` class's `Run()` private method and returns. The `Run()` method accepts a single argument `port_num` specifying the number of the protocol port on which the acceptor socket should listen for incoming connection requests. When invoked, the method first instantiates an object of the `Acceptor` class and then starts a loop in which the `Accept()` method of the `Acceptor` object is called. The loop terminates when the value of the `m_stop` atomic variable becomes `true`, which happens when the `Stop()` method is invoked on the corresponding instance of the `Server` class.
+
+The `Stop()` method synchronously stops the server. It does not return until a loop that started in the `Run()` method is interrupted and the thread that is spawned by the `Start()` method finishes its execution. To interrupt the loop, the value of the atomic variable `m_stop` is set to `true`. After this, the `Stop()` method calls the `join()` method on the `m_thread` object representing the thread running the loop in the `Run()` method in order to wait until it finishes its execution.
+
+The presented implementation has a significant drawback consisting of the fact that the server may not be stopped immediately. More than that, there is a possibility that the server will not be stopped at all and the `Stop()` method will block its caller forever. The root cause of the problem is that the server has a hard dependency on the behavior of the clients.
+
+If the `Stop()` method is called and sets the value of atomic variable `m_stop` variable to `true` just before the loop termination condition in the `Run()` method is checked, the server is stopped almost immediately and no problem occurs. However, if the `Stop()` method is called while the server's thread is blocked in the `acc.Accept()` method waiting for the next connection request from the client—or in one of synchronous I/O operations inside the `Service` class is waiting for the request message from the connected client or for the client to receive the response message—the server cannot be stopped until these blocking operations complete. Hence, for example, if at the moment when the `Stop()` method is called, there are no pending connection requests, the server will not be stopped until a new client connects and gets handled, which in general case may never happen and may lead to the server being blocked forever.
+
+Later, in this section, we will consider possible ways to tackle this drawback.
+
+### The main() entry point function
+
+This function demonstrates the usage of the server. It creates an instance of the `Server` class named `srv` and calls its method `Start()` to start the server. Because the server is represented as an active object running in its own thread of control, the `Start()` method returns immediately and the thread running the `main()`method continues the execution. To allow the server to run for some time, the main thread is put to sleep for 60 seconds. After the main thread wakes up, it calls the `Stop()` method on the `srv` object to stop the server. When the `Stop()` method returns, the `main()` function returns too and our sample application exits.
+
+Of course, in the real application, the server would be stopped as a reaction to the user input or any other relevant event, rather than after the dummy 60 seconds after the server's start-up run out.
+
+### Eliminating the drawbacks
+
+The drawbacks inherent in synchronous parallel server application implemented with Boost.Asio library are similar to those of synchronous iterative server application considered in previous recipe. Please refer to the *Implementing synchronous iterative TCP server* recipe for the discussion of the drawbacks and the ways to eliminate them.
+
+## See also
+
+*   Recipe *Implementing synchronous iterative TCP server* provides more details on the drawbacks inherent in both synchronous iterative and synchronous parallel servers and the possible ways to eliminate them
+*   [Chapter 2](ch02.html "Chapter 2. I/O Operations"), *I/O Operations*, includes recipes providing detailed discussions on how to perform synchronous I/O
+
+# Implementing an asynchronous TCP server
+
+An asynchronous TCP server is a part of a distributed application that satisfies the following criteria:
+
+*   Acts as a server in the client-server communication model
+*   Communicates with client applications over TCP protocol
+*   Uses the asynchronous I/O and control operations
+*   May handle multiple clients simultaneously
+
+A typical asynchronous TCP server works according to the following algorithm:
+
+1.  Allocate an acceptor socket and bind it to a particular TCP port.
+2.  Initiate the asynchronous accept operation.
+3.  Spawn one or more threads of control and add them to the pool of threads that run the Boost.Asio event loop.
+4.  When the asynchronous accept operation completes, initiate a new one to accept the next connection request.
+5.  Initiate the asynchronous reading operation to read the request from the connected client.
+6.  When the asynchronous reading operation completes, process the request and prepare the response message.
+7.  Initiate the asynchronous writing operation to send the response message to the client.
+8.  When the asynchronous writing operation completes, close the connection and deallocate the socket.
+
+Note that the steps starting from the fourth step in the preceding algorithm may be performed in arbitrary order depending on the relative timing of the concrete asynchronous operations in a concrete application. Due to the asynchronous model of the server, sequential order of execution of the steps may not hold even when the server is running on a single-processor computer.
+
+This recipe demonstrates how to implement an asynchronous TCP server application with Boost.Asio.
+
+## How to do it…
+
+We begin implementing our server application by defining a class responsible for handling a single client by reading the request message, processing it, and then sending back the response message. This class represents a single service provided by the server application. Let's name it `Service`:
+
+[PRE9]
+
+To keep things simple, in our sample server application, we implement a dummy service which only emulates the execution of certain operations. The request processing emulation consists of performing many increment operations to emulate operations that intensively consume CPU and then putting the thread of control to sleep for some time to emulate I/O operations such as reading a file or communicating with a peripheral device synchronously.
+
+Each instance of the `Service` class is intended to handle one connected client by reading the request message, processing it, and then sending the response message back.
+
+Next, we define another class, which represents a high-level *acceptor* concept (as compared to the low-level concept represented by the `asio::ip::tcp::acceptor` class). This class is responsible for accepting the connection requests arriving from clients and instantiating the objects of the `Service` class, which will provide the service to connected clients. Let's name it `Acceptor`:
+
+[PRE10]
+
+This class owns an object of the `asio::ip::tcp::acceptor` class named `m_acceptor`, which is used to asynchronously accept the incoming connection requests.
+
+Also, we define a class that represents the server itself. The class is named correspondingly—`Server`:
+
+[PRE11]
+
+This class provides an interface consisting of two methods—`Start()` and `Stop()`. The `Start()` method accepts a protocol port number on which the server should listen for the incoming connection requests and the number of threads to add to the pool as input arguments and starts the server. The `Stop()` method stops the server. The `Start()` method is nonblocking, while the `Stop()` method is. It blocks the caller thread until the server is stopped and all the threads running the event loop exit.
+
+Eventually, we implement the application entry point function `main()` that demonstrates how to use an object of the `Server` class:
+
+[PRE12]
+
+## How it works…
+
+The sample server application consists of four components—the `Service`, `Acceptor`, and `Service` classes and an application entry point function `main()`. Let's consider how each of these components work.
+
+### The Service class
+
+The `Service` class is the key functional component in the application. While other components constitute an infrastructure of the server, this class implements the actual function (or service) provided by the server to the clients.
+
+One instance of this class is intended to handle a single connected client by reading the request, processing it, and then sending back the response message.
+
+The class's constructor accepts a shared pointer to an object representing a socket connected to a particular client as an argument and caches this pointer. This socket will be used later to communicate with the client application.
+
+The public interface of the `Service` class consists of a single method `StartHandling()`. This method starts handling the client by initiating the asynchronous reading operation to read the request message from the client specifying the `onRequestReceived()` method as a callback. Having initiated the asynchronous reading operation, the `StartHandling()` method returns.
+
+When the request reading completes, or an error occurs, the callback method `onRequestReceived()` is called. This method first checks whether the reading succeeded by testing the `ec` argument that contains the operation completion status code. In case the reading finished with an error, the corresponding message is output to the standard output stream and then the `onFinish()` method is called. After this, the `onRequestReceieved()` method returns, which leads to client-handling process interruption.
+
+If the request message has been read successfully, the `ProcessRequest()` method is called to perform the requested operations and prepare the response message. When the `ProcessRequest()` method completes and returns the string containing the response message, the asynchronous writing operation is initiated to send this response message back to the client. The `onResponseSent()` method is specified as a callback.
+
+When the writing operation completes (or an error occurs), the `onResponseSent()`method is called. This method first checks whether the operation succeeded. If the operation failed, the corresponding message is output to the standard output stream. Next, the `onFinish()`method is called to perform the cleanup. When the `onFinish()`method returns, the full cycle of client handling is considered completed.
+
+The `ProcessRequest()` method is the heart of the class because it implements the service. In our server application, we have a dummy service that runs a dummy loop performing one million increment operations and then puts the thread to sleep for 100 milliseconds. After this, the dummy response message is generated and returned to the caller.
+
+Depending on the needs of a particular application, the `Service` class and particularly its `ProcessRequest()` method can be extended and enriched with a functionality to provide the needed service.
+
+The `Service` class is designed so that its objects delete themselves when their job is completed. Deletion is performed in the class's `onFinish()` private method, which is called in the end of the client handling cycle whether it is successful or erroneous:
+
+[PRE13]
+
+### The Acceptor class
+
+The `Acceptor` class is a part of the server application's infrastructure. Its constructor accepts a port number on which it will listen for the incoming connection requests as its input argument. The object of this class contains an instance of the `asio::ip::tcp::acceptor` class as its member named `m_acceptor`, which is constructed in the `Acceptor` class's constructor.
+
+The `Acceptor` class exposes two public methods—`Start()` and `Stop()`. The `Start()` method is intended to instruct an object of the `Acceptor` class to start listening and accepting incoming connection requests. It puts the `m_acceptor` acceptor socket into listening mode and then calls the class's `InitAccept()` private method. The `InitAccept()` method, in turn, constructs an active socket object and initiates the asynchronous accept operation, calling the `async_accept()` method on the acceptor socket object and passing the object representing an active socket to it as an argument. The `onAccept()` method of the `Acceptor` class is specified as a callback.
+
+When the connection request is accepted or an error occurs, the callback method `onAccept()` is called. This method first checks whether any error occurred while the asynchronous operation was executed by checking the value of its input argument `ec`. If the operation completed successfully, an instance of the `Service` class is created and its `StartHandling()` method is called, which starts handling the connected client. Otherwise, in case of error, the corresponding message is output to the standard output stream.
+
+Next, the value of the `m_isStopped` atomic variable is checked to see whether the stop command has been issued on the `Acceptor` object. If it has (which means that the `Stop()` method has been called on the `Acceptor` object), a new asynchronous accept operation is not initiated and the low-level acceptor object is closed. At this point, `Acceptor` stops listening and accepting incoming connection requests from clients. Otherwise, the `InitAccept()` method is called to initiate a new asynchronous accept operation to accept the next incoming connection request.
+
+As it has already been mentioned, the `Stop()` method instructs the `Acceptor` object not to initiate the next asynchronous accept operation when the currently running one completes. However, the currently running accept operation is not canceled by this method.
+
+### The Server class
+
+The `Server` class, as its name suggests, represents a *server* itself. The class's public interface consists of two methods: `Start()` and `Stop()`.
+
+The `Start()` method starts the server up. It accepts two arguments. The first argument named `port_num` specifies the number of the protocol port on which the server should listen for incoming connections. The second argument named `thread_pool_size` specifies the number of threads to add to the pool of threads running the even loop and deliver asynchronous operation completion events. This argument is very important and should be chosen with care as it directly influences the performance of the server.
+
+The `Start()` method begins by instantiating an object of the `Acceptor` class that will be used to accept incoming connections and then starting it up by calling its `Start()` method. After this, it spawns a set of worker threads, each of which is added to the pool, by calling the `run()` method of the `asio::io_service` object. Besides, all the `std::thread` objects are cached in the `m_thread_pool` member vector so that the corresponding threads can be joined later when the server is stopped.
+
+The `Stop()`method first stops the `Acceptor` object `acc`, calling its `Stop()`method. Then, it calls the `stop()` method on the `asio::io_service` object `m_ios`, which makes all the threads that previously called `m_ios.run()` to join the pool to exit as soon as possible, discarding all pending asynchronous operations. After this, the `Stop()` method waits for all threads in the pool to exit by iterating through all the `std::thread` objects cached in the `m_thread_pool` vector and joining each of them.
+
+When all threads exit, the `Stop()` method returns.
+
+### The main() entry point function
+
+This function demonstrates the usage of the server. Firstly, it instantiates an object of the `Server` class named `srv`. Because the `Start()` method of the `Server` class requires a number of threads constituting a pool to be passed to it, before starting the server, the optimal size of the pool is calculated. The general formula often used in parallel applications to find the optimal number of threads is the number of processors the computer has multiplied by 2\. We use the `std::thread::hardware_concurrency()` static method to obtain the number of processors. However, because this method may fail to do its job returning 0, we fall back to default value represented by the constant `DEFAULT_THREAD_POOL_SIZE`, which is equal to 2 in our case.
+
+When the thread pool size is calculated, the `Start()` method is called to start the server. The `Start()` method does not block. When it returns, the thread running the `main()` method continues the execution. To allow the server to run for some time, the main thread is put to sleep for 60 seconds. When the main thread wakes up, it calls the `Stop()` method on the `srv` object to stop the server. When the `Stop()` method returns, the `main()` function returns too and our application exits.
+
+Of course, in the real application, the server would be stopped as a reaction to some relevant event such as the user input, rather than when some dummy period of time elapses.
+
+## See also
+
+*   [Chapter 2](ch02.html "Chapter 2. I/O Operations"), *I/O Operations*, includes recipes providing detailed discussions on how to perform synchronous I/O.
+*   The *Using timers* recipe from [Chapter 6](ch06.html "Chapter 6. Other Topics"), *Other Topics*, demonstrates how to use timers provided by Boost.Asio. Timers can be used to implement an asynchronous operation timeout mechanism.

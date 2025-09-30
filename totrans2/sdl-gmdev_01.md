@@ -1,0 +1,330 @@
+# Chapter 1. Getting Started with SDL
+
+**Simple DirectMedia Layer** (**SDL**) is a cross-platform multimedia library created by Sam Oscar Latinga. It provides low-level access to input (via mouse, keyboard, and gamepads/joysticks), 3D hardware, and the 2D video frame buffer. SDL is written in the C programming language, yet has native support for C++. The library also has bindings for several other languages such as Pascal, Objective-C, Python, Ruby, and Java; a full list of supported languages is available at [http://www.libsdl.org/languages.php](http://www.libsdl.org/languages.php).
+
+SDL has been used in many commercial games including World of Goo, Neverwinter Nights, and Second Life. It is also used in emulators such as ZSNES, Mupen64, and VisualBoyAdvance. Some popular games ported to Linux platforms such as Quake 4, Soldier of Fortune, and Civilization: Call to Power utilize SDL in some form.
+
+SDL is not just used for games. It is useful for all manner of applications. If your software needs access to graphics and input, chances are that SDL will be a great help. The SDL official website has a list of applications that have been created using the library ([http://www.libsdl.org/applications.php](http://www.libsdl.org/applications.php)).
+
+In this chapter we will cover the following:
+
+*   Getting the latest SDL build from the Mercurial repository
+*   Building and setting up SDL in Visual C++ 2010 Express
+*   Creating a window with SDL
+*   Implementing a basic game class
+
+# Why use SDL?
+
+Each platform has its own way of creating and displaying windows and graphics, handling user input, and accessing any low-level hardware; each one with its own intricacies and syntax. SDL provides a uniform way of accessing these platform-specific features. This uniformity leads to more time spent tweaking your game rather than worrying about how a specific platform allows you to render or get user input, and so on. Game programming can be quite difficult, and having a library such as SDL can get your game up and running relatively quickly.
+
+The ability to write a game on Windows and then go on to compile it on OSX or Linux with little to no changes in the code is extremely powerful and perfect for developers who want to target as many platforms as possible; SDL makes this kind of cross-platform development a breeze. While SDL is extremely effective for cross-platform development, it is also an excellent choice for creating a game with just one platform in mind, due to its ease of use and abundance of features.
+
+SDL has a large user base and is being actively updated and maintained. There is also a responsive community along with a helpful mailing list. Documentation for SDL 2.0 is up-to-date and constantly maintained. Visiting the SDL website, [libsdl.org](http://libsdl.org), offers up lots of articles and information with links to the documentation, mailing list, and forums.
+
+Overall, SDL offers a great place to start with game development, allowing you to focus on the game itself and ignore which platform you are developing for, until it is completely necessary. Now, with SDL 2.0 and the new features it brings to the table, SDL has become an even more capable library for game development using C++.
+
+### Note
+
+The best way to find out what you can do with SDL and its various functions is to use the documentation found at [http://wiki.libsdl.org/moin.cgi/CategoryAPI](http://wiki.libsdl.org/moin.cgi/CategoryAPI). There you can see a list of all of SDL 2.0's functions along with various code examples.
+
+## What is new in SDL 2.0?
+
+The latest version of SDL and SDL 2.0, which we will be covering in this book, is still in development. It adds many new features to the existing SDL 1.2 framework. The SDL 2.0 Roadmap ([wiki.libsdl.org/moin.cgi/Roadmap](http://wiki.libsdl.org/moin.cgi/Roadmap)) lists these features as:
+
+*   A 3D accelerated, texture-based rendering API
+*   Hardware-accelerated 2D graphics
+*   Support for render targets
+*   Multiple window support
+*   API support for clipboard access
+*   Multiple input device support
+*   Support for 7.1 audio
+*   Multiple audio device support
+*   Force-feedback API for joysticks
+*   Horizontal mouse wheel support
+*   Multitouch input API support
+*   Audio capture support
+*   Improvements to multithreading
+
+While not all of these will be used in our game-programming adventures, some of them are invaluable and make SDL an even better framework to use to develop games. We will be taking advantage of the new hardware-accelerated 2D graphics to make sure our games have excellent performance.
+
+## Migrating SDL 1.2 extensions
+
+SDL has separate extensions that can be used to add new capabilities to the library. The reason these extensions are not included in the first place is to keep SDL as lightweight as possible, with the extensions serving to add functionality only when necessary. The next table shows some useful extensions along with their purpose. These extensions have been updated from their SDL1.2/3 Versions to support SDL 2.0, and this book will cover cloning and building them from their respective repositories as and when they are needed.
+
+| Name | Description |
+| --- | --- |
+| `SDL_image` | This is an image file loading library with support for BMP, GIF, PNG, TGA, PCX, and among others. |
+| `SDL_net` | This is a cross-platform networking library. |
+| `SDL_mixer` | This is an audio mixer library. It has support for MP3, MIDI, and OGG. |
+| `SDL_ttf` | This is a library supporting the use of `TrueType` fonts in SDL applications. |
+| `SDL_rtf` | This is a library to support the rendering of the **Rich Text Format** (**RTF**). |
+
+# Setting up SDL in Visual C++ Express 2010
+
+This book will cover setting up SDL 2.0 in Microsoft's Visual C++ Express 2010 IDE. This IDE was chosen as it is available for free online, and is a widely used development environment within the games industry. The application is available at [https://www.microsoft.com/visualstudio/en-gb/express](https://www.microsoft.com/visualstudio/en-gb/express). Once the IDE has been installed we can go ahead and download SDL 2.0\. If you are not using Windows to develop games, then these instructions can be altered to suit your IDE of choice using its specific steps to link libraries and include files.
+
+SDL 2.0 is still in development so there are no official releases as yet. The library can be retrieved in two different ways:
+
+*   One is to download the under-construction snapshot; you can then link against this to build your games (the quickest option)
+*   The second option is to clone the latest source using mercurial-distributed source control and build it from scratch (a good option to keep up with the latest developments of the library)
+
+Both of these options are available at [http://www.libsdl.org/hg.php](http://www.libsdl.org/hg.php).
+
+Building SDL 2.0 on Windows also requires the latest DirectX SDK, which is available at [http://www.microsoft.com/en-gb/download/details.aspx?id=6812](http://www.microsoft.com/en-gb/download/details.aspx?id=6812), so make sure this is installed first.
+
+## Using Mercurial to get SDL 2.0 on Windows
+
+Getting SDL 2.0 directly from the constantly updated repository is the best way of making sure you have the latest build of SDL 2.0 and that you are taking advantage of any current bug fixes. To download and build the latest version of SDL 2.0 on Windows, we must first install a mercurial source control client so that we can mirror the latest source code and build from it. There are various command-line tools and GUIs available for use with mercurial. We will use TortoiseHg, a free and user-friendly mercurial application; it is available at [tortoisehg.bitbucket.org](http://tortoisehg.bitbucket.org). Once the application is installed, we can go ahead and grab the latest build.
+
+### Cloning and building the latest SDL 2.0 repository
+
+Cloning and building the latest version of SDL directly from the repository is relatively straightforward when following these steps:
+
+1.  Open up the **TortoiseHg Workbench** window.![Cloning and building the latest SDL 2.0 repository](img/6821OT_01_01.jpg)
+2.  Pressing *Ctrl* + *Shift* + *N* will open the clone dialog box.
+3.  Input the source of the repository; in this case it is listed on the SDL 2.0 website as [http://hg.libsdl.org/SDL](http://hg.libsdl.org/SDL).
+4.  Input or browse to choose a destination for the cloned repository—this book will assume that `C:\SDL2` is set as the location.
+5.  Click on **Clone** and allow the repository to copy to the chosen destination.![Cloning and building the latest SDL 2.0 repository](img/6821OT_01_02.jpg)
+6.  Within the `C:\SDL2` directory there will be a `VisualC` folder; inside the folder there is a Visual C++ 2010 solution, which we have to open with Visual C++ Express 2010.
+7.  Visual C++ Express will throw up a few errors about solution folders not being supported in the express version, but they can be safely ignored without affecting our ability to build the library.
+8.  Change the current build configuration to release and also choose 32 or 64 bit depending on your operating system.![Cloning and building the latest SDL 2.0 repository](img/6821OT_01_03.jpg)
+9.  Right-click on the project named **SDL** listed in the **Solution Explorer** list and choose **Build**.
+10.  We now have a build of the SDL 2.0 library to use. It will be located at `C:\SDL2\VisualC\SDL\Win32(or x64)\Release\SDL.lib`.
+11.  We also need to build the SDL main library file, so choose it within the **Solution Explorer** list and build it. This file will build to `C:\SDL2\VisualC\SDLmain\Win32(or x64)\Release\SDLmain.lib`.
+12.  Create a folder named `lib` in `C:\SDL2` and copy `SDL.lib` and `SDLmain.lib` into this newly created folder.
+
+## I have the library; now what?
+
+Now a Visual C++ 2010 project can be created and linked with the SDL library. Here are the steps involved:
+
+1.  Create a new empty project in Visual C++ express and give it a name, such as `SDL-game`.
+2.  Once created, right-click on the project in the **Solution Explorer** list and choose **Properties**.
+3.  Change the configuration drop-down list to **All Configurations**.
+4.  Under **VC++ Directories**, click on **Include Directories**. A small arrow will allow a drop-down menu; click on **<Edit…>**.![I have the library; now what?](img/6821OT_01_04.jpg)
+5.  Double-click inside the box to create a new location. You can type or browse to `C:\SDL2.0\include` and click on **OK**.
+6.  Next, do the same thing under library directories, this time passing in your created `lib` folder (`C:\SDL2\lib`).
+7.  Next, navigate to the **Linker** heading; inside the heading there will be an **Input** choice. Inside **Additional Dependencies** type `SDL.lib SDLmain.lib`:![I have the library; now what?](img/6821OT_01_05.jpg)
+8.  Navigate to the **System** heading and set the **SubSystem** heading to **Windows(/SUBSYSTEM:WINDOWS)**.![I have the library; now what?](img/6821OT_01_06.jpg)
+9.  Click on **OK** and we are done.
+
+# Hello SDL
+
+We now have an empty project, which links to the SDL library, so it is time to start our SDL development. Click on **Source Files** and use the keyboard shortcut *Ctrl* + *Shift* + *A* to add a new item. Create a C++ file called `main.cpp`. After creating this file, copy the following code into the source file:
+
+[PRE0]
+
+We can now attempt to build our first SDL application. Right-click on the project and choose **Build**. There will be an error about the `SDL.dll` file not being found:
+
+![Hello SDL](img/6821OT_01_07.jpg)
+
+The attempted build should have created a `Debug` or `Release` folder within the project directory (usually located in your `Documents` folder under visual studio and projects). This folder contains the `.exe` file from our attempted build; we need to add the `SDL.dll` file to this folder. The `SDL.dll` file is located at `C:\SDL2\VisualC\SDL\Win32` (or `x64)\Release\SDL.dll l`). When you want to distribute your game to another computer, you will have to share this file as well as the executable. After you have added the `SDL.dll` file to the executable folder, the project will now compile and show an SDL window; wait for 5 seconds and then close.
+
+## An overview of Hello SDL
+
+Let's go through the `Hello SDL` code:
+
+1.  First, we included the `SDL.h` header file so that we have access to all of SDL's functions:
+
+    [PRE1]
+
+2.  The next step is to create some global variables. One is a pointer to an `SDL_Window` function, which will be set using the `SDL_CreateWindow` function. The second is a pointer to an `SDL_Renderer` object; set using the `SDL_CreateRenderer` function:
+
+    [PRE2]
+
+3.  We can now initialize SDL. This example initializes all of SDL's subsystems using the `SDL_INIT_EVERYTHING` flag, but this does not always have to be the case (see SDL initialization flags):
+
+    [PRE3]
+
+4.  If the SDL initialization was successful, we can create the pointer to our window. `SDL_CreateWindow` returns a pointer to a window matching the passed parameters. The parameters are the window title, *x* position of the window, *y* position of the window, width, height, and any required `SDL_flags` (we will cover these later in the chapter). `SDL_WINDOWPOS_CENTERED` will center our window relative to the screen:
+
+    [PRE4]
+
+5.  We can now check whether the window creation was successful, and if so, move on to set the pointer to our renderer, passing the window we want the renderer to use as a parameter; in our case, it is the newly created `g_pWindow` pointer. The second parameter passed is the index of the rendering driver to initialize; in this case, we use `-1` to use the first capable driver. The final parameter is `SDL_RendererFlag` (see SDL renderer flags):
+
+    [PRE5]
+
+6.  If everything was successful, we can now create and show our window:
+
+    [PRE6]
+
+## SDL initialization flags
+
+Event handling, file I/O, and threading subsystems are all initialized by default in SDL. Other subsystems can be initialized using the following flags:
+
+| Flag | Initialized subsystem(s) |
+| --- | --- |
+| `SDL_INIT_HAPTIC` | Force feedback subsystem |
+| `SDL_INIT_AUDIO` | Audio subsystem |
+| `SDL_INIT_VIDEO` | Video subsystem |
+| `SDL_INIT_TIMER` | Timer subsystem |
+| `SDL_INIT_JOYSTICK` | Joystick subsystem |
+| `SDL_INIT_EVERYTHING` | All subsystems |
+| `SDL_INIT_NOPARACHUTE` | Don't catch fatal signals |
+
+We can also use bitwise (`|`) to initialize more than one subsystem. To initialize only the audio and video subsystems, we can use a call to `SDL_Init`, for example:
+
+[PRE7]
+
+Checking whether a subsystem has been initialized or not can be done with a call to the `SDL_WasInit()` function:
+
+[PRE8]
+
+## SDL renderer flags
+
+When initializing an `SDL_Renderer` flag, we can pass in a flag to determine its behavior. The following table describes each flag's purpose:
+
+| Flag | Purpose |
+| --- | --- |
+| `SDL_RENDERER_SOFTWARE` | Use software rendering |
+| `SDL_RENDERER_ACCELERATED` | Use hardware acceleration |
+| `SDL_RENDERER_PRESENTVSYNC` | Synchronize renderer update with screen's refresh rate |
+| `SDL_RENDERER_TARGETTEXTURE` | Supports render to texture |
+
+# What makes up a game
+
+Outside the design and gameplay of a game, the underlying mechanics are essentially the interaction of various subsystems such as graphics, game logic, and user input. The graphics subsystem should not know how the game logic is implemented or vice versa. We can think of the structure of a game as follows:
+
+![What makes up a game](img/6821OT_01_08.jpg)
+
+Once the game is initialized, it then goes into a loop of checking for user input, updating any values based on the game physics, before rendering to the screen. Once the user chooses to exit, the loop is broken and the game moves onto cleaning everything up and exiting. This is the basic scaffold for a game and it is what will be used in this book.
+
+We will be building a reusable framework that will take all of the legwork out of creating a game in SDL 2.0\. When it comes to boilerplate code and setup code, we really only want to write it once and then reuse it within new projects. The same can be done with drawing code, event handling, map loading, game states, and anything else that all games may require. We will start by breaking up the Hello SDL 2.0 example into separate parts. This will help us to start thinking about how code can be broken into reusable standalone chunks rather than packing everything into one large file.
+
+## Breaking up the Hello SDL code
+
+We can break up the Hello SDL into separate functions:
+
+[PRE9]
+
+Follow these steps to break the `Hello SDL` code:
+
+1.  Create an `init` function after the two global variables that takes any necessary values as parameters and passes them to the `SDL_CreateWindow` function:
+
+    [PRE10]
+
+2.  Our main function can now use these functions to initialize SDL:
+
+    [PRE11]
+
+As you can see, we have broken the code up into separate parts: one function does the initialization for us and the other does the rendering code. We've added a way to keep the program running in the form of a `while` loop that runs continuously, rendering our window.
+
+Let's take it a step further and try to identify which separate parts a full game might have and how our main loop might look. Referring to the first screenshot, we can see that the functions we will need are `initialize`, `get input`, `do physics`, `render`, and `exit`. We will generalize these functions slightly and rename them to `init()`, `handleEvents()`, `update()`, `render()`, and `clean()`. Let's put these functions into `main.cpp`:
+
+[PRE12]
+
+## What does this code do?
+
+This code does not do much at the moment, but it shows the bare bones of a game and how a main loop might be broken apart. We declare some functions that can be used to run our game: first, the `init()` function, which will initialize SDL and create our window, and second, we declare the core loop functions of `render`, `update`, and `handle events`. We also declare a `clean` function, which will clean up code at the end of our game. We want this loop to continue running so we have a Boolean value that is set to `true`, so that we can continuously call our core loop functions.
+
+# The Game class
+
+So, now that we have an idea of what makes up a game, we can separate the functions into their own class by following these steps:
+
+1.  Go ahead and create a new file in the project called `Game.h`:
+
+    [PRE13]
+
+2.  Next, we can move our functions from the `main.cpp` file into the `Game.h` header file:
+
+    [PRE14]
+
+3.  Now, we can alter the `main.cpp` file to use this new `Game` class:
+
+    [PRE15]
+
+    Our `main.cpp` file now does not declare or define any of these functions; it simply creates an instance of `Game` and calls the needed methods.
+
+4.  Now that we have this skeleton code, we can go ahead and tie SDL into it to create a window; we will also add a small event handler so that we can exit the application rather than having to force it to quit. We will slightly alter our `Game.h` file to allow us to add some SDL specifics and to also allow us to use an implementation file instead of defining functions in the header:
+
+    [PRE16]
+
+Looking back at the first part of this chapter (where we created an SDL window), we know that we need a pointer to an `SDL_Window` object that is set when calling `SDL_CreateWindow`, and a pointer to an `SDL_Renderer` object that is created by passing our window into `SDL_CreateRenderer`. The `init` function can be extended to use the same parameters as in the initial sample as well. This function will now return a Boolean value so that we can check whether SDL is initialized correctly:
+
+[PRE17]
+
+We can now create a new implementation `Game.cpp` file in the project so that we can create the definitions for these functions. We can take the code from the *Hello SDL* section and add it to the functions in our new `Game` class.
+
+Open up `Game.cpp` and we can begin adding some functionality:
+
+1.  First, we must include our `Game.h` header file:
+
+    [PRE18]
+
+2.  Next, we can define our `init` function; it is essentially the same as the `init` function we have previously written in our `main.cpp` file:
+
+    [PRE19]
+
+3.  We will also define the `render` function. It clears the renderer and then renders again with the clear color:
+
+    [PRE20]
+
+4.  Finally, we can clean up. We destroy both the window and the renderer and also call the `SDL_Quit` function to close all the subsystems:
+
+    [PRE21]
+
+So we have moved the `Hello SDL 2.0` code from the `main.cpp` file into a class called `Game`. We have freed up the `main.cpp` file to handle only the `Game` class; it knows nothing about SDL or how the `Game` class is implemented. Let's add one more thing to the class to allow us to close the application the regular way:
+
+[PRE22]
+
+We will cover event handling in more detail in a forthcoming chapter. What this function now does is check if there is an event to handle, and if so, check if it is an `SDL_QUIT` event (by clicking on the cross to close a window). If the event is `SDL_QUIT`, we set the `Game` class' `m_bRunning` member variable to `false`. The act of setting this variable to `false` makes the main loop stop and the application move onto cleaning up and then exiting:
+
+[PRE23]
+
+The `clean()` function destroys the window and renderer and then calls the `SDL_Quit()` function, closing all the initialized SDL subsystems.
+
+### Note
+
+To enable us to view our `std::cout` messages, we must first include `Windows.h` and then call `AllocConsole(); andfreopen("CON", "w", stdout);`. You can do this in the `main.cpp` file. Just remember to remove it when sharing your game.
+
+## Fullscreen SDL
+
+`SDL_CreateWindow` takes an enumeration value of type `SDL_WindowFlags`. These values set how the window will behave. We created an `init` function in our `Game` class:
+
+[PRE24]
+
+The final parameter is an `SDL_WindowFlags` value, which is then passed into the `SDL_CreateWindow` function when initializing:
+
+[PRE25]
+
+Here is a table of the `SDL_WindowFlags` function:
+
+| Flag | Purpose |
+| --- | --- |
+| `SDL_WINDOW_FULLSCREEN` | Make the window fullscreen |
+| `SDL_WINDOW_OPENGL` | Window can be used with as an OpenGL context |
+| `SDL_WINDOW_SHOWN` | The window is visible |
+| `SDL_WINDOW_HIDDEN` | Hide the window |
+| `SDL_WINDOW_BORDERLESS` | No border on the window |
+| `SDL_WINDOW_RESIZABLE` | Enable resizing of the window |
+| `SDL_WINDOW_MINIMIZED` | Minimize the window |
+| `SDL_WINDOW_MAXIMIZED` | Maximize the window |
+| `SDL_WINDOW_INPUT_GRABBED` | Window has grabbed input focus |
+| `SDL_WINDOW_INPUT_FOCUS` | Window has input focus |
+| `SDL_WINDOW_MOUSE_FOCUS` | Window has mouse focus |
+| `SDL_WINDOW_FOREIGN` | The window was not created using SDL |
+
+Let's pass in `SDL_WINDOW_FULLSCREEN` to the `init` function and test out some fullscreen SDL. Open up the `main.cpp` file and add this flag:
+
+[PRE26]
+
+Build the application again and you should see that the window is fullscreen. To exit the application, it will have to be forced to quit (*Alt* + *F4* on Windows); we will be able to use the keyboard to quit the application in forthcoming chapters, but for now, we won't need fullscreen. One problem we have here is that we have now added something SDL specific to the `main.cpp` file. While we will not use any other frameworks in this book, in future we may want to use another. We can remove this SDL-specific flag and replace it with a Boolean value for whether we want fullscreen or not.
+
+Replace the `int flags` parameter in our `Game init` function with a `boolfullscreen` parameter:
+
+*   The code snippet for `Game.h`:
+
+    [PRE27]
+
+*   The code snippet for `Game.cpp`:
+
+    [PRE28]
+
+We create an `int` flags variable to pass into the `SDL_CreateWindow` function; if we have set `fullscreen` to `true`, then this value will be set to the `SDL_WINDOW_FULLSCREEN` flag, otherwise it will remain as `0` to signify that no flags are being used. Let's test this now in our `main.cpp` file:
+
+[PRE29]
+
+This will again set our window to fullscreen, but we aren't using the SDL-specific flag to do it. Set it to `false` again as we will not need fullscreen for a while. Feel free to try out a few of the other flags to see what effects they have.
+
+# Summary
+
+A lot of ground has been covered in this chapter. We learned what SDL is and why it is a great tool for game development. We looked at the overall structure of a game and how it can be broken into individual parts, and we started to develop the skeleton of our framework by creating a `Game` class that can be used to initialize SDL and render things to the screen. We also had a small look at how SDL handles events by listening for a `quit` event to close our application. In the next chapter we will look at drawing in SDL and building the `SDL_image` extension.

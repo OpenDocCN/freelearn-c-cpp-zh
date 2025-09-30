@@ -1,0 +1,186 @@
+# Chapter 4. Looping
+
+In the previous chapter, we discussed the `if` statement. The `if` statement enables you to put a condition on the execution of a block of code.
+
+In this chapter, we will explore loops, which are code structures that enable you to repeat a block of code under certain conditions. We stop repeating that block of code once the condition becomes false.
+
+In this chapter, we will explore the following topics:
+
+*   While loops
+*   Do/while loops
+*   For loops
+*   A simple example of a practical loop within Unreal Engine
+
+# The while loop
+
+The `while` loop is used to run a section of the code repeatedly. This is useful if you have a set of actions that must be done repeatedly to accomplish some goal. For example, the `while` loop in the following code repeatedly prints the value of the variable `x` as it is incremented from 1 to 5:
+
+[PRE0]
+
+This is the output of the preceding program:
+
+[PRE1]
+
+In the first line of code, an integer variable `x` is created and set to 1\. Then, we go the `while` condition. The `while` condition says that while `x` is less than or equal to 5, you must stay in the block of code that follows.
+
+Each iteration of the loop (an iteration means going once around the loop) gets a little more done from the task (of printing the numbers 1 to 5). We program the loop to automatically exit once the task is done (when `x <= 5` is no longer true).
+
+Similar to the `if` statement of the previous chapter, entry into the block below the `while` loop is only allowed if you meet the condition within the brackets of the `while` loop (in the preceding example, `x <= 5`). You can try mentally subbing an `if` loop in the place of the `while` loop, as shown in the following code:
+
+[PRE2]
+
+The preceding code sample will only print `x is 1`. So, a `while` loop is exactly like an `if` statement, only it has this special property of automatically repeating itself until the condition between the brackets of the `while` loop becomes `false`.
+
+### Note
+
+I'd like to explain the repetition of the `while` loop using a video game. If you don't know Valve's *Portal*, you should play it, if only to understand loops. Check out [https://www.youtube.com/watch?v=TluRVBhmf8w](https://www.youtube.com/watch?v=TluRVBhmf8w) for a demo video.
+
+The `while` loops have a kind of magic *portal* at the bottom, which cause the loop to repeat. The following screenshot illustrates what I mean:
+
+![The while loop](img/00048.jpeg)
+
+There is a portal at the end of the while loop that takes you back to the beginning
+
+In the preceding screenshot, we loop back from the orange portal (marked **O**) to the blue portal (marked **B**). This is our first time of being able to go back in the code. It is like time travel, only for the code. How exciting!
+
+The only way past a `while` loop block is to not meet the entry condition. In the preceding example, once the value of `x` becomes 6 (so, `x <= 5` becomes false), we will not enter the `while` loop again. Since the orange portal is inside the loop, we'll be able to get to finished once `x` becomes 6.
+
+## Infinite loops
+
+You can get stuck inside the same loop forever. Consider the modified program in the following block of code (what do you think will be the output?):
+
+[PRE3]
+
+This is how the output will look:
+
+[PRE4]
+
+The loop repeats forever because we removed the line of code that changed the value of `x`. If the value of `x` stays the same and is not allowed to increase, we will be stuck inside the body of the `while` loop. This is because the loop's exit condition (the value of `x` becomes 6) cannot be met if `x` does not change inside the loop body.
+
+The following exercises will use all the concepts from the previous chapters, such as the `+=` and decrement operations. If you've forgotten something, go back and reread the previous sections.
+
+## Exercises
+
+1.  Write a `while` loop that will print the numbers from 1 to 10.
+2.  Write a `while` loop that will print the numbers from 10 to 1 (backwards).
+3.  Write a `while` loop that will print numbers 2 to 20, incrementing by 2 (for example 2, 4, 6, and 8).
+4.  Write a `while` loop that will print the numbers 1 to 16 and their squares beside them.
+
+The following is an example program output of the exercise 4:
+
+| 1 | 1 |
+| 2 | 4 |
+| 3 | 9 |
+| 4 | 16 |
+| 5 | 25 |
+
+## Solutions
+
+The code solutions of the preceding exercises are as follows:
+
+1.  The solution of the `while` loop that prints the numbers from 1 to 10 is as follows:
+
+    [PRE5]
+
+2.  The solution of the `while` loop that prints the numbers from 10 to 1 in backwards is as follows:
+
+    [PRE6]
+
+3.  The solution of the `while` loop that prints the numbers from 2 to 20 incrementing by 2 is as follows:
+
+    [PRE7]
+
+4.  The solution of the `while` loop that prints the numbers from 1 to 16 with their squares is as follows:
+
+    [PRE8]
+
+# The do/while loop
+
+The `do/while` loop is almost identical to the `while` loop. Here's an example of a `do/while` loop that is equivalent to the first `while` loop that we examined:
+
+[PRE9]
+
+The only difference here is that we don't have to check the `while` condition on our first entry into the loop. This means that the `do/while` loop's body is always executed at least once (where a `while` loop can be skipped entirely if the condition to enter the `while` loop is `false` when you hit it for the first time).
+
+# The for loop
+
+The `for` loop has a slightly different anatomy than the `while` loop, but both are very similar.
+
+Let's examine the anatomy of a `for` loop as compared to an equivalent `while` loop. Take an example of the following code snippets:
+
+| The for loop | An equivalent while loop |
+| --- | --- |
+|  
+[PRE10]
+
+ |  
+[PRE11]
+
+ |
+
+The `for` loop has three statements inside its brackets. Let's examine them in order.
+
+The first statement of the `for` loop (`int x = 1`;) only gets executed once, when we first enter the body of the `for` loop. It is typically used to initialize the value of the loop's counter variable (in this case, the variable `x`). The second statement inside the `for` loop (`x <= 5`;) is the loop's repeat condition. As long as `x <= 5`, we must continue to stay inside the body of the `for` loop. The last statement inside the brackets of the `for` loop (`x++`;) gets executed after we complete the body of the `for` loop each time.
+
+The following sequence of diagrams explain the progression of the `for` loop:
+
+![The for loop](img/00049.jpeg)
+
+## Exercises
+
+1.  Write a `for` loop that will gather the sum of the numbers from 1 to 10.
+2.  Write a `for` loop that will print the multiples of 6, from 6 to 30 (6, 12, 18, 24, and 30).
+3.  Write a `for` loop that will print numbers 2 to 100 in multiples of 2 (for example, 2, 4, 6, 8, and so on).
+4.  Write a `for` loop that will print numbers 1 to 16 and their squares beside them.
+
+## Solutions
+
+Here are the solutions for the preceding exercises:
+
+1.  The solution for the `for` loop for printing the sum of the numbers from 1 to 10 is as follows:
+
+    [PRE12]
+
+2.  The solution for the `for` loop for printing multiples of 6 from 30 is as follows:
+
+    [PRE13]
+
+3.  The solution for the `for` loop for printing numbers from 2 to 100 in multiples of 2 is as follows:
+
+    [PRE14]
+
+4.  The solution for the `for` loop that prints numbers from 1 to 16 and their squares is as follows:
+
+    [PRE15]
+
+# Looping with Unreal Engine
+
+In your code editor, open your Unreal Puzzle project from [Chapter 3](part0024_split_000.html#MSDG1-dd4a3f777fc247568443d5ffb917736d "Chapter 3. If, Else, and Switch"), *If, Else, and Switch*.
+
+There are several ways to open your Unreal project. The simplest way is probably to navigate to the `Unreal Projects` folder (which is present in your user's `Documents` folder on Windows by default) and double-click on the `.sln` file in **Windows Explorer**, as shown in the following screenshot:
+
+![Looping with Unreal Engine](img/00050.jpeg)
+
+On Windows, open the .sln file to edit the project code
+
+Now, open the `PuzzleBlockGrid.cpp` file. Inside this file, scroll down to the section that begins with the following statement:
+
+[PRE16]
+
+Notice that there is a `for` loop here to spawn the initial nine blocks, as shown in the following code:
+
+[PRE17]
+
+Since `NumBlocks` (which is used to determine when to stop the loop) gets computed as `Size*Size`, we can easily change the number of blocks that get spawned by altering the value of the `Size` variable. Go to line 23 of `PuzzleBlockGrid.cpp` and change the value of the `Size` variable to four or five. Then, run the code again.
+
+You should see the number of blocks on the screen increase, as shown in the following screenshot:
+
+![Looping with Unreal Engine](img/00051.jpeg)
+
+Setting the size to 14 creates many more blocks
+
+# Summary
+
+In this chapter, you learned how to repeat lines of code by looping the code, which allowed you to go back into it. This can be used to repeatedly use the same line of code in order to achieve a task. Imagine printing the numbers from 1 to 10 without using a loop.
+
+In the next chapter, we will explore functions, which are the basic units of reusable code.

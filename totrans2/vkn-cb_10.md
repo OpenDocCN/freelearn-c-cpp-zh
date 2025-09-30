@@ -1,0 +1,404 @@
+# Helper Recipes
+
+In this chapter, we will cover the following recipes:
+
+*   Preparing a translation matrix
+*   Preparing a rotation matrix
+*   Preparing a scaling matrix
+*   Preparing a perspective projection matrix
+*   Preparing an orthographic projection matrix
+*   Loading texture data from a file
+*   Loading a 3D model from an OBJ file
+
+# Introduction
+
+In previous chapters, we have learned about the various aspects of the Vulkan API. We now know how to use the graphics library and how to create applications that render 3D images and perform mathematical calculations. But the sole knowledge about the Vulkan API may not be enough to generate more complicated scenes and to implement various rendering algorithms. There are several very useful operations that can aid us in creating, manipulating, and displaying 3D objects.
+
+In this chapter, we will learn how to prepare transformation matrices that are used to move, rotate, and scale 3D meshes. We will also see how to generate projection matrices. Finally, we will use simple yet very powerful single-header libraries to load images and 3D models stored in files.
+
+# Preparing a translation matrix
+
+Basic operations that can be performed on 3D models include moving the objects in a desired direction for a selected distance (number of units).
+
+# How to do it...
+
+1.  Prepare three variables of type `float` named `x`, `y`, and `z`, and initialize them with the amount of translation (movement distance) applied to the object along the `x` (right/left), `y` (up/down), and `z` (near/far) directions respectively.
+2.  Create a variable of type `std::array<float, 16>` named `translation_matrix` that will hold a matrix representing the desired operation. Initialize elements of the `translation_matrix` array with the following values:
+    *   All elements initialize with a `0.0f` value
+    *   0^(th), 5^(th), 10^(th,) and 15^(th) elements (main diagonal) with a `1.0f` value
+    *   12^(th) element with a value stored in the `x` variable
+    *   13^(th) element with a value stored in the `y` variable
+    *   14^(th) element with a value stored in the `z` variable
+3.  Provide values of all elements of the `translation_matrix` variable to shaders (possibly via a uniform buffer or a push constant) or multiply it by another matrix to accumulate multiple operations in one matrix.
+
+# How it works...
+
+Translation is one of three basic transformations that can be applied to an object (the rest are rotation and scaling). It allows us to move a 3D model in a desired direction for a desired distance:
+
+![](img/image_10_001.png)
+
+Movement can also be applied to the camera, thus changing the point from which we observe a whole rendered scene.
+
+Creating a translation matrix is a simple process. We need an identity 4x4 matrix--all its elements must be initialized with zeros (`0.0f`) except for the elements on the main diagonal, which must be initialized with ones (`1.0f`). Now we initialize the first three elements of the fourth column with the distance we want to apply in the `x`, `y`, and `z` axes respectively, as follows:
+
+![](img/image_10_002.png)
+
+The following code creates a translation matrix:
+
+[PRE0]
+
+In the preceding code, we assume the matrix has a `column_major` order (first four elements compose a first column of the matrix, next four elements compose a second column, and so on), so it is transposed compared to the preceding figure. But the order of elements of the matrix provided to the shaders depends on a `row_major` or `column_major` **layout qualifier** specified in the shaders' source code.
+
+Keep in mind the order of elements of matrix defined in the shaders. It is specified through a `row_major` or `column_major` layout qualifier.
+
+# See also
+
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipe:
+    *   *Creating a uniform buffer*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipes:
+    *   *Writing a vertex shader that multiplies vertex position by a projection matrix*
+    *   *Using push constants in shaders*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipe:
+    *   *Providing data to shaders through push constants*
+*   The following recipes in this chapter:
+    *   *Preparing a scaling matrix*
+    *   *Preparing a rotation matrix*
+
+# Preparing a rotation matrix
+
+When we create a 3D scene and manipulate its objects, we usually need to rotate them in order to properly place and orient them among other objects. Rotating an object is achieved with a rotation matrix. For it, we need to specify a vector, around which rotation will be performed, and an angle--how much rotation we want to apply.
+
+# How to do it...
+
+1.  Prepare three variables of type `float` named `x`, `y`, and `z`. Initialize them with values that define an arbitrary vector, around which rotation should be performed. Make sure the vector is normalized (has a length equal to `1.0f`).
+2.  Prepare a variable of type `float` named `angle` and store an angle of the rotation (in radians) in it.
+3.  Create a variable of type `float` named `c`. Store a cosine of the angle in it.
+4.  Create a variable of type `float` named `s`. Store a sine of the angle in it.
+5.  Create a variable of type `std::array<float, 16>` named `rotation_matrix` that will hold a matrix representing the desired operation. Initialize elements of the `rotation_matrix` array with the following values:
+    *   0^(th) element with a `x * x * (1.0f - c) + c`
+    *   1^(st) element with a `y * x * (1.0f - c) - z * s`
+    *   2^(nd) element with a `z * x * (1.0f - c) + y * s`
+    *   4^(th) element with a `x * y * (1.0f - c) + z * s`
+    *   5^(th) element with a `y * y * (1.0f - c) + c`
+    *   6^(th) element with a `z * y * (1.0f - c) - x * s`
+    *   8^(th) element with a `x * z * (1.0f - c) - y * s`
+    *   9^(th) element with a `y * z * (1.0f - c) + x * s`
+    *   10^(th) element with a `z * z * (1.0f - c) + c`
+    *   The rest of the elements initialize with a `0.0f` value
+    *   Except for the 15^(th) element, which should contain a `1.0f` value
+6.  Provide values of all elements of the `rotation_matrix` variable to shaders (possibly via a uniform buffer or a push constant) or multiply it by another matrix to accumulate multiple operations in one matrix.
+
+# How it works...
+
+Preparing a matrix that represents a general rotation transformation is quite complicated. It can be divided into three separate matrices--representing rotations around each of the `x`, `y`, and `z` axis--that are later multiplied to generate the same result. Each such rotation is much simpler to prepare, but all in all it requires more operations to be performed, thus it may have a worse performance.
+
+That's why it is better to prepare a matrix that represents a rotation around a selected (arbitrary) vector. For this we need to specify an angle, which defines the amount of rotation to apply, and a vector. This vector should be normalized, or the amount of the applied rotation will be scaled proportionally to the length of the vector.
+
+Vector, around which rotation is performed, should be normalized.
+
+The following figure shows a rotation matrix. Data needed to perform rotation transformation is placed in the upper-left 3x3 matrix. Each column of such matrix defines the directions of `x`, `y`, and `z` axes respectively after the rotation is performed. What's more, a transposed rotation matrix defines exactly the opposite transformation:
+
+![](img/image_10_003.png)
+
+For example, if we want to rotate a camera to simulate that the character we control looks around left and right, or if we want to display a car that is turning left or right, we should specify a vector that points upwards (`0.0f, 1.0f, 0.0f`). We can also specify a vector that points downwards (`0.0f, -1.0f, 0.0f`). In this case, the object will be rotated for the same angle, but in the opposite direction. We need to choose which option is more convenient for us:
+
+![](img/image_10_004.png)
+
+The following is the code that creates a rotation matrix. It first checks if we want to normalize the vector and modifies its components accordingly. Next, helper variables are prepared that store temporary results. Finally, all elements of the rotation matrix are initialized:
+
+[PRE1]
+
+We need to remember the order of elements in an array (application) and in the matrix defined in a shaders source code. Inside shaders, we control it with `row_major` or `column_major` layout qualifiers.
+
+# See also
+
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipe:
+    *   *Creating a uniform buffer*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipes:
+    *   *Writing a vertex shader that multiplies vertex position by a projection matrix*
+    *   *Using push constants in shaders*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipe:
+    *   *Providing data to shaders through push constants*
+*   The following recipe in this chapter:
+    *   *Preparing a translation matrix*
+    *   *Preparing a scaling matrix*
+
+# Preparing a scaling matrix
+
+The third transformation that can be performed on a 3D model is scaling. This allows us to change an object's size.
+
+# How to do it...
+
+1.  Prepare three variables of type `float` named `x`, `y,` and `z` that will hold the scaling factor applied to a model in x (width), y (height), and z (depth) dimensions, respectively.
+2.  Create a variable of type `std::array<float, 16>` named `scaling_matrix`, in which a matrix representing the desired operation will be stored. Initialize elements of the `scaling_matrix` array with the following values:
+    *   All elements initialize with a `0.0f` value
+    *   0th element with a value stored in the `x` variable
+    *   5^(th) element with a value stored in the `y` variable
+    *   10^(th) element with a value stored in the `z` variable
+    *   15^(th) element with a `1.0f` value
+3.  Provide values of all elements of the `scaling_matrix` variable to shaders (possibly via a uniform buffer or a push constant) or multiply it by another matrix to accumulate multiple operations in one matrix.
+
+# How it works...
+
+Sometimes we need to change an object's size (compared to other objects in the scene). For example, due to the effect of a magical incantation, our character shrinks to fit into a very small hole. This transformation is achieved with a scaling matrix that looks like this:
+
+![](img/image_10_005.png)
+
+Using the scaling matrix, we can resize the model differently in each dimension:
+
+![](img/image_10_006.png)
+
+We must be cautious if we don't scale an object uniformly. Usually, to simplify the code and improve the performance, we provide a combined transformation matrix to a shader and use the same matrix to transform not only vertices, but also normal vectors. When we scale an object uniformly, we just need to normalize the normal vector in the shader after the transformation. But when we use a transformation that scales an object differently in each dimension, we cannot apply it to a normal vector, because lighting calculations will be incorrect (direction represented by the normal vector will be changed). If we really need to perform such scaling, we need to use an inverse transpose matrix for the normal vector transformation. We must prepare it separately and provide it to a shader.
+
+When an object is scaled differently in each dimension, a normal vector must be transformed by an inverse transformation matrix.
+
+Preparing a scaling matrix can be performed with the following code:
+
+[PRE2]
+
+As with all other matrices, we need to remember about the order of elements defined in our application (CPU) and order of elements of the matrices defined in the shader source code (`column_major` versus `row_major` order).
+
+# See also
+
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipe:
+    *   *Creating a uniform buffer*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipes:
+    *   *Writing a vertex shader that multiplies vertex position by a projection matrix*
+    *   *Using push constants in shaders*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipe:
+    *   *Providing data to shaders through push constants*
+*   The following recipes in this chapter:
+    *   *Preparing a translation matrix*
+    *   *Preparing a rotation matrix*
+
+# Preparing a perspective projection matrix
+
+3D applications usually try to simulate the effect of how we perceive the world around us--objects in the distance seem smaller than the objects that are closer to us. To achieve this effect, we need to use a perspective projection matrix.
+
+# How to do it...
+
+1.  Prepare a variable of type `float` named `aspect_ratio` that will hold an aspect ratio of a renderable area (image's width divided by its height).
+2.  Create a variable of type `float` named `field_of_view`. Initialize it with an angle (in radians) of a vertical field of view of a camera.
+3.  Create a variable of type `float` named `near_plane` and initialize it with the distance from the camera's position to the near clipping plane.
+4.  Create a variable of type `float` named `far_plane`. Store the distance between a camera and the far clipping plane in the variable.
+5.  Calculate a value of `1.0f` divided by a tangent of the half of the `field_of_view` (`1.0f / tan(Deg2Rad(0.5f * field_of_view))`) and store the result in a variable of type `float` named `f`.
+6.  Create a variable of type `std::array<float, 16>` named `perspective_projection_matrix` that will hold a matrix representing the desired projection. Initialize elements of the `perspective_projection_matrix` array with the following values:
+    *   0^(th) element with a `f / aspect_ratio`
+    *   5^(th) element with a `-f`
+    *   10^(th) element with a `far_plane / (near_plane - far_plane)`
+    *   11^(th) element with a `-1.0f` value
+    *   14^(th) element with a `(near_plane * far_plane) / (near_plane - far_plane)`
+    *   The rest of the elements initialize with a `0.0f` value
+7.  Provide values of all elements of the `perspective_projection_matrix` variable to shaders (possibly via a uniform buffer or a push constant) or multiply it by another matrix to accumulate multiple operations in one matrix.
+
+# How it works...
+
+A graphics pipeline operates on vertex positions defined in a so-called clip space. Usually, we specify vertices in a local (model) coordinate system and provide them directly to a vertex shader. That's why we need to transform provided vertex positions from their local space to a clip space in one of the vertex processing stages (vertex, tessellation control, tessellation evaluation, or a geometry shader). This transformation is performed with a projection matrix. If we want to simulate the effect of a perspective division, we need to use a perspective projection matrix and multiply it by a vertex position:
+
+![](img/image_10_007.png)
+
+To create a perspective projection matrix, we need to know the dimensions of a renderable area, to calculate its aspect ratio (width divided by height). We also need to specify a (vertical) field of view, which we can think of as a zoom of a virtual camera:
+
+![](img/image_10_008.png)
+
+One last thing required to create a perspective projection matrix are two distances to near and far clipping planes. As they impact the depth calculations, they should be specified as close to the objects on the scene as possible. If we specify a large value for a near plane, and a small value for a far plane, our scene will be (in general) clipped--we will see how objects are popping in and out of the scene. On the other hand, if the near distance is too small, and the distance to the far plane is too big, we will lose the precision of a depth buffer and depth calculations may be incorrect.
+
+Near and far clipping planes should correspond to the scene being displayed.
+
+Using the preceding described data, we can create a perspective projection matrix using the following code:
+
+[PRE3]
+
+# See also
+
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipe:
+    *   *Creating a uniform buffer*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipes:
+    *   *Writing a vertex shader that multiplies vertex position by a projection matrix*
+    *   *Using push constants in shaders*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipe:
+    *   *Providing data to shaders through push constants*
+*   The following recipe in this chapter: 
+    *   *Preparing an orthographic projection matrix*
+
+# Preparing an orthographic projection matrix
+
+Orthographic projection is another type of operation that transforms vertices from their local coordinate system to a clip space. But opposed to a perspective projection, it doesn't take a perspective division into account (doesn't simulate the way we perceive our surroundings). But similarly to a perspective projection, it is also represented by a 4x4 matrix, which we need to create in order to use this type of projection.
+
+# How to do it...
+
+1.  Create two variables of type `float` named `left_plane` and `right_plane`, and initialize them with the positions (on the `x` axis) of left and right clipping planes, respectively.
+2.  Prepare two variables of type `float` named `bottom_plane` and `top_plane`. Initialize them with positions of (on the `y` axis) of the bottom and top clipping planes, respectively.
+3.  Create two variables of type `float` named `near_plane` and `far_plane`. Use them to hold distances from the camera to the near and far clipping planes, respectively.
+4.  Create a variable of type `std::array<float, 16>` named `orthographic_projection_matrix`. It will hold a matrix representing the desired projection. Initialize elements of the `orthographic_projection_matrix` array with the following values:
+    *   All elements of the matrix initialize with a `0.0f` value
+    *   0^(th) element with a `2.0f / (right_plane - left_plane)`
+    *   5^(th) element with a `2.0f / (bottom_plane - top_plane)`
+    *   10th element with a `1.0f / (near_plane - far_plane)`
+    *   12^(th) element with a `-(right_plane + left_plane) / (right_plane - left_plane)`
+    *   13^(th) element with a `-(bottom_plane + top_plane) / (bottom_plane - top_plane)`
+    *   14th element with a `near_plane / (near_plane - far_plane)`
+    *   15^(th) element with a `1.0f` value
+5.  Provide values of all elements of the `orthographic_projection_matrix` variable to shaders (possibly via a uniform buffer or a push constant) or multiply it by another matrix to accumulate multiple operations in one matrix.
+
+# How it works...
+
+When we use orthographic projection, all objects in the scene maintain their size and screen position no matter how far from the camera they are. That's why orthographic projection is very useful for drawing all kinds of **UIs** (**user interfaces**). We can define our virtual screen, we know all its sides (planes defined for the projection), and we can easily place and manipulate interface elements on screen. We can also use depth tests if needed.
+
+Orthographic projection is also widely used in **CAD** programs (**Computer Aided Design**). These tools are used for designing buildings, ships, electronic circuits, or mechanical devices. In such situations, all sizes of all objects in the scene must be exactly the ones as defined by the designers and all directions must keep their relations (that is, all parallel lines must always stay parallel), no matter how far from the camera objects are and from which angle they are viewed.
+
+The following code is used to create a matrix that represents an orthographic projection:
+
+[PRE4]
+
+# See also
+
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipe:
+    *   *Creating a uniform buffer*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipes:
+    *   *Writing a vertex shader that multiplies vertex position by a projection matrix*
+    *   *Using push constants in shaders*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipe:
+    *   *Providing data to shaders through push constants*
+*   The *Preparing a perspective projection matrix* recipe in this chapter
+
+# Loading texture data from a file
+
+Texturing is a commonly used technique. It allows us to place an image on the surface of an object in a similar way to how we put wallpaper on walls. This way we don't need to increase the geometric complexity of a mesh, which would be both too complex for the hardware to process it, and would use too much memory. Texturing is simpler to handle and allows us to achieve better, more convincing results.
+
+Textures can be generated procedurally (dynamically in code), but usually their contents are read from images or photos.
+
+# Getting ready
+
+There are many different libraries allowing us to load contents of images. All of them have their own specific behaviors, usages, and licenses. In this recipe, we will use a `stb_image` library created by *Sean T. Barrett*. It is very simple to use, yet supports enough image formats to start developing a Vulkan application. And one of its main strengths is that it is a single header library, all its code is placed in just one header file. It doesn't depend on any other libraries, files, or resources. Another advantage is that we can use it in whatever way we want.
+
+The `stb_image.h` file is available at [https://github.com/nothings/stb](https://github.com/nothings/stb).
+
+To use the `stb_image` library in our application, we need to download a `stb_image.h` file from [https://github.com/nothings/stb](https://github.com/nothings/stb) and include it in our project. This file can be included at many places in our code, but to create the library's implementation in only one of the source files we need to include the file and precede it with a `#define STB_IMAGE_IMPLEMENTATION` definition like this:
+
+[PRE5]
+
+# How to do it...
+
+1.  Store the name of a file, from which the texture image should be loaded, in a variable of type `char const *` named `filename`.
+2.  Create a variable of type `int` named `num_requested_components`. Initialize it with the desired number of components to be loaded from a file (a value from `1` to `4`) or with a `0` value to load all available components.
+3.  Create three variables of type `int` named `width`, `height`, and `num_components`, and initialize all of them with a `0` value.
+4.  Create a variable of type `unsigned char *` named `stbi_data`.
+5.  Call `stbi_load( filename, &width, &height, &num_components, num_requested_components )` and provide the `filename` variable, pointers to the `width`, `height`, and `num_components` variables, and the `num_requested_components` variable. Store the result of the function call in the `stbi_data` variable.
+6.  Make sure the call successfully loaded the contents of the specified file by checking if a value stored in the `stbi_data` variable is not equal to a `nullptr` value and if the values stored in the `width`, `height`, and `num_components` variables are greater than `0`.
+7.  Create a variable of type `int` named `data_size` and initialize it with a value calculated using the following formulae:
+
+*width * height * (0 < num_requested_components ? num_requested_components : num_components)*
+
+8.  Create a variable of type `std::vector<unsigned char>` named `image_data`. Resize it to hold the `data_size` number of elements.
+9.  Copy `data_size` number of bytes from the `stbi_data` to a memory starting at the first element of the `image_data` vector using the following call:
+
+[PRE6]
+
+10.  Call `stbi_image_free( stbi_data )`.
+
+# How it works...
+
+Using the `stb_image` library comes down to calling the `stbi_load()` function. It takes the name of a file, the selected number of components to be loaded from the file, and returns a pointer to the memory containing the loaded data. The library always converts an image's contents to 8 bits per channel. The width and height of the image and the real number of components available in the image are stored in optional variables.
+
+The code loading an image is presented as follows:
+
+[PRE7]
+
+The pointer returned by the `stbi_load()` function must be released by calling the `stbi_image_free()` function with a value returned by the former function provided as its only parameter. That's why it is good to copy loaded data to our own variable (that is, a vector) or directly to one of the Vulkan resources (image), so there are no memory leaks. This is presented as follows:
+
+[PRE8]
+
+In the preceding code, the memory pointer returned by the `stbi_load()` function is released automatically, because we are storing it in a smart pointer of type `std::unique_ptr`. In the example, we copy the image's contents to a vector. This vector can be used later in our application as a source of texture data.
+
+# See also
+
+*   In [Chapter 4](f1332ca0-b5a2-49bd-ac41-e37068e31042.xhtml), *Resources and Memory*, see the following recipes:
+    *   *Creating an image*
+    *   *Allocating and binding memory object to an image*
+    *   *Creating an image view*
+*   In [Chapter 5](fe2cb528-9d22-49db-a05b-372bce2f87ee.xhtml), *Descriptor Sets*, see the following recipes:
+    *   *Creating a sampled image*
+    *   *Creating a combined image sampler*
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipe:
+    *   *Writing a texturing vertex and fragment shaders*
+
+# Loading a 3D model from an OBJ file
+
+Rendering 3D scenes requires us to draw objects, which are also called models or meshes. A mesh is a collection of vertices (points) with information about how these vertices form surfaces or faces (usually triangles).
+
+Objects are prepared in modeling software or CAD programs. They can be stored in many various formats, which are later loaded in 3D applications, provided to graphics hardware, and then rendered. One of the simpler file types, which holds mesh data, is a **Wavefront OBJ**. We will learn how to load models stored in this format.
+
+# Getting ready
+
+There are multiple libraries that allow us to load OBJ files (or other file types). One of the simpler, yet very fast and still being improved, libraries is a **tinyobjloader** developed by *Syoyo Fujita*. It is a single header library, so we don't need to include any other files or reference any other libraries.
+
+The tinyobjloader library can be downloaded from [https://github.com/syoyo/tinyobjloader](https://github.com/syoyo/tinyobjloader).
+
+To use the library, we need to download a `tiny_obj_loader.h` file from [https://github.com/syoyo/tinyobjloader](https://github.com/syoyo/tinyobjloader). We can include it at many places in our code, but to generate its implementation, we need to include it in one of our source files and precede the inclusion with a `#define TINYOBJLOADER_IMPLEMENTATION` definition like this:
+
+[PRE9]
+
+For the purpose of this recipe, we will also use a custom `Mesh` type that will hold the loaded data in a form that can be easily used with a Vulkan API. This type has the following definition:
+
+[PRE10]
+
+The `Data` member stores vertex attributes--positions, normals, and texture coordinates (normal vectors and texcoords are optional). Next there is a vector member named `Parts`, which defines separate parts of the model. Each such part needs to be drawn with a separate API call (such as the `vkCmdDraw()` function). The model part is defined by two parameters. `VertexOffset` defines where the given part starts (what is its offset in an array of vertex data). `VertexCount` defines the number of vertices the given part is composed of.
+
+# How to do it...
+
+1.  Prepare a variable of type `char const *` named `filename` and store a name of the file, from which model data will be loaded, in the variable.
+2.  Create the following variables:
+    *   Of type `tinyobj::attrib_t` named `attribs`
+    *   Of type `std::vector<tinyobj::shape_t>` named `shapes`
+    *   Of type `std::vector<tinyobj::material_t>` named `materials`
+    *   Of type `std::string` named `error`
+3.  Call `tinyobj::LoadObj( &attribs, &shapes, &materials, &error, filename )`, for which provide pointers to the `attribs`, `shapes`, `materials`, and `error` variables, and also the `filename` variable as the last parameter.
+4.  Make sure the call successfully loaded the model data from file by checking if the function call returned a `true` value.
+5.  Create a variable of type `Mesh` named `mesh` that will hold model data in a form suitable for a Vulkan API.
+6.  Create a variable of type `uint32_t` named `offset` and initialize it with a `0` value.
+7.  Iterate over all elements of the `shapes` vector. Assuming that the current element is stored in a variable of type `tinyobj::shape_t` named `shape`, do the following operations for each element:
+    1.  Create a variable of type `uint32_t` named `part_offset`. Initialize it with a value stored in the `offset` variable.
+    2.  Iterate over all elements of the `shape.mesh.indices` vector, store currently processed elements in a variable of type `tinyobj::index_t` named `index`, and do the following operations for each element:
+        *   Copy three elements of an `attribs.vertices` vector, available at indices equal to (`3 * index.vertex_index`), (`3 * index.vertex_index + 1`), and (`3 * index.vertex_index + 2`), as new elements of the `mesh.Data` vector
+        *   If normal vectors should be loaded, copy three elements of an `attribs.normals` vector, which are indicated by indices equal to (`3 * index.normal_index`), (`3 * index.normal_index + 1`), and (`3 * index.normal_index + 2`), to the `mesh.Data` vector
+        *   If texture coordinates should also be loaded, add two elements to the `mesh.Data` vector and initialize them with values stored in an `attribs.texcoords` vector at positions (`2 * index.texcoord_index`) and (`2 * index.texcoord_index + 1`)
+        *   Increase the value of the `offset` variable by one
+    3.  Store a calculated value of `offset - part_offset` in a variable of type `uint32_t` named `part_vertex_count`.
+    4.  If the value of the `part_vertex_count` variable is greater than zero (a `0` value), add a new element to the `mesh.Parts` vector. Initialize its contents with the following values:
+        *   The `part_offset` variable for `VertexOffset`
+        *   The `part_vertex_count` variable for `VertexCount`
+
+# How it works...
+
+3D models should be as small as possible to speed the loading process and lower the disk space required to store them. Usually, when we think about creating games, we should choose one of the binary formats, because most of them meet the mentioned requirements.
+
+But when we start learning new APIs, it is good to choose a simpler format. OBJ files contain data stored in a text form, so we can easily view it or even modify it by ourselves. Most (if not all) commonly used modeling programs allow generated models to be exported to OBJ files. So it is a good format to get started with.
+
+Here we will focus on loading only the vertex data. First we need to prepare storage for a model. After that we can load the model using the tinyobjloader library. If anything goes wrong, we check the error message and display it to a user:
+
+[PRE11]
+
+Theoretically, we could end our model-loading code here, but this data structure is not well suited for the Vulkan API. Though the normal vector and texture coordinates of a single vertex may be placed in separate arrays, they should be placed at the same index. Unfortunately, this may not be the case when it comes to an OBJ file format, which reuses the same values for multiple vertices. Because of that, we need to convert loaded data to a format that can be easily used by a graphics hardware:
+
+[PRE12]
+
+After the preceding conversion, data stored in the `Data` member of the `mesh` variable can be directly copied to a vertex buffer. On the other hand, `VertexOffset` and `VertexCount` members of each part of the model are used during drawing--we can provide them to a `vkCmdDraw()` function.
+
+When we create a graphics pipeline, which will be used to draw models loaded with the tinyobjloader library and stored in variables of a custom type `Mesh`, we need to specify a `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST` topology for an input assembly state (refer to the *Specifying pipeline input assembly state* recipe from [Chapter 8](5744ea05-b18a-4f84-a1df-250b549dfea5.xhtml), *Graphics and Compute Pipelines*). We also need to remember that each vertex is composed of three floating point values defining its position. When vertex normals are also loaded, they are also described by three floating point values. Texture coordinates, which are also optional, contain two floating point values. Each of the position, normal, and texcoord attributes are placed one after another for the first vertex, and then there are the position, normal, and texcoord attributes of the second vertex, and so on. The preceding information is required to properly set up vertex binding and attribute descriptions specified during graphics pipeline creation (refer to the *Specifying pipeline vertex binding description, attribute description and input state* recipe from [Chapter 8](5744ea05-b18a-4f84-a1df-250b549dfea5.xhtml), *Graphics and Compute Pipelines*).
+
+# See also
+
+*   In [Chapter 4](f1332ca0-b5a2-49bd-ac41-e37068e31042.xhtml), *Resources and Memory*, see the following recipes:
+    *   *Creating a buffer*
+    *   *Allocating and binding memory object to a buffer*
+    *   *Using staging buffer to update a buffer with a device-local memory bound*
+
+*   In [Chapter 7](97217f0d-bed7-4ae1-a543-b4d599f299cf.xhtml), *Shaders*, see the following recipe:
+    *   *Writing vertex shaders*
+*   In [Chapter 8](5744ea05-b18a-4f84-a1df-250b549dfea5.xhtml), *Graphics and Compute Pipelines*, see the following recipes:
+    *   *Specifying pipeline vertex binding description, attribute description and input state*
+    *   *Specifying pipeline input assembly state*
+*   In [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*, see the following recipes:
+    *   *Binding vertex buffers*
+    *   *Drawing a geometry*

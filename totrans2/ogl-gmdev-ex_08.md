@@ -1,0 +1,405 @@
+# Chapter 8. Expanding Your Horizons
+
+Until this point, we have limited our coding to two dimensions. Now, it is time to expand to the third dimension. In many ways, this will not be as intimidating as it sounds. After all, instead of specifying a position using two coordinates (*x* and *y*), we will now simply add a third coordinate (*z*). However, there are some areas where the third dimension will add considerable complexity, and it is my job to help you master that complexity. In this chapter, we will start with the basic understanding of placing an object in a 3D world, including:
+
+*   **3D coordinate systems**: You already mastered the Cartesian coordinate system (*x* and *y* coordinates). We will discuss how to expand this into a third axis.
+*   **3D cameras**: The camera in a 2D game is pretty much fixed while the objects move past it. In 3D game programming, we often move the camera forward, backward, side-to-side, or even in circles around the objects in the game.
+*   **3D views**: How exactly does a 2D computer screen represent 3D games? You will learn the basics of how 3D gets transformed by the graphics pipeline.
+*   **3D transformations**: Moving around in 3D space is quite a bit more complicated than moving in 2D space. In fact, we use a whole new form of mathematics to do so. You will learn the basics of matrices, and how they can be used to move, rotate, and change the size of 3D objects.
+
+# Into the third dimension!
+
+You already live in a world with three dimensions. You can walk forward and backward, side to side, and jump up or duck. The reality of three dimensions becomes even more apparent if you are flying or even swimming.
+
+Most 2D games operate by allowing the player to move left and right, or jump up or down. This is what we did when we created RoboRacer2D. In this type of 2D game, the missing dimension is depth. Our Robot could not move further away from us or closer to us. Considering that we were drawing him on a flat screen, it shouldn't be too surprising that he was limited to two dimensions.
+
+## Simulating 3D
+
+Of course, artists found a way around this limitation hundreds of years ago by observing that as an object gets farther away from us, it gets smaller, and as it gets closer to us it gets larger. So, a simple way to represent 3D in a 2D world is to simply draw the more distant objects as smaller objects. 2D games learned this trick early on and used it to simulate 3D:
+
+![Simulating 3D](img/8199OS_08_01.jpg)
+
+In the preceding image, the larger tank appears to be closer than the smaller tank.
+
+Another important aspect of depth is **perspective**. Artists learned that parallel lines appear to converge toward the center as they move farther away. The point where they seem to converge is known as the **vanishing point**:
+
+![Simulating 3D](img/8199OS_08_02.jpg)
+
+In the preceding image, the walls and floor panels are all parallel, but they appear to converge inward toward the center of the image.
+
+A third aspect of 3D motion is that objects that are farther away appear to travel more slowly than objects that are closer. Thus, when you are driving, the telephone poles pass you by much faster than the distant mountains. Some 2D games take advantage of this phenomenon, called **parallax**, by creating a background layer in the game that moves much slower than the foreground. In fact, this is exactly what we did in RoboRacer2D because the Robot in the foreground moves more quickly than the objects in the background.
+
+2D games have used all of these features—size, perspective, and parallax—to simulate 3D long before we ever had hardware and graphics cards to do them for us. One of the first games to do this in a convincing way was Pole Position. The game that really blew everyone away was Doom, which was probably the first game that allowed the player to freely move in a 3D world.
+
+## Real 3D
+
+Modern 3D games take the idea of simulating 3D to the next level. In the simulating 3D section that we just discussed, it is the programmers' task to scale the image so that it appears smaller as it gets further away, take care of perspective, and handle parallax. This is now handled by the 3D graphics card.
+
+![Real 3D](img/8199OS_08_03.jpg)
+
+The preceding image shows a 3D **model** of a tank. These models are created using special software, such as Maya or 3ds Max. This model is fundamentally different than the 2D tank image we showed you previously because it represents the tank in three dimensions.
+
+We will discuss 3D modeling in more detail in a future chapter. For now, the important concept is that the data for a 3D tank is sent to the graphics card, and the graphics card takes care of size, perspective, and parallax as the tank is positioned in a 3D space. This takes a lot of the load off the programmer!
+
+## 3D Coordinate Systems
+
+Now that you have a fundamental idea of how the illusion of 3D is created on a 2D screen, let's learn how adding another dimension affects our coordinate system.
+
+In [Chapter 2](ch02.html "Chapter 2. Your Point of View"), *Your Point of View* I introduced you to the 2D coordinate system that is used by many game systems.
+
+![3D Coordinate Systems](img/8199OS_08_04.jpg)
+
+The preceding diagram shows a car placed at coordinate position (**5, 5**). Let's add the third dimension and see how it compares:
+
+![3D Coordinate Systems](img/8199OS_08_05.jpg)
+
+Notice that we added a third axis and labeled it as the Z-axis. Positive values on the Z-axis are closer to us, while negative values on the Z-axis are farther away. The car is now placed at coordinate (**5, 5, -5**) in 3D space. As the car is farther away, it also appears smaller than it did in the previous 2D image (you can think of 2D space as a space where all of the *z* coordinates are 0).
+
+The preceding diagram shows the Z-axis at an angle, but it is important to understand that the Z-axis is actually perpendicular to the plane of the computer screen.
+
+![3D Coordinate Systems](img/8199OS_08_06.jpg)
+
+Think of the Z-axis as a line the pierces through the center of the monitor from the front and travels out the back!
+
+### Tip
+
+There are actually many ways to represent the axes in a 3D world. One distinction between OpenGL and DirectX is the Z-axis. In OpenGL, positive *z* values are closer to the player. In DirectX, Microsoft's 3D rendering engine, negative z values are closer to the player. It's just a good thing to know because you will very likely work with both systems. OpenGL is known as a **right-hand** coordinate system, while DirectX is a **left-hand** coordinate system. It's a little hard to explain how they got these names, so perform an Internet search if you would like to learn more!
+
+# The camera
+
+In [Chapter 2](ch02.html "Chapter 2. Your Point of View"), *Your Point of View* we compared creating games to making a video recording. Your video camera captures a part of the view in front of you. If objects move into or out of that field of view, they are no longer in the video recording.
+
+3D games use a camera as well. OpenGL allows you to move the game camera on six axes: up, down, left, right, in, and out. As you move the game camera, the objects that are in its view change.
+
+Let's say that you center the camera on the car in the scene and pan to the left or right. The car will move in and out of the field of view. Of course the same occurs if you pan the camera up or down. Move back (or zoom out) and the car appears smaller. Move forward (or zoom in) and the car appears larger. Tilt the camera and the car will appear to be going uphill, downhill, or even appear upside down!
+
+## Remember those home movies?
+
+Remember those home movies where the whole scene would jump around as the camera moved? Obviously, the position and movement of the camera has a lot to do with the appearance of the car. The same is true in the game world.
+
+OpenGL uses the concept of a camera to determine exactly what shows up on the screen, and how it shows up. You have the ability to move the camera up or down, and left or right. You can rotate or tilt the camera. You have complete control!
+
+## Steady as she goes!
+
+Although you have complete control over moving the camera, some games simply place the camera at a particular spot and then leave it fixed. This is similar to taking your home video camera and attaching it to a tripod.
+
+Many 2D games use a fixed camera, and this is exactly what we did in RoboRacer2D. All of the motion in the game came from changing the position of the objects in the game, not from changing the position of the camera.
+
+In 3D games, it is very common to move both the camera and objects in the game. Imagine that we have a 3D scene with a moving car. If the camera remained fixed, the car would eventually move out of the scene. In order to keep the car in the scene, we need to move the camera so that it follows the car. Both the car and the camera need to move.
+
+## The viewport
+
+In game terminology, the area that can be seen by the camera at any time is called the **viewport**. The viewport defines the area of the game world that the camera can see:
+
+![The viewport](img/8199OS_08_07.jpg)
+
+The preceding illustration shows a viewport with a certain width and height. If the car moves outside of these boundaries, it will no longer be visible. In a 3D world, we must also define the depth of the image that we want to capture.
+
+![The viewport](img/8199OS_08_08.jpg)
+
+The preceding image shows how the 3D viewport is defined:
+
+*   The front clipping plane defines how close things can get to the camera. Anything closer than the front clipping plane will not be rendered on the screen.
+*   The rear clipping plane defines how far things can get from the camera. Anything beyond the rear clipping plane will not be rendered on the screen.
+*   The area between the front and back clipping planes is called the frustum. Objects inside the frustum will be rendered to the screen.
+*   The field of view determines how tall and wide the angle of view is from the camera. A wide field of view will render more area, while a narrow field of view will render less area. A wider angle will also introduce more distortion to the image.
+
+# Entering the matrix
+
+Now for the topic that strikes fear into the heart of all new game programmers: **matrices**. Matrices are a mathematical device (part of linear algebra) that makes it easier to work with large sets of related numbers.
+
+In its simplest form, a **matrix** is a table of numbers. Let's say that I wanted to represent a coordinate in space. I could write its value down as follows:
+
+![Entering the matrix](img/8199OS_08_entering_the_matrix.jpg)
+
+## Vectors
+
+A single row or single column of a matrix is called a **vector**. Vectors are important because they can be used to both position things and move things.
+
+The typical matrix used in games contains four values: *x*, *y*, *z*, and *w*. These *x*, *y*, and *z* components typically refer to a position in the 3D coordinate system, while the *w* is a switch:
+
+*   The value 1 means that this vector is a position
+*   The value 0 means that this vector is a velocity
+
+Here's an example:
+
+*   The vector, (`1, 5, 10, 1`), represents a point at x = `1`, y = `5`, and z = `10` in a 3D coordinate system.
+*   The vector, (`1, 5, 10, 0`), is a point that moves 1 unit in the *x* direction, 5 units in the *y* direction, and 10 units in the *z* direction
+
+### Tip
+
+Notice that vectors can be represented as a series of numbers inside of a parenthesis. This is much easier than having to draw a table every time you need to write down a vector!
+
+## Combining vectors
+
+The real power of vectors comes when they are combined. The most common way to combine vectors is to multiply them. Look at the following example:
+
+![Combining vectors](img/8199OS_08_combining_vectors.jpg)
+
+The matrix on the left is known as a **translation matrix** because when you multiply it by a positional vector, the result will be a new position (moving things in a 3D space is known as **translation**). In this case, the point at (**2, 1, 0**) has been translated to a new position at (**3, 6, 6**).
+
+### Tip
+
+Remember: the last **1** in (**1, 5, 6, 1**) and (**2, 1, 0, 1**) is the *w* value that simply tells us we are working with a position. Notice that the *w* value remained **1** in the final result as well!
+
+If you are paying attention, you must be wondering how we got the third matrix! It turns out that multiplying two matrices is actually more complex that it seems. In order to multiply the two matrices shown earlier, the following operations had to occur:
+
+*   (1 * 2) + (0 * 1) + (0 * 0) + (1 * 1) = 3
+*   (0 * 2) + (1 * 1) + (0 * 0) + (5 * 1) = 6
+*   (0 * 2) + (0 * 1) + (1 * 0) + (6 * 1) = 6
+*   (0 * 2) + (0 * 1) + (0 * 0) + (1 * 1) = 1
+
+Each cell in each row of the first matrix is multiplied by each cell in each column of the second matrix.
+
+This might seem like a lot of trouble just to move a point, but when it comes to quickly moving 3D objects around in a game, matrix math is much faster than other techniques.
+
+Don't worry! This is about all we are going to say about matrices and vectors. You should know that OpenGL uses matrices to calculate **transformations**, including:
+
+*   Moving
+*   Scaling
+*   Rotating
+
+### Tip
+
+If you ever work with both OpenGL and DirectX, you will need to be aware that there is a difference in the way they handle matrices. OpenGL uses a **row major** order, while DirectX users a **column major order**. In a row major matrix, all of the cells in the first column are adjacent, followed by all of the cells in the next row, and so forth. In a column major matrix, all of the cells in the first column are adjacent, followed by all of the cells in the next column, and so forth. This makes a huge difference in how you manipulate and calculate the matrices!
+
+## Identity matrix
+
+I will mention one more special matrix:
+
+| 1 | 0 | 0 | 0 |
+| 0 | 1 | 0 | 0 |
+| 0 | 0 | 1 | 0 |
+| 0 | 0 | 0 | 1 |
+
+The preceding matrix is known as an identity matrix. If you multiply any matrix by an identity matrix, the result is the original matrix (just like multiplying any number by 1 results in the original number). Whenever we want to initialize a matrix, we set it to an identity matrix.
+
+There are special matrices in OpenGL, and you will be introduced to some of them in the next code.
+
+# Coding in 3D
+
+It's time for us to put our theory into practice and create our first 3D scene. To keep things simple, we will go through the steps of placing a cube in 3D space. This is also going to be the start of our 3D game, so let's start by creating a brand new project in Visual Studio.
+
+## Creating the project
+
+When we created a project for our 2D game, we started with a standard Windows project and then removed (or ignored) the items that we didn't need to use. In fact, the standard Windows project has a lot of overhead that we don't need. This is because the Windows project template assumes that Windows is going to be in charge of rendering and processing. This came in useful for our 2D project, but just adds a lot of extra code that we don't need.
+
+For this project, we will start with a blank Windows project and then add the necessary code to initialize and create an OpenGL window. Then, we will work our way up from there:
+
+1.  Begin by opening Visual Studio.
+2.  Once Visual Studio is open, create a new project by clicking on **File**, **New**, **Project**. From the **Visual C++** branch choose **Empty Project**.![Creating the project](img/8199OS_08_09.jpg)
+3.  **Name** the project `SpaceRacer3D`, place it in the location of your choice, and click **OK**. The result is a project that has no code. Let's solve that problem by creating our main game file.
+4.  Right-click on the **Source Files** folder in the **Solution Explorer** panel.
+5.  Choose **Add**, **New Item…**.
+6.  Click on **C++ File (.cpp)**.
+7.  Type `SpaceRacer3D.cpp` for **Name** and click **Add**.![Creating the project](img/8199OS_08_10.jpg)
+
+## Retrieving OpenGL files
+
+The standard OpenGL library is already installed when you install Visual Studio. However, the OpenGL utilities library may not be. To make things simple, we will simply copy the files that we need from our RoboRacer2D project.
+
+Open the **RoboRacer2D** project folder and select the following files:
+
+*   `glut.h`
+*   `glut32.dll`
+*   `glut32.lib`
+
+Now copy these files into the **SpaceRacer3D** source folder. This will be the same folder that your `SpaceRacer3D.cpp` file is located.
+
+## Linking projects to OpenGL libraries
+
+Now that we have a project and the relevant OpenGL files, we need to link to the OpenGL libraries. This is done by accessing the project properties.
+
+In the **Solution Explorer** panel perform the following actions:
+
+1.  Right-click on the project name (not the solution), and choose **Properties**.
+2.  Open the **Linker** branch under **Configuration Properties**, and select **Input**.
+3.  Click on **Additional Dependencies** and then click the drop-down arrow that appears.
+4.  Click on **<Edit…>**.
+5.  Add `OpenGL32.lib` and `GLu32.lib` in the **Additional Dependencies** dialog window.![Linking projects to OpenGL libraries](img/8199OS_08_11.jpg)
+
+# Setting up the OpenGL window
+
+We are now going to add the code required to create an OpenGL window. We did this once for RoboRacer2D, but now, we are creating a 3D game and there will be some differences. Here's a look at what we need to do:
+
+1.  Include header files.
+2.  Define global variables.
+3.  Create the OpenGL window.
+4.  Initialize the OpenGL window.
+5.  Size the OpenGL window.
+6.  Remove the OpenGL window.
+7.  Create the Windows event handler.
+8.  Create the `WinMain` function.
+
+Notice that we still have to create some code to satisfy Windows. We need an event handler to process Windows events, and we still need a main function to serve as the program entry point and run the main program loop. Everything else in this list is used to set up the OpenGL environment.
+
+### Tip
+
+I listed the functions tasks that we need in an order that makes logical sense. When we actually implement the code, we will create things in a slightly different order. This is because some functions require another function to already be defined. For example, the function to create the OpenGL window calls the function to initialize the OpenGL window, so the initialize function is coded first.
+
+## Including header files
+
+The first step is to in include the appropriate headers. Add the following headers at the top of `SpaceRacer3D.cpp`:
+
+[PRE0]
+
+These are the same files that we used in the 2D project, but here is a quick description of each one so that you don't have to flip back:
+
+*   We are still running in Windows, so we must include `windows.h`
+*   The core header for OpenGL is `GL.h`
+*   There are some great utilities to make our lives easier in `GLU.h`
+*   There are also useful utilities in `glut.h`
+
+## Defining global variables
+
+We need some global variables to hold onto references to Windows and OpenGL objects. Add the following lines of code just under the header lines:
+
+[PRE1]
+
+Here is a quick list of what these variables are for:
+
+*   `hInstance`: This holds a reference to this instance of the application
+*   `hDC`: This holds a reference to the GDI device context which is used for drawing in native Windows
+*   `hRC`: This holds a reference to the OpenGL rendering context, used for rendering 3D
+*   `hWnd`: This holds a reference to the actual window the application is running in
+
+We have also included a global `fullscreen` variable. If you set this to `true`, the game will run in `fullscreen` mode. If you set this to `false`, the game will run in windowed mode.
+
+## Creating a function to create the OpenGL window
+
+We will also include a forward reference to the Windows event handler. Add the following line of code:
+
+[PRE2]
+
+A forward reference allows us to define a function whose actual implementation will appear later in the code. The code for `WndProc` will be added later.
+
+## Sizing the OpenGL window
+
+Next, we will create the function to size the OpenGL window. This function is called when the program starts as well as any time the window that the application is running in is resized. Add the following code:
+
+[PRE3]
+
+This code sets the size of the OpenGL window and prepares the window for rendering in 3D:
+
+*   First, we take the width and height (ensuring that the height is never equal to 0), and use them to define the size viewport using the `glViewport` function. The first two parameters are the *x* and *y* value of the lower left-hand corner of the viewport, followed by the width and the height. These four parameters define the size and location of the viewport.
+*   Next, we have to define the frustum. After telling OpenGL to use the projection matrix, we use the `gluPerspective` function, which takes four parameters: the field of view (in degrees, not radians), the aspect ratio, the distance of the front clipping plane, and the distance of the rear clipping plane. The field of view is the angle from the center of the camera. The aspect ratio is the width divided by the height. These four parameters define the size of the frustum.
+
+    ### Tip
+
+    After you complete this chapter, you may try playing with the values of this function to see how it changes the rendering.
+
+*   Finally, we tell OpenGL to use the model view from this point forward.
+
+If you compare this function to the `GLSize` function that we used in RoboRacer2D, you will note one significant difference: we do not make a call to `glOrtho`. Remember, RoboRacer2D was a 2D game. 2D games use an **orthographic projection** that removes perspective when the scene is rendered. You don't need perspective in a 2D game. Most 3D games use a **perspective projection**, which is defined by the `gluPerspective` call.
+
+### Note
+
+**OpenGL Matrices**
+
+Just before the `gluPerspective` call, you will notice two functions: `glMatrixMode`, and `glLoadIdentity`. Remember from our discussion of matrices that a matrix is used to hold a set of values. OpenGL has many standard matrices, and one of them is the projection matrix, which is used to define the view frustum.
+
+If we want to set the values of a matrix, we must first tell OpenGL that we want to work with this matrix. Next, we typically initialize the matrix, and finally, we make a call that sets the values of the matrix.
+
+Looking at the code to set the view frustum, this is exactly what we do:
+
+*   `glMatrixMode(GL_PROJECTION)`: This tells OpenGL that we want to work with the projection matrix. Any matrix operations after this call will be applied to the projection matrix.
+*   `glLoadIdentity()`: This sets the projection matrix to an identity matrix, thus, clearing any previous values.
+*   `gluPerspective(45.0f, (GLfloat)w / (GLfloat)h, 0.1f, 100.0f)`: This sets the values of the projection matrix.
+
+You should get used to this pattern because it is used often in OpenGL: set a matrix to work with, initialize the matrix, then set the values of the matrix. For example, at the end of this function we tell OpenGL to use the model view matrix and initialize it. Any operations after this will affect the model view.
+
+## Initializing the OpenGL window
+
+Add the following code to initialize OpenGL:
+
+[PRE4]
+
+This function initializes OpenGL by defining important settings that determine how a scene will be rendered:
+
+*   `glShadeModel`: This tells OpenGL that we want it to smooth the edges of the vertices. This greatly improves the look of our images.
+*   `glClearColor`: This sets the color that is used each time `glClear` is called to clear out the rendering buffer. It is also the default color that will show in the scene.
+*   `glClearDepth(1.0f)`: This tells OpenGL that we want the entire depth buffer cleared each time `glClear` is called. Remember, we are working in 3D now, and the depth buffer is roughly synonymous with the Z-axis.
+*   `glEnable(GL_DEPTH_TEST)`: This turns on depth checking. Depth checking is used to determine if a particular piece of data will be rendered.
+*   `glDepthFunc(GL_LEQUAL)`: This tells OpenGL how you want to perform the depth test. `LEQUAL` tells OpenGL to write the data only if the z value of the incoming data is less than or equal to the z value of the existing data.
+*   `glHint((GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST))`: This is an interesting function. `glHint` means that this function is going to suggest that OpenGL use the settings passed as parameters. However, as there are many different types of devices, there is no guarantee that these settings will actually be enforced. The `GL_PERSPECTIVE` hint tells OpenGL to use the highest quality when rendering perspective, while `GL_NICEST` means focus on rendering quality rather than speed.
+
+## Creating a function to remove the OpenGL window
+
+Eventually, we will want to shut things down. Good programming dictates that we release the resources that were being used by the OpenGL window. Add the following function to our code:
+
+[PRE5]
+
+First, we tell Windows to exit fullscreen mode (if we were running fullscreen) and turn the cursor back on. Then, we check each object that had a resource attached, release that object, then set it to null. The objects that need to be released are:
+
+*   `hRC`: This is the OpenGL rendering context
+*   `hDC`: This is the Windows device context
+*   `hWnd`: This is the handle to the Window
+*   `hInstance`: This is the handle to the application
+
+### Tip
+
+You may notice the two functions that start with `wgl` (`wglMakeCurrent` and `wglDeleteContext)`. This stands for Windows GL and these are special OpenGL functions that only work in Windows.
+
+## Creating the OpenGL window
+
+Now that we have the other OpenGL support functions defined, we can add the function to actually create the OpenGL window. Add the following code:
+
+[PRE6]
+
+The purpose of `CreateGLWindow` is to create a window with settings that allow it to work with OpenGL. The main tasks accomplished by this function are as follows:
+
+*   Set the window properties
+*   Register the application with Windows—`RegisterClass`
+*   Set up full screen mode if required—`ChangeDisplaySettings`
+*   Create the Window—`CreateWindowEx`
+*   Get a Windows device context—`GetDC`
+*   Set the OpenGL pixel format—`SetPixelFormat`
+*   Create an OpenGL rendering context—`wglCreateContext`
+*   Bind the Windows device context and OpenGL rendering context together—`wglMakeCurrent`
+*   Show the window—`ShowWindow`, `SetForegroundWindow(hWnd)`, and `SetFocus(hWnd)`
+*   Initialize the OpenGL Window—`ReSizeGLScene`, `InitGL`; create the `WinMain` function
+
+The `WinMain` function is the entry point for the application. Add the following code:
+
+[PRE7]
+
+It calls all of the other functions to initialize Windows, and OpenGL then starts the main message loop, which we hijack and adapt to be our game loop. As we explained all of this code in [Chapter 1](ch01.html "Chapter 1. Building the Foundation"), *Building the Foundation* we won't do it again here.
+
+## Creating the Windows event handler
+
+Finally, we have to have an event handler to receive events from Windows and process them. We created the forward declaration at the top of the code, and now we will actually implement the handler. Add the following code:
+
+[PRE8]
+
+This function will be called any time Windows sends an event to our program. We handle two events: `WM_DESTROY` and `WM_SIZE`:
+
+*   `WM_DESTROY` is triggered when the window is closed. When this happens we use `PostQuitMessage` to tell our main game loop that it is time to stop.
+*   `WM_SIZE` is triggered when the window is resized. When this happens, we call `ReSizeGLScene`.
+
+## The Game loop
+
+We still need to add some stub functions for our game functions: `StartGame`, `Update`, `Render`, `EndGame`, and `GameLoop`. Add the following code before the `WinMain` function:
+
+[PRE9]
+
+These functions serve the same purpose that they did in RoboRacer2D. `GameLoop` is called from the Windows main loop, and in turn calls `Update` and `Render`. `StartGame` is called before the Windows main loop, and `EndGame` is called when the game ends.
+
+## The finale
+
+If you run the game right now, you will see a nice black window. This is because we haven't told the program to draw anything yet! It seemed unfair to do all this work and get a black screen, so if you want to do a little extra work, add the following code just before the `StartGame` function:
+
+[PRE10]
+
+Also, you need to make sure to declare the following global variable:
+
+[PRE11]
+
+Now run the program, and you should see a colorful rotating cube. Don't worry about how this works yet—we will learn that in the next chapter.
+
+# Summary
+
+In this chapter, we covered a lot of new material related to creating a 3D game. You learned how the game camera worked just like a video camera. Anything in the camera's frustum will be rendered to the screen. You also learned about the 3D coordinate system that is used to place objects in a 3D world. Finally, you learned about matrices and vectors, which form the underpinning of how 3D objects are manipulated.
+
+Finally, we started with a blank project and walked through all of the code required to set up a 3D game that will use OpenGL to render. Remember, you will never have to memorize this code! But, it is important that you have a basic understanding of what purpose each line of code serves.
+
+In the next chapter, you will learn to create and load 3D models from modeling program.

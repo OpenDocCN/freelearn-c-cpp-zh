@@ -1,0 +1,571 @@
+# Chapter 8. Build a Real-time Tower Defense Game from Scratch – Part 2, Networking
+
+In the previous chapter, we built a complete game from scratch. The only limitation we encountered was that we didn't have real enemies to defeat. We will solve this limitation in the present chapter by adding networking to our game to allow it to interact with players other than you. At the end of this chapter, you will be able to play this game with some friends. This chapter will cover the following topics:
+
+*   Network architectures
+*   Network communication using sockets
+*   Creating a communication protocol
+*   Modifying our game by applying the client-server concept
+*   Saving and loading our game
+
+Now let's dive into this pretty complicated chapter.
+
+# Network architectures
+
+Before constructing our architecture, we need some information about what kind of network architectures are commonly used in a game, and their specificities. There are different types of architectures used in game programming. They greatly depend on the game and the needs of the developer. We will see two common architectures: peer-to-peer (P2P) and client-server. Both of them have their strengths and weaknesses. Let's analyze them individually.
+
+## Peer-to-peer architecture
+
+This architecture was widely used in the past, and is still used today. In this architecture, players know the addresses of each other and directly communicate with each other without any intermediary. For example, for a game with four different players, the network can be represented as the following chart:
+
+![Peer-to-peer architecture](img/8477OS_08_02.jpg)
+
+This organization allows a player to directly interact with any or all of the other players. When a client does something, it notifies the others of this action, and they update the simulation (game) consequently.
+
+This approach is efficient for communications, but comes with some limitations that can't be ignored. The main one is that there is no way to avoid cheating. A client can do whatever it wants by notifying the other of that action, even if it's impossible, such as teleporting itself by sending an arbitrary position. A possible result is that the fun of the game is completely destroyed for the other players.
+
+To avoid this kind of cheating, we have to change the architecture to be able to have a kind of referee that can decide if an action is legal.
+
+## Client-server architecture
+
+In game programming, avoiding cheating is very important, because it can completely destroy the experience of the game for the player. To be able to reduce the possibility of cheating, the architecture used can help. With client-server architecture, a game can detect the major part of these exploits. This is one reason that justifies the importance of this part. One other point is that this is the architecture that will be used for our game. Instead of having the players communicating between each other, they will only communicate with a single host called the server. Because all other players will also do the same, we will be able to communicate with them, but with an intermediary.
+
+Moreover, this intermediary will act as a judge that will decide if an action is legal. Instead of having a full simulation on all the different players' computers, the real simulation is made by the server. It holds the real game states that have to be taken into account; the client is just a kind of display that we can interact with. The following chart represents the architecture:
+
+![Client-server architecture](img/8477OS_08_03.jpg)
+
+As you can see, we now need to pass through the server to propagate any kind of actions to the other players.
+
+Its main drawback is that the server has to be reactive for all the players (clients), and if your game has a great number of players, this can become hard. Splitting the tasks on different threads is very important to ensure the reactivity of the server.
+
+Some games require so many resources that it can't handle only a limited amount of players, the result is that you have to manage multiple server for one game; for instance, one for logging, another for chatting, another one for a specific area of the map, and so on. We will now see how to use this architecture for our game.
+
+When creating a multiplayer architecture, the first thing to have in mind is that we will have to split our game in two distinct programs: a client and a server. We will have one server hosting several game instances and any number of clients, possibly on different matches.
+
+To be able to have this kind of result, let's first think about what is needed by each part.
+
+### Client
+
+Each player must start a client program to be able to start a match. This program will have to do the following:
+
+*   Display the game state
+*   Handle the different user inputs
+*   Play effects (sounds, bloodshed, and so on)
+*   Update its game status according to the information received from the server
+*   Send requests to the server (build, destroy)
+
+These different features are already present in our actual game, so we will need to adapt them; but there are also some new features:
+
+*   Request the creation of a new match
+*   Request to join a match
+
+Here I use the word *request* because that's what it really is. As a player will not handle the game in totality, it can only send requests to the server to take action. The server will then judge them and react as a consequence. Now let's take a look at the server.
+
+### Server
+
+On the other hand, the server will need to be launched only once, and will have to manage the following functionalities:
+
+*   Store all the different matches
+*   Process each game's steps
+*   Send updates of the game to players
+*   Handle player requests
+
+But a server also has to take care of the following:
+
+*   Managing connection/disconnection
+*   Game creation
+*   Adding a player as a controller for a team
+
+As you can see, there is no need for any kind of display, so the server output will be in console only. It will also have to judge all the different requests coming from the client. In a distributed environment, also true for web development, remember this rule: *don't trust user inputs*.
+
+If you keep this in mind, it will save you a lot of trouble and a lot of time in debugging. Some users, even if it's a very small number of users, can send you random data such as cheats or anything else that you're not supposed to receive. So don't take the inputs at face value.
+
+Now that the functionalities have been exposed, we need a way to communicate between a client and the server. This is the topic that we will now speak about.
+
+# Network communication using sockets
+
+To be able to interact with other players, we will need a way to communicate with them, regardless of the architecture used. To be able to communicate with any computer, we have to use sockets. In short, a socket enables communication with other processes/computers through the network as long as there is an existing way between both sides (LAN or Internet). There are two main kinds of sockets: non-connected (UDP) or connected (TCP). Both these need an IP address and a port number to communicate with their destination.
+
+Notice that the number of available ports on a computer is contained between 0 and 65535\. A piece of advice is to avoid the use of ports with a number lesser than 1024\. The reason is that most of them are reserved by the system or used by common applications, such as 80 for a web browser, 21 for FTP, and so on. You also have to ensure that both sides of the communication use the same port number to be able to exchange data. Let's now see in detail the two kinds of socket previously introduced.
+
+## UDP
+
+As already said, **User Datagram Protocol** (**UDP**) is a way of sending data through the network without connections. We can visualize the communication achieved by this protocol, such as sending letters. Each time you want to send a message to someone, you have to specify the destination address (IP and port). The message can then be sent, but you don't know if it really arrives at its destination. This kind of communication is really quick, but comes with some limitations:
+
+*   You don't even know if the message has arrived at its destination
+*   A message can be lost
+*   A big message will be split in smaller messages
+*   Messages can be received in a different order than the original order
+*   A message can be duplicated
+
+Because of these limitations, the messages can't be exploited as soon as they are received. There is a need for verification. A simple way to resolve a majority of these troubles is to add to your data a small header containing a unique message identifier. This identifier will allow us to identify precisely a message, remove possible duplication, and treat each in the correct order. You can also ensure that your message is not too big to avoid splitting and losing a part of the data.
+
+SFML provides us the `sf::UdpSocket` class to communicate using the UDP protocol. This chapter will not cover this kind of socket, but if you are interested in it, take a look at the SFML tutorial on the official website ([www.sfml-dev.org](http://www.sfml-dev.org)).
+
+## TCP
+
+**Transmission Control Protocol** (**TCP**) is a connected protocol. This can be compared to a phone conversation. There are some steps to follow to understand this protocol:
+
+*   Ask for a connection to an address (phone is ringing)
+*   Accept the connection (pick up the phone)
+*   Exchange data (talk)
+*   Stop the conversation (hang up)
+
+As the protocol is connected, it ensures that the data arrived at the destination is in the same ordering, structure, and consistency as at its source. By the way, we need to specify the destination address only once during the connection. Moreover, if the connection breaks (the problem is on the other side, for example), we can detect it as soon as it happens. The downside of this protocol is that the communication speed is reduced.
+
+SFML provides us the `sf::TcpSocket` class to deal with the TCP protocol easily. This is the one that we will use in our project. I will discuss its usage in the next section.
+
+## Selector
+
+SFML provides us with another utility class: `sf::SocketSelector`. This class works like an observer on any kind of socket and holds a pointer to managed sockets, as explained in the following steps:
+
+1.  Use the `sf::SocketSelector::add(sf::Socket)` method to add a socket to observe.
+2.  Then, when one or more of the observed sockets receive data, the `sf::SocketSelector::wait()function` return. Finally, using `sf::SocketSelector::isReady(sf::Socket)`, we can identify which one of the sockets received data. This allows us to avoid pooling and use real-time reaction.
+
+We will use this class in this chapter paired with `sf::TcpSocket`.
+
+## The Connection class
+
+Now that all the basic network bricks have been introduced, it's time for us to think about our game. We need to decide the way in which our game will exchange data with another player. We will need to send and receive data. To achieve this, we will use the `sf::TcpSocket` class. As each action on the socket will block the execution of our game, we will need to create a system to disable the blocking. SFML provides a `sf::Socket::setBlocking()` function, but our solution will use a different method.
+
+### The goal of the Connection class
+
+If you remember, in [Chapter 6](ch06.html "Chapter 6. Boost Your Code Using Multithreading"), *Boost Your Code Using Multithreading*, I told you that networking is mostly managed in a dedicated thread. Our solution will follow this path; the idea is to have an object that internally manages a thread as transparently as possible to the user. Moreover, we will design the API to be similar to SFML event management from the `sf::Window` class. The result of these constraints is the construction of a `Connection` class. This class will then be specialized by the architecture that we will choose (described in the next section).
+
+Let's now take a look at the header of this new class:
+
+[PRE0]
+
+Let's explain this class step by step:
+
+1.  We start by defining a constructor and a destructor. Notice that the destructor is set to virtual because the class will be specialized.
+2.  Then we define some common functions to deal with the internal thread for synchronization issues.
+3.  Some methods to deal with events are then defined. We build two methods to deal with incoming events and one to deal with outgoing messages. The overload on the `pollEvent()` function allows us to use raw or parsed data. The `packet::NetworkEvent` class will be described later in this chapter. For now, take it as a message similar to `sf::Event` with type and data, but coming from the network.
+4.  We define a function to close the communication properly.
+5.  Finally, we define some functions to get information on the connection.
+
+To be able to work, all these functions require some objects. Moreover, to be as responsive as possible, we will use two sockets: one for incoming messages and the other for outgoing messages. This will allow us to send and receive data at the same time and accelerate the responsiveness of the game. Because of this choice, we will need to duplicate all the other requirements (thread, mutex, queue, and so on). Let's discuss the goal of each one:
+
+*   `sf::TcpSocket`: It handles the communication between the two sides.
+*   `sf::Thread`: It allows us to be non-blocking as previously exposed. It will remain alive as long as the connection instance.
+*   `sf::Mutex`: It protects the queue of data to avoid data race or use them afterwards for free.
+*   `std::queue<sf::Packet>`: This is the queue of events to processes. Each time it is accessed, the associated mutex is locked.
+
+Now that the different objects have been explained, we can continue with the implementation of the class, as follows:
+
+[PRE1]
+
+The constructor doesn't have any function in particular. It simply initializes with the correct value without launching a different thread. We have a function for that, which is as follows:
+
+[PRE2]
+
+These three functions manage the lifetime of the different threads by launching, stopping, or keeping them waiting. Notice that a mutex to protect `_isRunning` is not necessary because we don't write in it outside of those functions.
+
+[PRE3]
+
+These two functions are important and copy the behavior of the `sf::Window::pollEvent()` function, so their usage will not surprise you. What we do here is that we pick up an event from the incoming queue if there is one enabled. The second function also parses the receiving message to a `NetworkEvent` function. Most often, we will prefer to use the second method in our code, because all the verifications are already made to be able to exploit the event. This function just adds a packet to the outgoing queue. The job is then done by the `_sendThread` object, as shown in the following code snippet:
+
+[PRE4]
+
+This function closes the different sockets used. Because we used a connected protocol, the other side of the communication will be able to detect it and manage this at its convenience.
+
+[PRE5]
+
+This function is one of the two most important ones. It is run into its own thread—this is the reason for the loop. Moreover, we use the `sf::SocketSelector` function to observe our socket. Using this, we avoid useless operations that consume CPU power. Instead, we lock the thread until a message is received on the incoming socket. We also add a timeout of one second to avoid a deadlock, as seen in the following code snippet:
+
+[PRE6]
+
+### Note
+
+A deadlock is a situation encountered in multithreaded programs where two threads wait indefinitely because they are both waiting for a resource that only the other thread can free up. The most common is a double lock on the same mutex in the same thread, with a recursive call, for example. In the present case, imagine that you use the `stop()` function. The thread is not aware of this change, and will still be waiting for data, maybe forever, because no new data will be received on the socket. An easy solution is to add a timeout to not wait forever, but only a small amount of time that allows us to recheck the loop condition and get out if necessary.
+
+Once a packet is received, or a disconnection is detected, we add the corresponding packet to the queue. The user will then be able to pool in from its own thread and treat it as he wants. The disconnection shows you a specific `NetworkEvent` : `Disconnected` function. Later in the chapter, I will explain in detail the logic behind this.
+
+[PRE7]
+
+This function complements the previous one. It picks up events from the outgoing queue and sends it through the network using its socket.
+
+As you can see, with the use of classes, we can send and receive data very easily in a multi-threaded environment. Moreover, the disconnection is managed like any other event and doesn't require any special case for the user. Another strength of this class is that it's very generic and can be used in a lot of cases, including on client and server sides.
+
+To sum it up, we can visualize the usage of this class as shown in the following chart:
+
+![The goal of the Connection class](img/8477OS_08_01.jpg)
+
+Now that we have designed a class to manage the different messages, let's build our custom protocol.
+
+# Creating a communication protocol
+
+It's now time for us to create our own custom protocol. We will use an SFML class `sf::Packet` to transport our data, but we have to define their shapes. Let's first focus on the `sf::Packet` class and then on the shapes.
+
+## Using the sf::Packet class
+
+The `sf::Packet` class is like a buffer that contains our data. It comes with already-made functions that allow us to serialize primitive types. I don't know if you are familiar with the internal memory storage of computers, but keep in mind that the arrangement is not the same everywhere. This is called endianness. You can see it like reading from the right or from the left. When you send data over the network, you don't know the endianness of the destination. Because of this, the convention is to send data as a big-endian arrangement over the network. I suggest you to take a look at the Wikipedia page ([https://en.wikipedia.org/wiki/Endianness](https://en.wikipedia.org/wiki/Endianness)) for more details.
+
+Thanks to SFML, there are some pre-existing functions that make the job easy for us. The only inconvenience is that we have to use SFML types instead of the primitive types. Following is a table that shows you the primitive types, and the corresponding type to use with `sf::Packet`:
+
+| Primitive | SFML overload |
+| --- | --- |
+| `char` | `sf::Int8` |
+| `unsigned char` | `sf::Uint8` |
+| `short int` | `sf::Int16` |
+| `unsigned short int` | `sf::Uint16` |
+| `Int` | `sf::int32` |
+| `unsigned int` | `sf::Uint32` |
+| `float` | `float` |
+| `double` | `double` |
+| `char*` | `char*` |
+| `std::string` | `std:string` |
+| `bool` | `bool` |
+
+The `sf::Packet` class is used like the standard c++ I/O streams using the `>>` and `<<` operators to extract and insert data. Following is an example taken directly from the SFML documentation of the `sf::Packet` class that shows you how simple it is in terms of usage:
+
+[PRE8]
+
+Even if this use is pretty simple, there is another way to send data like structure/class more easily, using the operator overload. This is the technique that we will use to send/receive data, an example of which is as follows:
+
+[PRE9]
+
+With this technique, there are two operators to overload, and the serialization/unserialization is then transparent for the user. Moreover, if the structure changes, there is only one place to update: the operators.
+
+Now that we have seen the system to transport our data, let's think about a way to construct it so that it is as generic as possible.
+
+## RPC-like protocol
+
+We now need to think exactly about our needs concerning the data to send. We have already pretty much completed the job in the first part of this chapter by separating the tasks of the client and the server, but it's not sufficient. We now need a list of all the different possibilities, which have been enlisted here.
+
+Both sides:
+
+*   Connection
+*   Disconnection
+*   Client event
+
+Log out
+
+*   Get game list
+*   Request for the creation of a game (match)
+*   Request to join the game
+*   Request to create an entity
+*   Request to destroy an entity
+
+Server events
+
+*   Entity update
+*   Entity's events (onHit, onHitted, onSpawn)
+*   Update team (gold, game over)
+*   Respond to client events
+
+The good news is that there aren't too many kinds of events; the bad news is that these events don't require the same information, so we can't build only one event, but instead, as many events as the number of possible actions, with their own data.
+
+But there is now another trouble. How do we recognize which one to use? Well, we need an identifier that allows this. An `enum` function will do the job perfectly, as follows:
+
+[PRE10]
+
+Now that we have a way to differ the actions, we have to send a packet with a common part for all these actions. This part (header) will contain the identifier of the action. Then all actions will add their own data. This is exactly the way that `sf::Event` works with the `sf::Event::type` attribute.
+
+We will copy this mechanism to our own system, by building a new class called `NetworkEvent`. This class works as `sf::Event` does, except that it also adds serialization/unserialization with the `sf::Packet` class, allowing us to send that data across the network easily. Let's now take a look at this new class.
+
+## The NetworkEvent class
+
+The `NetworkEvent` class is built inside the `book::packet` namespace. Now that we have an idea of the global shape of our data to send, it's time for us to build some classes that will help us to deal with them.
+
+We will build one class for each event, with a common parent, the `NetworkEvent` class. This class will allow us to use polymorphism. Following is its header:
+
+[PRE11]
+
+As you can see, this class is very short and only contains its type. The reason is that it's the only common point with all the different events. It also contains some default operator and an important function: `makeFromPacket()`. This function, as you will see, constructs the correct events depending on the data stored inside the `sf::Packet` received as parameter. Now take a look at the implementation:
+
+[PRE12]
+
+As usual, the constructor and the destructor are very simple and should be familiar:
+
+[PRE13]
+
+The preceding function is very important. This is the one that will parse data received from the network to an instance of `NetworkEvent` with respect to the type received. The programmer will then use this instance instead of `sf::Packet`. Notice that an allocation is made inside this function, so a delete has to be made on the returned object after use:
+
+[PRE14]
+
+The previous function return the type associated to the `NetworkEvent`. It allows the programmer to cast the instance into the correct class.
+
+[PRE15]
+
+These two functions are in charge of the serialization/unserialization functionality. Because the unserialization function (`>>` operator) is only called inside the `makeFromPacket()` function and the type has already been extracted, this one does nothing. On the other hand, the serialization function (`<<` operator) adds the type of the event to the packet, as there is no other data.
+
+I will now show you one of the event classes. All the others are built on the same logic, and I'm sure that you already understand how it is done.
+
+Let's take the `RequestCreateEntity` class. This class contains the different data to request the creation of an entity on the battlefield:
+
+[PRE16]
+
+First of all, we define an `enum` function that will contain all the identifiers for the entities, and then the class that requests their construction. The `RequestCreateEntity` class inherits from the previous `NetworkEvent` class and defines the same functions, plus those specific to the event. Notice that there are two constructors. The default is used in the `makeFromPacket()` function, and the other by the programmer to send an event. Take a look now at the following implementation:
+
+[PRE17]
+
+This function unpacks the different data specific to the event and stores them internally. That's all:
+
+[PRE18]
+
+This function serializes the different data using the SFML object corresponding to the primitive types used.
+
+As you can see, creating an event is really simple with this system. It only requires an identifier for its class along with some parsing functions. All the other events are built on the same model as this one, so I will not explain them. To see the complete code, you can take a look at the `include/SFML-Book/common/Packet.hpp` file if you want.
+
+Now that we have all the keys in hand to build the multiplayer part, it's time for us to modify our game.
+
+# Modifying our game
+
+To add this functionality to our game, we will need to rethink the internal structure a bit. First of all, we need to split our code to build two different programs. All the common classes (such as those used for communication) will be put into a common directory. All the other functionalities will be put into the server or client folder with respect to their usage. Let's start with the most complicated part: the server.
+
+## Server
+
+The server will be in charge of all the simulation. In fact, all our game will reside in the server. Moreover, it will have to ensure the possibility of having multiple matches running at the same time. It will also have to deal with connections/disconnections and player events.
+
+Because the server will not render anything, we don't need any graphic class anymore on this side. So the `AnimatedSprite` function in the `CompSkin` component will have to be removed, as will the `sf::RectangleShape` component in the `CompHp` function.
+
+Because the positions of the entities were stored by the `CompSkin` component (more precisely `_sprite`), we have to add an `sf::Vector2f` function in each entity that will store its position.
+
+The main loop will also be changed a lot. Remember that we need to manage multiple clients and matches and listen for a new connection on a specific port. So to be able to do this, we will build a `Server` class, and each match will have its own game instance running in its own thread. So let's do this:
+
+### Building the Server entry point
+
+The server class will be in charge to manage new clients, to create new matches and to add clients to existing matches. This class can be seen like the main menu of the game. By the way the corresponding display on the player screen will be as follows:
+
+![Building the Server entry point](img/8477OS_08_04.jpg)
+
+So, we will need to:
+
+*   Store the running match (games)
+*   Store the new clients
+*   Listen for new clients
+*   Respond to some request (create a new match, joint a match, get the list of running match)
+
+Let's now build the server class.
+
+[PRE19]
+
+This class handle all the information describe above, and some threads to run separated functionalities independently (logging and request). Now take a look to its implementation:
+
+First of all we need to declare some global variable and function as followed:
+
+[PRE20]
+
+The previous function will be call when the user will ask to stop the server by pressing the *Ctrl* + *C* key. This mechanism is initialized in the `Server::run()` function as you will see in a moment..
+
+[PRE21]
+
+The previous function initialize the different threads, and the random function.
+
+[PRE22]
+
+Here, we destroy all the running matches and clients to stop the server properly.
+
+[PRE23]
+
+This function start the server that is blocked until the `SIGINT` (*Ctrl* + *c*) signal is sent to it:
+
+[PRE24]
+
+This function is the server's most important function. This is the one that handles all the events coming from players. For each client, we check if there is an event waiting to be processed, and then, depending on its type, we take different actions. Thanks to our `NetworkEvent` class, the parsing on the event is easy, and we can reduce the code to the functionalities only:
+
+[PRE25]
+
+This function is the final function of the server. Its job is to wait for a new connection, initialize the client, and add it to the list managed by the previous function.
+
+Nothing else has to be done in this class since as soon as the client joins a match, it's the match and no more the `Server` class that will have to deal with it. Each match is managed by a `Game` instance. Let's now take a look at it.
+
+### Reacting to players' actions during a match
+
+The `Game` class hasn't changed a lot. The event processing has changed, but is still very similar to the original system. Instead of using `sf::Event`, we now use `NetworkEvent`. And because the API is very close, it should not disturb you too much.
+
+The first function that interacts with a player is the one that receives the match information. For example, we need to send it to the map file and all the different entities. This task is created by the `Game::addClient()` function, as follows:
+
+[PRE26]
+
+This function is separated into four parts:
+
+1.  Checking if we can add a new player to the match.
+2.  Sending map data.
+3.  Sending entity informations.
+4.  Adding the client to the team.
+5.  Once a client has been added to the game, we have to manage its incoming events. This task is made by the new function `processNetworkEvents()`. It works exactly as the old `processEvents()` function, but with `NetworkEvent` instead of `sf::Events`:
+
+    [PRE27]
+
+There's no surprise here. We have to deal with the possible client disconnection/logout, and then with all the different events. I don't have to put the entire code of the different events, as there is nothing complicated there. But if you are interested, take a look at the `src/SFML-Book/server/Game.cpp` file.
+
+Notice that we never send any confirmation to the client for any request. The synchronization of the game will ensure this.
+
+### Synchronization between clients and the server
+
+A big change in the `Game` class is the way to manage the synchronization between the clients and the server. In the previous chapter, only one client received data. Now we have some of the clients, and the logic changes. To ensure synchronization, we have to send updates to clients.
+
+To be able to send the updates, we have to keep in memory each change during the game loop, and then send them to all the players. Because a request will change the game, it will be included in the updates. This is why in the previous points we don't send any response to the player for the requests. In the game, we will need to keep track of the following:
+
+*   Entity creation
+*   Entity destruction
+*   Entity updates
+*   Entity events (onHitted, onHit, onSpawn)
+*   Update of team status, gold amount, and so on
+
+Most of these events only require the entity ID without any other information (destruction entity events). For other events, some extra data is required, but the logic is still the same: add the information to a container.
+
+Then, in the `Game::update()` function, we have to send the updates to all the players. To do this, we add to a queue the outgoing events (exactly as in the `Connection` class). Another thread will be in charge of their propagation.
+
+Here is a code snippet that makes the destruction event:
+
+[PRE28]
+
+As you can see, there is no complexity here, and all the magic is done by the `sendToAll()` function. As you can suppose, its aim is to broadcast the message to all the different players by adding the packet to the outgoing queue. Another thread will then enter that queue to broadcast the message.
+
+In terms of the game's logic, nothing else has changed. We still use the entity system and the map to manage the level. Only the graphical elements have been deleted. It is the client's job to display on the screen the game state to the player, speaking of which, let's now look into this part in detail.
+
+## The Client class
+
+This is the final part of this chapter. The client is even simpler than the server, since it only has one player to manage but is still a bit complex. The client will have a graphical rendering but no more game logic. The only job made by the client is handling player inputs and updating the game states with the incoming network events.
+
+Because starting a client is now not sufficient to start a match, we have to communicate with the server to initialize a game, or even create a new match. In fact, a client is composed of two main components: the connection menu and the game. The client game class has changed a lot to handle the new functionalities, which is why I will now show you the new `Game` header before continuing the explanation:
+
+[PRE29]
+
+As you can see, there are some new functions to manage the network, and the GUI has been separated in other classes (`MainMenu`, `GameMenu`). On the other hand, some classes such as `Level` haven't changed.
+
+Now let's take a look at the main menu.
+
+### Connection with the server
+
+Before starting a match, a connection to the server is required, following which we have to choose which match we want to play. The connection is achieved exactly as in the server, but in the reverse order (changing received to send, and vice versa).
+
+The choice of the match is then made by the player. He has to be able to create a new match and join it as well. To simplify this, we will use our GUI by creating a `MainMenu` class:
+
+[PRE30]
+
+This class is very small. It's a frame with several buttons, as you can see in the following image:
+
+![Connection with the server](img/8477OS_08_04.jpg)
+
+The implementation of this class is not too complicated; rather much more consequential:
+
+[PRE31]
+
+All the logic of the class is coded within the `fill()` function. This function receives the list of running matches on the server and displays them as buttons to the player. The player can then press one of the buttons to join the match or request the creation of a game.
+
+When the player requests to join the game, if all is good on the server side, the client receives a `JoinGameConfirmation` event with the data to initialize its level (remember the `addClient()` function in the server):
+
+[PRE32]
+
+This function handles the events coming from the server and dispatches them depending on the internal states. As you can see, a `JoinGameConfirmation` event launches the creation of the level, and a change of the internal state, which shows by displaying the game to the player.
+
+### The Level class
+
+Some additions have been made to the `Level` class to handle network events. We still have to deal with construction/destruction requests, but now we also have to manage events coming from the server, such as position update, entity creation/destruction, and entity events.
+
+This management is very important because this is the place that adds dynamism to our game to synchronize it with the server. Take a look at the following function:
+
+[PRE33]
+
+As you can see, this function is a bit long. This is because we have to manage six different types of events. The destruction and the creation of entities are easy to make because the major part of the job is done by the `EntityManager` function. The updates are another piece of cake. We have to change each value to the new one, one by one, or activate the callbacks for the entity events with all the necessary verifications; remember *don't trust user inputs*, even if they come from the server.
+
+Now that the major part of the game has been made, we just have to clean all the unnecessary components from the client to only have `CompTeam`, `CompHp`, and `CompSkin`. All the others are only used by the server for the entities' behavior.
+
+The final result of this chapter will not change a lot from the previous one, but you will now be able to play with friends, and the game will become interesting to play because the difficulties are now real:
+
+![The Level class](img/8477OS_08_05.jpg)
+
+# Adding data persistence to the game
+
+If, like me, you can't imagine a game without a save option, this part couldn't interest you more. In this final part of the book, I will introduce you to the persistence of data. Data persistence is the ability of a program to save its internal state for future restoration. This is exactly what a save option does in a game. In our particular case, because the client received data directly from the server, all the jobs have to be done on the server part. First of all, let's think a bit about what we need to save:
+
+*   The entities and their components
+*   The teams
+*   The games
+
+We then need a way to store that data to be able to restore it later. The solution is to use files or something else that can grow with time, as easy to copy. For this functionality, I've made the choice of using `Sqlite`. This is a database engine available as library. More information can be found on the website at [https://sqlite.org/](https://sqlite.org/).
+
+The usage of a database engine is a bit of overkill for our project, but the goal here is to show you its usage in our actual game. Then you will be able to use it for more complex projects of your creation. The persistence data will be stored in a database that is a single file, which can easily be copied or modified using some GUI for `Sqlite`.
+
+The only drawback of this solution is that some knowledge on the SQL language is required. Because this book doesn't aim to cover that topic, I propose to you an alternative usage: **Object-relational Mapping** (**ORM**).
+
+## What is ORM?
+
+To say as simply as possible, an ORM is between the database engine and the API of the program and automatically makes the SQL query when it's needed without the need to write it by hand. Moreover, most of them support multiple database engines, allowing you to change the engine with only one or two lines of code.
+
+Following is an example that will help illustrate my words (in pseudo code). First, using a standard library:
+
+[PRE34]
+
+And now using an ORM:
+
+[PRE35]
+
+As you can see, all is made by the ORM without the need to write anything. This remains exactly the same when it comes to saving data. Just use the `save()` method, and that's it.
+
+## Using cpp-ORM
+
+We will use the `cpp-ORM` library which was written by me, so there is no trouble to use it in our project. It can be found at [https://github.com/Krozark/cpp-ORM](https://github.com/Krozark/cpp-ORM).
+
+To be able to work, the library needs some information on your class; this is why some custom types have to be used for the data that you want to save.
+
+| ORM types | C++ types |
+| --- | --- |
+| orm::BooleanField | bool |
+| orm::CharField<N> | std::string (of length N) |
+| orm::DateTimeField | struct tm |
+| orm::AutoDateTimeField |
+| orm::AutoNowDateTimeField |
+| orm::IntegerField | int |
+| orm::FloatField | float |
+| orm::DoubleField | double |
+| orm::TextField | std::string |
+| orm::UnsignedIntegerField | unsigned int |
+| orm::FK<T,NULLABLE=true> | std::shared_ptr<T> NULLABLE specify if T can be null |
+| orm::ManyToMany<T,U> | std::vector<std::shared_ptr<U>> Use it when T need to keep an unknown number of reference of U class |
+
+Moreover, your class will need to have a default constructor with no parameters, and extends from `orm::SqlObject<T>` where `T` is your class name. To understand well, let's build a component as persistent, such as `CompHp`:
+
+[PRE36]
+
+There is not much to explain. We just add `orm::SqlObject<CompHp>` as the parent class and change `int` to `orm::IntegerField`. The `MAKE_STATIC_COLUMN` is used to create some additional fields that will contain the column name of each field in the database. With regards to the implementation, there is another macro to avoid repetitive work: `REGISTER_AND_CONSTRUCT`. Its usage is as follows:
+
+[PRE37]
+
+This macro will construct the entire default constructor implementation. Then, in your code, use the field as usual. There is no need to change anything concerning your class.
+
+The last requirement is to reference the default database to use. In our case, we will use the `Sqlite3` engine, so we need to create it somewhere, for example, in the `main.cpp` file:
+
+[PRE38]
+
+In this short example, the database is created and the connection connected to it. It's important to keep in mind that all the access to the database will use the default connection by default.
+
+## Turning our object persistent
+
+Now that the database is created, we don't need to touch it anymore. Now let's interest ourselves with how to save our objects in the database or restore them.
+
+### Saving an object in a database
+
+This functionality is very simple thanks to the entity system. Let's take our previous `CompHp` class. Create an instance of it and call the `.save()` method on it. If you want to update an object already stored in the database, use `save()` as well. Only the field that changes will be updated:
+
+[PRE39]
+
+Now let's move on to the object loading.
+
+### Loading an object from the database
+
+There are basically two ways to load an object. The first one is when you know its primary key (identifier), and the second one is to search all the objects corresponding to a specific criterion:
+
+[PRE40]
+
+These two lines of code load an object from the database and then display its content to the console output. On the other hand, if you don't know the identifier value but you have a specific criterion, you can also load objects in the following manner:
+
+[PRE41]
+
+In this example, we get the entire `CompHp` component through a complex query and then display the content to the console output.
+
+Now you have all the keys in hand to add loading/saving into our actual game without too much pain, so I will not enter further into the implementation details.
+
+# Summary
+
+In this final chapter, you have learned how to add basic networking using sockets, selectors, and even creating a custom protocol. You have integrated this new knowledge to the previous game and turned it into a multiplayer game in real time.
+
+You have also learned how to add persistence to your data using an ORM, and how to add a save/load option to the game. By now you have seen many aspects of game programming, and you now have all the keys in hand to build every kind of game you want in 2D.
+
+I hope that this book gives you useful tools. If you want to reuse some part of the framework made across this book, the code is available on GitHub at [https://github.com/Krozark/SFML-utils](https://github.com/Krozark/SFML-utils).
+
+I hope you have enjoyed reading this book, and developed the games well. I wish you good luck for your future games!

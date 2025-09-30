@@ -1,0 +1,403 @@
+# Chapter 7. Creating and Displaying Tile Maps
+
+Most 2D games that you have played in the past made use of **tile maps**. It is an extremely efficient and fast way to develop complex 2D levels or scenes. Even if a game has more complex graphical content, it is likely that it will still make use of tiles in some way. Throughout this chapter we will be using the **tiled map editor**, an open source and cross-platform tool created by Thorbjørn Lindeijer and a large open source community. It is available at [http://www.mapeditor.org/](http://www.mapeditor.org/). We will essentially make this tool our level editor and use it for creating maps and placing our objects within those maps.
+
+In this chapter we will cover:
+
+*   What a tile map is
+*   What a tile sheet looks like
+*   Using the tiled map editor to create our maps
+*   Parsing a state from a tiled map
+*   Loading and displaying a tile-based map in SDL 2.0
+
+# What is a tile map?
+
+If you have played a lot of 2D games then you will be very familiar with tile maps. We will start by looking at an example in the form of the following screenshot:
+
+![What is a tile map?](img/6821OT_07_01.jpg)
+
+This 20 x 15 tile map was made using the following screenshot called a **tileset**.
+
+![What is a tile map?](img/6821OT_07_02.jpg)
+
+As you can see, one huge advantage to a tile system like this is that you can create large maps from relatively small image files. Tile maps are essentially a multidimensional array of IDs that tell us which part of the tileset we want to draw at each location. It will help to look at the images again with their IDs in place as shown in the following screenshot:
+
+![What is a tile map?](img/6821OT_07_03.jpg)
+
+Here is the tileset with its IDs in place as shown in the preceding screenshot.
+
+![What is a tile map?](img/6821OT_07_04.jpg)
+
+To draw the map we loop through the number of columns and the number of rows, grab the correct tile using its ID, and draw it to the screen. Any tile with an ID of zero will not be drawn (a blank tile). This can be seen in the preceding screenshot.
+
+# Getting familiar with the Tiled application
+
+Tiled is a very user-friendly application that can greatly speed up our development time. Once you have downloaded and installed the application, open it up and you will be presented with the user interface as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_05.jpg)
+
+On the right-hand side we have the **Layers** and **Tilesets** views; the left-hand side will contain our tile map. First we must create a new map, this can be done by navigating to **File** | **New…** or *Ctrl* + *N*. This brings up the new map dialog as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_06.jpg)
+
+Here we can define the size and type of our map. We are only going to use orthogonal tile maps (as opposed to isometric), so go ahead and create an orthogonal tile map that is 20 tiles wide and 15 tiles high, with tile width and height both set to 32 px. We can now see our tile map in the left-hand side of the UI (*Ctrl* + *G* will show the grid). Tiled will also automatically create a layer for us called **Tile Layer 1** (Visible in the **Layers** view on the right-hand side) as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_07.jpg)
+
+We are not going to deal with any terrain so we can turn off that tab by navigating to **View** | **Terrains** and unchecking. Save this map as `map1.tmx` in the same location as the rest of our game assets. If you open this file you will see that it is actually just an XML file:
+
+[PRE0]
+
+This should all look very familiar. Tiled has a few different compression algorithms that can be used to store the tile IDs of our maps. The preceding file uses the **zlib compression algorithm** along with **base64 encoding** which, as you can see, gives great results:
+
+[PRE1]
+
+If we compare the same map with base64 encoding and no compression, we can see that the extra work needed to decompress and parse the zlib compression is definitely worth it. Here is the uncompressed map:
+
+[PRE2]
+
+We will cover this in more depth once we start parsing the tile maps, but for now let's look at adding a tileset. Navigate to **Map** | **New Tileset…** and it will bring up a new **Tileset** dialog as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_08.jpg)
+
+The tileset we will start with is `blocks1.png` as shown in the following screenshot, available in the source downloads.
+
+![Getting familiar with the Tiled application](img/6821OT_07_09.jpg)
+
+Copy the image to the game assets location and then we can browse to it in the **New Tileset** dialog. This tileset has a 2 pixel wide margin around the outside and 2 pixel spacing between each tile; each tile is 32 x 32 pixels. Once these values are set, click on **OK** and the tileset will appear in the **Tilesets** view to the right-hand side. We can now start to build our map using the provided tools as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_10.jpg)
+
+The red highlights are our bread-and-butter tools. The stamp tool adds the selected tile from the tileset to the given location, the paint bucket fills an area with a selected tile from the tileset, and the eraser tool, of course, erases. We can select tiles from the tileset one at a time or many at a time, as shown in the following screenshot:
+
+![Getting familiar with the Tiled application](img/6821OT_07_11.jpg)
+
+Go ahead and get acquainted with these tools by building a simple map. Once the map is saved we will see that the tileset has been added to the map file:
+
+[PRE3]
+
+The `firstgid` attribute is the first tile ID that uses this tileset. If we were to have more than one tileset, it would come with its own `firstgid` attribute so that we knew which tile IDs to start associating with that tileset; again, we will cover this in greater detail when we come to parse our maps. Add another tileset, `blocks2.png` (also available in the source code downloads), to our map and we shall move into drawing it in our game.
+
+# Parsing and drawing a tile map
+
+Now that we are relatively familiar with creating tile maps in the Tiled application we will move on to parsing them and drawing them in our game. We are going to create quite a few new classes starting with a class called `Level` that will hold our tilesets and also draw and update our separate layers. Let's go ahead and create `Level.h` in our project and add the following code:
+
+[PRE4]
+
+We will also define a `struct` at the top of this file called `Tileset`:
+
+[PRE5]
+
+This `struct` holds any information we need to know about our tilesets. Our `Level` class will now also hold a vector of `Tileset` objects:
+
+[PRE6]
+
+Next we will create a public getter function that returns a pointer to this `Tileset` vector:
+
+[PRE7]
+
+We will pass this into our parser when we come to load the map.
+
+The next class we will create is an abstract base class called `Layer`. All of our layer types will derive from this class. Create `Layer.h` and add the following code:
+
+[PRE8]
+
+Now that we have the `Layer` class we will store a vector of the `Layer*` objects in the `Level` class. Back in `Level.h` add our vector:
+
+[PRE9]
+
+And a getter function:
+
+[PRE10]
+
+Now we have a basic `Level` class in place; its purpose is to store, draw, and update our layers. We will define the functions for `Level` in a `Level.cpp` file:
+
+[PRE11]
+
+## Creating the TileLayer class
+
+Our first layer type is going to be a `TileLayer`. This type of layer is made up entirely of tiles and does not contain anything else. We have already created a layer like this in the Tiled application. Create `TileLayer.h` and we can start to write up this class:
+
+[PRE12]
+
+There is nothing too complicated about this class; it holds data for our tile layer. The `Vector2D` variables are used when we start to scroll our maps. We will not define this class' functions properly right now, but you will need to create empty definitions along with defining the vector constants in a `TileLayer.cpp` file.
+
+## Creating the LevelParser class
+
+Now that we have the basic level and layer classes in place, we can move onto creating a parser for our `.tmx` files and creating levels from them. Create `LevelParser.h`:
+
+[PRE13]
+
+The `parseLevel` function is what we will call whenever we want to create a level. To ensure that this function must be used to create a `Level` object, we will make the `Level` class' constructor private and make it a friend class of `LevelParser`:
+
+[PRE14]
+
+Now `LevelParser` has access to the private constructor of `Level` and can return new instances. We can now define the `parseLevel` function and then go through it step-by-step. Create `LevelParser.cpp` and define the `parseLevel` function as follows:
+
+[PRE15]
+
+We covered XML files and TinyXML in the previous chapter so I won't go into detail again here. The first part of the function grabs the root node:
+
+[PRE16]
+
+We can see from the map file that this node has several attributes:
+
+[PRE17]
+
+We grab these values using the `Attribute` function from TinyXML and set the member variables of `LevelParser`:
+
+[PRE18]
+
+Next we must check for any tileset nodes and parse them, using the `getTilesets` function of our newly created `Level` instance to pass in the `Tileset` vector:
+
+[PRE19]
+
+Finally we can check for any tile layers and then parse them, again using the getter functions from our `pLevel` object, which we then return:
+
+[PRE20]
+
+You can see that this function is very similar to our `parseState` function from the previous chapter. Now we must define the `parseTilesets` and `parseTileLayer` functions.
+
+## Parsing tilesets
+
+Parsing tilesets is actually quite simple due to our `TextureManager` class:
+
+[PRE21]
+
+We add the tileset to the `TextureManager` class using its attributes and then create a `Tileset` object and push it into the `pTilesets` array. The `pTilesets` array is actually a pointer to the array from our `pLevel` object which we previously created in the `parseLevel` function. Here is our first tileset so that you can look at it alongside the preceding function:
+
+[PRE22]
+
+## Parsing a tile layer
+
+Due to the compression and encoding of our tile IDs, this function is actually quite complicated. We are going to make use of a few different libraries that will help us to decode and decompress our data, the first of which is a **Base64** decoder. We will be using a decoder created by René Nyffenegger, available from the source code downloads and also from [https://github.com/ReneNyffenegger/development_misc/tree/master/base64](https://github.com/ReneNyffenegger/development_misc/tree/master/base64). The `base64.h` and `base64.cpp` files can be added directly to the project.
+
+The second library we will need is the `zlib` library, a compiled version is available at [http://www.zlib.net](http://www.zlib.net) and can be easily added to your project like any other library. Once these libraries are available to the project we can start parsing our tiles:
+
+[PRE23]
+
+Let's go through this function step-by-step. First we create a new `TileLayer` instance:
+
+[PRE24]
+
+Next we declare some needed variables; a multidimensional array of `int` values to hold our final decoded and uncompressed tile data, a `std::string` that will be our base64 decoded information and finally a place to store our XML node once we find it:
+
+[PRE25]
+
+We can search for the node we need in the same way we have previously done:
+
+[PRE26]
+
+Once we have found the correct node we can then get the text from within it (our encoded/compressed data) and use the base64 decoder to decode it:
+
+[PRE27]
+
+Our `decodedIDs` variable is now a `base64` decoded `string`. The next step is to use the `zlib` library to decompress our data, this is done using the `uncompress` function:
+
+[PRE28]
+
+The `uncompress` function takes an array of `Bytef*` (defined in zlib's `zconf.h`) as the destination buffer; we are using an `std::vector` of `int` values and casting it to a `Bytef*` array. The second parameter is the total size of the destination buffer, in our case we are using a `vector` of `int` values making the total size the number of rows x the number of columns x the size of an `int`; or `m_width * m_height * sizeof(int)`. We then pass in our decoded string and its size as the final two parameters. Our `ids` vector now contains all of our tile IDs and the function moves on to set the size of our data vector for us to fill with our tile IDs:
+
+[PRE29]
+
+We can now fill our data array with the correct values:
+
+[PRE30]
+
+And finally we set this layer's tile data and then push the layer into the layers array of our `Level`.
+
+We must now define the functions in our `Level.cpp` file.
+
+## Drawing the map
+
+We are finally at a stage where we can start drawing our tiles to the screen. Inside the earlier created `TileLayer.cpp` file we will now need to define our functions for the layer. Starting with the constructor:
+
+[PRE31]
+
+The new `Game::getGameWidth` and `Game::getGameHeight` functions are just simple getter functions that return variables set in the `Game::init` function:
+
+[PRE32]
+
+The `TileLayer` `update` function uses `velocity` to set the map's position; we will cover this in more detail when we come to scroll our map:
+
+[PRE33]
+
+The `render` function is where all the magic happens:
+
+[PRE34]
+
+You will notice that there is a new function in the `TextureManager`, `drawTile`. This function is specifically for drawing tiles and includes margin and spacing values. Here it is:
+
+[PRE35]
+
+Let's look closer at the `render` function; we will ignore the positioning code for now:
+
+[PRE36]
+
+We loop through the number of columns and the number of rows:
+
+[PRE37]
+
+This is not the number of rows and columns in the full tile ID array, it is actually the number of columns and rows needed to fill the size of our game. We do not want to be drawing anything that we do not have to. We obtained these values earlier in the constructor:
+
+[PRE38]
+
+Next we get the current tile ID from the array (ignore the `+ x` for now):
+
+[PRE39]
+
+We check if the tile ID is 0\. If it is, then we do not want to draw anything:
+
+[PRE40]
+
+Otherwise we grab the correct tileset:
+
+[PRE41]
+
+Getting the tileset uses a very simple function, `getTilesetByID`, which compares each tileset's `firstgid` value and returns the correct tileset:
+
+[PRE42]
+
+Next we move on to drawing the tiles:
+
+[PRE43]
+
+First we decrement the ID so that we can draw the correct tile from the tilesheet, even if it is at position `0,0`. We then use the `drawTile` function to copy across the correct tile using the tileset we grabbed earlier, to set the first parameter of the function, which is the `name` of the texture. Again, we can use the tileset for the next two parameters, `margin` and `spacing`:
+
+[PRE44]
+
+The next two parameters set the position we want to draw our tiles at:
+
+[PRE45]
+
+Ignoring the `x2` and `y2` values for now (they are 0 anyway), we can set the current `x` position as the current column multiplied by the width of a tile and the `y` value as the current row multiplied by the height of a tile. We then set the width and height of the tile we are copying across:
+
+[PRE46]
+
+And finally we work out the location of the tile on the tilesheet:
+
+[PRE47]
+
+We subtract the `firstGridID - 1` to allow us to treat each tilesheet the same and obtain the correct location. For example, the `firstGridID` of a tileset could be 50 and the current tile ID could be 70\. We know that this is actually going to be tile 19 (after we decrement the ID) on the tilesheet itself.
+
+Finally, we must create a level in our `PlayState` class:
+
+[PRE48]
+
+Next, draw it in the `render` function, and also do the same with the `update` function:
+
+[PRE49]
+
+We will also have to comment out any functions that use objects (such as `collisionChecks`) as we don't have any yet and this will cause a runtime error. Run our game and you will see our tile map being drawn to the screen.
+
+# Scrolling a tile map
+
+What we have created so far is fine for a game that takes place in one area that is the size of our window, but what about if we want to have large maps that are open to exploration. This is where scrolling comes into play. We have actually implemented this already but have not yet gone through it step-by-step or seen it in action. Let's do this now.
+
+First of all, we must resize our map in the Tiled application. Navigating to **Map** | **Resize Map…** will allow us to do this. Leave the height of our map at 15 and change the width to 60\. Fill up the remaining squares with whatever tiles you like. The map would then look like the following screenshot:
+
+![Scrolling a tile map](img/6821OT_07_12.jpg)
+
+Save the map and we can look at the code:
+
+[PRE50]
+
+When scrolling the map we don't actually move it more than a tile width; we use the position value to work out where we should begin drawing our map from within the tile ID array. To get the `x` value we can use the position we have moved to divided by the tile width. For example, let's say that we have moved the map to `x position = 100` and the tile width is 32; this would give us a value of 3.125, but since we are using `int` values, this will simply be 3\. We now know that we are to start drawing from the third tile across on the map. The `y` position works in the same way.
+
+To ensure that our tile drawing does not jump between tiles, but smoothly scrolls, we use a modulo calculation to get the remaining tile amount that we need to move by and use that to position our map:
+
+[PRE51]
+
+We then subtract these values in the `draw` function:
+
+[PRE52]
+
+We can test this by setting a velocity in our layers `update` function:
+
+[PRE53]
+
+And then in `PlayState` we can call this function:
+
+[PRE54]
+
+Run the game and you will see the map scrolling. At the moment we have not put any kind of handling in for looping the map or stopping at the end. We will cover this when we begin to create a game in later chapters.
+
+# Parsing object layers
+
+The final topic we will cover in this chapter is loading objects from our Tiled map file. This is extremely useful and takes the guesswork out of placing objects within a level. Open up the Tiled application and we can create our first **Object Layer** by clicking **Layer** | **Add Object Layer**. This will create a new layer called **Object Layer 1** as shown in the following screenshot:
+
+![Parsing object layers](img/6821OT_07_13.jpg)
+
+We can create objects and assign any values and properties we want on these layers. First we will create a rectangle. Press *R* and click anywhere on your tile map, you will see a small square appear, as shown in the following screenshot:
+
+![Parsing object layers](img/6821OT_07_14.jpg)
+
+Right-click on this square and click on **Object Properties…**. This will bring up the object properties dialog as shown in the following screenshot:
+
+![Parsing object layers](img/6821OT_07_15.jpg)
+
+Here, we can set the values we want our object to have, just like our previous state XML files. Go ahead and fill in the dialog box as shown in the preceding screenshot. The positions and sizes of this dialog box deal in tiles, not pixels, so `x = 1` is actually `x = tile width` and so on. Saving this map will add our new object layer to the map file:
+
+[PRE55]
+
+We are also going to use another property list to load in our textures for this map. **Map** | **Map Properties** will bring up the map properties dialog as shown in the following screenshot:
+
+![Parsing object layers](img/6821OT_07_16.jpg)
+
+Here we can add the textures we need for this map's objects. The saved file will now have an additional property list for us to parse through:
+
+[PRE56]
+
+## Developing the ObjectLayer class
+
+Back in our project we will now create a new layer type called `ObjectLayer`. Create `ObjectLayer.h` and we can add the following code:
+
+[PRE57]
+
+We will also define these functions in `ObjectLayer.cpp`:
+
+[PRE58]
+
+Our `ObjectLayer` class is very simple. It only needs to draw and update the objects for that layer. Now let's parse our `ObjectLayer`. We will need two new functions in the `LevelParser` class:
+
+[PRE59]
+
+The `parseLevel` function must now include these functions and pass in the correct XML node:
+
+[PRE60]
+
+We will alter the way we were searching for tile layers to also search for object layers:
+
+[PRE61]
+
+Now we need to define the new functions; `parseTextures` is a very small and simple function:
+
+[PRE62]
+
+It gets the texture values and adds them to the `TextureManager`. The `parseObjects` function is a little longer but not particularly complicated:
+
+[PRE63]
+
+We load the object in a very similar way to the state parser, yet this time we must check for the `name` of the property rather than grabbing the `attribute` directly:
+
+[PRE64]
+
+We can then create the object just like the state parser:
+
+[PRE65]
+
+And add it to this layer's game object array:
+
+[PRE66]
+
+Once we have loaded all of the objects for this layer, we can push it into our `Level` layer array:
+
+[PRE67]
+
+Run the game and you will see our helicopter in the `PlayState` again.
+
+![Developing the ObjectLayer class](img/6821OT_07_17.jpg)
+
+# Summary
+
+We are getting closer to a fully-fledged game all the time. This chapter covered a quick way to create 2D maps through the use of tiles and also looked at using an external application to place objects within our levels. The next two chapters will tie up all of the remaining loose ends and we will create some actual games.

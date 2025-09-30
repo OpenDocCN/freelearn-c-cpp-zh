@@ -1,0 +1,612 @@
+# Chapter 3. A Matter of Character
+
+A video game wouldn't be much fun without characters, and this chapter is all about bringing your game characters to life. Games typically have two kinds of characters. First, there is the character or characters that you are playing as. These are called the player characters. The characters that are controlled by the computer are called the non-player characters or NPCs.
+
+This chapter will explain how to create characters for your game. Along the way we will cover:
+
+*   **Sprites**: Sprites are any textures that the player interacts with in the game. This includes the player characters, NPCs, and other objects in the game.
+*   **Animation**: The art of making an image appear to move is called animation. You will learn how to use multiple images to make your textures move on the screen.
+*   **Atlases**: Images can be stored one at a time, or they can be combined into single composite texture known as a **sprite sheet** or an **atlas**.
+
+# Spritely speaking
+
+Many years ago, a computer geek invented a cool way to render and display small images on a computer screen. These images would move around on the screen and even collide with other objects. The computer geek called these images sprites, and that name has stuck ever since.
+
+## Sprites versus non-sprites
+
+A sprite is simply an image that represents an object on the screen. Examples of sprites include characters, NPCs, weapons, alien spaceships, and rocks. Anything that can move on the screen or be hit by another object in the game is a sprite. Objects that don't interact with other objects aren't sprites. Examples might include mountains in the background, the ground, and the sky.
+
+Obviously, it takes both sprites and non-sprites to implement a game. Also, the distinction is a little arbitrary. Some games implement all of the images in the game as sprites because it is more convenient to treat all images in the game in a consistent manner.
+
+## Flipbook animation
+
+Did you ever create a flipbook when you were a kid? To jog your memory, here is how it worked. First, you sketched a simple figure on a notepad. Then you went to the next page and sketched the same image, but this time something was slightly different. You continued sketching images that were slightly different from the original on successive pages. When you were done, you flipped the pages at the notebook edge and saw what appeared to be a rudimentary movie.
+
+![Flipbook animation](img/8188OS_03_01.jpg)
+
+Another example is a movie. Movies are recorded on film as frames. The film is then run through a projector, which plays the film back one frame at a time. The key, as mentioned before, is to play frames back at least 24 frames per second to fool the eye into thinking that there is fluid motion.
+
+## Framed animation
+
+2D sprite animation works much like a flipbook. An artist draws successive versions of an image. When the images are rendered one after another, it appears to move. Each image in an animation is called a frame. It takes at least 24 or more fps to create a convincing animation. Obviously, more frames will create a smoother animation.
+
+![Framed animation](img/8188OS_03_02.jpg)
+
+The preceding image illustrates a very simple animation using four frames. The only thing that changes is the robot's arm position. Played in sequence from **Frame 1** through **Frame 4**, the arm would appear to swing from the front to the back and then forward again. If this was combined with moving the sprite to the right, then you would get a very simple animation of a walking robot.
+
+### Tip
+
+As the preceding example illustrates, I am not an artist! I am a coder, so the art created for this book will be very simple. It is actually common for very simple placeholder art to be used in the initial stages of a game. This allows the programmers to test features of the game while the art team is working on the real art that will be put in the game at a later stage.
+
+# Creating sprites
+
+Professional 2D artists use programs, such as Adobe Photoshop, to create 2D assets for a game. Unfortunately, we can't take the time to teach you how to use a program as sophisticated as Photoshop.
+
+If you want to play around with creating your own assets, then you might try the Paint program that comes installed on any Windows based computer. If you really want to dig deep into 2D art creation without digging deeply into your bank account, then you can download GIMP ([http://www.gimp.org](http://www.gimp.org)), a free, full-features 2D image manipulation program.
+
+## Working with PNGs
+
+In the previous chapter, we loaded and rendered a bitmap file. It turns out that bitmaps aren't the best format to work with sprites because they take more file space (and therefore, more memory) than PNGs, and bitmaps do not support transparency.
+
+### Tip
+
+Before we had image formats that allowed transparency to be directly encoded as part of the image, we used a specific background color, and then expected our image library to remove that color when it handled the image. Magenta was often used as the background because it is a color rarely used in images.
+
+Bitmaps are larger in file size than PNGs because they are not stored in a compressed format. Compression allows an image to be stored in less space, and this can be very important on devices, such as mobile phones.
+
+PNGs are stored using a **lossless** compression algorithm. Lossless means that the image quality is not sacrificed to achieve the compression. Other formats, such as JPEG, can be stored in a compressed format, but use a **lossy** algorithm that degrades the image quality.
+
+PNGs also support transparency using an **alpha** channel. In addition to storing the red, green, and blue component of each pixel (RGB), PNGs also store each pixel's transparency in the alpha channel (RGBA).
+
+You will recall from the previous chapter that all textures are represented as rectangles in a game. However, real shapes aren't rectangular. Trees, cars, and robots all have much more complex shapes.
+
+If we used bitmaps for all of our images, then the full rectangle of the texture would be rendered blocking out everything behind the sprite. In the following image, our robot is passing in front of a pipe, and part of the pipe is occluded by the blank space in the bitmap.
+
+![Working with PNGs](img/8188OS_03_03.jpg)
+
+In a PNG image, we set the blank space to be transparent. In the following image, the pipe is no longer occluded by the transparent parts of the image of the robot:
+
+![Working with PNGs](img/8188OS_03_04.jpg)
+
+In the previous chapter, we wrote a code to load a BMP file. Normally, we would have to write different code to load a PNG file. In fact, we would have to write a loader for each different type of image we wanted to work with.
+
+Fortunately, someone has already done all of this work and made it available in a library known as **SOIL**: **Simple OpenGL Image Library**. You can download your copy from [http://www.lonesock.net/soil.html](http://www.lonesock.net/soil.html).
+
+There are several advantages to using the SOIL library:
+
+*   We no longer have to worry about writing our own loader for every type of image that we want to use. SOIL supports BMP, PNG, and many other formats.
+*   File loading is not completely abstracted. You don't have to worry about how the code works, only that it does.
+*   SOIL has other features that may be useful (such as the ability to write out image files).
+
+The download comes as a zipped folder. Once you unzip the folder, you will see a folder named `Simple OpenGL Image Library`. This folder contains a lot of files, but we only need `soil.h`.
+
+### Linking to the SOIL library
+
+Now, it is time to add the SOIL library to our project:
+
+1.  Find the folder where you unzipped the SOIL code.
+2.  Open the `lib` folder and find `libSOIL.a`.
+3.  Copy `libSOIL.a` to the folder that contains the **RoboRacer2D** source code.
+4.  Open the **RoboRacer2D** project.
+5.  Right-click on the **RoboRacer2D** project in the **Solution Explorer** panel and choose **Properties**.
+6.  For the **Configuration** drop-down box, make sure that you select **All Configurations**.
+7.  Open the **Configuration Properties** branch, then the **Linker** branch.
+8.  Select the **Input** option.
+9.  Click the dropdown for **Additional Dependencies** and choose **<Edit…>**.
+10.  Enter `opengl32.lib` and `glu32.lib` on separate lines in the dialog window and click **OK**.![Linking to the SOIL library](img/8188OS_03_05.jpg)
+
+### Tip
+
+Library files for Windows usually end in `.lib`, while those written for UNIX end in `.a`. The standard SOIL distribution comes with the UNIX library; you need to use the Windows library. You can either find `SOIL.lib` online, use the SOIL source code to create your own Windows library file, or download SOIL.lib from the book's website.
+
+### Including the SOIL header file
+
+Next, we need to copy the SOIL header file into our project and include it in our code:
+
+1.  Find the folder where you unzipped the SOIL code.
+2.  Open the `src` folder and find `SOIL.h`.
+3.  Copy `SOIL.h` to the folder that contains the **RoboRacer2D** source code.
+4.  Open the **RoboRacer2D** project.
+5.  Open `RoboRacer2D.cpp`.
+6.  Add `#include "SOIL.h"` to the list of includes.
+
+### Tip
+
+You will notice that there are many other files that were unzipped as part of the SOIL package. This includes all of the original source files and several samples for how to use the library.
+
+### Opening an image file
+
+Now, we are ready to write a function that loads an image file. We will pass in the name of the file, and the function will return an integer representing a handle on the OpenGL texture.
+
+The following lines of code uses SOIL to load an image:
+
+[PRE0]
+
+All of the work is done by the call to `SOIL_load_OGL_texture`. The four parameters are the most generic settings:
+
+*   The first parameter is the path and filename to the image file.
+*   The second parameter tells SOIL how to load the image (and in this case, we indicate that we want SOIL to figure things out automatically).
+*   The third parameter tells SOIL to create an OpenGL texture ID for us.
+*   The fourth parameter, if used, can be set to several flag bits that tell SOIL to perform some custom processing. We are not using this, so we just send a 0.
+
+We will use code, such as this one, to load images into our `sprite` class.
+
+### Tip
+
+If you want to see all of the options available to you, open `SOIL.h` and read the source code comments.
+
+## Coding a sprite class
+
+In order to easily incorporate sprites into our game, we will create a class specifically for dealing with sprites.
+
+Let's think about the features that we want:
+
+*   An array of images.
+*   An index that represents the current frame.
+*   A variable that holds the total number of frames.
+*   Variables to store the current *x* and *y* position of the sprite. For this game, this will be the upper-left corner of the image.
+*   A variable that stores the x and y components of the current velocity of the sprite (`0` if it isn't moving).
+*   Variables that store the width and height of the image. Note that if the sprite has multiple images, they must all be the same size.
+*   A Boolean that tells us if this sprite collides with other sprites.
+*   A Boolean that tells us if this sprite should be rendered normal or flipped.
+*   A Boolean that tells us if this sprite is visible right now.
+*   A Boolean that tells us if this sprite is active right now.
+
+In addition to these properties, we would also like to be able to manipulate the sprite in several ways. We may add methods to:
+
+*   Add an image to the sprite
+*   Update the position of the sprite
+*   Update the animation frame for the sprite
+*   Render the sprite to the screen
+
+Open your game project, and add a new class called `Sprite.cpp` with a header file called `Sprite.h`.
+
+### Tip
+
+In Visual Studio, right-click on the **Header Files** filter in the Solution Explorer pane. Then choose **Add Class**. Give the class the name `Sprite` and click **Add**. Visual Studio will create a template header and source code files for you.
+
+Use the following code for `Sprite.h`:
+
+[PRE1]
+
+I know, it's a lot of code! This is a typical object-oriented class, consisting of protected properties and public methods. Let's take a look at the features of this class:
+
+*   `#pragma once`: This is a C++ directive telling Visual Studio to only include files once if they are included in several source files.
+
+    ### Tip
+
+    An alternative is to use header guards:
+
+    [PRE2]
+
+    This stops the code from being included if `SPRITE_H` has already been defined. Then the header has already been included and will not be included more than once.
+
+*   We include `gl.h` in this header file because we need access to the standard OpenGL variable types.
+*   Inside the class, we define two very useful structures: point and rect. We work with points and rectangles so much that it makes sense to have simple structures that hold their values.
+*   The member variables are as follows:
+
+    *   `m_textures` is a `GLuint` array that will dynamically hold all of the OpenGL texture handles that make up this sprite.
+    *   `m_textureIndex` starts at zero, and is incremented each time a texture is added to the sprite.
+    *   `m_currentFrame` starts at zero, and is incremented each time we want to advance the frame of the animation.
+    *   `m_numberOfFrames` stores the total number of frames that make up our animation.
+    *   `m_animationDelay` is the number of seconds that we want to pass before the animation frame advances. This allows us to control the speed of the animation.
+    *   `m_animationElapsed` will hold the amount of time that has elapsed since the last animation frame was changed.
+    *   `m_position` holds the `x` and `y` positions of the sprite.
+    *   `m_size` holds the `width` and `height` of the sprite.
+    *   `m_velocity` holds the velocity of the sprite. Larger values will cause the sprite to move more quickly across the screen.
+    *   `m_isCollideable` is a flag that tells us whether or not this sprite collides with other objects on the screen. When set to `false`, the sprite will pass through other objects on the screen.
+    *   `m_flipHorizontal` is a flag that tells the class whether or not the sprite image should be horizontally flipped when it is rendered. This technique can be used to save texture memory by reusing a single texture for both right and left movement.
+    *   `m_flipVertical` is a flag that tells the class whether or not the sprite image should be vertically flipped when it is rendered.
+    *   `m_isVisible` is a flag that indicates whether the sprite is currently visible in the game. If this is set to false, then the sprite will not be rendered.
+    *   `m_isActive` is a flag that indicates whether the sprite is currently active. If this is set to false, then the sprite animation frame and sprite position will not be updated.
+    *   `m_useTransparency` is a flag that tells the sprite class whether or not to use the alpha channel in the sprite. As alpha checking is costly, we set this to false for images that don't have any transparency (such as the game background).
+
+*   `m_isSpriteSheet` is a flat that tells the sprite class if a single texture is used to hold all of the frames for this sprite. If set to `true`, then each frame is loaded as a separate texture.
+*   Next, we have the methods:
+
+    *   `Sprite` is a constructor that takes a single parameter, `p_numberOfTextures`. We have to tell the class the number of textures that will be used when the sprite is created so that the correct amount of memory can be allocated for the textures dynamic array.
+    *   `~Sprite` is the class destructor.
+    *   `Update` will be used to update the current animation frame and the current position of the sprite.
+    *   `Render` will be used to actually display the sprite on the screen.
+    *   `AddTexture` is used once the sprite is created to add the required textures.
+    *   `GetCurrentFrame` is used when the sprite is rendered to determine which frame of the sprite to render.
+
+*   The remaining methods are simply accessor methods that allow you to modify the class properties.
+
+Next, let's start the class implementation. Open `Sprite.cpp` and add the following code:
+
+[PRE3]
+
+Here are some details about the implementation code:
+
+*   Along with `stdafx.h` and `Sprite.h`, we include `SOIL.h` because this is the actual code block that we will use to load textures
+*   The `Sprite` constructor:
+
+    *   Dynamically allocates space for the `m_textures` array based on `p_numberOfTextures`.
+    *   Initializes all of other class properties. Note that most of the Boolean properties are set to `false`. The result is that a newly created sprite will not be active or visible until we specifically set it to be active and visible.
+
+*   The `~Sprite` destructor deallocates the memory used for the `m_textures` array
+
+We will implement the `Update`, `Render`, and `AddTexture` methods next.
+
+### Tip
+
+You probably noticed that I prefix many of the variables in my code with either `m_` or `p_`. m_ is always used to prefix the name of class properties (or member variables), and `p_` is used to prefix variables used as parameters in functions. If a variable does not have a prefix, it is usually a local variable.
+
+## Creating sprite frames
+
+We already discussed how 2D animations are created by drawing multiple frames of the image with each frame being slightly different. The key points that must be remembered are:
+
+*   Each frame must have exactly the same dimensions
+*   The placement of the image within the frame must be consistent
+*   Only the parts of the image that are supposed to move should change from frame to frame
+
+## Saving each frame
+
+One technique to save your frames is to save each frame as its own image. As you will eventually have a lot of sprites and frames to work with, it is important to come up with a consistent naming convention for all of your images. For example, with our three frame robot animation that were illustrated previously, we might use the following filenames:
+
+*   `robot_left_00.png`
+*   `robot_left_01.png`
+*   `robot_left_02.png`
+*   `robot_left_03.png`
+*   `robot_right_00.png`
+*   `robot_right_01.png`
+*   `robot_right_02.png`
+*   `robot_right_03.png`
+
+Every image in the game should use the same naming mechanism. This will save you endless headaches when coding the animation system.
+
+### Tip
+
+You should save all of your images in a folder named "resources" which should be created in the same folder that holds your source files.
+
+## Loading a sprite from individual textures
+
+Let's take a look the code to load a sprite that has each frame saved as an individual file:
+
+[PRE4]
+
+The important points to notice about the preceding code are:
+
+*   We create a new instance of our sprite class to store the information. We have to tell the sprite class to allocate space for 4 textures for this sprite.
+*   We first store the width and height of each frame. In this case, this happens to be the width and height of each texture that makes up this sprite. As every texture that makes up a particular sprite must have the same dimensions, we only have to make this call once.
+*   We then store the number of frames in this sprite. This might seem to duplicate the number of textures that we specified in the constructor. However, as you will see in the next section, the number of textures does not always equal the number of frames.
+*   We now add each texture to the sprite. The sprite class takes care of allocating the necessary memory for us.
+
+## Creating a sprite sheet
+
+An alternative method to store your sprites is to use a sprite sheet. A sprite sheet holds all of the sprites for a particular animation in a single file. The sprites are often organized into a strip.
+
+![Creating a sprite sheet](img/8188OS_03_06.jpg)
+
+As the dimensions of each frame are identical, we can calculate the position of each frame in a particular animation as an offset from the first frame in the sprite sheet.
+
+### Tip
+
+You can download a cool little program called **GlueIt** at [http://www.varcade.com/blog/glueit-sprite-sheet-maker-download/](http://www.varcade.com/blog/glueit-sprite-sheet-maker-download/). This small program allows you to specify several individual images, and then it glues them into a sprite sheet for you.
+
+## Loading a sprite sheet
+
+The following code loads a sprite that has been stored as a sprite sheet:
+
+[PRE5]
+
+This code is very similar to the code that we used to create a sprite with individual textures previously. However, there are important differences:
+
+*   We only need to allocate space for one texture because we only load one texture. This is the main advantage of using a sprite sheet because it is much more efficient to load a single large texture than it is to load several smaller textures.
+*   Again, we set the width and height of each frame. Note that these are the same values as when loading individual textures because the important information is the width and height of each frame, not the width and height of the texture.
+*   Again, we store the number of frames for this sprite. This sprite still has four frames, although all of the four frames are stored in a single image.
+*   We then add a single image to the sprite.
+
+### Tip
+
+When we get ready to render each frame of the animation, the sprite class will take care of calculating exactly which part the sprite strip to render based on the current frame and the width of each frame.
+
+## Loading our sprites
+
+The following code shows the full code that we will use to load the sprites into our game. Open the **RoboRacer2D** project and open `RoboRacer.cpp`. First we need to include the Sprite header:
+
+[PRE6]
+
+Next, we need some global variables to hold our sprites. Add this code in the variable declarations section of the code (before any functions):
+
+[PRE7]
+
+We created pointers for each sprite that we will need in the game until this point:
+
+*   A sprite to move the robot left
+*   A sprite to move the robot right
+*   A sprite for the background
+
+### Tip
+
+In order to make it easy for you to work with both types of sprites, I defined two sprites for each robot direction. For example, `robot_left` will define a sprite made up of individual textures, while `robot_left_strip` will define a sprite made up of a single sprite sheet. Normally, you would not use both in a single game!
+
+Now, add the `LoadTextures` function:
+
+[PRE8]
+
+This code is exactly the same as the code that I showed you earlier to load sprites. It is simply more comprehensive:
+
+*   `LoadTexures` loads all of the sprites needed in the game (including duplicate *strip* versions so that you can see the difference between using sprite sheets versus individual textures).
+*   `SetPosition` is used to set the initial position for the robot sprites. Notice that we don't do this for the background sprite because its position starts at `(0, 0)`, which is the default.
+*   `SetVisible` and `SetActive` are used to set the `background` sprite and the `robot_left_strip` sprite as active and visible. All of the other sprites will remain inactive and invisible.
+
+As the loading of textures only needs to occur once in the game, we will add the call to do this to the `StartGame` function. Modify the `StartGame` function in `RoboRacer.cpp`:
+
+[PRE9]
+
+The final step in getting our textures loaded is to implement the `AddTexture` method in our sprite class. Open `Sprite.cpp` and add the following code:
+
+[PRE10]
+
+`AddTexture` is used after a new sprite has been created. It adds the required textures to the `m_textures` array. Here's how it works:
+
+*   `p_imageName` holds the name and path of the image to load.
+*   `p_useTransparency` is used to tell the sprite class whether this image uses an alpha channel. As most of our sprites will use transparency, this is coded to default to `true`. However, if we set `p_useTransparency` to `false`, then any transparency information will be ignored.
+*   `SOIL_load_OGL_texture` does all of the work of loading the texture. The parameters for this call were described earlier in this chapter. Note that SOIL is smart enough to load image types based on the file extension.
+*   If the texture was successfully loaded, `SOIL_load_OGL_texture` will return an OpenGL texture handle. If not, it will return `0`. Generally, we would test this value and use some kind of error handling, or quit if any texture did not load correctly.
+*   As the `m_textures` array is allocated in the constructor, we can simply store texture in the `m_textureIndex` slot.
+*   We then increment `m_textureIndex`.
+*   We use a little trick to determine if this sprite uses a sprite sheet or individual sprites. Basically, if there is only one texture but many frames, then we assume that this sprite uses a sprite sheet and set `m_isSpriteSheet` to `true`.
+*   Finally, we set `m_useTransparency` to the value that was passed in. This will be used later in the `Render` method.
+
+# Rendering
+
+We did a lot of work creating our sprites, but nothing is going to show up until we actually render the sprites using OpenGL. Rendering is done for every frame of the game. First, an `Update` function is called to update the state of the game, then everything is rendered to the screen.
+
+## Adding a render to the game loop
+
+Let's start by adding a call to `Render` in the `GameLoop` RoboRacer.cpp:
+
+[PRE11]
+
+At this point, we are simply calling the main `Render` function (implemented in the next section). Every object that can be drawn to the screen will also have a `Render` method. In this way, the call to render the game will cascade down through every renderable object in the game.
+
+## Implementing the main Render function
+
+Now, it is time to implement the main `Render` function. Add the following code to `RoboRacer.cpp`:
+
+[PRE12]
+
+### Tip
+
+Notice that we render the background first. In a 2D game, the objects will be rendered in a first come, first rendered basis. This way the robot will always render on top of the background.
+
+Here's how it works:
+
+*   We always start our render cycle by resetting the OpenGL render pipeline. `glClear` sets the entire color buffer to the background color that we chose when initializing OpenGL. `glLoadIdentify` resets the rendering matrix.
+*   Next, we call `Render` for each sprite. We don't care if the sprite is actually visible or not. We let the sprite class `Render` method make that decision.
+*   Once all objects are rendered, we make the call to `SwapBuffers`. This is a technique known as double-buffering. When we render our scene, it is actually created in a buffer off screen. This way the player doesn't actually see the separate images as they are composited to the screen. Then, a single call to `SwapBuffers` makes a fast copy of the offscreen buffer to the actual screen buffer. This makes the screen render appear much more smoothly.
+
+## Implementing Render in the Sprite class
+
+The last step in our render chain is to add a render method to the `Sprite` class. This will allow each sprite to render itself to the screen. Open `Sprite.h` and add the following code:
+
+[PRE13]
+
+This is probably one of the more complex sections of the code because rendering has to take many things into consideration. Is the sprite visible? Which frame of the sprite are we rendering? Where on screen should the sprite be rendered? Do we care about transparency? Let's walk through the code step by step:
+
+*   First, we check to see if `m_visible` is `true`. If not, we bypass the entire render.
+*   Next, we check to see if this sprite uses transparency. If it does, we have to enable transparency. The technical term to implement transparency is blending. OpenGL has to blend the current texture with what is already on the screen. `glEnable(GL_BLEND)` turns on transparency blending. The call to `glBlendFunc` tells OpenGL exactly what type of blending we want to implement. Suffice to say that the `GL_SRC_ALPHA` and `GL_ONE_MIUS_SRC_ALPHA` parameters tell OpenGL to allow background images to be seen through transparent sections of the sprite.
+*   `glBindTexture` tells OpenGL which texture we want to work with right now. The call to `GetCurrentFrame` returns the OpenGL handle of the appropriate texture.
+*   `glBegin` tells OpenGL that we are ready to render a particular item. In this case, we are rendering a quad.
+*   The next two lines of code set up the `x` and `y` coordinates for the sprite based on the `x` and `y` values stored in `m_position`. These values are used in the `glVertex2f` calls to position the sprite.
+*   We will also need the `width` and `height` of the current frame, and the next two lines store these as `w` and `h` for convenience.
+*   Finally, we need to know how much of the texture we are going to render. Typically, we render the entire texture. However, in the case of a sprite sheet we will only want to render a section of the texture. We will discuss how this works in more detail later.
+*   Once we have the position, width, and portion of the texture that we want to render, we use for pairs of calls to `glTexCoord2f` and `glVertex2f` to map each corner of the texture to the quad. This was discussed in great detail in [Chapter 2](ch02.html "Chapter 2. Your Point of View"), *Your Point of View*.
+*   The call to `glEnd` tells OpenGL that we are finished with the current render.
+*   As alpha checking is computationally expensive, we turn it off at the end of the render with a call to `glDisable(GL_BLEND)`.
+
+## UV mapping
+
+UV mapping was covered in detail in [Chapter 2](ch02.html "Chapter 2. Your Point of View"), *Your Point of View*. However, we'll do a recap here and see how it is implemented in code.
+
+By convention, we assign the left coordinate of the texture to the variable **u**, and the top coordinate of the texture to the variable **v**. This technique is therefore known as **uv** mapping.
+
+OpenGL considers the origin of a texture to be at **uv** coordinates of (0, 0), and the farthest extent of the texture to be at **uv** coordinates of (1, 1). So, if we want to render the entire texture, we will map the entire range from (0, 0) to (1, 1) the four corners of the quad. However, let's say that we only want to render the first half of the image width (but the entire height). In this case, we will map the range of **uv** coordinates from (0, 1) to (0.5, 1) to the four corners of the quad. Hopefully, you can visualize that this will only render one-half of the texture.
+
+So, in order to render our sprite sheets, we first determine how wide each frame of the sprite is by dividing `m_textureIndex` by `m_numberOfFrames`. In the case of a sprite that has four frames, this will give us a value of 0.25.
+
+Next, we determine which frame we are in. The following table shows the **uv** ranges for each frame of a sprite with four frames:
+
+| Frame | u | v |
+| --- | --- | --- |
+| 0 | 0.0 to 0.25 | 0.0 to 1.0 |
+| 1 | 0.25 to 0.5 | 0.0 to 1.0 |
+| 2 | 0.5 to 0.75 | 0.0 to 1.0 |
+| 3 | 0.75 to 1.0 | 0.0 to 1.0 |
+
+As our sprite sheets are set up horizontally, we only need to worry about taking the correct range of **u** from the whole texture, while the range for **v** stays the same.
+
+So, here is how our algorithm works:
+
+*   If the sprite is not a sprite sheet, then each frame uses 100 percent of the texture, and we use a range of uv values from (0,0) to (1, 1)
+*   If the sprite is based on a sprite sheet, we determine the width of each frame (`texWidth`) by dividing `m_textureIndex` by `m_numberOfFrames`
+*   We determine the starting u value by multiplying `m_currentFrame` by `texWidth`
+*   We determine the extent of **u** by adding `u` + `texWidth`
+*   We map u to the upper-corner of the quad, and `u` + `texWidth` to the lower corner of the quad
+*   **v** is mapped normally because our sprite sheets use 100 percent of the height of the texture
+
+### Tip
+
+If you are having a hard time understanding uv mapping, don't fret. It took me years of application to fully understand this concept. You can play around with the uv coordinates to see how things work. For example, try settings of .05, 1, and 1.5 and see what happens!
+
+## One more detail
+
+We need to take a closer look at the call to `GetCurrentFrame` to make sure you understand what this function does. Here is the implementation:
+
+[PRE14]
+
+Here is what is happening:
+
+*   If the sprite is a sprite sheet, we always return `m_textures[0]` because, by definition, there is only one texture at index `0`
+*   If the sprite is not a sprite sheet, then we return the texture at index `m_currentFrame`. `m_currentFrame` is updated in the sprite update method (defined next)
+
+# A moving example
+
+The code that we created until this point creates a basic scene with our robot and a background. Now, it's time to bring our robot to life using the power of animation.
+
+Animation actually has two components. First, the sprite itself will appear to animate because we will play each frame of the sprite in sequence. If you use the stock files that were made for this book, you will see the robot's eyes and arms move.
+
+The second component is movement across the screen. It is the combination of the robot's horizontal movement and body movements that will make a convincing animation.
+
+## Adding update to the game loop
+
+As with rendering, we start by adding an `Update` call to the `GameLoop` function. Modify the `GameLoop` function in `RoboRacer.cpp`:
+
+[PRE15]
+
+We now have two new features:
+
+*   We added `p_deltaTime` as a parameter. This represents the amount of time that has passed in milliseconds since the last frame. We will see how this is calculated in the following section.
+*   We added a call to the main `Update` function (defined in the following section). Every object in the game will also have an `Update` method. In this way, the call to update the game will cascade down through every object in the game. We pass `p_deltatTime` so that every subsequent call to `Update` will know how much time has passed in the game.
+
+## Implementing the main Update call
+
+Our first task is to implement the `Update` function in `RoboRacer.cpp`. Add the following function to `RoboRacer.cpp`:
+
+[PRE16]
+
+Notice that we make an `Update` call to every sprite. At this point, we don't care if the sprite really needs to be updated. This decision will be made inside the `Sprite` class.
+
+### Tip
+
+In a real game, we would probably have an array of sprites, and we would update them all by iterating through the array and calling update on each element. As this game uses so few sprites, I have coded each sprite individually.
+
+## Implementing Update in the Sprite class
+
+Now it's time to implement the `Update` method in our `Sprite` class. This method does all of the work required to both position the sprite and update the sprite's internal animation. Add this code to `Sprite.h`:
+
+[PRE17]
+
+Here is what this code does:
+
+*   We store `p_deltaTime` into a local variable `dt` for convenience. This is useful because you sometimes want to hardcode the value of `dt` during testing.
+*   Next, we test `m_active`. If this if `false`, then we bypass the entire update.
+*   We now handle the sprite's internal animation. We first add `dt` to `m_animationElapsed` to see how much time has elapsed since the last frame change. If `m_animationElapsed` exceeds `m_animationDelay`, then it is time to increment to the next frame. This means that the higher the value of `m_animationDelay`, the slower the sprite will animate.
+*   If necessary, we increment `m_currentFrame` making sure that once we have exceeded the total number of frame, we reset to `0`.
+*   If we just did a frame increment, we also want to reset `m_animationElapsed` to `0`.
+*   Now ,we move the sprite based on `m_velocity` and `dt`. Look at the details on using delta time to calculate movement in the upcoming sections.
+
+## Character movement
+
+In this version of the game, we programmed our robot to move across the screen from left to right. The key to making our character move is the **velocity** property. The velocity property tells the program how many pixels to move our robot each game cycle.
+
+As the frames come pretty fast, the velocity is typically pretty small. For example, in a game running at 60 fps, a velocity of 1 would move the robot 60 pixels each game frame. The sprite would probably be moving too fast to interact with.
+
+## Using delta time
+
+There is a small problem with setting the velocity as a fixed value. Obviously, some computers are faster than other computers. With a fixed velocity, the robot will move faster on faster computers. This is a problem because it means that people on faster computers will have to be much better at playing the game!
+
+We can use the computer's clock to solve this problem. The computer keeps track of the time that has passed since the start of the previous frame. In game terminology, this is called **delta time**, and we assign this to a variable that we can access in the `Update` loop:
+
+[PRE18]
+
+In the preceding function definition, `deltaTime` is a floating value. Remember, our game is typically running at 60 fps, so `deltaTime` is going to be a very small number.
+
+### Tip
+
+When we set up a game to run at 60 fps, it rarely runs at exactly that speed. Each frame may take slightly more or less time to finish its calculations. Delta time tells us exactly how much time has passed, and we can use that information to adjust the timing or speed of events.
+
+Let's take a closer look at how we use velocity to position our sprites:
+
+[PRE19]
+
+We multiply `m_velocity` times `dt`, and then add this to the current position. This technique automatically adjusts the velocity based on the amount of time that has passed since the last frame. If the last frame took a little less time to process, then the robot will move a little less. If the last frame took a little longer to process, then our robot will move a little further. The end result is that the robot moves consistently now on both faster and slower computers.
+
+### Tip
+
+For slower computers, this could cause other side effects, especially regarding collision detection. If too much time goes by, then the sprite will move farther. This could, for example, cause the sprite to go right through a wall before the collision detection is checked.
+
+As `dt` is a very small number, we will now have to use a larger number for our velocity. The current code uses a value of 50\. Of course, in the full game this value will change based on what is happening to our robot.
+
+## Calculating delta time
+
+We already have all of the code in place except the actual code to calculate delta time. In order to calculate the time that has elapsed during each frame of the game, we must:
+
+1.  Store the time before the frame.
+2.  Store the time after the frame.
+3.  Calculate the difference between the two.
+
+Open `RoboRacer.cpp` and add the following code right after the call to `StartGame`:
+
+[PRE20]
+
+Notice that we are using `GLUT` to get the current elapsed time. Each call to `glutGet(GLUT_ELAPSED_TIME)` will give us the number of milliseconds that have elapsed since the game started.
+
+### Tip
+
+In order to use GLUT, remember to copy glut.h, glut32.dll, and glut32.lib from the OpenGLFun project to the source code folder of RoboRacer2D. include glut.h at the top of SpaceRacer2D.cpp.
+
+Next, add the following lines directly above the call to `GameLoop`:
+
+[PRE21]
+
+Here is what we have done:
+
+*   First, we captured the current elapsed time and stored that in `m_currentTime`.
+*   We then calculated the time that elapsed since the last frame by subtracting `m_currentTime` from `m_previousTime`. We converted this to seconds to make it easier to deal with.
+*   We then set `previousTime` to equal current time so that we have a benchmark for our next calculation.
+*   Finally, we modified the call to `GameLoop` to pass the value of `deltaTime`. This will subsequently be passed to every `Update` call in the game.
+
+## Flipping
+
+Today's games can be created for and played on a wide variety of devices, ranging from supercharged PCs to mobile phones. Each of these devices has its own set of advantages and disadvantages. However, one rule of thumb is that as the device gets smaller its capabilities become more limited.
+
+One area where these limitations become critical is texture memory. Texture memory is the location in the memory that stores the textures that are being used in the game. Mobile devices, in particular, are very limited by the amount of available texture memory, and game programmers have to be very careful not to exceed this limitation.
+
+2D games tend to use a lot of texture memory. This is because each frame of every animation has to be stored in the memory to bring the 2D images to life. It is typical for a 2D game to have thousands of frames of textures that have to be loaded into memory.
+
+One simple way to almost cut the required amount of texture memory in half is to utilize texture flipping. Simply put, our robot moving to the left is a mirror image of our robot moving to the right. Instead of using one set of textures to move to the left and another to move to the right, we can use code to flip the texture when it is rendered.
+
+![Flipping](img/8188OS_03_07.jpg)
+
+If you want to try it out sometime, flipping would be implemented by changing the way you mapped the sprite's **uv** coordinates to the texture.
+
+## Scrolling the background
+
+You may be wondering why we set up our background as a sprite. After all, we defined sprites as objects that the player interacts with in the game, and the background is basically ignored by the robot.
+
+The main reason to set up the background as a sprite is that this allows us to handle all of our textures in a uniform manner. The advantage of this is that we can then apply the same properties to all of our images. For example, what if we decided that we wanted our background to move?
+
+Scrolling backgrounds are used in 2D games to give the impression of a continuously changing background. In fact, the 2D side-scrolling game is considered its own genre. There are basically two requirements to create a scrolling background:
+
+1.  Create a large texture that is wider than the screen.
+2.  Assign a velocity to the texture so that it moves sideways.![Scrolling the background](img/8188OS_03_08.jpg)
+
+The parts of the texture background that exceeds the screen width will not be rendered. As the image moves, the background appears to slide either to the left or the right. If you set the velocity of the background image to be exactly the same as the velocity of the player, you get the illusion of a background that is flying by as the robot runs left or right.
+
+As we already implemented our background image as a sprite, the only thing that we have to do to make it scroll is to set its velocity. This was already done in the code for `AddTextures`:
+
+[PRE22]
+
+By setting the background velocity to `-50`, the background scrolls to the left as the robot moves to the right.
+
+# Using an atlas
+
+As I have mentioned already, texture memory is one of your core resources. In fact, it is common to run out of memory because of all the textures required to animate a typical 2D game. It is also time-consuming to load individual textures rather than loading on a larger texture. So, we have to come up with methods to use texture memory more efficiently.
+
+One common technique designed to pack more textures into less space is known as **atlasing**. A texture atlas works much like a sprite sheet described earlier in this chapter. Instead of storing each texture as its own image, we pack all of the textures for the entire game into one or more textures known as **atlases**.
+
+As the word suggests, an atlas works much like a map. We simply need to know the location of any particular image, and we can find and extract it out of the atlas. Every atlas consists of two parts:
+
+*   The texture that contains all of the images
+*   A text file that contains the positions of each image in the atlas
+
+As you can imagine, efficiently packing thousands of images into an atlas and then keeping track of each image's position within the atlas would be almost impossible to manage manually. This is why there are programs to do this for us.
+
+I use a free texture atlas tool called **Texture Atlas Generator**. You can download this at [http://www.gogo-robot.com/2010/03/20/texture-atlas-sprite-sheet-generator/](http://www.gogo-robot.com/2010/03/20/texture-atlas-sprite-sheet-generator/).
+
+A detailed example of atlasing is beyond the scope of this chapter. If you want to explore this on your own, here are the steps that you require:
+
+1.  Use a program, such as the one just mentioned, to create your atlas.
+2.  Save your data as an XML file.
+3.  Write a class to parse the XML saved in the previous step (I suggest **TinyXML** at [http://www.grinninglizard.com/tinyxml/](http://www.grinninglizard.com/tinyxml/) as a starter).
+4.  Using the code to work with sprite sheets, modify the sprite class to be able to handle sub-textures from any arbitrary position in a larger texture.
+
+# Summary
+
+This chapter has covered a lot of ground. You created a new class specifically to work with sprites. Consider this class a huge part of your utility box for any game that you will create. This class handles all of the requirements that you will need to load, move, and handle textures as objects in your game.
+
+In the next chapter, you will learn how to how to handle input, and actually control your robot.

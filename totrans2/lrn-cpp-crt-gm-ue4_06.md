@@ -1,0 +1,446 @@
+# Chapter 6. Objects, Classes, and Inheritance
+
+In the previous chapter, we discussed functions as a way to bundle up a bunch of lines of related code. We talked about how functions abstracted away implementation details and how the `sqrt()` function does not require you to understand how it works internally to use it to find roots. This was a good thing, primarily because it saved the programmer time and effort, while making the actual work of finding square roots easier. This principle of *abstraction* will come up again here when we discuss objects.
+
+In a nutshell, objects tie together methods and their related data into a single structure. This structure is called a *class*. The main idea of using objects is to create a code representation for every thing inside your game. Every object represented in the code will have data and associated functions that operate on that data. So you'd have an *object* to represent your player instance and related functions that make the player `jump()`, `shoot()`, and `pickupItem()` functions. You'd also have an object to represent every monster instance and related functions such as `growl()`, `attack()`, and possibly `follow()`.
+
+Objects are types of variables, though, and objects will stay in memory as long as you keep them there. You create an object instance once when the thing in your game it represents is created, and you destroy the object instance when the thing in your game it represents dies.
+
+Objects can be used to represent in-game things, but they can also be used to represent any other type of thing. For example, you can store an image as an object. The data fields will be the image's width of the image, its height, and the collection of pixels inside it. C++ strings are also objects.
+
+### Tip
+
+This chapter contains a lot of keywords that might be difficult to grasp at first, including `virtual` and `abstract`.
+
+Don't let the more difficult sections of this chapter bog you down. I included descriptions of many advanced concepts for completeness. However, bear in mind that you don't need to completely understand everything in this chapter to write working C++ code in UE4\. It helps to understand it, but if something doesn't make sense, don't get stuck. Give it a read and then move on. Probably what will happen is you will not get it at first, but remember a reference to the concept in question when you're coding. Then, when you open this book up again, "voilà!" It will make sense.
+
+# struct objects
+
+An object in C++ is basically any variable type that is made up of a conglomerate of simpler types. The most basic object in C++ is `struct`. We use the `struct` keyword to glue together a bunch of smaller variables into one big variable. If you recall, we did introduce `struct` briefly in [Chapter 2](part0022_split_000.html#KVCC2-dd4a3f777fc247568443d5ffb917736d "Chapter 2. Variables and Memory"), *Variables and Memory*. Let's revise that simple example:
+
+[PRE0]
+
+This is the structure definition for what makes a `Player` object. The player has a `string` for his `name` and an integer for his `hp` value.
+
+If you'll recall from [Chapter 2](part0022_split_000.html#KVCC2-dd4a3f777fc247568443d5ffb917736d "Chapter 2. Variables and Memory"), *Variables and Memory*, the way we make an instance of the `Player` object is like this:
+
+[PRE1]
+
+From here, we can access the fields of the `me` object like so:
+
+[PRE2]
+
+## Member functions
+
+Now, here's the exciting part. We can attach member functions to the `struct` definition simply by writing these functions inside the `struct Player` definition.
+
+[PRE3]
+
+A member function is just a C++ function that is declared inside a `struct` or `class` definition. Isn't that a great idea?
+
+There is a bit of a funny idea here, so I'll just come out and say it. The variables of `struct Player` are accessible to all the functions inside `struct Player`. Inside each of the member functions of `struct Player`, we can actually access the `name` and `hp` variables as if they were local to the function. In other words, the `name` and `hp` variables of `struct Player` are shared between all the member functions of `struct Player`.
+
+### The this keyword
+
+In some C++ code (in later chapters), you will see more references to the `this` keyword. The `this` keyword is a pointer that refers to the current object. Inside the `Player::damage()` function, for example, we can write our reference to `this` explicitly:
+
+[PRE4]
+
+The `this` keyword only makes sense inside a member function. We could explicitly include use of keyword `this` inside member functions, but without writing `this`, it is implied that we are talking about the `hp` of the current object.
+
+## Strings are objects?
+
+Yes! Every time you've used a string variable in the past, you were using an object. Let's try out some of the member functions of the `string` class.
+
+[PRE5]
+
+What we've done here is use the `append()` member function to add on two extra characters to the end of the string (`!!`). Member functions always apply to the object that calls the member function (the object to the left of the dot).
+
+### Tip
+
+To see the listing of members and member functions available on an object, type the object's variable name in Visual Studio, then a dot (`.`), then press *Ctrl* and spacebar. A member listing will pop up.
+
+![Strings are objects?](img/00060.jpeg)
+
+Pressing *Ctrl* and spacebar will make the member listing appear
+
+## Invoking a member function
+
+Member functions can be invoked with the following syntax:
+
+[PRE6]
+
+The object invoking the member function is on the left of the dot. The member function to call is on the right of the dot. A member function invocation is always followed by round brackets `()`, even when no arguments are passed to the brackets.
+
+So, in the part of the program where the monster attacks, we can reduce the player's `hp` value like so:
+
+[PRE7]
+
+Which isn't that more readable than the following:
+
+[PRE8]
+
+### Tip
+
+When member functions and objects are used effectively, your code will read more like prose or poetry than a bunch of operator symbols slammed together.
+
+Besides beauty and readability, what is the point of writing member functions? Outside the `Player` object, we can now do more with a single line of code than just reduce the `hp` member by `15`. We can also do other things as we're reducing the player's `hp`, such as take into account the player's armor, check whether the player is invulnerable, or have other effects occur when the player is damaged. What happens when the player is damaged should be abstracted away by the `damage()` function.
+
+Now think if the player had an armor class. Let's add a field to `struct Player` for armor class:
+
+[PRE9]
+
+We'd need to reduce the damage received by the player by the armor class of the player. So we'd type a formula now to reduce `hp`. We can do it the non-object-oriented way by accessing the data fields of the `player` object directly:
+
+[PRE10]
+
+Otherwise, we can do it the object-oriented way by writing a member function that changes the data members of the `player` object as needed. Inside the `Player` object, we can write a member function `damage()`:
+
+[PRE11]
+
+### Exercises
+
+1.  There is a subtle bug in the player's `damage` function in the preceding code. Can you find and fix it? Hint: What happens if the damage dealt is less than `armorClass` of the player?
+2.  Having only a number for armor class doesn't give enough information about the armor! What is the armor's name? What does it look like? Devise a `struct` function for the Player's armor with fields for name, armor class, and durability rating.
+
+### Solutions
+
+The solution is in the `struct` player code listed in the next section, *Privates and encapsulation*.
+
+How about using the following code:
+
+[PRE12]
+
+An instance of `Armor` will then be placed inside `struct Player`:
+
+[PRE13]
+
+This means the player has an armor. Keep this in mind—we'll explore `has-a` versus `is-a` relationships later.
+
+## Privates and encapsulation
+
+So now we've defined a couple of member functions, whose purpose it is to modify and maintain the data members of our `Player` object, but some people have come up with an argument.
+
+The argument is as follows:
+
+*   An object's data members should only ever be accessed only through its member functions, never directly.
+
+This means that you should never access an object's data members from outside the object directly, in other words, modify the player's `hp` directly:
+
+[PRE14]
+
+This should be forbidden, and users of the class should be forced to use the proper member functions instead to change the values of data members:
+
+[PRE15]
+
+This principle is called *encapsulation*. Encapsulation is the concept that every object should be interacted via its member functions only. Encapsulation says that raw data members should never be accessed directly.
+
+The reasons behind encapsulation are:
+
+*   **To make the class self contained**: The primary idea behind encapsulation is that objects work best when they are programmed such that they manage and maintain their own internal state variables without a need for code outside the class to examine that class' private data. When objects are coded this way, it makes the object much easier to work with, that is, easier to read and maintain. To make the player object jump, you should just have to call `player.jump()`; let the player object manage state changes to its `y-height` position (making the player jump!). When an object's internal members are not exposed, interacting with that object is much easier and more efficient. Interact only with an object's public member functions; let the object manage its internal state (we will explain the keywords `private` and `public` in a moment).
+*   **To avoid breaking code**: When code outside of a class interacts with that class' public member functions only (the class' public interface), then an object's internal state management is free to change, without breaking any of the calling code. This way, if an object's internal data members change for any reason, all code using the object still remains valid as long as the member functions remain the same.
+
+So how can we prevent the programmer from doing the wrong thing and accessing data members directly? C++ introduces the concept of *access modifiers* to prevent access of an object's internal data.
+
+Here is how we'd use access modifiers to forbid access to certain sections of `struct Player` from outside of `struct Player`.
+
+The first thing you'd do is decide which sections of the `struct` definition you want to be accessible outside of the class. These section will be labelled `public`. All other regions that will not be accessible outside of `struct` will be labelled `private`, as follows:
+
+[PRE16]
+
+## Some people like it public
+
+Some people do unabashedly use `public` data members and do not encapsulate their objects. This is a matter of preference, though considered as bad object-oriented programming practice.
+
+However, classes in UE4 do use `public` members sometimes. It's a judgment call; whether a data member should be `public` or `private` is really up to the programmer.
+
+With experience, you will find that sometimes you get into a situation that requires quite a bit of refactoring when you make a data member `public` that should have been `private`.
+
+# class versus struct
+
+You might have seen a different way of declaring an object, using the `class` keyword, instead of `struct`, as shown in the following code:
+
+[PRE17]
+
+The `class` and `struct` keywords in C++ are almost identical. There is only one difference between `class` and `struct`, and it is that the data members inside a `struct` keyword will be declared `public` by default, while in a `class` keyword the data members inside the class will be declared `private` by default. (This is why I introduced objects using `struct`; I didn't want to put `public` inexplicably as the first line of `class`.)
+
+In general, `struct` is preferred for simple types that don't use encapsulation, don't have many member functions, and must be backward compatible with C. Classes are used almost everywhere else.
+
+From now on, let's use the `class` keyword instead of `struct`.
+
+# Getters and setters
+
+You might have noticed that once we slap `private` onto the `Player` class definition, we can no longer read or write the name of the player from outside the `Player` class.
+
+If we try and read the name with the following code:
+
+[PRE18]
+
+Or write to the name, as follows:
+
+[PRE19]
+
+Using the `struct Player` definition with `private` members, we will get the following error:
+
+[PRE20]
+
+This is just what we asked for when we labeled the `name` field `private`. We made it completely inaccessible outside the `Player` class.
+
+## Getters
+
+A getter (also known as an accessor function) is used to pass back copies of internal data members to the caller. To read the player's name, we'd deck out the `Player` class with a member function specifically to retrieve a copy of that `private` data member:
+
+[PRE21]
+
+So now it is possible to read the player's name information. We can do this by using the following code statement:
+
+[PRE22]
+
+Getters are used to retrieve `private` members that would otherwise be inaccessible to you from outside the class.
+
+### Tip
+
+**Real world tip–Keyword const**
+
+Inside a class, you can add the `const` keyword to a member function declaration. What the `const` keyword does is promises to the compiler that the internal state of the object will not change as a result of running this function. Attaching the `const` keyword will look something like this:
+
+[PRE23]
+
+No assignments to data members can happen inside a member function that is marked `const`. As the internal state of the object is guaranteed not to change as a result of running a `const` function, the compiler can make some optimizations around function calls to `const` member functions.
+
+## Setters
+
+A setter (also known as a modifier function or mutator function) is a member function whose sole purpose is to change the value of an internal variable inside the class, as shown in the following code:
+
+[PRE24]
+
+So we can still change the `private` function of a `class` from outside the `class` function, but only if we do so through a setter function.
+
+## But what's the point of get/set operations?
+
+So the first question that crosses a newbie programmer's mind when he first encounters get/set operations on `private` members is, isn't get/set self-defeating? I mean, what's the point in hiding access to data members when we're just going to expose that same data again in another way? It's like saying, "You can't have any chocolates because they are private, unless you say please `getMeTheChocolate()`. Then, you can have the chocolates."
+
+Some expert programmers even shorten the get/set functions to one liners, like this:
+
+[PRE25]
+
+Let's answer the question. Doesn't a get/set pair break encapsulation by exposing the data completely?
+
+The answer is twofold. First, get member functions typically only return a copy of the data member being accessed. This means that the original data member's value remains protected and is not modifiable through a `get()` operation.
+
+`Set()` (mutator method) operations are a little bit counterintuitive though. If the setter is a `passthru` operation, such as `void setName( string newName ) { name=newName; }`, then having the setter might seem pointless. What is the advantage of using a mutator method instead of overwriting the variable directly?
+
+The argument for using mutator methods is to write additional code before the assignment of a variable to guard the variable from taking on incorrect values. Say, for example, we have a setter for the `hp` data member, which will look like this:
+
+[PRE26]
+
+The mutator method is supposed to prevent the internal `hp` data member from taking on negative values. You might consider mutator methods a bit retroactive. Should the responsibility lie with the calling code to check the value it is setting before calling `setHp( -2 )`, and not let that only get caught in the mutator method? Can't you use a `public` member variable and put the responsibility for making sure the variable doesn't take on invalid values in the calling code, instead of in the setter? You can.
+
+However, this is the core of the reason behind using mutator methods. The idea behind mutator methods is so that the calling code can pass any value it wants to the `setHp` function (for example, `setHp( -2 )`), without having to worry whether the value it is passing to the function is valid or not. The `setHp` function then takes the responsibility of ensuring that the value is valid for the `hp` variable.
+
+Some programmers consider direct mutator functions such as `getHp()`/`setHp()` a code smell. A code smell is in general a bad programming practice that people don't overtly take notice of, except for a niggling feeling that something is being done suboptimally. They argue that higher-level member functions can be written instead of mutators. For example, instead of a `setHp()` member function, we should have `public` member functions such as `heal()` and `damage()` instead. An article on this topic is available at [http://c2.com/cgi/wiki?AccessorsAreEvil](http://c2.com/cgi/wiki?AccessorsAreEvil).
+
+# Constructors and destructors
+
+The constructor in your C++ code is a simple little function that runs once when the C++ object is first created. The destructor runs once when the C++ object is destroyed. Say we have the following program:
+
+[PRE27]
+
+So here we have created a `Player` object. The output of this code will be as follows:
+
+[PRE28]
+
+The first thing that happens during object construction is that the constructor actually runs. This prints the line `Player object constructed`. Following this, the line with the player's name gets printed: `Player named 'Diplo'`. Why is the player named *Diplo*? Because that is the name assigned in the `Player()` constructor.
+
+Finally, at the end of the program, the player destructor gets called, and we see `Player object destroyed`. The player object gets destroyed when it goes out of scope at the end of `main()` (at `}` of `main`).
+
+So what are constructors and destructors good for? Exactly what they appear to be for: setting up and tearing down of an object. The constructor can be used for initialization of data fields and the destructor to call delete on any dynamically allocated resources (we haven't covered dynamically allocated resources yet, so don't worry about this last point yet).
+
+# Class inheritance
+
+You use inheritance when you want to create a new, more functional class of code, based on some existing class of code. Inheritance is a tricky topic to cover. Let's start with the concept of a *derived class* (or subclass).
+
+## Derived classes
+
+The most natural way to consider inheritance is by analogy with the animal kingdom. The classification of living things is shown in the following screenshot:
+
+![Derived classes](img/00061.jpeg)
+
+What this diagram means is that **Dog**, **Cat**, **Horse** **,** and **Human** are all **Mammals**. What that means is that dog, cat, horse, and human all share some common characteristics, such as having common organs (brain with neocortex, lungs, liver, and uterus in females), while being completely different in other regard. How each walks is different. How each talks is also different.
+
+What does that mean if you were coding creatures? You would only have to program the common functionality once. Then, you would implement the code for the different parts specifically for each of the dog, cat, horse and human classes.
+
+A concrete example of the preceding figure is as follows:
+
+[PRE29]
+
+All of `Dog`, `Cat`, and `Human` inherit from `class Mammal`. This means that dog, cat, and human are mammals, and many more.
+
+### Syntax of inheritance
+
+The syntax of inheritance is quite simple. Let's take the `Human` class definition as an example. The following screenshot is a typical inheritance statement:
+
+![Syntax of inheritance](img/00062.jpeg)
+
+The class on the left of the colon (**:**) is the new, derived class, and the class on the right of the colon is the base class.
+
+### What does inheritance do?
+
+The point of inheritance is for the derived class to take on all the characteristics (data members, member functions) of the base class, and then to extend it with even more functionality. For instance, all mammals have a `breathe()` function. By inheriting from the `Mammal` class, the `Dog`, `Cat`, and `Human` classes all automatically gain the ability to `breathe()`.
+
+Inheritance reduces replication of code since we don't have to re-implement common functionalities (such as `.breathe()`) for `Dog`, `Cat`, and `Human`. Instead, each of these derived classes enjoys the reuse of the `breathe()` function defined in `class Mammal`.
+
+However, only the `Human` class has the `attack()`member function. This would mean that, in our code, only the `Human` class attacks. The `cat.attack()` function will introduce a compiler error, unless you write a member function `attack()` inside `class Cat` (or in `class Mammal`).
+
+## is-a relationship
+
+Inheritance is often said to be an `is-a` relationship. When a `Human` class inherits from `Mammal` class, then we say that human *is-a* mammal.
+
+![is-a relationship](img/00063.jpeg)
+
+The Human inherits all the traits a Mammal has
+
+For example, a `Human` object contains a `Mammal` function inside it, as follows:
+
+[PRE30]
+
+In this example, we would say the human *has-a* `Mammal` on it somewhere (which would make sense if the human were pregnant, or somehow carrying a mammal).
+
+![is-a relationship](img/00064.jpeg)
+
+This Human class instance has some kind of mammal attached in it
+
+Remember that we previously gave `Player` an `Armor` object inside it. It wouldn't make sense for the `Player` object to inherit from the `Armor` class, because it wouldn't make sense to say *the Player is-an Armor*. When deciding whether one class inherits from another or not in code design (for example, the Human class inherits from the Mammal class), you must always be able to comfortably say something like the Human class *is-a* Mammal. If the *is-a* statement sounds wrong, then it is likely that inheritance is the wrong relationship for that pair of objects.
+
+In the preceding example, we're introducing a few new C++ keywords here. The first is `protected`.
+
+## protected variables
+
+A `protected` member variable is different from a `public` or `private` variable. All three classes of variables are accessible inside the class in which they are defined. The difference between them is in regard to accessibility outside the class. A `public` variable is accessible anywhere inside the class and outside the class. A `private` variable is accessible inside the class but not outside the class. A `protected` variable is accessible inside the class, and inside of derived subclasses, but is not accessible outside the class. So, the `hp` and `speed` members of `class Mammal` will be accessible in the derived classes Dog, Cat, Horse, and Human, but not outside of these classes (in `main()` for instance).
+
+## Virtual functions
+
+A virtual function is a member function whose implementation can be overridden in a derived class. In this example, the `talk()` member function (defined in `class Mammal`) is marked `virtual`. This means that the derived classes might or might not choose to implement their own version of what the `talk()` member function means.
+
+## Purely virtual functions (and abstract classes)
+
+A purely virtual function is one whose implementation you are required to override in the derived class. The `walk()` function in `class Mammal` is purely virtual; it was declared like this:
+
+[PRE31]
+
+The `= 0` part at the end of the preceding code is what makes the function purely `virtual`.
+
+The `walk()` function in `class Mammal` is purely `virtual` and this makes the Mammal class abstract. An abstract class in C++ is any class that has at least one purely virtual function.
+
+If a class contains a purely virtual function and is abstract, then that class cannot be instantiated directly. That is, you cannot create a `Mammal` object now, on account of the purely virtual function `walk()`. If you tried to do the following code, you would get an error:
+
+[PRE32]
+
+If you try to create a `Mammal` object, you will get the following error:
+
+[PRE33]
+
+You can, however, create instances of derivatives of `class Mammal`, as long as the derived classes have all of the purely virtual member functions implemented.
+
+# Multiple inheritance
+
+Not everything multiple is as good as it sounds. Multiple inheritance is when a derived class inherits from more than one base class. Usually, this works without a hitch if the multiple base classes we are inheriting from are completely unrelated.
+
+For example, we can have a class `Window` that inherits from the `SoundManager` and `GraphicsManager` base classes. If `SoundManager` provides a member function `playSound()` and `GraphicsManager` provides a member function `drawSprite()`, then the `Window` class will be able to use those additional capabilities without a hitch.
+
+![Multiple inheritance](img/00065.jpeg)
+
+Game Window inheriting from Sound Man and Graphics Man means Game Window will have both sets of capabilities
+
+However, multiple inheritance can have negative consequences. Say we want to create a class `Mule` that derives from both the `Donkey` and `Horse` classes. The `Donkey` and `Horse` classes, however, both inherit from the base class `Mammal`. We instantly have an issue! If we were to call `mule.talk()`, but `mule` does not override the `talk()` function, which member function should be invoked, that of `Horse` or `Donkey`? It's ambiguous.
+
+## private inheritance
+
+A less talked about feature of C++ is `private` inheritance. Whenever a class inherits from another class publicly, it is known to all code whose parent class it belongs to. For example:
+
+[PRE34]
+
+This means that all code will know that `Cat` is an object of `Mammal`, and it will be possible to point to a `Cat*` instance using a base class `Mammal*` pointer. For example, the following code will be valid:
+
+[PRE35]
+
+The preceding code is fine if `Cat` inherits from `Mammal` publicly. Private inheritance is where code outside the `Cat` class is not allowed to know the parent class:
+
+[PRE36]
+
+Here, externally calling code will not "know" that the `Cat` class derives from the `Mammal` class. Casting a `Cat` instance to the `Mammal` base class is not allowed by the compiler when inheritance is `private`. Use `private` inheritance when you need to hide the fact that a certain class derives from a certain parent class.
+
+However, private inheritance is rarely used in practice. Most classes just use `public` inheritance. If you want to know more about private inheritance, see [http://stackoverflow.com/questions/406081/why-should-i-avoid-multiple-inheritance-in-c](http://stackoverflow.com/questions/406081/why-should-i-avoid-multiple-inheritance-in-c).
+
+# Putting your classes into headers
+
+So far, our classes have just been pasted before `main()`. If you continue to program that way, your code will all be in one file and appear as one big disorganized mess.
+
+Therefore, it is a good programming practice to organize your classes into separate files. This makes editing each class's code individually much easier when there are multiple classes inside the project.
+
+Take `class Mammal` and its derived classes from earlier. We will properly organize that example into separate files. Let's do it in steps:
+
+1.  Create a new file in your C++ project called `Mammal.h`. Cut and paste the entire `Mammal` class into that file. Notice that since the `Mammal` class included the use of `cout`, we write a `#include <iostream>` statement in that file as well.
+2.  Write a " `#include` `Mammal.h`" statement at the top of your `Source.cpp` file.
+
+An example of what this looks like is shown in the following screenshot:
+
+![Putting your classes into headers](img/00066.jpeg)
+
+What's happening here when the code is compiled is that the entire `Mammal` class is copied and pasted (#include) into the `Source.cpp` file, which contains the `main()` function, and the rest of the classes are derived from `Mammal`. Since `#include` is a copy and paste function, the code will function exactly the same as it did before; the only difference is that it will be much better organized and easier to look at. Compile and run your code at this step to make sure it still works.
+
+### Tip
+
+Check that your code compiles and runs often, especially when refactoring. When you don't know the rules, you're bound to make a lot of mistakes. This is why you should do your refactoring only in small steps. Refactoring is the name for the activity we are doing now—we are reorganizing the source to make better sense to other readers of our codebase. Refactoring usually does not involve rewriting too much of it.
+
+The next thing you need to do is isolate the Dog, Cat, and Human classes into their own files. To do so, create the `Dog.h`, `Cat.h`, and `Human.h` files and add them to your project.
+
+Let's start with the Dog class, as shown in the following screenshot:
+
+![Putting your classes into headers](img/00067.jpeg)
+
+If you use exactly this setup and try to compile and run your project, you will see the **'Mammal' : 'class' type redefinition** error, as shown in the following screenshot:
+
+![Putting your classes into headers](img/00068.jpeg)
+
+What this error means is that `Mammal.h` has been included twice in your project, once in `Source.cpp` and then again in `Dog.h`. This means effectively two versions of the Mammal class got added to the compiling code, and C++ is unsure which version to use.
+
+There are a few ways to fix this issue, but the easiest (and the one that Unreal Engine uses) is the `#pragma once` macro, as shown in the following screenshot:
+
+![Putting your classes into headers](img/00069.jpeg)
+
+We write `#pragma once` at the top of each header file. This way, the second time `Mammal.h` is included, the compiler doesn't copy and paste its contents again, since it already has been included before, and its content is actually already in the compiling group of files.
+
+Do the same thing for `Cat.h` and `Human.h`, then `include` them both into your `Source.cpp` file where your `main()` function resides.
+
+![Putting your classes into headers](img/00070.jpeg)
+
+Diagram with all classes included
+
+Now that we've included all classes into your project, the code should compile and run.
+
+## .h and .cpp
+
+The next level of organization is to leave the class declarations in the header files (`.h`) and put the actual function implementation bodies inside some new `.cpp` files. Also, leave existing members inside the `class Mammal` declaration.
+
+For each class, perform the following operations:
+
+1.  Delete all function bodies (code between `{` and `}`) and replace them with just a semicolon. For the `Mammal` class, this would look as follows:
+
+    [PRE37]
+
+2.  Create a new `.cpp` file called `Mammal.cpp`. Then simply put the member function bodies inside this file:
+
+    [PRE38]
+
+It is important to note the use of the class name and scope resolution operator (double colon) when declaring the member function bodies. We prefix all member functions belonging to the `Mammal` class with `Mammal::`.
+
+Notice how the purely virtual function does not have a body; it's not supposed to! Purely virtual functions are simply declared (and initialized to 0) in the base class, but implemented later in derived classes.
+
+## Exercise
+
+Complete the separation of the different creature classes above into class header (`.h`) and class definition files (`.cpp`)
+
+# Summary
+
+You learned about objects in C++; they are pieces of code that tie data members and member functions together into a bundle of code called `class` or `struct`. Object-oriented programming means that your code will be filled with things instead of just `int`, `float`, and `char` variables. You will have a variable that represents `Barrel`, another variable that represents `Player`, and so on, that is, a variable to represent every entity in your game. You will be able to reuse code by using inheritance; if you had to code implementations of `Cat` and `Dog`, you can code a common functionality in the base class `Mammal`. We also discussed encapsulation and how it is easier and more efficient to program objects such that they maintain their own internal state.

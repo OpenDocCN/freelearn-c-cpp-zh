@@ -1,0 +1,355 @@
+# Chapter 2. Creating Your First Level
+
+In this chapter, you will create and run a simple level with the help of step-by-step instructions. Since the objective of this book is to equip you with the skills to confidently create your own game using Unreal Engine 4 and not to simply follow a list of steps to create a fixed example, I will provide as much additional information as possible that you could use to create your own game level as we go about learning the basic techniques.
+
+In this chapter, we will cover the following topics:
+
+*   How to control views and viewports
+*   How to move, scale, and rotate objects in a level
+*   How to use the BSP Box brush to create the ground and a wall using the **Additive** mode
+*   How to carve a hole in a wall using the **Subtractive** mode of the BSP Box brush
+*   How to add a simple **Directional Light** to a level to mimic sunlight
+*   How to spawn a player who's facing the right direction on a map using **Player Start**
+*   How to create the sky in your map using atmospheric fog
+*   How to save the map you've created and set it as the default load up map for a project
+*   How to add a material to the geometries you've created so that it looks realistic
+*   How to duplicate BSP Brushes to help create things quickly
+*   How to add props (which are also known as **static meshes**) to a room
+*   How to concentrate light on important parts of a map using **Lightmass Importance Volume**
+
+# Exploring preconfigured levels
+
+Before we create a level, it is good to have an idea of what levels look like in Unreal Engine 4\. Unreal Engine 4 offers the possibility to load up various types of game levels with a default playable level that's straight from the **Project Browser** menu option (this pops up immediately after launching the Unreal Editor). Personally, I really like this particular new feature of Unreal Engine 4 as it gives me a quick feel of the types of presets that are available, and I could easily select something as a base for the game level I want to create.
+
+We will create a new map using one of the preset project types as the base for our first level.
+
+### Tip
+
+**How to quickly explore different project types**
+
+I normally click on the **Play** button on the toolbar after a project loads with the default level. The play function allows you to be in a game and you can see what has been precreated for you in the level.
+
+# Creating a new project
+
+In this chapter, we will use the **Blueprint First Person** template to create our first game project.
+
+The steps to create a new **Blueprint First Person Project** are as follows:
+
+1.  Launch Unreal Engine 4.
+2.  Select the **New Project** tab.
+3.  Select **Blueprint** and then **First Person**.
+4.  Choose a name and path for the project (or leave it as the default `MyProject`).
+5.  Click on **Create Project**.
+
+    Ensure that the **With Starter Content** option is selected.
+
+    ![Creating a new project](img/B03679_02_01.jpg)
+
+On creation of the project, the default example level for Blueprint First Person will load. The following screenshot shows how the default level looks:
+
+![Creating a new project](img/B03679_02_02.jpg)
+
+Using the preset project type with the example level, the first thing you'll probably want to do is run the level and see what the default game level contains.
+
+# Navigating the viewport
+
+Using the loaded example level, you should get yourself familiarized with the mouse and keyboard controls in order to navigate in the viewport. You might consider bookmarking this section until you can navigate the viewport to zoom in/out or view any object from all angles easily.
+
+## Views
+
+Here is some quick information on the different views in 3D modeling creation: the example map is loaded by default in the **Perspective** view. Other than having the map in the **Perspective** view, you can change what you see in the viewport in the top, side, or front views, respectively. The option to switch to any of these is in the left-hand corner of the viewport. The following screenshot shows the location of the button to press so that you can switch views:
+
+![Views](img/B03679_02_03.jpg)
+
+If you wish to see more than one view concurrently, navigate to **Windows** | **Viewports** and then select any of the viewports (The default viewport uses **Viewport 1**.).
+
+The selected viewport number will pop up. You can drag and dock this **Viewport** window and add it to the default **Viewport 1**. The following screenshot shows **Viewport 1** and **Viewport 2** displayed at the same time (one in the **Perspective** view and the other in the **Top** view):
+
+![Views](img/B03679_02_04.jpg)
+
+## Control keys
+
+Here are some of the key presses to help you move around and view objects:
+
+In the **Perspective** view:
+
+| Shortcut action | Description |
+| --- | --- |
+| Left-click + drag | This moves the camera forward and backward and rotates from left to right |
+| Right-click + drag | This rotates the viewport camera |
+| Left-click + right-click + drag | This moves objects up and down |
+
+In the **Orthographic** (**Top**, **Front**, and **Side**) view:
+
+| Shortcut | Description |
+| --- | --- |
+| Left-click + drag | This creates a marquee selection box |
+| Right-click + drag | This pans the viewport camera |
+| Left-click + right-click + drag | This zooms the viewport camera in and out |
+
+For those of you who are familiar with games, you can use WASD to navigate the camera in the editor too.
+
+WASD control in the **Perspective** view:
+
+| Shortcut action | Description |
+| --- | --- |
+| Any mouse click + *W* | This moves the camera forward |
+| Any mouse click + *A* | This moves the camera to the left |
+| Any mouse click + *S* | This moves the camera backward |
+| Any mouse click + *D* | This moves the camera to the right |
+
+On selection of an object:
+
+| Shortcut action | Description |
+| --- | --- |
+| *W* | This displays the **Translation** tool |
+| *E* | This displays the **Rotation** tool |
+| *R* | This displays the **Scale** tool |
+| *F* | This focuses the camera on a selected object |
+| *Alt* + *Shift* + Drag along the *x*/*y*/*z* axis | This duplicates an object and moves it along the *x*/*y*/*z* axis |
+
+# Creating a level from a new blank map
+
+Now that you are familiar with the controls, you are ready to create a map on your own. In this chapter, we will go through how to build a basic room from scratch. To create a new map for your first person game, go to **File** | **New Level…**. The following screenshot shows you how to create a new level:
+
+![Creating a level from a new blank map](img/B03679_02_05.jpg)
+
+There are two options when creating a new level: **Default** and **Empty Level**. Select **Empty Level** to create a completely blank map. The following screenshot shows you the options that are available when creating a new level:
+
+![Creating a level from a new blank map](img/B03679_02_06.jpg)
+
+Do not be surprised when the viewport is void. We will add objects to the level in the next few sections. The following screenshot shows what an empty level looks like in the **Perspective** view:
+
+![Creating a level from a new blank map](img/B03679_02_07.jpg)
+
+# Creating the ground using the BSP Box brush
+
+The BSP Box brush can be used to create rectangular objects in the map. The first thing to do when creating a level is to have a ground to stand on.
+
+Before we begin with this, make sure the viewport is in the **Perspective** view. We will mainly use this view for most of the level creation unless specified explicitly.
+
+Go to the **Modes** window, click on **BSP** and then click and drag **Box** into the viewport. This is where you can find the Box brush:
+
+![Creating the ground using the BSP Box brush](img/B03679_02_08.jpg)
+
+Here, a Box brush has been successfully added to the viewport:
+
+![Creating the ground using the BSP Box brush](img/B03679_02_09.jpg)
+
+You have now successfully created your first object in the level. We will go on to change the size of this box to a suitable size so that it can act as the ground for the level.
+
+Select the box that was just created, and go to **Details** | **Brush Settings**. Fill in the following values for **X**, **Y**, and **Z**. The following screenshot shows the values that need to be set:
+
+![Creating the ground using the BSP Box brush](img/B03679_02_10.jpg)
+
+When you have set the values correctly, the box should look like this:
+
+![Creating the ground using the BSP Box brush](img/B03679_02_11.jpg)
+
+## Useful tip – selecting an object easily
+
+To help you select objects in the level more easily, you can go to **World Outliner** (its default location is in the top right-hand corner of the editor), and you will see a full list of all the objects in the level. Click on the name of an object to select it and its details will also be displayed. This is a very useful way to help you select objects when you have many objects in the level. The following screenshot shows how **World Outliner** can be used to select the Box brush (which we've just created) in the level:
+
+![Useful tip – selecting an object easily](img/B03679_02_12.jpg)
+
+## Useful tip – changing View Mode to aid visuals
+
+If you have difficulties seeing the box, you can change **View Mode** to **Unlit** (the button is in the viewport that's next to the **Perspective** button). The following screenshot shows you how to change **View Mode** to **Unlit**:
+
+![Useful tip – changing View Mode to aid visuals](img/B03679_02_13.jpg)
+
+# Adding light to a level
+
+To help us see the level better, it is time to learn how to illuminate the level. To mimic ambient light from the sun, we will use **Directional Light** for the level.
+
+In the same way as adding a BSP Box brush, we will go to **Modes Window** | **Lights** | **Directional Light**. Click and drag **Directional Light** into the **Viewport** window. The following screenshot zooms in on the **Modes** window, showing that the **Directional Light** item can be created by dragging it into the viewport:
+
+![Adding light to a level](img/B03679_02_14.jpg)
+
+For now, let's place the light just slightly above the BSP Box brush as shown in the following screenshot:
+
+![Adding light to a level](img/B03679_02_15.jpg)
+
+## Useful tip – positioning objects in a level
+
+To position an object in a level, we use the **Transform** tool to move objects in the x, y, and z directions. Select the object and press the *W* key to display the **Transform** tool. Three arrows will appear to extrude from the object. Click and hold the red arrow to move the object along the *x* axis, the green arrow to move it along the *y* axis, and the blue arrow to it move along the *z* axis.
+
+To help you position the objects more accurately, you can also switch to the **Top** view when moving objects in the x and y directions, the **Side** view for adjustments in the y and z directions, and the **Front** view to adjust the x and z directions.
+
+For those of you who want precise position control, you can use **Details**. Select the object to display details. Go to **Transform** | **Location**. You can select **Relative** or **World position** by clicking on the arrow next to **Location**. Change the **X**, **Y**, and **Z** values to move the object with more precision.
+
+# Adding the sky to a level
+
+After the addition of light to the level, we will proceed to add the sky to the level. Click on **Modes** | **Visual** | **Atmospheric Fog**. In a similar way to adding light and adding a Box BSP, click, hold, and drag this into the viewport. We are almost ready to take a first look at what we have just created. Hang in there.
+
+![Adding the sky to a level](img/B03679_02_16.jpg)
+
+# Adding Player Start
+
+For every game, you need to set where the player will spawn. Go to **Modes** | **Basic** | **Player Start**. Click, hold, and drag **Player Start** into the viewport.
+
+This screenshot shows the **Modes** window with **Player Start**:
+
+![Adding Player Start](img/B03679_02_17.jpg)
+
+Place **Player Start** in the center of the ground or slightly above it as shown in the following screenshot:
+
+![Adding Player Start](img/B03679_02_18.jpg)
+
+Deselect `Player Start` by pressing the *Esc* key. The light blue arrow from `Player Start` indicates the direction in which the player will spawn the game starts. To adjust the direction that the player faces upon spawning, rotate `Player Start` until the light blue arrow points in this direction. Take a look at the following tip on how to rotate an object.
+
+## Useful tip – rotating objects in a level
+
+To rotate an object in a level, we use the **Rotate** tool to rotate objects around the x (row), y (pitch), and z (yaw) directions. Select the object and press the *E* key to display the **Rotate** tool. Three lines with a box tip will appear to extrude from the object. Click and hold the red arrow to rotate the object around the *x* axis, the green arrow to rotate it around the *y* axis, and the blue arrow to rotate it around the *z* axis.
+
+Another way to rotate an object more accurately is by controlling its rotation through the actual rotation values found under **Details**. (Select the object to be rotated to display its details). In the **Transform** tab, go to **Rotation**, and set the **X**, **Y**, and **Z** values to rotate the object. There is an arrow next to **Rotation** that you can click on to select if you want to adjust the rotation values for **Relative** or **World**. When you select to rotate an object using the **Relative** setting, the object will rotate relative to its current position. When the object is rotated using the **World** setting, it will be relative to the world's position.
+
+If you want the player controller (as shown in the preceding screenshot) to have the light blue arrow facing inwards and away from you, you will need to rotate the player controller 180 degrees around the *y* axis. Enter **Y** as `180` under the **Relative** setting. The player controller will be rotated in the manner shown in this screenshot:
+
+![Useful tip – rotating objects in a level](img/B03679_02_19.jpg)
+
+# Viewing a level that's been created
+
+We are now ready to view the simple level that we have just created.
+
+Before viewing the level, click on the **Build** button, as shown in the following screenshot, to build the light, materials, and so on, needed for this level. This step ensures that light is properly rendered in the level.
+
+![Viewing a level that's been created](img/B03679_02_20.jpg)
+
+After building the level, click on the **Play** button, as shown in this screenshot, to view the level:
+
+![Viewing a level that's been created](img/B03679_02_21.jpg)
+
+The following screenshot shows how the level looks. Move the mouse up, down, left, and right to see the level. Use *W*, *A*, *S*, and *D* to move the character around the level. To return to the editor, press *ESC*.
+
+![Viewing a level that's been created](img/B03679_02_22.jpg)
+
+# Saving a level
+
+Navigate to **File** | **Save As…** and give the map you have just created a name. In our example here, I have saved it as `Chapter2Level` in the `…/UnrealProjects/MyProject/Content/Maps` path, where `MyProject` is the name of the project.
+
+# Configuring a map as a start level
+
+After saving your new map, you may want to also set this project to load this map as the default map. You can have several maps linked to this project and load them at specific points in the game. For now, we want to replace the current `Example_Map` with the newly created map that we have. To do so, go to **Edit** | **Project Settings**. This opens up a page with configurable values for the project. Go to **Game** | **Maps & Modes**. Refer to the following screenshot to take a look at how **Maps & Modes** is selected.
+
+Look under **Default Maps** and change both **Game Default Map** and **Editor Default Map** in the map that you have just saved. In my case, it will be `Chapter2Level`. Then, close the project settings. When you start the editor and run the game the next time, your new map will be loaded by default.
+
+![Configuring a map as a start level](img/B03679_02_23.jpg)
+
+# Adding material to the ground
+
+Now that we have created the ground, let us make the ground look more realistic by applying a material to it.
+
+Go to **Content Browser** | **Content** | **StarterContent** | **Materials**. Type `wood` into the **Filters** box. The following screenshot shows the walnut polished material that we want to use for the ground's material:
+
+![Adding material to the ground](img/B03679_02_24.jpg)
+
+Click, hold, and drag **M_Wood_Floor_Walnut_Polished** into the viewport area and drop it on the top surface of the ground. The resulting effect should look like this:
+
+![Adding material to the ground](img/B03679_02_25.jpg)
+
+# Adding a wall
+
+Now we are ready to add walls to prevent the player from falling off the map. To create walls, we will use the same BSP Box brush to create a wall. As we have just added a material in the previous step, you will need to clear this material selection by clicking on anything in **Content Browser**. This will prevent new geometries from being created using the same material.
+
+Similar to creating the ground, go to **Modes** | **BSP** | **Box**. Click, hold, and drag into the viewport. Set the dimensions of the BSP box as X = 30, Y = 620, and Z = 280\. To help us view and position the wall, use the controls to rotate the viewport. You can also use the different views to help position the wall onto the ground. Here, you can see how the wall should be positioned (note that I have panned the camera to view the level from a different angle):
+
+![Adding a wall](img/B03679_02_26.jpg)
+
+# Duplicating a wall
+
+Now duplicate the wall by first selecting the wall created in the earlier step. Make sure the **Transform** tool is displayed (if not, press *W* once when object is selected).
+
+Click and hold one of the axes (the *x* axis, in the preceding example case) while holding down *Alt* + *Shift* as you drag the current wall in the x direction. You would notice that there is another copy of the wall moving in this direction. Release the keys when the wall is in the right position. Use normal translation controls to position the wall as shown here:
+
+![Duplicating a wall](img/B03679_02_27.jpg)
+
+# Creating an opening for a door
+
+The room is now almost complete. We will learn how to carve into a BSP Box brush to create an opening for a door.
+
+Drag a new BSP Box brush into the map: X = 370, Y = 30, and Z = 280\. Position this wall to seal one side of the room as shown in the following screenshot:
+
+![Creating an opening for a door](img/B03679_02_28.jpg)
+
+Till now, we have been using the **Additive** mode (add the radio button that is selected) to create a BSP Box brush. To create an opening in the wall, we will create another BSP Box brush using the **Subtractive** mode. Ensure that you have selected it as shown in the following screenshot. Drag and drop the BSP Box brush in the same manner as before into the viewport. As for the dimensions of this brush, we will approximate it to the size of the door, where X = 115, Y = 30, and Z = 212.
+
+![Creating an opening for a door](img/B03679_02_29.jpg)
+
+When the **Subtractive** BSP Box brush is positioned correctly, it will look something like this:
+
+![Creating an opening for a door](img/B03679_02_30.jpg)
+
+To help you position the **Subtractive** BSP Box brush, you can switch to the **Front** view to place the door more or less in the center. The following screenshot shows the **Front** view with the **Subtractive** BSP Box brush selected:
+
+![Creating an opening for a door](img/B03679_02_31.jpg)
+
+# Adding materials to the walls
+
+To make the ground look more realistic, we will apply a material to it. Go to **Content Browser** | **Content** | **StarterContent** | **Materials**. Type `Wall` into the **Filters** box. Select **M_Basic_Wall** and drag it onto the surface of the wall with the door. Then, we will use a different material. Type `Brick` into the **Filters** box. Select **M_Brick_Clay_New** to apply to the inner surface of the two other walls.
+
+Here, you can take a look at how the level looks in the **Unlit** mode after applying the materials mentioned previously:
+
+![Adding materials to the walls](img/B03679_02_32.jpg)
+
+Build the light before running the level again to see how the level looks now.
+
+# Sealing a room
+
+For now, let's duplicate the wall with the door to seal the room. Click on the wall, hold down *Alt* + *Shift*, and drag it across to the other side of the room. The following screenshot shows how it looks when the room is sealed:
+
+![Sealing a room](img/B03679_02_33.jpg)
+
+# Adding props or a static mesh to the room
+
+Let's now add some objects to the empty room. Go to **Content Browser** | **Content** | **StarterContent** | **Props**. Find **SM_Lamp_Ceiling** and drag it into the room.
+
+![Adding props or a static mesh to the room](img/B03679_02_34.jpg)
+
+As we want to use a ceiling lamp prop as a floor lamp, you will need to rotate the lamp by rotating it about the *x* axis by 180 degrees. Set X = 180 degrees using the **Relative** mode. The following screenshot shows the rotated lamp positioned at one end of the room. Note that I have built the light and changed the view mode to the **Lit** mode. Feel free to position the lamp anywhere to see how it looks.
+
+![Adding props or a static mesh to the room](img/B03679_02_35.jpg)
+
+# Adding Lightmass Importance Volume
+
+Since our room only takes up a small portion of the map, we can concentrate light on a small region by adding an item known as **Lightmass Importance Volume** to the map. The bounded box of the **Lightmass Importance Volume** tells the engine where light is needed in the map so it should encompass the entire area of the map that has objects. Drag and drop **Lightmass Importance Volume** into the map. Here, you can see where to find the **Lightmass Importance Volume**:
+
+![Adding Lightmass Importance Volume](img/B03679_02_36.jpg)
+
+By default, the wireframe box that's been dropped (which is the **Lightmass Importance Volume**) is a cube. You will need to scale it to fit your room. With the **Lightmass Importance Volume** selected, press *R* to display the **Scale** tool. Use the *x*, *y*, and *z* axes to adjust the size of the box till it fits the level. The following screenshot shows the scaling of the box using the **Scale** tool:
+
+![Adding Lightmass Importance Volume](img/B03679_02_37.jpg)
+
+After scaling and translating the box to fit the level, the **Lightmass Importance Volume** should look something like what is shown in the following screenshot, where the wireframe box is large enough to fit the room inside it. The size of the wireframe for the **Lightmass Importance Volume** can be larger than the map.
+
+![Adding Lightmass Importance Volume](img/B03679_02_38.jpg)
+
+# Applying finishing touches to a room
+
+Our room is almost complete. You would have noticed that the door now is just a hole in the wall. To make it look like a door, we need to add a door frame and a door as follows:
+
+1.  Go to **Content Browser** | **Content** | **StarterContent** | **Props**.
+2.  Click and drop **SM_DoorFrame** into the viewport.
+3.  Adjust it to fit in the wall.
+
+When done, it should look like what is shown in the following screenshot.
+
+I've used different views, such as top, side, and front, to adjust the frame nicely to fit the door. You can adjust **Snap Sizes** for some fine-tuning.
+
+![Applying finishing touches to a room](img/B03679_02_39.jpg)
+
+## Useful tip – using the drag snap grid
+
+To help you move objects into position more accurately, you can make use of the snap grid button at the top of the viewport as shown in the following screenshot. Turning the drag snap grid on allows you to translate objects according to the grid size you select. Click on the mesh-like symbol to toggle snap grid on/off. The numbers displayed on the right are the minimum grid sizes by which an object will move when translated.
+
+![Useful tip – using the drag snap grid](img/B03679_02_40.jpg)
+
+I have also noticed that a portion of the floor is not textured yet. Use the same wood texture as you did previously to make sure that the ground is fully textured using **M_Wood_Floor_Walnut_Polished**.
+
+Then, click and drag **SM_Door** into the viewport. Rotate the door and fit it into the door frame in the same manner as shown previously. Here, you can see how the door is in place:
+
+![Useful tip – using the drag snap grid](img/B03679_02_41.jpg)
+
+# Summary
+
+We have learned how to navigate the viewport and set up/save a new map in a new project. We also created our first room with a door using the BSP Box brush, added materials to texture walls and floors, and learned to place static objects to enhance the look of the room. Although it is still kind of empty right now, we will continue to work on it in the next few chapters and expand on this map. In the next chapter, we will spice up the level by adding some objects that we can interact with.

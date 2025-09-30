@@ -1,0 +1,132 @@
+# Chapter 1. Playing with LLVM
+
+The LLVM Compiler infrastructure project, started in 2000 in University of Illinois, was originally a research project to provide modern, SSA based compilation technique for arbitrary static and dynamic programming languages. Now it has grown to be an umbrella project with many sub projects within it, providing a set of reusable libraries having well defined interfaces.
+
+LLVM is implemented in C++ and the main crux of it is the LLVM core libraries it provides. These libraries provide us with opt tool, the target independent optimizer, and code generation support for various target architectures. There are other tools which make use of core libraries, but our main focus in the book will be related to the three mentioned above. These are built around LLVM Intermediate Representation (LLVM IR), which can almost map all the high-level languages. So basically, to use LLVM's optimizer and code generation technique for code written in a certain programming language, all we need to do is write a frontend for a language that takes the high level language and generates LLVM IR. There are already many frontends available for languages such as C, C++, Go, Python, and so on. We will cover the following topics in this chapter:
+
+*   Modular design and collection of libraries
+*   Getting familiar with LLVM IR
+*   LLVM Tools and using them at command line
+
+# Modular design and collection of libraries
+
+The most important thing about LLVM is that it is designed as a collection of libraries. Let's understand these by taking the example of LLVM optimizer opt. There are many different optimization passes that the optimizer can run. Each of these passes is written as a C++ class derived from the `Pass` class of LLVM. Each of the written passes can be compiled into a **.o** file and subsequently they are archived into a **.a** library. This library will contain all the passes for `opt` tool. All the passes in this library are loosely coupled, that is they mention explicitly the dependencies on other passes.
+
+When the optimizer is ran, the LLVM `PassManager` uses the explicitly mentioned dependency information and runs the passes in optimal way. The library based design allows the implementer to choose the order in which passes will execute and also choose which passes are to be executed based on the requirements. Only the passes that are required are linked to the final application, not the entire optimizer.
+
+The following figure demonstrates how each pass can be linked to a specific object file within a specific library. In the following figure, the **PassA** references **LLVMPasses.a** for **PassA.o**, whereas the custom pass refers to a different library **MyPasses.a** for the **MyPass.o** object file.
+
+![Modular design and collection of libraries](img/00002.jpeg)
+
+The code generator also makes use of this modular design like the **Optimizer**, for splitting the code generation into individual passes, namely, instruction selection, register allocation, scheduling, code layout optimization, and assembly emission.
+
+In each of the following phases mentioned there are some common things for almost every target, such as an algorithm for assigning physical registers available to virtual registers even though the set of registers for different targets vary. So, the compiler writer can modify each of the passes mentioned above and create custom target-specific passes. The use of the `tablegen` tool helps in achieving this using table description `.td` files for specific architectures. We will discuss how this happens later in the book.
+
+Another capability that arises out of this is the ability to easily pinpoint a bug to a particular pass in the optimizer. A tool name `Bugpoint` makes use of this capability to automatically reduce the test case and pinpoint the pass that is causing the bug.
+
+# Getting familiar with LLVM IR
+
+LLVM **Intermediate Representation** (**IR**) is the heart of the LLVM project. In general every compiler produces an intermediate representation on which it runs most of its optimizations. For a compiler targeting multiple-source languages and different architectures the important decision while selecting an IR is that it should neither be of very high-level, as in very closely attached to the source language, nor it should be very low-level, as in close to the target machine instructions. LLVM IR aims to be a universal IR of a kind, by being at a low enough level that high-level ideas may be cleanly mapped to it. Ideally the LLVM IR should have been target-independent, but it is not so because of the inherent target dependence in some of the programming languages itself. For example, when using standard C headers in a Linux system, the header files itself are target dependent, which may specify a particular type to an entity so that it matches the system calls of the particular target architecture.
+
+Most of the LLVM tools revolve around this Intermediate Representation. The frontends of different languages generate this IR from the high-level source language. The optimizer tool of LLVM runs on this generated IR to optimize the code for better performance and the code generator makes use of this IR for target specific code generation. This IR has three equivalent forms:
+
+*   An in-memory compiler IR
+*   An on-disk bitcode representation
+*   A Human readable form (LLVM Assembly)
+
+Now let's take an example to see how this LLVM IR looks like. We will take a small C code and convert it into LLVM IR using clang and try to understand the details of LLVM IR by mapping it back to the source language.
+
+[PRE0]
+
+Use the clang frontend with the following options to convert it to LLVM IR:
+
+[PRE1]
+
+Now let's look at the IR generated and see what it is all about. You can see the very first line giving the ModuleID, that it defines the LLVM module for `add.c` file. An LLVM module is a top–level data structure that has the entire contents of the input LLVM file. It consists of functions, global variables, external function prototypes, and symbol table entries.
+
+The following lines show the target data layout and target triple from which we can know that the target is x86_64 processor with Linux running on it. The `datalayout` string tells us what is the endianess of machine ('`e`' meaning little endian), and the name mangling (`m : e` denotes elf type). Each specification is separated by '`–`'and each following spec gives information about the type and size of that type. For example, `i64:64` says 64 bit integer is of 64 bits.
+
+Then we have a global variable `globvar`. In LLVM IR all globals start with '`@`' and all local variables start with '`%`'. There are two main reasons why the variables are prefixed with these symbols. The first one being, the compiler won't have to bother about a name clash with reserved words, the other being that the compiler can come up quickly with a temporary name without having to worry about a conflict with symbol table conflicts. This second property is useful for representing the IR in **static single assignment** (**SSA**) from where each variable is assigned only a single time and every use of a variable is preceded by its definition. So, while converting a normal program to SSA form, we create a new temporary name for every redefinition of a variable and limit the range of earlier definition till this redefinition.
+
+LLVM views global variables as pointers, so an explicit dereference of the global variable using load instruction is required. Similarly, to store a value, an explicit store instruction is required.
+
+Local variables have two categories:
+
+*   **Register allocated local variables**: These are the temporaries and allocated virtual registers. The virtual registers are allocated physical registers during the code generation phase which we will see in a later chapter of the book. They are created by using a new symbol for the variable like:
+
+    [PRE2]
+
+*   **Stack allocated local variables**: These are created by allocating variables on the stack frame of a currently executing function, using the `alloca` instruction. The `alloca` instruction gives a pointer to the allocated type and explicit use of load and store instructions is required to access and store the value.
+
+    [PRE3]
+
+Now let's see how the `add` function is represented in LLVM IR. `define i32 @add(i32 %a)` is very similar to how functions are declared in C. It specifies the function returns integer type `i32` and takes an integer argument. Also, the function name is preceded by '`@`', meaning it has global visibility.
+
+Within the function is actual processing for functionality. Some important things to note here are that LLVM uses a three-address instruction, that is a data processing instruction, which has two source operands and places the result in a separate destination operand (`%4 = add i32 %2, %3`). Also the code is in SSA form, that is each value in the IR has a single assignment which defines the value. This is useful for a number of optimizations.
+
+The attributes string that follows in the generated IR specifies the function attributes which are very similar to C++ attributes. These attributes are for the function that has been defined. For each function defined there is a set of attributes defined in the LLVM IR.
+
+The code that follows the attributes is for the `ident` directive that identifies the module and compiler version.
+
+# LLVM tools and using them in the command line
+
+Until now, we have understood what LLVM IR (human readable form) is and how it can be used to represent a high-level language. Now, we will take a look at some of the tools that LLVM provides so that we can play around with this IR converting to other formats and back again to the original form. Let's take a look at these tools one by one along with examples.
+
+*   **llvm-as**: This is the LLVM assembler that takes LLVM IR in assembly form (human readable) and converts it to bitcode format. Use the preceding `add.ll` as an example to convert it into bitcode. To know more about the LLVM Bitcode file format refer to [http://llvm.org/docs/BitCodeFormat.html](http://llvm.org/docs/BitCodeFormat.html)
+
+    [PRE4]
+
+    To view the content of this bitcode file, a tool such as `hexdump` can be used.
+
+    [PRE5]
+
+*   **llvm-dis**: This is the LLVM disassembler. It takes a bitcode file as input and outputs the llvm assembly.
+
+    [PRE6]
+
+    If you check `add.ll` and compare it with the previous version, it will be the same as the previous one.
+
+*   **llvm-link**: llvm-link links two or more llvm bitcode files and outputs one llvm bitcode file. To view a demo write a `main.c` file that calls the function in the `add.c` file.
+
+    [PRE7]
+
+    Convert the C source code to LLVM bitcode format using the following command.
+
+    [PRE8]
+
+    Now link `main.bc` and `add.bc` to generate `output.bc`.
+
+    [PRE9]
+
+*   **lli**: lli directly executes programs in LLVM bitcode format using a just-in-time compiler or interpreter, if one is available for the current architecture. lli is not like a virtual machine and cannot execute IR of different architecture and can only interpret for host architecture. Use the bitcode format file generated by llvm-link as input to lli. It will display the output on the standard output.
+
+    [PRE10]
+
+*   **llc**: llc is the static compiler. It compiles LLVM inputs (assembly form/ bitcode form) into assembly language for a specified architecture. In the following example it takes the `output.bc` file generated by llvm-link and generates the assembly file `output.s`.
+
+    [PRE11]
+
+    Let's look at the content of the `output.s` assembly, specifically the two functions of the generated code, which is very similar to what a native assembler would have generated.
+
+    [PRE12]
+
+*   `function inlining`
+*   `**instcombine**`**: for combining redundant instructions**
+*   ****licm**: loop invariant code motion**
+*   ****tailcallelim**: Tail Call elimination**
+
+### **Note**
+
+**Before going ahead we must note that all the tools mentioned in this chapter are meant for compiler writers. An end user can directly use clang for compilation of C code without converting the C code into intermediate representation**
+
+### **Tip**
+
+****Downloading the example code****
+
+**You can download the example code files from your account at [http://www.packtpub.com](http://www.packtpub.com) for all the Packt Publishing books you have purchased. If you purchased this book elsewhere, you can visit [http://www.packtpub.com/support](http://www.packtpub.com/support) and register to have the files e-mailed directly to you.**
+
+ **# Summary
+
+In this chapter, we looked into the modular design of LLVM: How it is used in the opt tool of LLVM, and how it is applicable across LLVM core libraries. Then we took a look into LLVM intermediate representation, and how various entities (variables, functions etc.) of a language are mapped to LLVM IR. In the last section, we discussed about some of the important LLVM tools, and how they can be used to transform the LLVM IR from one form to another.
+
+In the next chapter, we will see how we can write a frontend for a language that can output LLVM IR using the LLVM machinery.**

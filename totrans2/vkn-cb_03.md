@@ -1,0 +1,744 @@
+# Command Buffers and Synchronization
+
+In this chapter, we will cover the following recipes:
+
+*   Creating a command pool
+*   Allocating command buffers
+*   Beginning a command buffer recording operation
+*   Ending a command buffer recording operation
+*   Resetting a command buffer
+*   Resetting a command pool
+*   Creating a semaphore
+*   Creating a fence
+*   Waiting for fences
+*   Resetting fences
+*   Submitting command buffers to a queue
+*   Synchronizing two command buffers
+*   Checking if processing of a submitted command buffer has finished
+*   Waiting until all commands submitted to a queue are finished
+*   Waiting for all submitted commands to be finished
+*   Destroying a fence
+*   Destroying a semaphore
+*   Freeing command buffers
+*   Destroying a command pool
+
+# Introduction
+
+Low level APIs like Vulkan give us much more control over the hardware than higher level APIs similar to OpenGL. This control is achieved not only through resources we can create, manage, and operate on, but especially through communication and interaction with the hardware. The control Vulkan gives us is fine grained, because we explicitly specify which commands are sent to hardware, how and when. For this purpose **command buffers** have been introduced; these are one of the most important objects Vulkan API exposes to developers. They allow us to record operations and submit them to hardware, where they are processed or executed. And what's more important, we can record them in multiple threads, unlike in high level APIs like OpenGL, where not only are commands recorded in a single thread, but they are recorded implicitly by the driver and sent to hardware without any control from the developers. Vulkan also allows us to reuse existing command buffers, saving additional processing time. This all gives us much more flexibility, but also many more responsibilities.
+
+Because of this, we need to control not only what operations we submit, but also when. Especially when some operations depend on the results of other operations, we need to take extra care and properly synchronize submitted commands. For this purpose, semaphores and fences have been introduced.
+
+In this chapter we will learn how to allocate, record and submit command buffers, how to create synchronization primitives and use them to control the execution of submitted operations, how to synchronize command buffers internally, directly on the GPU, and  also how to synchronize applications with the work processed by the hardware.
+
+# Creating a command pool
+
+Command pools are objects from which command buffers acquire their memory. Memory itself is allocated implicitly and dynamically, but without it command buffers wouldn't have any storage space to hold the recorded commands. That's why, before we can allocate command buffers, we first need to create a memory pool for them.
+
+# How to do it...
+
+1.  Create a variable of type `VkDevice` named `logical_device` and initialize it with a handle of a created logical device.
+
+2.  Take the index of one of the queue families requested for the logical device. Store this index in a variable of type `uint32_t` named `queue_family`.
+3.  Create a variable of type `VkCommandPoolCreateInfo` named `command_pool_create_info`. Use the following values for the members of this variable:
+    *   `VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   Bit field indicating selected parameters of type `VkCommandPoolCreateFlags` for `flags`
+    *   `queue_family` variable for `queueFamilyIndex`
+4.  Create a variable of type `VkCommandPool` named `command_pool` in which command pool's handle will be stored.
+5.  Call `vkCreateCommandPool( logical_device, &command_pool_create_info, nullptr, &command_pool )` using the `logical_device` variable, a pointer to the `command_pool_create_info` variable, a `nullptr` value and a pointer to the `command_pool` variable.
+6.  Make sure the call returned a `VK_SUCCESS` value.
+
+# How it works...
+
+Command pools are used mainly as a source of memory for the command buffers, but this is not the only reason for which they are created. They inform the driver about the intended usage of command buffers allocated from them, and whether we must reset or free them in bulk, or if we can do it separately per each command buffer. These parameters are specified through a `flags` member (represented as follows by a `parameters` variable) of the variables of type `VkCommandPoolCreateInfo`, like this:
+
+[PRE0]
+
+When we specify `VK_COMMAND_POOL_CREATE_TRANSIENT_BIT` bit, it means that the command buffers allocated from a given pool will live for a very short amount of time, they will be submitted very few times, and will be immediately reset or freed. When we use `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`, we can reset command buffers individually. Without this flag, we can do this only in groups - on all command buffers allocated from a given pool. Recording a command buffer implicitly resets it so, without this flag, we can record a command buffer only once. If we want to record it again, we need to reset the whole pool from which it was allocated.
+
+Command pools also control the queues to which command buffers can be submitted. This is achieved through a queue family index, which we must provide during pool creation (only families requested during logical device creation can be provided). Command buffers that are allocated from a given pool can be submitted *only* to queues from the specified family.
+
+To create a pool, we need to prepare the following code:
+
+[PRE1]
+
+Command pools cannot be accessed at the same time from multiple threads (command buffers from the same pool cannot be recorded on multiple threads at the same time). That's why each application thread on which a command buffer will be recorded should use separate command pools.
+
+Now, we are ready to allocate command buffers.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Allocating command buffers*
+*   *Resetting a command buffer*
+*   *Resetting a command pool*
+*   *Destroying a command pool*
+
+# Allocating command buffers
+
+Command buffers are used to store (record) commands that are later submitted to queues, where they are executed and processed by the hardware to give us results. When we have created a command pool, we can use it to allocate command buffers.
+
+# How to do it...
+
+1.  Take the handle of a created logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Take the handle of a command pool and use it to initialize a variable of type `VkCommandPool` named `command_pool`.
+3.  Create a variable of type `VkCommandBufferAllocateInfo` named `command_buffer_allocate_info` and use the following values for its members:
+    *   `VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `command_pool` variable for `commandPool`
+    *   `VK_COMMAND_BUFFER_LEVEL_PRIMARY` value or a `VK_COMMAND_BUFFER_LEVEL_SECONDARY` value for `level`
+    *   The number of command buffers we want to allocate for `commandBufferCount`
+4.  Create a vector of type `std::vector<VkCommandBuffer>` named `command_buffers`. Resize the vector to be able to hold the number of command buffers we want to create.
+5.  Call `vkAllocateCommandBuffers( logical_device, &command_buffer_allocate_info, &command_buffers[0] )` for which provide a handle of the logical device, a pointer to the `command_buffer_allocate_info` variable and a pointer to the first element of the `command_buffers` vector.
+6.  Upon success, indicated by the `VK_SUCCESS` value returned by the call, handles of all created command buffers will be stored in the `command_buffers` vector.
+
+# How it works...
+
+Command buffers are allocated from command pools. This allows us to control some of their properties in whole groups. First, we can submit command buffers only to queues from a family selected during command pool creation. Second, as command pools cannot be used concurrently, we should create separate command pools for each thread of our application in which we want to record commands, to minimize synchronization and improve performance.
+
+But, command buffers also have their individual properties. Some of them are specified when we start recording operations, but we need to choose a very important parameter during command buffer allocation - whether we want to allocate **primary** or **secondary** command buffers:
+
+*   Primary command buffers can be directly submitted to queues. They can also execute (call) secondary command buffers.
+*   Secondary command buffers can only be executed from primary command buffers, and we are not allowed to submit them.
+
+These parameters are specified through variables of type `VkCommandBufferAllocateInfo`, like this:
+
+[PRE2]
+
+Next, to allocate command buffers, we need the following code:
+
+[PRE3]
+
+Now that we have allocated command buffers, we can use them in our application. To do this, we need to record operations in one or multiple command buffers and then submit them to a queue.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a command pool*
+*   *Beginning a command buffer recording operation*
+*   *Ending a command buffer recording operation*
+*   *Submitting command buffers to a queue*
+*   *Freeing command buffers*
+
+# Beginning a command buffer recording operation
+
+When we want to perform operations using hardware, we need to record them and submit them to a queue. Commands are recorded into command buffers. So when we want to record them, we need to begin a recording operation of a selected command buffer, effectively setting it in the recording state.
+
+# How to do it...
+
+1.  Take the handle of a command buffer, in which commands should be recorded, and store it in a variable of type `VkCommandBuffer` named `command_buffer`. Make sure the command buffer is allocated from a pool with a `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT` flag set, or that it is in the initial state (it was reset).
+2.  Create a variable of a bit field type `VkCommandBufferUsageFlags` named `usage` and set the following bits depending on which conditions are met:
+    1.  If the command buffer will be submitted only once and then reset or re-recorded, set the `VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT` bit.
+    2.  If it is the secondary command buffer and is considered to be entirely inside a render pass, set the `VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT` bit.
+    3.  If the command buffer needs to be resubmitted to a queue while it is still being executed on a device (before the previous submission of this command buffer has ended), set the `VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT` bit.
+
+3.  Create a variable of type `VkCommandBufferInheritanceInfo *` named `secondary_command_buffer_info`. If it is a primary command buffer, initialize the variable with a `nullptr` value. If it is a secondary command buffer, initialize the variable with an address of a variable of type `VkCommandBufferInheritanceInfo` whose members are initialized with the following values:
+    *   `VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO` value for `sType`.
+    *   `nullptr` value for `pNext`.
+    *   For `renderPass` use a handle of a compatible render pass, in which the command buffer will be executed; if the command buffer won't be executed inside a render pass, this value is ignored (refer to *Creating a render pass* recipe from [Chapter 6](2de4339d-8912-440a-89a6-fd1f84961448.xhtml), *Render Passes and Framebuffers*).
+    *   An index of a subpass within a render pass, in which the command buffer will be executed, for `subpass` (if the command buffer won't be executed inside a render pass, this value is ignored).
+    *   For `framebuffer,` use an optional handle of a framebuffer into which the command buffer will render, or a `VK_NULL_HANDLE` value if a framebuffer is not known or the command buffer won't be executed from within a render pass.
+    *   For `occlusionQueryEnable` member use a `VK_TRUE` value, if the command buffer can be executed while an occlusion query is active in the primary command buffer that executes this secondary command buffer. Otherwise, use a `VK_FALSE` value to indicate that the command buffer cannot be executed along with an enabled occlusion query.
+    *   A set of flags that can be used by an active occlusion query for `queryFlags`.
+    *   A set of statistics that can be counted by an active query for `pipelineStatistics`.
+
+4.  Create a variable of type `VkCommandBufferBeginInfo` named `command_buffer_begin_info`. Use the following values to initialize its members:
+    *   `VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `usage` variable for `flags`
+    *   `secondary_command_buffer_info` variable for `pInheritanceInfo`
+5.  Call `vkBeginCommandBuffer( command_buffer, &command_buffer_begin_info )` and provide the handle of the command buffer in the first parameter, and a pointer to the `command_buffer_begin_info` variable in the second parameter.
+6.  Make sure the call was successful by checking if the value returned by the call was equal to `VK_SUCCESS`.
+
+# How it works...
+
+Recording command buffers is the most important operation we can do in Vulkan. This is the only way to tell the hardware what it should do and how. When we start recording command buffers, their state is undefined. In general, command buffers don't inherit any state (as opposed to an OpenGL, in which the current state is maintained). So when we record operations, we also need to remember to set the state that is relevant to these operations. An example of such a state is a drawing command, which uses vertex attributes and indices. Before we record a drawing operation, we need to bind appropriate buffers with vertex data and a buffer with vertex indices.
+
+Primary command buffers can call (execute) commands recorded in the secondary command buffers. Executed secondary command buffers don't inherit the state from the primary command buffers that executed them. What's more, the state of the primary command buffer is also undefined after the execution of the secondary command buffer is recorded (when we record a primary command buffer, and execute a secondary command buffer in it, and we want to continue recording the primary command buffer, we need to set its state once again). There is only one exception to the state inheritance rule - when the primary command buffer is inside a render pass and we execute a secondary command buffer from it, the primary command buffer's render pass and subpass states are preserved.
+
+Before we can begin a recording operation, we need to prepare a variable of type `VkCommandBufferBeginInfo`, through which we provide recording parameters:
+
+[PRE4]
+
+For performance reasons, we should avoid recording command buffers with a `VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT` flag.
+
+Next, we can begin a recording operation:
+
+[PRE5]
+
+From now on, we can record selected operations into the command buffer. But how do we know which commands can be recorded into command buffers? The names of all such functions begin with a `vkCmd` prefix and their first parameter is always a command buffer (a variable of type `VkCommandBuffer`). But, we need to remember that not all commands can be recorded into both primary and secondary command buffers.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Allocating command buffers*
+*   *Ending a command buffer recording operation*
+*   *Resetting a command buffer*
+*   *Resetting a command pool*
+*   *Submitting command buffers to a queue*
+
+# Ending a command buffer recording operation
+
+When we don't want to record any more commands in a command buffer, we need to stop recording it.
+
+# How to do it...
+
+1.  Take the handle of a command buffer that is in a recording state (for which a recording operation was started). Store the handle in a variable of type `VkCommandBuffer` named `command_buffer`.
+2.  Call `vkEndCommandBuffer( command_buffer )` and provide the `command_buffer` variable.
+3.  Make sure the recording operation was successful by checking whether the call returned a `VK_SUCCESS` value.
+
+# How it works...
+
+Commands are recorded into the command buffer between the `vkBeginCommandBuffer()` and `vkEndCommandBuffer()` function calls. We can't submit a command buffer until we stop recording it. In other words, when we finish recording a command buffer, it is said to be in the executable state and can be submitted.
+
+For the recording operation to be as fast as possible and to have as small impact on the performance as possible, recorded commands don't report any errors. If any problems occur, they are reported by the `vkEndCommandBuffer()` function.
+
+So when we stop recording a command buffer, we should make sure that the recording was successful. We can do that like this:
+
+[PRE6]
+
+If there were errors during the recording operation (the value returned by the `vkEndCommandBuffer()` function is not equal to `VK_SUCCESS`), we can't submit such a command buffer and we need to reset it.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Beginning a command buffer recording operation*
+*   *Submitting command buffers to a queue*
+*   *Resetting a command buffer*
+
+# Resetting a command buffer
+
+When a command buffer was previously recorded, or if there were errors during the recording operation, the command buffer must be reset before it can be rerecorded once again. We can do this implicitly, by beginning another record operation. But, we can also do it explicitly.
+
+# How to do it...
+
+1.  Take the handle of a command buffer allocated from a pool that was created with a `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT` flag. Store the handle in a variable of type `VkCommandBuffer` named `command_buffer`.
+2.  Create a variable of type `VkCommandBufferResetFlags` named `release_resources`. In the variable, store a value of `VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT` if you want to release memory allocated by the buffer and give it back to the pool. Otherwise, store a `0` value in the variable.
+3.  Call `vkResetCommandBuffer( command_buffer, release_resources )` and provide the handle of the command buffer in the first parameter, and the `release_resources` variable in the second parameter.
+4.  Make sure the call was successful by checking if the returned value is equal to `VK_SUCCESS`.
+
+# How it works...
+
+Command buffers can be reset in bulk, by resetting a whole command pool, or individually. Separate resets can be performed only if a pool, from which the command buffers were allocated, was created with a `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT` flag.
+
+Resetting a command buffer is performed implicitly, when we start recording it, or explicitly by calling a `vkResetCommandBuffer()` function. Explicit reset gives us control over the memory allocated by the command buffer from its pool. During explicit reset, we can decide whether we want to return the memory to a pool, or if the command buffer should keep it and reuse it during the next command recording.
+
+Individual command buffers are reset explicitly like this:
+
+[PRE7]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a command pool*
+*   *Beginning a command buffer recording operation*
+*   *Resetting a command pool*
+
+# Resetting a command pool
+
+When we don't want to reset command buffers individually, or if we created a pool without a `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT` flag, we can reset all command buffers allocated from a given pool at once.
+
+# How to do it...
+
+1.  Take the handle of a logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Take the handle of a created command pool. Use it to initialize a variable of type `VkCommandPool` named `command_pool`.
+3.  Create a variable of type `VkCommandPoolResetFlags` named `release_resources` and initialize it with a value of `VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT`, if memory reserved by all command buffers allocated from the command pool should be released and returned to the pool, or with a `0` value otherwise.
+4.  Call `vkResetCommandPool( logical_device, command_pool, release_resources )` and provide the `logical_device`, `command_pool` and `release_resources` variables.
+5.  Make sure the call returned a `VK_SUCCESS` value, which indicates it was successful.
+
+# How it works...
+
+Resetting a command pool causes all command buffers allocated from it to return to their initial state, as if they were never recorded. This is similar to resetting all command buffers separately, but is faster and we don't have to create a command pool with a `VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT` flag specified.
+
+When command buffers are recorded, they take their memory from the pool. This is done automatically, without our control. When we reset the command pool, we can choose if command buffers should keep their memory for later use, or if it should be returned to the pool.
+
+To reset all command buffers allocated from the specified pool at once, we need the following code:
+
+[PRE8]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a command pool*
+*   *Allocating command buffers*
+*   *Resetting a command buffer*
+
+# Creating a semaphore
+
+Before we can submit commands and utilize the device's processing power, we need to know how to synchronize operations. Semaphores are one of the primitives used for synchronization. They allow us to coordinate operations submitted to queues, not only within one queue, but also between different queues in one logical device.
+
+Semaphores are used when we submit commands to queues. So before we can use them during the submission of command buffers, we need to create them.
+
+# How to do it...
+
+1.  Take the handle of a created logical device. Store the handle in a variable of type `VkDevice` named `logical_device`.
+2.  Create a variable of type `VkSemaphoreCreateInfo` named `semaphore_create_info`. Use the following values to initialize its members:
+    *   `VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `0` value for `flags`
+3.  Create a variable of type `VkSemaphore` named `semaphore`. In this variable, a handle of a created semaphore will be stored.
+4.  Make the following function call: `vkCreateSemaphore( logical_device, &semaphore_create_info, nullptr, &semaphore )`. For this call use the `logical_device` variable, a pointer to the `semaphore_create_info` variable, a `nullptr` value and a pointer to the `semaphore` variable.
+5.  Make sure the semaphore creation was successful by checking if the returned value was equal to `VK_SUCCESS`.
+
+# How it works...
+
+Semaphores, as synchronization primitives, have only two different states: signaled or un-signaled. Semaphores are used during command buffer submissions. When we provide them to a list of semaphores to be signaled, they change their state to signaled as soon as all work submitted within a given batch is finished. In a similar way, when we submit commands to queues, we can specify that submitted commands should wait until all semaphores from a specified list become signaled. This way, we can coordinate work submitted to queues and postpone processing of commands that depend on the results of other commands.
+
+When semaphores are signaled and all commands waiting for them are resumed, semaphores are automatically reset (they change their state to un-signaled) and can be reused.
+
+Semaphores are also used when we acquire images from a swapchain. In this case, such semaphores must be used when we submit commands that reference acquired images. These commands should wait until swapchain images are no longer used by the presentation engine, which is indicated by the semaphore signal operation. This is shown in the following screenshot:
+
+![](img/image_03_001.png)
+
+Semaphores are created with a `vkCreateSemaphore()` function call. Parameters needed during the creation process are provided through a variable of type `VkSemaphoreCreateInfo`, like this:
+
+[PRE9]
+
+To create a semaphore, we need to prepare a code similar to this one:
+
+[PRE10]
+
+Semaphores can be used only to synchronize work submitted to queues, as they coordinate graphics hardware internally. The application doesn't have access to the state of the semaphores. If the application should be synchronized with the submitted commands, fences need to be used.
+
+# See also
+
+In [Chapter 2](45eb1180-672a-4745-bd85-f13c7bb658b7.xhtml), *Image Presentation*, see the following recipes:
+
+*   *Acquiring a swapchain image*
+*   *Presenting an image*
+
+The following recipes in this chapter:
+
+*   *Creating a fence*
+*   *Submitting command buffers to a queue*
+*   *Synchronizing two command buffers*
+*   *Destroying a semaphore*
+
+# Creating a fence
+
+Fences, opposite to semaphores, are used to synchronize an application with commands submitted to the graphics hardware. They inform the application when the processing of a submitted work has been finished. But before we can use fences, we need to create them.
+
+# How to do it...
+
+1.  Take the created logical device and use its handle to initialize a variable of type `VkDevice` named `logical_device`.
+2.  Create a variable of type `VkFenceCreateInfo` named `fence_create_info`. Use the following values to initialize its members:
+    *   `VK_STRUCTURE_TYPE_FENCE_CREATE_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   For `flags` use a `0` value if a created fence should be un-signaled, or a `VK_FENCE_CREATE_SIGNALED_BIT` value if a created fence should be signaled
+3.  Create a variable of type `VkFence` named `fence` that will hold the handle of a created fence.
+4.  Call `vkCreateFence( logical_device, &fence_create_info, nullptr, &fence )` and provide the `logical_device` variable, a pointer to the `fence_create_info` variable, a `nullptr` value and a pointer to the `fence` variable.
+5.  Make sure the call was successful by comparing the returned value with a `VK_SUCCESS` enum.
+
+# How it works...
+
+Fences, similarly to other synchronization primitives, have only two states: signaled and un-signaled. They can be created in either of these two states, but they are reset by the application--this changes their state from signaled to un-signaled.
+
+To signal a fence, we need to provide it during command buffer submission. Such a fence, similarly to semaphores, will become signaled as soon as all work submitted along with the fence is finished. But, fences can't be used to synchronize command buffers. Their state can be queried by the application and the application can wait on fences until they become signaled.
+
+Semaphores are used to synchronize submitted command buffers with each other. Fences are used to synchronize an application with submitted commands.
+
+To create a fence, we need to prepare a variable of type `VkFenceCreateInfo`, in which we must choose whether we want the created fence to be already in a signaled state or if it should be un-signaled:
+
+[PRE11]
+
+Next, this structure is provided to the `vkCreateFence()` function, which creates a fence using specified parameters:
+
+[PRE12]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a semaphore*
+*   *Waiting on fences*
+*   *Resetting fences*
+*   *Submitting command buffers to a queue*
+*   *Checking if processing of a submitted command buffer has finished*
+*   *Destroying a fence*
+
+# Waiting for fences
+
+When we want to know when the processing of submitted commands is finished, we need to use a fence and provide it during command buffer submission. Then, the application can check the fence's state and wait until it becomes signaled.
+
+# How to do it...
+
+1.  Take the created logical device and use its handle to initialize a variable of type `VkDevice` named `logical_device`.
+2.  Create a list of fences on which the application should wait. Store the handles of all fences in a variable of type `std::vector<VkFence>` named `fences`.
+3.  Create a variable of type `VkBool32` named `wait_for_all`. Initialize it with a value of `VK_TRUE`, if the application should wait until all specified fences become signaled. If the application should wait until any of the fences becomes signaled (at least one of them), then initialize the variable with a `VK_FALSE` value.
+4.  Create a variable of type `uint64_t` named `timeout`. Initialize the variable with a value indicating how much time (in nanoseconds) the application should spend waiting.
+5.  Call `vkWaitForFences( logical_device, static_cast<uint32_t>(fences.size()), &fences[0], wait_for_all, timeout )`. Provide a handle of the logical device, a number of elements in the `fences` vector, a pointer to the first element of the `fences` variable, the `wait_for_all` and the `timeout` variables.
+6.  Check the value returned by the call. If it was equal to `VK_SUCCESS` it means that the condition was satisfied--one or all fences (depending on the value of the `wait_for_all` variable) became signaled within the specified time. If the condition is not met, `VK_TIMEOUT` will be returned.
+
+# How it works...
+
+The `vkWaitForFences()` function blocks the application for a specified period of time or until the provided fences becomes signaled. This way, we can synchronize our application with work submitted to the device's queues. This is also the way for us to know when the processing of submitted commands is finished.
+
+During the call we can provide multiple fences, not just one. We can also wait until all fences become signaled, or just any one of them. If the condition is not met within the specified period of time, the function returns a `VK_TIMEOUT` value. Otherwise, it returns `VK_SUCCESS`.
+
+We can also check a fence's state by simply providing its handle to the function and specifying a timeout value of `0`. This way, the `vkWaitForFences()` function won't block and will immediately return the value indicating the current state of the provided fence - a `VK_TIMEOUT` value if the fence was un-signaled (though no real wait was performed) or a `VK_SUCCESS` value if the fence was already signaled.
+
+The code that causes the application to wait may look like this:
+
+[PRE13]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a fence*
+*   *Resetting fences*
+*   *Submitting command buffers to a queue*
+*   *Checking if processing of a submitted command buffer has finished*
+
+# Resetting fences
+
+Semaphores are automatically reset. But when a fence becomes signaled, it is the application's responsibility to reset the fence back to the un-signaled state.
+
+# How to do it...
+
+1.  Store the handle of a created logical device in a variable of type `VkDevice` named `logical_device`.
+
+2.  Create a vector variable named `fences`. It should contain elements of type `VkFence`. In the variable, store the handles of all fences that should be reset.
+3.  Call `vkResetFences( logical_device, static_cast<uint32_t>(fences.size()), &fences[0] )` and provide the `logical_device` variable, the number of elements in the `fences` vector and a pointer to the first element of the `fences` vector.
+4.  Make sure the function succeeded by checking if the value returned by the call was equal to `VK_SUCCESS`.
+
+# How it works...
+
+When we want to know when submitted commands are finished, we use a fence. But we can't provide a fence that was already signaled. We must first reset it, which means that we change its state from signaled to un-signaled. Fences are reset explicitly by the application, not automatically like semaphores. Resetting fences is done like this:
+
+[PRE14]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a fence*
+*   *Waiting on fences*
+*   *Submitting command buffers to a queue*
+*   *Checking if processing of a submitted command buffer has finished*
+
+# Submitting command buffers to a queue
+
+We have recorded command buffers and we want to harness the graphics hardware's power to process the prepared operations. What to do next? We need to submit prepared work to a selected queue.
+
+# Getting ready
+
+In this recipe we will use variables of a custom `WaitSemaphoreInfo` type. It is defined as follows:
+
+[PRE15]
+
+Through it, we provide a handle of a semaphore on which hardware should wait before processing the given `command buffer`, and we also specify in which pipeline stages the wait should occur.
+
+# How to do it...
+
+1.  Take the handle of a queue to which work should be submitted. Use the handle to initialize a variable of type `VkQueue` named `queue`.
+2.  Create a variable of type `std::vector<VkSemaphore>` named `wait_semaphore_handles`. If submitted commands should wait for other commands to end, in the variable store the handles of all semaphores for which a given queue should wait before processing the submitted command buffers.
+3.  Create a variable of type `std::vector<VkPipelineStageFlags>` named `wait_semaphore_stages`. If submitted commands should wait for other commands to end, initialize the vector with pipeline stages at which the queue should wait for a corresponding semaphore from the `wait_semaphore_handles` variable to become signaled.
+4.  Prepare a variable of type `std::vector<VkCommandBuffer>` named `command_buffers`. Store the handles of all recorded command buffers that should be submitted to the selected queue. Make sure that none of these command buffers is currently processed by the device, or were recorded with a `VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT` flag.
+
+5.  Create a variable of type `std::vector<VkSemaphore>` named `signal_semaphores`. In this vector, store the handles of all semaphores that should be signaled when the processing of all command buffers, submitted in the `command_buffers` variable, is finished.
+6.  Create a variable of type `VkFence` named `fence`. If a fence should be signaled when the processing of all command buffers submitted in the `command_buffers` variable is finished, store the handle of this fence in the `fence` variable. Otherwise, initialize this variable with a `VK_NULL_HANDLE` value.
+7.  Create a variable of type `VkSubmitInfo` named `submit_info`. Use the following values to initialize its members:
+    *   `VK_STRUCTURE_TYPE_SUBMIT_INFO` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   Number of elements in the `wait_semaphore_handles` vector for `waitSemaphoreCount`
+    *   Pointer to the first element of the `wait_semaphore_handles` vector or a `nullptr` value, if the vector is empty, for `pWaitSemaphores`
+    *   Pointer to the first element of the `wait_semaphore_stages` vector or a `nullptr` value, if the vector is empty, for `pWaitDstStageMask`
+    *   Number of submitted command buffers (number of elements in the `command_buffers` vector) for `commandBufferCount`
+    *   Pointer to the first element of the `command_buffers` vector or a `nullptr` value, if the vector is empty, for `pCommandBuffers`
+    *   Number of elements in the `signal_semaphores` vector for `signalSemaphoreCount`
+    *   Pointer to the first element of the `signal_semaphores` vector or a `nullptr` value, if the vector is empty, for `pSignalSemaphores`
+8.  Call `vkQueueSubmit( queue, 1, &submit_info, fence )` and provide the handle of the queue to which work should be submitted, a `1` value, a pointer to the `submit_info` variable, and the `fence` variable.
+9.  Make sure the call was successful by checking whether it returned a `VK_SUCCESS` value.
+
+# How it works...
+
+When we submit command buffers to the device's queue, they will be executed as soon as the processing of earlier commands submitted to the same queue is finished. From the application's perspective, we don't know when the commands are going to be executed. It may start immediately or after a while.
+
+When we want to postpone the processing of submitted commands, we need to synchronize them by providing a list of semaphores on which a given queue should wait before the submitted command buffers are executed.
+
+When we submit command buffers and provide a list of semaphores, each semaphore is associated with a pipeline stage. Commands are executed until they reach a specified pipeline stage, where they are paused and wait for the semaphore to become signaled.
+
+During the submission, semaphores and pipeline stages are in separate arrays. So, we need to split the vector with elements of a custom type `WaitSemaphoreInfo` into two separate vectors:
+
+[PRE16]
+
+Now, we are ready for the usual submission. For the submission, semaphores on which command buffers should wait, pipeline stages at which the wait should be performed, command buffers and another list of semaphores that should be signaled, are all specified through a variable of type `VkSubmitInfo`:
+
+[PRE17]
+
+This batch of data is then submitted like this:
+
+[PRE18]
+
+When we submit command buffers, the device will execute the recorded commands and produce the desired results, as an example it will draw a 3D scene on screen.
+
+Here we submit just one batch of command buffers, but it is possible to submit multiple batches.
+
+For performance reasons, we should submit as many batches as possible in as few function calls as possible.
+
+We shouldn't submit command buffers if they were already submitted and their execution hasn't ended yet. We can do this only when command buffers were recorded with a `VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT` flag, but we should avoid using this flag for performance reasons.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Beginning a command buffer recording operation*
+*   *Ending a command buffer recording operation*
+*   *Creating a semaphore*
+*   *Creating a fence*
+
+# Synchronizing two command buffers
+
+We know how to prepare work and submit it to queues. We also know how to create semaphores. In this sample recipe, we will see how to use semaphores to synchronize two command buffers. More specifically, we will learn how to postpone the processing of a command buffer until the processing of another command buffer is finished.
+
+# Getting ready
+
+In this recipe we will use the `WaitSemaphoreInfo` structure introduced in the *Submitting command buffers to a queue* recipe. For reference, here is its definition:
+
+[PRE19]
+
+# How to do it...
+
+1.  Take the handle of a queue to which the first batch of command buffers will be submitted. Store this handle in a variable of type `VkQueue` named `first_queue`.
+2.  Create semaphores that should be signaled when the processing of the first batch of command buffers is finished (refer to *Creating a semaphore* recipe). Store the semaphores in a variable of type `std::vector<WaitSemaphoreInfo>` named `synchronizing_semaphores`. Prepare a list of stages at which command buffers from the second batch should wait for each semaphore. Include these stages in the `synchronizing_semaphores` vector.
+3.  Prepare the first batch of command buffers and submit them to the queue represented by the `first_queue` variable. Include semaphores from the `synchronizing_semaphores` vector on a list of semaphores to signal (see *Submitting command buffers to a queue* recipe).
+4.  Take the handle of a queue, to which the second batch of command buffers will be submitted. Store this handle in a variable of type `VkQueue` named `second_queue`.
+5.  Prepare the second batch of command buffers and submit them to the queue, represented by the `second_queue` variable. Include semaphores and stages from the `synchronizing_semaphores` vector on a list of semaphores and stages to wait for (see *Submitting command buffers to a queue* recipe).
+
+# How it works...
+
+In this recipe we submit two batches of command buffers. When the first batch is processed by the hardware and finished, it signals all the semaphores included in the list of semaphores to be signaled. We take only the handles of semaphores, because pipeline stages are not required during the process of signaling the semaphores:
+
+[PRE20]
+
+Next, we take these same semaphores and use them when we submit the second batch of command buffers. This time, we use both handles and pipeline stages. The second batch will wait for all the provided semaphores at the specified pipeline stages. This means that some parts of the submitted command buffers may start being processed, but when they reach the provided stages processing is paused, as seen in the following diagram:
+
+![](img/image_03_002.png)
+
+[PRE21]
+
+This shows how to synchronize the work of multiple command buffers submitted to different queues from the same logical device. The processing of the command buffers from the second submission will be postponed until all commands from the first batch are finished.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a semaphore*
+*   *Submitting command buffers to a queue*
+
+# Checking if processing of a submitted command buffer has finished
+
+When we use semaphores, the application is not involved in the process of synchronizing the command buffers. It doesn't know when the processing of submitted commands has finished and when other commands start being processed. It all takes place "behind the stage", and is transparent to the application.
+
+But, when we want to know when the processing of a given command buffer has ended, we need to use fences. This way, we can check when a submitted command buffer is fully processed by the device.
+
+# How to do it...
+
+1.  Create an un-signaled fence and store it in a variable of type `VkFence` named `fence`.
+2.  Prepare a batch of command buffers, semaphores to wait on submission and semaphores to signal after the submission is fully processed. Use the prepared data when submitting command buffers to the selected queue. Use the `fence` variable during the submission (refer to *Submitting command buffers to a queue* recipe).
+
+3.  Wait on the created fence object by providing a handle of a logical device, from which all the utilized resources were created, the `fence` variable, `VK_FALSE` value for the parameter defining whether to wait on all provided fences, and a selected value for timeout (refer to the *Waiting for fences* recipe).
+4.  When the wait is finished and the `VK_SUCCESS` value was returned, it means that the processing of all command buffers submitted to the queue within the batch in which the `fence` variable was used, has been successfully finished.
+
+# How it works...
+
+Synchronizing the application with submitted command buffers is done in two steps. First we create a fence, prepare the command buffers and submit them to a queue. We need to remember to provide the created fence within the same submission:
+
+[PRE22]
+
+Next, we just need to wait in our application, until the fence becomes signaled.
+
+[PRE23]
+
+This way, we are sure that the submitted command buffer has been successfully processed by the device.
+
+But typical rendering scenarios should not cause our application to be fully paused, as this is just a waste of time. We should check if a fence becomes signaled. If it does not, we should spend the remaining time on other tasks, for example on improving the artificial intelligence or calculating physics more accurately, and check periodically the state of the fence. When the fence becomes signaled, we then perform the tasks that depended on the submitted commands.
+
+Fences can also be used when we want to reuse command buffers. Before we can re-record them, we must be sure they are no longer executed by the device. We should have a number of command buffers recorded and submitted one after another. Only then, when we use all of them, do we start waiting on fences (each submitted batch should have an associated fence). The more separate batches of command buffers we have, the less time we spend on waiting for fences (refer to *Increasing the performance through increasing the number of separately rendered frames* recipe from [Chapter 9](0a69f5b5-142e-422b-aa66-5cb09a6467b3.xhtml), *Command Recording and Drawing*).
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a fence*
+*   *Waiting for fences*
+*   *Resetting fences*
+*   *Submitting command buffers to a queue*
+
+# Waiting until all commands submitted to a queue are finished
+
+When we want to synchronize the application with work submitted to a selected queue, we don't always have to use fences. It is possible for the application to wait until all tasks submitted to a selected queue are finished.
+
+# How to do it...
+
+1.  Take the handle of the queue into which tasks were submitted. Store it in a variable of type `VkQueue` named `queue`.
+2.  Call `vkQueueWaitIdle( queue )` and provide the `queue` variable.
+3.  We can make sure that no errors occurred by checking if the value returned by the call is equal to a `VK_SUCCESS`.
+
+# How it works...
+
+The `vkQueueWaitIdle()` function pauses the application until all work (processing of all command buffers) submitted to the given queue is finished. This way, we don't need to create fences.
+
+But such synchronization should be performed only on very rare occasions. Graphics hardware (GPU) is usually much faster than the general processor (CPU), and may require work to be constantly submitted for the application to fully utilize its performance.
+
+Performing a wait on the application side may introduce stalls in the graphics hardware's pipeline, which causes the device to be inefficiently utilized.
+
+To wait for the queue until it finishes all submitted work, we need to prepare the following code:
+
+[PRE24]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Waiting on fences*
+*   *Submitting command buffers to a queue*
+*   *Waiting for all commands to be finished*
+
+# Waiting for all submitted commands to be finished
+
+Sometimes we would like to wait until all the work submitted to all the logical devices' queues is finished. This type of wait is typically done before we close our application and we want to destroy all created or allocated resources.
+
+# How to do it...
+
+1.  Take the handle of a created logical device and store it in a variable of type `VkDevice` named `logical_device`.
+
+2.  Make the following call: `vkDeviceWaitIdle( logical_device )`, for which provide the handle of the logical device.
+3.  You can check if there were no errors by comparing the returned value with a `VK_SUCCESS`.
+
+# How it works...
+
+The `vkDeviceWaitIdle()` function causes our application to wait until a logical device is no longer busy. This is similar to waiting on all queues requested for a given device--until commands, which were submitted to all queues, are finished.
+
+The above function is usually called just before the exit from our application. When we want to destroy resources, we must make sure they are no longer used by the logical device. This function guarantees we can safely perform such destruction.
+
+Waiting for all commands submitted to the device is performed like this:
+
+[PRE25]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Waiting on fences*
+*   *Waiting until all commands submitted to a queue are finished*
+
+# Destroying a fence
+
+Fences can be reused multiple times. But when we don't need them anymore, typically just before we close our application, we should destroy them.
+
+# How to do it...
+
+1.  Take the handle of a logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Take the handle of a fence that should be destroyed. Use the handle to initialize a variable of type `VkFence` named `fence`.
+3.  Call `vkDestroyFence( logical_device, fence, nullptr )` and provide the logical device's handle, the `fence` variable and a `nullptr` value.
+4.  For safety reasons, assign the `VK_NULL_HANDLE` value to the `fence` variable.
+
+# How it works...
+
+Fences are destroyed using the `vkDestroyFence()` function, like this:
+
+[PRE26]
+
+We don't need to check if a value of the `fence` variable is not equal to the `VK_NULL_HANDLE` value because destruction of a null handle will be ignored by the driver. But, we do this to skip an unnecessary function call.
+
+But, we can't destroy an invalid object - an object that wasn't created on a given logical device or that has already been destroyed. That's why we assign a `VK_NULL_HANDLE` value to the variable with the fence's handle.
+
+# See also
+
+*   In this chapter, the recipe: *Creating a fence*.
+
+# Destroying a semaphore
+
+Semaphores can be reused multiple times, so usually we don't need to delete them when the application is executing. But when we don't need a semaphore any more, and if we are sure it is not being used by the device (there are both no pending waits, and no pending signal operations), we can destroy it.
+
+# How to do it...
+
+1.  Take the handle of a logical device. Store this handle in a variable of type `VkDevice` named `logical_device`.
+2.  Initialize a variable of type `VkSemaphore` named `semaphore` with a handle of the semaphore that should be destroyed. Make sure it is not referenced by any submissions.
+3.  Make the following call: `vkDestroySemaphore( logical_device, semaphore, nullptr )`, for which provide the logical device's handle, the handle of the semaphore and a `nullptr` value.
+4.  For safety reasons, assign a `VK_NULL_HANDLE` value to the `semaphore` variable.
+
+# How it works...
+
+Deleting a semaphore is quite easy:
+
+[PRE27]
+
+Before we can destroy a semaphore, we must make sure it is not referenced any more by any of the performed queue submissions.
+
+If we performed a submission and provided a semaphore in the list of semaphores to be signaled, or in the list of the semaphores for which a given submission should wait, we must make sure the submitted commands have finished. For this purpose we need to use a fence on which the application should wait, or one of the functions waiting for all the operations to be submitted to a given queue or the whole device to be finished (refer to the *Waiting for fences*, *Waiting until all commands submitted to a queue are finished* and *Waiting for all submitted commands to be finished* recipes).
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a semaphore*
+*   *Waiting for fences*
+*   *Waiting until all commands submitted to a queue are finished*
+*   *Waiting for all submitted commands to be finished*
+
+# Freeing command buffers
+
+When command buffers are no longer necessary and when they are not pending for execution on a device, they can be freed.
+
+# How to do it...
+
+1.  Take the handle of a logical device and use it to initialize a variable of type `VkDevice` named `logical_device`.
+2.  Take the handle of a command pool created from the logical device. Store this handle in a variable of type `VkCommandPool` named `command_pool`.
+3.  Create a vector variable with elements of type `VkCommandBuffer`, name the variable `command_buffers`. Resize the vector to be able to hold all command buffers that should be freed. Initialize the vector's elements with the handles of all the command buffers that should be freed.
+4.  Call `vkFreeCommandBuffers( logical_device, command_pool, static_cast<uint32_t>(command_buffers.size()), &command_buffers[0] )`. During the call, provide the handles of the logical device and the command pool, provide the number of elements in the `command_buffers` vector (the number of command buffers to be freed) and a pointer to the first element of the `command_buffers` vector.
+5.  For safety reasons, clear the `command_buffers` vector.
+
+# How it works...
+
+Command buffers can be freed in groups, but during a single `vkFreeCommandBuffers()` function call we can only free command buffers from the same command pool. We can free any number of command buffers at once:
+
+[PRE28]
+
+Before we can free command buffers, we must make sure they are not referenced by the logical device, and that all submissions in which command buffers were provided have already finished.
+
+Command buffers allocated from a given pool are implicitly freed when we destroy a command pool. So when we want to destroy a pool, we don't need to separately free all command buffers allocated from it.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a command pool*
+*   *Allocating command buffers*
+*   *Waiting for fences*
+*   *Waiting for all commands to be finished*
+*   *Destroying a command pool*
+
+# Destroying a command pool
+
+When all command buffers allocated from a given pool are not used any more, and we also don't need the pool, we can safely destroy it.
+
+# How to do it...
+
+1.  Take the handle of a logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Use a handle of the pool that should be destroyed to initialize a variable of type `VkCommandPool` named `command_pool`.
+3.  Call `vkDestroyCommandPool( logical_device, command_pool, nullptr )`, for which provide the handles of the logical device and the command pool, and a `nullptr` value.
+4.  For safety reasons, assign the `VK_NULL_HANDLE` value to the `command_pool` variable.
+
+# How it works...
+
+The command pool is destroyed with the following code:
+
+[PRE29]
+
+But, we can't destroy the pool until all command buffers allocated from it are not pending for execution on a device. To do that, we can wait on fences or use one of the functions that causes the application to wait until the selected queue stops processing commands, or while the whole device is busy (the work submitted to all queues from a given device is still being processed). Only then can we safely destroy the command pool.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a command pool*
+*   *Waiting for all submitted commands to be finished*

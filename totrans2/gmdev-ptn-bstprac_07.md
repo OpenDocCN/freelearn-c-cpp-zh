@@ -1,0 +1,220 @@
+# Improving Performance with Object Pools
+
+In programming languages, one of the most time-consuming things for the computer to do is deal with memory allocation. It's fairly inefficient and, depending on the resources being used, could slow down your game drastically.
+
+A common element found in shooter games, or any game with explosions or bullets, is to create and destroy many objects in quick succession. Take, for example, the *Touhou Project* series of games, where there are many bullets being fired by both the player and enemies. When done in the simplest manner, calling `new` when you want to create a bullet and `delete` when you want to remove it will cause our game to lag or freeze over time.
+
+To prevent this from happening, we can make use of the Object Pool pattern.
+
+# Chapter overview
+
+In this chapter, we will create an object pool that will allow players to spawn a large number of bullets on the screen for the game.
+
+# Your objectives
+
+This chapter will be split into a number of topics. It will contain a simple step-by-step process from beginning to end. Here is the outline of our tasks:
+
+*   Why we should care about memory
+*   The Object Pool pattern explained
+*   Using memory pools--overloading `new` and `delete`
+*   Design decisions
+
+# Why you should care about memory
+
+As a programmer, you're probably already used to using `new` and `delete` (or `malloc` and `free` if you're writing C), and you may be wondering why you would want to handle memory by yourself when it's already built into the language and is easy to use. Well, the first thing is that like most aspects of using a high-level programming language, you do not know what is going on behind the scenes. If you write your own logic to handle memory, you can create your own statistics and additional debugging support, such as automatically initializing data. You can also check for things such as memory leaks.
+
+However, for game developers the most important aspect to look into is that of performance. Allocating memory for a single object or thousands of them at once is approximately the same time as the computer needs to look through your computer's memory for an opening that isn't being used, and then give you the address to the beginning of that contiguous piece of memory. If you keep requesting small pieces of memory over and over again this can lead to memory fragmentation, which is to say that there isn't enough free continuous space when you want to get a larger object.
+
+![](img/00045.jpeg)
+
+We may start off with some memory like this, with the gray sections being free memory and black being memory set aside because we called `new` for that amount of data. Each time we call for new, the computer needs to look for the first address that is open which has enough space to fit the object type we provide:
+
+![](img/00046.jpeg)
+
+Later on, we remove some of the memory and that opens up some space, but the computer will need to look at each address and spend more time searching:
+
+![](img/00047.jpeg)
+
+Finally, we get to a spot where we have very little open data and it requires a lot of work to find a place to insert new data, due to the memory becoming fragmented.
+
+This is especially important if you are developing titles for a console or for a mobile device, as the size of memory you have to work with is much smaller than what you're used to working with on a PC. If you used computers five or more years ago you may remember the idea of defragging your computer, in which your computer would shift pieces of memory over in order to create larger blocks that could be used later. But this was a very time-consuming process.
+
+Mach5 doesn't easily give us the ability to support having game objects being created in this way but, if you are interested in doing this, we do have a way that can use the concepts of an object pool in order to not waste resources; we will discuss that later on in the chapter.
+
+An excellent article on writing memory managers for game programming can be found at [http://www.gamasutra.com/view/feature/2971/play_by_play_effective_memory_.php](http://www.gamasutra.com/view/feature/2971/play_by_play_effective_memory_.php).
+
+# The Object Pool pattern explained
+
+Previously, we talked about the Singleton design pattern and how it's used to create a single instance of something inside of our project, often something static. We know there is only one and it's only created once, and that we can share it with the rest of our project without issues. However, the Singleton pattern only works when the instance is initialized.
+
+The object pool is similar but, instead of one object, we want to have a group (or pool) of objects (or instances) that we can refer to within the rest of the project. Whenever the project wants to access these objects, we have another object called an **object pool**, which acts as a liaison between the project and the objects themselves.
+
+Also called a resource pool or an N-ton elsewhere in computer science (but most frequently in game development referred to as an object pool) you can think of the object pool as having a similar role to a manager. When our program wants an object to work with, the manager knows which objects are currently being used and will give you one that isn't, or expand to create a new one. This promotes reusing previously created objects instead of creating and deleting them on the fly. This provides a number of advantages when the cost of initializing a class instance is an expensive operation, or when the rate of instantiation is high and the amount of time the objects are being used is low.
+
+Let's consider our space shooter game as an example. Any time we press the spacebar, we have been creating a new object of the laser we want to shoot out. Also, any time we shoot something, we have to destroy them. This will slow down the performance of our game. This is not a huge issue now with such a simple game, but in AAA games we use this idea a lot, for example, in any of the games in the Naughty Dog's *Uncharted* series or most FPS titles. The enemies in these games are very complex, and having them in the game is very expensive. Instead of having a bunch of enemy objects in the game what will often be done instead is, after using enemies and having them die, they just turn invisible and when you need a new enemy, the dead object gets moved to a new position and gets turned on again.
+
+The very basic elements of an object pool will look something like this:
+
+![](img/00048.jpeg)
+
+In our object pool's case, we have some type of variable that we want to hold the copies of. In this case, I've named it `GameObject`, but you'll also hear it referred to as a `Reusable` or `Resource` class instead. We use the `AcquireObject` function to get an object from our object pool, and we use the `ReleaseObject` function when we are finished working with it. The `GetInstance` function works in a similar manner to how it did with the Singleton class we talked about earlier, by giving us access to the `ObjectPool` referred to by it.
+
+In the Mach5 Engine, there isn't an included object pool by default, so we will actually need to extend the engine to support it. That means we'll need to actually build one from scratch.
+
+There are multiple ways to implement the Object Pool pattern or to get a similar behavior. We'll go over some of the commonly seen versions and the cons before moving to our final version.
+
+# Implementing a basic object pool
+
+Let's first start off by creating an object pool for a simple class that we can create multiples of:
+
+[PRE0]
+
+So, this sample `GameObject` class contains a name of the object to identify it by and some example properties to make the class seem more game-object-like. Obviously, you can easily add more properties and the same principles apply. In this case, we have a function called `Initialize`, which provides both a `set` and `reset` of values for the class. Finally, I added in a `GetInfo` function to print out information about the class so we can verify that things are working correctly.
+
+The implementation for the class will look something like this:
+
+[PRE1]
+
+Now that we have our game objects created, we need the pool to be created:
+
+[PRE2]
+
+To start off with there are two variables: `pool`, which will contain all of the available objects within our object pool, and `instance`, which is a way for us to access it. Note that our object pool uses the Singleton design pattern, in that there can only be one per type of object you'd like to have copies of. In this instance, we have the same issues that we talked about earlier, namely that you have to actually delete the pool and remove all of the elements that were created, which is why we added in a `ClearPool` function which does exactly that. The implementation for the class will look something like this:
+
+[PRE3]
+
+In this preceding function, we first check if `instance` is set. If it's not, we dynamically allocate memory for it and set the `instance` variable to it. Either way, we'll have an instance afterwards, and that is what we return:
+
+[PRE4]
+
+The `ClearPool` function will continuously remove objects from the pool until it is empty. We first get a reference to the object, by retrieving the last element using the `back` function.
+
+We then remove the element from the pool before deleting the object itself safely:
+
+[PRE5]
+
+Finally, C++ requires that we initialize the `instance` variable, so we add that last.
+
+Once we have this foundational code in, we can start to use the classes. An example usage could be the following:
+
+[PRE6]
+
+If we save this script and run it in a blank project, you'll see the following:
+
+![](img/00049.gif)
+
+In this case, we first get our `ObjectPool` that makes use of the `GetInstance` function, and then obtain an object from the object pool using the `AcquireObject` function (which calls `new` to create the object). From there we print out its values and, due to the constructor, it is set to our predefined default values. We then assign the values and use it. Afterward, we release it from the list in which we placed it on the pool, to be reused when we are ready. We then get the object again and show that it's already reset to be reused in exactly the same way as before!
+
+# Operator overloading in C++
+
+We now have a good foundation to build on, but we can actually make our object pool much nicer to use. One of the cooler features in C++ is the fact that you can override the default behaviors of operators, typically referred to as **operator overloading**. This is done with functions being created with specific names that contain the operator keyword, followed by what operator you want to define. Just like regular functions, they have return types as well as parameters that get passed to them.
+
+For more information on operator overloading and how it works in C++, check out [http://www.cprogramming.com/tutorial/operator_overloading.html](http://www.cprogramming.com/tutorial/operator_overloading.html).
+
+In addition to common operators, such as `+`, `-`, and `/`, we also have the ability to overload the `new` and `delete` operators as well, allowing us to use our own custom object pool instead!
+
+To do this, we will need to add the following to the end of the `GameObject` class, and add the following bold lines to the class definition:
+
+[PRE7]
+
+Here, we added two new functions to the `GameObject` class--one for us to create our own version of `new` and another for our version of `delete`. Then, we need to add the implementations:
+
+[PRE8]
+
+In our case, we are just using the `ObjectPool` class' functions to acquire and release our objects when needed, instead of just allocating memory all of the time. Then, we can modify the original implementation code as follows:
+
+[PRE9]
+
+Now, don't run the code just yet. If you remember, we call the `new` and `delete` operators inside of our `ObjectPool` class, so running the code now will cause a stack overflow error, because when `AquireObject` calls `new`, it will call the `GameObject` class' version of `new`, which in turn calls the `AquireObject` function, and so on and so forth. To fix this, we'll need to use the C version of allocating memory, the `malloc` and `free` functions, in order to get memory from the system:
+
+[PRE10]
+
+Now we should be able to run and see if everything is working the way we intended! This version works fairly well as long as you want your users to still call `new` and `delete`; however, it gives you a performance boost over time.
+
+# Building the object pool for Mach5
+
+Now that we've seen an object pool in action, let's next learn how we can integrate the Object Pool pattern into the Mach5 game engine. Since we are creating a shooter game, one of the things that we spawn a lot during gameplay are the laser bullets from our ship, which makes it perfect for using object pool functionality. And unlike the previous examples, we'll see a version of the object pool that will not need to use pointers to access the pool, and we'll not have to worry about the pool being created. To do this, we'll need to make some adjustments to the starter project. First, we are going to need to change how our bullets are destroyed.
+
+If you go into the `Bullet.ini` file located at `Mach5-master\EngineTest\EngineTest\ArcheTypes`, you'll see the following:
+
+[PRE11]
+
+Go in and remove `OutsideViewKillComponent` and replace it with `BulletComponent`. We are replacing `OutsideViewKillComponent` because when it leaves the screen, it will set the object's `isDead` property to `true`, which will call `delete` on it and remove it from the world. We are actually going to take care of this ourselves, so let's replace this with our own behavior, which we will write inside of the `BulletComponent` script that we will write later on in this chapter.
+
+Next, we will want to create a new place for our `ObjectPool` so, with that in mind, go to the Solution Explorer tab and then right-click on the Core/Singletons folder and select New Filter. Once you create one, name it `ObjectPool`. From there, right-click on the newly created folder and select New Item.... Then, from the menu select the Header File (.h) option and give it a name of `M5ObjectPool.h`.
+
+In the `.h` file, we'll put in the following code:
+
+[PRE12]
+
+You'll notice that the class is very similar to what we've done in the past but, instead of using the `GameObject` class, we are going to use the Mach5 engine's `M5Object` class. We've also templatized the class to make it so that this will work with any kind of object archetype that exists (including our bullet, which is represented by `AT_Bullet`). I've also added a new variable called `available`, which is a **deque** (pronounced **deck**), which stands for a double-ended queue. This variable will contain all of the objects that both exist and are unused, so we can easily tell if we have any objects that we can use or if we need to create a new one.
+
+If you want to learn more about the deque class, check out [http://www.cplusplus.com/reference/deque/deque/](http://www.cplusplus.com/reference/deque/deque/).
+
+We'll also want to create an `M5ObjectPool.cpp` file as well. In the `.cpp`, we'll write the following code:
+
+[PRE13]
+
+In this instance, we are first going to check if we have any objects inside of the available list. If none exist we will spawn a new object, making use of the `M5ObjectManager` class' `CreateObject` function. We then add it to the pool as it is an object in our object pool, but we do not make it available as it's going to be used upon being acquired:
+
+[PRE14]
+
+In this case, the `ReleaseObject` function marks an object as being available for reuse. But, we want to do some error checking to make sure that the function is being used properly and isn't being provided with an invalid object.
+
+First, the code makes sure that the object is the same type as the object pool's and that it is actually located inside the pool somewhere. This ensures that we will only be adding objects that are valid into our available deque. If we know the object is valid, we then look through the objects we already have in the deque and make sure that the object hasn't already been added before. If it hasn't, we then add it into the available deque:
+
+[PRE15]
+
+In the `ClearPool` function, we just go through every object in the pool and destroy that game object. Then, we clear out the available list:
+
+[PRE16]
+
+Finally, we need to declare the pool and available objects so they can be created in the future.
+
+Now that we have this base functionality, we need to return these objects back to our available pool. To do this, we'll need to add the `BulletComponent` component we mentioned previously. Since this component is exclusive to our game, let's move over to the `SpaceShooter`/`Components` filter and create a new filter called `BulletComp`. From there, create two new files, `BulletComponent.h` and `BulletComponent.cpp`, making sure the location is set to the `Mach5-master\EngineTest\EngineTest\Source\` folder.
+
+In the `.h` file, put in the following:
+
+[PRE17]
+
+Next, inside of the `.cpp` file, use the following:
+
+[PRE18]
+
+Save your files. This will make it so that if the object has a bullet component, it'll be returned to the list; but we have to first make our objects. Go into the `PlayerInputComponent.cpp` file and update the section of code for creating bullets in the `Update` function, as follows:
+
+[PRE19]
+
+Notice that we've replaced the creation of `bullet1` and `bullet2` to use our `ObjectPool` class' `AcquireObject` function, instead of our `ObjectManager` class' version.
+
+Now it will be difficult for us to see if we are using objects that have just been created or if they are things we are reusing. Let's go back into `BulletComponent` and modify a property before we give it back to the object pool:
+
+[PRE20]
+
+Now we can go ahead and save our scripts and run our game!
+
+![](img/00050.jpeg)
+
+You'll notice that, at the beginning of play, the objects have a scale of `2.5, 2.5`. However, once some objects go off the screen, you'll see something similar to the following screenshot:
+
+![](img/00051.jpeg)
+
+When we shoot the new bullets, they have been scaled down! With this, we know that our pool is working correctly, and that we are reusing the objects we've made before!
+
+# Issues with object pools
+
+Now, as great as object pools are, we should take some time to talk about times when you would not want to use object pools, and the alternatives out there.
+
+First of all, you need to remember that when you are using a memory manager, you are telling the computer that you are smarter than them and that you know how the data should be handled. This is more power than other languages tend to give you, and using Uncle Ben's famous line, "*with great power comes great responsibility"* as we mentioned previously in this book in [Chapter 2](part0047.html#1CQAE0-04600e4b10ea45a2839ef4fc3675aeb7), *One Instance to Rule Them All - Singletons*. When using an object pool, you typically want to use it when objects only have a limited lifetime and a lot of them will be created, but not all at the same time. If at one point in time you'll have 10,000 on the screen, but the rest of the game you'll have 30 max, that 9,970 other objects' worth of memory will just be standing there waiting for you in the unlikely event that you want to use it again.
+
+An alternative method of handling a lot of objects at once is through a circular linked list, in which the last element connects to the first. This will guarantee that you'll never create more things than you have allocated memory for. If you happen to go all the way around you'll just be replacing the oldest one and, if you have so many things on the screen at once, users will not notice the oldest one being removed. This can be useful for things such as particle systems which we will be talking about in [Chapter 10](part0179.html#5AMKM0-04600e4b10ea45a2839ef4fc3675aeb7), *Sharing Objects with the Flyweight Pattern*. If you're spawning many particles, people probably will not notice the game replacing the oldest particles with new ones.
+
+For more information on circular linked lists, check out [https://www.tutorialspoint.com/data_structures_algorithms/circular_linked_list_algorithm.htm](https://www.tutorialspoint.com/data_structures_algorithms/circular_linked_list_algorithm.htm).
+
+We were also using a type of object pool that allocated one element at a time. Alternatively, you could allocate memory for a large number of them at a time to ensure that you'll always have that memory reserved. While it's not needed in this case, it's definitely something to use for large classes.
+
+While the code samples listed are in C#, Michal Warkocz lists some very good examples of why an object pool may be a bad choice to use here: [https://blog.goyello.com/2015/03/24/how-to-fool-garbage-collector/](https://blog.goyello.com/2015/03/24/how-to-fool-garbage-collector/).
+
+# Summary
+
+In this chapter, we have used object pools to reduce system resources and user frustration by storing and reusing objects instead of creating and removing them. After spending this time polishing your work, you'll probably want to spend time modifying the UI of your game, which is what we will be talking about in the next chapter!

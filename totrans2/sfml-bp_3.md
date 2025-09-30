@@ -1,0 +1,587 @@
+# Chapter 3. Making an Entire 2D Game
+
+In this chapter, we will finally make our first game. In fact, we will build two games, as follows:
+
+*   We will build our first game, an Asteroid clone game, by improving our actual application of SFML
+*   Our next game will be a Tetris clone game
+
+We will also learn some skills such as:
+
+*   Entity models
+*   Board management
+
+We are all fans of old school games, so let's get loaded to create some of them right away. In addition, each of these two games has a completely different architecture. It's really interesting as far as the learning process is concerned.
+
+# Turning our application to an Asteroid clone
+
+**Asteroid** is an arcade "shoot 'em up" game created in 1979 by Atari Inc., and is considered a classic. The player controls a spaceship in an asteroid field with some flying saucers appearing on the screen from time to time, attacking it. The goal of this game is to destroy all the asteroids and saucers by shooting at them. Each level increases the number of asteroids in the field, and the game becomes harder and harder.
+
+To build this game, we will use our actual application as a base, but we need to add a lot of things to it.
+
+## The Player class
+
+The player is represented as a spaceship. The spaceship has the ability to rotate left and right, to shoot, and the spaceship can also give itself a boost. The player can also send the ship into hyperspace, causing it to disappear and reappear in a random location on the screen, at the risk of self-destructing or appearing on top of an asteroid.
+
+The player starts with three lives, and on every 10,000 points, a new life is won. If the player crashes into something, it will be destroyed and the player will lose one life. It will reappear at the starting point, that is, the middle of the screen.
+
+## The levels
+
+Each level starts with some big asteroids in random places that are drifting in various directions. Each level will have an increased number of asteroids. This number is four for the first level and eleven starting from the fifth level.
+
+The board is a bit special because it's a Euclidean torus (see the definition on Wikipedia for more detail: [http://en.wikipedia.org/wiki/Torus](http://en.wikipedia.org/wiki/Torus)). The top and the bottom of the screen wrap to meet each other, as do the left and right sides, except that the top right meets the bottom left, and vice versa. The level is finished when there are no more meteors on the screen.
+
+## The enemies
+
+There are two kinds of enemies: meteors and flying saucers. Both of them can destroy you if you crash into them, and both add some points when you destroy them by shooting at them.
+
+## The meteors
+
+There are three types of meteors. Each one has its own size, speed, and a points number that differs from the others. Here is a table that summarizes the different meteors' properties:
+
+| Size | Big | Medium | Small |
+| --- | --- | --- | --- |
+| Speed | Slow | Medium | Fast |
+| Split | 2~3 medium | 2~3 smalls | - |
+| Base Points | 20 | 60 | 100 |
+
+Each time a meteor is hit, it is split into a smaller meteor, except for the small ones. The big meteors are also those that represent the starting meteor field of each level.
+
+## The flying saucers
+
+Time to time! A flying saucer appears and tries to disturb the player. There are two saucers, a big one, which does nothing apart from moving, and a small one, that shoots at the player. The higher the score of the player, the higher is the chance that a small saucer appears instead of a big one. Starting from 40,000, only small saucers appear. In addition, the more points the player has, the higher is the precision of the saucers.
+
+# Modifying our application
+
+Now that we have all the information required to build our game, let's start to change it. The first step is to change our world to a Euclidean torus with a fixed size. Here is a representation of a torus taken from the Wikipedia page:
+
+![Modifying our application](img/8477OS_03_04.jpg)
+
+To do this, we will need some information from inside the game, such as the world size. We will add the information inside the `Game` class as two integer values, `height` and `width`:
+
+[PRE0]
+
+We will initialize them with the constructor. So now, we need parameters for this class:
+
+[PRE1]
+
+We will need to change our constructor implementation a bit, as shown in the following code snippet:
+
+[PRE2]
+
+Okay, now we can choose the size of the world, but how do we make it a torus? In reality, it's not complicated. We only need to check the position of each entity after moving them; and if they are out of the world, we correct their positions.
+
+Let's try this with the player, as shown in the following code snippet:
+
+[PRE3]
+
+As you can see here, firstly, we call the `update()` method on the player, and then we correct its position if it's out of the world range. We now have an infinite world.
+
+The `Player::getPosition()` method used is as follows:
+
+[PRE4]
+
+The only sad thing with this is that we modify the player's position inside the `Game` class. It will be better if the player could manage its position itself, isn't it? Wrong! If you think a bit about this, you will understand that the player doesn't care about the world's shape. It's the world's work to be able to adapt the position of its entity, not the contrary.
+
+Here we have two options: keep our code as it is or establish a more flexible system. If we quickly think about what will be required for the managements of the meteors and saucers, the second option seems best. So let's build a more flexible system.
+
+In game development, there are two major design patterns that answer to this. They are as follows:
+
+*   The hierarchical entity system
+*   The entity component system
+
+Each of these patterns answer the problem in a different way. We will see them right after the world class.
+
+## The World class
+
+All our logic is actually made in the `Game` class. This is a good way, but we can do better. If we think about it, the `Game` class has to not only process events, create the window, and delegate other classes to the pause and menu systems, but also perform all the entity management.
+
+To be more explicit, the game doesn't have to manage any entity, but can create a world and populate it. Then, all the work is done by the world class.
+
+The world is a container of entities but also of sounds effects. It has a specific size, shape, and rules (such as physics). It can also be displayed on screen. Finally, the class looks similar to the following code snippet:
+
+[PRE5]
+
+Like the other classes, we make the `World` class non-replicable. We add some functions to add an entity to the world, and some functions to remove them all as well. Because it's possible to have some sounds in the world, we also add a method to add them. It takes an ID from the `Configuration` class, exactly like the IDs for `Textures`. We also add some functions to get information such as the number of entities, the size of the world, and so on.
+
+Now if we take a look at the attributes, we can see two containers for the entities. This is a trick that will make our lives easier. I will explain it in the implementation. The other container is for `sf::Sound` that can be added to the world. I will also explain it in the implementation.
+
+Now, take a look at the implementation. This class is a bit long, and some functions have been reduced to not take a lot of space in this chapter:
+
+[PRE6]
+
+There is no difficulty in these functions. The constructor simply sets the size of the world, and the destructor clears it; as shown in the following code snippet:
+
+[PRE7]
+
+This is another simple function, but we don't add an entity directly to the `_entites` container. Instead, we add it to a temporary container that contains only the entities created during a particular time frame. The reason for doing this will be explained in the `update()` function:
+
+[PRE8]
+
+Here, we clean the entire world by deleting all its entities and sounds. Because we use raw pointers for the entities, we need to delete them explicitly unlike `sf::Sound`:
+
+[PRE9]
+
+This function creates a `sf::Sound` parameter from a `sf::SoundBuffer` parameter contained in the `Configuration` class, initialize it, and play it. Because each `sf::Sounds` has its own thread, the `sf::Sound::play()` parameter will not interrupt our main thread. And then, we store it in the appropriate container:
+
+[PRE10]
+
+The `World::isCollide()` function is a helper to check whether an entity is colliding with another one. This will be used to place the meteors at the beginning of the game:
+
+[PRE11]
+
+These functions are pretty simple. There are just some getters. The only thing that is particular is `size()` because it returns the total number of entities:
+
+[PRE12]
+
+This function is a bit more complicated than the previous version of it. Let's explain it in detail:
+
+1.  We merge the entities' container together into the main container.
+2.  We update all entities, and then verify that their positions are correct. If this is not the case, we correct them.
+3.  We check the collision between all the entities and dead entities are removed.
+4.  Sounds that have been played are removed from the container.
+
+In the update and collision loops, some entities can create others. That's the reason for the `_entities_tmp` container. In this way, we are sure that our iterator is not broken at any time, and we do not update/collide entities that have not experienced a single frame, as shown in the following code snippet:
+
+[PRE13]
+
+This function is simple, and forwards its job to all the entities. As you can see, the `World` class is not really complicated, and manages any kind of entities and all sounds. By doing this, we can remove a lot of tasks from the `Game` class, and delegate it to the `World` class.
+
+## The hierarchical entity system
+
+This system is the most intuitive. Each kind of entity is a different class in your code, and all of them are extended from a common virtual class, most of the time called **Entity**. All the logic is made inside the class in the `Entity::update()` function. For our project, the hierarchical tree could be similar to the following figure:
+
+![The hierarchical entity system](img/8477OS_03_01.jpg)
+
+As you can see, there are several abstraction layers. For this project, and because we don't have a lot of different kind of entities, we will use this solution.
+
+## The entity component system
+
+This is a totally different approach. Instead of having each type of entity represented as a class, there is only one class: entity. To this entity, we attach some property such as the position, ability to be draw, a gun, and whatever you want. This system is really powerful, and is a great solution in video games, but is also difficult to build. I will not get into more detail about this system, because I will come back to it in the next chapter. So even if we don't use it right now, don't be frustrated, we will build and use it in the next project.
+
+# Designing our game
+
+Now that we have chosen the entity component system approach and created a world that will be populated by them, let's think about the needs. Following table summarizes the needs:
+
+| Entity | Parent | Specificities |
+| --- | --- | --- |
+| `Entity` |   | This can moveThis can be drawnThis can collide with another entity |
+| `Player` | Entity | This can shootThis is controlled by inputsThis can collide with everything except the one it shoots |
+| `Enemy` | Entity | This can be destroyed by shootingThis gets the player some points when destroyed by shooting |
+| `Saucer` | Enemy | This has a bigger chance to spawn a small saucer when the point number increasesThis can collide with everything except saucer shoots |
+| `BigSaucer` | Saucer | This has a special skin |
+| `SmallSaucer` | Saucer | This can shoot the `Player` entityThis has a special skin |
+| `Meteors` | Enemy | This can collide with everything except other meteors |
+| `BigMeteor` | Meteors | This splits into some `MediumMeteor` when destroyedThis has a special skin |
+| `MediumMeteor` | Meteors | This splits into `SmallMetors` when destroyedThis has a special skin |
+| `SmallMeteor` | Meteors | This has a special skin |
+| `Shoot` | Entity | This lives for a specific time |
+| `ShootPlayer` | Shoot | This can only collide with enemiesThis has a specific skin |
+| `ShootSaucer` | Shoot | This can collide with `Meteor` and `Player`This has a special skin |
+
+Now that we have all the information needed for each class, let's build them. The final result will look similar to the following:
+
+![Designing our game](img/8477OS_03_05.jpg)
+
+## Prepare the collisions
+
+In this project we will use a simple collision detection: collision between circles. As just said this is very basic and can be improved a lot, but is sufficient for now. Take a look to the class:
+
+[PRE14]
+
+The is no member here, and the class can't be instantiate. The aim of the class is to group some helper function used by other classes. So here, only one collision test is describe that take two `sf::Sprite` as parameters. Take a look to the implementation.
+
+[PRE15]
+
+The function first computes the radius for each of the sprite. Then it checks if the distance between the two sprites (computed using the Pythagoras theorem) is less than the sum of the tow radius. If it's verify, then there is no collision, on the other side, there is one, even if we don't exactly know the exact point.
+
+## The Entity class
+
+To build our system, we need the base class, so let's start with the `Entity` class:
+
+[PRE16]
+
+Let's discuss this class step by step:
+
+1.  Firstly, we make the class noncopyable.
+2.  Then we make the destructor virtual. This is a really important point because the `Entity` class will be used as a polymorphic class. So we need to set the destructor as virtual to be able to destruct the real object and not only it's `Entity` base.
+3.  We also define some helper functions to know if the entity is alive and also to set/get its position. The code is the same as we have in the `Player` class. We also define some virtual methods that will be overridden in other classes.
+4.  The virtual function `onDestroy()` is important. Its goal is to execute some code before the destruction on the entity by shooting it or whatever. For example, the ability of a `Meteor` entity to be split will be put in this function, and so will all kind of sounds caused by the destruction of the object.
+
+Now take a look to the implementation of the `Entity` class:
+
+[PRE17]
+
+The constructor sets the texture to the internal `sf::Sprite` function, and then center the origin of it. We also set the world of the entity, and the alive value:
+
+[PRE18]
+
+These two functions are the exact same as those in the `Player` class. So no surprises here:
+
+[PRE19]
+
+These two functions are new. It's simply a helper function. `IsAlive()` is used to know if an entity have to be removed from the world, and the `onDestroy()` function is a method that will be called when a collision is detected with another `Entity`. Nothing complicated for now.
+
+## The Player class
+
+Now that we have the `Entity` class, let's change the `Player` class to extend it from `Entity`:
+
+[PRE20]
+
+As you can see, we removed all the functions and attributes related to the position and the display. The `Entity` class already does it for us. And now the implementation of this class is as follows:
+
+[PRE21]
+
+Here we remove all the code that initializes the `_sprite` function, and delegate the job to the `Entity` constructor. We also add two new abilities, to shoot and to go to hyperspace:
+
+[PRE22]
+
+We set the default behavior of the collision. We need to know the real type of the `Entity` as a parameter. To do this we use the virtual table lookup by trying to convert the `Entity` class to a specific pointer type. If this is not possible, `nullptr` is returned by `dynamic_cast()`. There are other approaches to do this, such as double dispatch. But the one used here is the simplest and easy to understand but is a slow operation. Once the real type of entity is known, the collision test is made. In this project, the hit box of each entity is the circle inscribed in its sprite. This is a pretty good approximation:
+
+[PRE23]
+
+This function creates a `ShootPlayer` instance and adds it to the world. Because we don't want that the player to create a shoot in every frame, we add a timer that is updated in the `Player::update()` method, as shown:
+
+[PRE24]
+
+This method teleports the player to a random place in the world. It also removes all the impulsion, so the player will not continue to move in its previous direction after a teleportation:
+
+[PRE25]
+
+This method updates the position and the rotation of a `Player` according to the different action made by the user. It also updates the time since the last shoot to be able to shoot again.
+
+[PRE26]
+
+To better understand the `Entity::onDestroy()` method, remember that this function is called before the destruction (and the call of the destructor) of an `Entity` instance when a collision occurs. So here we call the `onDestroy()` function of the `Entity` base of the class, and then do the special things of the player, such as reduce the number of lives, set the player value to `nullptr`, and finally, add an explosion sound to the world. The other methods of the `Player` class have not changed.
+
+## The Enemy class
+
+We will now create the Enemy class as we have already described, in the table at the beginning of the `Design our game part`:
+
+[PRE27]
+
+This class is pretty small because it doesn't need a lot of new logic compared to the `Player` class. We only need to briefly specify the `onDestroy()` method by adding points to the global score of the game. So we create a `getPoints()` method that will simply return the number of points for an enemy.
+
+[PRE28]
+
+The constructor simply initializes the `_impulse` vector to a random one, but with the length as `1`. This vector will be multiplied by the speed of the `Saucers`/`Meteor` entity in their respective constructors:
+
+[PRE29]
+
+This method simply calls the `onDestroy()` function from the `Entity` base of the object, and then adds the points won by destroying the object.
+
+## The Saucer class
+
+Now that we have the `Enemy` class made, we can build the `Saucer` base class corresponding to our expectations:
+
+[PRE30]
+
+This class is pretty simple; we just have to specify the method already built in the `Entity` and `Enemy` class. Because the class will not specify the constructor, we use the using-declaration to refer to the one from `Enemy`. Here, we introduce a new function, `newSaucer()`. This function will randomly create a saucer depending on the player's score and add it to the world.
+
+Now, take a look to the implementation of this class:
+
+[PRE31]
+
+The same technique as in `Player::isCollide()` is used here, so no surprises. We specify this function in the `Saucer` base class because the collisions are the same for any of the saucers. It avoids code duplication as follows:
+
+[PRE32]
+
+This function is pretty long but not really complicated. It manages the movement of the saucer. Let's explain it step by step:
+
+1.  We look for the nearest object of the saucer into which it may crash.
+2.  If there is an object found too close, we add an impulse to the saucer in the opposite direction of this object. The goal is to avoid a crash.
+3.  Let's now continue with the other functions.
+
+    [PRE33]
+
+4.  This function is simple. We simply call the `onDestroy()` method from the `Enemy` base of the class, and then add an explosion sound to the world:
+
+    [PRE34]
+
+5.  As previously mentioned, this function creates a saucer randomly and adds it to the world. The more the points the player has, the greater the chance to create a `SmallSaucer` entity. When the score reaches 40,000 `SmallSaucer` is created as explained in the description of the game.
+
+Now that we have created the `Saucer` base class, let's make the `SmallSaucer` class. I'll not explain the `BigSaucer` class because this is the same as the `SmallSaucer` class but simpler (no shooting), as shown in the following code snippet:
+
+[PRE35]
+
+Because we know the skin of the `SmallSaucer` entity, we don't need the texture ID as a parameter, so we remove it from the constructor parameter. We also add an attribute to the class that will store the elapsed time since the last shoot was made, as in `Player` entity.
+
+Now take a look at the implementation:
+
+[PRE36]
+
+This constructor is simple because a great part of the job is already done in the base of the class. We just initialize the impulsion and add a sound to the world when the saucer appears. This will alert the player of the enemy and add some fun to the game:
+
+[PRE37]
+
+This function simply sets the number of points that are won when the `SmallSaucer` entity is destroyed:
+
+[PRE38]
+
+This function is fairly simple. Firstly, we just move the saucer by calling the `update()` function from the `Saucer` base, then shoot the player as soon as we can, and that's all.
+
+Here is a screenshot of the saucer behavior:
+
+![The Saucer class](img/8477OS_03_06.jpg)
+
+## The Meteor class
+
+Now it's time to build the main enemies of the game: the meteors. We will start by the virtual `Meteor` class. Here is its definition:
+
+[PRE39]
+
+As you can see, this class is very short. We only specify the collision rules and the update function that will manage its move. Now, take a look at its implementation:
+
+[PRE40]
+
+The collisions are tested with all `Entity` except the `Meteors` as it was specified. Here again, we use the `circleTest()` function to test the collision with the other objects:
+
+[PRE41]
+
+This function couldn't be more simple. We only move the `meteor` entity by computing the distance traveled since the last frame. There is nothing complicated to do here because a meteor is straight all the time, so there is no change in its direction.
+
+Now that we have the base of all the meteors, let's make the big one. I will not explain the others because the logic is the same. The following code snippet explains it:
+
+[PRE42]
+
+You can see this class is also very concise. We only need to define the constructor, the number of points earned, and the destruction. And now, the implementation of this class is as follows:
+
+[PRE43]
+
+The constructor is not difficult, but the choice of the texture ID is. Because there are several textures possible for a `BigMeteor`, we choose one of them randomly, as shown in the following code snippet:
+
+[PRE44]
+
+This method is the most important one. It creates some other meteors when a big one is destroyed, and adds them to the world. We also add an explosion sound for more fun during the game.
+
+## The Shoot class
+
+Now that all the enemies are made, let's build the last entity class, the `Shoot`. A Shoot is very simple. It's nothing but an entity that goes straight, and lives only for a specific time:
+
+[PRE45]
+
+Nothing surprising here, we only add a `_duration` attribute that will store the elapsed time since the creation of the `Shoot` class. Now, the implementation of the update function is as follows:
+
+[PRE46]
+
+This function moves the shoot and adjusts the `_duration` attribute by removing the elapsed time. If the shoot live time reaches zero, we set it to dead, and the world will do the rest.
+
+Now, let's build the `ShootPlayer` class:
+
+[PRE47]
+
+As you can see, the constructor has changed here. There is no more a `World` instance as a parameter apart from the source that creates the shoot. Let's take a look at the implementation to better understand the reason for this:
+
+[PRE48]
+
+As you can see, the world instance is copied from the source. Moreover, the initial position of the bullet is set to the position of the `Player` class when it is created. We also rotate the bullet as needed, and set its direction. I will not explain the collision function because there is nothing new compared to the previously explained functions.
+
+The `ShootSaucer` class uses the same logic as the `ShootPlayer` class, but there is a change. The accuracy of the saucers changes with the number of points of the player. So we need to add a bit of randomness. Let's take a look to the constructor:
+
+[PRE49]
+
+Let's explain this function step by step:
+
+1.  We compute the direction vector of the bullet.
+2.  We add to it a little loss of accuracy depending of the current score.
+3.  We set the `_impulsion` vector depending on the computed direction.
+4.  We set the position and the rotation of the sprite as needed.
+5.  And finally, we release it to the world.
+
+Now that all the classes have been made, you will be able to play the game. The final result should look like this:
+
+![The Shoot class](img/8477OS_03_02.jpg)
+
+Pretty nice, isn't it?
+
+# Building a Tetris clone
+
+Now that we've created a complete game, let's build another one, a **Tetris** clone. This game is simpler than the previous one and will take less time to build, but is still very interesting. In fact, the internal architecture of this game is really different from the others. This is due to the kind of game that it is: a puzzle. The aim of the game is to fill lines of a grid with pieces made of four squares. Each time a line in completed, it's destroyed, and points are added to the player. Because this is a different kind of game, there are several implications as there is no player or no enemies in this game, only pieces and a board (grid). For this game, I will focus on the game logic only. So I will not reuse the previously made classes such as `Action`, `ActionMap`, `ActionTarget`, `Configuration`, and `ResourceManager` to be more concise. Of course, you can use them to improve the proposed source code.
+
+So, to build this game we will need to build some classes:
+
+*   `Game`: This class will be very similar to the `Game` class from the previous project and will manage the rendering
+*   `Board`: This class will manage all the logic of the game
+*   `Piece`: This class will represent all the different kinds of tetrimino (pieces formed by four squares)
+*   `Stats`: This class will be used to show different information to the player
+
+The final game will look like the following screenshot:
+
+![Building a Tetris clone](img/8477OS_03_03.jpg)
+
+Now that we know how to structure a game, we will directly think about the need of each class.
+
+## The Stats class
+
+This class will be used to display the game information to the player such as the level, the number of rows, and the score. We will also use this class to display the **Game Over** message if it's needed. Because this class will display some information to the screen and can be put anywhere on the render space, we will extend it from `sf::Drawable` and `sf::Transformable`. Here is the header of this class:
+
+[PRE50]
+
+There is no real surprise for this class. We have some `sf::Text` that will be used to display information, and their values as numbers. We also add the point calculation to this class with the `addLines()` function.
+
+As previously mentioned, for the Tetris game, we need to focus on the game logic, so we are not going to use any manager for the font.
+
+Now take a look at the implementation of this class:
+
+[PRE51]
+
+The constructor of the class set all the attributes to no surprise:
+
+[PRE52]
+
+Here again, there are no surprises. We just assigned the `_isGameOver` value to true:
+
+[PRE53]
+
+This function is a bit more interesting. Its aim is to add points to the global score depending on the number of lines completed. It also corrects the drawable text value and the level. Because a piece is composed of four squares, the maximum number of lines that can be suppressed with one piece is the number four. So in the switch statement, we only need to check these four possibilities:
+
+[PRE54]
+
+As all the other `sf::Drawable::draw()` functions, this function draws the object on the screen. If the game is complete, we print the **Game Over** message, in other cases, we print the game score, number of completed rows, and the current level.
+
+In conclusion, this class is very simple and its job is to display all the game information on the screen.
+
+## The Piece class
+
+Now, let's build the first important class of this game, the `Piece` class. In Tetris, there are seven different tetrimino. I will not build seven different classes but only one. The idea is to show you another way to make your entities.
+
+But, what is a piece exactly? If you think about it, you will find that a piece can be represented as an array of numbers. Moreover, a piece can be rotated. There are three ways to do this: calculate the rotation at runtime, pre-calculate the rotation at the startup or predefine them in the code. Because in our game, each piece is known when we create the game, we will choose the last way: hard code all the rotation. It could look bad, but in reality it's not, and it will simplify a lot our implementation as you will see later in this chapter, but keep in mind that it's not a fantastic idea to hard code items in every game.
+
+Now let's take a look at the class:
+
+[PRE55]
+
+This class is a bit long. Let's explain it step by step:
+
+1.  We will define some constant variables that will be used for configuration purposes.
+2.  We will define an `enum` function with all the different tetrimino pieces.
+3.  We will define an array of color. Each cell will represent the color of a tetrimino previously defined in the `enum` function.
+4.  The next line is particular. This defines all the different tetrimino rotations. Because each piece is a 2D array, we also need this information.
+5.  The other functions are more common: constructor, getter, and setter.
+6.  We will define some private attributes that store the state of the piece.
+
+Now is the funny part, the implementation of all of this. Because of the choices made, the implementation will differ a lot with the previous entity in the **Asteroid** game:
+
+[PRE56]
+
+This array stores all the different colors for each tetrimino defined by the `TetriminoTypes` enum:
+
+[PRE57]
+
+At first glance, this is a very special array but turns out it's not really. In fact, each different piece is defined in the first cell of the array, the second cell represents all the different rotations of this piece and the rest is the representation of the piece rotation as a 2D array. The `0` value represents empty, `2` represents the center of the piece, and `1` represents the other piece of the tetrimino. I've not put all the code because it is pretty long, but you can take a look at it if needed at `03_Simple_2D_game/Tetris/src/SFML-Book/Piece.cpp`.
+
+[PRE58]
+
+### Note
+
+The `assert` function is a macro that will raise an error and exit the program if the expression such as parameter is false. You can remove it by adding `#define NDEBUG` to your code/compiler option to disable this function.
+
+The `assert()` function is useful to do checks in the debug mode only. Use it when you want to be sure that a specific case is respected at run time.
+
+The constructor of the `Piece` class is simple, but we can easily send wrong parameter values to it. So I decided to show you the assert functionality, as follows:
+
+[PRE59]
+
+All of these functions are getters and setters, and they are simple. The only particular thing is the `setPosition`/`Rotation()` functions because it also resets the internal clock. Since the clock stores the time since the last movement of the piece, in reality it should not sock you.
+
+## The Board class
+
+Now, that all the pieces are made, let's build the class that will manage them, the **Board**.
+
+This class will be represented as a grid (array) that stores colors (piece). So internally, this class is nothing but an array of integers. Each cell will store the kind of piece because the kind of piece determines its color (see the `Piece` class). Now take a look at the header of this class:
+
+[PRE60]
+
+In the Board class we firstly define some configuration variable. This class is drawable and transformable, so we extend it from the corresponding SFML class. Then we create the constructor that take the size of the board as parameters and some methods to add, move and manage a Piece. We also add some private methods that will help use to in the implementation of the publics, and we store the size of the board internally, such as the grid. Because the size is not known at compile time, we need to build the grid at runtime, so the grid is a pointer to an array. We also add a sf::VertexArray that will contain the graphical grid to display on the screen.
+
+Now that the class has been explained, let's implement it.
+
+[PRE61]
+
+The constructor initialize all the attributes but also create the grids content and border. Because the grid content and border are a one dimension arrays, we need to make some trick to access to the right cell instead of using the usual "[][]" operator.
+
+[PRE62]
+
+The draw method is not complex. For each cell, there is some data in it, we construct a rectangle of the right size at the right place, with the right color, and display it. And then we display the grid border.
+
+[PRE63]
+
+This function simply sets the initial position of a piece on the board, and adds it to the grid. It also checks if the game is over or not, by the following code snippet:
+
+[PRE64]
+
+This function is a bit more complicated, so let's explain it step by step:
+
+1.  We will delete the `Piece` class from the board so that it doesn't collide with itself.
+2.  We will check if we can move the piece and set its new position if we can.
+3.  We will read the piece to the board
+
+The flood algorithm will be explained later:
+
+[PRE65]
+
+This functionality works as the previously mentioned function with just one exception. It only checks if the piece can move down and not in all directions, as shown in the previous code snippet:
+
+[PRE66]
+
+This function is a special action that moves the piece as we can to the down. This is a special action in the Tetris game, called "Hard drop".
+
+[PRE67]
+
+These two functions rotate the piece to a specific direction. As there are only four different rotations (`NB_ROTATIONS`), we need to adjust the new rotation value using a circular check:
+
+[PRE68]
+
+Like the other functions, this one checks whether we can rotate a piece or not, and return the value. This function does not change the content of the grid:
+
+[PRE69]
+
+These two functions are very close. Each one modifies the grid with a specific value, to set or remove a piece from the internal grid:
+
+[PRE70]
+
+This `flood` function is an implementation of the `flood` algorithm. It allows us to fill the array with a value, depending of another array. The second array is the shape to fill in the first one. In our case, the first array is the grid, and the second the piece, as shown in the following code snippet:
+
+[PRE71]
+
+This function simply removes all the completed lines, and lowers all the upper lines to simulate gravity.
+
+Now, the `board` class is made, and we have all that we need to build the game. So let's do it.
+
+## The Game class
+
+The `Game` class is very similar to the `Game` class from Asteroid. Its purpose is the same and all the internal logic is similar as well, as shown in the following code snippet:
+
+[PRE72]
+
+As you can see, we don't change the logic of the `Game` class, but we add it some private functions and attributes to correspond to the different kind of games. A window is still required, but we add the current piece reference, the board (that replaces the world), and a stats printer. We also need a way to store the next fall of a piece.
+
+Now take a look at the implementation of this class:
+
+[PRE73]
+
+The constructor initializes the different attributes of the class, and sets the position of the different drawable object. It also creates the first piece to start the game. We don't manage any menu here:
+
+[PRE74]
+
+This function is not complicated but is interesting, because all the logic of the game is here. Let's see this in the following steps:
+
+1.  The first step is to clear lines and update the score.
+2.  Then, we will check whether we need to spawn another piece or not
+3.  We will calculate the time needed by the current level to force a movement downward and apply it if necessary.
+4.  Of course, if the game is over, we don't do all this stuff, but tell the stats printer that the game is over:
+
+    [PRE75]
+
+5.  Here again, there is nothing new. We just draw all that can be drawn depending on the situation:
+
+    [PRE76]
+
+6.  This last function creates a piece at random, and adds it to the grid, which will set its default position.
+
+And here we are. The game is finished!
+
+# Summary
+
+As you surely noticed, there are some common points with the previous game we made, but not a lot. The main idea of showing you this game, is that there is no "super technique" that will work in every kind of game. You have to adapt your internal architecture and logic depending on the kind of game you want to build. I hope you understand that.
+
+In the next chapter, you will learn how to use a physics engine, and add it in the Tetris game to build a new kind of game.

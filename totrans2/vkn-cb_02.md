@@ -1,0 +1,886 @@
+# Image Presentation
+
+In this chapter, we will cover the following recipes:
+
+*   Creating a Vulkan Instance with WSI extensions enabled
+*   Creating a presentation surface
+*   Selecting a queue family that supports presentation to a given surface
+*   Creating a logical device with WSI extensions enabled
+*   Selecting a desired presentation mode
+*   Getting capabilities of a presentation surface
+*   Selecting a number of swapchain images
+*   Choosing a size of swapchain images
+*   Selecting desired usage scenarios of swapchain images
+*   Selecting a transformation of swapchain images
+*   Selecting a format of swapchain images
+*   Creating a swapchain
+*   Getting handles of swapchain images
+*   Creating a swapchain with R8G8B8A8 format and a mailbox present mode
+*   Acquiring a swapchain image
+*   Presenting an image
+*   Destroying a swapchain
+*   Destroying a presentation surface
+
+# Introduction
+
+APIs such as Vulkan can be used for many different purposes, such as mathematical and physical computations, image or video stream processing, and data visualizations. But the main purpose Vulkan was designed for and its most common usage is efficiently rendering 2D and 3D graphics. And when our application generates an image, we usually would like to display it on screen.
+
+At first, it may seem surprising that the core of the Vulkan API doesn't allow for displaying generated images in the application's window. This is because Vulkan is a portable, cross-platform API but, unfortunately, there is no universal standard for presenting images on screen in different operating systems because they have drastically different architectures and standards.
+
+That's why a set of extensions was introduced for the Vulkan API which allow us to present generated images in an application's window. These extensions are commonly referred to as Windowing System Integration (WSI). Each operating system on which Vulkan is available has its own set of extensions that integrate Vulkan with the windowing system specific for a given OS.
+
+The most important extension is the one which allows us to create a swapchain. A swapchain is an array of images that can be presented (displayed) to the user. In this chapter, we will be preparing for drawing images on screen--setting up image parameters such as format, size, and so on. We will also take a look at the various available **presentation** modes that determine the way images are displayed, that is, define whether vertical sync is enabled or disabled. And, finally, we will see how to present the images--display them in the application's window.
+
+# Creating a Vulkan Instance with WSI extensions enabled
+
+To be able to properly display images on screen, we need to enable a set of WSI extensions. They are divided into instance- and device-levels, depending on the functionality they introduce. The first step is to create a Vulkan Instance with a set of enabled extensions that allow us to create a presentation surface--a Vulkan representation of an application's window.
+
+# How to do it...
+
+On the Windows operating systems family, perform the following steps:
+
+1.  Prepare a variable of type `VkInstance` named `instance`.
+2.  Prepare a variable of type `std::vector<char const *>` named `desired_extensions`. Store the names of all extensions you want to enable in the `desired_extensions` variable.
+3.  Add another element to the `desired_extensions` vector with the `VK_KHR_SURFACE_EXTENSION_NAME` value.
+4.  Add yet another element to the `desired_extensions` vector with the `VK_KHR_WIN32_SURFACE_EXTENSION_NAME` value.
+5.  Create a Vulkan Instance object for which enable all of the extensions specified in the `desired_extensions` variable (refer to the *Creating a Vulkan Instance* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*).
+
+On the Linux operating systems family with an **X11** windowing system through an **XLIB** interface, perform the following steps:
+
+1.  Prepare a variable of type `VkInstance` named `instance`.
+2.  Prepare a variable of type `std::vector<char const *>` named `desired_extensions`. Store the names of all extensions you want to enable in the `desired_extensions` variable.
+3.  Add another element to the `desired_extensions` vector with the `VK_KHR_SURFACE_EXTENSION_NAME` value.
+4.  Add yet another element to the `desired_extensions` vector with the `VK_KHR_XLIB_SURFACE_EXTENSION_NAME` value.
+5.  Create a Vulkan Instance object for which enable all of the extensions specified in the `desired_extensions` variable (refer to the *Creating a Vulkan Instance* recipe from [Chapter 1](https://cdp.packtpub.com/vulkancookbook/wp-admin/post.php?post=29&action=edit#post_42), *Instance and Devices*).
+
+On the Linux operating systems family with an X11 windowing system through an **XCB** interface, perform the following steps:
+
+1.  Prepare a variable of type `VkInstance` named `instance`.
+2.  Prepare a variable of type `std::vector<char const *>` named `desired_extensions`. Store the names of all extensions you want to enable in the `desired_extensions` variable.
+
+3.  Add another element to the `desired_extensions` vector with the `VK_KHR_SURFACE_EXTENSION_NAME` value.
+4.  Add yet another element to the `desired_extensions` vector with the `VK_KHR_XCB_SURFACE_EXTENSION_NAME` value.
+5.  Create a Vulkan Instance object for which enable all of the extensions specified in the `desired_extensions` variable (refer to the *Creating a Vulkan Instance* recipe from [Chapter 1](https://cdp.packtpub.com/vulkancookbook/wp-admin/post.php?post=29&action=edit#post_42), *Instance and Devices*).
+
+# How it works...
+
+Instance-level extensions are responsible for managing, creating, and destroying a presentation surface. It is a (cross-platform) representation of an application's window. Through it, we can check whether we are able to draw to the window (displaying an image, a presentation, is an additional property of a queue family), what its parameters are, or what presentation modes are supported (if we want the vertical sync to be enabled or disabled).
+
+The presentation surface is directly connected to our application's window, so it can be created only in a way that is specific for a given operating system. That's why this functionality is introduced through extensions and each operating system has its own extension for creating a presentation surface. On the Windows operating systems family, this extension is called `VK_KHR_win32_surface`. On the Linux operating systems family with an X11 windowing system, this extension is called `VK_KHR_xlib_surface`. On the Linux operating systems family with an XCB windowing system, this extension is called `VK_KHR_xcb_surface`.
+
+The functionality of destroying a presentation surface is enabled via an additional extension called `VK_KHR_surface`. It is available on all operating systems. So in order to properly manage a presentation surface, check its parameters, and verify the ability to present to it, we need to enable two extensions during Vulkan Instance creation.
+
+`VK_KHR_win32_surface` and `VK_KHR_surface` extensions introduce the ability to create and destroy a presentation surface on the Windows OS family.
+
+`VK_KHR_xlib_surface` and `VK_KHR_surface` extensions introduce the ability to create and destroy a presentation surface on the Linux OS family with an X11 windowing system and an XLIB interface.
+
+`VK_KHR_xcb_surface` and `VK_KHR_surface` extensions introduce the ability to create and destroy a presentation surface on the Linux OS family with an X11 windowing system and an XCB interface.
+
+In order to create a Vulkan Instance that supports the process of creating and destroying a presentation surface, we need to prepare the following code:
+
+[PRE0]
+
+In the preceding code, we begin with a vector variable in which the names of all extensions we want to enable are stored. We then add the required WSI extensions to the vector. The names of these extensions are provided through convenient preprocessor definitions. They are defined in the `vulkan.h` file. With them, we don't need to remember the exact names of extensions and if we make a mistake, compiler will tell us about it.
+
+After we are done preparing the list of required extensions, we can create a Vulkan Instance object in the same way as described in the *Creating a Vulkan Instance* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*.
+
+# See also
+
+*   In [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices* see the following recipes:
+    *   *Checking available Instance extensions*
+    *   *Creating a Vulkan Instance*
+*   The following recipe in this chapter:
+    *   *Creating a logical device with WSI extensions enabled*
+
+# Creating a presentation surface
+
+A presentation surface represents an application's window. It allows us to acquire the window's parameters, such as dimensions, supported color formats, required number of images, or presentation modes. It also allows us to check whether a given physical device is able to display an image in a given window.
+
+That's why, in situations where we want to show an image on screen, we need to create a presentation surface first, as it will help us choose a physical device that suits our needs.
+
+# Getting ready
+
+To create a presentation surface, we need to provide the parameters of an application's window. In order to do that, the window must have been already created. In this recipe, we will provide its parameters through a structure of type `WindowParameters`. Its definition looks like this:
+
+[PRE1]
+
+On Windows, the structure contains the following parameters:
+
+*   A variable of type `HINSTANCE` named `HInstance` in which we store the value acquired using the `GetModuleHandle()` function
+*   A variable of type `HWND` named `HWnd` in which we store a value returned by the `CreateWindow()` function
+
+On Linux with an X11 windowing system and an XLIB interface, the structure contains the following members:
+
+*   A variable of type `Display*` named `Dpy` in which the value of the `XOpenDisplay()` function call is stored
+*   A variable of type `Window` named `Window` to which we assign a value returned by `XCreateWindow()` or `XCreateSimpleWindow()` functions
+
+On Linux with an X11 windowing system and an XCB interface, the `WindowParameters` structure contains the following members:
+
+*   A variable of type `xcb_connection_t*` named `Connection` in which we store a value returned by the `xcb_connect()` function
+*   A variable of type `xcb_window_t` named `Window` in which a value returned by the `xcb_generate_id()` function is stored
+
+# How to do it...
+
+On the Windows operating systems family, perform the following steps:
+
+1.  Take the variable of type `VkInstance` named `instance` in which a handle of a created Vulkan Instance is stored.
+2.  Create a variable of type `WindowParameters` named `window_parameters`. Assign the following values for its members:
+    *   A value returned by the `CreateWindow()` function for `HWnd`
+    *   A value returned by the `GetModuleHandle(nullptr)` function for `HInstance`
+
+3.  Create a variable of type `VkWin32SurfaceCreateInfoKHR` named `surface_create_info` and initialize its members with the following values:
+    *   `VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `0` value for `flags`
+    *   `window_parameters.HInstance` member for `hinstance`
+    *   `window_parameters.HWnd` member for `hwnd`
+4.  Create a variable of type `VkSurfaceKHR` named `presentation_surface` and assign a `VK_NULL_HANDLE` value to it.
+5.  Call `vkCreateWin32SurfaceKHR(instance, &surface_create_info, nullptr, &presentation_surface)`. Provide a handle of a created Instance in the first parameter, a pointer to the `surface_create_info` variable in the second parameter, a `nullptr` value in the third parameter, and a pointer to the `presentation_surface` variable in the last parameter.
+6.  Make sure the `vkCreateWin32SurfaceKHR()` function call was successful by checking whether the value returned by it is equal to `VK_SUCCESS` and the value of the `presentation_surface` variable is not equal to a `VK_NULL_HANDLE`.
+
+On the Linux operating systems family with an X11 windowing system and an XLIB interface, perform the following steps:
+
+1.  Take the variable of type `VkInstance` named `instance` in which a handle of a created Vulkan Instance is stored.
+2.  Create a variable of type `WindowParameters` named `window_parameters`. Assign the following values for its members:
+    *   A value returned by the `XOpenDisplay()` function for `Dpy`
+    *   A value returned by the `XCreateSimpleWindow()` or `XCreateWindow()` functions for `Window`
+3.  Create a variable of type `VkXlibSurfaceCreateInfoKHR` named `surface_create_info` and initialize its members with the following values:
+    *   `VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `0` value for `flags`
+    *   `window_parameters.Dpy` member for `dpy`
+    *   `window_parameters.Window` member for `window`
+4.  Create a variable of type `VkSurfaceKHR` named `presentation_surface` and assign a `VK_NULL_HANDLE` value to it.
+
+5.  Call `vkCreateXlibSurfaceKHR(instance, &surface_create_info, nullptr, &presentation_surface)`. Provide a handle of a created Instance in the first parameter, pointer to the `surface_create_info` variable in the second parameter, a `nullptr` value in the third parameter, and a pointer to the `presentation_surface` variable in the last parameter.
+6.  Make sure the `vkCreateXlibSurfaceKHR()` function call was successful by checking whether the value returned by it is equal to `VK_SUCCESS` and the value of the `presentation_surface` variable is not equal to `VK_NULL_HANDLE`.
+
+On the Linux operating systems family with an X11 windowing system and an XCB interface, perform the following steps:
+
+1.  Take the variable of type `VkInstance` named `instance` in which a handle of a created Vulkan Instance is stored.
+2.  Create a variable of type `WindowParameters` named `window_parameters`. Assign the following values for its members:
+    *   A value returned by the `xcb_connect()` function for `Connection`
+    *   A value returned by the `xcb_generate_id()` functions for `Window`
+3.  Create a variable of type `VkXcbSurfaceCreateInfoKHR` named `surface_create_info` and initialize it's members with the following values:
+    *   `VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `0` value for `flags`
+    *   `window_parameters.Connection` member for `connection`
+    *   `window_parameters.Window` member for `window`
+4.  Create a variable of type `VkSurfaceKHR` named `presentation_surface` and assign a `VK_NULL_HANDLE` value to it.
+5.  Call `vkCreateXcbSurfaceKHR( instance, &surface_create_info, nullptr, &presentation_surface )`. Provide a handle of a created Instance in the first parameter, a pointer to the `surface_create_info` variable in the second parameter, a `nullptr` value in the third parameter, and a pointer to the `presentation_surface` variable in the last parameter.
+6.  Make sure the `vkCreateXcbSurfaceKHR()` function call was successful by checking whether the value returned by it is equal to `VK_SUCCESS` and the value of the `presentation_surface` variable is not equal to `VK_NULL_HANDLE`.
+
+# How it works...
+
+Presentation surface creation depends heavily on parameters that are specific for a given operating system. On each OS, we need to create a variable of a different type and call a different function. Here is a code that creates a presentation surface on Windows:
+
+[PRE2]
+
+Here is a part of the code that does the same on the Linux operating system, when we are using the X11 windowing system:
+
+[PRE3]
+
+And finally, here is the part for the XCB windowing system, also on Linux:
+
+[PRE4]
+
+The preceding code samples are very similar. In each, we create a variable of a structure type whose members we initialize with parameters of a created window. Next we call a `vkCreate???SurfaceKHR()` function which creates a presentation surface and stores its handle in the `presentation_surface` variable. After that, we should check whether everything worked as expected:
+
+[PRE5]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Getting capabilities of a presentation surface*
+*   *Creating a swapchain*
+*   *Destroying a presentation surface*
+
+# Selecting a queue family that supports presentation to a given surface
+
+Displaying an image on screen is performed by submitting a special command to the device's queue. We can't display images using any queues we want or, in other words, we can't submit this operation to any queue. This is because it may not be supported. Image presentation, along with the graphics, compute, transfer, and sparse operations, is another property of a queue family. And similar to all types of operations, not all queues may support it and, more importantly, not even all devices may support it. That's why we need to check what queue family from which physical device allows us to present an image on screen.
+
+# How to do it...
+
+1.  Take the handle of a physical device returned by the `vkEnumeratePhysicalDevices()` function. Store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Take the created presentation surface and store its handle in a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Create a `std::vector` with elements of type `VkQueueFamilyProperties` and call it `queue_families`.
+4.  Enumerate all queue families that are available on a physical device represented by the `physical_device` variable (refer to the *Checking available queue families and their properties* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*). Store the results of this operation in the `queue_families` variable.
+5.  Create a variable of type `uint32_t` named `queue_family_index`.
+6.  Create a variable of type `uint32_t` named `index`. Use it to loop over all elements of the `queue_families` vector. For each element of the `queue_families` variable, perform the following steps: 
+    1.  Create a variable of type `VkBool32` named `presentation_supported`. Assign a value of `VK_FALSE` to this variable.
+    2.  Call `vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, index, presentation_surface, &presentation_supported)`. Provide a handle of the physical device in the first argument, the number of the current loop iteration in the second argument, and a handle of the presentation surface in the third argument. Also, provide a pointer to the `presentation_supported` variable in the last argument.
+    3.  Check whether the value returned by the `vkGetPhysicalDeviceSurfaceSupportKHR() `function is equal to `VK_SUCCESS` and whether the value of the `presentation_supported` variable is equal to `VK_TRUE`. If it is, store the value of a current loop iteration (`index` variable) in the `queue_family_index` variable and finish the loop.
+
+# How it works...
+
+First we need to check what queue families are exposed by a given physical device. This operation is performed the same way as described in the *Checking available queue families and their properties* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*:
+
+[PRE6]
+
+Next we can iterate over all available queue families and check whether a given family supports image presentation. This is performed by calling a `vkGetPhysicalDeviceSurfaceSupportKHR()` function which stores the information in a specified variable. If the image presentation is supported, we can remember an index of a given family. All queues from this family will support image presentation:
+
+[PRE7]
+
+When there is no queue family exported by a given physical device that supports image presentation, we must check whether this operation is available on another physical device.
+
+# See also
+
+In [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices* see the following recipes:
+
+*   *Checking available queue families and their properties*
+*   *Selecting index of a queue family with desired capabilities*
+*   *Creating a logical device*
+
+# Creating a logical device with WSI extensions enabled
+
+When we have created an Instance with WSI extensions enabled and have found a queue family that supports image presentation, it is time to create a logical device with another extension enabled. A device-level WSI extension allows us to create a swapchain. This is a collection of images which are managed by the presentation engine. In order to use any of these images and to render into them, we need to acquire them. After we are done, we give it back to the presentation engine. This operation is called a presentation and it informs the driver that we want to show an image to the user (present or display it on screen). The presentation engine displays it according to the parameters defined during swapchain creation. And we can create it only on logical devices with an enabled swapchain extension.
+
+# How to do it...
+
+1.  Take the handle of a physical device, for which there is a queue family that supports image presentation, and store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Prepare a list of queue families and a number of queues from each family. Assign a priority (a floating-point value between `0.0f` and `1.0f`) for each queue from each family. Store these parameters in a `std::vector` variable named `queue_infos` with elements of a custom type `QueueInfo` (refer to the *Creating a logical device* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*). Remember to include at least one queue from a family that supports image presentation.
+3.  Prepare a list of extensions that should be enabled. Store it in a variable of type `std::vector<char const *>` named `desired_extensions`.
+4.  Add another element to the `desired_extensions` variable with value equal to `VK_KHR_SWAPCHAIN_EXTENSION_NAME`.
+5.  Create a logical device using the parameters prepared in the `physical_device` and `queue_infos` variable and with all extensions enabled from the `desired_extensions` vector (refer to the *Creating a logical device* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*).
+
+# How it works...
+
+When we want to display images on screen, there is only one device-level extension that needs to be enabled during logical device creation. This is called `VK_KHR_swapchain` and allows us to create a swapchain.
+
+A swapchain defines parameters that are very similar to the parameters of a default drawing buffer in the OpenGL API. It specifies, among others, the format of an image we want to render to, the number of images (which can be thought of as double or triple buffering), or a presentation mode (v-sync enabled or disabled). Images created along the swapchain are owned and managed by the presentation engine. We are not allowed to create or destroy them by ourselves. We can't even use them until we ask to do this. When we want to display an image on screen, we need to ask for one of the swapchain images (acquire it), render into it, and then give the image back to the presentation engine (present it).
+
+The ability to specify a set of presentable images, to acquire them, and to display them on screen is defined in a `VK_KHR_swapchain` extension.
+
+The functionality described is defined in the `VK_KHR_swapchain` extension. To enable it during logical device creation, we need to prepare the following code:
+
+[PRE8]
+
+The logical device creation code is identical to the operation described in the *Creating a logical device* recipe from [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices*. Here, we just need to remember that we must check whether a given physical device supports a `VK_KHR_swapchain` extension, and after that, we need to include it in a list of extensions that should be enabled.
+
+The name of the extension is specified through a `VK_KHR_SWAPCHAIN_EXTENSION_NAME` preprocessor definition. It is defined in the `vulkan.h` header file and it helps us avoid making typos in the name of the extension.
+
+# See also
+
+*   The following recipes in [Chapter 1](d10e8284-6122-4d0a-8f86-ab0bc0bba47e.xhtml), *Instance and Devices:*
+    *   *Checking available device extensions*
+    *   *Creating a logical device*
+*   The recipe *Creating a Vulkan Instance with WSI extensions* enabled in this chapter
+
+# Selecting a desired presentation mode
+
+The ability to display images on screen is one of the most important features of a Vulkan's swapchain--and, in fact, it's what a swapchain was designed for. In OpenGL, when we finished rendering to a back buffer, we just switched it with a front buffer and the rendered image was displayed on screen. We could only determine whether we wanted to display an image along with blanking intervals (if we wanted a v-sync to be enabled) or not.
+
+In Vulkan, we are not limited to only one image (back buffer) to which we can render. And, instead of two (v-sync enabled or disabled), we can select one of more ways in which images are displayed on screen. This is called a presentation mode and we need to specify it during swapchain creation.
+
+# How to do it...
+
+1.  Take the handle of a physical device enumerated with the `vkEnumeratePhysicalDevices()` function. Store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Take the created presentation surface and store its handle in a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Create a variable of type `VkPresentModeKHR` named `desired_present_mode`. Store a desired presentation mode in this variable.
+
+4.  Prepare a variable of type `uint32_t` named `present_modes_count`.
+5.  Call `vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, presentation_surface, &present_modes_count, nullptr)`. Provide a handle of a physical device and a handle of a presentation surface as the first two arguments. In the third parameter, provide a pointer to the `present_modes_count` variable.
+6.  If a function call is successful, the `present_modes_count` variable will contain the number of supported presentation modes.
+7.  Create a variable of type `std::vector<VkPresentModeKHR>` named `present_modes`. Resize the vector to be large enough to contain at least `present_modes_count` elements.
+8.  Once again, call `vkGetPhysicalDeviceSurfacePresentModesKHR( physical_device, presentation_surface, &present_modes_count, &present_modes[0])`, but this time, in the last parameter, provide a pointer to the first element of the `present_modes` vector.
+9.  If the function returns a `VK_SUCCESS` value, the `present_modes` variable will contain the present modes supported on a given platform.
+10.  Iterate over all elements of the `present_modes` vector. Check whether one of the elements is equal to the desired present mode stored in the `desired_present_mode` variable.
+11.  If the desired present mode is not supported (none of the elements of the `present_modes` vector is equal to the `desired_present_mode` variable), select a FIFO present mode--a value of `VK_PRESENT_MODE_FIFO_KHR`--which always should be supported.
+
+# How it works...
+
+The presentation mode defines the way in which images are displayed on screen. Currently, there are four modes defined in a Vulkan API.
+
+The simplest is an **IMMEDIATE** mode. Here, when an image is presented, it immediately replaces the image that is being displayed. There is no waiting involved, no queue, and no other parameters that should be considered from the application perspective. And because of that, screen tearing may (and probably will) be observed:
+
+![](img/image_02_001.png)
+
+The presentation mode that is mandatory, that every Vulkan API implementation must support, is a **FIFO mode**. Here, when an image is presented, it is added to the First In First Out queue (the length of this queue is equal to the number of images in a swapchain minus one, *n - 1*). From this queue, images are displayed on screen in sync with blanking periods (v-sync), always in the same order they were added to the queue. There is no tearing in this mode, as v-sync is enabled. This mode is similar to OpenGL's buffer swapping with swap interval set to one.
+
+The FIFO presentation mode must always be supported.
+
+There is also a slight modification of a FIFO mode called **FIFO RELAXED**. The difference between these two is that in **RELAXED** mode, images are displayed on screen in sync with blanking periods only when they are presented quick enough, faster than the refresh rate. If an image is presented by the application and the time that has elapsed from the last presentation is greater than the refresh time between two blanking periods (the FIFO queue is empty), the image is presented immediately. So if we are quick enough, there is no screen tearing, but if we are drawing slower than the monitor's refresh rate, screen tearing will be visible. This behavior is similar to that specified in OpenGL's `EXT_swap_control_tear` extension:
+
+![](img/image_02_002.png)
+
+The last presentation mode is called **mailbox** mode. It can be perceived as a triple buffering. Here also, there is a queue involved, but it contains just one element. An image that is waiting in this queue is displayed in sync with the blanking periods (v-sync is enabled). But when the application presents an image, the new image replaces the one waiting in the queue. So the presentation engine always displays the latest, the most recent, image available. And there is no screen tearing:
+
+![](img/image_02_003.png)
+
+To select the desired presentation mode, we need to check what modes are available on the current platform. First, we need to acquire the number of all supported presentation modes. This is done by calling a `vkGetPhysicalDeviceSurfacePresentModesKHR()` function with the last parameter set to `nullptr`:
+
+[PRE9]
+
+Next we can prepare storage for all supported modes and once again call the same function, but this time with the last parameter pointing to the allocated storage:
+
+[PRE10]
+
+Now that we know what presentation modes are available, we can check whether the selected mode is available. If it is not, we can choose another presentation mode from the acquired list or we just fall back to the default FIFO mode that is mandatory and should always be available:
+
+[PRE11]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Selecting a number of swapchain images*
+*   *Creating a swapchain*
+*   *Creating a swapchain with R8G8B8A8 format and a mailbox present mode*
+*   *Acquiring a swapchain image*
+*   *Presenting an image*
+
+# Getting the capabilities of a presentation surface
+
+When we create a swapchain, we need to specify creation parameters. But we can't choose whatever values we want. We must provide values that fit into supported limits, which can be obtained from a presentation surface. So in order to properly create a swapchain, we need to acquire the surface's capabilities.
+
+# How to do it...
+
+1.  Take the handle of a selected physical device enumerated using the `vkEnumeratePhysicalDevices()` function and store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Take the handle of a created presentation surface. Store it in a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Create a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+4.  Call `vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, presentation_surface, &surface_capabilities)` for which provide the handles of the physical device and a presentation surface, and a pointer to the `surface_capabilities` variable.
+5.  If the function call is successful, the `surface_capabilities` variable will contain the presentation surface's parameters, limits, and capabilities that can be used to create a swapchain.
+
+# How it works...
+
+Acquiring the supported capabilities and ranges of parameters that can be used during swapchain creation is very straightforward:
+
+[PRE12]
+
+We just call a `vkGetPhysicalDeviceSurfaceCapabilitiesKHR()` function, which stores the parameters in a variable of type `VkSurfaceCapabilitiesKHR`. It is a structure which contains members defining the following parameters:
+
+*   Minimal and maximal allowed number of swapchain images
+*   Minimal, maximal, and current extent of a presentation surface
+*   Supported image transformations (which can be applied before presentation) and the transformation currently in use
+*   Maximal number of supported image layers
+*   Supported usages
+*   A list of the supported compositions of a surface's alpha value (how an image's alpha component should affect the application's window desktop composition)
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a presentation surface*
+*   *Selecting a number of swapchain images*
+*   *Choosing a size of swapchain images*
+*   *Selecting desired usage scenarios of swapchain images*
+*   *Selecting a transformation of swapchain images*
+*   *Selecting a format of swapchain images*
+*   *Creating a swapchain*
+
+# Selecting a number of swapchain images
+
+When an application wants to render into a swapchain image, it must acquire it from the presentation engine. An application can acquire more images; we are not limited to just one image at a time. But the number of images that are available (unused by the presentation engine at a given time) depends on the specified presentation mode, the application's current situation (rendering/presenting history), and the number of images--when we create a swapchain, we must specify the (minimal) number of images that should be created.
+
+# How to do it...
+
+1.  Acquire the capabilities of a presentation surface (refer to the *Getting capabilities of a presentation surface* recipe). Store them in a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+2.  Create a variable of type `uint32_t` named `number_of_images`.
+3.  Assign a value of `surface_capabilities.minImageCount + 1` to the `number_of_images` variable.
+4.  Check whether the value of the `maxImageCount` member of the `surface_capabilities` variable is greater than zero. If it is, this means there is a limit to the maximal allowed number of created images. In this case, check whether the value of the `number_of_images` variable is greater than the value of `surface_capabilities.maxImageCount`. If it is, clamp the value of the `number_of_images` variable to the limit defined in the `maxImageCount` member of the `surface_capabilities` variable.
+
+# How it works...
+
+Images created (automatically) along with a swapchain are mainly used for presentation purposes. But they also allow the presentation engine to work properly. One image is (always) displayed on screen. The application can't use it until it is replaced by another image. Images that are presented replace the displayed image immediately, or wait in a queue for the proper moment (v-sync) to replace it, depending on the selected mode. An image that was displayed and is now being replaced becomes unused and can be acquired by the application.
+
+An application can acquire only images that are currently in an unused state (refer to the *Selecting a desired presentation mode* recipe). We can acquire all of them. But as soon as all unused images are acquired, we need to present at least one of them in order to be able to acquire another one. If we don't do this, the acquiring operation may block indefinitely.
+
+The number of unused images depends mainly on the presentation mode and the total number of images created with a swapchain. So the number of images that we want to create should be chosen based on the rendering scenarios we want to implement (how many images an application wants to possess at the same time) and the selected present mode.
+
+Choosing the minimal number of images may look like this:
+
+[PRE13]
+
+Usually, in the most typical rendering scenarios, we will be rendering into a single image at a given time. So the minimal supported number of images may be enough. Creating more images allows us to acquire more of them at the same time, but, more importantly, it may also increase the performance of our application if a proper rendering algorithm is implemented. But we can't forget that images consume a considerable amount of memory. So the number of images we choose for the swapchain should be a compromise between our needs, memory usage, and the performance of our application.
+
+In the preceding example, such a compromise is presented in which the application chooses one image more than the minimal value that allows the presentation engine to work properly. After that, we also need to check whether there is an upper limit and whether we exceed it. If we do, we need to clamp the selected value to the supported range.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Selecting a desired presentation mode*
+*   *Getting the capabilities of a presentation surface*
+*   *Creating a swapchain*
+*   *Acquiring a swapchain image*
+*   *Presenting an image*
+
+# Choosing a size of swapchain images
+
+Usually, images created for a swapchain should fit into an application's window. The supported dimensions are available in the presentation surface's capabilities. But on some operating systems, the size of the images defines the final size of the window. We also should keep that in mind and check what dimensions are proper for the swapchain images.
+
+# How to do it...
+
+1.  Acquire the capabilities of a presentation surface (refer to the *Getting capabilities of a presentation surface* recipe). Store them in a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+2.  Create a variable of type `VkExtent2D` named `size_of_images` in which we will store the desired size of swapchain images.
+3.  Check whether the `currentExtent.width` member of the `surface_capabilities` variable is equal to `0xFFFFFFFF` (`-1` converted to an unsigned value of `uint32_t` type). If it is, it means that the size of images determines the size of the window. In this situation:
+    *   Assign the desired values for `width` and `height` members of the `size_of_images` variable
+    *   Clamp the value of the `width` member of a `size_of_images` variable to the range defined by `surface_capabilities.minImageExtent.width` and `surface_capabilities.maxImageExtent.width`
+    *   Clamp the value of the `height` member of the `size_of_images` variable to the range defined by `surface_capabilities.minImageExtent.height` and `surface_capabilities.maxImageExtent.height`
+4.  If the value of the `currentExtent.width` member of the `surface_capabilities` variable is not equal to `0xFFFFFFFF`, in the `size_of_images` variable, store the value of `surface_capabilities.currentExtent`.
+
+# How it works...
+
+The size of swapchain images must fit into supported limits. These are defined by the surface capabilities. In most typical scenarios, we want to render into an image that has the same dimensions as the application window's client area. This value is specified in the `currentExtent` member of surface's capabilities.
+
+But there are operating systems on which the window's size is determined by the size of swapchain images. This situation is signaled by the `0xFFFFFFFF` value of the `currentExtent.width` or `currentExtent.height` member of the surface's capabilities. In this case, we can define the size of images, but it still must fall within a specified range:
+
+[PRE14]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Getting capabilities of a presentation surface*
+*   *Creating a swapchain*
+
+# Selecting desired usage scenarios of swapchain images
+
+Images created with a swapchain are usually used as color attachments. This means that we want to render into them (use them as render targets). But we are not limited only to this scenario. We can use swapchain images for other purposes--we can sample from them, use them as a source of data in copy operations, or copy data into them. These are all different image usages and we can specify them during swapchain creation. But, again, we need to check whether these usages are supported.
+
+# How to do it...
+
+1.  Acquire the capabilities of a presentation surface (refer to the *Getting capabilities of a presentation surface* recipe). Store them in a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+2.  Choose the desired image usages and store them in a variable of a bit field type `VkImageUsageFlags` named `desired_usages`.
+3.  Create a variable of type `VkImageUsageFlags` named `image_usage` in which a list of requested usages that are supported on a given platform will be stored. Assign a value of `0` to the `image_usage` variable.
+4.  Iterate over all bits of the `desired_usages` bit field variable. For each bit in the variable:
+    *   Check whether the bit is set (is equal to one)
+    *   Check whether the corresponding bit of the `supportedUsageFlags` member of the `surface_capabilities` variable is set
+    *   If the preceding checks are true, set the same bit in the `image_usage` variable
+5.  Make sure that all of the requested usages are supported on a given platform by checking if the values of the `desired_usages` and `image_usage` variables are equal.
+
+# How it works...
+
+The list of usages that can be selected for swapchain images is available in a `supportedUsageFlags` member of a presentation surface's capabilities. This member is a bit field in which each bit corresponds to a specific usage. If a given bit is set, it means that a given usage is supported.
+
+Color attachment usage (`VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT`) must always be supported.
+
+`VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` usage is mandatory and all Vulkan implementations must support it. Other usages are optional. That's why we shouldn't rely on their availability. Also, we shouldn't request usages that we don't need as this may impact the performance of our application.
+
+Selecting a desired usage may look like this:
+
+[PRE15]
+
+We take only the common part of desired usages and the supported usages. We then check whether all requested usages are supported. We do this by comparing the values of the requested and the "final" usages. If their values differ, we know that not all of the desired usages are supported.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Getting capabilities of a presentation surface*
+*   *Creating a swapchain*
+
+# Selecting a transformation of swapchain images
+
+On some (especially mobile) devices, images can be viewed from different orientations. Sometimes we would like to be able to specify how an image should be oriented when it is displayed on screen. In Vulkan, we have such a possibility. When creating a swapchain, we need to specify the transformation which should be applied to an image before it is presented.
+
+# How to do it...
+
+1.  Acquire the capabilities of a presentation surface (refer to the *Getting capabilities of a presentation surface* recipe). Store them in a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+2.  Store the desired transformations in a bit field variable of type `VkSurfaceTransformFlagBitsKHR` named `desired_transform`.
+3.  Create a variable of type `VkSurfaceTransformFlagBitsKHR` named `surface_transform` in which we will store the supported transformation.
+4.  Check whether all bits set in the `desired_transform` variable are also set in the `supportedTransforms` member of the presentation surface's capabilities. If they are, assign the value of the `desired_transform` variable to the `surface_transform` variable.
+5.  If not all desired transformations are supported, fall back to the current transformation by assigning a value of `surface_capabilities.currentTransform` to the `surface_transform` variable.
+
+# How it works...
+
+The `supportedTransforms` member of a presentation surface's capabilities defines a list of all image transformations that are available on a given platform. Transformations define how an image should be rotated or mirrored before it is displayed on screen. During swapchain creation, we can specify the desired transformation and a presentation engine applies it to the image as part of the displaying process.
+
+We can choose any of the supported values. Here is a code sample that selects a desired transformation if it is available or otherwise just takes the currently used transformation:
+
+[PRE16]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Getting capabilities of a presentation surface*
+*   *Creating a swapchain*
+
+# Selecting a format of swapchain images
+
+The format defines the number of color components, the number of bits for each component, and the used data type. During swapchain creation, we must specify whether we want to use red, green, and blue channels with or without an alpha component, whether the color values should be encoded using unsigned integer or floating-point data types, and what their precision is. We must also choose whether we are encoding color values using linear or nonlinear color space. But as with other swapchain parameters, we can use only values that are supported by the presentation surface.
+
+# Getting ready
+
+In this recipe, we use several terms that may seem identical, but in fact they specify different parameters:
+
+*   Image format is used to describe the number of components, precision, and data type of an image's pixels. It corresponds to variables of type `VkFormat`.
+*   Color space determines the way the values of color components are interpreted by the hardware, whether they are encoded or decoded using a linear or nonlinear function. Color space corresponds to variables of type `VkColorSpaceKHR`.
+*   Surface format is a pair of image format and color space and is represented by variables of type `VkSurfaceFormatKHR`.
+
+# How to do it...
+
+1.  Take the handle of a physical device returned by the `vkEnumeratePhysicalDevices()` function. Store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Take the created presentation surface and store its handle in a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Select the desired image format and color space and assign them to the members of a variable of type `VkSurfaceFormatKHR` named `desired_surface_format`.
+4.  Create a variable of type `uint32_t` named `formats_count`.
+5.  Call `vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device, presentation_surface, &formats_count, nullptr )`, provide a handle of the physical device in the first parameter, a handle of the presentation surface in the second parameter, and a pointer to the `formats_count` variable in the third variable. Leave the value of the last parameter set to `nullptr`.
+6.  If a function call is successful, the `formats_count` variable will contain the number of all supported format-color space pairs.
+7.  Create a variable of type `std::vector<VkSurfaceFormatKHR>` named `surface_formats`. Resize the vector so it is able to hold at least `formats_count` elements.
+8.  Make the following call, `vkGetPhysicalDeviceSurfaceFormatsKHR( physical_device, presentation_surface, &formats_count, &surface_formats[0] )`. Provide the same arguments for the first three parameters. In the last parameter, provide a pointer to the first element of the `surface_formats` vector.
+9.  If the call is successful, all available image format-color space pairs will be stored in the `surface_formats` variable.
+10.  Create a variable of type `VkFormat` named `image_format` and a second variable of type `VkColorSpaceKHR` named `image_color_space` in which we will store selected values of format and color space used later during swapchain creation.
+11.  Check the number of elements in the `surface_formats` vector. If it holds only one element with a value of `VK_FORMAT_UNDEFINED`, it means that we can choose whatever surface format we want. Assign the members of the `desired_surface_format` variable to the `image_format` and `image_color_space` variables.
+
+12.  If the `surface_formats` vector contains more elements, iterate over each element of the vector and compare the `format` and `colorSpace` members with the same members of the `desired_surface_format` variable. If we find an element in which both members are identical, it means that the desired surface format is supported and we can use it for swapchain creation. Assign the members of the `desired_surface_format` variable to the `image_format` and `image_color_space` variables.
+13.  If we haven't found a match, iterate over all elements of the `surface_formats` vector. Check whether the `format` member of any of its elements is identical to the value of a chosen `surface_format.format`. If there is such an element, assign the `desired_surface_format.format` value to the `image_format` variable, but take the corresponding color space from the currently viewed element of the `surface_formats` vector and assign it to the `image_color_space` variable.
+14.  If the `surface_formats` variable doesn't contain any element with the selected image format, take the first element of the vector and assign its `format` and `colorSpace` members to the `image_format` and `image_color_space` variables.
+
+# How it works...
+
+To obtain a list of all supported surface formats, we need to make a double call of a `vkGetPhysicalDeviceSurfaceFormatsKHR()` function. First we acquire the number of all supported format-color space pairs:
+
+[PRE17]
+
+Next we can prepare storage for the actual values and make the second call to acquire them:
+
+[PRE18]
+
+After that, we can choose one of the supported surface formats that is the best match for our needs. If only one surface format was returned and it has a value of `VK_FORMAT_UNDEFINED`, it means that there are no restrictions on the supported format-color space pairs. In such a situation, we can choose any surface format we want and use it during swapchain creation:
+
+[PRE19]
+
+If there are more elements returned by the `vkGetPhysicalDeviceSurfaceFormatsKHR()` function, we need to take one of them. First we check whether the chosen surface format is supported "entirely"--both selected image format and color space are available:
+
+[PRE20]
+
+If we can't find a match, we look for a member that has an identical image format, but other color space. We can't take any of the supported formats and any of the supported color spaces--we must take the same color space that corresponds to a given format:
+
+[PRE21]
+
+Finally, if the format we wanted to use is not supported, we just take the first available image format-color space pair:
+
+[PRE22]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a swapchain*
+*   *Creating a swapchain with R8G8B8A8 format and a mailbox present mode*
+
+# Creating a swapchain
+
+A swapchain is used to display images on screen. It is an array of images which can be acquired by the application and then presented in our application's window. Each image has the same defined set of properties. When we have prepared all of these parameters, meaning that we chose a number, a size, a format, and usage scenarios for swapchain images, and also acquired and selected one of the available presentation modes, we are ready to create a swapchain.
+
+# How to do it...
+
+1.  Take the handle of a created logical device object. Store it in a variable of type `VkDevice` named `logical_device`.
+2.  Assign the handle of a created presentation surface to a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Take the desired number of swapchain images assigned to a variable of type `uint32_t` named `image_count`.
+
+4.  Store the values of the selected image format and color space in a variable of type `VkSurfaceFormatKHR` named `surface_format`.
+5.  Prepare the required image size and assign it to a variable of type `VkExtent2D` named `image_size`.
+6.  Choose the desired usage scenarios for swapchain images. Store them in a bit field variable of type `VkImageUsageFlags` named `image_usage`.
+7.  Take the selected surface transformations stored in a variable of type `VkSurfaceTransformFlagBitsKHR` named `surface_transform`.
+8.  Prepare a variable of type `VkPresentModeKHR` named `present_mode` and assign a desired presentation mode to it.
+9.  Create a variable of type `VkSwapchainKHR` named `old_swapchain`. If there was a swapchain created previously, store a handle of that swapchain in this variable. Otherwise, assign a `VK_NULL_HANDLE` value to this variable.
+10.  Create a variable of type `VkSwapchainCreateInfoKHR` named `swapchain_create_info`. Assign the following values to the members of this variable:
+    *   `VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   `0` value for `flags`
+    *   `presentation_surface` variable for `surface`
+    *   `image_count` variable for `minImageCount`
+    *   `surface_format.format` member for `imageFormat`
+    *   `surface_format.colorSpace` member for `imageColorSpace`
+    *   `image_size` variable for `imageExtent`
+    *   `1` value for `imageArrayLayers` (or more if we want to perform layered/stereoscopic rendering)
+    *   `image_usage` variable for `imageUsage`
+    *   `VK_SHARING_MODE_EXCLUSIVE` value for `imageSharingMode`
+    *   `0` value for `queueFamilyIndexCount`
+    *   `nullptr` value for `pQueueFamilyIndices`
+    *   `surface_transform` variable for `preTransform`
+    *   `VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR` value for `compositeAlpha`
+    *   `present_mode` variable for `presentMode`
+    *   `VK_TRUE` for `clipped`
+    *   `old_swapchain` variable for `oldSwapchain`
+
+11.  Create a variable of type `VkSwapchainKHR` named `swapchain`.
+12.  Call `vkCreateSwapchainKHR( logical_device, &swapchain_create_info, nullptr, &swapchain )`. Use the handle of a created logical device, a pointer to the `swapchain_create_info` variable, a `nullptr` value, and a pointer to the `swapchain` variable as the function's arguments.
+13.  Make sure the call was successful by comparing the returned value with a `VK_SUCCESS` value.
+14.  Call `vkDestroySwapchainKHR( logical_device, old_swapchain, nullptr )` to destroy the old swapchain. Provide a handle to the created logical device, a handle of an old swapchain, and a `nullptr` value for the function call.
+
+# How it works...
+
+As was mentioned earlier, a swapchain is a collection of images. They are created automatically along with a swapchain. They are also destroyed when the swapchain is destroyed. Though an application can obtain handles of these images, it is not allowed to create or destroy them.
+
+The process of swapchain creation isn't too complicated, but there is a considerable amount of data we need to prepare before we are able to create it:
+
+[PRE23]
+
+Only one swapchain can be associated with a given application's window. When we create a new swapchain, we need to destroy any swapchain that was previously created for the same window:
+
+[PRE24]
+
+When the swapchain is ready, we can acquire its images and perform tasks that fit into specified usage scenarios. We are not limited to acquiring just a single image, like we were used to in an OpenGL API (single back buffer). The number of images depends on the minimal specified number of images that should be created along with a swapchain, the chosen presentation mode, and current rendering history (number of images currently acquired and recently presented).
+
+After we have acquired an image, we can use it in our application. The most common usage is rendering into the image (using it as a color attachment), but we are not limited to just this usage and we can perform other tasks with swapchain images. But we must make sure respective usages are available on a given platform and that they were specified during swapchain creation. Not all platforms may support all usages. Only color attachment usage is mandatory.
+
+When we are done rendering into an image (or images) or performing other tasks, we can display an image by presenting it. This operation returns the image to the presentation engine which replaces the currently displayed image with the new one according to the specified presentation mode.
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a presentation surface*
+*   *Selecting a queue family that supports presentation to a given surface*
+*   *Creating a logical device with WSI extensions enabled*
+*   *Selecting a desired presentation mode*
+*   *Getting capabilities of a presentation surface*
+*   *Selecting a number of swapchain images*
+*   *Choosing a size of swapchain images*
+*   *Selecting desired usage scenarios of swapchain images*
+*   *Selecting a transformation of swapchain images*
+*   *Selecting a format of swapchain images*
+
+# Getting handles of swapchain images
+
+When the swapchain object is created, it may be very useful to acquire the number and handles of all images that were created along with the swapchain.
+
+# How to do it...
+
+1.  Take the handle of a created logical device object. Store it in a variable of type `VkDevice` named `logical_device`.
+2.  Assign the handle of a created swapchain to a variable of type `VkSwapchainKHR` named `swapchain`.
+3.  Create a variable of type `uint32_t` named `images_count`.
+4.  Call `vkGetSwapchainImagesKHR(logical_device, swapchain, &images_count, nullptr)` for which provide the handle to the created logical device in the first parameter, the handle of the swapchain in the second, and a pointer to the `images_count` variable in the third parameter. Provide a `nullptr` value in the last parameter.
+5.  If the call is successful, meaning that the returned value is equal to `VK_SUCCESS`, the `images_count` variable will contain the total number of images created for a given swapchain object.
+6.  Create a `std::vector` with elements of type `VkImage`. Name the vector `swapchain_images` and resize it so it is able to hold at least `images_count` number of elements.
+
+7.  Call `vkGetSwapchainImagesKHR(logical_device, swapchain, &images_count, &swapchain_images[0])` and provide the same arguments for the first three parameters as previously. In the last parameter, provide a pointer to the first element of the `swapchain_images` vector.
+8.  On success, the vector will contain the handles of all swapchain images.
+
+# How it works...
+
+Drivers may create more images than were requested in the swapchain's creation parameters. There, we just defined the minimum required number but Vulkan implementations are allowed to create more.
+
+We need to know the total number of created images to be able to acquire their handles. In Vulkan, when we want to render into an image, we need to know its handle. It is required to create an image view that wraps the image and is used during framebuffer creation. A framebuffer, as in OpenGL, specifies a set of images that are used during the rendering process (mostly that we render into them).
+
+But this is not the only case in which we need to know what images were created along with a swapchain. It's been said that when an application wants to use a presentable image, it must acquire it from the presentation engine. The process of image acquisition returns a number, not the handle itself. The provided number represents an index of an image in the array of images acquired with the `vkGetSwapchainImagesKHR()` function (a `swapchain_images` variable). So the knowledge of the total number of images, their order, and their handles is necessary to properly use a swapchain and its images.
+
+To acquire the total number of images, we need to use the following code:
+
+[PRE25]
+
+Next, we can prepare storage for all images and acquire their handles:
+
+[PRE26]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Selecting a number of swapchain images*
+*   *Creating a swapchain*
+*   *Acquiring a swapchain image*
+*   *Presenting an image*
+
+# Creating a swapchain with R8G8B8A8 format and a mailbox present mode
+
+To create a swapchain, we need to acquire a lot of additional information and prepare a considerable number of parameters. To present the order of all the steps required for the preparation phases and how to use the acquired information, we will create a swapchain with arbitrarily chosen parameters. For it, we will set a mailbox presentation mode, the most commonly used R8G8B8A8 color format with unsigned normalized values (similar to OpenGL's RGBA8 format), no transformations, and a standard color attachment image usage.
+
+# How to do it...
+
+1.  Prepare a physical device handle. Store it in a variable of type `VkPhysicalDevice` named `physical_device`.
+2.  Take the handle of a created presentation surface and assign it to a variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Take the logical device created from the handle represented by the `physical_device` variable. Store the handle of the logical device in a variable of type `VkDevice` named `logical_device`.
+4.  Create a variable of type `VkSwapchainKHR` named `old_swapchain`. If a swapchain was previously created, assign its handle to the `old_swapchain` variable. Otherwise, assign a `VK_NULL_HANDLE` to it.
+5.  Create a variable of type `VkPresentModeKHR` named `desired_present_mode`.
+6.  Check whether the `VK_PRESENT_MODE_MAILBOX_KHR` presentation mode is supported and assign it to the `desired_present_mode` variable. If this mode is not supported, use a `VK_PRESENT_MODE_FIFO_KHR` mode (refer to *Selecting a desired presentation mode* recipe).
+7.  Create a variable of type `VkSurfaceCapabilitiesKHR` named `surface_capabilities`.
+8.  Get the capabilities of a presentation surface and store them in the `surface_capabilities` variable.
+9.  Create a variable of type `uint32_t` named `number_of_images`. Based on the acquired surface capabilities, assign a minimal required number of images to the `number_of_images` variable (refer to the *Selecting a number of swapchain images* recipe).
+10.  Create a variable of type `VkExtent2D` named `image_size`. Based on the acquired surface capabilities, assign a size of swapchain images to the `image_size` variable (refer to the *Choosing a size of swapchain images* recipe).
+11.  Make sure the `width` and `height` members of the `image_size` variable are greater than zero. If they are not, do not attempt to create a swapchain, but don't close the application--such a situation may occur when a window is minimized.
+12.  Create a variable of type `VkImageUsageFlags` named `image_usage`. Assign a `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` image usage to it (refer to the *Selecting desired usage scenarios of swapchain images* recipe).
+
+13.  Create a variable of type `VkSurfaceTransformFlagBitsKHR` named `surface_transform`. Store an identity transform (a value of `VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR`) in the variable. Based on the acquired surface capabilities, check whether it is supported. If it is not, assign the `currentTransform` member of the acquired capabilities to the `surface_transform` variable (refer to the *Selecting a transformation of swapchain images* recipe).
+14.  Create a variable of type `VkFormat` named `image_format` and a variable of type `VkColorSpaceKHR` named `image_color_space`.
+15.  Using the acquired capabilities, try to use the `VK_FORMAT_R8G8B8A8_UNORM` image format with a `VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` color space. If format or color space, or both, are not supported, select other values from the surface capabilities (refer to the *Selecting a format of swapchain images* recipe).
+16.  Create a variable of type `VkSwapchainKHR` named `swapchain`.
+17.  Using the `logical_device`, `presentation_surface`, `number_of_images`, `image_format`, `image_color_space`, `size_of_images`, `image_usage`, `surface_transform`, `desired_present_mode`, and `old_swapchain` variables, create a swapchain and store its handle in the `swapchain` variable. Remember to check if the swapchain creation was successful. (refer to the *Creating a swapchain* recipe).
+18.  Create a variable of type `std::vector<VkImage>` named `swapchain_images` and store the handles of the created swapchain images in it (refer to the *Getting handles of swapchain images* recipe).
+
+# How it works...
+
+When we want to create a swapchain, we first need to think what presentation mode we would like to use. As the mailbox mode allows us to present the most recent image without screen tearing (it is similar to a triple buffering), it looks like a good choice:
+
+[PRE27]
+
+Next we need to acquire the presentation surface capabilities and use them to set up the required number of images, their size (dimensions), usage scenarios, transformations applied during presentation, and their format and color space:
+
+[PRE28]
+
+Finally, with all these preparations, we can create a swapchain, destroy an old one (if we want to replace a previously created swapchain with the new one), and acquire the handles of images created along with it:
+
+[PRE29]
+
+# See also
+
+The following recipes in this chapter:
+
+*   *Creating a presentation surface*
+*   *Creating a logical device with WSI extensions enabled*
+*   *Selecting a desired presentation mode*
+*   *Getting capabilities of a presentation surface*
+*   *Selecting a number of swapchain images*
+*   *Choosing a size of swapchain images*
+*   *Selecting desired usage scenarios of swapchain images*
+*   *Selecting a transformation of swapchain images*
+*   *Selecting a format of swapchain images*
+*   *Creating a swapchain*
+*   *Getting handles of swapchain images*
+
+# Acquiring a swapchain image
+
+Before we can use a swapchain image, we need to ask a presentation engine for it. This process is called **image acquisition**. It returns an image's index into the array of images returned by the `vkGetSwapchainImagesKHR()` function as described in the *Getting handles of swapchain images* recipe.
+
+# Getting ready
+
+To acquire an image in Vulkan, we need to specify one of two types of objects that haven't been described yet. These are semaphores and fences.
+
+Semaphores are used to synchronize device's queues. It means that when we submit commands for processing, these commands may require another job to be finished. In such a situation, we can specify that these commands should wait for the other commands before they are executed. And this is what semaphores are for. They are for internal queue synchronization, but we can't use them to synchronize an application with the submitted commands (refer to the *Creating a semaphore* recipe from [Chapter 3](fc38e0ae-51aa-4f6f-8fb3-551861273018.xhtml), *Command Buffers and Synchronization*).
+
+To do so, we need to use fences. They are used to inform an application about some work being finished. An application can acquire the state of a fence and, based on the acquired information, check whether some commands are still being processed or whether they have finished the assigned tasks (refer to the *Creating a fence* recipe from [Chapter 3](fc38e0ae-51aa-4f6f-8fb3-551861273018.xhtml), *Command Buffers and Synchronization*).
+
+# How to do it...
+
+1.  Take the handle of a created logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Prepare the handle of a swapchain object and assign it to a `VkSwapchainKHR` variable named `swapchain`.
+3.  Prepare a semaphore in the form of a variable of type `VkSemaphore` named `semaphore` or prepare a fence and assign its handle to the variable of type `VkFence` named `fence`. You can prepare both synchronization objects but at least one of them is required (no matter which one).
+4.  Create a variable of type `uint32_t` named `image_index`.
+5.  Call `vkAcquireNextImageKHR( logical_device, swapchain, <timeout>, semaphore, fence, &image_index )`. Provide a handle of the logical device in the first parameter and a handle of a swapchain object in the second. For the third parameter, named `<timeout>`, provide a value of time after which the function will return a timeout error. You also need to provide one or both synchronization primitives--a swapchain and/or a fence. For the last parameter, provide a pointer to the `image_index` variable.
+
+6.  Check the value returned by the `vkAcquireNextImageKHR()` function. If the returned value was equal to `VK_SUCCESS` or `VK_SUBOPTIMAL_KHR`, the call was successful and an `image_index` variable will hold an index of swapchain images which points to the element of an array returned by the `vkGetSwapchainImagesKHR()` function (refer to the *Getting handles of swapchain images* recipe). But if the `VK_ERROR_OUT_OF_DATE_KHR` value was returned, you can't use any images from the swapchain. You must destroy the given swapchain and recreate it once again in order to acquire images.
+
+# How it works...
+
+The `vkAcquireNextImageKHR()`function returns an index into the array of swapchain images returned by the `vkGetSwapchainImagesKHR()` function. It does not return the handle of that image. The following code illustrates the recipe:
+
+[PRE30]
+
+In the code sample, we call the `vkAcquireNextImageKHR()` function. Sometimes images may not be available immediately due to the internal mechanism of a presentation engine. It is even possible that we may wait indefinitely! It occurs in situations when we want to acquire more images than the presentation engine can provide. That's why in the third parameter of the preceding function, we provide a timeout value in nanoseconds. It tells the hardware how long we can wait for the image. After this time, the function will inform us that it took too long to acquire an image. In the preceding sample, we inform the driver that we don't want to wait more than 2 seconds for the image to be acquired.
+
+The other interesting parameters are a semaphore and a fence. When we acquire an image, we still may not use it immediately for our purposes. We need to wait for all previously submitted operations that referenced this image to finish. For this purpose, a fence can be used, using which an application can check when it is safe to modify an image. But we can also tell the driver that it should wait before it starts processing new commands that use a given image. For this purpose, a semaphore is used, which, in general, is a better option.
+
+Waiting on the application side hurts the performance much more than waiting solely on the GPU.
+
+Return values are also very important during swapchain image acquisition. When the function returns a `VK_SUBOPTIMAL_KHR` value, it means we can still use an image but it may no longer be best suited for the presentation engine. We should recreate the swapchain from which an image was acquired. But we don't need to do it immediately. When the function returns a `VK_ERROR_OUT_OF_DATE_KHR` value, we can't use images from a given swapchain anymore and we need to recreate it as soon as possible.
+
+And the last thing to note about swapchain image acquisition is that before we can use an image, we need to change (transition) its layout. The layout is the image's internal memory organization, which may be different depending on the current purpose for which image is used. And if we want to use the image in a different way, we need to change its layout.
+
+For example, images used by the presentation engine must have a `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` layout. But if we want to render into an image, it must have a `VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL` layout. The operation of changing the layout is called a transition (refer to the *Setting an image memory barrier* recipe from [Chapter 4](f1332ca0-b5a2-49bd-ac41-e37068e31042.xhtml), *Resources and Memory*).
+
+# See also
+
+*   The following recipes in this chapter:
+    *   *Selecting a desired presentation mode*
+    *   *Creating a swapchain*
+    *   *Getting handles of swapchain images*
+    *   *Presenting an image*
+*   In [Chapter 4](f1332ca0-b5a2-49bd-ac41-e37068e31042.xhtml), *Resources and Memory* see the following recipe:
+    *   *Setting an image memory barrier*
+*   In [Chapter 3](fc38e0ae-51aa-4f6f-8fb3-551861273018.xhtml), *Command Buffers and Synchronization* see the following recipe:
+    *   *Creating a semaphore*
+    *   *Creating a fence*
+
+# Presenting an image
+
+After we are done rendering into a swapchain image or using it for any other purposes, we need to give the image back to the presentation engine. This operation is called a presentation and it displays an image on screen.
+
+# Getting ready
+
+In this recipe, we will be using a custom structure defined as follows:
+
+[PRE31]
+
+It is used to define a swapchain from which we want to present an image, and an image (its index) that we want to display. For each swapchain, we can present only one image at a time.
+
+# How to do it...
+
+1.  Prepare a handle of a queue that supports presenting. Store it in a variable of type `VkQueue` named `queue`.
+2.  Prepare a variable of type `std::vector<VkSemaphore>` named `rendering_semaphores`. Into this vector, insert semaphores associated with rendering commands that reference images which we want to present.
+3.  Create a variable of type `std::vector<VkSwapchainKHR>` named `swapchains` in which store the handles of all swapchains from which we want to present images.
+4.  Create a variable of type `std::vector<uint32_t>` named `image_indices`. Resize the vector to be the same size as the `swapchains` vector. For each element of the `image_indices` variable, assign an index of an image from the corresponding swapchain (at the same position in the `swapchains` vector).
+5.  Create a variable of type `VkPresentInfoKHR` named `present_info`. Assign the following values for its members:
+    *   `VK_STRUCTURE_TYPE_PRESENT_INFO_KHR` value for `sType`
+    *   `nullptr` value for `pNext`
+    *   A number of elements of the `rendering_semaphores` vector for `waitSemaphoreCount`
+    *   A pointer to the first element of the `rendering_semaphores` vector for `pWaitSemaphores`
+    *   The number of elements in the `swapchains` vector for `swapchainCount`
+    *   A pointer to the first element of the `swapchains` vector for `pSwapchains`
+    *   A pointer to the first element of the `image_indices` vector for `pImageIndices`
+    *   `nullptr` value for `pResults`
+6.  Call `vkQueuePresentKHR( queue, &present_info )` and provide the handle of the queue to which we want to submit this operation, and a pointer to the `present_info` variable.
+7.  Make sure the call was successful by comparing the returned value with a `VK_SUCCESS`.
+
+# How it works...
+
+A presentation operation gives an image back to the presentation engine, which displays an image according to the presentation mode. We can present multiple images at the same time, but only one image from a given swapchain. To present an image, we provide its index into the array returned by the `vkGetSwapchainImagesKHR()` function (refer to the *Getting handles of swapchain images* recipe):
+
+[PRE32]
+
+In the preceding sample, the handles of swapchains from which we want to present images and the indices of images are placed in the `swapchains` and `image_indices` vectors.
+
+Before we can submit an image, we need to change its layout to a `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` or the presentation engine may be not able to correctly display such an image.
+
+Semaphores are used to inform the hardware when it can safely display an image. When we submit a rendering command, we can associate a semaphore with such a submission. This semaphore will then change its state to signaled when the commands are finished. We should create and associate a semaphore with commands that reference a presentable image. This way, when we present an image and provide such a semaphore, the hardware will know when an image is no longer in use and displaying it will not interrupt any previously issued operations.
+
+# See also
+
+*   The following recipes in this chapter:
+    *   *Selecting a desired presentation mode*
+    *   *Creating a swapchain*
+    *   *Getting handles of swapchain images*
+    *   *Acquiring a swapchain image*
+*   In [Chapter 3](fc38e0ae-51aa-4f6f-8fb3-551861273018.xhtml), *Command Buffers and Synchronization* see the following recipe:
+    *   *Creating a semaphore*
+    *   *Creating a fence*
+*   In [Chapter 4](https://cdp.packtpub.com/vulkancookbook/wp-admin/post.php?post=29&action=edit#post_207), *Resources and Memory* see the following recipe:
+    *   *Setting an image memory barrier*
+
+# Destroying a swapchain
+
+When we are done using a swapchain, because we don't want to present images any more, or because we are just closing our application, we should destroy it. We need to destroy it before we destroy a presentation surface which was used during a given swapchain creation.
+
+# How to do it...
+
+1.  Take the handle of a logical device and store it in a variable of type `VkDevice` named `logical_device`.
+2.  Take the handle of a swapchain object that needs to be destroyed. Store it in a variable of type `VkSwapchainKHR` named `swapchain`.
+3.  Call `vkDestroySwapchainKHR( logical_device, swapchain, nullptr )` and provide the `logical_device` variable as the first argument and the swapchain handle as the second argument. Set the last parameter to `nullptr`.
+4.  For safety reasons, assign a `VK_NULL_HANDLE` value to the `swapchain` variable.
+
+# How it works...
+
+To destroy a swapchain, we can prepare code that is similar to the following example:
+
+[PRE33]
+
+First we check whether a swapchain was really created (if its handle is not empty). Next we call the `vkDestroySwapchainKHR()` function and then we assign a `VK_NULL_HANDLE` value to the `swapchain` variable to be sure that we won't try to delete the same object twice.
+
+# See also
+
+*   *Creating a swapchain* recipe in this chapter
+
+# Destroying a presentation surface
+
+The presentation surface represents the window of our application. It is used, among other purposes, during swapchain creation. That's why we should destroy the presentation surface after the destruction of a swapchain that is based on a given surface is finished.
+
+# How to do it...
+
+1.  Prepare the handle of a Vulkan Instance and store it in a variable of type `VkInstance` named `instance`.
+2.  Take the handle of a presentation surface and assign it to the variable of type `VkSurfaceKHR` named `presentation_surface`.
+3.  Call `vkDestroySurfaceKHR( instance, presentation_surface, nullptr )` and provide the `instance` and `presentation_surface` variables in the first two parameters and a `nullptr` value in the last parameter.
+4.  For safety reasons, assign a `VK_NULL_HANDLE` value to the `presentation_surface` variable.
+
+# How it works...
+
+The presentation surface's destruction is very similar to the destruction of other Vulkan resources presented so far. We make sure we don't provide a `VK_NULL_HANDLE` value and we call a `vkDestroySurfaceKHR()` function. After that, we assign a `VK_NULL_HANDLE` value to the `presentation_surface` variable:
+
+[PRE34]
+
+# See also
+
+*   *Creating a presentation surface* recipe in this chapter

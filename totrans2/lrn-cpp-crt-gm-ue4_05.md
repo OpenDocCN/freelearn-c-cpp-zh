@@ -1,0 +1,411 @@
+# Chapter 5. Functions and Macros
+
+# Functions
+
+Some things needs to be repeated. Code is not one of them. A function is a bundle of code that can get called any number of times, as often you wish.
+
+Analogies are good. Let's explore an analogy that deals with waiters, chefs, pizzas, and functions. In English, when we say a person has a function, we mean that the person performs some very specific (usually, very important) task. They can do this task again and again and whenever they are called upon to do so.
+
+The following comic strip shows the interaction between a waiter (caller) and a chef (callee). The waiter wants food for his table, so he calls upon the chef to prepare the food required by the waiting table.
+
+The chef prepares the food and then returns the result to the waiter.
+
+![Functions](img/00052.jpeg)
+
+Here, the chef performs his function of cooking food. The chef accepted the parameters about what type of food to cook (three pepperoni pan pizzas). The chef then went away, did some work, and returned with three pizzas. Note that the waiter does not know and does not care about how the chef goes about cooking the pizzas. The chef abstracts away the process of cooking pizzas for the waiter, so cooking a pizza is just a simple, single-line command for the waiter. The waiter just wants his request to be completed and the pizzas returned to him.
+
+When a function (chef) gets called with some arguments (types of pizzas to be prepared), the function performs some actions (preparing the pizzas) and optionally returns a result (the actual finished pizzas).
+
+# An example of a <cmath> library function – sqrt()
+
+Now, let's talk about a more practical example and relate it to the pizza example.
+
+There is a function in the `<cmath>` library called the `sqrt()` function. Let me quickly illustrate its use, as shown in the following code:
+
+[PRE0]
+
+So, `sqrt()` can find the mathematical square root of any number given to it.
+
+Do you know how to find the square root of a tough number such as 5? It's not simple. A clever soul sat down and wrote a function that can find the square roots of all types of numbers. Do you have to understand the math behind how the square root of 5 is found to use the `sqrt(5)` function call? Heck, no! So, just as the waiter didn't have to understand how to cook a pizza in order to get a pizza as the result, the caller of a C++ library function does not have to fully understand how that library function works internally to use it effectively.
+
+The following are the advantages of using functions:
+
+1.  Functions abstract away a complex task into a simple, callable routine. This makes the code required to *cook a pizza*, for instance, just a single-line command for the caller (the caller is typically your program).
+2.  Functions avoid the repetition of code where it is not necessary. Say we have 20 or so lines of code that can find the square root of a double value. We wrap these lines of code into a callable function; instead of repeatedly copying and pasting these 20 lines of code, we simply call the `sqrt` function (with the number to root) function whenever we need a root.
+
+The following illustration shows the process of finding a square root:
+
+![An example of a <cmath> library function – sqrt()](img/00053.jpeg)
+
+# Writing our own functions
+
+Say, we want to write some code that prints out a strip of road, as shown here:
+
+[PRE1]
+
+Now, say we want to print two strips of road, in a row, or three strips of road. Or, say we want to print any number of strips of road. We will have to repeat the four lines of code that produce the first strip of road once per strip of road we're trying to print.
+
+What if we introduced our own C++ command that allowed us to print a strip of road on being called the command. Here's how that will look:
+
+[PRE2]
+
+This is the definition of a function. A C++ function has the following anatomy:
+
+![Writing our own functions](img/00054.jpeg)
+
+Using a function is simple: we simply invoke the function we want to execute by name, followed by two round brackets(). For example, calling the `printRoad()` function will cause the `printRoad()` function to run. Let's trace an example program to fully understand what this means.
+
+## A sample program trace
+
+Here's a complete example of how a function call works:
+
+[PRE3]
+
+Let's trace the program's execution from beginning to end. Remember that for all C++ programs, execution begins on the first line of `main()`.
+
+### Note
+
+`main()` is also a function. It oversees the execution of the whole program. Once `main()` executes the `return` statement, your program ends.
+
+When the last line of the `main()` function is reached, the program ends.
+
+A line-by-line trace of the execution of the preceding program is shown as follows:
+
+[PRE4]
+
+This is how the output of this program will look:
+
+[PRE5]
+
+Here's an explanation of the preceding code, line by line:
+
+1.  The program's execution begins on the first line of `main()`, which outputs `program begin!.`
+2.  The next line of code that is run is the call to `printRoad()`. What this does is it jumps the program counter to the first line of `printRoad()`. All the lines of `printRoad()` then execute in order (steps 3–6).
+3.  Finally, after the function call to `printRoad()` is complete, control returns to the `main()` statement. We then see `Program end` printed.
+
+### Tip
+
+Don't forget the brackets after the function call to `printRoad()`. A function call must always be followed by round brackets (), otherwise the function call will not work and you will get a compiler error.
+
+The following code is used to print four strips of road:
+
+[PRE6]
+
+Alternatively, you can also use the following code:
+
+[PRE7]
+
+So, instead of repeating the four lines of `cout` every time a box is printed, we simply call the `printRoad()` function to make it print. Also, if we want to change how a printed road looks, we have to simply modify the implementation of the `printRoad()` function.
+
+Calling a function entails running the entire body of that function, line by line. After the function call is complete, the control of the program then resumes at the point of the function call.
+
+## Exercise
+
+As an exercise, find out what is wrong with the following code:
+
+[PRE8]
+
+## Solution
+
+The correct answer to this problem is that the call to `myFunction` (in the last line of `main()`) is not followed by round brackets. All function calls must be followed by round brackets. The last line of `main()` should read `myFunction();`, not just `myFunction`.
+
+# Functions with arguments
+
+How can we extend the `printRoad()` function to print a road with a certain number of segments? The answer is simple. We can let the `printRoad()` function accept a parameter, called `numSegments`, to print a certain number of road segments.
+
+The following code snippet shows how that will look:
+
+[PRE9]
+
+The following screenshot shows the anatomy of a function that accepts an argument:
+
+![Functions with arguments](img/00055.jpeg)
+
+Call this new version of `printRoad()`, asking it to print four segments, as follows:
+
+[PRE10]
+
+The 4 between the brackets of the `function call` in the preceding statement gets assigned to the `numSegments` variable of the `printRoad(int numSegments)` function. This is how the value 4 gets passed to `numSegments`:
+
+![Functions with arguments](img/00056.jpeg)
+
+An illustration of how printRoad(4) will assign the value 4 to the numSegments variable
+
+So, `numSegments` gets assigned the value passed between the brackets in the call to `printRoad()`.
+
+# Functions that return values
+
+An example of a function that returns a value is the `sqrt()` function. The `sqrt()` function accepts a single parameter between its brackets (the number to root) and returns the actual root of the number.
+
+Here's an example usage of the `sqrt` function:
+
+[PRE11]
+
+The `sqrt()` function does something analogous to what the chef did when preparing the pizzas.
+
+As a caller of the function, you do not care about what goes on inside the body of the `sqrt()` function; that information is irrelevant since all you want is the result of the square root of the number that you are passing.
+
+Let's declare our own simple function that returns a value, as shown in the following code:
+
+[PRE12]
+
+The following screenshot shows the anatomy of a function with parameters and a returned value:
+
+![Functions that return values](img/00057.jpeg)
+
+The `sum` function is very basic. All it does is take two `int` numbers `a` and `b`, sums them up together, and returns a result. You might say that we don't even need an entire function just to add two numbers. You're right, but bear with me for a moment. We will use this simple function to explain the concept of returned values.
+
+You will use the `sum` function in this way (from `main()`):
+
+[PRE13]
+
+For the `cout` command to complete, the `sum( 5,6 )` function call must be evaluated. At the point where the `sum( 5,6 )` function call occurs, the returned value from `sum( 5,6 )` is put right there.
+
+In other words, this is the line of code that `cout` actually sees after evaluating the `sum( 5,6 )` function call:
+
+[PRE14]
+
+The returned value from `sum( 5,6 )` is effectively cut and pasted at the point of the function call.
+
+A value must always be returned by a function that promises to do so (if the return type of the function is anything other than `void`).
+
+## Exercises
+
+1.  Write an `isPositive` function that returns `true` when the double parameter passed to it is indeed positive.
+2.  Complete the following function definition:
+
+    [PRE15]
+
+3.  Write a `getGrade()` function that accepts an integer value (marks out of 100) and returns the grade (either A, B, C, D, or F).
+4.  A mathematical function is of the form `f(x) = 3x + 4`. Write a C++ function that returns values for `f(x)`.
+
+## Solutions
+
+1.  The `isPositive` function accepts a double parameter and returns a boolean value:
+
+    [PRE16]
+
+2.  The following is the completed `absEqual` function:
+
+    [PRE17]
+
+3.  The `getGrade()` function is given in the following code:
+
+    [PRE18]
+
+4.  This program is a simple one that should entertain you. The origin of the `name` function in C++ actually came from the math world, as shown in the following code:
+
+    [PRE19]
+
+# Variables, revisited
+
+It's always nice to revisit a topic you've covered before, now that you understand C++ coding much more in depth.
+
+## Global variables
+
+Now that we've introduced the concept of functions, the concept of a global variable can be introduced.
+
+What is a global variable? A global variable is any variable that is made accessible to all the functions of the program. How can we make a variable that is accessible to all the functions of the program? We simply declare the global variable at the top of the code file, usually after or near the `#include` statements.
+
+Here's an example program with some global variables:
+
+[PRE20]
+
+Here, the same `g_string` global variable is accessible to all the four functions in the program (`addA()`, `addB()`, `addC()`, and `main()`). Global variables live for the duration of the program.
+
+### Tip
+
+People sometimes prefer to prefix global variables with `g_`, but prefixing the variable name with `g_` is not a requirement for a variable to be global.
+
+## Local variables
+
+A local variable is a variable that is defined within a block of code. Local variables go out of the scope at the end of the block in which they are declared. Some examples will follow in the next section, *The* *scope of a variable*.
+
+## The scope of a variable
+
+The scope of a variable is the area of code where that variable can be used. The scope of any variable is basically the block in which it is defined. We can demonstrate a variable's scope using an example, as shown in the following code:
+
+[PRE21]
+
+The main thing that defines a variable's scope is a block. Let's discuss the scope of a couple of the variables defined in the preceding code example:
+
+*   `g_int`: This is a global integer with a scope that ranges from the point it was declared until the end of the code file. That is to say, `g_int` can be used inside `func()` and `main()`, but it cannot be used in other code files. To have a single global variable that is used across multiple code files, you will need an external variable.
+*   `arg` (the argument of `func()`): This can be used from the first line of `func()` (after the opening curly brace {) to the last line of `func()` (until the closing curly brace }).
+*   `fx`: This can be used anywhere inside `func()` until the closing curly brace of `func()`}.
+*   `main()`(variables inside `main()`): This can be used as marked in the comments.
+
+Notice how variables declared inside the brackets of a function's argument list can only be used inside the block below that function's declaration. For example, the `arg` variable passed to `func()`:
+
+[PRE22]
+
+The `arg` variable will die after the closing curly brace (`}`) of the `func()` function. This is counterintuitive as the round brackets are technically outside the curly braces that define the `{` block `}`.
+
+The same goes for variables declared inside the round brackets of a `for` loop. Take as an example the following `for` loop:
+
+[PRE23]
+
+The `int c` variable can be used inside the round brackets of the `for` loop declaration or inside the block below the `for` loop declaration. The `c` variable will die after the closing of the curly brace of the `for` loop it is declared in. If you want the `c` variable to live on after the brace brackets of the `for` loop, you need to declare the `c` variable before the `for` loop, as shown here:
+
+[PRE24]
+
+## Static local variables
+
+The `static` local variables are exactly like global variables, only they have a local scope, as shown in the following code:
+
+[PRE25]
+
+With the use of the `static` keyword inside `testFunc()`, the `runCount` variable remembers its value between calls of `testFunc()`. So, the output of the two separate preceding runs of `testFunc()` is:
+
+[PRE26]
+
+That's because static variables are only created and initialized once (the first time when the function they are declared in runs), and after that, the static variable retains its old value. Say, we declare `runCount` as a regular, local, nonstatic variable:
+
+[PRE27]
+
+Then, this is how the output will look:
+
+[PRE28]
+
+Here, we see `testFunc` saying `Ran this function 1 time` both the times. As a local variable, the value of `runCount` is not retained between function calls.
+
+You should not overuse static local variables. In general, you should only use a static local variable when it is absolutely necessary.
+
+## Const variables
+
+A `const` variable is a variable whose value you promise the compiler not to change after the first initialization. We can declare one simply, for example, for the value of `pi`:
+
+[PRE29]
+
+Since `pi` is a universal constant (one of the few things you can rely on to be the same), there should be no need to change `pi` after initialization. In fact, changes to `pi` should be forbidden by the compiler. Try, for example, to assign `pi` a new value:
+
+[PRE30]
+
+We will get the following compiler error:
+
+[PRE31]
+
+This error makes perfect sense, because besides the initial initialization, we should not be able to change the value of `pi`— a variable that is constant.
+
+## Function prototypes
+
+A function prototype is the signature of the function without the body. For example, let's prototype the `isPositive`, `absEqual`, and `getGrade` functions from the following exercises:
+
+[PRE32]
+
+Notice how the function prototypes are just the return type, function name, and argument list that the function requires. Function prototypes don't get a body. The body of the function is typically put in the `.cpp` file.
+
+## .h and .cpp files
+
+It is typical to put your function prototypes in an `.h` file and the bodies of the functions in a `.cpp` file. The reason for this is you can include your `.h` file in a bunch of `.cpp` files and not get multiple definition errors.
+
+The following screenshot gives you a clear picture of `.h` and `.cpp` files:.
+
+![.h and .cpp files](img/00058.jpeg)
+
+Here, we have three files in this Visual C++ project:
+
+![.h and .cpp files](img/00059.jpeg)
+
+## prototypes.h contains
+
+[PRE33]
+
+The `prototypes.h` file contains function prototypes. We will explain what the `extern` keyword does in a few paragraphs.
+
+## funcs.cpp contains
+
+[PRE34]
+
+## main.cpp contains
+
+[PRE35]
+
+When you split up the code into `.h` and `.cpp` files, the `.h` file (the header file) is called the interface and the `.cpp` file (the one with the actual functions in it) is called the implementation.
+
+The puzzling part at first for some programmers is how does C++ know where the `isPositive` and `getGrade` function bodies are, if we only `#include` the prototypes? Shouldn't we `#include` the `funcs.cpp` file into `main.cpp` too?
+
+The answer is *magic*. You only need to `#include` the `prototypes.h` header file in both `main.cpp` and `funcs.cpp`. As long as both `.cpp` files are included in your C++ **Integrated Development Environment** (**IDE**) project (that is, they appear in the **Solution Explorer** tree view at the left-hand side), the linkup of the prototypes to the function bodies is done automatically by the compiler.
+
+## Extern variables
+
+An `extern` declaration is similar to a function prototype, only it is used on a variable. You can put an `extern` global variable declaration in an `.h` file, and include this `.h` file in a whole bunch of other files. This way, you can have a single global variable that gets shared across multiple source files, without getting the multiply defined symbols found linker error. You'd put the actual variable declaration in a `.cpp` file so that the variable only gets declared once. There is an `extern` variable in the `prototypes.h` file in the previous example.
+
+# Macros
+
+C++ macros are from a class of C++ commands called preprocessor directives. A preprocessor directive is executed before compilation takes place.
+
+Macros start with `#define`. For example, say we have the following macro:
+
+[PRE36]
+
+At the lowest level, macros are simply copy and paste operations that occur just before compile time. In the preceding macro statement, the `3.14159` literal will be copied and pasted everywhere the symbol `PI` occurs in the program.
+
+Take an example of the following code:
+
+[PRE37]
+
+What the C++ preprocessor will do is first go through the code and look for any usage of the `PI` symbol. It will find one such usage on this line:
+
+[PRE38]
+
+The preceding line will convert to the following just before compilation:
+
+[PRE39]
+
+So, all that happens with a `#define` statement is that all the occurrences of the symbol used (example, `PI`) are replaced by the literal number `3.14159` even before compilation occurs. The point of using macros in this way is to avoid hardcoding numbers into the code. Symbols are typically easier to read than big, long numbers.
+
+## Advice – try to use const variables where possible
+
+You can use macros to define constant variables. You can also use `const` variable expressions instead. So, say we have the following line of code:
+
+[PRE40]
+
+We will be encouraged to use the following instead:
+
+[PRE41]
+
+Using a `const` variable will be encouraged because it stores your value inside an actual variable. The variable is typed, and typed data is a good thing.
+
+# Macros with arguments
+
+We can also write macros that accept arguments. Here's an example of a macro with an argument:
+
+[PRE42]
+
+What this macro will do is every time `println("Some value")` is encountered in the code, the code on the right-hand side (`cout << "Some value" << endl`) will be copied and pasted on the console. Notice how the argument between the brackets is copied in the place of `X`. Say we had the following line of code:
+
+[PRE43]
+
+This will be replaced by the following statement:
+
+[PRE44]
+
+Macros with arguments are exactly like very short functions. Macros cannot contain any newline characters in them.
+
+## Advice – use inline functions instead of macros with arguments
+
+You have to know about how macros with arguments work because you will encounter them in C++ code a lot. Whenever possible, however, many C++ programmers prefer to use inline functions over macros with arguments.
+
+A normal function call execution involves a `jump` instruction to the function and then the execution of the function. An inlinefunction is one whose lines of code are copied to the point of the function call and no jump is issued. Using inline functions usually makes sense for very small, simple functions that don't have a lot of lines of code. For example, we might inline a simple function `max` that finds the larger of two values:
+
+[PRE45]
+
+Everywhere this `max` function is used, the code for the function body will be copied and pasted at the point of the function call. Not having to `jump` to the function saves execution time, making inline functions effectively similar to macros.
+
+There is a catch to using inline functions. Inline functions must have their bodies completely contained in the `.h` header file. This is so that the compiler can make optimizations and actually inline the function wherever it is used. Functions are made inline typically for speed (since you don't have to jump to another body of the code to execute the function) but at the cost of code bloat.
+
+The following are the reasons why inline functions are preferred over macros:
+
+1.  Macros are error prone: the argument to the macro is not typed.
+2.  Macros have to be written in one line or you will see them using use escaped
+
+    [PRE46]
+
+3.  If the macro is not carefully written, it will result in difficult-to-fix compiler errors. For example, if you do not bracket your argument properly, your code will just be wrong.
+4.  Large macros are hard to debug.
+
+It should be said that macros do allow you to perform some preprocessor compiler magic. UE4 makes a lot of use of macros with arguments, as you will see later.
+
+# Summary
+
+Function calls allow you to reuse basic code. Code reuse is important for a number of reasons: mainly because programming is hard and duplicating effort should be avoided wherever possible. The efforts of the programmer that wrote the `sqrt()` function do not need to be repeated by other programmers who want to solve the same problem.

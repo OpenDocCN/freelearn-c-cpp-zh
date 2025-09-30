@@ -1,0 +1,316 @@
+# Chapter 10. Leveling, Abilities, and Saving Progress
+
+In the previous chapter, we covered how to create and apply equipment to the player, which when equipped, affects the stats of the player. In this chapter, we will allow the player to level up by setting up an experience system for each party member, allowing party members to gain experience from enemies when winning in combat. When each party member gains enough experience, they will level up and their stats will increase at each level that the party member has gained. We will also fix the combat damage settings so that attacks in combat will utilize character stats rather than hardcoded values. Once we have fixed the combat logic, we will then move on to creating an ability for our character that will be activated by gaining a level.
+
+In this chapter, we will cover the following topics:
+
+*   XP and Leveling source code
+*   Data Table starting values
+*   Displaying levels and experience in the pause menu
+*   Applying the correct damage in combat
+*   Setting up the abilities array
+*   Abilities logic
+*   Saving
+*   Loading
+
+# XP and leveling source code
+
+In order to allow party members to gain experience points from battle, we need to add experience points (which we will call XP) variables to our code. Moreover, the XP variables need to accumulate to a given XP cap (which we will call MXP for maximum XP), and if this cap is hit, the player will gain a level. The best way to do this is to add these variables to our source code, which we will then apply to every party member and enemy that we have in the game. The first thing we will do is add XP and leveling data to our Data classes. Navigate to **UnrealRPG** | **Source** | **Data** and open `FCharacterClassInfo.h`. In the `FCharacterClassInfo : public FTableRowBase` struct, add `UPROPERTY` to `XP` that will hold cumulative experience, `MXP` that will hold the experience cap to the next level, and `Lvl` that will hold the party member's current level:
+
+[PRE0]
+
+Next, open `FEnemyInfo.h`, which is located in the same folder as `FCharacterClassInfo.h`. We need to add XP to the enemy's info because each enemy will give a certain amount of XP to party members. In the `FEnemyInfo : public FTableRowBase` struct, add a `UPROPERTY` to `XP`:
+
+[PRE1]
+
+We will now need to use these variables in the `GameCharacter` instances of the game. Navigate to **UnrealRPG** | **Source** and open `GameCharacter.h`. In the `class RPG_API UGameCharacter : public UObject` struct, add `UPROPERTY` to `XP`, `MXP`, and `Lvl`:
+
+[PRE2]
+
+Open `GameCharacter.cpp` so that we set game character instances equal to the party member and enemy data. First, in `UGameCharacter* UGameCharacter::CreateGameCharacter( FCharacterInfo* characterInfo, UObject* outer )`, set the character's `XP`, `MXP`, and `Lvl` equal to the party member's data:
+
+[PRE3]
+
+Next, set each instance of the enemy character's XP equal to the XP enemy data:
+
+[PRE4]
+
+We can now add an XP framework to our combat engine. Open `CombatEngine.h`. Add `XPTotal` as a public variable:
+
+[PRE5]
+
+The `XPTotal` will be responsible for holding the total amount of XP gained from battle if all of the enemies have perished.
+
+At this point, let's use the XP variables that we created to calculate the amount of XP gained from battle. Open `CombatEngine.cpp`. In `bool CombatEngine::Tick( float DeltaSeconds )`, add XP to our check for victory section. To do this, we will set the local `XP` variable to `0`, and for every enemy in the battle, we will accumulate the total amount of experience in the `XP` variable:
+
+[PRE6]
+
+If all of the party members have died, we will store the total XP of the enemies in our public `XPTotal` variable to be used outside this class:
+
+[PRE7]
+
+Lastly, we can add the XP gained to each party member in our game instance. To do this, open `RPGGameMode.cpp`. In `void ARPGGameMode::Tick( float DeltaTime )`, where we added a check to the victory phase, we will create a `for` loop. This `for` loop will cycle through every party member, and for each party member, we will set their current XP to be a cumulative of the XP gained from the battle:
+
+[PRE8]
+
+In this `for` loop, we can also check the current XP with the current XP cap for the level the player is currently at. If the current XP of the party member is more than or equal to `MXP`, the player will level up, gain increased base stats, and the XP cap to gain the next level (`MXP`) will increase:
+
+[PRE9]
+
+In this example, we kept our calculations simple by only allowing the stats to increase by one when the party member gains a level, and setting the cap to the next level to just be double of what the previous level was. If you like, you can come up with more complex calculations specific to your game here. Note that all the calculations used for differentiating stat numbers and for each party member can be done here.
+
+When you are done, the victory condition will look like this:
+
+[PRE10]
+
+At this point, you can compile your source code and restart/open your project in UE4.
+
+We are now done with creating the framework for our experience system in our source code, and we can now move on to providing specific starting values for each of these in our game.
+
+# Data Table starting values
+
+In **Content Browser**, open the **CharacterClasses** Data Table by navigating to **Content** | **Data**. Here, we can change the starting values of our party members. For the soldier, we will have the starting XP as 0 because the party member should start with 0 experience. The **MXP** value will be **200**, which means that the Soldier will have to gain 200 experience points before making it to the next level. The **Lvl** value will be at **1** since we want each character to start at level 1:
+
+![Data Table starting values](img/B04548_10_01.jpg)
+
+We should now set how much XP our enemies give. In the same folder, open the **Enemies** Data Table, where we have at least one enemy. For each enemy, we need to set a value for **XP** that will determine how much experience the enemy drops when they are killed. For this particular enemy, we set the **XP** value to **50**:
+
+![Data Table starting values](img/B04548_10_02.jpg)
+
+# Displaying levels and experience in the pause menu
+
+At this point, if you test the build, the party members will gain experience from battle and level up accordingly (you will be able to tell by watching the stats grow if a party member has gained enough experience to level up), but we will not yet display the proper level or experience points of the party members. We can easily do this by binding these values to our pause menu. Navigate to **Content** | **Blueprints** | **UI**. Open the **Pause_Main** Widget Blueprint. In the **Designer** view, select the **Editable_Soldier_Level** Text Block on the right-hand side of **Soldier Lvl** that we created in [Chapter 4](ch04.html "Chapter 4. Pause Menu Framework"), *Pause Menu Framework*:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_03.jpg)
+
+In the **Details** tab under **Content**, create a bind to that text by clicking on the **Bind** drop-down menu and selecting **+Create Binding**:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_04.jpg)
+
+This will automatically open the graph of the **Get Editable_Soldier_Level_Text** function. In the graph, we need to simply get the variables from the **RPGGameInstance**, like we did before, but this time, we are specifically getting the current **Lvl** variable and returning it as text:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_05.jpg)
+
+In this example, we are only getting the level for one party member (our soldier), which is in an index 0 in the array. If you have more than one party member, you will just need to change the index in your **GET** function to the proper index; for instance, an index of 1 will find the second party member in your array of party members and their stats, and would, therefore, return a different set of stats.
+
+The only undefined Text Block that we have in our pause menu is the **Editable_Soldier_XP** Text Block located on the right-hand side of the **XP/Next Lvl** text. Select this Text Block, navigate to the **Details** tab, and under **Content**, add a binding for the Text Block, like we did for our last Text Block, and the graph for the function labeled **Get Editable_Soldier_XP_Text** will pop up. Just like the last Text Block, we will get the correct party member's current data; in particular, we will get XP and MXP because we want this Text Block to show the cumulative XP and the XP needed to get to the next level:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_06.jpg)
+
+You will notice that **ReturnNode** can only take one **Return Value** pin, and we have two separate values. We can easily solve this problem using the **Append** function and appending the text. We will find the **Append** function by simply right-clicking on our Blueprint, navigating to **Utilities** | **String**, and selecting **Append**:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_07.jpg)
+
+**Append** takes two strings at a time. Since the Text Block should have a **/** to separate the current XP with the XP needed to make it to the next level, we will need two **Append** functions. For the first **Append**, link **XP** to the **A** pin, and in the **B** pin, simply append a **/**:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_08.jpg)
+
+Next, create another **Append** function, and connect the **Return Value** of the first **Append** function to the **A** pin of the second **Append** function. Then, connect **MXP** to the **B** pin of the second **Append** function in order to have **MXP** append the last set of strings:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_09.jpg)
+
+When you are done, simply connect the **Return Value** of the second **Append** function to the **Return Value** of the **ReturnNode**:
+
+![Displaying levels and experience in the pause menu](img/B04548_10_10.jpg)
+
+At this point, if you test your game by going into battle and leveling up, you will see that all of your stats will update correctly in the pause menu (the following screenshot is from after we have tested combat and gaining experience with foes):
+
+![Displaying levels and experience in the pause menu](img/B04548_10_11.jpg)
+
+# Applying the correct damage in combat
+
+In battle, you will notice that the enemy and the player both do 10 points of damage no matter what. The current attack power and defense do not seem to be calculated. This is because, in [Chapter 3](ch03.html "Chapter 3. Exploration and Combat"), *Exploration and Combat*, when we created the combat actions, we hardcoded the damage to be `target->HP -= 10`, which means that no matter who is attacking, they will deal 10 points of damage to the player. We can easily fix this to use the actual stats of enemies and players by navigating to **Source** | **RPG** | **Combat** | **Actions** and opening `TestCombatAction.cpp`. Find `target->HP -= 10;` and replace it with `target->HP -= (character->ATK - target->DEF) >= 0 ? (character->ATK - target->DEF):0;`.
+
+This is a ternary operator. When a target is attacked, whether it is a party member or an enemy, the target's HP will go down by the attacker's attack power minus the target's defense power only if this result ends up being the same or greater than 0\. If the result is less than 0, then HP will default to 0\. When you are done, `void TestCombatAction::BeginExecuteAction( UGameCharacter* character )` will look like this:
+
+[PRE11]
+
+# Setting up the abilities array
+
+In [Chapter 3](ch03.html "Chapter 3. Exploration and Combat"), *Exploration and Combat*, we created a character class info for learned abilities, which was done in `FCharacterClassInfo.h`, which is an array used to hold an array of abilities for each character that inherits a class. We need to extend this array so that it is adopted by any game character to hold abilities that they learn throughout the game. To do this, open `GameCharacter.h` by navigating to **Source** | **RPG**. In `class RPG_API UGameCharacter : public UObject`, add a public `UPROPERTY` to learned abilities and allow it to be editable anywhere:
+
+[PRE12]
+
+Next, open `GameCharacter.cpp` located in the same folder, and set `LearnedAbilities` to be equal to `LearnedAbilities` from the class info that we created the variable in:
+
+[PRE13]
+
+This will allow each instance of a party member to hold its own `LearnedAbilities` array that we can now edit either in code or in Blueprint. Your game character will now look like this:
+
+[PRE14]
+
+Once done, compile and restart the editor. We can now create a spot in our game where we can hold and use abilities. In this game, we will choose to use abilities in battle only, but if you want to use abilities elsewhere, for example, outside battle, you can easily accomplish this by following similar steps. Since we will be applying abilities in battle, let's add a new abilities button to our combat interface. In the editor, navigate to **Content** | **Blueprints** | **UI**, and open the **CombatUI** Widget Blueprint.
+
+In the **Designer** view, create a Combo Box that will allow us to have a drop-down menu with multiple entries, which we will use to hold and select our abilities, and place them in the **characterActions** Canvas Panel:
+
+![Setting up the abilities array](img/B04548_10_12.jpg)
+
+Resize the Combo Box to the same size as that of the **Attack** button, and place it in alignment with the **Attack** button:
+
+![Setting up the abilities array](img/B04548_10_13.jpg)
+
+Lastly, rename the Combo Box to fit to the elements that will be contained in the Combo Box. We can name this **ComboBoxString_Abilities**, and check **Is Variable**:
+
+![Setting up the abilities array](img/B04548_10_14.jpg)
+
+Now that we have a Combo Box that can hold abilities, it is now time to populate the Combo Box with appropriate abilities. Open the **CombatUI** Event Graph. Since we are concerned with having the correct abilities that are accessible during battle, it would be best to populate the Combo Box with abilities as soon as the **CombatUI** is created. To do this, create an **Event Construct** by navigating to **Add Event** | **User Interface**:
+
+![Setting up the abilities array](img/B04548_10_15.jpg)
+
+Connect the **Event Construct** to **Cast To RPGGameInstance**, which will get all the party members, so that we can get and set the proper abilities:
+
+![Setting up the abilities array](img/B04548_10_16.jpg)
+
+What we can do here is set an ability for one of the party members (in this case, the soldier) by getting an index 0 of the **Party Members** Array. We will give the Soldier an ability called **Attack x2** if the Soldier has reached level 2\. To do this, we will get the current level of the target using the **Lvl** variable and compare it with the integer 2 using the **CompareInt** macro:
+
+![Setting up the abilities array](img/B04548_10_17.jpg)
+
+If the **Lvl** variable is more than or equal to 2, we can set the first element of the **LearnedAbilities** array to **Attack x2**:
+
+![Setting up the abilities array](img/B04548_10_18.jpg)
+
+After we have populated the array with the new **Attack x2** ability, we can now populate the Combo Box with every ability that we have by simply executing a **ForEachLoop** and cycling through every element of the array, and adding it to the Combo Box using the **Add Option** function by navigating to **Combo Box** | **Add Option**:
+
+![Setting up the abilities array](img/B04548_10_19.jpg)
+
+This is a very simple way to add combat abilities to an abilities drop-down menu in accordance with party member levels. If you want to create more abilities, all you need to do is simply compare your level with another level using the **CompareInt**, and you can add more abilities to the **LearnedAbilities** array. If you end up having additional characters in the game, it is best to create a new Combo Box for each party member, get that party member from whichever index they are in the **Party Members** array, and then add abilities to their own **LearnedAbilities** array like we did with the Soldier.
+
+You should now be able to test this and see that when the player presses the Combo Box, **Attack x2** will appear if the Soldier party member hits level 2:
+
+![Setting up the abilities array](img/B04548_10_20.jpg)
+
+# Abilities logic
+
+We can now create a logic for our **Attack x2** ability. As the name suggests, **Attack x2** should perform an attack that does double damage. Before we apply this sort of logic, we must first create an event that occurs after selecting the ability from the Combo Box and pressing it. Head back into the **Designer** view. In the **Details** tab, navigate to **Events**, and press **+** next to the **OnOpening** event:
+
+![Abilities logic](img/B04548_10_21.jpg)
+
+This will create an **OnOpening** event in your Event Graph. By selecting and clicking on the ability from the Combo Box, we need to first clear all the children from the **Panel** Widget using the **Clear Children** function, similar to what we did by clicking on the **Attack** button. This will prevent multiple buttons of the same target from popping up:
+
+![Abilities logic](img/B04548_10_22.jpg)
+
+Next, we will check whether the **Attack x2** ability has been opened by first calling the **Get Selected Option** function located under Combo Box (you will need to turn off **Context Sensitive** for this):
+
+![Abilities logic](img/B04548_10_23.jpg)
+
+We set the **Target** of **Get Selected Option** to the **Get Combo Box String Abilities**:
+
+![Abilities logic](img/B04548_10_24.jpg)
+
+Then, check whether the selected option is equal to **Attack x2**:
+
+![Abilities logic](img/B04548_10_25.jpg)
+
+If it is equal, this means that we have selected **Attack x2**, and we will then get the **RPGGameInstance**. However, we need to first check whether the party member has enough MP to use the ability. In this case, we will set the ability to use 10 MP, so let's make sure that the party member has at least 10 MP before using the ability:
+
+![Abilities logic](img/B04548_10_26.jpg)
+
+If the player has enough MP to use the ability, we will use a logic that allows the player to perform an attack that does double damage. Since the player will be doing double damage, this means that it will be easy to multiply the **ATK** variable of the player by two; however, we do not want the **ATK** variable to be doubled forever, only for this turn. To do this, it would be best to create a local variable that will temporarily hold the base **ATK** value so that on the next turn, we can reset the **ATK** value back to its normal value. We can easily do this by creating a local integer called **Temp Atk**, and set **Temp Atk** to the party member's **ATK** value:
+
+![Abilities logic](img/B04548_10_27.jpg)
+
+Next, we will set the **ATK** value of the party member to double its value by multiplying it by two, and set the **ATK** variable to the product of that operation:
+
+![Abilities logic](img/B04548_10_28.jpg)
+
+We also need to set a Boolean to tell when we have used **Attack x2**. Because if we have used it, we need to subtract MP from the party member, and set our **ATK** variable back to normal. To do this, we need to create a local Boolean, which we will call `attackx2`. After we set the attack to be double, set `attackx2` to true, and allow the **CombatUI** to show all the available enemy targets by connecting **SET attackx2** to the **Get Character Targets** function:
+
+![Abilities logic](img/B04548_10_29.jpg)
+
+Once this is done, we can reset the `attackx2` Boolean to false, set the **ATK** variable back to its normal value, and remove 10 MP from the party member for using the ability. The best place to do this is after the **Event Show Actions Panel** occurs again, when the character actions become visible and the targets become invisible. After the targets become invisible, we will check whether the `attackx2` Boolean is true. If it is true, we will set it to false, and then set the **ATK** value equal to the **Temp Atk** value. Then, we subtract 10 from the party member's MP variable:
+
+![Abilities logic](img/B04548_10_30.jpg)
+
+# Saving and loading game progress
+
+The last thing that we will focus on is saving and loading game progress. Saving and loading can be done in many ways, but at its heart, saving the progress revolves around specific variables that you would like to save.
+
+## Saving
+
+Most games save a lot of different variables, such as the level or area the player is in, the player's stats, the player's inventory, and gold. In our example, we will choose to save the player's gold, but using the method that we are about to perform, you can easily figure out how to save all the other progress in the game.
+
+To start with, create a new Blueprint class in **Content Browser** by navigating to **Content** | **Blueprints**. The **Pick Parent Class** window will pop up, and from **All Classes**, select **SaveGame**:
+
+![Saving](img/B04548_10_31.jpg)
+
+Name this class **NewSaveGame**, and open the class. The purpose of this class is to hold the values of every variable that you would like to save. As mentioned earlier, for this example, we will be saving the gold variable, but if you would like to save more variables, the **NewSaveGame** class that you just created will store those variables as well. At this point, add a new variable to this class from the **Add New** variable in the **My Blueprint** tab. Name it **Gold**, and make its variable an **Integer** type:
+
+![Saving](img/B04548_10_32.jpg)
+
+Now that you are done, it is time to find a good spot for the game to be saved and the gold variable to be saved. Since we already have a pause menu and learned how to add buttons to the pause menu in the previous chapters, it would be easy to create a new button that we can call **Save** in the **Pause_Main** Widget Blueprint and add an **OnClicked** event to it:
+
+![Saving](img/B04548_10_33.jpg)
+
+Once you click on **+** next to the **OnClicked** event, the Event Graph will open up, and you will see the **OnClicked** event for your **Save** button. Here, allow the button, when pressed, to create a save game object. To do this, create **Create Save Game Object** whose **Save Game Class** is set to **New Save Game**, and allow it to start when you click on the button:
+
+![Saving](img/B04548_10_34.jpg)
+
+Here, we will need to create a new variable of the **Save Game** type, and we will call this variable **save**:
+
+![Saving](img/B04548_10_35.jpg)
+
+Here, we will create a **SET Save** variable in our Blueprint, and pass the **Return Value** of the **Create Save Game Object** function to **SET Save**:
+
+![Saving](img/B04548_10_36.jpg)
+
+We will now need to cast the **NewSaveGame** class so that we can set the **Gold** variable that we created to the game's gold. To do this, cast **SET Save** to **NewSaveGame** by connecting the **Save** value to the **Object** of **Cast To NewSaveGame**:
+
+![Saving](img/B04548_10_37.jpg)
+
+Next, allow **Cast To NewSaveGame** to fire off a **Cast To RPGInstance** whose **Object** is a reference to **Get Game Instance**. We are doing this so that we can get an instance of the **GameGold**, so link the **As RPGGame Instance** pin from **Cast To RPGGameInstance** to the **Get GameGold** variable from the RPG instance:
+
+![Saving](img/B04548_10_38.jpg)
+
+Now that we are getting the game gold, we can set the game gold's value to the **Gold** variable from the **NewSaveGame** class by linking the **SET Gold** to fire off when the **RPGGameInstance** is cast, and then linking the **GameGold** value pin to the **Gold** value pin and the **Target** pin of **SET Gold** to the **As New Save Game** pin from **Cast To NewSaveGame**:
+
+![Saving](img/B04548_10_39.jpg)
+
+This particular method will allow us to save whatever the current game gold is to our **Gold** variable in the **NewSaveGame** class. Note that if you want to save more variables, set the values of those variables just like you set the value of the **Gold** variable by adding a **SET** node for each individual variable that you have.
+
+The last thing we will need to do is create a save game slot, which will hold our save game object. To do this, create a **Save Game to Slot** action, which you will find under **Game** in your **Actions** window:
+
+![Saving](img/B04548_10_40.jpg)
+
+Create a slot name for this; in this example, we will use **A** as **Slot Name**. Link the **Save Game Object** pin of **Save Game to Slot** to the **Save** value pin, and allow the **Save Game to Slot** to fire when the **Gold** variable is set:
+
+![Saving](img/B04548_10_41.jpg)
+
+We are now done with the saving part of the game. We will now move on to loading a game slot.
+
+## Loading
+
+Just like saving, loading can be done in a number of ways. In our game, we will simply load the player's save data on launching the game. To do this, open the **FieldPlayer** Blueprint since we know that the FieldPlayer will always exist in our game.
+
+Next, we will create a **Load** variable of the **Save Game** type similar to what we did when we saved the game, so that we can properly cast the variables and their values from **NewSaveGame**:
+
+![Loading](img/B04548_10_42.jpg)
+
+Here, we will create an **Event Begin Play**, and from **Event Begin Play**, we will call the **Does Save Game Exist** function from the **Game** category in the **Actions** window, and under **Slot Name**, we will look for **A** since we named our save slot **A** in the previous section:
+
+![Loading](img/B04548_10_43.jpg)
+
+From **Does Save Game Exist**, we will call a branch; if **Does Save Game Exist** is true, we will call **Load Game from Slot** and its **Slot Name** will also be **A**:
+
+![Loading](img/B04548_10_44.jpg)
+
+At this point, we have created a logic where, when the game starts, we check whether the saved game in slot A exists. If it does exist, we load the game from slot A; if it does not exist, we do nothing.
+
+We can now set the **Load** variable that we created in the beginning of this section whose data type is **Save Game** to the **Return Value** of **Load Game from Slot** and cast it to **NewSaveGame** similar to what we did with our save game data:
+
+![Loading](img/B04548_10_45.jpg)
+
+Note that since we now have access to all the variables in **NewSaveGame**, it means that we have access to the gold value that we saved. So from here, we get the gold value from **Cast To NewSaveGame** so that you have whatever value was stored in **Gold** since the player last saved, and you will need to set the **GameGold** value from **RPGGameInstance** to **Gold** from **NewSaveGame**:
+
+![Loading](img/B04548_10_46.jpg)
+
+Just like when we created the saving logic, in this loading logic, if there are any other variables you need to load, you can easily do so by getting more variables from the **NewSaveGame** class and setting it to other variables from the **RPG Game Instance**.
+
+You can now test this by simply playing the game, doing battle to get the game gold, saving the game with the **Save** button that we created in the pause menu, and then closing the game. When you reopen the game, you will notice that the gold you had when you saved the game is automatically loaded when you start the game. Using this framework, feel free to save other game variables such as your status and inventory
+
+# Summary
+
+We now have a solution to allow party members to earn experience, gain levels with enough experience gained, and earn abilities through hitting specific levels. We have also fixed the combat system to allow party members and enemies to do damage based on their stats, as well as allow party members to use abilities in battle. Additionally, you now have the ability to save and load player progress throughout the game. Using the framework covered in this chapter, every party member can level up, and you can easily add more abilities to various party members, use them in battle, and players can save their game at any time and then come back to continue from where they left off.
+
+At this juncture, you have successfully completed a working framework for a turn-based RPG. You have core gameplay working with the ability to allow a party of characters to explore a world in isometric 3D. You can battle enemies with new-found abilities and equipment and interact with NPCs by conversing with them and buying items and equipment with gold you earned from defeating enemies. And just like most other RPGs, you can level up through gaining experience, as well as save game status so players can come back to continue their games at a later date.
+
+Your quest is not over yet though! Now that you know the basics, venture off to add more content to your game, like additional enemies, party members, NPCs and equipment. Through this process, create levels of your own using the framework and content you have created for yourself through following this book.

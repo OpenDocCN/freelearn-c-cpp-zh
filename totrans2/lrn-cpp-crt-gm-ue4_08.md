@@ -1,0 +1,608 @@
+# Chapter 8. Actors and Pawns
+
+Now we will really delve into UE4 code. At first, it is going to look daunting. The UE4 class framework is massive, but don't worry. The framework is massive, so your code doesn't have to be. You will find that you can get a lot done and a lot onto the screen using relatively less code. This is because the UE4 engine code is so extensive and well programmed that they have made it possible to get almost any game-related task done easily. Just call the right functions, and voila, what you want to see will appear on the screen. The entire notion of a framework is that it is designed to let you get the gameplay you want, without having to spend a lot of time in sweating out the details.
+
+# Actors versus pawns
+
+In this chapter, we will discuss actors and pawns. Although it sounds as if pawns will be a more basic class than actors, it is actually the other way around. A UE4 actor (the `Actor` class) object is the basic type of the things that can be placed in the UE4 game world. In order to place anything in the UE4 world, you must derive from the `Actor` class.
+
+A `Pawn` is an object that represents something that you or the computer's **Artificial Intelligence** (**AI**) can control on the screen. The `Pawn` class derives from the `Actor` class, with the additional ability to be controlled by the player directly or by an AI script. When a pawn or actor is controlled by a controller or AI, it is said to be possessed by that controller or AI.
+
+Think of the `Actor` class as a character in a play. Your game world is going to be composed of a bunch of *actors*, all acting together to make the gameplay work. The game characters, **Non-player Characters** (**NPC**s), and even treasure chests will be actors.
+
+# Creating a world to put your actors in
+
+Here, we will start from scratch and create a basic level into which we can put our game characters.
+
+The UE4 team has already done a great job of presenting how the world editor can be used to create a world in UE4\. I want you to take a moment to create your own world.
+
+First, create a new, blank UE4 project to get started. To do this, in the Unreal Launcher, click on the **Launch** button beside your most recent engine installation, as shown in the following screenshot:
+
+![Creating a world to put your actors in](img/00075.jpeg)
+
+That will launch the Unreal Editor. The Unreal Editor is used to visually edit your game world. You're going to spend a lot of time in the Unreal Editor, so please take your time to experiment and play around with it.
+
+I will only cover the basics of how to work with the UE4 editor. You will need to let your creative juices flow, however, and invest some time in order to become familiar with the editor.
+
+### Tip
+
+To learn more about the UE4 editor, take a look at the *Getting Started: Introduction to the UE4 Editor* playlist, which is available at [https://www.youtube.com/playlist?list=PLZlv_N0_O1gasd4IcOe9Cx9wHoBB7rxFl](https://www.youtube.com/playlist?list=PLZlv_N0_O1gasd4IcOe9Cx9wHoBB7rxFl).
+
+Once you've launched the UE4 editor, you will be presented with the **Projects** dialog. The following screenshot shows the steps to be performed with numbers corresponding to the order in which they need to be performed:
+
+![Creating a world to put your actors in](img/00076.jpeg)
+
+Perform the following steps to create a project:
+
+1.  Select the **New Project** tab at the top of the screen.
+2.  Click on the **C++** tab (the second subtab).
+3.  Then select **Basic Code** from the available projects listing.
+4.  Set the directory where your project is located (mine is **Y:\Unreal Projects\**). Choose a hard disk location with a lot of space (the final project will be around 1.5 GB).
+5.  Name your project. I called mine **GoldenEgg**.
+6.  Click on **Create Project** to finalize project creation.
+
+Once you've done this, the UE4 launcher will launch Visual Studio. There will only be a couple of source files in Visual Studio, but we're not going to touch those now. Make sure that **Development Editor** is selected from the **Configuration Manager** dropdown at the top of the screen, as shown in the following screenshot:
+
+![Creating a world to put your actors in](img/00077.jpeg)
+
+Now launch your project by pressing *Ctrl* + *F5* in Visual Studio. You will find yourself in the Unreal Engine 4 editor, as shown in the following screenshot:
+
+![Creating a world to put your actors in](img/00078.jpeg)
+
+# The UE4 editor
+
+We will explore the UE4 editor here. We'll start with the controls since it is important to know how to navigate in Unreal.
+
+## Editor controls
+
+If you've never used a 3D editor before, the controls can be quite hard to learn. These are the basic navigation controls while in edit mode:
+
+*   Use the arrow keys to move around in the scene
+*   Press *Page Up* or *Page Down* to go up and down vertically
+*   Left mouse click + drag it left or right to change the direction you are facing
+*   Left mouse click + drag it up or down to *dolly* (move the camera forward and backward, same as pressing up/down arrow keys)
+*   Right mouse click + drag to change the direction you are facing
+*   Middle mouse click + drag to pan the view
+*   Right mouse click and the *W*, *A*, *S*, and *D* keys to move around the scene
+
+## Play mode controls
+
+Click on the **Play** button in the bar at the top, as shown in the following screenshot. This will launch the play mode.
+
+![Play mode controls](img/00079.jpeg)
+
+Once you click on the **Play** button, the controls change. In play mode, the controls are as follows:
+
+*   The *W*, *A*, *S*, and *D* keys for movement
+*   The left or right arrow keys to look toward the left and right, respectively
+*   The mouse's motion to change the direction in which you look
+*   The *Esc* key to exit play mode and return to edit mode
+
+What I suggest you do at this point is try to add a bunch of shapes and objects into the scene and try to color them with different *materials*.
+
+## Adding objects to the scene
+
+Adding objects to the scene is as easy as dragging and dropping them in from the **Content Browser** tab. The **Content Browser** tab appears, by default, docked at the left-hand side of the window. If it isn't seen, simply select **Window** and navigate to **Content Browser** in order to make it appear.
+
+![Adding objects to the scene](img/00080.jpeg)
+
+Make sure that the Content Browser is visible in order to add objects to your level
+
+Next, select the **Props** folder on the left-hand side of the **Content Browser**.
+
+![Adding objects to the scene](img/00081.jpeg)
+
+Drag and drop things from the Content Browser into your game world
+
+To resize an object, press *R* on your keyboard. The manipulators around the object will appear as boxes, which denotes resize mode.
+
+![Adding objects to the scene](img/00082.jpeg)
+
+Press *R* on your keyboard to resize an object
+
+In order to change the material that is used to paint the object, simply drag and drop a new material from the **Content Browser** window inside the **Materials** folder.
+
+![Adding objects to the scene](img/00083.jpeg)
+
+Drag and drop a material from the Content Browser's Materials folder to color things with a new color
+
+Materials are like paints. You can coat an object with any material you want by simply dragging and dropping the material you desire onto the object you desire it to be coated on. Materials are only skin-deep: they don't change the other properties of an object (such as weight).
+
+# Starting from scratch
+
+If you want to start creating a level from scratch, simply click on **File** and navigate to **New Level...**, as shown here:
+
+![Starting from scratch](img/00084.jpeg)
+
+You can then select between **Default** and **Empty Level**. I think selecting **Empty Level** is a good idea, for the reasons that are mentioned later.
+
+![Starting from scratch](img/00085.jpeg)
+
+The new level will be completely black in color to start with. Try dragging and dropping some objects from the **Content Browser** tab again.
+
+This time, I added a resized shapes / box for the ground plane and textured it with moss, a couple of **Props** / **SM_Rocks**, **Particles** / **P_Fire**, and most importantly, a light source.
+
+Be sure to save your map. Here's a snapshot of my map (how does yours look?):
+
+![Starting from scratch](img/00086.jpeg)
+
+If you want to change the default level that opens when you launch the editor, go to **Project Settings** | **Maps & Modes**; then you will see a **Game Default Map** and **Editor Startup Map** setting, as shown in the following screenshot:
+
+![Starting from scratch](img/00087.jpeg)
+
+## Adding light sources
+
+Note that if your scene appears completely black, it is possible that you forgot to put a light source into it.
+
+In the previous scene, the **P_Fire** particle emitter acts as a light source, but it only emits a small amount of light. To make sure that everything appears well-lit in your scene, you should add a light source, as follows:
+
+1.  Go to **Window** and then click on **Modes** to ensure that the light sources panel is shown:![Adding light sources](img/00088.jpeg)
+2.  Then, from the **Modes** panel, drag one of the **Lights** object into the scene:![Adding light sources](img/00089.jpeg)
+3.  Select the lightbulb and box icon (it looks like a mushroom, but it isn't).
+4.  Click on **Lights** in the left-hand side panel.
+5.  Select the type of light you want and just pull it into your scene.
+
+If you don't have a light source, your scene will appear completely black.
+
+## Collision volumes
+
+You might have noticed that, so far, the camera just passes through all the scene geometry, even in play mode. That's not good. Let's make it such that the player can't just walk through the rocks in our scene.
+
+There are a few different types of collision volumes. Generally, perfect mesh-mesh collisions are way too expensive to do at runtime. Instead, we use an approximation (a bounding volume) to guess the collision volume.
+
+### Adding collision detection for the objects editor
+
+The first thing we have to do is associate a collision volume with each of the rocks in the scene.
+
+We can do this from the UE4 editor as follows:
+
+1.  Click on an object in the scene for which you want to add a collision volume.
+2.  Right-click on this object in the **Scene Outliner** tab (the default appears on the right-hand side of the screen) and select edit, as shown in the following screenshot:![Adding collision detection for the objects editor](img/00090.jpeg)
+
+    ### Note
+
+    You will find yourself in the mesh editor.
+
+3.  Ensure that the collision volume is highlighted, at the top of the screen:![Adding collision detection for the objects editor](img/00091.jpeg)
+4.  Go to the **Collision** menu and then click on **Add Capsule Simplified Collision**:![Adding collision detection for the objects editor](img/00092.jpeg)
+5.  The collision volume, when added successfully, will appear as a bunch of lines surrounding the object, as shown in the following images:![Adding collision detection for the objects editor](img/00093.jpeg)
+
+    The default collision capsule (left) and manually resized versions (right)
+
+6.  You can resize (*R*), rotate (*E*), move (*W*), and change the collision volume as you wish, the same way you would manipulate an object in the UE4 editor.
+7.  When you're done with adding collision meshes, try to click on **Play**; you will notice that you can no longer pass through your collidable objects.
+
+# Adding an actor to the scene
+
+Now that we have a scene up and running, we need to add an actor to the scene. Let's first add an avatar for the player, complete with a collision volume. To do this, we'll have to inherit from a UE4 `GameFramework` class.
+
+# Creating a player entity
+
+In order to create an onscreen representation of the player, we'll need to derive from the `Character` class in Unreal.
+
+## Inheriting from UE4 GameFramework classes
+
+UE4 makes it easy to inherit from the base framework classes. All you have to do is perform the following steps:
+
+1.  Open your project in the UE4 editor.
+2.  Go to **File** and then select **Add Code to Project...**.![Inheriting from UE4 GameFramework classes](img/00094.jpeg)
+
+    Navigating to File | Add Code To Project... will allow you to derive from any of the UE4 GameFramework classes
+
+3.  From here, choose the base class you want to derive from. You have **Character**, **Pawn**, **Actor**, and so on, but for now, we will derive from **Character**:![Inheriting from UE4 GameFramework classes](img/00095.jpeg)
+
+    Select the UE4 class you want to derive from
+
+4.  Click on **Next >** to get this dialog box, where you name the class. I named my player's class `Avatar`.![Inheriting from UE4 GameFramework classes](img/00096.jpeg)
+5.  Finally, click on **Create Class** to create the class in code, as shown in the preceding screenshot.
+
+Let UE4 refresh your Visual Studio project when it asks you. Open the new `Avatar.h` file from the **Solution Explorer**.
+
+The code that UE4 generates will look a little weird. Remember the macros that I suggested you avoid in [Chapter 5](part0034_split_000.html#10DJ41-dd4a3f777fc247568443d5ffb917736d "Chapter 5. Functions and Macros"), *Functions and Macros*. The UE4 code uses macros extensively. These macros are used to copy and paste boilerplate starter code that lets your code integrate with the UE4 editor.
+
+The contents of the `Avatar.h` file are shown in the following code:
+
+[PRE0]
+
+Let's talk about macros for a moment.
+
+The `UCLASS()` macro basically makes your C++ code class available in the UE4 editor. The `GENERATED_UCLASS_BODY()` macro copies and pastes code that UE4 needs to make your class function properly as a UE4 class.
+
+### Tip
+
+For `UCLASS()` and `GENERATED_UCLASS_BODY()`, you don't truly need to understand how UE4 works its magic. You just need to make sure that they are present at the right spot (where they were when you generated the class).
+
+### Associating a model with the Avatar class
+
+Now we need to associate a model with our character object. In order to do this, we need a model to play with. Fortunately, there is a whole pack of sample models available from the UE4 marketplace for free.
+
+#### Downloading free models
+
+To create the player object, we'll download the **Animation Starter Pack** file (which is free) from the **Marketplace** tab.
+
+![Downloading free models](img/00097.jpeg)
+
+From the Unreal Launcher, click on Marketplace and search for Animation Starter Pack, which is free at the time of writing this book
+
+After you've downloaded the **Animation Starter Pack** file, you will be able to add it to any of the projects you've previously created, as shown in the following screenshot:
+
+![Downloading free models](img/00098.jpeg)
+
+When you click on **Add to project** under **Animation Starter Pack**, you will get this pop up, asking which project to add the pack to:
+
+![Downloading free models](img/00099.jpeg)
+
+Simply select your project and the new artwork will be available in your **Content Browser**.
+
+## Loading the mesh
+
+In general, it is considered a bad practice to hardcode your assets into the game. Hardcoding means that you write C++ code that specifies the asset to load. However, hardcoding means the loaded asset is part of the final executable, which will mean that changing the asset that is loaded wouldn't be modifiable at runtime. This is a bad practice. It is much better to be able to change the asset loaded during runtime.
+
+For this reason, we're going to use the UE4 blueprints feature to set up the model mesh and collision capsule of our `Avatar` class.
+
+### Creating a blueprint from our C++ class
+
+1.  This is really easy. Open the **Class Viewer** tab by navigating to **Window** and then clicking on **Class Viewer**, as shown here:![Creating a blueprint from our C++ class](img/00100.jpeg)
+2.  In the **Class Viewer** dialog, start typing in the name of your C++ class. If you have properly created and exported the class from your C++ code, it will appear, as shown in the following screenshot:![Creating a blueprint from our C++ class](img/00101.jpeg)
+
+    ### Tip
+
+    If your `Avatar` class does not show up, close the editor and compile/run the C++ project again.
+
+3.  Right-click on the class that you want to create a blueprint of (in my case, it's my **Avatar** class).
+4.  Name your blueprint something unique. I called my blueprint **BP_Avatar**.
+5.  Now, open this blueprint for editing, by double-clicking on **BP_Avatar** (it will appear in the **Class Viewer** tab after you add it, just under **Avatar**), as shown in the following screenshot:![Creating a blueprint from our C++ class](img/00102.jpeg)
+6.  You will be presented with the blueprints window for your new **BP_Avatar** object, as shown here:![Creating a blueprint from our C++ class](img/00103.jpeg)
+
+    ### Note
+
+    From this window, you can attach a model to the `Avatar` class visually. Again, this is the recommended pattern since artists will typically be the ones setting up their assets for game designers to play with.
+
+7.  To set up the default mesh, click on the **Defaults** button at the top. Scroll down through the properties until you come across **Mesh**.![Creating a blueprint from our C++ class](img/00104.jpeg)
+8.  Click on the dropdown and select **HeroTPP** for your mesh, as shown in the preceding screenshot.
+9.  If **HeroTPP** doesn't appear in the dropdown, make sure that you download and add the **Animation Starter Pack** to your project. Alternatively, you can add the yellow **TutorialTPP** model to your project if you select **Show Engine Content** under **View** **Options**:![Creating a blueprint from our C++ class](img/00105.jpeg)
+10.  What about the collision volume? Click on the **Components** tab in the blueprint editor for your avatar:![Creating a blueprint from our C++ class](img/00106.jpeg)
+
+    If your capsule doesn't encapsulate your model, adjust the model so that it fits
+
+    ### Note
+
+    If your model ended up like mine, the capsule is off the mark! We need to adjust it.
+
+11.  Click on the blue Avatar model and press the *W* key. Move him down until he fits inside the capsule. If the capsule isn't big enough, you can adjust its size in the **Details** tab under **Capsule Height** and **Capsule Radius**, as shown in the following screenshot:![Creating a blueprint from our C++ class](img/00107.jpeg)
+
+    You can stretch your capsule by adjusting the Capsule Height property
+
+12.  Now, we're ready to add this avatar to the game world. Click and drag your **BP_Avatar** model from the **Class Viewer** tab to your scene in the UE4 editor.![Creating a blueprint from our C++ class](img/00108.jpeg)
+
+    Our Avatar class added to the scene, in a T-pose
+
+The pose of Avatar is called the T-pose. Animators often leave their characters in this default pose. Animations can be applied to the character in order to make them change this default pose to something more interesting. You want him animated, you say! Well, that's easy.
+
+Under the **Defaults** tab in the blueprint editor, just above **Mesh**, there is an **Animation** section where you can select the active animation on your **Mesh**. If you wish to use a certain animation asset, simply click on the drop-down menu and choose the animation you desire to show.
+
+A better thing to do, however, is to use a blueprint for the animation. This way, an artist can properly set the animation based on what the character is doing. If you select **Use Animation Blueprint** from **Animation Mode** and then select **ASP_HeroTPP_AnimBlueprint** from the drop-down menu, the character will appear to behave much better in the game, because the animation will be adjusted by the blueprint (which would have been done by an artist) as the character moves.
+
+![Creating a blueprint from our C++ class](img/00109.jpeg)
+
+### Tip
+
+We can't cover everything here. Animation blueprints are covered in [Chapter 11](part0076_split_000.html#28FAO1-dd4a3f777fc247568443d5ffb917736d "Chapter 11. Monsters"), *Monsters*. If you're really interested in animation, it also wouldn't be a bad idea to sit through a couple of Gnomon Workshop tutorials on IK, animation, and rigging, such as Alex Alvarez's *Rigging 101* class at [http://www.thegnomonworkshop.com/store/product/768/Rigging-101](http://www.thegnomonworkshop.com/store/product/768/Rigging-101).
+
+One more thing: let's make the camera for the Avatar appear behind it. This will give you a third person's point-of-view, which will allow you to see the whole character, as shown in the following screenshot with the corresponding steps:
+
+![Creating a blueprint from our C++ class](img/00110.jpeg)
+
+1.  In the **BP_Avatar** blueprint editor, click on the **Components** tab.
+2.  Click on **Add Component**.
+3.  Choose to add a **Camera**.
+
+A camera will appear in the viewport. You can click on the camera and move it around. Position the camera so that it is somewhere behind the player. Make sure that the blue arrow on the player is facing the same direction as the camera. If it isn't, rotate the Avatar model mesh so that it faces the same direction as its blue-colored arrow.
+
+![Creating a blueprint from our C++ class](img/00111.jpeg)
+
+The blue-colored arrow on your model mesh indicates the forward direction for the model mesh. Make sure that the camera's opening faces the same direction as the character's forward vector
+
+# Writing C++ code that controls the game's character
+
+When you launch your UE4 game, you might notice that the camera is a default, free-flying camera. What we will do now is make the starting character an instance of our `Avatar` class and control our character using the keyboard.
+
+## Making the player an instance of the Avatar class
+
+In the Unreal Editor, create a subclass of **Game Mode** by navigating to **File** | **Add Code To Project...** and selecting **Game Mode**. I named mine **GameModeGoldenEgg**.
+
+![Making the player an instance of the Avatar class](img/00112.jpeg)
+
+The UE4 **GameMode** contains the rules of the game and describes how the game is played to the engine. We will work more with our `GameMode` class later. For now, we need to subclass it.
+
+Recompile your project from Visual Studio, so you can create a **GameModeGoldenEgg** blueprint. Create the **GameMode** blueprint by going to the **Blueprints** icon in the menu bar at the top, clicking on **GameMode**, and then selecting **+ Create** | **GameModeGoldenEgg** (or whatever you named your **GameMode** subclass in step 1).
+
+![Making the player an instance of the Avatar class](img/00113.jpeg)
+
+1.  Name your blueprint; I called mine **BP_GameModeGoldenEgg**, as shown in the following screenshot:![Making the player an instance of the Avatar class](img/00114.jpeg)
+2.  Your newly created blueprint will open in the blueprint editor. If it doesn't, you can open the **BP_GameModeGoldenEgg** class from the **Class Viewer** tab.
+3.  Select your **BP_Avatar** class from the **Default Pawn Class** panel, as shown in the following screenshot. The **Default Pawn Class** panel is the type of object that will be used for the player.![Making the player an instance of the Avatar class](img/00115.jpeg)
+4.  Now, launch your game. You can see a back view as the camera is placed behind the place, as shown here:![Making the player an instance of the Avatar class](img/00116.jpeg)
+
+You'll notice that you can't move. Why is that? The answer is because we haven't set up the controller inputs yet.
+
+## Setting up controller inputs
+
+1.  To set up controller inputs, go to **Settings** | **Project Settings...**:![Setting up controller inputs](img/00117.jpeg)
+2.  Next, in the left-hand side panel, scroll down until you see **Input** under **Engine**.![Setting up controller inputs](img/00118.jpeg)
+3.  On the right-hand side, you can set up some **Bindings**. Click on the small arrow next to **Axis Mappings** in order to expand it. Add just two axis mappings to start, one called **Forward** (connected to the keyboard letter *W*) and one called **Strafe** (connected to the keyboard letter *D*). Remember the names that you set; we will look them up in C++ code in just a moment.
+4.  Close the **Project Settings** dialog. Now, open your C++ code.
+
+In the `Avatar.h` constructor, you need to add three member function declarations, as shown here:
+
+[PRE1]
+
+Notice how the first member function we're adding (`SetupPlayerInputComponent`) is an override of a virtual function. `SetupPlayerInputComponent` is a virtual function in the `APawn` base class.
+
+In the `Avatar.cpp` file, you need to put the function bodies. Add the following member function definitions:
+
+[PRE2]
+
+This member function looks up the **Forward** and **Strafe** axis bindings that we just created in Unreal Editor and connects them to the member functions inside the `this` class. Which member functions should we connect to? Why, we should connect to `AAvatar::MoveForward` and `AAvatar::MoveRight`. Here are the member function definitions for these two functions:
+
+[PRE3]
+
+### Tip
+
+The `Controller` object and the `AddMovementInput` functions are defined in the `APawn` base class. Since the `Avatar` class derives from `ACharacter`, which in turn derives from `APawn`, we get free use of all the member functions in the base class `APawn`. Now do you see the beauty of inheritance and code reuse?
+
+### Exercise
+
+Add axis bindings and C++ functions to move the player to the left and back.
+
+### Note
+
+Here' a hint: you only need to add axis bindings if you realize going backwards is only the negative of going forward.
+
+### Solution
+
+Enter two extra axis bindings by navigating to **Settings** | **Project Settings...** | **Input**, as shown here:
+
+![Solution](img/00119.jpeg)
+
+Scale the **S** and **A** inputs by -1.0\. This will invert the axis. So pressing the *S* key in the game will move the player forward. Try it!
+
+Alternatively, you can define two completely separate member functions in your `AAvatar` class, as follows, and bind the *A* and *S* keys to `AAvatar::MoveLeft` and `AAvatar::MoveBack`, respectively:
+
+[PRE4]
+
+## Yaw and pitch
+
+We can change the direction in which the player looks by setting the yaw and pitch of the controller.
+
+All we have to do here is add in new axis bindings for the mouse, as shown in the following screenshot:
+
+![Yaw and pitch](img/00120.jpeg)
+
+From C++, you need to add in two new member function declarations to `AAvatar.h`:
+
+[PRE5]
+
+The bodies of these member functions will go in the `AAvatar.cpp` file:
+
+[PRE6]
+
+Then, add two lines to `SetupPlayerInputComponent`:
+
+[PRE7]
+
+Here, notice how I've multiplied the `amount` values in the `Yaw` and `Pitch` functions by 200\. This number represents the mouse's sensitivity. You can (should) add a `float` member to the `AAvatar` class in order to avoid hardcoding this sensitivity number.
+
+`GetWorld()->GetDeltaSeconds()` gives you the amount of time that passed between the last frame and this frame. It isn't a lot: `GetDeltaSeconds()` should be around 16 milliseconds (0.016 s) most of the time (if your game is running at 60 fps).
+
+So, now we have player input and control. To add new functionality to your Avatar, this is all that you have to do:
+
+1.  Bind your key or mouse actions by going to **Settings** | **Project Settings** | **Input**.
+2.  Add a member function to run when that key is pressed.
+3.  Add a line to `SetupPlayerInputComponent`, connecting the name of the bound input to the member function we want to run when that key is pushed.
+
+# Creating non-player character entities
+
+So, we need to create a few **NPC**s (**non-playable characters**). NPCs are characters within the game that help the player. Some offer special items, some are shop vendors, and some have information to give to the player. In this game, they will react to the player as he gets near. Let's program in some of this behavior.
+
+First, create another subclass of **Character**. In the UE4 Editor, go to **File** | **Add Code To Project...** and choose the **Character** class from which you can make a subclass. Name your subclass `NPC`.
+
+Now, edit your code in Visual Studio. Each NPC will have a message to tell the player, so we add in a `UPROPERTY() FString` property to the `NPC` class.
+
+### Tip
+
+`FString`s are UE4's version of C++'s `<string>` type. When programming in UE4, you should use the `FString` objects over C++ STL's `string` objects. In general, you should preferably use UE4's built-in types, as they guarantee cross-platform compatibility.
+
+How to add the `UPROPERTY() FString` property to the `NPC` class is shown in the following code:
+
+[PRE8]
+
+Notice that we put the `EditAnywhere` and `BlueprintReadWrite` properties into the `UPROPERTY` macro. This will make the `NpcMessage` editable in blueprints.
+
+### Tip
+
+Full descriptions of all the UE4 property specifiers are available at [https://docs.unrealengine.com/latest/INT/Programming/UnrealArchitecture/Reference/Properties/index.html](https://docs.unrealengine.com/latest/INT/Programming/UnrealArchitecture/Reference/Properties/index.html).
+
+Recompile your project (as we did for the `Avatar` class). Then, go to the **Class Viewer**, right click on your `NPC` class, and create a blueprint from it.
+
+Each NPC character you want to create can be a blueprint based off of the `NPC` class. Name each blueprint something unique, as we'll be selecting a different model mesh and message for each NPC that appears, as shown in the following screenshot:
+
+![Creating non-player character entities](img/00121.jpeg)
+
+Now, open the blueprint, select skeletal **mesh** from the **Add** **Components**, and adjust the capsule (as we did for **BP_Avatar**). You can also change the material of your new character so that he looks different from the player.
+
+![Creating non-player character entities](img/00122.jpeg)
+
+Change the material of your character in your mesh's properties. Under the Rendering tab, click on the + icon to add a new material. Then, click on the small capsule-shaped item to select a material to render with.
+
+In the **Defaults** tab, search for the `NpcMessage` property. This is our connection between C++ code and blueprints: because we entered a `UPROPERTY()` function on the `FString NpcMessage` variable, that property appears editable within UE4, as shown in the following screenshot:
+
+![Creating non-player character entities](img/00123.jpeg)
+
+Now, drag **BP_NPC_Owen** into the scene. You can create a second or third character as well, and be sure to give them unique names, appearances, and messages.
+
+![Creating non-player character entities](img/00124.jpeg)
+
+I've created two blueprints for NPCs based on the NPC base classes, BP_NPC_Justin and BP_NPC_Owen. They have different appearances and different messages for the player.
+
+![Creating non-player character entities](img/00125.jpeg)
+
+Justin and Owen in the scene
+
+# Displaying a quote from each NPC dialog box
+
+To display a dialog box, we need a custom (heads-up display) **HUD**. In the UE4 editor, go to **File** | **Add Code To Project...** and choose the `HUD` class from which the subclass is created. Name your subclass as you wish; I've named mine `MyHUD`.
+
+After you have created the `MyHUD` class, let Visual Studio reload. We will make some code edits.
+
+## Displaying messages on the HUD
+
+Inside the `AMyHUD` class, we need to implement the `DrawHUD()` function in order to draw our messages to the HUD and to initialize a font to draw to the HUD with, as shown in the following code:
+
+[PRE9]
+
+The HUD font will be set in a blueprinted version of the `AMyHUD` class. The `DrawHUD()` function runs once per frame. In order to draw within the frame, add a function to the `AMyHUD.cpp` file:
+
+[PRE10]
+
+Wait! We haven't initialized our font yet. To do this, we need to set it up in blueprints. Compile and run your Visual Studio project. Once you are in the editor, go to the **Blueprints** menu at the top and navigate to **GameMode** | **HUD** | **+ Create** | **MyHUD**.
+
+![Displaying messages on the HUD](img/00126.jpeg)
+
+Creating a blueprint of the MyHUD class
+
+I called mine `BP_MyHUD`. Edit `BP_MyHUD` and select a font from the drop-down menu under **HUDFont**:
+
+![Displaying messages on the HUD](img/00127.jpeg)
+
+I selected RobotoDistanceField for my HUD font
+
+Next, edit your **Game Mode** blueprint (**BP_GameModeGoldenEgg**) and select your new `BP_MyHUD` (not `MyHUD` class) for the **HUD Class** panel:
+
+![Displaying messages on the HUD](img/00128.jpeg)
+
+Test your program by running it! You should see text printed on the screen.
+
+![Displaying messages on the HUD](img/00129.jpeg)
+
+## Using TArray<Message>
+
+Each message we want to display for the player will have a few properties:
+
+*   An `FString` variable for the message
+*   A `float` variable for the time to display it
+*   An `FColor` variable for the color of the message
+
+So it makes sense for us to write a little `struct` function to contain all this information.
+
+At the top of `MyHUD.h`, insert the following `struct` declaration:
+
+[PRE11]
+
+### Note
+
+An enhanced version of the `Message` structure (with a background color) is in the code package for this chapter. We used simpler code here so that it'd be easier to understand the chapter.
+
+Now, inside the `AMyHUD` class, we want to add a `TArray` of these messages. A `TArray` is a UE4-defined special type of dynamically growable C++ array. We will cover the detailed use of `TArray` in the next chapter, but this simple usage of `TArray` should be a nice introduction to garner your interest in the usefulness of arrays in games. This will be declared as `TArray<Message>`:
+
+[PRE12]
+
+Now, whenever the NPC has a message to display, we're just need to call `AMyHud::addMessage()` with our message. The message will be added to `TArray` of the messages to be displayed. When a message expires (after a certain amount of time), it will be removed from the HUD.
+
+Inside the `AMyHUD.cpp` file, add the following code:
+
+[PRE13]
+
+The `AMyHUD::DrawHUD()` function now draws all the messages in the `messages` array, and arranges each message in the `messages` array by the amount of time that passed since the last frame. Expired messages are removed from the `messages` collection once their `time` value drops below 0.
+
+### Exercise
+
+Refactor the `DrawHUD()` function so that the code that draws the messages to the screen is in a separate function called `DrawMessages()`.
+
+The `Canvas` variable is only available in `DrawHUD()`, so you will have to save `Canvas->SizeX` and `Canvas->SizeY` in class-level variables.
+
+### Note
+
+Refactoring means to change the way code works internally so that it is more organized or easier to read but still has the same apparent result to the user running the program. Refactoring often is a good practice. The reason why refactoring occurs is because nobody knows exactly what the final code should look like once they start writing it.
+
+### Solution
+
+See the `AMyHUD::DrawMessages()` function in the code package for this chapter.
+
+## Triggering an event when it is near an NPC
+
+To trigger an event near the NPC, we need to set an additional collision detection volume that is a bit wider than the default capsule shape. The additional collision detection volume will be a sphere around each NPC. When the player steps into the NPC sphere, the NPC reacts and displays a message.
+
+![Triggering an event when it is near an NPC](img/00130.jpeg)
+
+We're going to add the dark red sphere to the NPC so that he can tell when the player is nearby
+
+Inside your `NPC.h` class file, add the following code in order to declare `ProxSphere` and `UFUNCTION` called `Prox`:
+
+[PRE14]
+
+This looks a bit messy, but it is actually not that complicated. Here, we declare an extra bounding sphere volume called `ProxSphere`, which detects when the player is near the NPC.
+
+In the `NPC.cpp` file, we need to add the following code in order to complete the proximity detection:
+
+[PRE15]
+
+### Make the NPC display something to the HUD when something is nearby
+
+When the player is near the NPC sphere collision volume, display a message to the HUD that alerts the player about what the NPC is saying.
+
+This is the complete implementation of `ANPC::Prox_Implementation`:
+
+[PRE16]
+
+The first thing we do in this function is to cast `OtherActor` (the thing that came near the NPC) to `AAvatar`. The cast succeeds (and is not `nullptr`) when `OtherActor` is an `AAvatar` object. We get the HUD object (which happens to be attached to the player controller) and pass a message from the NPC to the HUD. The message is displayed whenever the player is within the red bounding sphere surrounding the NPC.
+
+![Make the NPC display something to the HUD when something is nearby](img/00131.jpeg)
+
+Owen's greeting
+
+### Exercises
+
+1.  Add a `UPROPERTY` function name for the NPC's name so that the name of the NPC is editable in blueprints, similar to the message that the NPC has for the player. Show the NPC's name in the output.
+2.  Add a `UPROPERTY` function (type `UTexture2D*`) for the NPC's face texture. Draw the NPC's face beside its message in the output.
+3.  Render the player's HP as a bar (filled rectangle).
+
+### Solutions
+
+Add this property to the `ANPC` class:
+
+[PRE17]
+
+Then, in `ANPC::Prox_Implementation`, change the string passed to the HUD to:
+
+[PRE18]
+
+This way, the NPC's name will be attached to the message.
+
+Add `this` property to the `ANPC` class:
+
+[PRE19]
+
+Then you can select face icons to be attached to the NPC's face in blueprints.
+
+Attach a texture to your `struct Message`:
+
+[PRE20]
+
+To render these icons, you need to add a call to `DrawTexture()` with the right texture passed in to it:
+
+[PRE21]
+
+Be sure to check whether the texture is valid before you render it. The icons should look similar to what is shown here, at the top of the screen:
+
+![Solutions](img/00132.jpeg)
+
+This is how a function to draw the player's remaining health in a bar will look:
+
+[PRE22]
+
+# Summary
+
+In this chapter, we went through a lot of material. We showed you how to create a character and display it on the screen, control your character with axis bindings, and create and display NPCs that can post messages to the HUD.
+
+In the upcoming chapters, we will develop our game further by adding an *Inventory System and Pickup Items* in [Chapter 10](part0072_split_000.html#24L8G2-dd4a3f777fc247568443d5ffb917736d "Chapter 10. Inventory System and Pickup Items"), as well as the code and the concept to account for what the player is carrying. Before we do that, though, we will do an in-depth exploration of some of the UE4 container types in [Chapter 9](part0066_split_000.html#1UU541-dd4a3f777fc247568443d5ffb917736d "Chapter 9. Templates and Commonly Used Containers"), *Templates and Commonly Used Containers*.

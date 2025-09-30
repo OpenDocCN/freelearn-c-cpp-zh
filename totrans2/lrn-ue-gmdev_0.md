@@ -1,0 +1,81 @@
+# Preface
+
+Many people know what a game is, and a lot of people play games every day. But how many people know how to create a game? Game development using Unreal Engine 4 allows aspiring game creators to develop professional-looking games quickly. Unreal Engine 4 provides very polished game development tools and capabilities that allow vast amounts of customization for almost any game that you can dream of.
+
+# What this book covers
+
+[Chapter 1](ch01.html "Chapter 1. An Overview of Unreal Engine"), *An Overview of Unreal Engine*, covers introductory content about what a game engine is, specifically for Unreal Engine 4 and its history. You will get an overview of the features of Unreal Engine 4 and how it can help you to create a game.
+
+[Chapter 2](ch02.html "Chapter 2. Creating Your First Level"), *Creating Your First Level*, explains how to create your first room using the Box Brush, add materials to texture the walls/floor, and learn how to place static objects to enhance the look of the room.
+
+[Chapter 3](ch03.html "Chapter 3. Game Objects – More and Move"), *Game Objects – More and Move*, covers the structure of a simple object type, known as Static Mesh, and how objects in Unreal interact with one another. This chapter also introduces Blueprints, which is the graphical scripting of Unreal Engine 4.
+
+[Chapter 4](ch04.html "Chapter 4. Material and Light"), *Material and Light*, shows you how to customize your level in greater detail by learning how to create your own basic custom Material and how to use simple lights to light up the interior of the level.
+
+[Chapter 5](ch05.html "Chapter 5. Animation and AI"), *Animation and AI*, covers how animation works in Unreal Engine and how to implement simple AI in your game level.
+
+[Chapter 6](ch06.html "Chapter 6. A Particle System and Sound"), *A Particle System and Sound*, explains how to add visual and sound effects to your level.
+
+[Chapter 7](ch07.html "Chapter 7. Terrain and Cinematics"), *Terrain and Cinematics*, shows you how to add the final touches to your level using terrain manipulation and cinematics.
+
+# What you need for this book
+
+You will need to create a free account with Epic Games to start using Unreal Engine 4.
+
+# Who this book is for
+
+This book is meant for those of you who are new to game development and want to learn how games are created.
+
+# Conventions
+
+In this book, you will find a number of text styles that distinguish between different kinds of information. Here are some examples of these styles and an explanation of their meaning.
+
+Code words in text, database table names, folder names, filenames, file extensions, pathnames, dummy URLs, user input, and Twitter handles are shown as follows: "In my case, it will be `Chapter2Level`."
+
+**New terms** and **important words** are shown in bold. Words that you see on the screen, for example, in menus or dialog boxes, appear in the text like this: "The **Modes** window gives you the power to create and place objects into the game world."
+
+### Note
+
+Warnings or important notes appear in a box like this.
+
+### Tip
+
+Tips and tricks appear like this.
+
+# Reader feedback
+
+Feedback from our readers is always welcome. Let us know what you think about this book—what you liked or disliked. Reader feedback is important for us as it helps us develop titles that you will really get the most out of.
+
+To send us general feedback, simply e-mail `<[feedback@packtpub.com](mailto:feedback@packtpub.com)>`, and mention the book's title in the subject of your message.
+
+If there is a topic that you have expertise in and you are interested in either writing or contributing to a book, see our author guide at [www.packtpub.com/authors](http://www.packtpub.com/authors).
+
+# Customer support
+
+Now that you are the proud owner of a Packt book, we have a number of things to help you to get the most from your purchase.
+
+## Downloading the example code
+
+You can download the example code files from your account at [http://www.packtpub.com](http://www.packtpub.com) for all the Packt Publishing books you have purchased. If you purchased this book elsewhere, you can visit [http://www.packtpub.com/support](http://www.packtpub.com/support) and register to have the files e-mailed directly to you.
+
+## Downloading the color images of this book
+
+We also provide you with a PDF file that has color images of the screenshots/diagrams used in this book. The color images will help you better understand the changes in the output. You can download this file from: [http://www.packtpub.com/sites/default/files/downloads/LearningUnrealEngineGameDevelopment_ColorImages.pdf](http://www.packtpub.com/sites/default/files/downloads/LearningUnrealEngineGameDevelopment_ColorImages.pdf).
+
+## Errata
+
+Although we have taken every care to ensure the accuracy of our content, mistakes do happen. If you find a mistake in one of our books—maybe a mistake in the text or the code—we would be grateful if you could report this to us. By doing so, you can save other readers from frustration and help us improve subsequent versions of this book. If you find any errata, please report them by visiting [http://www.packtpub.com/submit-errata](http://www.packtpub.com/submit-errata), selecting your book, clicking on the **Errata** **Submission** **Form** link, and entering the details of your errata. Once your errata are verified, your submission will be accepted and the errata will be uploaded to our website or added to any list of existing errata under the Errata section of that title.
+
+To view the previously submitted errata, go to [https://www.packtpub.com/books/content/support](https://www.packtpub.com/books/content/support) and enter the name of the book in the search field. The required information will appear under the **Errata** section.
+
+## Piracy
+
+Piracy of copyrighted material on the Internet is an ongoing problem across all media. At Packt, we take the protection of our copyright and licenses very seriously. If you come across any illegal copies of our works in any form on the Internet, please provide us with the location address or website name immediately so that we can pursue a remedy.
+
+Please contact us at `<[copyright@packtpub.com](mailto:copyright@packtpub.com)>` with a link to the suspected pirated material.
+
+We appreciate your help in protecting our authors and our ability to bring you valuable content.
+
+## Questions
+
+If you have a problem with any aspect of this book, you can contact us at `<[questions@packtpub.com](mailto:questions@packtpub.com)>`, and we will do our best to address the problem.
