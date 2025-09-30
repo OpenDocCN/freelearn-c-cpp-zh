@@ -1,4 +1,4 @@
-# 声音与视觉 - Qt Multimedia
+# 第九章：声音与视觉 - Qt Multimedia
 
 需要播放声音或显示视频的应用程序通常是游戏，而其他则是完整的多媒体应用程序。Qt Multimedia 可以处理这两者。
 

@@ -1,4 +1,4 @@
-# 与 JavaScript 交互和调试
+# 第六章：与 JavaScript 交互和调试
 
 WebAssembly 有许多令人兴奋的功能和提案正在开发中。然而，在撰写本书时，功能集相当有限。目前，你可以从使用 Emscripten 提供的一些功能中受益良多。从 JavaScript（反之亦然）与 C/C++交互的过程将取决于你是否决定使用 Emscripten。
 

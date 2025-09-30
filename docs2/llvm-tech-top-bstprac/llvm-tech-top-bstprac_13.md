@@ -1,4 +1,4 @@
-# *第十章*：处理 LLVM IR
+# 第十章：*第十章*：处理 LLVM IR
 
 在上一章中，我们学习了 LLVM 中的 PassManager 和 AnalysisManager。我们回顾了一些关于开发 LLVM pass 以及如何通过 AnalysisManager 获取程序分析数据的教程。我们获得的知识和技能有助于为开发者构建代码转换和程序分析的可组合构建块的基础。
 

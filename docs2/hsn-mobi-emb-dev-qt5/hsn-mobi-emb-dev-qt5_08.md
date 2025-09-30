@@ -1,4 +1,4 @@
-# 使用 Qt 蓝牙 LE 进行连接
+# 第六章：使用 Qt 蓝牙 LE 进行连接
 
 您将学习如何使用 Qt 蓝牙**低功耗**（**LE**）来建立与具有 LE 蓝牙无线电的设备的连接。蓝牙不仅仅是鼠标、键盘和音频。设备发现、数据交换以及涉及蓝牙低功耗的其他任务将被检查。我们将使用`QBluetoothUuid`、`QBluetoothCharacteristic`、`QLowEnergyController`和`QLowEnergyService`类。
 

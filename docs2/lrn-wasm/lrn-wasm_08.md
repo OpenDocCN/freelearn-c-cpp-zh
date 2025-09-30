@@ -1,4 +1,4 @@
-# 使用 Emscripten 端口游戏
+# 第八章：使用 Emscripten 端口游戏
 
 如第七章从零开始创建应用程序中所示，WebAssembly 在当前形式下仍然相对有限。Emscripten 提供了强大的 API，用于扩展 WebAssembly 的功能，为你的应用程序添加功能。将代码编译成 WebAssembly 模块和 JavaScript 粘合代码（而不是可执行文件），在某些情况下，可能只需要对现有的 C 或 C++ 源代码进行少量更改。
 
