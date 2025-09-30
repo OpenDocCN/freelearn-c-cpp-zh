@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# QT5 游戏编程初学者指南第二版
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/07f193a0a5e288bdcb9ff0464d494cf1`](https://zh.annas-archive.org/md5/07f193a0a5e288bdcb9ff0464d494cf1)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

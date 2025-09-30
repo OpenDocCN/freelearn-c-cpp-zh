@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# LLVM 技巧、提示和最佳实践
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/697f0414efca22355c65fee92ee35f12`](https://annas-archive.org/md5/697f0414efca22355c65fee92ee35f12)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

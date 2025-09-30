@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# OpenGL 学习指南
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/b815d84300bb8a0c0873a4be055c971e`](https://zh.annas-archive.org/md5/b815d84300bb8a0c0873a4be055c971e)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
