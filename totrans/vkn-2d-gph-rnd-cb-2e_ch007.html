@@ -1,0 +1,2055 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+<title>Physically Based Rendering Using the glTF 2.0 Shading Model</title>
+<link href="../styles/stylesheet1.css" rel="stylesheet" type="text/css"/>
+<link href="../styles/stylesheet2.css" rel="stylesheet" type="text/css"/>
+</head>
+<body>
+<div id="sbo-rt-content"><section class="level1 pkt" data-number="7" id="physically-based-rendering-using-the-gltf-2.0-shading-model">
+<h1 data-number="7">6 Physically Based Rendering Using the glTF 2.0 Shading Model</h1>
+<section class="level2" data-number="7.1" id="join-our-book-community-on-discord-5">
+<h2 data-number="7.1">Join our book community on Discord</h2>
+<p>
+<img height="301" src="../media/file40.png" style="width:15rem" width="301"/>
+</p>
+<p><a href="https://packt.link/unitydev">https://packt.link/unitydev</a></p>
+<p>This chapter will cover the integration of <strong>physically based rendering</strong> (<strong>PBR</strong>) into your graphics applications. We use the glTF 2.0 shading model as an example. PBR is not a single specific technique but rather a set of concepts, like using measured surface values and realistic shading models, to accurately represent real-world materials. Adding PBR to your graphics application or retrofitting an existing rendering engine with PBR might be challenging, as it requires multiple big tasks that work simultaneously before a correct image can be rendered.</p>
+<ol>
+<li>Our goal here is to show how to implement all these steps from scratch. Some of these steps, like precomputing irradiance maps or <strong>bidirectional reflectance distribution function</strong> (<strong>BRDF</strong>) look-up tables, require additional tools to be written. We are not going to use any third-party tools here and will show how to implement the entire skeleton of a PBR pipeline from the ground up, including creating rudimental tools to work with. Some pre-calculations can be done using <strong>General-Purpose Graphics Processing Unit</strong> (<strong>GPGPU</strong>) techniques and compute shaders, all of which will be covered here as well.</li>
+</ol>
+<p>In this chapter, we will learn the following recipes:</p>
+<ul>
+<li>An introduction to the glTF 2.0 physically based shading model</li>
+<li>Rendering unlit glTF 2.0 materials</li>
+<li>Precomputing BRDF look-up tables</li>
+<li>Precomputing irradiance maps and diffuse convolution</li>
+<li>Implementing the glTF 2.0 core metallic-roughness shading model</li>
+<li>Implementing the glTF 2.0 core specular-glossiness shading model</li>
+</ul>
+<blockquote>
+<p>In all future references to glTF, we mean the glTF 2.0 specification. Since glTF 1.0 is obsolete and deprecated, we do not cover it in this book.</p>
+</blockquote>
+</section>
+<section class="level2" data-number="7.2" id="an-introduction-to-the-gltf-2.0-physically-based-shading-model">
+<h2 data-number="7.2">An introduction to the glTF 2.0 physically based shading model</h2>
+<p>In this section, we will learn the PBR Material basics and provide enough context for the actual implementation of some ratified glTF 2.0 PBR extensions. The actual code will be presented in the subsequent recipes and chapters. Since the topic of PBR rendering is vast, we will focus on a minimalistic implementation just to guide you and get you started. In this section, we will focus on the GLSL shader code for the glTF 2.0 PBR shading model. Roughly speaking, rendering a physically based image is nothing more than running a fancy pixel shader with a set of textures.</p>
+<section class="level3" data-number="7.2.1" id="getting-ready-37">
+<h3 data-number="7.2.1">Getting ready</h3>
+<p>We assume you already have some basic understanding of linear algebra and calculus. It is recommended to get yourself familiar with the glTF 2.0 specification, which can be found at <a href="https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.xhtml">https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.xhtml</a>.</p>
+</section>
+<section class="level3" data-number="7.2.2" id="what-is-pbr">
+<h3 data-number="7.2.2">What is PBR?</h3>
+<p><strong>Physically based rendering</strong> (<strong>PBR</strong>) is a set of techniques that aim to simulate how light interacts with real-world materials. By using realistic models for light scattering and reflection, PBR materials can create much more believable and immersive visuals compared to traditional methods.</p>
+<p>The glTF PBR material model is a standardized way of representing physically based materials in the glTF 2.0 format. This model allows you to create highly realistic 3D content across diverse platforms and applications, making it a crucial tool for modern 3D development.</p>
+</section>
+<section class="level3" data-number="7.2.3" id="light-object-interactions">
+<h3 data-number="7.2.3">Light-object interactions</h3>
+<p>Let’s step back and see what a ray of light is as a physical phenomenon – it’s a geometric line along which light energy travels, or a beam of light. It has a starting point and a direction of propagation. Two important interactions of light with surfaces are <strong>reflection</strong> and <strong>diffusion</strong> (also known as “specular” and “diffuse” reflection, respectively). While we intuitively understand these concepts through everyday experience, their physical characteristics may be less familiar.</p>
+<p>When light encounters a surface, part of it bounces back in the opposite direction of the surface’s normal, like how a ball rebounds at an angle off a wall. This type of reflection, occurring on smooth surfaces, creates a mirror-like effect called <strong>specular reflection</strong> (derived from speculum, a Latin word for “mirror”).</p>
+<p>However, not all light reflects. Some light penetrates the surface, where it can either be absorbed, converted into heat, or scattered in various directions. The scattered light that exits the surface again is known as <strong>diffuse light</strong>, <strong>photon diffusion</strong>, or <strong>subsurface scattering</strong>. These terms all refer to the same physical phenomenon of photon movement. However, diffusion and scattering are different in how they disperse photons. Scattering involves photons being redirected in various directions, while diffusion involves photons spreading out evenly.</p>
+<p>The way materials absorb and scatter diffuse light varies for different wavelengths of light, giving objects their distinct colors. For example, an object that absorbs most colors but scatters blue light will appear blue. This scattering is often so chaotic that it appears the same from all directions, unlike a specular mirror-like reflection.</p>
+<figure>
+<img alt="Figure 6.1: Diffuse and specular reflection" height="371" src="../media/file41.png" width="751"/><figcaption aria-hidden="true">Figure 6.1: Diffuse and specular reflection</figcaption>
+</figure>
+<p>Simulating this behavior in computer graphics often requires only a single input, <strong>albedo</strong>, which represents the color defined by the mix of the fractions of various light wavelengths that scatter back out across a surface. The term <strong>diffuse color</strong> is often used interchangeably with albedo.</p>
+<p>When materials have wider scattering angles, such as human skin or milk, simulating their lighting requires more complex approaches than simple light interaction with a surface. This is because the light scattering in these materials is not just limited to the surface; it also occurs within the material itself.</p>
+<p>For thin objects, the light can even scatter out of their back side, making them <strong>translucent</strong>. As the scattering further decreases, like in glass, the material becomes transparent, allowing entire images to pass through it, preserving their visible shape.</p>
+<p>These unique light scattering behaviors are significantly different from the typical “close to the surface” diffusion, requiring special handling for accurate rendering.</p>
+</section>
+<section class="level3" data-number="7.2.4" id="energy-conservation">
+<h3 data-number="7.2.4">Energy conservation</h3>
+<p>The fundamental principle in PBR revolves around the law of conservation of energy. This law asserts that within an isolated system, the overall energy remains unchanged. In the context of rendering, it signifies that the quantity of incoming light at any given location in the scene equals the combined amount of light that is reflected, transmitted, and absorbed at that location.</p>
+<p>Enforcing energy conservation is crucial for PBS. It allows assets to adjust reflectivity and albedo values for a material without inadvertently violating the laws of physics, which often leads to unnatural- looking results. Implementing these constraints in code prevents assets from deviating too far from the reality or becoming inconsistent under varying lighting conditions.</p>
+<p>Implementing this principle in a shading system is straightforward. We simply subtract reflected light before computing the diffuse shading. This implies that highly reflective objects will exhibit minimal to no diffuse light, as most of the light is reflected instead of penetrating the surface. Conversely, materials with strong diffusion cannot be particularly reflective.</p>
+</section>
+<section class="level3" data-number="7.2.5" id="surface-properties">
+<h3 data-number="7.2.5">Surface properties</h3>
+<p>In any given environment, you can readily observe various complex surfaces that exhibit distinct light interactions. These unique surface properties are represented by general mathematical functions, known as <strong>Bidirectional Scattering Distribution Functions</strong> (<strong>BSDFs</strong>).</p>
+<p>Think of a BSDF as an equation that describes how light scatters upon encountering a surface. It considers the surface’s physical properties and predicts probabilities of incident light coming from one direction getting scattered in other directions.</p>
+<p>Although the term BSDF might sound complex, let’s break it down:</p>
+<ul>
+<li><strong>Bidirectional</strong>: This refers to the two-way nature of light interaction with a surface. Incident light arrives at a surface from one direction and then scatters in various directions.</li>
+<li><strong>Scattering</strong>: This describes how incident light can be redirected into multiple outgoing directions. This can involve reflection, transmission, or a combination of both.</li>
+<li><strong>Distribution function</strong>: This defines the probability of light scattering in a particular direction based on the surface’s characteristics. The distribution can range from perfectly uniform scattering to a concentrated reflection in a single direction.</li>
+</ul>
+<p>In practice, the BSDF is usually split into two parts that are treated separately:</p>
+<ul>
+<li><strong>Bidirectional Reflectance Distribution Functions</strong> (<strong>BRDFs</strong>): These functions specifically describe how incident light is reflected from a surface. They explain why a seemingly white light source illuminating a banana makes it appear yellow instead. The BRDF reveals that the banana primarily reflects light in the yellow part of the spectrum while absorbing or transmitting other wavelengths.</li>
+<li><strong>Bidirectional Transmittance Distribution Functions</strong> (<strong>BTDFs</strong>): These functions specifically describe how light is transmitted through a material. This is evident in materials such as glass and plastics, where we see how incident light passes through the material.</li>
+</ul>
+<p>Additionally, other types of BSDFs exist to account for more complex light interaction phenomena, such as subsurface scattering. This occurs when light enters a material and bounces around before re-emerging in a new direction, at points significantly distant from the points of incidence of the incident rays.</p>
+<figure>
+<img alt="Figure 6.2: BRDF and BTDF" height="647" src="../media/file42.png" width="959"/><figcaption aria-hidden="true">Figure 6.2: BRDF and BTDF</figcaption>
+</figure>
+</section>
+<section class="level3" data-number="7.2.6" id="types-of-reflection">
+<h3 data-number="7.2.6">Types of reflection</h3>
+<p>There are four primary surface types characterized by their BRDFs, which define the likelihood of light scattering in various directions:</p>
+<ul>
+<li><strong>Diffuse surfaces</strong> scatter light uniformly in all directions, exemplified by the consistent color of matte paint.</li>
+<li><strong>Glossy specular surfaces</strong> preferentially scatter light in specific reflected directions, exhibiting blurred reflections, such as specular highlights on plastic.</li>
+<li><strong>Perfect specular surfaces</strong> scatter light precisely in a single outgoing direction, mirroring the incident light with respect to the surface normal—similar to flawless reflections seen in perfect mirrors.</li>
+<li><strong>Retro-reflective surfaces</strong> scatter light predominantly back along the incident direction to the light source, akin to the specular highlights observed on velvet or road signs.</li>
+</ul>
+<p>However, it’s improbable that a real-world surface strictly adheres to only one of these models. As a result, most materials can be modeled as intricate combinations of these surface types.</p>
+<p>Moreover, each type of reflection— diffuse, glossy specular, perfect specular, and retro-reflective— can exhibit isotropic or anisotropic distributions:</p>
+<ul>
+<li><strong>Isotropic reflections</strong> maintain a consistent amount of reflected light at a point, irrespective of the object rotation angle. This characteristic aligns with the behavior of most surfaces encountered in daily life.</li>
+<li><strong>Anisotropic reflections</strong> vary in the amount of reflected light based on the orientation of an object to the light source. This occurs due to the alignment of small surface irregularities aligned predominantly in one direction, resulting in elongated and blurry reflections. Such behavior is noticeable in materials such as brushed metal and velvet.</li>
+</ul>
+</section>
+<section class="level3" data-number="7.2.7" id="transmission">
+<h3 data-number="7.2.7">Transmission</h3>
+<p>Reflection distribution types can be used for transmission as well, except for retro-reflection. Conversely, when light passes through a material, its path is affected by the material’s properties. To illustrate how this differs from reflection, consider a single light ray passing through a material, like perfect specular transmission. In perfect specular transmission, the medium’s refractive index determines the direction in which light travels. This behavior adheres to <strong>Snell’s Law</strong>, which is described using the equation n1θ1 = n2θ2n2θ2.</p>
+<figure>
+<img alt="Figure 6.3: The index of refraction" height="854" src="../media/file43.png" width="1075"/><figcaption aria-hidden="true">Figure 6.3: The index of refraction</figcaption>
+</figure>
+<p>Here, <code>n</code> represents the refractive index of the first and second media, while <code>θ</code> denotes the angle of the incoming light concerning the surface normal. Consequently, when both media share identical refractive indices, light proceeds in a perfectly straight path. Conversely, if the refractive indices differ, the light changes its direction upon transitioning into the next medium. A notable instance of this is when light shifts direction upon entering water from air, leading to distortions in our underwater observations. This contrasts with perfect specular reflection, where the incoming angle always equals the outgoing angle.</p>
+</section>
+<section class="level3" data-number="7.2.8" id="fresnel-equation">
+<h3 data-number="7.2.8">Fresnel equation</h3>
+<p>It is important for physically based renderers to know how much light is reflected or transmitted on the surface. It is a combination of these effects that describes substances such as honey and stained glass, which both have color and can be seen through.</p>
+<p>These amounts are directly related to each other and are described by the <strong>Fresnel equations</strong>.</p>
+<p>These equations are tailored for two types of media, <strong>conductors</strong> (<strong>metals</strong>) and <strong>dielectrics</strong> (<strong>nonmetals</strong>). Metals do not transmit light; they only reflect it entirely, or practically entirely. Dielectrics possess the property of diffuse reflection—light rays pass beneath the surface of the material and some of them are absorbed, while some are returned in the form of reflection. This is particularly evident in the specular highlight of these materials—for metals, it will be colored, while for dielectrics, it appears white or, more accurately, retains the color of the incident light.</p>
+<p>Although both conductors and dielectrics are subject to the same set of Fresnel equations, glTF 2.0 opts to develop a distinct evaluation function for dielectrics. This choice is made to leverage the notably straightforward structure that these equations assume when the refractive indices are definitely real numbers.</p>
+<ul>
+<li><strong>Nonmetals (dielectrics)</strong>: These are materials like glass, plastic, and ceramics, which lack distinctive metallic properties.</li>
+<li><strong>Metals (conductors)</strong>: These materials can conduct both heat and electricity to a certain extent. Examples include many metals, such as copper, silver, and gold, although not all metals exhibit this property. Unlike dielectrics, conductors do not transmit light; rather, they absorb some of the incident light, converting it into heat.</li>
+</ul>
+</section>
+<section class="level3" data-number="7.2.9" id="microfacets">
+<h3 data-number="7.2.9">Microfacets</h3>
+<p>According to the microfacet theory, a rough surface is composed of countless microfacets or tiny surface elements, each having its own orientation with respect to the surface normal. These microfacets scatter incoming light in different directions due to their orientations, resulting in a diffused reflection rather than a perfect mirror-like reflection.</p>
+<ul>
+<li><strong>Blinn-Phong Model</strong>: It was introduced by James F. Blinn in 1977 as an enhancement of the empirical Phong reflection model, devised by Bui Tuong Phong in 1973.</li>
+</ul>
+<p>This model computes the intensity of the reflected light based on the angle between the viewer’s direction and the halfway vector <code>h=(L+V)/length(L+V)</code>, which is halfway between the light direction <code>L</code> and the view direction <code>V</code>. The model includes a specular term that provides a highlight on the surface, simulating the effect of a shiny surface.</p>
+<ul>
+<li><strong>Cook-Torrance Model</strong>: In 1982, Robert Cook and Kenneth Torrance introduced a reflectance model that offered a more precise depiction of light reflectance in comparison to the Phong and Blinn-Phong models. The microfacet BRDF equation is as follows:</li>
+</ul>
+<p>Where:</p>
+<ul>
+<li><em>f</em><sub>r</sub>​(<em>ω</em><sub>i</sub>​,<em>ω</em><sub>o</sub>​) is the microfacet BRDF</li>
+<li><em>F</em>(<em>ω</em><sub>i</sub>​,<em>h</em>) is the Fresnel term</li>
+<li><em>D</em>(<em>h</em>) is the microfacet distribution function</li>
+<li><em>G</em>(<em>ω</em><sub>i</sub>​,<em>ω</em><sub>o</sub>​,<em>h</em>) is the geometry function</li>
+<li><em>ω</em><sub>i​</sub> is the incident light direction</li>
+<li><em>ω</em><sub>o</sub>​ is the outgoing light direction</li>
+<li><em>h</em> is the half vector</li>
+<li><em>n</em> is the surface normal</li>
+</ul>
+<p>The proposed approach is versatile, featuring <strong>three interchangeable component</strong> functions, <code>F</code>, <code>D</code>, and <code>G</code>, which can be substituted with equations of your preference. Additionally, it proves efficient in accurately representing a wide range of real-world materials.</p>
+<p>This equation represents the amount of light reflected in a specific direction <code>ωo</code>​, given an incident light direction <code>ωi</code>​ and the surface properties. The initial component <code>F</code> represents the Fresnel effect, the subsequent component <code>D</code> is a <strong>normal distribution function</strong> (<strong>NDF</strong>), and the final component accounts for the shadowing factor <code>G</code>, referred to as the <strong>G term</strong>.</p>
+<p>Of all the factors in this formulation, the NDF term typically exerts the greatest importance. The specific form of the NDF is heavily influenced by the roughness of the BRDF. To sample the microfacet BRDF model efficiently, it is customary to first sample the NDF, obtain a random microfacet normal that conforms to the NDF, and subsequently reflect the incident radiance along this normal to determine the outgoing direction.</p>
+<p>The normalization requirement for the NDF in microfacet theory ensures that the total amount of energy reflected or transmitted by a surface remains consistent across different roughness levels.</p>
+<p>In microfacet theory, the NDF describes the statistical distribution of microfacet normals on a surface. It specifies the probability density of finding a microfacet with a particular orientation. When integrating the BRDF over all possible directions, the integral should yield a value representing the total reflectance or transmittance of the surface.</p>
+<p>Normalization of the NDF guarantees that the total amount of light reflected or transmitted by the surface remains constant, regardless of the surface roughness. This ensures energy conservation, a fundamental principle in physics, stating that energy cannot be created or destroyed, only transformed or transferred.</p>
+<p>Several NDFs are commonly used to simulate the behavior of surfaces with microscale roughness. Some examples are GGX, Beckmann, and Blinn. In the next recipes, we will learn how to implement some of them.</p>
+</section>
+<section class="level3" data-number="7.2.10" id="what-is-a-material">
+<h3 data-number="7.2.10">What is a material?</h3>
+<p>Materials serve as high-level descriptions utilized to represent surfaces, defined by combinations of BRDFs and BTDFs. These BSDFs are articulated as parameters that govern the visual characteristics of the material. For instance, a matte material can be delineated by specifying a diffuse reflection value to elucidate how light interacts with the surface, along with a scalar roughness value to characterize its texture. Transitioning from a matte to a plastic material could be achieved by simply appending a glossy specular reflection value to the matte material, thus recreating the specular highlights typical of plastics.</p>
+</section>
+<section class="level3" data-number="7.2.11" id="gltf-pbr-specification">
+<h3 data-number="7.2.11">glTF PBR specification</h3>
+<p>The glTF PBR specification approaches material representation in a manner that emphasizes realism, efficiency, and consistency across different rendering engines and applications.</p>
+<p>One key aspect of the glTF PBR specification is its adherence to physically based principles. This means that the materials defined in glTF accurately simulate real-world behavior, such as how light interacts with surfaces. Parameters like base color (albedo), roughness, metallic, and specular are used to describe materials, aligning with physical properties like surface color, smoothness, metallicity, and specular reflectivity.</p>
+<p>Another notable feature of the glTF PBR approach is its simplicity and ease of implementation. By standardizing the parameters used to describe materials, glTF simplifies the process of creating and exporting 3D models with PBR materials. This consistency across different applications and rendering engines streamlines the workflow for artists and developers, enabling them to work more efficiently and interchangeably.</p>
+<p>Furthermore, the glTF PBR specification is designed for real-time rendering applications, making it well-suited for use in interactive experiences, games, and other real-time graphics applications. Its efficient representation of materials and optimized file format contribute to faster loading times and better performance in real-time rendering scenarios.</p>
+<p>Overall, the glTF PBR specification stands out for its commitment to physical accuracy, simplicity, and efficiency, making it a preferred choice to represent materials in 3D graphics applications. Its widespread adoption and support across various platforms further cement its status as a leading standard for PBR material representation.</p>
+<blockquote>
+<p>The <em>Khronos 3D Formats Working Group</em> continually strives to enhance PBR material capabilities by introducing new extension specifications. You can always stay updated on the status of ratified extensions by visiting the Khronos GitHub page: <a href="https://github.com/KhronosGroup/glTF/blob/main/extensions/README.md">https://github.com/KhronosGroup/glTF/blob/main/extensions/README.md</a></p>
+</blockquote>
+</section>
+<section class="level3" data-number="7.2.12" id="theres-more...-13">
+<h3 data-number="7.2.12">There’s more...</h3>
+<p>For those who wish to acquire deeper knowledge, make sure you read the free book <em>Physically Based Rendering: From Theory to Implementation</em> by Matt Pharr, Wenzel Jakob, and Greg Humphreys, available online at <a href="http://www.pbr-book.org">http://www.pbr-book.org</a>. Another great reference is the book <em>Real Time Rendering, 4th Edition</em> by Tomas Akenine-Möller, Eric Haines, and Naty Hoffman.</p>
+<p>Also, we recommend SIGGRAPH’s <em>Physically Based Rendering</em> courses. For example, you can find a comprehensive collection of links on GitHub: <a href="https://github.com/neil3d/awesome-pbr">https://github.com/neil3d/awesome-pbr</a>.</p>
+<p>Besides that, the <em>Filament</em> rendering engine provides a very comprehensive explanation of PBR materials: <a href="https://google.github.io/filament/Filament.md.xhtml">https://google.github.io/filament/Filament.md.xhtml</a>.</p>
+</section>
+</section>
+<section class="level2" data-number="7.3" id="rendering-unlit-gltf-2.0-materials">
+<h2 data-number="7.3">Rendering unlit glTF 2.0 materials</h2>
+<p>In this recipe, we will start to develop a code framework that allows us to load and render glTF 2.0 assets.</p>
+<p>We start with the <code>unlit</code> material because it is the simplest glTF 2.0 PBR material extension, and the actual shader implementation is very simple and straightforward. The official name of the extension is <code>KHR_materials_unlit</code>. Here is the link to its specification: <a href="https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_unlit">https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_unlit</a>.</p>
+<p>The <code>unlit</code> material technically is not PBR-based, as it might break the energy conservation assumptions or provide any artistic representations that do not reflect any law of physics. The <code>unlit</code> material was designed with the following motivations in mind:</p>
+<ul>
+<li>Mobile devices with limited resources, where unlit materials offer a performant alternative to higher-quality shading models.</li>
+<li>Photogrammetry, in which the lighting information is already prebaked into the texture data and additional lighting should not be applied.</li>
+<li>Stylized materials (like those resembling “anime” or hand-drawn art) in which lighting is undesirable for aesthetic reasons.</li>
+</ul>
+<p>Let’s get started with the basic implementation.</p>
+<section class="level3" data-number="7.3.1" id="getting-ready-38">
+<h3 data-number="7.3.1">Getting ready</h3>
+<p>The source code for this recipe is in <code>Chapter06/01_Unlit/main.cpp</code>. The corresponding GLSL vertex and fragment shaders are in <code>main.vert</code> and <code>main.frag</code>.</p>
+</section>
+<section class="level3" data-number="7.3.2" id="how-to-do-it-5">
+<h3 data-number="7.3.2">How to do it…</h3>
+<p>We will create a feature-rich glTF viewer in the following chapters. In this chapter, we start building a simple framework that allows us to load and render basic glTF models.</p>
+<p>We will use <code>VulkanApp</code> and the <em>Assimp</em> library from previous chapters. As usual, most of the error checking is omitted from the book text but is present in the actual source code files:</p>
+<ol>
+<li>Let’s load our <code>.gltf</code> file using <em>Assimp</em>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const aiScene* scene = aiImportFile(“deps/src/glTF-Sample-
+  Assets/Models/DamagedHelmet/glTF/DamagedHelmet.gltf”,
+    aiProcess_Triangulate);</code></pre>
+</div>
+<ol>
+<li>As you can see, the loading function is a single line of code. <em>Assimp</em> supports loading <code>.gltf</code> and <code>.glb</code> files out of the box. We use the <em>DamagedHelmet</em> asset from the official Khronos repository: <a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet">https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet</a>. This model uses the <strong>Metallic-Roughness</strong> material, but for demonstration purposes, we will apply the <code>unlit</code> shader to it.</li>
+<li>The next step is to build the mesh geometry. The <code>unlit</code> material uses only the <code>baseColor</code> property of the material in three different input forms: as a vertex attribute, as a static fragment shader color factor, and as a base color texture input. For our vertex format, it means we need to provide the following three per-vertex attributes:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct Vertex {
+  vec3 position;
+  vec4 color;
+  vec2 uv;
+};</code></pre>
+</div>
+<ol>
+<li>To fill in these attributes, we will use the following code. Empty colors are filled with the white color value <code>(1, 1, 1, 1),</code> and the empty texture coordinates are filled with zeroes <code>(0, 0, 0)</code> according to the glTF specification:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>std::vector&lt;Vertex&gt; vertices;
+vertices.reserve(mesh-&gt;mNumVertices);
+for (unsigned int i = 0; i != mesh-&gt;mNumVertices; i++) {
+  const aiVector3D v = mesh-&gt;mVertices[i];
+  const aiColor4D  c = mesh-&gt;mColors[0] ?
+    mesh-&gt;mColors[0][i] : aiColor4D(1, 1, 1, 1);
+  const aiVector3D t = mesh-&gt;mTextureCoords[0] ?
+    mesh-&gt;mTextureCoords[0][i] : aiVector3D(0, 0, 0);
+  vertices.push_back({ .position = vec3(v.x, v.y, v.z),
+                       .color    = vec4(c.r, c.g, c.b, c.a),
+                       .uv       = vec2(t.x, 1.0f - t.y) });
+}</code></pre>
+</div>
+<ol>
+<li>If a vertex color is not presented in the mesh, then we replace it with the default white color. It is a convenient way to simplify the final shader permutation, where we can just combine all three inputs in a simple manner. We will come back to it later in this recipe.</li>
+<li>We build the index buffer using the <em>Assimp</em> mesh faces information:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>std::vector&lt;uint32_t&gt; indices;
+indices.reserve(3 * mesh-&gt;mNumFaces);
+for (unsigned int i = 0; i != mesh-&gt;mNumFaces; i++) {
+  for (int j = 0; j != 3; j++)
+    indices.push_back(mesh-&gt;mFaces[i].mIndices[j]);
+}</code></pre>
+</div>
+<ol>
+<li>After that, we should load a diffuse or albedo base color texture. For simplicity, we will use the hardcoded file path here instead of obtaining it from the <code>.gltf</code> model:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>lvk::Holder&lt;lvk::TextureHandle&gt; baseColorTexture =
+  loadTexture(ctx, “deps/src/glTF-Sample-
+    Assets/Models/DamagedHelmet/glTF/Default_albedo.jpg”);</code></pre>
+</div>
+<ol>
+<li>The vertex and index data are static and can be uploaded into corresponding Vulkan buffers:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>lvk::Holder&lt;lvk::BufferHandle&gt; vertexBuffer = ctx-&gt;createBuffer(
+  { .usage     = lvk::BufferUsageBits_Vertex,
+    .storage   = lvk::StorageType_Device,
+    .size      = sizeof(Vertex) * vertices.size(),
+    .data      = vertices.data(),
+    .debugName = “Buffer: vertex” });
+lvk::Holder&lt;lvk::BufferHandle&gt; indexBuffer = ctx-&gt;createBuffer(
+  { .usage     = lvk::BufferUsageBits_Index,
+    .storage   = lvk::StorageType_Device,
+    .size      = sizeof(uint32_t) * indices.size(),
+    .data      = indices.data(),
+    .debugName = “Buffer: index” });</code></pre>
+</div>
+<ol>
+<li>To finish the mesh setup, we need to load GLSL shaders and create a render pipeline. The member fields of the <code>VertexInput</code> struct correspond to the <code>Vertex</code> struct mentioned above:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const lvk::VertexInput vdesc = {
+  .attributes    = { { .location = 0,
+                       .format = lvk::VertexFormat::Float3,
+                       .offset = 0  },
+                   {   .location = 1,
+                       .format = lvk::VertexFormat::Float4,
+                       .offset = sizeof(vec3) },
+                   {   .location = 2,
+                       .format = lvk::VertexFormat::Float2,
+                       .offset = sizeof(vec3) + sizeof(vec4) }},
+  .inputBindings = { { .stride = sizeof(Vertex) } }};
+lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert =
+  loadShaderModule(ctx, “Chapter06/01_Unlit/src/main.vert”);
+lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag =
+  loadShaderModule(ctx, “Chapter06/01_Unlit/src/main.frag”);
+lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipelineSolid =
+  ctx-&gt;createRenderPipeline({
+    .vertexInput = vdesc,
+    .smVert      = vert,
+    .smFrag      = frag,
+    .color       = {{ .format = ctx-&gt;getSwapchainFormat() }},
+    .depthFormat = app.getDepthFormat(),
+    .cullMode    = lvk::CullMode_Back });</code></pre>
+</div>
+<p>This was the preparation code. Let’s now look inside the application’s main loop:</p>
+<ol>
+<li>Within the rendering loop, we prepare the model-view-projection matrix <code>mvp</code> and pass it into GLSL shaders, using push constants and the <code>PerFrameData</code> structure, together with the base color value and the albedo texture ID:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const mat4 m1 = glm::rotate(
+  mat4(1.0f), glm::radians(+90.0f), vec3(1, 0, 0));
+const mat4 m2 = glm::rotate(
+  mat4(1.0f), (float)glfwGetTime(), vec3(0.0f, 1.0f, 0.0f));
+const mat4 v = app.camera_._.getViewMatrix();
+const mat4 p = glm::perspective(
+  45.0f, aspectRatio, 0.1f, 1000.0f);
+struct PerFrameData {
+  mat4 mvp;
+  vec4 baseColor;
+  uint32_t baseTextureId;
+} perFrameData = {
+  .mvp           = p * v * m2 * m1,
+  .baseColor     = vec4(1, 1, 1, 1),
+  .baseTextureId = baseColorTexture.index(),
+};</code></pre>
+</div>
+<ol>
+<li>Now, the actual 3D mesh rendering is simple, so we post the code here in its entirety:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const lvk::RenderPass renderPass = {
+  .color = { { .loadOp = lvk::LoadOp_Clear,
+               .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } },
+  .depth = { .loadOp = lvk::LoadOp_Clear,
+             .clearDepth = 1.0f }
+};
+const lvk::Framebuffer framebuffer = {
+  .color  = {{ .texture = ctx-&gt;getCurrentSwapchainTexture() }},
+  .depthStencil = { .texture = app.getDepthTexture() },
+};
+lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+buf.cmdBeginRendering(renderPass, framebuffer);
+buf.cmdBindVertexBuffer(0, vertexBuffer, 0);
+buf.cmdBindIndexBuffer(indexBuffer, lvk::IndexFormat_UI32);
+buf.cmdBindRenderPipeline(pipelineSolid);
+buf.cmdBindDepthState({ .compareOp = lvk::CompareOp_Less,
+                        .isDepthWriteEnabled = true });
+buf.cmdPushConstants(perFrameData);
+buf.cmdDrawIndexed(indices.size());</code></pre>
+</div>
+<ol>
+<li>Finally, lets add a few nice touches at the end to render the infinite grid, as described in the <em>Chapter 5</em> recipe, <em>Implementing an infinite grid GLSL shader</em>, and the FPS counter, as described in the <em>Chapter 4</em> recipe <em>Adding a frames-per-second counter</em>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>app.drawGrid(buf, p, vec3(0, -1.0f, 0));
+app.imgui_-&gt;beginFrame(framebuffer);
+app.drawFPS();
+app.imgui_-&gt;endFrame(buf);
+buf.cmdEndRendering();
+ctx-&gt;submit(buf, ctx-&gt;getCurrentSwapchainTexture());</code></pre>
+</div>
+<p>This was all the C++ code. Now, let’s dive into the GLSL shaders for this example. They’re straightforward and short:</p>
+<ol>
+<li>The vertex shader <code>Chapter06/01_Unlit/src/main.vert</code> does the vertex transformation and pre-multiplies the per-vertex color with the provided base color value from push constants:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(push_constant) uniform PerFrameData {
+  mat4 MVP;
+  vec4 baseColor;
+  uint textureId;
+};
+layout (location = 0) in vec3 pos;
+layout (location = 1) in vec4 color;
+layout (location = 2) in vec2 uv;
+layout (location = 0) out vec2 outUV;
+layout (location = 1) out vec4 outVertexColor;
+void main() {
+  gl_Position = MVP * vec4(pos, 1.0);
+  outUV = uv;
+  outVertexColor = color * baseColor;
+}</code></pre>
+</div>
+<ol>
+<li>The fragment shader <code>Chapter06/01_Unlit/src/main.frag</code> is very simple as well. All it does is multiply the precomputed per-vertex base color value by the color value sampled from the albedo texture. The glTF 2.0 specification guarantees to provide at least one <code>baseColorFactor</code> value for the Metallic-Roughness property, and this guarantees the correctness of the result as long as we keep all the remaining parameters equal to <code>1</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(push_constant) uniform PerFrameData {
+  mat4 MVP;
+  vec4 baseColor;
+  uint textureId;
+};
+layout (location = 0) in vec2 uv;
+layout (location = 1) in vec4 vertexColor;
+layout (location=0) out vec4 out_FragColor;
+void main() {
+  vec4 baseColorTexture = textureBindless2D(textureId, 0, uv);
+  out_FragColor =
+    textureBindless2D(textureId, 0, uv) * vertexColor;
+}</code></pre>
+</div>
+<ol>
+<li>The running application <code>Chapter06/01_Unlit/src/main.cpp</code> should look like the following screenshot.</li>
+</ol>
+<figure>
+<img alt="Figure 6.4: Unlit glTF 2.0 model" height="732" src="../media/file44.png" width="1428"/><figcaption aria-hidden="true">Figure 6.4: Unlit glTF 2.0 model</figcaption>
+</figure>
+<p>In this example, we enforced the use of the albedo texture for rendering to keep the code simple, making it easier to understand. In the subsequent chapters, we’ll fully support various combinations of material parameters as specified in the glTF 2.0 specification, providing a more accurate and complete glTF 2.0 viewer implementation.</p>
+</section>
+</section>
+<section class="level2" data-number="7.4" id="precomputing-brdf-look-up-tables">
+<h2 data-number="7.4">Precomputing BRDF look-up tables</h2>
+<p>In the previous recipes, we learned the basic theory behind glTF 2.0 PBR and implemented a simple unlit glTF 2.0 renderer. Let’s continue our PBR exploration and learn how to precompute the Smith GGX BRDF <strong>look-up table (LUT)</strong> for our upcoming glTF 2.0 viewer.</p>
+<ol>
+<li>To render a PBR image, we have to evaluate the BRDF at each point on the surface being rendered, considering the surface properties and the viewing direction. This is computationally expensive, and many real-time implementations, including the reference glTF-Sample-Viewer from Khronos, use precalculated tables of some sort to find the BRDF value, based on surface roughness and the viewing direction.</li>
+<li>BRDF LUT can be stored as a two-dimensional texture. The X-axis represents the dot product between the surface normal vector and the viewing direction, while the Y-axis represents the surface roughness values <code>0...1</code>. Each texel holds three 16-bit floating point values. The first two values represent the scale and bias to <span class="KeystrokePACKT">F0</span>, <em>which is the specular reflectance at normal incidence</em>. The third value is utilized for the sheen material extension, which will be covered in the following chapter.</li>
+</ol>
+<p>We are going to use Vulkan to calculate this LUT texture on the GPU and implement a compute shader to do it.</p>
+<section class="level3" data-number="7.4.1" id="getting-ready-39">
+<h3 data-number="7.4.1">Getting ready</h3>
+<ol>
+<li>It is helpful to revisit the Vulkan compute pipeline creation from the <em>Chapter 5</em> recipe <em>Generating textures in Vulkan using compute shaders</em>. Our implementation is based on a shader from <a href="http://github.com/KhronosGroup/glTF-Sample-Viewer/blob/main/source/shaders/ibl_filtering.frag">http://github.com/KhronosGroup/glTF-Sample-Viewer/blob/main/source/shaders/ibl_filtering.frag</a>, which runs very similar computations in a fragment shader. Our GLSL compute shader can be found in <code>Chapter06/02_BRDF_LUT/src/main.comp</code>.</li>
+</ol>
+</section>
+<section class="level3" data-number="7.4.2" id="why-precompute">
+<h3 data-number="7.4.2">Why precompute?</h3>
+<p>Earlier in this chapter, we explained what BRDF is and introduced its major components, such as the Fresnel term <code>F</code>, the Normal Distribution Function <code>NDF</code>, and the Geometry term <code>G</code>. As you may notice, the BRDF results depend on several factors, such as the incident and outgoing light directions, surface normal, and viewer’s direction:</p>
+<p>Where the individual terms have the following meanings:</p>
+<ul>
+<li><code>D</code> is the GGX NDF microfacet distribution function:</li>
+<li><code>G</code> accounts for mutual shadowing of microfacets and looks as follows:</li>
+<li>The Fresnel <code>F</code> term defines the amount of light reflected off the surface under the given angle of incidence:</li>
+</ul>
+<p>If we check any component of the BRDF, we will see that all of them are quite complex for real-time per-pixel calculations. Therefore, we can use an offline process to precompute some parts of the BRDF equation.</p>
+<p>As you can see, the <code>G</code> term and some parts of the <code>F</code> term depend only on the <code>v</code>, <code>h</code>, and <code>Roughness</code> parameters. We will take advantage of this to do precomputation. Also, please note that we never need <code>n</code> and <code>v</code> separately, so we can always use their dot product instead.</p>
+<p>One important question remains. How can we iterate all possible <code>v</code> and <code>n</code> combinations? To do that, we need to integrate over all angles on a hemisphere, but we can use a simpler approximation for that. To make it efficient, we use two assumptions. First, we need to find a way to integrate with a limited number of samples. Second, we need to choose samples wisely, not just randomly.</p>
+<p>As described in <em>Chapter 20</em>, <em>GPU-Based Importance Sampling</em>, of the book <em>GPU Gems 3</em> <a href="https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-20-gpu-based-importance-sampling">https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-20-gpu-based-importance-sampling</a>, the solution is to use the <strong>Monte Carlo estimation</strong> with <strong>importance sampling</strong>. The Monte Carlo estimation lets us approximate an integral by a weighted sum of random samples. Importance sampling exploits the idea that certain values of random points over a hemisphere have more impact on the function being estimated.</p>
+<p>The paper <em>Real Shading in Unreal Engine 4</em> by Brian Karis provides a detailed explanation of all the mathematical aspects. We strongly recommend reading it for a better understanding of the math behind PBR: <a href="https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf">https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf</a>.</p>
+</section>
+<section class="level3" data-number="7.4.3" id="how-to-do-it...-34">
+<h3 data-number="7.4.3">How to do it...</h3>
+<p>Before we investigate the GLSL shader code, let’s implement all the necessary C++ code to process data arrays on the GPU.</p>
+<p>To manipulate data buffers on the GPU and utilize the data effectively, we require four basic operations: loading a shader module, creating a compute pipeline, creating a buffer, and dispatching compute commands. After that, we need to transfer the data from the GPU buffer to the host memory and save it as a texture file. Let’s walk through these steps by examining the code in <code>Chapter06/02_BRDF_LUT/src/main.cpp</code>:</p>
+<ol>
+<li>The function <code>calculateLUT()</code> implements most of the described functionality. We will start with the shader module loading and compute pipeline creation. The GLSL shader is specialized using the constant <code>kNumSamples</code>, which defines the number of Monte Carlo trials for our LUT calculation. We will store 16-bit float RGBA values in the buffer:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const uint32_t kBrdfW      = 256;
+const uint32_t kBrdfH      = 256;
+const uint32_t kNumSamples = 1024;
+const uint32_t kBufferSize =
+  4u * sizeof(uint16_t) * kBrdfW * kBrdfH;
+void calculateLUT(const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx,
+  void* output, uint32_t size)
+{
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; comp = loadShaderModule(
+    ctx, “Chapter06/02_BRDF_LUT/src/main.comp”);
+  lvk:Holder&lt;lvk::ComputePipelineHandle&gt; computePipelineHandle =
+    ctx-&gt;createComputePipeline({
+      .smComp = comp,
+      .specInfo = {.entries = {{ .constantId = 0,
+                                 .size = sizeof(kNumSamples) }},
+                   .data     = &amp;kNumSamples,
+                   .dataSize = sizeof(kNumSamples),},
+  });</code></pre>
+</div>
+<ol>
+<li>The next step is to create a GPU storage buffer for our output data:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::BufferHandle&gt; dstBuffer = ctx-&gt;createBuffer({
+    .usage     = lvk::BufferUsageBits_Storage,
+    .storage   = lvk::StorageType_HostVisible,
+    .size      = size,
+    .debugName = “Compute: BRDF LUT” });</code></pre>
+</div>
+<ol>
+<li>Finally, we acquire a command buffer, update push constants, and dispatch the compute commands:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+  buf.cmdBindComputePipeline(computePipelineHandle);
+  struct {
+    uint32_t w = kBrdfW;
+    uint32_t h = kBrdfH;
+    uint64_t addr;
+  } pc {
+    .addr = ctx-&gt;gpuAddress(dstBuffer),
+  };
+  buf.cmdPushConstants(pc);
+  buf.cmdDispatchThreadGroups({ kBrdfW / 16, kBrdfH / 16, 1 });</code></pre>
+</div>
+<ol>
+<li>Before reading the generated data back to the CPU memory, we must wait for the GPU to finish processing the buffer. It can be done using the <code>wait()</code> function, which waits for a command buffer to finish. We discussed this in the <em>Chapter 2</em> recipe <em>Using Vulkan command buffers</em>. Once the GPU has finished working, we can copy the memory-mapped buffer back to the CPU memory, referenced by the pointer <code>output</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  ctx-&gt;wait(ctx-&gt;submit(buf));
+  memcpy(output, ctx-&gt;getMappedPtr(dstBuffer), kBufferSize);
+}</code></pre>
+</div>
+<p>That was the C++ part. Now, let’s investigate the GLSL shader compute code in <code>Chapter06/02_BRDF_LUT/src/main.comp</code>:</p>
+<ol>
+<li>To break down our work into smaller pieces, we will start with the shader preamble and the <code>main()</code> function of the BRDF LUT calculation shader. The preamble code sets the compute shader dispatching parameters. In our case, a 16x16 chunk of the LUT texture is calculated by one GPU work group. The number of Monte Carlo trials for numeric integration is declared as a specialization constant that we can override from the C++ code:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (local_size_x=16, local_size_y=16, local_size_z=1) in;
+layout (constant_id = 0) const uint NUM_SAMPLES = 1024u;
+layout(std430, buffer_reference) readonly buffer Data {
+  float16_t floats[];
+};</code></pre>
+</div>
+<ol>
+<li>We use user-provided width and height to calculate our output buffer dimensions. <code>PI</code> is the global “physical” constant we use in the shader:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (push_constant) uniform constants {
+  uint BRDF_W;
+  uint BRDF_H;
+  Data data;
+};
+const float PI = 3.1415926536;</code></pre>
+</div>
+<ol>
+<li>The <code>main()</code> function wraps the <code>BRDF()</code> function call and stores the results. First, we recalculate the worker ID to output array indices:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void main() {
+  vec2 uv;
+  uv.x = (float(gl_GlobalInvocationID.x) + 0.5) / float(BRDF_W);
+  uv.y = (float(gl_GlobalInvocationID.y) + 0.5) / float(BRDF_H);</code></pre>
+</div>
+<ol>
+<li>The <code>BRDF()</code> function does all the actual work. The calculated value is put into the output array:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 v = BRDF(uv.x, 1.0 - uv.y);
+  uint offset = gl_GlobalInvocationID.y * BRDF_W +
+                gl_GlobalInvocationID.x;
+  data.floats[offset * 4 + 0] = float16_t(v.x);
+  data.floats[offset * 4 + 1] = float16_t(v.y);
+  data.floats[offset * 4 + 2] = float16_t(v.z);
+}</code></pre>
+</div>
+<ol>
+<li>As you can see, we use three channels of the texture. The <code>R</code> and <code>G</code> channels are used for GGX BRDF LUT, and the third channel is used for Charlie BRDF LUT, which is required for the <strong>Sheen</strong> material extension and will be covered in <em>Chapter 7</em>, <em>Advanced PBR Extensions</em>.</li>
+</ol>
+<p>Now that we have described the scaffolding parts of our compute shader, we can see how the BRDF LUT values are calculated. Let’s look at the steps:</p>
+<ol>
+<li>To generate random directions in a hemisphere, we will use so-called Hammersley points, calculated by the following function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec2 hammersley2d(uint i, uint N) {
+  uint bits = (i &lt;&lt; 16u) | (i &gt;&gt; 16u);
+  bits = ((bits &amp; 0x55555555u)&lt;&lt;1u)|((bits &amp; 0xAAAAAAAAu)&gt;&gt;1u);
+  bits = ((bits &amp; 0x33333333u)&lt;&lt;2u)|((bits &amp; 0xCCCCCCCCu)&gt;&gt;2u);
+  bits = ((bits &amp; 0x0F0F0F0Fu)&lt;&lt;4u)|((bits &amp; 0xF0F0F0F0u)&gt;&gt;4u);
+  bits = ((bits &amp; 0x00FF00FFu)&lt;&lt;8u)|((bits &amp; 0xFF00FF00u)&gt;&gt;8u);
+  float rdi = float(bits) * 2.3283064365386963e-10;
+  return vec2(float(i) / float(N), rdi);
+}</code></pre>
+</div>
+<blockquote>
+<p><strong>Important Note</strong></p>
+<blockquote>
+<p>The code is based on the following post: <a href="http://holger.dammertz.org:80/stuff/notes_HammersleyOnHemisphere.xhtml">http://holger.dammertz.org:80/stuff/notes_HammersleyOnHemisphere.xhtml</a>. The bit-shifting magic for this and many other applications are thoroughly examined in Henry J. Warren’s book called <em>Hacker’s Delight</em>. Interested readers may also look up the “Van der Corput sequence” to see why this can be used as a series of random directions on a hemisphere.</p>
+</blockquote>
+</blockquote>
+<ol>
+<li>We also need some kind of a pseudorandom number generator. We use the output array indices as an input and pass them through another magic set of formulas:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>float random(vec2 co) {
+  float a  = 12.9898;
+  float b  = 78.233;
+  float c  = 43758.5453;
+  float dt = dot( co.xy ,vec2(a,b) );
+  float sn = mod(dt, 3.14);
+  return fract(sin(sn) * c);
+}</code></pre>
+</div>
+<ol>
+<li>Check out this link to find some useful details about this code: <a href="http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0">http://byteblacksmith.com/improvements-to-the-canonical-one-liner-glsl-rand-for-opengl-es-2-0</a>.</li>
+<li>Let’s look at how importance sampling is implemented according to the paper <em>Real Shading in Unreal Engine 4</em> by Brian Karis. Check out the fourth page of <a href="https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf">https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf</a>. This function maps an <code>i</code>-th 2D point, <code>Xi</code>, to a hemisphere with spread based on the surface roughness:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 importanceSample_GGX(vec2 Xi, float roughness, vec3 normal)
+{
+  float alpha = roughness * roughness;
+  float phi = 2.0 * PI * Xi.x + random(normal.xz) * 0.1;
+  float cosTheta =
+    sqrt((1.0 - Xi.y) / (1.0 + (alpha*  alpha - 1.0) * Xi.y));
+  float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+  vec3 H =
+    vec3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);</code></pre>
+</div>
+<ol>
+<li>Calculations are done in tangent space, defined by the vectors <code>up</code>, <code>tangentX</code>, and <code>tangentY</code>, and then converted to world space:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 up = abs(normal.z) &lt; 0.999 ?
+    vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+  vec3 tangentX = normalize(cross(up, normal));
+  vec3 tangentY = normalize(cross(normal, tangentX));
+  return normalize(tangentX * H.x +
+                   tangentY * H.y +
+                     normal * H.z);
+}</code></pre>
+</div>
+<ol>
+<li>Another utility function, <code>G_SchlicksmithGGX()</code>, calculates the GGX geometric shadowing factor:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>float G_SchlicksmithGGX(
+  float dotNL, float dotNV, float roughness)
+{
+  float k = (roughness * roughness) / 2.0;
+  float GL = dotNL / (dotNL * (1.0 - k) + k);
+  float GV = dotNV / (dotNV * (1.0 - k) + k);
+  return GL * GV;
+}</code></pre>
+</div>
+<ol>
+<li>We also precalculate LUT for the Sheen material, so there are two more helper functions, <code>V_Ashikhmin()</code> and <code>D_Charlie()</code>. They are based on the code from the Filament engine: <a href="https://github.com/google/filament/blob/master/shaders/src/brdf.fs#L136">https://github.com/google/filament/blob/master/shaders/src/brdf.fs#L136</a>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>float V_Ashikhmin(float NdotL, float NdotV) {
+  return clamp(
+    1.0 / (4.0 * (NdotL + NdotV - NdotL * NdotV)), 0.0, 1.0);
+}
+float D_Charlie(float sheenRoughness, float NdotH) {
+  sheenRoughness = max(sheenRoughness, 0.000001); // clamp (0,1]
+  float invR = 1.0 / sheenRoughness;
+  float cos2h = NdotH * NdotH;
+  float sin2h = 1.0 - cos2h;
+  return (2.0 + invR) * pow(sin2h, invR * 0.5) / (2.0 * PI);
+}</code></pre>
+</div>
+<ol>
+<li>Here is a corresponding sampling function, <code>importanceSample_Charlie()</code>, for the Sheen material, which is very similar to <code>importanceSample_GGX()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 importanceSample_Charlie(
+  vec2 Xi, float roughness, vec3 normal)
+{
+  float alpha = roughness * roughness;
+  float phi = 2.0 * PI * Xi.x;
+  float sinTheta = pow(Xi.y, alpha / (2.0*  alpha + 1.0));
+  float cosTheta = sqrt(1.0 - sinTheta * sinTheta);
+  vec3 H = vec3(
+    sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+  vec3 up = abs(normal.z) &lt; 0.999 ?
+    vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+  vec3 tangentX = normalize(cross(up, normal));
+  vec3 tangentY = normalize(cross(normal, tangentX));
+  return normalize(tangentX * H.x +
+                   tangentY * H.y +
+                     normal * H.z);
+}</code></pre>
+</div>
+<ol>
+<li>The value of BRDF is calculated the following way, using all of the helper functions we declared above. The number of Monte Carlo trials, <code>NUM_SAMPLES</code>, is set earlier to be <code>1024</code>. The normal vector <code>N</code> always points along the Z-axis for the 2D look-up:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 BRDF(float NoV, float roughness) {
+  const vec3 N = vec3(0.0, 0.0, 1.0);
+  vec3 V = vec3(sqrt(1.0 - NoV*  NoV), 0.0, NoV);
+  vec3 LUT = vec3(0.0);</code></pre>
+</div>
+<ol>
+<li>The first loop calculates the <code>R</code> and <code>G</code> components of our LUT, which correspond to the scale and bias to <code>F0</code>, respectively:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  for (uint i = 0u; i &lt; NUM_SAMPLES; i++) {
+    vec2 Xi = hammersley2d(i, NUM_SAMPLES);
+    vec3 H = importanceSample_GGX(Xi, roughness, N);
+    vec3 L = 2.0 * dot(V, H) * H - V;
+    float dotNL = max(dot(N, L), 0.0);
+    float dotNV = max(dot(N, V), 0.0);
+    float dotVH = max(dot(V, H), 0.0); 
+    float dotNH = max(dot(H, N), 0.0);
+    if (dotNL &gt; 0.0) {
+      float G = G_SchlicksmithGGX(dotNL, dotNV, roughness);
+      float G_Vis = (G * dotVH) / (dotNH * dotNV);
+      float Fc = pow(1.0 - dotVH, 5.0);
+      LUT.rg += vec2((1.0 - Fc) * G_Vis, Fc * G_Vis);
+    }
+  }</code></pre>
+</div>
+<ol>
+<li>The third component, <code>B</code>, used for the sheen material is calculated in another loop. We will revisit it in <em>Chapter 7</em>, <em>Advanced PBR Extensions</em>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  for(uint i = 0u; i &lt; NUM_SAMPLES; i++) {
+    vec2 Xi = hammersley2d(i, NUM_SAMPLES);
+    vec3 H = importanceSample_Charlie(Xi, roughness, N);
+    vec3 L = 2.0 * dot(V, H) * H - V;
+    float dotNL = max(dot(N, L), 0.0);
+    float dotNV = max(dot(N, V), 0.0);
+    float dotVH = max(dot(V, H), 0.0); 
+    float dotNH = max(dot(H, N), 0.0);
+    if (dotNL &gt; 0.0) {
+      float sheenDistribution = D_Charlie(roughness, dotNH);
+      float sheenVisibility = V_Ashikhmin(dotNL, dotNV);
+      LUT.b +=
+        sheenVisibility * sheenDistribution * dotNL * dotVH;
+    }
+  }
+  return LUT / float(NUM_SAMPLES);
+}</code></pre>
+</div>
+<p>That is the entire GLSL compute shader used to precalculate the look-up table. Let’s now see how it works with the C++ <code>main()</code> function.</p>
+</section>
+<section class="level3" data-number="7.4.4" id="how-it-works...-9">
+<h3 data-number="7.4.4">How it works...</h3>
+<p>The <code>main()</code> function creates a KTX texture using the <em>KTX-Software</em> library so that our 16-bit RGBA LUT texture can be saved in the <code>.ktx</code> format, preserving the data. Then, it calls the <code>calculateLUT()</code> function we discussed above, which outputs the generated LUT data into the KTX texture. The texture is saved in <code>data/brdfLUT.ktx</code>:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>int main() {
+  std::unique_ptr&lt;lvk::IContext&gt; ctx =
+    lvk::createVulkanContextWithSwapchain(nullptr, 0, 0, {});
+  ktxTextureCreateInfo createInfo = {
+    .glInternalformat = GL_RGBA16F,
+    .vkFormat         = VK_FORMAT_R16G16B16A16_SFLOAT,
+    .baseWidth        = kBrdfW,
+    .baseHeight       = kBrdfH,
+    .baseDepth        = 1u,
+    .numDimensions    = 2u,
+    .numLevels        = 1,
+    .numLayers        = 1u,
+    .numFaces         = 1u,
+    .generateMipmaps  = KTX_FALSE,
+  };
+  ktxTexture1* lutTexture = nullptr;
+  ktxTexture1_Create(
+    &amp;createInfo, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &amp;lutTexture);
+  calculateLUT(ctx, lutTexture-&gt;pData, kBufferSize);
+  ktxTexture_WriteToNamedFile(
+    ktxTexture(lutTexture), “data/brdfLUT.ktx”);
+  ktxTexture_Destroy(ktxTexture(lutTexture));
+  return 0;
+}</code></pre>
+</div>
+<ol>
+<li>You can use <em>Pico Pixel</em> (<a href="https://pixelandpolygon.com">https://pixelandpolygon.com</a>) to view the generated image. It should resemble the screenshot below. The horizontal axis represents the dot product between the surface normal vector and the viewing direction, while the vertical axis represents the surface roughness values <code>0...1</code>. Each texel holds three 16-bit floating point values. The first two values represent the scale and bias to <code>F0</code>, which is the specular reflectance at normal incidence. The third value is utilized for the sheen material extension, which will be covered in the next chapter:</li>
+</ol>
+<figure>
+<img alt="Figure 6.5: BRDF lookup table" height="637" src="../media/file45.png" width="1427"/><figcaption aria-hidden="true">Figure 6.5: BRDF lookup table</figcaption>
+</figure>
+<p>This concludes the BRDF lookup table tool description. We will need yet another tool to calculate an irradiance cube map from an environment cube map, which we will cover in the next recipe.</p>
+</section>
+<section class="level3" data-number="7.4.5" id="theres-more...-14">
+<h3 data-number="7.4.5">There’s more...</h3>
+<p>The method described above can be used to precompute BRDF look-up tables, using high-quality Monte Carlo integration, and store them as textures. Dependent texture fetches can be expensive on some mobile platforms. There is an interesting runtime approximation used in Unreal Engine that does not rely on any precomputation, as described in the blog post <em>Physically Based Shading on Mobile</em> by Brian Karis: <a href="https://www.unrealengine.com/en-US/blog/physically-based-shading-on-mobile">https://www.unrealengine.com/en-US/blog/physically-based-shading-on-mobile</a>. Here is the GLSL source code:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>vec3 EnvBRDFApprox(vec3 specularColor, float roughness, float NoV) {
+  const vec4 c0 = vec4(-1, -0.0275, -0.572, 0.022);
+  const vec4 c1 = vec4( 1,  0.0425,  1.04, -0.04 );
+  vec4 r = roughness * c0 + c1;
+  float a004 = min(r.x * r.x, exp2(-9.28 * NoV)) * r.x + r.y;
+  vec2 AB = vec2(-1.04, 1.04) * a004 + r.zw;
+  return specularColor * AB.x + AB.y;
+}</code></pre>
+</div>
+</section>
+</section>
+<section class="level2" data-number="7.5" id="precomputing-irradiance-maps-and-diffuse-convolution">
+<h2 data-number="7.5">Precomputing irradiance maps and diffuse convolution</h2>
+<p>As we discussed earlier in the recipe <em>An introduction to the glTF 2.0 Physically Based Shading Model</em>, the second part of the split sum approximation necessary to calculate the glTF 2.0 physically based shading model comes from the irradiance cube map, which is precalculated by convolving the input environment cube map with the GGX distribution of our shading model. Our implementation is based on the code at <a href="https://github.com/KhronosGroup/glTF-Sample-Viewer/blob/main/source/shaders/ibl_filtering.frag">https://github.com/KhronosGroup/glTF-Sample-Viewer/blob/main/source/shaders/ibl_filtering.frag</a>.</p>
+<p><strong>Image-based lighting</strong> (<strong>IBL</strong>) is a technique for illuminating a scene using captured light information. This information can be stored as panoramic photo images (for example, see <em>Figure 6.6</em>). It is very hard to simulate entire real-world environments, so capturing the real world and using images is a very common technique nowadays to produce realistic renders. Using IBL allows us to precompute the parts of the diffuse and specular BRDF equations and make them more runtime-friendly.</p>
+<p>Note that precomputing irradiance and diffusion is quite a mathematical process. If you want to learn more about the theory behind these computations, make sure you read Brian Karis’s paper <em>Real Shading in Unreal Engine 4</em>: <a href="https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf">https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf</a>.</p>
+<section class="level3" data-number="7.5.1" id="getting-ready-40">
+<h3 data-number="7.5.1">Getting ready</h3>
+<p>Check out the source code for this recipe in <code>Chapter06/03_FilterEnvmap</code>.</p>
+</section>
+<section class="level3" data-number="7.5.2" id="how-to-do-it...-35">
+<h3 data-number="7.5.2">How to do it...</h3>
+<p>We will do Monte-Carlo integration inside a fragment shader, which is located here: <code>Chapter06/03_FilterEnvmap/src/main.frag</code>.</p>
+<p>The C++ source code can be found in the <code>Chapter06/03_FilterEnvmap/src/main.cpp</code> file. Let’s go through the function <code>prefilterCubemap()</code> to precompute the irradiance and diffuse maps:</p>
+<ol>
+<li>First, we need to create a cube map texture to store the results of prefiltering. We will use the 32-bit RGBA floating point pixel format because most of our color-related calculations happen in linear space. Low-end mobile devices might be not performant enough, and in this case, the dynamic range can be clamped to 16-bit or even 8-bit, but that might significantly impact the visual fidelity.</li>
+</ol>
+<p>We use cubemap mip-levels to precompute multiple lookups for different values of material roughness <code>0…1</code>. The function takes in the <code>distribution</code> parameter, which is passed to the shader to select an appropriate distribution, Lambertian, GGX, or Charlie:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>void prefilterCubemap(
+  const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx,
+  ktxTexture1* cube, const char* envPrefilteredCubemap,
+  lvk::TextureHandle envMapCube,
+  Distribution distribution,
+  uint32_t sampler,
+  uint32_t sampleCount)
+{
+  lvk::Holder&lt;lvk::TextureHandle&gt; prefilteredMapCube =
+    ctx-&gt;createTexture({
+        .type         = lvk::TextureType_Cube,
+        .format       = lvk::Format_RGBA_F32,
+        .dimensions   = {cube-&gt;baseWidth, cube-&gt;baseHeight, 1},
+        .usage        = lvk::TextureUsageBits_Sampled |
+                        lvk::TextureUsageBits_Attachment,
+        .numMipLevels = (uint32_t)cube-&gt;numLevels,
+        .debugName    = envPrefilteredCubemap,
+      }, envPrefilteredCubemap);</code></pre>
+</div>
+<ol>
+<li>We require GLSL shader modules and a rendering pipeline:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert = loadShaderModule(
+    ctx, “Chapter06/03_FilterEnvmap/src/main.vert”);
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag = loadShaderModule(
+    ctx, “Chapter06/03_FilterEnvmap/src/main.frag”);
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipelineSolid =
+    ctx-&gt;createRenderPipeline({
+      .smVert   = vert,
+      .smFrag   = frag,
+      .color    = { { .format =
+                        ctx-&gt;getFormat(prefilteredMapCube) } },
+      .cullMode = lvk::CullMode_Back,
+  });</code></pre>
+</div>
+<ol>
+<li>Now, we can start doing the actual rendering in the cubemap. One command buffer is filled with all the commands necessary to render in <code>6</code> cubemap faces, with all the required mip-levels:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::ICommandBuffer&amp; buf = ctx,-&gt;acquireCommandBuffer();
+  for (uint32_t mip = 0; mip &lt; cube-&gt;numLevels; mip++) {
+    for (uint32_t face = 0; face &lt; 6; face++) {</code></pre>
+</div>
+<ol>
+<li>We set the cube map face and the specific mip-level we want to render:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>      buf.cmdBeginRendering(
+        { .color = { { .loadOp     = lvk::LoadOp_Clear,
+                       .layer      = (uint8_t)face,
+                       .level      = (uint8_t)mip,
+                       .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f },
+                   } } },
+        { .color = {{ .texture = prefilteredMapCube }} });
+      buf.cmdBindRenderPipeline(pipelineSolid);
+      buf.cmdBindDepthState({});</code></pre>
+</div>
+<ol>
+<li>Push constants are used to pass all the data into the shaders:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>      struct PerFrameData {
+        uint32_t face;
+        float roughness;
+        uint32_t sampleCount;
+        uint32_t width;
+        uint32_t envMap;
+        uint32_t distribution;
+        uint32_t sampler;
+      } perFrameData = {
+        .face         = face,
+        .roughness    = (float)(mip) / (cube-&gt;numLevels - 1),
+        .sampleCount  = sampleCount,
+        .width        = cube-&gt;baseWidth,
+        .envMap       = envMapCube.index(),
+        .distribution = uint32_t(distribution),
+        .sampler      = sampler,
+      };
+      buf.cmdPushConstants(perFrameData);</code></pre>
+</div>
+<ol>
+<li>Then, a full-screen triangle is rendered to cover the entire cube face and let the fragment shader do its work. After the command buffer is filled up, we can submit it:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>      buf.cmdDraw(3);
+      buf.cmdEndRendering();
+    }
+  }
+  ctx-&gt;submit(buf);
+  ... // save results to a .ktx file
+}</code></pre>
+</div>
+<p>The remaining part of the <code>prefilterCubemap()</code> function retrieves the generated cubemap data from the GPU and saves it in a <code>.ktx</code> file. Let’s look at the GLSL fragment shader code, which does all the heavy lifting in <code>Chapter06/03_FilterEnvmap/src/main.frag</code>:</p>
+<ol>
+<li>To unwind the shader logic, let’s start with the entry point, <code>main()</code>. The code is trivial and invokes two functions. The function <code>uvToXYZ()</code> converts a cubemap face index and <code>vec2</code> coordinates into a <code>vec3</code> cubemap sampling direction. The function <code>filterColor()</code> does the actual Monte Carlo sampling, which we will come back to in a moment:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void main() {
+  vec2 newUV = uv * 2.0 - vec2(1.0);
+  vec3 scan = uvToXYZ(perFrameData.face, newUV);
+  vec3 direction = normalize(scan);
+  out_FragColor = vec4(filterColor(direction), 1.0);
+}</code></pre>
+</div>
+<ol>
+<li>Here’s the code of <code>uvToXYZ()</code> for your reference:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 uvToXYZ(uint face, vec2 uv) {
+  if (face == 0) return vec3(   1., uv.y,  uv.x);
+  if (face == 1) return vec3(  -1., uv.y, -uv.x);
+  if (face == 2) return vec3(+uv.x,   1.,  uv.y);  
+  if (face == 3) return vec3(+uv.x,  -1., -uv.y);
+  if (face == 4) return vec3(+uv.x, uv.y,   -1.);
+  if (face == 5) return vec3(-uv.x, uv.y,    1.);
+}</code></pre>
+</div>
+<ol>
+<li>The function <code>filterColor()</code> does the integration part for irradiance and Lambertian diffuse convolution. The argument <code>N</code> is the cubemap sampling direction vector. We iterate <code>sampleCount</code> samples and get the importance sampling information, which includes the importance sample direction and the <strong>probability distribution function</strong> (<strong>PDF</strong>) for this direction. The mathematical part is described in detail in this blog post: <a href="https://bruop.github.io/ibl">https://bruop.github.io/ibl</a>. Here, we will focus on putting a minimalistic working implementation together:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 filterColor(vec3 N) {
+  vec3  color  = vec3(0.f);
+  float weight = 0.0f;
+  for(uint i = 0; i &lt; perFrameData.sampleCount; i++) {
+    vec4 importanceSample =
+      getImportanceSample(i, N, perFrameData.roughness);
+    vec3 H = vec3(importanceSample.xyz);
+    float pdf = importanceSample.w;</code></pre>
+</div>
+<ol>
+<li>Mipmap samples are filtered as described in <em>GPU Gems 3</em> at section <em>20.4</em>, <em>Mapping and Distortion.</em> Sample Lambertian at a lower resolution to avoid pixels that are too bright, also known as <strong>fireflies</strong>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    float lod = computeLod(pdf);
+    if (perFrameData.distribution == cLambertian) {
+      vec3 lambertian = textureBindlessCubeLod(
+        perFrameData.envMap,
+        perFrameData.samplerIdx, H, lod).xyz;
+      color += lambertian;
+    } else if (perFrameData.distribution == cGGX ||
+               perFrameData.distribution == cCharlie) {
+      vec3 V = N;
+      vec3 L = normalize(reflect(-V, H));
+      float NdotL = dot(N, L);
+      if (NdotL &gt; 0.0) {
+        if (perFrameData.roughness == 0.0) lod = 0.0;
+        vec3 sampleColor = textureBindlessCubeLod(
+          perFrameData.envMap,
+          perFrameData.samplerIdx, L, lod).xyz;
+        color += sampleColor * NdotL;
+        weight += NdotL;
+      }
+    }
+  }</code></pre>
+</div>
+<ol>
+<li>The output color value is renormalized using the sum of all <code>NdotL</code> weights, or the number of samples for the Lambertian case:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  color /= (weight != 0.0f) ?
+    weight : float(perFrameData.sampleCount);
+  return color.rgb;
+}</code></pre>
+</div>
+<ol>
+<li>The importance sampling function <code>getImportanceSample()</code> returns a <code>vec4</code> value, with an importance sample direction in the <code>.xyz</code> components and the PDF scalar value in the <code>.w</code> component. We generate a Hammersley point, as we described earlier in the previous recipe, <em>Precomputing BRDF look-up tables</em>, and then, based on the distribution type (Lambertian, GGX, or Charlie), we generate a sample and rotate it in the normal direction. This function uses a helper structure, <code>MicrofacetDistributionSample</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct MicrofacetDistributionSample {
+  float pdf;
+  float cosTheta;
+  float sinTheta;
+  float phi;
+};
+vec4 getImportanceSample(
+  uint sampleIndex, vec3 N, float roughness)
+{
+  vec2 xi = hammersley2d(sampleIndex, perFrameData.sampleCount);
+  MicrofacetDistributionSample importanceSample;</code></pre>
+</div>
+<ol>
+<li>Generate points on a hemisphere with a mapping corresponding to the desired distribution. For example, Lambertian distribution uses a cosine importance:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (perFrameData.distribution == cLambertian)
+    importanceSample = Lambertian(xi, roughness);
+  else if (perFrameData.distribution == cGGX)
+    importanceSample = GGX(xi, roughness);
+  else if (perFrameData.distribution == cCharlie)
+    importanceSample = Charlie(xi, roughness);</code></pre>
+</div>
+<ol>
+<li>Transform the hemisphere sample point into the tangent coordinate frame. The helper function <code>generateTBN()</code> generates a tangent-bitangent-normal coordinate frame from the provided normal vector:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 localSpaceDirection = normalize(vec3(
+    importanceSample.sinTheta * cos(importanceSample.phi), 
+    importanceSample.sinTheta * sin(importanceSample.phi), 
+    importanceSample.cosTheta));
+  mat3 TBN = generateTBN(N);
+  vec3 direction = TBN * localSpaceDirection;
+  return vec4(direction, importanceSample.pdf);
+}</code></pre>
+</div>
+<ol>
+<li>We will skip the details of the individual distribution calculation functions <code>Lambertian()</code>, <code>GGX()</code>, and <code>Charlie()</code>. The actual GLSL shader <code>Chapter06/03_FilterEnvmap/src/main.frag</code> contains all the necessary code.</li>
+</ol>
+<p>The process of importance sampling can introduce visual artifacts. One way to improve visual quality without compromising performance is by utilizing hardware-accelerated mip-mapping for swift filtering and sampling. This idea was proposed in the following paper: <a href="https://cgg.mff.cuni.cz/~jaroslav/papers/2007-sketch-fis/Final_sap_0073.pdf">https://cgg.mff.cuni.cz/~jaroslav/papers/2007-sketch-fis/Final_sap_0073.pdf</a>. This link has a more detailed treatment of the subject: <a href="https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-20-gpu-based-importance-sampling">https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-20-gpu-based-importance-sampling</a>. Here, we use a formula that takes a <strong>PDF</strong> value and calculates a proper mip-map LOD level for it:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>float computeLod(float pdf) {
+  float w = float(perFrameData.width);
+  float h = float(perFrameData.height);
+  float sampleCount = float(perFrameData.sampleCount);
+  return 0.5 * log2( 6.0 * w * h / (sampleCount * pdf));
+}</code></pre>
+</div>
+<p>The rest of the code involves purely mechanical tasks, such as loading the cube map image from a file, calling the rendering functions for various distribution types (Lambertian, GGX, and Charlie), and saving the result using the KTX library. Let’s check out the results of prefiltering for the following input image:</p>
+<figure>
+<img alt="Figure 6.6: Environment cube map" height="743" src="../media/file46.png" width="1200"/><figcaption aria-hidden="true">Figure 6.6: Environment cube map</figcaption>
+</figure>
+<p>The convolved image should look like the following screenshot:</p>
+<figure>
+<img alt="Figure 6.7: Prefiltered environment cube map using diffuse convolution" height="744" src="../media/file47.png" width="1200"/><figcaption aria-hidden="true">Figure 6.7: Prefiltered environment cube map using diffuse convolution</figcaption>
+</figure>
+<p>Now, we have all supplementary parts in place to render a PBR image. In the next recipe, <em>Implementing the glTF 2.0 metallic-roughness shading model</em>, we are going to put everything together into a simple application to render a physically based glTF 2.0 3D model.</p>
+</section>
+<section class="level3" data-number="7.5.3" id="theres-more...-15">
+<h3 data-number="7.5.3">There’s more...</h3>
+<p>Paul Bourke created a set of tools and a great resource that explains how to convert cube maps into different formats. Make sure to check it out: <a href="http://paulbourke.net/panorama/cubemaps/index.xhtml">http://paulbourke.net/panorama/cubemaps/index.xhtml</a>.</p>
+</section>
+</section>
+<section class="level2" data-number="7.6" id="implementing-the-gltf-2.0-metallic-roughness-shading-model">
+<h2 data-number="7.6">Implementing the glTF 2.0 metallic-roughness shading model</h2>
+<p>This recipe will cover how to integrate PBR into your graphics pipeline. Since the topic of PBR is vast, we will focus on a minimalistic implementation just to guide you and get you started. In this section, we will focus on the metallic-roughness shading model and minimalistic C++ viewer implementation. In the following chapters, we will create a more complex and feature-rich glTF viewer, including advanced material extensions and geometry features.</p>
+<section class="level3" data-number="7.6.1" id="getting-ready-41">
+<h3 data-number="7.6.1">Getting ready</h3>
+<ol>
+<li>It is recommended to revisit the recipe <em>An introduction to the glTF 2.0 physically based shading model</em> before you proceed with this one. A lightweight introduction to the glTF 2.0 shading model can be found at <a href="https://github.com/KhronosGroup/glTF-Sample-Viewer/tree/glTF-WebGL-PBR">https://github.com/KhronosGroup/glTF-Sample-Viewer/tree/glTF-WebGL-PBR</a>.</li>
+<li>The C++ source code for this recipe is in the <code>Chapter06/04_MetallicRoughness</code> folder. The GLSL shader code responsible for PBR calculations can be found in <code>Chapter06/04_MetallicRoughness/src/PBR.sp</code>.</li>
+</ol>
+</section>
+<section class="level3" data-number="7.6.2" id="how-to-do-it...-36">
+<h3 data-number="7.6.2">How to do it...</h3>
+<p>Before we dive deep into the GLSL code, we’ll look at how the input data is set up from the C++ side. We are going to use the <em>Damaged Helmet</em> 3D model provided by Khronos. You can find the glTF file here: <a href="https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf">https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf</a>.</p>
+<p>Let’s start with structures and helper functions first:</p>
+<ol>
+<li>The helper struct <code>GLTFGlobalSamplers</code> contains three samplers necessary to access glTF IBL textures. It is declared in <code>shared/UtilsGLTF.h</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct GLTFGlobalSamplers {
+  GLTFGlobalSamplers(const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx);
+  lvk::Holder&lt;lvk::SamplerHandle&gt; clamp;
+  lvk::Holder&lt;lvk::SamplerHandle&gt; wrap;
+  lvk::Holder&lt;lvk::SamplerHandle&gt; mirror;
+};</code></pre>
+</div>
+<ol>
+<li>The <code>GLTFGlobalSamplers</code> constructor creates all three samplers in the following way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>GLTFGlobalSamplers(const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx) {
+  clamp = ctx-&gt;createSampler({
+    .minFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .magFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .mipMap    = lvk::SamplerMip::SamplerMip_Linear,
+    .wrapU     = lvk::SamplerWrap::SamplerWrap_Clamp,
+    .wrapV     = lvk::SamplerWrap::SamplerWrap_Clamp,
+    .wrapW     = lvk::SamplerWrap::SamplerWrap_Clamp,
+    .debugName = “Clamp Sampler” });
+  wrap = ctx-&gt;createSampler({
+    .minFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .magFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .mipMap    = lvk::SamplerMip::SamplerMip_Linear,
+    .wrapU     = lvk::SamplerWrap::SamplerWrap_Repeat,
+    .wrapV     = lvk::SamplerWrap::SamplerWrap_Repeat,
+    .wrapW     = lvk::SamplerWrap::SamplerWrap_Repeat,
+    .debugName = “Wrap Sampler” });
+  mirror = ctx-&gt;createSampler({
+    .minFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .magFilter = lvk::SamplerFilter::SamplerFilter_Linear,
+    .mipMap    = lvk::SamplerMip::SamplerMip_Linear,
+    .wrapU     = lvk::SamplerWrap::SamplerWrap_MirrorRepeat,
+    .wrapV     = lvk::SamplerWrap::SamplerWrap_MirrorRepeat,
+    .debugName = “Mirror Sampler” });
+  }</code></pre>
+</div>
+<ol>
+<li>The helper struct <code>EnvironmentMapTextures</code> stores all IBL environment map textures and the BRDF look-up table, providing default textures for the sake of simplicity:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct EnvironmentMapTextures {
+  lvk::Holder&lt;lvk::TextureHandle&gt; texBRDF_LUT;
+  lvk::Holder&lt;lvk::TextureHandle&gt; envMapTexture;
+  lvk::Holder&lt;lvk::TextureHandle&gt; envMapTextureCharlie;
+  lvk::Holder&lt;lvk::TextureHandle&gt; envMapTextureIrradiance;</code></pre>
+</div>
+<ol>
+<li>Check the previous recipe <em>Precomputing irradiance maps and diffuse convolution</em> for details on how to precalculate the IBL textures. The BRDF look-up table was precalculated in the recipe <em>Precomputing BRDF look-up tables</em>.</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  explicit EnvironmentMapTextures(
+    const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx) :
+  EnvironmentMapTextures(ctx,
+    “data/brdfLUT.ktx”,
+    “data/piazza_bologni_1k_prefilter.ktx”,
+    “data/piazza_bologni_1k_irradiance.ktx”,
+    “data/piazza_bologni_1k_charlie.ktx”) {}
+  EnvironmentMapTextures(
+    const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx,
+    const char* brdfLUT,
+    const char* prefilter,
+    const char* irradiance,
+    const char* prefilterCharlie = nullptr)
+  {
+    texBRDF_LUT = loadTexture(ctx, brdfLUT, lvk::TextureType_2D);
+    envMapTexture = loadTexture(
+      ctx, prefilter, lvk::TextureType_Cube);
+    envMapTextureIrradiance = loadTexture(
+      ctx, irradiance, lvk::TextureType_Cube);
+  }
+};</code></pre>
+</div>
+<ol>
+<li>The structure <code>GLTFMaterialTextures</code> contains all the textures necessary to render any glTF 2.0 model we support in our demos. It is a container for many <code>Holder&lt;TextureHandle&gt;</code> objects, as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct GLTFMaterialTextures {
+  // MetallicRoughness / SpecularGlossiness     
+  lvk::Holder&lt;lvk::TextureHandle&gt; baseColorTexture;
+  lvk::Holder&lt;lvk::TextureHandle&gt; surfacePropertiesTexture;
+  // Common properties
+  lvk::Holder&lt;lvk::TextureHandle&gt; normalTexture;
+  lvk::Holder&lt;lvk::TextureHandle&gt; occlusionTexture;
+  lvk::Holder&lt;lvk::TextureHandle&gt; emissiveTexture;
+  // Sheen
+  lvk::Holder&lt;lvk::TextureHandle&gt; sheenColorTexture;
+  lvk::Holder&lt;lvk::TextureHandle&gt; sheenRoughnessTexture;
+  … many other textures go here
+}</code></pre>
+</div>
+<ol>
+<li>The helper function <code>loadMaterialTextures()</code> is not shared and will be different in each app. This variant of the function loads a subset of necessary textures for our metallic-roughness demo:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>GLTFMaterialTextures loadMaterialTextures(
+  const std::unique_ptr&lt;lvk::IContext&gt;&amp; ctx,
+  const char* texAOFile,
+  const char* texEmissiveFile,
+  const char* texAlbedoFile,
+  const char* texMeRFile,
+  const char* texNormalFile)
+{
+  glTFMaterialTextures mat;
+  mat.baseColorTexture = loadTexture(
+    ctx, texAlbedoFile, lvk::TextureType_2D, true);
+  if (mat.baseColorTexture.empty()) return {};     
+  mat.occlusionTexture = loadTexture(ctx, texAOFile);
+  if (mat.occlusionTexture.empty()) return {};     
+  mat.normalTexture = loadTexture(ctx, texNormalFile);
+  if (mat.normalTexture.empty()) return {};
+  mat.emissiveTexture = loadTexture(
+    ctx, texEmissiveFile, lvk::TextureType_2D, true);
+  if (mat.emissiveTexture.empty()) return {};
+  mat.surfacePropertiesTexture = loadTexture(ctx, texMeRFile);
+  if (mat.surfacePropertiesTexture.empty()) return {};
+  mat.wasLoaded = true;
+  return mat;
+}}  </code></pre>
+</div>
+<ol>
+<li>One important step is to load the material data and fill out the <code>MetallicRoughnessDataGPU</code> structure. We will use the Assimp API to retrieve the material properties and fill out the corresponding values. The glTF specification requires well-defined default values for non-optional and optional properties, so we fill them out in this snippet as well. For each texture, we read and set the data for a sampler state and a <code>uv</code> coordinates index:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct MetallicRoughnessData {
+  vec4 baseColorFactor = vec4(1.0f, 1.0f, 1.0f, 1.0f);</code></pre>
+</div>
+<ol>
+<li>Here, we pack the <code>metallicFactor</code>, <code>roughnessFactor</code>, <code>normalScale</code>, and <code>occlusionStrength</code> glTF properties into one <code>vec4</code> member field, <code>metallicRoughnessNormalOcclusion</code>.</li>
+<li>We do this packing as a very basic optimization. GPU stores this data in vector registers, and reading it will be more efficient if we pack all the parameters into a single <code>vec4</code> value. Another reason is avoiding any additional alignment requirements, especially for <code>vec3</code> types. Similar packing is done for a <code>vec3</code> glTF property, <code>emissiveFactor</code>, and a <code>float</code>, <code>alphaCutoff</code>, both of which are packed into a single <code>vec4</code> value:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec4 metallicRoughnessNormalOcclusion =
+    vec4(1.0f, 1.0f, 1.0f, 1.0f);
+  vec4 emissiveFactorAlphaCutoff = vec4(0.0f, 0.0f, 0.0f, 0.5f);</code></pre>
+</div>
+<ol>
+<li>The other member fields hold texture and sampler IDs for our bindless shaders. They have no default values other than <code>0</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  uint32_t occlusionTexture        = 0;
+  uint32_t occlusionTextureSampler = 0;
+  uint32_t occlusionTextureUV      = 0;
+  uint32_t emissiveTexture         = 0;
+  uint32_t emissiveTextureSampler  = 0;
+  uint32_t emissiveTextureUV       = 0;
+  uint32_t baseColorTexture        = 0;
+  uint32_t baseColorTextureSampler = 0;
+  uint32_t baseColorTextureUV              = 0;
+  uint32_t metallicRoughnessTexture        = 0;
+  uint32_t metallicRoughnessTextureSampler = 0;
+  uint32_t metallicRoughnessTextureUV      = 0;
+  uint32_t normalTexture        = 0;
+  uint32_t normalTextureSampler = 0;
+  uint32_t normalTextureUV      = 0;</code></pre>
+</div>
+<ol>
+<li>The <code>alphaMode</code> property defines how the alpha value is interpreted. The alpha value itself should be taken from the <code>4</code>-th component of the base color for the metallic-roughness material model:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  uint32_t alphaMode = 0;
+  enum AlphaMode {
+    AlphaMode_Opaque = 0,
+    AlphaMode_Mask   = 1,
+    AlphaMode_Blend  = 2,
+  };
+};</code></pre>
+</div>
+<ol>
+<li>The <code>MetallicRoughnessDataGPU</code> structure is filled out using a helper function, <code>setupMetallicRoughnessData()</code>. The structure <code>GLTFMaterialTextures</code> was discussed above:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>MetallicRoughnessDataGPU setupMetallicRoughnessData(
+  const GLTFGlobalSamplers&amp; samplers,
+  const GLTFMaterialTextures&amp; mat,
+  const aiMaterial* mtlDescriptor)
+{
+  MetallicRoughnessDataGPU res = {
+    .baseColorFactor              = vec4(1.0f, 1.0f, 1.0f, 1.0f),
+    .metallicRoughnessNormalOcclusion =
+      vec4(1.0f, 1.0f, 1.0f, 1.0f),
+    .emissiveFactorAlphaCutoff    = vec4(0.0f, 0.0f, 0.0f, 0.5f),
+    .occlusionTexture             = mat.occlusionTexture.index(),
+    .emissiveTexture              = mat.emissiveTexture.index(),
+    .baseColorTexture             = mat.baseColorTexture.index(),
+    .metallicRoughnessTexture     =
+      mat.surfacePropertiesTexture.index(),
+    .normalTexture                = mat.normalTexture.index(),
+  };</code></pre>
+</div>
+<ol>
+<li>The rest of the function continues to read various glTF material properties, using the Assimp API. We paste just the beginning of its code here. All other material properties are loaded in a similarly repeating pattern:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  aiColor4D aiColor;
+  if (mtlDescriptor-&gt;Get(AI_MATKEY_COLOR_DIFFUSE, aiColor) ==
+      AI_SUCCESS) {
+    res.baseColorFactor = vec4(
+      aiColor.r, aiColor.g, aiColor.b, aiColor.a);
+  }
+  assignUVandSampler(samplers,
+    mtlDescriptor,
+    aiTextureType_DIFFUSE,
+    res.baseColorTextureUV,
+    res.baseColorTextureSampler);
+  … many other glTF material properties are loaded here</code></pre>
+</div>
+<ol>
+<li>The helper function <code>assignUVandSampler()</code> looks as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>bool assignUVandSampler(
+  const GLTFGlobalSamplers&amp; samplers,
+  const aiMaterial* mtlDescriptor,
+  aiTextureType textureType,
+  uint32_t&amp; uvIndex,
+  uint32_t&amp; textureSampler, int index)
+{
+  aiString path;
+  aiTextureMapMode mapmode[3] = {
+    aiTextureMapMode_Clamp,
+    aiTextureMapMode_Clamp,
+    aiTextureMapMode_Clamp };
+  bool res = mtlDescriptor-&gt;GetTexture(textureType, index,
+    &amp;path, 0, &amp;uvIndex, 0, 0, mapmode) == AI_SUCCESS;
+  switch (mapmode[0]) {
+    case aiTextureMapMode_Clamp:
+      textureSampler = samplers.clamp.index();
+      break;
+    case aiTextureMapMode_Wrap:
+      textureSampler = samplers.wrap.index();
+      break;
+    case aiTextureMapMode_Mirror:
+      textureSampler = samplers.mirror.index();
+      break;
+  }
+  return res;
+}</code></pre>
+</div>
+<ol>
+<li>Now, let’s go through the <code>main()</code> function:</li>
+<li>First, we load the glTF file using Assimp. We support only triangulated topology; hence, the flag <code>aiProcess_Triangulate</code> is used to instruct Assimp to triangulate the mesh during the import:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const aiScene* scene = aiImportFile(“deps/src/glTF-Sample-
+  Assets/Models/DamagedHelmet/glTF/DamagedHelmet.gltf”,
+  aiProcess_Triangulate);
+const aiMesh* mesh = scene-&gt;mMeshes[0];
+const vec4 white = vec4(1.0f, 1.0f, 1.0f, 1.0f);</code></pre>
+</div>
+<ol>
+<li>We populate the vertex data. The struct Vertex is shared across all glTF demos and is declared in <code>shared/UtilsGLTF.h</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct Vertex {
+  vec3 position;
+  vec3 normal;
+  vec4 color;
+  vec2 uv0;
+  vec2 uv1;
+};
+std::vector&lt;Vertex&gt; vertices;
+for (     uint32_t i = 0; i != mesh-&gt;mNumVertices; i++) {
+  const aiVector3D v   = mesh-&gt;mVertices[i];
+  const aiVector3D n   = mesh-&gt;mNormals ?
+    mesh-&gt;mNormals[i] : aiVector3D(0.0f, 1.0f, 0.0f);
+  const aiColor4D  c   = mesh-&gt;mColors[0] ?
+    mesh-&gt;mColors[0][i] : aiColor4D(1.0f, 1.0f, 1.0f, 1.0f);</code></pre>
+</div>
+<ol>
+<li>A glTF model commonly uses two sets of UV texture coordinates. The first set, <code>uv0</code>, is used for the primary texture mapping, such as diffuse color, specular reflection, or normal mapping. These coordinates are typically used for surface details and color information. The second set, <code>uv1</code>, is commonly used for lightmaps or reflection maps. These maps often need separate texture coordinates to be mapped correctly onto the model, distinct from the primary texture coordinates. The glTF specification says that a viewer app should support at least two texture coordinate sets:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const aiVector3D uv0 = mesh-&gt;mTextureCoords[0] ?
+    mesh-&gt;mTextureCoords[0][i] : aiVector3D(0.0f, 0.0f, 0.0f);
+  const aiVector3D uv1 = mesh-&gt;mTextureCoords[1] ?
+    mesh-&gt;mTextureCoords[1][i] : aiVector3D(0.0f, 0.0f, 0.0f);
+  vertices.push_back({ .position = vec3(v.x, v.y, v.z),
+                       .normal   = vec3(n.x, n.y, n.z),
+                       .color    = vec4(c.r, c.g, c.b, c.a),
+                       .uv0      = vec2(uv0.x, 1.0f - uv0.y),
+                       .uv1      = vec2(uv1.x, 1.0f - uv1.y) });
+}</code></pre>
+</div>
+<ol>
+<li>Let’s set up indices that define our triangles and upload the resulting vertex and index data into the corresponding buffers:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>std::vector&lt;uint32_t&gt; indices;
+for (unsigned int i = 0; i != mesh-&gt;mNumFaces; i++)
+  for (int j = 0; j != 3; j++)
+    indices.push_back(mesh-&gt;mFaces[i].mIndices[j]);
+lvk::Holder&lt;BufferHandle&gt; vertexBuffer = ctx-&gt;createBuffer({
+  .usage     = lvk::BufferUsageBits_Vertex,
+  .storage   = lvk::StorageType_Device,
+  .size      = sizeof(Vertex) * vertices.size(),
+  .data      = vertices.data(),
+  .debugName = “Buffer: vertex” });
+lvk::Holder&lt;lvk::BufferHandle&gt; indexBuffer = ctx-&gt;createBuffer({
+  .usage     = lvk::BufferUsageBits_Index,
+  .storage   = lvk::StorageType_Device,
+  .size      = sizeof(uint32_t) * indices.size(),
+  .data      = indices.data(),
+  .debugName = “Buffer: index” });</code></pre>
+</div>
+<ol>
+<li>The next step is to load all the material textures. We use the same combination of textures for most of our glTF demos, so we store them in a structure, <code>GLTFMaterialTextures</code>, declared in <code>shared/UtilsGLTF.h</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>std::unique_ptr&lt;GLTFMaterialTextures&gt; mat =
+  loadMaterialTextures(ctx,
+    “deps/src/glTF-Sample-Assets/Models/
+      DamagedHelmet/glTF/Default_AO.jpg”,
+    “deps/src/glTF-Sample-Assets/Models/
+      DamagedHelmet/glTF/Default_emissive.jpg”,
+    “deps/src/glTF-Sample-Assets/Models/
+      DamagedHelmet/glTF/Default_albedo.jpg”,
+    “deps/src/glTF-Sample-Assets/Models/
+      DamagedHelmet/glTF/Default_metalRoughness.jpg”,
+    “deps/src/glTF-Sample-Assets/Models/
+      DamagedHelmet/glTF/Default_normal.jpg”);</code></pre>
+</div>
+<ol>
+<li>Before we continue with the graphics pipeline creation and rendering, we have to set up IBL samplers, textures, and BRDF look-up tables. This data is shared between all our demos, so we have introduced a couple of helper structs to do all this work for us. Here are the definitions within the <code>main()</code> function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>GLTFGlobalSamplers samplers(ctx);
+EnvironmentMapTextures envMapTextures(ctx);</code></pre>
+</div>
+<ol>
+<li>The next step is to create a render pipeline step for our glTF rendering. We must provide a vertex input description. Here’s how to create one for our model:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const lvk::VertexInput vdesc = {
+    .attributes    = {
+      { .location=0, .format=VertexFormat::Float3, .offset=0  },
+      { .location=1, .format=VertexFormat::Float3, .offset=12 },
+      { .location=2, .format=VertexFormat::Float4, .offset=24 },
+      { .location=3, .format=VertexFormat::Float2, .offset=40 },
+      { .location=4, .format=VertexFormat::Float2, .offset=48 }},
+    .inputBindings = { { .stride = sizeof(Vertex) } },
+  };</code></pre>
+</div>
+<ol>
+<li>A rendering pipeline should be created as follows. We will investigate the GLSL shaders in the <em>How it works…</em> section:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert = loadShaderModule(
+    ctx, “Chapter06/04_MetallicRoughness/src/main.vert”);
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag = loadShaderModule(
+    ctx, “Chapter06/04_MetallicRoughness/src/main.frag”);
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipelineSolid =
+    ctx-&gt;createRenderPipeline({
+      .vertexInput = vdesc,
+      .smVert      = vert,
+      .smFrag      = frag,
+      .color       = { { .format = ctx-&gt;getSwapchainFormat() } },
+      .depthFormat = app.getDepthFormat(),
+      .cullMode    = lvk::CullMode_Back,
+    });</code></pre>
+</div>
+<ol>
+<li>We can call <code>setupMetallicRoughnessData()</code> to load all the material data from glTF and properly pack it on the CPU side:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const aiMaterial* mtlDescriptor =
+    scene-&gt;mMaterials[mesh-&gt;mMaterialIndex];
+  const MetallicRoughnessMaterialsPerFrame matPerFrame = {
+    .materials = { setupMetallicRoughnessData(
+                     samplers, mat, mtlDescriptor) },
+  };</code></pre>
+</div>
+<ol>
+<li>We store the material data inside a dedicated Vulkan buffer and access it in GLSL shaders, using a buffer device address. This address is passed into shaders through Vulkan push constants.</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::BufferHandle&gt; matBuffer = ctx-&gt;createBuffer({
+    .usage     = lvk::BufferUsageBits_Uniform,
+    .storage   = lvk::StorageType_HostVisible,
+    .size      = sizeof(matPerFrame),
+    .data      = &amp;matPerFrame,
+    .debugName = “PerFrame materials” });</code></pre>
+</div>
+<ol>
+<li>The same treatment applies to our environment textures. They should be packed for the GPU, too:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const EnvironmentsPerFrame envPerFrame = {
+    .environments = { {
+      .envMapTexture =
+        envMapTextures.envMapTexture.index(),
+      .envMapTextureSampler = samplers.clamp.index(),
+      .envMapTextureIrradiance =
+        envMapTextures.envMapTextureIrradiance.index(),
+      .envMapTextureIrradianceSampler = samplers.clamp.index(),
+      .lutBRDFTexture = envMapTextures.texBRDF_LUT.index(),
+      .lutBRDFTextureSampler = samplers.clamp.index() } },
+  };
+  lvk::Holder&lt;lvk::BufferHandle&gt; envBuffer = ctx-&gt;createBuffer({
+    .usage     = lvk::BufferUsageBits_Uniform,
+    .storage   = lvk::StorageType_HostVisible,
+    .size      = sizeof(envPerFrame),
+    .data      = &amp;envPerFrame,
+    .debugName = “PerFrame materials” });</code></pre>
+</div>
+<ol>
+<li>The maximum allowed push constant size is 128 bytes. In order to handle data exceeding this size, we will set up a couple of round-robin buffers:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  struct PerDrawData {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    vec4 cameraPos;
+    uint32_t matId;
+    uint32_t envId;
+  };
+  lvk::Holder&lt;lvk::BufferHandle&gt; drawableBuffers[2] = {
+    ctx-&gt;createBuffer({
+          .usage     = lvk::BufferUsageBits_Uniform,
+          .storage   = lvk::StorageType_HostVisible,
+          .size      = sizeof(PerDrawData),
+          .debugName = “PerDraw 1” }),
+    ctx-&gt;createBuffer({
+          .usage     = lvk::BufferUsageBits_Uniform,
+          .storage   = lvk::StorageType_HostVisible,
+          .size      = sizeof(PerDrawData),
+          .debugName = “PerDraw 2” }),
+  };</code></pre>
+</div>
+<ol>
+<li>Everything else is just mesh rendering, similar to how it was done in the previous chapters. Here is how <code>draw</code> commands to render a glTF mesh are generated:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>buf.cmdBindVertexBuffer(0, vertexBuffer, 0);
+buf.cmdBindIndexBuffer(indexBuffer, lvk::IndexFormat_UI32);
+buf.cmdBindRenderPipeline(pipelineSolid);
+buf.cmdBindDepthState({ .compareOp = lvk::CompareOp_Less,
+                        .isDepthWriteEnabled = true });
+struct PerFrameData {
+  uint64_t draw;
+  uint64_t materials;
+  uint64_t environments;
+} perFrameData = {
+  .draw        = ctx-&gt;gpuAddress(drawableBuffers[currentBuffer]),
+  .materials   = ctx-&gt;gpuAddress(matBuffer),
+  .environments= ctx-&gt;gpuAddress(envBuffer),
+};
+buf.cmdPushConstants(perFrameData);
+buf.cmdDrawIndexed(indices.size());
+…</code></pre>
+</div>
+<p>Let’s skip the rest of the C++ code, which contains trivial command buffer submission and other scaffolding, and check how GLSL shaders work.</p>
+</section>
+<section class="level3" data-number="7.6.3" id="how-it-works-12">
+<h3 data-number="7.6.3">How it works…</h3>
+<p>There are two GLSL shaders that are used to render our metallic-roughness PBR model, a vertex shader <code>Chapter06/04_MetallicRoughness/src/main.vert</code>, and a fragment shader, <code>Chapter06/04_MetallicRoughness/src/main.frag</code>, which include additional files for shared input declarations and our glTF PBR code GLSL library. The vertex shader uses programmable-vertex-pulling to read the vertex data from buffers. The most important aspect of the vertex shader is that we define our own functions, such as <code>getModel()</code> or <code>getTexCoord()</code>, to hide the implementation details of vertex pulling. It allows us to be flexible when we want to change the structure of our input data. We use a similar approach for fragment shaders.</p>
+<p>It is the fragment shader that does the actual work. Let’s take a look:</p>
+<ol>
+<li>First, we check our inputs. We will use buffer references for materials and environment buffers that correspond to the C++ structures <code>MetallicRoughnessDataGPU</code> and <code>EnvironmentMapDataGPU</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(std430, buffer_reference) buffer Materials;
+layout(std430, buffer_reference) buffer Environments;
+layout(std430, buffer_reference) buffer PerDrawData {
+  mat4 model;
+  mat4 view;
+  mat4 proj;
+  vec4 cameraPos;
+  uint matId;
+  uint envId;
+};</code></pre>
+</div>
+<ol>
+<li>We use four helper functions, <code>getMaterialId()</code>, <code>getMaterial()</code>, <code>getEnvironmentId()</code>, and <code>getEnvironment()</code>, as shortcuts to access the buffer references provided in the push constants:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(push_constant) uniform PerFrameData {
+  PerDrawData drawable;
+  Materials materials;
+  Environments environments;
+} perFrame;
+uint getMaterialId() {
+  return perFrame.drawable.matId;
+}
+uint getEnvironmentId() {
+  return perFrame.drawable.envId;
+}
+MetallicRoughnessDataGPU getMaterial(uint idx) {
+  return perFrame.materials.material[idx];
+}
+EnvironmentMapDataGPU getEnvironment(uint idx) {
+  return perFrame.environments.environment[idx];
+}</code></pre>
+</div>
+<ol>
+<li>Inside the file <code>Chapter06/04_MetallicRoughness/src/inputs.frag</code>, there are a bunch of helper functions – such as <code>sampleAO()</code>, <code>samplerEmissive()</code>, <code>sampleAlbedo()</code>, and many others – to sample from various glTF PBR texture maps based on the material <code>mat</code>. All of them use bindless textures and samplers:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec4 sampleAO(InputAttributes tc, MetallicRoughnessDataGPU mat) {
+  return textureBindless2D(
+    mat.occlusionTexture,
+    mat.occlusionTextureSampler,
+    tc.uv[mat.occlusionTextureUV]);
+}
+vec4 sampleEmissive(
+  InputAttributes tc, MetallicRoughnessDataGPU mat) {
+  return textureBindless2D(
+      mat.emissiveTexture,
+      mat.emissiveTextureSampler,
+      tc.uv[mat.emissiveTextureUV]
+    ) * vec4(mat.emissiveFactorAlphaCutoff.xyz, 1.0f);
+}
+vec4 sampleAlbedo(
+  InputAttributes tc, MetallicRoughnessDataGPU mat) {
+  return textureBindless2D(
+    mat.baseColorTexture,
+    mat.baseColorTextureSampler,
+    tc.uv[mat.baseColorTextureUV]) * mat.baseColorFactor;
+}</code></pre>
+</div>
+<ol>
+<li>Within the fragment shader’s <code>main()</code> function, we use these helper functions to sample the texture maps based on the material ID value returned by <code>getMaterialId()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (location=0) in vec4 uv0uv1;
+layout (location=1) in vec3 normal;
+layout (location=2) in vec3 worldPos;
+layout (location=3) in vec4 color;
+layout (location=0) out vec4 out_FragColor;
+void main() {
+  InputAttributes tc;
+  tc.uv[0] = uv0uv1.xy;
+  tc.uv[1] = uv0uv1.zw;
+  MetallicRoughnessDataGPU mat = getMaterial(getMaterialId());
+  vec4 Kao = sampleAO(tc, mat);
+  vec4 Ke  = sampleEmissive(tc, mat);
+  vec4 Kd  = sampleAlbedo(tc, mat) * color;
+  vec4 mrSample = sampleMetallicRoughness(tc, mat);</code></pre>
+</div>
+<ol>
+<li>To calculate the proper normal mapping effect based on a provided normal map, we evaluate the normal vector per pixel. We do it in world space. The normal map is in tangent space. Hence, the function <code>perturbNormal()</code> calculates the tangent space per pixel using the derivatives of texture coordinates, which is implemented in <code>data/shaders/UtilsPBR.sp</code>, and transforms the perturbed normal to world space.<br/>
+The last step here is to negate the normal for double-sided materials. We use the <code>gl_FrontFacing</code> intrinsic variable to do the check:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 n = normalize(normal); // world-space normal
+  vec3 normalSample = sampleNormal(tc, getMaterialId()).xyz;
+  n = perturbNormal(
+    n, worldPos, normalSample, getNormalUV(tc, mat));
+  if (!gl_FrontFacing) n *= -1.0f;</code></pre>
+</div>
+<ol>
+<li>Now, we are ready to fill out the <code>PBRInfo</code> structure, which holds multiple inputs utilized later by the various functions in the PBR shading equation:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  PBRInfo pbrInputs = calculatePBRInputsMetallicRoughness(
+    Kd, n, perFrame.drawable.cameraPos.xyz, worldPos, mrSample);</code></pre>
+</div>
+<ol>
+<li>The next step is to calculate the specular and diffuse color contributions from the IBL environment lighting. We can directly add <code>diffuse_color</code> and <code>specular_color</code> because our precalculated BRDF LUT already takes care of energy conservation:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 specular_color =
+    getIBLRadianceContributionGGX(pbrInputs, 1.0);
+  vec3 diffuse_color = getIBLRadianceLambertian(
+    pbrInputs.NdotV, n, pbrInputs.perceptualRoughness,
+    pbrInputs.diffuseColor, pbrInputs.reflectance0, 1.0);
+  vec3 color = specular_color + diffuse_color;</code></pre>
+</div>
+<ol>
+<li>For this demo application, we use only one hardcoded directional light source, <code>(0, 0, -5)</code>. Let’s calculate its lighting contribution:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 lightPos = vec3(0, 0, -5);
+  color += calculatePBRLightContribution(
+    pbrInputs, normalize(lightPos - worldPos), vec3(1.0) );</code></pre>
+</div>
+<ol>
+<li>Now, we should multiply the color by the ambient occlusion factor. Use <code>1.0</code> if there is no ambient occlusion texture available:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  color = color * ( Kao.r &lt; 0.01 ? 1.0 : Kao.r );</code></pre>
+</div>
+<ol>
+<li>Finally, we apply the emissive color contribution. Before writing the framebuffer output, we convert the resulting color back into the sRGB color space using a hardcoded gamma value of <code>2.2</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  color = pow( Ke.rgb + color, vec3(1.0/2.2) );
+  out_FragColor = vec4(color, 1.0);
+}</code></pre>
+</div>
+<p>We mentioned a bunch of helper functions that use the <code>PBRInfo</code> structure, such as <code>getIBLRadianceContributionGGX()</code>, <code>getIBLRadianceLambertian()</code>, and <code>calculatePBRLightContribution()</code>. Let’s look inside <code>Chapter06/04_MetallicRoughness/src/PBR.sp</code> to see how they work. Our implementation is based on the reference implementation of the glTF 2.0 Sample Viewer from Khronos: <a href="https://github.com/">https://github.com/ KhronosGroup/glTF-Sample-Viewer/tree/glTF-WebGL-PBR</a>:</p>
+<ol>
+<li>First of all, here is the <code>PBRInfo</code> structure, which holds various input parameters for our metallic-roughness glTF PBR shading model. The first values represent the geometric properties of the surface at the current point:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct PBRInfo {
+  float NdotL; // cos angle between normal and light direction
+  float NdotV; // cos angle between normal and view direction
+  float NdotH; // cos angle between normal and half vector
+  float LdotH; // cos angle between light dir and half vector
+  float VdotH; // cos angle between view dir and half vector
+  vec3 n;      // normal at surface point
+  vec3 v;      // vector from surface point to camera</code></pre>
+</div>
+<ol>
+<li>The following values represent the material properties:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float perceptualRoughness; // roughness value (input to shader)
+  vec3 reflectance0;    // full reflectance color
+  vec3 reflectance90;   // reflectance color at grazing angle
+  float alphaRoughness; // remapped linear roughness
+  vec3 diffuseColor;    // contribution from diffuse lighting
+  vec3 specularColor;   // contribution from specular lighting
+};</code></pre>
+</div>
+<ol>
+<li>The sRGB to linear color space conversion routine is implemented this way. It is a popular rough approximation done for simplicity:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec4 SRGBtoLINEAR(vec4 srgbIn) {
+  vec3 linOut = pow( srgbIn.xyz,vec3(2.2) );
+  return vec4(linOut, srgbIn.a);
+}</code></pre>
+</div>
+<ol>
+<li>Calculation of the lighting contribution from an image-based light source is split into two parts – diffuse irradiance and specular radiance. First, let’s start with the radiance part. We will use the Lambertian diffuse term. Khronos implementation is quite complex; here, we will skip some of its details. For those looking into the underlying math theory, check out <a href="https://bruop.github.io/ibl/#single_scattering_results">https://bruop.github.io/ibl/#single_scattering_results</a>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 getIBLRadianceLambertian(float NdotV, vec3 n,
+  float roughness, vec3 diffuseColor, vec3 F0,
+  float specularWeight)
+{
+  vec2 brdfSamplePoint =
+    clamp(vec2(NdotV, roughness), vec2(0., 0.), vec2(1., 1.));
+  EnvironmentMapDataGPU envMap =
+    getEnvironment(getEnvironmentId());
+  vec2 f_ab =
+    sampleBRDF_LUT(brdfSamplePoint, envMap).rg;
+  vec3 irradiance =
+    sampleEnvMapIrradiance(n.xyz, envMap).rgb;
+  vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;
+  vec3 k_S = F0 + Fr * pow(1.0 - NdotV, 5.0);
+  vec3 FssEss = specularWeight * k_S * f_ab.x + f_ab.y;
+  float Ems = (1.0 - (f_ab.x + f_ab.y));
+  vec3 F_avg = specularWeight * (F0 + (1.0 - F0) / 21.0);
+  vec3 FmsEms = Ems * FssEss * F_avg / (1.0 - F_avg * Ems);
+  vec3 k_D = diffuseColor * (1.0 - FssEss + FmsEms);
+  return (FmsEms + k_D) * irradiance;
+}</code></pre>
+</div>
+<ol>
+<li>Radiance contribution uses the GGX model. Please note that we use roughness as an LOD level for the precomputed mip lookup. This trick allows us to save performance to avoid excessive texture lookups and integration over them:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 getIBLRadianceContributionGGX(
+  PBRInfo pbrInputs, float specularWeight)
+{
+  vec3 n = pbrInputs.n;
+  vec3 v =  pbrInputs.v;
+  vec3 reflection = -normalize(reflect(v, n));
+  EnvironmentMapDataGPU envMap =
+    getEnvironment(getEnvironmentId());
+  float mipCount =
+    float(sampleEnvMapQueryLevels(envMap));
+  float lod = pbrInputs.perceptualRoughness * (mipCount - 1);</code></pre>
+</div>
+<ol>
+<li>Retrieve a scale and bias to <code>F0</code> from the BRDF lookup table:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec2 brdfSamplePoint = clamp(
+    vec2(pbrInputs.NdotV, pbrInputs.perceptualRoughness),
+    vec2(0.0, 0.0),
+    vec2(1.0, 1.0));
+  vec3 brdf =
+    sampleBRDF_LUT(brdfSamplePoint, envMap).rgb;</code></pre>
+</div>
+<ol>
+<li>Fetch values from the cube map. No conversion to the linear color space is required, since HDR cube maps are already linear:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec3 specularLight =
+    sampleEnvMapLod(reflection.xyz, lod, envMap).rgb;
+  vec3 Fr = max(vec3(1.0 - pbrInputs.perceptualRoughness),
+                pbrInputs.reflectance0
+            ) - pbrInputs.reflectance0;
+  vec3 k_S =
+    pbrInputs.reflectance0 + Fr * pow(1.0-pbrInputs.NdotV, 5.0);
+  vec3 FssEss = k_S * brdf.x + brdf.y;
+  return specularWeight * specularLight * FssEss;
+}</code></pre>
+</div>
+<p>Now, let’s go through all the helper functions that are necessary to calculate different parts of the rendering equation:</p>
+<ol>
+<li>The <code>diffuseBurley()</code> function implements the diffuse term, as discussed in the paper <em>Physically-Based Shading at Disney</em> by Brent Burley: <a href="http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdfhttp://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf">http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdfhttp://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf</a>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 diffuseBurley(PBRInfo pbrInputs) {
+  float f90 = 2.0 * pbrInputs.LdotH * pbrInputs.LdotH *
+    pbrInputs.alphaRoughness - 0.5;
+  return (pbrInputs.diffuseColor / M_PI) * 
+    (1.0 + f90 * pow((1.0 - pbrInputs.NdotL), 5.0)) *
+    (1.0 + f90 * pow((1.0 - pbrInputs.NdotV), 5.0));
+}</code></pre>
+</div>
+<ol>
+<li>The next function models the Fresnel specular reflectance term of the rendering equation, also known as the <code>F</code> term:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 specularReflection(PBRInfo pbrInputs) {
+  return pbrInputs.reflectance0 +
+    (pbrInputs.reflectance90 - pbrInputs.reflectance0) *
+     pow(clamp(1.0 - pbrInputs.VdotH, 0.0, 1.0), 5.0);
+}</code></pre>
+</div>
+<ol>
+<li>The function <code>geometricOcclusion()</code> calculates the specular geometric attenuation <code>G</code>, where materials with a higher roughness will reflect back less light to the viewer:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>float geometricOcclusion(PBRInfo pbrInputs) {
+  float NdotL = pbrInputs.NdotL;
+  float NdotV = pbrInputs.NdotV;
+  float rSqr =
+    pbrInputs.alphaRoughness * pbrInputs.alphaRoughness;
+  float attenuationL = 2.0 * NdotL /
+    (NdotL + sqrt(rSqr + (1.0 - rSqr) * (NdotL * NdotL)));
+  float attenuationV = 2.0 * NdotV /
+    (NdotV + sqrt(rSqr + (1.0 - rSqr) * (NdotV * NdotV)));
+  return attenuationL * attenuationV;
+}</code></pre>
+</div>
+<ol>
+<li>The function <code>microfacetDistribution()</code> models the distribution <code>D</code> of microfacet normals across the area being drawn:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>float microfacetDistribution(PBRInfo pbrInputs) {
+  float roughnessSq =
+    pbrInputs.alphaRoughness * pbrInputs.alphaRoughness;
+  float f = (pbrInputs.NdotH * roughnessSq - pbrInputs.NdotH) *
+    pbrInputs.NdotH + 1.0;
+  return roughnessSq / (M_PI * f * f);
+}</code></pre>
+</div>
+<ol>
+<li>This implementation is based on the paper <em>Average Irregularity Representation of a Roughened Surface for Ray Reflection</em> by T. S. Trowbridge and K. P. Reitz.</li>
+<li>The utility function <code>perturbNormal()</code> provides a normal in world space based on inputs. It expects a sample from the normal map <code>normalSample</code>, sampled at <code>uv</code> texture coordinates, a vertex normal, <code>n</code>, and a vertex position, <code>v</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 perturbNormal(vec3 n, vec3 v, vec3 normalSample, vec2 uv) {
+  vec3 map = normalize( 2.0 * normalSample - vec3(1.0) );
+  mat3 TBN = cotangentFrame(n, v, uv);
+  return normalize(TBN * map);
+}</code></pre>
+</div>
+<ol>
+<li>The function <code>cotangentFrame()</code> creates tangent space based on the vertex position <code>p</code>, the per-vertex normal vector <code>N</code>, and <code>uv</code> texture coordinates. This is not the best way to get the tangent basis, as it suffers from <code>uv</code> mapping discontinuities, but it’s acceptable to use it in cases where a per-vertex precalculated tangent basis is not provided:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>mat3 cotangentFrame( vec3 N, vec3 p, vec2 uv ) {
+  vec3 dp1 = dFdx( p );
+  vec3 dp2 = dFdy( p );
+  vec2 duv1 = dFdx( uv );
+  vec2 duv2 = dFdy( uv );
+  vec3 dp2perp = cross( dp2, N );
+  vec3 dp1perp = cross( N, dp1 );
+  vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+  vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+  float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );</code></pre>
+</div>
+<ol>
+<li>Calculate the handedness of the resulting cotangent frame and adjust the tangent vector if necessary:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float w = dot(cross(N, T), B) &lt; 0.0 ? -1.0 : 1.0;
+  T = T * w;
+  return mat3( T * invmax, B * invmax, N );
+}</code></pre>
+</div>
+<ol>
+<li>There’s a lot of scaffolding, so to speak, that is necessary to implement the glTF PBR shading model. Before we can calculate light contribution from a light source, we should fill in the <code>PBRInfo</code> structure fields. Let’s take a look at the code of <code>calculatePBRInputsMetallicRoughness()</code> to understand how this is done:</li>
+<li>As it is supposed to be in glTF 2.0, roughness is stored in the <code>green</code> channel, and metallicity is stored in the <code>blue</code> channel. This layout intentionally reserves the <code>red</code> channel for optional occlusion map data. We set the minimal roughness value to <code>0.04</code>. It is a widely used constant for many PBR implementations. It comes from the assumption that even dielectrics have at least 4% specular reflection:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>PBRInfo calculatePBRInputsMetallicRoughness( vec4 albedo,
+  vec3 normal, vec3 cameraPos, vec3 worldPos, vec4 mrSample)
+{
+  PBRInfo pbrInputs;
+  MetallicRoughnessDataGPU mat = getMaterial(getMaterialId());
+  float perceptualRoughness = 
+    getRoughnessFactor(mat) * mrSample.g;
+  float metallic = getMetallicFactor(mat) * mrSample.b;
+  const float c_MinRoughness = 0.04;
+  perceptualRoughness =
+    clamp(perceptualRoughness, c_MinRoughness, 1.0);</code></pre>
+</div>
+<ol>
+<li>Roughness is authored as perceptual roughness; by convention, we convert to material roughness by squaring the perceptual roughness. Perceptual roughness was introduced by Burley (<a href="https://disneyanimation.com/publications/physically-based-shading-at-disney">https://disneyanimation.com/publications/physically-based-shading-at-disney</a>) to make the roughness distribution more linear. The albedo value may be defined from a base texture or a flat color. Let’s compute specular reflectance the following way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float alphaRoughness = perceptualRoughness *
+                         perceptualRoughness;
+  vec4 baseColor = albedo;
+  vec3 f0 = vec3(0.04);
+  vec3 diffuseColor = mix(baseColor.rgb, vec3(0), metallic);
+  vec3 specularColor = mix(f0, baseColor.rgb, metallic);
+  float reflectance =
+    max(max(specularColor.r, specularColor.g), specularColor.b);</code></pre>
+</div>
+<ol>
+<li>For a typical incident reflectance range between 4% to 100%, we should set the grazing reflectance to 100% for the typical Fresnel effect. For a very low reflectance range on highly diffuse objects, below 4%, incrementally reduce grazing reflectance to 0%:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
+  vec3 specularEnvironmentR0 = specularColor.rgb;
+  vec3 specularEnvironmentR90 =
+    vec3(1.0, 1.0, 1.0) * reflectance90;
+  vec3 n = normalize(normal);
+  vec3 v = normalize(cameraPos - worldPos);</code></pre>
+</div>
+<ol>
+<li>Finally, we should fill in the <code>PBRInfo</code> structure with these values. It is used to calculate the contributions of each individual light in the scene:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  pbrInputs.NdotV = clamp(abs(dot(n, v)), 0.001, 1.0);
+  pbrInputs.perceptualRoughness = perceptualRoughness;
+  pbrInputs.reflectance0 = specularEnvironmentR0;
+  pbrInputs.reflectance90 = specularEnvironmentR90;
+  pbrInputs.alphaRoughness = alphaRoughness;
+  pbrInputs.diffuseColor = diffuseColor;
+  pbrInputs.specularColor = specularColor;
+  pbrInputs.n = n;
+  pbrInputs.v = v;
+  return pbrInputs;
+}</code></pre>
+</div>
+<ol>
+<li>The lighting contribution from a single light source can be calculated in the following way, using the precalculated values from <code>PBRInfo</code>:</li>
+<li>Here, <code>ld</code> is the vector from the surface point to the light source, and <code>h</code> is the half vector between <code>ld</code> and <code>v</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 calculatePBRLightContribution(
+  inout PBRInfo pbrInputs, vec3 lightDirection, vec3 lightColor)
+{
+  vec3 n = pbrInputs.n;
+  vec3 v = pbrInputs.v;
+  vec3 ld = normalize(lightDirection);
+  vec3 h = normalize(ld +  v);
+  float NdotV = pbrInputs.NdotV;
+  float NdotL = clamp(dot(n, ld), 0.001, 1.0);
+  float NdotH = clamp(dot(n, h), 0.0, 1.0);
+  float LdotH = clamp(dot(ld, h), 0.0, 1.0);
+  float VdotH = clamp(dot(v, h), 0.0, 1.0);
+  vec3 color = vec3(0);</code></pre>
+</div>
+<ol>
+<li>Check if the light direction is correct and calculate the shading terms <code>F</code>, <code>G</code>, and <code>D</code> for the microfacet specular shading model, using the helper functions described earlier in this recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (NdotL &gt; 0.0 || NdotV &gt; 0.0) {
+    pbrInputs.NdotL = NdotL;
+    pbrInputs.NdotH = NdotH;
+    pbrInputs.LdotH = LdotH;
+    pbrInputs.VdotH = VdotH;
+    vec3  F = specularReflection(pbrInputs);
+    float G = geometricOcclusion(pbrInputs);
+    float D = microfacetDistribution(pbrInputs);</code></pre>
+</div>
+<ol>
+<li>Calculate the analytical lighting contribution. We obtain the final intensity as reflectance (BRDF), scaled by the energy of the light (the cosine law):</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    vec3 diffuseContrib = (1.0 - F) * diffuseBurley(pbrInputs);
+    vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
+    color = NdotL * lightColor * (diffuseContrib + specContrib);
+  }
+  return color;
+}</code></pre>
+</div>
+<ol>
+<li>That is all and should be sufficient to implement the glTF metallic-roughness PBR shading model. The resulting demo application should render the following image. Also, try using different glTF 2.0 files:</li>
+</ol>
+<figure>
+<img alt="Figure 6.8: Physically based rendering of the Damaged Helmet glTF 2.0 model" height="734" src="../media/file48.png" width="1430"/><figcaption aria-hidden="true">Figure 6.8: Physically based rendering of the Damaged Helmet glTF 2.0 model</figcaption>
+</figure>
+</section>
+<section class="level3" data-number="7.6.4" id="theres-more...-16">
+<h3 data-number="7.6.4">There’s more...</h3>
+<p>The whole area of physically based rendering is vast, and given the book volume constraints, it is possible to only scratch its surface. In real life, much more complicated PBR implementations can be created, which are normally based on the requirements of content production pipelines. For an endless source of inspiration to see what can be done, we recommend looking at the Unreal Engine source code, which is available for free on GitHub: <a href="https://github.com/EpicGames/UnrealEngine/tree/release/Engine/Shaders/Private">https://github.com/EpicGames/UnrealEngine/tree/release/Engine/Shaders/Private</a>.</p>
+<p>In the next recipe, we will explore one more important PBR shading model, the glTF 2.0 specular-glossiness model, and implement a demo application for it.</p>
+</section>
+</section>
+<section class="level2" data-number="7.7" id="implementing-the-gltf-2.0-specular-glossiness-shading-model">
+<h2 data-number="7.7">Implementing the glTF 2.0 specular-glossiness shading model</h2>
+<p>Specular-glossiness is a deprecated and archived extension in the official Khronos repository, but we’d like to demonstrate how to use it because it’s still available for many existing assets. In the next chapter, we will introduce a new glTF specular extension that supersedes this old specular-glossiness shading model. We will show how to convert from this old specular glossiness to the new specular extension. The specular-glossiness model was initially added to glTF PBR as an extension to address an artistic-driven approach. For example, game development often requires greater flexibility in controlling the accuracy of specular effects, and the ability to adjust glossiness is a common necessity in such scenarios. Later on, the glTF PBR shading model received more advanced extensions that contradicted this initial one. A new specular extension was introduced to offer similar functionality to the standard metallic-roughness model. Consequently, Khronos recommended discontinuing the use of this extension, and it archived it. However, we will explore it, considering how many existing 3D models were created using this specular-glossiness shading model.</p>
+<section class="level3" data-number="7.7.1" id="what-is-specular-glossiness">
+<h3 data-number="7.7.1">What is specular glossiness?</h3>
+<p>As you may have noticed from the PBR section above, PBR doesn’t enforce how the material model should be expressed. The metallic-roughness model uses a simplified and intuitive way to describe any surface as non-metal-metal and smooth-rough. These parameters are still non-physically correct, but they express a wide variety of materials for real-life objects around us. In some cases, it’s not enough to express the variations in the appearance of materials, and the specular-glossiness model provides this flexibility.</p>
+<p>The specular-glossiness workflow is a technique for characterizing materials based on their specular features. Within this method, materials are described using three maps: albedo, specular, and glossiness. The albedo map determines the material’s color, the specular map defines its reflectivity or the specular color of the material, and the glossiness map defines its glossiness or smoothness.</p>
+<p>A distinguishing factor between the metallic-roughness and specular-glossiness workflows lies in the specular property that specifies material reflectivity in RGB channels. Each channel—red, green, and blue—represents reflectivity at different angles, providing a wider array of material appearances compared to metallic-roughness. Another difference is that this property has one significant flow that cannot be used within the glTF PBR model. By its very nature, this value cannot distinguish between dielectrics and metals, and that’s the reason why the majority of glTF PBR extensions are not compatible with the specular-glossiness model. The Khronos group introduced the <strong>KHR materials specular</strong> extension that allows you to add a spectral specular color to the metallic-roughness model.</p>
+</section>
+<section class="level3" data-number="7.7.2" id="getting-ready-42">
+<h3 data-number="7.7.2">Getting ready</h3>
+<p>The C++ source code for this recipe is in the <code>Chapter06/05_SpecularGlossiness</code> folder. The GLSL shader code responsible for PBR calculations can be found in <code>Chapter06/05_ SpecularGlossiness/src/PBR.sp</code>.</p>
+</section>
+<section class="level3" data-number="7.7.3" id="how-to-do-it...-37">
+<h3 data-number="7.7.3">How to do it...</h3>
+<p>This recipe is very similar to the previous one. In fact, much of the model loading and rendering code remains unchanged, except for retrieving values for different material properties. We extend the metallic-roughness data to include specular-glossiness parameters, and then we apply these parameters in the shader based on the material type.</p>
+<p>We are going to use the 3D model <em>SpecGlossVsMetalRough</em> provided by Khronos. It provides a side-by-side comparison of the same model, rendered with metallic-roughness shading and specular-glossiness shading. You can find the glTF file here: <code>deps/src/glTF-Sample-Assets/Models/SpecGlossVsMetalRough/glTF/</code>.</p>
+<p>Let’s get started. Here are the C++ code changes necessary to accommodate specular-glossiness parameters:</p>
+<ol>
+<li>We will modify our material data structure by adding two new data members, <code>vec4 specularGlossiness</code> and <code>uint32_t materialType</code>. The first one will provide the necessary parameters for the specular-glossiness material, and the second one will specify the exact material type.</li>
+<li>Please notice the padding member at the end of the structure. We need it to keep the binary representation of this structure aligned with GLSL shader inputs. The GLSL <code>st430</code> layout and alignment rules are not complex but might not be correctly implemented by different hardware vendors, especially on mobile devices. In this case, manual padding is just an easy and good enough way to fix compatibility between all GPUs. For further reading, we recommend the official Khronos Vulkan Guide documentation (<a href="https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/shader_memory_layout.adoc">https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/shader_memory_layout.adoc</a>):</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct SpecularGlossinessDataGPU {
+  vec4 baseColorFactor = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+  vec4 metallicRoughnessNormalOcclusion =
+    vec4(1.0f, 1.0f, 1.0f, 1.0f);
+  vec4 specularGlossiness = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+  … everything else remains the same 
+      as in the structure MetallicRoughnessDataGPU …
+  uint32_t materialType = 0;
+  uint32_t padding[3]   = {};
+  enum AlphaMode : uint32_t {
+    AlphaMode_Opaque = 0,
+    AlphaMode_Mask   = 1,
+    AlphaMode_Blend  = 2,
+  };
+};</code></pre>
+</div>
+<ol>
+<li>This is how we identify a glTF material type. We implement a helper function, <code>detectMaterialType()</code>, in <code>shared/UtilsGLTF.cpp</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>MaterialType detectMaterialType(const aiMaterial* mtl) {
+  aiShadingMode shadingMode = aiShadingMode_NoShading;
+  if (mtl-&gt;Get(AI_MATKEY_SHADING_MODEL, shadingMode) ==
+      AI_SUCCESS) {
+    if (shadingMode == aiShadingMode_Unlit)
+      return MaterialType_Unlit;
+  }
+  if (shadingMode == aiShadingMode_PBR_BRDF) {
+    ai_real factor = 0;
+    if (mtl-&gt;Get(AI_MATKEY_GLOSSINESS_FACTOR, factor) ==
+        AI_SUCCESS) {
+      return MaterialType_SpecularGlossiness;
+    } else if (mtl-&gt;Get(AI_MATKEY_METALLIC_FACTOR, factor) ==
+               AI_SUCCESS) {
+      return MaterialType_MetallicRoughness;
+    }
+  }
+  LLOGW(“Unknown material type\n”);
+  return MaterialType_Invalid;
+}</code></pre>
+</div>
+<ol>
+<li>The next difference is how we load extra material properties. Nothing interesting here; just load and assign the values using the Assimp API:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>SpecularGlossinessDataGPU res;
+…
+if (materialType == MaterialType_SpecularGlossiness) {
+  ai_real specularFactor[3];
+  if (mtlDescriptor-&gt;Get(AI_MATKEY_SPECULAR_FACTOR,
+      specularFactor) == AI_SUCCESS) {
+    res.specularGlossiness.x = specularFactor[0];
+    res.specularGlossiness.y = specularFactor[1];
+    res.specularGlossiness.z = specularFactor[2];
+  }
+  assignUVandSampler(      samplers, mtlDescriptor,
+    aiTextureType_SPECULAR, res.surfacePropertiesTextureUV,
+    res.surfacePropertiesTextureSampler);
+  ai_real glossinessFactor;
+  if (mtlDescriptor-&gt;Get(AI_MATKEY_GLOSSINESS_FACTOR,
+                         glossinessFactor) == AI_SUCCESS) {
+    res.specularGlossiness.w = glossinessFactor;
+  }
+}</code></pre>
+</div>
+<p>The rest of the C++ code is mostly identical to the previous recipe, <em>Implementing the glTF 2.0 metallic-roughness shading model</em>. The highlighted differences related to adjusting to the different material properties and providing necessary data.</p>
+<p>Let’s now look at the corresponding GLSL shaders.</p>
+<p>The differences are introduced in the code of the fragment shader <code>05_SpecularGlossinesss/src/main.frag</code>, where we calculate and apply <code>PBRInfo</code> parameters:</p>
+<ol>
+<li>First, we will identify the specular-glossiness material type:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>PBRInfo calculatePBRInputsMetallicRoughness( vec4 albedo,
+  vec3 normal, vec3 cameraPos, vec3 worldPos, vec4 mrSample)
+{
+  PBRInfo pbrInputs;
+  SpecularGlossinessDataGPU mat = getMaterial(getMaterialId());
+  bool isSpecularGlossiness =
+    getMaterialType(mat) == MaterialType_SpecularGlossiness;</code></pre>
+</div>
+<ol>
+<li>Based on the material type, we will calculate <code>perceptualRoughness</code> and <code>f0</code>, as well as the diffuse and specular color contributions. We will follow the official Khronos recommendations (<a href="https://kcoley.github.io/glTF/extensions/2.0/Khronos/KHR_materials_pbrSpecularGlossiness">https://kcoley.github.io/glTF/extensions/2.0/Khronos/KHR_materials_pbrSpecularGlossiness</a>) to convert values from specular-glossiness to metallic-roughness:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float perceptualRoughness = isSpecularGlossiness ?
+    getGlossinessFactor(mat):
+    getRoughnessFactor(mat);
+  float metallic = getMetallicFactor(mat) * mrSample.b;
+  metallic = clamp(metallic, 0.0, 1.0);
+  vec3 f0 = isSpecularGlossiness ?
+    getSpecularFactor(mat) * mrSample.rgb :
+    vec3(0.04);
+  const float c_MinRoughness = 0.04;
+  perceptualRoughness = isSpecularGlossiness ?
+    1.0 - mrSample.a * perceptualRoughness :
+    clamp(mrSample.g * perceptualRoughness, c_MinRoughness, 1.0);
+  float alphaRoughness = perceptualRoughness *
+                         perceptualRoughness;
+  vec4 baseColor = albedo;
+  vec3 diffuseColor = isSpecularGlossiness ?
+    baseColor.rgb * (1.0 - max(max(f0.r, f0.g), f0.b)) :
+    mix(baseColor.rgb, vec3(0), metallic);
+  vec3 specularColor = isSpecularGlossiness ?
+    f0 : mix(f0, baseColor.rgb, metallic);
+  …
+}</code></pre>
+</div>
+<p>The remaining fragment shader code remains the same. The resulting image produced by this example should look like the following screenshot:</p>
+<figure>
+<img alt="Figure 6.9: Specular-glossiness versus metallic-roughness materials" height="688" src="../media/file49.png" width="1429"/><figcaption aria-hidden="true">Figure 6.9: Specular-glossiness versus metallic-roughness materials</figcaption>
+</figure>
+<p>One bottle has a metallic-roughness material and the other uses a specular-glossiness one. As you can see, the objects appear identical, and by adjusting the specular and glossiness values within a compatible range, you can achieve the exact same result with two different shading models.</p>
+</section>
+<section class="level3" data-number="7.7.4" id="theres-more...-17">
+<h3 data-number="7.7.4">There’s more...</h3>
+<p>Here’s an article by Don McCurdy explaining the reasons for switching over from the specular-glossiness shading model to the metallic-roughness one: <a href="https://www.donmccurdy.com/2022/11/28/converting-gltf-pbr-materials-from-specgloss-to-metalrough">https://www.donmccurdy.com/2022/11/28/converting-gltf-pbr-materials-from-specgloss-to-metalrough</a>.</p>
+</section>
+</section>
+</section>
+</div></body>
+</html>

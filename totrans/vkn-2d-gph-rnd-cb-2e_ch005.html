@@ -1,0 +1,2578 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+<title>Adding User Interaction and Productivity Tools</title>
+<link href="../styles/stylesheet1.css" rel="stylesheet" type="text/css"/>
+<link href="../styles/stylesheet2.css" rel="stylesheet" type="text/css"/>
+</head>
+<body>
+<div id="sbo-rt-content"><section class="level1 pkt" data-number="5" id="adding-user-interaction-and-productivity-tools">
+<h1 data-number="5">4 Adding User Interaction and Productivity Tools</h1>
+<section class="level2" data-number="5.1" id="join-our-book-community-on-discord-3">
+<h2 data-number="5.1">Join our book community on Discord</h2>
+<p>
+<img height="301" src="../media/file40.png" style="width:15rem" width="301"/>
+</p>
+<p><a href="https://packt.link/unitydev">https://packt.link/unitydev</a></p>
+<p>In this chapter, we will learn how to implement basic helpers to drastically simplify the debugging of graphical applications. The demos are implemented in Vulkan using all the material from the previous three chapters. In <em>Chapter 3</em>, <em>Working with Vulkan Objects</em>, we demonstrated how to wrap various instances of raw Vulkan code to create and maintain basic Vulkan state and objects. In this chapter, we will show how to start implementing Vulkan rendering code in a way that is easily extensible and adaptable for different applications. Beginning with 2D user-interface rendering is the best way to learn this, as it makes things easier and allows us to focus on the rendering code without being overwhelmed by complex 3D graphics algorithms.</p>
+<p>We will cover the following recipes:</p>
+<ul>
+<li>Rendering ImGui user interfaces</li>
+<li>Integrating Tracy into C++ applications</li>
+<li>Adding a frames-per-second counter</li>
+<li>Using cube map textures in Vulkan</li>
+<li>Working with a 3D camera and basic user interaction</li>
+<li>Adding camera animations and motion</li>
+<li>Implementing an immediate-mode 3D drawing canvas</li>
+<li>Rendering on-screen graphs with ImGui and ImPlot</li>
+<li>Putting it all together into a Vulkan application</li>
+</ul>
+</section>
+<section class="level2" data-number="5.2" id="technical-requirements-2">
+<h2 data-number="5.2">Technical requirements</h2>
+<p>To run code from this chapter on your Linux or Windows PC, you will need a GPU with recent drivers that support Vulkan 1.3. The source code used in this chapter can be downloaded from <a href="https://github.com/PacktPublishing/3D-Graphics-Rendering-Cookbook">https://github.com/PacktPublishing/3D-Graphics-Rendering-Cookbook</a>.</p>
+</section>
+<section class="level2" data-number="5.3" id="rendering-imgui-user-interfaces">
+<h2 data-number="5.3">Rendering ImGui user interfaces</h2>
+<p>ImGui is a popular bloat-free graphical user interface library for C++ and is essential to the interactive debugging of graphics apps. ImGui integration comes as a part of the <em>LightweightVK</em> library. In this recipe, we go step by step through the code and show how to create an example app with ImGui rendering.</p>
+<section class="level3" data-number="5.3.1" id="getting-ready-17">
+<h3 data-number="5.3.1">Getting ready</h3>
+<p>It is recommended to revisit the <em>Using Vulkan descriptor indexing</em> recipe from <em>Chapter 3, Working with Vulkan Objects</em>, and also recall the Vulkan basics described in the other recipes of that chapter.</p>
+<p>This recipe covers the source code of <code>lightweight/lvk/HelpersImGui.cpp</code>. The demo code for this recipe is in <code>Chapter04/01_ImGui</code>.</p>
+</section>
+<section class="level3" data-number="5.3.2" id="how-to-do-it...-16">
+<h3 data-number="5.3.2">How to do it...</h3>
+<p>Let us start with a minimalistic ImGui demo application and take a look at how to use the ImGui Vulkan wrapper provided by <em>LightweightVK</em>:</p>
+<p>First, we create an <code>lvk::ImGuiRenderer</code> object. It takes in a pointer to our <code>lvk::IContext</code>, the name of the default font, and the default font size in pixels. <code>ImGuiRenderer</code> will take care of all the low-level ImGui initialization and code:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>std::unique_ptr&lt;lvk::ImGuiRenderer&gt; imgui =
+  std::make_unique&lt;lvk::ImGuiRenderer&gt;(
+    *ctx, “data/OpenSans-Light.ttf”, 30.0f);</code></pre>
+</div>
+<p>Let us create some GLFW callbacks that pass mouse movements and button presses into ImGui. GLFW mouse button IDs should be converted into ImGui ones:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>glfwSetCursorPosCallback(window,
+  [](auto* window, double x, double y) {
+    ImGui::GetIO().MousePos = ImVec2(x, y);
+  });
+glfwSetMouseButtonCallback(window,
+  [](auto* window, int button, int action, int mods) {
+    double xpos, ypos;
+    glfwGetCursorPos(window, &amp;xpos, &amp;ypos);
+    const ImGuiMouseButton_ imguiButton =
+     (button==GLFW_MOUSE_BUTTON_LEFT) ?
+       ImGuiMouseButton_Left:(button == GLFW_MOUSE_BUTTON_RIGHT ?
+       ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
+    ImGuiIO&amp; io               = ImGui::GetIO();
+    io.MousePos               = ImVec2((float)xpos, (float)ypos);
+    io.MouseDown[imguiButton] = action == GLFW_PRESS;
+  });</code></pre>
+</div>
+<p>Inside our typical rendering loop, we can invoke ImGui rendering commands as follows. The <code>ImGuiRenderer::beginFrame()</code> method takes in an <code>lvk::Framebuffer</code> object so it can set up a rendering pipeline properly:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+const lvk::Framebuffer framebuffer = {
+  .color = {{ .texture = ctx-&gt;getCurrentSwapchainTexture() }}};
+buf.cmdBeginRendering({ .color = { {
+  .loadOp = lvk::LoadOp_Clear,
+  .clearColor = {1.0f, 1.0f, 1.0f, 1.0f} } } }, framebuffer);
+imgui-&gt;beginFrame(framebuffer);</code></pre>
+</div>
+<p>Let’s draw an ImGui window with a texture. A texture index is passed into ImGui as an <code>ImTextureID</code> value so it can be used with the bindless rendering scheme we discussed in the previous chapter in the <em>Using Vulkan descriptor sets</em> recipe:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>ImGui::Begin(“Texture Viewer”, nullptr,
+  ImGuiWindowFlags_AlwaysAutoResize);
+ImGui::Image(ImTextureID(texture.indexAsVoid()),
+  ImVec2(512, 512));
+ImGui::ShowDemoWindow();
+ImGui::End();</code></pre>
+</div>
+<p>The <code>ImGuiRenderer::endFrame()</code> method is a command buffer with actual Vulkan commands to render the user interface. Then we can call <code>cmdEndRendering()</code> and submit our command buffer:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>imgui-&gt;endFrame(buf);
+buf.cmdEndRendering();
+ctx-&gt;submit(buf, ctx-&gt;getCurrentSwapchainTexture());</code></pre>
+</div>
+<p>This demo application should render a simple ImGui interface like that shown in the following screenshot:</p>
+<figure>
+<img alt="Figure 4.1: ImGui rendering" height="756" src="../media/file19.png" width="1430"/><figcaption aria-hidden="true">Figure 4.1: ImGui rendering</figcaption>
+</figure>
+<p>Now let’s take a look at the underlying low-level implementation inside LightweightVK that renders ImGui data.</p>
+</section>
+<section class="level3" data-number="5.3.3" id="how-it-works-6">
+<h3 data-number="5.3.3">How it works…</h3>
+<p>The <code>lvk::ImGuiRenderer</code> helper class is declared in <code>lvk\HelpersImGui.h</code>. Here is its declaration.</p>
+<ol>
+<li>The constructor accepts a reference to <code>lvk::IContext</code>, the name of the default <code>.ttf</code> font file, and the default font size in pixels. The <code>updateFont()</code>method can be invoked at a later point to override the previously used font. This method gets called from the constructor to set the default font:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class ImGuiRenderer {
+ public:
+  explicit ImGuiRenderer(lvk::IContext&amp; ctx,
+    const char* defaultFontTTF = nullptr,
+    float fontSizePixels = 24.0f);
+  ~ImGuiRenderer();
+  void updateFont(const char* defaultFontTTF, float fontSizePixels);</code></pre>
+</div>
+<ol>
+<li>The <code>beginFrame()</code> and <code>endFrame()</code> methods are necessary to prepare ImGui for rendering and generate Vulkan commands from the ImGui draw data. The <code>setDisplayScale()</code> method can be used to override ImGui’s <code>DisplayFramebufferScale</code> factor:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void beginFrame(const lvk::Framebuffer&amp; desc);
+  void endFrame(lvk::ICommandBuffer&amp; cmdBuffer);
+  void setDisplayScale(float displayScale);</code></pre>
+</div>
+<ol>
+<li>The private section of the <code>lvk::ImGuiRenderer</code> class contains a method to create a new rendering pipeline and a bunch of data necessary for rendering. There’s a single set of vertex and fragment shaders, a rendering pipeline, and a texture created from the <code>.ttf</code> font file we provided at construction time:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code> private:
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; createNewPipelineState(
+    const lvk::Framebuffer&amp; desc);
+ private:
+  lvk::IContext&amp; ctx_;
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert_;
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag_;
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipeline_;
+  lvk::Holder&lt;lvk::TextureHandle&gt; fontTexture_;
+  float displayScale_ = 1.0f;
+  uint32_t nonLinearColorSpace_ = 0;
+  uint32_t frameIndex_ = 0;</code></pre>
+</div>
+<ol>
+<li>To ensure stall-free operation, <em>LightweightVK</em> uses multiple buffers to pass ImGui vertex and index data into Vulkan (<code>vb</code> and <code>ib</code> in the following code, for the vertex and index buffers respectively):</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  struct DrawableData {
+    lvk::Holder&lt;BufferHandle&gt; vb_;
+    lvk::Holder&lt;BufferHandle&gt; ib_;
+    uint32_t numAllocatedIndices_ = 0;
+    uint32_t numAllocatedVerteices_ = 0;
+  };
+  static constexpr uint32_t kNumSwapchainImages = 3;
+  DrawableData drawables_[kNumSwapchainImages] = {};
+};</code></pre>
+</div>
+<p>Now we can dive into the implementation, which resides in <code>lvk/HelpersImGui.cpp</code>.</p>
+<ol>
+<li>The vertex shader uses programmable-vertex pulling, which we briefly touched on in the previous chapter in the <em>Dealing with buffers in Vulkan</em> recipe. Let’s take a closer look at it.</li>
+<li>ImGui provides 2D screen coordinates for each vertex, 2D texture coordinates, and an RGBA color. We declare a <code>Vertex</code> structure to hold per-vertex data and store all vertices inside the <code>vertices[]</code> array residing inside <code>VertexBuffer</code>. The <code>buffer_reference</code> GLSL layout qualifier declares a type and not an instance of a buffer, so that a reference to that buffer can be passed into the shader at a later point:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (location = 0) out vec4 out_color;
+layout (location = 1) out vec2 out_uv;
+layout (location = 2) out flat uint out_textureId;
+struct Vertex {
+  float x, y;
+  float u, v;
+  uint rgba;
+};
+layout(std430, buffer_reference) readonly buffer VertexBuffer {
+  Vertex vertices[];
+};</code></pre>
+</div>
+<ol>
+<li>A reference to <code>VertexBuffer</code> containing our per-vertex data is passed via Vulkan push constants. Besides that, we pass a texture ID and some 2D viewport parameters represented as left, right, top, and bottom planes inside <code>vec4 LRTB</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(push_constant) uniform PushConstants {
+  vec4 LRTB;
+  VertexBuffer vb;
+  uint textureId;
+} pc;
+void main() {
+  float L = pc.LRTB.x;
+  float R = pc.LRTB.y;
+  float T = pc.LRTB.z;
+  float B = pc.LRTB.w;</code></pre>
+</div>
+<p>Once we have the viewport parameters, we can construct an orthographic projection matrix the following way, which is similar to how <code>glm::ortho()</code> creates a projection matrix:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  mat4 proj = mat4(
+    2.0 / (R-L),              0.0,  0.0,  0.0,
+    0.0,              2.0 / (T-B),  0.0,  0.0,
+    0.0,                      0.0, -1.0,  0.0,
+    (R+L) / (L-R),  (T+B) / (B-T),  0.0,  1.0);</code></pre>
+</div>
+<ol>
+<li>The current vertex is extracted from the <code>VertexBuffer::vertices</code> array using the <code>gl_VertexIndex</code> built-in GLSL variable. The RGBA vertex color <code>v.rgba</code> is packed into a 32-bit unsigned integer and can be unpacked into <code>vec4</code> using the <code>unpackUnorm4x8()</code> GLSL built-in function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  Vertex v = pc.vb.vertices[gl_VertexIndex];
+  out_color = unpackUnorm4x8(v.rgba);</code></pre>
+</div>
+<ol>
+<li>The texture coordinates and texture ID are passed into the fragment shader unchanged. The projection matrix is multiplied by the vertex position expanded into <code>vec4</code> by adding <code>0</code> as the <code>Z</code> component:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  out_uv = vec2(v.u, v.v);
+  out_textureId = pc.textureId;
+  gl_Position = proj * vec4(v.x, v.y, 0, 1);
+}</code></pre>
+</div>
+<p>A corresponding GLSL fragment shader is much simpler and looks as follows:</p>
+<p>The input locations should match the corresponding output locations from the vertex shader:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (location = 0) in vec4 in_color;
+layout (location = 1) in vec2 in_uv;
+layout (location = 2) in flat uint in_textureId;
+layout (location = 0) out vec4 out_color;</code></pre>
+</div>
+<p><em>LightweightVK</em> supports some basic sRGB framebuffer rendering. This shader constant is used to enable some rudimentary tone mapping. The texture ID is used to access a required bindless texture. The sampler is always a default sampler at index <code>0</code>. The <code>constant_id</code> GLSL modifier is used to specify specialization constants for Vulkan:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (constant_id = 0) const bool kNonLinearColorSpace = false;
+void main() {
+  vec4 c = in_color * texture(sampler2D(
+    kTextures2D[in_textureId], kSamplers[0]), in_uv);</code></pre>
+</div>
+<p>Here we can render our UI in linear color space into an sRGB framebuffer:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  out_color = kNonLinearColorSpace ?
+    vec4(pow(c.rgb, vec3(2.2)), c.a) : c;
+}</code></pre>
+</div>
+<p>Now let’s take a look at the C++ code in the <code>lvk::ImGuiRender</code> implementation. There’s a private <code>ImGuiRenderer::createNewPipelineState()</code> helper function there, which is responsible for creating a new rendering pipeline for ImGui rendering. As the entire relevant Vulkan state can be dynamic in Vulkan 1.3, a single immutable pipeline is sufficient.</p>
+<ol>
+<li>A framebuffer description is required to create a pipeline because we need information about color and depth attachment formats:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>Holder&lt;RenderPipelineHandle&gt; ImGuiRenderer::createNewPipelineState(
+  const lvk::Framebuffer&amp; desc)
+{
+  nonLinearColorSpace_ =
+    ctx_.getSwapChainColorSpace() == ColorSpace_SRGB_NONLINEAR ? 1:0;
+  return ctx_.createRenderPipeline({
+    .smVert = vert_,
+    .smFrag = frag_,</code></pre>
+</div>
+<ol>
+<li>The sRGB mode is enabled based on the swapchain color space and passed into the shaders as Vulkan specialization constants:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    .specInfo = { .entries = {{.constantId = 0,
+                  .size = sizeof(nonLinearColorSpace_)}},
+                  .data = &amp;nonLinearColorSpace_,
+                  .dataSize = sizeof(nonLinearColorSpace_) },</code></pre>
+</div>
+<ol>
+<li>All ImGui elements require alpha blending to be enabled. If a depth buffer is present, it is retained unchanged but the rendering pipeline should know about it:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    .color = {{
+      .format = ctx_.getFormat(desc.color[0].texture),
+      .blendEnabled = true,
+      .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
+      .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
+    }},
+    .depthFormat = desc.depthStencil.texture ?
+      ctx_.getFormat(desc.depthStencil.texture) :
+      lvk::Format_Invalid,
+    .cullMode = lvk::CullMode_None},
+    nullptr);
+}</code></pre>
+</div>
+<p>Another helper function <code>ImGuiRenderer::updateFont()</code> is called from the constructor. Here’s how it is implemented.</p>
+<p>First, it sets up ImGui font configuration parameters using the provided font size:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>void ImGuiRenderer::updateFont(
+  const char* defaultFontTTF, float fontSizePixels)
+{
+  ImGuiIO&amp; io = ImGui::GetIO();
+  ImFontConfig cfg = ImFontConfig();
+  cfg.FontDataOwnedByAtlas = false;
+  cfg.RasterizerMultiply = 1.5f;
+  cfg.SizePixels = ceilf(fontSizePixels);
+  cfg.PixelSnapH = true;
+  cfg.OversampleH = 4;
+  cfg.OversampleV = 4;
+  ImFont* font = nullptr;</code></pre>
+</div>
+<p>Then it loads the default font from a <code>.ttf</code> file:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (defaultFontTTF) {
+    font = io.Fonts-&gt;AddFontFromFileTTF(
+      defaultFontTTF, cfg.SizePixels, &amp;cfg);
+  }
+  io.Fonts-&gt;Flags |= ImFontAtlasFlags_NoPowerOfTwoHeight;</code></pre>
+</div>
+<p>Last but not least, the rasterized TrueType font data is retrieved from ImGui and stored as a <em>LightweightVK</em> texture. This font texture is used later for rendering via its index ID:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  unsigned char* pixels;
+  int width, height;
+  io.Fonts-&gt;GetTexDataAsRGBA32(&amp;pixels, &amp;width, &amp;height);
+  fontTexture_ = ctx_.createTexture({
+    .type = lvk::TextureType_2D,
+    .format = lvk::Format_RGBA_UN8,
+    .dimensions = {(uint32_t)width, (uint32_t)height},
+    .usage = lvk::TextureUsageBits_Sampled,
+    .data = pixels }, nullptr);
+  io.Fonts-&gt;TexID = ImTextureID(fontTexture_.indexAsVoid());
+  io.FontDefault = font;
+}</code></pre>
+</div>
+<p>All the preparations are completed and we can now look at the constructor and destructor of <code>ImGuiRenderer</code>. Both member functions are very short.</p>
+<p>The constructor initializes both ImGui and ImPlot contexts in case <em>LightweightVK</em> was compiled with optional ImPlot support. At the moment, <em>LightweightVK</em> supports only a single ImGui context:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>ImGuiRenderer::ImGuiRenderer(lvk::IContext&amp; device, const char* defaultFontTTF, float fontSizePixels) : ctx_(device) {
+  ImGui::CreateContext();
+#if defined(LVK_WITH_IMPLOT)
+  ImPlot::CreateContext();
+#endif // LVK_WITH_IMPLOT</code></pre>
+</div>
+<p>Here we set the <code>ImGuiBackendFlags_RendererHasVtxOffset</code> flag telling ImGui that our renderer has support for vertex offsets. It enables the output of large meshes while still using 16-bit indices, making UI rendering more efficient:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  ImGuiIO&amp; io = ImGui::GetIO();
+  io.BackendRendererName = “imgui-lvk”;
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;</code></pre>
+</div>
+<p>All the work to create the default font and shaders is delegated as we have just discussed:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  updateFont(defaultFontTTF, fontSizePixels);
+  vert_ = ctx_.createShaderModule(
+    {codeVS, Stage_Vert, “Shader Module: imgui (vert)”});
+  frag_ = ctx_.createShaderModule(
+    {codeFS, Stage_Frag, “Shader Module: imgui (frag)”});
+}</code></pre>
+</div>
+<p>The destructor is trivial and cleans up both ImGui and the optional ImPlot:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>ImGuiRenderer::~ImGuiRenderer() {
+  ImGuiIO&amp; io = ImGui::GetIO();
+  io.Fonts-&gt;TexID = nullptr;
+#if defined(LVK_WITH_IMPLOT)
+  ImPlot::DestroyContext();
+#endif // LVK_WITH_IMPLOT
+  ImGui::DestroyContext();
+}</code></pre>
+</div>
+<p>There’s one more simple function that we want to see before going on to the rendering: <code>ImGuiRenderer::beginFrame()</code>. It starts a new ImGui frame using the provided framebuffer. A graphics pipeline is lazily created here based on the actual framebuffer parameters because we did not have any framebuffer provided to us in the constructor:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>void ImGuiRenderer::beginFrame(const lvk::Framebuffer&amp; desc) {
+  const lvk::Dimensions dim =
+    ctx_.getDimensions(desc.color[0].texture);
+  ImGuiIO&amp; io = ImGui::GetIO();
+  io.DisplaySize = ImVec2(dim.width / displayScale_,
+                          dim.height / displayScale_);
+  io.DisplayFramebufferScale = ImVec2(displayScale_, displayScale_);
+  io.IniFilename = nullptr;
+  if (pipeline_.empty()) {
+    pipeline_ = createNewPipelineState(desc);
+  }
+  ImGui::NewFrame();
+}</code></pre>
+</div>
+<p>Now we are ready to tackle the UI rendering in the <code>ImGuiRenderer::endFrame()</code> function. This function runs every frame and populates a Vulkan command buffer. It is a bit more complicated, so let’s go over it step by step to see how it works. Error checking is omitted in the following code snippets for the sake of brevity.</p>
+<p>First, we should finalize ImGui frame rendering and retrieve the frame draw data:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>void ImGuiRenderer::endFrame(lvk::ICommandBuffer&amp; cmdBuffer) {
+  ImGui::EndFrame();
+  ImGui::Render();
+  ImDrawData* dd = ImGui::GetDrawData();
+  int fb_width  = (int)(dd-&gt;DisplaySize.x * dd-&gt;FramebufferScale.x);
+  int fb_height = (int)(dd-&gt;DisplaySize.y * dd-&gt;FramebufferScale.y);</code></pre>
+</div>
+<p>Let’s prepare the render state. We disable the depth test and depth buffer writes. A viewport is constructed based on the ImGui framebuffer size, which we set up earlier in <code>beginFrame()</code> to be equal to our <em>LightweightVK</em> framebuffer size:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  cmdBuffer.cmdBindDepthState({});
+  cmdBuffer.cmdBindViewport({
+    .x = 0.0f,
+    .y = 0.0f,
+    .width = (dd-&gt;DisplaySize.x * dd-&gt;FramebufferScale.x),
+    .height = (dd-&gt;DisplaySize.y * dd-&gt;FramebufferScale.y),
+  });</code></pre>
+</div>
+<p>The parameters of the orthographic projection matrix are prepared here. They will be passed to shaders later via Vulkan push constants inside the rendering loop together with other parameters. Clipping parameters are prepared here as well to be used inside the rendering loop:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  const float L = dd-&gt;DisplayPos.x;
+  const float R = dd-&gt;DisplayPos.x + dd-&gt;DisplaySize.x;
+  const float T = dd-&gt;DisplayPos.y;
+  const float B = dd-&gt;DisplayPos.y + dd-&gt;DisplaySize.y;
+  const ImVec2 clipOff = dd-&gt;DisplayPos;
+  const ImVec2 clipScale = dd-&gt;FramebufferScale;</code></pre>
+</div>
+<p>We have a set of separate LVK buffers per each frame. These buffers store ImGui vertex and index data for the entire frame:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  DrawableData&amp; drawableData = drawables_[frameIndex_];
+  frameIndex_ =
+   (frameIndex_ + 1) % LVK_ARRAY_NUM_ELEMENTS(drawables_);</code></pre>
+</div>
+<p>If there are buffers already existing from the previous frames and these buffers’ sizes are insufficient to fit in the new vertex or index data, the buffers are re-created with the new size. The index buffer is created via <code>BufferUsageBits_Index</code>:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (drawableData.numAllocatedIndices_ &lt; dd-&gt;TotalIdxCount) {
+    drawableData.ib_ = ctx_.createBuffer({
+        .usage = lvk::BufferUsageBits_Index,
+        .storage = lvk::StorageType_HostVisible,
+        .size = dd-&gt;TotalIdxCount * sizeof(ImDrawIdx),
+        .debugName = “ImGui: drawableData.ib_”,
+    });
+    drawableData.numAllocatedIndices_ = dd-&gt;TotalIdxCount;
+  }</code></pre>
+</div>
+<p>The buffer to store vertices is actually a <code>BufferUsageBits_Storage</code> storage buffer, because our GLSL shaders use programmable-vertex pulling to load the vertices:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (drawableData.numAllocatedVerteices_ &lt; dd-&gt;TotalVtxCount) {
+    drawableData.vb_ = ctx_.createBuffer({
+        .usage = lvk::BufferUsageBits_Storage,
+        .storage = lvk::StorageType_HostVisible,
+        .size = dd-&gt;TotalVtxCount * sizeof(ImDrawVert),
+        .debugName = “ImGui: drawableData.vb_”,
+    });
+    drawableData.numAllocatedVerteices_ = dd-&gt;TotalVtxCount;
+  }</code></pre>
+</div>
+<p>Let’s upload some data to the vertex and index buffers. The entire ImGui frame data is uploaded here. Offsets are carefully preserved so we know where every ImGui draw command data is stored:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  ImDrawVert* vtx = (ImDrawVert*)ctx_.getMappedPtr(drawableData.vb_);
+  uint16_t* idx = (uint16_t*)ctx_.getMappedPtr(drawableData.ib_);
+  for (int n = 0; n &lt; dd-&gt;CmdListsCount; n++) {
+    const ImDrawList* cmdList = dd-&gt;CmdLists[n];
+    memcpy(vtx, cmdList-&gt;VtxBuffer.Data,
+      cmdList-&gt;VtxBuffer.Size * sizeof(ImDrawVert));
+    memcpy(idx, cmdList-&gt;IdxBuffer.Data,
+      cmdList-&gt;IdxBuffer.Size * sizeof(ImDrawIdx));
+    vtx += cmdList-&gt;VtxBuffer.Size;
+    idx += cmdList-&gt;IdxBuffer.Size;
+  }</code></pre>
+</div>
+<p>The host-visible memory needs to be flushed. This will allow <em>LightweightVK</em> to issue a corresponding Vulkan <code>vkFlushMappedMemoryRanges()</code> command if the memory is not host-coherent:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  ctx_.flushMappedMemory(
+    drawableData.vb_, 0, dd-&gt;TotalVtxCount * sizeof(ImDrawVert));
+  ctx_.flushMappedMemory(
+    drawableData.ib_, 0, dd-&gt;TotalIdxCount * sizeof(ImDrawIdx));
+  }</code></pre>
+</div>
+<p>Let’s bind our index buffer and the rendering pipeline to a command buffer, and enter the rendering loop that iterates over all ImGui rendering commands:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>  uint32_t idxOffset = 0;
+  uint32_t vtxOffset = 0;
+  cmdBuffer.cmdBindIndexBuffer(
+    drawableData.ib_, lvk::IndexFormat_UI16);
+  cmdBuffer.cmdBindRenderPipeline(pipeline_);
+  for (int n = 0; n &lt; dd-&gt;CmdListsCount; n++) {
+    const ImDrawList* cmdList = dd-&gt;CmdLists[n];
+    for (int cmd_i = 0; cmd_i &lt; cmdList-&gt;CmdBuffer.Size; cmd_i++) {
+      const ImDrawCmd&amp; cmd = cmdList-&gt;CmdBuffer[cmd_i];</code></pre>
+</div>
+<p>Viewport clipping is done right here on the CPU side. If the ImGui draw command is completely clipped, we should skip it:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>      ImVec2 clipMin((cmd.ClipRect.x - clipOff.x) * clipScale.x,
+                     (cmd.ClipRect.y - clipOff.y) * clipScale.y);
+      ImVec2 clipMax((cmd.ClipRect.z - clipOff.x) * clipScale.x,
+                     (cmd.ClipRect.w - clipOff.y) * clipScale.y);
+      if (clipMin.x &lt; 0.0f) clipMin.x = 0.0f;
+      if (clipMin.y &lt; 0.0f) clipMin.y = 0.0f;
+      if (clipMax.x &gt; fb_width ) clipMax.x = (float)fb_width;
+      if (clipMax.y &gt; fb_height) clipMax.y = (float)fb_height;
+      if (clipMax.x &lt;= clipMin.x || clipMax.y &lt;= clipMin.y)
+         continue;</code></pre>
+</div>
+<p>All the data necessary for rendering is passed into GLSL shaders via Vulkan push constants. It consists of the orthographic projection data, which is the left, right, top, and bottom planes, a reference to the vertex buffer, and a texture ID for bindless rendering:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>      struct VulkanImguiBindData {
+        float LRTB[4];
+        uint64_t vb = 0;
+        uint32_t textureId = 0;
+      } bindData = {
+          .LRTB = {L, R, T, B},
+          .vb = ctx_.gpuAddress(drawableData.vb_),
+          .textureId = static_cast&lt;uint32_t&gt;(
+            reinterpret_cast&lt;ptrdiff_t&gt;(cmd.TextureId)),
+      };
+      cmdBuffer.cmdPushConstants(bindData);</code></pre>
+</div>
+<p>Set up the scissor test so it can do precise clipping of ImGui elements:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>      cmdBuffer.cmdBindScissorRect({
+        uint32_t(clipMin.x),
+        uint32_t(clipMin.y),
+        uint32_t(clipMax.x - clipMin.x),
+        uint32_t(clipMax.y - clipMin.y)});</code></pre>
+</div>
+<p>The actual rendering is done via <code>cmdDrawIndexed()</code>. Here we use both the index offset and vertex offset parameters to access the correct data in our large per-frame vertex and index buffers:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>      cmdBuffer.cmdDrawIndexed(cmd.ElemCount, 1u,
+        idxOffset + cmd.IdxOffset,
+        int32_t(vtxOffset + cmd.VtxOffset));
+    }
+    idxOffset += cmdList-&gt;IdxBuffer.Size;
+    vtxOffset += cmdList-&gt;VtxBuffer.Size;
+  }
+}</code></pre>
+</div>
+<p>Now we have done all the ImGui rendering and can render the entire ImGui user interface using Vulkan. Let’s jump to the next recipes and learn other productivity and debugging tools, such as profiling, 3D camera controls, frames-per-second counters, and a drawing canvas.</p>
+</section>
+</section>
+<section class="level2" data-number="5.4" id="integrating-tracy-into-c-applications">
+<h2 data-number="5.4">Integrating Tracy into C++ applications</h2>
+<p>In the previous chapter, <em>Working with Vulkan Objects</em>, we learned how to write small graphics applications with Vulkan and LightweightVK. In real-world applications, it is often necessary to be able to quickly get performance profiling information at runtime. In this recipe, we will show how to make use of the Tracy profiler in your 3D applications.</p>
+<section class="level3" data-number="5.4.1" id="getting-ready-18">
+<h3 data-number="5.4.1">Getting ready</h3>
+<p>The complete source code of the demo application for this recipe is located in <code>Chapter04/02_TracyProfiler</code>.</p>
+<p>Make sure to download a precompiled Tracy client app for your platform from <a href="https://github.com/wolfpld/tracy">https://github.com/wolfpld/tracy</a>. In our book, we use Tracy version 0.10 that can be downloaded from <a href="https://github.com/wolfpld/tracy/releases/tag/v0.10">https://github.com/wolfpld/tracy/releases/tag/v0.10</a>.</p>
+</section>
+<section class="level3" data-number="5.4.2" id="how-to-do-it...-17">
+<h3 data-number="5.4.2">How to do it...</h3>
+<p>The Tracy profiler itself is integrated into the <em>LightweightVK</em> library. Our demo application, as well as many parts of the <em>LightweightVK</em> rendering code, is augmented with calls to profiling functions. Those calls are wrapped into a set of macros so as not to call Tracy directly. This allows turning the profiler on and off, and even switching to other profilers when necessary. Let’s take a look at the demo application and then explore the underlying low-level implementation:</p>
+<p>First, let’s take a look at the root LightweightVK CMake configuration file <code>deps/src/lightweightvk/CMakeLists.txt</code> to see how the Tracy library is added to the project. At the beginning, we should see an option enabled by default:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>option(LVK_WITH_TRACY  “Enable Tracy profiler”  ON)</code></pre>
+</div>
+<ol>
+<li>A few lines later in the same file, the CMake option is converted into a <code>TRACY_ENABLE</code> C++ compiler macro definition and the Tracy library is added to the project. Note that this is the <code>third-party/deps/src/</code> folder of the <em>LightweightVK</em> Git repository, which itself resides inside the <code>deps/src/</code> folder of the book repository:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>if(LVK_WITH_TRACY)
+  add_definitions(“-DTRACY_ENABLE=1”)
+  add_subdirectory(third-party/deps/src/tracy)
+  lvk_set_folder(TracyClient “third-party”)
+endif()</code></pre>
+</div>
+<ol>
+<li>Let’s continue scrolling the same file, <code>deps/src/lightweightvk/CMakeLitsts.txt</code>, for a few pages further. Based on the previously enabled <code>LVK_WITH_TRACY</code> CMake option, we export the <code>LVK_WITH_TRACY</code> C++ macro definition to all users of <em>LightweightVK</em>. The Tracy library is linked with the <code>LVKLibrary</code> target so that every app using <em>LightweightVK</em> has access to Tracy functions as well:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>if(LVK_WITH_TRACY)
+  target_compile_definitions(
+    LVKLibrary PUBLIC “LVK_WITH_TRACY=1”)
+  target_link_libraries(LVKLibrary PUBLIC TracyClient)
+endif()</code></pre>
+</div>
+<ol>
+<li>Now let’s look into <code>lightweightvk/lvk/LVK.h</code> and check out some macro definitions. The <code>LVK_WITH_TRACY</code> macro is used to enable or disable Tracy usage. Some predefined RGB colors are declared as macros to be used to mark important point-of-interest operations:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>#if defined(LVK_WITH_TRACY)
+  #include “tracy/Tracy.hpp”
+  #define LVK_PROFILER_COLOR_WAIT    0xff0000
+  #define LVK_PROFILER_COLOR_SUBMIT  0x0000ff
+  #define LVK_PROFILER_COLOR_PRESENT 0x00ff00
+  #define LVK_PROFILER_COLOR_CREATE  0xff6600
+  #define LVK_PROFILER_COLOR_DESTROY 0xffa500
+  #define LVK_PROFILER_COLOR_BARRIER 0xffffff</code></pre>
+</div>
+<ol>
+<li>Other macros are mapped directly to Tracy functions so that we can work with Tracy zones in a non-intrusive way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  #define LVK_PROFILER_FUNCTION() ZoneScoped
+  #define LVK_PROFILER_FUNCTION_COLOR(color) ZoneScopedC(color)
+  #define LVK_PROFILER_ZONE(name, color) { \
+      ZoneScopedC(color);                  \
+      ZoneName(name, strlen(name))
+  #define LVK_PROFILER_ZONE_END() }</code></pre>
+</div>
+<ol>
+<li>The <code>LVK_PROFILER_THREAD</code> macro can be used to set the name of a C++ thread. The <code>LVK_PROFILER_FRAME</code> macro is used to mark the start of the next frame during rendering. It is used by <em>LightweightVK</em> in <code>lvk::VulkanSwapchain::present()</code> and can be helpful if you want to implement your own swapchain management code, for example, on Android using OpenXR:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  #define LVK_PROFILER_THREAD(name) tracy::SetThreadName(name)
+  #define LVK_PROFILER_FRAME(name) FrameMarkNamed(name)</code></pre>
+</div>
+<ol>
+<li>Once Tracy is disabled, all macros are defined to no-ops and zones are defined as empty C++ scopes:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>#else
+  #define LVK_PROFILER_FUNCTION()
+  #define LVK_PROFILER_FUNCTION_COLOR(color)
+  #define LVK_PROFILER_ZONE(name, color) {
+  #define LVK_PROFILER_ZONE_END() }
+  #define LVK_PROFILER_THREAD(name)
+  #define LVK_PROFILER_FRAME(name)
+#endif // LVK_WITH_TRACY</code></pre>
+</div>
+<p>Macros <code>LVK_PROFILER_FUNCTION</code> and <code>LVK_PROFILER_FUNCTION_COLOR</code> are spread all over the <em>LightweightVK</em> code to give good profiling coverage. Let’s take a look at how to use them in our own apps.</p>
+</section>
+<section class="level3" data-number="5.4.3" id="how-it-works...-3">
+<h3 data-number="5.4.3">How it works...</h3>
+<p>The demo application is located in <code>Chapter04/02_TracyProfiler/src.main.cpp</code>. Tracy is initialized automatically together with <em>LightweightVK</em>. All we have to do now is put corresponding macros in our code. Let’s take a look at how it works.</p>
+<p>In our initialization part where we create <code>lvk::IContext</code>, we use <code>LVK_PROFILER_ZONE</code> and <code>LVK_PROFILER_ZONE_END</code> to mark an interesting fragment of our initialization code:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  GLFWwindow* window = nullptr;
+  std::unique_ptr&lt;lvk::IContext&gt; ctx;
+  {
+    LVK_PROFILER_ZONE(“Initialization”, LVK_PROFILER_COLOR_CREATE);
+    int width  = -95;
+    int height = -90;
+    window = lvk::initWindow(“Simple example”, width, height);
+    ctx    = lvk::createVulkanContextWithSwapchain(
+      window, width, height, {});
+    LVK_PROFILER_ZONE_END();
+  }</code></pre>
+</div>
+<p>Inside the rendering loop, we can mark different point-of-interest code blocks the same way. The hex value is an RGB color that will be used by Tracy in the profiling window to highlight this profiling zone. Some predefined colors were mentioned earlier in this recipe:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+  LVK_PROFILER_ZONE(“Fill command buffer”, 0xffffff);
+  …
+  LVK_PROFILER_ZONE_END();</code></pre>
+</div>
+<p>If we need to mark the entire function and want to have an automatic name assigned to it, we should use the <code>LVK_PROFILER_FUNCTION</code> macro as in the following snippet. This macro does not require closing:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>lvk::Result lvk::compileShader(VkDevice device,
+  VkShaderStageFlagBits stage, const char* code,
+  VkShaderModule* outShaderModule,
+  const glslang_resource_t* glslLangResource) {
+  LVK_PROFILER_FUNCTION();
+  …
+  return Result();
+}</code></pre>
+</div>
+<p>Let’s take a look at the profiler output while running this demo app. To retrieve the profiling data, you have to run a Tracy client and connect it to your graphics app. We use Tracy version 0.10, which can be downloaded from GitHub at <a href="https://github.com/wolfpld/tracy/releases/tag/v0.10">https://github.com/wolfpld/tracy/releases/tag/v0.10</a>. Here is a screenshot from a connected Tracy client showing a flame graph of our app.</p>
+<figure>
+<img alt="Figure 4.2: Tracy user interface" height="543" src="../media/file20.png" width="1429"/><figcaption aria-hidden="true">Figure 4.2: Tracy user interface</figcaption>
+</figure>
+<p>This approach allows for fully transparent enabling and disabling of the Tracy profiler at build time. Adding other profilers, such as EasyProfiler and Optick, which provide similar APIs, is mostly trivial and can be easily implemented yourself as an exercise.</p>
+<p>Before returning to Vulkan rendering, let’s explore yet another small but useful profiling trick and learn how to implement a simple yet good frames-per-second counter.</p>
+</section>
+</section>
+<section class="level2" data-number="5.5" id="adding-a-frames-per-second-counter">
+<h2 data-number="5.5">Adding a frames-per-second counter</h2>
+<p>The <strong>frames-per-second</strong> (<strong>FPS</strong>) counter is the cornerstone of all graphical applications profiling and performance measurements. In this recipe, we will learn how to implement a simple FPS counter class and use it to roughly measure the performance of our applications.</p>
+<section class="level3" data-number="5.5.1" id="getting-ready-19">
+<h3 data-number="5.5.1">Getting ready</h3>
+<p>The source code for this recipe can be found in <code>Chapter04/03_FPS</code>. The <code>FramesPerSecondCounter</code> class is located in <code>shared/UtilsFPS.h</code>.</p>
+</section>
+<section class="level3" data-number="5.5.2" id="how-to-do-it...-18">
+<h3 data-number="5.5.2">How to do it...</h3>
+<p>Let’s implement the <code>FramesPerSecondCounter</code> class containing all the machinery required to calculate the average FPS for a given time interval:</p>
+<ol>
+<li>First, we need some member fields to store the duration of a sliding window, the number of frames rendered in the current interval, and the accumulated time of this interval. The <code>printFPS_ Boolean</code> field can be used to enable or disable FPS printing to the console:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class FramesPerSecondCounter {
+public:
+  float avgInterval_ = 0.5f;
+  unsigned int numFrames_  = 0;
+  double accumulatedTime_  = 0;
+  float currentFPS_        = 0.0f;
+  bool printFPS_ = true;</code></pre>
+</div>
+<ol>
+<li>A single explicit constructor can override the averaging interval’s default duration:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>public:
+  explicit FramesPerSecondCounter(float avgInterval = 0.5f)
+  : avgInterval_(avgInterval)
+  { assert(avgInterval &gt; 0.0f); }</code></pre>
+</div>
+<ol>
+<li>The <code>tick()</code> method should be called from the main loop. It accepts the time duration elapsed since the previous call and a Boolean flag, which should be set to <code>true</code> if a new frame has been rendered during this iteration. This flag is a convenience feature to handle situations where frame rendering can be skipped in the main loop for various reasons, such as simulation pausing. The time accumulates until it reaches the value of <code>avgInterval_</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  bool tick(float deltaSeconds, bool frameRendered = true) {
+    if (frameRendered) numFrames_++;
+    accumulatedTime_ += deltaSeconds;</code></pre>
+</div>
+<ol>
+<li>Once enough time has accumulated, we can do averaging, update the current FPS value, and print debug info to the console. We should reset the number of frames and accumulated time at this point:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    if (accumulatedTime_ &gt; avgInterval_) {
+      currentFPS_ = static_cast&lt;float&gt;(
+        numFrames_ / accumulatedTime_);
+      if (printFPS_) printf(“FPS: %.1f\n”, currentFPS_);
+      numFrames_       = 0;
+      accumulatedTime_ = 0;
+      return true;
+    }
+    return false;
+  }</code></pre>
+</div>
+<ol>
+<li>Let’s add a helper method to retrieve the current FPS value:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  inline float getFPS() const { return currentFPS_; }
+};</code></pre>
+</div>
+<p>Now, let’s take a look at how to use this class in our main loop. Let’s augment the main loop of our demo applications to display an FPS counter in the console:</p>
+<ol>
+<li>First, let us define a <code>FramesPerSecondCounter</code> object and a couple of variables to store the current timestamp and the delta since the last rendered frame. We have chosen to use an ad hoc 0.5-second averaging interval; feel free to experiment with different values:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  double timeStamp   = glfwGetTime();
+  float deltaSeconds = 0.0f;
+  FramesPerSecondCounter fpsCounter(0.5f);</code></pre>
+</div>
+<ol>
+<li>Within the main loop, update the current timestamp and calculate the frame duration by finding a delta between two consecutive timestamps. Then, pass this calculated delta to the <code>tick()</code> method:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  while (!glfwWindowShouldClose(window)) {
+    fpsCounter.tick(deltaSeconds);
+    const double newTimeStamp = glfwGetTime();
+    deltaSeconds = static_cast&lt;float&gt;(newTimeStamp - timeStamp);
+    timeStamp    = newTimeStamp;
+    // ...do the rest of your rendering here...
+  }</code></pre>
+</div>
+<p>The console output of the running application should look similar to the following. Vertical sync is turned off:</p>
+<div class="C0-SHConPACKT">
+<pre><code>FPS: 3924.7
+FPS: 4322.4
+FPS: 4458.9
+FPS: 4445.1
+FPS: 4581.4</code></pre>
+</div>
+<p>The application window should look like that shown in the following screenshot, with an FPS counter rendered in the top-right corner:</p>
+<figure>
+<img alt="Figure 4.3: ImGui and ImPlot user interfaces with an FPS counter" height="756" src="../media/file21.png" width="1430"/><figcaption aria-hidden="true">Figure 4.3: ImGui and ImPlot user interfaces with an FPS counter</figcaption>
+</figure>
+<p>Let’s check the source code to learn how to add this ImGui FPS widget to your app. Here’s a fragment that fills in a command buffer:</p>
+<ol>
+<li>We set up the framebuffer parameters and start rendering. ImGui rendering is started with <code>imgui-&gt;beginFrame()</code> as we learned in the <em>Rendering ImGui user interface</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+const lvk::Framebuffer framebuffer =
+  { .color = { { .texture = ctx-&gt;getCurrentSwapchainTexture() } } };
+buf.cmdBeginRendering(
+  { .color = { { .loadOp = lvk::LoadOp_Clear,
+    .clearColor = { 1.0f, 1.0f, 1.0f, 1.0f } } } }, framebuffer);
+imgui-&gt;beginFrame(framebuffer);</code></pre>
+</div>
+<ol>
+<li>We get the current viewport parameters from ImGui and set the position of the next ImGui window to be aligned close to the top-right corner of the viewport work area. Sizes are hardcoded to be in the app window’s pixels. The <code>ImGuiCond_Always</code> flag tells ImGui to set this position every frame:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>if (const ImGuiViewport* v = ImGui::GetMainViewport()) {
+  ImGui::SetNextWindowPos({
+    v-&gt;WorkPos.x + v-&gt;WorkSize.x - 15.0f,
+    v-&gt;WorkPos.y + 15.0f }, ImGuiCond_Always, { 1.0f, 0.0f });
+}</code></pre>
+</div>
+<ol>
+<li>Set the next window to be transparent. We use <code>SetNextWindowSize()</code> to assign a fixed size value to the window. The width is calculated using <code>CalcTextSize()</code>. Note how that <code>“FPS : _______”</code> placeholder string is used here as a parameter to make sure the width of the window does not fluctuate based on the number of digits in the numeric FPS value:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>ImGui::SetNextWindowBgAlpha(0.30f);
+ImGui::SetNextWindowSize(
+  ImVec2(ImGui::CalcTextSize(“FPS : _______”).x, 0));</code></pre>
+</div>
+<ol>
+<li>An ImGui window that contains the FPS counter is rendered using various ImGui flags so that all unnecessary window decorations are disabled and no user interaction can happen with the window:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>if (ImGui::Begin(“##FPS”, nullptr, 
+                 ImGuiWindowFlags_NoDecoration |
+                 ImGuiWindowFlags_AlwaysAutoResize |
+                 ImGuiWindowFlags_NoSavedSettings |
+                 ImGuiWindowFlags_NoFocusOnAppearing |
+                 ImGuiWindowFlags_NoNav |
+                 ImGuiWindowFlags_NoMove))
+{
+  ImGui::Text(“FPS : %i”, (int)fpsCounter.getFPS());
+  ImGui::Text(“ms  : %.1f”, 1000.0 / fpsCounter.getFPS());
+}
+ImGui::End();</code></pre>
+</div>
+<ol>
+<li>After we have rendered the FPS window, let’s draw ImPlot and ImGui demo windows so you can explore them. The ImPlot library will be covered a bit more in subsequent recipes:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>ImPlot::ShowDemoWindow();
+ImGui::ShowDemoWindow();
+imgui-&gt;endFrame(buf);
+buf.cmdEndRendering();</code></pre>
+</div>
+<p>Now you know how to display a window in your apps that includes a nice FPS counter. Although this feature is straightforward, it can be tiresome to repeatedly include this code in every app. In the upcoming recipes, we will introduce a <code>VulkanApp</code> helper class that will handle various utility functions like this. But for now, let’s go back to rendering and explore how to work with cube map textures.</p>
+</section>
+<section class="level3" data-number="5.5.3" id="there-is-more...">
+<h3 data-number="5.5.3">There is more...</h3>
+<p>The <code>frameRendered</code> parameter in <code>float tick(float deltaSeconds, bool frameRendered = true)</code> will be used in subsequent recipes to allow Vulkan applications to skip frames when a swapchain image is not available.</p>
+</section>
+</section>
+<section class="level2" data-number="5.6" id="using-cube-map-textures-in-vulkan">
+<h2 data-number="5.6">Using cube map textures in Vulkan</h2>
+<p>A cube map is a texture that contains 6 individual 2D textures that together form 6 sides of a cube. A useful property of cube maps is that they can be sampled using a direction vector. This comes in handy when representing light coming into a scene from different directions. For example, we can store the diffuse part of the physically based lighting equation in an irradiance cube map, which we will touch on in <em>Chapter 6</em>.</p>
+<p>Loading 6 faces of a cube map into <em>LightweightVK</em> is a fairly straightforward operation. However, instead of just 6 faces, cube maps are often stored as <strong>equirectangular projections</strong> or as vertical or horizontal crosses. The equirectangular projection is such a projection that maps longitude and latitude (vertical and horizontal lines) to straight, even lines, making it a very easy and popular way to store light probe images, as shown in <em>Figure 4.4</em> later in this recipe.</p>
+<p>In this recipe, we will learn how to convert this cube map representation into 6 faces and render them with Vulkan.</p>
+<section class="level3" data-number="5.6.1" id="getting-ready-20">
+<h3 data-number="5.6.1">Getting ready</h3>
+<p>There are many websites that offer high-dynamic range environment textures under various licenses. Check out <a href="https://polyhaven.com">https://polyhaven.com</a> and <a href="https://hdrmaps.com">https://hdrmaps.com</a> for useful content.</p>
+<p>The complete source code for this recipe can be found in the source code bundle under the name <code>Chapter04/04_CubeMap</code>.</p>
+<p>Before we start working with cube maps, let us introduce a simple <code>Bitmap</code> helper class to work with bitmap images in 8-bit and 32-bit floating point formats. You can find it in <code>shared/Bitmap.h</code>:</p>
+<ol>
+<li>Let us declare the interface part of the <code>Bitmap</code> class as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class Bitmap {
+public:
+  Bitmap() = default;
+  Bitmap(int w, int h, int comp, eBitmapFormat fmt);
+  Bitmap(int w, int h, int d, int comp, eBitmapFormat fmt);
+  Bitmap(int w, int h, int comp, eBitmapFormat fmt, const void* ptr);</code></pre>
+</div>
+<ol>
+<li>Let’s set the width, height, depth, and number of components per pixel:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  int w_ = 0;
+  int h_ = 0;
+  int d_ = 1;
+  int comp_ = 3;</code></pre>
+</div>
+<ol>
+<li>The type of a single component can be either unsigned byte or float. The type of this bitmap can be a 2D texture or a cube map. We store the actual pixel data of this bitmap in an <code>std::vector</code> container for simplicity:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  eBitmapFormat fmt_ = eBitmapFormat_UnsignedByte;
+  eBitmapType type_  = eBitmapType_2D;
+  std::vector&lt;uint8_t&gt; data_;</code></pre>
+</div>
+<ol>
+<li>Next we need a helper function to get the number of bytes necessary to store one component of a specified format. This also requires a getter and setter for a two-dimensional image. We will come back to this later:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  static int getBytesPerComponent(eBitmapFormat fmt);
+  void setPixel(int x, int y, const glm::vec4&amp; c);
+  glm::vec4 getPixel(int x, int y) const;
+};</code></pre>
+</div>
+<p>The implementation is also located in <code>shared/Bitmap.h</code>. Now let us use this class to build more high-level cube map conversion functions.</p>
+</section>
+<section class="level3" data-number="5.6.2" id="how-to-do-it...-19">
+<h3 data-number="5.6.2">How to do it...</h3>
+<p>We have a cube map at <code>data/piazza_bologni_1k.hdr</code>, which is available under the CC0 license and was originally downloaded from <a href="https://hdrihaven.com/hdri/?h=piazza_bologni">https://hdrihaven.com/hdri/?h=piazza_bologni</a>. The environment map image comes in an equirectangular projection and looks like this:</p>
+<figure>
+<img alt="Figure 4.4: Equirectangular projection" height="742" src="../media/file22.png" width="1200"/><figcaption aria-hidden="true">Figure 4.4: Equirectangular projection</figcaption>
+</figure>
+<p>Let us convert it into a vertical cross. In the vertical cross format, each cube map face is represented as a square inside the entire image, as follows:</p>
+<figure>
+<img alt="Figure 4.5: Vertical cross" height="897" src="../media/file23.png" width="698"/><figcaption aria-hidden="true">Figure 4.5: Vertical cross</figcaption>
+</figure>
+<p>If we use a naive way to convert an equirectangular projection to cube map faces by iterating over its pixels, calculating the Cartesian coordinates for each pixel, and saving the pixel into a cube map face using the Cartesian coordinates, we will end up with a texture heavily damaged by a Moiré pattern caused by the insufficient sampling of the resulting cube map. A better way is to do it the other way round. That means iterating over each pixel of the resulting cube map faces, calculating source floating-point equirectangular coordinates corresponding to each pixel, and sampling the equirectangular texture using bilinear interpolation. This way the final cube map will be free of artifacts:</p>
+<ol>
+<li>The first step is to introduce a helper function that maps integer coordinates inside a specified cube map face into floating-point normalized coordinates. This helper is handy because all faces in the vertical cross cube map have different vertical orientations:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>vec3 faceCoordsToXYZ(int i, int j, int faceID, int faceSize) {
+  const float A = 2.0f * float(i) / faceSize;
+  const float B = 2.0f * float(j) / faceSize;
+  if (faceID == 0) return vec3(   -1.0f, A - 1.0f,  B - 1.0f);
+  if (faceID == 1) return vec3(A - 1.0f,    -1.0f,  1.0f - B);
+  if (faceID == 2) return vec3(    1.0f, A - 1.0f,  1.0f - B);
+  if (faceID == 3) return vec3(1.0f - A,     1.0f,  1.0f - B);
+  if (faceID == 4) return vec3(B - 1.0f, A - 1.0f,  1.0f);
+  if (faceID == 5) return vec3(1.0f - B, A - 1.0f, -1.0f);
+  return vec3();
+}</code></pre>
+</div>
+<ol>
+<li>The conversion function starts as follows and calculates the face size, width, and height of the resulting bitmap. It is located in <code>shared/UtilsCubemap.cpp</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>Bitmap convertEquirectangularMapToVerticalCross(const Bitmap&amp; b) {
+  if (b.type_ != eBitmapType_2D) return Bitmap();
+  const int faceSize = b.w_ / 4;
+  const int w = faceSize * 3;
+  const int h = faceSize * 4;
+  Bitmap result(w, h, 3);</code></pre>
+</div>
+<ol>
+<li>These points define the locations of individual faces inside the cross:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const ivec2 kFaceOffsets[] = {
+    ivec2(faceSize, faceSize * 3),
+    ivec2(0, faceSize),
+    ivec2(faceSize, faceSize),
+    ivec2(faceSize * 2, faceSize),
+    ivec2(faceSize, 0),
+    ivec2(faceSize, faceSize * 2)
+  };</code></pre>
+</div>
+<ol>
+<li>Two constants will be necessary to clamp the texture lookup:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const int clampW = b.w_ - 1;
+  const int clampH = b.h_ - 1;</code></pre>
+</div>
+<ol>
+<li>Now we can start iterating over the 6 cube map faces and each pixel inside each face:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  for (int face = 0; face != 6; face++) {
+    for (int i = 0; i != faceSize; i++) {
+      for (int j = 0; j != faceSize; j++) {</code></pre>
+</div>
+<ol>
+<li>We use trigonometry functions to calculate the latitude and longitude coordinates from the Cartesian cube map coordinates.</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        const vec3  P = faceCoordsToXYZ(i, j, face, faceSize);
+        const float R = hypot(P.x, P.y);
+        const float theta = atan2(P.y, P.x);
+        const float phi   = atan2(P.z, R);          </code></pre>
+</div>
+<ol>
+<li>To learn more about spherical coordinate systems, please follow this link: <a href="https://en.wikipedia.org/wiki/Spherical_coordinate_system">https://en.wikipedia.org/wiki/Spherical_coordinate_system</a>.</li>
+<li>Now we can map the latitude and longitude into floating-point coordinates inside the equirectangular image:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        const float Uf =
+          float(2.0f * faceSize * (theta + M_PI) / M_PI);
+        const float Vf =
+          float(2.0f * faceSize * (M_PI / 2.0f - phi) / M_PI);</code></pre>
+</div>
+<ol>
+<li>Based on these floating-point coordinates, we get two pairs of integer UV coordinates, which we will use to sample 4 texels for bilinear interpolation:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        const int U1 = clamp(int(floor(Uf)), 0, clampW);
+        const int V1 = clamp(int(floor(Vf)), 0, clampH);
+        const int U2 = clamp(U1 + 1, 0, clampW);
+        const int V2 = clamp(V1 + 1, 0, clampH);</code></pre>
+</div>
+<ol>
+<li>Get the fractional part for the bilinear interpolation and fetch 4 samples, <code>A</code>, <code>B</code>, <code>C</code>, and <code>D</code>, from the equirectangular map:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        const float s = Uf - U1;
+        const float t = Vf - V1;
+        const vec4 A = b.getPixel(U1, V1);
+        const vec4 B = b.getPixel(U2, V1);
+        const vec4 C = b.getPixel(U1, V2);
+        const vec4 D = b.getPixel(U2, V2);</code></pre>
+</div>
+<ol>
+<li>Do the bilinear interpolation and set the resulting pixel value in the vertical-cross cube map:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        const vec4 color = A * (1 - s) * (1 - t) + B * (s) * (1 - t) +
+          C * (1 - s) * t + D * (s) * (t);
+        result.setPixel(
+          i + kFaceOffsets[face].x, j + kFaceOffsets[face].y, color);
+      }
+    }
+  }
+  return result;
+}</code></pre>
+</div>
+<p>The <code>Bitmap</code> class takes care of the pixel format inside the image data.</p>
+<p>Now we can write code to cut the vertical cross into tightly packed rectangular cube map faces. Here is how to do it:</p>
+<ol>
+<li><p>First, let us review the layout of the vertical cross image corresponding to the Vulkan cube map faces layout.</p>
+<figure>
+<img alt="Figure 4.6: Layout of the vertical cross image" height="294" src="../media/file24.png" width="290"/><figcaption aria-hidden="true">Figure 4.6: Layout of the vertical cross image</figcaption>
+</figure></li>
+<li>The layout is <code>3</code> by <code>4</code> faces, which makes it possible to calculate the dimensions of the resulting cube map as follows. The code is from <code>shared/UtilsCubemap.cpp</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>Bitmap convertVerticalCrossToCubeMapFaces(const Bitmap&amp; b) {
+  const int faceWidth  = b.w_ / 3;
+  const int faceHeight = b.h_ / 4;
+  Bitmap cubemap(faceWidth, faceHeight, 6, b.comp_, b.fmt_);</code></pre>
+</div>
+<ol>
+<li>Let us set up pointers to read data from and write data to. This function is pixel format-agnostic so it needs to know the size of each pixel in bytes to be able to move pixels around with <code>memcpy()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const uint8_t* src = b.data_.data();
+  uint8_t* dst = cubemap.data_.data();
+  const int pixelSize = cubemap.comp_ *
+    Bitmap::getBytesPerComponent(cubemap.fmt_);</code></pre>
+</div>
+<ol>
+<li>Iterate over the faces and over every pixel of each face. The order of cube map faces here corresponds to the order of Vulkan cube map faces as described in <em>Vulkan specification 16.5.4. Cube Map Face Selection</em>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  for (int face = 0; face != 6; ++face) {
+    for (int j = 0; j != faceHeight; ++j) {
+      for (int i = 0; i != faceWidth; ++i) {
+        int x = 0;
+        int y = 0;</code></pre>
+</div>
+<ol>
+<li>Calculate the source pixel position in the vertical cross layout based on the destination cube map face index:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        switch (face) {
+        case 0: // +X
+          x = i;
+          y = faceHeight + j;
+          break;
+        case 1: // -X
+          x = 2 * faceWidth + i;
+          y = 1 * faceHeight + j;
+          break;
+        case 2: // +Y
+          x = 2 * faceWidth - (i + 1);
+          y = 1 * faceHeight - (j + 1);
+          break;
+        case 3: // -Y
+          x = 2 * faceWidth - (i + 1);
+          y = 3 * faceHeight - (j + 1);
+          break;
+        case 4: // +Z
+          x = 2 * faceWidth - (i + 1);
+          y = b.h_ - (j + 1);
+          break;
+        case 5: // -Z
+          x = faceWidth + i;
+          y = faceHeight + j;
+          break;
+        }</code></pre>
+</div>
+<ol>
+<li>Copy the pixel and advance to the next one:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>        memcpy(dst, src + (y * b.w_ + x) * pixelSize, pixelSize);
+        dst += pixelSize;
+      }
+    }
+  }
+  return cubemap;
+}</code></pre>
+</div>
+<p>The resulting cube map contains an array of 6 2D images. Let us write some more C++ code to load and convert the actual texture data and upload it into <em>LightweightVK</em>. The source code is located in <code>Chapter04/04_CubeMap/src/main.cpp</code>:</p>
+<ol>
+<li>Use the <code>STB_image</code> floating point API to load a high dynamic range image from an <code>.hdr</code> file:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>int w, h;
+const float* img = stbi_loadf(
+  “data/piazza_bologni_1k.hdr”, &amp;w, &amp;h, nullptr, 4);
+Bitmap in(w, h, 4, eBitmapFormat_Float, img);</code></pre>
+</div>
+<ol>
+<li>Convert an equirectangular map to a vertical cross and save the resulting image to an <code>.hdr</code> file for further inspection:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>Bitmap out = convertEquirectangularMapToVerticalCross(in);
+stbi_image_free((void*)img);
+stbi_write_hdr(“.cache/screenshot.hdr”, out.w_, out.h_, out.comp_,
+  (const float*)out.data_.data());</code></pre>
+</div>
+<ol>
+<li>Convert the loaded vertical cross image to the actual cube map faces:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>Bitmap cubemap = convertVerticalCrossToCubeMapFaces(out);</code></pre>
+</div>
+<ol>
+<li>Now, uploading texture data to LightweightVK is straightforward. We call the <code>IContext::createTexture()</code> member function to create a texture and provide a pointer to the cube map data returned by <code>cubemap.data_.data()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>lvk::Holder&lt;lvk::TextureHandle&gt; cubemapTex = ctx-&gt;createTexture({
+    .type       = lvk::TextureType_Cube,
+    .format     = lvk::Format_RGBA_F32,
+    .dimensions = {(uint32_t)cubemap.w_, (uint32_t)cubemap.h_},
+    .usage      = lvk::TextureUsageBits_Sampled,
+    .data       = cubemap.data_.data(),
+    .debugName  = “data/piazza_bologni_1k.hdr”,
+});</code></pre>
+</div>
+<p>Now we should take a look at how to write the GLSL shaders for this example:</p>
+<ol>
+<li>Let us make a vertex shader <code>Chapter04/04_CubeMap/src/main.vert</code> that will take a model, view, and projection matrices as its inputs. We also need a camera position and bindless texture IDs for a mesh texture and for our cube map:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(std430, buffer_reference) readonly buffer PerFrameData {
+  mat4 model;
+  mat4 view;
+  mat4 proj;
+  vec4 cameraPos;
+  uint tex;
+  uint texCube;
+};</code></pre>
+</div>
+<ol>
+<li>A buffer reference to <code>PerFrameData</code> is passed into the shader using Vulkan <strong>push constants</strong> (<code>pc</code> in the following code):</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout(push_constant) uniform PushConstants {
+  PerFrameData pc;
+};</code></pre>
+</div>
+<ol>
+<li>The per-vertex attributes are provided to the vertex shader. The <code>PerVertex</code> structure is used to pass parameters to a fragment shader. Normal vectors are transformed with a matrix calculated as the inverse-transpose of the model matrix:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct PerVertex {
+  vec2 uv;
+  vec3 worldNormal;
+  vec3 worldPos;
+};
+layout (location = 0) in vec3 pos;
+layout (location = 1) in vec3 normal;
+layout (location = 2) in vec2 uv;
+layout (location=0) out PerVertex vtx;
+void main() {
+  gl_Position = pc.proj * pc.view * pc.model * vec4(pos, 1.0);
+  mat4 model = pc.model;
+  mat3 normalMatrix = transpose( inverse(mat3(pc.model)) );
+  vtx.uv = uv;
+  vtx.worldNormal = normal * normalMatrix;
+  vtx.worldPos = (model * vec4(pos, 1.0)).xyz;
+}</code></pre>
+</div>
+<p>Now let’s take a look at the fragment shader found at <code>Chapter04/04_CubeMap/src/main.frag</code>:</p>
+<ol>
+<li>It shares the declaration of the <code>PerVertex</code> structure with the vertex shader mentioned above. The declaration is located in the file <code>Chapter04/04_CubeMap/src/common.sp</code>. We skip it here for the sake of brevity. The fragment shader uses the <code>textureBindlessCube()</code> helper function to sample the cube map using the calculated reflection vector. This function was discussed in detail in the <em>Using texture data in Vulkan</em> recipe in <em>Chapter 3, Working with Vulkan Objects</em>. The reflected direction vector is calculated using the <code>reflect()</code> GLSL built-in function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>layout (location=0) in PerVertex vtx;
+layout (location=0) out vec4 out_FragColor;
+void main() {
+  vec3 n = normalize(vtx.worldNormal);
+  vec3 v = normalize(pc.cameraPos.xyz - vtx.worldPos);
+  vec3 reflection = -normalize(reflect(v, n));
+  vec4 colorRefl = textureBindlessCube(pc.texCube, 0, reflection);</code></pre>
+</div>
+<ol>
+<li>To add a more developed visual appearance, we add some diffuse lighting to our 3D model using a hardcoded light direction of <code>(0, 0.1, -1)</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  vec4 Ka = colorRefl * 0.3;
+  float NdotL = clamp(dot(n, normalize(vec3(0,0,-1))), 0.1, 1.0);
+  vec4 Kd = textureBindless2D(pc.tex, 0, vtx.uv) * NdotL;
+  out_FragColor = Ka + Kd;
+};</code></pre>
+</div>
+<p>The resulting output from the application looks as follows. Note the blown-out white areas of the sky in the reflection due to how a high dynamic range image is displayed directly onto a low dynamic range framebuffer. We will come back to this issue in <em>Chapter 10, Image-Based Techniques</em>, and implement a simple HDR tone-mapping operator.</p>
+<figure>
+<img alt="Figure 4.7: Reflective rubber duck" height="756" src="../media/file25.jpg" width="1430"/><figcaption aria-hidden="true">Figure 4.7: Reflective rubber duck</figcaption>
+</figure>
+<p>Now let’s get back to improving the user interaction capabilities and learn how to implement a simple camera class to move around and debug our 3D scenes.</p>
+</section>
+<section class="level3" data-number="5.6.3" id="theres-more...-6">
+<h3 data-number="5.6.3">There’s more...</h3>
+<p>In OpenGL, developers had to enable a special cube map sampling mode to ensure seamless filtering across all cube map faces. In Vulkan, all cube map texture fetches are seamless (as described under <em>Cube Map Edge Handling</em> in the Vulkan specification), except the ones with <code>VK_FILTER_NEAREST</code>, which are clamped to the face edge.</p>
+</section>
+</section>
+<section class="level2" data-number="5.7" id="working-with-a-3d-camera-and-basic-user-interaction">
+<h2 data-number="5.7">Working with a 3D camera and basic user interaction</h2>
+<p>To debug a graphical application, it is very helpful to be able to navigate and move around within a 3D scene using a keyboard or mouse. Graphics APIs themselves are not familiar with concepts of cameras and user interaction, so we have to implement a camera model that will convert user input into a view matrix usable by Vulkan. In this recipe, we will learn how to create a simple yet extensible 3D camera implementation and use it to enhance the functionality of our Vulkan examples.</p>
+<section class="level3" data-number="5.7.1" id="getting-ready-21">
+<h3 data-number="5.7.1">Getting ready</h3>
+<p>The source code for this recipe can be found in <code>Chapter04/05_Camera</code>. The camera classes are declared and implemented in the file <code>shared/Camera.h</code>.</p>
+</section>
+<section class="level3" data-number="5.7.2" id="how-to-do-it...-20">
+<h3 data-number="5.7.2">How to do it...</h3>
+<p>Our camera implementation will calculate a view matrix and a 3D position point based on the selected dynamic model. Let’s look at the steps:</p>
+<ol>
+<li>First, let us implement the <code>Camera</code> class, which will represent our main API to work with a 3D camera. The class stores a reference to an instance of the <code>CameraPositionerInterface</code> class, being a polymorphic implementation of the underlying camera model to allow runtime switches of camera behaviors:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class Camera final {
+public:
+  explicit Camera(CameraPositionerInterface&amp; positioner)
+    : positioner_(&amp;positioner)  {}
+  Camera(const Camera&amp;) = default;
+  Camera&amp; operator = (const Camera&amp;) = default;
+  mat4 getViewMatrix() const {
+    return positioner_-&gt;getViewMatrix();
+  }
+  vec3 getPosition() const {
+    return positioner_-&gt;getPosition();
+  }
+private:
+      const CameraPositionerInterface* positioner_;
+};</code></pre>
+</div>
+<p>The interface of <code>CameraPositionerInterface</code> contains only pure virtual methods and a default virtual destructor:</p>
+<div class="C1-SHCodePACKT">
+<pre><code>class CameraPositionerInterface {
+public:
+  virtual ~CameraPositionerInterface() = default;
+  virtual mat4 getViewMatrix() const = 0;
+  virtual vec3 getPosition() const = 0;
+};</code></pre>
+</div>
+<ol>
+<li>Now we can implement the actual camera model. We will start with a quaternion-based first-person camera that can be freely moved in space in any direction. Let us look at the <code>CameraPositioner_FirstPerson</code> class. The inner <code>Movement</code> structure contains Boolean flags that define the current motion state of our camera. This is useful to decouple keyboard and mouse inputs from the camera control logic:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class CameraPositioner_FirstPerson final:
+  public CameraPositionerInterface
+{
+public:
+  struct Movement {
+    bool forward_   = false;
+    bool backward_  = false;
+    bool left_      = false;
+    bool right_     = false;
+    bool up_        = false;
+    bool down_      = false;
+    bool fastSpeed_ = false;
+  } movement_;</code></pre>
+</div>
+<ol>
+<li>Various numeric parameters define how responsive the camera will be to acceleration and damping. These parameters can be tweaked as you see fit:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  float mouseSpeed_   = 4.0f;
+  float acceleration_ = 150.0f;
+  float damping_      = 0.2f;
+  float maxSpeed_     = 10.0f;
+  float fastCoef_     = 10.0f;</code></pre>
+</div>
+<ol>
+<li>We need certain private data members to control the camera state, such as the previous mouse position, the current camera position and orientation, the current movement speed, and the vector representing the “up” direction:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>private:
+  vec2 mousePos_          = vec2(0);
+  vec3 cameraPosition_    = vec3(0.0f, 10.0f, 10.0f);
+  quat cameraOrientation_ = quat(vec3(0));
+  vec3 moveSpeed_         = vec3(0.0f);
+  vec3 up_                = vec3(0.0f, 0.0f, 1.0f);</code></pre>
+</div>
+<ol>
+<li>The non-default constructor takes the camera’s initial position, a target position, and a vector pointing upwards. This input is similar to what one might normally use to construct a look-at viewing matrix. Indeed, we use the <code>glm::lookAt()</code> function to initialize the camera:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>public:
+  CameraPositioner_FirstPerson() = default;
+  CameraPositioner_FirstPerson(const vec3&amp; pos,
+    const vec3&amp; target, const vec3&amp; up)
+  : cameraPosition_(pos)
+  , cameraOrientation_(glm::lookAt(pos, target, up))
+  , up_(up)
+  {}</code></pre>
+</div>
+<ol>
+<li>Now, we can add some dynamics to our camera model. The <code>update()</code> method should be called every frame and take the time elapsed since the previous frame, as well as the mouse position and a mouse-button-pressed flag:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void update(double deltaSeconds,
+    const glm::vec2&amp; mousePos, bool mousePressed)
+  {
+    if (mousePressed) {
+      const glm::vec2 delta = mousePos - mousePos_;
+      const glm::quat deltaQuat =
+        glm::quat(glm::vec3(
+        mouseSpeed_ * delta.y, mouseSpeed_ * delta.x, 0.0f));
+      cameraOrientation_ =
+        glm::normalize(deltaQuat * cameraOrientation_);
+      setUpVector(up_);
+    }
+    mousePos_ = mousePos;</code></pre>
+</div>
+<p>Now, when the mouse button is pressed, we calculate a delta vector versus the previous mouse position, and use it to construct a rotation quaternion. This quaternion is used to rotate the camera. Once the camera rotation is applied, we should update the mouse position state.</p>
+<ol>
+<li>Now we should establish the camera’s coordinate system to calculate the camera movement. Let us extract the forward, right, and up vectors from the <code>mat4</code> view matrix:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    const mat4 v = glm::mat4_cast(cameraOrientation_);
+    const vec3 forward = -vec3(v[0][2], v[1][2], v[2][2]);
+    const vec3 right   =  vec3(v[0][0], v[1][0], v[2][0]);
+    const vec3 up = cross(right, forward);</code></pre>
+</div>
+<p>The <code>forward</code> vector corresponds to the camera’s direction, which is the direction the camera is pointing at. The <code>right</code> vector corresponds to the positive X-axis of the camera space. The <code>up</code> vector is the positive Y-axis of the camera space, which is perpendicular to the first two vectors and can be calculated as their cross product.</p>
+<ol>
+<li>The camera coordinate system has been established. Now we can apply our input state from the <code>Movement</code> structure to control the movement of our camera:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    vec3 accel(0.0f);
+    if (movement_.forward_) accel += forward;
+    if (movement_.backward_) accel -= forward;
+    if (movement_.left_) accel -= right;
+    if (movement_.right_) accel += right;
+    if (movement_.up_) accel += up;
+    if (movement_.down_) accel -= up;
+    if (movement_.fastSpeed_) accel *= fastCoef_;</code></pre>
+</div>
+<p>Instead of controlling the camera speed or position directly, we let the user input control only the acceleration vector directly. This way, the camera’s behavior is much smoother, more natural, and non-jerky.</p>
+<ol>
+<li>If, based on the input state, the calculated camera acceleration is zero, we should decelerate the camera’s motion gradually, according to the <code>damping_</code> parameter. Otherwise, we should integrate the camera motion using simple Euler integration. The maximum possible speed value is clamped according to the <code>maxSpeed_</code> parameter:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    if (accel == vec3(0)) {
+      moveSpeed_ -= moveSpeed_ * std::min((1.0f / damping_) *
+        static_cast&lt;float&gt;(deltaSeconds), 1.0f);
+    }
+    else {
+      moveSpeed_ += accel * acceleration_ *
+        static_cast&lt;float&gt;(deltaSeconds);
+      const float maxSpeed =
+        movement_.fastSpeed_ ? maxSpeed_ * fastCoef_ : maxSpeed_;
+      if (glm::length(moveSpeed_) &gt; maxSpeed)
+        moveSpeed_ = glm::normalize(moveSpeed_) * maxSpeed;
+    }
+    cameraPosition_ += moveSpeed_ *
+      static_cast&lt;float&gt;(deltaSeconds);
+  }</code></pre>
+</div>
+<ol>
+<li>The view matrix can be calculated from the camera orientation quaternion and camera position in the following way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  virtual mat4 getViewMatrix() const override {
+    const mat4 t = glm::translate(mat4(1.0f), -cameraPosition_);
+    const mat4 r = glm::mat4_cast(cameraOrientation_);
+    return r * t;
+  }</code></pre>
+</div>
+<p>The translational part is inferred from the <code>cameraPosition_</code> vector and the rotational part is calculated directly from the orientation quaternion.</p>
+<ol>
+<li>Helpful getters and setters are trivial, except for the <code>setUpVector()</code> method, which has to recalculate the camera orientation using the existing camera position and direction as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  virtual vec3 getPosition() const override {
+    return cameraPosition_;
+  }
+  void setPosition(const vec3&amp; pos) {
+    cameraPosition_ = pos;
+  }
+  void setUpVector(const vec3&amp; up) {
+    const mat4 view = getViewMatrix();
+    const vec3 dir  = -vec3(view[0][2], view[1][2], view[2][2]);
+    cameraOrientation_ =
+      glm::lookAt(cameraPosition_, cameraPosition_ + dir, up);
+  }</code></pre>
+</div>
+<ol>
+<li>One additional helper function is necessary to reset the previous mouse position to prevent jerky rotation movements when, for example, the mouse cursor leaves the window:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void resetMousePosition(const vec2&amp; p) { mousePos_ = p; };
+};</code></pre>
+</div>
+<p>The above class can be used in 3D applications to move the viewer around. Let us see how it works.</p>
+</section>
+<section class="level3" data-number="5.7.3" id="how-it-works...-4">
+<h3 data-number="5.7.3">How it works...</h3>
+<p>The demo application is based on the cube map example from the previous <em>Using cube map textures in Vulkan</em> recipe. The updated code is located at <code>Chapter04/05_Camera/src/main.cpp</code>.</p>
+<p>We add a mouse state and define <code>CameraPositioner</code> and <code>Camera</code>. Let them be global variables:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>struct MouseState {
+  vec2 pos         = vec2(0.0f);
+  bool pressedLeft = false;
+} mouseState;
+const vec3 kInitialCameraPos    = vec3(0.0f, 1.0f, -1.5f);
+const vec3 kInitialCameraTarget = vec3(0.0f, 0.5f,  0.0f);
+CameraPositioner_FirstPerson positioner(
+  kInitialCameraPos,
+  kInitialCameraTarget,
+  vec3(0.0f, 1.0f, 0.0f));
+Camera camera(positioner);</code></pre>
+</div>
+<p>The GLFW cursor position callback should update <code>mouseState</code> the following way:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>glfwSetCursorPosCallback(
+  window, [](auto* window, double x, double y) {
+    int width, height;
+    glfwGetFramebufferSize(window, &amp;width, &amp;height);
+    mouseState.pos.x = static_cast&lt;float&gt;(x / width);
+    mouseState.pos.y = 1.0f - static_cast&lt;float&gt;(y / height);
+  }
+);</code></pre>
+</div>
+<p>Here, we convert window pixel coordinates into normalized <code>0...1</code> coordinates and accommodate the inverted Y-axis.</p>
+<p>The GLFW mouse button callback passes GLFW mouse events to ImGui and sets the <code>pressedLeft</code> flag when the left mouse button is pressed:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>glfwSetMouseButtonCallback(
+  window, [](auto* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
+      mouseState.pressedLeft = action == GLFW_PRESS;
+    double xpos, ypos;
+    glfwGetCursorPos(window, &amp;xpos, &amp;ypos);
+    const ImGuiMouseButton_ imguiButton =
+     (button == GLFW_MOUSE_BUTTON_LEFT) ?
+       ImGuiMouseButton_Left :
+         (button == GLFW_MOUSE_BUTTON_RIGHT ?
+           ImGuiMouseButton_Right :
+           ImGuiMouseButton_Middle);
+    ImGuiIO&amp; io = ImGui::GetIO();
+    io.MousePos = ImVec2((float)xpos, (float)ypos);
+    io.MouseDown[imguiButton] = action == GLFW_PRESS;
+  });</code></pre>
+</div>
+<p>To handle keyboard input for camera movement, let us write the following GLFW keyboard callback:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>glfwSetKeyCallback(window,
+  [](GLFWwindow* window, int key, int, int action, int mods) {
+    const bool press = action != GLFW_RELEASE;
+    if (key == GLFW_KEY_ESCAPE)
+      glfwSetWindowShouldClose(window, GLFW_TRUE);
+    if (key == GLFW_KEY_W) positioner.movement_.forward_ = press;
+    if (key == GLFW_KEY_S) positioner.movement_.backward_= press;
+    if (key == GLFW_KEY_A) positioner.movement_.left_  = press;
+    if (key == GLFW_KEY_D) positioner.movement_.right_ = press;
+    if (key == GLFW_KEY_1) positioner.movement_.up_   = press;
+    if (key == GLFW_KEY_2) positioner.movement_.down_ = press;
+    if (mods &amp; GLFW_MOD_SHIFT)
+      positioner.movement_.fastSpeed_ = press;
+    if (key == GLFW_KEY_SPACE) {
+      positioner.lookAt(kInitialCameraPos,
+        kInitialCameraTarget, vec3(0.0f, 1.0f, 0.0f));
+      positioner.setSpeed(vec3(0));
+    }
+  });</code></pre>
+</div>
+<p>The <em>WSAD</em> keys are used to move the camera around and the <em>Spacebar</em> is used to reorient the camera up vector to the world <code>(0, 1, 0)</code> vector and reset the position camera back to the initial position. The <span class="KeystrokePACKT">Shift</span> key is used to move the camera faster.</p>
+<p>We can update the camera positioner from the main loop using the following statement:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>positioner.update(
+  deltaSeconds, mouseState.pos, mouseState.pressedLeft);</code></pre>
+</div>
+<p>Here’s a code fragment to upload matrices into a Vulkan per-frame uniform buffer, similar to how it was done with fixed values in the previous chapters:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>const vec4 cameraPos = vec4(camera.getPosition(), 1.0f);
+const mat4 p  = glm::perspective(
+  glm::radians(60.0f), ratio, 0.1f, 1000.0f);
+const mat4 m1 = glm::rotate(
+  mat4(1.0f), glm::radians(-90.0f), vec3(1, 0, 0));
+const mat4 m2 = glm::rotate(
+  mat4(1.0f), (float)glfwGetTime(), vec3(0.0f, 1.0f, 0.0f));
+const mat4 v  = glm::translate(mat4(1.0f), vec3(cameraPos));
+const PerFrameData pc = {
+  .model     = m2 * m1,
+  .view      = camera.getViewMatrix(),
+  .proj      = p,
+  .cameraPos = cameraPos,
+  .tex       = texture.index(),
+  .texCube   = cubemapTex.index(),
+};
+ctx-&gt;upload(bufferPerFrame, &amp;pc, sizeof(pc));</code></pre>
+</div>
+<p>Run the demo from <code>Chapter04/05_Camera</code> to play around with the keyboard and mouse:</p>
+<figure>
+<img alt="Figure 4.8: Camera" height="756" src="../media/file26.jpg" width="1430"/><figcaption aria-hidden="true">Figure 4.8: Camera</figcaption>
+</figure>
+</section>
+<section class="level3" data-number="5.7.4" id="there-is-more...-1">
+<h3 data-number="5.7.4">There is more...</h3>
+<p>This camera design approach can be extended to accommodate different motion behaviors. In the next recipe, we will learn how to implement some other useful camera positioners.</p>
+<p>The 3D camera functionality introduced in this recipe is incredibly valuable for our book. To reduce code duplication, we’ve created a helper class called <code>VulkanApp</code>. This class wraps the first-person camera positioner along with other features such as the frames-per-second counter, <code>ImGuiRenderer</code>, and some others. The <code>VulkanApp</code> class will be utilized in all the subsequent recipes throughout this book. You can find it in the <code>shared/VulkanApp.h</code> and <code>shared/VulkanApp.cpp</code> files.</p>
+</section>
+</section>
+<section class="level2" data-number="5.8" id="adding-camera-animations-and-motion">
+<h2 data-number="5.8">Adding camera animations and motion</h2>
+<p>Besides having a user-controlled first-person camera, it is convenient to be able to position and move the camera programmatically inside a 3D scene – this is helpful for debugging when we need to organize automatic screenshot tests with camera movement, for example. In this recipe, we will show how to do it and extend our minimalistic 3D camera framework from the previous recipe. We will draw a combo box using ImGui to select between two camera modes: a first-person free camera, and a fixed camera moving to a user-specified point settable from the UI.</p>
+<section class="level3" data-number="5.8.1" id="getting-ready-22">
+<h3 data-number="5.8.1">Getting ready</h3>
+<p>The full source code for this recipe is a part of the final demo application for this chapter, and you can find it in <code>Chapter04/06_DemoApp</code>. Implementations of all new camera-related functionality are located in the <code>shared/Camera.h</code> file.</p>
+</section>
+<section class="level3" data-number="5.8.2" id="how-to-do-it...-21">
+<h3 data-number="5.8.2">How to do it...</h3>
+<p>Let’s look at how to programmatically control our 3D camera using a simple ImGui-based user interface:</p>
+<ol>
+<li>First, we need to add a new <code>CameraPosition_MoveTo</code> camera positioner that automatically moves the camera to a specified <code>vec3</code> point. For this purpose, we have to declare a bunch of global constants and variables:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const vec3 kInitialCameraPos    = vec3(0.0f, 1.0f, -1.5f);
+const vec3 kInitialCameraAngles = vec3(-18.5f, 180.0f, 0.0f);
+CameraPositioner_MoveTo positionerMoveTo(
+  kInitialCameraPos, kInitialCameraAngles);</code></pre>
+</div>
+<ol>
+<li>Inside the main loop, we should update our new camera positioner. The first-person camera positioner is updated automatically inside the <code>VulkanApp</code> class mentioned in the previous recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>positioner_moveTo.update(
+  deltaSeconds, mouseState.pos, mouseState.pressedLeft);</code></pre>
+</div>
+<p>Now, let’s draw an ImGui combo box to select which camera positioner should be used to control the camera motion:</p>
+<ol>
+<li>First, a few more global variables will come in handy to store the current camera type, items of the combo box UI, and the new value selected in the combo box:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const char* cameraType = “FirstPerson”;
+const char* comboBoxItems[] = { “FirstPerson”, “MoveTo” };
+const char* currentComboBoxItem = cameraType;</code></pre>
+</div>
+<ol>
+<li>To render the camera control UI with a combo box, let’s write the following code. A new ImGui window starts with a call to <code>ImGui::Begin()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>ImGui::Begin(“Camera Controls”, nullptr,
+  ImGuiWindowFlags_AlwaysAutoResize);
+{</code></pre>
+</div>
+<ol>
+<li>The combo box itself is rendered via <code>ImGui::BeginCombo()</code>. The second parameter is the previewed label name to show before opening the combo box. This function will return true if the user has clicked on a label:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (ImGui::BeginCombo(“##combo”, currentComboBoxItem)) {
+    for (int n = 0; n &lt; IM_ARRAYSIZE(comboBoxItems); n++) {
+      const bool isSelected =
+        currentComboBoxItem == comboBoxItems[n];</code></pre>
+</div>
+<ol>
+<li>You may set the initial focus when opening the combo box. This is useful if you want to support scrolling or keyboard navigation inside the combo box:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>      if (ImGui::Selectable(comboBoxItems[n], isSelected))
+        currentComboBoxItem = comboBoxItems[n];
+      if (isSelected)
+        ImGui::SetItemDefaultFocus();
+    }</code></pre>
+</div>
+<ol>
+<li>Finalize the ImGui combo box rendering:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    ImGui::EndCombo();
+  }</code></pre>
+</div>
+<ol>
+<li>If the <code>MoveTo</code> camera type is selected, render <code>vec3</code> input sliders to get the camera position and Euler angles from the user:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (!strcmp(cameraType, “MoveTo”)) {
+    if (ImGui::SliderFloat3(“Position”,
+      glm::value_ptr(cameraPos), -10.0f, +10.0f)) {
+      positionerMoveTo.setDesiredPosition(cameraPos);
+    }
+    if (ImGui::SliderFloat3(“Pitch/Pan/Roll”,
+      glm::value_ptr(cameraAngles), -180.0f, +180.0f)) {
+      positionerMoveTo.setDesiredAngles(cameraAngles);
+    }
+  }</code></pre>
+</div>
+<ol>
+<li>If a new selected combo box item is different from the current camera type, print a debug message and change the active camera mode:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  if (currentComboBoxItem &amp;&amp;
+      strcmp(currentComboBoxItem, cameraType)) {
+    printf(“Selected new camera type: %s\n”,
+             currentComboBoxItem);
+    cameraType = currentComboBoxItem;
+    reinitCamera(app);
+  }</code></pre>
+</div>
+<p>The resulting combo box should look as in the following screenshot:</p>
+<figure>
+<img alt="Figure 4.9: Camera controls" height="203" src="../media/file27.png" width="677"/><figcaption aria-hidden="true">Figure 4.9: Camera controls</figcaption>
+</figure>
+<p>The preceding code is called from the main loop on every frame to draw ImGui. Check out the <code>Chapter04/06_DemoApp/src/main.cpp</code> file for the complete source code.</p>
+</section>
+<section class="level3" data-number="5.8.3" id="how-it-works...-5">
+<h3 data-number="5.8.3">How it works...</h3>
+<p>Let’s take a look at the implementation of the <code>CameraPositioner_MoveTo</code> class in <code>shared/Camera.h</code> we mentioned earlier in <em>steps 1</em> and <em>2</em>. In contrast to the first-person camera positioner introduced in the previous recipe, which relies on quaternions, this new positioner employs a straightforward Euler angles approach to store the camera orientation. This method is more user-friendly and intuitive for controlling the camera. The following are the steps to help us understand how this camera positioner works:</p>
+<ol>
+<li>First, we want to have some user-configurable parameters for linear and angular damping coefficients:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class CameraPositioner_MoveTo final :
+  public CameraPositionerInterface
+{
+public:
+  float dampingLinear_ = 10.0f;
+  vec3 dampingEulerAngles_ = vec3(5.0f, 5.0f, 5.0f);</code></pre>
+</div>
+<ol>
+<li>We store the current and desired positions of the camera as well as two sets of pitch, pan, and roll Euler angles in <code>vec3</code> member fields. The current camera transformation is updated every frame and saved in a <code>mat4</code> field:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>private:
+  vec3 positionCurrent_ = vec3(0.0f);
+  vec3 positionDesired_ = vec3(0.0f);
+  vec3 anglesCurrent_ = vec3(0.0f); // pitch, pan, roll
+  vec3 anglesDesired_ = vec3(0.0f);
+  mat4 currentTransform_ = mat4(1.0f);</code></pre>
+</div>
+<ol>
+<li>The constructor initializes both the current and desired data sets of the camera:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>public:
+  CameraPositioner_MoveTo(const vec3&amp; pos, const vec3&amp; angles)
+  : positionCurrent_(pos)
+  , positionDesired_(pos)
+  , anglesCurrent_(angles)
+  , anglesDesired_(angles)
+  {}</code></pre>
+</div>
+<ol>
+<li>The most interesting part happens in the <code>update()</code> function. The current camera position is changed to move towards the desired camera position. The movement speed is proportional to the distance between these two positions and scaled using the linear damping coefficient:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void update(
+    float deltaSeconds, const vec2&amp; mousePos, bool mousePressed)
+  {
+    positionCurrent_ += dampingLinear_ *
+      deltaSeconds * (positionDesired_ - positionCurrent_);</code></pre>
+</div>
+<ol>
+<li>Now, let’s deal with Euler angles. We should clip them accordingly to make sure they remain within the <code>0…360</code> degrees range. This is required to prevent our camera from “spinning” around the object <code>2*Pi</code> times:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    anglesCurrent_ = clipAngles(anglesCurrent_);
+    anglesDesired_ = clipAngles(anglesDesired_);</code></pre>
+</div>
+<ol>
+<li>Similar to how we dealt with the camera position, the Euler angles are updated based on the distance between the desired and current set of angles. Before calculating the camera transformation matrix, clip the updated angles again and convert the values from degrees to radians. Note how the pitch, pan, and roll angles are swizzled before they are forwarded into <code>glm::yawPitchRoll()</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    anglesCurrent_ -= angleDelta(anglesCurrent_, anglesDesired_)
+      * dampingEulerAngles_ * deltaSeconds;
+    anglesCurrent_ = clipAngles(anglesCurrent_);
+    const vec3 ang = glm::radians(anglesCurrent_);
+    currentTransform_ = glm::translate(
+      glm::yawPitchRoll(ang.y, ang.x, ang.z), -positionCurrent_);
+  }</code></pre>
+</div>
+<ol>
+<li>The functions for the angle clipping are straightforward and look as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>private:
+  static inline float clipAngle(float d) {
+    if (d &lt; -180.0f) return d + 360.0f;
+    if (d &gt; +180.0f) return d - 360.f;
+    return d;
+  }
+  static inline vec3 clipAngles(const vec3&amp; angles) {
+    return vec3( std::fmod(angles.x, 360.0f),
+                 std::fmod(angles.y, 360.0f),
+                 std::fmod(angles.z, 360.0f) );
+  }</code></pre>
+</div>
+<ol>
+<li>The delta between two sets of angles can be calculated in the following way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  static inline vec3 angleDelta( const vec3&amp; anglesCurrent,
+                                 const vec3&amp; anglesDesired )
+  {
+    const vec3 d =
+      clipAngles(anglesCurrent) - clipAngles(anglesDesired);
+    return vec3(
+      clipAngle(d.x), clipAngle(d.y), clipAngle(d.z));
+  }
+};</code></pre>
+</div>
+<p>Try running the demo application, <code>Chapter04/06_DemoApp</code>. Switch to the <code>MoveTo</code> camera and change the position and orientation from the ImGui user interface.</p>
+</section>
+<section class="level3" data-number="5.8.4" id="theres-more...-7">
+<h3 data-number="5.8.4">There’s more...</h3>
+<p>Further camera functionality can be built on top of this example implementation. One more useful extension might be a camera that follows a spline curve defined using a set of key points for positions and targets. We will leave this as an exercise for you.</p>
+</section>
+</section>
+<section class="level2" data-number="5.9" id="implementing-an-immediate-mode-3d-drawing-canvas">
+<h2 data-number="5.9">Implementing an immediate-mode 3D drawing canvas</h2>
+<p>The <em>Setting up Vulkan debugging capabilities</em> recipe from <em>Chapter 2, Getting Started with Vulkan</em>, only scratched the surface of graphical application debugging. The validation layers provided by the Vulkan API are invaluable but they do not allow you to debug logical and calculation-related errors. To see what is happening in our virtual world, we need to be able to render auxiliary graphical information such as objects’ bounding boxes and plot time-varying charts of different values or plain straight lines. The Vulkan API does not provide any immediate-mode rendering facilities. All it can do is add commands to command buffers scheduled for later submission. To overcome this difficulty and add an immediate-mode rendering canvas to our applications, we have to write some additional code. Let’s learn how to do it in this recipe.</p>
+<section class="level3" data-number="5.9.1" id="getting-ready-23">
+<h3 data-number="5.9.1">Getting ready</h3>
+<p>Make sure you are proficient with all the rendering recipes from <em>Chapter 3, Working with Vulkan Objects</em>. Check the <code>shared/LineCanvas.h</code> and <code>shared/LineCanvas.cpp</code> files for a working implementation of this recipe. An example of how to use a new <code>LineCanvas3D</code> 3D line drawing class is a part of the demo app at <code>Chapter04/06_DemoApp</code>.</p>
+</section>
+<section class="level3" data-number="5.9.2" id="how-to-do-it...-22">
+<h3 data-number="5.9.2">How to do it...</h3>
+<p>The <code>LineCanvas3D</code> class contains a CPU-accessible list of 3D lines defined by two points and a color. Each frame, the user can call the <code>line()</code> method to draw a new 3D line that should be rendered in the current frame. To render these lines into the framebuffer, we maintain a collection of Vulkan buffers to store line geometry data, which we will update every frame. Let’s take a look at the interface of this class:</p>
+<ol>
+<li>The <code>LineCanvas3D</code> class has its internal 3D line representation as a pair of vertices for each and every line, whereas each vertex consists of a <code>vec4</code> position and a color. Each <code>linesBuffer</code> buffer holds a GPU-visible copy of the <code>lines_</code> container. We have one buffer for each swapchain image to avoid any additional Vulkan synchronization:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>struct LineCanvas3D {
+  mat4 mvp_ = mat4(1.0f);
+  struct LineData {
+    vec4 pos;
+    vec4 color;
+  };
+  std::vector&lt;LineData&gt; lines_;</code></pre>
+</div>
+<div class="C1-SHConPACKT">
+<pre><code>  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert_;
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag_;
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipeline_;</code></pre>
+</div>
+<div class="C1-SHCodePACKT">
+<pre><code>  constexpr uint32_t kNumImages = 3;
+  lvk::Holder&lt;lvk::BufferHandle&gt; linesBuffer_[kNumImages] = {};
+  uint32_t currentBufferSize_[kNumImages] = {};
+  uint32_t currentFrame_ = 0;
+  void setMatrix(const mat4&amp; mvp) { mvp_ = mvp; }</code></pre>
+</div>
+<ol>
+<li>The actual drawing functionality consists of a set of functions. We want to be able to clear the canvas, render one line, and render some useful primitives, such as 3D planes, boxes, and frustums. Further utility functions can easily be built on top of the functionality provided by the <code>line()</code> member function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void clear() { lines_.clear(); }
+  void line(const vec3&amp; p1, const vec3&amp; p2, const vec4&amp; c);
+  void plane(vec3&amp; orig, const vec3&amp; v1, const vec3&amp; v2,
+    int n1, int n2, float s1, float s2,
+    const vec4&amp; color, const vec4&amp; outlineColor);
+  void box(const mat4&amp; m, const BoundingBox&amp; box,
+    const vec4&amp; color);
+  void box(const mat4&amp; m, const vec3&amp; size, const vec4&amp; color);
+  void frustum(const mat4&amp; camView, const mat4&amp; camProj,
+    const vec4&amp; color);</code></pre>
+</div>
+<ol>
+<li>The longest method of this class is <code>render()</code>, which generates Vulkan commands into the provided command buffer to render the current contents of <code>LineCanvas3D</code>. We will look into its implementation in a few moments:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void render(lvk::IContext&amp; ctx, const lvk::Framebuffer&amp; desc,
+    lvk::ICommandBuffer&amp; buf, uint32_t width, uint32_t height);
+};</code></pre>
+</div>
+<p>Now, let us deal with the non-Vulkan part of the code:</p>
+<ol>
+<li>The <code>line()</code> member function itself just adds two colored <code>vec3</code> points to the container:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas3D::line(
+  const vec3&amp; p1, const vec3&amp; p2, const vec4&amp; c) {
+  lines_.push_back({ .pos = vec4(p1, 1.0f), .color = c });
+  lines_.push_back({ .pos = vec4(p2, 1.0f), .color = c });
+}</code></pre>
+</div>
+<ol>
+<li>The <code>plane()</code> method uses <code>line()</code> internally to create a visual representation of a three-dimensional plane spanned by the <code>v1</code> and <code>v2</code> vectors with half-sizes <code>s1</code> and <code>s2</code>, and an origin point <code>o</code>. The <code>n1</code> and <code>n2</code> parameters specify how many lines we want to render along each coordinate direction:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas3D::plane(
+  const vec3&amp; o, const vec3&amp; v1, const vec3&amp; v2, int n1, int n2,
+  float s1, float s2,
+  const vec4&amp; color, const vec4&amp; outlineColor)</code></pre>
+</div>
+<ol>
+<li>Draw the 4 outer lines representing a plane segment:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  line(o - s1 / 2.0f * v1 - s2 / 2.0f * v2,
+       o - s1 / 2.0f * v1 + s2 / 2.0f * v2, outlineColor);
+  line(o + s1 / 2.0f * v1 - s2 / 2.0f * v2,
+       o + s1 / 2.0f * v1 + s2 / 2.0f * v2, outlineColor);
+  line(o - s1 / 2.0f * v1 + s2 / 2.0f * v2,
+       o + s1 / 2.0f * v1 + s2 / 2.0f * v2, outlineColor);
+  line(o - s1 / 2.0f * v1 - s2 / 2.0f * v2,
+       o + s1 / 2.0f * v1 - s2 / 2.0f * v2, outlineColor);</code></pre>
+</div>
+<ol>
+<li>Draw <code>n1</code> horizontal lines and <code>n2</code> vertical lines inside the plane:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  for (int i = 1; i &lt; n1; i++) {
+    float t = ((float)i - (float)n1 / 2.0f) * s1/(float)n1;
+    const vec3 o1 = o + t * v1;
+    line(o1 - s2 / 2.0f * v2, o1 + s2 / 2.0f * v2, color);
+  }
+  for (int i = 1; i &lt; n2; i++) {
+    const float t = ((float)i - (float)n2 / 2.0f) * s2/(float)n2;
+    const vec3 o2 = o + t * v2;
+    line(o2 - s1 / 2.0f * v1, o2 + s1 / 2.0f * v1, color);
+  }</code></pre>
+</div>
+<ol>
+<li>The <code>box()</code> member function draws a colored box oriented using the provided <code>m</code> model matrix and half-size <code>size</code> along the <code>X</code>, <code>Y</code>, and <code>Z</code> axes. The idea is to create 8 corner points of the box and transform them using the <code>m</code> matrix:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas3D::box(
+  const mat4&amp; m, const vec3&amp; size, const vec4&amp; color)
+{
+  vec3 pts[8] = { vec3(+size.x, +size.y, +size.z),
+                  vec3(+size.x, +size.y, -size.z),
+                  vec3(+size.x, -size.y, +size.z),
+                  vec3(+size.x, -size.y, -size.z),
+                  vec3(-size.x, +size.y, +size.z),
+                  vec3(-size.x, +size.y, -size.z),
+                  vec3(-size.x, -size.y, +size.z),
+                  vec3(-size.x, -size.y, -size.z) };
+  for (auto&amp; p : pts) p = vec3(m * vec4(p, 1.f));</code></pre>
+</div>
+<ol>
+<li>Then render all 12 edges of the box using the <code>line()</code> function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  line(pts[0], pts[1], color);
+  line(pts[2], pts[3], color);
+  line(pts[4], pts[5], color);
+  line(pts[6], pts[7], color);
+  line(pts[0], pts[2], color);
+  line(pts[1], pts[3], color);
+  line(pts[4], pts[6], color);
+  line(pts[5], pts[7], color);
+  line(pts[0], pts[4], color);
+  line(pts[1], pts[5], color);
+  line(pts[2], pts[6], color);
+  line(pts[3], pts[7], color);
+}</code></pre>
+</div>
+<ol>
+<li>There’s yet another overload of the <code>box()</code> function, which takes in the <code>BoundingBox</code> class declared in <code>shared/UtilsMath.h</code>. It is just a trivial wrapper over the previous variant of this function:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas3D::box(const mat4&amp; m,
+  const BoundingBox&amp; box, const vec4&amp; color)
+{
+  this-&gt;box(m * glm::translate(mat4(1.f),
+    0.5f * (box.min_ + box.max_)),
+    0.5f * vec3(box.max_ - box.min_), color);
+}</code></pre>
+</div>
+<ol>
+<li>The most interesting drawing function is <code>frustum()</code>, which renders a 3D frustum represented by a <code>camProj</code> view matrix positioned in the world using the <code>camView</code> matrix. Long story short, if you have a 3D camera somewhere in your world and its view and projection matrix are <code>camView</code> and <code>camProj</code> respectively, you can use this function to visualize that camera’s viewing frustum:</li>
+</ol>
+<p>This code is invaluable in debugging things such as shadow maps or culling frustums. We will put it to heavy use in the final chapters of this book.</p>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas3D::frustum(
+   const mat4&amp; camView,
+   const mat4&amp; camProj, const vec4&amp; color)
+{</code></pre>
+</div>
+<ol>
+<li>The idea is somewhat similar to the <code>box()</code> function mentioned above. We create a set of corner points on a cube corresponding to 8 corners of the camera frustum (points are referred to as <code>pp</code> in the following code). Then, we transform each of these points with the inverse of the provided view-projection matrix, essentially warping a box into a frustum shape. Then we use <code>line()</code> to connect the dots:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const vec3 corners[] = { vec3(-1, -1, -1),
+                           vec3(+1, -1, -1),
+                           vec3(+1, +1, -1),
+                           vec3(-1, +1, -1),
+                           vec3(-1, -1, +1),
+                           vec3(+1, -1, +1),
+                           vec3(+1, +1, +1),
+                           vec3(-1, +1, +1) };
+  vec3 pp[8];
+  for (int i = 0; i &lt; 8; i++) {
+    glm::vec4 q = glm::inverse(camView) * glm::inverse(camProj) *
+      glm::vec4(corners[i], 1.0f);
+    pp[i] = glm::vec3(q.x / q.w, q.y / q.w, q.z / q.w);
+  }</code></pre>
+</div>
+<ol>
+<li>These are four lines representing the side edges of the camera frustum:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  line(pp[0], pp[4], color);
+  line(pp[1], pp[5], color);
+  line(pp[2], pp[6], color);
+  line(pp[3], pp[7], color);</code></pre>
+</div>
+<ol>
+<li>With the side edges done, we need to draw the near plane. The extra two lines are used to draw a cross inside the near plane:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  line(pp[0], pp[1], color);
+  line(pp[1], pp[2], color);
+  line(pp[2], pp[3], color);
+  line(pp[3], pp[0], color);
+  line(pp[0], pp[2], color);
+  line(pp[1], pp[3], color);</code></pre>
+</div>
+<ol>
+<li>Next, we do the far plane. Here again, the extra two lines are used to draw a cross to give better visual cues:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  line(pp[4], pp[5], color);
+  line(pp[5], pp[6], color);
+  line(pp[6], pp[7], color);
+  line(pp[7], pp[4], color);
+  line(pp[4], pp[6], color);
+  line(pp[5], pp[7], color);</code></pre>
+</div>
+<ol>
+<li>Now let’s draw the sides of the frustum to give a nice perception of volume. We use a dimmed color and <code>100</code> lines on each side:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const vec4 gridColor = color * 0.7f;
+  const int gridLines  = 100;</code></pre>
+</div>
+<ol>
+<li>Here are the bottom and the top sides:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  { vec3 p1       = pp[0];
+    vec3 p2       = pp[1];
+    const vec3 s1 = (pp[4] - pp[0]) / float(gridLines);
+    const vec3 s2 = (pp[5] - pp[1]) / float(gridLines);
+    for (int i = 0; i != gridLines; i++, p1 += s1, p2 += s2)
+      line(p1, p2, gridColor); }
+  { vec3 p1       = pp[2];
+    vec3 p2       = pp[3];
+    const vec3 s1 = (pp[6] - pp[2]) / float(gridLines);
+    const vec3 s2 = (pp[7] - pp[3]) / float(gridLines);
+    for (int i = 0; i != gridLines; i++, p1 += s1, p2 += s2)
+      line(p1, p2, gridColor); }</code></pre>
+</div>
+<ol>
+<li>The same should be done with the left and right sides of our frustum:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  { vec3 p1       = pp[0];
+    vec3 p2       = pp[3];
+    const vec3 s1 = (pp[4] - pp[0]) / float(gridLines);
+    const vec3 s2 = (pp[7] - pp[3]) / float(gridLines);
+    for (int i = 0; i != gridLines; i++, p1 += s1, p2 += s2)
+      line(p1, p2, gridColor); }
+  { vec3 p1       = pp[1];
+    vec3 p2       = pp[2];
+    const vec3 s1 = (pp[5] - pp[1]) / float(gridLines);
+    const vec3 s2 = (pp[6] - pp[2]) / float(gridLines);
+    for (int i = 0; i != gridLines; i++, p1 += s1, p2 += s2)
+      line(p1, p2, gridColor); }
+}</code></pre>
+</div>
+<p>That covers the user-facing part of our line-drawing API. Let’s take a look at the actual rendering code to learn how it works in an app.</p>
+</section>
+<section class="level3" data-number="5.9.3" id="how-it-works-7">
+<h3 data-number="5.9.3">How it works…</h3>
+<p>All the rendering and graphics pipeline creation is done within a single <code>render()</code> function.</p>
+<p>The function accepts a <em>LightweightVK</em> context, a framebuffer, and a command buffer:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>void LineCanvas3D::render(lvk::IContext&amp; ctx,
+  const lvk::Framebuffer&amp; desc,
+  lvk::ICommandBuffer&amp; buf, uint32_t width, uint32_t height)
+{</code></pre>
+</div>
+<p>The required GPU buffer size is calculated based on the current number of lines. If the current buffer capacity is not sufficient, the buffer is reallocated:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  const uint32_t requiredSize = lines_.size() * sizeof(LineData);
+  if (currentBufferSize_[currentFrame_] &lt; requiredSize) {
+    linesBuffer_[currentFrame_] = ctx.createBuffer({
+      .usage = lvk::BufferUsageBits_Storage,
+      .storage = lvk::StorageType_HostVisible,
+      .size = requiredSize, .data = lines_.data() });
+    currentBufferSize_[currentFrame_] = requiredSize;
+  } else {
+    ctx.upload(
+      linesBuffer_[currentFrame_], lines_.data(), requiredSize);
+  }</code></pre>
+</div>
+<p>If there’s no rendering pipeline available, we should create a new one. We use <code>lvk::Topology_Line</code>, which matches <code>VK_PRIMITIVE_TOPOLOGY_LINE_LIST</code>. Simple alpha blending is used to render all the lines:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  if (pipeline_.empty()) {
+    vert_ = ctx.createShaderModule({
+      codeVS, lvk::Stage_Vert, “Shader Module: imgui (vert)” });
+    frag_ = ctx.createShaderModule({
+      codeFS, lvk::Stage_Frag, “Shader Module: imgui (frag)” });
+    pipeline_ = ctx.createRenderPipeline({
+      .topology = lvk::Topology_Line,
+      .smVert   = vert_,
+      .smFrag   = frag_,
+      .color    = { {
+         .format = ctx.getFormat(desc.color[0].texture),
+         .blendEnabled      = true,
+         .srcRGBBlendFactor = lvk::BlendFactor_SrcAlpha,
+         .dstRGBBlendFactor = lvk::BlendFactor_OneMinusSrcAlpha,
+      } },
+      .depthFormat = desc.depthStencil.texture ?
+        ctx.getFormat(desc.depthStencil.texture) :
+        lvk::Format_Invalid,
+      .cullMode = lvk::CullMode_None,
+    }, nullptr);
+  }</code></pre>
+</div>
+<p>Our line-drawing vertex shader accepts the current combined model-view-projection matrix <code>mvp</code> and a GPU reference to the buffer containing the line data. Everything is updated using Vulkan push constants:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  struct {
+    mat4 mvp;
+    uint64_t addr;
+  } pc {
+    .mvp  = mvp_,
+    .addr = ctx.gpuAddress(linesBuffer_[currentFrame_]),
+  };
+  buf.cmdBindRenderPipeline(pipeline_);
+  buf.cmdPushConstants(pc);</code></pre>
+</div>
+<p>Once the Vulkan rendering state is prepared, we can render the lines and switch to the next frame to use one of the available buffers:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>  buf.cmdDraw(lines_.size());
+  currentFrame_ =
+    (currentFrame_ + 1) % LVK_ARRAY_NUM_ELEMENTS(linesBuffer_);
+}</code></pre>
+</div>
+<p>It is also worth taking a quick look at the line-drawing GLSL shaders.</p>
+<p>The vertex shader is as follows. Programmable-vertex pulling is used to extract line data from the provided buffer:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>layout (location = 0) out vec4 out_color;
+layout (location = 1) out vec2 out_uv;
+struct Vertex {
+  vec4 pos;
+  vec4 rgba;
+};
+layout(std430, buffer_reference) readonly buffer VertexBuffer {
+  Vertex vertices[];
+};
+layout(push_constant) uniform PushConstants {
+  mat4 mvp;
+  VertexBuffer vb;
+};
+void main() {
+  Vertex v = vb.vertices[gl_VertexIndex];
+  out_color = v.rgba;
+  gl_Position = mvp * v.pos;
+}</code></pre>
+</div>
+<p>The fragment shader is trivial and simply outputs the provided color:</p>
+<div class="C0-SHCodePACKT">
+<pre><code>layout (location = 0) in vec4 in_color;
+layout (location = 0) out vec4 out_color;
+void main() {
+  out_color = in_color;
+}</code></pre>
+</div>
+<p>That is everything regarding drawing 3D lines. For a comprehensive example showing how to use this 3D drawing canvas, check the final <em>Putting it all together into a Vulkan application</em> recipe in this chapter.</p>
+<p>The next recipe will conclude Vulkan auxiliary rendering by showing how to render 2D lines and charts with the help of the ImGui and ImPlot libraries.</p>
+</section>
+</section>
+<section class="level2" data-number="5.10" id="rendering-on-screen-graphs-with-imgui-and-implot">
+<h2 data-number="5.10">Rendering on-screen graphs with ImGui and ImPlot</h2>
+<p>In the previous recipe, we learned how to create immediate mode drawing facilities in Vulkan with basic drawing functionality. That 3D canvas was rendered on top of a 3D scene sharing a view-projection matrix with it. In this recipe, we will continue adding useful debugging features to our framework and learn how to implement pure 2D line drawing functionality. It is possible to implement such a class in a way similar to <code>LineCanvas3D</code>. However, we already use the ImGui library in our apps as described in the <em>Rendering ImGui user interface</em> recipe. Let’s put it to use to render our 2D lines.</p>
+<section class="level3" data-number="5.10.1" id="getting-ready-24">
+<h3 data-number="5.10.1">Getting ready</h3>
+<p>We recommend revisiting the <em>Rendering ImGui user interfaces</em> and <em>Implementing an immediate-mode 3D drawing canvas</em> recipes to get a better grasp of how a simple Vulkan drawing canvas can be implemented.</p>
+</section>
+<section class="level3" data-number="5.10.2" id="how-to-do-it...-23">
+<h3 data-number="5.10.2">How to do it...</h3>
+<p>What we need at this point essentially boils down to decomposing a 2D chart or graph into a set of lines and rendering them using ImGui. Let’s go through the code to see how to do it:</p>
+<ol>
+<li>We introduce a <code>LineCanvas2D</code> class to render 2D lines. It stores a collection of 2D lines:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class LineCanvas2D {
+public:
+  void clear() { lines_.clear(); }
+  void line(const vec2&amp; p1, const vec2&amp; p2, const vec4&amp; c) {
+    lines_.push_back({ .p1 = p1, .p2 = p2, .color = c }); }
+  void render(const char* name, uint32_t width, uint32_t height);
+private:
+  struct LineData {
+    vec2 p1, p2;
+    vec4 color;
+  };
+  std::vector&lt;LineData&gt; lines_;
+};</code></pre>
+</div>
+<ol>
+<li>The <code>render()</code> method is quite simple. We create a new full-screen ImGui window with all decorations removed and user input disabled:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>void LineCanvas2D::render(const char* nameImGuiWindow) {
+  ImGui::SetNextWindowPos(ImVec2(0, 0));
+  ImGui::SetNextWindowSize(ImGui::GetMainViewport()-&gt;Size);
+  ImGui::Begin(nameImGuiWindow, nullptr,
+    ImGuiWindowFlags_NoDecoration |
+    ImGuiWindowFlags_AlwaysAutoResize | 
+    ImGuiWindowFlags_NoSavedSettings |
+    ImGuiWindowFlags_NoFocusOnAppearing |
+    ImGuiWindowFlags_NoNav |
+    ImGuiWindowFlags_NoBackground |
+    ImGuiWindowFlags_NoInputs);</code></pre>
+</div>
+<ol>
+<li>Then we obtain ImGui’s background draw list and add all our colored lines to it one by one. The rest of the rendering will be handled as a part of the ImGui user interface rendering, as described in the <em>Rendering ImGui user interfaces</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+  for (const LineData&amp; l : lines_) {
+    drawList-&gt;AddLine(
+      ImVec2(l.p1.x, l.p1.y),
+      ImVec2(l.p2.x, l.p2.y),
+      ImColor(l.color.r, l.color.g, l.color.b, l.color.a));
+  }
+  ImGui::End();
+}</code></pre>
+</div>
+<ol>
+<li>Inside the <code>Chapter04/06_DemoApp/src/main.cpp</code> demo application, we can work with an instance of <code>LineCanvas2D</code> the following way:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>canvas2d.clear();
+canvas2d.line({ 100, 300 }, { 100, 400 }, vec4(1, 0, 0, 1));
+canvas2d.line({ 100, 400 }, { 200, 400 }, vec4(0, 1, 0, 1));
+canvas2d.line({ 200, 400 }, { 200, 300 }, vec4(0, 0, 1, 1));
+canvas2d.line({ 200, 300 }, { 100, 300 }, vec4(1, 1, 0, 1));
+canvas2d.render(“##plane”);</code></pre>
+</div>
+<p>This functionality is sufficient to render 2D lines for various debugging purposes. However, there’s yet another way to do rendering using the ImPlot library. Let’s use it to render an FPS graph. The helper code is in <code>shared/Graph.h</code>:</p>
+<ol>
+<li>We declare another small <code>LinearGraph</code> helper class to draw a graph of changing values, such as the number of rendered frames per second:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>class LinearGraph {
+  const char* name_ = nullptr;
+  const size_t maxPoints_ = 0;
+  std::deque&lt;float&gt; graph_;
+public:
+  explicit LinearGraph(const char* name,
+                       size_t maxGraphPoints = 256)
+  : name_(name)
+  , maxPoints_(maxGraphPoints)
+  {}</code></pre>
+</div>
+<ol>
+<li>As we add more points to the graph, the old points are popped out, making the graph look like it is scrolling on the screen right-to-left. This is helpful to observe local fluctuations in values such as frames per second counters, and so on:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void addPoint(float value) {
+    graph_.push_back(value);
+    if (graph_.size() &gt; maxPoints_) graph_.erase(graph_.begin());
+  }</code></pre>
+</div>
+<ol>
+<li>The idea is to find the minimum and maximum values and normalize the graph into the <code>0...1</code> range:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  void renderGraph(uint32_t x, uint32_t y,
+    uint32_t width, uint32_t height,
+    const vec4&amp; color = vec4(1.0)) const {
+    float minVal = std::numeric_limits&lt;float&gt;::max();
+    float maxVal = std::numeric_limits&lt;float&gt;::min();
+    for (float f : graph_) {
+      if (f &lt; minVal) minVal = f;
+      if (f &gt; maxVal) maxVal = f;
+    }
+    const float range = maxVal - minVal;
+    float valX = 0.0;
+    std::vector&lt;float&gt; dataX_;
+    std::vector&lt;float&gt; dataY_;
+    dataX_.reserve(graph_.size());
+    dataY_.reserve(graph_.size());
+    for (float f : graph_) {
+      const float valY = (f - minVal) / range;
+      valX += 1.0f / maxPoints_;
+      dataX_.push_back(valX);
+      dataY_.push_back(valY);
+    }</code></pre>
+</div>
+<ol>
+<li>Then we need to create an <em>ImGui</em> window to hold our graph. <em>ImPlot</em> drawing can work only inside an <em>ImGui</em> window. All decorations and user interactions are disabled:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    ImGui::SetNextWindowPos(ImVec2(x, y));
+    ImGui::SetNextWindowSize(ImVec2(width, height));
+    ImGui::Begin(_, nullptr,
+      ImGuiWindowFlags_NoDecoration |
+      ImGuiWindowFlags_AlwaysAutoResize |
+      ImGuiWindowFlags_NoSavedSettings |
+      ImGuiWindowFlags_NoFocusOnAppearing |
+      ImGuiWindowFlags_NoNav |
+      ImGuiWindowFlags_NoBackground |
+      ImGuiWindowFlags_NoInputs);</code></pre>
+</div>
+<ol>
+<li>A new <em>ImPlot</em> plot can be started in a similar way. We disable decorations for the <em>ImPlot</em> axes and set up colors for the line drawing:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    if (ImPlot::BeginPlot(name_, ImVec2(width, height),
+      ImPlotFlags_CanvasOnly |
+      ImPlotFlags_NoFrame | ImPlotFlags_NoInputs)) {
+      ImPlot::SetupAxes(nullptr, nullptr,
+        ImPlotAxisFlags_NoDecorations,
+        ImPlotAxisFlags_NoDecorations);
+      ImPlot::PushStyleColor(ImPlotCol_Line,
+        ImVec4(color.r, color.g, color.b, color.a));
+      ImPlot::PushStyleColor(ImPlotCol_PlotBg,
+        ImVec4(0, 0, 0, 0));</code></pre>
+</div>
+<ol>
+<li>The <code>ImPlot::PlotLine()</code> function uses our collection of points’ <code>X</code> and <code>Y</code> values to render a graph:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>      ImPlot::PlotLine(“#line”, dataX_.data(), dataY_.data(),
+        (int)graph_.size(), ImPlotLineFlags_None);
+      ImPlot::PopStyleColor(2);
+      ImPlot::EndPlot();
+    }
+    ImGui::End();
+  }</code></pre>
+</div>
+<p>This is the entire underlying implementation code.</p>
+<p>Let’s now take a look at <code>Chapter04/06_DemoApp/src/main.cpp</code> to learn how 2D chart rendering works.</p>
+</section>
+<section class="level3" data-number="5.10.3" id="how-it-works...-6">
+<h3 data-number="5.10.3">How it works...</h3>
+<p>The app at <code>Chapter04/06_DemoApp</code> makes use of <code>LinearGraph</code> to render an FPS graph, and a simple sine graph for reference. Here is how it works:</p>
+<ol>
+<li>Both graphs are declared as global variables. They can render up to <code>2048</code> points:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>LinearGraph fpsGraph(“##fpsGraph”, 2048);
+LinearGraph sinGraph(“##sinGraph”, 2048);</code></pre>
+</div>
+<ol>
+<li>Inside the main loop, we add points to both graphs like this:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>fpsGraph.addPoint(app.fpsCounter_.getFPS());
+sinGraph.addPoint(sinf(glfwGetTime() * 20.0f));</code></pre>
+</div>
+<ol>
+<li>Then we render both graphs as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>sinGraph.renderGraph(0, height * 0.7f, width, height * 0.2f,
+  vec4(0.0f, 1.0f, 0.0f, 1.0f));
+fpsGraph.renderGraph(0, height * 0.8f, width, height * 0.2f);</code></pre>
+</div>
+<p>The resulting graphs look as shown in the following screenshot.</p>
+<figure>
+<img alt="Figure 4.10: Frames-per-second and sine wave graphs" height="254" src="../media/file28.jpg" width="1429"/><figcaption aria-hidden="true">Figure 4.10: Frames-per-second and sine wave graphs</figcaption>
+</figure>
+</section>
+</section>
+<section class="level2" data-number="5.11" id="putting-it-all-together-into-a-vulkan-application">
+<h2 data-number="5.11">Putting it all together into a Vulkan application</h2>
+<p>In this recipe, we use all the material from previous recipes of this chapter to build a Vulkan demo application combining 3D scene rendering with 2D and 3D debug line drawing functionality.</p>
+<section class="level3" data-number="5.11.1" id="getting-ready-25">
+<h3 data-number="5.11.1">Getting ready</h3>
+<p>This recipe is a consolidation of all the material in this chapter into a final demo app. It might be useful to revisit all the previous recipes to get to grips with the different user interaction and debugging techniques described in this chapter.</p>
+<p>The full source code for this recipe can be found in <code>Chapter04/06_DemoApp</code>. The <code>VulkanApp</code> class used in this recipe is declared in <code>shared/VulkanApp.h</code>.</p>
+</section>
+<section class="level3" data-number="5.11.2" id="how-to-do-it...-24">
+<h3 data-number="5.11.2">How to do it...</h3>
+<p>Let’s skim through the source code to see how we can integrate the functionality from all the recipes together into a single application. We put all of the source code here so we can reference it in the subsequent chapters when necessary. All error checking is skipped again for the sake of brevity:</p>
+<ol>
+<li>The <code>shared/VulkanApp.h</code> header provides a wrapper for <em>LightweightVK</em> context creation and GLFW window lifetime management. Check the <em>Initializing the Vulkan instance and graphical device</em> and <em>Initializing Vulkan swapchain</em> recipes in <em>Chapter 2</em> for more details:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>#include “shared/VulkanApp.h”
+#include &lt;assimp/cimport.h&gt;
+#include &lt;assimp/postprocess.h&gt;
+#include &lt;assimp/scene.h&gt;
+#include “shared/LineCanvas.h”</code></pre>
+</div>
+<ol>
+<li>Here we demonstrate a camera positioner for the <em>Adding camera animations and motion</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>const vec3 kInitialCameraPos    = vec3(0.0f, 1.0f, -1.5f);
+const vec3 kInitialCameraTarget = vec3(0.0f, 0.5f,  0.0f);
+const vec3 kInitialCameraAngles = vec3(-18.5f, 180.0f, 0.0f);
+CameraPositioner_MoveTo positionerMoveTo(
+  kInitialCameraPos, kInitialCameraAngles);
+vec3 cameraPos    = kInitialCameraPos;
+vec3 cameraAngles = kInitialCameraAngles;
+const char* cameraType          = “FirstPerson”;
+const char* comboBoxItems[]     = { “FirstPerson”, “MoveTo” };
+const char* currentComboBoxItem = cameraType;</code></pre>
+</div>
+<ol>
+<li>The following is for the FPS graph described in the previous <em>Rendering on-screen graphs with ImGui and ImPlot</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>LinearGraph fpsGraph(“##fpsGraph”, 2048);
+LinearGraph sinGraph(“##sinGraph”, 2048);</code></pre>
+</div>
+<ol>
+<li>The <code>VulkanApp</code> class has a built-in first-person camera as described in the <em>Working with a 3D camera and basic user interaction</em> recipe. We provide an initial camera position and target, as well as reducing the FPS-averaging interval for the purpose of drawing a nice fast-moving graph:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>int main()
+{
+  VulkanApp app({
+    .initialCameraPos = kInitialCameraPos,
+    .initialCameraTarget = kInitialCameraTarget });
+  app.fpsCounter_.avgInterval_ = 0.002f;
+  app.fpsCounter_.printFPS_    = false;
+  LineCanvas2D canvas2d;
+  LineCanvas3D canvas3d;</code></pre>
+</div>
+<ol>
+<li>Let’s create a local variable to make the access to <code>lvk::IContext</code> stored in <code>VulkanApp</code> more convenient. We call <code>ctx.release()</code> explicitly later:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  std::unique_ptr&lt;lvk::IContext&gt; ctx(app.ctx_.get());</code></pre>
+</div>
+<ol>
+<li>All the shaders are loaded from files. The cube map rendering was described in the <em>Using cube map textures in Vulkan</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vert =
+    loadShaderModule(
+      ctx, “Chapter04/04_CubeMap/src/main.vert”);
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; frag =
+    loadShaderModule(
+      ctx, “Chapter04/04_CubeMap/src/main.frag”);
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; vertSkybox =
+    loadShaderModule(
+      ctx, “Chapter04/04_CubeMap/src/skybox.vert”);
+  lvk::Holder&lt;lvk::ShaderModuleHandle&gt; fragSkybox =
+    loadShaderModule(
+      ctx, “Chapter04/04_CubeMap/src/skybox.frag”);</code></pre>
+</div>
+<ol>
+<li>The rubber duck mesh rendering pipeline is created as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  struct VertexData {
+    vec3 pos;
+    vec3 n;
+    vec2 tc;
+  };
+  const lvk::VertexInput vdesc = {
+    .attributes   = {{ .location = 0,
+                       .format = lvk::VertexFormat::Float3,
+                       .offset = offsetof(VertexData, pos) },
+                     { .location = 1,
+                       .format = lvk::VertexFormat::Float3,
+                       .offset = offsetof(VertexData, n) },
+                     { .location = 2,
+                       .format = lvk::VertexFormat::Float2,
+                       .offset = offsetof(VertexData, tc) }, },
+    .inputBindings = { { .stride = sizeof(VertexData) } },
+  };
+  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipeline =
+    ctx-&gt;createRenderPipeline({
+      .vertexInput = vdesc,
+      .smVert      = vert,
+      .smFrag      = frag,
+      .color       = { {.format = ctx-&gt;getSwapchainFormat()} },
+      .depthFormat = app.getDepthFormat(),
+      .cullMode    = lvk::CullMode_Back,
+  });</code></pre>
+</div>
+<ol>
+<li>The skybox rendering pipeline uses programmable-vertex pulling and has no vertex input state. See the <em>Using cube map textures in Vulkan</em> recipe for details:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::RenderPipelineHandle&gt; pipelineSkybox =
+    ctx-&gt;createRenderPipeline({
+      .smVert      = vertSkybox,
+      .smFrag      = fragSkybox,
+      .color       = { {.format = ctx-&gt;getSwapchainFormat()} },
+      .depthFormat = app.getDepthFormat(),
+  });
+  const lvk::DepthState dState = {
+    .compareOp = lvk::CompareOp_Less,
+    .isDepthWriteEnabled = true };</code></pre>
+</div>
+<ol>
+<li>Let’s load the rubber duck from a <code>.gltf</code> file and pack it into the <code>vertices</code> and <code>indices</code> arrays:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  const aiScene* scene = aiImportFile(
+    “data/rubber_duck/scene.gltf”, aiProcess_Triangulate);
+  const aiMesh* mesh = scene-&gt;mMeshes[0];
+  std::vector&lt;VertexData&gt; vertices;
+  for (uint32_t i = 0; i != mesh-&gt;mNumVertices; i++) {
+    const aiVector3D v = mesh-&gt;mVertices[i];
+    const aiVector3D n = mesh-&gt;mNormals[i];
+    const aiVector3D t = mesh-&gt;mTextureCoords[0][i];
+    vertices.push_back({ .pos = vec3(v.x, v.y, v.z),
+                         .n   = vec3(n.x, n.y, n.z),
+                         .tc  = vec2(t.x, t.y) });
+  }
+  std::vector&lt;uint32_t&gt; indices;
+  for (uint32_t i = 0; i != mesh-&gt;mNumFaces; i++)
+    for (uint32_t j = 0; j != 3; j++)
+      indices.push_back(mesh-&gt;mFaces[i].mIndices[j]);
+  aiReleaseImport(scene);</code></pre>
+</div>
+<ol>
+<li>Create two GPU buffers to hold <code>indices</code> and <code>vertices</code>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  size_t kSizeIndices  = sizeof(uint32_t) * indices.size();
+  size_t kSizeVertices = sizeof(VertexData) * vertices.size();
+  lvk::Holder&lt;lvk::BufferHandle&gt; bufferIndices =
+    ctx-&gt;createBuffer({
+      .usage     = lvk::BufferUsageBits_Index,
+      .storage   = lvk::StorageType_Device,
+      .size      = kSizeIndices,
+      .data      = indices.data(),
+      .debugName = “Buffer: indices” }, nullptr);
+  lvk::Holder&lt;lvk::BufferHandle&gt; bufferVertices =
+    ctx-&gt;createBuffer({
+      .usage     = lvk::BufferUsageBits_Vertex,
+      .storage   = lvk::StorageType_Device,
+      .size      = kSizeVertices,
+      .data      = vertices.data(),
+      .debugName = “Buffer: vertices” }, nullptr);</code></pre>
+</div>
+<ol>
+<li>A uniform buffer is used to hold per-frame data, such as model-view-projection matrices, the camera position, and bindless IDs for both textures:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  struct PerFrameData {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    vec4 cameraPos;
+    uint32_t tex     = 0;
+    uint32_t texCube = 0;
+  };
+  lvk::Holder&lt;lvk::BufferHandle&gt; bufferPerFrame =
+    ctx-&gt;createBuffer({
+      .usage     = lvk::BufferUsageBits_Uniform,
+      .storage   = lvk::StorageType_Device,
+      .size      = sizeof(PerFrameData),
+      .debugName = “Buffer: per-frame” }, nullptr);</code></pre>
+</div>
+<ol>
+<li>Now let’s bring in a 2D texture for the rubber duck model and a cube map texture for our skybox, as described in the <em>Using cube map textures in Vulkan</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  lvk::Holder&lt;lvk::TextureHandle&gt; texture = loadTexture(
+    ctx, “data/rubber_duck/textures/Duck_baseColor.png”);
+  lvk::Holder&lt;lvk::TextureHandle&gt; cubemapTex;
+  int w, h;
+  const float* img = stbi_loadf(
+    “data/piazza_bologni_1k.hdr”, &amp;w, &amp;h, nullptr, 4);
+  Bitmap in(w, h, 4, eBitmapFormat_Float, img);
+  Bitmap out = convertEquirectangularMapToVerticalCross(in);
+  stbi_image_free((void*)img);
+  stbi_write_hdr(“.cache/screenshot.hdr”, out.w_, out.h_,
+    out.comp_, (const float*)out.data_.data());
+  Bitmap cubemap = convertVerticalCrossToCubeMapFaces(out);
+  cubemapTex = ctx-&gt;createTexture({
+    .type       = lvk::TextureType_Cube,
+    .format     = lvk::Format_RGBA_F32,
+    .dimensions = {(uint32_t)cubemap.w_, (uint32_t)cubemap.h_},
+    .usage      = lvk::TextureUsageBits_Sampled,
+    .data       = cubemap.data_.data(),
+    .debugName  = “data/piazza_bologni_1k.hdr” });</code></pre>
+</div>
+<ol>
+<li>Run the main loop using a lambda provided by the <code>VulkanApp::run()</code> method. The camera positioner is updated as described in the <em>Adding camera animations and motion</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>  app.run([&amp;](uint32_t width, uint32_t height,
+    float aspectRatio, float deltaSeconds) {
+    positionerMoveTo.update(deltaSeconds, app.mouseState_.pos,
+      ImGui::GetIO().WantCaptureMouse ?
+        false : app.mouseState_.pressedLeft);
+    const mat4 p  = glm::perspective(glm::radians(60.0f),
+      aspectRatio, 0.1f, 1000.0f);
+    const mat4 m1 = glm::rotate(mat4(1.0f),
+      glm::radians(-90.0f), vec3(1, 0, 0));
+    const mat4 m2 = glm::rotate(mat4(1.0f),
+      (float)glfwGetTime(), vec3(0.0f, 1.0f, 0.0f));
+    const mat4 v  = glm::translate(mat4(1.0f),
+      app.camera_.getPosition());
+    const PerFrameData pc = {
+      .model     = m2 * m1,
+      .view      = app.camera_.getViewMatrix(),
+      .proj      = p,
+      .cameraPos = vec4(app.camera_.getPosition(), 1.0f),
+      .tex       = texture.index(),
+      .texCube   = cubemapTex.index(),
+    };
+    ctx-&gt;upload(bufferPerFrame, &amp;pc, sizeof(pc));</code></pre>
+</div>
+<ol>
+<li>To recap the details on render passes and frame buffers, check the <em>Dealing with buffers in Vulkan</em> recipe in <em>Chapter 3</em>:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    const lvk::RenderPass renderPass = {
+      .color = { { .loadOp = lvk::LoadOp_Clear,
+                   .clearColor = {1.0f, 1.0f, 1.0f, 1.0f} } },
+      .depth = { .loadOp = lvk::LoadOp_Clear,
+                 .clearDepth = 1.0f } };
+    const lvk::Framebuffer framebuffer = {
+      .color = {
+        { .texture = ctx-&gt;getCurrentSwapchainTexture() } },
+      .depthStencil = { .texture = app.getDepthTexture() } };
+    lvk::ICommandBuffer&amp; buf = ctx-&gt;acquireCommandBuffer();
+    buf.cmdBeginRendering(renderPass, framebuffer);</code></pre>
+</div>
+<ol>
+<li>We render the skybox as described in the <em>Using cube map textures in Vulkan</em> recipe. Note that 36 vertices are used to draw the skybox:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    buf.cmdPushConstants(ctx-&gt;gpuAddress(bufferPerFrame));
+    buf.cmdPushDebugGroupLabel(“Skybox”, 0xff0000ff);
+    buf.cmdBindRenderPipeline(pipelineSkybox);
+    buf.cmdDraw(36);
+    buf.cmdPopDebugGroupLabel();</code></pre>
+</div>
+<ol>
+<li>Rendering the rubber duck mesh is done as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    buf.cmdPushDebugGroupLabel(“Mesh”, 0xff0000ff);
+    buf.cmdBindVertexBuffer(0, bufferVertices);
+    buf.cmdBindRenderPipeline(pipeline);
+    buf.cmdBindDepthState(dState);
+    buf.cmdBindIndexBuffer(bufferIndices, lvk::IndexFormat_UI32);
+    buf.cmdDrawIndexed(indices.size());
+    buf.cmdPopDebugGroupLabel();</code></pre>
+</div>
+<ol>
+<li>Rendering an ImGui window with a memo for keyboard hints is done as follows:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    app.imgui_-&gt;beginFrame(framebuffer);
+    ImGui::SetNextWindowPos(ImVec2(10, 10));
+    ImGui::Begin(“Keyboard hints:”, nullptr,
+        ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoInputs |
+        ImGuiWindowFlags_NoCollapse);
+    ImGui::Text(“W/S/A/D - camera movement”);
+    ImGui::Text(“1/2 - camera up/down”);
+    ImGui::Text(“Shift - fast movement”);
+    ImGui::Text(“Space - reset view”);
+    ImGui::End();</code></pre>
+</div>
+<ol>
+<li>We render a frames-per-second counter as described in the <em>Adding a frames-per-second counter</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    if (const ImGuiViewport* v = ImGui::GetMainViewport()) {
+      ImGui::SetNextWindowPos({
+        v-&gt;WorkPos.x + v-&gt;WorkSize.x - 15.0f,
+        v-&gt;WorkPos.y + 15.0f }, ImGuiCond_Always,
+        { 1.0f, 0.0f });
+    }
+    ImGui::SetNextWindowBgAlpha(0.30f);
+    ImGui::SetNextWindowSize(
+      ImVec2(ImGui::CalcTextSize(“FPS : _______”).x, 0));
+    if (ImGui::Begin(“##FPS”, nullptr,
+          ImGuiWindowFlags_NoDecoration |
+          ImGuiWindowFlags_AlwaysAutoResize | 
+          ImGuiWindowFlags_NoSavedSettings |
+          ImGuiWindowFlags_NoFocusOnAppearing | 
+          ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove)) {
+      ImGui::Text(“FPS : %i”, (int)app.fpsCounter_.getFPS());
+      ImGui::Text(
+        “Ms  : %.1f”, 1000.0 / app.fpsCounter_.getFPS());
+    }
+    ImGui::End();</code></pre>
+</div>
+<ol>
+<li>Our on-screen graphs and a 2D drawing canvas are handled as shown in the <em>Rendering on-screen graphs with ImGui and ImPlot</em> recipe:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    sinGraph.renderGraph(0, height * 0.7f, width,
+      height * 0.2f, vec4(0.0f, 1.0f, 0.0f, 1.0f));
+    fpsGraph.renderGraph(0, height * 0.8f, width, height * 0.2f);
+    canvas2d.clear();
+    canvas2d.line({ 100, 300 }, { 100, 400 }, vec4(1, 0, 0, 1));
+    canvas2d.line({ 100, 400 }, { 200, 400 }, vec4(0, 1, 0, 1));
+    canvas2d.line({ 200, 400 }, { 200, 300 }, vec4(0, 0, 1, 1));
+    canvas2d.line({ 200, 300 }, { 100, 300 }, vec4(1, 1, 0, 1));
+    canvas2d.render(“##plane”);</code></pre>
+</div>
+<ol>
+<li>The following code handles a 3D drawing canvas, as described in the <em>Implementing immediate mode 3D drawing canvas</em> recipe. To demonstrate the <code>frustum()</code> function, we render an ad hoc rotating frustum constructed via the <code>lootAt()</code> and <code>perspective()</code> GLM functions:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    canvas3d.clear();
+    canvas3d.setMatrix(pc.proj * pc.view);
+    canvas3d.plane(vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 0, 1),
+      40, 40, 10.0f, 10.0f, vec4(1, 0, 0, 1), vec4(0, 1, 0, 1));
+    canvas3d.box(mat4(1.0f), BoundingBox(vec3(-2), vec3(+2)),
+      vec4(1, 1, 0, 1));
+    canvas3d.frustum(
+      glm::lookAt(vec3(cos(glfwGetTime()),
+                  kInitialCameraPos.y, sin(glfwGetTime())),
+                  kInitialCameraTarget, vec3(0.0f, 1.0f, 0.0f)),
+      glm::perspective(glm::radians(60.0f), aspectRatio, 0.1f,
+        30.0f), vec4(1, 1, 1, 1));
+    canvas3d.render(*ctx.get(), framebuffer, buf, width, height);</code></pre>
+</div>
+<ol>
+<li>Lastly, finalize the rendering, submit the command buffer to the GPU, and update the graphs:</li>
+</ol>
+<div class="C1-SHCodePACKT">
+<pre><code>    app.imgui_-&gt;endFrame(buf);
+    buf.cmdEndRendering();
+    ctx-&gt;submit(buf, ctx-&gt;getCurrentSwapchainTexture());
+    fpsGraph.addPoint(app.fpsCounter_.getFPS());
+    sinGraph.addPoint(sinf(glfwGetTime() * 20.0f));
+  });
+  ctx.release();
+  return 0;
+}</code></pre>
+</div>
+<p>The following is a screenshot from the running application. The white graph displays the average FPS values and the rotating white frustum can be used to debug shadow mapping, as we will do in subsequent chapters:</p>
+<figure>
+<img alt="Figure 4.11: Demo application" height="756" src="../media/file29.jpg" width="1430"/><figcaption aria-hidden="true">Figure 4.11: Demo application</figcaption>
+</figure>
+<p>This chapter focused on combining multiple rendering aspects into one working Vulkan application. The graphical side still lacks some essential features, such as advanced lighting and materials, but we have almost everything in place to start rendering much more complex scenes. The next few chapters will cover more complicated mesh rendering techniques and physically-based lighting calculations based on the glTF2 format.</p>
+</section>
+</section>
+</section>
+</div></body>
+</html>
