@@ -1,4 +1,4 @@
-# 8
+
 
 # 使用 Arduino IoT Cloud SDK 和 JavaScript 进行工作
 

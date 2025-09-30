@@ -1,4 +1,4 @@
-# 13
+
 
 # 使用 Cloud CLI 编写 Arduino IoT Cloud 脚本
 
