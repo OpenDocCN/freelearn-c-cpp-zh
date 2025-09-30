@@ -1,0 +1,470 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;2.&#xA0;Converting Data"><div class="titlepage"><div><div><h1 class="title"><a id="ch02"/>Chapter 2. Converting Data</h1></div></div></div><p>In this chapter we will cover:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Converting strings to numbers</li><li class="listitem" style="list-style-type: disc">Converting numbers to strings</li><li class="listitem" style="list-style-type: disc">Converting numbers to numbers</li><li class="listitem" style="list-style-type: disc">Converting user-defined types to/from strings</li><li class="listitem" style="list-style-type: disc">Casting polymorphic objects</li><li class="listitem" style="list-style-type: disc">Parsing simple input</li><li class="listitem" style="list-style-type: disc">Parsing input</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec21"/>Introduction</h1></div></div></div><p>Now that we know some of the basic Boost types, it is time to get to know some data-converting functions. In this chapter we'll see how to convert strings, numbers, and user-defined types to each other, how to safely cast polymorphic types, and how to write small and large parsers right inside the C++ source files.</p></div></div>
+<div class="section" title="Converting strings to numbers"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec22"/>Converting strings to numbers</h1></div></div></div><p>Converting strings to <a id="id101" class="indexterm"/>numbers in C++ makes a lot of people depressed because <a id="id102" class="indexterm"/>of its inefficiency and user unfriendliness. Let's see how string <code class="literal">100</code> can be converted to <code class="literal">int</code>:</p><div class="informalexample"><pre class="programlisting">#include &lt;sstream&gt;
+
+    std::istringstream iss("100");
+    int i;
+    iss &gt;&gt; i;
+    // And now, 'iss' variable will get in the way all the time, 
+    // till end of the scope
+    // It is better not to think, how many unnecessary operations, 
+    // virtual function calls and memory allocations occurred 
+    // during those operations</pre></div><p>C methods are not much better:</p><div class="informalexample"><pre class="programlisting">#include &lt;cstdlib&gt;
+    char * end;
+    int i = std::strtol ("100", &amp;end, 10);
+    // Did it converted all the value to int, or stopped somewhere 
+    // in the middle?
+    // And now we have 'end' variable will getting in the way
+    // By the way, we want an integer, but strtol returns long 
+    // int... Did the converted value fit in int?</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec66"/>Getting ready</h2></div></div></div><p>Only basic knowledge of C++ and <a id="id103" class="indexterm"/>STL is required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec67"/>How to do it...</h2></div></div></div><p>There is a library in Boost which <a id="id104" class="indexterm"/>will help you cope with the depressing difficulty of string to number conversions. It is called <code class="literal">Boost.LexicalCast</code> <a id="id105" class="indexterm"/>and consists of a <a id="id106" class="indexterm"/>
+<code class="literal">boost::bad_lexical_cast</code> exception class and a few <a id="id107" class="indexterm"/>
+<code class="literal">boost::lexical_cast</code> functions:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/lexical_cast.hpp&gt;
+
+int i = boost::lexical_cast&lt;int&gt;("100");</pre></div><p>It can even be used for non-zero-terminated strings:</p><div class="informalexample"><pre class="programlisting">    char chars[] = {'1', '0', '0' };
+    int i = boost::lexical_cast&lt;int&gt;(chars, 3);
+    assert(i == 100);</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec68"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::lexical_cast</code> function <a id="id108" class="indexterm"/>accepts string as input and converts it to the type specified in triangular brackets. The <code class="literal">boost::lexical_cast</code> function <a id="id109" class="indexterm"/>will even check bounds for you:</p><div class="informalexample"><pre class="programlisting">    try {
+   // on x86 short usually may not store values greater than 32767
+        short s = boost::lexical_cast&lt;short&gt;("1000000");
+        assert(false); // Must not reach this
+    } catch (const boost::bad_lexical_cast&amp; /*e*/) {}</pre></div><p>And also check for the correct syntax of input:</p><div class="informalexample"><pre class="programlisting">    try {
+        int i = boost::lexical_cast&lt;int&gt;("This is not a number!");
+        assert(false); // Must not reach this
+        (void)i; // Suppressing warning about unused variable
+    } catch (const boost::bad_lexical_cast&amp; /*e*/) {}</pre></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec69"/>There's more...</h2></div></div></div><p>Lexical cast just like all of the <code class="literal">std::stringstreams</code> classes uses <code class="literal">std::locale</code> and can convert localized numbers, but also has an impressive set of optimizations for C locale and for locales without number groupings:</p><div class="informalexample"><pre class="programlisting">#include &lt;locale&gt;
+
+    std::locale::global(std::locale("ru_RU.UTF8"));
+    // In Russia coma sign is used as a decimal separator
+    float f = boost::lexical_cast&lt;float&gt;("1,0");
+    assert(f &lt; 1.01 &amp;&amp; f &gt; 0.99);</pre></div><p>And that isn't all! You can even simply create template functions for conversions to numbers. Let's make a function that <a id="id110" class="indexterm"/>converts a container of some <code class="literal">string</code> values to a vector of <code class="literal">long int</code> values:</p><div class="informalexample"><pre class="programlisting">#include &lt;algorithm&gt;
+#include &lt;vector&gt;
+#include &lt;iterator&gt;
+#include &lt;boost/lexical_cast.hpp&gt;
+
+template &lt;class ContainerT&gt;
+std::vector&lt;long int&gt; container_to_longs(const ContainerT&amp; container) {
+    typedef typename ContainerT::value_type value_type;
+    std::vector&lt;long int&gt; ret;
+    typedef long int (*func_t)(const value_type&amp;);
+    func_t f = &amp;boost::lexical_cast&lt;long int, value_type&gt;;
+    std::transform(container.begin(), container.end(), std::back_inserter(ret), f);
+    return ret;
+}
+
+    // Somewhere in source file...
+    std::set&lt;std::string&gt; str_set;
+    str_set.insert("1");
+    assert(container_to_longs(str_set).front() == 1);
+    std::deque&lt;const char*&gt; char_deque;
+    char_deque.push_front("1");
+    char_deque.push_back("2");
+    assert(container_to_longs(char_deque).front() == 1);
+    assert(container_to_longs(char_deque).back() == 2);
+
+    // Obfuscating people with curly braces is fun!
+    typedef boost::array&lt;unsigned char, 2&gt; element_t;
+    boost::array&lt;element_t, 2&gt; arrays = {{ {{'1', '0'}}, {{'2', '0'}} }};
+    assert(container_to_longs(arrays).front() == 10);
+    assert(container_to_longs(arrays).back() == 20);</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec70"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Refer to the <span class="emphasis"><em>Converting numbers to strings</em></span> recipe for information about <code class="literal">boost::lexical_cast</code> performance.</li><li class="listitem" style="list-style-type: disc">The official documentation for <code class="literal">Boost.LexicalCast</code> contains some examples, performance <a id="id111" class="indexterm"/>measures, and answers to frequently asked <a id="id112" class="indexterm"/>questions. It is available at the following location:<p><a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html</a></p></li></ul></div></div></div>
+<div class="section" title="Converting numbers to strings"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec23"/>Converting numbers to strings</h1></div></div></div><p>In this recipe we will continue <a id="id113" class="indexterm"/>discussing lexical conversions, but now we will be converting numbers to strings using <code class="literal">Boost.LexicalCast</code>. <a id="id114" class="indexterm"/>And as usual, <code class="literal">boost::lexical_cast</code> will provide a very simple way to convert the data.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec71"/>Getting ready</h2></div></div></div><p>Only basic knowledge of C++ and STL is required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec72"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's convert integer <code class="literal">100</code> to <code class="literal">std::string</code> using <code class="literal">boost::lexical_cast</code>:<div class="informalexample"><pre class="programlisting">#include &lt;boost/lexical_cast.hpp&gt;
+
+    std::string s = boost::lexical_cast&lt;std::string&gt;(100);
+    assert(s == "100");</pre></div></li><li class="listitem">Compare this to the traditional C++ conversion method:<div class="informalexample"><pre class="programlisting">#include &lt;sstream&gt;
+
+    // C++ way of converting to strings
+    std::stringstream ss;
+    ss &lt;&lt; 100;
+    std::string s;
+    ss &gt;&gt; s;
+    // Variable 'ss' will dangle all the way, till the end 
+    // of scope
+    // Multiple virtual methods were called during 
+    // conversion
+    assert(s == "100");</pre></div><p>And against the C conversion method:</p><div class="informalexample"><pre class="programlisting">#include &lt;cstdlib&gt;
+
+    // C way of converting to strings
+    char buffer[100];
+    std::sprintf(buffer, "%i", 100);
+    // You will need an unsigned long long int type to 
+    // count how many times errors were made in 'printf' 
+    // like functions all around the world. 'printf' 
+    // functions are a constant security threat!
+    // But wait, we still need to construct a std::string
+    std::string s(buffer);
+    // And now we have an buffer variable that won't be 
+    // used
+    assert(s == "100");</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec73"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::lexical_cast</code> <a id="id115" class="indexterm"/>function <a id="id116" class="indexterm"/>may also accept numbers as input and convert them to the  string type specified in triangular brackets. Pretty close to what we did in the previous recipe.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec74"/>There's more...</h2></div></div></div><p>A careful reader will note that in the case of <code class="literal">lexical_cast</code> we have an additional call to string copy the constructor and that such a call will be a hit on the performance. It is true, but only for old or bad compilers. Modern compilers implement a <a id="id117" class="indexterm"/>
+<span class="strong"><strong>named return value optimization</strong></span> (<span class="strong"><strong>NRVO</strong></span>), which will eliminate the unnecessary call to copy the constructor and destructor. Even if the C++11-compatible compilers don't detect NRVO, they will use a move copy constructor of <code class="literal">std::string</code>, which is fast and efficient. The <span class="emphasis"><em>Performance</em></span> section of the <code class="literal">Boost.LexicalCast</code> documentation shows the conversion speed on different compilers for different types, and in most cases <code class="literal">lexical_cast</code> is faster than the <code class="literal">std::stringstream</code> and <code class="literal">printf</code> functions.</p><p>If <code class="literal">boost::array</code> or <code class="literal">std::array</code> is passed to <code class="literal">boost::lexical_cast</code> as the output parameter type, less dynamic memory allocations will occur (or there will be no memory allocations at all; it depends on the <code class="literal">std::locale</code> implementation).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec75"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Boost's official <a id="id118" class="indexterm"/>documentation contains tables that compare the <code class="literal">lexical_cast</code> performance against other conversion approaches. And in most cases it wins. <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html</a>. It also has some more examples and a frequently asked questions section.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Converting strings to numbers</em></span> recipe.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Converting user-defined types to/from strings</em></span> recipe.</li></ul></div></div></div>
+<div class="section" title="Converting numbers to numbers"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec24"/>Converting numbers to numbers</h1></div></div></div><p>You might remember <a id="id119" class="indexterm"/>situations where you wrote something like the following code:</p><div class="informalexample"><pre class="programlisting">void some_function(unsigned short param);
+
+int foo();
+    // Somewhere in code
+    // Some compilers may warn that int is being converted to 
+    // unsigned short and that there is a possibility of losing 
+    // data
+    some_function(foo());</pre></div><p>Usually, programmers just ignore such warnings by implicitly casting to unsigned short datatype, as demonstrated in the following code snippet:</p><div class="informalexample"><pre class="programlisting">    // Warning suppressed. Looks like a correct code
+    some_function(
+        static_cast&lt;unsigned short&gt;(foo())
+    );</pre></div><p>But this may make it extremely hard to detect errors. Such errors may exist in code for years before they get caught:</p><div class="informalexample"><pre class="programlisting">// Returns -1 if error occurred
+int foo() {
+    if (some_extremely_rare_condition()) {
+        return -1;
+    } else if (another_extremely_rare_condition()) {
+        return 1000000;
+    }
+    return 65535;
+}</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec76"/>Getting ready</h2></div></div></div><p>Only basic knowledge of C++ is required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec77"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The library <code class="literal">Boost.NumericConversion</code> provides a solution for such cases. And it is easy to modify the existing code to use safe casts, just replace <code class="literal">static_cast</code> with <code class="literal">boost::numeric_cast</code>. It will throw an exception when the source value cannot be <a id="id120" class="indexterm"/>stored in the target. Let's take a look at the following example:<div class="informalexample"><pre class="programlisting">#include &lt;boost/numeric/conversion/cast.hpp&gt;
+
+void correct_implementation() {
+    // 100% correct
+    some_function(
+        boost::numeric_cast&lt;unsigned short&gt;(foo())
+    );
+}
+
+void test_function() {
+    for (unsigned int i = 0; i &lt; 100; ++i) {
+        try {
+            correct_implementation();
+        } catch (const boost::numeric::bad_numeric_cast&amp; e) {
+            std::cout &lt;&lt; '#' &lt;&lt; i &lt;&lt; ' ' &lt;&lt; e.what() &lt;&lt; std::endl;
+        }
+    }
+}</pre></div></li><li class="listitem">Now if we run <a id="id121" class="indexterm"/><code class="literal">test_function()</code> it will output the following:<div class="informalexample"><pre class="programlisting">#47 bad numeric conversion: negative overflow 
+#58 bad numeric conversion: positive overflow </pre></div></li><li class="listitem">We can even detect specific overflow types:<div class="informalexample"><pre class="programlisting">void test_function1() {
+   for (unsigned int i = 0; i &lt; 100; ++i) {
+       try {
+           correct_implementation();
+       } catch (const boost::numeric::positive_overflow&amp; e) {
+           // Do something specific for positive overflow
+           std::cout &lt;&lt; "POS OVERFLOW in #" &lt;&lt; i &lt;&lt; ' ' &lt;&lt; e.what() &lt;&lt; std::endl;
+       } catch (const boost::numeric::negative_overflow&amp; e) {
+           // Do something specific for negative overwlow
+           std::cout &lt;&lt;"NEG OVERFLOW in #" &lt;&lt; i &lt;&lt; ' ' &lt;&lt; e.what() &lt;&lt; std::endl;
+       }
+   }
+}</pre></div><p>The <code class="literal">test_function1()</code>function will output the following:</p><div class="informalexample"><pre class="programlisting">NEG OVERFLOW in #47 bad numeric conversion: negative overflow 
+POS OVERFLOW in #59 bad numeric conversion: positive overflow</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec78"/>How it works...</h2></div></div></div><p>It checks if the value of the input parameter fits into the new type without losing data and throws an exception if something is lost during conversion.</p><p>The <code class="literal">Boost.NumericConversion</code> library <a id="id122" class="indexterm"/>has a very fast implementation; it can do a lot of work at compile time. For example, <a id="id123" class="indexterm"/>when converting to types of a wider range, the source will just call the <code class="literal">static_cast</code> method.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec79"/>There's more...</h2></div></div></div><p>The <code class="literal">boost::numeric_cast</code> <a id="id124" class="indexterm"/>function is implemented via <code class="literal">boost::numeric::converter</code>, which can be tuned to use different overflow, range checking, and rounding policies. But usually, <code class="literal">numeric_cast</code> is just what you need.</p><p>Here is a small example that demonstrates how to make our own <code class="literal">mythrow_overflow_handler</code> overflow handler for <code class="literal">boost::numeric::cast</code>:</p><div class="informalexample"><pre class="programlisting">template &lt;class SourceT, class TargetT&gt;
+struct mythrow_overflow_handler {
+    void operator() (boost::numeric::range_check_result r) {
+        if (r != boost::numeric::cInRange) {
+            throw std::logic_error("Not in range!");
+        }
+    }
+};
+
+template &lt;class TargetT, class SourceT&gt;
+TargetT my_numeric_cast(const SourceT&amp; in) {
+    using namespace boost;
+    typedef numeric::conversion_traits&lt;TargetT, SourceT&gt;   conv_traits;
+    typedef numeric::numeric_cast_traits&lt;TargetT, SourceT&gt; cast_traits;
+    typedef boost::numeric::converter
+        &lt;
+            TargetT,
+            SourceT,
+            conv_traits,
+            mythrow_overflow_handler&lt;SourceT, TargetT&gt; // !!!
+        &gt; converter;
+    return converter::convert(in);
+}
+
+    // Somewhere in code
+    try {
+        my_numeric_cast&lt;short&gt;(100000);
+    } catch (const std::logic_error&amp; e) {
+        std::cout &lt;&lt; "It works! " &lt;&lt; e.what() &lt;&lt; std::endl;
+    }</pre></div><p>And this will output the following:</p><div class="informalexample"><pre class="programlisting">It works! Not in range!</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec80"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Boost's official documentation <a id="id125" class="indexterm"/>contains detailed descriptions of all of the template parameters of the numeric converter; it is available at the following link:<p><a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/numeric/conversion/doc/html/index.html">http://www.boost.org/doc/libs/1_53_0/libs/numeric/conversion/doc/html/index.html</a></p></li></ul></div></div></div>
+<div class="section" title="Converting user-defined types to/from strings"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec25"/>Converting user-defined types to/from strings</h1></div></div></div><p>There is a feature <a id="id126" class="indexterm"/>in <code class="literal">Boost.LexicalCast</code> that allows <a id="id127" class="indexterm"/>users to use their own types in <code class="literal">lexical_cast</code>. This feature just requires the user to write the correct <code class="literal">std::ostream</code> and <code class="literal">std::istream</code> operators for their types.</p><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec81"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">All you need is to provide <a id="id128" class="indexterm"/>an <code class="literal">operator&lt;&lt; and operator&gt;&gt; stream</code> operators. If your class is <a id="id129" class="indexterm"/>already streamable, nothing needs to be done:<div class="informalexample"><pre class="programlisting">#include &lt;iosfwd&gt;
+#include &lt;stdexcept&gt;
+
+// Somewhere in header file
+// Negative number, that does not store minus sign
+class negative_number {
+    unsigned short number_;
+public:
+    explicit negative_number(unsigned short number)
+        : number_(number)
+    {}
+    // operators and functions defined lower
+    // ...
+    unsigned short value_without_sign() const {
+        return number_;
+    }
+};
+
+std::ostream&amp; operator&lt;&lt;(std::ostream&amp; os,
+   const negative_number&amp; num)
+{
+   os &lt;&lt; '-' &lt;&lt; num.value_without_sign();
+   return os;
+}
+
+std::istream&amp; operator&gt;&gt;(std::istream&amp; is, negative_number&amp; num) {
+    char ch;
+    is &gt;&gt; ch;
+    if (ch != '-') {
+        throw std::logic_error("negative_number class designed "
+                      "to store ONLY negative values");
+    }
+    unsigned short s;
+    is &gt;&gt; s;
+    num = negative_number(s);
+    return os;
+}</pre></div></li><li class="listitem">Now we may use <code class="literal">boost::lexical_cast</code> for conversions to and from the <code class="literal">negative_number</code> class. Here's an example:<div class="informalexample"><pre class="programlisting">#include &lt;boost/lexical_cast.hpp&gt;
+#include &lt;assert.h&gt;
+int main() {
+    negative_number n
+      = boost::lexical_cast&lt;negative_number&gt;("-100");
+    assert(n.value_without_sign() == 100);
+    int i = boost::lexical_cast&lt;int&gt;(n);
+    assert(i == -100);
+
+    typedef boost::array&lt;char, 10&gt; arr_t;
+    arr_t arr = boost::lexical_cast&lt;arr_t&gt;(n);
+    assert(arr[0] == '-');
+    assert(arr[1] == '1');
+    assert(arr[2] == '0');
+    assert(arr[3] == '0');
+    assert(arr[4] == '\0');
+}</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec82"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::lexical_cast</code> function <a id="id130" class="indexterm"/>can detect and use stream operators <a id="id131" class="indexterm"/>for converting user-defined types.</p><p>The <code class="literal">Boost.LexicalCast</code> library has <a id="id132" class="indexterm"/>many optimizations for basic types and they will be triggered when a user-defined type is being cast to basic type or when a basic type is being cast to a user-defined type.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec83"/>There's more...</h2></div></div></div><p>The <code class="literal">boost::lexical_cast</code> function may also convert to wide character strings, but the correct <code class="literal">basic_istream</code> and <code class="literal">basic_ostream</code> operator overloads are required for that:</p><div class="informalexample"><pre class="programlisting">template &lt;class CharT&gt;
+std::basic_ostream&lt;CharT&gt;&amp; operator&lt;&lt;(std::basic_ostream&lt;CharT&gt;&amp; os,
+   const negative_number&amp; num)
+{
+   os &lt;&lt; static_cast&lt;CharT&gt;('-') &lt;&lt; num.value_without_sign();
+   return os;
+}
+
+template &lt;class CharT&gt;
+std::basic_istream&lt;CharT&gt;&amp; operator&gt;&gt;(std::basic_istream&lt;CharT&gt;&amp; is, negative_number&amp; num) {
+    CharT ch;
+    is &gt;&gt; ch;
+    if (ch != static_cast&lt;CharT&gt;('-')) {
+        throw std::logic_error("negative_number class designed to "
+                      "store ONLY negative values");
+    }
+    unsigned short s;
+    is &gt;&gt; s;
+    num = negative_number(s);
+    return is;
+}
+
+int main() {
+    negative_number n = boost::lexical_cast&lt;negative_number&gt;(L"-1");
+    assert(n.value_without_sign() == 1);
+    typedef boost::array&lt;wchar_t, 10&gt; warr_t;
+    warr_t arr = boost::lexical_cast&lt;warr_t&gt;(n);
+    assert(arr[0] == L'-');
+    assert(arr[1] == L'1');
+    assert(arr[4] == L'\0');
+}</pre></div><p>The <code class="literal">Boost.LexicalCast</code> library is not <a id="id133" class="indexterm"/>a part of C++11, but there is a proposal to add it to C++ standard. A lot of Boost libraries <a id="id134" class="indexterm"/>use it and I hope that it will make your life easier as well.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec84"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <code class="literal">Boost.LexicalCast</code> <a id="id135" class="indexterm"/>documentation contains some examples, performance measures, and answers to frequently asked questions; it is available at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_lexical_cast.html</a></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Converting strings to numbers</em></span> recipe</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Converting numbers to strings</em></span> recipe</li></ul></div></div></div>
+<div class="section" title="Casting polymorphic objects"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec26"/>Casting polymorphic objects</h1></div></div></div><p>Imagine that some programmer <a id="id136" class="indexterm"/>designed an awful interface as follows (this is a good example of how interfaces should not be written):</p><div class="informalexample"><pre class="programlisting">struct object {
+    virtual ~object() {}
+};
+
+struct banana: public object {
+    void eat() const {}
+    virtual ~banana(){}
+};
+
+struct pidgin: public object {
+    void fly() const {}
+    virtual ~pidgin(){}
+};
+
+object* try_produce_banana();</pre></div><p>And our task is to make a function that eats bananas, and throws exceptions if something instead of banana came along (eating pidgins gross!). If we dereference a value returned by the <code class="literal">try_produce_banana()</code> function, we are getting in danger of dereferencing a null pointer.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec85"/>Getting ready</h2></div></div></div><p>Basic knowledge of C++ is <a id="id137" class="indexterm"/>required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec86"/>How to do it...</h2></div></div></div><p>So we need to write the following code:</p><div class="informalexample"><pre class="programlisting">void try_eat_banana_impl1() {
+    const object* obj = try_produce_banana();
+    if (!obj) {
+        throw std::bad_cast();
+    }
+    dynamic_cast&lt;const banana&amp;&gt;(*obj).eat();
+}</pre></div><p>Ugly, isn't it? <code class="literal">Boost.Conversion</code> provides a slightly better solution:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/cast.hpp&gt;
+void try_eat_banana_impl2() {
+    const object* obj = try_produce_banana();
+    boost::polymorphic_cast&lt;const banana*&gt;(obj)-&gt;eat();
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec87"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::polymorphic_cast</code> <a id="id138" class="indexterm"/>function just wraps around code from the first example, and that is all. It checks input for null and then tries to do a dynamic cast. Any error during those operations will throw a <code class="literal">std::bad_cast</code> exception.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec88"/>There's more...</h2></div></div></div><p>The <code class="literal">Boost.Conversion</code> library also has a <code class="literal">polymorphic_downcast</code> function, which should be used only for downcasts that will always succeed. In debug mode (when <code class="literal">NDEBUG</code> is not defined) it will check for the <a id="id139" class="indexterm"/>correct downcast using <code class="literal">dynamic_cast</code>. When <code class="literal">NDEBUG</code> is defined, the <code class="literal">polymorphic_downcast</code> function will just do a <code class="literal">static_cast</code> operation. It is a good function to use in performance-critical sections, while still leaving the ability to detect errors in debug compilations.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec89"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Initially, the <code class="literal">polymorphic_cast</code> idea was proposed in the book <span class="emphasis"><em>The C++ Programming Language</em></span>, <span class="emphasis"><em>Bjarne Stroustrup</em></span>. Refer to this book for more information and some good ideas on different topics.</li><li class="listitem" style="list-style-type: disc">The official documentation may also be helpful; it is available at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/conversion/cast.htm">http://www.boost.org/doc/libs/1_53_0/libs/conversion/cast.htm</a>.</li></ul></div></div></div>
+<div class="section" title="Parsing simple input"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec27"/>Parsing simple input</h1></div></div></div><p>It is a common task to parse a small <a id="id140" class="indexterm"/>text. And such situations are always a dilemma: shall we use some third-party professional tools for parsing such as Bison or ANTLR, or shall we try to write it by hand using only C++ and STL? The third-party tools are good for handling the parsing of complex texts and it is easy to write parsers using them, but they require additional tools for creating C++ or C code from their grammar, and add more dependencies to your project. Handwritten parsers are usually hard to maintain, but they require nothing except C++ compiler.</p><div class="mediaobject"><img src="graphics/4880OS_02_02.jpg" alt="Parsing simple input"/></div><p>Let's start with a very simple task to parse a date in ISO format as follows:</p><div class="informalexample"><pre class="programlisting">YYYY-MM-DD</pre></div><p>The following are the examples of possible input:</p><div class="informalexample"><pre class="programlisting">2013-03-01
+2012-12-31  // (woo-hoo, it almost a new year!)</pre></div><p>Let's take a look at the parser's <a id="id141" class="indexterm"/>grammar from the following link <a class="ulink" href="http://www.ietf.org/rfc/rfc3339.txt">http://www.ietf.org/rfc/rfc3339.txt</a>:</p><div class="informalexample"><pre class="programlisting">   date-fullyear   = 4DIGIT
+   date-month      = 2DIGIT  ; 01-12
+   date-mday       = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on
+                             ; month/year
+   full-date       = date-fullyear "-" date-month "-" date-mday</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec90"/>Getting ready</h2></div></div></div><p>Make sure that you are familiar with the placeholders concept or read the <span class="emphasis"><em>Reordering the parameters of function</em></span> and <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipes in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>. Basic knowledge of parsing tools would be good.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec91"/>How to do it...</h2></div></div></div><p>Let me introduce you to a <code class="literal">Boost.Spirit</code> library. It allows writing parsers (and lexers and generators) directly in C++ code format, which are immediately executable (that is, do not require additional tools for C++ code generation). The grammar of <code class="literal">Boost</code>.<code class="literal">Spirit</code> is very close to <span class="strong"><strong>Extended Backus-Naur Form</strong></span> <a id="id142" class="indexterm"/>(<span class="strong"><strong>EBNF</strong></span>), which is used for expressing grammar by many standards and understood by other popular parsers. The grammar at the beginning of this chapter is in EBNF.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">We need to include the following headers:<div class="informalexample"><pre class="programlisting">#include &lt;boost/spirit/include/qi.hpp&gt;
+#include &lt;boost/spirit/include/phoenix_core.hpp&gt;
+#include &lt;boost/spirit/include/phoenix_operator.hpp&gt;
+#include &lt;assert.h&gt;</pre></div></li><li class="listitem">Now it's time to make a <code class="literal">date</code> structure to hold the parsed data:<div class="informalexample"><pre class="programlisting">struct date {
+    unsigned short year;
+    unsigned short month;
+    unsigned short day;
+};</pre></div></li><li class="listitem">Now let's look at the parser (a step-by-step description of how it works can be found in the next section):<div class="informalexample"><pre class="programlisting">// See recipe "Using a reference to string type" in Chapter 7, 
+// Manipulating Strings for a better type
+// than std::string for parameter 's'
+date parse_date_time1(const std::string&amp; s) {
+    using boost::spirit::qi::_1;
+    using boost::spirit::qi::ushort_;
+    using boost::spirit::qi::char_;
+    using boost::phoenix::ref;
+
+    date res;
+    const char* first = s.data();
+    const char* const end = first + s.size();
+    bool success = boost::spirit::qi::parse(first, end,
+      ushort_[ ref(res.year) = 1 ] &gt;&gt; char('-')
+      &gt;&gt; ushort_[ ref(res.month) = 1 ] &gt;&gt; char('-')
+      &gt;&gt; ushort_[ ref(res.day) = _1 ]
+    );
+
+    if (!success || first != end) {
+        throw std::logic_error("Parsing failed");
+    }
+    return res;
+}</pre></div></li><li class="listitem">Now we may use this parser wherever we want:<div class="informalexample"><pre class="programlisting">int main() {
+    date d = parse_date_time1("2012-12-31");
+    assert(d.year == 2012);
+    assert(d.month == 12);
+    assert(d.day == 31);
+}</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec92"/>How it works...</h2></div></div></div><p>This is a very simple implementation; it does not check the digit count for numbers. Parsing occurs in the <a id="id143" class="indexterm"/>
+<code class="literal">boost::spirit::qi::parse</code> function. Let's simplify it a little bit, removing the actions on successful parsing:</p><div class="informalexample"><pre class="programlisting">   bool success = boost::spirit::qi::parse(first, end,
+        ushort_ &gt;&gt; char_('-') &gt;&gt; ushort_ &gt;&gt; char_('-') &gt;&gt; ushort_
+    );</pre></div><p>The <code class="literal">first</code> argument points to the beginning of the data to parse; it must be a modifiable (non-constant) variable because the <code class="literal">parse</code> <a id="id144" class="indexterm"/>function will use it to show the end of the parsed sequence. The <code class="literal">end</code> argument points to the element beyond the last one. <code class="literal">first</code> and <code class="literal">end</code> shall be iterators.</p><p>The third argument to the function is a parsing rule. And it does exactly what is written in the EBNF rule:</p><div class="informalexample"><pre class="programlisting">    date-fullyear "-" date-month "-" date-md</pre></div><p>We just replaced white spaces with the <code class="literal">&gt;&gt;</code> operator.</p><p>The <code class="literal">parse</code> function returns true on success. If we want to make sure that the whole string was successfully parsed, we need to check for the parser's return value and equality of the input iterators.</p><p>Now we need to deal with the actions on successful parse and this recipe will be over. Semantic actions in <code class="literal">Boost.Spirit</code> are written inside <code class="literal">[]</code> and they can be written using function pointers, function objects, <code class="literal">boost::bind</code>, <code class="literal">std::bind</code> (or the other <code class="literal">bind()</code> implementations), or C++11 lambda functions.</p><p>So, you could also write a rule for <code class="literal">YYYY</code> using C++11 lambda:</p><div class="informalexample"><pre class="programlisting">    ushort_[ [&amp;res](unsigned short s) {res.year = s;} ]</pre></div><p>Now, let's take a look at the month's semantic action closer:</p><div class="informalexample"><pre class="programlisting">    ushort_[ ref(res.month) = _1 ]</pre></div><p>For those who have read the book from the beginning, this would remind you about <code class="literal">boost::bind</code> and placeholders. <code class="literal">ref(res.month)</code> means pass <code class="literal">res.month</code> as a modifiable reference and <code class="literal">_1</code> means the first input parameter, which would be a number (the result of <code class="literal">ushort_ parsing</code>).</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec93"/>There's more...</h2></div></div></div><p>Now let's modify our parser, so it can take care of the digits count. For that purpose, we will take the <code class="literal">unit_parser</code> template class and just set up the correct parameters:</p><div class="informalexample"><pre class="programlisting">date parse_date_time2(const std::string&amp; s) {
+    using boost::spirit::qi::_1;
+    using boost::spirit::qi::uint_parser;
+    using boost::spirit::qi::char_;
+    using boost::phoenix::ref;
+
+    // Use unsigned short as output type, require Radix 10, and from 2
+    // to 2 digits
+    uint_parser&lt;unsigned short, 10, 2, 2&gt; u2_;
+
+    // Use unsigned short as output type, require Radix 10, and from 4
+    // to 4 digits
+    uint_parser&lt;unsigned short, 10, 4, 4&gt; u4_;
+
+    date res;
+    const char* first = s.data();
+    const char* const end = first + s.size();
+    bool success = boost::spirit::qi::parse(first, end,
+        u4_ [ ref(res.year) = _1 ] &gt;&gt; char_('-')
+        &gt;&gt; u2_ [ ref(res.month) = _1 ] &gt;&gt; char_('-')
+        &gt;&gt; u2_ [ ref(res.day) = _1 ]
+    );
+   
+    if (!success || first != end) {
+        throw std::logic_error("Parsing failed");
+    }
+    return res;
+}</pre></div><p>Don't worry if those examples seem complicated. The first time I was also frightened by <code class="literal">Boost.Spirit</code>, but now it really simplifies my life. You are extremely brave, if this code does not scare you.</p><p>If you want to avoid code bloat, try to write parsers in source files and not in headers. Also take care of iterator types passed to the <code class="literal">boost::spirit::parse</code> function, the fewer different types of iterators you use, the smaller binary you'll get. Writing parsers in source files has one more advantage: it does not slow down the project compilation (as you may notice, the <code class="literal">Spirit</code> parsers are slow to compile, so it is better to compile them once in the source file, than define them in the header files and use this file all around the project).</p><p>If you are now thinking that parsing dates was simpler to implement by hand using STL... you are right! But only for now. Take a look at the next recipe; it will give you more examples on <code class="literal">Boost.Spirit</code> usage and extend this example for a situation when writing the parser by hand is harder than using <code class="literal">Boost.Spirit</code>.</p><p>The <code class="literal">Boost.Spirit</code> library <a id="id145" class="indexterm"/>is not a part of C++11 and as far as I know, it is not proposed for inclusion in the closest upcoming C++ standard.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec94"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Reordering the parameters of function</em></span> recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipe.</li><li class="listitem" style="list-style-type: disc"><code class="literal">Boost.Spirit</code> is a huge header-only library. A separate book may be written about it, so feel free to use its documentation <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/spirit/doc/html/index.html">http://www.boost.org/doc/libs/1_53_0/libs/spirit/doc/html/index.html</a>. You may also find information on how to write lexers and generators directly in C++11 code using Boost.</li></ul></div></div></div>
+<div class="section" title="Parsing input"><div class="titlepage"><div><div><h1 class="title"><a id="ch02lvl1sec28"/>Parsing input</h1></div></div></div><p>In the previous recipe we were writing a <a id="id146" class="indexterm"/>simple parser for dates. Imagine that some time has passed and the task has changed. Now we need to write a date-time parser that will support multiple input formats plus zone offsets. So now our parser should understand the following inputs:</p><div class="informalexample"><pre class="programlisting">2012-10-20T10:00:00Z      // date time with zero zone offset
+2012-10-20T10:00:00       // date time with unspecified zone offset
+2012-10-20T10:00:00+09:15 // date time with zone offset
+2012-10-20-09:15          // date time with zone offset
+10:00:09+09:15            // time with zone offset</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec95"/>Getting ready</h2></div></div></div><p>We'll be using the <code class="literal">Spirit</code> library, which was described in the <span class="emphasis"><em>Parsing simple input</em></span> recipe. Read it before getting hands on with this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec96"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's start with writing a date-time structure that will hold a parsed result:<div class="informalexample"><pre class="programlisting">struct datetime {
+    enum zone_offsets_t {
+        OFFSET_NOT_SET,
+        OFFSET_Z,
+        OFFSET_UTC_PLUS,
+        OFFSET_UTC_MINUS
+    };
+
+private:
+    unsigned short year_;
+    unsigned short month_;
+    unsigned short day_;
+    unsigned short hours_;
+    unsigned short minutes_;
+    unsigned short seconds_;
+    zone_offsets_t zone_offset_type_;
+    unsigned int zone_offset_in_min_;
+
+    static void dt_assert(bool v, const char* msg) {
+        if (!v) {
+            throw std::logic_error("Assertion failed: "
+                + std::string(msg));
+        }
+    }
+
+public:
+    datetime()
+       : year_(0), month_(0), day_(0)
+       , hours_(0), minutes_(0), seconds_(0)
+       , zone_offset_type_(OFFSET_NOT_SET), zone_offset_in_min_(0)
+    {}
+    // Getters: year(), month(), day(), hours(), minutes(),
+    // seconds(), zone_offset_type(), zone_offset_in_min()
+    // ...
+    
+    // Setters
+    // void set_*(unsigned short val) { /*some assert and setting the *_ to val */ }
+    // ...
+    
+};</pre></div></li><li class="listitem">Now let's write a function <a id="id147" class="indexterm"/>for setting the zone offset:<div class="informalexample"><pre class="programlisting">void set_zone_offset(datetime&amp; dt, char sign, unsigned short hours, unsigned short minutes) {
+    dt.set_zone_offset_type(sign == '+' ?
+       datetime::OFFSET_UTC_PLUS : datetime::OFFSET_UTC_MINUS);
+    dt.set_zone_offset_in_min(hours * 60 + minutes);
+}</pre></div></li><li class="listitem">Writing a parser can be split into <a id="id148" class="indexterm"/>writing a few simple parsers, so we start with writing a zone-offset parser.<div class="informalexample"><pre class="programlisting">//Default includes for Boost.Spirit
+#include &lt;boost/spirit/include/qi.hpp&gt;
+#include &lt;boost/spirit/include/phoenix_core.hpp&gt;
+#include &lt;boost/spirit/include/phoenix_operator.hpp&gt;
+
+// We'll use bind() function from Boost.Spirit,
+// because it iterates better with parsers
+#include &lt;boost/spirit/include/phoenix_bind.hpp&gt;
+
+datetime parse_datetime(const std::string&amp; s) {
+    using boost::spirit::qi::_1;
+    using boost::spirit::qi::_2;
+    using boost::spirit::qi::_3;
+    using boost::spirit::qi::uint_parser;
+    using boost::spirit::qi::char_;
+    using boost::phoenix::bind;
+    using boost::phoenix::ref;
+
+    datetime ret;
+
+    // Use unsigned short as output type, require Radix 10, and
+    // from 2 to 2 digits
+    uint_parser&lt;unsigned short, 10, 2, 2&gt; u2_;
+
+    // Use unsigned short as output type, require Radix 10, and
+    // from 4 to 4 digits
+    uint_parser&lt;unsigned short, 10, 4, 4&gt; u4_;
+
+    boost::spirit::qi::rule&lt;const char*, void()&gt; timezone_parser
+        = -(   // unary minus means optional rule
+               // Zero offset
+               char_('Z')[ bind(&amp;datetime::set_zone_offset_type, &amp;ret, datetime::OFFSET_Z) ]
+               |  // OR
+               // Specific zone offset
+               ((char_('+')|char_('-')) &gt;&gt; u2_ &gt;&gt; ':' &gt;&gt; u2_) [ bind(&amp;set_zone_offset, ref(ret), _1, _2, _3) ]
+        );
+    // ...
+    return ret;
+}</pre></div></li><li class="listitem">Let's finish our example by writing the remaining parsers:<div class="informalexample"><pre class="programlisting">  boost::spirit::qi::rule&lt;const char*, void()&gt; date_parser =
+    u4_ [ bind(&amp;datetime::set_year, &amp;ret, _1) ]  &gt;&gt; char_('-')
+    &gt;&gt; u2_ [ bind(&amp;datetime::set_month, &amp;ret, _1) ] &gt;&gt; char_('-')
+    &gt;&gt; u2_ [ bind(&amp;datetime::set_day, &amp;ret, _1) ];
+
+  boost::spirit::qi::rule&lt;const char*, void()&gt; time_parser =
+    u2_ [ bind(&amp;datetime::set_hours, &amp;ret, _1) ] &gt;&gt; char_(':')
+    &gt;&gt; u2_ [ bind(&amp;datetime::set_minutes, &amp;ret, _1) ] &gt;&gt; char_(':')
+    &gt;&gt; u2_ [ bind(&amp;datetime::set_seconds, &amp;ret, _1) ];
+
+    const char* first = s.data();
+    const char* const end = first + s.size();
+    bool success = boost::spirit::qi::parse(first, end,
+        ((date_parser &gt;&gt; char_('T') &gt;&gt; time_parser) | date_parser | time_parser)
+         &gt;&gt; timezone_parser
+    );
+
+    if (!success || first != end) {
+        throw std::logic_error("Parsing of '" + s + "' failed");
+    }
+    return ret;
+} // end of parse_datetime() function</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec97"/>How it works...</h2></div></div></div><p>A very interesting method here is <code class="literal">boost::spirit::qi::rule&lt;const char*, void()&gt;</code>. It erases the type and allows <a id="id149" class="indexterm"/>you to write parsers in source files and export them to headers. For example:</p><div class="informalexample"><pre class="programlisting">// Somewhere in header file
+class example_1 {
+    boost::spirit::qi::rule&lt;const char*, void()&gt; some_rule_;
+public:
+    example_1();
+};
+
+// In source file
+example_1::example_1() {
+    some_rule_ = /* ... */;
+}</pre></div><p>But remember that this class implies an optimization barrier for compilers, so do not use it when it is not required.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec98"/>There's more...</h2></div></div></div><p>We can make our example slightly faster by removing the <code class="literal">rule&lt;&gt;</code> objects that do type erasure. For our example in C++11, we can just replace them with the <code class="literal">auto</code> keyword.</p><p>The <a id="id150" class="indexterm"/>
+<code class="literal">Boost.Spirit</code> library generates very fast parsers; there are some performance measures at the official site. There are also some recommendations for working with the <code class="literal">Boost.Spirit</code> library; one of them is to generate a parser only once, and then just re-use it (in our example this is not shown).</p><p>The rule that parses specific zone offset in <code class="literal">timezone_parser</code> uses the <code class="literal">boost::phoenix::bind</code> call, which is not mandatory. However, without it we'll be dealing with <code class="literal">boost::fusion::vector&lt;char, unsigned short, unsigned short&gt;</code>, which is not as user friendly as <code class="literal">bind(&amp;set_zone_offset, ref(ret), _1, _2, _3)</code>.</p><p>When parsing large files, consider reading the <span class="emphasis"><em>The fastest way to read files</em></span> recipe in <a class="link" href="ch11.html" title="Chapter 11. Working with the System">Chapter 11</a>, <span class="emphasis"><em>Working with the System</em></span>, because incorrect work with files may slow down your program much more than parsing.</p><p>Compiling the code that uses the library <code class="literal">Boost.Spirit</code> (or <code class="literal">Boost.Fusion</code>) may take a lot of time, because of a huge number of template instantiations. When experimenting with the <code class="literal">Boost.Spirit</code> library use modern compilers, they provide better compilation times.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch02lvl2sec99"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <code class="literal">Boost.Spirit</code> library <a id="id151" class="indexterm"/>is worth writing a separate book on. It's impossible to describe all of its features in a few recipes, so referring to the documentation will help you to get more information about it. It is available at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/spirit/doc/html/index.html">http://www.boost.org/doc/libs/1_53_0/libs/spirit/doc/html/index.html</a>. There you'll find many more examples, ready parsers, and information on how to write lexers and generators directly in C++11 code using Boost.</li></ul></div></div></div></body></html>

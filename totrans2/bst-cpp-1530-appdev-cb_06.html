@@ -1,0 +1,868 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;6.&#xA0;Manipulating Tasks"><div class="titlepage"><div><div><h1 class="title"><a id="ch06"/>Chapter 6. Manipulating Tasks</h1></div></div></div><p>In this chapter we will cover:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Registering a task for processing an arbitrary datatype</li><li class="listitem" style="list-style-type: disc">Making timers and processing timer events as tasks</li><li class="listitem" style="list-style-type: disc">Network communication as a task</li><li class="listitem" style="list-style-type: disc">Accepting incoming connections</li><li class="listitem" style="list-style-type: disc">Executing different tasks in parallel</li><li class="listitem" style="list-style-type: disc">Conveyor tasks processing</li><li class="listitem" style="list-style-type: disc">Making a nonblocking barrier</li><li class="listitem" style="list-style-type: disc">Storing an exception and making a task from it</li><li class="listitem" style="list-style-type: disc">Getting and processing system signals as tasks</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec57"/>Introduction</h1></div></div></div><p>This chapter is all about tasks. We'll be calling the functional object a task (because it is shorter and better reflects what it shall do). The main idea of this chapter is that we can split all the processing, computations, and interactions into <span class="strong"><strong>functors</strong></span> (tasks) and process each of those tasks almost independently. Moreover, we may not block on some slow operations (such as receiving data from a socket or waiting for a time-out), but instead provide a callback task and continue working with other tasks. Once the OS finishes the slow operation, our callback will be executed.</p><div class="section" title="Before you start"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec223"/>Before you start</h2></div></div></div><p>This chapter requires at least a basic knowledge of the first, third, and fifth chapters.</p></div></div></div>
+<div class="section" title="Registering a task for processing an arbitrary datatype"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec58"/>Registering a task for processing an arbitrary datatype</h1></div></div></div><p>First of all, let's take care of the class that will hold all the tasks and provide methods for their execution. <a id="id343" class="indexterm"/>We were already doing something like this in the <span class="emphasis"><em>Creating a work_queue class</em></span> recipe, but some of the following problems were not addressed:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">A task may throw an exception that leads a call to <code class="literal">std::terminate</code></li><li class="listitem" style="list-style-type: disc">An interrupted thread may not notice interruption but will finish its task and interrupt only during the next task (which is not what we wanted; we wanted to interrupt the previous task)</li><li class="listitem" style="list-style-type: disc">Our <code class="literal">work_queue</code> class<a id="id344" class="indexterm"/> was only storing and returning tasks, but we need to add methods for executing existing tasks</li><li class="listitem" style="list-style-type: disc">We need a way to stop processing the tasks</li></ul></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec224"/>Getting ready</h2></div></div></div><p>This recipe requires linking with the <code class="literal">libboost_system</code> library<a id="id345" class="indexterm"/>. Knowledge of <code class="literal">Boost.Bind</code> and basic knowledge of <code class="literal">Boost.Thread</code> is also required.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec225"/>How to do it...</h2></div></div></div><p>We'll be using <code class="literal">boost::io_service</code> instead of <code class="literal">work_queue</code> from the previous chapter. There is a reason for doing this, and we'll see it in the following recipes.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's start with the structure that wraps around a user task:<div class="informalexample"><pre class="programlisting">#include &lt;boost/thread/thread.hpp&gt;
+
+namespace detail {
+
+  template &lt;class T&gt;
+  struct task_wrapped {
+  private:
+    T task_unwrapped_;
+
+  public:
+    explicit task_wrapped(const T&amp; task_unwrapped)
+      : task_unwrapped_(task_unwrapped)
+    {}
+
+    void operator()() const {
+      // resetting interruption
+      try {
+        boost::this_thread::interruption_point();
+      } catch(const boost::thread_interrupted&amp;){}
+
+      try {
+        // Executing task
+        task_unwrapped_();
+      } catch (const std::exception&amp; e) {
+        std::cerr&lt;&lt; "Exception: " &lt;&lt; e.what() &lt;&lt; '\n';
+      } catch (const boost::thread_interrupted&amp;) {
+        std::cerr&lt;&lt; "Thread interrupted\n";
+      } catch (...) {
+        std::cerr&lt;&lt; "Unknown exception\n";
+      }
+    }
+  };</pre></div></li><li class="listitem">For ease <a id="id346" class="indexterm"/>of use, we'll create a function that produces <code class="literal">task_wrapped</code> from the user's functor:<div class="informalexample"><pre class="programlisting">  template &lt;class T&gt;
+  task_wrapped&lt;T&gt; make_task_wrapped(const T&amp; task_unwrapped)
+  {
+    return task_wrapped&lt;T&gt;(task_unwrapped);
+  }
+
+} // namespace detail</pre></div></li><li class="listitem">Now we are ready to write the <a id="id347" class="indexterm"/><code class="literal">tasks_processor</code> class:<div class="informalexample"><pre class="programlisting">#include &lt;boost/asio/io_service.hpp&gt;
+class tasks_processor: private boost::noncopyable {
+  boost::asio::io_service         ios_;
+  boost::asio::io_service::work   work_;
+  tasks_processor()
+    : ios_()
+    , work_(ios_)
+  {}
+public:
+  static tasks_processor&amp; get();</pre></div></li><li class="listitem">Now we will add the <a id="id348" class="indexterm"/><code class="literal">push_task</code> method:<div class="informalexample"><pre class="programlisting">  template &lt;class T&gt;
+  inline void push_task(const T&amp; task_unwrapped) {
+    ios_.post(detail::make_task_wrapped(task_unwrapped));
+  }</pre></div></li><li class="listitem">Let's finish this class by adding the member functions for starting and stopping a <a id="id349" class="indexterm"/>task's execution loop:<div class="informalexample"><pre class="programlisting">  void start() {
+    ios_.run();
+  }
+  void stop() {
+    ios_.stop();
+  }
+}; // tasks_processor</pre></div><p>It is time to test our class. For that, we'll create a testing function:</p><div class="informalexample"><pre class="programlisting">int g_val = 0;
+void func_test() {
+  ++ g_val;
+  if (g_val == 3) {
+    throw std::logic_error("Just checking");
+  }
+
+  boost::this_thread::interruption_point();
+  if (g_val == 10) {
+    // Emulation of thread interruption.
+    // Will be caught and won't stop execution.
+    throw boost::thread_interrupted();
+  }
+  if (g_val == 90) {
+    tasks_processor::get().stop();
+  }
+}</pre></div><p>The <code class="literal">main</code> function might look like this:</p><div class="informalexample"><pre class="programlisting">int main () {
+  static const std::size_t tasks_count = 100;
+  // stop() is called at 90
+  BOOST_STATIC_ASSERT(tasks_count &gt; 90);
+  for (std::size_t i =0; i &lt; tasks_count; ++i) {
+    tasks_processor::get().push_task(&amp;func_test);
+  }
+
+  // We can also use result of boost::bind call
+  // as a task
+  tasks_processor::get().push_task(
+    boost::bind(std::plus&lt;int&gt;(), 2, 2) // counting 2 + 2
+  );
+
+  // Processing was not started.
+  assert(g_val == 0);
+
+  // Will not throw, but blocks till
+  // one of the tasks it is owning
+  // calls stop().
+  tasks_processor::get().start();
+  assert(g_val== 90);
+}</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec226"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::io_service</code> variable<a id="id350" class="indexterm"/> can store and execute tasks posted to it. But we may not post a<a id="id351" class="indexterm"/> user's tasks to it directly because they may throw or receive an interruption addressed to other tasks. That is why we wrap a user's task in the <code class="literal">detail::task_wrapped</code> structure. It resets all the previous interruptions by calling:</p><div class="informalexample"><pre class="programlisting">    try {
+      boost::this_thread::interruption_point();
+    } catch(const boost::thread_interrupted&amp;){}</pre></div><p>And this executes the task within the <code class="literal">try{}catch()</code> block making sure that no exception will leave the <code class="literal">operator()</code> bounds.</p><p>The <code class="literal">boost::io_service::run()</code> method<a id="id352" class="indexterm"/> will be getting ready tasks from the queue and executing them one by one. This loop is stopped via a call to <code class="literal">boost::io_service::stop()</code>. The <code class="literal">boost::io_service</code> class<a id="id353" class="indexterm"/> will return from the <code class="literal">run()</code> function<a id="id354" class="indexterm"/> if there are no more tasks left, so we force it to continue execution using an instance of <code class="literal">boost::asio::io_service::work</code>.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note20"/>Note</h3><p>The <span class="strong"><strong>iostream</strong></span> classes and variables such as <code class="literal">std::cerr</code> and <code class="literal">std::cout</code> are not thread safe. In real projects, additional synchronization must be used to get readable output. For simplicity, we do not do that here.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec227"/>There's more...</h2></div></div></div><p>The C++11 STL library has no <code class="literal">io_service</code>; however, it (and a large part of the <code class="literal">Boost.Asio</code> library) is proposed as a <span class="strong"><strong>Technical Report</strong></span> (<span class="strong"><strong>TR</strong></span>)<a id="id355" class="indexterm"/> as an addition to C++.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec228"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The following recipes will show you why we chose <code class="literal">boost::io_service</code> instead of our handwritten code</li><li class="listitem" style="list-style-type: disc">You may consider the <code class="literal">Boost.Asio</code> documentation to get some examples, tutorials, and class references at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a></li><li class="listitem" style="list-style-type: disc">You may also read the <span class="emphasis"><em>Boost.Asio C++ Network Programming</em></span> book, which gives a smoother introduction to <code class="literal">Boost.Asio</code> and covers some details that are not covered in this book</li></ul></div></div></div>
+<div class="section" title="Making timers and processing timer events as tasks"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec59"/>Making timers and processing timer events as tasks</h1></div></div></div><p>It is a common task to check <a id="id356" class="indexterm"/>something at specified intervals; for example, we need to check some session for an activity once every 5 seconds. There are two popular solutions to such a problem: creating a thread or sleeping for 5 seconds. This is a very lame solution that consumes a lot of system resources and scales badly. We could instead use system specific APIs for manipulating timers asynchronously. This is a better solution, but it requires a lot of work and is not very portable (until you write many wrappers for different platforms). It also makes you work with OS APIs that are not always very nice.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec229"/>Getting ready</h2></div></div></div><p>You must know how to use <code class="literal">Boost.Bind</code> and <code class="literal">Boost.SmartPtr</code>. See the first recipe of this chapter to get information about the <code class="literal">boost::asio::io_service</code> and <code class="literal">task_queue</code> classes. Link this recipe with the <code class="literal">libboost_system</code> library.</p><p>This recipe is a tricky one, so get ready!</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec230"/>How to do it...</h2></div></div></div><p>This recipe is based on the code from the previous recipe. We just modify the <code class="literal">tasks_processor</code> class<a id="id357" class="indexterm"/> by adding new methods to run a task at some specified time.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's add a method to our <code class="literal">tasks_processor</code> class for running a task at some time:<div class="informalexample"><pre class="programlisting">  typedef boost::asio::deadline_timer::time_type time_type;
+
+  template &lt;class Functor&gt;
+  void run_at(time_type time, const Functor&amp; f) {
+    detail::make_timer_task(ios_, time, f)
+      .push_task();
+  }</pre></div></li><li class="listitem">We add a method to our <code class="literal">task_queue</code> class for running a task after the required time duration passes:<div class="informalexample"><pre class="programlisting">  typedef boost::asio::deadline_timer::duration_type 
+    duration_type;
+
+  template &lt;class Functor&gt;
+  void run_after(duration_type duration, const Functor&amp; f) {
+    detail::make_timer_task(ios_, duration, f)
+      .push_task();
+  }</pre></div></li><li class="listitem">It's time<a id="id358" class="indexterm"/> to take care of the <a id="id359" class="indexterm"/><code class="literal">detail::make_timer_task</code> function:<div class="informalexample"><pre class="programlisting">namespace detail {
+  template &lt;class Time, class Functor&gt;
+  inline timer_task&lt;Functor&gt; make_timer_task(
+    boost::asio::io_service&amp; ios,
+    const Time&amp; duration_or_time,
+    const Functor&amp; task_unwrapped)
+  {
+    return timer_task&lt;Functor&gt;(ios, duration_or_time,
+      task_unwrapped);
+  }
+}</pre></div></li><li class="listitem">And the final step will be writing a <code class="literal">timer_task</code> structure:<div class="informalexample"><pre class="programlisting">#include &lt;boost/asio/io_service.hpp&gt;
+#include &lt;boost/asio/deadline_timer.hpp&gt;
+#include &lt;boost/system/error_code.hpp&gt;
+#include &lt;boost/make_shared.hpp&gt;
+#include &lt;iostream&gt;
+
+namespace detail {
+
+  typedef boost::asio::deadline_timer::duration_type duration_type;
+
+  template &lt;class Functor&gt;
+  struct timer_task: public task_wrapped&lt;Functor&gt; {
+  private:
+    typedef task_wrapped&lt;Functor&gt; base_t;
+    boost::shared_ptr&lt;boost::asio::deadline_timer&gt; timer_;
+
+  public:
+    template &lt;class Time&gt;
+    explicit timer_task(
+      boost::asio::io_service&amp; ios,
+      const Time&amp; duration_or_time,
+      const Functor&amp; task_unwrapped)
+        : base_t(task_unwrapped)
+        , timer_(boost::make_shared&lt;boost::asio::deadline_timer&gt;(
+          boost::ref(ios), duration_or_time
+      ))
+    {}
+
+    void push_task() const {
+      timer_-&gt;async_wait(*this);
+    }
+
+    void operator()(const boost::system::error_code&amp; error) const {
+      if (!error) {
+        base_t::operator()();
+      } else {
+        std::cerr &lt;&lt; error &lt;&lt; '\n';
+      }
+    }
+  };
+} // namespace detail</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec231"/>How it works...</h2></div></div></div><p>That's how <a id="id360" class="indexterm"/>it all works; the user provides a timeout and a functor to the <code class="literal">run_after</code> function<a id="id361" class="indexterm"/>. In it, a <code class="literal">detail::timer_task</code> object is constructed that stores a user provided functor and creates a shared pointer to <code class="literal">boost::asio::deadline_timer</code>. The constructed <code class="literal">detail::timer_task</code> object is pushed as a functor that must be called when the timer is triggered. The <code class="literal">detail::timer_task::operator()</code> method accepts <code class="literal">boost::system::error_code</code>, which will contain the description of any error that occurred while waiting. If no error is occurred, we call the user's functor that is wrapped to catch exceptions (we re-use the <code class="literal">detail::task_wrapped</code> structure from the first recipe). The following diagram illustrates this:</p><div class="mediaobject"><img src="graphics/4880OS_06_01.jpg" alt="How it works..."/></div><p>Note that <a id="id362" class="indexterm"/>we wrapped <code class="literal">boost::asio::deadline_timer</code> in <code class="literal">boost::shared_ptr</code> and passed the whole <code class="literal">timer_task</code> functor (including <code class="literal">shared_ptr</code>) in <code class="literal">timer_-&gt;async_wait(*this)</code>. This is done because <code class="literal">boost::asio::deadline_timer</code> must not be destroyed until it is triggered, and storing the <code class="literal">timer_task</code> functor in <code class="literal">io_service</code> guarantees this.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note21"/>Note</h3><p>In short, when a specified amount of time has passed, <code class="literal">boost::asio::deadline_timer</code> will push the user's task to the <code class="literal">boost::asio::io_service queue</code> class for execution.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec232"/>There's more...</h2></div></div></div><p>Some platforms have no APIs to implement timers in a good way, so the <code class="literal">Boost.Asio</code> library emulates the behavior of the asynchronous timer using an additional execution thread per <code class="literal">io_service</code>. Anyways, <code class="literal">Boost.Asio</code> is one of the most portable and effective libraries to deal with timers.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec233"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Reading the first recipe from this chapter will teach you the basics of <code class="literal">boost::asio::io_service</code>. The following recipes will provide you with more examples of <code class="literal">io_service</code> usage and will show you how to deal with network communications, signals, and other features using <code class="literal">Boost.Asio</code>.</li><li class="listitem" style="list-style-type: disc">You may consider the <code class="literal">Boost.Asio</code> documentation to get some examples, tutorials, and class references at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/htm">http://www.boost.org/doc/libs/1_53_0/doc/htm</a><a class="ulink" href="http://l/boost_asio.html">l/boost_asio.html</a>.</li></ul></div></div></div>
+<div class="section" title="Network communication as a task"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec60"/>Network communication as a task</h1></div></div></div><p>Receiving or sending data by network is a slow operation. While packets are received by the machine, and while the OS verifies them and copies the data to the user-specified buffer, multiple seconds may pass. <a id="id363" class="indexterm"/>And we may be able to do a lot of work instead of waiting. Let's modify our <code class="literal">tasks_processor</code> class so that it will be capable of sending and receiving data in an asynchronous manner. In nontechnical terms, we ask it to "receive at least N bytes from the remote host and after that is done, call our functor. And by the way, do not block on this call". Those readers who know about <code class="literal">libev</code>, <code class="literal">libevent</code>, or <code class="literal">Node.js</code> will find a lot of familiar things in this recipe.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec234"/>Getting ready</h2></div></div></div><p>The previous and first recipes from this chapter are required to adopt this material more easily. Knowledge of <code class="literal">boost::bind</code>, <code class="literal">boost::shared_ptr</code>, and placeholders are required to get through it. Also, information on linking this recipe with the <code class="literal">libboost_system</code> library<a id="id364" class="indexterm"/> is required.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec235"/>How to do it...</h2></div></div></div><p>Let's extend the code from the previous recipe by adding methods to create connections. A connection would be represented by a <code class="literal">tcp_connection_ptr</code> class, which must be constructed using only <code class="literal">tasks_processor</code> (As an analogy, <code class="literal">tasks_processor</code> is a factory for constructing such connections).</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">We need a method in <code class="literal">tasks_processor</code> to create sockets to endpoints (we will be calling them connections):<div class="informalexample"><pre class="programlisting">tcp_connection_ptr create_connection(const char* addr, 
+  unsigned short port_num) 
+{
+  return tcp_connection_ptr(
+    ios_, 
+    boost::asio::ip::tcp::endpoint(
+      boost::asio::ip::address_v4::from_string(addr), port_num
+    )
+  );
+}</pre></div></li><li class="listitem">We'll <a id="id365" class="indexterm"/>need a lot of header files included as follows:<div class="informalexample"><pre class="programlisting">#include &lt;boost/asio/ip/tcp.hpp&gt;
+#include &lt;boost/asio/placeholders.hpp&gt;
+#include &lt;boost/asio/write.hpp&gt;
+#include &lt;boost/asio/read.hpp&gt;
+#include &lt;boost/shared_ptr.hpp&gt;
+#include &lt;boost/function.hpp&gt;
+#include &lt;boost/enable_shared_from_this.hpp&gt;</pre></div></li><li class="listitem">The class <code class="literal">tcp_connection_ptr</code> is required to manage connections. It owns the socket and manages its lifetime. It's just a thin wrapper around <code class="literal">boost::shared_ptr&lt;boost::asio::ip::tcp::socket&gt;</code> that hides <code class="literal">Boost.Asio</code> from the user.<div class="informalexample"><pre class="programlisting">class tcp_connection_ptr {
+  boost::shared_ptr&lt;boost::asio::ip::tcp::socket&gt; socket_;
+
+public:
+  explicit tcp_connection_ptr(
+    boost::shared_ptr&lt;boost::asio::ip::tcp::socket&gt; socket)
+    : socket_(socket) 
+  {}
+
+  explicit tcp_connection_ptr(
+    boost::asio::io_service&amp; ios, 
+    const boost::asio::ip::tcp::endpoint&amp; endpoint)
+    : socket_(boost::make_shared&lt;boost::asio::ip::tcp::socket&gt;(
+      boost::ref(ios)
+    ))
+  {
+    socket_-&gt;connect(endpoint);
+  }</pre></div></li><li class="listitem">The <code class="literal">tcp_connection_ptr</code> class<a id="id366" class="indexterm"/> will need methods for reading data:<div class="informalexample"><pre class="programlisting">  template &lt;class Functor&gt;
+  void async_read(
+    const boost::asio::mutable_buffers_1&amp; buf, 
+    const Functor&amp; f, 
+    std::size_t at_least_bytes) const 
+  {
+    boost::asio::async_read(
+      *socket_, buf, boost::asio::transfer_at_least(
+        at_least_bytes
+      ), f
+    );
+  }</pre></div></li><li class="listitem">Methods for writing data are also required:<div class="informalexample"><pre class="programlisting">  template &lt;class Functor&gt;
+  void async_write(
+    const boost::asio::const_buffers_1&amp; buf, const Functor&amp; f) const 
+  {
+    boost::asio::async_write(*socket_, buf, f);
+  }
+
+  template &lt;class Functor&gt;
+  void async_write(
+    const boost::asio::mutable_buffers_1&amp; buf, const Functor&amp; f) const 
+  {
+    boost::asio::async_write(*socket_, buf, f);
+  }</pre></div></li><li class="listitem">We will<a id="id367" class="indexterm"/> also add a method to shutdown the connection:<div class="informalexample"><pre class="programlisting">  void shutdown() const {
+    socket_-&gt;shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+    socket_-&gt;close();
+  }
+};</pre></div><p>Now the library user can use the preceding class like this to send the data:</p><div class="informalexample"><pre class="programlisting">const unsigned short g_port_num = 65001;
+
+void send_auth_task() {
+  tcp_connection_ptr soc = tasks_processor::get().create_connection("127.0.0.1", g_port_num);
+
+  boost::shared_ptr&lt;std::string&gt; data = boost::make_shared&lt;std::string&gt;("auth_name");
+
+  soc.async_write( 
+    boost::asio::buffer(*data),
+    boost::bind(
+      &amp;recieve_auth_task, 
+      boost::asio::placeholders::error,
+      soc, 
+      data
+    )
+  );
+}</pre></div><p>Users <a id="id368" class="indexterm"/>may also use it like this to receive data:</p><div class="informalexample"><pre class="programlisting">void recieve_auth_task(
+    const boost::system::error_code&amp; err, 
+    const tcp_connection_ptr&amp; soc, 
+    const boost::shared_ptr&lt;std::string&gt;&amp; data) 
+{
+    if (err) {
+      std::cerr &lt;&lt; "recieve_auth_task: Client error on recieve: " 
+                &lt;&lt; err.message() &lt;&lt; '\n';
+      assert(false);
+    }
+
+  soc.async_read( 
+    boost::asio::buffer(&amp;(*data)[0], data-&gt;size()),
+    boost::bind(
+      &amp;finsh_socket_auth_task, 
+      boost::asio::placeholders::error,
+      boost::asio::placeholders::bytes_transferred,
+      soc, 
+      data
+    ),
+    1
+  );
+}</pre></div><p>And this is how a library user may handle the received data:</p><div class="informalexample"><pre class="programlisting">bool g_authed = false;
+
+void finsh_socket_auth_task(
+    const boost::system::error_code&amp; err, 
+    std::size_t bytes_transfered, 
+    const tcp_connection_ptr&amp; soc, 
+    const boost::shared_ptr&lt;std::string&gt;&amp; data) 
+{
+  if (err &amp;&amp; err != boost::asio::error::eof) {
+    std::cerr &lt;&lt; "finsh_socket_auth_task: Client error "
+              &lt;&lt; "on recieve: " &lt;&lt; err.message() &lt;&lt; '\n';
+    assert(false);
+  }
+
+  if (bytes_transfered != 2) {
+    std::cerr &lt;&lt; "finsh_socket_auth_task: wrong bytes count\n";
+    assert(false);
+  }
+
+  data-&gt;resize(bytes_transfered);
+  if (*data != "OK") {
+    std::cerr &lt;&lt; "finsh_socket_auth_task: wrong response: " &lt;&lt; *data &lt;&lt; '\n';
+    assert(false);
+  }
+
+  g_authed = true;
+  soc.shutdown();
+  tasks_processor::get().stop();
+}</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec236"/>How it works...</h2></div></div></div><p>All the interesting<a id="id369" class="indexterm"/> things happen in the <code class="literal">async_*</code> function's call. Just as in the case of timers, asynchronous calls return immediately without executing a function. They only tell the <code class="literal">boost::asio::io_service</code> class to execute the callback task after some operation (for example, reading data from the socket) finishes. <code class="literal">io_service</code> will execute our function in one of the threads that called the <code class="literal">io_service::run()</code> method<a id="id370" class="indexterm"/>. </p><p>The following diagram illustrates this:</p><div class="mediaobject"><img src="graphics/4880OS_06_02.jpg" alt="How it works..."/></div><p>Now, let's examine this step-by-step.</p><p>The <code class="literal">tcp_connection_ptr</code> class<a id="id371" class="indexterm"/> holds a shared pointer to <code class="literal">boost::asio::ip::tcp::socket</code>, which is a <code class="literal">Boost.Asio</code> wrapper around native sockets. We do not want to give a user the ability to use this wrapper directly because it has synchronous methods whose usage we are trying to avoid.</p><p>The first constructor accepts a pointer to the socket (and will be used in our next recipe). This constructor won't be used by the user because the <code class="literal">boost::asio::ip::tcp::socket</code> constructor requires a reference to <code class="literal">boost::asio::io_service</code>, which is hidden inside <code class="literal">tasks_processor</code>.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note22"/>Note</h3><p>Of course, some users of our library could be smart enough to create an instance of <code class="literal">boost::asio::io_service</code>, initialize sockets, and push tasks to that instance. Moving the <code class="literal">Boost.Asio</code> library's contents into the source file and implementing the <span class="strong"><strong>Pimpl idiom</strong></span>
+<a id="id372" class="indexterm"/> will help you to protect users from shooting their own feet, but we won't implement it here for simplicity. Another way to do things is to declare the <code class="literal">tasks_processor</code> class as a friend to <code class="literal">tcp_connection_ptr</code> and make the <code class="literal">tcp_connection_ptr</code> constructors private.</p></div></div><p>The second constructor accepts a remote endpoint and a reference to <code class="literal">io_service</code>. There you may see how the socket is connected to an endpoint using the <code class="literal">socket_-&gt;connect(endpoint)</code> method. Also, this constructor should not be used by the user; the user should use <code class="literal">tasks_processor::create_connection</code> instead.</p><p>Special care should be taken while using the <code class="literal">async_write</code>
+<a id="id373" class="indexterm"/> and <code class="literal">async_read</code> functions<a id="id374" class="indexterm"/>. Socket and buffer must not be destructed until the asynchronous operation is completed; that is why we bind <code class="literal">shared_ptr</code> to the functional object when calling the <code class="literal">async_*</code> functions:</p><div class="informalexample"><pre class="programlisting">tcp_connection_ptr soc = tasks_processor::get()
+    .create_connection("127.0.0.1", g_port_num);
+
+boost::shared_ptr&lt;std::string&gt; data 
+    = boost::make_shared&lt;std::string&gt;("auth_name");
+
+soc.async_write( 
+  boost::asio::buffer(*data),
+  boost::bind(
+    &amp;recieve_auth_task, 
+    boost::asio::placeholders::error,
+    soc, 
+    data
+  )
+);</pre></div><p>Binding the shared pointer to the functional object, which will be called at the end of the asynchronous operation, guarantees that at least one instance of <code class="literal">boost::shared_ptr</code> to the connection and data exists. This means that both connection and data won't be destroyed until the functional object destructor is called.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note23"/>Note</h3><p><code class="literal">Boost.Asio</code> may copy functors and that is why we used a <code class="literal">boost::shared_ptr&lt;std::string&gt;</code> class instead of passing the <code class="literal">std::string</code> class by value (which would invalidate <code class="literal">boost::asio::buffer(*data)</code> and lead to a segmentation fault).</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec237"/>There's more...</h2></div></div></div><p>Take a closer look at the <code class="literal">finsh_socket_auth_task</code> function<a id="id375" class="indexterm"/>. It checks for <code class="literal">err != boost::asio::error::eof</code>. This is done because the end of a data input is treated as an error; however, this may also mean that the end host closed the socket, which is not always bad (in our example, we treat it as a nonerror behavior).</p><p><code class="literal">Boost.Asio</code> is not a part of C++11, but it is proposed for inclusion in C++, and we may see it (or at least some parts of it) included in the next TR.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec238"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">See the official documentation to <code class="literal">Boost.Asio</code> for more examples, tutorials, and full references at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a>, as well as an example of how to use the UDP and ICMP protocols. For readers familiar with the BSD socket API, the <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio/overview/networking/bsd_sockets.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio/overview/networking/bsd_sockets.html</a> page provides information about what a BSD call looks like in <code class="literal">Boost.Asio</code>.</li><li class="listitem" style="list-style-type: disc">Read the <span class="emphasis"><em>Recording the parameters of function</em></span> and <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipes from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, for more information about <code class="literal">Boost.Bind</code>. The <span class="emphasis"><em>Reference counting of pointers to classes used across methods</em></span> recipe from <a class="link" href="ch03.html" title="Chapter 3. Managing Resources">Chapter 3</a>, <span class="emphasis"><em>Managing Resources</em></span>, will give you more information about what the <code class="literal">boost::shared_ptr</code> class does.</li><li class="listitem" style="list-style-type: disc">You may also read the book <span class="emphasis"><em>Boost.Asio C++ Network Programming</em></span>, <span class="emphasis"><em>Packt Publishing</em></span>, which describes <code class="literal">Boost.Asio</code> in more detail.</li></ul></div></div></div>
+<div class="section" title="Accepting incoming connections"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec61"/>Accepting incoming connections</h1></div></div></div><p>A server side<a id="id376" class="indexterm"/> working with a network usually looks like a <a id="id377" class="indexterm"/>sequence where we first get data, then process it, and then send the result. Imagine that we are creating some kind of authorization server that will process a huge number of requests per second. In that case, we will need to receive and send data asynchronously and process tasks in multiple threads.</p><p>In this recipe, <a id="id378" class="indexterm"/>we'll see how to extend our <code class="literal">tasks_processor</code> class<a id="id379" class="indexterm"/> <a id="id380" class="indexterm"/>to accept and process incoming connections, and in the next recipe, we'll see how to make it multithreaded.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec239"/>Getting ready</h2></div></div></div><p>This recipe requires a good knowledge of <code class="literal">boost::asio::io_service</code> basics as described in the first and third recipes of this chapter. Some knowledge of network communications will be of help to you. Knowledge of <code class="literal">boost::bind, boost::function</code>, <code class="literal">boost::shared_ptr</code>, and information from at least the two previous recipes is also required. Don't forget to link this example with <code class="literal">libboost_system</code>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec240"/>How to do it...</h2></div></div></div><p>Just as in the previous recipes, we'll be adding new methods to our <code class="literal">tasks_processor</code> class.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First of all, we need to add a function that starts listening on a specified port:<div class="informalexample"><pre class="programlisting">  template &lt;class Functor&gt;
+  void add_listener(unsigned short port_num, const Functor&amp; f) {
+    listeners_map_t::const_iterator it = listeners_.find(port_num);
+    if (it != listeners_.end()) {
+      throw std::logic_error(
+        "Such listener for port '" 
+        + boost::lexical_cast&lt;std::string&gt;(port_num) 
+        + "' already created"
+      );
+    }
+
+  listeners_[port_num] 
+    = boost::make_shared&lt;detail::tcp_listener&gt;(
+        boost::ref(ios_), port_num, f
+    );
+    listeners_[port_num]-&gt;push_task(); // Start accepting
+  }</pre></div></li><li class="listitem">We will also add a <code class="literal">std::map</code> variable that holds all the listeners:<div class="informalexample"><pre class="programlisting">  typedef std::map&lt;
+    unsigned short,
+    boost::shared_ptr&lt;detail::tcp_listener&gt;
+  &gt; listeners_map_t;
+
+  listeners_map_t listeners_;</pre></div></li><li class="listitem">And a <a id="id381" class="indexterm"/>function to stop the listener:<div class="informalexample"><pre class="programlisting">  void remove_listener(unsigned short port_num) {
+    listeners_map_t::iterator it = listeners_.find(port_num);
+    if (it == listeners_.end()) {
+      throw std::logic_error(
+        "No listener for port '" 
+        + boost::lexical_cast&lt;std::string&gt;(port_num) 
+        + "' created"
+      );
+    }
+
+    (*it).second-&gt;stop();
+    listeners_.erase(it);
+  }</pre></div></li><li class="listitem">Now we <a id="id382" class="indexterm"/>need to take care of the <code class="literal">detail::tcp_listener</code> class itself. It must have an acceptor:<div class="informalexample"><pre class="programlisting">namespace detail {
+  class tcp_listener
+    : public boost::enable_shared_from_this&lt;tcp_listener&gt; 
+  {
+    typedef boost::asio::ip::tcp::acceptor acceptor_t;
+    acceptor_t acceptor_;</pre></div></li><li class="listitem">And a function that will be called on a successful accept:<div class="informalexample"><pre class="programlisting">    boost::function&lt;void(tcp_connection_ptr)&gt; func_;
+  public:
+    template &lt;class Functor&gt;
+    tcp_listener(
+      boost::asio::io_service&amp; io_service,
+      unsigned short port,
+      const Functor&amp; task_unwrapped)
+    : acceptor_(io_service,boost::asio::ip::tcp::endpoint(
+      boost::asio::ip::tcp::v4(), port
+    ))
+    , func_(task_unwrapped)
+    {}</pre></div></li><li class="listitem">This is what a function for starting an accept will look like:<div class="informalexample"><pre class="programlisting">    void push_task() {
+      if (!acceptor_.is_open()) {         return;
+      }
+
+      typedef boost::asio::ip::tcp::socket socket_t;
+      boost::shared_ptr&lt;socket_t&gt; socket 
+        = boost::make_shared&lt;socket_t&gt;(
+          boost::ref(acceptor_.get_io_service())
+        );
+
+      acceptor_.async_accept(*socket, boost::bind(
+        &amp;tcp_listener::handle_accept,
+        this-&gt;shared_from_this(),
+        tcp_connection_ptr(socket),
+        boost::asio::placeholders::error
+      ));
+    }</pre></div></li><li class="listitem">A <a id="id383" class="indexterm"/>function to stop accepting is written like this:<div class="informalexample"><pre class="programlisting">    void stop() {
+      acceptor_.close();
+    }</pre></div></li><li class="listitem">And<a id="id384" class="indexterm"/> that is our wrapper function that will be called on a successful accept:<div class="informalexample"><pre class="programlisting">  private:
+    void handle_accept(
+      const tcp_connection_ptr&amp; new_connection,
+      const boost::system::error_code&amp; error)
+    {
+      push_task();
+
+      if (!error) {
+        make_task_wrapped(boost::bind(func_, new_connection))
+        (); // Run the task
+      } else {
+        std::cerr &lt;&lt; error &lt;&lt; '\n';
+      }
+    }
+  }; // class tcp_listener
+} // namespace detail</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec241"/>How it works...</h2></div></div></div><p>The function <code class="literal">add_listener</code> just checks that we have no listeners on the specified port already, constructs a new <code class="literal">detail::tcp_listener</code>, and adds it to the <code class="literal">listeners_</code> list.</p><p>When we construct <code class="literal">boost::asio::ip::tcp::acceptor</code> specifying the endpoint (see step 5), it opens a socket at the specified address.</p><p>Calling <code class="literal">async_accept(socket, handler)</code> for <code class="literal">boost::asio::ip::tcp::acceptor</code> makes a call to our handler when the incoming connection is accepted. When a new connection comes in, <code class="literal">acceptor_</code> binds this connection to a socket and pushes the ready task to execute<a id="id385" class="indexterm"/> the handler in <code class="literal">task_queue</code> (in <code class="literal">boost::asio::io_service</code>). As <a id="id386" class="indexterm"/>we understood from the previous recipe, all the <code class="literal">async_*</code> calls return immediately and <code class="literal">async_accept</code> is not a special case, so it won't call the handler directly. Let's take a closer look at our handler:</p><div class="informalexample"><pre class="programlisting">    boost::bind(
+      &amp;tcp_listener::handle_accept,
+      this-&gt;shared_from_this(),
+      tcp_connection_ptr(socket),
+      boost::asio::placeholders::error
+    )</pre></div><p>We need an instance of the current class to be alive when an accepting operation occurs, so we provide a <code class="literal">boost::shared_ptr</code> variable as a second parameter for <code class="literal">boost::bind</code> (we do it via <code class="literal">this-&gt;shared_from_this()</code> call). We also need to keep the socket alive, so we provide it as a third parameter. The last parameter is a placeholder (such as <code class="literal">_1</code> and <code class="literal">_2</code> for <code class="literal">boost::bind</code>) that says where the <code class="literal">async_accept</code> function should put the <code class="literal">error</code> variable into your method.</p><p>Now let's take a closer look at our <code class="literal">handle_accept</code> method<a id="id387" class="indexterm"/>. Calling the <code class="literal">push_task()</code> method<a id="id388" class="indexterm"/> is required to restart accepting our <code class="literal">acceptor_</code>. After that, we will check for errors and if there are no errors, we will bind the user-provided handler to <code class="literal">tcp_connection_ptr</code>, make an instance of <code class="literal">task_wrapped</code> from it (required for correctly handling exceptions and interruption points), and execute it.</p><p>Now let's take a look at the <code class="literal">remove_listener()</code> method<a id="id389" class="indexterm"/>. On call, it will find a listener in the list and call <code class="literal">stop()</code> for it. Inside <code class="literal">stop()</code>, we will call <code class="literal">close()</code> for an acceptor, return to the <code class="literal">remove_listener</code> method, and erase the shared pointer to <code class="literal">tcp_listener</code> from the map of listeners. After that, shared pointers to <code class="literal">tcp_listener</code> remain only in one accept task.</p><p>When we call <code class="literal">stop()</code> for an acceptor, all of its asynchronous operations will be canceled and handlers will be called. If we take a look at the <code class="literal">handle_accept</code> method in the last step, we'll see that in case of an error (or stopped acceptor), no more accepting tasks will be added.</p><p>After all the handlers are called, no shared pointer to the acceptor remains and a destructor for <code class="literal">tcp_connection</code> will be called.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec242"/>There's more...</h2></div></div></div><p>We did not use all the features of the <code class="literal">boost::asio::ip::tcp::acceptor</code> class. It can bind to a specific IPv6 or IPv4 address, if we provide a specific <code class="literal">boost::asio::ip::tcp::endpoint</code>. You may also get a native socket via the <code class="literal">native_handle()</code> method and use some OS-specific calls to tune the behavior. You may set up some options for <code class="literal">acceptor_</code> by calling <code class="literal">set_option</code>. For example, this is how you may force an acceptor to reuse the address:</p><div class="informalexample"><pre class="programlisting">boost::asio::socket_base::reuse_address option(true);
+acceptor_.set_option(option);</pre></div><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note24"/>Note</h3><p>Reusing the address provides an ability to restart the server quickly after it was terminated without correct shutdown. After the server was terminated, a socket may be opened for some time and you won't be able to start the server on the same address without the <code class="literal">reuse_address</code> option.</p></div></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec243"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Starting this chapter from the beginning is a good idea to get much more information about <code class="literal">Boost.Asio</code>.</li><li class="listitem" style="list-style-type: disc">See the official documentation of <code class="literal">Boost.Asio</code> for more examples, tutorials, and a complete reference at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a>.</li><li class="listitem" style="list-style-type: disc">Read the <span class="emphasis"><em>Reordering the parameters of function</em></span> and <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipes from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, for more information about <code class="literal">Boost.Bind</code>. </li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Reference counting of pointers to classes used across methods</em></span> recipe in <a class="link" href="ch03.html" title="Chapter 3. Managing Resources">Chapter 3</a>, <span class="emphasis"><em>Managing Resources</em></span>, will give you more information about what <code class="literal">boost::shared_ptr</code> does.</li></ul></div></div></div>
+<div class="section" title="Executing different tasks in parallel"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec62"/>Executing different tasks in parallel</h1></div></div></div><p>Now it is time <a id="id390" class="indexterm"/>to make our <code class="literal">tasks_queue</code> process tasks in multiple threads. How hard could this be?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec244"/>Getting ready</h2></div></div></div><p>You will need to read the first recipe from this chapter. Some knowledge of multithreading is also required, especially reading the <span class="emphasis"><em>Manipulating a group of threads</em></span> recipe in <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec245"/>How to do it...</h2></div></div></div><p>All we need to <a id="id391" class="indexterm"/>do is to add the <code class="literal">start_multiple</code> method<a id="id392" class="indexterm"/> to our <code class="literal">tasks_queue</code> class:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/thread/thread.hpp&gt;
+
+// Default value will attempt to guess optimal count of threads
+void start_multiple(std::size_t threads_count = 0) {
+  if (!threads_count) {
+    threads_count = (std::max)(static_cast&lt;int&gt;(
+      boost::thread::hardware_concurrency()), 1
+    );
+  }
+
+  // one thread is the current thread
+  -- threads_count;
+  boost::thread_group tg;
+  for (std::size_t i = 0; i &lt; threads_count; ++i) {
+    tg.create_thread(boost::bind(
+      &amp;boost::asio::io_service::run, boost::ref(ios_)
+    ));
+  }
+
+  ios_.run();
+  tg.join_all();
+}</pre></div><p>And now we are able to do much more work, as illustrated in the following diagram:</p><div class="mediaobject"><img src="graphics/4880OS_06_03.jpg" alt="How to do it..."/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec246"/>How it works...</h2></div></div></div><p>The <code class="literal">boost::asio::io_service::run</code> method <a id="id393" class="indexterm"/>is thread safe. Almost all the methods of <code class="literal">Boost.Asio</code> are thread safe, so all we need to do is run the <code class="literal">boost::asio::io_service::run</code> method from different threads.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note25"/>Note</h3><p>If you are executing tasks that modify a common resource, you will need to add mutexes around that resource.</p></div></div><p>See the call to <code class="literal">boost::thread::hardware_concurrency()</code>? It returns the number of threads that can be run concurrently. But it is just a hint and may sometimes return a <code class="literal">0</code> value, which is why we are calling the <code class="literal">std::max</code> function for it. This ensures that <code class="literal">threads_count</code> will store at least the value <code class="literal">1</code>.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note26"/>Note</h3><p>We wrapped <code class="literal">std::max</code> in parenthesis because some popular compilers define the <code class="literal">min()</code> and <code class="literal">max()</code> macros, so we need additional tricks to work-around this.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec247"/>There's more...</h2></div></div></div><p>The <code class="literal">boost::thread::hardware_concurrency()</code> function<a id="id394" class="indexterm"/> is a part of C++11; you will find it in the <code class="literal">&lt;thread&gt;</code> header of the <code class="literal">std::</code> namespace. However, not all the <code class="literal">boost::asio</code> classes are part of C++11 (but they are proposed for inclusion, so we may see them in the next Technical Report (TR) for C++).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec248"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">See the <code class="literal">Boost.Asio</code> documentation for more examples and information about different classes at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a></li><li class="listitem" style="list-style-type: disc">See the <code class="literal">Boost.Thread</code> documentation for information about <code class="literal">boost::thread_group</code> and <code class="literal">boost::threads</code> at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html">http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html</a></li><li class="listitem" style="list-style-type: disc">Recipes from <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>, (especially the last recipe called <span class="emphasis"><em>Manipulating a group of threads</em></span>) will give you information about <code class="literal">Boost.Thread</code> usage</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipe will help you to understand the <code class="literal">boost::</code><code class="literal">bind</code> function better</li></ul></div></div></div>
+<div class="section" title="Conveyor tasks processing"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec63"/>Conveyor tasks processing</h1></div></div></div><p>Sometimes <a id="id395" class="indexterm"/>there is a requirement to process tasks within a specified time interval. Compared to previous recipes, where we were trying to process <a id="id396" class="indexterm"/>tasks in the order of their appearance in the queue, this is a big difference.</p><p>Consider an example where we are writing a program that connects two subsystems, one of which produces data packets and the other writes modified data to the disk (something like this can be seen in video cameras, sound recorders, and other devices). We need to process data packets one by one, smoothly with the least jitter, and in multiple threads.</p><p>Our previous <code class="literal">tasks_queue</code> was bad at processing tasks in a specified order:</p><div class="informalexample"><pre class="programlisting">// global variables
+tasks_queue queue; 
+subsystem1 subs1;
+subsystem2 subs2;
+
+tasks_queue&amp; operator&lt;&lt; (tasks_queue&amp;, data_packet&amp; data) {
+  decoded_data d_decoded = decode_data(data);
+  compressed_data c_data = compress_data(d_decoded);
+  subs2.send_data(c_data);
+}
+
+void start_data_accepting() {
+  while (!subs1.is_stopped()) {
+    queue &lt;&lt; subs1.get_data();
+  }
+}
+
+#include &lt;boost/thread/thread.hpp&gt;
+int main() {
+  // Getting data packets from first device
+  // and putting them to queue
+  boost::thread t(&amp;start_data_accepting);
+  // Which data packet will be processed first in
+  // multi-threaded environment?
+  // packet #2 may be processed before packet #1,
+  // no guarantee that packets will be processed in
+  // order of their appearance
+  queue.run_multiple();
+  t.join();
+}</pre></div><p>So how can we solve this?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec249"/>Getting ready</h2></div></div></div><p>Basic<a id="id397" class="indexterm"/> knowledge of <code class="literal">boost::asio::io_service</code> is required for this recipe; read at least the first recipe from this chapter. <a id="id398" class="indexterm"/>The <span class="emphasis"><em>Creating a work_queue class</em></span> recipe from <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>, is required for understanding this example. Code must be linked against the <code class="literal">boost_thread</code> library.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec250"/>How to do it...</h2></div></div></div><p>This recipe is based on the code of the <code class="literal">work_queue</code> class from the <span class="emphasis"><em>Creating a work_queue class</em></span> recipe of <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>. We'll make some modifications and will be using a few instances of that class.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's start by creating separate queues for data decoding, data compressing, and data sending:<div class="informalexample"><pre class="programlisting">workqueue decoding_queue, compressing_queue, sending_queue;</pre></div></li><li class="listitem">Now it is time to refactor the operator <code class="literal">&lt;&lt;</code> and split it into multiple functions:<div class="informalexample"><pre class="programlisting">#include &lt;boost/bind.hpp&gt;
+
+void do_decode(const data_packet&amp; packet);
+void start_data_accepting() {
+  while (!subs1.is_stopped()) {
+    decoding_queue.push_task(boost::bind(
+      &amp;do_decode, subs1.get_data()
+    ));
+  }
+}
+
+void do_compress(const decoded_data&amp; packet);
+void do_decode(const data_packet&amp; packet) {
+  compressing_queue.push_task(boost::bind(
+    &amp;do_compress, decode_data(packet)
+  ));
+}
+
+void do_compress(const decoded_data&amp; packet) {
+  sending_queue.push_task(boost::bind(
+    &amp;subsystem2::send_data,
+    boost::ref(subs2),
+    compress_data(packet)
+  ));
+}</pre></div></li><li class="listitem">Our <a id="id399" class="indexterm"/><code class="literal">work_queue</code> class from <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>, had no <code class="literal">stop()</code> function. Let's add it:<div class="informalexample"><pre class="programlisting">// class work_queue from chapter 5
+#include &lt;deque&gt;
+#include &lt;boost/function.hpp&gt;
+#include &lt;boost/thread/mutex.hpp&gt;
+#include &lt;boost/thread/locks.hpp&gt;
+#include &lt;boost/thread/condition_variable.hpp&gt;
+
+class work_queue {
+public:
+  typedef boost::function&lt;void()&gt; task_type;
+
+private:
+  std::deque&lt;task_type&gt;   tasks_;
+  boost::mutex            mutex_;
+  boost::condition_variable cond_;
+  bool                    is_stopped_;
+
+public:
+  work_queue() 
+    : is_stopped_(false)
+  {}
+
+  void stop() {
+    boost::unique_lock&lt;boost::mutex&gt; lock(mutex_);
+    is_stopped_ = true;
+    lock.unlock();
+    cond_.notify_all();
+  }
+
+  void push_task(const task_type&amp; task) {
+    boost::unique_lock&lt;boost::mutex&gt; lock(mutex_);
+    if (is_stopped_) {
+      return;
+    }
+    tasks_.push_back(task);
+    lock.unlock();
+    cond_.notify_one();
+  }
+
+  task_type pop_task() {
+    boost::unique_lock&lt;boost::mutex&gt; lock(mutex_);
+    while (tasks_.empty()) {
+      if (is_stopped_) {
+        return task_type();
+      }
+      cond_.wait(lock);
+    }
+
+    task_type ret = tasks_.front();
+    tasks_.pop_front();
+    return ret;
+  }
+};</pre></div><p>Now <a id="id400" class="indexterm"/>the <code class="literal">work_queue</code> class can be stopped. The <code class="literal">pop_task()</code> method will return empty tasks if <code class="literal">work_queue</code> is stopped and no further tasks remain in the <code class="literal">tasks_</code> variable.</p></li><li class="listitem">After <a id="id401" class="indexterm"/>doing all that is shown in step 3, we can write the code like this:<div class="informalexample"><pre class="programlisting">void run_while_not_stopped(work_queue&amp; queue) {
+  work_queue::task_type task;
+  while (task = queue.pop_task()) {
+    task();
+  }
+}</pre></div></li><li class="listitem">That is all! Now we only need to start the conveyor:<div class="informalexample"><pre class="programlisting">#include &lt;boost/thread/thread.hpp&gt;
+int main() {
+  // Getting data packets from first device and putting them
+  // to queue
+  boost::thread t_data_accepting(&amp;start_data_accepting);
+
+  boost::thread t_data_decoding(boost::bind(
+    &amp;run_while_not_stopped, boost::ref(decoding_queue)
+  ));
+
+  boost::thread t_data_compressing(boost::bind(
+    &amp;run_while_not_stopped, boost::ref(compressing_queue)
+  ));
+
+  boost::thread t_data_sending(boost::bind(
+    &amp;run_while_not_stopped, boost::ref(sending_queue)
+  ));</pre></div></li><li class="listitem">The <a id="id402" class="indexterm"/>conveyor can be stopped like this:<div class="informalexample"><pre class="programlisting">  t_data_accepting.join();
+  decoding_queue.stop();
+  t_data_decoding.join();
+  compressing_queue.stop();
+  t_data_compressing.join();
+  sending_queue.stop();
+  t_data_sending.join();</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec251"/>How it works...</h2></div></div></div><p>The trick is<a id="id403" class="indexterm"/> to split the processing of a single data packet into some equally small subtasks and process them one by one in different <code class="literal">work_queues</code>. In this example, we can split the data process into data decoding, data compression, and data send.</p><p>The processing of six packets, ideally, would look like this:</p><div class="informaltable"><table border="1"><colgroup><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/><col style="text-align: left"/></colgroup><thead><tr><th style="text-align: left" valign="bottom">
+<p>Time</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Receiving</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Decoding</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Compressing</p>
+</th><th style="text-align: left" valign="bottom">
+<p>Sending</p>
+</th></tr></thead><tbody><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 1:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #1</code></p>
+</td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 2:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #2</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #1</code></p>
+</td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 3:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #3</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #2</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #1</code></p>
+</td><td style="text-align: left" valign="top"> </td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 4:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #4</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #3</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #2</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #1</code></p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 5:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #5</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #4</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #3</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #2</code></p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 6:</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #6</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #5</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #4</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #3</code></p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 7:</code></p>
+</td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #6</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #5</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #4</code></p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 8:</code></p>
+</td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #6</code></p>
+</td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #5</code></p>
+</td></tr><tr><td style="text-align: left" valign="top">
+<p><code class="literal">Tick 9:</code></p>
+</td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top"> </td><td style="text-align: left" valign="top">
+<p><code class="literal">packet #6</code></p>
+</td></tr></tbody></table></div><p>However, our world is not ideal, so some tasks may finish faster than others. For example, receiving may go faster than decoding and in that case, the decoding queue will be holding a <a id="id404" class="indexterm"/>set of tasks to be done. We did not use <code class="literal">io_service</code> in our example because it does not guarantee that posted tasks will be executed in order of their posting.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec252"/>There's more...</h2></div></div></div><p>All the tools used to create a conveyor in this example are available in C++11, so nothing would stop you creating the same things without Boost on a C++11 compatible compiler. However, Boost will make your code more portable, and usable on C++03 compilers.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec253"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">This technique is well known and used by processor developers. See <a class="ulink" href="http://en.wikipedia.org/wiki/Instruction_pipeline">http://en.wikipedia.org/wiki/Instruction_pipeline</a>. Here you will find a brief description of all the characteristics of the conveyor.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Creating a work_queue</em></span> <span class="emphasis"><em>class</em></span> recipe from <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>, and the <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipe from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, will give you more information about methods used in this recipe.</li></ul></div></div></div>
+<div class="section" title="Making a nonblocking barrier"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec64"/>Making a nonblocking barrier</h1></div></div></div><p>In multithreaded <a id="id405" class="indexterm"/>programming, there is an abstraction<a id="id406" class="indexterm"/> called <span class="strong"><strong>barrier</strong></span>
+<a id="id407" class="indexterm"/>. It stops execution threads that reach it until the requested number of threads are not blocked on it. After that, all the threads are released and they continue with their execution. Consider the following example of where it can be used.</p><p>We want to process different parts of the data in different threads and then send the data:</p><div class="informalexample"><pre class="programlisting">#include &lt;cstddef&gt;
+static const std::size_t data_length = 10000;
+
+#include &lt;boost/array.hpp&gt;
+struct vector_type : public boost::array&lt;std::size_t, data_length&gt; {
+  void* alignment;
+};
+
+typedef boost::array&lt;vector_type, 4&gt; data_t;
+void fill_data(vector_type&amp; data);
+void compute_send_data(data_t&amp; data);
+
+#include &lt;boost/thread/barrier.hpp&gt;
+void runner(std::size_t thread_index, boost::barrier&amp; data_barrier, data_t&amp; data) {
+  for (std::size_t i = 0; i &lt; 1000; ++ i) {
+    fill_data(data.at(thread_index));
+    data_barrier.wait();
+    if (!thread_index) {
+      compute_send_data(data);
+    }
+    data_barrier.wait();
+  }
+}
+
+#include &lt;boost/thread/thread.hpp&gt;
+int main() {
+  // Initing barriers
+  boost::barrier data_barrier(data_t::static_size);
+
+  // Initing data
+  data_t data;
+
+  // Run on 4 threads
+  boost::thread_group tg;
+  for (std::size_t i = 0; i &lt; data_t::static_size; ++i) {
+    tg.create_thread(boost::bind(
+      &amp;runner, 
+      i, 
+      boost::ref(data_barrier),
+      boost::ref(data)
+    ));
+  }
+
+  tg.join_all();
+}</pre></div><p>The <code class="literal">data_barrier.wait()</code> method<a id="id408" class="indexterm"/> blocks until all the threads fill the data. After that, all the threads are released; the <a id="id409" class="indexterm"/>thread with the index <code class="literal">0</code> will <a id="id410" class="indexterm"/>compute data to be sent using <code class="literal">compute_send_data(data)</code>, while others are again waiting at the barrier as shown in the following diagram:</p><div class="mediaobject"><img src="graphics/4880OS_06_04.jpg" alt="Making a nonblocking barrier"/></div><p>Looks lame, isn't it?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec254"/>Getting ready</h2></div></div></div><p>This recipe <a id="id411" class="indexterm"/>requires knowledge of the first recipe of this chapter. Knowledge of <code class="literal">Boost.Bind</code> and <code class="literal">Boost.Thread</code> is also required. Code from this recipe requires linking against the <code class="literal">boost_thread</code> and <code class="literal">boost_system</code> libraries.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec255"/>How to do it...</h2></div></div></div><p>We do not <a id="id412" class="indexterm"/>need to block at all! Let's take a closer look at the example. All we need to do is to post four <code class="literal">fill_data</code> tasks and make the last finished task call <code class="literal">compute_send_data(data)</code>.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">We'll need the <code class="literal">tasks_processor</code> class from the first recipe; no changes to it are needed.</li><li class="listitem">Instead of a barrier, we'll be using the atomic variable:<div class="informalexample"><pre class="programlisting">#include &lt;boost/atomic.hpp&gt;
+typedef boost::atomic&lt;unsigned int&gt; atomic_count_t;</pre></div></li><li class="listitem">Our new runner function will look like this:<div class="informalexample"><pre class="programlisting">void clever_runner(
+  std::size_t thread_index, 
+  std::size_t iteration, 
+  atomic_count_t&amp; counter, 
+  data_t&amp; data) 
+{
+  fill_data(data.at(thread_index));
+
+  if (++counter == data_t::static_size) {
+    compute_send_data(data);
+    ++ iteration;
+
+    if (iteration == 1000) {
+      // exiting, because 1000 iterations are done
+      tasks_processor::get().stop();
+      return;
+    }
+
+    counter = 0;
+    for (std::size_t i = 0; i &lt; data_t::static_size; ++ i) {
+      tasks_processor::get().push_task(boost::bind(
+        clever_runner, 
+        i,
+        iteration, 
+        boost::ref(counter), 
+        boost::ref(data)
+      ));
+    }
+
+  }
+}</pre></div></li><li class="listitem">Only the main function will change slightly, as follows:<div class="informalexample"><pre class="programlisting">// Initing counter
+atomic_count_t counter(0);
+
+// Initing data
+data_t data;
+
+// Run on 4 threads
+tasks_processor&amp; tp = tasks_processor::get();
+for (std::size_t i = 0; i &lt; data_t::static_size; ++i) {
+  tp.push_task(boost::bind(
+    &amp;clever_runner, 
+    i, 
+    0, // first run
+    boost::ref(counter),
+    boost::ref(data)
+  ));
+}
+
+tp.start();</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec256"/>How it works...</h2></div></div></div><p>We don't<a id="id413" class="indexterm"/> block as no threads will be waiting for resources. <a id="id414" class="indexterm"/>Instead of blocking, we count the tasks that finished filling the data. This is done by the <code class="literal">counter atomic</code> variable. The last remaining task will have a <code class="literal">counter</code> variable equal to <code class="literal">data_t::static_size</code>. It will only need to compute and send the data.</p><p>After that, we check for the exit condition (1000 iterations are done), and post the new data by filling tasks to the queue.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec257"/>There's more...</h2></div></div></div><p>Is this solution better? Well, first of all, it scales better:</p><div class="mediaobject"><img src="graphics/4880OS_06_05.jpg" alt="There's more..."/></div><p>This method can also be more effective for situations where a program does a lot of different work. Because no threads are waiting in barriers, free threads may do other work while one of the threads computes and sends the data.</p><p>All the tools used for this example are available in C++11 (you'll only need to replace <code class="literal">io_service</code> inside <code class="literal">tasks_processor</code> with <code class="literal">work_queue</code> from <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec258"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation for <code class="literal">Boost.Asio</code> may give you more information about <code class="literal">io_service</code> usage at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a></li><li class="listitem" style="list-style-type: disc">See all the <code class="literal">Boost.Function</code> related recipes from <a class="link" href="ch03.html" title="Chapter 3. Managing Resources">Chapter 3</a>, <span class="emphasis"><em>Managing Resources</em></span>, and the official documentation at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/function.html">http://www.boost.org/doc/libs/1_53_0/doc/html/function.html</a> for getting an idea of how tasks work</li><li class="listitem" style="list-style-type: disc">See the recipes from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, related to <code class="literal">Boost.Bind</code> to get more information about what the <code class="literal">boost::bind</code> function does, or see the official documentation at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/bind/bind.html">http://www.boost.org/doc/libs/1_53_0/libs/bind/bind.html</a></li></ul></div></div></div>
+<div class="section" title="Storing an exception and making a task from it"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec65"/>Storing an exception and making a task from it</h1></div></div></div><p>Processing <a id="id415" class="indexterm"/>exceptions is not always trivial and may take a lot of time. Consider the situation where an exception must be serialized and sent by the network.<a id="id416" class="indexterm"/> This may take milliseconds and a few thousand lines of code. After the exception is caught is not always the best time and place to process it.</p><p>So, can we store exceptions and delay their processing?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec259"/>Getting ready</h2></div></div></div><p>This recipe requires knowledge of <code class="literal">boost::asio::io_service</code>, which was described in the first recipe of this chapter. Knowledge of <code class="literal">Boost.Bind</code> is also required.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec260"/>How to do it...</h2></div></div></div><p>All we need is to have the ability to store exceptions and pass them between threads just like a normal variable.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's start with the function that processes exceptions. In our case, it will only be outputting the exception information to the console:<div class="informalexample"><pre class="programlisting">#include &lt;boost/exception_ptr.hpp&gt;
+#include &lt;boost/lexical_cast.hpp&gt;
+void func_test2(); // Forward declaration
+
+void process_exception(const boost::exception_ptr&amp; exc) {
+  try {
+    boost::rethrow_exception(exc);
+  } catch (const boost::bad_lexical_cast&amp; /*e*/) {
+    std::cout &lt;&lt; "Lexical cast exception detected\n" &lt;&lt; std::endl;
+
+    // Pushing another task to execute
+    tasks_processor::get().push_task(&amp;func_test2);
+  } catch (...) {
+    std::cout &lt;&lt; "Can not handle such exceptions:\n" 
+      &lt;&lt; boost::current_exception_diagnostic_information() 
+      &lt;&lt; std::endl;
+
+    // Stopping
+    tasks_processor::get().stop();
+  }
+}</pre></div></li><li class="listitem">Now <a id="id417" class="indexterm"/>we <a id="id418" class="indexterm"/>will write some functions to demonstrate how exceptions work:<div class="informalexample"><pre class="programlisting">void func_test1() {
+  try {
+    boost::lexical_cast&lt;int&gt;("oops!");
+  } catch (...) {
+    tasks_processor::get().push_task(boost::bind(
+      &amp;process_exception, boost::current_exception()
+    ));
+  }
+}
+
+#include &lt;stdexcept&gt;
+void func_test2() {
+  try {
+    // Some code goes here
+    BOOST_THROW_EXCEPTION(std::logic_error(
+      "Some fatal logic error"
+    ));
+    // Some code goes here
+  } catch (...) {
+    tasks_processor::get().push_task(boost::bind(
+      &amp;process_exception, boost::current_exception()
+    ));
+  }
+}</pre></div></li><li class="listitem">Now, if we run the example like this:<div class="informalexample"><pre class="programlisting">  tasks_processor::get().push_task(&amp;func_test1);
+  tasks_processor::get().start();</pre></div><p>We'll get the following output:</p><div class="informalexample"><pre class="programlisting">Lexical cast exception detected
+
+Can not handle such exceptions:
+../../../BoostBook/Chapter6/exception_ptr/main.cpp(109): Throw in function void func_test2()
+Dynamic exception type: boost::exception_detail::clone_impl&lt;boost::exception_detail::error_info_injector&lt;std::logic_error&gt; &gt;
+std::exception::what: Some fatal logic error</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec261"/>How it works...</h2></div></div></div><p>The <code class="literal">Boost.Exception</code> library<a id="id419" class="indexterm"/> provides an ability to store and rethrow exceptions. The <code class="literal">boost::current_exception()</code> method<a id="id420" class="indexterm"/> must be called from inside the <code class="literal">catch()</code> block, and it returns an object of the type <code class="literal">boost::exception_ptr</code>. So in <code class="literal">func_test1()</code>, the <code class="literal">boost::bad_lexical_cast</code> exception will be thrown, which will be returned by <code class="literal">boost::current_exception()</code>, and a task (a functional object) will be created from that exception and the <code class="literal">process_exception</code> function's pointer.</p><p>The <code class="literal">process_exception</code> function<a id="id421" class="indexterm"/> will re-throw the exception (the only way to restore the exception type from <code class="literal">boost::exception_ptr</code> is to rethrow it using <code class="literal">boost::rethrow_exception(exc)</code> and then catch it by specifying the exception type).</p><p>In <code class="literal">func_test2</code>, we are<a id="id422" class="indexterm"/> throwing a <code class="literal">std::logic_error</code> exception using the <code class="literal">BOOST_THROW_EXCEPTION</code> macro. This macro does a lot of useful work: it checks that our exception is derived from <code class="literal">std::exception</code> and adds information to our exception about the source filename, function name, and the number of the line of code where the exception was thrown. So when an exception is re-thrown and caught by <code class="literal">catch(...)</code>, <code class="literal">boost::current_exception_diagnostic_information()</code>, we will be able to output much more information about it.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec262"/>There's more...</h2></div></div></div><p>Usually, <code class="literal">exception_ptr</code> is used to pass exceptions between threads. For example:</p><div class="informalexample"><pre class="programlisting">void run_throw(boost::exception_ptr&amp; ptr) {
+  try {
+    // A lot of code goes here
+  } catch (...) {
+    ptr = boost::current_exception();
+  }
+}
+
+int main () {
+  boost::exception_ptr ptr;
+  // Do some work in parallel
+  boost::thread t(boost::bind(
+    &amp;run_throw, 
+    boost::ref(ptr)
+  ));
+
+  // Some code goes here
+  // …
+
+  t.join();
+
+  // Checking for exception
+  if (ptr) {
+    // Exception occured in thread
+    boost::rethrow_exception(ptr);
+  }
+}</pre></div><p>The <code class="literal">boost::exception_ptr</code> class<a id="id423" class="indexterm"/> may allocate memory through heap multiple times, uses atomics, and implements some of the operations by rethrowing and catching exceptions. Try not to use it without an actual need.</p><p>C++11 has adopted <code class="literal">boost::current_exception</code>, <code class="literal">boost::rethrow_exception</code>, and <code class="literal">boost::exception_ptr</code>. You will find them in the <code class="literal">&lt;exception&gt;</code> header of the <code class="literal">std::</code> namespace. However, the <code class="literal">BOOST_THROW_EXCEPTION</code> and <code class="literal">boost::current_exception_diagnostic_information()</code> methods are not in C++11, so you'll need to realize them on your own (or just use the Boost versions).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec263"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation for <code class="literal">Boost.Exception</code> contains a lot of useful information about implementation and restrictions at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/exception/doc/boost-exception.html">http://www.boost.org/doc/libs/1_53_0/libs/exception/doc/boost-exception.html</a>. You may also find some information that is not covered in this recipe (for example, how to add additional information to an already thrown exception).</li><li class="listitem" style="list-style-type: disc">The first recipe from this chapter will give you information about the <code class="literal">tasks_processor</code> class<a id="id424" class="indexterm"/>. Recipes <span class="emphasis"><em>Binding a value as a function parameter</em></span> from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, and <span class="emphasis"><em>Converting strings to numbers</em></span> from <a class="link" href="ch02.html" title="Chapter 2. Converting Data">Chapter 2</a>, <span class="emphasis"><em>Converting Data</em></span>, will help you with <code class="literal">Boost.Bind</code> and <code class="literal">Boost.LexicalCast</code>.</li></ul></div></div></div>
+<div class="section" title="Getting and processing system signals as tasks"><div class="titlepage"><div><div><h1 class="title"><a id="ch06lvl1sec66"/>Getting and processing system signals as tasks</h1></div></div></div><p>When writing <a id="id425" class="indexterm"/>some server applications (especially for Linux OS), catching and processing signals is required. Usually, all the signal handlers are set up at server start and do not change during the application's execution.</p><p>The goal of this recipe is to make our <code class="literal">tasks_processor</code> class capable of processing signals.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec264"/>Getting ready</h2></div></div></div><p>We will <a id="id426" class="indexterm"/>need code from the first recipe of this chapter. Good knowledge of <code class="literal">Boost.Bind</code> and <code class="literal">Boost.Function</code> is also required.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec265"/>How to do it...</h2></div></div></div><p>This recipe is similar to previous ones; we have some signal handlers, functions to register them, and some support code.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Let's start with including the following headers:<div class="informalexample"><pre class="programlisting">#include &lt;boost/asio/signal_set.hpp&gt;
+#include &lt;boost/function.hpp&gt;</pre></div></li><li class="listitem">Now we add a member for signals processing to the <code class="literal">tasks_processor</code> class:<div class="informalexample"><pre class="programlisting">private:
+    boost::asio::signal_set signals_;
+    boost::function&lt;void(int)&gt;   users_signal_handler_;</pre></div></li><li class="listitem">The function that will be called upon signal capture is as follows:<div class="informalexample"><pre class="programlisting">    // private
+    void handle_signals(
+            const boost::system::error_code&amp; error,
+            int signal_number)
+    {
+      if (error) {
+        std::cerr &lt;&lt; "Error in signal handling: " 
+          &lt;&lt; error &lt;&lt; '\n';
+      } else {
+         // If signals occurs while there is no 
+         // waiting handlers, signal notification
+         // is queued, so it won't be missed
+         // while we are running 
+         // the users_signal_handler_
+         detail::make_task_wrapped(boost::bind(
+           boost::ref(users_signal_handler_), 
+           signal_number
+         ))(); // make and run task_wrapped
+      }
+        
+        signals_.async_wait(boost::bind(
+            &amp;tasks_processor::handle_signals, this, _1, _2
+        ));
+    }</pre></div></li><li class="listitem">Do not <a id="id427" class="indexterm"/>forget to initialize the <code class="literal">signals_</code> member in the <a id="id428" class="indexterm"/><code class="literal">tasks_processor</code> constructor:<div class="informalexample"><pre class="programlisting">    tasks_processor()
+        : ios_()
+        , work_(ios_)
+        , signals_(ios_)
+    {}</pre></div></li><li class="listitem">And now we need a function for registering the signals handler:<div class="informalexample"><pre class="programlisting">    // This function is not threads safe!
+    // Must be called before all the 'start()' calls
+    // Function can be called only once
+    template &lt;class Func&gt;
+    void register_signals_handler(
+            const Func&amp; f,
+            const std::vector&lt;int&gt;&amp; signals_to_wait)
+    {
+        // Making sure that this is the first call
+        assert(!users_signal_handler_); 
+
+        users_signal_handler_ = f;
+        std::for_each(
+            signals_to_wait.begin(),
+            signals_to_wait.end(),
+            boost::bind(
+                &amp;boost::asio::signal_set::add, &amp;signals_, _1
+            )
+        );
+
+        signals_.async_wait(boost::bind(
+            &amp;tasks_processor::handle_signals, this, _1, _2
+        ));
+    }</pre></div><p>That's all. Now we are ready to process signals. Following is a test program:</p><div class="informalexample"><pre class="programlisting">void accept_3_signals_and_stop(int signal) {
+    static int signals_count = 0;
+    assert(signal == SIGINT);
+    ++ signals_count;
+    std::cout &lt;&lt; "Captured " &lt;&lt; signals_count &lt;&lt; " SIGINT\n"; 
+    if (signals_count == 3) {
+        tasks_processor::get().stop();
+    }
+}
+
+int main () {
+    tasks_processor::get().register_signals_handler(
+        &amp;accept_3_signals_and_stop,
+        std::vector&lt;int&gt;(1, SIGINT) // vector containing 1 element
+    );
+
+    tasks_processor::get().start();
+}</pre></div><p>This will give the following output:</p><div class="informalexample"><pre class="programlisting">Captured 1 SIGINT
+Captured 2 SIGINT
+Captured 3 SIGINT
+Press any key to continue . . .</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec266"/>How it works...</h2></div></div></div><p>Nothing is <a id="id429" class="indexterm"/>difficult here (compared to some previous recipes from this chapter). The <code class="literal">register_signals_handler</code> function<a id="id430" class="indexterm"/> adds the signal numbers that will be processed. It is done via a call to the <code class="literal">boost::asio::signal_set::add</code> function for each element of the <code class="literal">signals_to_wait</code> vector (we do it using <code class="literal">std::for_each</code> and some magic of <code class="literal">boost::bind</code>).</p><p>Next, the instruction makes <code class="literal">signals_ member</code> wait for the signal and calls the <code class="literal">tasks_processor::handle_signals</code> member function for <code class="literal">this</code> on the signal capture. The <code class="literal">tasks_processor::handle_signals</code> function checks for errors and if there is no error, it creates a functional object by referring to <code class="literal">users_signal_handler_</code> and the signal number. This functional object will be wrapped in the <code class="literal">task_wrapped</code> structure (that handles all the exceptions) and executed.</p><p>After that, we make <code class="literal">signals_ member</code> wait for a signal again.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec267"/>There's more...</h2></div></div></div><p>When a thread-safe dynamic adding and removing of signals is required, we may modify this example to look like <code class="literal">detail::timer_task</code> from the <span class="emphasis"><em>Making timers and processing timer events as tasks</em></span> recipe of this chapter. When multiple <code class="literal">boost::asio::signal_set</code> objects are registered as waiting on the same signals, a handler from each of <code class="literal">signal_set</code> will be called on a single signal.</p><p>C++ has been capable of processing signals for a long time using the <code class="literal">signal</code> function from the <code class="literal">&lt;csignal&gt;</code> header. However, it is incapable of using functional objects (which is a huge disadvantage).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch06lvl2sec268"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Binding a value as a function parameter</em></span> and <span class="emphasis"><em>Reordering the parameters of function</em></span> recipes from <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, provide a lot of information about <code class="literal">boost::bind</code>. The official documentation may also help: <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/bind/bind.html">http://www.boost.org/doc/libs/1_53_0/libs/bind/bind.html</a></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Storing any functional object in a variable</em></span> recipe (on <code class="literal">Boost.Function</code>) from <a class="link" href="ch03.html" title="Chapter 3. Managing Resources">Chapter 3</a>, <span class="emphasis"><em>Managing Resources</em></span>, provides information about <code class="literal">boost::function</code>.</li><li class="listitem" style="list-style-type: disc">See the official <code class="literal">Boost.Asio</code> documentation has more information and examples on <code class="literal">boost::asio::signal_set</code> and other features of this great library at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html">http://www.boost.org/doc/libs/1_53_0/doc/html/boost_asio.html</a>.</li></ul></div></div></div></body></html>

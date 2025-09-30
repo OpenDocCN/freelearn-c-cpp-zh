@@ -1,0 +1,463 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Managing Resources"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Managing Resources</h1></div></div></div><p>In this chapter we will cover:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Managing pointers to classes that do not leave scope</li><li class="listitem" style="list-style-type: disc">Reference counting of pointers to classes used across methods</li><li class="listitem" style="list-style-type: disc">Managing pointers to arrays that do not leave scope</li><li class="listitem" style="list-style-type: disc">Reference counting pointers to arrays used across methods</li><li class="listitem" style="list-style-type: disc">Storing any functional objects in a variable</li><li class="listitem" style="list-style-type: disc">Passing a function pointer in a variable</li><li class="listitem" style="list-style-type: disc">Passing C++11 lambda functions in a variable</li><li class="listitem" style="list-style-type: disc">Containers of pointers</li><li class="listitem" style="list-style-type: disc">Doing something at scope exit</li><li class="listitem" style="list-style-type: disc">Initializing the base class by a member of the derived class</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec29"/>Introduction</h1></div></div></div><p>In this chapter, we'll continue to deal with datatypes, introduced by the Boost libraries, mostly focusing on working with pointers. We'll see how to easily manage resources, and how to use a datatype capable of storing any functional objects, functions, and lambda expressions. After reading this chapter, your code will become more reliable, and memory leaks will become history.</p></div></div>
+<div class="section" title="Managing pointers to classes that do not leave scope"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec30"/>Managing pointers to classes that do not leave scope</h1></div></div></div><p>There are situations where we <a id="id152" class="indexterm"/>are required to dynamically allocate memory and <a id="id153" class="indexterm"/>construct a class in that memory. And, that's where the troubles start. Have a look at the following code:</p><div class="informalexample"><pre class="programlisting">void foo1() {
+    foo_class* p = new foo_class("Some initialization data");
+    bool something_else_happened = some_function1(p);
+
+    if (something_else_happened) {
+        delete p;
+        return false;
+    }
+
+    some_function2(p);
+
+    delete p;
+    return true;
+}</pre></div><p>This code looks correct at first glance. But, what if <code class="literal">some_function1()</code> or <code class="literal">some_function2()</code> throws an exception? <a id="id154" class="indexterm"/>In that case, <code class="literal">p</code> won't be deleted. Let's fix it in the following way:</p><div class="informalexample"><pre class="programlisting">void foo2() {
+    foo_class* p = new foo_class("Some initialization data");
+    try {
+        bool something_else_happened = some_function1(p);
+        if (something_else_happened) {
+            delete p;
+            return false;
+        }
+        some_function2(p);
+    } catch (...) {
+        delete p;
+        throw;
+    }
+    delete p;
+    return true;
+}</pre></div><p>Now the code is ugly and hard to read but is correct. Maybe we can do better than this.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec100"/>Getting ready</h2></div></div></div><p>Basic knowledge of C++ and code <a id="id155" class="indexterm"/>behavior during exceptions is required.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec101"/>How to do it...</h2></div></div></div><p>Let's take a look at the <code class="literal">Boost.SmartPtr</code> library. There is a <code class="literal">boost::scoped_ptr</code> class that may help you out:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/scoped_ptr.hpp&gt;
+
+bool foo3() {
+    boost::scoped_ptr&lt;foo_class&gt; p(new foo_class(
+        "Some initialization data"));
+    bool something_else_happened = some_function1(p.get());
+    if (something_else_happened) {
+       return false;
+    }
+    some_function2(p.get());
+    return true;
+}</pre></div><p>Now, there is no chance that the resource <a id="id156" class="indexterm"/>will leak, and the source code is much clearer.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note06"/>Note</h3><p>If you have control over <code class="literal">some_function1()</code> and <code class="literal">some_function2()</code>, you may wish to rewrite them so they will take a reference to <code class="literal">scoped_ptr&lt;foo_class&gt;</code> (or just a reference) instead of a pointer to <code class="literal">foo_class</code>. Such an interface will be more intuitive.</p></div></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec102"/>How it works...</h2></div></div></div><p>In the destructor, <code class="literal">boost::scoped_ptr&lt;T&gt;</code> will call <code class="literal">delete</code> for a pointer that it stores. When an exception is thrown, the stack is unwound, and the destructor of <code class="literal">scoped_ptr</code> is called.</p><p>The <code class="literal">scoped_ptr&lt;T&gt;</code> class template is <a id="id157" class="indexterm"/>not copyable; it stores only a pointer to the class and does not require <code class="literal">T</code> to be of a complete <a id="id158" class="indexterm"/>type (it can be forward declared). Some compilers do not warn when an incomplete type is being deleted, which may lead to errors that are hard to detect, but <code class="literal">scoped_ptr</code> (and all the classes in <code class="literal">Boost.SmartPtr</code>) has a specific compile-time assert for such cases. That makes <code class="literal">scoped_ptr</code> perfect for implementing the <code class="literal">Pimpl</code> idiom.</p><p>The <code class="literal">boost::scoped_ptr&lt;T&gt;</code> function is <a id="id159" class="indexterm"/>equal to <code class="literal">const std::auto_ptr&lt;T&gt;</code>, but it also <a id="id160" class="indexterm"/>has the <code class="literal">reset()</code> function.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec103"/>There's more...</h2></div></div></div><p>This class is extremely fast. In most cases, the compiler will optimize the code that uses <code class="literal">scoped_ptr</code> to the machine code, which is close to our handwritten version (and sometimes even better if the compiler detects that some functions do not throw exceptions).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec104"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The documentation of the <code class="literal">Boost.SmartPtr</code> library contains lots of examples and other useful <a id="id161" class="indexterm"/>information about all the smart pointers' classes. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm">http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm</a>.</li></ul></div></div></div>
+<div class="section" title="Reference counting of pointers to classes used across methods"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec31"/>Reference counting of pointers to classes used across methods</h1></div></div></div><p>Imagine that you have some <a id="id162" class="indexterm"/>dynamically allocated structure containing <a id="id163" class="indexterm"/>data, and you want to process it in different execution threads. The code to do this is as follows:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/thread.hpp&gt;
+#include &lt;boost/bind.hpp&gt;
+
+void process1(const foo_class* p);
+void process2(const foo_class* p);
+void process3(const foo_class* p);
+
+void foo1() {
+    while (foo_class* p = get_data()) // C way
+    {
+        // There will be too many threads soon, see
+        // recipe 'Executing different tasks in parallel'
+        // for a good way to avoid uncontrolled growth of threads
+        boost::thread(boost::bind(&amp;process1, p))
+            .detach();
+        boost::thread(boost::bind(&amp;process2, p))
+            .detach();
+        boost::thread(boost::bind(&amp;process3, p))
+            .detach();
+        // delete p; Oops!!!!
+    }
+}</pre></div><p>We cannot deallocate <code class="literal">p</code> at the end of the <code class="literal">while</code> loop because it can still be used by threads that run process functions. Process functions cannot delete <code class="literal">p</code> because they do not know that other threads are not using it anymore.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec105"/>Getting ready</h2></div></div></div><p>This recipe uses the <code class="literal">Boost.Thread</code> library, which is not a header-only library, so your program will need to link against the <code class="literal">libboost_thread</code> and <code class="literal">libboost_system</code> libraries. Make sure that you understand the concept of threads before reading further. Refer to the <span class="emphasis"><em>See also</em></span> section for references on recipes that use threads.</p><p>You'll also need some basic knowledge on <code class="literal">boost::bind</code> or <code class="literal">std::bind</code>, which is almost the same.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec106"/>How to do it...</h2></div></div></div><p>As you may have guessed, there is a class in Boost (and C++11) that will help you to deal with it. It is called <a id="id164" class="indexterm"/>
+<code class="literal">boost::shared_ptr</code>, <a id="id165" class="indexterm"/>and it can be used as:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/shared_ptr.hpp&gt;
+
+void process_sp1(const boost::shared_ptr&lt;foo_class&gt;&amp; p);
+void process_sp2(const boost::shared_ptr&lt;foo_class&gt;&amp; p);
+void process_sp3(const boost::shared_ptr&lt;foo_class&gt;&amp; p);
+
+void foo2() {
+    typedef boost::shared_ptr&lt;foo_class&gt; ptr_t;
+    ptr_t p;
+    while (p = ptr_t(get_data())) // C way
+    {
+        boost::thread(boost::bind(&amp;process_sp1, p))
+            .detach();
+        boost::thread(boost::bind(&amp;process_sp2, p))
+            .detach();
+        boost::thread(boost::bind(&amp;process_sp3, p))
+            .detach();
+        // no need to anything
+    }
+}</pre></div><p>Another example of this is as <a id="id166" class="indexterm"/>follows:</p><div class="informalexample"><pre class="programlisting">#include &lt;string&gt;
+#include &lt;boost/smart_ptr/make_shared.hpp&gt;
+
+void process_str1(boost::shared_ptr&lt;std::string&gt; p);
+void process_str2(const boost::shared_ptr&lt;std::string&gt;&amp; p);
+
+void foo3() {
+    boost::shared_ptr&lt;std::string&gt; ps = boost::make_shared&lt;std::string&gt;(
+        "Guess why make_shared&lt;std::string&gt; "
+        "is faster than shared_ptr&lt;std::string&gt; "
+        "ps(new std::string('this string'))"
+    );
+    boost::thread(boost::bind(&amp;process_str1, ps))
+            .detach();
+    boost::thread(boost::bind(&amp;process_str2, ps))
+            .detach();
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec107"/>How it works...</h2></div></div></div><p>The <code class="literal">shared_ptr</code> class has an <a id="id167" class="indexterm"/>atomic reference counter inside. When you copy it, the reference counter is incremented, and when its destructor is called, the reference counter is decremented. When the reference counter equals zero, <code class="literal">delete</code> is called for the object pointed by <code class="literal">shared_ptr</code>.</p><p>Now, let's find out what's happening in the case of <code class="literal">boost::thread</code> (<code class="literal">boost::bind(&amp;process_sp1, p)</code>). The function <code class="literal">process_sp1</code> takes a parameter as a reference, so why is it not deallocated when we get out of the <code class="literal">while</code> loop? The answer is simple. The functional object returned by <code class="literal">bind()</code> contains a copy of the shared pointer, and that means that the data pointed by <a id="id168" class="indexterm"/>
+<code class="literal">p</code> won't be deallocated until the functional object is destroyed.</p><p>Getting back to <code class="literal">boost::make_shared</code>, <a id="id169" class="indexterm"/>let's take a look at <code class="literal">shared_ptr&lt;std::string&gt; ps(new int(0))</code>. In this case, we have two calls to <code class="literal">new</code>: firstly while constructing a pointer to an integer, and secondly when constructing a <code class="literal">shared_ptr</code> class (it allocates an atomic counter on heap using call <code class="literal">new</code>). But, when we construct <code class="literal">shared_ptr</code> using <code class="literal">make_shared</code>, only one call to <code class="literal">new</code> will be made. It will allocate a single piece of memory and will construct an atomic counter and the <code class="literal">int</code> object in that piece.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec108"/>There's more...</h2></div></div></div><p>The atomic reference counter guarantees the correct behavior of <code class="literal">shared_ptr</code> across the threads, but you must remember that atomic operations are not as fast as nonatomic. On C++11 compatible compilers, you may reduce the atomic operations' count using <code class="literal">std::move</code> (move the constructor of the shared pointer in such a way that the atomic counter is neither incremented nor decremented).</p><p>The <code class="literal">shared_ptr</code> and <code class="literal">make_shared</code> classes are part of C++11, and they are declared in the header <code class="literal">&lt;memory&gt;</code> in <code class="literal">std::</code> namespace.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec109"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Refer to <a class="link" href="ch05.html" title="Chapter 5. Multithreading">Chapter 5</a>, <span class="emphasis"><em>Multithreading</em></span>, for more information about <code class="literal">Boost.Thread</code> and atomic operations.</li><li class="listitem" style="list-style-type: disc">Refer to the <span class="emphasis"><em>Reordering the parameters of function</em></span> recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, for more information about <code class="literal">Boost.Bind</code>.</li><li class="listitem" style="list-style-type: disc">Refer to the <span class="emphasis"><em>Binding a value as a function parameter</em></span> recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, for more information about <code class="literal">Boost.Bind</code>.</li><li class="listitem" style="list-style-type: disc">The documentation of the <code class="literal">Boost.SmartPtr</code> library contains lots of examples and other useful <a id="id170" class="indexterm"/>information about all the smart pointers' classes. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm">http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm</a>.</li></ul></div></div></div>
+<div class="section" title="Managing pointers to arrays that do not leave scope"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec32"/>Managing pointers to arrays that do not leave scope</h1></div></div></div><p>We already saw how to <a id="id171" class="indexterm"/>manage <a id="id172" class="indexterm"/>pointers to a resource in the <span class="emphasis"><em>Managing pointers to classes that do not leave scope</em></span> recipe. But, when we deal with arrays, we need to call <code class="literal">delete[]</code> instead of a simple <code class="literal">delete</code>, otherwise there will be a memory leak. Have a look at the following code:</p><div class="informalexample"><pre class="programlisting">void may_throw1(const char* buffer);
+void may_throw2(const char* buffer);
+
+void foo() {
+    // we cannot allocate 10MB of memory on stack,
+    // so we allocate it on heap
+    char* buffer = new char[1024 * 1024 * 10];
+    // Here comes some code, that may throw
+    may_throw1(buffer);
+    may_throw2(buffer);
+    delete[] buffer;
+}</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec110"/>Getting ready</h2></div></div></div><p>Knowledge of C++ exceptions and templates are required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec111"/>How to do it...</h2></div></div></div><p>The <code class="literal">Boost.SmartPointer</code> library has not only the <code class="literal">scoped_ptr&lt;&gt;</code> class but also a <code class="literal">scoped_array&lt;&gt;</code> class.</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/scoped_array.hpp&gt;
+
+void foo_fixed() {
+    // so we allocate it on heap
+    boost::scoped_array&lt;char&gt; buffer(new char[1024 * 1024 * 10]);
+
+    // Here comes some code, that may throw,
+    // but now exception won't cause a memory leak
+    may_throw1(buffer.get());
+    may_throw2(buffer.get());
+
+    // destructor of 'buffer' variable will call delete[]
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec112"/>How it works...</h2></div></div></div><p>It works just like a <code class="literal">scoped_ptr&lt;&gt;</code> class <a id="id173" class="indexterm"/>but calls <code class="literal">delete[]</code> instead of <code class="literal">delete</code> in the destructor.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec113"/>There's more...</h2></div></div></div><p>The <code class="literal">scoped_array&lt;&gt;</code> <a id="id174" class="indexterm"/>class has the same <a id="id175" class="indexterm"/>guarantees and design as <code class="literal">scoped_ptr&lt;&gt;</code>. It has neither additional memory allocations nor virtual functions' call. It cannot be copied and is not a part of C++11.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec114"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The documentation of the <code class="literal">Boost.SmartPtr</code> library contains lots of examples and other useful information about all the smart pointers' classes. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm">http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm</a>.</li></ul></div></div></div>
+<div class="section" title="Reference counting pointers to arrays used across methods"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec33"/>Reference counting pointers to arrays used across methods</h1></div></div></div><p>We continue coping with <a id="id176" class="indexterm"/>pointers, and our next task is to reference <a id="id177" class="indexterm"/>count an array. Let's take a look at a program that gets some data from the stream and processes it in different threads. The code to do this is as follows:</p><div class="informalexample"><pre class="programlisting">#include &lt;cstring&gt;
+#include &lt;boost/thread.hpp&gt;
+#include &lt;boost/bind.hpp&gt;
+
+void do_process(const char* data, std::size_t size);
+
+void do_process_in_background(const char* data, std::size_t size) {
+    // We need to copy data, because we do not know,
+    // when it will be deallocated by the caller
+    char* data_cpy = new char[size];
+    std::memcpy(data_cpy, data, size);
+
+    // Starting thread of execution to process data
+    boost::thread(boost::bind(&amp;do_process, data_cpy, size))
+            .detach();
+
+    // We cannot delete[] data_cpy, because
+    // do_process1 or do_process2 may still work with it
+}</pre></div><p>Just the same problem that occurred in the <span class="emphasis"><em>Reference counting of pointers to classes used across methods</em></span> recipe.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec115"/>Getting ready</h2></div></div></div><p>This recipe uses the <code class="literal">Boost.Thread</code> <a id="id178" class="indexterm"/>library, which is not a header-only library, so your program will need to link against the <code class="literal">libboost_thread</code> and <code class="literal">libboost_system</code> libraries. Make sure that you understand the concept of threads before reading further.</p><p>You'll also need some basic knowledge <a id="id179" class="indexterm"/>on <code class="literal">boost::bind</code> or <code class="literal">std::bind</code>, which is almost the same.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec116"/>How to do it...</h2></div></div></div><p>There are three solutions. The main difference between them is of type and construction of the <code class="literal">data_cpy</code> variable. <a id="id180" class="indexterm"/>Each of these solutions does exactly the same things that are described in the beginning of this recipe but without memory leaks. The solutions are:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The first solution:<div class="informalexample"><pre class="programlisting">#include &lt;boost/shared_array.hpp&gt;
+
+void do_process(const boost::shared_array&lt;char&gt;&amp; data, std::size_t size) {
+    do_process(data.get(), size);
+}
+
+void do_process_in_background_v1(const char* data, std::size_t size) {
+    // We need to copy data, because we do not know, when 
+    // it will be deallocated by the caller
+    boost::shared_array&lt;char&gt; data_cpy(new char[size]);
+    std::memcpy(data_cpy.get(), data, size);
+
+    // Starting threads of execution to process data
+    boost::thread(boost::bind(&amp;do_process1, data_cpy))
+        .detach();
+
+    // no need to call delete[] for data_cpy, because
+    // data_cpy destructor will deallocate data when
+    // reference count will be zero
+}</pre></div></li><li class="listitem" style="list-style-type: disc">The second <a id="id181" class="indexterm"/>solution:<p>Since Boost 1.53 <code class="literal">shared_ptr</code> <a id="id182" class="indexterm"/>itself can take care of arrays:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/shared_ptr.hpp&gt;
+#include &lt;boost/make_shared.hpp&gt;
+
+void do_process_shared_ptr(
+        const boost::shared_ptr&lt;char[]&gt;&amp; data,
+        std::size_t size)
+{
+    do_process(data.get(), size);
+}
+
+void do_process_in_background_v2(const char* data, std::size_t size) {
+    // Faster than 'First solution'
+    boost::shared_ptr&lt;char[]&gt; data_cpy = boost::make_shared&lt;char[]&gt;(size);
+    std::memcpy(data_cpy.get(), data, size);
+
+    // Starting thread of execution to process data
+    boost::thread(boost::bind(
+       &amp;do_process_shared_ptr, data_cpy, size
+    )).detach();
+
+    // data_cpy destructor will deallocate data when
+    // reference count will be zero
+}</pre></div></li><li class="listitem" style="list-style-type: disc">The third solution:<div class="informalexample"><pre class="programlisting">void do_process_shared_ptr2(
+        const boost::shared_ptr&lt;char&gt;&amp; data,
+        std::size_t size)
+{
+    do_process(data.get(), size);
+}
+void do_process_in_background_v3(const char* data, std::size_t size) {
+    // Same speed as in First solution
+    boost::shared_ptr&lt;char&gt; data_cpy(
+                new char[size],
+                boost::checked_array_deleter&lt;char&gt;()
+    );
+    std::memcpy(data_cpy.get(), data, size);
+
+    // Starting threads of execution to process data
+    boost::thread(boost::bind(
+       &amp;do_process_shared_ptr2, data_cpy, size
+    )).detach();
+
+    // data_cpy destructor will deallocate data when
+    // reference count will be zero
+}</pre></div></li></ul></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec117"/>How it works...</h2></div></div></div><p>In each of these examples, shared classes count references and call <code class="literal">delete[]</code> for a pointer when the reference count becomes equal to <a id="id183" class="indexterm"/>zero. The first and second examples are trivial. In the third example, we provide a <code class="literal">deleter</code> object for a shared pointer. The <code class="literal">deleter</code> <a id="id184" class="indexterm"/>object will be called instead of the default call to <code class="literal">delete</code>. This <code class="literal">deleter</code> is the same as used in C++11 in <code class="literal">std::unique_ptr</code> and <code class="literal">std::shared_ptr</code>.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec118"/>There's more...</h2></div></div></div><p>The first solution is traditional to Boost; <a id="id185" class="indexterm"/>prior to Boost 1.53, the functionality of the second solution was not implemented in <code class="literal">shared_ptr</code>.</p><p>The second solution is the fastest one (it uses fewer calls to <code class="literal">new</code>), but it can be used only with Boost 1.53 and higher.</p><p>The third solution is the most portable one. It can be used with older versions of Boost and with C++11 STL's <code class="literal">shared_ptr&lt;&gt;</code> (just <a id="id186" class="indexterm"/>don't forget to change <code class="literal">boost::checked_array_deleter&lt;T&gt;()</code> to <code class="literal">std::default_delete&lt;T[]&gt;()</code>).</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec119"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The documentation of the <code class="literal">Boost.SmartPtr</code> library contains lots of examples and other useful information <a id="id187" class="indexterm"/>about all the smart pointers' classes. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm">http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm</a>.</li></ul></div></div></div>
+<div class="section" title="Storing any functional objects in a variable"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec34"/>Storing any functional objects in a variable</h1></div></div></div><p>C++ has a syntax to work with <a id="id188" class="indexterm"/>pointers to functions and member functions' pointers. And, that is good! However, this mechanism is hard to use with functional <a id="id189" class="indexterm"/>objects. Consider the situation when you are developing a library that has its API declared in the header files and implementation in the source files. This library shall have a function that accepts any functional objects. How would you pass a functional object to it? Have a look at the following code:</p><div class="informalexample"><pre class="programlisting">// Required for std::unary_function&lt;&gt; template
+#include &lt;functional&gt;
+
+// making a typedef for function pointer accepting int
+// and returning nothing
+typedef void (*func_t)(int);
+
+// Function that accepts pointer to function and
+// calls accepted function for each integer that it has
+// It cannot work with functional objects :(
+void process_integers(func_t f);
+
+// Functional object
+class int_processor: public std::unary_function&lt;int, void&gt; {
+   const int min_;
+   const int max_;
+   bool&amp; triggered_;
+
+public:
+    int_processor(int min, int max, bool&amp; triggered)
+        : min_(min)
+        , max_(max)
+        , triggered_(triggered)
+    {}
+
+    void operator()(int i) const {
+        if (i &lt; min_ || i &gt; max_) {
+            triggered_ = true;
+        }
+    }
+};</pre></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec120"/>Getting ready</h2></div></div></div><p>Reading the <span class="emphasis"><em>Storing any value in a container/variable</em></span> recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, is recommended before starting this recipe.</p><p>You'll also need some basic knowledge on <code class="literal">boost::bind</code> or <code class="literal">std::bind</code>, which is almost the same.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec121"/>How to do it...</h2></div></div></div><p>Let's see how to fix the example and <a id="id190" class="indexterm"/>make <code class="literal">process_integers</code> accept functional objects:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">There is a solution, and it is called a <code class="literal">Boost.Function</code> library. It allows you to store any function, a member function, or a functional object if its signature is a match to the one described in a template argument:<div class="informalexample"><pre class="programlisting">#include &lt;boost/function.hpp&gt;
+
+typedef boost::function&lt;void(int)&gt; fobject_t;
+
+// Now this function may accept functional objects
+void process_integers(const fobject_t&amp; f);
+
+int main() {
+    bool is_triggered = false;
+    int_processor fo(0, 200, is_triggered);
+    process_integers(fo);
+    assert(is_triggered);
+}</pre></div><p>The <code class="literal">boost::function</code> class <a id="id191" class="indexterm"/>has a default constructor and has an empty <a id="id192" class="indexterm"/>state.</p></li><li class="listitem">Checking for an empty/default constructed state can be done like this:<div class="informalexample"><pre class="programlisting">void foo(const fobject_t&amp; f) {
+    // boost::function is convertible to bool
+    if (f) {
+        // we have value in 'f'
+        // ...
+    } else {
+        // 'f' is empty
+        // ...
+    }
+}</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec122"/>How it works...</h2></div></div></div><p>The <code class="literal">fobject_t</code> method stores in <a id="id193" class="indexterm"/>itself data from functional objects and erases their exact type. It is safe to use the <code class="literal">boost::function</code> objects such as the following code:</p><div class="informalexample"><pre class="programlisting">bool g_is_triggered = false;
+void set_functional_object(fobject_t&amp; f) {
+    int_processor fo( 100, 200, g_is_triggered);
+    f = fo;
+    // fo leavs scope and will be destroyed,
+    // but 'f' will be usable eve inouter scope
+}</pre></div><p>Does it remind you of the <code class="literal">boost::any</code> class? It <a id="id194" class="indexterm"/>uses the same technique—type erasure for <a id="id195" class="indexterm"/>storing any function objects.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec123"/>There's more...</h2></div></div></div><p>The <code class="literal">Boost.Function</code> library has an insane amount of optimizations; it may store small functional objects without additional memory allocations and has optimized move assignment operators. It is accepted as a part of C++11 STL library and is defined in the <code class="literal">&lt;functional&gt;</code> header in the <code class="literal">std::</code> namespace.</p><p>But, remember that <code class="literal">boost::function</code> implies an optimization barrier for the compiler. It means that:</p><div class="informalexample"><pre class="programlisting">std::for_each(v.begin(), v.end(),
+   boost::bind(std::plus&lt;int&gt;(), 10, _1));</pre></div><p>will be better optimized by the compiler than</p><div class="informalexample"><pre class="programlisting">fobject_t f(boost::bind(std::plus&lt;int&gt;(), 10, _1));
+std::for_each(v.begin(), v.end(), f);</pre></div><p>This is why you should try to avoid using <code class="literal">Boost.Function</code> when its usage is not really required. In some cases, the C++11 <code class="literal">auto</code> keyword can be handy instead:</p><div class="informalexample"><pre class="programlisting">auto f = boost::bind(std::plus&lt;int&gt;(), 10, _1);
+std::for_each(v.begin(), v.end(), f);</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec124"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation of <code class="literal">Boost.Function</code> contains more examples, performance measures, and class <a id="id196" class="indexterm"/>reference documentation. You <a id="id197" class="indexterm"/>can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/function.html">http://www.boost.org/doc/libs/1_53_0/doc/html/function.html</a>.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Passing a function pointer in a variable</em></span> recipe.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Passing C++11 lambda functions in a variable</em></span> recipe.</li></ul></div></div></div>
+<div class="section" title="Passing a function pointer in a variable"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec35"/>Passing a function pointer in a variable</h1></div></div></div><p>We are continuing with the <a id="id198" class="indexterm"/>previous example, and now we want to pass a pointer to a function in our <code class="literal">process_integeres()</code> method. Shall we add an <a id="id199" class="indexterm"/>overload for just function pointers, or is there a more elegant way?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec125"/>Getting ready</h2></div></div></div><p>This recipe is continuing the previous one. You must read the previous recipe first.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec126"/>How to do it...</h2></div></div></div><p>Nothing needs to be done as <code class="literal">boost::function&lt;&gt;</code> is also constructible from the function pointers:</p><div class="informalexample"><pre class="programlisting">void my_ints_function(int i);
+
+int main() {
+    process_integeres(&amp;my_ints_function);
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec127"/>How it works...</h2></div></div></div><p>A pointer to <code class="literal">my_ints_function</code> will be stored inside the <code class="literal">boost::function</code> class, and calls to <code class="literal">boost::function</code> will be forwarded to the stored pointer.</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec128"/>There's more...</h2></div></div></div><p>The <code class="literal">Boost.Function</code> library provides good performance for pointers to functions, and it will not allocate memory on heap. However, whatever you store in <code class="literal">boost::function</code>, it will use an RTTI. If you disable RTTI, it will continue to work but will dramatically increase the size of a compiled binary.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec129"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation of <code class="literal">Boost.Function</code> contains more examples, performance measures, and class <a id="id200" class="indexterm"/>reference documentation. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/function.html">http://www.boost.org/doc/libs/1_53_0/doc/html/function.html</a>.</li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Passing C++11 lambda functions in a variable</em></span> <a id="id201" class="indexterm"/>recipe.</li></ul></div></div></div>
+<div class="section" title="Passing C++11 lambda functions in a variable"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec36"/>Passing C++11 lambda functions in a variable</h1></div></div></div><p>We are continuing with the <a id="id202" class="indexterm"/>previous example, and now <a id="id203" class="indexterm"/>we want to use a lambda function with our <a id="id204" class="indexterm"/>
+<code class="literal">process_integers()</code> method.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec130"/>Getting ready</h2></div></div></div><p>This recipe is continuing the series of the previous two. You must read them first. You will also need a C++11 compatible compiler or at least a compiler with C++11 lambda support.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec131"/>How to do it...</h2></div></div></div><p>Nothing needs to be done as <code class="literal">boost::function&lt;&gt;</code> is also usable with lambda functions of any difficulty:</p><div class="informalexample"><pre class="programlisting">    // lambda function with no parameters that does nothing
+    process_integeres([](int /*i*/){});
+
+    // lambda function that stores a reference
+    std::deque&lt;int&gt; ints;
+    process_integeres([&amp;ints](int i){
+        ints.push_back(i);
+    });
+
+    // lambda function that modifies its content
+    std::size_t match_count = 0;
+    process_integeres([ints, &amp;match_count](int i) mutable {
+        if (ints.front() == i) {
+           ++ match_count;
+        }
+        ints.pop_front();
+    });</pre></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec132"/>There's more...</h2></div></div></div><p>Performance of the lambda function storage in <code class="literal">Boost.Functional</code> is the same as in other cases. While the functional object produced by the lambda expression is small enough to fit in an instance of <code class="literal">boost::function</code>, no dynamic memory allocation will be performed. Calling an object stored in <code class="literal">boost::function</code> is close to the speed of calling a function by a pointer. Copying of an object is close to the speed of constructing <code class="literal">boost::function</code> and will exactly use a dynamic memory allocation in similar cases. Moving objects won't allocate and deallocate memory.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec133"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Additional information <a id="id205" class="indexterm"/>about <a id="id206" class="indexterm"/>performance and <code class="literal">Boost.Function</code> can be found on the official documentation page at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/doc/html/function.html">http://www.boost.org/doc/libs/1_53_0/doc/html/function.html</a></li></ul></div></div></div>
+<div class="section" title="Containers of pointers"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec37"/>Containers of pointers</h1></div></div></div><p>There are such cases when we need to <a id="id207" class="indexterm"/>store pointers in the container. The examples are: storing polymorphic data in containers, forcing fast copy of data in containers, and strict <a id="id208" class="indexterm"/>exception requirements for operations with data in containers. In such cases, the C++ programmer has the following choices:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Store pointers in containers and take care of their destructions using the operator <code class="literal">delete</code>:<div class="informalexample"><pre class="programlisting">#include &lt;set&gt;
+#include &lt;algorithm&gt;
+#include &lt;boost/bind.hpp&gt;
+#include &lt;boost/type_traits/remove_pointer.hpp&gt;
+#include &lt;cassert&gt;
+
+template &lt;class T&gt;
+struct ptr_cmp: public std::binary_function&lt;T, T, bool&gt; {
+    template &lt;class T1&gt;
+    bool operator()(const T1&amp; v1, const T1&amp; v2) const {
+        return operator ()(*v1, *v2);
+    }
+
+    bool operator()(const T&amp; v1, const T&amp; v2) const {
+        return std::less&lt;T&gt;()(v1, v2);
+    }
+};
+
+void example1() {
+    std::set&lt;int*, ptr_cmp&lt;int&gt; &gt; s;
+    s.insert(new int(1));
+    s.insert(new int(0));
+    // ...
+    assert(**s.begin() == 0);
+    // ...
+    // Deallocating resources
+    // Any exception in this code will lead to
+    // memory leak
+    std::for_each(s.begin(), s.end(), boost::bind(::operator delete, _1));
+}</pre></div><p>Such an approach is error prone and requires a lot of writing</p></li><li class="listitem" style="list-style-type: disc">Store smart pointers <a id="id209" class="indexterm"/>in <a id="id210" class="indexterm"/>containers:<p>For the C++03 version:</p><div class="informalexample"><pre class="programlisting">    void example2_a() {
+    typedef std::auto_ptr&lt;int&gt; int_aptr_t;
+    std::set&lt;int_aptr_t, ptr_cmp&lt;int&gt; &gt; s;
+    s.insert(int_aptr_t(new int(1)));
+    s.insert(int_aptr_t(new int(0)));
+    // ...
+    assert(**s.begin() == 0);
+    // ...
+    // resources will be deallocated by auto_ptr&lt;&gt;
+}</pre></div><p>The <code class="literal">std::auto_ptr</code> method is deprecated, and it is not recommended to use it in containers. Moreover, this example will not compile with C++11.</p><p>For the C++11 version:</p><div class="informalexample"><pre class="programlisting">void example2_b() {
+    typedef std::unique_ptr&lt;int&gt; int_uptr_t;
+    std::set&lt;int_uptr_t, ptr_cmp&lt;int&gt; &gt; s;
+    s.insert(int_uptr_t(new int(1)));
+    s.insert(int_uptr_t(new int(0)));
+    // ...
+    assert(**s.begin() == 0);
+    // ...
+    // resources will be deallocated by unique_ptr&lt;&gt;
+}</pre></div><p>This solution is a good one, but it cannot be used in C++03, and you still need to write a comparator functional object</p></li><li class="listitem" style="list-style-type: disc">Use <code class="literal">Boost.SmartPtr</code> in the container:<div class="informalexample"><pre class="programlisting">#include &lt;boost/shared_ptr.hpp&gt;
+void example3() {
+    typedef boost::shared_ptr&lt;int&gt; int_sptr_t;
+    std::set&lt;int_sptr_t, ptr_cmp&lt;int&gt; &gt; s;
+    s.insert(int_sptr_t(new int(1)));
+    s.insert(int_sptr_t(new int(0)));
+    // ...
+    assert(**s.begin() == 0);
+    // ...
+    // resources will be deallocated by shared_ptr&lt;&gt;
+}</pre></div><p>This solution is portable, but you still need to write comparators, and it adds performance penalties <a id="id211" class="indexterm"/> (an atomic counter requires additional memory, and its increments/decrements are not as fast as nonatomic operations)</p></li></ul></div><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec134"/>Getting ready</h2></div></div></div><p>Knowledge of STL containers is required <a id="id212" class="indexterm"/>for better understanding of this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec135"/>How to do it...</h2></div></div></div><p>The <code class="literal">Boost.PointerContainer</code> library provides a good and portable solution:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/ptr_container/ptr_set.hpp&gt;
+void correct_impl() {
+    boost::ptr_set&lt;int&gt; s;
+    s.insert(new int(1));
+    s.insert(new int(0));
+    // ...
+    assert(*s.begin() == 0);
+    // ...
+    // resources will be deallocated by container itself
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec136"/>How it works...</h2></div></div></div><p>The <code class="literal">Boost.PointerContainer</code> library has classes <code class="literal">ptr_array</code>, <code class="literal">ptr_vector</code>, <code class="literal">ptr_set</code>, <code class="literal">ptr_multimap</code>, and others. All these containers simplify your life. When dealing with pointers, they will be deallocating pointers in destructors and simplifying access to data pointed by the pointer (no need for additional dereference in <code class="literal">assert(*s.begin() == 0);</code>).</p></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec137"/>There's more...</h2></div></div></div><p>Previous examples were not cloning pointer data, but when we want to clone some data, all we need to do is to just define a freestanding function such as <code class="literal">new_clone()</code> in the namespace of the object to be cloned. <a id="id213" class="indexterm"/>Moreover, you may use the default <code class="literal">T* new_clone( const T&amp; r )</code> implementation <a id="id214" class="indexterm"/>if you include the header file <code class="literal">&lt;boost/ptr_container/clone_allocator.hpp&gt;</code> as shown in the following code:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/ptr_container/clone_allocator.hpp&gt;
+#include &lt;boost/ptr_container/ptr_vector.hpp&gt;
+
+    // Creating vector of 10 elements with values 100
+    boost::ptr_vector&lt;int&gt; v;
+    v.resize(10, new int(100));
+    assert(v.size() == 10);
+    assert(v.back() == 100);</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec138"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation contains detailed reference for each class, and you may read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html">http://www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html</a></li><li class="listitem" style="list-style-type: disc">The first four recipes of this chapter will give you some examples of smart pointers' usage</li></ul></div></div></div>
+<div class="section" title="Doing something at scope exit"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec38"/>Doing something at scope exit</h1></div></div></div><p>If you were dealing with languages such as Java, C#, or Delphi, you were obviously using the <code class="literal">try{} finally{}</code> construction <a id="id215" class="indexterm"/>or <code class="literal">scope(exit)</code> in the D programming language. Let me briefly describe to you what do these language constructions do.</p><p>When a program leaves the current scope via return or exception, code in the <code class="literal">finally</code> or <code class="literal">scope(exit)</code> blocks is executed. This mechanism is perfect for implementing the <span class="strong"><strong>RAII</strong></span> pattern as shown in the following code snippet:</p><div class="informalexample"><pre class="programlisting">// Some pseudo code (suspiciously similar to Java code)
+try {
+    FileWriter f = new FileWriter("example_file.txt");
+    // Some code that may trow or return
+    // …
+} finally {
+    // Whatever happened in scope, this code will be executed
+    // and file will be correctly closed
+    if (f != null) {
+        f.close()
+    }
+}</pre></div><p>Is there a way to do such a thing in C++?</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec139"/>Getting ready</h2></div></div></div><p>Basic C++ knowledge is required for this <a id="id216" class="indexterm"/>recipe. Knowledge of code behavior during thrown exceptions will be useful.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec140"/>How to do it...</h2></div></div></div><p>The <code class="literal">Boost.ScopeExit</code> library was designed to solve such problems:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/scope_exit.hpp&gt;
+#include &lt;cstdlib&gt;
+#include &lt;cstdio&gt;
+#include &lt;cassert&gt;
+int main() {
+    std::FILE* f = std::fopen("example_file.txt", "w");
+    assert(f);
+    BOOST_SCOPE_EXIT(f) {
+      // Whatever happened in scope, this code will be
+      // executed and file will be correctly closed.
+        std::fclose(f);
+    } BOOST_SCOPE_EXIT_END
+    // Some code that may throw or return.
+    // ...
+}</pre></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec141"/>How it works...</h2></div></div></div><p>The variable <code class="literal">f</code> is passed by value via <code class="literal">BOOST_SCOPE_EXIT(f)</code>. When the program leaves the scope of execution, the code between <code class="literal">BOOST_SCOPE_EXIT(f) {</code> and <code class="literal">} BOOST_SCOPE_EXIT_END</code> will be executed. If we wish to pass the value by reference, use the <code class="literal">&amp;</code> symbol in the <code class="literal">BOOST_SCOPE_EXIT</code> macro. If we wish to pass multiple values, just separate them using a comma.</p><div class="note" title="Note" style=""><div class="inner"><h3 class="title"><a id="note07"/>Note</h3><p>Passing references to a pointer does not work well on some compilers. The <code class="literal">BOOST_SCOPE_EXIT(&amp;f)</code> macro cannot be compiled there, which is why we do not capture it by reference in the example.</p></div></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec142"/>There's more...</h2></div></div></div><p>To capture this inside a member function, we <a id="id217" class="indexterm"/>use a special symbol <code class="literal">this_</code>:</p><div class="informalexample"><pre class="programlisting">class theres_more_example {
+public:
+    void close(std::FILE*);
+    void theres_more_example_func() {
+        std::FILE* f = 0;
+        BOOST_SCOPE_EXIT(f, this_) { // Capture object `this_`.
+            this_-&gt;close(f);
+        } BOOST_SCOPE_EXIT_END
+    }
+};</pre></div><p>The <code class="literal">Boost.ScopeExit</code> library allocates no additional memory on heap and does not use virtual functions. Use the default syntax and do not define <code class="literal">BOOST_SCOPE_EXIT_CONFIG_USE_LAMBDAS</code> because otherwise scope exit will be implemented using <code class="literal">boost::function</code>, which may allocate additional memory and imply the optimization barrier.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec143"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The official documentation contains more examples and use cases. You can read about it at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html">http://www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html</a>.</li></ul></div></div></div>
+<div class="section" title="Initializing the base class by a member of the derived class"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec39"/>Initializing the base class by a member of the derived class</h1></div></div></div><p>Let's take a look at the following <a id="id218" class="indexterm"/>example. We have some base class that has virtual functions and must be initialized with reference to the <code class="literal">std::ostream</code> object:</p><div class="informalexample"><pre class="programlisting">#include &lt;boost/noncopyable.hpp&gt;
+#include &lt;sstream&gt;
+
+class tasks_processor: boost::noncopyable {
+    std::ostream&amp; log_;
+
+protected:
+    virtual void do_process() = 0;
+
+public:
+    explicit tasks_processor(std::ostream&amp; log)
+        : log_(log)
+    {}
+
+    void process() {
+        log_ &lt;&lt; "Starting data processing";
+        do_process();
+    }
+};</pre></div><p>We also have a derived class that has a <code class="literal">std::ostream</code> object and implements the <code class="literal">do_process()</code> function:</p><div class="informalexample"><pre class="programlisting">class fake_tasks_processor: public tasks_processor {
+    std::ostringstream logger_;
+
+    virtual void do_process() {
+        logger_ &lt;&lt; "Fake processor processed!";
+    }
+
+public:
+    fake_tasks_processor()
+       : tasks_processor(logger_) // Oops! logger_ does 
+                                  // not exist here
+       , logger_()
+   {}
+};</pre></div><p>This is not a very common case in programming, but when such mistakes happen, it is not always simple to get the idea of bypassing it. Some people try to bypass it by changing the order of <code class="literal">logger_</code> and the base type initialization:</p><div class="informalexample"><pre class="programlisting">    fake_tasks_processor()
+          : logger_() // Oops! logger_ still will be constructed 
+                      // AFTER tasks_processor
+          , tasks_processor(logger_)
+   {}</pre></div><p>It won't work as they expect because direct base classes are initialized before nonstatic data members, regardless of the order of the member initializers.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec144"/>Getting ready</h2></div></div></div><p>Basic knowledge of C++ is required for this recipe.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec145"/>How to do it...</h2></div></div></div><p>The <code class="literal">Boost.Utility</code> library provides a quick solution for such cases; it is called the <code class="literal">boost::base_from_member</code> template. <a id="id219" class="indexterm"/>To use it, you need to carry out the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Include the <code class="literal">base_from_member.hpp</code> header:<div class="informalexample"><pre class="programlisting">#include &lt;boost/utility/base_from_member.hpp&gt;</pre></div></li><li class="listitem">Derive your class from <code class="literal">boost::base_from_member&lt;T&gt;</code> where <code class="literal">T</code> is a type that must be initialized before the base (take care about the order of the base classes; <code class="literal">boost::base_from_member&lt;T&gt;</code> must be placed before the class that uses <code class="literal">T</code>):<div class="informalexample"><pre class="programlisting">class fake_tasks_processor_fixed
+    : boost::base_from_member&lt;std::ostringstream&gt;
+    , public tasks_processor</pre></div></li><li class="listitem">Correctly write the constructor as follows:<div class="informalexample"><pre class="programlisting">{
+    typedef boost::base_from_member&lt;std::ostringstream&gt; 
+      logger_t;
+    // ...
+public:
+    fake_tasks_processor_fixed()
+        : logger_t()
+        , tasks_processor(logger_t::member)
+    {}
+};</pre></div></li></ol></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec146"/>How it works...</h2></div></div></div><p>If direct base classes are initialized before nonstatic data members, and if direct base classes would be initialized in declaration order as they appear in the base-specifier-list, we need to somehow make a base class our nonstatic data member. Or make a base class that has a member field with the required member:</p><div class="informalexample"><pre class="programlisting">template &lt; typename MemberType, int UniqueID = 0 &gt;class base_from_member{protected:    MemberType  member;    // Constructors go there...};</pre></div></div><div class="section" title="There's more..."><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec147"/>There's more...</h2></div></div></div><p>As you may see, <code class="literal">base_from_member</code> has <a id="id220" class="indexterm"/>an integer as a second template argument. This is done for cases when we need multiple <code class="literal">base_from_member</code> classes of the same type:</p><div class="informalexample"><pre class="programlisting">class fake_tasks_processor2
+    : boost::base_from_member&lt;std::ostringstream, 0&gt;
+    , boost::base_from_member&lt;std::ostringstream, 1&gt;
+    , public tasks_processor
+{
+    typedef boost::base_from_member&lt;std::ostringstream, 0&gt; logger0_t;
+    typedef boost::base_from_member&lt;std::ostringstream, 1&gt; logger1_t;
+
+    virtual void do_process() {
+        logger0_t::member &lt;&lt; "0: Fake processor2 processed!";
+        logger1_t::member &lt;&lt; "1: Fake processor2 processed!";
+    }
+public:
+    fake_tasks_processor2()
+        : logger0_t()
+        , logger1_t()
+        , tasks_processor(logger0_t::member)
+    {}
+};</pre></div><p>The <code class="literal">boost::base_from_member</code> class neither applies additional dynamic memory allocations nor has virtual functions. The current implementation does not support C++11 features (such as perfect forwarding and variadic templates), but in Boost's trunk branch, there is an implementation that can use all the benefits of C++11. It possibly will be merged to release a branch in the nearest future.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec148"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">The <code class="literal">Boost.Utility</code> library contains many helpful classes and methods; documentation for getting more information about it is at <a class="ulink" href="http://www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm">http://www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm</a></li><li class="listitem" style="list-style-type: disc">The <span class="emphasis"><em>Making a noncopyable class</em></span> recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, contains more examples of classes from <code class="literal">Boost.Utility</code></li><li class="listitem" style="list-style-type: disc">Also, the <span class="emphasis"><em>Using the C++11 move emulation</em></span> <a id="id221" class="indexterm"/>recipe in <a class="link" href="ch01.html" title="Chapter 1. Starting to Write Your Application">Chapter 1</a>, <span class="emphasis"><em>Starting to Write Your Application</em></span>, contains more examples of classes from <code class="literal">Boost.Utility</code></li></ul></div></div></div></body></html>
