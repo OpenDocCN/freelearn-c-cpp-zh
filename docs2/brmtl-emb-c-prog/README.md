@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# C 裸金属嵌入式编程指南
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/9304e1d162a4c484f7b77bfcc5f4f847`](https://zh.annas-archive.org/md5/9304e1d162a4c484f7b77bfcc5f4f847)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

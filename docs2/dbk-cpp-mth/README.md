@@ -1,4 +1,4 @@
-# GPT3 探索指南
+# 揭穿 C++ 的迷思
 
 > 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
 > 
