@@ -1,0 +1,826 @@
+<html><head></head><body>
+		<div id="_idContainer129">
+			<h1 class="chapterNumber">Chapter <a id="_idTextAnchor407"/>16</h1>
+			<h1 id="_idParaDest-214" class="chapterTitle" lang="en-GB" xml:lang="en-GB">Thread Synchronization<a id="_idTextAnchor408"/></h1>
+			<p class="normal">In the previous chapter, we explained how to create and manage a POSIX thread. We also demonstrated two of the most common concurrency issues: race conditions and data races.</p>
+			<p class="normal">In this chapter, we are going to complete our discussion about multithreaded programming using the POSIX threading library and give you the required skills to control a number of threads.</p>
+			<p class="normal">If you remember from <em class="italics">Chapter 14</em>, <em class="italics">Synchronization</em>, we showed that concurrency-related problems are not actually issues; rather, they are consequences of the fundamental properties of a concurrent system. Therefore, you are likely to encounter them in any concurrent system.</p>
+			<p class="normal">We showed in the previous chapter that we could indeed produce such issues with the POSIX threading library as well. <em class="italics">Examples 15.2</em> and <em class="italics">15.3</em> from the previous chapter demonstrated the race condition and data race issues. Therefore, they will be our starting point to use the synchronization mechanisms provided by the pthread library in order to synchronize a number of threads.</p>
+			<p class="normal">In this chapter, we will cover the following topics:</p>
+			<ul>
+				<li class="list">Using POSIX mutexes to protect critical sections accessing a shared resource.</li>
+				<li class="list">Using POSIX condition variables to wait for a specific condition.</li>
+				<li class="list">Using various types of locks together with mutexes and condition variables.</li>
+				<li class="list">Using POSIX barriers and the way they can help synchronize a number of threads.</li>
+				<li class="list">The concept of the semaphore and its counterpart object in the pthread library: the POSIX semaphore. You are going to find out that mutexes are just binary semaphores.</li>
+				<li class="list">The memory structure of a thread and how this structure can affect memory visibility in a multi-core system.</li>
+			</ul>
+			<p class="normal"><a id="_idTextAnchor409"/>We start this chapter with a general talk about concurrency control. The following sections give you the necessary tools and constructs to write well-behaved multithreaded programs.</p>
+			<h2 id="_idParaDest-215" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor410"/>POSIX concurrency control</h2>
+			<p class="normal">In this section, we are going to<a id="_idIndexMarker1104"/> have a look at possible control mechanisms that are offered by the pthread library. Semaphores, mutexes, and condition variables alongside different types of locks are used in various combinations to bring determinism to multithreaded programs. First, we start with POSIX mutexes<a id="_idTextAnchor411"/>.</p>
+			<h3 id="_idParaDest-216" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor412"/>POSIX mutexes</h3>
+			<p class="normal">The mutexes introduced<a id="_idIndexMarker1105"/> in the pthread library can be used to synchronize both processes and threads. In this section, we are going to use them in a multithreaded C program in order to synchronize a number of threads.</p>
+			<p class="normal">As a reminder, a mutex is a semaphore that only allows one thread at a time to enter the critical section. Generally, a semaphore has the potential to let more than one thread enter its critical section.</p>
+			<div>
+				<div id="_idContainer126" class="note">
+					<p class="Information-Box--PACKT-"><strong class="screen-text">Note</strong>:</p>
+					<p class="Information-Box--PACKT-">Mutexes are also<a id="_idIndexMarker1106"/> called <em class="italics">binary semaphores</em> because they are semaphores that accept only two states.</p>
+				</div>
+			</div>
+			<p class="normal">We start this section by resolving the data race issue observed as part of <em class="italics">example 15.3</em> in the previous chapter, using a POSIX mutex. The mutex only allows one thread at a time to enter the critical section and performs read and write operations on the shared variable. This way, it guarantees the data integrity of the shared variable. The following code box contains the solution to the data race issue:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">// The POSIX standard header for using pthread library</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">// The mutex object used to synchronize the access to</p>
+			<p class="snippet code">// the shared state.</p>
+			<p class="snippet code">pthread_mutex_t mtx;</p>
+			<p class="snippet code">void* thread_body_1(void* arg) {</p>
+			<p class="snippet code">  // Obtain a pointer to the shared variable</p>
+			<p class="snippet code">  int* shared_var_ptr = (int*)arg;</p>
+			<p class="snippet code">  // Critical section</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;mtx);</p>
+			<p class="snippet code">  (*shared_var_ptr)++;</p>
+			<p class="snippet code">  printf("%d\n", *shared_var_ptr);</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;mtx);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_2(void* arg) {</p>
+			<p class="snippet code">  int* shared_var_ptr = (int*)arg;</p>
+			<p class="snippet code">  // Critical section</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;mtx);</p>
+			<p class="snippet code">  *shared_var_ptr += 2;</p>
+			<p class="snippet code">  printf("%d\n", *shared_var_ptr);</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;mtx);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // The shared variable</p>
+			<p class="snippet code">  int shared_var = 0;</p>
+			<p class="snippet code">  // The thread handlers</p>
+			<p class="snippet code">  pthread_t thread1;</p>
+			<p class="snippet code">  pthread_t thread2;</p>
+			<p class="snippet code">  // Initialize the mutex and its underlying resources</p>
+			<p class="snippet code">  pthread_mutex_init(&amp;mtx, NULL);</p>
+			<p class="snippet code">  // Create new threads</p>
+			<p class="snippet code">  int result1 = pthread_create(&amp;thread1, NULL,</p>
+			<p class="snippet code">          thread_body_1, &amp;shared_var);</p>
+			<p class="snippet code">  int result2 = pthread_create(&amp;thread2, NULL,</p>
+			<p class="snippet code">          thread_body_2, &amp;shared_var);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be created.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Wait for the threads to finish</p>
+			<p class="snippet code">  result1 = pthread_join(thread1, NULL);</p>
+			<p class="snippet code">  result2 = pthread_join(thread2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be joined.\n");</p>
+			<p class="snippet code">    exit(2);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  pthread_mutex_destroy(&amp;mtx);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref"> Code Box 16-1 [ExtremeC_examples_chapter15_3_mutex.c]: Using a POSIX mutex to resolve the data race issue found as part of example 15.3 in the previous chapter</p>
+			<p class="normal">If you compile the preceding code and run it as many times as you like, you will see only <code class="Code-In-Text--PACKT-">1 3</code> or <code class="Code-In-Text--PACKT-">2 3</code> in the output. That's because we are using a POSIX mutex object to synchronize the critical sections in the preceding code.</p>
+			<p class="normal">At the beginning of the<a id="_idIndexMarker1107"/> file, we have declared a global POSIX mutex object as <code class="Code-In-Text--PACKT-">mtx</code>. Then inside the <code class="Code-In-Text--PACKT-">main</code> function, we have initialized the mutex with default attributes using the function <code class="Code-In-Text--PACKT-">pthread_mutex_init</code>. The second argument, which is <code class="Code-In-Text--PACKT-">NULL</code>, could be custom attributes specified by the programmer. We will go through an example of how to set these attributes in the upcoming sections.</p>
+			<p class="normal">The mutex is used in both threads to protect the critical sections embraced between the the <code class="Code-In-Text--PACKT-">pthread_mutex_lock(&amp;mtx)</code> and <code class="Code-In-Text--PACKT-">pthread_mutex_unlock(&amp;mtx)</code> statements.</p>
+			<p class="normal">Finally, before leaving the <code class="Code-In-Text--PACKT-">main</code> function, we destroy the mutex object.</p>
+			<p class="normal">The first pair of <code class="Code-In-Text--PACKT-">pthread_mutex_lock(&amp;mtx)</code> and <code class="Code-In-Text--PACKT-">pthread_mutex_unlock(&amp;mtx)</code> statements, in the companion function <code class="Code-In-Text--PACKT-">thread_body_1</code>, is making up the critical section for the first thread. Also, the second pair in the companion function <code class="Code-In-Text--PACKT-">thread_body_2</code> is making up the critical section for the second thread. Both critical sections are protected by the mutex, and at each time, only one of the threads can be in its critical section and the other thread should wait outside of its critical section until the busy thread leaves.</p>
+			<p class="normal">As soon as a thread<a id="_idIndexMarker1108"/> enters the critical section, it locks the mutex, and the other thread should wait behind the <code class="Code-In-Text--PACKT-">pthread_mutex_lock(&amp;mtx)</code> statement to have the mutex unlocked again.</p>
+			<p class="normal">By default, a thread<a id="_idIndexMarker1109"/> waiting for a mutex to become unlocked goes into sleeping mode and doesn't do a <em class="italics">busy-wait</em>. But what if we wanted to do <em class="italics">busy-waiting</em> instead of going to sleep? Then we<a id="_idIndexMarker1110"/> could use a <em class="italics">spinlock</em>. It would be enough to <a id="_idIndexMarker1111"/>use the following functions instead of all the preceding mutex-related functions. Thankfully, pthread uses a consistent convention in naming the functions.</p>
+			<p class="normal">The spinlock-related types and functions<a id="_idIndexMarker1112"/> are as follows.</p>
+			<ul>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_t</code>: The type used for creating a spinlock object. It is similar to the <code class="Code-In-Text--PACKT-">pthread_mutex_t</code> type.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_init</code>: Initializes a spinlock object. It is similar to <code class="Code-In-Text--PACKT-">pthread_mutex_init</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_destroy</code>: Similar to <code class="Code-In-Text--PACKT-">pthread_mutex_destory</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_lock</code>: Similar to <code class="Code-In-Text--PACKT-">pthread_mutex_lock</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_unlock</code>: Similar to <code class="Code-In-Text--PACKT-">pthread_mutex_unlock</code>.</li>
+			</ul>
+			<p class="normal">As you see, it's pretty easy to just replace the preceding mutex types and functions with spinlock types and functions to have a different behavior, busy-waiting in this case, while waiting for a mutex object to become r<a id="_idTextAnchor413"/>eleased.</p>
+			<p class="normal">In this section, we introduced POSIX mutexes and how they can be used to resolve a data race issue. In the next section, we will demonstrate how to use a condition variable in order to wait for a certain event to occur. We will be addressing the race condition that occurred in <em class="italics">example 15.2</em>, but we will make some modifications to the original example.</p>
+			<h3 id="_idParaDest-217" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor414"/>POSIX condition variables</h3>
+			<p class="normal">If you remember from <em class="italics">example 15.2</em> in the previous<a id="_idIndexMarker1113"/> chapter, we faced a race condition. Now, we want to bring up a new example that is very similar to <em class="italics">example 15.2</em>, but one where it would be simpler to use a condition variable. <em class="italics">Example 16.1</em> has two threads instead of three (which was the case for <em class="italics">example 15.2</em>), and they are required to print the characters <code class="Code-In-Text--PACKT-">A</code> and <code class="Code-In-Text--PACKT-">B</code> to the output, but we want them to be always in a specific order; first <code class="Code-In-Text--PACKT-">A</code> and then <code class="Code-In-Text--PACKT-">B</code>.</p>
+			<p class="normal">Our invariant constraint for this example is to <em class="italics">see first A and then B in the output</em> (plus data integrity for all<a id="_idIndexMarker1114"/> shared states, no bad memory access, no dangling pointer, no crashes, and other obvious constraints). The following code demonstrates how we use a condition variable to come up with a working solution written in C for this example:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">// The POSIX standard header for using pthread library</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">#define TRUE  1</p>
+			<p class="snippet code">#define FALSE 0</p>
+			<p class="snippet code">typedef unsigned int bool_t;</p>
+			<p class="snippet code">// A structure for keeping all the variables related</p>
+			<p class="snippet code">// to a shared state</p>
+			<p class="snippet code">typedef struct {</p>
+			<p class="snippet code">  // The flag which indicates whether 'A' has been printed or not</p>
+			<p class="snippet code">  bool_t          done;</p>
+			<p class="snippet code">  // The mutex object protecting the critical sections</p>
+			<p class="snippet code">  pthread_mutex_t mtx;</p>
+			<p class="snippet code">  // The condition variable used to synchronize two threads</p>
+			<p class="snippet code">  pthread_cond_t  cv;</p>
+			<p class="snippet code">} shared_state_t;</p>
+			<p class="snippet code">// Initializes the members of a shared_state_t object</p>
+			<p class="snippet code">void shared_state_init(shared_state_t *shared_state) {</p>
+			<p class="snippet code">  shared_state-&gt;done = FALSE;</p>
+			<p class="snippet code">  pthread_mutex_init(&amp;shared_state-&gt;mtx, NULL);</p>
+			<p class="snippet code">  pthread_cond_init(&amp;shared_state-&gt;cv, NULL);</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">// Destroy the members of a shared_state_t object</p>
+			<p class="snippet code">void shared_state_destroy(shared_state_t *shared_state) {</p>
+			<p class="snippet code">  pthread_mutex_destroy(&amp;shared_state-&gt;mtx);</p>
+			<p class="snippet code">  pthread_cond_destroy(&amp;shared_state-&gt;cv);</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_1(void* arg) {</p>
+			<p class="snippet code">  shared_state_t* ss = (shared_state_t*)arg;</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;ss-&gt;mtx);</p>
+			<p class="snippet code">  printf("A\n");</p>
+			<p class="snippet code">  ss-&gt;done = TRUE;</p>
+			<p class="snippet code">  // Signal the threads waiting on the condition variable</p>
+			<p class="snippet code">  pthread_cond_signal(&amp;ss-&gt;cv);</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;ss-&gt;mtx);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_2(void* arg) {</p>
+			<p class="snippet code">  shared_state_t* ss = (shared_state_t*)arg;</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;ss-&gt;mtx);</p>
+			<p class="snippet code">  // Wait until the flag becomes TRUE</p>
+			<p class="snippet code">  while (!ss-&gt;done) {</p>
+			<p class="snippet code">    // Wait on the condition variable</p>
+			<p class="snippet code">    pthread_cond_wait(&amp;ss-&gt;cv, &amp;ss-&gt;mtx);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  printf("B\n");</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;ss-&gt;mtx);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // The shared state</p>
+			<p class="snippet code">  shared_state_t shared_state;</p>
+			<p class="snippet code">  // Initialize the shared state</p>
+			<p class="snippet code">  shared_state_init(&amp;shared_state);</p>
+			<p class="snippet code">  // The thread handlers</p>
+			<p class="snippet code">  pthread_t thread1;</p>
+			<p class="snippet code">  pthread_t thread2;</p>
+			<p class="snippet code">  // Create new threads</p>
+			<p class="snippet code">  int result1 =</p>
+			<p class="snippet code">    pthread_create(&amp;thread1, NULL, thread_body_1, &amp;shared_state);</p>
+			<p class="snippet code">  int result2 =</p>
+			<p class="snippet code">    pthread_create(&amp;thread2, NULL, thread_body_2, &amp;shared_state);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be created.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Wait for the threads to finish</p>
+			<p class="snippet code">  result1 = pthread_join(thread1, NULL);</p>
+			<p class="snippet code">  result2 = pthread_join(thread2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be joined.\n");</p>
+			<p class="snippet code">    exit(2);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Destroy the shared state and release the mutex</p>
+			<p class="snippet code">  // and condition variable objects</p>
+			<p class="snippet code">  shared_state_destroy(&amp;shared_state);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-2 [ExtremeC_examples_chapter16_1_cv.c]: Using a POSIX condition variable to dictate a specific order between two threads</p>
+			<p class="normal">In the preceding code, it's good to use a structure in order to encapsulate the shared mutex, the shared condition <a id="_idIndexMarker1115"/>variable, and the shared flag into a single entity. Note that we are only able to pass a single pointer to each thread. Therefore, we had to stack up the needed shared variables into a single structure variable.</p>
+			<p class="normal">As the second type definition (after <code class="Code-In-Text--PACKT-">bool_t</code>) in the example, we have defined a new type, <code class="Code-In-Text--PACKT-">shared_state_t</code>, as follows:</p>
+			<p class="snippet code">typedef struct {</p>
+			<p class="snippet code">  bool_t          done;</p>
+			<p class="snippet code">  pthread_mutex_t mtx;</p>
+			<p class="snippet code">  pthread_cond_t  cv;</p>
+			<p class="snippet code">} shared_state_t;</p>
+			<p class="packt_figref">Code Box 16-3: Putting all shared variables required for example 16.1 into one structure</p>
+			<p class="normal">After the type definitions, we defined two functions in order to initialize and destroy the <code class="Code-In-Text--PACKT-">shared_state_t</code> instances. They can be thought of as the <em class="italics">constructor</em> and <em class="italics">destructor</em> functions for the type <code class="Code-In-Text--PACKT-">shared_state_t</code> respectively. To read more about constructor and destructor functions, please refer to <em class="italics">Chapter 6</em>, <em class="italics">OOP and Encapsulation</em>.</p>
+			<p class="normal">This is how we use a<a id="_idIndexMarker1116"/> condition variable. A thread can <em class="italics">wait</em> (or <em class="italics">sleep</em>) on a condition variable, and then in the future, it becomes notified to wake up. More than that, a thread can <em class="italics">notify</em> (or <em class="italics">wake up</em>) all other threads waiting (or sleeping) on a condition variable. All these operations <em class="italics">must</em> be protected by a mutex, and that's why you should always use a condition variable together with a mutex.</p>
+			<p class="normal">We did the very same in the preceding code. In our shared state object, we have a condition variable, together with a companion mutex that is supposed to protect the condition variable. To emphasize again, a condition variable is supposed to be used only in critical sections protected by its companion mutex.</p>
+			<p class="normal">So, what happens in the preceding code? In the thread that is supposed to print <code class="Code-In-Text--PACKT-">A</code>, it tries to lock the <code class="Code-In-Text--PACKT-">mtx</code> mutex using a pointer to the shared state object. When the lock is acquired, the thread prints <code class="Code-In-Text--PACKT-">A</code>, it sets the flag <code class="Code-In-Text--PACKT-">done</code>, and it finally notifies the other thread, which could be waiting on the condition variable <code class="Code-In-Text--PACKT-">cv</code>, by calling the <code class="Code-In-Text--PACKT-">pthread_cond_signal</code> function.</p>
+			<p class="normal">On the other hand, if in the meantime the second thread becomes active and the first thread has not printed <code class="Code-In-Text--PACKT-">A</code> yet, the second thread tries to acquire the lock over <code class="Code-In-Text--PACKT-">mtx</code>. If it succeeds, it checks the flag <code class="Code-In-Text--PACKT-">done</code>, and if it's false, it simply means that the first thread has not entered its critical section yet (otherwise the flag should have been true). Therefore, the second thread waits on the condition variable and immediately releases the CPU by calling the <code class="Code-In-Text--PACKT-">pthread_cond_wait</code> function.</p>
+			<p class="normal">It is very important to note that upon waiting on a condition variable, the associated mutex becomes released and the other thread can continue. Also, upon becoming active and exiting the waiting state, the associated mutex should be acquired again. For some good practice in condition variables, you could go through other possible interleavings.</p>
+			<div>
+				<div id="_idContainer127" class="note">
+					<p class="Information-Box--PACKT-"><strong class="screen-text">Note</strong>:</p>
+					<p class="Information-Box--PACKT-">The function <code class="Code-In-Text--PACKT-">pthread_cond_signal</code> can<a id="_idIndexMarker1117"/> only be used to notify just one single thread. If you're going to notify all the threads waiting for a condition variable, you have to use the <code class="Code-In-Text--PACKT-">pthread_cond_broadcast</code> function. We are going to give an example of this shortly.</p>
+				</div>
+			</div>
+			<p class="normal">But why did we use a <code class="Code-In-Text--PACKT-">while</code> loop for checking the flag <code class="Code-In-Text--PACKT-">done</code> when it could be a simple <code class="Code-In-Text--PACKT-">if</code> statement? That's because the second thread can be notified by other sources rather than just the first thread. In those cases, if the thread could obtain the lock over its mutex upon exiting the wait and become active again, it could check the loop's condition, and if it is not met yet, it should wait again. It is an accepted technique to wait for a condition variable inside a loop, until its condition matches what we are waiting for.</p>
+			<p class="normal">The preceding solution satisfies the memory visibility constraint too. As we've explained in the previous chapters, all locking and unlocking operations are liable to trigger a memory coherence<a id="_idIndexMarker1118"/> among various CPU cores; therefore, the values seen in different cached versions of the flag <code class="Code-In-Text--PACKT-">done</code> are always recent and equal.</p>
+			<p class="normal">The race condition issue observed in examples 15.2 and 16.1 (in case of having no control mechanism in place), could also be resolved using POSIX barriers. In the next section, we are going to talk about them and rewrite <em class="italics">example 16.1</em> using a different approach.</p>
+			<h3 id="_idParaDest-218" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor415"/>POSIX barriers</h3>
+			<p class="normal">POSIX barriers use a different <a id="_idIndexMarker1119"/>approach for synchronizing a number of threads. Just like a group of people who are planning to do some tasks in parallel and at some points need to rendezvous, reorganize, and continue, the same thing can happen for threads (or even processes). Some threads do their tasks faster, and others are slower. But there can be a checkpoint (or rendezvous point) at which all threads must stop and wait for the others to join them. These checkpoints can be simulated by using <em class="italics">POSIX barriers</em>.</p>
+			<p class="normal">The following code uses barriers to propose a solution to the issues seen in <em class="italics">example 16.1</em>. As a reminder, in <em class="italics">example 16.1</em>, we had two threads. One of them was to <code class="Code-In-Text--PACKT-">print A</code>, and the other thread was to <code class="Code-In-Text--PACKT-">print B</code>, and we wanted to always see <code class="Code-In-Text--PACKT-">A</code> first and <code class="Code-In-Text--PACKT-">B</code> second in the output, regardless of various interleavings:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">// The barrier object</p>
+			<p class="snippet code">pthread_barrier_t barrier;</p>
+			<p class="snippet code">void* thread_body_1(void* arg) {</p>
+			<p class="snippet code">  printf("A\n");</p>
+			<p class="snippet code">  // Wait for the other thread to join</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;barrier);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_2(void* arg) {</p>
+			<p class="snippet code">  // Wait for the other thread to join</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;barrier);</p>
+			<p class="snippet code">  printf("B\n");</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // Initialize the barrier object</p>
+			<p class="snippet code">  pthread_barrier_init(&amp;barrier, NULL, 2);</p>
+			<p class="snippet code">  // The thread handlers</p>
+			<p class="snippet code">  pthread_t thread1;</p>
+			<p class="snippet code">  pthread_t thread2;</p>
+			<p class="snippet code">  // Create new threads</p>
+			<p class="snippet code">  int result1 = pthread_create(&amp;thread1, NULL,</p>
+			<p class="snippet code">          thread_body_1, NULL);</p>
+			<p class="snippet code">  int result2 = pthread_create(&amp;thread2, NULL,</p>
+			<p class="snippet code">          thread_body_2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be created.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Wait for the threads to finish</p>
+			<p class="snippet code">  result1 = pthread_join(thread1, NULL);</p>
+			<p class="snippet code">  result2 = pthread_join(thread2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be joined.\n");</p>
+			<p class="snippet code">    exit(2);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Destroy the barrier object</p>
+			<p class="snippet code">  pthread_barrier_destroy(&amp;barrier);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-4 [ExtremeC_examples_chapter16_1_barrier.c]: A solution for example 16.1 using POSIX barriers</p>
+			<p class="normal">As you can see, the preceding code is much smaller than the code we wrote using condition variables. Using POSIX barriers, it would be very easy to synchronize some threads at some certain points during their execution.</p>
+			<p class="normal">First, we have declared<a id="_idIndexMarker1120"/> a global barrier object of type <code class="Code-In-Text--PACKT-">pthread_barrier_t</code>. Then, inside the <code class="Code-In-Text--PACKT-">main</code> function, we have initialized the barrier object using the <a id="_idIndexMarker1121"/>function <code class="Code-In-Text--PACKT-">pthread_barrier_init</code>.</p>
+			<p class="normal">The first argument is a pointer to the barrier object. The second argument is the custom attributes of the barrier object. Since we are passing <code class="Code-In-Text--PACKT-">NULL</code>, it means that the barrier object will be initialized using the default values for its attributes. The third argument is important; it is the number of threads that should become waiting on the same barrier object by calling the function <code class="Code-In-Text--PACKT-">pthread_barrier_wait</code> and only after that are all of them released and allowed to continue.</p>
+			<p class="normal">For the preceding example, we set it to 2. Therefore, only when there are two threads waiting on the barrier object, both of them are unblocked and they can continue. The rest of the code is pretty similar to previous examples, and has been explained in the previous section.</p>
+			<p class="normal">A barrier object can be implemented using a mutex and a condition variable similar to what we did in the previous section. In fact, a POSIX-compliant operating system doesn't provide such a thing as a barrier in its system call interface, and most implementations are made using a mutex and a condition variable.</p>
+			<p class="normal">That's basically why some operating systems like macOS does not provide implementations for POSIX barriers. The preceding code cannot be compiled in a macOS machine since the POSIX barrier functions are not defined. The preceding code is tested both in Linux and FreeBSD and works on both of them. Therefore, be careful about using barriers, because using them makes your code less portable.</p>
+			<div>
+				<div id="_idContainer128" class="note">
+					<p class="Information-Box--PACKT-">The fact that macOS doesn't provide POSIX barrier functions simply means that it is partially POSIX-compliant and the programs using barriers (which is standard of course) cannot be compiled on macOS machines. This is against the C philosophy, which is <em class="italics">to write once, and compile anywhere</em>.</p>
+				</div>
+			</div>
+			<p class="normal">As the final note in this section, POSIX barriers guarantee memory visibility. Similarly to lock and unlock operations, waiting on barriers ensures that all the cached versions of the same variable are synchronized throughout various threads while they are going to leave the barrier point.</p>
+			<p class="normal">In the next section, we<a id="_idIndexMarker1122"/> will be giving an example of semaphores. They are not used often in concurrent development, but they have their own special usages. </p>
+			<p class="normal">A specific type of semaphore, binary semaphores (interchangeably referred to as mutexes), is used often and you have seen a number of examples relating to that in the<a id="_idTextAnchor416"/> previous sections.</p>
+			<h3 id="_idParaDest-219" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor417"/>POSIX semaphores</h3>
+			<p class="normal">In most cases, mutexes (or <em class="italics">binary semaphores</em>) are<a id="_idIndexMarker1123"/> enough to synchronize a number of threads accessing a shared resource. That's because, in order to<a id="_idIndexMarker1124"/> make read and write operations sequentially, only <a id="_idIndexMarker1125"/>one thread should be able to enter the critical section at a time. It's known as <em class="italics">mutual exclusion</em>, hence, "mutex."</p>
+			<p class="normal">In some scenarios however, you might want to have more than one thread to enter the critical<a id="_idIndexMarker1126"/> section and operate on the shared resource. This is the scenario in which you should use <em class="italics">general semaphores</em>.</p>
+			<p class="normal">Before we go into an example regarding general semaphores, let's bring up an example regarding a binary semaphore (or a mutex). We won't be using the <code class="Code-In-Text--PACKT-">pthread_mutex_*</code> functions in this example; instead, we will be using <code class="Code-In-Text--PACKT-">sem_*</code> functions which are supposed to expose semaphore-related functionalities.</p>
+			<h4 class="title" lang="en-GB" xml:lang="en-GB">Binary semaphores</h4>
+			<p class="normal">The following code is the <a id="_idIndexMarker1127"/>solution made using<a id="_idIndexMarker1128"/> semaphores for <em class="italics">example 15.3</em>. As a reminder, it involved two threads; each of them incrementing a shared integer by a different value. We wanted to protect the data integrity of the shared variable. Note that we won't be using POSIX mutexes in the following code:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">// The POSIX standard header for using pthread library</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">// The semaphores are not exposed through pthread.h</p>
+			<p class="snippet code">#include &lt;semaphore.h&gt;</p>
+			<p class="snippet code">// The main pointer addressing a semaphore object used</p>
+			<p class="snippet code">// to synchronize the access to the shared state.</p>
+			<p class="snippet code">sem_t *semaphore;</p>
+			<p class="snippet code">void* thread_body_1(void* arg) {</p>
+			<p class="snippet code">  // Obtain a pointer to the shared variable</p>
+			<p class="snippet code">  int* shared_var_ptr = (int*)arg;</p>
+			<p class="snippet code">  // Waiting for the semaphore</p>
+			<p class="snippet code">  sem_wait(semaphore);</p>
+			<p class="snippet code">  // Increment the shared variable by 1 by writing directly</p>
+			<p class="snippet code">  // to its memory address</p>
+			<p class="snippet code">  (*shared_var_ptr)++;</p>
+			<p class="snippet code">  printf("%d\n", *shared_var_ptr);</p>
+			<p class="snippet code">  // Release the semaphore</p>
+			<p class="snippet code">  sem_post(semaphore);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_2(void* arg) {</p>
+			<p class="snippet code">  // Obtain a pointer to the shared variable</p>
+			<p class="snippet code">  int* shared_var_ptr = (int*)arg;</p>
+			<p class="snippet code">  // Waiting for the semaphore</p>
+			<p class="snippet code">  sem_wait(semaphore);</p>
+			<p class="snippet code">  // Increment the shared variable by 1 by writing directly</p>
+			<p class="snippet code">  // to its memory address</p>
+			<p class="snippet code">  (*shared_var_ptr) += 2;</p>
+			<p class="snippet code">  printf("%d\n", *shared_var_ptr);</p>
+			<p class="snippet code">  // Release the semaphore</p>
+			<p class="snippet code">  sem_post(semaphore);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // The shared variable</p>
+			<p class="snippet code">  int shared_var = 0;</p>
+			<p class="snippet code">  // The thread handlers</p>
+			<p class="snippet code">  pthread_t thread1;</p>
+			<p class="snippet code">  pthread_t thread2;</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  // Unnamed semaphores are not supported in OS/X. Therefore</p>
+			<p class="snippet code">  // we need to initialize the semaphore like a named one using</p>
+			<p class="snippet code">  // sem_open function.</p>
+			<p class="snippet code">  semaphore = sem_open("sem0", O_CREAT | O_EXCL, 0644, 1);</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  sem_t local_semaphore;</p>
+			<p class="snippet code">  semaphore = &amp;local_semaphore;</p>
+			<p class="snippet code">  // Initiliaze the semaphore as a mutex (binary semaphore)</p>
+			<p class="snippet code">  sem_init(semaphore, 0, 1);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  // Create new threads</p>
+			<p class="snippet code">  int result1 = pthread_create(&amp;thread1, NULL,</p>
+			<p class="snippet code">          thread_body_1, &amp;shared_var);</p>
+			<p class="snippet code">  int result2 = pthread_create(&amp;thread2, NULL,</p>
+			<p class="snippet code">          thread_body_2, &amp;shared_var);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be created.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Wait for the threads to finish</p>
+			<p class="snippet code">  result1 = pthread_join(thread1, NULL);</p>
+			<p class="snippet code">  result2 = pthread_join(thread2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be joined.\n");</p>
+			<p class="snippet code">    exit(2);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  sem_close(semaphore);</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  sem_destroy(semaphore);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-5 [ExtremeC_examples_chapter15_3_sem.c]: A solution for example 15.3 using POSIX semaphores</p>
+			<p class="normal">The first thing you might notice in the preceding code is the different semaphore functions that we've used in Apple <a id="_idIndexMarker1129"/>systems. In Apple operating <a id="_idIndexMarker1130"/>systems (macOS, OS X, and iOS), <em class="italics">unnamed semaphores</em> are not supported. Therefore, we couldn't just use <code class="Code-In-Text--PACKT-">sem_init</code> and <code class="Code-In-Text--PACKT-">sem_destroy</code> functions. Unnamed semaphores don't have names (surprisingly enough) and they can only be used inside a process, by a number of threads. Named semaphores, on the other hand, are system-wide and can be seen and used by various processes in the system.</p>
+			<p class="normal">In Apple systems, the functions required for creating unnamed semaphores are marked as deprecated, and the semaphore object won't get initialized by <code class="Code-In-Text--PACKT-">sem_init</code>. So, we had to use <code class="Code-In-Text--PACKT-">sem_open</code> and <code class="Code-In-Text--PACKT-">sem_close</code> functions in order to define named semaphores instead.</p>
+			<p class="normal">Named semaphores are used to synchronize processes, and we will explain them in <em class="italics">Chapter 18</em>, <em class="italics">Process Synchronization</em>. In other POSIX-compliant operating systems, Linux specifically, we still can use unnamed semaphores and have them initialized and destroyed by using the <code class="Code-In-Text--PACKT-">sem_init</code> and <code class="Code-In-Text--PACKT-">sem_destroy</code> functions respectively.</p>
+			<p class="normal">In the preceding code, we have included an extra header file, <code class="Code-In-Text--PACKT-">semaphore.h</code>. As we've explained before, semaphores have been added as an extension to the POSIX threading library, and therefore, they are not exposed as part of the <code class="Code-In-Text--PACKT-">pthread.h</code> header file.</p>
+			<p class="normal">After the header inclusion statements, we have declared a global pointer to a semaphore object. This pointer is going to point to a proper address addressing the actual semaphore object. We have to use a pointer here because, in Apple systems, we have to use the <code class="Code-In-Text--PACKT-">sem_open</code> function, which returns a pointer.</p>
+			<p class="normal">Then, inside the <code class="Code-In-Text--PACKT-">main</code> function, and in Apple systems, we create a named semaphore <code class="Code-In-Text--PACKT-">sem0</code>. In other POSIX-compliant operating systems, we initialize the semaphore using <code class="Code-In-Text--PACKT-">sem_init</code>. Note that in this case the pointer <code class="Code-In-Text--PACKT-">semaphore</code> points to the variable <code class="Code-In-Text--PACKT-">local_sempahore</code> allocated on top of the main thread's Stack. The pointer <code class="Code-In-Text--PACKT-">semaphore</code> won't become a dangling pointer because the main thread doesn't exit and waits for the threads to get complete by joining them.</p>
+			<p class="normal">Note that we could distinguish between Apple and not - Apple systems by using the macro <code class="Code-In-Text--PACKT-">__APPLE__</code>. This is a macro that is defined by default in C preprocessors being used in Apple systems. Therefore, we can rule out the code that is not supposed to be compiled on Apple systems by using this macro.</p>
+			<p class="normal">Let's look inside the threads. In companion functions, the critical sections are protected by <code class="Code-In-Text--PACKT-">sem_wait</code> and <code class="Code-In-Text--PACKT-">sem_post</code> functions which correspond to <code class="Code-In-Text--PACKT-">pthread_mutex_lock</code> and <code class="Code-In-Text--PACKT-">pthread_mutex_unlock</code> functions in the POSIX mutex API respectively. Note that <code class="Code-In-Text--PACKT-">sem_wait</code> may allow more than one thread to enter the critical section.</p>
+			<p class="normal">The maximum number of threads that are allowed to be in the critical section is determined when initializing the semaphore object. We have passed the value <code class="Code-In-Text--PACKT-">1</code> for the maximum number of threads as the last argument to the <code class="Code-In-Text--PACKT-">sem_open</code> and <code class="Code-In-Text--PACKT-">sem_init</code> functions; therefore, the semaphore is supposed to behave like a mutex.</p>
+			<p class="normal">To get a better understanding of semaphores, let's dive a bit more into the details. Each semaphore object has an integer value. Whenever a thread waits for a semaphore by calling the <code class="Code-In-Text--PACKT-">sem_wait</code> function, if the semaphore's value is greater than zero, then the value is decreased by 1<a id="_idIndexMarker1131"/> and the thread is allowed to enter the critical section. If the semaphore's value is 0, the thread must wait until the semaphore's value becomes positive again. Whenever a thread exits the critical section by calling the <code class="Code-In-Text--PACKT-">sem_post</code> function, the semaphore's value is incremented by 1. Therefore, by specifying the initial value <code class="Code-In-Text--PACKT-">1</code>, we will eventually get a binary semaphore.</p>
+			<p class="normal">We end the preceding code by calling <code class="Code-In-Text--PACKT-">sem_destroy</code> (or <code class="Code-In-Text--PACKT-">sem_close</code> in Apple systems) which effectively releases the semaphore object with all its underlying resources. Regarding the named semaphores, since they can be shared among a number of processes, more complex scenarios can occur when closing a semaphore. We will cover these scenarios in <em class="italics">Chapter 18</em>, <em class="italics">Process Synchronization</em>.</p>
+			<h4 class="title" lang="en-GB" xml:lang="en-GB">General semaphores</h4>
+			<p class="normal">Now, it's time to give a classic<a id="_idIndexMarker1132"/> example that uses general semaphores. The syntax is pretty similar to the preceding code, but the scenario in which <a id="_idIndexMarker1133"/>multiple threads are allowed to enter the critical section could be interesting.</p>
+			<p class="normal">This classic example involves the creation of 50 water molecules. For 50 water molecules, you need to have 50 oxygen atoms and 100 hydrogen atoms. If we simulate each atom using a thread, we require two hydrogen threads, and one oxygen thread to enter their critical sections, in order to generate one water molecule and have it counted.</p>
+			<p class="normal">In the following code, we firstly create 50 oxygen threads and 100 hydrogen threads. For protecting the oxygen thread's critical section, we use a mutex, but for the hydrogen threads' critical sections, we use a general semaphore that allows two threads to enter the critical section simultaneously.</p>
+			<p class="normal">For signaling purposes, we use POSIX barriers, but since barriers are not implemented in Apple systems, we<a id="_idIndexMarker1134"/> need to implement them using mutexes and condition variables. The following code box contains the code:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;string.h&gt;</p>
+			<p class="snippet code">#include &lt;limits.h&gt;</p>
+			<p class="snippet code">#include &lt;errno.h&gt; // For errno and strerror function</p>
+			<p class="snippet code">// The POSIX standard header for using pthread library</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">// Semaphores are not exposed through pthread.h</p>
+			<p class="snippet code">#include &lt;semaphore.h&gt;</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">// In Apple systems, we have to simulate the barrier functionality.</p>
+			<p class="snippet code">pthread_mutex_t barrier_mutex;</p>
+			<p class="snippet code">pthread_cond_t  barrier_cv;</p>
+			<p class="snippet code">unsigned int    barrier_thread_count;</p>
+			<p class="snippet code">unsigned int    barrier_round;</p>
+			<p class="snippet code">unsigned int    barrier_thread_limit;</p>
+			<p class="snippet code">void barrier_wait() {</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;barrier_mutex);</p>
+			<p class="snippet code">  barrier_thread_count++;</p>
+			<p class="snippet code">  if (barrier_thread_count &gt;= barrier_thread_limit) {</p>
+			<p class="snippet code">    barrier_thread_count = 0;</p>
+			<p class="snippet code">    barrier_round++;</p>
+			<p class="snippet code">    pthread_cond_broadcast(&amp;barrier_cv);</p>
+			<p class="snippet code">  } else {</p>
+			<p class="snippet code">    unsigned int my_round = barrier_round;</p>
+			<p class="snippet code">    do {</p>
+			<p class="snippet code">      pthread_cond_wait(&amp;barrier_cv, &amp;barrier_mutex);</p>
+			<p class="snippet code">    } while (my_round == barrier_round);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;barrier_mutex);</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">// A barrier to make hydrogen and oxygen threads synchronized</p>
+			<p class="snippet code">pthread_barrier_t water_barrier;</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">// A mutex in order to synchronize oxygen threads</p>
+			<p class="snippet code">pthread_mutex_t   oxygen_mutex;</p>
+			<p class="snippet code">// A general semaphore to make hydrogen threads synchronized</p>
+			<p class="snippet code">sem_t*            hydrogen_sem;</p>
+			<p class="snippet code">// A shared integer counting the number of made water molecules</p>
+			<p class="snippet code">unsigned int      num_of_water_molecules;</p>
+			<p class="snippet code">void* hydrogen_thread_body(void* arg) {</p>
+			<p class="snippet code">  // Two hydrogen threads can enter this critical section</p>
+			<p class="snippet code">  sem_wait(hydrogen_sem);</p>
+			<p class="snippet code">  // Wait for the other hydrogen thread to join</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  barrier_wait();</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;water_barrier);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  sem_post(hydrogen_sem);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* oxygen_thread_body(void* arg) {</p>
+			<p class="snippet code">  pthread_mutex_lock(&amp;oxygen_mutex);</p>
+			<p class="snippet code">  // Wait for the hydrogen threads to join</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  barrier_wait();</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;water_barrier);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  num_of_water_molecules++;</p>
+			<p class="snippet code">  pthread_mutex_unlock(&amp;oxygen_mutex);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  num_of_water_molecules = 0;</p>
+			<p class="snippet code">  // Initialize oxygen mutex</p>
+			<p class="snippet code">  pthread_mutex_init(&amp;oxygen_mutex, NULL);</p>
+			<p class="snippet code">  // Initialize hydrogen semaphore</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  hydrogen_sem = sem_open("hydrogen_sem",</p>
+			<p class="snippet code">          O_CREAT | O_EXCL, 0644, 2);</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  sem_t local_sem;</p>
+			<p class="snippet code">  hydrogen_sem = &amp;local_sem;</p>
+			<p class="snippet code">  sem_init(hydrogen_sem, 0, 2);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  // Initialize water barrier</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  pthread_mutex_init(&amp;barrier_mutex, NULL);</p>
+			<p class="snippet code">  pthread_cond_init(&amp;barrier_cv, NULL);</p>
+			<p class="snippet code">  barrier_thread_count = 0;</p>
+			<p class="snippet code">  barrier_thread_limit = 0;</p>
+			<p class="snippet code">  barrier_round = 0;</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  pthread_barrier_init(&amp;water_barrier, NULL, 3);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  // For creating 50 water molecules, we need 50 oxygen atoms and</p>
+			<p class="snippet code">  // 100 hydrogen atoms</p>
+			<p class="snippet code">  pthread_t thread[150];</p>
+			<p class="snippet code">  // Create oxygen threads</p>
+			<p class="snippet code">  for (int i = 0; i &lt; 50; i++) {</p>
+			<p class="snippet code">    if (pthread_create(thread + i, NULL,</p>
+			<p class="snippet code">                oxygen_thread_body, NULL)) {</p>
+			<p class="snippet code">      printf("Couldn't create an oxygen thread.\n");</p>
+			<p class="snippet code">      exit(1);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // Create hydrogen threads</p>
+			<p class="snippet code">  for (int i = 50; i &lt; 150; i++) {</p>
+			<p class="snippet code">    if (pthread_create(thread + i, NULL,</p>
+			<p class="snippet code">                hydrogen_thread_body, NULL)) {</p>
+			<p class="snippet code">      printf("Couldn't create an hydrogen thread.\n");</p>
+			<p class="snippet code">      exit(2);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  printf("Waiting for hydrogen and oxygen atoms to react ...\n");</p>
+			<p class="snippet code">  // Wait for all threads to finish</p>
+			<p class="snippet code">  for (int i = 0; i &lt; 150; i++) {</p>
+			<p class="snippet code">    if (pthread_join(thread[i], NULL)) {</p>
+			<p class="snippet code">      printf("The thread could not be joined.\n");</p>
+			<p class="snippet code">      exit(3);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  printf("Number of made water molecules: %d\n",</p>
+			<p class="snippet code">          num_of_water_molecules);</p>
+			<p class="snippet code">#ifdef __APPLE__</p>
+			<p class="snippet code">  sem_close(hydrogen_sem);</p>
+			<p class="snippet code">#else</p>
+			<p class="snippet code">  sem_destroy(hydrogen_sem);</p>
+			<p class="snippet code">#endif</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-6 [ExtremeC_examples_chapter16_2.c]: Using a general semaphore to simulate the process of creating 50 water molecules out of 50 oxygen atoms and 100 hydrogen atoms</p>
+			<p class="normal">In the beginning of the code, there <a id="_idIndexMarker1135"/>are a number of lines that <a id="_idIndexMarker1136"/>are surrounded by <code class="Code-In-Text--PACKT-">#ifdef __APPLE__</code> and <code class="Code-In-Text--PACKT-">#endif</code>. These lines are only compiled in Apple systems. These lines are mainly the implementation and variables required for simulating POSIX barrier behavior. In other POSIX-compliant systems other than Apple, we use an ordinary POSIX barrier. We won't go through the details of the barrier implementation on Apple systems here, but it is worthwhile to read the code and understand it thoroughly.</p>
+			<p class="normal">As part of a number of global variables defined in the preceding code, we have declared the mutex <code class="Code-In-Text--PACKT-">oxygen_mutex</code>, which is supposed to protect the oxygen threads' critical sections. At each time, only one oxygen thread (or oxygen atom) can enter the critical section.</p>
+			<p class="normal">Then in its critical section, an oxygen thread waits for two other hydrogen threads to join and then it continues to increment the water molecule counter. The increment happens within the oxygen's critical section.</p>
+			<p class="normal">To elaborate more on<a id="_idIndexMarker1137"/> the things that happen inside the critical sections, we need to explain the role of the general semaphore. In the preceding code, we have also declared the general semaphore <code class="Code-In-Text--PACKT-">hydrogen_sem</code>, which is supposed to protect hydrogen threads' critical sections. At each time, only a maximum of two hydrogen threads can enter their critical sections, and they wait on the barrier object shared between the oxygen and hydrogen threads.</p>
+			<p class="normal">When the number of waiting threads on the shared barrier object reaches two, it means that we have got one oxygen and two hydrogens, and then voilà: a water molecule is made, and all<a id="_idIndexMarker1138"/> waiting threads can continue. Hydrogen threads exit immediately, but the oxygen thread exists only after incrementing the water molecules counter.</p>
+			<p class="normal">We close this section with this last note. In <em class="italics">example 16.2</em>, we used the <code class="Code-In-Text--PACKT-">pthread_cond_broadcast</code> function when implementing the barriers for Apple systems. It signals all threads waiting on the barrier's condition variable that are supposed to continue after <a id="_idTextAnchor418"/>having other threads joining them.</p>
+			<p class="normal">In the next section, we are going to talk about the memory model behind POSIX threads and how they interact with their owner process's memory. We will also look at examples about using the Stack and Heap segments and how they can lead to some serious memory-related issues.</p>
+			<h2 id="_idParaDest-220" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor419"/>POSIX threads and memory</h2>
+			<p class="normal">This section is going to talk about the interactions between the threads and the process's memory. As you<a id="_idIndexMarker1139"/> know, there are multiple segments in a process's memory layout. The Text segment, Stack segment, Data segment, and Heap segment are all part of this<a id="_idIndexMarker1140"/> memory layout, and we covered them i<a id="_idTextAnchor420"/>n <em class="italics">Chapter 4</em>, <em class="italics">Process Memory Structure</em>. Threads interact differently with each of these memory segments. As part of this section, we only discuss Stack and Heap memory regions because they are the most used and problematic areas when writing multithreaded programs.</p>
+			<p class="normal">In addition, we discuss how thread synchronization and a true understanding of the memory model behind a thread can help us develop better concurrent programs. These concepts are even more evident regarding the Heap memory because the<a id="_idIndexMarker1141"/> memory management is manual there and in a concurrent system, threads are responsible for allocating and releasing Heap blocks. A trivial race condition can cause serious memory issues, therefore proper synchronization should be in place to avoid such disasters.</p>
+			<p class="normal">In the next subsection, we are going to explain how the Stack segment is accessed by different threads and what precautions should be taken.</p>
+			<h3 id="_idParaDest-221" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor421"/>Stack memory</h3>
+			<p class="normal">Each thread has its own Stack region that is supposed to be private to that thread only. A thread's Stack region is part of the<a id="_idIndexMarker1142"/> owner process's Stack segment and all threads, by default, should have their Stack regions allocated from the Stack segment. It is also possible that a thread has a Stack region that is allocated from the Heap segment. We will show in future examples how to do this, but for now, we assume that a thread's Stack is part of the process's Stack segment.</p>
+			<p class="normal">Since all threads within the same process can read and modify the process's Stack segment, they can effectively read and modify each other's Stack regions, but they <em class="italics">should not</em>. Note that working with other threads' Stack regions is considered dangerous behavior because the variables defined on top of the various Stack regions are subject to deallocation at any time, especially when a thread exits or a function returns.</p>
+			<p class="normal">That's why we try to<a id="_idIndexMarker1143"/> assume that a Stack region is only accessible by its owner thread and not by the other threads. So, <em class="italics">local variables</em> (those variables declared on top the Stack) are considered to be private to the thread and should not be accessed by other threads.</p>
+			<p class="normal">In single-threaded applications, we have always one thread which is the main thread. Therefore, we use its Stack region like we use the process's Stack segment. That's because, in a single-threaded program, there is no boundary between the main thread and the process itself. But the situation is different for a multithreaded program. Each thread has its own Stack region which is different from another thread's Stack region.</p>
+			<p class="normal">When creating a new thread, a memory block is allocated for the Stack region. If not specified by the programmer upon creation, the Stack region will have a default Stack Size, and it will be allocated from the Stack segment of the process. The default Stack size is platform dependent and varies from one architecture to another. You can use the command <code class="Code-In-Text--PACKT-">ulimit -s</code> to retrieve the default Stack size in a POSIX-compliant system.</p>
+			<p class="normal">On my current platform, which is macOS on an Intel 64-bit machine, the default Stack size is 8 MB:</p>
+			<p class="snippet shell"><strong class="highlight">$ ulimit -s</strong></p>
+			<p class="snippet shell">8192</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 16-1: Reading the default Stack size</p>
+			<p class="normal">The POSIX threading API allows you to set the Stack region for a new thread. In the following example, <em class="italics">example 16.3</em>, we have two threads. For one of them, we use the default Stack settings, and for the other one, we will<a id="_idIndexMarker1144"/> allocate a buffer from the Heap segment and set it as the Stack region of that thread. Note that, when setting the Stack region, the allocated buffer should have a minimum size; otherwise it cannot be used as a Stack region:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;limits.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">void* thread_body_1(void* arg) {</p>
+			<p class="snippet code">  int local_var = 0;</p>
+			<p class="snippet code">  printf("Thread1 &gt; Stack Address: %p\n", (void*)&amp;local_var);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* thread_body_2(void* arg) {</p>
+			<p class="snippet code">  int local_var = 0;</p>
+			<p class="snippet code">  printf("Thread2 &gt; Stack Address: %p\n", (void*)&amp;local_var);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  size_t buffer_len = PTHREAD_STACK_MIN + 100;</p>
+			<p class="snippet code">  // The buffer allocated from heap to be used as</p>
+			<p class="snippet code">  // the thread's stack region</p>
+			<p class="snippet code">  char *buffer = (char*)malloc(buffer_len * sizeof(char));</p>
+			<p class="snippet code">  // The thread handlers</p>
+			<p class="snippet code">  pthread_t thread1;</p>
+			<p class="snippet code">  pthread_t thread2;</p>
+			<p class="snippet code">  // Create a new thread with default attributes</p>
+			<p class="snippet code">  int result1 = pthread_create(&amp;thread1, NULL,</p>
+			<p class="snippet code">          thread_body_1, NULL);</p>
+			<p class="snippet code">  // Create a new thread with a custom stack region</p>
+			<p class="snippet code">  pthread_attr_t attr;</p>
+			<p class="snippet code">  pthread_attr_init(&amp;attr);</p>
+			<p class="snippet code">  // Set the stack address and size</p>
+			<p class="snippet code">  if (pthread_attr_setstack(&amp;attr, buffer, buffer_len)) {</p>
+			<p class="snippet code">    printf("Failed while setting the stack attributes.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  int result2 = pthread_create(&amp;thread2, &amp;attr,</p>
+			<p class="snippet code">          thread_body_2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be created.\n");</p>
+			<p class="snippet code">    exit(2);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  printf("Main Thread &gt; Heap Address: %p\n", (void*)buffer);</p>
+			<p class="snippet code">  printf("Main Thread &gt; Stack Address: %p\n", (void*)&amp;buffer_len);</p>
+			<p class="snippet code">  // Wait for the threads to finish</p>
+			<p class="snippet code">  result1 = pthread_join(thread1, NULL);</p>
+			<p class="snippet code">  result2 = pthread_join(thread2, NULL);</p>
+			<p class="snippet code">  if (result1 || result2) {</p>
+			<p class="snippet code">    printf("The threads could not be joined.\n");</p>
+			<p class="snippet code">    exit(3);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  free(buffer);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-7 [ExtremeC_examples_chapter16_3.c]: Setting a Heap block as a thread's Stack region</p>
+			<p class="normal">To start the program, we create the first thread with the default Stack settings. Therefore, its Stack should be allocated from the Stack segment of the process. After that, we create the second thread by specifying the memory address of a buffer supposed to be the <a id="_idIndexMarker1145"/>Stack region of the thread.</p>
+			<p class="normal">Note that the specified size is <code class="Code-In-Text--PACKT-">100</code> bytes more than the already defined minimum Stack size indicated by the <code class="Code-In-Text--PACKT-">PTHREAD_STACK_MIN</code> macro. This constant has different values on different platforms, and it is included as part of the header file <code class="Code-In-Text--PACKT-">limits.h</code>.</p>
+			<p class="normal">If you build the preceding program and run it on a Linux device, you will see something like the following:</p>
+			<p class="snippet shell"><strong class="highlight">$ gcc ExtremeC_examples_chapter16_3.c -o ex16_3.out -lpthread</strong></p>
+			<p class="snippet shell"><strong class="highlight">$ ./ex16_3.out</strong></p>
+			<p class="snippet shell">Main Thread &gt; Heap Address: 0x55a86a251260</p>
+			<p class="snippet shell">Main Thread &gt; Stack Address: 0x7ffcb5794d50</p>
+			<p class="snippet shell">Thread2 &gt; Stack Address: 0x55a86a2541a4</p>
+			<p class="snippet shell"><a id="_idTextAnchor422"/><a id="_idTextAnchor423"/>Thread1 &gt; Stack Address: 0x7fa3e9216ee4</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 16-2: Building and running example 16.3</p>
+			<p class="normal">As is clear from the output seen in <em class="italics">Shell Box 16-2</em>, the address of the local variable <code class="Code-In-Text--PACKT-">local_var</code> that is allocated on top of the second thread's Stack belongs to a different address range (the range of the Heap space). This means that the Stack region of the second thread is within the Heap. This is not true for the first thread, however.</p>
+			<p class="normal">As the output shows, the address of the local variable in the first thread falls within the address range of the Stack segment of the process. As a result, we could successfully set a new Stack region allocated from the Heap segment, for a newly created thread.</p>
+			<p class="normal">The ability to set the Stack region of a thread can be crucial in some use cases. For example, in memory-constrained environments where the total amount of memory is low for having big Stacks, or in high-performance environments in which the cost of allocating the Stack for each thread cannot be tolerated, using some preallocated buffers can be useful and the preceding procedure can be employed to set a preallocated buffer as the Stack region of a newly created thread.</p>
+			<p class="normal">The following example demonstrates how sharing an address in one thread's Stack can lead to some memory issues. When an address from a thread is shared, the thread should remain alive otherwise all pointers keeping that address become dangling.</p>
+			<p class="normal">The following code is not thread-safe, therefore we expect to see crashes from time to time in successive runs. The threads also have the default Stack settings which means their Stack regions are allocated from the process's <a id="_idIndexMarker1146"/>Stack segment:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;unistd.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">int* shared_int;</p>
+			<p class="snippet code">void* t1_body(void* arg) {</p>
+			<p class="snippet code">  int local_var = 100;</p>
+			<p class="snippet code">  shared_int = &amp;local_var;</p>
+			<p class="snippet code">  // Wait for the other thread to print the shared integer</p>
+			<p class="snippet code">  usleep(10);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* t2_body(void* arg) {</p>
+			<p class="snippet code">  printf("%d\n", *shared_int);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  shared_int = NULL;</p>
+			<p class="snippet code">  pthread_t t1;</p>
+			<p class="snippet code">  pthread_t t2;</p>
+			<p class="snippet code">  pthread_create(&amp;t1, NULL, t1_body, NULL);</p>
+			<p class="snippet code">  pthread_create(&amp;t2, NULL, t2_body, NULL);</p>
+			<p class="snippet code">  pthread_join(t1, NULL);</p>
+			<p class="snippet code">  pthread_join(t2, NULL);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-8 [ExtremeC_examples_chapter16_4.c]: Trying to read a variable allocated from another thread's Stack region</p>
+			<p class="normal">At the beginning, we have declared a global shared pointer. Since it is a pointer, it can accept any address regardless of where the address points to in the process's memory layout. It could be from<a id="_idIndexMarker1147"/> the Stack segment or the Heap segment or even the Data segment.</p>
+			<p class="normal">In the preceding code, inside the <code class="Code-In-Text--PACKT-">t1_body</code> companion function, we store the address of a local variable in the shared pointer. This variable belongs to the first thread, and it is allocated on top of the first thread's Stack.</p>
+			<p class="normal">From now on, if the first thread exits, the shared pointer becomes dangling, and any dereferencing probably leads to a crash, a logical error, or a hidden memory issue in the best case. In some interleavings, this would happen, and you see crashes from time to time if you run the preceding program multiple times.</p>
+			<p class="normal">As an important note, proper synchronization techniques should be employed if one thread is willing to use a variable allocated from another thread's Stack region. Since the lifetime of a Stack variable is bound to its scope, the synchronization should aim at keeping the scope alive until the consumer thread is done with the variable.</p>
+			<p class="normal">Note that for simplicity we didn't check the results of the pthread functions. It is always advised to do so and check the return values. Not all pthread functions behave the same on different platforms; if something goes wrong, you will<a id="_idTextAnchor424"/> become aware by checking the return values.</p>
+			<p class="normal">In this section, generally speaking, we showed why the addresses belonging to Stack regions shouldn't be shared, and why shared states better not be allocated from Stack regions. The next section talks about Heap memory, which is the most common place for storing shared states. As you might have guessed, working with the Heap is also tricky, and you should be careful about memory leaks.</p>
+			<h3 id="_idParaDest-222" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor425"/>Heap memory</h3>
+			<p class="normal">The Heap segment and the Data segment are accessible by all threads. Unlike the Data segment, which is generated at compile time, the Heap segment is dynamic, and it is shaped at runtime. Threads can both read and modify the contents of the Heap. In addition, the contents of the Heap can stay as long as the process lives, and stay independent of the lifetime of the individual threads. Also, big objects can be put inside the Heap. All these factors together have caused the Heap to be a great place for storing states that are going to be shared among some threads.</p>
+			<p class="normal">Memory management becomes a nightmare when it comes to Heap allocation, and that is because of the fact that allocated memory should be deallocated at some point by one of the running threads otherwise it could lead to memory leaks.</p>
+			<p class="normal">Regarding concurrent environments, interleavings can easily produce dangling pointers; hence crashes show up. The critical role of synchronization is to put things in a specific order where no dangling pointer can be produced, and this is the hard part.</p>
+			<p class="normal">Let's look at the following example, <em class="italics">example 16.5</em>. There are five threads in this example. The first thread allocates an array from the Heap. The second and third threads populate the <a id="_idIndexMarker1148"/>array in this form. The second thread populates the even indices in the array with the capital alphabet letters starting from <em class="italics">Z</em> and moving backward to <em class="italics">A</em>, and the third thread populates the odd indices with small alphabet letters starting from <em class="italics">a</em> and moving forward to <em class="italics">z</em>. The fourth thread prints the array. And finally, the fifth thread deallocates the array and reclaims the Heap memory.</p>
+			<p class="normal">All the techniques described in the previous sections about POSIX concurrency control should be employed in order to keep these threads from misbehaving within the Heap. The following code has no control mechanism in place, and obviously, it is not thread-safe. Note that the code is not complete. The complete version with the concurrency control mechanisms in place will come in the next code box:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;unistd.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">#define CHECK_RESULT(result) \</p>
+			<p class="snippet code">if (result) { \</p>
+			<p class="snippet code">  printf("A pthread error happened.\n"); \</p>
+			<p class="snippet code">  exit(1); \</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int TRUE = 1;</p>
+			<p class="snippet code">int FALSE = 0;</p>
+			<p class="snippet code">// The pointer to the shared array</p>
+			<p class="snippet code">char* shared_array;</p>
+			<p class="snippet code">// The size of the shared array</p>
+			<p class="snippet code">unsigned int shared_array_len;</p>
+			<p class="snippet code">void* alloc_thread_body(void* arg) {</p>
+			<p class="snippet code">  shared_array_len = 20;</p>
+			<p class="snippet code">  shared_array = (char*)malloc(shared_array_len * sizeof(char*));</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* filler_thread_body(void* arg) {</p>
+			<p class="snippet code">  int even = *((int*)arg);</p>
+			<p class="snippet code">  char c = 'a';</p>
+			<p class="snippet code">  size_t start_index = 1;</p>
+			<p class="snippet code">  if (even) {</p>
+			<p class="snippet code">    c = 'Z';</p>
+			<p class="snippet code">    start_index = 0;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  for (size_t i = start_index; i &lt; shared_array_len; i += 2) {</p>
+			<p class="snippet code">    shared_array[i] = even ? c-- : c++;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  shared_array[shared_array_len - 1] = '\0';</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* printer_thread_body(void* arg) {</p>
+			<p class="snippet code">  printf("&gt;&gt; %s\n", shared_array);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* dealloc_thread_body(void* arg) {</p>
+			<p class="snippet code">  free(shared_array);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  … Create threads ...</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-9 [ExtremeC_examples_chapter16_5_raw.c]: Example 16.5 without any synchronization mechanism in place</p>
+			<p class="normal">It is easy to see that the preceding code is not thread-safe and it causes serious crashes because of the interference<a id="_idIndexMarker1149"/> of the deallocator thread in deallocating the array.</p>
+			<p class="normal">Whenever the deallocator thread obtains the CPU, it frees the Heap-allocated buffer immediately, and after that the pointer <code class="Code-In-Text--PACKT-">shared_array</code> becomes dangling, and other threads start to crash. Proper synchronization techniques should be used to ensure that the deallocation thread runs last and the proper order of logic in different threads are run.</p>
+			<p class="normal">In the following code<a id="_idIndexMarker1150"/> block, we decorate the preceding code with POSIX concurrency control objects to make it thread-safe:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;unistd.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">#define CHECK_RESULT(result) \</p>
+			<p class="snippet code">if (result) { \</p>
+			<p class="snippet code">  printf("A pthread error happened.\n"); \</p>
+			<p class="snippet code">  exit(1); \</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int TRUE = 1;</p>
+			<p class="snippet code">int FALSE = 0;</p>
+			<p class="snippet code">// The pointer to the shared array</p>
+			<p class="snippet code">char* shared_array;</p>
+			<p class="snippet code">// The size of the shared array</p>
+			<p class="snippet code">size_t shared_array_len;</p>
+			<p class="snippet code">pthread_barrier_t alloc_barrier;</p>
+			<p class="snippet code">pthread_barrier_t fill_barrier;</p>
+			<p class="snippet code">pthread_barrier_t done_barrier;</p>
+			<p class="snippet code">void* alloc_thread_body(void* arg) {</p>
+			<p class="snippet code">  shared_array_len = 20;</p>
+			<p class="snippet code">  shared_array = (char*)malloc(shared_array_len * sizeof(char*));</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;alloc_barrier);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* filler_thread_body(void* arg) {</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;alloc_barrier);</p>
+			<p class="snippet code">  int even = *((int*)arg);</p>
+			<p class="snippet code">  char c = 'a';</p>
+			<p class="snippet code">  size_t start_index = 1;</p>
+			<p class="snippet code">  if (even) {</p>
+			<p class="snippet code">    c = 'Z';</p>
+			<p class="snippet code">    start_index = 0;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  for (size_t i = start_index; i &lt; shared_array_len; i += 2) {</p>
+			<p class="snippet code">    shared_array[i] = even ? c-- : c++;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  shared_array[shared_array_len - 1] = '\0';</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;fill_barrier);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* printer_thread_body(void* arg) {</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;fill_barrier);</p>
+			<p class="snippet code">  printf("&gt;&gt; %s\n", shared_array);</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;done_barrier);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">void* dealloc_thread_body(void* arg) {</p>
+			<p class="snippet code">  pthread_barrier_wait(&amp;done_barrier);</p>
+			<p class="snippet code">  free(shared_array);</p>
+			<p class="snippet code">  pthread_barrier_destroy(&amp;alloc_barrier);</p>
+			<p class="snippet code">  pthread_barrier_destroy(&amp;fill_barrier);</p>
+			<p class="snippet code">  pthread_barrier_destroy(&amp;done_barrier);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  shared_array = NULL;</p>
+			<p class="snippet code">  pthread_barrier_init(&amp;alloc_barrier, NULL, 3);</p>
+			<p class="snippet code">  pthread_barrier_init(&amp;fill_barrier, NULL, 3);</p>
+			<p class="snippet code">  pthread_barrier_init(&amp;done_barrier, NULL, 2);</p>
+			<p class="snippet code">  pthread_t alloc_thread;</p>
+			<p class="snippet code">  pthread_t even_filler_thread;</p>
+			<p class="snippet code">  pthread_t odd_filler_thread;</p>
+			<p class="snippet code">  pthread_t printer_thread;</p>
+			<p class="snippet code">  pthread_t dealloc_thread;</p>
+			<p class="snippet code">  pthread_attr_t attr;</p>
+			<p class="snippet code">  pthread_attr_init(&amp;attr);</p>
+			<p class="snippet code">  int res = pthread_attr_setdetachstate(&amp;attr,</p>
+			<p class="snippet code">          PTHREAD_CREATE_DETACHED);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  res = pthread_create(&amp;alloc_thread, &amp;attr,</p>
+			<p class="snippet code">          alloc_thread_body, NULL);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  res = pthread_create(&amp;even_filler_thread,</p>
+			<p class="snippet code">          &amp;attr, filler_thread_body, &amp;TRUE);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  res = pthread_create(&amp;odd_filler_thread,</p>
+			<p class="snippet code">          &amp;attr, filler_thread_body, &amp;FALSE);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  res = pthread_create(&amp;printer_thread, &amp;attr,</p>
+			<p class="snippet code">          printer_thread_body, NULL);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  res = pthread_create(&amp;dealloc_thread, &amp;attr,</p>
+			<p class="snippet code">          dealloc_thread_body, NULL);</p>
+			<p class="snippet code">  CHECK_RESULT(res);</p>
+			<p class="snippet code">  pthread_exit(NULL);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 16-10 [ExtremeC_examples_chapter16_5.c]: Example 16.5 with synchronization mechanisms in place</p>
+			<p class="normal">To make the code found in <em class="italics">Code Box 16-9</em> thread-safe, we have only used the POSIX barriers in the new code. It is the easiest approach to form a sequential execution order between a number of threads.</p>
+			<p class="normal">If you compare <em class="italics">Code Boxes 16-9</em> and <em class="italics">16-10</em>, you see how POSIX barriers are used to impose an order<a id="_idIndexMarker1151"/> between various threads. The only exception is between two filler threads. The filler threads can be running independently without blocking each other, and since they are changing odd and even indices separately, no concurrent issue can be raised. Note that the preceding code cannot be compiled on Apple systems. You need to simulate the barrier behavior using mutexes and condition variables in these systems (as we did for <em class="italics">example 16.2</em>).</p>
+			<p class="normal">The following is the output of the preceding code. No matter how many times you run the program, it never crashes. In other words, the preceding code is guarded against the various interleavings, and it is thread-safe:</p>
+			<p class="snippet shell"><strong class="highlight">$ gcc ExtremeC_examples_chapter16_5.c -o ex16_5 -lpthread</strong></p>
+			<p class="snippet shell"><strong class="highlight">$ ./ex16_5</strong></p>
+			<p class="snippet shell">&gt;&gt; ZaYbXcWdVeUfTgShRiQ</p>
+			<p class="snippet shell"><strong class="highlight">$ ./ex16_5</strong></p>
+			<p class="snippet shell">&gt;&gt; ZaYbXcWdVeUfTgShRiQ</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 16-3: Building and running example 16.5</p>
+			<p class="normal">In this section, we gave an example of using the Heap space as a place holder for shared states. Unlike the Stack memory, where memory deallocation happens automatically, Heap space deallocation should be performed explicitly. Otherwise, memory leaks are an imminent side effect.</p>
+			<p class="normal">The easiest and sometimes the best available place to keep the shared states, in terms of least memory <a id="_idIndexMarker1152"/>management effort for the programmer, is the Data segment in which both allocation and deallocation happen automatically. Variables residing in the Data segment are considered global, and have the longest possible lifetime, from the very beginning moments of the process's birth until its very last moments. But this long lifetime can be considered negative in certain use cases, especially when you're going to keep a big object in the Data segment.</p>
+			<p class="normal">In the next section, we will talk about memory <a id="_idTextAnchor426"/>visibility and how POSIX functions guarantee that.</p>
+			<h3 id="_idParaDest-223" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor427"/>Memory visibility</h3>
+			<p class="normal">We explained <em class="italics">memory visibility</em> and <em class="italics">cache coherency</em> in the previous chapters, regarding the systems with<a id="_idIndexMarker1153"/> more than one CPU core. In this section, we want to look at the pthread library and see how it guarantees memory visibility.</p>
+			<p class="normal">As you know, a cache<a id="_idIndexMarker1154"/> coherency protocol among CPU cores ensures that all cached versions of a single memory address in all CPU cores remain synchronized and updated regarding the latest changes made in one of the CPU cores. But this protocol should be triggered somehow.</p>
+			<p class="normal">There are APIs in the system call interface to trigger the cache coherency protocol and make the memory visible to all CPU cores. In pthread also, there are a number of functions that guarantee<a id="_idIndexMarker1155"/> the memory visibility before their execution.</p>
+			<p class="normal">You may have encountered some of these functions before. A list of them is presented below:</p>
+			<ul>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_barrier_wait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_cond_broadcast</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_cond_signal</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_cond_timedwait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_cond_wait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_create</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_join</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_mutex_lock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_mutex_timedlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_mutex_trylock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_mutex_unlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_lock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_trylock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_spin_unlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_rdlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_timedrdlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_timedwrlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_tryrdlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_trywrlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_unlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">pthread_rwlock_wrlock</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">sem_post</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">sem_timedwait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">sem_trywait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">sem_wait</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">semctl</code></li>
+				<li class="list"><code class="Code-In-Text--PACKT-">semop</code></li>
+			</ul>
+			<p class="normal">Other than local caches in CPU cores, the compilers can also introduce caching mechanisms for the frequently used variables. For this to happen, the compiler needs to analyze the code and optimize it in a way that means frequently used variables are written to and read from the compiler caches. These are software caches that are put in the final binary by the compiler in order to optimize and boost the execution of the program.</p>
+			<p class="normal">While these caches can be beneficial, they potentially add another headache while writing multithreaded code and raise some memory visibility issues. Therefore, sometimes these caches<a id="_idIndexMarker1156"/> must be disabled for specific variables. </p>
+			<p class="normal">The variables that are not supposed to be optimized by the compiler via caching can be declared as <em class="italics">volatile</em>. Note that a volatile variable<a id="_idIndexMarker1157"/> still can be cached at the CPU level, but the compiler won't optimize it by keeping it in compiler caches. A variable can be declared as volatile using the keyword <code class="Code-In-Text--PACKT-">volatile</code>. Following is a declaration of an integer that is volatile:</p>
+			<p class="snippet code">volatile int number;</p>
+			<p class="packt_figref">Code Box 16-11: Declaring a volatile integer variable</p>
+			<p class="normal">The important thing about volatile variables is that they do<a id="_idTextAnchor428"/>n't solve the memory visibility problems in multi-threaded systems. In order to solve this issue, you need to use the preceding POSIX functions in their proper places in order to ensure memory visibility.</p>
+			<h2 id="_idParaDest-224" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor429"/>Summary</h2>
+			<p class="normal">In this chapter, we covered the concurrent control mechanisms provided by the POSIX threading API. We have discussed:</p>
+			<ul>
+				<li class="list">POSIX mutexes and how they should be used</li>
+				<li class="list">POSIX condition variables and barriers and how they should be used</li>
+				<li class="list">POSIX semaphores, and how binary semaphores and general semaphores differ</li>
+				<li class="list">How threads interact with the Stack region</li>
+				<li class="list">How to define a new Heap-allocated Stack region for a thread</li>
+				<li class="list">How threads interact with the Heap space</li>
+				<li class="list">Memory visibility and POSIX functions that guarantee memory visibility</li>
+				<li class="list">Volatile variables and compiler caches</li>
+			</ul>
+			<p class="normal">In the next chapter, we will continue our discussion and we will talk about another approach for having concurrency in a software system: multi-processing. We will discuss how a process can be executed and how it is different from a thread.</p>
+		</div>
+</body></html>

@@ -1,0 +1,990 @@
+<html><head></head><body>
+		<div id="_idContainer150">
+			<h1 class="chapterNumber">Chapter 20</h1>
+			<h1 id="_idParaDest-286" class="chapterTitle" lang="en-GB" xml:lang="en-GB">Socket Programmin<a id="_idTextAnchor552"/>g</h1>
+			<p class="normal">In the previous chapter, we discussed single-host IPC and gave an introduction to socket programming. In this chapter, we want to complete our introduction and address socket programming in depth using a real client-server example: the calculator project.</p>
+			<p class="normal">The order of topics in this chapter might seem a bit unusual, but the purpose is to give you a better understanding about various types of sockets and how they behave in a real project. As part of this chapter, we discuss the following topics:</p>
+			<ul>
+				<li class="list">Firstly, we give a review on what we explained in the previous chapter. Note that this review is just a short recap, and it is a must for you to read the second part of the previous chapter dedicated to socket programming.</li>
+				<li class="list">As part of the recap we discuss various types of sockets, stream and datagram sequences, and some other topics that are essential for our continuation of our calculator example.</li>
+				<li class="list">The client-server example, the calculator project, is described and fully analyzed. This prepares us to continue with various components in the example and to present C code.</li>
+				<li class="list">As a critical component of the example, a serializer/deserializer library is developed. This library is going to represent the main protocol used between a calculator client and its server.</li>
+				<li class="list">It is crucial to understand that a calculator client and a calculator server must be able to communicate over any type of socket. Therefore, we present various types of sockets<a id="_idIndexMarker1426"/> integrated within the example and as the starting point, <strong class="bold">Unix domain sockets</strong> (<strong class="bold">UDS</strong>) are introduced. </li>
+				<li class="list">We show in our example how they are used to establish a client-server connection in a single-host setup.</li>
+				<li class="list">To continue with other types of sockets, we discuss network sockets. We present how TCP and UDP sockets can be integrated within the calculator project.</li>
+			</ul>
+			<p class="normal">Let's begin the chapter with a summary of what we know about sockets and socket programming in general. It is highly recommended that you familiarize yourself with the second half of the previous chapter before delving into this chapter, as we assume some pre-existing knowledge here.</p>
+			<h1 id="_idParaDest-287" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor553"/>Socket programming review</h1>
+			<p class="normal">In this section, we are<a id="_idIndexMarker1427"/> going to discuss what sockets are, what their various types are, and generally what it means if we say that we are doing socket programming. This is going to be a short review, but it is essential to build this basis so that we can continue into deeper discussion in subsequent sections.</p>
+			<p class="normal">If you remember from the previous chapters, we have two categories of IPC techniques to be used by two or more processes to communicate and share data. The first category contains <em class="italics">pull-based</em> techniques that<a id="_idIndexMarker1428"/> require an accessible <em class="italics">medium</em> (such as a shared memory or a regular file) to store data to and retrieve data from. The second category<a id="_idIndexMarker1429"/> contains <em class="italics">push-based</em> techniques. These techniques require a <em class="italics">channel</em> to be established and the channel should be<a id="_idIndexMarker1430"/> accessible by all processes. The main difference between these categories is regarding the way that data is retrieved from a medium in pull-based techniques, or a channel in push-based techniques.</p>
+			<p class="normal">To put it simply, in pull-based techniques, the data should be pulled or read from the medium, but in push-based techniques the data is pushed or delivered to the reader process automatically. In pull-based techniques, since the processes pull data from a shared medium, it is prone to race conditions if a number of them can write to that medium.</p>
+			<p class="normal">To be more exact about push-based techniques, the data is always delivered to a buffer in the kernel and that buffer is accessible to the receiver process through using a descriptor (file or socket). </p>
+			<p class="normal">Then the receiver process can either block until some new data is available on that descriptor or it can <em class="italics">poll</em> the descriptor to see if the kernel has received some new data <a id="_idIndexMarker1431"/>on that descriptor and if not, continue to<a id="_idIndexMarker1432"/> some other work. The former approach is <em class="italics">blocking I/O</em> and the latter is <em class="italics">non-blocking I/O</em> or <em class="italics">asynchronous I/O</em>. In this chapter, all push-based<a id="_idIndexMarker1433"/> techniques use the blocking approach.</p>
+			<p class="normal">We know that socket programming is a special type of IPC that belongs to the second category. Therefore, all socket-based IPCs are push-based. But the main characteristic that distinguishes socket programming from other push-based IPC techniques is the fact that in socket programming we use <em class="italics">sockets</em>. Sockets are<a id="_idIndexMarker1434"/> special objects in Unix-like operating systems, even in Microsoft Windows which is not Unix-like, that represent <em class="italics">two-way channels</em>. </p>
+			<p class="normal">In other<a id="_idIndexMarker1435"/> words, a single socket object can be used to both read from and write to the same channel. This way, two processes located at two <a id="_idIndexMarker1436"/>sides of the same channel can have <em class="italics">two-way communication</em>.</p>
+			<p class="normal">In the previous chapter, we <a id="_idIndexMarker1437"/>saw that sockets are represented by socket descriptors, just like files that are represented by file descriptors. While socket descriptors and file descriptors are similar in certain ways such as I/O operation and being <em class="italics">poll-able</em>, they are in fact different. A single socket descriptor always represents a channel, but a file descriptor can represent a medium such as a regular file, or a channel like a POSIX pipe. Therefore, certain operations related to files such as seek are not supported for socket descriptors, and even for a file descriptor when it represents a channel.</p>
+			<p class="normal">Socket-based communication can be <em class="italics">connection-oriented</em> or <em class="italics">connection-less</em>. In connection-oriented<a id="_idIndexMarker1438"/> communication, the channel represents a <em class="italics">stream</em> of bytes being transmitted between two<a id="_idIndexMarker1439"/> specific processes, while in connection-less communication, <em class="italics">datagrams</em> can be<a id="_idIndexMarker1440"/> transmitted along the channel and there is no specific connection between two processes. A number of processes can use the same channel for sharing states or transmitting data.</p>
+			<p class="normal">Therefore, we have two types of channels: <em class="italics">stream channels</em> and <em class="italics">datagram channels</em>.<em class="italics"> </em>In a program, every stream channel is represented by a <em class="italics">stream socket</em> and every datagram channel is represented by a <em class="italics">datagram socket</em>. When setting up a channel, we have to decide if it should be either stream or datagram. We shortly see that our calculator example can support both channels.</p>
+			<p class="normal">Sockets have various types. Each type of socket exists for a certain usage and a certain situation. Generally, we have two types of socket: UDS<a id="_idIndexMarker1441"/> and network sockets. As you may<a id="_idIndexMarker1442"/> know and as we've explained in the previous<a id="_idIndexMarker1443"/> chapter, UDS can be used whenever all the processes willing to participate in an IPC are located on the same machine. In other words, UDS can be used only in single-host deployments.</p>
+			<p class="normal">In contrast, network sockets can be used in almost any deployment no matter how processes are deployed and where they are located. They can be all on the same machine, or they can be <a id="_idIndexMarker1444"/>distributed throughout a network. In case of having a single-host deployment, UDS are preferred because they are faster, and they have less overhead in comparison to network sockets. As part of our calculator example, we provide the support for both UDS and network sockets.</p>
+			<p class="normal">UDS and network sockets can represent both stream and datagram channels. Therefore, we have four varieties: UDS over a stream channel, UDS over a datagram channel, network socket over a stream channel, and finally network socket over a datagram channel. All these four variations are covered by our example.</p>
+			<p class="normal">A network socket<a id="_idIndexMarker1445"/> offering a stream channel is usually a TCP socket. That's<a id="_idIndexMarker1446"/> because, most of the time, we are using TCP as the transport protocol for such a socket. Likewise, a network socket offering a datagram channel is usually a UDP socket. That's because, most of the time, we are using UDP as the transport protocol for such a socket. Note that UDS socket offering either stream or datagram channels don't have any specific names because there is no underlying transport protocol.</p>
+			<p class="normal">In order to write actual C code for the different types of sockets and channels, it is better to do it when you are working on a real example. That's basically why we have taken this unusual approach. This way, you'll notice the common parts between various types of sockets and the channels, and we can extract them as units of code that can be reused again. In the next section, we are going to discuss the calculator project and its<a id="_idTextAnchor554"/><a id="_idTextAnchor555"/> internal structure.</p>
+			<h1 id="_idParaDest-288" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor556"/>Calculator project</h1>
+			<p class="normal">We are dedicating a separate section to <a id="_idIndexMarker1447"/>explain the purpose of the calculator project. It is a lengthy example and thus it will be helpful to have a firm<a id="_idIndexMarker1448"/> grounding before diving into it. The project should help you to achieve the following goals:</p>
+			<ul>
+				<li class="list">Observe a fully functional example that has a number of simple and well-defined functionalities.</li>
+				<li class="list">Extract common parts among the various types of sockets and channels and have them as some reusable libraries. This reduces the amount of code we write significantly, and from a learning point of view, it shows you the boundaries that are common between various types of sockets and channels.</li>
+				<li class="list">Maintain communication<a id="_idIndexMarker1449"/> using a well-defined application protocol. Ordinary socket programming examples lack this very important feature. They generally address very simple, and usually one-time, communication scenarios between a client and its server.</li>
+				<li class="list">Work on an example that has all the ingredients required for a fully functional client-server program such as an application protocol, supporting various types of channels, having serializer/deserializer, and so on, giving you a different perspective regarding socket programming.</li>
+			</ul>
+			<p class="normal">With all that being said, we are<a id="_idIndexMarker1450"/> going to present this project as our main example in this chapter. We do it step by step, and I will guide you through the various steps that culminate in a complete and working project.</p>
+			<p class="normal">The first step is to come up with a relatively simple and complete application protocol. This protocol is going to be used between the clients and the server. As we explained before, without a well-defined application protocol, the two parties cannot communicate. They can be connected and transmit data because that's the functionality that the socket programming offers, but they cannot understand each other.</p>
+			<p class="normal">That's why we have to dedicate a bit of time to understand the application protocol used in the calculator project. Before talking about the application protocol, let's present the source hierarchy that can be seen in the project code base. Then, we can find the application protocol and the associated serializer/deserializer library much easier <a id="_idTextAnchor557"/>in the project code base.</p>
+			<h2 id="_idParaDest-289" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor558"/>Source hierarchy</h2>
+			<p class="normal">From a programmer's point of view, the POSIX socket programming API treats all the stream channels the same<a id="_idIndexMarker1451"/> no matter whether the associated socket object is a UDS or a network socket. If you remember from the previous chapter, for stream channels, we had certain sequences for the listener-side and for the connector-side, and these sequences remain the same for different types of stream sockets.</p>
+			<p class="normal">Therefore, if you are going to support various types of sockets, together with various types of channels, it is better to extract the common part and write it once. That's exactly the approach that we take regarding the calculator project and that's what you see in the source code. Therefore, it is expected to see various libraries in the project and some of them contain the common code that is reused by other parts of the code.</p>
+			<p class="normal">Now, it's time to delve into the <a id="_idIndexMarker1452"/>code base. First of all, the source code of the project can be found here: <span class="url">https://github.com/PacktPublishing/Extreme-C/tree/master/ch20-socket-programming</span>. If you open the link and have a look at the code base, you see there are <a id="_idIndexMarker1453"/>a number of directories that contain multiple source files. Obviously, we cannot demonstrate all of them because this would take too long, but we are going to explain important parts of the code. You are encouraged to look at the code and go through it, then try to build and run it; this will give you an idea of how the example has been developed.</p>
+			<p class="normal">Note that all the code relating to the examples of UDS, UDP sockets, and TCP sockets has been put in a single hierarchy. Next, we are going to explain the source hierarchy and the directories you find as part of the code base.</p>
+			<p class="normal">If you go to the root of the example and use the <code class="Code-In-Text--PACKT-">tree</code> command to show the files and directories, you will find something similar to <em class="italics">Shell Box 20-1</em>. </p>
+			<p class="normal">The following shell box demonstrates how to clone the book's GitHub repository and how to navigate to the root of the example:</p>
+			<p class="snippet shell"><strong class="highlight">$ git </strong><strong class="highlight">clone https://github.com/PacktPublishing/Extreme-C</strong></p>
+			<p class="snippet shell">Cloning into 'Extreme-C'...</p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell">Resolving deltas: 100% (458/458), done.</p>
+			<p class="snippet shell"><strong class="highlight">$ cd Extreme-C/ch20-socket-programming</strong></p>
+			<p class="snippet shell"><strong class="highlight">$ tree</strong></p>
+			<p class="snippet shell">.</p>
+			<p class="snippet shell">├── CMakeLists.txt</p>
+			<p class="snippet shell">├── calcser</p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell">├── calcsvc</p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell">├── client</p>
+			<p class="snippet shell">│   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   ├── clicore</p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell">│   ├── tcp</p>
+			<p class="snippet shell">│   │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   │   └── main.c</p>
+			<p class="snippet shell">│   ├── udp</p>
+			<p class="snippet shell">│   │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   │   └── main.c</p>
+			<p class="snippet shell">│   └── Unix</p>
+			<p class="snippet shell">│       ├── CMakeLists.txt</p>
+			<p class="snippet shell">│       ├── datagram</p>
+			<p class="snippet shell">│       │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│       │   └── main.c</p>
+			<p class="snippet shell">│       └── stream</p>
+			<p class="snippet shell">│           ├── CMakeLists.txt</p>
+			<p class="snippet shell">│           └── main.c</p>
+			<p class="snippet shell">├── server</p>
+			<p class="snippet shell">│   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   ├── srvcore</p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell">│   ├── tcp</p>
+			<p class="snippet shell">│   │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   │   └── main.c</p>
+			<p class="snippet shell">│   ├── udp</p>
+			<p class="snippet shell">│   │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│   │   └── main.c</p>
+			<p class="snippet shell">│   └── Unix</p>
+			<p class="snippet shell">│       ├── CMakeLists.txt</p>
+			<p class="snippet shell">│       ├── datagram</p>
+			<p class="snippet shell">│       │   ├── CMakeLists.txt</p>
+			<p class="snippet shell">│       │   └── main.c</p>
+			<p class="snippet shell">│       └── stream</p>
+			<p class="snippet shell">│           ├── CMakeLists.txt</p>
+			<p class="snippet shell">│           └── main.c</p>
+			<p class="snippet shell">└── types.h</p>
+			<p class="snippet shell">18 directories, 49 files</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 20-1: Cloning the calculator project's code base and listing the files and directories</p>
+			<p class="normal">As you can see in the<a id="_idIndexMarker1454"/> listing of files and directories, the calculator project is made up of a number of parts, some of them being libraries, and each of them having its own dedicated directory. Next, we explain these directories:</p>
+			<ul>
+				<li class="list"><code class="Code-In-Text--PACKT-">/calcser</code>: This is the<a id="_idIndexMarker1455"/> serializer/deserializer library. It contains the serialization/deserialization-related source files. This library dictates the application protocol that is defined between a calculator client and a calculator server. This library is eventually built into a static library file named <code class="Code-In-Text--PACKT-">libcalcser.a</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/calcsvc</code>: This library<a id="_idIndexMarker1456"/> contains the sources for the calculation service. The <em class="italics">calculation service</em> is different from the server process. This service library contains the core functionality of the calculator and it is agnostic regarding being behind a server process and can be used individually as a separate standalone C library. This library eventually gets built into a static library file named <code class="Code-In-Text--PACKT-">libcalcsvc.a</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/server/srvcore</code>: This library contains the sources that are common between the stream <a id="_idIndexMarker1457"/>and the datagram server processes, regardless<a id="_idIndexMarker1458"/> of the socket type. Therefore, all calculator server processes, whether using UDS or network sockets, and whether operating on stream or datagram channels, can rely on this common part. The final output of this library is a static library file named <code class="Code-In-Text--PACKT-">libsrvcore.a</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/server/unix/stream</code>: This directory<a id="_idIndexMarker1459"/> contains the sources for a server program using stream channels behind a UDS. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">unix_stream_calc_server</code>. This is one of the possible output executables in this project that we can use to bring up a calculator server, this one listening on a UDS to receive stream connections.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/server/unix/datagram</code>: This directory <a id="_idIndexMarker1460"/>contains the sources for a server program using datagram channels behind a UDS. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">unix_datagram_calc_server</code>. This is one of the possible output executables in this project that we can use to bring up a calculator server, this one listening on a UDS to receive datagram messages.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/server/tcp</code>: This directory <a id="_idIndexMarker1461"/>contains the sources for a server program using stream channels behind a TCP network socket. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">tcp_calc_server</code>. This is one of the possible output executables in this project that we can use to bring up a calculator server, this one listening on a TCP socket to receive stream connections.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/server/udp</code>: This directory <a id="_idIndexMarker1462"/>contains the sources for a server program using datagram channels behind a UDP network socket. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">udp_calc_server</code>. This is one of the possible output<a id="_idIndexMarker1463"/> executables in this project that we can use to bring up a calculator server, this one listening on a UDP socket to receive datagram messages.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/client/clicore</code>: This library<a id="_idIndexMarker1464"/> contains the sources that are common between the stream and the datagram client processes, regardless of the socket type. Therefore, all calculator client processes, no matter whether they are using UDS or network sockets, and no matter operating on stream or datagram channels, can rely on this common part. It would be built into a static library file named <code class="Code-In-Text--PACKT-">libclicore.a</code>.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/client/unix/stream</code>: This directory<a id="_idIndexMarker1465"/> contains the sources for a client program using stream channels behind a UDS. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">unix_stream_calc_client</code>. This is one of the possible output executables in this project that <a id="_idIndexMarker1466"/>we can use to start a calculator client, this one connecting to a UDS endpoint and establishing a stream connection.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/client/unix/datagram</code>: This <a id="_idIndexMarker1467"/>directory contains the sources for a client program using datagram channels behind a UDS. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">unix_datagram_calc_client</code>. This is one of the possible output executables in this project that we can use to start a calculator client, this one connecting to a UDS endpoint and sending some datagram messages.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/client/tcp</code>: This directory<a id="_idIndexMarker1468"/> contains the sources for a client program using stream channels behind a TCP socket. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">tcp_calc_client</code>. This is one of the possible output executables in this project that we can use to start a calculator client, this one connecting to a TCP socket endpoint and establishing a stream connection.</li>
+				<li class="list"><code class="Code-In-Text--PACKT-">/client/udp</code>: This directory<a id="_idIndexMarker1469"/> contains the sources for a client program using datagram channels behind a UDP socket. The final build result of this directory is an executable file named <code class="Code-In-Text--PACKT-">udp_calc_client</code>. This is one of the possible output executables in this project that we can use to start a calculator client, this one connecting to a UDP socket endpoint and sending some datagram messages.</li>
+			</ul>
+			<h2 id="_idParaDest-290" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor559"/>Build the project</h2>
+			<p class="normal">Now that we have gone<a id="_idIndexMarker1470"/> through all the directories in the project, we need to show how to build it. The project uses CMake, and you should have it installed before moving on to build the project.</p>
+			<p class="normal">In order to build the project, run the following commands in the chapter's root directory:</p>
+			<p class="snippet shell"><strong class="highlight">$ mkdir -p build</strong></p>
+			<p class="snippet shell"><strong class="highlight">$ cd build</strong></p>
+			<p class="snippet shell"><strong class="highlight">$ cmake ..</strong></p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell"><strong class="highlight">$ make</strong></p>
+			<p class="snippet shell">...</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 20-2: The commands to build the calculator project</p>
+			<h2 id="_idParaDest-291" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor560"/>Run the project</h2>
+			<p class="normal">There is nothing like running a project to see for yourself how it works. Therefore, before delving into technical details, I want you to bring up a calculator server, and then a calculator client, and finally see how they talk to each other.</p>
+			<p class="normal">Before running the processes, you need to have two separate Terminals (or shells) in order to enter two separate commands. In the first Terminal, in order to run a stream server listening on UDS, type the following command. </p>
+			<p class="normal">Note that you need to be in the <code class="Code-In-Text--PACKT-">build</code> directory before entering the following command. The <code class="Code-In-Text--PACKT-">build</code> directory was made as part of the previous section, <em class="italics">Build the Project</em>:</p>
+			<p class="snippet shell"><strong class="highlight">$ ./server/unix/stream/unix_stream_calc_server</strong></p>
+			<p class="packt_figref">Shell Box 20-3: Running a stream server listening on a UDS</p>
+			<p class="normal">Ensure the server is running. In the second Terminal, run the stre<a id="_idTextAnchor561"/>am client built for using UDS:</p>
+			<p class="snippet shell"><strong class="highlight">$ ./</strong><strong class="highlight">client/unix/stream/unix_stream_calc_client</strong></p>
+			<p class="snippet shell"><strong class="highlight">? (type quit to exit) 3++4</strong></p>
+			<p class="snippet shell">The req(0) is sent.</p>
+			<p class="snippet shell">req(0) &gt; status: OK, result: 7.000000</p>
+			<p class="snippet shell"><strong class="highlight">? (type quit to exit) mem</strong></p>
+			<p class="snippet shell">The req(1) is sent.</p>
+			<p class="snippet shell">req(1) &gt; status: OK, result: 7.000000</p>
+			<p class="snippet shell"><strong class="highlight">? (type quit to exit) 5++4</strong></p>
+			<p class="snippet shell">The req(2) is sent.</p>
+			<p class="snippet shell">req(2) &gt; status: OK, result: 16.000000</p>
+			<p class="snippet shell"><strong class="highlight">? (type quit to exit) quit</strong></p>
+			<p class="snippet shell">Bye.</p>
+			<p class="snippet shell"><strong class="highlight">$</strong></p>
+			<p class="packt_figref">Shell Box 20-4: Running the calculator client and sending some requests</p>
+			<p class="normal">As you see in the preceding shell box, the client process has its own command line. It receives some commands from the user, turns them into some requests according to the application<a id="_idIndexMarker1471"/> protocol, and sends them to the server for further processing. Then, it waits for the response and, as soon as it receives it, prints the result. Note that this command line is part of the common code written for all clients and therefore, no matter the channel type or socket type the client is using, you always see the client command line.</p>
+			<p class="normal">Now, it's time to jump into the details of the application protocol and s<a id="_idTextAnchor562"/>ee how request and response messages look like.</p>
+			<h2 id="_idParaDest-292" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor563"/>Application protocol</h2>
+			<p class="normal">Any two processes willing to<a id="_idIndexMarker1472"/> communicate must obey an application protocol. This protocol can be custom, like the calculator project, or it can be one of the<a id="_idIndexMarker1473"/> well-known protocols like HTTP. We call our protocol the <em class="italics">calculator protocol</em>.</p>
+			<p class="normal">The calculator protocol is a variable-length protocol. In other words, every message has its own length and every message should be separated from the next one using a delimiter. There is only one type of request message and one type of response message. The protocol is also textual. It means that we use only alphanumerical characters together with a few other characters as valid characters in request and response messages. In other words, the calculator messages are human-readable.</p>
+			<p class="normal">The request message has four <a id="_idIndexMarker1474"/>fields: <em class="italics">request ID</em>, <em class="italics">method</em>, <em class="italics">first operand</em>, and <em class="italics">second operand</em>. Every request has a unique ID and the server uses this ID to relate a response to its corresponding request. </p>
+			<p class="normal">The method is an operation that can be performed by the calculator service. Next, you can see the <code class="Code-In-Text--PACKT-">calcser/calc_proto_req.h</code> header file. This file describes the calculator protocol's request message:</p>
+			<p class="snippet code">#ifndef CALC_PROTO_REQ_H</p>
+			<p class="snippet code">#define CALC_PROTO_REQ_H</p>
+			<p class="snippet code">#include &lt;stdint.h&gt;</p>
+			<p class="snippet code">typedef enum {</p>
+			<p class="snippet code">  NONE,</p>
+			<p class="snippet code">  GETMEM, RESMEM,</p>
+			<p class="snippet code">  ADD, ADDM,</p>
+			<p class="snippet code">  SUB, SUBM,</p>
+			<p class="snippet code">  MUL, MULM,</p>
+			<p class="snippet code">  DIV</p>
+			<p class="snippet code">} method_t;</p>
+			<p class="snippet code">struct calc_proto_req_t {</p>
+			<p class="snippet code">  int32_t id;</p>
+			<p class="snippet code">  method_t method;</p>
+			<p class="snippet code">  double operand1;</p>
+			<p class="snippet code">  double operand2;</p>
+			<p class="snippet code">};</p>
+			<p class="snippet code">method_t str_to_method(const char*);</p>
+			<p class="snippet code">const char* method_to_str(method_t);</p>
+			<p class="snippet code">#endif</p>
+			<p class="packt_figref">Code Box 20-1 [calcser/calc_proto_req.h]: Definition of the calculator request object</p>
+			<p class="normal">As you can see, we have nine methods defined as part of our protocol. As a good calculator, our calculator <a id="_idIndexMarker1475"/>has an internal memory, and because of that we have memory operations associated with addition, subtraction, and multiplication.</p>
+			<p class="normal">For example, the <code class="Code-In-Text--PACKT-">ADD</code> method simply adds two float numbers, but the <code class="Code-In-Text--PACKT-">ADDM</code> method is a variation of the <code class="Code-In-Text--PACKT-">ADD</code> method that adds those two numbers together with the value stored in the internal memory, and finally it updates the value in the memory for further use. It is just like when you use the memory button on your desktop calculator. You can find that button marked as +M.</p>
+			<p class="normal">We also have a special method for reading and resetting the calculator's internal memory. The division method cannot be performed on the internal memory, so we don't have any other variation.</p>
+			<p class="normal">Suppose that the client wants to create a request with ID <code class="Code-In-Text--PACKT-">1000</code>, using the <code class="Code-In-Text--PACKT-">ADD</code> method, and with <code class="Code-In-Text--PACKT-">1.5</code> and <code class="Code-In-Text--PACKT-">5.6</code> as the operands. In C, it needs to create an object from the <code class="Code-In-Text--PACKT-">calc_proto_req_t</code> type (the structure declared in the preceding header as part of <em class="italics">Code Box 20-1</em>) and fill it with the desired values. Next, you can see how to do it:</p>
+			<p class="snippet code">struct calc_proto_req_t req;</p>
+			<p class="snippet code">req.id = 1000;</p>
+			<p class="snippet code">req.method = ADD;</p>
+			<p class="snippet code">req.operand1 = 1.5;</p>
+			<p class="snippet code">req.operand2 = 5.6;</p>
+			<p class="packt_figref">Code Box 20-2: Creating a calculator request object in C</p>
+			<p class="normal">As we explained in the previous chapter, the <code class="Code-In-Text--PACKT-">req</code> object in the preceding code box needs to be serialized to a request message before being sent to the server. In other words, we need to<a id="_idIndexMarker1476"/> serialize the preceding <em class="italics">request object</em> to the equivalent <em class="italics">request message</em>. The serializer in the calculator project, according to our application protocol, serializes the <code class="Code-In-Text--PACKT-">req</code> object as follows:</p>
+			<p class="snippet code">1000#ADD#1.5#5.6$</p>
+			<p class="packt_figref">Code Box 20-3: The serialized message equivalent to the req object defined in Code Box 20-2</p>
+			<p class="normal">As you can see, the <code class="Code-In-Text--PACKT-">#</code> character is <a id="_idIndexMarker1477"/>used as the <em class="italics">field delimiter</em>, and the <code class="Code-In-Text--PACKT-">$</code> character is used as the <em class="italics">message separator</em>. In addition, each request message has exactly four fields. A <em class="italics">deserializer</em> object on the<a id="_idIndexMarker1478"/> other side of the channel uses these facts to parse the incoming bytes and revive the request object again.</p>
+			<p class="normal">Conversely, the server process needs to serialize the response object while replying to a request. A calculator response object has three fields: <em class="italics">request ID</em>, <em class="italics">status</em>, and <em class="italics">result</em>. The request ID determines the corresponding request. Every request has a unique ID and this way, the server specifies the request that it wants to respond to.</p>
+			<p class="normal">The <code class="Code-In-Text--PACKT-">calcser/calc_proto_resp.h</code> header file describes what a calculator response should look like, and you can see it in the following code box:</p>
+			<p class="snippet code">#ifndef CALC_PROTO_RESP_H</p>
+			<p class="snippet code">#define CALC_PROTO_RESP_H</p>
+			<p class="snippet code">#include &lt;stdint.h&gt;</p>
+			<p class="snippet code">#define STATUS_OK              0</p>
+			<p class="snippet code">#define STATUS_INVALID_REQUEST 1</p>
+			<p class="snippet code">#define STATUS_INVALID_METHOD  2</p>
+			<p class="snippet code">#define STATUS_INVALID_OPERAND 3</p>
+			<p class="snippet code">#define STATUS_DIV_BY_ZERO     4</p>
+			<p class="snippet code">#define STATUS_INTERNAL_ERROR  20</p>
+			<p class="snippet code">typedef int status_t;</p>
+			<p class="snippet code">struct calc_proto_resp_t {</p>
+			<p class="snippet code">  int32_t req_id;</p>
+			<p class="snippet code">  status_t status;</p>
+			<p class="snippet code">  double result;</p>
+			<p class="snippet code">};</p>
+			<p class="snippet code">#endif</p>
+			<p class="packt_figref">Code Box 20-4 [calcser/calc_proto_resp.h]: Definition of the calculator response object</p>
+			<p class="normal">Similarly, in order to create a <em class="italics">response object</em> for the preceding request object, <code class="Code-In-Text--PACKT-">req</code>, mentioned in <em class="italics">Code Box 20-2</em>, the server process should do this:</p>
+			<p class="snippet code">struct calc_proto_resp_t resp;</p>
+			<p class="snippet code">resp.req_id = 1000;</p>
+			<p class="snippet code">resp.status = STATUS_OK;</p>
+			<p class="snippet code">resp.result = 7.1;</p>
+			<p class="packt_figref">Code Box 20-5: Creating a response object for the request object req defined as part of Code Box 20-2</p>
+			<p class="normal">The preceding response object is serialized as follows:</p>
+			<p class="snippet code">1000#0#7.1$</p>
+			<p class="packt_figref">Code Box 20-6: The serialized response message equivalent to the resp object created in the Code Box 20-5</p>
+			<p class="normal">Again, we use <code class="Code-In-Text--PACKT-">#</code> as the field <a id="_idIndexMarker1479"/>delimiter and <code class="Code-In-Text--PACKT-">$</code> as the message separator. Note that the status is numerical, and it indicates the success or failure of the request. In the case of failure, it is a non-zero number, and its meaning is described in the response header file, or to be exact, in the calculator protocol.</p>
+			<p class="normal">Now, it is time to talk a bit more about the serialization/<a id="_idTextAnchor564"/>deserialization library and what its internals look like.</p>
+			<h2 id="_idParaDest-293" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor565"/>Serialization/deserialization library</h2>
+			<p class="normal">In the previous section, we<a id="_idIndexMarker1480"/> described how the request and response<a id="_idIndexMarker1481"/> messages look like. In this section, we are going to talk a bit more about the serializer and deserializer algorithms used in the calculator project. We are going to use the <code class="Code-In-Text--PACKT-">serializer</code> class, with <code class="Code-In-Text--PACKT-">calc_proto_ser_t</code> as its attribute structure, for providing the serialization and deserialization functionalities.</p>
+			<p class="normal">As said before, these functionalities are provided to other parts of the project as a static library named <code class="Code-In-Text--PACKT-">libcalcser.a</code>. Here, you can see the public API of the <code class="Code-In-Text--PACKT-">serializer</code> class found in <code class="Code-In-Text--PACKT-">calcser/calc_proto_ser.h</code>:</p>
+			<p class="snippet code">#ifndef CALC_PROTO_SER_H</p>
+			<p class="snippet code">#define CALC_PROTO_SER_H</p>
+			<p class="snippet code">#include &lt;types.h&gt;</p>
+			<p class="snippet code">#include "calc_proto_req.h"</p>
+			<p class="snippet code">#include "calc_proto_resp.h"</p>
+			<p class="snippet code">#define ERROR_INVALID_REQUEST          101</p>
+			<p class="snippet code">#define ERROR_INVALID_REQUEST_ID       102</p>
+			<p class="snippet code">#define ERROR_INVALID_REQUEST_METHOD   103</p>
+			<p class="snippet code">#define ERROR_INVALID_REQUEST_OPERAND1 104</p>
+			<p class="snippet code">#define ERROR_INVALID_REQUEST_OPERAND2 105</p>
+			<p class="snippet code">#define ERROR_INVALID_RESPONSE         201</p>
+			<p class="snippet code">#define ERROR_INVALID_RESPONSE_REQ_ID  202</p>
+			<p class="snippet code">#define ERROR_INVALID_RESPONSE_STATUS  203</p>
+			<p class="snippet code">#define ERROR_INVALID_RESPONSE_RESULT  204</p>
+			<p class="snippet code">#define ERROR_UNKNOWN  220</p>
+			<p class="snippet code">struct buffer_t {</p>
+			<p class="snippet code">  char* data;</p>
+			<p class="snippet code">  int len;</p>
+			<p class="snippet code">};</p>
+			<p class="snippet code">struct calc_proto_ser_t;</p>
+			<p class="snippet code">typedef void (*req_cb_t)(</p>
+			<p class="snippet code">        void* owner_obj,</p>
+			<p class="snippet code">        struct calc_proto_req_t);</p>
+			<p class="snippet code">typedef void (*resp_cb_t)(</p>
+			<p class="snippet code">        void* owner_obj,</p>
+			<p class="snippet code">        struct calc_proto_resp_t);</p>
+			<p class="snippet code">typedef void (*error_cb_t)(</p>
+			<p class="snippet code">        void* owner_obj,</p>
+			<p class="snippet code">        const int req_id,</p>
+			<p class="snippet code">        const int error_code);</p>
+			<p class="snippet code">struct calc_proto_ser_t* calc_proto_ser_new();</p>
+			<p class="snippet code">void calc_proto_ser_delete(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser);</p>
+			<p class="snippet code">void calc_proto_ser_ctor(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        void* owner_obj,</p>
+			<p class="snippet code">        int ring_buffer_size);</p>
+			<p class="snippet code">void calc_proto_ser_dtor(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser);</p>
+			<p class="snippet code">void* calc_proto_ser_get_context(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser);</p>
+			<p class="snippet code">void calc_proto_ser_set_req_callback(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        req_cb_t cb);</p>
+			<p class="snippet code">void calc_proto_ser_set_resp_callback(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        resp_cb_t cb);</p>
+			<p class="snippet code">void calc_proto_ser_set_error_callback(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        error_cb_t cb);</p>
+			<p class="snippet code">void calc_proto_ser_server_deserialize(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        struct buffer_t buffer,</p>
+			<p class="snippet code">        bool_t* req_found);</p>
+			<p class="snippet code">struct buffer_t calc_proto_ser_server_serialize(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        const struct calc_proto_resp_t* resp);</p>
+			<p class="snippet code">void calc_proto_ser_client_deserialize(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        struct buffer_t buffer,</p>
+			<p class="snippet code">        bool_t* resp_found);</p>
+			<p class="snippet code">struct buffer_t calc_proto_ser_client_serialize(</p>
+			<p class="snippet code">        struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">        const struct calc_proto_req_t* req);</p>
+			<p class="snippet code">#endif</p>
+			<p class="packt_figref">Code Box 20-7 [calcser/calc_proto_ser.h]: The public interface of the Serializer class</p>
+			<p class="normal">Apart from the constructor and destructor functions required for creating and destroying a <a id="_idIndexMarker1482"/>serializer object, we have a pair of functions that should be used by the server process, and another pair of functions that should be used by the client process.</p>
+			<p class="normal">On the client side, we serialize the request object and we deserialize the response message. Meanwhile on the server side, we deserialize the request message and we serialize the response object.</p>
+			<p class="normal">In addition to serialization and deserialization functions, we have three <em class="italics">callback functions</em>:</p>
+			<ul>
+				<li class="list">A callback for receiving <a id="_idIndexMarker1483"/>a request object that has been deserialized from the underlying channel</li>
+				<li class="list">A callback for receiving a response object that has been deserialized from the underlying channel</li>
+				<li class="list">A callback for receiving the error when a serialization or a deserialization has failed</li>
+			</ul>
+			<p class="normal">These callbacks are<a id="_idIndexMarker1484"/> used by client and server processes to receive incoming requests and responses and also the errors that are found during serialization and deserialization of a message.</p>
+			<p class="normal">Now, let's have a deeper look at <a id="_idTextAnchor566"/>serialization/deserialization functions for the server side.</p>
+			<h3 id="_idParaDest-294" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor567"/>Server-side serializer/deserializer functions</h3>
+			<p class="normal">We have two functions for the server <a id="_idIndexMarker1485"/>process to serialize a response object and deserialize a request message. We begin with the response serialization function.</p>
+			<p class="normal">The following code box contains the code for the response serialization function <code class="Code-In-Text--PACKT-">calc_proto_ser_server_serialize</code>:</p>
+			<p class="snippet code">struct buffer_t calc_proto_ser_server_serialize(</p>
+			<p class="snippet code">    struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">    const struct calc_proto_resp_t* resp) {</p>
+			<p class="snippet code">  struct buffer_t buff;</p>
+			<p class="snippet code">  char resp_result_str[64];</p>
+			<p class="snippet code">  _serialize_double(resp_result_str, resp-&gt;result);</p>
+			<p class="snippet code">  buff.data = (char*)malloc(64 * sizeof(char));</p>
+			<p class="snippet code">  sprintf(buff.data, "%d%c%d%c%s%c", resp-&gt;req_id,</p>
+			<p class="snippet code">          FIELD_DELIMITER, (int)resp-&gt;status, FIELD_DELIMITER,</p>
+			<p class="snippet code">      resp_result_str, MESSAGE_DELIMITER);</p>
+			<p class="snippet code">  buff.len = strlen(buff.data);</p>
+			<p class="snippet code">  return buff;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-8 [calcser/calc_proto_ser.c]: The server-side response serializer function</p>
+			<p class="normal">As you can see, <code class="Code-In-Text--PACKT-">resp</code> is a pointer to a response object that needs to be serialized. This function returns a <code class="Code-In-Text--PACKT-">buffer_t object</code>, which is declared as follows as part of the <code class="Code-In-Text--PACKT-">calc_proto_ser.h</code> header file:</p>
+			<p class="snippet code">struct buffer_t {</p>
+			<p class="snippet code">  char* data;</p>
+			<p class="snippet code">  int len;</p>
+			<p class="snippet code">};</p>
+			<p class="packt_figref">Code Box 20-9 [calcser/calc_proto_ser.h]: The definition of buffer_t</p>
+			<p class="normal">The serializer code is simple and it consists mainly of a <code class="Code-In-Text--PACKT-">sprintf</code> statement that creates the response string message. Now, let's look at the request deserializer function. Deserialization is usually more difficult to implement, and if you go to the code base and follow the function calls, you see how complicated it can be.</p>
+			<p class="normal"><em class="italics">Code Box 20-9</em> contains the request deserialization function:</p>
+			<p class="snippet code">void calc_proto_ser_server_deserialize(</p>
+			<p class="snippet code">    struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">    struct buffer_t buff,</p>
+			<p class="snippet code">    bool_t* req_found) {</p>
+			<p class="snippet code">  if (req_found) {</p>
+			<p class="snippet code">    *req_found = FALSE;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  _deserialize(ser, buff, _parse_req_and_notify,</p>
+			<p class="snippet code">          ERROR_INVALID_REQUEST, req_found);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-9 [calcser/calc_proto_ser.c]: The server-side request deserialization function</p>
+			<p class="normal">The preceding function seems to be simple, but in fact it uses the <code class="Code-In-Text--PACKT-">_deserialize</code> and <code class="Code-In-Text--PACKT-">_parse_req_and_notify</code> private functions. These functions are defined in the <code class="Code-In-Text--PACKT-">calc_proto_ser.c</code> file, which contains the actual implementation of the <code class="Code-In-Text--PACKT-">Serializer</code> class.</p>
+			<p class="normal">It would be intense <a id="_idIndexMarker1486"/>and beyond the scope of this book to bring in and discuss the code we have for the mentioned private functions, but to give you an idea, especially for when you want to read the source code, the deserializer uses a <em class="italics">ring buffer</em> with a fixed length and tries to find <code class="Code-In-Text--PACKT-">$</code> as the message separator.</p>
+			<p class="normal">Whenever it finds <code class="Code-In-Text--PACKT-">$</code>, it calls the function pointer, which in this case points to the <code class="Code-In-Text--PACKT-">_parse_req_and_notify</code> function (the third argument passed in the <code class="Code-In-Text--PACKT-">_deserialize</code> function). The <code class="Code-In-Text--PACKT-">_parse_req_and_notify</code> function tries to extract the fields and resurrect the request object. Then, it notifies the registered <em class="italics">observer</em>, in this case the server object that is waiting for a request through the callback functions, to proceed with the request obj<a id="_idTextAnchor568"/>ect.</p>
+			<p class="normal">Now, let's look at the functions used by the client side.</p>
+			<h3 id="_idParaDest-295" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor569"/>Client-side serializer/deserializer functions</h3>
+			<p class="normal">Just as for the server side, we have two<a id="_idIndexMarker1487"/> functions on the client side. One for serializing the request object, and the other one meant to deserialize the incoming response.</p>
+			<p class="normal">We begin with the request serializer. You can see the definition in <em class="italics">Code Box 20-10</em>:</p>
+			<p class="snippet code">struct buffer_t calc_proto_ser_client_serialize(</p>
+			<p class="snippet code">    struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">    const struct calc_proto_req_t* req) {</p>
+			<p class="snippet code">  struct buffer_t buff;</p>
+			<p class="snippet code">  char req_op1_str[64];</p>
+			<p class="snippet code">  char req_op2_str[64];</p>
+			<p class="snippet code">  _serialize_double(req_op1_str, req-&gt;operand1);</p>
+			<p class="snippet code">  _serialize_double(req_op2_str, req-&gt;operand2);</p>
+			<p class="snippet code">  buff.data = (char*)malloc(64 * sizeof(char));</p>
+			<p class="snippet code">  sprintf(buff.data, "%d%c%s%c%s%c%s%c", req-&gt;id, FIELD_DELIMITER,</p>
+			<p class="snippet code">          method_to_str(req-&gt;method), FIELD_DELIMITER,</p>
+			<p class="snippet code">          req_op1_str, FIELD_DELIMITER, req_op2_str,</p>
+			<p class="snippet code">          MESSAGE_DELIMITER);</p>
+			<p class="snippet code">  buff.len = strlen(buff.data);</p>
+			<p class="snippet code">  return buff;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-10 [calcser/calc_proto_ser.c]: The client-side request serialization function</p>
+			<p class="normal">As you can <a id="_idIndexMarker1488"/>see, it accepts a request object and returns a <code class="Code-In-Text--PACKT-">buffer</code> object, totally similar to the response serializer on the server side. It even uses the same technique; a <code class="Code-In-Text--PACKT-">sprintf</code> statement for creating the request message.</p>
+			<p class="normal"><em class="italics">Code Box 20-11</em> contains the response deserializer function:</p>
+			<p class="snippet code">void calc_proto_ser_client_deserialize(</p>
+			<p class="snippet code">    struct calc_proto_ser_t* ser,</p>
+			<p class="snippet code">    struct buffer_t buff, bool_t* resp_found) {</p>
+			<p class="snippet code">  if (resp_found) {</p>
+			<p class="snippet code">    *resp_found = FALSE;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  _deserialize(ser, buff, _parse_resp_and_notify,</p>
+			<p class="snippet code">          ERROR_INVALID_RESPONSE, resp_found);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-11 [calcser/calc_proto_ser.c]: The client-side response deserialization function</p>
+			<p class="normal">As you can see, the same mechanism is employed, and some similar private functions have been used. It is highly recommended to read these sources carefully, in order to get a better understanding of how the various parts of the code have been put together to have the maximum reuse of the existing parts.</p>
+			<p class="normal">We won't go any deeper than this into the <code class="Code-In-Text--PACKT-">Serializer</code> class; it's up to you to dig into the code and finds out how it works.</p>
+			<p class="normal">Now that we have the serializer library, we can proceed and write our client and server programs. Having a library that serializes objects and deserializes messages based on an agreed application protocol is a vital step in writing multi-process software. Note that it doesn't matter if the deployment is single-host or contains multiple hosts; the processes should be<a id="_idIndexMarker1489"/> able to understand each other, and proper application protocols should have been defined.</p>
+			<p class="normal">Before jumping to code regarding socket programming, we have to explain one more thing: the calculator service. It is at th<a id="_idTextAnchor570"/>e heart of the server process and it does the actual calculation.</p>
+			<h2 id="_idParaDest-296" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor571"/>Calculator service</h2>
+			<p class="normal">The calculator service<a id="_idIndexMarker1490"/> is the core logic of our example. Note that this logic should work independently of the underlying IPC mechanism. The upcoming code shows the declaration of the calculator service class. </p>
+			<p class="normal">As you can see, it is designed in such a way that it can be used even in a very simple program, with just a <code class="Code-In-Text--PACKT-">main</code> function, such that it doesn't even do any IPC at all:</p>
+			<p class="snippet code">#ifndef CALC_SERVICE_H</p>
+			<p class="snippet code">#define CALC_SERVICE_H</p>
+			<p class="snippet code">#include &lt;types.h&gt;</p>
+			<p class="snippet code">static const int CALC_SVC_OK = 0;</p>
+			<p class="snippet code">static const int CALC_SVC_ERROR_DIV_BY_ZERO = -1;</p>
+			<p class="snippet code">struct calc_service_t;</p>
+			<p class="snippet code">struct calc_service_t* calc_service_new();</p>
+			<p class="snippet code">void calc_service_delete(struct calc_service_t*);</p>
+			<p class="snippet code">void calc_service_ctor(struct calc_service_t*);</p>
+			<p class="snippet code">void calc_service_dtor(struct calc_service_t*);</p>
+			<p class="snippet code">void calc_service_reset_mem(struct calc_service_t*);</p>
+			<p class="snippet code">double calc_service_get_mem(struct calc_service_t*);</p>
+			<p class="snippet code">double calc_service_add(struct calc_service_t*, double, double b,</p>
+			<p class="snippet code">    bool_t mem);</p>
+			<p class="snippet code">double calc_service_sub(struct calc_service_t*, double, double b,</p>
+			<p class="snippet code">    bool_t mem);</p>
+			<p class="snippet code">double calc_service_mul(struct calc_service_t*, double, double b,</p>
+			<p class="snippet code">    bool_t mem);</p>
+			<p class="snippet code">int calc_service_div(struct calc_service_t*, double,</p>
+			<p class="snippet code">        double, double*);</p>
+			<p class="snippet code">#endif</p>
+			<p class="packt_figref">Code Box 20-12 [calcsvc/calc_service.h]: The public interface of the calculator service class</p>
+			<p class="normal">As you can see, the <a id="_idIndexMarker1491"/>preceding class even has its own error types. The input arguments are pure C types, and it is in no way dependent on IPC-related or serialization-related classes or types. Since it is isolated as a standalone logic, we compile it into an independent static library named <code class="Code-In-Text--PACKT-">libcalcsvc.a</code>.</p>
+			<p class="normal">Every server process must use the calculator service objects in order to do the actual calculations. These objects are usually called the <em class="italics">service objects</em>. Because of this, the final server program must get linked against this library.</p>
+			<p class="normal">An important note before we go further: if, for a specific client, the calculations don't need a specific context, then having just one service object is enough. In other words, if a service for a client doesn't require us to remember any state from the previous requests of that client, then we<a id="_idIndexMarker1492"/> can use a <em class="italics">singleton</em> service object. We call this a <em class="italics">stateless service object</em>.</p>
+			<p class="normal">Conversely, if handling the current request demands knowing something from the previous requests, then for every client, we need to have a specific service object. This is the case regarding our calculator project. As you know, the calculator has an internal memory that is unique for each client. Therefore, we <a id="_idIndexMarker1493"/>cannot use the same object for two clients. These objects are known as <em class="italics">stateful service objects</em>.</p>
+			<p class="normal">To summarize what we said above, for every client, we have to create a new service object. This way, every client has its own calculator with its own dedicated internal memory. Calculator service <a id="_idIndexMarker1494"/><a id="_idIndexMarker1495"/>objects are stateful and they need to load some state (the value of the internal memory).</p>
+			<p class="normal">Now, we are in a good position to move forward and talk about various types of sockets, with examples given in the context of the calculator project.</p>
+			<h1 id="_idParaDest-297" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor572"/>Unix domain sockets</h1>
+			<p class="normal">From the previous chapter, we know<a id="_idIndexMarker1496"/> that if we are going to establish a connection between two processes on the same machine, UDS are one of the best options. In this chapter, we expanded our discussion and talked a bit more about push-based IPC techniques, as well as stream and datagram channels. Now it's time to gather our knowledge from previous and current chapters and see UDS in action.</p>
+			<p class="normal">In this section, we have four subsections dedicated to processes being on the listener side or the connector side and operating on a stream or a datagram channel. All of these processes are using UDS. We go through the steps they should take to establish the channel, based on the sequences we discussed in the previous chapter. As the first process, we start with<a id="_idIndexMarker1497"/> the listene<a id="_idTextAnchor573"/>r process operating on a stream channel. This would be the <em class="italics">stream server</em>.</p>
+			<h2 id="_idParaDest-298" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor574"/>UDS stream server</h2>
+			<p class="normal">If you remember from the<a id="_idIndexMarker1498"/> previous chapter, we had a number of sequences for listener and connector sides in a transport communication. A server stands in<a id="_idIndexMarker1499"/> the position of a listener. Therefore, it should follow the listener sequence. More specifically, since we are talking about stream channels in this section, it should follow a stream listener sequence.</p>
+			<p class="normal">As part of that sequence, the server needs to create a socket object first. In our calculator project, the stream server process willing to receive connections over a UDS must follow the same sequence. </p>
+			<p class="normal">The following piece of code is located in the main function of the calculator server program, and as can be seen in <em class="italics">Code Box 20-13</em>, the process firstly creates a <code class="Code-In-Text--PACKT-">socket</code> object:</p>
+			<p class="snippet code">int server_sd = socket(AF_UNIX, SOCK_STREAM, 0);</p>
+			<p class="snippet code">if (server_sd == -1) {</p>
+			<p class="snippet code">  fprintf(stderr, "Could not create socket: %s\n", strerror(errno));</p>
+			<p class="snippet code">  exit(1);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-13 [server/unix/stream/main.c]: Creating a stream UDS object</p>
+			<p class="normal">As you can see, the <code class="Code-In-Text--PACKT-">socket</code> function is used to create a socket object. This function is included from <code class="Code-In-Text--PACKT-">&lt;sys/socket.h&gt;</code>, which is a POSIX header. Note that this is just a socket object, and yet it is not determined whether this is going to be a client socket or a server socket. Only the subsequent function calls determine this.</p>
+			<p class="normal">As we explained in the<a id="_idIndexMarker1500"/> previous chapter, every socket object has three attributes. These attributes are determined by the three arguments passed to the <code class="Code-In-Text--PACKT-">socket</code> function. These arguments specify the address family, the type, and the protocol used on that socket object respectively.</p>
+			<p class="normal">According to the stream<a id="_idIndexMarker1501"/> listener sequence and especially regarding the UDS after creating the socket object, the server program must bind it to a <em class="italics">socket file</em>. Therefore, the next step is to bind the socket to a socket file. <em class="italics">Code Box 20-14</em> has been used in the calculator project to bind the socket object to a file located at a predetermined path specified by the <code class="Code-In-Text--PACKT-">sock_file</code> character array:</p>
+			<p class="snippet code">struct sockaddr_un addr;</p>
+			<p class="snippet code">memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">int result = bind(server_sd, (struct sockaddr*)&amp;addr, sizeof(addr));</p>
+			<p class="snippet code">if (result == -1) {</p>
+			<p class="snippet code">  close(server_sd);</p>
+			<p class="snippet code">  fprintf(stderr, "Could not bind the address: %s\n", strerror(errno));</p>
+			<p class="snippet code">  exit(1);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-14 [server/unix/stream/main.c]: Binding a stream UDS object to a socket file specified by the sock_file char array</p>
+			<p class="normal">The preceding code has two steps. The first step is to create an instance, named <code class="Code-In-Text--PACKT-">addr</code>, of the type <code class="Code-In-Text--PACKT-">struct sockaddr_un</code> and then initialize it by pointing it to a socket file. In the second step, the <code class="Code-In-Text--PACKT-">addr</code> object is passed to the <code class="Code-In-Text--PACKT-">bind</code> function in order to let it know which socket file should be <em class="italics">bound</em> to the socket<a id="_idIndexMarker1502"/> object. The <code class="Code-In-Text--PACKT-">bind</code> function call succeeds only if there is no other socket object bound to the same <a id="_idIndexMarker1503"/>socket file. Therefore, with UDS, two socket objects, probably being in different processes, cannot be bound to the same socket file.</p>
+			<div>
+				<div id="_idContainer148" class="note">
+					<p class="Information-Box--PACKT-"><strong class="screen-text">Note</strong>:</p>
+					<p class="Information-Box--PACKT-">In Linux, UDS can be bound to <em class="italics">abstract socket addresses</em>. They are useful mainly when there is no filesystem mounted to be used for having a socket file. A string starting with a null character, <code class="Code-In-Text--PACKT-">\0</code>, can be used to initialize the address structure, <code class="Code-In-Text--PACKT-">addr</code> in the preceding code box, and then the provided name is bound to the socket object inside the kernel. The provided name should be unique in the system and no other socket object should be bound to it.</p>
+				</div>
+			</div>
+			<p class="normal">On a further note about the socket file path, the length of the path cannot exceed 104 bytes on most Unix systems. However, in Linux systems, this length is 108 bytes. Note that the string variable keeping the socket file path always include an extra null character at the end as a <code class="Code-In-Text--PACKT-">char</code> array in C. Therefore, effectively, 103 and 107 bytes can be used as part of the socket file path depending on the operating system.</p>
+			<p class="normal">If the <code class="Code-In-Text--PACKT-">bind</code> function returns <code class="Code-In-Text--PACKT-">0</code>, it means that the binding has been successful, and you can proceed with configuring the size of the <em class="italics">backlog</em>; the next step in the stream listener sequence after binding the endpoint.</p>
+			<p class="normal">The following code shows how the backlog is configured for the stream calculator server listening on a UDS:</p>
+			<p class="snippet code">result = listen(server_sd, 10);</p>
+			<p class="snippet code">if (result == -1) {</p>
+			<p class="snippet code">  close(server_sd);</p>
+			<p class="snippet code">  fprintf(stderr, "Could not set the backlog: %s\n", strerror(errno));</p>
+			<p class="snippet code">  exit(1);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-15 [server/unix/stream/main.c]: Configuring the size of the backlog for a bound stream socket</p>
+			<p class="normal">The <code class="Code-In-Text--PACKT-">listen</code> function configures the size of the backlog for an already bound socket. As we have explained in the previous chapter, when a busy server process cannot accept any more incoming clients, a certain number of these clients can wait in the backlog until the server program can process them. This is an essential step in preparing a stream socket before accepting the clients.</p>
+			<p class="normal">According to what we have in the stream listener sequence, after having the stream socket bound and<a id="_idIndexMarker1504"/> having its backlog size configured, we can start <a id="_idIndexMarker1505"/>accepting new clients. <em class="italics">Code Box 20-16</em> shows how new clients can be accepted:</p>
+			<p class="snippet code">while (1) {</p>
+			<p class="snippet code">  int client_sd = accept(server_sd, NULL, NULL);</p>
+			<p class="snippet code">  if (client_sd == -1) {</p>
+			<p class="snippet code">    close(server_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could not accept the client: %s\n",</p>
+			<p class="snippet code">        strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-16 [server/unix/stream/main.c]: Accepting new clients on a stream listener socket</p>
+			<p class="normal">The magic is the <code class="Code-In-Text--PACKT-">accept</code> function, which returns a new socket object whenever a new client is received. The returned socket object refers to the underlying stream channel between the server and the accepted client. Note that every client has its own stream channel, and hence its own socket descriptor.</p>
+			<p class="normal">Note that if the stream listener socket is blocking (which it is by default), the <code class="Code-In-Text--PACKT-">accept</code> function would block the execution until a new client is received. In other words, if there is no incoming client, the thread calling the <code class="Code-In-Text--PACKT-">accept</code> function is blocked behind it.</p>
+			<p class="normal">Now, it's time to see the above steps together in just one place. The following code box shows the stream server from the calculator project, which listens on a UDS:</p>
+			<p class="snippet code">#include &lt;stdio.h&gt;</p>
+			<p class="snippet code">#include &lt;string.h&gt;</p>
+			<p class="snippet code">#include &lt;errno.h&gt;</p>
+			<p class="snippet code">#include &lt;unistd.h&gt;</p>
+			<p class="snippet code">#include &lt;stdlib.h&gt;</p>
+			<p class="snippet code">#include &lt;pthread.h&gt;</p>
+			<p class="snippet code">#include &lt;sys/socket.h&gt;</p>
+			<p class="snippet code">#include &lt;sys/un.h&gt;</p>
+			<p class="snippet code">#include &lt;stream_server_core.h&gt;</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  char sock_file[] = "/tmp/calc_svc.sock";</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int server_sd = <code class="Code-In-Text--PACKT-">socket(AF_UNIX, SOCK_STREAM, 0)</code>;</p>
+			<p class="snippet code">  if (server_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Bind the socket file ------------------</p>
+			<p class="snippet code">  // Delete the previously created socket file if it exists.</p>
+			<p class="snippet code">  unlink(sock_file);</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  struct sockaddr_un addr;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">  strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">  int result = <strong class="highlight">bind(server_sd,</strong></p>
+			<p class="snippet code"><strong class="highlight">          (struct sockaddr*)&amp;addr, sizeof(addr))</strong>;</p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(server_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could not bind the address: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 3. Prepare backlog ------------------</p>
+			<p class="snippet code">  result = <strong class="highlight">listen(server_sd, 10)</strong>;</p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(server_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could not set the backlog: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 4. Start accepting clients ---------</p>
+			<p class="snippet code">  <strong class="highlight">accept_forever(server_sd)</strong>;</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-17 [server/unix/stream/main.c]: The main function of the stream calculator service listening on a UDS endpoint</p>
+			<p class="normal">It should be easy to<a id="_idIndexMarker1506"/> find the code blocks that perform the aforementioned steps in initializing a server socket. The only thing that is missing is the client-accepting code. The actual code for accepting new clients is put in a separate function<a id="_idIndexMarker1507"/> that is called <code class="Code-In-Text--PACKT-">accept_forever</code>. Note that this function is blocking and blocks the main thread until the server stops.</p>
+			<p class="normal">In the following code box, you can see the definition of the <code class="Code-In-Text--PACKT-">accept_forever</code> function. The function is part of the server common library located in the <code class="Code-In-Text--PACKT-">srvcore</code> directory. This function should be there because its definition remains the same for other stream sockets such as TCP sockets. Therefore, we can reuse the existing logic instead of writing it again:</p>
+			<p class="snippet code">void accept_forever(int server_sd) {</p>
+			<p class="snippet code">  while (1) {</p>
+			<p class="snippet code">    int client_sd = <strong class="highlight">accept(server_sd, NULL, NULL)</strong>;</p>
+			<p class="snippet code">    if (client_sd == -1) {</p>
+			<p class="snippet code">      close(server_sd);</p>
+			<p class="snippet code">      fprintf(stderr, "Could not accept the client: %s\n",</p>
+			<p class="snippet code">              strerror(errno));</p>
+			<p class="snippet code">      exit(1);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    pthread_t client_handler_thread;</p>
+			<p class="snippet code">    int* arg = (int *)malloc(sizeof(int));</p>
+			<p class="snippet code">    *arg = client_sd;</p>
+			<p class="snippet code">    int result = <strong class="highlight">pthread_create(&amp;client_handler_thread, NULL,</strong></p>
+			<p class="snippet code">            <code class="Code-In-Text--PACKT-">&amp;client_handler, arg)</code>;</p>
+			<p class="snippet code">    if (result) {</p>
+			<p class="snippet code">      close(client_sd);</p>
+			<p class="snippet code">      close(server_sd);</p>
+			<p class="snippet code">      free(arg);</p>
+			<p class="snippet code">      fprintf(stderr, "Could not start the client handler thread.\n");</p>
+			<p class="snippet code">      exit(1);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-18 [server/srvcore/stream_server_core.c]: The function accepting new clients on a stream socket listening on a UDS endpoint</p>
+			<p class="normal">As you can see in the preceding code box, upon accepting a new client, we spawn a new thread that is in charge <a id="_idIndexMarker1508"/>of handling the client. This effectively entails reading bytes from the client's channel, passing the read bytes into the deserializer, and producing<a id="_idIndexMarker1509"/> proper responses if a request has been detected. </p>
+			<p class="normal">Creating a new thread for every client is usually the pattern for every server process that operates on a blocking stream channel, no matter what the type of socket is. Therefore, in such use cases, multithreading and all the surrounding topics become enormously important.</p>
+			<div>
+				<div id="_idContainer149" class="note">
+					<p class="Information-Box--PACKT-"><strong class="screen-text">Note</strong>:</p>
+					<p class="Information-Box--PACKT-">Regarding non-blocking<a id="_idIndexMarker1510"/> stream channels, a different approach known as <em class="italics">event loop</em> is usually used.</p>
+				</div>
+			</div>
+			<p class="normal">When you have the socket object of a client, you can use it for reading from the client, as well writing to the client. If we follow the path that we've taken so far in the <code class="Code-In-Text--PACKT-">srvcore</code> library, the next step is to look into the companion function of a client's thread; <code class="Code-In-Text--PACKT-">client_handler</code>. The function can be found next to the <code class="Code-In-Text--PACKT-">accept_forever</code> in the code base. Next, you can see the code box containing the function's definition:</p>
+			<p class="snippet code">void* client_handler(void *arg) {</p>
+			<p class="snippet code">  struct client_context_t context;</p>
+			<p class="snippet code">  context.addr = (struct client_addr_t*)</p>
+			<p class="snippet code">      malloc(sizeof(struct client_addr_t));</p>
+			<p class="snippet code">  context.addr-&gt;sd = *((int*)arg);</p>
+			<p class="snippet code">  free((int*)arg);</p>
+			<p class="snippet code"><strong class="highlight">  context.ser = calc_proto_ser_new()</strong>;</p>
+			<p class="snippet code">  calc_proto_ser_ctor(context.ser, &amp;context, 256);</p>
+			<p class="snippet code">  calc_proto_ser_set_req_callback(context.ser, request_callback);</p>
+			<p class="snippet code">  calc_proto_ser_set_error_callback(context.ser, error_callback);</p>
+			<p class="snippet code">  context.svc = calc_service_new();</p>
+			<p class="snippet code">  calc_service_ctor(context.svc);</p>
+			<p class="snippet code">  <strong class="highlight">context.write_resp = &amp;stream_write_resp</strong>;</p>
+			<p class="snippet code">  int ret;</p>
+			<p class="snippet code">  char buffer[128];</p>
+			<p class="snippet code">  while (1) {</p>
+			<p class="snippet code">    int ret = <strong class="highlight">read(context.addr-&gt;sd, buffer, 128)</strong>;</p>
+			<p class="snippet code">    if (ret == 0 || ret == -1) {</p>
+			<p class="snippet code">      break;</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    struct buffer_t buf;</p>
+			<p class="snippet code">    buf.data = buffer; buf.len = ret;</p>
+			<p class="snippet code">    <strong class="highlight">calc_proto_ser_server_deserialize(context.ser, buf, NULL)</strong>;</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  calc_service_dtor(context.svc);</p>
+			<p class="snippet code">  calc_service_delete(context.svc);</p>
+			<p class="snippet code">  calc_proto_ser_dtor(context.ser);</p>
+			<p class="snippet code">  calc_proto_ser_delete(context.ser);</p>
+			<p class="snippet code">  free(context.addr);</p>
+			<p class="snippet code">  return NULL;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-19 [server/srvcore/stream_server_core.c]: The companion function of the client-handling thread</p>
+			<p class="normal">There<a id="_idIndexMarker1511"/> are many details<a id="_idIndexMarker1512"/> regarding the preceding code, but there are a few important ones that I want to mention. As you see, we are using the <code class="Code-In-Text--PACKT-">read</code> function to read chunks from the client. If you remember, the <code class="Code-In-Text--PACKT-">read</code> function accepts a file descriptor but here we are passing a socket descriptor. This shows, despite the differences between file descriptors and socket descriptors, regarding I/O functions, we can use the same API.</p>
+			<p class="normal">In the preceding<a id="_idIndexMarker1513"/> code, we read chunks of bytes from the input and we pass them to the deserializer by calling the <code class="Code-In-Text--PACKT-">calc_proto_ser_server_deserialize</code> function. It is possible to call this function three or four times before having a request fully deserialized. This is highly dependent on the chunk size that you read from the input and the length of the <a id="_idIndexMarker1514"/>messages transmitting on the channel.</p>
+			<p class="normal">On a further note, every client has its own serializer object. This is also true for the calculator service object. These objects are created and destroyed as part of the same thread.</p>
+			<p class="normal">And as the last note about the preceding code box, we are using a function to write responses back to the client. The function is <code class="Code-In-Text--PACKT-">stream_write_response</code> and it is meant to be used on a stream socket. This function can be found in the same file as the preceding code boxes. Next, you can see the definition of this function:</p>
+			<p class="snippet code">void stream_write_resp(</p>
+			<p class="snippet code">        struct client_context_t* context,</p>
+			<p class="snippet code">        struct calc_proto_resp_t* resp) {</p>
+			<p class="snippet code">  struct buffer_t buf =</p>
+			<p class="snippet code">      calc_proto_ser_server_serialize(context-&gt;ser, resp);</p>
+			<p class="snippet code">  if (buf.len == 0) {</p>
+			<p class="snippet code">    close(context-&gt;addr-&gt;sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Internal error while serializing response\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  int ret = <strong class="highlight">write(context-&gt;addr-&gt;sd, buf.data, buf.len)</strong>;</p>
+			<p class="snippet code">  free(buf.data);</p>
+			<p class="snippet code">  if (ret == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not write to client: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    <strong class="highlight">close(context-&gt;addr-&gt;sd)</strong>;</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  } else if (ret &lt; buf.len) {</p>
+			<p class="snippet code">    fprintf(stderr, "WARN: Less bytes were written!\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-20 [server/srvcore/stream_server_core.c]: The function used for writing the responses back to the client</p>
+			<p class="normal">As you see in the<a id="_idIndexMarker1515"/> preceding code, we are using the <code class="Code-In-Text--PACKT-">write</code> function to write a message back to the client. As we know, the <code class="Code-In-Text--PACKT-">write</code> function can accept file descriptors, but it seems socket descriptors can also be used. So, it clearly shows that the POSIX I/O API works for both file descriptors and socket descriptors.</p>
+			<p class="normal">The above<a id="_idIndexMarker1516"/> statement is also true about the <code class="Code-In-Text--PACKT-">close</code> function. As you can see, we have used it to terminate a connection. It is enough to pass the socket descriptor while we know that it works for file descriptors as well.</p>
+			<p class="normal">Now that we have gone through some of the most important parts of the UDS stream server and we have an idea of how it operates, it is time to move on and discuss the UDS stream client. For sure, there are plenty pl<a id="_idTextAnchor575"/>aces in the code that we haven't discussed but you should dedicate time and go through them.</p>
+			<h2 id="_idParaDest-299" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor576"/>UDS stream client</h2>
+			<p class="normal">Like the server program<a id="_idIndexMarker1517"/> described in the previous section, the client also<a id="_idIndexMarker1518"/> needs to create a socket object first. Remember that we need to follow the stream connector sequence now. It uses the same piece of code as server does, with exactly the same arguments, to indicate that it needs a UDS. After that, it needs to connect to the server process by specifying a UDS endpoint, similarly to how the server did. When the stream channel is established, the client process can use the opened socket descriptor to read from and write to the channel.</p>
+			<p class="normal">Next, you can see the <code class="Code-In-Text--PACKT-">main</code> function of the stream client connecting to a UDS endpoint:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  char sock_file[] = "/tmp/calc_svc.sock";</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int conn_sd = <strong class="highlight">socket(AF_UNIX, SOCK_STREAM, 0)</strong>;</p>
+			<p class="snippet code">  if (conn_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Connect to server ---------------------</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  struct sockaddr_un addr;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">  strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">  int result = <strong class="highlight">connect(conn_sd,</strong></p>
+			<p class="snippet code"><strong class="highlight">          (struct sockaddr*)&amp;addr, sizeof(addr))</strong>;</p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(conn_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could no connect: %s\n", strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code"><strong class="highlight">  stream_client_loop(conn_sd)</strong>;</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-21 [client/unix/stream/main.c]: The main function of the stream client connecting to a UDS endpoint</p>
+			<p class="normal">As you can see, the first part of the code is very similar to the server code but afterward, the client calls <code class="Code-In-Text--PACKT-"><a id="_idIndexMarker1519"/></code><code class="Code-In-Text--PACKT-">connect</code> instead of <code class="Code-In-Text--PACKT-">bind</code>. Note that the address preparation code is exactly the same as that of the server.</p>
+			<p class="normal">When <code class="Code-In-Text--PACKT-">connect</code><code class="Code-In-Text--PACKT-"><a id="_idIndexMarker1520"/></code> returns successfully, it has already associated the <code class="Code-In-Text--PACKT-">conn_sd</code> socket descriptor to the opened channel. Therefore, from now on, <code class="Code-In-Text--PACKT-">conn_sd</code> can be used to communicate with the server. We pass it to the <code class="Code-In-Text--PACKT-">stream_client_loop</code> function, which brings up the client's command line and does the rest of the actions performed by the client. It is a blocking function that runs the client until it quits.</p>
+			<p class="normal">Note that the client also uses <code class="Code-In-Text--PACKT-">read</code> and <code class="Code-In-Text--PACKT-">write</code> functions to transmit messages back and forth from and to the server. <em class="italics">Code Box 20-22</em> contains the definition of the <code class="Code-In-Text--PACKT-">stream_client_loop</code> function, which is part of the client common library that is used by all stream clients, regardless of the socket type and is shared between UDS and TCP<a id="_idIndexMarker1521"/> sockets. As you see, it uses the <code class="Code-In-Text--PACKT-">write</code> function to send a <a id="_idIndexMarker1522"/>serialized request message to the server:</p>
+			<p class="snippet code">void stream_client_loop(int conn_sd) {</p>
+			<p class="snippet code">  struct context_t context;</p>
+			<p class="snippet code">  context.sd = conn_sd;</p>
+			<p class="snippet code">  <strong class="highlight">context.ser = calc_proto_ser_new()</strong>;</p>
+			<p class="snippet code">  calc_proto_ser_ctor(context.ser, &amp;context, 128);</p>
+			<p class="snippet code">  calc_proto_ser_set_resp_callback(context.ser, on_response);</p>
+			<p class="snippet code">  calc_proto_ser_set_error_callback(context.ser, on_error);</p>
+			<p class="snippet code">  pthread_t reader_thread;</p>
+			<p class="snippet code"><strong class="highlight">  pthread_create(&amp;reader_thread, NULL,</strong></p>
+			<p class="snippet code"><strong class="highlight">          </strong><strong class="highlight">stream_response_reader, &amp;context)</strong>;</p>
+			<p class="snippet code">  char buf[128];</p>
+			<p class="snippet code">  printf("? (type quit to exit) ");</p>
+			<p class="snippet code">  while (1) {</p>
+			<p class="snippet code">    scanf("%s", buf);</p>
+			<p class="snippet code">    int brk = 0, cnt = 0;</p>
+			<p class="snippet code">    struct calc_proto_req_t req;</p>
+			<p class="snippet code">    parse_client_input(buf, &amp;req, &amp;brk, &amp;cnt);</p>
+			<p class="snippet code">    if (brk) {</p>
+			<p class="snippet code">      break;</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    if (cnt) {</p>
+			<p class="snippet code">      continue;</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    struct buffer_t ser_req =</p>
+			<p class="snippet code">        calc_proto_ser_client_serialize(context.ser, &amp;req);</p>
+			<p class="snippet code">    int ret = <strong class="highlight">write(context.sd, ser_req.data, ser_req.len</strong>);</p>
+			<p class="snippet code">    if (ret == -1) {</p>
+			<p class="snippet code">      fprintf(stderr, "Error while writing! %s\n",</p>
+			<p class="snippet code">              strerror(errno));</p>
+			<p class="snippet code">      break;</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    if (ret &lt; ser_req.len) {</p>
+			<p class="snippet code">      fprintf(stderr, "Wrote less than anticipated!\n");</p>
+			<p class="snippet code">      break;</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    printf("The req(%d) is sent.\n", req.id);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  shutdown(conn_sd, SHUT_RD);</p>
+			<p class="snippet code">  calc_proto_ser_dtor(context.ser);</p>
+			<p class="snippet code">  calc_proto_ser_delete(context.ser);</p>
+			<p class="snippet code">  <strong class="highlight">pthread_join(reader_thread, NULL)</strong>;</p>
+			<p class="snippet code">  printf("Bye.\n");</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-22 [client/clicore/stream_client_core.c]: The function executing a stream client</p>
+			<p class="normal">As you can see in the <a id="_idIndexMarker1523"/>preceding code, every client process has only one serializer object and it makes sense. This is opposite to the server process, where every client had a separate serializer object.</p>
+			<p class="normal">More than that, the client <a id="_idIndexMarker1524"/>process spawns a separate thread for reading the responses from the server side. That's because reading from the server process is a blocking task and it should be done in a separate flow of execution. </p>
+			<p class="normal">As part of the main thread, we have the client's command line, which receives inputs from a user through the Terminal. As you see, the main thread joins the reader thread upon exiting and it waits for its completion.</p>
+			<p class="normal">On a further note regarding the preceding code, the client process uses the same I/O API for reading from and writing to the stream channel. Like we said before, the <code class="Code-In-Text--PACKT-">read</code> and <code class="Code-In-Text--PACKT-">write</code> functions are used and the usage of the <code class="Code-In-Text--PACKT-">write</code> function can be seen in <em class="italics">Code Box 20-22</em>.</p>
+			<p class="normal">In the following section, we talk about datagram channel<a id="_idTextAnchor577"/>s but still using the UDS for that purpose. We start with the datagram server first.</p>
+			<h2 id="_idParaDest-300" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor578"/>UDS datagram server</h2>
+			<p class="normal">If you remember<a id="_idIndexMarker1525"/> from the previous chapter, datagram processes had their own listener and connector<a id="_idIndexMarker1526"/> sequences regarding transport transmission. Now it's time to demonstrate how a datagram server can be developed based on UDS. </p>
+			<p class="normal">According to the datagram listener sequence, the process needs to create a socket object first. The following code box demonstrates that:</p>
+			<p class="snippet code">int server_sd = socket(AF_UNIX, SOCK_DGRAM, 0);</p>
+			<p class="snippet code">if (server_sd == -1) {</p>
+			<p class="snippet code">  fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">          strerror(errno));</p>
+			<p class="snippet code">  exit(1);</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-23 [server/unix/datagram/main.c]: Creating a UDS object meant to operate on a datagram channel</p>
+			<p class="normal">You see that we<a id="_idIndexMarker1527"/> have used <code class="Code-In-Text--PACKT-">SOCK_DGRAM</code> instead of <code class="Code-In-Text--PACKT-">SOCK_STREAM</code>. This means that the socket object is going to operate on a datagram channel. The other two arguments remain the same.</p>
+			<p class="normal">As the second step in the datagram listener sequence, we need to bind the socket to a UDS endpoint. As we said before, this is a socket file. This step is exactly the same as for the stream server, and therefore <a id="_idIndexMarker1528"/>we don't bother to demonstrate it below and you can see it in <em class="italics">Code Box 20-14</em>.</p>
+			<p class="normal">For a datagram listener process, these steps were the only ones to be performed, and there is no backlog associated to a datagram socket to be configured. More than that, there is no client-accepting phase because we can't have stream connections on some dedicated 1-to-1 channels.</p>
+			<p class="normal">Next, you can see the <code class="Code-In-Text--PACKT-">main</code> function of the datagram server listening on a UDS endpoint, as part of the calculator project:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  char sock_file[] = "/tmp/calc_svc.sock";</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  <strong class="highlight">int server_sd = socket(AF_UNIX, SOCK_DGRAM, 0);</strong></p>
+			<p class="snippet code">  if (server_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Bind the socket file ------------------</p>
+			<p class="snippet code">  // Delete the previously created socket file if it exists.</p>
+			<p class="snippet code">  unlink(sock_file);</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  struct sockaddr_un addr;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">  strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">  <strong class="highlight">int result = bind(server_sd,</strong></p>
+			<p class="snippet code">          <strong class="highlight">(struct sockaddr*)&amp;addr, sizeof(addr))</strong>;</p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(server_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could not bind the address: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 3. Start serving requests ---------</p>
+			<p class="snippet code">  <strong class="highlight">serve_forever(server_sd);</strong></p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-24 [server/unix/datagram/main.c]: The main function of the datagram server listening on a UDS endpoint</p>
+			<p class="normal">As you know, datagram channels are connection-less, and they don't operate like stream channels. In other words, there <a id="_idIndexMarker1529"/>cannot be a dedicated 1-to-1 connection<a id="_idIndexMarker1530"/> between two processes. Therefore, the processes can only transmit datagrams along the channel. A client process can only send some individual and independent datagrams and likewise, the server process can only receive datagrams and send back some other datagrams as responses.</p>
+			<p class="normal">So, the crucial thing about a datagram channel is that the request and response messages should be fit into a single datagram. Otherwise, they cannot be split between two datagrams and the server or client cannot handle the message. Fortunately, our messages in the calculator project are mostly short enough to be fit into a single datagram.</p>
+			<p class="normal">The size of a datagram is highly dependent on the underlying channel. For example, regarding datagram UDS this is quite flexible because it happens through the kernel, but regarding UDP sockets, you are bound to the configuration of the network. Regar<a href="https://stackoverflow.com/questions/21856517/whats-the-practical-limit-on-the-size-of-single-packet-transmitted-over-domain">ding the UDS the following link can give you a better idea of how to set the correct size: <span class="url">https://stackov</span></a><span class="url">erflow.com/questions/21856517/whats-the-practical-limit-on-the-size-of-single-packet-transmitted-over-domain</span>.</p>
+			<p class="normal">Another difference that we can mention regarding datagram and stream sockets is the I/O API that is used to transmit data along them. While the <code class="Code-In-Text--PACKT-">read</code> and <code class="Code-In-Text--PACKT-">write</code> functions can still be used for datagram sockets just like the stream sockets, we use other functions for reading from and sending to a datagram channel. The <code class="Code-In-Text--PACKT-">recvfrom</code> and <code class="Code-In-Text--PACKT-">sendto</code> functions are usually used.</p>
+			<p class="normal">That's because in stream sockets the channel is dedicated, and when you write to a channel both ends are determined. Regarding datagram sockets, we have only one channel that is being used by many<a id="_idIndexMarker1531"/> parties. Therefore, we can lose track of the process owning a specific datagram. These functions can keep track of and send the datagram back to the desired process.</p>
+			<p class="normal">Next, you can find the definition for the <code class="Code-In-Text--PACKT-">serve_forever</code> function used in <em class="italics">Code Box 20-24</em> at the end of the <code class="Code-In-Text--PACKT-">main</code> function. This function belongs to the server common library and is specific to datagram servers, regardless of the socket type. You can clearly see how the <code class="Code-In-Text--PACKT-">recvfrom</code> function has been used:</p>
+			<p class="snippet code">void serve_forever(int server_sd) {</p>
+			<p class="snippet code">  char buffer[64];</p>
+			<p class="snippet code">  while (1) {</p>
+			<p class="snippet code">    struct sockaddr* sockaddr = sockaddr_new();</p>
+			<p class="snippet code">    socklen_t socklen = sockaddr_sizeof();</p>
+			<p class="snippet code">    int read_nr_bytes = <strong class="highlight">recvfrom(server_sd, buffer,</strong></p>
+			<p class="snippet code"><strong class="highlight">            sizeof(buffer), 0, sockaddr, &amp;socklen)</strong>;</p>
+			<p class="snippet code">    if (read_nr_bytes == -1) {</p>
+			<p class="snippet code">      close(server_sd);</p>
+			<p class="snippet code">      fprintf(stderr, "Could not read from datagram socket: %s\n",</p>
+			<p class="snippet code">              strerror(errno));</p>
+			<p class="snippet code">      exit(1);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    struct client_context_t context;</p>
+			<p class="snippet code">    <strong class="highlight">context.addr = (struct client_addr_t*)</strong></p>
+			<p class="snippet code"><strong class="highlight">        malloc(sizeof(struct client_addr_t))</strong>;</p>
+			<p class="snippet code">    context.addr-&gt;server_sd = server_sd;</p>
+			<p class="snippet code">    context.addr-&gt;sockaddr = sockaddr;</p>
+			<p class="snippet code">    context.addr-&gt;socklen = socklen;</p>
+			<p class="snippet code">    <strong class="highlight">context.ser = calc_proto_ser_new()</strong>;</p>
+			<p class="snippet code">    calc_proto_ser_ctor(context.ser, &amp;context, 256);</p>
+			<p class="snippet code">    calc_proto_ser_set_req_callback(context.ser, request_callback);</p>
+			<p class="snippet code">    calc_proto_ser_set_error_callback(context.ser, error_callback);</p>
+			<p class="snippet code">    context.svc = calc_service_new();</p>
+			<p class="snippet code">    calc_service_ctor(context.svc);</p>
+			<p class="snippet code">    <strong class="highlight">context.write_resp = &amp;datagram_write_resp</strong>;</p>
+			<p class="snippet code">    bool_t req_found = FALSE;</p>
+			<p class="snippet code">    struct buffer_t buf;</p>
+			<p class="snippet code">    buf.data = buffer;</p>
+			<p class="snippet code">    buf.len = read_nr_bytes;</p>
+			<p class="snippet code">    calc_proto_ser_server_deserialize(context.ser, buf, &amp;req_found);</p>
+			<p class="snippet code">    if (!req_found) {</p>
+			<p class="snippet code">      struct calc_proto_resp_t resp;</p>
+			<p class="snippet code">      resp.req_id = -1;</p>
+			<p class="snippet code">      resp.status = ERROR_INVALID_RESPONSE;</p>
+			<p class="snippet code">      resp.result = 0.0;</p>
+			<p class="snippet code">      context.write_resp(&amp;context, &amp;resp);</p>
+			<p class="snippet code">    }</p>
+			<p class="snippet code">    calc_service_dtor(context.svc);</p>
+			<p class="snippet code">    calc_service_delete(context.svc);</p>
+			<p class="snippet code">    calc_proto_ser_dtor(context.ser);</p>
+			<p class="snippet code">    calc_proto_ser_delete(context.ser);</p>
+			<p class="snippet code">    free(context.addr-&gt;sockaddr);</p>
+			<p class="snippet code">    free(context.addr);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-25 [server/srvcore/datagram_server_core.c]: The function handling the datagrams found in the server common library, and dedicated to the datagram servers</p>
+			<p class="normal">As you see in the preceding code box, the datagram server is a single-threaded program and there is no <a id="_idIndexMarker1532"/>multithreading around it. More than that, it operates on every datagram individually and independently. It receives a datagram, deserializes its content and creates the request object, handles<a id="_idIndexMarker1533"/> the request through the service object, serializes the response object and puts it in a new datagram, and sends it back to the process owning the original datagram. It does the same cycle over and over again for every incoming datagram.</p>
+			<p class="normal">Note that every datagram has its own serializer object and its own service object. We could design this in a way that we had only one serializer and one service object for all the datagrams. This might be something interesting for you to think about with regard to how it is possible and why that might not be possible for the calculator project. This is a debatable discussion and you might receive different opinions from various people.</p>
+			<p class="normal">Note that in <em class="italics">Code Box 20-25</em>, we store the client address of a datagram upon receiving it. Later, we can use this address to write directly back to that client. It is worth having a look at how we write back the datagram to the sender client. Just like the stream server, we are using a function for this purpose. <em class="italics">Code Box 20-26</em> shows the definition of the <code class="Code-In-Text--PACKT-">datagram_write_resp</code> function. The function is in the datagram servers' common library next to the <code class="Code-In-Text--PACKT-">serve_forever</code> function:</p>
+			<p class="snippet code">void datagram_write_resp(struct client_context_t* context,</p>
+			<p class="snippet code">        struct calc_proto_resp_t* resp) {</p>
+			<p class="snippet code">  struct buffer_t buf =</p>
+			<p class="snippet code">      calc_proto_ser_server_serialize(context-&gt;ser, resp);</p>
+			<p class="snippet code">  if (buf.len == 0) {</p>
+			<p class="snippet code">    close(context-&gt;addr-&gt;server_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Internal error while serializing object.\n");</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  int ret = <strong class="highlight">sendto(context-&gt;addr-&gt;server_sd, buf.data, buf.len,</strong></p>
+			<p class="snippet code"><strong class="highlight">      0, context-&gt;addr-&gt;sockaddr, context-&gt;addr-&gt;socklen)</strong>;</p>
+			<p class="snippet code">  free(buf.data);</p>
+			<p class="snippet code">  if (ret == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not write to client: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    <strong class="highlight">close(context-&gt;addr-&gt;server_sd)</strong>;</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  } else if (ret &lt; buf.len) {</p>
+			<p class="snippet code">    fprintf(stderr, "WARN: Less bytes were written!\n");</p>
+			<p class="snippet code">    close(context-&gt;addr-&gt;server_sd);</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-26 [server/srvcore/datagram_server_core.c]: The function writing datagrams back to the clients</p>
+			<p class="normal">You can see that we use the sorted client add<a id="_idTextAnchor579"/>ress and we pass it to the <code class="Code-In-Text--PACKT-">sendto</code> function together with the serialized<a id="_idIndexMarker1534"/> response message. The rest is taken care of by the operating system and the datagram is sent back directly to<a id="_idIndexMarker1535"/> the sender client.</p>
+			<p class="normal">Now that we know enough about the datagram se<a id="_idTextAnchor580"/>rver and how the socket should be used, let's look at the datagram client, which is using the same type of socket.</p>
+			<h2 id="_idParaDest-301" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor581"/>UDS datagram client</h2>
+			<p class="normal">From a technical point of view, stream<a id="_idIndexMarker1536"/> clients and datagram clients <a id="_idIndexMarker1537"/>are very similar. It means that you should see almost the same overall structure but with some differences regarding transmitting datagrams instead of operating on a stream channel.</p>
+			<p class="normal">But there is a big difference between them, and this is quite unique and specific to datagram clients connecting to UDS endpoints.</p>
+			<p class="normal">The difference is that the datagram client is required to bind a socket file, just like the server program, in order to receive the datagrams directed at it. This is not true for datagram clients using network sockets, as you will see shortly. Note that the client should bind a different socket file, and not the server's socket file.</p>
+			<p class="normal">The main reason behind this difference is the fact that the server program needs an address to send the response back to, and if the datagram client doesn't bind a socket file, there is no endpoint bound to the client socket file. But regarding network sockets, a client always has a corresponding socket descriptor that is bound to an IP address and a port, so this problem cannot occur.</p>
+			<p class="normal">If we put aside this difference, we can see how similar the code is. In <em class="italics">Code Box 20-26</em> you can see the <code class="Code-In-Text--PACKT-">main</code><code class="Code-In-Text--PACKT-"><a id="_idIndexMarker1538"/></code> function of the datagram calculator client:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  char server_sock_file[] = "/tmp/calc_svc.sock";</p>
+			<p class="snippet code">  char client_sock_file[] = "/tmp/calc_cli.sock";</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int conn_sd = <strong class="highlight">socket(AF_UNIX, SOCK_DGRAM, 0)</strong>;</p>
+			<p class="snippet code">  if (conn_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Bind the client socket file ------------</p>
+			<p class="snippet code">  // Delete the previously created socket file if it exists.</p>
+			<p class="snippet code">  unlink(client_sock_file);</p>
+			<p class="snippet code">  // Prepare the client address</p>
+			<p class="snippet code">  struct sockaddr_un addr;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">  strncpy(addr.sun_path, client_sock_file,</p>
+			<p class="snippet code">          sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">  <strong class="highlight">int result = bind(conn_sd,</strong></p>
+			<p class="snippet code">          <strong class="highlight">(struct sockaddr*)&amp;addr, sizeof(addr));</strong></p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(conn_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could not bind the client address: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 3. Connect to server --------------------</p>
+			<p class="snippet code">  // Prepare the server address</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sun_family = AF_UNIX;</p>
+			<p class="snippet code">  strncpy(addr.sun_path, server_sock_file,</p>
+			<p class="snippet code">          sizeof(addr.sun_path) - 1);</p>
+			<p class="snippet code">  <strong class="highlight">result = connect(conn_sd,</strong></p>
+			<p class="snippet code">          <strong class="highlight">(struct sockaddr*)&amp;addr, sizeof(addr));</strong></p>
+			<p class="snippet code">  if (result == -1) {</p>
+			<p class="snippet code">    close(conn_sd);</p>
+			<p class="snippet code">    fprintf(stderr, "Could no connect: %s\n", strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  <strong class="highlight">datagram_client_loop</strong>(conn_sd);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-26 [server/srvcore/datagram_server_core.c]: The function writing datagrams back to the clients</p>
+			<p class="normal">As we explained earlier, and as<a id="_idIndexMarker1539"/> can be seen in the code, the client is required to bind a socket file. And of course, we have to call a different function to start the client loop, at the end of the <code class="Code-In-Text--PACKT-">main</code> function. The datagram client calls the <code class="Code-In-Text--PACKT-">datagram_client_loop</code> function.</p>
+			<p class="normal">If you look at the<a id="_idIndexMarker1540"/> function <code class="Code-In-Text--PACKT-">datagram_client_loop</code>, you still see many similarities between the stream client and the datagram client. Despite the small differences, a big difference is using the <code class="Code-In-Text--PACKT-">recvfrom</code> and <code class="Code-In-Text--PACKT-">sendto</code> functions instead of the <code class="Code-In-Text--PACKT-">read</code> and <code class="Code-In-Text--PACKT-">write</code> functions. The same explanation given for these functions as part of the previous section, still holds true for the datagram client.</p>
+			<p class="normal">Now it's time to talk about network sockets. As you will see, the <code class="Code-In-Text--PACKT-">main</code> function in <a id="_idTextAnchor582"/>the client and server programs is the only code that changes when moving from UDS to network sockets.</p>
+			<h1 id="_idParaDest-302" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor583"/>Network sockets</h1>
+			<p class="normal">The other socket<a id="_idIndexMarker1541"/> address family that is widely used is <code class="Code-In-Text--PACKT-">AF_INET</code>. It simply refers to any channel established on top of a network connection. Unlike the UDS stream and datagram sockets, which have no protocol name assigned to them, there are two well-known protocols on top of network sockets. TCP sockets establish a stream channel between every two processes, and UDP sockets establish a datagram channel that can be used by a number of processes.</p>
+			<p class="normal">In the following sections, we are going to e<a id="_idTextAnchor584"/>xplain how to develop programs using TCP and UDP sockets and see real some examples as part of the calculator project.</p>
+			<h2 id="_idParaDest-303" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor585"/>TCP server</h2>
+			<p class="normal">A program using a TCP socket to<a id="_idIndexMarker1542"/> listen and accept a number of clients, in other <a id="_idIndexMarker1543"/>words a TCP server, is different from a stream server listening on a UDS endpoint in two ways: firstly, it specifies a different address family, <code class="Code-In-Text--PACKT-">AF_INET</code> instead of <code class="Code-In-Text--PACKT-">AF_UNIX</code>, when calling the <code class="Code-In-Text--PACKT-">socket</code> function. And secondly, it uses a different structure for the socket address required for binding.</p>
+			<p class="normal">Despite these two differences, everything else would be the same for a TCP socket in terms of I/O operation. We should note that a TCP socket is a stream socket, therefore the code written for a stream socket using UDS should work for a TCP socket as well.</p>
+			<p class="normal">If we go back to the calculator project, we expect to see the differences just in the <code class="Code-In-Text--PACKT-">main</code> functions where we create the socket object and bind it to an endpoint. Other than that, the rest of the code should remain unchanged. In fact, this is what we actually see. The following code box contains the <code class="Code-In-Text--PACKT-">main</code> function of the TCP calculator server:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int server_sd = socket(<strong class="highlight">AF_INET</strong>, SOCK_STREAM, 0);</p>
+			<p class="snippet code">  if (server_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Bind the socket file ------------------</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  <strong class="highlight">struct sockaddr_in addr</strong>;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sin_family = AF_INET;</p>
+			<p class="snippet code">  addr.sin_addr.s_addr = INADDR_ANY;</p>
+			<p class="snippet code">  addr.sin_port = htons(6666);</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  // ----------- 3. Prepare backlog ------------------</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  // ----------- 4. Start accepting clients ---------</p>
+			<p class="snippet code">  <strong class="highlight">accept_forever</strong>(server_sd);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-27 [server/tcp/main.c]: The main function of the TCP calculator client</p>
+			<p class="normal">If you compare the<a id="_idIndexMarker1544"/> preceding code with the <code class="Code-In-Text--PACKT-">main</code> function seen in <em class="italics">Code Box 20-17</em>, you will notice the differences we explained earlier. Instead of using the <code class="Code-In-Text--PACKT-">sockaddr_un </code>structure, we are using the <code class="Code-In-Text--PACKT-">sockaddr_in</code> structure for the<a id="_idIndexMarker1545"/> bound endpoint address. The <code class="Code-In-Text--PACKT-">listen</code> function is used the same, and even the same <code class="Code-In-Text--PACKT-">accept_forever</code> function has been called to handle the incoming connections.</p>
+			<p class="normal">As a final note, regarding I/O operations on a TCP socket, since a TCP socket is a stream socket, it inherits all the properties from a stream socket; therefore, it can be used just like any other stream so<a id="_idTextAnchor586"/>cket. In other words, the same <code class="Code-In-Text--PACKT-">read</code>, <code class="Code-In-Text--PACKT-">write</code>, and <code class="Code-In-Text--PACKT-">close</code> functions can be used.</p>
+			<p class="normal">Let's now talk about the TCP client.</p>
+			<h2 id="_idParaDest-304" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor587"/>TCP client</h2>
+			<p class="normal">Again, everything should be<a id="_idIndexMarker1546"/> very similar to the stream client operating <a id="_idIndexMarker1547"/>on a UDS. The differences mentioned in the previous section are still true for a TCP socket on a connector side. The changes are again limited to the <code class="Code-In-Text--PACKT-">main</code> function. </p>
+			<p class="normal">Next, you can see the <code class="Code-In-Text--PACKT-">main</code> function of the TCP calculator client:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int conn_sd = socket(<strong class="highlight">AF_INET</strong>, SOCK_STREAM, 0);</p>
+			<p class="snippet code">  if (conn_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ------------ 2. Connect to server-- ------------------</p>
+			<p class="snippet code">  // Find the IP address behind the hostname</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  <strong class="highlight">struct sockaddr_in addr</strong>;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sin_family = AF_INET;</p>
+			<p class="snippet code">  addr.sin_addr = *((struct in_addr*)host_entry-&gt;h_addr);</p>
+			<p class="snippet code">  addr.sin_port = htons(6666);</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  <strong class="highlight">stream_client_loop</strong>(conn_sd);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-27 [server/tcp/main.c]: The main function of the TCP calculator server</p>
+			<p class="normal">The changes are <a id="_idIndexMarker1548"/>very similar to the ones we saw for the TCP server<a id="_idIndexMarker1549"/> program. A different address family and a different socket address structure have been used. Apart from that, the rest of the code is the same, and we therefore do not need to discuss the TCP client in detail.</p>
+			<p class="normal">Since TCP sockets are stream sockets, we can use the same common code for handling the new clients. You can see this by calling the <code class="Code-In-Text--PACKT-">stream_client_loop</code> function, which is part of the client common library in the calculator project. Now, you should get the idea of why we <a id="_idIndexMarker1550"/>extracted two common libraries, one for the client programs and one for the server programs, in order to write less code. When we can use the same<a id="_idIndexMarker1551"/> code for two different scenarios, it is always best to extract it as a library and reuse it in the scenarios.</p>
+			<p class="normal">Let's look<a id="_idTextAnchor588"/> at UDP server and client programs; we will see that they are more or less similar to what we saw regarding TCP programs.</p>
+			<h2 id="_idParaDest-305" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor589"/>UDP server</h2>
+			<p class="normal">UDP sockets are network <a id="_idIndexMarker1552"/>sockets. Other than that, they are datagram <a id="_idIndexMarker1553"/>sockets. Therefore, we expect to observe a high degree of similarity between the code we wrote for the TCP server together with the code we wrote for the datagram server operating on a UDS.</p>
+			<p class="normal">In addition, the main difference between a UDP socket and a TCP socket, regardless of being used in a client or server program, is the fact that the socket type is <code class="Code-In-Text--PACKT-">SOCK_DGRAM</code> for the UDP socket. The address family remains the same, because both of them are network sockets. The following code box contains the main function of the calculator UDP server:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int server_sd = socket(<strong class="highlight">AF_INET</strong>, <strong class="highlight">SOCK_DGRAM</strong>, 0);</p>
+			<p class="snippet code">  if (server_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ----------- 2. Bind the socket file ------------------</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  <strong class="highlight">struct sockaddr_in addr</strong>;</p>
+			<p class="snippet code">  memset(&amp;addr, 0, sizeof(addr));</p>
+			<p class="snippet code">  addr.sin_family = AF_INET;</p>
+			<p class="snippet code">  addr.sin_addr.s_addr = INADDR_ANY;</p>
+			<p class="snippet code">  addr.sin_port = htons(9999);</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  // ----------- 3. Start serving requests ---------</p>
+			<p class="snippet code">  <strong class="highlight">serve_forever</strong>(server_sd);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-28 [server/udp/main.c]: The main function of the UDP calculator server</p>
+			<p class="normal">Note that UDP sockets <a id="_idIndexMarker1554"/>are datagram sockets. Therefore, all the code written for datagram sockets operating on UDS is still valid for them. For instance, we have to use the <code class="Code-In-Text--PACKT-">recvfrom</code> and <code class="Code-In-Text--PACKT-">sendto</code> functions to work with UDP sockets. So, as you <a id="_idIndexMarker1555"/>can see, we have used the same <code class="Code-In-Text--PACKT-">serve_forever</code> function to serve incoming datagrams. This function is part of the server common library meant t<a id="_idTextAnchor590"/>o contain the datagram-related code.</p>
+			<p class="normal">We've said enough regarding the UDP server's code. Let's see what the UDP client's code looks like.</p>
+			<h2 id="_idParaDest-306" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor591"/>The UDP client</h2>
+			<p class="normal">UDP client code is very<a id="_idIndexMarker1556"/> similar to the TCP client code, but it uses a different <a id="_idIndexMarker1557"/>socket type and it calls a different function for handling the incoming messages, which is the same function that the datagram client based on UDS used. You can see the following <code class="Code-In-Text--PACKT-">main</code> function:</p>
+			<p class="snippet code">int main(int argc, char** argv) {</p>
+			<p class="snippet code">  // ----------- 1. Create socket object ------------------</p>
+			<p class="snippet code">  int conn_sd = socket(<strong class="highlight">AF_INET</strong>, <strong class="highlight">SOCK_DGRAM</strong>, 0);</p>
+			<p class="snippet code">  if (conn_sd == -1) {</p>
+			<p class="snippet code">    fprintf(stderr, "Could not create socket: %s\n",</p>
+			<p class="snippet code">            strerror(errno));</p>
+			<p class="snippet code">    exit(1);</p>
+			<p class="snippet code">  }</p>
+			<p class="snippet code">  // ------------ 2. Connect to server-- ------------------</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  // Prepare the address</p>
+			<p class="snippet code">  ...</p>
+			<p class="snippet code">  <strong class="highlight">datagram_client_loop</strong>(conn_sd);</p>
+			<p class="snippet code">  return 0;</p>
+			<p class="snippet code">}</p>
+			<p class="packt_figref">Code Box 20-28 [client/udp/main.c]: The main function of the UDP calculator client</p>
+			<p class="normal">That was the final <a id="_idIndexMarker1558"/>concept for this chapter. In this chapter, we went<a id="_idIndexMarker1559"/> through the various well-known socket types and together with that, we showed how the listener and connector sequences for both stream and datagram channels can be implemented in C.</p>
+			<p class="normal">There are many things in the calculator project that we didn't even talk about. Therefore, it is highly recommended to go through the code, find th<a id="_idTextAnchor592"/><a id="_idTextAnchor593"/><a id="_idTextAnchor594"/>ose places, and try to read and understand it. Having a fully working example can help you to examine the concepts in real applications.</p>
+			<h1 id="_idParaDest-307" class="title" lang="en-GB" xml:lang="en-GB"><a id="_idTextAnchor595"/>Summary</h1>
+			<p class="normal">In this chapter, we went through the following topics:</p>
+			<ul>
+				<li class="list">We introduced various types of communications, channels, mediums, and sockets as part of our review of IPC techniques.</li>
+				<li class="list">We explored a calculator project by describing its application protocol and the serialization algorithm that it uses.</li>
+				<li class="list">We demonstrated how UDS can be used to establish a client-server connection, and we showed how they are used in the calculator project.</li>
+				<li class="list">We discussed the stream and datagram channels established using Unix domain sockets, separately.</li>
+				<li class="list">We demonstrated how TCP and UDP sockets can be used to make a client-server IPC channel, and we used them in the calculator example.</li>
+			</ul>
+			<p class="normal">The next chapter is about integrating of C with other programming languages. By doing so, we can have a C library loaded and used in another programming language like Java. As part of the next chapter, we cover integration with C++, Java, Python, and Golang.</p>
+		</div>
+</body></html>
