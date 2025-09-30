@@ -1,0 +1,408 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;9.&#xA0;Creating Conan the Caveman"><div class="titlepage"><div><div><h1 class="title"><a id="ch09"/>Chapter 9. Creating Conan the Caveman</h1></div></div></div><p>In the previous chapter, the creation of Alien Attack demonstrated that the framework is now at a point where it can be used to quickly create a 2D side scrolling shooter. Other genres are also simple to make with most of the changes once again being contained within the object classes.</p><p>In this chapter, we will cover:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Adapting the previous code base for a new game</li><li class="listitem" style="list-style-type: disc">More precise tile-collision detection</li><li class="listitem" style="list-style-type: disc">Handling jumping</li><li class="listitem" style="list-style-type: disc">Possible additions to the framework</li></ul></div><p>This chapter will use the framework to create a platform game, <a class="indexterm" id="id515"/>Conan the Caveman. Here is a screenshot of the finished game level:</p><div class="mediaobject"><img alt="Creating Conan the Caveman" src="graphics/6821OT_09_01.jpg"/></div><p>Here's another <a class="indexterm" id="id516"/>screenshot with more enemies:</p><div class="mediaobject"><img alt="Creating Conan the Caveman" src="graphics/6821OT_09_02.jpg"/></div><p>As with the<a class="indexterm" id="id517"/> previous chapter, this chapter is not a step-by-step guide to creating Conan the Caveman, rather it is an overview of the most important aspects of the game. The project for the game is available in the source code downloads.</p><div class="section" title="Setting up the basic game objects"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec48"/>Setting up the basic game objects</h1></div></div></div><p>In some ways<a class="indexterm" id="id518"/> this game is more complicated than Alien Attack, whereas in other ways it is simpler. This section will cover the changes that were made to the Alien Attack source code: what was altered, what was removed, and what was added.</p><div class="section" title="No more bullets or bullet collisions"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec66"/>No more bullets or bullet collisions</h2></div></div></div><p>Conan the Caveman <a class="indexterm" id="id519"/>does not use projectile weapons, and therefore, there is no longer a <code class="literal">Bullet</code> class<a class="indexterm" id="id520"/> and the <code class="literal">CollisonManager</code> class<a class="indexterm" id="id521"/> no longer needs to have a function that checks for collisions between them; it only checks for the <code class="literal">Player</code> and <code class="literal">Enemy</code> collisions:</p><div class="informalexample"><pre class="programlisting">class CollisionManager
+{
+public:
+
+  void checkPlayerEnemyCollision(Player* pPlayer, const 
+  std::vector&lt;GameObject*&gt;&amp;objects);
+};</pre></div></div><div class="section" title="Game objects and map collisions"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec67"/>Game objects and map collisions</h2></div></div></div><p>Almost all <a class="indexterm" id="id522"/>objects will need to collide with the tile map and react accordingly. The <code class="literal">GameObject</code> class now has a private member that is a<a class="indexterm" id="id523"/> pointer to the collision layers; previously only the <code class="literal">Player</code> class had this variable:</p><div class="informalexample"><pre class="programlisting">std::vector&lt;TileLayer*&gt;* m_pCollisionLayers;</pre></div><p>
+<code class="literal">GameObject</code> also now has a function to set this variable:</p><div class="informalexample"><pre class="programlisting">void setCollisionLayers(std::vector&lt;TileLayer*&gt;* layers) { m_pCollisionLayers = layers; }</pre></div><p>The <code class="literal">Player</code> class would previously have this set at the end of the <code class="literal">LevelParser::parseLevel</code> function, as follows:</p><div class="informalexample"><pre class="programlisting">pLevel-&gt;getPlayer()-&gt;setCollisionLayers(pLevel-&gt;getCollisionLayers());</pre></div><p>This is no longer needed, as each <code class="literal">GameObject</code> gets their <code class="literal">m_pCollisionLayers</code> variables set on creation in the object-layer parsing:</p><div class="informalexample"><pre class="programlisting">// load the object
+pGameObject-&gt;load(std::unique_ptr&lt;LoaderParams&gt;(new LoaderParams(x, y, width, height, textureID, numFrames,callbackID, animSpeed)));
+// set the collision layers
+pGameObject-&gt;setCollisionLayers(pLevel-&gt;getCollisionLayers());</pre></div></div><div class="section" title="ShooterObject is now PlatformerObject"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec68"/>ShooterObject is now PlatformerObject</h2></div></div></div><p>The shooter-specific code<a class="indexterm" id="id524"/> from Alien Attack has been stripped out of <code class="literal">ShooterObject</code> and the class is renamed to <code class="literal">PlatformerObject</code>. Anything that all game objects for this game will make use of is within this <a class="indexterm" id="id525"/>class:</p><div class="informalexample"><pre class="programlisting">class PlatformerObject : public GameObject
+{
+public:
+
+  virtual ~PlatformerObject() {}
+
+  virtual void load(std::unique_ptr&lt;LoaderParams&gt; const &amp;pParams);
+
+  virtual void draw();
+  virtual void update();
+
+  virtual void clean() {}
+  virtual void collision() {}
+
+  virtual std::string type() { return "SDLGameObject"; }
+
+protected:
+
+  PlatformerObject();
+
+  bool checkCollideTile(Vector2D newPos);
+
+  void doDyingAnimation();
+
+  int m_bulletFiringSpeed;
+  int m_bulletCounter;
+  int m_moveSpeed;
+
+  // how long the death animation takes, along with a counter
+  int m_dyingTime;
+  int m_dyingCounter;
+
+  // has the explosion sound played?
+  bool m_bPlayedDeathSound;
+
+  bool m_bFlipped;
+
+  bool m_bMoveLeft;
+  bool m_bMoveRight;
+  bool m_bRunning;
+
+  bool m_bFalling;
+  bool m_bJumping;
+  bool m_bCanJump;
+
+  Vector2D m_lastSafePos;
+
+  int m_jumpHeight;
+};</pre></div><p>There are some variables<a class="indexterm" id="id526"/> and functions from Alien Attack that are still useful, plus a few new functions. One of the most important additions is the <a class="indexterm" id="id527"/>
+<code class="literal">checkCollideTile</code> function, which takes <code class="literal">Vector2D</code> as a parameter and checks whether it causes a collision:</p><div class="informalexample"><pre class="programlisting">bool PlatformerObject::checkCollideTile(Vector2D newPos)
+{
+  if(newPos.m_y + m_height&gt;= TheGame::Instance()-&gt;getGameHeight() 
+  - 32)
+  {
+    return false;
+  }
+  else
+  {
+    for(std::vector&lt;TileLayer*&gt;::iterator it = m_pCollisionLayers
+    -&gt;begin(); it != m_pCollisionLayers-&gt;end(); ++it)
+    {
+      TileLayer* pTileLayer = (*it);
+      std::vector&lt;std::vector&lt;int&gt;&gt; tiles = pTileLayer
+      -&gt;getTileIDs();
+
+      Vector2D layerPos = pTileLayer-&gt;getPosition();
+
+      int x, y, tileColumn, tileRow, tileid = 0;
+
+      x = layerPos.getX() / pTileLayer-&gt;getTileSize();
+      y = layerPos.getY() / pTileLayer-&gt;getTileSize();
+
+      Vector2D startPos = newPos;
+      startPos.m_x += 15;
+      startPos.m_y += 20;
+      Vector2D endPos(newPos.m_x + (m_width - 15), (newPos.m_y) + 
+      m_height - 4);
+
+      for(int i = startPos.m_x; i &lt; endPos.m_x; i++)
+      {
+        for(int j = startPos.m_y; j &lt; endPos.m_y; j++)
+        {
+          tileColumn = i / pTileLayer-&gt;getTileSize();
+          tileRow = j / pTileLayer-&gt;getTileSize();
+
+          tileid = tiles[tileRow + y][tileColumn + x];
+
+          if(tileid != 0)
+          {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false; 
+  }
+}</pre></div><p>This is quite a large<a class="indexterm" id="id528"/> function, but it is essentially the same as how Alien Attack checked for tile collisions. One difference is the y position check:</p><div class="informalexample"><pre class="programlisting">if(newPos.m_y + m_height &gt;= TheGame::Instance()-&gt;getGameHeight() - 32)
+{
+  return false;
+}</pre></div><p>This is used to ensure that we can fall off the map (or fall into a hole) without the function trying to access tiles that are not there. For example, if the object's position is outside the map, the following code would try to access tiles that do not exist and would therefore fail:</p><div class="informalexample"><pre class="programlisting">tileid = tiles[tileRow + y][tileColumn + x];</pre></div><p>The y value check prevents this.</p></div><div class="section" title="The Camera class"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec69"/>The Camera class</h2></div></div></div><p>In a game such as Alien Attack, precise map-collision detection is not terribly important; it is a lot more important to have precise bullet, player, and enemy collisions. A platform game, however, needs very precise map collision requiring the need for a slightly different way of moving the<a class="indexterm" id="id529"/> map, so that no precision is lost<a class="indexterm" id="id530"/> when scrolling.</p><p>In Alien Attack, the map did not actually move; some variables were used to determine which point of the map to draw and this gave the illusion of the map scrolling. In Conan the Caveman, the map will move so that any collision detection routines are relative to the actual position of the map. For this a <code class="literal">Camera</code> class was created:</p><div class="informalexample"><pre class="programlisting">class Camera
+{
+public:
+
+  static Camera* Instance()
+  {
+    if(s_pCamera == 0)
+    {
+      s_pCamera = new Camera();
+    }
+
+    return s_pCamera;
+  }
+
+  void update(Vector2D velocity);
+
+  void setTarget(Vector2D* target) { m_pTarget = target; }
+  void setPosition(const Vector2D&amp; position) { m_position = 
+  position; }
+
+  const Vector2D getPosition() const;
+
+
+private:
+
+  Camera();
+  ~Camera();
+
+  // the camera's target
+  Vector2D* m_pTarget;
+
+  // the camera's position
+  Vector2D m_position;
+
+  static Camera* s_pCamera;
+};
+
+typedef Camera TheCamera;</pre></div><p>This class is very<a class="indexterm" id="id531"/> simple, as it merely holds a location<a class="indexterm" id="id532"/> and updates it using the position of a target, referred to the pointer as <code class="literal">m_pTarget</code>:</p><div class="informalexample"><pre class="programlisting">const Vector2DCamera::getPosition() const
+{
+{
+  if(m_pTarget != 0)
+  {
+    Vector2D pos(m_pTarget-&gt;m_x - (TheGame::Instance()
+    -&gt;getGameWidth() / 2), 0);
+
+    if(pos.m_x&lt; 0)
+    {
+      pos.m_x = 0;
+    }
+
+    return pos;
+  }
+
+  return m_position;
+}</pre></div><p>This could also be updated to include the y value as well, but because this is a horizontal-scrolling game, it is not needed here and so the y is returned as <code class="literal">0</code>. This camera position is used to move the map and decide which tiles to draw.</p></div><div class="section" title="Camera-controlled map"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec70"/>Camera-controlled map</h2></div></div></div><p>The <code class="literal">TileLayer</code> class now<a class="indexterm" id="id533"/> needs to know<a class="indexterm" id="id534"/> the complete size of the map rather than just one section of it; this is passed in through the constructor:</p><div class="informalexample"><pre class="programlisting">TileLayer(int tileSize, int mapWidth, int mapHeight, const std::vector&lt;Tileset&gt;&amp; tilesets);</pre></div><p>
+<code class="literal">LevelParser</code> passes the height and width in as it creates each <code class="literal">TileLayer</code>:</p><div class="informalexample"><pre class="programlisting">void LevelParser::parseTileLayer(TiXmlElement* pTileElement, std::vector&lt;Layer*&gt; *pLayers, const std::vector&lt;Tileset&gt;* pTilesets, std::vector&lt;TileLayer*&gt; *pCollisionLayers)
+{
+TileLayer* pTileLayer = new TileLayer(m_tileSize, m_width, m_height, *pTilesets);</pre></div><p>The <code class="literal">TileLayer</code> class <a class="indexterm" id="id535"/>uses these values<a class="indexterm" id="id536"/> <a class="indexterm" id="id537"/>to set its row and column variables:</p><div class="informalexample"><pre class="programlisting">TileLayer::TileLayer(int tileSize, int mapWidth, int mapHeight, const std::vector&lt;Tileset&gt;&amp; tilesets) : m_tileSize(tileSize), m_tilesets(tilesets), m_position(0,0), m_velocity(0,0)
+{
+  m_numColumns = mapWidth;
+  m_numRows = mapHeight;
+
+  m_mapWidth = mapWidth;
+}</pre></div><p>With these changes, the tile map now moves according to the position of the camera and skips any tiles that are outside the viewable area:</p><div class="informalexample"><pre class="programlisting">void TileLayer::render()
+{
+  int x, y, x2, y2 = 0;
+
+  x = m_position.getX() / m_tileSize;
+  y = m_position.getY() / m_tileSize;
+
+  x2 = int(m_position.getX()) % m_tileSize;
+  y2 = int(m_position.getY()) % m_tileSize;
+
+  for(int i = 0; i &lt; m_numRows; i++)
+  {
+    for(int j = 0; j &lt; m_numColumns; j++)
+    {
+      int id = m_tileIDs[i + y][j + x];
+
+      if(id == 0)
+      {
+        continue;
+      }
+
+      // if outside the viewable area then skip the tile
+      if(((j * m_tileSize) - x2) - TheCamera::Instance()
+      -&gt;getPosition().m_x &lt; -m_tileSize || ((j * m_tileSize) - x2) 
+      - TheCamera::Instance()-&gt;getPosition()
+      .m_x &gt; TheGame::Instance()-&gt;getGameWidth())
+      {
+        continue;
+      }
+
+      Tileset tileset = getTilesetByID(id);
+
+      id--;
+
+      // draw the tile into position while offsetting its x 
+      position by 
+      // subtracting the camera position
+      TheTextureManager::Instance()-&gt;drawTile(tileset.name, 
+      tileset.margin, tileset.spacing, ((j * m_tileSize) - x2) - 
+      TheCamera::Instance()-&gt;getPosition().m_x, ((i * m_tileSize) 
+      - y2), m_tileSize, m_tileSize, (id - (tileset.firstGridID - 
+      1)) / tileset.numColumns, (id - (tileset.firstGridID - 1)) % 
+      tileset.numColumns, TheGame::Instance()-&gt;getRenderer());
+    }
+  }<a class="indexterm" id="id538"/>
+<a class="indexterm" id="id539"/>
+</pre></div></div><div class="section" title="The Player class"><div class="titlepage"><div><div><h2 class="title"><a id="ch09lvl2sec71"/>The Player class</h2></div></div></div><p>The <code class="literal">Player</code> class <a class="indexterm" id="id540"/>now has to contend with jumping as well as moving, all while checking for map <a class="indexterm" id="id541"/>collisions. The <code class="literal">Player::update</code> function<a class="indexterm" id="id542"/> has undergone quite a change:</p><div class="informalexample"><pre class="programlisting">void Player::update()
+{
+  if(!m_bDying)
+  {
+    // fell off the edge
+    if(m_position.m_y + m_height &gt;= 470)
+    {
+      collision();
+    }
+
+    // get the player input
+    handleInput();
+
+    if(m_bMoveLeft)
+    {
+      if(m_bRunning)
+      {
+        m_velocity.m_x = -5;
+      }
+      else
+      {
+        m_velocity.m_x = -2;
+      }
+    }
+    else if(m_bMoveRight)
+    {
+      if(m_bRunning)
+      {
+        m_velocity.m_x = 5;
+      }
+      else
+      {
+        m_velocity.m_x = 2;
+      }
+    }
+    else
+    {
+      m_velocity.m_x = 0;
+    }
+
+    // if we are higher than the jump height set jumping to false
+    if(m_position.m_y &lt; m_lastSafePos.m_y - m_jumpHeight)
+    {
+      m_bJumping = false;
+    }
+
+    if(!m_bJumping)
+    {
+      m_velocity.m_y = 5;
+    }
+    else
+    {
+      m_velocity.m_y = -5;
+    }
+
+    handleMovement(m_velocity);
+  }
+  else
+  {
+    m_velocity.m_x = 0;
+    if(m_dyingCounter == m_dyingTime)
+    {
+      ressurect();
+    }
+    m_dyingCounter++;
+
+    m_velocity.m_y = 5;
+  }
+  handleAnimation();
+}</pre></div><p>As movement<a class="indexterm" id="id543"/> is such an important <a class="indexterm" id="id544"/>part of this class, there is a function that is dedicated to handling it:</p><div class="informalexample"><pre class="programlisting">void Player::handleMovement(Vector2D velocity)
+{
+  // get the current position
+  Vector2D newPos = m_position;
+
+  // add velocity to the x position
+  newPos.m_x  = m_position.m_x + velocity.m_x;
+
+  // check if the new x position would collide with a tile
+  if(!checkCollideTile(newPos))
+  {
+    // no collision, add to the actual x position
+    m_position.m_x = newPos.m_x;
+  }
+  else
+  {
+    // collision, stop x movement
+    m_velocity.m_x = 0;
+  }
+
+  // get the current position after x movement
+  newPos = m_position;
+
+  // add velocity to y position
+  newPos.m_y += velocity.m_y;
+
+  // check if new y position would collide with a tile
+  if(!checkCollideTile(newPos))
+  {
+    // no collision, add to the actual x position
+    m_position.m_y = newPos.m_y;
+  }
+  else
+  {
+    // collision, stop y movement
+    m_velocity.m_y = 0;
+
+    //  we collided with the map which means we are safe on the 
+    ground,
+    //  make this the last safe position
+    m_lastSafePos = m_position;
+
+    // move the safe pos slightly back or forward so when 
+    resurrected we are safely on the ground after a fall
+    if(velocity.m_x &gt; 0)
+    {
+      m_lastSafePos.m_x -= 32;
+    }
+    else if(velocity.m_x &lt; 0)
+    {
+      m_lastSafePos.m_x += 32;
+
+    }
+
+    // allow the player to jump again
+    m_bCanJump = true;
+
+    // jumping is now false
+    m_bJumping = false;
+  }</pre></div><div class="note" style="" title="Note"><div class="inner"><h3 class="title"><a id="tip02"/>Tip</h3><p>Notice that x<a class="indexterm" id="id545"/> and y checking has been split into two different parts; this is extremely important to make sure that an x collision doesn't stop y movement and vice versa.</p></div></div><p>The <code class="literal">m_lastSafePos</code> variable <a class="indexterm" id="id546"/>is used to put the player back into a safe spot after they are respawned. For example, if the player was to fall off the edge of the platform in the following <a class="indexterm" id="id547"/>screenshot and therefore land on the spikes below, he would be respawned at pretty much the same place as in the screenshot:</p><div class="mediaobject"><img alt="The Player class" src="graphics/6821OT_09_03.jpg"/></div><p>Finally, the handle input function now sets Boolean variables for moving to the right-hand side and left-hand side or jumping:</p><div class="informalexample"><pre class="programlisting">void Player::handleInput()
+{
+  if(TheInputHandler::Instance()-&gt;isKeyDown(SDL_SCANCODE_RIGHT) &amp;&amp; 
+  m_position.m_x &lt; ((*m_pCollisionLayers-&gt;begin())-&gt;getMapWidth() 
+  * 32))
+  {
+    if(TheInputHandler::Instance()-&gt;isKeyDown(SDL_SCANCODE_A))
+    {
+      m_bRunning = true;
+    }
+    else
+    {
+      m_bRunning = false;
+    }
+
+    m_bMoveRight = true;
+    m_bMoveLeft = false;
+  }
+  else if(TheInputHandler::Instance()
+  -&gt;isKeyDown(SDL_SCANCODE_LEFT) &amp;&amp; m_position.m_x &gt; 32)
+  {
+    if(TheInputHandler::Instance()-&gt;isKeyDown(SDL_SCANCODE_A))
+    {
+      m_bRunning = true;
+    }
+    else
+    {
+      m_bRunning = false;
+    }
+
+    m_bMoveRight = false;
+    m_bMoveLeft = true;
+  }
+  else
+  {
+    m_bMoveRight = false;
+    m_bMoveLeft = false;
+  }
+
+  if(TheInputHandler::Instance()-&gt;isKeyDown(SDL_SCANCODE_SPACE) 
+  &amp;&amp; m_bCanJump &amp;&amp; !m_bPressedJump)
+  {
+    TheSoundManager::Instance()-&gt;playSound("jump", 0);
+    if(!m_bPressedJump)
+    {
+      m_bJumping = true;
+      m_bCanJump = false;
+      m_lastSafePos = m_position;
+      m_bPressedJump = true;
+    }
+  }
+
+  if(!TheInputHandler::Instance()-&gt;isKeyDown(SDL_SCANCODE_SPACE) 
+  &amp;&amp; m_bCanJump)
+  {
+    m_bPressedJump = false;
+  }
+}</pre></div><p>This is all fairly <a class="indexterm" id="id548"/>self-explanatory apart from the jumping. When the player jumps, it sets the <a class="indexterm" id="id549"/>
+<code class="literal">m_bCanJump</code> variable to <code class="literal">false</code>, so that on the next loop the jump will not be called again, due to the fact that jump can only happen when the <code class="literal">m_bCanJump</code> variable is <code class="literal">true</code>; (landing after the <a class="indexterm" id="id550"/>jump sets this variable back to <code class="literal">true</code>).</p></div></div></div>
+<div class="section" title="Possible additions"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec49"/>Possible additions</h1></div></div></div><p>It wouldn't be hard to improve on Conan the Caveman's gameplay; increasing enemy and trap numbers would <a class="indexterm" id="id551"/>make the game significantly more exciting to play. The game could also benefit from some height to the levels so that players could really explore the map (Metroid style). Other gameplay improvements could include moving platforms, ladders, and bosses.</p></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch09lvl1sec50"/>Summary</h1></div></div></div><p>Our reusable framework has proved its worth; two games have been created with minimal code duplication.</p><p>This chapter looked at scrolling a tile map using the position of the player along with collision detection. Tile-map collision was also covered, along with the important point of splitting x and y movement for effective movement in a platform game. Conan the Caveman is a great starting point for any other 2D game such as a scrolling beat-em-up or even a merging of this chapter and the last to create a platform shooter.</p><p>I hope that by now you have a good understanding of how to use SDL2.0 along with C++ to create games and how to effectively break game code apart to create a reusable framework. This is only the start and there are many more game-programming adventures ahead. Good luck!</p></div></body></html>
