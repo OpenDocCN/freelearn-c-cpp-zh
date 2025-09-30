@@ -1,4 +1,5 @@
 - en: '*Chapter 12*: Learning LLVM IR Instrumentation'
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -7,6 +8,7 @@
     experience when diagnosing problems that are raised by LLVM. Some of these utilities
     can even reduce the number of potential mistakes that are made by compiler engineers.
     In this chapter, we are going to learn how instrumentation works in LLVM IR.
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
 - en: The **instrumentation** we are referring to here is a kind of technique that
@@ -22,6 +24,7 @@
     example, will be using the inserted probes to catch undesirable incidents that
     happened at runtime – buffer overflows, race conditions, and double-free memory,
     to name a few. The probe that's used for this purpose is also called a **sanitizer**.
+  id: totrans-2
   prefs: []
   type: TYPE_NORMAL
 - en: To implement instrumentation in LLVM, we not only need the help of LLVM pass,
@@ -30,16 +33,20 @@
     from earlier chapters. In this chapter, we are going to introduce Compiler-RT
     and, more importantly, how can we *combine* these subsystems for the purpose of
     instrumentation.
+  id: totrans-3
   prefs: []
   type: TYPE_NORMAL
 - en: 'Here is the list of topics we are going to cover:'
+  id: totrans-4
   prefs: []
   type: TYPE_NORMAL
 - en: Developing a sanitizer
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
 - en: Working with PGO
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
@@ -47,9 +54,11 @@
     in Clang and LLVM, before creating a simple one by ourselves. The second half
     of this chapter is going to show you how to use the PGO framework in LLVM and
     how we can *extend* it.
+  id: totrans-7
   prefs: []
   type: TYPE_NORMAL
 - en: Technical requirements
+  id: totrans-8
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
@@ -57,120 +66,174 @@
     – Compiler-RT – needs to be included in your build by us modifying the CMake configuration.
     Please open the `CMakeCache.txt` file in your build folder and add the `compiler-rt`
     string to the value of the `LLVM_ENABLE_PROJECTS` variable. Here is an example:'
+  id: totrans-9
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE0]'
+  id: totrans-10
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: After editing the file, launch a build with any build target. CMake will try
     to reconfigure itself.
+  id: totrans-11
   prefs: []
   type: TYPE_NORMAL
 - en: 'Once everything has been set up, we can build the components we need for this
     chapter. Here is an example command:'
+  id: totrans-12
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE1]'
+  id: totrans-13
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: This will build the `clang` tool we're all familiar with and a collection of
     Compiler-RT libraries, which we are going to introduce shortly.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
 - en: 'You can find the sample code for this chapter in the same GitHub repository:
     [https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12).'
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: 你可以在同一个GitHub仓库中找到本章的示例代码：[https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12)。
 - en: Developing a sanitizer
+  id: totrans-16
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 开发清理器
 - en: A sanitizer is a kind of technique that checks certain runtime properties of
     the code (`probe`) that's inserted by the compiler. People usually use a sanitizer
     to ensure program correctness or enforce security policies. To give you an idea
     of how a sanitizer works, let's use one of the most popular sanitizers in Clang
     as an example – the **address sanitizer**.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: 清理器是一种检查由编译器插入的代码（`probe`）的某些运行时属性的技巧。人们通常使用清理器来确保程序的正确性或强制执行安全策略。为了让你了解清理器是如何工作的，让我们以Clang中最受欢迎的清理器之一为例——**地址清理器**。
 - en: An example of using an address sanitizer
+  id: totrans-18
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用地址清理器的示例
 - en: 'Let''s assume we have some simple C code, such as the following:'
+  id: totrans-19
   prefs: []
   type: TYPE_NORMAL
+  zh: 假设我们有一些简单的C代码，如下所示：
 - en: '[PRE2]'
+  id: totrans-20
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: The preceding code converted the command-line arguments into integers and stored
     them in a buffer of size 3\. Then, we printed them out.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 前面的代码将命令行参数转换为整数并将它们存储在大小为3的缓冲区中。然后，我们打印它们。
 - en: 'You should be able to easily spot an outstanding problem: the value of `argc`
     can be arbitrarily big when it''s larger than 3 – the size of `buffer`. Here,
     we are storing the value in an *invalid* memory location. However, when we compile
     this code, the compiler will say nothing. Here is an example:'
+  id: totrans-22
   prefs: []
   type: TYPE_NORMAL
+  zh: 你应该能够轻松地发现一个突出的问题：当`argc`的值大于`buffer`的大小（即3）时，它可以任意大。在这里，我们将值存储在一个`*invalid*`内存位置。然而，当我们编译这段代码时，编译器不会说任何话。以下是一个例子：
 - en: '[PRE3]'
+  id: totrans-23
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: In the preceding command, even if we enable all the compiler warnings via the
     `-Wall` flag, `clang` won't complain about the potential bug.
+  id: totrans-24
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的命令中，即使我们通过`-Wall`标志启用了所有编译器警告，`clang`也不会对潜在的错误提出异议。
 - en: 'If we try to execute the `buffer_overflow` program, the program will crash
     at some time point after we pass more than three command-line arguments to it;
     for example:'
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们尝试执行`buffer_overflow`程序，程序将在我们传递超过三个命令行参数给它后的某个时间点崩溃；例如：
 - en: '[PRE4]'
+  id: totrans-26
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: What's worse, the number of command-line arguments to crash `buffer_overflow`
     actually *varies* from machine to machine. This makes it even more difficult to
     debug if the example shown here were a real-world bug. To summarize, the problem
     we're encountering here is caused by the fact that `buffer_overflow` only goes
     rogue on *some* inputs and the compiler failed to catch the problem.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 更糟糕的是，导致`buffer_overflow`崩溃的命令行参数数量实际上在每台机器上都是不同的。如果这里展示的例子是一个现实世界的错误，那么这将使得调试变得更加困难。总结一下，我们在这里遇到的问题是由`buffer_overflow`仅在`*some*`输入上变得异常，而编译器未能捕捉到这个问题所引起的。
 - en: 'Now, let''s try to use an address sanitizer to catch this bug. The following
     command asks `clang` to compile the same code with an address sanitizer:'
+  id: totrans-28
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们尝试使用地址清理器来捕捉这个错误。以下命令要求`clang`使用地址清理器编译相同的代码：
 - en: '[PRE5]'
+  id: totrans-29
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'Let''s execute the program again. Here is the output:'
+  id: totrans-30
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们再次执行程序。以下是输出：
 - en: '[PRE6]'
+  id: totrans-31
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: 'Instead of just crashing, the address sanitizer gave us many details about
     the issue that was raised at runtime: the sanitizer told us that it detected a
     *buffer overflow* on the stack, which might be the `buffer` variable.'
+  id: totrans-32
   prefs: []
   type: TYPE_NORMAL
+  zh: 而不是仅仅崩溃，地址清理器给我们提供了关于在运行时引发的问题的许多详细信息：清理器告诉我们它检测到堆上的`*buffer overflow*`，这可能是`buffer`变量。
 - en: These messages were extremely useful. Imagine that you are working on a much
     more complicated software project. When a strange memory bug occurs, rather than
     just crash or silently change the program's logic, the address sanitizer can point
     out the problematic area – with high accuracy – right away.
+  id: totrans-33
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些信息非常有用。想象一下，你正在处理一个更复杂的软件项目。当出现奇怪的内存错误时，地址清理器可以立即指出问题区域——具有高精度——而不是仅仅崩溃或静默地改变程序的逻辑。
 - en: 'To go a little deeper into its mechanisms, the following diagram illustrates
     how the address sanitizer detects the buffer overflow:'
+  id: totrans-34
   prefs: []
   type: TYPE_NORMAL
+  zh: 要更深入地了解其机制，以下图表说明了地址清理器如何检测缓冲区溢出：
 - en: '![Figure 12.1 – Instrumentation code inserted by the address sanitizer'
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图12.1 – 地址清理器插入的仪器代码'
 - en: '](img/B14590_12.1.jpg)'
+  id: totrans-36
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图片](img/B14590_12.1.jpg)'
 - en: Figure 12.1 – Instrumentation code inserted by the address sanitizer
+  id: totrans-37
   prefs: []
   type: TYPE_NORMAL
+  zh: 图12.1 – 地址清理器插入的仪器代码
 - en: Here, we can see that the address sanitizer is effectively inserting a boundary
     check into the array index that's used for accessing `buffer`. With this extra
     check – which will be executed at runtime – the target program can bail out with
@@ -178,26 +241,34 @@
     the compilation, a sanitizer inserts some instrumentation code (into the target
     program) that will eventually be executed at runtime to check or *guard* certain
     properties.
+  id: totrans-38
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们可以看到地址清理器有效地在用于访问`buffer`的数组索引中插入了一个边界检查。有了这个额外的检查——它将在运行时执行——目标程序可以在违反内存访问之前退出并带有错误详情。更普遍地说，在编译期间，清理器会插入一些仪器代码（到目标程序中），这些代码最终将在运行时执行以检查或**保护**某些属性。
 - en: Detecting overflow using an address sanitizer
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 使用地址清理器检测溢出
 - en: The preceding diagram shows a simplified version of how an address sanitizer
     works. In reality, the address sanitizer will leverage multiple strategies to
     monitor memory access in a program. For example, an address sanitizer can use
     a special memory allocator that allocates memory with `traps` put at the invalid
     memory region.
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 上述图表显示了地址清理器工作原理的简化版本。实际上，地址清理器将利用多种策略来监控程序中的内存访问。例如，地址清理器可以使用一个特殊的内存分配器，该分配器在无效内存区域放置`陷阱`来分配内存。
 - en: While an address sanitizer is specialized in catching illegal memory access,
     a **ThreadSanitizer** can be used to catch data race conditions; that is, invalid
     access from multiple threads on the same chunk of data. Some other examples of
     sanitizers in Clang are the **LeakSanitizer**, which is used for detecting sensitive
     data such as passwords being leaked, and **MemorySanitizer**, which is used for
     detecting reads to uninitialized memory.
+  id: totrans-41
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然地址清理器擅长捕获非法内存访问，但**ThreadSanitizer**可以用来捕获数据竞争条件；即，对同一数据块的多线程无效访问。Clang中其他清理器的例子还包括**LeakSanitizer**，它用于检测敏感数据（如密码）泄露，以及**MemorySanitizer**，它用于检测对未初始化内存的读取。
 - en: 'Of course, there are some downsides to using sanitizers. The most prominent
     problem is the performance impact: using a thread sanitizer (in Clang) as an example,
     programs that are compiled with one are *5~15 times slower* than the original
@@ -205,8 +276,10 @@
     some optimization opportunities, or even affect the original program''s logic!
     In other words, it is a trade-off between the *robustness* and *performance* of
     the target program.'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 当然，使用清理器也有一些缺点。最突出的问题是性能影响：以Clang中的线程清理器为例，使用它的程序比原始版本慢**5~15倍**。此外，由于清理器将额外的代码插入到程序中，它可能会阻碍一些优化机会，甚至影响原始程序的逻辑！换句话说，这是目标程序**健壮性**和**性能**之间的权衡。
 - en: With that, you've learned about the high-level idea of a sanitizer. Let's try
     to create a real one by ourselves to understand how Clang and LLVM implement a
     sanitizer. The following section contains more code than any of the examples in
@@ -215,170 +288,248 @@
     of some *supporting* code – for example, changes that are made to CMake build
     scripts. Instead, we will go through them by providing a brief introduction and
     pointing out where you can find it in this book's GitHub repository.
+  id: totrans-43
   prefs: []
   type: TYPE_NORMAL
+  zh: 通过这样，你已经了解了清理器的高级概念。让我们尝试自己创建一个，以了解Clang和LLVM如何实现清理器。接下来的部分包含比前几章中任何示例都多的代码，更不用说这些更改分散在LLVM的不同子项目中。为了专注于最重要的知识，我们不会深入一些**支持性**代码的细节——例如，对CMake构建脚本的更改。相反，我们将通过提供简要介绍并指出在哪里可以找到这本书的GitHub仓库中的相关内容来简要介绍它们。
 - en: Let's start by providing an overview of the project we are going to create.
+  id: totrans-44
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们先概述一下我们将要创建的项目。
 - en: Creating a loop counter sanitizer
+  id: totrans-45
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 创建循环计数器清理器
 - en: To (slightly) simplify our task, the sanitizer we are going to create – a loop
     counter sanitizer, or **LPCSan** for short – looks just like a sanitizer except
     that it is not checking any serious program properties. Instead, we want to use
     it to print out the real, concrete **trip count** – the number of iterations –
     of a loop, which is only available during runtime.
+  id: totrans-46
   prefs: []
   type: TYPE_NORMAL
+  zh: 为了（稍微）简化我们的任务，我们将创建的清理器——一个循环计数器清理器，简称**LPCSan**——看起来就像一个清理器，只不过它不会检查任何严重的程序属性。相反，我们希望用它来打印出实际的、具体的**迭代计数**——循环的迭代次数，这在运行时才可用。
 - en: 'For example, let''s assume we have the following input code:'
+  id: totrans-47
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，让我们假设我们有以下输入代码：
 - en: '[PRE7]'
+  id: totrans-48
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'We can compile it with a LPCSan using the following command:'
+  id: totrans-49
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们可以使用以下命令使用LPCSan进行编译：
 - en: '[PRE8]'
+  id: totrans-50
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: Note that compiling with optimization greater than `-O0` is necessary; we will
     explain why later.
+  id: totrans-51
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，使用大于 `-O0` 的优化编译是必要的；我们将在稍后解释原因。
 - en: 'When we execute `test_lpcsan` (with some command-line argument), we can print
     out the precise trip count of the loop in the `foo` function. For example, look
     at the following code:'
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 当我们执行 `test_lpcsan`（带有一些命令行参数）时，我们可以在 `foo` 函数中打印出循环的确切遍历次数。例如，看看以下代码：
 - en: '[PRE9]'
+  id: totrans-53
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The message highlighted in the preceding code was printed by our sanitizer code.
+  id: totrans-54
   prefs: []
   type: TYPE_NORMAL
+  zh: 上述代码中高亮显示的消息是由我们的检查器代码打印的。
 - en: 'Now, let''s dive into the steps for creating the LPCSan. We will divide this
     tutorial into three parts:'
+  id: totrans-55
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们深入了解创建LPCSan的步骤。我们将把这个教程分为三个部分：
 - en: Developing an IR transformation
+  id: totrans-56
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 开发IR转换
 - en: Adding Compiler-RT components
+  id: totrans-57
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 添加Compiler-RT组件
 - en: Adding the LPCSan to Clang
+  id: totrans-58
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 将LPCSan添加到Clang
 - en: We will start with the IR transformation part of this sanitizer.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们将从这个检查器的IR转换部分开始。
 - en: Developing an IR transformation
+  id: totrans-60
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 开发IR转换
 - en: Previously, we learned that an address sanitizer – or just a sanitizer in general
     – usually inserts code into the target program to check certain runtime properties
     or collect data. In [*Chapter 9*](B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127),
     *Working with PassManager and AnalysisManager*, and [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
     *Processing LLVM IR*, we learned how to modify/transform LLVM IR, including inserting
     new code into it, so this seems to be a good starting point for crafting our LPCSan.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前，我们了解到地址检查器——或者更一般地说——通常会在目标程序中插入代码来检查某些运行时属性或收集数据。在 [*第9章*](B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127)
+    *与PassManager和AnalysisManager一起工作* 和 [*第10章*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141)
+    *处理LLVM IR* 中，我们学习了如何修改/转换LLVM IR，包括向其中插入新代码，因此这似乎是构建我们的LPCSan的好起点。
 - en: 'In this section, we are going to develop an LLVM pass called `LoopCounterSanitizer`
     that inserts special function calls to collect the exact trip count of every loop
     in `Module`. Here are the detailed steps:'
+  id: totrans-62
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将开发一个名为 `LoopCounterSanitizer` 的LLVM传递，该传递会插入特殊函数调用来收集 `Module` 中每个循环的确切遍历次数。以下是详细步骤：
 - en: 'First, let''s create two files: `LoopCounterSanitizer.cpp` under the `llvm/lib/Transforms/Instrumentation`
     folder and its corresponding header file inside the `llvm/include/llvm/Transforms/Instrumentation`
     folder. Inside the header file, we will place the declaration of this pass, as
     shown here:'
+  id: totrans-63
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 首先，让我们创建两个文件：`LoopCounterSanitizer.cpp` 位于 `llvm/lib/Transforms/Instrumentation`
+    文件夹下，以及其对应的头文件位于 `llvm/include/llvm/Transforms/Instrumentation` 文件夹内。在头文件中，我们将放置此传递的声明，如下所示：
 - en: '[PRE10]'
+  id: totrans-64
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'Finally, in `LoopCounterSanitizer.cpp`, we are placing the skeleton code for
     our pass, as shown here:'
+  id: totrans-65
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，在 `LoopCounterSanitizer.cpp` 中，我们放置了我们传递的骨架代码，如下所示：
 - en: '[PRE11]'
+  id: totrans-66
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'To figure out the exact trip count, the `Function` instance stored in `LPCSetStartFn`
     will be used to collect the *initial* induction variable value of a loop. On the
     other hand, the `Function` instance stored in `LPCAtEndFn` will be used to collect
     the *final* induction variable value and the step value of the loop. To give you
     a concrete idea of how these two `Function` instances work together, let''s assume
     we have the following pseudocode as our input program:'
+  id: totrans-67
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 为了确定确切的遍历次数，将使用存储在 `LPCSetStartFn` 中的 `Function` 实例来收集循环的 *初始* 归纳变量值。另一方面，存储在
+    `LPCAtEndFn` 中的 `Function` 实例将用于收集循环的 *最终* 归纳变量值和步长值。为了给您一个具体的概念，了解这两个 `Function`
+    实例是如何一起工作的，让我们假设以下伪代码作为我们的输入程序：
 - en: '[PRE12]'
+  id: totrans-68
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'In the preceding code, the `S`, `E`, and `ST` variables represent the initial,
     final, and step values of a loop, respectively. The goal of the `LoopCounterSanitizer`
     pass is to insert `LPCSetStartFn` and `LPCAtEndFn` in the following way:'
+  id: totrans-69
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 在前面的代码中，`S`、`E` 和 `ST` 变量分别代表循环的初始、最终和步长值。`LoopCounterSanitizer` 传递的目标是以以下方式插入
+    `LPCSetStartFn` 和 `LPCAtEndFn`：
 - en: '[PRE13]'
+  id: totrans-70
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: static int CurrentStartVal = 0;
+  id: totrans-71
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: static int CurrentStartVal = 0;
 - en: void lpc_set_start(int start) {
+  id: totrans-72
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: void lpc_set_start(int start) {
 - en: LPCSetStartFn and LPCAtEndFn, it's time to take a look at how initializeSanitizerFuncs
     initializes them.
+  id: totrans-73
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: LPCSetStartFn 和 LPCAtEndFn，现在是时候看看 `initializeSanitizerFuncs` 是如何初始化它们的了。
 - en: '[PRE14]'
+  id: totrans-74
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'Here is the code inside `initializeSanitizerFuncs`:'
+  id: totrans-75
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 这里是 `initializeSanitizerFuncs` 中的代码：
 - en: '[PRE15]'
+  id: totrans-76
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: 'Recall that in [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
     *Processing LLVM IR*, we learned about several utility classes for working with
     `Loop`. One of them – `LoopBounds` – can give us the boundary of a `Loop`. We
     can do this by including the start, end, and step values of an induction variable,
     which is exactly the information we are looking for. Here is the code that tries
     to retrieve a `LoopBounds` instance:'
+  id: totrans-77
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE16]'
+  id: totrans-78
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: '`StartVal` is the `Value` instance to be collected by `__lpcsan_set_loop_start`,
     whereas `__lpcsan_at_loop_end` is going to collect `EndVal` and `StepVal` at runtime.
     Now, the question is, *where* should we insert function calls to `__lpcsan_set_loop_start`
     and `__lpcsan_at_loop_end` to correctly collect those values?'
+  id: totrans-79
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
@@ -387,6 +538,7 @@
     defined, let's try to simplify the problem by inserting instrumentation function
     calls at some fixed locations – locations where our target values are *always*
     available.
+  id: totrans-80
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
@@ -394,6 +546,7 @@
     to get the last `Instruction` from the header block. Then, we used `IRBuilder<>`
     – with the last instruction as the insertion point – to insert new `Instruction`
     instances.
+  id: totrans-81
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
@@ -402,104 +555,146 @@
     into a compatible one. `IRBuilder::CreateInstCast` is a handy utility that automatically
     generates either an instruction to *extend* the integer bit width or an instruction
     to *truncate* the bit width, depending on the given `Value` and `Type` instances.
+  id: totrans-82
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: Finally, we can create a function call to `__lpcsan_set_loop_start` via `IRBuilder::CreateCall`,
     with `StartVal` as the function call argument.
+  id: totrans-83
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: 'For `__lpcsan_at_loop_end`, we are using the same trick to collect the runtime
     values of `EndVal` and `StepVal`. Here is the code:'
+  id: totrans-84
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: '[PRE17]'
+  id: totrans-85
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'Before we wrap up this section, we need to edit a few more files to make sure
     everything works. Please look at the `Changes-LLVM.diff` file in the sample code
     folder for this chapter. Here is the summary of the changes that were made in
     other supporting files:'
+  id: totrans-86
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
 - en: 'i. Changes in `llvm/lib/Transforms/Instrumentation/CMakeLists.txt`: Add our
     new pass source file to the build.'
+  id: totrans-87
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: 'ii. Changes in `llvm/lib/Passes/PassRegistry.def`: Add our pass to the list
     of available passes so that we can test it using our old friend `opt`.'
+  id: totrans-88
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
 - en: With that, we've finally finished making all the necessary modifications to
     the LLVM part.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
 - en: 'Before we move on to the next section, let''s test our newly created `LoopCounterSanitizer`
     pass. We are going to be using the same C code we saw earlier in this section.
     Here is the function that contains the loop we want to instrument:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
 - en: '[PRE18]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'Note that although we didn''t explicitly check the loop form in our pass, some
     of the APIs that were used in the pass actually required the loop to be *rotated*,
     so please generate the LLVM IR code with an O1 optimization level to make sure
     the loop rotation''s Pass has kicked in:'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，尽管我们没有在我们的过滤器中明确检查循环形式，但过滤器中使用的某些 API 实际上要求循环要被 *旋转*，所以请使用 O1 优化级别生成 LLVM
+    IR 代码，以确保循环旋转的过滤器已经启动：
 - en: 'Here is the simplified LLVM IR for the `foo` function:'
+  id: totrans-93
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是 `foo` 函数的简化后的 LLVM IR：
 - en: '[PRE19]'
+  id: totrans-94
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: The highlighted labels are the preheader and loop body blocks for this loop.
     Since this loop has been rotated, the `for.body` block is both the header, latch,
     and exiting block for this loop.
+  id: totrans-95
   prefs: []
   type: TYPE_NORMAL
+  zh: 突出的标签是此循环的预头块和循环体块。由于这个循环已经被旋转，`for.body` 块既是此循环的头块，也是 latch 和退出块。
 - en: 'Now, let''s transform this IR with `opt` using the following command:'
+  id: totrans-96
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们使用以下命令使用 `opt` 转换这个 IR：
 - en: '[PRE20]'
+  id: totrans-97
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: In the `–passes` command-line option, we asked `opt` to run our `LoopCounterSanitizer`
     pass (with the name `lpcsan`, which is registered in the `PassRegistry.def` file).
     The enclosing `loop(…)` string is simply telling `opt` that `lpcsan` is a loop
     pass (you can actually omit this decoration since `opt` can find the right pass
     most of the time).
+  id: totrans-98
   prefs: []
   type: TYPE_NORMAL
+  zh: 在 `–passes` 命令行选项中，我们要求 `opt` 运行我们的 `LoopCounterSanitizer` 过滤器（名称为 `lpcsan`，已在
+    `PassRegistry.def` 文件中注册）。包围的 `loop(…)` 字符串只是简单地告诉 `opt`，`lpcsan` 是一个循环过滤器（实际上你可以省略这个装饰，因为
+    `opt` 大多数时候都能找到正确的过滤器）。
 - en: 'Here is the simplified result:'
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里是简化后的结果：
 - en: '[PRE21]'
+  id: totrans-100
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: As you can see, `__lpcsan_set_loop_start` and `__lpcsan_at_loop_end` have been
     correctly inserted into the header block and exit block, respectively. They are
     also collecting the desired values related to the loop trip count.
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 如您所见，`__lpcsan_set_loop_start` 和 `__lpcsan_at_loop_end` 已经分别正确地插入到头块和退出块中。它们也在收集与循环迭代次数相关的所需值。
 - en: 'Now, the biggest question is: where are the *function bodies* for `__lpcsan_set_loop_start`
     and `__lpcsan_at_loop_end`? Both only have declarations in the preceding IR code.'
+  id: totrans-102
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，最大的问题是：`__lpcsan_set_loop_start` 和 `__lpcsan_at_loop_end` 的函数体在哪里？这两个函数在之前的
+    IR 代码中只有声明。
 - en: In the next section, we will use Compiler-RT to answer this question.
+  id: totrans-103
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们将使用 Compiler-RT 来回答这个问题。
 - en: Adding the Compiler-RT component
+  id: totrans-104
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 添加 Compiler-RT 组件
 - en: The name **Compiler-RT** stands for **Compiler RunTime**. The usage of *runtime*
     is a little ambiguous here because too many things can be called a runtime in
     a normal compilation pipeline. But the truth is that Compiler-RT *does* contain
@@ -508,139 +703,201 @@
     implement enhancement features or functionalities that were otherwise absent.
     It is important to remember that Compiler-RT libraries are NOT used for building
     a compiler or related tool – they should be linked with the program we are compiling.
+  id: totrans-105
   prefs: []
   type: TYPE_NORMAL
+  zh: '**Compiler-RT** 的名称代表 **Compiler RunTime**。在这里，*runtime* 的使用有一点模糊，因为在正常的编译管道中，太多东西都可以被称为
+    runtime。但事实是，Compiler-RT *确实*包含了一组用于完全不同任务的库。这些库的共同之处在于，它们为目标程序提供 *补充* 代码，以实现增强功能或原本缺失的功能。重要的是要记住，Compiler-RT
+    库不是用于构建编译器或相关工具的——它们应该与我们要编译的程序链接。'
 - en: 'One of the most used features in Compiler-RT is the **builtin function**. As
     you might have heard, more and more computer architectures nowadays support *vector
     operation* natively. That is, you can process multiple data elements at the same
     time with the support from hardware. Here is some example code, written in C,
     that uses vector operations:'
+  id: totrans-106
   prefs: []
   type: TYPE_NORMAL
+  zh: Compiler-RT 中最常用的功能之一是 **内建函数**。正如您可能听说的，现在越来越多的计算机架构原生支持 *向量操作*。也就是说，您可以在硬件的支持下同时处理多个数据元素。以下是一些使用向量操作的
+    C 语言示例代码：
 - en: '[PRE22]'
+  id: totrans-107
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: The preceding code used a non-standardized (currently, you can only use this
     syntax in Clang and GCC) C/C++ vector extension to declare two vectors, `v1` and
     `v2`, before adding them to yield a third one.
+  id: totrans-108
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码使用了非标准化的（目前，你只能在 Clang 和 GCC 中使用这种语法）C/C++ 向量扩展来声明两个向量，`v1` 和 `v2`，然后在将它们相加以生成第三个向量之前。
 - en: 'On X86-64 platforms, this code will be compiled to use one of the vector instruction
     sets, such as `for-loop` to replace vector summation in this case. More specifically,
     whenever we see a vector summation at compilation time, we replace it with a call
     to a function that contains the synthesis implementation using `for-loop`. The
     function body can be put anywhere, as long as it is eventually linked with the
     program. The following diagram illustrates this process:'
+  id: totrans-109
   prefs: []
   type: TYPE_NORMAL
+  zh: 在X86-64平台上，此代码将被编译为使用向量指令集之一，例如使用`for-loop`来替换此例中的向量求和。更具体地说，每当我们在编译时看到向量求和，我们就用包含使用`for-loop`的合成实现的函数调用来替换它。函数体可以放在任何地方，只要它最终与程序链接即可。以下图表说明了这个过程：
 - en: '![Figure 12.2 – Workflow of the Compiler-RT builtin'
+  id: totrans-110
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图12.2 – Compiler-RT内置的流程]'
 - en: '](img/B14590_12.2.jpg)'
+  id: totrans-111
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图片](img/B14590_12.2.jpg)'
 - en: Figure 12.2 – Workflow of the Compiler-RT builtin
+  id: totrans-112
   prefs: []
   type: TYPE_NORMAL
+  zh: 图12.2 – Compiler-RT内置的流程
 - en: 'As you may have noticed, the workflow shown here is similar to our requirement
     in the LPCSan: in the previous section, we developed an LLVM pass that inserted
     extra function calls to collect the loop trip count, but we still need to implement
     those collector functions. If we leverage the workflow shown in the preceding
     diagram, we can come up with a design, as shown in the following diagram:'
+  id: totrans-113
   prefs: []
   type: TYPE_NORMAL
+  zh: 如您所注意到的，这里显示的流程与我们在LPCSan中的要求相似：在前一节中，我们开发了一个LLVM pass，它插入额外的函数调用来收集循环迭代次数，但我们仍然需要实现这些收集函数。如果我们利用前面图表中显示的流程，我们可以提出一个设计，如下面的图表所示：
 - en: '![Figure 12.3 – Workflow of the Compiler-RT LPCSan component'
+  id: totrans-114
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图12.3 – Compiler-RT LPCSan组件的流程]'
 - en: '](img/B14590_12.3.jpg)'
+  id: totrans-115
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图片](img/B14590_12.3.jpg)'
 - en: Figure 12.3 – Workflow of the Compiler-RT LPCSan component
+  id: totrans-116
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图12.3 – Compiler-RT LPCSan组件的流程]'
 - en: 'The previous diagram shows that the function bodies of `__lpcsan_set_loop_start`
     and `__lpcsan_at_loop_end` are put inside a Compiler-RT library that will eventually
     be linked with the final binary. Inside these two functions, we calculate the
     trip count using the input arguments and print the result. In the rest of this
     section, we''ll show you how to create such a Compiler-RT library for the LPCSan.
     Let''s get started:'
+  id: totrans-117
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的图表显示，`__lpcsan_set_loop_start`和`__lpcsan_at_loop_end`函数的函数体被放入一个最终将与最终二进制文件链接的Compiler-RT库中。在这两个函数内部，我们使用输入参数计算迭代次数并打印结果。在本节的其余部分，我们将向您展示如何为LPCSan创建这样的Compiler-RT库。让我们开始吧：
 - en: 'First, switch the folder to `llvm-project/compiler-rt`, the root of Compiler-RT.
     Inside this subproject, we must create a new folder called `lib/lpcsan` before
     we put a new `lpcsan.cpp` file inside it. Within this file, let''s create the
     skeleton for our instrumentation functions. Here is the code:'
+  id: totrans-118
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 首先，将文件夹切换到`llvm-project/compiler-rt`，这是Compiler-RT的根目录。在这个子项目中，我们必须在将新的`lpcsan.cpp`文件放入其中之前，先创建一个名为`lib/lpcsan`的新文件夹。在这个文件中，让我们为我们的仪器函数创建一个骨架。以下是代码：
 - en: '[PRE23]'
+  id: totrans-119
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'Next, we will add the necessary code to these two functions. Here is how we
     do this:'
+  id: totrans-120
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，我们将向这两个函数添加必要的代码。以下是我们的做法：
 - en: '[PRE24]'
+  id: totrans-121
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: 'Now that we have implemented the core logic, it''s time to build this library.
     Inside the `lib/lpcsan` folder, create a new `CMakeLists.txt` file and insert
     the following code:'
+  id: totrans-122
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 现在我们已经实现了核心逻辑，是时候构建这个库了。在`lib/lpcsan`文件夹内，创建一个新的`CMakeLists.txt`文件并插入以下代码：
 - en: '[PRE25]'
+  id: totrans-123
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: 'To successfully build the LPCSan, we still need to make some changes in Compiler-RT.
     The `Base-CompilerRT.diff` patch in the same code folder provides the rest of
     the changes that are necessary to build our sanitizer. Apply it to Compiler-RT''s
     source tree. Here is the summary of this patch:'
+  id: totrans-124
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 要成功构建LPCSan，我们仍然需要在Compiler-RT中进行一些更改。同一代码文件夹中的`Base-CompilerRT.diff`补丁提供了构建我们的sanitizer所需的其余更改。将其应用到Compiler-RT的源代码树上。以下是此补丁的摘要：
 - en: i. Changes in `compiler-rt/cmake/config-ix.cmake` basically specify the supported
     architectures and operating systems of the LPCSan. The `LPCSAN_SUPPORTED_ARCH`
     CMake variable we saw in the previous snippet comes from here.
+  id: totrans-125
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: i. `compiler-rt/cmake/config-ix.cmake`中的更改基本上指定了LPCSan支持的架构和操作系统。我们之前在代码片段中看到的`LPCSAN_SUPPORTED_ARCH`
+    CMake变量就来自这里。
 - en: ii. The entire `compiler-rt/test/lpcsan` folder is actually a placeholder. For
     some reason, having tests is a *requirement* for every sanitizer in Compiler-RT
     – which is different from LLVM. Therefore, we are putting an empty test folder
     here to pass this requirement that's being imposed by the build infrastructure.
+  id: totrans-126
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: ii. 整个`compiler-rt/test/lpcsan`文件夹实际上是一个占位符。由于某种原因，在Compiler-RT中，每个sanitizer都需要测试
+    – 这与LLVM不同。因此，我们在这里放置一个空的测试文件夹以满足由构建基础设施强加的要求。
 - en: These are all the steps for producing a Compiler-RT component for our LPCSan.
+  id: totrans-127
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些都是为我们的 LPCSan 生成 Compiler-RT 组件的步骤。
 - en: 'To just build our LPCSan library, invoke the following command:'
+  id: totrans-128
   prefs: []
   type: TYPE_NORMAL
+  zh: 要仅构建我们的 LPCSan 库，请执行以下命令：
 - en: '[PRE26]'
+  id: totrans-129
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: Unfortunately, we can't test this LPCSan library until we've modified the compilation
     pipeline in Clang. In the last part of this section, we are going to learn how
     to achieve this task.
+  id: totrans-130
   prefs: []
   type: TYPE_NORMAL
+  zh: 不幸的是，在我们修改 Clang 的编译管道之前，我们无法测试这个 LPCSan 库。在本节的最后部分，我们将学习如何完成这个任务。
 - en: Adding the LPCSan to Clang
+  id: totrans-131
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 将 LPCSan 添加到 Clang
 - en: In the previous section, we learned how Compiler-RT libraries provide supplement
     functionalities to the target program or assist with special instrumentation,
     such as the sanitizer we just created. In this section, we are going to put everything
     together so that we can use our LPCSan simply by passing the `-fsanitize=loop-counter`
     flag to `clang`.
+  id: totrans-132
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们学习了 Compiler-RT 库如何为目标程序提供补充功能或协助特殊工具，例如我们刚刚创建的清理器。在本节中，我们将把所有这些内容整合起来，这样我们就可以通过向
+    `clang` 传递 `-fsanitize=loop-counter` 标志来简单地使用我们的 LPCSan。
 - en: 'Recall that in *Figure 12.3*, Compiler-RT libraries need to be linked with
     the program we are compiling. Also, recall that in order to insert the instrumentation
     code into the target program, we must run our `LoopCounterSanitizer` pass. In
@@ -648,130 +905,189 @@
     it runs our LLVM pass at a certain time and sets up the correct configuration
     for our Compiler-RT library. More specifically, the following diagram shows the
     tasks that each component needs to complete to run our LPCSan:'
+  id: totrans-133
   prefs: []
   type: TYPE_NORMAL
+  zh: 回想一下，在 *图 12.3* 中，Compiler-RT 库需要与我们要编译的程序链接。同样，回想一下，为了将工具代码插入到目标程序中，我们必须运行我们的
+    `LoopCounterSanitizer` 过滤器。在本节中，我们将修改 Clang 的编译管道，以便在特定时间运行我们的 LLVM 过滤器，并为我们的
+    Compiler-RT 库设置正确的配置。更具体地说，以下图显示了每个组件需要完成的任务以运行我们的 LPCSan：
 - en: '![Figure 12.4 – Tasks for each component in the pipeline'
+  id: totrans-134
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图 12.4 – 管道中每个组件的任务]'
 - en: '](img/B14590_12.4.jpg)'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: '![img/B14590_12.4.jpg]'
 - en: Figure 12.4 – Tasks for each component in the pipeline
+  id: totrans-136
   prefs: []
   type: TYPE_NORMAL
+  zh: 图 12.4 – 管道中每个组件的任务
 - en: 'Here are the descriptions for each of the numbers (enclosed in circles) in
     the preceding diagram:'
+  id: totrans-137
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下是前图中每个数字（用圆圈圈出）的描述：
 - en: The driver needs to recognize the `-fsanitize=loop-counter` flag.
+  id: totrans-138
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 驱动程序需要识别 `-fsanitize=loop-counter` 标志。
 - en: When the frontend is about to generate LLVM IR from an `LoopCounterSanitizer`
     pass.
+  id: totrans-139
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 当前端即将从 `LoopCounterSanitizer` 过滤器生成 LLVM IR 时。
 - en: The LLVM pass pipeline needs to run our `LoopCounterSanitizer` (we don't need
     to worry about this task if the previous task is done correctly).
+  id: totrans-140
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: LLVM 过滤器管道需要运行我们的 `LoopCounterSanitizer`（如果前面的任务完成正确，我们不需要担心这个任务）。
 - en: The linker needs to link our Compiler-RT library to the target program.
+  id: totrans-141
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 链接器需要将我们的 Compiler-RT 库链接到目标程序。
 - en: 'Although this workflow looks a little scary, don''t be overwhelmed by the prospective
     workload – Clang can actually do most of these tasks for you, as long as you provide
     sufficient information. In the rest of this section, we''ll show you how to implement
     the tasks shown in the preceding diagram to fully integrate our LPCSan into the
     Clang compilation pipeline (the following tutorial works inside the `llvm-project/clang`
     folder). Let''s get started:'
+  id: totrans-142
   prefs: []
   type: TYPE_NORMAL
+  zh: 虽然这个工作流程看起来有点吓人，但不要被预期的任务量所压倒——只要提供足够的信息，Clang 实际上可以为你完成大部分这些任务。在本节的其余部分，我们将向您展示如何实现前图中显示的任务，以将我们的
+    LPCSan 完全集成到 Clang 编译管道中（以下教程在 `llvm-project/clang` 文件夹内进行）。让我们开始吧：
 - en: 'First, we must modify `include/clang/Basic/Sanitizers.def` to add our sanitizer:'
+  id: totrans-143
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 首先，我们必须修改 `include/clang/Basic/Sanitizers.def` 以添加我们的清理器：
 - en: '[PRE27]'
+  id: totrans-144
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: 'Next, let''s work on the driver part. Open `include/clang/Driver/SanitizerArgs.h`
     and add a new utility method, `needsLpcsanRt`, to the `SanitizerArgs` class. Here
     is the code:'
+  id: totrans-145
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，让我们处理驱动程序部分。打开 `include/clang/Driver/SanitizerArgs.h` 并向 `SanitizerArgs`
+    类中添加一个新的实用方法，`needsLpcsanRt`。以下是代码：
 - en: '[PRE28]'
+  id: totrans-146
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: The utility method we created here can be used by other places in the driver
     to check if our sanitizer needs a Compiler-RT component.
+  id: totrans-147
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 我们在这里创建的实用方法可以在驱动程序的其它地方使用，以检查我们的清理器是否需要 Compiler-RT 组件。
 - en: 'Now, let''s navigate to the `lib/Driver/ToolChains/CommonArgs.cpp` file. Here,
     we''re adding a few lines to the `collectSanitizerRuntimes` function. Here is
     the code:'
+  id: totrans-148
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 现在，让我们导航到 `lib/Driver/ToolChains/CommonArgs.cpp` 文件。在这里，我们向 `collectSanitizerRuntimes`
+    函数中添加了几行代码。以下是代码：
 - en: '[PRE29]'
+  id: totrans-149
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: The preceding snippet effectively makes the linker link the correct Compiler-RT
     library to the target binary.
+  id: totrans-150
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 前面的代码片段有效地使链接器将正确的 Compiler-RT 库链接到目标二进制文件。
 - en: 'The last change we will make to the driver is in `lib/Driver/ToolChains/Linux.cpp`.
     Here, we add the following lines to the `Linux::getSupportedSanitizers` method:'
+  id: totrans-151
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们将对驱动程序进行的最后一个修改是在`lib/Driver/ToolChains/Linux.cpp`文件中。在这里，我们将以下行添加到`Linux::getSupportedSanitizers`方法中：
 - en: '[PRE30]'
+  id: totrans-152
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: The previous code is essentially telling the driver that we support the LPCSan
     in the current toolchain – the toolchain for Linux. Note that to simplify our
     example, we are only supporting the LPCSan in Linux. If you want to support this
     custom sanitizer in other platforms and architectures, modify the other toolchain
     implementations. Please refer to [*Chapter 8*](B14590_08_Final_JC_ePub.xhtml#_idTextAnchor108),
     *Working with Compiler Flags and Toolchains*, for more details if needed.
+  id: totrans-153
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 之前的代码基本上是在告诉驱动程序，我们支持当前工具链中的LPCSan——Linux的工具链。请注意，为了简化我们的示例，我们只支持Linux中的LPCSan。如果您想在其他平台和架构上支持这个自定义清理器，请修改其他工具链实现。如果需要，请参阅[*第8章*](B14590_08_Final_JC_ePub.xhtml#_idTextAnchor108)，*使用编译器标志和工具链*，以获取更多详细信息。
 - en: 'Finally, we are going to insert our `LoopCounterSanitizer` pass into the LLVM
     pass pipeline. Open `lib/CodeGen/BackendUtil.cpp` and add the following lines
     to the `addSanitizers` function:'
+  id: totrans-154
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们将把我们的`LoopCounterSanitizer`传递插入到LLVM传递管道中。打开`lib/CodeGen/BackendUtil.cpp`文件，并将以下行添加到`addSanitizers`函数中：
 - en: '[PRE31]'
+  id: totrans-155
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: 'Last but not least, we must make a small modification to the build system.
     Open the `runtime/CMakeLists.txt` file and change the following CMake variable:'
+  id: totrans-156
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后但同样重要的是，我们必须对构建系统进行一些小的修改。打开`runtime/CMakeLists.txt`文件，并更改以下CMake变量：
 - en: '[PRE32]'
+  id: totrans-157
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: 'These are all the steps necessary to support the LPCSan in Clang. Now, we can
     finally use the LPCSan in the same way we showed you at the beginning of this
     section:'
+  id: totrans-158
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些都是在Clang中支持LPCSan所需的所有步骤。现在，我们最终可以使用LPCSan，就像我们在本节开始时向您展示的那样：
 - en: '[PRE33]'
+  id: totrans-159
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: 'In this section, we learned how to create a sanitizer. A sanitizer is a useful
     tool for capturing runtime behaviors without modifying the original program code.
     The ability to create a sanitizer increases the flexibility for compiler developers
@@ -780,36 +1096,50 @@
     creating a new LLVM pass, making a new Compiler-RT component, and customizing
     the compilation pipeline in Clang. You can use the content in this section, to
     reinforce what you''ve learned in previous chapters of this book.'
+  id: totrans-160
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们学习了如何创建清理器。清理器是一个有用的工具，可以在不修改原始程序代码的情况下捕获运行时行为。创建清理器的能力增加了编译器开发者创建针对他们自己用例定制的诊断工具的灵活性。开发清理器需要全面了解Clang、LLVM和Compiler-RT：创建一个新的LLVM传递、创建一个新的Compiler-RT组件，并自定义Clang的编译管道。您可以使用本节的内容，来巩固您在本本书的前几章中学到的知识。
 - en: 'In the last section of this chapter, we are going to look at one more instrumentation
     technique: **PGO**.'
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章的最后部分，我们将探讨另一种仪器技术：**PGO**。
 - en: Working with PGO
+  id: totrans-162
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 使用PGO
 - en: In the previous section, we learned how a sanitizer assists developers in performing
     sanity checks with higher precision using data that is only available at runtime.
     We also learned how to create a custom sanitizer. In this section, we will follow
     up on the idea of leveraging runtime data. We are going to learn an alternative
     use for such information – using it for compiler optimization.
+  id: totrans-163
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们学习了如何使用仅在运行时才可用的数据，通过清理器帮助开发者进行更精确的合理性检查。我们还学习了如何创建一个自定义清理器。在本节中，我们将继续探讨利用运行时数据的思想。我们将学习这种信息的另一种用途——用于编译器优化。
 - en: 'PGO is a technique that uses statistics that have been collected during runtime
     to enable more aggressive compiler optimizations. The *profile* in its name refers
     to the runtime data that''s been collected. To give you an idea of how such data
     enhances an optimization, let''s assume we have the following C code:'
+  id: totrans-164
   prefs: []
   type: TYPE_NORMAL
+  zh: PGO是一种使用在运行时收集的统计信息来启用更激进的编译器优化的技术。其名称中的*profile*指的是收集到的运行时数据。为了给您一个这样的数据如何增强优化的概念，让我们假设我们有以下C代码：
 - en: '[PRE34]'
+  id: totrans-165
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: 'In this code, we have three functions: `foo`, `bar`, and `zoo`. The first function
     conditionally calls the latter two.'
+  id: totrans-166
   prefs: []
   type: TYPE_NORMAL
+  zh: 在此代码中，我们有三个函数：`foo`、`bar`和`zoo`。第一个函数有条件地调用后两个函数。
 - en: When we try to optimize this code, the optimizer usually tries to *inline* callee
     functions into the caller. In this case, `bar` or `zoo` might be inlined into
     `foo`. However, if either `bar` or `zoo` has a large function body, inlining *both*
@@ -818,20 +1148,25 @@
     point of view, we have no clue about which function has the highest execution
     frequency, because the `foo` function conditionally calls either of them based
     on a (non-constant) variable.
+  id: totrans-167
   prefs: []
   type: TYPE_NORMAL
 - en: 'With PGO, we can collect the execution frequencies of both `bar` and `zoo`
     at runtime and use the data to compile (and optimize) the same code *again*. The
     following diagram shows the high-level overview of this idea:'
+  id: totrans-168
   prefs: []
   type: TYPE_NORMAL
 - en: '![Figure 12.5 – PGO workflow'
+  id: totrans-169
   prefs: []
   type: TYPE_NORMAL
 - en: '](img/B14590_12.5.jpg)'
+  id: totrans-170
   prefs: []
   type: TYPE_NORMAL
 - en: Figure 12.5 – PGO workflow
+  id: totrans-171
   prefs: []
   type: TYPE_NORMAL
 - en: Here, the first compilation phase compiled and optimized the code normally.
@@ -839,13 +1174,16 @@
     able to collect the profile data files. In the second compilation phase, we not
     only optimized the code, as we did previously, but also integrated the profile
     data into the optimizations to make them act more aggressively.
+  id: totrans-172
   prefs: []
   type: TYPE_NORMAL
 - en: 'There are primarily two ways for PGO to collect runtime profiling data: inserting
     **instrumentation** code or leveraging **sampling** data. Let''s introduce both.'
+  id: totrans-173
   prefs: []
   type: TYPE_NORMAL
 - en: Introduction to instrumentation-based PGO
+  id: totrans-174
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -854,6 +1192,7 @@
     of the program constructions we're interested in – for example, basic blocks and
     functions – and writes the result in a file. This is similar to how a sanitizer
     works.
+  id: totrans-175
   prefs: []
   type: TYPE_NORMAL
 - en: Instrumentation-based PGO usually generates profiling data with higher precision.
@@ -862,9 +1201,11 @@
     instrumentation-based PGO changes the execution flow of the target program, which
     increases the risk of performance regression (for the binary that was generated
     from the first compilation phase).
+  id: totrans-176
   prefs: []
   type: TYPE_NORMAL
 - en: Introduction to sampling-based PGO
+  id: totrans-177
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
@@ -873,6 +1214,7 @@
     tools usually leverage advanced system features or even hardware features to collect
     the runtime behavior of a program. For example, `perf` can give you insights into
     branch prediction and cache line misses.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
 - en: Since we are leveraging data from other tools, there is no need to modify the
@@ -881,123 +1223,179 @@
     need to recompile the code for profiling purposes. However, profiling data that's
     generated in this way is usually less precise. It's also more difficult to map
     the profiling data back to the original code during the second compilation phase.
+  id: totrans-179
   prefs: []
   type: TYPE_NORMAL
+  zh: 由于我们正在利用其他工具的数据，因此无需修改原始代码来收集配置文件。因此，基于采样的 PGO 通常具有极低的运行时开销（通常，这不到 1%）。此外，我们不需要重新编译代码以进行配置文件收集。然而，以这种方式生成的配置文件通常不太精确。在第二个编译阶段，将配置文件映射回原始代码也更加困难。
 - en: 'In the rest of this section, we are going to focus on instrumentation-based
     PGO. We are going to learn how to leverage it with LLVM IR. Nevertheless, as we
     will see shortly, these two PGO strategies in LLVM share lots of common infrastructures,
     so the code is portable. Here is the list of topics we are going to cover:'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节的其余部分，我们将重点关注基于插装的 PGO。我们将学习如何利用 LLVM IR。然而，正如我们很快将看到的，LLVM 中的这两种 PGO 策略共享许多共同的基础设施，因此代码是可移植的。以下是我们要涵盖的主题列表：
 - en: Working with profiling data
+  id: totrans-181
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 处理配置文件数据
 - en: Learning about the APIs for accessing profiling data
+  id: totrans-182
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 了解访问配置文件数据的 API
 - en: The first topic will show us how to create and use instrumentation-based PGO
     profiles with Clang, as well as some of the tools that can help us inspect and
     modify profiling data. The second topic will give you more details on how to access
     profiling data using LLVM APIs. This is useful if you want to create your own
     PGO pass.
+  id: totrans-183
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一部分将向我们展示如何使用 Clang 创建和使用基于插装的 PGO 配置文件，以及一些可以帮助我们检查和修改配置文件数据的工具。第二部分将更详细地介绍如何使用
+    LLVM API 访问配置文件数据。如果你想要创建自己的 PGO 传递，这将很有用。
 - en: Working with profiling data
+  id: totrans-184
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 处理配置文件数据
 - en: 'In this section, we are going to learn how to use generate, inspect, and even
     modify instrumentation-based profiling data. Let''s start with the following example:'
+  id: totrans-185
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将学习如何使用生成、检查甚至修改基于插装的配置文件数据。让我们从以下示例开始：
 - en: '[PRE35]'
+  id: totrans-186
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: In the preceding code, `get_random` is a function that generates a random number
     from 1 to 10 with uniform distribution. In other words, the highlighted `if` statement
     in the `foo` function should have a 50% chance of being taken. In addition to
     the `foo` function, the trip count of the `for` loop within `main` depends on
     the number of command-line arguments there are.
+  id: totrans-187
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的代码中，`get_random` 是一个生成 1 到 10 之间随机数的函数，具有均匀分布。换句话说，`foo` 函数中高亮的 `if` 语句应该有
+    50% 的机会被执行。除了 `foo` 函数外，`main` 函数中 `for` 循环的遍历次数取决于命令行参数的数量。
 - en: 'Now, let''s try to build this code with instrumentation-based PGO. Here are
     the steps:'
+  id: totrans-188
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，让我们尝试使用基于插装的 PGO 构建此代码。以下是步骤：
 - en: 'The first thing we are going to do is generate an executable for PGO profiling.
     Here is the command:'
+  id: totrans-189
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们将要做的第一件事是生成一个用于 PGO 分析的可执行文件。以下是命令：
 - en: '[PRE36]'
+  id: totrans-190
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: 'Next, we must run the `pgo` program with three command-line arguments:'
+  id: totrans-191
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，我们必须使用三个命令行参数运行 `pgo` 程序：
 - en: '[PRE37]'
+  id: totrans-192
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: You might get a totally different output since there is only a 50% of chance
     of the string being printed.
+  id: totrans-193
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 你可能会得到完全不同的输出，因为打印字符串的概率只有 50%。
 - en: 'After this, the `pgo_prof.dir` folder should contain the `default_<hash>_<n>.profraw`
     file, as shown here:'
+  id: totrans-194
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 之后，`pgo_prof.dir` 文件夹应该包含如这里所示的 `default_<hash>_<n>.profraw` 文件：
 - en: '[PRE38]'
+  id: totrans-195
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: The *hash* in the filename is a hash that's calculated based on your code.
+  id: totrans-196
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 文件名中的 *hash* 是基于你的代码计算得出的哈希值。
 - en: 'We cannot directly use the `*.profraw` file for our second compilation phase.
     Instead, we must convert it into another kind of binary form using the `llvm-profdata`
     tool. Here is the command:'
+  id: totrans-197
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 我们不能直接使用 `*.profraw` 文件进行我们的第二个编译阶段。相反，我们必须使用 `llvm-profdata` 工具将其转换为另一种二进制形式。以下是命令：
 - en: '[PRE39]'
+  id: totrans-198
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: 'Finally, we can use the file we just merged for the second stage of compilation.
     Here is the command:'
+  id: totrans-199
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 最后，我们可以使用我们刚刚合并的文件进行编译的第二阶段。以下是命令：
 - en: '[PRE40]'
+  id: totrans-200
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: Here, the `-fprofile-use` option told `clang` to use the profiling data stored
     in `pgo_prof.profdata` to optimize the code. We are going to look at the LLVM
     IR code after we've done this optimization.
+  id: totrans-201
   prefs: []
   type: TYPE_NORMAL
+  zh: 这里，`-fprofile-use` 选项告诉 `clang` 使用存储在 `pgo_prof.profdata` 中的配置文件数据来优化代码。我们将在完成此优化后查看
+    LLVM IR 代码。
 - en: 'Open `pgo.after.ll` and navigate to the `foo` function. Here is a simplified
     version of `foo`:'
+  id: totrans-202
   prefs: []
   type: TYPE_NORMAL
+  zh: 打开 `pgo.after.ll` 并导航到 `foo` 函数。以下是 `foo` 的简化版本：
 - en: '[PRE41]'
+  id: totrans-203
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: In the preceding LLVM IR code, two places were different from the original IR;
     that is, the `!prof` tags that followed after both the function header and the
     branch instruction, which correspond to the `if(get_random() > 5)` code we saw
     earlier.
+  id: totrans-204
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的LLVM IR代码中，有两个地方与原始IR不同；那就是在函数头部和分支指令之后跟随的`!prof`标签，这对应于我们之前看到的`if(get_random()
+    > 5)`代码。
 - en: 'In LLVM IR, we can attach `''!''`) in the textual LLVM IR.`!prof`, `!71`, and
     `!72` in the preceding code are metadata tags that represent the profiling data
     we collected. More specifically, if we have profiling data associated with an
@@ -1005,98 +1403,140 @@
     contains the required values. These metadata values are put at the very bottom
     of the IR file. If we navigate there, we will see the content of `!71` and `!72`.
     Here is the code:'
+  id: totrans-205
   prefs: []
   type: TYPE_NORMAL
+  zh: 在LLVM IR中，我们可以在文本LLVM IR中附加`'!'`，如前面的代码中的`!prof`、`!71`和`!72`是表示我们收集到的分析数据的元数据标签。更具体地说，如果我们有一个与IR单元关联的分析数据，它总是以`!prof`开头，后面跟着另一个包含所需值的元数据标签。这些元数据值放在IR文件的底部。如果我们导航到那里，我们将看到`!71`和`!72`的内容。以下是代码：
 - en: '[PRE42]'
+  id: totrans-206
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: These two metadata are tuples with two and three elements. `!71`, as suggested
     by its first element, represents the number of times the `foo` function was called
     (in this case, it was called 110 times).
+  id: totrans-207
   prefs: []
   type: TYPE_NORMAL
+  zh: 这两个元数据是包含两个和三个元素的元组。`!71`，如其第一个元素所暗示的，表示`foo`函数被调用的次数（在这种情况下，它被调用了110次）。
 - en: On the other hand,`!72` marks the number of times each branch in the `if(get_random()
     > 5)` statement was taken. In this case, the true branch was taken 57 times and
     the false branch was taken 54 times. We got these numbers because we were using
     uniform distribution for random number generation (namely, a ~50% chance for each
     branch).
+  id: totrans-208
   prefs: []
   type: TYPE_NORMAL
+  zh: 另一方面，`!72`标记了`if(get_random() > 5)`语句中每个分支被取的次数。在这种情况下，真分支被取了57次，假分支被取了54次。我们得到这些数字是因为我们使用了均匀分布的随机数生成（即每个分支有50%的机会）。
 - en: In the second part of this section, we will learn how to access these values
     for the sake of developing a more aggressive compiler optimization. Before we
     do that, though, let's take a deeper look at the profiling data file we just collected.
+  id: totrans-209
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节的第二部分，我们将学习如何访问这些值，以便开发更激进的编译器优化。在我们这样做之前，让我们更深入地看看我们刚刚收集到的分析数据文件。
 - en: 'The `llvm-profdata` tool we just used can not only help us convert the format
     of the profiling data, but also gives us a quick preview of its content. The following
     command prints out the summary for `pgo_prof.profdata`, including the profiling
     values that were collected from every function:'
+  id: totrans-210
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们刚刚使用的`llvm-profdata`工具不仅可以帮助我们转换分析数据的格式，还可以快速预览其内容。以下命令打印出`pgo_prof.profdata`的摘要，包括从每个函数收集到的分析值：
 - en: '[PRE43]'
+  id: totrans-211
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: Here, we can see the profiling data entries for each function. Each entry has
     a list of numbers representing the *execution frequency* of all the enclosing
     basic blocks.
+  id: totrans-212
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们可以看到每个函数的分析数据条目。每个条目都有一个数字列表，表示所有包围的基本块的*执行频率*。
 - en: 'Alternatively, you can inspect the same profiling data file by converting it
     into a textual file first. Here is the command:'
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 或者，您可以通过首先将其转换为文本文件来检查相同的数据文件。以下是命令：
 - en: '[PRE44]'
+  id: totrans-214
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: The `*.proftext` file is in a human-readable textual format where all the profiling
     data is simply put in its own line.
+  id: totrans-215
   prefs: []
   type: TYPE_NORMAL
+  zh: '`*.proftext` 文件是一种人类可读的文本格式，其中所有分析数据都简单地放在自己的行上。'
 - en: 'This textual representation can actually be converted *back* into the `*.profdata`
     format using a similar command. Here is an example:'
+  id: totrans-216
   prefs: []
   type: TYPE_NORMAL
+  zh: 这种文本表示实际上可以使用类似的命令转换回`*.profdata`格式。以下是一个示例：
 - en: '[PRE45]'
+  id: totrans-217
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: Therefore, `*.proftext` is especially useful when you want to *edit* the profiling
     data manually.
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，`*.proftext`在您想手动*编辑*分析数据时特别有用。
 - en: 'Before we dive into the APIs for PGO, there is one more concept we need to
     learn about: the instrumentation level.'
+  id: totrans-219
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们深入探讨PGO的API之前，还有一个概念我们需要了解：即插装级别。
 - en: Understanding the instrumentation level
+  id: totrans-220
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 理解插装级别
 - en: 'So far, we''ve learned that instrumentation-based PGO can insert instrumentation
     code for collecting runtime profiling data. On top of this fact, the places where
     we insert this instrumentation code and its granularity also matter. This property
     is called the **instrumentation level** in instrumentation-based PGO. LLVM currently
     supports three different instrumentation levels. Here are descriptions of each:'
+  id: totrans-221
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们已经了解到基于仪器的PGO可以插入用于收集运行时分析数据的仪器代码。在此基础上，我们插入此仪器代码的位置及其粒度也很重要。这个特性被称为基于仪器的PGO中的**仪器级别**。LLVM目前支持三种不同的仪器级别。以下是每个级别的描述：
 - en: '`-fprofile-generate` command-line option we introduced earlier will generate
     profiling data with this instrumentation level. For example, let''s say we have
     the following C code:'
+  id: totrans-222
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 我们之前介绍的 `-fprofile-generate` 命令行选项将使用此仪器级别生成分析数据。例如，假设我们有以下C代码：
 - en: '[PRE46]'
+  id: totrans-223
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: 'The corresponding IR – without enabling instrumentation-based PGO – is shown
     here:'
+  id: totrans-224
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 相应的IR – 不启用基于仪器的PGO – 如下所示：
 - en: '[PRE47]'
+  id: totrans-225
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: $ clang @__profc_foo.0 or @__profc_foo.1 – by one. The values in these two variables
     will eventually be exported as the profiling data for branches, representing the
     number of times each branch was taken. This instrumentation level provides decent
@@ -1105,79 +1545,112 @@
     will also be different. This effectively means that for the same input code, the
     profiling data that's generated with an older version of LLVM might be incompatible
     with the profiling data that's generated with a newer LLVM.
+  id: totrans-226
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: '`$ clang @__profc_foo.0` 或 `$ clang @__profc_foo.1` – 单独使用。这两个变量中的值最终将被导出为分支的分析数据，表示每个分支被取用的次数。这种仪器级别提供了相当高的精度，但受编译器变化的影响。更具体地说，如果Clang改变了它生成LLVM
+    IR的方式，仪器代码将被插入的位置也会不同。这实际上意味着对于相同的输入代码，使用较旧版本的LLVM生成的分析数据可能与使用较新LLVM生成的分析数据不兼容。'
 - en: '[PRE48]'
+  id: totrans-227
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: '`Stmt` AST node inside an `IfStmt` (an AST node). With this method, the instrumentation
     code is barely affected by compiler changes and we can have a more stable profiling
     data format across different compiler versions. The downside of this instrumentation
     level is that it has less precision than the IR instrumentation level.'
+  id: totrans-228
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`Stmt` AST节点在`IfStmt`（一个AST节点）内部。使用这种方法，仪器代码几乎不受编译器变化的影响，并且我们可以跨不同编译器版本拥有更稳定的分析数据格式。这种仪器级别的缺点是它的精度低于IR仪器级别。'
 - en: You can adopt this instrumentation level by simply using the `-fprofile-instr-generate`
     command-line option in place of `-fprofile-generate` when invoking `clang` for
     the first compilation. You don't need to change the command for the second compilation,
     though.
+  id: totrans-229
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 您可以通过在调用 `clang` 进行第一次编译时用 `-fprofile-instr-generate` 命令行选项替换 `-fprofile-generate`
+    来采用这种仪器级别。尽管如此，您不需要更改第二次编译的命令。
 - en: '`clang` with two PGO command-line options, `-fprofile-use` and `-fcs-profile-generate`,
     with the path to the profiling file from the previous step and the prospective
     output path, respectively. When we use `llvm-profdata` to do the post-processing,
     we are merging all the profiling data files we have:'
+  id: totrans-230
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用两个PGO命令行选项 `clang`，`-fprofile-use` 和 `-fcs-profile-generate`，分别指定上一步骤中的分析文件路径和预期的输出路径。当我们使用
+    `llvm-profdata` 进行后处理时，我们正在合并我们拥有的所有分析数据文件：
 - en: '[PRE49]'
+  id: totrans-231
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: Finally, feed the combined profiling file into Clang so that it can use this
     context-sensitive profiling data to get a more accurate portrait of the program's
     runtime behavior.
+  id: totrans-232
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 最后，将合并后的分析文件输入到Clang中，以便它可以使用这种上下文相关的分析数据来获取程序运行行为的更准确描述。
 - en: Note that different instrumentation levels only affect the accuracy of the profiling
     data; they don't affect how we *retrieve* this data, which we are going to talk
     about in the next section.
+  id: totrans-233
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，不同的仪器级别只会影响分析数据的准确性；它们不会影响我们如何*检索*这些数据，我们将在下一节中讨论这一点。
 - en: In the last part of this section, we are going to learn how to access this profiling
     data inside an LLVM pass via the APIs provided by LLVM.
+  id: totrans-234
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节的最后部分，我们将学习如何通过LLVM提供的API在LLVM传递中访问此分析数据。
 - en: Learning about the APIs for accessing profiling data
+  id: totrans-235
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 了解访问分析数据的API
 - en: In the previous section, we learned how to run the instrumentation-based PGO
     using Clang and view the profiling data file using `llvm-profdata`. In this section,
     we are going to learn how to access that data within an LLVM pass to help us develop
     our own PGO.
+  id: totrans-236
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们学习了如何使用Clang运行基于插桩的PGO并使用`llvm-profdata`查看分析数据文件。在本节中，我们将学习如何在LLVM pass中访问这些数据，以帮助我们开发自己的PGO。
 - en: 'Before we go into the development details, let''s learn how to *consume* those
     profiling data files into `opt`, since it''s easier to test individual LLVM pass
     using it. Here is a sample command:'
+  id: totrans-237
   prefs: []
   type: TYPE_NORMAL
+  zh: 在我们深入开发细节之前，让我们学习如何将那些分析数据文件导入`opt`，因为这样更容易使用它来测试单个LLVM pass。以下是一个示例命令：
 - en: '[PRE50]'
+  id: totrans-238
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: 'There are two keys in the preceding command:'
+  id: totrans-239
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的命令中，有两个关键点：
 - en: Use `-pgo-test-profile-file` to designate the profiling data file you want to
     put in.
+  id: totrans-240
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 使用`-pgo-test-profile-file`来指定您想要放入的配置文件。
 - en: The "`pgo-instr-use`" string represents the `PGOInstrumentaitonUse` pass, which
     reads (instrumentation-based) profiling files and *annotates* the data on an LLVM
     IR. However, it is not run by default, even in the predefined optimization levels
@@ -1187,89 +1660,131 @@
     to run it before a custom LLVM pass, `my-pass`, in the pipeline. If you want to
     run it before any of the predefined optimization pipelines – for instance, O1
     – you must specify the `--passes="pgo-instr-use,default<O1>"` command-line option.
+  id: totrans-241
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 字符串"`pgo-instr-use`"代表`PGOInstrumentaitonUse` pass，它读取（基于插桩的）分析文件并在LLVM IR上对数据进行注释。然而，它默认情况下并不运行，即使在预定义的优化级别（即O0
+    ~ O3，Os和Oz）中也是如此。如果没有这个pass在Pass管道中提前运行，我们就无法访问任何分析数据。因此，我们需要明确将其添加到优化管道中。前面的示例命令演示了如何在管道中在自定义LLVM
+    pass `my-pass`之前运行它。如果您想在任何预定义的优化管道之前运行它——例如，O1——您必须指定`--passes="pgo-instr-use,default<O1>"`命令行选项。
 - en: Now, you might be wondering, what happens after the profiling data is read into
     `opt`? It turns out that the LLVM IR file that was generated by the *second* compilation
     phase – `pgo.after.ll` – has provided us with some answers to this question.
+  id: totrans-242
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，你可能想知道，在将分析数据读入`opt`之后会发生什么？事实证明，由第二个编译阶段生成的LLVM IR文件——`pgo.after.ll`——为我们提供了对这个问题的答案。
 - en: In `pgo.after.ll`, we saw that some branches were *decorated* with **metadata**
     specifying the number of times they were taken. Similar metadata appeared in functions,
     which represented the total number of times those functions were called.
+  id: totrans-243
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`pgo.after.ll`中，我们看到一些分支被**元数据**装饰，指定了它们被取的次数。类似的元数据也出现在函数中，表示这些函数被调用的总次数。
 - en: More generally speaking, LLVM directly *combines* the profiling data – read
     from the file – with its associated IR constructions via **metadata**. The biggest
     advantage of this strategy is that we don't need to carry the raw profiling data
     throughout the entire optimization pipeline – the IR itself contains this profiling
     information.
+  id: totrans-244
   prefs: []
   type: TYPE_NORMAL
+  zh: 更普遍地说，LLVM直接通过**元数据**将分析数据（从文件中读取）与其相关的IR构造结合起来。这种策略的最大优点是我们不需要在整个优化管道中携带原始分析数据——IR本身包含这些分析信息。
 - en: 'Now, the question becomes, how can we access metadata that''s been attached
     to IR? LLVM''s metadata can be attached to many kinds of IR units. Let''s take
     a look at the most common one first: accessing metadata attached to an `Instruction`.
     The following code shows us how to read the profiling metadata –`!prof !71`, which
     we saw previously – that''s attached to a branch instruction:'
+  id: totrans-245
   prefs: []
   type: TYPE_NORMAL
+  zh: 现在，问题变成了，我们如何访问附加到IR上的元数据？LLVM的元数据可以附加到许多种IR单元上。让我们首先看看最常见的一种：访问附加到`Instruction`上的元数据。以下代码展示了我们如何读取之前看到的附加到分支指令上的分析元数据`!prof
+    !71`：
 - en: '[PRE51]'
+  id: totrans-246
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE51]'
 - en: In the preceding snippet, we are using `BasicBlock::getTerminator` to get the
     last instruction in a basic block, which is a branch instruction most of the time.
     Then, we tried to retrieve the profiling metadata with the `MD_prof` metadata.
     `BrWeightMD` is the result we are looking for.
+  id: totrans-247
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的代码片段中，我们使用`BasicBlock::getTerminator`来获取基本块中的最后一个指令，这通常是分支指令。然后，我们尝试使用`MD_prof`元数据检索分析元数据。`BrWeightMD`是我们正在寻找的结果。
 - en: The type of `BrWeightMD`, `MDNode`, represents a single metadata node. Different
     `MDNode` instances can be *composed* together. More specifically, a `MDNode` instance
     can use other `MDNode` instances as its operands – similar to the `Value` and
     `User` instances we saw in [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
     *Processing LLVM IR*. The compound `MDNode` can express more complex concepts.
+  id: totrans-248
   prefs: []
   type: TYPE_NORMAL
+  zh: '`BrWeightMD`、`MDNode`类型的表示单个元数据节点。不同的`MDNode`实例可以*组合*在一起。更具体地说，一个`MDNode`实例可以使用其他`MDNode`实例作为其操作数——类似于我们在[*第10章*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141)中看到的`Value`和`User`实例，*处理LLVM
+    IR*。复合`MDNode`可以表达更复杂的概念。'
 - en: 'For example, in this case, each operand in `BrWeightMD` represents the number
     of times each branch was taken. Here is the code to access them:'
+  id: totrans-249
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，在这种情况下，`BrWeightMD`中的每个操作数代表每个分支被取用的次数。以下是访问它们的代码：
 - en: '[PRE52]'
+  id: totrans-250
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE52]'
 - en: As you can see, the taken counts are also expressed as `MDNode`.
+  id: totrans-251
   prefs: []
   type: TYPE_NORMAL
+  zh: 如您所见，取用计数也以`MDNode`的形式表示。
 - en: Operand indices for both branches
+  id: totrans-252
   prefs: []
   type: TYPE_NORMAL
+  zh: 两个分支的操作数索引
 - en: Note that the data for both branches is placed at the operands starting from
     index 1 rather than index 0.
+  id: totrans-253
   prefs: []
   type: TYPE_NORMAL
+  zh: 注意，两个分支的数据都放置在索引从1开始的操作数中，而不是索引0。
 - en: 'If we want to convert these branch `MDNode` instances into constants, we can
     leverage a small utility provided by the `mdconst` namespace. Here is an example:'
+  id: totrans-254
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们要将这些分支`MDNode`实例转换为常量，我们可以利用`mdconst`命名空间提供的小工具。以下是一个示例：
 - en: '[PRE53]'
+  id: totrans-255
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE53]'
 - en: The previous code *unwrapped* an `MDNode` instance and extracted the underlying
     `ConstantInt` instance.
+  id: totrans-256
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码*展开*了一个`MDNode`实例并提取了底层的`ConstantInt`实例。
 - en: 'For `Function`, we can get the number of times it was called in an even easier
     way. Here is the code:'
+  id: totrans-257
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于`Function`，我们可以以更简单的方式获取其被调用的次数。以下是代码：
 - en: '[PRE54]'
+  id: totrans-258
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE54]'
 - en: '`Function` is using a slightly different way to present its called frequency.
     But retrieving the numerical profiling value is still pretty easy, as shown in
     the preceding snippet.'
+  id: totrans-259
   prefs: []
   type: TYPE_NORMAL
+  zh: '`Function`使用一种稍微不同的方式来表示其调用频率。但是，检索数值配置文件值仍然非常简单，如前所述。'
 - en: It is worth noting that although we only focused on instrumentation-based PGO
     here, for *sampling*-based PGO, LLVM also uses the same programming interface
     to expose its data. In other words, even if you're using profiling data that's
@@ -1277,8 +1792,10 @@
     data will also be annotated on IR units and you can still access it using the
     aforementioned method. In fact, the tools and APIs we are going to introduce in
     the rest of this section are mostly profiling-data-source agnostic.
+  id: totrans-260
   prefs: []
   type: TYPE_NORMAL
+  zh: 值得注意的是，尽管我们在这里只关注基于**采样**的PGO，但对于基于**采样**的PGO，LLVM也使用相同的编程接口来公开其数据。换句话说，即使你使用的是通过不同的`opt`命令收集的采样工具的配置文件数据，配置文件数据也会标注在IR单元上，你仍然可以使用上述方法访问它。实际上，我们将在本节后面介绍的工具和API大多与配置文件数据源无关。
 - en: So far, we have been dealing with real values that have been retrieved from
     the profiling data. However, these low-level values cannot help us go far in terms
     of developing a compiler optimization or program analysis algorithm – usually,
@@ -1286,54 +1803,78 @@
     *most frequently*" or "branches that are *least taken*". To address these demands,
     LLVM builds several analyses on top of profiling data to deliver such high-level,
     structural information.
+  id: totrans-261
   prefs: []
   type: TYPE_NORMAL
+  zh: 到目前为止，我们一直在处理从配置文件数据中检索到的实数值。然而，这些低级值不能帮助我们深入开发编译器优化或程序分析算法——通常，我们更感兴趣的是高级概念，如“执行*最频繁*的函数”或“*最少被取用*的分支”。为了满足这些需求，LLVM在配置文件数据之上构建了几个分析，以提供此类高级、结构化的信息。
 - en: In the next section, we are going to introduce some of these analyses and their
     usages in LLVM Pass.
+  id: totrans-262
   prefs: []
   type: TYPE_NORMAL
+  zh: 在下一节中，我们将介绍其中一些分析及其在LLVM Pass中的用法。
 - en: Using profiling data analyses
+  id: totrans-263
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 使用配置文件数据分析
 - en: 'In this section, we are going to learn three analysis classes that can help
     us reason about the execution frequency of basic blocks and functions at runtime.
     They are as follows:'
+  id: totrans-264
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本节中，我们将学习三个分析类，它们可以帮助我们在运行时推理基本块和函数的执行频率。它们如下：
 - en: '`BranchProbabilityInfo`'
+  id: totrans-265
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`BranchProbabilityInfo`'
 - en: '`BlockFrequencyInfo`'
+  id: totrans-266
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`BlockFrequencyInfo`'
 - en: '`ProfileSummaryInfo`'
+  id: totrans-267
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`ProfileSummaryInfo`'
 - en: This list is ordered by their analyzing scope in the IR – from local to global.
     Let's start with the first two.
+  id: totrans-268
   prefs: []
   type: TYPE_NORMAL
+  zh: 此列表按其在IR中的分析范围排序——从局部到全局。让我们从前两个开始。
 - en: Using BranchProbabilityInfo and BlockFrequencyInfo
+  id: totrans-269
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用BranchProbabilityInfo和BlockFrequencyInfo
 - en: 'In the previous section, we learned how to access the profiling metadata that''s
     attached to each branch instruction – the `BranchProbabilityInfo` class. Here
     is some example code showing how to use it in a (function) Pass:'
+  id: totrans-270
   prefs: []
   type: TYPE_NORMAL
+  zh: 在上一节中，我们学习了如何访问附加到每个分支指令的配置元数据——`BranchProbabilityInfo`类。以下是一些示例代码，展示了如何在（函数）Pass中使用它：
 - en: '[PRE55]'
+  id: totrans-271
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE55]'
 - en: The previous code retrieved a `BranchProbabilityInfo` instance, which is the
     result of `BranchProbabilityAnalysis`, and tried to get the weight from the entry
     block to its first successor block.
+  id: totrans-272
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码检索了一个`BranchProbabilityInfo`实例，这是`BranchProbabilityAnalysis`的结果，并试图从入口块获取到其第一个后继块的权重。
 - en: 'The returned value, a `BranchProbability` instance, gives you the branch''s
     probability in the form of a percentage. You can use `BranchProbability::getNumerator`
     to retrieve the value (the "denominator" is 100 by default). The `BranchProbability`
@@ -1342,33 +1883,49 @@
     we can easily tell which branch is more likely to be taken using `BranchProbabilityInfo`,
     without additional data, we can''t tell the branch''s probability (to be taken)
     in the *whole function*. For example, let''s assume we have the following CFG:'
+  id: totrans-273
   prefs: []
   type: TYPE_NORMAL
+  zh: 返回值，一个`BranchProbability`实例，以百分比的形式给出分支的概率。你可以使用`BranchProbability::getNumerator`来获取值（默认情况下，“分母”是100）。`BranchProbability`类还提供了一些方便的实用方法，用于执行两个分支概率之间的算术运算或按特定因子缩放概率。尽管我们可以很容易地通过`BranchProbabilityInfo`来判断哪个分支更有可能被选中，但没有额外的数据，我们无法知道整个函数中分支的概率（被选中的概率）。例如，假设我们有一个以下的CFG：
 - en: '![Figure 12.6 – CFG with nested branches'
+  id: totrans-274
   prefs: []
   type: TYPE_NORMAL
+  zh: '![图12.6 – 嵌套分支'
 - en: '](img/B14590_12.6.jpg)'
+  id: totrans-275
   prefs: []
   type: TYPE_NORMAL
+  zh: '![img/B14590_12.6.jpg]'
 - en: Figure 12.6 – CFG with nested branches
+  id: totrans-276
   prefs: []
   type: TYPE_NORMAL
+  zh: 图12.6 – 嵌套分支的CFG
 - en: 'For the preceding diagram, we have profiling counter values for the following
     basic blocks:'
+  id: totrans-277
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于前面的图，我们有以下基本块的配置计数器值：
 - en: '**if.then4**: 2'
+  id: totrans-278
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**if.then4**: 2'
 - en: '**if.else**: 10'
+  id: totrans-279
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**if.else**: 10'
 - en: '**if.else7**: 20'
+  id: totrans-280
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '**if.else7**: 20'
 - en: If we *only* look at the branch weight metadata toward blocks `if.then4` and
     `if.else` – that is, the true and false branches for `if.then`, respectively –
     we might come under the *illusion* that the `if.else` block has a ~83% chance
@@ -1377,21 +1934,29 @@
     region. Of course, in this case, we can do simple math to figure out the correct
     answer, but when the CFG is getting bigger and more complex, we might have a hard
     time doing this by ourselves.
+  id: totrans-281
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果我们**只**查看指向`if.then4`和`if.else`块的分支权重元数据——即`if.then`的真分支和假分支——我们可能会产生一种**错觉**，认为`if.else`块有大约83%的概率被选中。但事实是，它只有大约31%的概率，因为控制流在进入`if.then`区域之前更有可能进入`if.else7`。当然，在这种情况下，我们可以通过简单的数学计算来找出正确答案，但当CFG变得更大、更复杂时，我们可能很难自己完成这项工作。
 - en: 'The `BlockFrequencyInfo` class provides a shortcut to this problem. It can
     tell us the frequency of each basic block to be taken under the context of its
     enclosing function. Here is an example of its usage in a Pass:'
+  id: totrans-282
   prefs: []
   type: TYPE_NORMAL
+  zh: '`BlockFrequencyInfo`类为这个问题提供了一个快捷方式。它可以在其封装函数的上下文中告诉我们每个基本块被选中的频率。以下是在Pass中使用它的一个示例：'
 - en: '[PRE56]'
+  id: totrans-283
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE56]'
 - en: The previous code retrieved a `BlockFrequencyInfo` instance, which is the result
     of `BlockFrequencyAnalysis`, and tried to evaluate the block frequency of each
     basic block in the function.
+  id: totrans-284
   prefs: []
   type: TYPE_NORMAL
+  zh: 之前的代码检索了一个`BlockFrequencyInfo`实例，这是`BlockFrequencyAnalysis`的结果，并试图评估函数中每个基本块的块频率。
 - en: 'Similar to the `BranchProbability` class, `BlockFrequency` also provides nice
     utility methods to calculate with other `BlockFrequency` instances. But different
     from `BranchProbability`, the numeric value that''s retrieved from `BlockFrequency`
@@ -1399,49 +1964,70 @@
     returns an integer that is the frequency *relative* to the entry block of the
     current function. In other words, to get a percentage-based frequency, we can
     use the following snippet:'
+  id: totrans-285
   prefs: []
   type: TYPE_NORMAL
+  zh: 与`BranchProbability`类类似，`BlockFrequency`也提供了计算其他`BlockFrequency`实例的便捷实用方法。但与`BranchProbability`不同，从`BlockFrequency`检索的数值不是以百分比的形式呈现的。更具体地说，`BlockFrequency::getFrequency`返回一个整数，它是相对于当前函数入口块的频率。换句话说，要获取基于百分比的频率，我们可以使用以下代码片段：
 - en: '[PRE57]'
+  id: totrans-286
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE57]'
 - en: The highlighted `FreqInPercent` is the block frequency of `BB`, expressed as
     a percentage.
+  id: totrans-287
   prefs: []
   type: TYPE_NORMAL
+  zh: 突出的`FreqInPercent`是`BB`的块频率，以百分比表示。
 - en: '`BlockFrequencyInfo` calculates the frequency of a specific basic block under
     the context of a function – but what about the entire *module*? More specifically,
     if we bring a `ProfileSummaryInfo`.'
+  id: totrans-288
   prefs: []
   type: TYPE_NORMAL
+  zh: '`BlockFrequencyInfo` 计算在函数上下文中特定基本块的频率——但整个 *模块* 呢？更具体地说，如果我们引入一个 `ProfileSummaryInfo`。'
 - en: Using ProfileSummaryInfo
+  id: totrans-289
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 使用 ProfileSummaryInfo
 - en: 'The `ProfileSummaryInfo` class gives you a global view of all the profiling
     data in a `Module`. Here is an example of retrieving an instance of it inside
     a module Pass:'
+  id: totrans-290
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ProfileSummaryInfo` 类为你提供了一个全局视图，展示了 `Module` 中所有分析数据。以下是在模块 Pass 中检索其实例的一个示例：'
 - en: '[PRE58]'
+  id: totrans-291
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE58]'
 - en: '`ProfileSummaryInfo` provides a wide variety of functionalities. Let''s take
     a look at three of its most interesting methods:'
+  id: totrans-292
   prefs: []
   type: TYPE_NORMAL
+  zh: '`ProfileSummaryInfo` 提供了各种各样的功能。让我们看看它最有趣的三个方法：'
 - en: '`isFunctionEntryCold/Hot(Function*)`: These two methods compare the entry count
     of a `Function` – which effectively reflects the number of times a function was
     called –against that of other functions in the same module and tell us if the
     inquiry function is ranking high or low in this metric.'
+  id: totrans-293
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`isFunctionEntryCold/Hot(Function*)`: 这两个方法比较一个 `Function` 的入口计数——这实际上反映了函数被调用的次数——与同一模块中其他函数的入口计数，并告诉我们查询函数在这个指标中是排名靠前还是靠后。'
 - en: '`isHot/ColdBlock(BasicBlock*, BlockFrequencyInfo&)`: These two methods work
     similarly to the previous bullet one but compare the execution frequency of a
     `BasicBlock` against *all* the other blocks in the module.'
+  id: totrans-294
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`isHot/ColdBlock(BasicBlock*, BlockFrequencyInfo&)`: 这两个方法与前面的要点类似，但比较 `BasicBlock`
+    的执行频率与模块中 *所有* 其他块的执行频率。'
 - en: '`isFunctionCold/HotInCallGraph(Function*, BlockFrequencyInfo&)`: These two
     methods combine the methods from the previous two bullet points they can tell
     you whether a function is considered hot or cold based on its entry count or the
@@ -1449,13 +2035,18 @@
     has a low entry count – that is, it was not called often – but contains a *loop*
     that has extremely a high basic block execution frequency. In this case, the `isFunctionHotInCallGraph`
     method can give us a more accurate assessment.'
+  id: totrans-295
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: '`isFunctionCold/HotInCallGraph(Function*, BlockFrequencyInfo&)`: 这两个方法结合了前面两个要点，它们可以告诉你一个函数是否被认为是“热”或“冷”，基于其入口计数或其封装基本块的执行频率。这在函数入口计数较低——即它没有被经常调用——但包含一个执行频率极高的
+    *循环* 时非常有用。在这种情况下，`isFunctionHotInCallGraph` 方法可以给我们一个更准确的评估。'
 - en: These APIs also have variants where you can designate the cutoff point as being
     "hot" or "cold." Please refer to the API documentation for more information.
+  id: totrans-296
   prefs: []
   type: TYPE_NORMAL
+  zh: 这些 API 也有变体，你可以指定截止点为“热”或“冷”。请参阅 API 文档以获取更多信息。
 - en: For a long time, the compiler was only able to analyze and optimize the source
     code with a static view. For dynamic factors inside a program – for instance,
     the branch taken count – compilers could only make an approximation. PGO opened
@@ -1469,12 +2060,18 @@
     inside an LLVM Pass. With these abilities, LLVM developers can plug in this runtime
     information to further improve the quality and precision of their existing optimization
     Passes.
+  id: totrans-297
   prefs: []
   type: TYPE_NORMAL
+  zh: 很长一段时间以来，编译器只能以静态视图分析并优化源代码。对于程序内部的动态因素——例如，分支计数——编译器只能做出近似。PGO 开辟了一条替代路径，为编译器提供额外的信息，以便编译器可以窥视目标程序的运行时行为，从而做出更明确、更激进的决策。在本节中，我们学习了如何使用
+    LLVM 收集和使用运行时分析信息——PGO 的关键——我们学习了如何使用 LLVM 中的相关基础设施来收集和生成此类分析数据。我们还了解了我们可以使用的编程接口来访问这些数据——以及在此基础上构建的一些高级分析——以协助我们在
+    LLVM Pass 中的开发。有了这些能力，LLVM 开发者可以将这些运行时信息插入，以进一步提高他们现有优化 Pass 的质量和精度。
 - en: Summary
+  id: totrans-298
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 摘要
 - en: In this chapter, we *augmented* the workspace of the compiler by processing
     the static source code and capturing the program's runtime behaviors. In the first
     part of this chapter, we learned how to use the infrastructure provided by LLVM
@@ -1487,8 +2084,11 @@
     or functions, to make more aggressive decisions for optimizing the code. Finally,
     we learned how to access such data with an LLVM Pass, which enables us to add
     PGO enhancement to existing optimizations.
+  id: totrans-299
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们通过处理静态源代码和捕获程序的运行时行为来*增强*了编译器的工作空间。在本章的第一部分，我们学习了如何使用LLVM提供的框架来创建一个检查器——一种将检测代码插入目标程序的技术，目的是检查某些运行时属性。通过使用检查器，软件工程师可以轻松且精确地提高他们的开发质量。在本章的第二部分，我们将此类运行时数据的用途扩展到了编译器优化的领域；PGO是一种使用动态信息（如基本块或函数的执行频率）来做出更激进决策的技术，以优化代码。最后，我们学习了如何使用LLVM
+    Pass访问此类数据，这使得我们能够将PGO增强功能添加到现有的优化中。
 - en: Congratulations, you've just finished the last chapter! Thank you so much for
     reading this book. Compiler development has never been an easy subject – if not
     an obscure one – in computer science. In the past decade, LLVM has significantly
@@ -1497,8 +2097,10 @@
     just a single executable such as `gcc` or `clang` anymore – it is a collection
     of building blocks that provide developers with *countless* ways to create tools
     to deal with hard problems in the programming language field.
+  id: totrans-300
   prefs: []
   type: TYPE_NORMAL
+  zh: 恭喜你，你已经完成了最后一章！非常感谢你阅读这本书。编译器开发在计算机科学中从来都不是一个容易的主题——如果不是一个晦涩难懂的主题。在过去十年中，LLVM通过提供强大而灵活的模块，从根本上改变了人们对于编译器的看法，从而显著降低了这一主题的难度。编译器不再只是一个单一的执行文件，如`gcc`或`clang`，而是一系列构建块，为开发者提供了*无数*种创建工具的方法，以处理编程语言领域的难题。
 - en: However, with so many choices, I often became lost and confused when I was still
     a newbie to LLVM. There was documentation for every single API in this project,
     but I had no idea how to put them together. I wished there was a book that pointed
@@ -1516,9 +2118,18 @@
     Last but not least, annual LLVM dev meetings ([https://llvm.org/devmtg/](https://llvm.org/devmtg/)),
     in both the United States and Europe, are some of the best events where you can
     learn new LLVM skills and chat face-to-face with people who literally built LLVM.
+  id: totrans-301
   prefs: []
   type: TYPE_NORMAL
+  zh: 然而，选择如此之多，当我刚开始接触 LLVM 时，我常常感到迷茫和困惑。这个项目中每个 API 都有文档，但我不知道如何将它们组合起来。我希望能有一本书能指出
+    LLVM 中每个重要组件的大致方向，告诉我它是**什么**，以及我**如何**利用它。现在这本书就在这里，就是我一直在梦想的，在我开始 LLVM 生涯之初就能拥有的那本书——你刚刚读完的那本书——现在变成了现实。我希望你在读完这本书后不会停止你对
+    LLVM 的探索。为了进一步提高你的技能并巩固你从这本书中学到的知识，我建议你查看官方文档页面([https://llvm.org/docs](https://llvm.org/docs))，以补充这本书的内容。更重要的是，我鼓励你通过他们的邮件列表([https://lists.llvm.org/cgi-bin/mailman/listinfo/llvm-dev](https://lists.llvm.org/cgi-bin/mailman/listinfo/llvm-dev))或
+    Discourse 论坛(https://llvm.discourse.group/)参与 LLVM 社区，尤其是第一个——虽然邮件列表可能听起来有些过时，但那里有很多愿意回答你的问题并提供有用学习资源的才华横溢的人。最后但同样重要的是，年度
+    LLVM 开发者会议([https://llvm.org/devmtg/](https://llvm.org/devmtg/))，在美国和欧洲举行，是一些你可以学习新的
+    LLVM 技能并与实际构建 LLVM 的人面对面交流的绝佳活动。
 - en: I hope this book enlightened you on your path to mastering LLVM and helped you
     find joy in crafting compilers.
+  id: totrans-302
   prefs: []
   type: TYPE_NORMAL
+  zh: 我希望这本书能照亮你在掌握 LLVM 的道路上，并帮助你从编译器的构建中找到乐趣。
