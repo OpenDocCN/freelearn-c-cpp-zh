@@ -1,0 +1,437 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Implementing a Secure Web Server</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">In this chapter, we will build a simple HTTPS server program. This serves as the counterpart to the HTTPS client we worked on in the previous chapter.</p>
+<p>HTTPS is powered by <strong>Transport Layer Security</strong> (<strong>TLS</strong>). HTTPS servers, unlike HTTPS clients, are expected to identify themselves with certificates. We'll cover how to listen for HTTPS connections, provide certificates, and send an HTTP response over TLS.</p>
+<p>The following topics are covered in this chapter:</p>
+<ul>
+<li>HTTPS overview</li>
+<li>HTTPS certificates</li>
+<li>HTTPS server setup with OpenSSL</li>
+<li>Accepting HTTPS connections</li>
+<li>Common problems</li>
+<li>OpenSSL alternatives</li>
+<li>Direct TLS termination alternatives</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>This chapter continues where <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>, left off. This chapter continues to use the OpenSSL library. It is imperative that you have the OpenSSL library installed and that you know the basics of programming with OpenSSL. Refer to <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>, for basic information about OpenSSL.</p>
+<p>The example programs from this chapter can be compiled using any modern C compiler. We recommend <strong>MinGW</strong> for Windows and <strong>GCC</strong> for Linux and macOS. You also need to have the OpenSSL library installed. See <a href="47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml">Appendix B</a>, <em>Setting Up Your C Compiler on Windows;</em> <a href="221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml">Appendix C</a>, <em>Setting Up Your C Compiler on Linux;</em> and <a href="632db68e-0911-4238-a2be-bd1aa5296120.xhtml">Appendix D</a>, <em>Setting Up Your C Compiler on macOS</em>, for compiler setup and OpenSSL installation.</p>
+<p>The code for this book can be found at <a href="https://github.com/codeplea/Hands-On-Network-Programming-with-C">https://github.com/codeplea/Hands-On-Network-Programming-with-C</a>.</p>
+<p>From the command line, you can download the code for this chapter by using the following command:</p>
+<pre><strong>git clone https://github.com/codeplea/Hands-On-Network-Programming-with-C</strong><br/><strong>cd Hands-On-Network-Programming-with-C/chap10</strong></pre>
+<p>Each example program in this chapter runs on Windows, Linux, and macOS. When compiling on Windows, each example program requires linking with the <strong>Winsock</strong> library. This is accomplished by passing the <kbd>-lws2_32</kbd> option to <kbd>gcc</kbd>.</p>
+<p>Each example also needs to be linked against the OpenSSL libraries, <kbd>libssl.a</kbd> and <kbd>libcrypto.a</kbd>. This is accomplished by passing  <kbd>-lssl -lcrypto</kbd> to GCC.</p>
+<p>We provide the exact commands needed to compile each example as it is introduced.</p>
+<p>All of the example programs in this chapter require the same header files and C macros that we developed in <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>. For brevity, we put these statements in a separate header file, <kbd>chap10.h</kbd>, which we can include in each program. For an explanation of these statements, please refer to <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>.</p>
+<p>The content of <kbd>chap10.h</kbd> begins by including the required networking header files. The code for this is as follows:</p>
+<pre><span>/*chap10.h*/</span><br/><br/>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif</pre>
+<p>We also define some macros to assist with writing portable code:</p>
+<pre><span>/*chap10.h</span><span> continued*/</span><br/><br/>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/><br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#define CLOSESOCKET(s) close(s)<br/>#define SOCKET int<br/>#define GETSOCKETERRNO() (errno)<br/>#endif</pre>
+<p>Finally, <kbd>chap10.h</kbd> includes the additional headers required by this chapter's programs:</p>
+<pre><span>/*chap10.h</span><span> continued*/</span><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;string.h&gt;<br/>#include &lt;stdlib.h&gt;<br/>#include &lt;time.h&gt;<br/><br/>#include &lt;openssl/crypto.h&gt;<br/>#include &lt;openssl/x509.h&gt;<br/>#include &lt;openssl/pem.h&gt;<br/>#include &lt;openssl/ssl.h&gt;<br/>#include &lt;openssl/err.h&gt;</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">HTTPS and OpenSSL summary</h1>
+                </header>
+            
+            <article>
+                
+<p>We begin with a quick review of the HTTPS protocol, as covered in <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>. However, we do recommend that you work through <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml"/><a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>, before beginning this chapter.</p>
+<p>HTTPS uses TLS to add security to HTTP. You will recall from <a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml">Chapter 6</a>, <em>Building a Simple Web Client</em>, and <a href="f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml">Chapter 7</a>, <em>Building a Simple Web Server</em>, that HTTP is a text-based protocol that works over TCP on port <kbd>80</kbd>. The TLS protocol can be used to add security to any TCP-based protocol. Specifically, TLS is used to provide security for HTTPS. So in a nutshell, <span>HTTPS </span>is simply HTTP with TLS. The default HTTPS port is <kbd>443</kbd>.</p>
+<p>OpenSSL is a popular open source library that provides functionality for TLS/SSL and HTTPS. We use it in this book to provide the methods <span>needed to </span>implement HTTPS clients and servers.</p>
+<p>Generally, HTTPS connections are first made using TCP sockets. Once the TCP connection is established, OpenSSL is used to negotiate a TLS connection over the open TCP connection. From that point forward, OpenSSL functions are used to send and receive data over the TLS connection.</p>
+<p>An important part of communication security is being able to trust that the connection is to the intended party. No amount of data encryption helps if you have connected to an impostor. TLS uses certificates to prevent against connecting to impostors and man-in-the-middle attacks.</p>
+<p>We now need to understand certificates in more detail before we can proceed with our HTTPS server.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Certificates</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Certificates</strong> are an important part of the TLS protocol. Although certificates can be used on both the client and server side, HTTPS generally only uses server certificates. These certificates identify to the client that they are connected to a trusted server.</p>
+<p>Without certificates, a client wouldn't be able to tell whether it was connected to the intended server or an impostor server.</p>
+<p>Certificates work using a <strong>chain-of-trust</strong> model. Each HTTPS client has a few certificate authorities that they explicitly trust, and certificate authorities offer services where they digitally sign certificates. This service is usually done for a small fee, and usually only after some simple verification of the requester.</p>
+<p>When an HTTPS client sees a certificate signed by an authority it trusts, then it also trusts that certificate. Indeed, these chains of trust can run deep. For example, most certificate authorities also allow resellers. In these cases, the certificate authority signs an intermediate certificate to be used by the reseller. The reseller then uses this intermediate certificate to sign new certificates. Clients trust the intermediate certificates because they are signed by trusted certificate authorities, and clients trust the certificates signed by resellers because they trust the intermediate certificates.</p>
+<p>Certificate authorities commonly offer two types of validation. <strong>Domain validation</strong> is where a signed certificate is issued after simply verifying that the certificate recipient can be reached at the given domain. This is usually done by having the certificate requester temporarily modify a DNS record, or reply to an email sent to their <em>whois</em> contact.</p>
+<p><strong>Let's Encrypt</strong> is a relatively new certificate issuer that issues certificates for free. They do this using an automated model. <strong>Domain validation</strong> is done by having the certificate requester serve a small file over HTTP or HTTPS.</p>
+<p>Domain validation is the most common type of validation. An HTTPS server using domain validation assures an HTTPS client that they are connected to the domain that they think they are. It implies that their connection wasn't silently hijacked or otherwise intercepted.</p>
+<p>Certificate authorities also offer <strong>Extended Validation</strong> (<strong>EV</strong>) certificates. EV certificates are only issued after the authority verifies the recipient's identity. This is usually done using public records and a phone call.</p>
+<p>For public-facing HTTPS applications, it is important that you obtain a certificate from a recognized certificate authority. However, this can sometimes be tedious, and it is often much more convenient to obtain a <strong>self-signed</strong> certificate for development and testing purposes. Let's do that now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Self-signed certificates with OpenSSL</h1>
+                </header>
+            
+            <article>
+                
+<p>Certificates signed by recognized authorities are essential to establish the chain of trust needed for public websites. However, it is much easier to obtain a self-signed certificate for testing or development.</p>
+<p>It is also acceptable to use a self-signed certificate for certain private applications where the client can be deployed with a copy of the certificate, and trust only that certificate. This is called <strong>certificate pinning</strong>. Indeed, when used properly, certificate pinning can be more secure than using a certificate authority. However, it is not appropriate for public-facing websites.</p>
+<p>We require a certificate to test our HTTPS server. We use a self-signed certificate because they are the easiest to obtain. The downside to this method is that web browsers won't trust our server. We can get around this by clicking through a few warnings in the web browser.</p>
+<p>OpenSSL provides tools to make self-signing certificates very easy.</p>
+<p>The basic command to self-sign a certificate is as follows:</p>
+<pre><strong>openssl req -x509 -newkey rsa:2048 -nodes -sha256 -keyout key.pem \</strong><br/><strong>-out cert.pem -days 365</strong></pre>
+<p>OpenSSL asks questions about what to put on the certificate, including the subject, your name, company, location, and so on. You can use the defaults on all of these as this doesn't matter for our testing purposes.</p>
+<p>The preceding command places the new certificate in <kbd>cert.pem</kbd> and the key for it in <kbd>key.pem</kbd>. Our HTTPS server needs both files. <kbd>cert.pem</kbd> is the certificate that gets sent to the connected client, and <kbd>key.pem</kbd> provides our server with the encryption key that proves that it owns the certificate. Keeping this key secret is imperative.</p>
+<p>Here is a screenshot showing the generation of a new self-signed certificate:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/33777266-b70f-441a-861a-c06e3133a2df.png" style="width:45.08em;height:26.67em;"/></p>
+<p>You can also use OpenSSL to view a certificate. The following command does this:</p>
+<pre><strong>openssl x509 -text -noout -in cert.pem</strong></pre>
+<p>If you're on Windows using MSYS, you may get garbled line endings from the previous command. If so, try using <kbd>unix2dos</kbd> to fix it, as shown by the following command:</p>
+<pre><strong>openssl x509 -text -noout -in cert.pem | unix2dos</strong></pre>
+<p>Here is what a typical self-signed certificate looks like:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/4a937bae-cd76-4e13-9638-84b14a0172ed.png" style="width:43.25em;height:25.33em;"/></p>
+<p>Now that we have a usable certificate, we are ready to begin our HTTPS server programming.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">HTTPS server with OpenSSL</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's go over some basics of using the OpenSSL library in server applications before beginning a concrete example.</p>
+<p>Before OpenSSL can be used, it must be initialized. The following code initializes the OpenSSL library, loads the requisite encryption algorithms, and loads useful error strings:</p>
+<pre>SSL_library_init();<br/>OpenSSL_add_all_algorithms();<br/>SSL_load_error_strings();</pre>
+<p>Refer to the previous <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL,</em> for more information.</p>
+<p>Our server also needs to create an SSL context object. This object works as a sort of factory from which we can create TLS/SSL connections.</p>
+<p>The following code creates the <kbd>SSL_CTX</kbd> object:</p>
+<pre>SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());<br/>if (!ctx) {<br/>    fprintf(stderr, "SSL_CTX_new() failed.\n");<br/>    return 1;<br/>}</pre>
+<p><span>If you're using an older version of OpenSSL, you may need to replace </span><kbd>TLS_server_method()</kbd><span> with </span><kbd>TLSv1_2_server_method()</kbd><span> in the preceding code. However, a better solution is to upgrade to a newer OpenSSL version.</span></p>
+<p>After the <kbd>SSL_CTX</kbd> object is created, we can set it to use our self-signed certificate and key. The following code does this:</p>
+<pre>if (!SSL_CTX_use_certificate_file(ctx, "cert.pem" , SSL_FILETYPE_PEM)<br/>|| !SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM)) {<br/>    fprintf(stderr, "SSL_CTX_use_certificate_file() failed.\n");<br/>    ERR_print_errors_fp(stderr);<br/>    return 1;<br/>}</pre>
+<p>That concludes the minimal OpenSSL setup needed for an HTTPS server.</p>
+<p>The server should then listen for incoming TCP connections. This was covered in detail in <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>.</p>
+<p>After a new TCP connection is established, we use the socket returned by <kbd>accept()</kbd> to create our TLS/SSL socket.</p>
+<p>First, a new <kbd>SSL</kbd> object is created using our SSL context from earlier. The following code demonstrates this:</p>
+<pre>SSL *ssl = SSL_new(ctx);<br/>if (!ctx) {<br/>    fprintf(stderr, "SSL_new() failed.\n");<br/>    return 1;<br/>}</pre>
+<p>The <kbd>SSL</kbd> object is then linked to our open TCP socket using <kbd>SSL_set_fd()</kbd>. The <kbd>SSL_accept()</kbd> function is called to establish the TLS/SSL connection. The following code demonstrates this:</p>
+<pre>SSL_set_fd(ssl, socket_client);<br/>if (SSL_accept(ssl) &lt;= 0) {<br/>    fprintf(stderr, "SSL_accept() failed.\n");<br/>    ERR_print_errors_fp(stderr);<br/>    return 1;<br/>}<br/><br/>printf ("SSL connection using %s\n", SSL_get_cipher(ssl));</pre>
+<p>You may notice that this code is very similar to the HTTPS client code from <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, L<em>oading Secure Web Pages with HTTPS and OpenSSL</em>. The only real differences are in the setup of the SSL context object.</p>
+<p>Once the TLS connection is established, data can be sent and received using <kbd>SSL_write()</kbd> and <kbd>SSL_read()</kbd>. These functions replace the <kbd>send()</kbd> and <kbd>recv()</kbd> functions used with TCP sockets.</p>
+<p>When the connection is finished, it is important to free resources, as shown by the following code: </p>
+<pre>SSL_shutdown(ssl);<br/>CLOSESOCKET(socket_client);<br/>SSL_free(ssl);</pre>
+<p>When your program is finished accepting new connections, you should also free the SSL context object. The following code shows this:</p>
+<pre>SSL_CTX_free(ctx);</pre>
+<p>With an understanding of the basics out of the way, let's solidify our knowledge by implementing a simple example program.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Time server example</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we develop a simple time server that displays the time to an HTTPS client. This program is an adaptation of <kbd>time_server.c</kbd> from <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>, which served the time over plain HTTP. Our program begins by including the chapter header, defining <kbd>main()</kbd>, and initializing Winsock on Windows. The code for this is as follows:</p>
+<pre><span>/*tls_time_server.c*/</span><br/><br/>#include "chap10.h"<br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>The OpenSSL library is then initialized with the following code:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span>   <br/>    SSL_library_init();<br/>    OpenSSL_add_all_algorithms();<br/>    SSL_load_error_strings();</pre>
+<p>An SSL context object must be created for our server. This is done using a call to <kbd>SSL_CTX_new()</kbd>. The following code shows this call:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span>    <br/>    SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());<br/>    if (!ctx) {<br/>        fprintf(stderr, "SSL_CTX_new() failed.\n");<br/>        return 1;<br/>    }</pre>
+<p>If you're using an older version of OpenSSL, you may need to replace <kbd>TLS_server_method()</kbd><span> with </span><kbd>TLSv1_2_server_method()</kbd><span> in the preceding code. However, you should probably upgrade to a newer OpenSSL version instead.</span></p>
+<p>Once the SSL context has been created, we can associate our server's certificate with it. The following code sets the SSL context to use our certificate:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span>    <br/>    if (!SSL_CTX_use_certificate_file(ctx, "cert.pem" , SSL_FILETYPE_PEM)<br/>    || !SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM)) {<br/>        fprintf(stderr, "SSL_CTX_use_certificate_file() failed.\n");<br/>        ERR_print_errors_fp(stderr);<br/>        return 1;<br/>    }</pre>
+<p>Make sure that you've generated a proper certificate and key. Refer to the <em>Self-signed certificate with OpenSSL</em> section from earlier in this chapter.</p>
+<p>Once the SSL context is configured with the proper certificate, our program creates a listening TCP socket in the normal way. It begins with a call to <kbd>getaddrinfo()</kbd> and <kbd>socket()</kbd>, as shown in the following code:</p>
+<pre><span>/*tls_time_server.c continued*/</span><br/><br/>    printf("Configuring local address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_family = AF_INET;<br/>    hints.ai_socktype = SOCK_STREAM;<br/>    hints.ai_flags = AI_PASSIVE;<br/><br/>    struct addrinfo *bind_address;<br/>    getaddrinfo(0, "8080", &amp;hints, &amp;bind_address);<br/><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_listen;<br/>    socket_listen = socket(bind_address-&gt;ai_family,<br/>            bind_address-&gt;ai_socktype, bind_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(socket_listen)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>The socket created by the preceding code is bound to the listening address with <kbd>bind()</kbd>. The <kbd>listen()</kbd> function is used to set the socket in a listening state. The following code demonstrates this:</p>
+<pre>  /*<span>tls_time_server.c</span><span> continued*/<br/></span>  <br/>    printf("Binding socket to local address...\n");<br/>    if (bind(socket_listen,<br/>                bind_address-&gt;ai_addr, bind_address-&gt;ai_addrlen)) {<br/>        fprintf(stderr, "bind() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }<br/>    freeaddrinfo(bind_address);<br/><br/><br/>    printf("Listening...\n");<br/>    if (listen(socket_listen, 10) &lt; 0) {<br/>        fprintf(stderr, "listen() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>If the preceding code isn't familiar, please refer to <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>.</p>
+<p>Note that the preceding code sets the listening port number to <kbd>8080</kbd>. The standard port for HTTPS is <kbd>443</kbd>. It is often more convenient to test with a high port number, since low port numbers require special privileges on some operating systems.</p>
+<p>Our server uses a <kbd>while</kbd> loop to accept multiple connections. Note that this isn't true multiplexing, as only one connection is handled at a time. However, it proves convenient for testing purposes to be able to handle multiple connections serially. Our self-signed certificate causes mainstream browsers to reject our connection on the first try. The connection only succeeds after an exception is added. By having our code loop, it makes adding this exception easier.</p>
+<p>Our <kbd>while</kbd> loop begins by using <kbd>accept()</kbd> to wait for new connections. This is done by the following code:</p>
+<pre>/*tls_time_server.c continued*/<br/><br/> while (1) {<br/><br/>        printf("Waiting for connection...\n");<br/>        struct sockaddr_storage client_address;<br/>        socklen_t client_len = sizeof(client_address);<br/>        SOCKET socket_client = accept(socket_listen,<br/>                (struct sockaddr*) &amp;client_address, &amp;client_len);<br/>        if (!ISVALIDSOCKET(socket_client)) {<br/>            fprintf(stderr, "accept() failed. (%d)\n", GETSOCKETERRNO());<br/>            return 1;<br/>        }</pre>
+<p>Once the connection is accepted, we use <kbd>getnameinfo()</kbd> to print out the client's address. This is sometimes useful for debugging purposes. The following code does this:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        printf("Client is connected... ");<br/>        char address_buffer[100];<br/>        getnameinfo((struct sockaddr*)&amp;client_address,<br/>                client_len, address_buffer, sizeof(address_buffer), 0, 0,<br/>                NI_NUMERICHOST);<br/>        printf("%s\n", address_buffer);</pre>
+<p>Once the TCP connection is established, an <kbd>SSL</kbd> object needs to be created. This is done with a call to <kbd>SSL_new()</kbd>, as shown by the following code:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        SSL *ssl = SSL_new(ctx);<br/>        if (!ctx) {<br/>            fprintf(stderr, "SSL_new() failed.\n");<br/>            return 1;<br/>        }</pre>
+<p>The SSL object is associated with the open socket by a call to <kbd>SSL_set_fd()</kbd>. Then, a TLS/SSL connection can be initialized with a call to <kbd>SSL_accept()</kbd>. The following code shows this:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        SSL_set_fd(ssl, socket_client);<br/>        if (SSL_accept(ssl) &lt;= 0) {<br/>            fprintf(stderr, "SSL_accept() failed.\n");<br/>            ERR_print_errors_fp(stderr);<br/><br/>            SSL_shutdown(ssl);<br/>            CLOSESOCKET(socket_client);<br/>            SSL_free(ssl);<br/><br/>            continue;<br/>        }<br/><br/>        printf ("SSL connection using %s\n", SSL_get_cipher(ssl));</pre>
+<p>In the preceding code, the call to the <kbd>SSL_accept()</kbd> function can fail for many reasons. For example, if the connected client doesn't trust our certificate, or the client and server can't agree on a cipher suite, then the call to <kbd>SSL_accept()</kbd> fails. When it fails, we just clean up the allocated resources and use <kbd>continue</kbd> to repeat our listening loop.</p>
+<p>Once the TCP and TLS/SSL connections are fully open, we use <kbd>SSL_read()</kbd> to receive the client's request. Our program ignores the content of this request. This is because our program only serves the time. It doesn't matter what the client has asked for—our server responds with the time.</p>
+<p>The following code uses <kbd>SSL_read()</kbd> to wait on and read the client's request:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        printf("Reading request...\n");<br/>        char request[1024];<br/>        int bytes_received = SSL_read(ssl, request, 1024);<br/>        printf("Received %d bytes.\n", bytes_received);</pre>
+<p>The following code uses <kbd>SSL_write()</kbd> to transmit the HTTP headers to the client:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        printf("Sending response...\n");<br/>        const char *response =<br/>            "HTTP/1.1 200 OK\r\n"<br/>            "Connection: close\r\n"<br/>            "Content-Type: text/plain\r\n\r\n"<br/>            "Local time is: ";<br/>        int bytes_sent = SSL_write(ssl, response, strlen(response));<br/>        printf("Sent %d of %d bytes.\n", bytes_sent, (int)strlen(response));</pre>
+<p>The <kbd>time()</kbd> and <kbd>ctime()</kbd> functions are then used to format the current time. Once the time is formatted in <kbd>time_msg</kbd>, it is also sent to the client using <kbd>SSL_write()</kbd>. The following code shows this:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        time_t timer;<br/>        time(&amp;timer);<br/>        char *time_msg = ctime(&amp;timer);<br/>        bytes_sent = SSL_write(ssl, time_msg, strlen(time_msg));<br/>        printf("Sent %d of %d bytes.\n", bytes_sent, (int)strlen(time_msg));</pre>
+<p>Finally, after the data is transmitted to the client, the connection is closed, and the loop repeats. The following code shows this:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>        printf("Closing connection...\n");<br/>        SSL_shutdown(ssl);<br/>        CLOSESOCKET(socket_client);<br/>        SSL_free(ssl);<br/>    }</pre>
+<p>If the loop terminates, it would be useful to close the listening socket and clean up the SSL context, as demonstrated by the following code:</p>
+<pre><span>/*tls_time_server.c continued*/<br/></span><br/>    printf("Closing listening socket...\n");<br/>    CLOSESOCKET(socket_listen);<br/>    SSL_CTX_free(ctx);</pre>
+<p>Finally, Winsock should be cleaned up if necessary:</p>
+<pre><span>/*tls_time_server.c</span><span> continued*/<br/></span><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/><br/>    printf("Finished.\n");<br/><br/>    return 0;<br/>}</pre>
+<p>That concludes <kbd>tls_time_server.c</kbd>.</p>
+<p>You can compile and run the program using the following commands on macOS or Linux:</p>
+<pre><strong>gcc tls_time_server.c -o tls_time_server -lssl -lcrypto</strong><br/><strong>./tls_time_server</strong></pre>
+<p>On Windows, compiling and running the program is done with the following commands:</p>
+<pre><strong>gcc tls_time_server.c -o tls_time_server.exe -lssl -lcrypto -lws2_32</strong><br/><strong>tls_time_server</strong></pre>
+<p>If you have linker errors, please be sure that the OpenSSL library is installed correctly. You may find it helpful to attempt to compile <kbd>openssl_version.c</kbd> from <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>.</p>
+<p>The following screenshot shows what running <kbd>tls_time_server</kbd> might look like:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/bb118df5-9e0b-4848-8b77-0b8834503033.png" style="width:32.58em;height:27.50em;"/></p>
+<p>You can connect to the time server by navigating your web browser to <kbd>https://127.0.0.1:8080</kbd>. Upon the first connection, your browser will reject the self-signed certificate. The following screenshot shows what this rejection looks like in Firefox:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/fdfb5821-6712-48de-85c3-4b37b22f8771.png" style="width:31.42em;height:25.42em;"/></p>
+<p>To access the time server, you need to add an exception in the browser. The method for this is different in each browser, but generally, there is an <span class="packt_screen">Advanced</span> button that leads to an option to either add a certificate exception or otherwise proceed with the insecure connection.</p>
+<p>Once the browser connection is established, you will be able to see the current time as given by our <kbd>tls_time_server</kbd> program:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/f10317c3-ad58-4cd4-86b5-a4c0ad3a66da.png" style="width:33.42em;height:8.75em;"/></p>
+<p>The <kbd>tls_time_server</kbd> program proved useful to show how a TLS/SSL server can be set up without getting bogged down in the details of actualizing a complete HTTPS server. However, this chapter's code repository also includes a more substantial HTTPS server.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A full HTTPS server</h1>
+                </header>
+            
+            <article>
+                
+<p>Included in this chapter's code repository is <kbd>https_server.c</kbd>. This program is a modification of <kbd>web_server.c</kbd> from <a href="f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml">Chapter 7</a>, <em>Building a Simple Web Server</em>. It can be used to serve a simple static website over HTTPS.</p>
+<p>In the <kbd>https_server.c</kbd> program, the basic TLS/SSL connection is set up and established the same way as shown in <kbd>tls_time_server.c</kbd>. Once the secure connection is established, the connection is simply treated as HTTP.</p>
+<p><kbd>https_server</kbd> is compiled using the same technique as for <kbd>tls_time_server</kbd>. The following screenshot shows how to compile and run <kbd>https_server</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/868a232a-215d-409a-8c9e-8c00f442ab5b.png" style="width:36.33em;height:16.75em;"/></p>
+<p>Once <kbd>https_server</kbd> is running, you can connect to it by navigating your web browser to <kbd>https://127.0.0.1:8080</kbd>. You will likely need to add a security exception when connecting for the first time. The code is set up to serve the static pages from the <kbd>chap07</kbd> directory.</p>
+<p>The following screenshot was taken of a web browser connected to <kbd>https_server</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/75eb6b72-dd04-495d-9bce-edcb588a7883.png" style="width:36.92em;height:26.42em;"/></p>
+<p>This chapter's example programs illustrate the basics of HTTPS servers. However, implementing a genuinely robust HTTPS server does involve additional challenges. Let's consider some of these now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">HTTPS server challenges</h1>
+                </header>
+            
+            <article>
+                
+<p>This chapter should serve only as an introduction to TLS/SSL server programming. There is much more to learn about secure network programming. Before deploying a secure HTTPS server with OpenSSL, it is essential to review all the OpenSSL documentation carefully. Many OpenSSL functions have edge cases that were ignored in the illustrative code for this chapter.</p>
+<p>Multiplexing can also be complicated with OpenSSL. In typical TCP servers, we have been using the <kbd>select()</kbd> function to indicate when data is available to be read. The <kbd>select()</kbd> function works directly on the TCP socket. Using <kbd>select()</kbd> on a server secured with TLS/SSL can be tricky. This is because <kbd>select()</kbd> indicates when data is available at the TCP level. This usually, but not always, indicates that data is available to be read with <kbd>SSL_read()</kbd>. It is important that you carefully consult the OpenSSL documentation for <kbd>SSL_read()</kbd> if you are going to use it with <kbd>select()</kbd>. The example program in this chapter ignores these possibilities for reasons of simplicity.</p>
+<p>There are also alternatives to OpenSSL. Let's consider some of them now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">OpenSSL alternatives</h1>
+                </header>
+            
+            <article>
+                
+<p>Although <strong>OpenSSL</strong> is one of the oldest and most widely deployed libraries implementing TLS, many alternative libraries have sprung up in recent years. Some of these alternatives aim to offer better features, performance, or quality control compared to OpenSSL.</p>
+<p>The following table contains a number of alternative open source TLS libraries:</p>
+<table border="1" style="border-collapse: collapse;width: 100%">
+<tbody>
+<tr>
+<td><strong>TLS Library</strong></td>
+<td><strong>Website</strong></td>
+</tr>
+<tr>
+<td>cryptlib</td>
+<td><a href="https://www.cryptlib.com/">https://www.cryptlib.com/</a></td>
+</tr>
+<tr>
+<td>GnuTLS</td>
+<td><a href="https://www.gnutls.org/">https://www.gnutls.org/</a></td>
+</tr>
+<tr>
+<td>LibreSSL</td>
+<td><a href="https://www.libressl.org/">https://www.libressl.org/</a></td>
+</tr>
+<tr>
+<td>mbed TLS</td>
+<td><a href="https://tls.mbed.org/">https://tls.mbed.org/</a></td>
+</tr>
+<tr>
+<td>Network Security Services</td>
+<td><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS">https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS</a></td>
+</tr>
+<tr>
+<td>s2n</td>
+<td><a href="https://github.com/awslabs/s2n">https://github.com/awslabs/s2n</a></td>
+</tr>
+<tr>
+<td>wolfSSL</td>
+<td><a href="https://www.wolfssl.com/">https://www.wolfssl.com/</a></td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>There are also alternatives to doing TLS termination directly in your application, and this can simplify program design. Let's consider this next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Alternatives to TLS</h1>
+                </header>
+            
+            <article>
+                
+<p>Getting everything right when implementing an HTTPS server can prove difficult, and missing even a minor detail can compromise security entirely.</p>
+<p>As an alternative to using TLS directly in our server itself, it is sometimes a better idea to use a <strong>reverse proxy server</strong>. A reverse proxy server can be configured to accept secure connections from clients and then forward these connections as plain HTTP to your program.</p>
+<p><strong>Nginx</strong> and <strong>Apache</strong> are two popular open source servers that can work well as HTTPS reverse proxies.</p>
+<p>This setup is illustrated by the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/3102f763-8b15-4623-bdff-b12ea8e8bd88.png" style="width:30.33em;height:5.17em;"/></p>
+<p>A reverse proxy server configured in this way is also called a <strong>TLS termination proxy</strong>.</p>
+<p>An even better alternative may be to create your program using the <strong>CGI</strong> or <strong>FastCGI</strong> standard. In this case, your program communicates directly with a standard web server. The web server handles all of the HTTPS and HTTP details. This can greatly simplify program design, and, in some cases, reduce maintenance costs too.</p>
+<p>If you do use an off-the-shelf HTTPS server, it is still important to use caution. It can be easy to inadvertently compromise security through misconfiguration.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we considered the HTTPS protocol from the server's perspective. We covered how certificates work, and we showed the method for generating a self-signed certificate with OpenSSL.</p>
+<p>Once we had a certificate, we learned how to use the OpenSSL library to listen for TLS/SSL connections. We used this knowledge to implement a simple server that displays the current time over HTTPS.</p>
+<p>We also discussed some of the pitfalls and complexity of implementing HTTPS servers. Many applications may benefit from side-stepping the implementation of HTTPS and relying on a reverse proxy instead.</p>
+<p>In the next chapter, <a href="c9d0a1dc-878b-4961-825e-65688fac08ae.xhtml">Chapter 11</a>, <em>Establishing SSH Connections with libssh</em>, we will look at another secure protocol, <strong><span>Secure Shell</span></strong> (<strong><span>SSH</span></strong>).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>Try these questions to test the knowledge you have acquired from this chapter:</p>
+<ol type="1">
+<li>How does a client decide whether it should trust a server's certificate?</li>
+<li>What is the main issue with self-signed certificates?</li>
+<li>What can cause <kbd>SSL_accept()</kbd> to fail?</li>
+<li>Can <kbd>select()</kbd> be used to multiplex connections for HTTPS servers?</li>
+</ol>
+<p>The answers to these questions can be found in <a href="bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml">Appendix A</a>, <em>Answers to Questions</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Further reading</h1>
+                </header>
+            
+            <article>
+                
+<p>For more information about HTTPS and OpenSSL, please refer to the following:</p>
+<ul>
+<li>OpenSSL documentation (<a href="https://www.openssl.org/docs/">https://www.openssl.org/docs/</a>)</li>
+<li><strong>RFC 5246</strong>: <em>The <strong>Transport Layer Security</strong> (<strong>TLS</strong>) Protocol Version 1.2</em> (<a href="https://tools.ietf.org/html/rfc5246">https://tools.ietf.org/html/rfc5246</a>)</li>
+<li><em>Let's Encrypt</em> (<a href="https://letsencrypt.org/">https://letsencrypt.org/</a>)</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

@@ -1,0 +1,335 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Establishing UDP Connections</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will look at how to send and receive <strong><span>User Datagram Protocol</span></strong> (<strong>UDP</strong>) packets. UDP socket programming is very similar to <strong><span>Transmission Control Protocol</span></strong> (<strong>TCP</strong>) socket programming, so it is recommended that you read and understand <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>, before beginning this one.</p>
+<p>The following topics are covered in this chapter:</p>
+<ul>
+<li>The differences between TCP socket programming and UDP socket programming</li>
+<li>The <kbd>sendto()</kbd> and <kbd>recvfrom()</kbd> functions</li>
+<li>How <kbd>connect()</kbd> works on a UDP socket</li>
+<li>Implementing a UDP server using only one socket</li>
+<li>Using <kbd>select()</kbd> to tell when a UDP socket has data ready</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>The example programs in this chapter can be compiled with any modern C compiler. We recommend MinGW on Windows and GCC on Linux and macOS. See <a href="47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml">Appendix B</a>, <em>Setting Up Your C Compiler On Windows</em>, <a href="221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml">Appendix C</a>, <em>Setting Up Your C Compiler On Linux</em>, and <a href="632db68e-0911-4238-a2be-bd1aa5296120.xhtml">Appendix D</a>, <em>Setting Up Your C Compiler On macOS</em>, for compiler setup.</p>
+<p>The code for this book can be found in this book's GitHub repository: <a href="https://github.com/codeplea/Hands-On-Network-Programming-with-C">https://github.com/codeplea/Hands-On-Network-Programming-with-C</a>.</p>
+<p>From the command line, you can download the code for this chapter with the following command:</p>
+<pre><strong>git clone https://github.com/codeplea/Hands-On-Network-Programming-with-C</strong><br/><strong>cd Hands-On-Network-Programming-with-C/chap04</strong></pre>
+<p>Each example program in this chapter runs on Windows, Linux, and macOS. While compiling on Windows, each example program requires being linked with the Winsock library. This can be accomplished by passing the <kbd>-lws2_32</kbd> option to <kbd>gcc</kbd>.</p>
+<p>We provide the exact commands that are needed to compile each example as they are introduced.</p>
+<p>All of the example programs in this chapter require the same header files and C macros that we developed in <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml" target="_blank">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>. For brevity, we put these statements in a separate header file, <kbd>chap04.h</kbd>, which we can include in each program. For an explanation of these statements, please refer to <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml" target="_blank">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>.</p>
+<p>The content of <kbd>chap04.h</kbd> is shown in the following code:</p>
+<pre>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif<br/><br/><br/>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/><br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#define CLOSESOCKET(s) close(s)<br/>#define SOCKET int<br/>#define GETSOCKETERRNO() (errno)<br/>#endif<br/><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;string.h&gt;</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How UDP sockets differ</h1>
+                </header>
+            
+            <article>
+                
+<p>The socket API for UDP sockets is only very slightly different than what we've already learned for TCP. In fact, they are similar enough that we can take the TCP client from the last chapter and turn it into a fully functional UDP client by changing only one line of code:</p>
+<ol>
+<li>Take <kbd>tcp_client.c</kbd> from <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>, and find the following line of code:</li>
+</ol>
+<pre style="padding-left: 90px">hints.ai_socktype = SOCK_STREAM;</pre>
+<ol start="2">
+<li>Change the preceding code to the following:</li>
+</ol>
+<pre style="padding-left: 90px">hints.ai_socktype = SOCK_DGRAM;</pre>
+<p>This modification is included in this chapter's code as <kbd>udp_client.c</kbd>.</p>
+<p>You can recompile the program using the same commands as before, and you'll get a fully functional UDP client.</p>
+<p>Unfortunately, changing the TCP servers of the previous chapters to UDP won't be as easy. TCP and UDP server code are different enough that a slightly different approach is needed.</p>
+<p>Also, don't assume that because we had to change <span>only </span>one line of the code that the client behaves exactly the same way <span>– </span>this won't happen. <span><span>The two programs are using a different protocol</span></span>, after all.</p>
+<p>Remember from <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em> that UDP does not try to be a reliable protocol. Lost packets are not automatically re-transmitted, and packets may be received in a different order than they were sent. It is even possible for one packet to erroneously arrive twice! TCP attempts to solve all these problems, but UDP leaves you to your own devices.</p>
+<p>Do you know what the best thing about a UDP joke is? I don't care if you get it or not.</p>
+<p>Despite UDP's (lack of) reliability, it is still appropriate for many applications. Let's look at the methods that are used by UDP clients and servers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">UDP client methods</h1>
+                </header>
+            
+            <article>
+                
+<p>Sending data with TCP requires calling <kbd>connect()</kbd> to set the remote address and establish the TCP connection. Thus, we use <kbd>send()</kbd> with TCP sockets, as shown in the following code:</p>
+<pre>connect(tcp_socket, peer_address, peer_address_length);<br/>send(tcp_socket, data, data_length, 0);</pre>
+<p>UDP is a connectionless protocol. Therefore, no connection is established before sending data. A UDP connection is never established. With UDP, data is simply sent and received. We can call <kbd>connect()</kbd> and then <kbd>send()</kbd>, as we mentioned previously, but the socket API provides an easier way for UDP sockets in the form of the <kbd>sendto()</kbd> function. It works like this:</p>
+<pre>sendto(udp_socket, data, data_length, 0,<br/>        peer_address, peer_address_length);</pre>
+<p><kbd>connect()</kbd> on a UDP socket works a bit differently. All <kbd>connect()</kbd> does with a UDP socket is associate a remote address. Thus, while <kbd>connect()</kbd> on a TCP socket involves a handshake for sending packets over the network, <kbd>connect()</kbd> on a UDP socket only stores an address locally.</p>
+<p>So, a UDP client can be structured in two different ways, depending on whether you use <kbd>connect()</kbd>, <kbd>send()</kbd>, and <kbd>recv()</kbd>, or instead use <kbd>sendto()</kbd> and <kbd>recvfrom()</kbd>.</p>
+<p>The following diagram compares the program flow of a <strong>TCP Client</strong> to a <strong>UDP Client</strong> using either method:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/b64a2d6f-8113-4081-aeb6-3cb9d97f00fb.png" style="width:52.75em;height:31.83em;"/></p>
+<p>Note that, while using <kbd>connect()</kbd>, the <strong>UDP Client</strong> only receives data from the peer having the IP address and the port that is given to <kbd>connect()</kbd>. However, when not using <kbd>connect()</kbd>, the <kbd>recvfrom()</kbd> function returns data from any peer that addresses us! Of course, that peer would need to know our address and port. Unless we call <kbd>bind()</kbd>, our local address and port is assigned automatically by the operating system.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">UDP server methods</h1>
+                </header>
+            
+            <article>
+                
+<p>Programming a UDP server is a bit different than TCP. TCP requires managing a socket for each peer connection. With UDP, our program only needs one socket. That one socket can communicate with any number of peers.</p>
+<p>While the TCP program flow required us to use <kbd>listen()</kbd> and <kbd>accept()</kbd> to wait for and establish new connections, these functions are not used with UDP. Our UDP server simply binds to the local address, and then it <span>can </span>immediately start sending and receiving data.</p>
+<p>The program flow of a <strong>TCP Server</strong> compared to a <strong>UDP Server</strong> is as follows:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/f6d79306-4799-4b68-9904-dcedf358b4c3.png" style="width:43.08em;height:44.67em;"/></p>
+<p>With either a TCP or UDP server, we use <kbd>select()</kbd> when we need to check/wait for incoming data. The difference is that a <strong>TCP Server</strong> using <kbd>select()</kbd> is likely monitoring many separate sockets, while a <strong>UDP Server</strong> often only needs to monitor one socket. If your program uses both TCP and UDP sockets, you can monitor them all with only one call to <kbd>select()</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A first UDP client/server</h1>
+                </header>
+            
+            <article>
+                
+<p>To drive these points home, it will be useful to work through a full UDP client and UDP server program.</p>
+<p>To keep things simple, we will create a UDP client program that simply sends the <kbd>Hello World</kbd> string to <kbd>127.0.0.1</kbd> on port <kbd>8080</kbd>. Our UDP server listens on <kbd>8080</kbd>. It prints any data it receives, along with the sender's address and port number.</p>
+<p>We will begin by implementing the simple UDP server.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A simple UDP server</h1>
+                </header>
+            
+            <article>
+                
+<p>We will start with the server, since we already have a usable UDP client, that is, <kbd>udp_client.c</kbd>.</p>
+<p>Like all of our networked programs, we will begin by including the necessary headers, starting with the <kbd>main()</kbd> function, and initializing Winsock as follows:</p>
+<pre>/*<span>udp_recvfrom.c*/</span><br/><br/>#include "chap04.h"<br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>If you've been working through this book in order, this code should be very routine for you by now. If you haven't, then please refer to <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>.</p>
+<p><span>Then, w</span>e must configure the local address that our server listens on. We use <kbd>getaddrinfo()</kbd> for this, as follows:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    printf("Configuring local address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_family = AF_INET;<br/>    hints.ai_socktype = SOCK_DGRAM;<br/>    hints.ai_flags = AI_PASSIVE;<br/><br/>    struct addrinfo *bind_address;<br/>    getaddrinfo(0, "8080", &amp;hints, &amp;bind_address);</pre>
+<p>This differs only slightly from how we've done it before. Notably, we set <kbd>hints.ai_socktype = SOCK_DGRAM</kbd>. Recall that <kbd>SOCK_STREAM</kbd> was used there for TCP connections. We are still setting <kbd>hints.ai_family = AF_INET</kbd> here. This makes our server listen for IPv4 connections. We could change that to <kbd>AF_INET6</kbd> to make our server listen for IPv6 connections instead.</p>
+<p>After we have our local address information, we can create the socket, as follows:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_listen;<br/>    socket_listen = socket(bind_address-&gt;ai_family,<br/>            bind_address-&gt;ai_socktype, bind_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(socket_listen)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>This code is exactly the same as in the TCP case. The call to <kbd>socket()</kbd> uses our address information from <kbd>getaddrinfo()</kbd> to create the proper type of socket.</p>
+<p>We must then bind the new socket to the local address that we got from <kbd>getaddrinfo()</kbd>. This is as follows:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    printf("Binding socket to local address...\n");<br/>    if (bind(socket_listen,<br/>                bind_address-&gt;ai_addr, bind_address-&gt;ai_addrlen)) {<br/>        fprintf(stderr, "bind() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }<br/>    freeaddrinfo(bind_address);</pre>
+<p>Again, that code is exactly the same as in the TCP case.</p>
+<p>Here is where the UDP server diverges from the TCP server. Once the local address is bound, we can simply start to receive data. There is no need to call <kbd>listen()</kbd> or <kbd>accept()</kbd>. We listen for incoming data using <kbd>recvfrom()</kbd>, as shown here:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    struct sockaddr_storage client_address;<br/>    socklen_t client_len = sizeof(client_address);<br/>    char read[1024];<br/>    int bytes_received = recvfrom(socket_listen,<br/>            read, 1024,<br/>            0,<br/>            (struct sockaddr*) &amp;client_address, &amp;client_len);</pre>
+<p>In the previous code, we created a <kbd>struct sockaddr_storage</kbd> to store the client's address. We also defined <kbd>socklen_t client_len</kbd> to hold the address size. This keeps our code robust in the case that we change it from IPv4 to IPv6. Finally, we created a buffer, <kbd>char read[1024]</kbd>, to store incoming data.</p>
+<p><kbd>recvfrom()</kbd> is used in a similar manner to <kbd>recv()</kbd>, except that it returns the sender's address, as well as the received data. You can think of <kbd>recvfrom()</kbd> as a combination of the TCP server <kbd>accept()</kbd> and <kbd>recv()</kbd>.</p>
+<p>Once we've received data, we can print it out. Keep in mind that the data may not be null terminated. It can be safely printed with the <kbd>%.*s</kbd> <kbd>printf()</kbd> format specifier, as shown in the following code:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    printf("Received (%d bytes): %.*s\n",<br/>            bytes_received, bytes_received, read);</pre>
+<p>It may also be useful to print the sender's address and port number. We can use the <kbd>getnameinfo()</kbd> function to convert this data into a printable string, as shown in the following code:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    printf("Remote address is: ");<br/>    char address_buffer[100];<br/>    char service_buffer[100];<br/>    getnameinfo(((struct sockaddr*)&amp;client_address),<br/>            client_len,<br/>            address_buffer, sizeof(address_buffer),<br/>            service_buffer, sizeof(service_buffer),<br/>            NI_NUMERICHOST | NI_NUMERICSERV);<br/>    printf("%s %s\n", address_buffer, service_buffer);</pre>
+<p>The last argument to <kbd>getnameinfo()</kbd> (<kbd>NI_NUMERICHOST | NI_NUMERICSERV</kbd>) tells <kbd>getnameinfo()</kbd> that we want both the client address and port number to be in numeric form. Without this, it would attempt to return a hostname or protocol name if the port number matches a known protocol. If you do want a protocol name, pass in the <kbd>NI_DGRAM</kbd> flag to tell <kbd>getnameinfo()</kbd> that you're working on a UDP port. This is important for the few protocols that have different ports for TCP and UDP.</p>
+<p>It's also worth noting that the client will rarely set its local port number explicitly. So, the port number returned here by <kbd>getnameinfo()</kbd> is likely to be a high number that's chosen randomly by the client's operating system. Even if the client did set its local port number, the port number we can see here might have been changed by <strong><span>network address translation</span></strong> (<strong>NAT</strong>).</p>
+<p>In any case, if our server were to send data back, it would need to send it to the address and port stored in <kbd>client_address</kbd>. This would be done by passing <kbd>client_address</kbd> to <kbd>sendto()</kbd>.</p>
+<p>Once the data has been received, we'll end our simple UDP server by closing the connection, cleaning up Winsock, and ending the program:</p>
+<pre>/*<span>udp_recvfrom.c</span><span> continued*/</span><br/><br/>    CLOSESOCKET(socket_listen);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    printf("Finished.\n");<br/>    return 0;<br/>}</pre>
+<p>You can compile and run <kbd>udp_recvfrom.c</kbd> on Linux and macOS by using the following commands:</p>
+<pre><strong>gcc udp_recvfrom.c -o udp_recvfrom</strong><br/><strong>./udp_recvfrom</strong></pre>
+<p>Compiling and running on Windows with MinGW is done as follows<span>:</span></p>
+<pre><strong>gcc udp_recvfrom.c -o udp_recvfrom.exe -lws2_32</strong><br/><strong>udp_recvfrom.exe</strong></pre>
+<p>While running, it simply waits for an incoming connection:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/92c1a4aa-591b-49a4-8a8c-44ed3b83445e.png" style="width:40.33em;height:13.58em;"/></p>
+<p>You could use <kbd>udp_client</kbd> to connect to <kbd>udp_recvfrom</kbd> for testing, or you can implement <kbd>udp_sendto</kbd>, which we will do next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A simple UDP client</h1>
+                </header>
+            
+            <article>
+                
+<p>Although we've already shown a fairly full-featured UDP client, <kbd>udp_client.c</kbd>, it is worthwhile building a very simple UDP client. This client shows only the minimal required steps to get a working UDP client, and it uses <kbd>sendto()</kbd> instead of <kbd>send()</kbd>.</p>
+<p>Let's begin the same way we begin each program, by including the necessary headers, starting <kbd>main()</kbd>, and initializing Winsock, as follows:</p>
+<pre>/*<span>udp_sendto.c*/</span><br/><br/>#include "chap04.h"<br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>We then configure the remote address using <kbd>getaddrinfo()</kbd>. In this minimal example, we use <kbd>127.0.0.1</kbd> as the remote address and <kbd>8080</kbd> as the remote port. This means that it connects to the UDP server only if it's running on the same computer.</p>
+<p>Here is how the remote address is configured:</p>
+<pre>/*<span>udp_sendto.c</span><span> continued*/</span><br/><br/>    printf("Configuring remote address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_socktype = SOCK_DGRAM;<br/>    struct addrinfo *peer_address;<br/>    if (getaddrinfo("127.0.0.1", "8080", &amp;hints, &amp;peer_address)) {<br/>        fprintf(stderr, "getaddrinfo() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>Notice that we hardcoded <kbd>127.0.0.1</kbd> and <kbd>8080</kbd> into the call to <kbd>getaddrinfo()</kbd>. Also, notice that we've set <kbd>hints.ai_socktype = SOCK_DGRAM</kbd>. This tells <kbd>getaddrinfo()</kbd> that we are connecting over UDP. Notice that we did not set <kbd>AF_INET</kbd> or <kbd>AF_INET6</kbd>. This allows <kbd>getaddrinfo()</kbd> to return the appropriate address for IPv4 or IPv6. In this case, it is IPv4 because the address, <kbd>127.0.0.1</kbd>, is an IPv4 address. We will cover <kbd>getaddrinfo()</kbd> in more detail in <a href="3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml">Chapter 5</a>, <em>Hostname Resolution and DNS</em>.</p>
+<p>We can print the configured address using <kbd>getnameinfo()</kbd>. The call to <kbd>getnameinfo()</kbd> is the same as in the previous UDP server, <kbd>udp_recvfrom.c</kbd>. It works as follows:</p>
+<pre>/*<span>udp_sendto.c</span><span> continued*/</span><br/><br/>    printf("Remote address is: ");<br/>    char address_buffer[100];<br/>    char service_buffer[100];<br/>    getnameinfo(peer_address-&gt;ai_addr, peer_address-&gt;ai_addrlen,<br/>            address_buffer, sizeof(address_buffer),<br/>            service_buffer, sizeof(service_buffer),<br/>            NI_NUMERICHOST  | NI_NUMERICSERV);<br/>    printf("%s %s\n", address_buffer, service_buffer);</pre>
+<p>Now that we've stored the remote address, we are ready to create our socket with a call to <kbd>socket()</kbd>. We pass in fields from <kbd>peer_address</kbd> to create the appropriate socket type. The code for this is as follows:</p>
+<pre>/*<span>udp_sendto.c</span><span> continued*/</span><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_peer;<br/>    socket_peer = socket(peer_address-&gt;ai_family,<br/>            peer_address-&gt;ai_socktype, peer_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(socket_peer)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>Once the socket has been created, we can go straight to sending data with <kbd>sendto()</kbd>. There is no need to call <kbd>connect()</kbd>. Here is the code to send <kbd>Hello World</kbd> to our UDP server:</p>
+<pre>/*<span>udp_sendto.c</span><span> continued*/</span><br/><br/>    const char *message = "Hello World";<br/>    printf("Sending: %s\n", message);<br/>    int bytes_sent = sendto(socket_peer,<br/>            message, strlen(message),<br/>            0,<br/>            peer_address-&gt;ai_addr, peer_address-&gt;ai_addrlen);<br/>    printf("Sent %d bytes.\n", bytes_sent);</pre>
+<p>Notice that <kbd>sendto()</kbd> is much like <kbd>send()</kbd>, except that we need to pass in an address as the last parameter.</p>
+<p>It is also worth noting that we do not get an error back if sending fails. <kbd>send()</kbd> simply tries to send a message, but if it gets lost or is misdelivered along the way, there is nothing we can do about it. If the message is important, it is up to the application protocol to implement the corrective action.</p>
+<p>After we've sent our data, we could reuse the same socket to send data to another address (as long as it's the same type of address, which is IPv4 in this case). We could also try to receive a reply from the UDP server by calling <kbd>recvfrom()</kbd>. Note that if we did call <kbd>recvfrom()</kbd> here, we could get data from anybody that sends to us <span>– </span>not necessarily the server we just transmitted to.</p>
+<p>When we sent our data, our socket was assigned with a temporary local port number by the operating system. This local port number is called the <strong>ephemeral port number</strong>. From then on, our socket is essentially listening for a reply on this local port. If the local port is important, you can use <kbd>bind()</kbd> to associate a specific port before calling <kbd>send()</kbd>.</p>
+<p>If multiple applications on the same system are connecting to a remote server at the same port, the operating system uses the local ephemeral port number to keep replies separate. Without this, it wouldn't be possible to know which application should receive which reply.</p>
+<p>We'll end our example program by freeing the memory for <kbd>peer_address</kbd>, closing the socket, cleaning up Winsock, and finishing <kbd>main()</kbd>, as follows:</p>
+<pre>/*<span>udp_sendto.c</span><span> continued*/</span><br/><br/>    freeaddrinfo(peer_address);<br/>    CLOSESOCKET(socket_peer);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    printf("Finished.\n");<br/>    return 0;<br/>}</pre>
+<p>You can compile <kbd>udp_sendto.c</kbd> on Linux and macOS using the following command:</p>
+<pre><strong>gcc udp_sendto.c -o udp_sendto</strong></pre>
+<p>Compiling on Windows with MinGW is done in the following way:</p>
+<pre><strong>gcc udp_sendto.c -o udp_sendto.exe -lws2_32</strong></pre>
+<p>To test it out, first, start <kbd>udp_recvfrom</kbd> in a separate terminal. With <kbd>udp_recvfrom</kbd> already running, you can start <kbd>udp_sendto</kbd>. It should look as follows:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/27489ad6-d9bb-40ce-9b90-c0c3019a6af7.png" style="width:37.00em;height:35.17em;"/></p>
+<p>If no server is running on port <kbd>8080</kbd>, <kbd>udp_sendto</kbd> still produces the same output. <kbd>udp_sendto</kbd> doesn't know that the packet was not delivered.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A UDP server</h1>
+                </header>
+            
+            <article>
+                
+<p>It will be useful to look at a UDP server that's been designed to service many connections. Fortunately for us, the UDP socket API makes this very easy.</p>
+<p>We will take the motivating example from our last chapter, which was to provide a service that converts all text into uppercase. This is useful because you can directly compare the UDP code from here to the TCP server code from <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>.</p>
+<p>Our server begins by setting up the socket and binding to our local address. It then waits to receive data. Once it has received a data string, it converts the string into all uppercase and sends it back.</p>
+<p>The program flow looks as follows:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/93ab4ec5-3ed5-4a9a-9cbc-75df89e33326.png" style="width:20.42em;height:26.92em;"/></p>
+<p>If you compare the flow of this program to the TCP server from the last chapter (<a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml"/><a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>), you will find that it's much simpler. With TCP, we had to use <kbd>listen()</kbd> and <kbd>accept()</kbd>. With UDP, we skip those calls and go straight into receiving data with <kbd>recvfrom()</kbd>. With our TCP server, we had to monitor a listening socket for new connections while simultaneously monitoring an additional socket for each connected client. Our UDP server only uses one socket, so there is much less to keep track of.</p>
+<p>Our UDP server program begins by including the necessary headers, starting the <kbd>main()</kbd> function, and initializing Winsock, as follows:</p>
+<pre>/*<span>udp_serve_toupper.c*/</span><br/><br/>#include "chap04.h"<br/>#include &lt;ctype.h&gt;<br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>We then find our local address that we should listen on, create the socket, and bind to it. This is all exactly the same as in our earlier server, <kbd>udp_recvfrom.c</kbd>. The only difference between this code and the TCP servers in <a href="https://cdp.packtpub.com/hands_on_network_programming_with_c/wp-admin/post.php?post=27&amp;action=edit#post_26">Chapter 3</a><span>, </span><em>An In-Depth Overview of TCP Connections</em>, is that we use <kbd>SOCK_DGRAM</kbd> instead of <kbd>SOCK_STREAM</kbd>. Recall that <kbd>SOCK_DGRAM</kbd> specifies that we want a UDP socket.</p>
+<p>Here is the code for setting the address and creating a new socket:</p>
+<pre>/*<span>udp_serve_toupper.c</span><span> continued*/</span><br/><br/>    printf("Configuring local address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_family = AF_INET;<br/>    hints.ai_socktype = SOCK_DGRAM;<br/>    hints.ai_flags = AI_PASSIVE;<br/><br/>    struct addrinfo *bind_address;<br/>    getaddrinfo(0, "8080", &amp;hints, &amp;bind_address);<br/><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_listen;<br/>    socket_listen = socket(bind_address-&gt;ai_family,<br/>            bind_address-&gt;ai_socktype, bind_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(socket_listen)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }<br/><br/></pre>
+<p>Binding the new socket to the local address is done as follows:</p>
+<pre>/*<span>udp_serve_toupper.c</span><span> </span><span>continued*/</span><br/><br/>    printf("Binding socket to local address...\n");<br/>    if (bind(socket_listen,<br/>                bind_address-&gt;ai_addr, bind_address-&gt;ai_addrlen)) {<br/>        fprintf(stderr, "bind() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }<br/>    freeaddrinfo(bind_address);</pre>
+<p>Because our server uses <kbd>select()</kbd>, we need to create a new <kbd>fd_set</kbd> to store our listening socket. We zero the set using <kbd>FD_ZERO()</kbd>, and then add our socket to this set using <kbd>FD_SET()</kbd>. We also maintain the maximum socket in the set using <kbd>max_socket</kbd>:</p>
+<pre>/*<span>udp_serve_toupper.c</span><span> continued*/</span><br/><br/>    fd_set master;<br/>    FD_ZERO(&amp;master);<br/>    FD_SET(socket_listen, &amp;master);<br/>    SOCKET max_socket = socket_listen;<br/><br/>    printf("Waiting for connections...\n");</pre>
+<p>Note that we don't really have to use <kbd>select()</kbd> for this program, and omitting it would make the program simpler (see <kbd>udp_server_toupper_simple.c</kbd>). However, we are going to use <kbd>select()</kbd> because it makes our code more flexible. We could easily add in an additional socket (if we needed to listen on multiple ports, for example), and we could add in a <kbd>select()</kbd> timeout if our program needs to perform other functions. Of course, our program doesn't do those things, so we don't need <kbd>select()</kbd>, but I think that most programs do, so we will show it that way.</p>
+<p>Now, we are ready for the main loop. It copies the socket set into a new variable, <kbd>reads</kbd>, and then uses <kbd>select()</kbd> to wait until our socket is ready to read from. Recall that we could pass in a timeout value as the last parameter to <kbd>select()</kbd> if we want to set a maximum waiting time for the next read. Refer to <a href="https://cdp.packtpub.com/hands_on_network_programming_with_c/wp-admin/post.php?post=27&amp;action=edit#post_26">Chapter 3</a><span>, </span><em>An In-Depth Overview of TCP Connections</em>, the <em>Synchronous multiplexing with select()</em> section, for more information on <kbd>select()</kbd>.</p>
+<p>Once <kbd>select()</kbd> returns, we use <kbd>FD_ISSET()</kbd> to tell if our particular socket, <kbd>socket_listen</kbd>, is ready to be read from. If we had additional sockets, we would need to use <kbd>FD_ISSET()</kbd> for each socket.</p>
+<p>If <kbd>FD_ISSET()</kbd> returns true, we read from the socket using <kbd>recvfrom()</kbd>. <kbd>recvfrom()</kbd> gives us the sender's address, so we must first allocate a variable to hold the address, that is, <kbd>client_address</kbd>. Once we've read a string from the socket using <kbd>recvfrom()</kbd>, we convert the string into uppercase using the C <kbd>toupper()</kbd> function. We then send the modified text back to the sender using <kbd>sendto()</kbd>. Note that the last two parameters to <kbd>sendto()</kbd> are the client's addresses that we got from <kbd>recvfrom()</kbd>.</p>
+<p>The main program loop can be seen in the following code:</p>
+<pre>/*<span>udp_serve_toupper.c</span><span> continued*/</span><br/><br/>    while(1) {<br/>        fd_set reads;<br/>        reads = master;<br/>        if (select(max_socket+1, &amp;reads, 0, 0, 0) &lt; 0) {<br/>            fprintf(stderr, "select() failed. (%d)\n", GETSOCKETERRNO());<br/>            return 1;<br/>        }<br/><br/>        if (FD_ISSET(socket_listen, &amp;reads)) {<br/>            struct sockaddr_storage client_address;<br/>            socklen_t client_len = sizeof(client_address);<br/><br/>            char read[1024];<br/>            int bytes_received = recvfrom(socket_listen, read, 1024, 0,<br/>                    (struct sockaddr *)&amp;client_address, &amp;client_len);<br/>            if (bytes_received &lt; 1) {<br/>                fprintf(stderr, "connection closed. (%d)\n",<br/>                        GETSOCKETERRNO());<br/>                return 1;<br/>            }<br/><br/>            int j;<br/>            for (j = 0; j &lt; bytes_received; ++j)<br/>                read[j] = toupper(read[j]);<br/>            sendto(socket_listen, read, bytes_received, 0,<br/>                    (struct sockaddr*)&amp;client_address, client_len);<br/><br/>        } //if FD_ISSET<br/>    } //while(1)</pre>
+<p>We can then close the socket, clean up Winsock, and terminate the program. Note that this code never runs, because the main loop never terminates. We include this code anyway as good practice; in case the program is adapted in the future to have an exit function.</p>
+<p>The cleanup code is as follows:</p>
+<pre>/*<span>udp_serve_toupper.c</span><span> continued*/</span><br/><br/>    printf("Closing listening socket...\n");<br/>    CLOSESOCKET(socket_listen);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    printf("Finished.\n");<br/><br/>    return 0;<br/>}</pre>
+<p>That's our complete UDP server program. You can compile and run it on Linux and macOS as follows:</p>
+<pre><strong>gcc udp_serve_toupper.c -o udp_serve_toupper</strong><br/><strong>./udp_serve_toupper</strong></pre>
+<p>Compiling and running on Windows with MinGW is done in the following manner:</p>
+<pre><strong>gcc udp_serve_toupper.c -o udp_serve_toupper.exe -lws2_32</strong><br/><strong>udp_serve_toupper.exe</strong></pre>
+<p>You can abort the program's execution with <em>Ctrl</em> + <em>C</em>.</p>
+<p>Once the program is running, you should open another terminal window and run the <kbd>udp_client</kbd> program from earlier to connect to it, as follows:</p>
+<pre><strong>udp_client 127.0.0.1 8080</strong></pre>
+<p>Anything you type in <kbd>udp_client</kbd> should be sent back to it in uppercase. Here's what that might look like:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6ac794ac-42a7-47aa-b223-129577602a51.png" style="width:43.33em;height:34.17em;"/></p>
+<p>You may also want to try opening additional terminal windows and connecting with <kbd>udp_client</kbd>.</p>
+<p>See <kbd>udp_serve_toupper_simple.c</kbd> for an implementation that doesn't use <kbd>select()</kbd>, but manages to work just as well anyway.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we saw that programming with UDP sockets is somewhat easier than with TCP sockets. We learned that UDP sockets don't need the <kbd>listen()</kbd>, <kbd>accept()</kbd>, or <kbd>connect()</kbd> function calls. This is mostly because <kbd>sendto()</kbd> and <kbd>recvfrom()</kbd> deal with the addresses directly. For more complicated programs, we can still use the <kbd>select()</kbd> function to see which sockets are ready for I/O.</p>
+<p><span><span>We also saw that UDP sockets are connectionless. This is in contrast to connection-oriented</span></span> TCP sockets. With TCP, we had to establish a connection before sending data, but with UDP, we simply send individual packets directly to a destination address. This keeps UDP socket programming simple, but it can complicate application protocol design, and UDP does not automatically retry communication failures or ensure that packets arrive in order.</p>
+<p>The next chapter, <a href="3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml">Chapter 5</a>, <em>Hostname Resolution and DNS</em>, is all about hostnames. Hostnames are resolved using the DNS protocol, which works over UDP. Move on to <a href="3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml">Chapter 5</a>, <em>Hostname Resolution and DNS</em><span>,</span> to learn about implementing a real-world UDP protocol.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>Try answering these questions to test your knowledge of this chapter:</p>
+<ol type="1">
+<li>How do <kbd>sendto()</kbd> and <kbd>recvfrom()</kbd> differ from <kbd>send()</kbd> and <kbd>recv()</kbd>?</li>
+<li>Can <kbd>send()</kbd> and <kbd>recv()</kbd> be used on UDP sockets?</li>
+<li>What does <kbd>connect()</kbd> do in the case of a UDP socket?</li>
+<li>What makes multiplexing with UDP easier than with TCP?</li>
+<li>What are the downsides to UDP when compared to TCP?</li>
+<li>Can the same program use UDP and TCP?</li>
+</ol>
+<p>The answers can be found in <a href="bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml">Appendix A</a>, <em>Answers to Questions</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

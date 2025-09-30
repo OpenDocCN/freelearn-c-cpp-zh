@@ -1,0 +1,596 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting to Grips with Socket APIs</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will begin to really start working with network programming. We will introduce the concept of sockets, and explain a bit of the history behind them. We will cover the important differences between the socket APIs provided by Windows and Unix-like operating systems, and we will review the common functions that are used in socket programming. This chapter ends with a concrete example of turning a simple console program into a networked program you can access through your web browser.</p>
+<p>The following topics are covered in this chapter:</p>
+<ul>
+<li>What are sockets?</li>
+<li>Which header files are used with socket programming?</li>
+<li>How to compile a socket program on Windows, Linux, and macOS</li>
+<li>Connection-oriented and connectionless sockets</li>
+<li>TCP and UDP protocols</li>
+<li>Common socket functions</li>
+<li>Building a simple console program into a web server</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>The example programs in this chapter can be compiled with any modern C compiler. We recommend MinGW on Windows and GCC on Linux and macOS. See <a href="47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml">Appendix B</a>, <em>Setting Up Your C Compiler On Windows</em>, <a href="221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml">Appendix C</a>, <em>Setting Up Your C Compiler On Linux</em>, and <a href="632db68e-0911-4238-a2be-bd1aa5296120.xhtml">Appendix D</a>, <em>Setting Up Your C Compiler On macOS</em>, for compiler setup.</p>
+<p>The code for this book can be found here: <a href="https://github.com/codeplea/Hands-On-Network-Programming-with-C">https://github.com/codeplea/Hands-On-Network-Programming-with-C</a>.</p>
+<p>From the command line, you can download the code for this chapter with the following command:</p>
+<pre class="mce-root"><strong>git clone https://github.com/codeplea/Hands-On-Network-Programming-with-C</strong><br/><strong>cd Hands-On-Network-Programming-with-C/chap02</strong></pre>
+<p>Each example program in this chapter is standalone, and each example runs on Windows, Linux, and macOS. When compiling for Windows, keep in mind that most of the example programs require linking with the Winsock library.</p>
+<p>This is accomplished by passing the <kbd>-lws2_32</kbd> option to <kbd>gcc</kbd>. We provide the exact commands needed to compile each example as they are introduced.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What are sockets?</h1>
+                </header>
+            
+            <article>
+                
+<p>A socket is one endpoint of a communication link between systems. Your application sends and receives all of its network data through a socket.</p>
+<p>There are a few different socket <strong>application programming interfaces</strong> (<strong>APIs</strong>). The first were Berkeley sockets, which were released in 1983 with 4.3BSD Unix. The Berkeley socket API was widely successful and quickly evolved into a de facto standard. From there, it was adopted as a POSIX standard with little modification. The terms Berkeley sockets, BSD sockets, Unix sockets, and <strong>Portable Operating System Interface</strong> (<strong>POSIX</strong>) sockets are often used interchangeably.</p>
+<p>If you're using Linux or macOS, then your operating system provides a proper implementation of Berkeley sockets.</p>
+<p>Windows' socket API is called <strong>Winsock</strong>. It was created to be largely compatible with Berkeley sockets. In this book, we strive to create cross-platform code that is valid for both Berkeley sockets and Winsock.</p>
+<p>Historically, sockets were used for <strong>inter-process communication</strong> (<strong>IPC</strong>) as well as various network protocols. In this book, we use sockets only for communication with TCP and UDP.</p>
+<p>Before we can start using sockets, we need to do a bit of setup. Let's dive right in!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Socket setup</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we can use the socket API, we need to include the socket API header files. These files vary depending on whether we are using Berkeley sockets or Winsock. Additionally, Winsock requires initialization before use. It also requires that a cleanup function is called when we are finished. These initialization and cleanup steps are not used with Berkeley sockets.</p>
+<p>We will use the C preprocessor to run the proper code on Windows compared to Berkeley socket systems. By using the preprocessor statement, <kbd>#if defined(_WIN32)</kbd>, we can include code in our program that will only be compiled on Windows.</p>
+<p>Here is a complete program that includes the needed socket API headers for each platform and properly initializes Winsock on Windows:</p>
+<pre>/*<span>sock_init.c*/</span><br/><br/>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif<br/><br/>#include &lt;stdio.h&gt;<br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif<br/><br/>    printf("Ready to use socket API.\n");<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    return 0;<br/>}</pre>
+<p>The first part includes <kbd>winsock.h</kbd> and <kbd>ws2tcpip.h</kbd> on Windows. <kbd>_WIN32_WINNT</kbd> must be defined for the Winsock headers to provide all the functions we need. We also include the <kbd>#pragma comment(lib,"ws2_32.lib")</kbd> <span>pragma statement. </span>This tells the Microsoft Visual C compiler to link your program against the Winsock library, <kbd>ws2_32.lib</kbd>. If you're using MinGW as your compiler, then <kbd>#pragma</kbd> is ignored. In this case, you need to tell the compiler to link in <kbd>ws2_32.lib</kbd> on the command line using the <kbd>-lws2_32</kbd> option.</p>
+<p>If the program is not compiled on Windows, then the section after <kbd>#else</kbd> will compile. This section includes the various Berkeley socket API headers and other headers we need on these platforms.</p>
+<p>In the <kbd>main()</kbd> function, we call <kbd>WSAStartup()</kbd> on Windows to initialize Winsock. The <kbd>MAKEWORD</kbd> macro allows us to request Winsock version 2.2. If our program is unable to initialize Winsock, it prints an error message and aborts.</p>
+<p>When using Berkeley sockets, no special initialization is needed, and the socket API is always ready to use.</p>
+<p>Before our program finishes, <kbd>WSACleanup()</kbd> is called if we're compiling for Winsock on Windows. This function allows the Windows operating system to do additional cleanup.</p>
+<p>Compiling and running this program on Linux or macOS is done with the following command:</p>
+<pre><strong>gcc sock_init.c -o sock_init</strong><br/><strong>./sock_init</strong></pre>
+<p>Compiling on Windows using MinGW can be done with the following <span>command</span>:</p>
+<pre><strong>gcc sock_init.c -o sock_init.exe -lws2_32</strong><br/><strong>sock_init.exe</strong></pre>
+<p>Notice that the <kbd>-lws2_32</kbd> flag is needed with MinGW to tell the compiler to link in the Winsock library, <kbd>ws2_32.lib</kbd>.</p>
+<p>Now that we've done the necessary setup to begin using the socket APIs, let's take a closer look at what we will be using these sockets for.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Two types of sockets</h1>
+                </header>
+            
+            <article>
+                
+<p>Sockets come in two basic types—<strong>connection-oriented</strong> and <strong>connectionless</strong>. These terms refer to types of protocols. Beginners sometimes get confused with the term <strong>connectionless</strong>. Of course, two systems communicating over a network are in some sense connected. Keep in mind that these terms are used with special meanings, which we will cover shortly, and should not imply that some protocols manage to send data without a connection.</p>
+<p>The two protocols that are used today are <strong><span>Transmission Control Protocol</span></strong> (<strong><span>TCP</span></strong>) and <strong><span>User Datagram Protocol</span></strong> (<strong><span>UDP</span></strong>). TCP is a connection-oriented protocol, and UDP is a connectionless protocol.</p>
+<p>The socket APIs also support other less-common or outdated protocols, which we do not cover in this book.</p>
+<p>In a connectionless protocol, such as UDP, each data packet is addressed individually. From the protocol's perspective, each data packet is completely independent and unrelated to any packets coming before or after it.</p>
+<p>A good analogy for UDP is <strong>postcards</strong>. When you send a postcard, there is no guarantee that it will arrive. There is also no way to know if it did arrive. If you send many postcards at once, there is no way to predict what order they will arrive in. It is entirely possible that the first postcard you send gets delayed and arrives weeks after the last postcard was sent.</p>
+<p>With UDP, these same caveats apply. UDP makes no guarantee that a packet will arrive. UDP doesn't generally provide a method to know if a packet did not arrive, and UDP does not guarantee that the packets will arrive in the same order they were sent. As you can see, UDP is no more reliable than postcards. In fact, you may consider it less reliable, because with UDP, it is possible that a single packet may arrive twice!</p>
+<p>If you need reliable communication, you may be tempted to develop a scheme where you number each packet that's sent. For the first packet sent, you number it one, the second packet sent is numbered two, and so on. You could also request that the receiver send an acknowledgment for each packet. When the receiver gets packet one, it sends a return message, <strong>packet one received</strong>. In this way, the receiver can be sure that received packets are in the proper order. If the same packet arrives twice, the receiver can just ignore the redundant copy. If a packet isn't received at all, the sender knows from the missing acknowledgment and can resend it.</p>
+<p>This scheme is essentially what connection-oriented protocols, such as TCP, do. TCP guarantees that data arrives in the same order it is sent. It prevents duplicate data from arriving twice, and it retries sending missing data. It also provides additional features such as notifications when a connection is terminated and algorithms to mitigate network congestion. Furthermore, TCP implements these features with an efficiency that is not achievable by piggybacking a custom reliability scheme on top of UDP.</p>
+<p>For these reasons, TCP is used by many protocols. HTTP (for severing web pages), FTP (for transferring files), SSH (for remote administration), and SMTP (for delivering email) all use TCP. We will cover HTTP, SSH, and SMTP in the coming chapters.</p>
+<p>UDP is used by DNS (for resolving domain names). It is suitable for this purpose because an entire request and response can fit in a single packet.</p>
+<p>UDP is also commonly used in real-time applications, such as audio streaming, video streaming, and multiplayer video games. In real-time applications, there is often no reason to retry sending dropped packets, so TCP's guarantees are unnecessary. For example, if you are streaming live video and a few packets get dropped, the video simply resumes when the next packet arrives. There is no reason to resend (or even detect) the dropped packet, as the video has already progressed past that point.</p>
+<p>UDP also has the advantage in cases where you want to send a message without expecting a response from the other end. This makes it useful when using IP broadcast or multicast. TCP, on the other hand, requires bidirectional communication to provide its guarantees, and TCP does not work with IP multicast or broadcast.</p>
+<p>If the guarantees that TCP provides are not needed, then UDP can achieve greater efficiency. This is because TCP adds some additional overhead by numbering packets. TCP must also delay packets that arrive out of order, which can cause unnecessary delays in real-time applications. If you do need the guarantees provided by TCP, however, it is almost always preferable to use TCP instead of trying to add those mechanisms to UDP.</p>
+<p>Now that we have an idea of the communication models we use sockets for, let's look at the actual functions that are used in socket programming.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Socket functions</h1>
+                </header>
+            
+            <article>
+                
+<p>The socket APIs provide many functions for use in network programming. Here are the common socket functions that we use in this book:</p>
+<ul>
+<li class="mce-root"><kbd>socket()</kbd> <span>creates and initializes a new socket.</span></li>
+<li><kbd>bind()</kbd> associates a socket with a particular local IP address and port number.</li>
+<li><kbd>listen()</kbd> is used on the server to cause a TCP socket to listen for new connections.</li>
+<li><kbd>connect()</kbd> is used on the client to set the remote address and port. In the case of TCP, it also establishes a connection.</li>
+<li><kbd>accept()</kbd> is used on the server to create a new socket for an incoming TCP connection.</li>
+<li><kbd>send()</kbd> and <kbd>recv()</kbd> are used to send and receive data with a socket.</li>
+<li><kbd>sendto()</kbd> and <kbd>recvfrom()</kbd> are used to send and receive data from sockets without a bound remote address.</li>
+<li><kbd>close()</kbd> (Berkeley sockets) and <kbd>closesocket()</kbd> (Winsock sockets) are used to close a socket. In the case of TCP, this also terminates the connection.</li>
+<li><kbd>shutdown()</kbd> is used to close one side of a TCP connection. It is useful to ensure an orderly connection teardown.</li>
+<li><kbd>select()</kbd> is used to wait for an event on one or more sockets.</li>
+<li><kbd>getnameinfo()</kbd> and <kbd>getaddrinfo()</kbd> provide a protocol-independent manner of working with hostnames and addresses.</li>
+<li><kbd>setsockopt()</kbd> is used to change some socket options.</li>
+<li><kbd>fcntl()</kbd> (Berkeley sockets) and <kbd>ioctlsocket()</kbd> (Winsock sockets) are also used to get and set some socket options.</li>
+</ul>
+<p>You may see some Berkeley socket networking programs using <kbd>read()</kbd> and <kbd>write()</kbd>. These functions don't port to Winsock, so we prefer <kbd>send()</kbd> and <kbd>recv()</kbd> here. Some other common functions that are used with Berkeley sockets are <kbd>poll()</kbd> and <kbd>dup()</kbd>. We will avoid these in order to keep our programs portable.</p>
+<p>Other differences between Berkeley sockets and Winsock sockets are addressed later in this chapter.</p>
+<p>Now that we have an idea of the functions involved, let's consider program design and flow next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Anatomy of a socket program</h1>
+                </header>
+            
+            <article>
+                
+<p>As we mentioned in <a href="e3e07fa7-ff23-4871-b897-c0d4551e6422.xhtml">Chapter 1</a>, <em>An Introduction to Networks and Protocols</em>, network programming is usually done using a client-server paradigm. In this paradigm, a server listens for new connections at a published address. The client, knowing the server's address, is the one to establish the connection <span>initially</span>. Once the connection is established, the client and the server can both send and receive data. This can continue until either the client or the server terminates the connection.</p>
+<p>A traditional client-server model usually implies different behaviors for the client and server. The way web browsing works, for example, is that the server resides at a known address, waiting for connections. A client (web browser) establishes a connection and sends a request that includes which web page or resource it wants to download. The server then checks that it knows what to do with this request and responds appropriately (by sending the web page).</p>
+<p>An alternative paradigm is the peer-to-peer model. F<span>or example, t</span>his model is used by the BitTorrent protocol. In the peer-to-peer model, each peer has essentially the same responsibilities. While a web server is optimized to send requested data from the server to the client, a peer-to-peer protocol is balanced in that data is exchanged somewhat evenly between peers. However, even in the peer-to-peer model, the underlying sockets that are using TCP or UDP aren't created equal. That is, for each peer-to-peer connection, one peer was listening and the other connecting. BitTorrent works by having a central server (called a <strong>tracker</strong>) that stores a list of peer IP addresses. Each of the peers on that list has agreed to behave like a server and listen for new connections. When a new peer wants to join the swarm, it requests a list of peers from the central server, and then tries to establish a connection to peers on that list while simultaneously listening for new connections from other peers. In summary, a peer-to-peer protocol doesn't so much replace the client-server model; it is just expected that each peer be a client and a server both.</p>
+<p>Another common protocol that pushes the boundary of the client-server paradigm is FTP. The FTP server listens for connections until the FTP client connects. After the initial connection, the FTP client issues commands to the server. If the FTP client requests a file from the server, the server will attempt to establish a new connection to the FTP client to transfer the file over. So, for this reason, the FTP client first establishes a connection as a TCP client, but later accepts connections like a TCP server.</p>
+<p>Network programs can usually be described as one of four types—a TCP server, a TCP client, a UDP server, or a UDP client. Some protocols call for a program to implement two, or even all four types, but it is useful for us to consider each of the four types separately.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">TCP program flow</h1>
+                </header>
+            
+            <article>
+                
+<p>A TCP client program must first know the TCP server's address. This is often input by a user. In the case of a web browser, the server address is either input directly by the user into the address bar, or is known from the user clicking on a link. The TCP client takes this address (for example, <kbd>http://example.com</kbd>) and uses the <kbd>getaddrinfo()</kbd> function to resolve it into a <kbd>struct addrinfo</kbd> structure. The client then creates a socket using a call to <kbd>socket()</kbd>. The client then establishes the new TCP connection by calling <kbd>connect()</kbd>. At this point, the client can freely exchange data using <kbd>send()</kbd> and <kbd>recv()</kbd>.</p>
+<p>A TCP server listens for connections at a particular port number on a particular interface. The program must first initialize a <kbd>struct addrinfo</kbd> <span>structure </span>with the proper listening IP address and port number. The <kbd>getaddrinfo()</kbd> function is helpful so that you can do this in an IPv4/IPv6 independent way. The server then creates the socket with a call to <kbd>socket()</kbd>. The socket must be bound to the listening IP address and port. This is accomplished with a call to <kbd>bind()</kbd>.</p>
+<p>The server program then calls <kbd>listen()</kbd>, which puts the socket in a state where it listens for new connections. The server can then call <kbd>accept()</kbd>, which will wait until a client establishes a connection to the server. When the new connection has been established, <kbd>accept()</kbd> returns a new socket. This new socket can be used to exchange data with the client using <kbd>send()</kbd> and <kbd>recv()</kbd>. Meanwhile, the first socket remains listening for new connections, and repeated calls to <kbd>accept()</kbd> allow the server to handle multiple clients.</p>
+<p>Graphically, the program flow of a TCP client and server looks like this:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/59a85ccf-c015-4f95-b3c6-349a92f8d1a0.png" style="width:26.50em;height:45.08em;"/></p>
+<p>The program flow given here should serve as a good example of how basic client-server TCP programs interact. That said, considerable variation on this basic program flow is possible. There is also no rule about which side calls <kbd>send()</kbd> or <kbd>recv()</kbd> first, or how many times. Both sides could call <kbd>send()</kbd> as soon as the connection is established.</p>
+<p>Also, note that the TCP client could call <kbd>bind()</kbd> before <kbd>connect()</kbd> if it is particular about which network interface is being used to connect with. This is sometimes important on servers that have multiple network interfaces. It's often not important for general purpose software.</p>
+<p>Many other variations of TCP operation are possible too, and we will look at some in <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">UDP program flow</h1>
+                </header>
+            
+            <article>
+                
+<p>A UDP client must know the address of the remote UDP peer in order to send the first packet. The UDP client uses <span>the</span> <kbd>getaddrinfo()</kbd> <span>function to resolve the address into a</span> <kbd>struct addrinfo</kbd> structure. Once this is done, the client creates a socket of the proper type. The client can then call <kbd>sendto()</kbd> on the socket to send the first packet. The client can continue to call <kbd>sendto()</kbd> and <kbd>recvfrom()</kbd> on the socket to send and receive additional packets. Note that the client must send the first packet with <kbd>sendto()</kbd>. The UDP client cannot receive data first, as the remote peer would have no way of knowing where to send data without it first receiving data from the client. This is different from TCP, where a connection is first established with a handshake. In TCP, either the client or server can send the first application data.</p>
+<p>A UDP server listens for connections from a UDP client. This server should initialize <kbd>struct addrinfo</kbd> <span>structure </span>with the proper listening IP address and port number. The <kbd>getaddrinfo()</kbd> function can be used to do this in a protocol-independent way. The server then creates a new socket with <kbd>socket()</kbd> and binds it to the listening IP address and port number using <kbd>bind()</kbd>. At this point, the server can call <kbd>recvfrom()</kbd>, which causes it to block until it receives data from a UDP client. After the first data is received, the server can reply with <kbd>sendto()</kbd> or listen for more data (from the first client or any new client) with <kbd>recvfrom()</kbd>.</p>
+<p>Graphically, the program flow of a UDP client and server looks like this:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/1201c9b4-5159-47e2-a5a0-b2c4fb3b7e20.png" style="width:29.42em;height:35.83em;"/></p>
+<p>We cover some variations of this example program flow in <a href="05a32725-5c72-41e4-92aa-2425bf75282e.xhtml">Chapter 4</a>, <em>Establishing UDP Connections</em>.</p>
+<p>We're almost ready to begin implementing our first networked program, but before we begin, we should take care of some cross-platform concerns. Let's work on this now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Berkeley sockets versus Winsock sockets</h1>
+                </header>
+            
+            <article>
+                
+<p>As we stated earlier, Winsock sockets were modeled on Berkeley sockets. Therefore, there are many similarities between them. However, there are also many differences we need to be aware of.</p>
+<p>In this book, we will try to create each program so that it can run on both Windows and Unix-based operating systems. This is made much easier by defining a few C macros to help us with this.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Header files</h1>
+                </header>
+            
+            <article>
+                
+<p>As we mentioned earlier, the needed header files differ between implementations. We've already seen how these header file discrepancies can be easily overcome with a preprocessor statement.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Socket data type</h1>
+                </header>
+            
+            <article>
+                
+<p>In UNIX, a socket descriptor is represented by a standard file descriptor. This means you can use any of the standard UNIX file I/O functions on sockets. This isn't true on Windows, so we simply avoid these functions to maintain portability.</p>
+<p>Additionally, in UNIX, all file descriptors (and therefore socket descriptors) are small, non-negative integers. In Windows, a socket handle can be anything. Furthermore, in UNIX, the <kbd>socket()</kbd> function returns an <kbd>int</kbd>, whereas in Windows it returns a <kbd>SOCKET</kbd>. <kbd>SOCKET</kbd> is a <kbd>typedef</kbd> for an <kbd>unsigned int</kbd> in the Winsock headers. As a workaround, I find it useful to either <kbd>typedef int SOCKET</kbd> or <kbd>#define SOCKET int</kbd> on non-Windows platforms. That way, you can store a socket descriptor as a <kbd>SOCKET</kbd> type on all platforms:</p>
+<pre>#if !defined(_WIN32)<br/>#define SOCKET int<br/>#endif</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Invalid sockets</h1>
+                </header>
+            
+            <article>
+                
+<p>On Windows, <kbd>socket()</kbd> returns <kbd>INVALID_SOCKET</kbd> if it fails. On Unix, <kbd>socket()</kbd> returns a negative number on failure. This is particularly problematic as the Windows <kbd>SOCKET</kbd> type is unsigned. I find it useful to define a macro to indicate if a socket descriptor is valid or not:</p>
+<pre>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#endif</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Closing sockets</h1>
+                </header>
+            
+            <article>
+                
+<p>All sockets on Unix systems are also standard file descriptors. For this reason, sockets on Unix systems can be closed using the standard <kbd>close()</kbd> function. On Windows, a special close function is used instead—<kbd>closesocket()</kbd>. It's useful to abstract out this difference with a macro:</p>
+<pre>#if defined(_WIN32)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#else<br/>#define CLOSESOCKET(s) close(s)<br/>#endif</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Error handling</h1>
+                </header>
+            
+            <article>
+                
+<p>When a socket function, such as <kbd>socket()</kbd>, <kbd>bind()</kbd>, <kbd>accept()</kbd>, and so on, has an error on a Unix platform, the error number gets stored in the thread-global <kbd>errno</kbd> variable. On Windows, the error number can be retrieved by calling <kbd>WSAGetLastError()</kbd> instead. Again, we can abstract out this difference using a macro:</p>
+<pre>#if defined(_WIN32)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/>#else<br/>#define GETSOCKETERRNO() (errno)<br/>#endif<br/><br/><br/></pre>
+<p>In addition to obtaining an error code, it is often useful to retrieve a text description of the error condition. Please refer to <a href="11c5bb82-e55f-4977-bf7f-5dbe791fde92.xhtml">Chapter 13</a>, <em>Socket Programming Tips and Pitfalls</em>, for a technique for this.</p>
+<p>With these helper macros out of the way, let's dive into our first real socket program.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Our first program</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we have a basic idea of socket APIs and the structure of networked programs, we are ready to begin our first program. By building an actual real-world program, we will learn the useful details of how socket programming actually works.</p>
+<p>As an example task, we are going to build a web server that tells you what time it is right now. This could be a useful resource for anybody with a smartphone or web browser that needs to know what time it is right now. They can simply navigate to our web page and find out. This is a good first example because it does something useful but still trivial enough that it won't distract from what we are trying to learn—network programming.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A motivating example</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we begin the networked program, it is useful to solve our problem with a simple console program first. In general, it is a good idea to work out your program's functionality locally before adding in networked features.</p>
+<p>The local, console version of our time-telling program is as follows:</p>
+<pre>/*<span>time_console.c*/</span><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;time.h&gt;<br/><br/>int main()<br/>{<br/>    time_t timer;<br/>    time(&amp;timer);<br/><br/>    printf ("Local time is: %s", ctime(&amp;timer));<br/><br/>    return 0;<br/>}</pre>
+<p>You can compile and run it like this:</p>
+<pre><strong>$ gcc time_console.c -o time_console</strong><br/><strong>$ ./time_console</strong><br/><strong>Local time is: Fri Oct 19 08:42:05 2018</strong></pre>
+<p>The program works by getting the time with the built-in C <kbd>time()</kbd> function. It then converts it into a string with the <kbd>ctime()</kbd> function.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making it networked</h1>
+                </header>
+            
+            <article>
+                
+<p>Now that we've worked out our program's functionality, we can begin on the networked version of the same program.</p>
+<p>To begin with, we include the needed headers:</p>
+<pre>/*<span>time_server.c*/</span><br/><br/>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif</pre>
+<p>As we discussed earlier, this detects if the compiler is running on Windows or not and includes the proper headers for the platform it is running on.</p>
+<p>We also define some macros, which abstract out some of the difference between the Berkeley socket and Winsock APIs:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/><br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#define CLOSESOCKET(s) close(s)<br/>#define SOCKET int<br/>#define GETSOCKETERRNO() (errno)<br/>#endif</pre>
+<p>We need a couple of standard C headers, hopefully for obvious reasons:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;string.h&gt;<br/>#include &lt;time.h&gt;</pre>
+<p>Now, we are ready to begin the <kbd>main()</kbd> function. The first thing the <kbd>main()</kbd> function will do is initialize Winsock if we are compiling on Windows:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>We must now figure out the local address that our web server should bind to:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Configuring local address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_family = AF_INET;<br/>    hints.ai_socktype = SOCK_STREAM;<br/>    hints.ai_flags = AI_PASSIVE;<br/><br/>    struct addrinfo *bind_address;<br/>    getaddrinfo(0, "8080", &amp;hints, &amp;bind_address);</pre>
+<p>We use <kbd>getaddrinfo()</kbd> to fill in a <kbd>struct addrinfo</kbd> structure with the needed information. <kbd>getaddrinfo()</kbd> takes a <kbd>hints</kbd> parameter, which tells it what we're looking for. In this case, we've zeroed out <kbd>hints</kbd> using <kbd>memset()</kbd> first. Then, we set <kbd>ai_family = AF_INET</kbd>. <kbd>AF_INET</kbd> specifies that we are looking for an IPv4 address. We could use <kbd>AF_INET6</kbd> to make our web server listen on an IPv6 address instead (more on this later).</p>
+<p>Next, we set <kbd>ai_socktype = SOCK_STREAM</kbd>. This indicates that we're going to be using TCP. <kbd>SOCK_DGRAM</kbd> would be used if we were doing a UDP server instead. Finally, <kbd>ai_flags = AI_PASSIVE</kbd> is set. This is telling <kbd>getaddrinfo()</kbd> that we want it to bind to the wildcard address. That is, we are asking <kbd>getaddrinfo()</kbd> to set up the address, so we listen on any available network interface.</p>
+<p>Once <kbd>hints</kbd> is set up properly, we declare a pointer to a <kbd>struct addrinfo</kbd> structure, which holds the return information from <kbd>getaddrinfo()</kbd>. We then call the <kbd>getaddrinfo()</kbd> function. The <kbd>getaddrinfo()</kbd> function has many uses, but for our purpose, it generates an address that's suitable for <kbd>bind()</kbd>. To make it generate this, we must pass in the first parameter as <kbd>NULL</kbd> and have the <kbd>AI_PASSIVE</kbd> flag set in <kbd>hints.ai_flags</kbd>.</p>
+<p>The second parameter to <kbd>getaddrinfo()</kbd> is the port we listen for connections on. A standard HTTP server would use port <kbd>80</kbd>. However, only privileged users on Unix-like operating systems can bind to ports <kbd>0</kbd> through <kbd>1023</kbd>. The choice of port number here is arbitrary, but we use <kbd>8080</kbd> to avoid issues. If you are running with superuser privileges, feel free to change the port number to <kbd>80</kbd> if you like. Keep in mind that only one program can bind to a particular port at a time. If you try to use a port that is already in use, then the call to <kbd>bind()</kbd> fails. In this case, just change the port number to something else and try again.</p>
+<p>It is common to see programs that don't use <kbd>getaddrinfo()</kbd> here. Instead, they fill in a <kbd>struct addrinfo</kbd> structure directly. The advantage to using <kbd>getaddrinfo()</kbd> is that it is protocol-independent. Using <kbd>getaddrinfo()</kbd> makes it very easy to convert our program from IPv4 to IPv6. In fact, we only need to change <kbd>AF_INET</kbd> to <kbd>AF_INET6</kbd>, and our program will work on IPv6. If we filled in the <kbd>struct addrinfo</kbd> <span>structure </span>directly, we would need to make many tedious changes to convert our program into IPv6.</p>
+<p>Now that we've figured out our local address info, we can create the socket:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_listen;<br/>    socket_listen = socket(bind_address-&gt;ai_family,<br/>            bind_address-&gt;ai_socktype, bind_address-&gt;ai_protocol);</pre>
+<p>Here, we define <kbd>socket_listen</kbd> as a <kbd>SOCKET</kbd> type. Recall that <kbd>SOCKET</kbd> is a Winsock type on Windows, and that we have a macro defining it as <kbd>int</kbd> on other platforms. We call the <kbd>socket()</kbd> function to generate the actual socket. <kbd>socket()</kbd> takes three parameters: the socket family, the socket type, and the socket protocol. The reason we used <kbd>getaddrinfo()</kbd> before calling <kbd>socket()</kbd> is that we can now pass in parts of <kbd>bind_address</kbd> as the arguments to <kbd>socket()</kbd>. Again, this makes it very easy to change our program's protocol without needing a major rewrite.</p>
+<p>It is common to see programs written so that they call <kbd>socket()</kbd> first. The problem with this is that it makes the program more complicated as the socket family, type, and protocol must be entered multiple times. Structuring our program as we have here is better.</p>
+<p>We should check that the call to <kbd>socket()</kbd> was successful:</p>
+<pre>/*<span>time_server.c continued*/</span> <br/><br/>   if (!ISVALIDSOCKET(socket_listen)) {<br/>       fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>We can check that <kbd>socket_listen</kbd> is valid using the <kbd>ISVALIDSOCKET()</kbd> macro we defined earlier. If the socket is not valid, we print an error message. Our <kbd>GETSOCKETERRNO()</kbd> macro is used to retrieve the error number in a cross-platform way.</p>
+<p>After the socket has been created successfully, we can call <kbd>bind()</kbd> to associate it with our address from <kbd>getaddrinfo()</kbd>:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Binding socket to local address...\n");<br/>    if (bind(socket_listen,<br/>                bind_address-&gt;ai_addr, bind_address-&gt;ai_addrlen)) {<br/>        fprintf(stderr, "bind() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }<br/>    freeaddrinfo(bind_address);</pre>
+<p><kbd>bind()</kbd> returns <kbd>0</kbd> on success and non-zero on failure. If it fails, we print the error number much like we did for the error handling on <kbd>socket()</kbd>. <kbd>bind()</kbd> fails if the port we are binding to is already in use. In that case, either close the program using that port or change your program to use a different port.</p>
+<p>After we have bound to <kbd>bind_address</kbd>, we can call the <kbd>freeaddrinfo()</kbd> function to release the address memory.</p>
+<p>Once the socket has been created and bound to a local address, we can cause it to start listening for connections with the <kbd>listen()</kbd> function:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Listening...\n");<br/>    if (listen(socket_listen, 10) &lt; 0) {<br/>        fprintf(stderr, "listen() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>The second argument to <kbd>listen()</kbd>, which is <kbd>10</kbd> in this case, tells <kbd>listen()</kbd> how many connections it is allowed to queue up. If many clients are connecting to our server all at once, and we aren't dealing with them fast enough, then the operating system begins to queue up these incoming connections. If <kbd>10</kbd> connections become queued up, then the operating system will reject new connections until we remove one from the existing queue.</p>
+<p>Error handling for <kbd>listen()</kbd> is done the same way as we did for <kbd>bind()</kbd> and <kbd>socket()</kbd>.</p>
+<p>After the socket has begun listening for connections, we can accept any incoming connection with the <kbd>accept()</kbd> function:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Waiting for connection...\n");<br/>    struct sockaddr_storage client_address;<br/>    socklen_t client_len = sizeof(client_address);<br/>    SOCKET socket_client = accept(socket_listen,<br/>            (struct sockaddr*) &amp;client_address, &amp;client_len);<br/>    if (!ISVALIDSOCKET(socket_client)) {<br/>        fprintf(stderr, "accept() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p><kbd>accept()</kbd> has a few functions. First, when it's called, it will block your program until a new connection is made. In other words, your program will sleep until a connection is made to the listening socket. When the new connection is made, <kbd>accept()</kbd> will create a new socket for it. Your original socket continues to listen for new connections, but the new socket returned by <kbd>accept()</kbd> can be used to send and receive data over the newly established connection. <kbd>accept()</kbd> also fills in address info of the client that connected.</p>
+<p>Before calling <kbd>accept()</kbd>, we must declare a new <kbd>struct sockaddr_storage</kbd> variable to store the address info for the connecting client. The <kbd>struct sockaddr_storage</kbd> type is guaranteed to be large enough to hold the largest supported address on your system. We must also tell <kbd>accept()</kbd> the size of the address buffer we're passing in. When <kbd>accept()</kbd> returns, it will have filled in <kbd>client_address</kbd> with the connected client's address and <kbd>client_len</kbd> with the length of that address. <kbd>client_len</kbd> differs, depending on whether the connection is using IPv4 or IPv6.</p>
+<p>We store the return value of <kbd>accept()</kbd> in <kbd>socket_client</kbd>. We check for errors by detecting if <kbd>client_socket</kbd> is a valid socket. This is done in exactly the same way as we did for <kbd>socket()</kbd>.</p>
+<p>At this point, a TCP connection has been established to a remote client. We can print the client's address to the console:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Client is connected... ");<br/>    char address_buffer[100];<br/>    getnameinfo((struct sockaddr*)&amp;client_address,<br/>            client_len, address_buffer, sizeof(address_buffer), 0, 0,<br/>            NI_NUMERICHOST);<br/>    printf("%s\n", address_buffer);</pre>
+<p>This step is completely optional, but it is good practice to log network connections somewhere.</p>
+<p><kbd>getnameinfo()</kbd> takes the client's address and address length. The address length is needed because <kbd>getnameinfo()</kbd> can work with both IPv4 and IPv6 addresses. We then pass in an output buffer and buffer length. This is the buffer that <kbd>getnameinfo()</kbd> writes its hostname output to. The next two arguments specify a second buffer and its length. <kbd>getnameinfo()</kbd> outputs the service name to this buffer. We don't care about that, so we've passed in <kbd>0</kbd> for those two parameters. Finally, we pass in the <kbd>NI_NUMERICHOST</kbd> flag, which specifies that we want to see the hostname as an IP address.</p>
+<p>As we are programming a web server, we expect the client (for example, a web browser) to send us an HTTP request. We read this request using the <kbd>recv()</kbd> function:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Reading request...\n");<br/>    char request[1024];<br/>    int bytes_received = recv(socket_client, request, 1024, 0);<br/>    printf("Received %d bytes.\n", bytes_received);</pre>
+<p>We define a <span>request </span>buffer, so that we can store the browser's HTTP request. In this case, we allocate 1,024 bytes to it, which should be enough for this application. <kbd>recv()</kbd> is then called with the client's socket, the request buffer, and the request buffer size. <kbd>recv()</kbd> returns the number of bytes that are received. If nothing has been received yet, <kbd>recv()</kbd> blocks until it has something. If the connection is terminated by the client, <kbd>recv()</kbd> returns <kbd>0</kbd> or <kbd>-1</kbd>, depending on the circumstance. We are ignoring that case here for simplicity, but you should always check that <kbd>recv() &gt; 0</kbd> in production. The last parameter to <kbd>recv()</kbd> is for flags. Since we are not doing anything special, we simply pass in <kbd>0</kbd>.</p>
+<p>The request received from our client should follow the proper HTTP protocol. We will go into detail about HTTP in <a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml">Chapter 6</a>, <em>Building a Simple Web Client</em>, and <a href="f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml">Chapter 7</a>, <em>Building a Simple Web Server</em>, where we will work on web clients and servers. A real web server would need to parse the request and look at which resource the web browser is requesting. Our web server only has one function—to tell us what time it is. So, for now, we just ignore the request altogether.</p>
+<p>If you want to print the browser's request to the console, you can do it like this:</p>
+<pre>    printf("%.*s", bytes_received, request);</pre>
+<p>Note that we use the <kbd>printf()</kbd> format string, <kbd>"%.*s"</kbd>. This tells <kbd>printf()</kbd> that we want to print a specific number of characters—<kbd>bytes_received</kbd>. It is a common mistake to try printing data that's received from <kbd>recv()</kbd> directly as a C string. There is no guarantee that the data received from <kbd>recv()</kbd> is null terminated! If you try to print it with <kbd>printf(request)</kbd> or <kbd>printf("%s", request)</kbd>, you will likely receive a segmentation fault error (or at best it will print some garbage).</p>
+<p>Now that the web browser has sent its request, we can send our response back:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Sending response...\n");<br/>    const char *response =<br/>        "HTTP/1.1 200 OK\r\n"<br/>        "Connection: close\r\n"<br/>        "Content-Type: text/plain\r\n\r\n"<br/>        "Local time is: ";<br/>    int bytes_sent = send(socket_client, response, strlen(response), 0);<br/>    printf("Sent %d of %d bytes.\n", bytes_sent, (int)strlen(response));</pre>
+<p>To begin with, we set <kbd>char *response</kbd> to a standard HTTP response header and the beginning of our message (<kbd>Local time is:</kbd>). We will discuss HTTP in detail in <a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml"/><a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml"/><a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml"/><a href="de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml">Chapter 6</a>, <em>Building a Simple Web Client</em>, and <a href="f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml">Chapter 7</a>, <em>Building a Simple Web Server</em>. For now, know that this response tells the browser three things—your request is OK; the server will close the connection when all the data is sent and the data you receive will be plain text.</p>
+<p>The HTTP response header ends with a blank line. HTTP requires line endings to take the form of a carriage return character, followed by a newline character. So, a blank line in our response is <kbd>\r\n</kbd>. The part of the string that comes after the blank line, <kbd>Local time is:</kbd>, is treated by the browsers as plain text.</p>
+<p>We send the data to the client using the <kbd>send()</kbd> function. This function takes the client's socket, a pointer to the data to be sent, and the length of the data to send. The last parameter to <kbd>send()</kbd> is flags. We don't need to do anything special, so we pass in <kbd>0</kbd>.</p>
+<p><kbd>send()</kbd> returns the number of bytes sent. You should generally check that the number of bytes sent was as expected, and you should attempt to send the rest if it's not. We are ignoring that detail here for simplicity. (Also, we are only attempting to send a few bytes; if <kbd>send()</kbd> can't handle that, then something is probably very broken, and resending won't help.)</p>
+<p>After the HTTP header and the beginning of our message is sent, we can send the actual time. We get the local time the same way we did in <kbd>time_console.c</kbd>, and we send it using <kbd>send()</kbd>:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    time_t timer;<br/>    time(&amp;timer);<br/>    char *time_msg = ctime(&amp;timer);<br/>    bytes_sent = send(socket_client, time_msg, strlen(time_msg), 0);<br/>    printf("Sent %d of %d bytes.\n", bytes_sent, (int)strlen(time_msg));</pre>
+<p>We must then close the client connection to indicate to the browser that we've sent all of our data:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Closing connection...\n");<br/>    CLOSESOCKET(socket_client);</pre>
+<p>If we don't close the connection, the browser will just wait for more data until it times out.</p>
+<p>At this point, we could call <kbd>accept()</kbd> on <kbd>socket_listen</kbd> to accept additional connections. That is exactly what a real server would do. However, as this is just a quick example program, we will instead close the listening socket too and terminate the program:</p>
+<pre>/*<span>time_server.c continued*/</span><br/><br/>    printf("Closing listening socket...\n");<br/>    CLOSESOCKET(socket_listen);<br/><br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/><br/>    printf("Finished.\n");<br/><br/>    return 0;<br/>}</pre>
+<p>That's the complete program. After you compile and run it, you can navigate a web browser to it, and it'll display the current time.</p>
+<p>On Linux and macOS, you can compile and run the program like this:</p>
+<pre><strong>gcc time_server.c -o time_server</strong><br/><strong>./time_server</strong></pre>
+<p>On Windows, you can compile and run with MinGW using these commands:</p>
+<pre><strong>gcc time_server.c -o time_server.exe -lws2_32</strong><br/><strong>time_server</strong></pre>
+<p>When you run the program, it waits for a connection. You can open a web browser and navigate to <kbd>http://127.0.0.1:8080</kbd> to load the web page. Recall that <kbd>127.0.0.1</kbd> is the IPv4 loopback address, which connects to the same machine it's running on. The <kbd>:8080</kbd> part of the URL specifies the port number to connect to. If it were left out, your browser would default to port <kbd>80</kbd>, which is the standard for HTTP connections.</p>
+<p>Here is what you should see if you compile and run the program, and then connect a web browser to it on the same computer:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/cf0b6dc6-dc76-4a82-8491-12db5c626b05.png" style="width:32.50em;height:22.50em;"/></p>
+<p>Here is the web browser connected to our <kbd>time_server</kbd> program on port <kbd>8080</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/c6ec89d7-cddd-42a2-aa9a-ea7962479d89.png" style="width:47.00em;height:11.50em;"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Working with IPv6</h1>
+                </header>
+            
+            <article>
+                
+<p>Please recall the <kbd>hints.ai_family = AF_INET</kbd> part of <kbd>time_server.c</kbd> near the beginning of the <kbd>main()</kbd> function. If this line is changed to <kbd>hints.ai_family = AF_INET6</kbd>, then your web server listens for IPv6 connections instead of IPv4 connections. This modified file is included in the GitHub repository as <kbd>time_server_ipv6.c</kbd>.</p>
+<p>In this case, you should navigate your web browser to <kbd>http://[::1]:8080</kbd> to see the web page. <kbd>::1</kbd> is the IPv6 loopback address, which tells the web browser to connect to the same machine it's running on. In order to use IPv6 addresses in URLs, you need to put them in square brackets, <kbd>[]</kbd>. <kbd>:8080</kbd> specifies the port number in the same way that we did for the IPv4 example.</p>
+<p>Here is what you should see when compiling, running, and connecting a web browser to our <kbd>time_server_ipv6</kbd> program:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/ef16537f-a6b5-4b88-835e-5bc2c971b4c9.png" style="width:32.08em;height:21.17em;"/></p>
+<p>Here is the web browser that's connected to our server using an IPv6 socket:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/3d9c9073-759e-46eb-9958-f8aedca7e8af.png" style="width:45.50em;height:9.58em;"/></p>
+<p>See <kbd>time_server_ipv6.c</kbd> for the complete program.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Supporting both IPv4 and IPv6</h1>
+                </header>
+            
+            <article>
+                
+<p>It is also possible for the listening IPv6 socket to accept IPv4 connections with a dual-stack socket. Not all operating systems support dual-stack sockets. With Linux in particular, support varies between distros. If your operating system does support dual-stack sockets, then I highly recommend implementing your server programs using this feature. It allows your programs to communicate with both IPv4 and IPv6 peers while requiring no extra work on your part.</p>
+<p>We can modify <kbd>time_server_ipv6.c</kbd> to use dual-stack sockets with only a minor addition. After the call to <kbd>socket()</kbd> and before the call to <kbd>bind()</kbd>, we must clear the <kbd>IPV6_V6ONLY</kbd> flag on the socket. This is done with the <kbd>setsockopt()</kbd> function:</p>
+<pre>/*<span>time_server_dual.c excerpt*/</span><br/><br/>    int option = 0;<br/>    if (setsockopt(socket_listen, IPPROTO_IPV6, IPV6_V6ONLY, (void*)&amp;option, sizeof(option))) {<br/>        fprintf(stderr, "setsockopt() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>We first declare <kbd>option</kbd> as an integer and set it to <kbd>0</kbd>. <kbd>IPV6_V6ONLY</kbd> is enabled by default, so we clear it by setting it to <kbd>0</kbd>. <kbd>setsockopt()</kbd> is called on the listening socket. We pass in <kbd>IPPROTO_IPV6</kbd> to tell it what part of the socket we're operating on, and we pass in <kbd>IPV6_V6ONLY</kbd> to tell it which flag we are setting. We then pass in a pointer to our option and its length. <kbd>setsockopt()</kbd> returns <kbd>0</kbd> on success.</p>
+<p>Windows Vista and later supports dual-stack sockets. However, many Windows headers are missing the definitions for <kbd>IPV6_V6ONLY</kbd>. For this reason, it might make sense to include the following code snippet at the top of the file:</p>
+<pre>/*<span>time_server_dual.c excerpt*/</span><br/><br/>#if !defined(IPV6_V6ONLY)<br/>#define IPV6_V6ONLY 27<br/>#endif</pre>
+<p>Keep in mind that the socket needs to be initially created as an IPv6 socket. This is accomplished with the <kbd>hints.ai_family = AF_INET6</kbd> line in our code.</p>
+<p>When an IPv4 peer connects to our dual-stack server, the connection is remapped to an IPv6 connection. This happens automatically and is taken care of by the operating system. When your program sees the client IP address, it will still be presented as a special IPv6 address. These are represented by IPv6 addresses where the first 96 bits consist of the prefix—<kbd>0:0:0:0:0:ffff</kbd>. The last 32 bits of the address are used to store the IPv4 address. For example, if a client connects with the IPv4 address <kbd>192.168.2.107</kbd>, then your dual-stack server sees it as the IPv6 address <kbd>::ffff.192.168.2.107</kbd>.</p>
+<p>Here is what it looks like to compile, run, and connect to <kbd>time_server_dual</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/44af723e-9cb7-4d02-93a4-12321236041e.png" style="width:32.75em;height:19.25em;"/></p>
+<p>Here is a web browser connected to our <kbd>time_server_dual</kbd> program using the loopback IPv4 address:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/7069a80b-93ed-4cc4-a145-4a1ca6f8f9ff.png" style="width:45.33em;height:9.83em;"/></p>
+<p>Notice that the browser is navigating to the IPv4 address <kbd>127.0.0.1</kbd>, but we can see on the console that the server sees the connection as coming from the IPv6 address <kbd>::ffff:127.0.0.1</kbd>.</p>
+<p>See <kbd>time_server_dual.c</kbd> for the complete dual-stack socket server.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Networking with inetd</h1>
+                </header>
+            
+            <article>
+                
+<p>On Unix-like systems, such as Linux or macOS, a service called <em>inetd</em> can be used to turn console-only applications into networked ones. You can configure <em>inetd</em> (with <kbd>/etc/inetd.conf</kbd>) with your program's location, port number, protocol (TCP or UDP), and the user you want it to run as. <em>inetd</em> will then listen for connections on your desired port. After an incoming connection is accepted by <em>inetd</em>, it will start your program and redirect all socket input/output through <kbd>stdin</kbd> and <kbd>stdout</kbd>.</p>
+<p>Using <em>inetd</em>, we could have <kbd>time_console.c</kbd> behave like <kbd>time_server.c</kbd> with very minimal changes. We would only need to add in an extra <kbd>printf()</kbd> function with the HTTP response header, read from <kbd>stdin</kbd>, and configure <em>inetd</em>.</p>
+<p>You may be able to use <em>inetd</em> on Windows through Cygwin or the Windows Subsystem for Linux.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we learned about the basics of using sockets for network programming. Although there are many differences between Berkeley sockets (used on Unix-like operating systems) and Winsock sockets (used on Windows), we mitigated those differences with preprocessor statements. In this way, it was possible to write one program that compiles cleanly on Windows, Linux, and macOS.</p>
+<p>We covered how the UDP protocol is connectionless and what that means. We learned that TCP, being a connection-oriented protocol, gives some reliability guarantees, such as automatically detecting and resending lost packets. We also saw that UDP is often used for simple protocols (for example, DNS) and for real-time streaming applications. TCP is used for most other protocols.</p>
+<p>After that, we worked through a real example by converting a console application into a web server. We learned how to write the program using the <kbd>getaddrinfo()</kbd> function, and why that matters for making the program IPv4/IPv6-agnostic. We used <kbd>bind()</kbd>, <kbd>listen()</kbd>, and <kbd>accept()</kbd> on the server to wait for an incoming connection from the web browser. Data was then read from the client using <kbd>recv()</kbd>, and a reply was sent using <kbd>send()</kbd>. Finally, we terminated the connection with <kbd>close()</kbd> (<kbd>closesocket()</kbd> on Windows).</p>
+<p>When we built the web server, <kbd>time_server.c</kbd>, we covered much ground. It's OK if you didn't understand all of it. We will revisit many of these functions again throughout <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>, and the rest of this book.</p>
+<p>In the next chapter, <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>, we will consider programming for TCP connections in more depth.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>Try these questions to test your knowledge on this chapter:</p>
+<ol>
+<li>What is a socket?</li>
+<li>What is a connectionless protocol? What is a connection-oriented protocol?</li>
+<li>Is UDP a connectionless or connection-oriented protocol?</li>
+<li>Is TCP a connectionless or connection-oriented protocol?</li>
+<li>What types of applications generally benefit from using the UDP protocol?</li>
+<li>What types of applications generally benefit from using the TCP protocol?</li>
+<li>Does TCP guarantee that data will be transmitted successfully?</li>
+<li>What are some of the main differences between Berkeley sockets and Winsock sockets?</li>
+<li>What does the <kbd>bind()</kbd> function do?</li>
+<li>What does the <kbd>accept()</kbd> function do?</li>
+<li>In a TCP connection, does the client or the server send application data first?</li>
+</ol>
+<p class="mce-root"/>
+<p>Answers are in <a href="bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml">Appendix A</a>, <em>Answers to Questions</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

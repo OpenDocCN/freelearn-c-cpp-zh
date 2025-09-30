@@ -1,0 +1,1321 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Drivers and ISRs</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Interacting with the <span>peripherals of a</span> <strong>microcontroller unit</strong> (<strong>MCU</strong>) is extremely important in many applications. In this chapter, we'll discuss several different ways of implementing peripheral drivers. Up to this point, we've been using blinking LEDs as a means of interacting with our development board. This is about to change. As we seek to gain a deeper understanding of peripheral drivers, we'll start to focus on different ways of implementing a driver for a common communication peripheral—the <strong>u</strong><span><strong>niversal asynchronous receiver/transmitter</strong> (</span><strong>UART</strong>). As we transfer data from one UART to another, we'll uncover the important role that peripheral and <strong>direct memory access</strong> (<strong>DMA</strong>) hardware plays when creating efficient driver implementations. </p>
+<p class="mce-root">We'll start by exploring a UART peripheral by implementing an extremely simple polled receive-only driver inside a task. After taking a look at the performance of that driver, we'll take a close look at <strong>interrupt service routines</strong> (<strong>ISRs</strong>) and the different ways they can interact with the RTOS kernel. The driver will be re-implemented using interrupts. After that, we'll add in support for a DMA-based driver. Finally, we'll explore a few different approaches to how the drivers can interact with the rest of the system and take a look at a newer FreeRTOS feature—stream buffers. Throughout this chapter, we'll keep a close eye on overall system performance using SystemView. By the end, you should have a solid understanding of the trade-offs to be made when writing drivers that can take advantage of RTOS features to aid usability.</p>
+<p>The following topics will be covered in this chapter:</p>
+<ul>
+<li>Introducing the UART </li>
+<li>Creating a polled UART driver</li>
+<li>Differentiating between tasks and ISRs</li>
+<li>Creating ISR-based drivers</li>
+<li>Creating DMA-based drivers</li>
+<li>FreeRTOS stream buffers</li>
+<li>Choosing a driver model</li>
+<li>Using third-party libraries (<span>STM HAL)</span></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>To complete the exercises in this chapter, you will require the following:</p>
+<ul>
+<li>A Nucleo F767 dev board</li>
+<li>Jumper wires—<span>20 to 22 AWG (~0.65 mm) solid core wire</span></li>
+<li>A Micro-USB cable</li>
+<li><span>STM32CubeIDE</span> and source code (instructions in the <em>Setting up Our IDE</em> section in <a href="84a945dc-ff6c-4ec8-8b9c-84842db68a85.xhtml">Chapter 5</a>, <em>Selecting an IDE</em>)</li>
+<li>SEGGER J-Link, Ozone, and SystemView (instructions in <a href="699daa80-06ae-4acc-8b93-a81af2eb774b.xhtml">Chapter 6</a>, <em>Debugging Tools for Real-Time Systems</em>)</li>
+</ul>
+<p>All<span> source code used in this chapter is available at </span><a href="https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_10">https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_10</a>.<a href="https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_10"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introducing the UART</h1>
+                </header>
+            
+            <article>
+                
+<p>As we<span> </span><span>briefly</span><span> covered in</span> <a href="c52d7cdb-b6cb-41e8-8d75-72494bc9d4d3.xhtml">Chapter 4</a>, <em>Selecting the Right MCU</em><span>, the acronym</span> <strong>UART</strong> <span>stands for</span> <strong>Universal Asynchronous Receiver/Transmitter</strong><span>. </span><span>UART hardware takes bytes of data and transmits them over a wire by modulating the voltage of a signal line at a predetermined rate:</span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1649 image-border" src="assets/fc5fb57b-0534-4d40-b752-ae02f2483362.png" style="width:31.67em;height:14.67em;"/></p>
+<p>The <strong>asynchronous</strong> nature of a UART means no additional clock line is needed to monitor individual bit transitions. Instead, the hardware is set up to transition each bit at a specific frequency (baud rate). The UART hardware also adds some extra framing to the beginning and end of each packet it transmits. Start and stop bits signal the beginning and end of a packet. These bits (along with an optional parity bit) are used by the hardware to help guarantee the validity of packets (which are typically 8 bits long).</p>
+<div class="packt_infobox">A more general form of UART hardware is the <strong>USART</strong> <strong>universal synchronous/asynchronous receiver transmitter</strong> (<strong>USART</strong>). USARTs are capable of transferring data either synchronously (with the addition of a clock signal) or asynchronously (without a clock signal).</div>
+<p><span>UARTs are often used to communicate between different chips and systems. They form the foundation of many different communication solutions, such as RS232, RS422, RS485, Modbus, and so on. UARTs can also be used for multi-processor communication and to communicate with different chips in the same system—for example, WiFi and Bluetooth transceivers.  </span></p>
+<p>In this chapter, we'll be developing a few iterations of a UART driver. In order to be able to observe system behavior, we'll be tying two UARTs on the Nucleo development board together, as in the following diagram. The two connections in the diagram will tie the transmit signal from UART4 to the receive signal of USART2. Likewise, they'll tie USART2 Tx to UART4 Rx. This will allow bidirectional communication between the UARTs. The connections should be made with pre-terminated <strong>jumper wires</strong> or 20-22 AWG (~0.65 mm) solid core wires:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1650 image-border" src="assets/1b44a7da-7e56-4f6a-8bd2-ed54043bb1fb.png" style="width:23.17em;height:32.08em;"/></p>
+<p>Now that the connections are made, let's take a closer look at what else needs to happen before we can consider transferring data between peripherals on this chip.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up the UART</h1>
+                </header>
+            
+            <article>
+                
+<p>As we can see from the following simplified block diagram, there are a few components involved when setting up a UART for communication. The UART needs to be properly configured to transmit at the correct baud rate, parity settings, flow control, and stop bits. Other hardware that interacts with the UART will also need to be configured properly:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1651 image-border" src="assets/316246b5-dc2a-4957-abd5-c2795961bf83.png" style="width:28.42em;height:29.42em;"/></p>
+<p>Here's a list of steps that will need to be taken to get UART4 set up. Although we're using UART4 as an example, the same steps will apply to most other peripherals that attach to pins of the MCU:</p>
+<ol>
+<li class="CDPAlignLeft CDPAlign">Configure the GPIO lines. Since each GPIO pin on the MCU can be shared with many different peripherals, they must be configured to connect to the desired peripheral (in this case, the UART). In this example, we'll cover the steps to connect PC10 and PC11 to UART4 signals:</li>
+</ol>
+<p style="padding-left: 60px">You can read more about the pinout of the STM32F7xx series MCUs in <em>Section 3, Pinouts and Pin Description</em>, of STM's STM32F767xx datasheet <em>DoCID 029041</em>. Datasheets will typically contain information specific to exact models of MCUs, while reference manuals will contain general information about an entire family of MCUs. The following excerpt is of a table is from the datasheet and shows alternate function pin mappings:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/cbd883b1-430b-4c99-84bd-5e5203a066a5.png" style="width:54.42em;height:20.75em;"/></p>
+<ol start="2">
+<li class="CDPAlignLeft CDPAlign">Reference the desired port and bit. (In this case, we'll be setting up port <kbd>C</kbd> bit <kbd>11</kbd> to map to the <kbd>UART4_Rx</kbd> function).</li>
+<li class="CDPAlignLeft CDPAlign">Find the desired alternate function for the pin (<kbd>UART4_Rx</kbd>).</li>
+<li class="CDPAlignLeft CDPAlign">Find the alternate function number (<kbd>AF8</kbd>) to use when configuring the GPIO registers.</li>
+<li class="CDPAlignLeft CDPAlign">Set up the appropriate GPIO registers to correctly configure the hardware and map the desired UART peripheral to the physical pins. </li>
+</ol>
+<p style="padding-left: 60px">An STM-supplied <kbd>HAL</kbd> function is used here for simplicity. The appropriate GPIO registers will by written when <kbd>HAL_GPIO_Init</kbd> is called.  All we need to do is fill in a <kbd>GPIO_InitTypeDef</kbd> struct and pass a reference to <kbd>HAL_GPIO_Init</kbd>; in the following code, the<span> <kbd>10</kbd> GPIO pin and the</span><span> <kbd>11</kbd> GPIO pin on port <kbd>C</kbd> are both initialized to alternative push/pull functions. They are also mapped to <kbd>UART4</kbd> by setting the alternate function member to <kbd>AF8</kbd>—as determined in step 4</span><span>:</span></p>
+<pre style="padding-left: 60px">GPIO_InitTypeDef GPIO_InitStruct = {0};<br/>//PC10 is UART4_TX PC11 is UART4_RX<br/>GPIO_InitStruct.<strong>Pin</strong> = <strong>GPIO_PIN_10</strong> | <strong>GPIO_PIN_11</strong>;<br/>GPIO_InitStruct.<strong>Mode</strong> = <strong>GPIO_MODE_AF_PP</strong>;<br/>GPIO_InitStruct.Pull = GPIO_NOPULL;<br/>GPIO_InitStruct.<strong>Alternate</strong> = <strong>GPIO_AF8_UART4</strong>;<br/>HAL_GPIO_Init(<strong>GPIOC</strong>, &amp;GPIO_InitStruct);</pre>
+<ol start="6">
+<li>Enable the necessary peripheral clocks. Since each peripheral clock is turned off by default (for power saving), the UART's peripheral clock must be turned on by writing to the <strong>reset and clock control</strong> (<strong>RCC</strong>) register. The following line is also from <kbd>HAL</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px"><span>__UART4_CLK_ENABLE();</span></pre>
+<ol start="7">
+<li>Configure the interrupts (if using them) by configuring settings in the <strong>nested vector interrupt controller</strong> (<strong>NVIC</strong>)—details will be included in the examples where appropriate.</li>
+<li>Configure the DMA (if using it)—details will be included in the examples where appropriate.</li>
+<li>Configure the peripheral with the necessary settings, such as baud rate, parity, flow control, and so on. </li>
+</ol>
+<p style="padding-left: 60px">The following code is an excerpt from the <kbd>STM_UartInit</kbd> function in <kbd>BSP/UartQuickDirtyInit.c.</kbd>, where <strong><kbd>Baudrate</kbd></strong><em><strong> </strong></em>and <strong><kbd>STM_UART_PERIPH</kbd></strong> are input parameters of <kbd>STM_UartInit</kbd>, which makes it very easy to configure multiple UART peripherals with similar settings, without repeating all of the following code every time:</p>
+<pre style="padding-left: 60px">HAL_StatusTypeDef retVal;<br/>UART_HandleTypeDef uartInitStruct;<br/>uartInitStruct.Instance = <strong>STM_UART_PERIPH</strong>;<br/>uartInitStruct.Init.BaudRate = <strong>Baudrate</strong>;<br/>uartInitStruct.Init.WordLength = <strong>UART_WORDLENGTH_8B</strong>;<br/>uartInitStruct.Init.StopBits = UART_STOPBITS_1;<br/>uartInitStruct.Init.Parity = UART_PARITY_NONE;<br/>uartInitStruct.Init.Mode = UART_MODE_TX_RX;<br/>uartInitStruct.Init.HwFlowCtl = UART_HWCONTROL_NONE;<br/>uartInitStruct.Init.OverSampling = UART_OVERSAMPLING_16;<br/>uartInitStruct.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;<br/>uartInitStruct.hdmatx = DmaTx;<br/>uartInitStruct.hdmarx = DmaRx;<br/>uartInitStruct.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;<br/><strong>retVal = HAL_UART_Init</strong>(&amp;uartInitStruct);<br/><strong>assert_param(retVal == HAL_OK);</strong></pre>
+<ol start="10">
+<li>Depending on the desired transmit method (such as polled, interrupt-driven, or DMA), some additional setting up will be required; this setting up is typically performed immediately before beginning a transfer.</li>
+</ol>
+<p>Let's see how all of this plays out by creating a simple driver to read data coming into USART2. </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a polled UART driver</h1>
+                </header>
+            
+            <article>
+                
+<p>When writing low-level drivers, it's a must to read through the datasheet in order to understand how the peripheral works. Even if you're not writing a low-level driver from scratch, it is always a good idea to gain some familiarity with the hardware you'll be working with. The more familiarity you have, the easier it will be to diagnose unexpected behavior, as well as to create efficient solutions.</p>
+<div class="packt_tip">You can read more about the UART peripheral we're working with in <em>Chapter 34</em> of the<em> </em><em>STM </em><span><em>RM0410 STM32F76xxx</em> reference manual (<em>USART</em>).</span></div>
+<p><span>Our first <strong>driver</strong> will take an extremely simple approach to getting data from the UART and into a queue that can be easily monitored and consumed by any task in the system. </span>By monitoring the <strong>receive not empty</strong> ( <kbd>RXNE</kbd>) bit of the UART peripheral's <strong>interrupt status register</strong> (<kbd>ISR</kbd>), the driver can determine when a new byte is ready to be transferred from the <strong>receive data register</strong> (<kbd>RDR</kbd>) of the UART into the queue. To make this as easy as possible, the <kbd>while</kbd> loop is placed in a task (<kbd>polledUartReceive</kbd>), which will let other higher-priority tasks run.  </p>
+<p>The following is an excerpt from <kbd>Chapter_10/Src/mainUartPolled.c</kbd>:</p>
+<pre>void polledUartReceive( void* NotUsed )<br/>{<br/>    uint8_t nextByte;<br/>    //setup UART<br/>    STM_UartInit(USART2, 9600, NULL, NULL);<br/>    while(1)<br/>    {<br/>        <strong>while(!(USART2-&gt;ISR &amp; USART_ISR_RXNE_Msk));<br/>        </strong><strong>nextByte = USART2-&gt;RDR;<br/>        </strong><strong>xQueueSend(uart2_BytesReceived, &amp;nextByte, 0);<br/>    </strong>}<br/>}</pre>
+<p>There is another simple task in this example as well; it monitors the queue and prints out whatever has been received:</p>
+<pre>void uartPrintOutTask( void* NotUsed)<br/>{<br/>    char nextByte;    <br/>    while(1)<br/>    {<br/>        <strong>xQueueReceive</strong>(<strong>uart2_BytesReceived</strong>, &amp;nextByte, portMAX_DELAY);<br/>        <strong>SEGGER_SYSVIEW_PrintfHost</strong>("%c", nextByte);    <br/>    }<br/>}</pre>
+<p>Now that our driver is ready, let's see how it performs. </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Analyzing the performance</h1>
+                </header>
+            
+            <article>
+                
+<p>The preceding code (<kbd>uartPolled</kbd>)<em><strong> </strong></em>can be programmed onto the MCU and we can take a look at the performance using SEGGER SystemView:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1526 image-border" src="assets/8f262810-3376-400f-9f34-745d331f11ca.png" style="width:66.08em;height:39.92em;"/></p>
+<p><span>After looking at the execution using SystemView, we quickly realize that—although easy to program—this driver is </span><em>horrifically inefficient</em>:</p>
+<ol>
+<li>SystemView reports that this driver is utilizing <em>over 96%</em> of the CPU's resources.</li>
+<li>The queue is being called at <span class="packt_screen">960 Hz</span> (which makes perfect sense given the initial baud rate of 9,600 baud).</li>
+</ol>
+<p>We can see that, while easy to implement, this solution comes with significant performance penalties—all while servicing a fairly slow peripheral. Drivers that service peripherals by polling have trade-offs.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Pros and cons of a polled driver</h1>
+                </header>
+            
+            <article>
+                
+<p>Here are some of the advantages of using a polled driver:</p>
+<ul>
+<li>It is easy to program.</li>
+<li>Any task has immediate access to data in the queue.</li>
+</ul>
+<p>At the same time, there are many issues with this approach:</p>
+<ul>
+<li>It must be one of the highest priority tasks in the system.</li>
+<li>There is a high chance of data loss when not executing at high priority.</li>
+<li>It is extremely wasteful of CPU cycles.</li>
+</ul>
+<p>In this example, we're only transferring data at 9,600 baud. Granted, most of the time was spent spinning on the <kbd>RXNE</kbd> bit, but transferring every byte as it is received in a queue is also fairly expensive (when compared to pushing bytes into a simple array-based buffer). To put this into perspective, USART2 on STM32F767 running at 216 MHz has a maximum baud rate of 27 Mbaud, which would mean we would need to add each character to the shared queue nearly 3 million times a second (it is currently adding &lt; 1,000 characters per second). Transferring this much data through a queue quickly isn't feasible on this hardware since queue additions take 7 µS each (even if the CPU was doing nothing else, we'd be capable of transferring less than 143,000 characters per second into the queue).</p>
+<p>More importantly, there are few opportunities to speed up this polled approach, since we may receive a new character once every millisecond. If any other task was executing for more than 2 ms, the peripheral could potentially be overrun (a new byte is received and overwrites the buffer before the previous byte is read). Because of these limitations, there are very specific circumstances where polled drivers are most useful.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Usage of polled drivers</h1>
+                </header>
+            
+            <article>
+                
+<p>There are a few circumstances where polled drivers are especially helpful:</p>
+<ul>
+<li><strong>System verification</strong>: <span>This is perfectly acceptable when performing initial system verification, but at that stage of development, it is debatable whether an RTOS should be used at all. If the application happens to be truly single purpose, there is nothing else to be done while waiting for data to be transferred, and there are no power considerations, this would also be an acceptable approach.</span></li>
+<li><strong>Special cases</strong>: <span>Occasionally, there may be times when a very special-purpose piece of code is needed for a limited scope. For example, a peripheral may need to be serviced with an extremely low amount of latency. In other cases, the event being polled for could happen extremely quickly. When events are happening in the order of nanoseconds or microseconds ns or µs (instead of ms, as in the previous example), it often makes more sense to simply poll for the event, rather than create a more elaborate synchronization scheme. In event-driven systems, adding in blocking calls must be carefully considered and clearly documented.</span></li>
+</ul>
+<p>Conversely, if a given event is happening very infrequently and there are no specific timing constraints, a polled approach may also be perfectly acceptable.</p>
+<p>While the driver in this example focused on the receiving side, where poll-based drivers are rarely acceptable, it is more common to find them used to transmit data. This is because space between the characters is generally acceptable since it doesn't result in loss the of data. This allows the driver to be run at a lower priority so that other tasks in the system have a chance to run. There are a few cases where there is a reasonable argument for using a polled transmit driver that blocks while the transmission is taking place:</p>
+<ul>
+<li>The code using the driver must block until the transmission is complete.</li>
+<li>The transfer is a short amount of data.</li>
+<li>The data rate is reasonably high (so the transfer takes a relatively small amount of time).</li>
+</ul>
+<p>If all of these conditions are met, it <em>may</em> make sense to simply use a polled approach, rather than a more elaborate interrupt- or DMA-driven approach, which will require the use of callbacks and, potentially, task synchronization mechanisms. However, depending on how you choose to structure your drivers, it is also possible to have the convenience of blocking calls but without the inefficiency of a polled transfer wasting CPU cycles. To take advantage of any of the non-polled approaches, we'll need to develop another skill—programming ISRs.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Differentiating between tasks and ISRs</h1>
+                </header>
+            
+            <article>
+                
+<p>Before we jump into coding a peripheral driver that utilizes interrupts, let's take a quick look at how interrupts compare to FreeRTOS tasks.</p>
+<p>There are many similarities between tasks and ISRs:</p>
+<ul>
+<li>Both provide a way of achieving <strong>parallel</strong> code execution.</li>
+<li>Both only run when required.</li>
+<li>Both can be written with C/C++ (ISRs generally no longer need to be written in assembly code).</li>
+</ul>
+<p>But there are also many differences between tasks and ISRs:</p>
+<ul>
+<li><strong>ISRs are brought into context by hardware; tasks gain context by the RTOS kernel</strong>: Tasks are always brought into context by the FreeRTOS kernel. Interrupts, on the other hand, are generated by hardware in the MCU. There are usually a few different ways of configuring the generation (and masking) of interrupts.</li>
+<li><strong>ISRs must exit as quickly as possible; tasks are more forgiving</strong>: FreeRTOS tasks are often set up to run in a similar way to an infinite <kbd>while</kbd> loop—they will be synchronized with the system using primitives (such as queues and semaphores) and switched into context according to their priority. At the complete opposite end of the spectrum are ISRs, which should generally be coded so that they exit quickly. This <em>quick exit</em> ensures that the system can respond to other ISRs, which keeps everything responsive and ensures no interrupts are missed because a single routine was hogging the CPU.</li>
+<li class="mce-root"><strong>ISR functions do not take input parameters; tasks can</strong><span>: </span><span>Unlike tasks, ISRs can never have input parameters. Since an interrupt is triggered because of a hardware state, the most important job of the ISR is to read the hardware state (through memory-mapped registers) and take the appropriate action(s). For example, an interrupt can be generated when a UART receives a byte of data. In this case, the ISR would read a status register, read (and store) the byte received in a static variable, and clear the interrupt.</span></li>
+</ul>
+<div class="packt_tip">Most (but not all) peripherals on STM32 hardware will automatically clear interrupt flags when certain registers are read. Regardless of how the interrupt is cleared, it is important to ensure the interrupt is no longer pending—otherwise, the interrupt will fire continuously and you will always be executing the associated ISR!</div>
+<ul>
+<li><strong>ISRs may only access a limited ISR-specific subset of the FreeRTOS API</strong>: FreeRTOS is written in a way that provides flexibility while balancing convenience, safety, and performance. Accessing data structures such as queues from a task is extremely flexible (for example, tasks making API calls to a queue can easily block for any period of time). There is an additional set of functions that are available to ISRs for operating on queues, but these functions have a limited subset of functionality (such as not being able to block—the call always immediately returns). This provides a level of safety since the programmer can't shoot themself in the foot by calling a function that blocks from inside an ISR. Calling a non-ISR API function from inside an ISR will cause FreeRTOS to trigger <kbd>configASSERT</kbd><span><span>.</span></span></li>
+<li><strong>ISRs may operate completely independently of all RTOS code</strong>: There are many cases where an ISR operates on such a low level that it doesn't <em>need</em> access to any of the FreeRTOS API at all. In this case, the ISR simply executes as it normally would without an RTOS present. The kernel never gets involved (and no tasks will interrupt execution).  This makes it very convenient for creating flexible solutions that blend high-performing ISRs (operating completely <em>underneath</em> the RTOS) with extremely convenient tasks.</li>
+<li><strong>All ISRs share the same system stack; each task has a dedicated stack</strong>: Each task receives a private stack, but all of the ISRs share the same system stack. This is noteworthy only because, when writing ISRs, you'll need to ensure you reserve enough stack space to allow them to run (possibly simultaneously) if they are nested.</li>
+</ul>
+<p class="mce-root">Now that we've covered the differences between tasks and ISRs, let's take a look at how they can be used together to create very powerful event-driven code.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using the FreeRTOS API from interrupts</h1>
+                </header>
+            
+            <article>
+                
+<p>Most of the FreeRTOS primitives covered so far have ISR-safe versions of their APIs. For example, <kbd>xQueueSend()</kbd> has an equivalent ISR-safe version, <kbd>xQueueSendFromISR()</kbd>. There are a few differences between the ISR-safe version and the standard call:</p>
+<ul>
+<li><span><span>The <kbd>FromISR</kbd> variants won't block. For example, if <kbd>xQueueSendFromISR</kbd> encounters a full queue, it will immediately return.</span></span></li>
+<li>The <kbd>FromISR</kbd> variants require an extra parameter, <kbd>BaseType_t *pxHigherPriorityTaskWoken</kbd>, which will indicate whether or not a higher-priority task needs to be switched into context immediately following the interrupt.</li>
+<li>Only interrupts that have a <em>logically</em> lower priority than what is defined by <kbd><span>configMAX_API_CALL_INTERRUPT_PRIORITY</span></kbd> in <kbd>FreeRTOSConfig.h</kbd> are permitted to call FreeRTOS API functions (see the following diagram for an example).</li>
+</ul>
+<p>The following is an overview of how the <kbd>FreeRTOSConfig.h</kbd> and <kbd>main_XXX.c</kbd> files configure interrupts for the examples in this book. Some noteworthy items are as follows:</p>
+<ul>
+<li><kbd>main_XXX.c</kbd> makes a call to <kbd>NVIC_SetPriorityGrouping(0)</kbd> after all STM HAL initialization is performed (<kbd>HAL</kbd> sets priority grouping upon initialization). This allows all 4 bits of the <strong>nested interrupt vector controller</strong><span> (</span><strong>NVIC</strong><span>)</span> to be used for priorities and results in 16 priority levels. </li>
+<li><kbd>FreeRTOSConfig.h</kbd> is used to set up the relationship between FreeRTOS API calls and NVIC priorities. The Cortex-M7 defines <kbd>255</kbd> as being the lowest priority level and <kbd>0</kbd> as being the highest. Since the STM32F7 only implements 4 bits, these 4 bits will be shifted into the 4 MSB bits; the lower 4 bits won't affect operation (see the following diagram): 
+<ul>
+<li><kbd>configKERNEL_INTERRUPT_PRIORITY</kbd><span> defines t</span>he lowest priority interrupt in our system (and the ISR priority of the FreeRTOS tasks, since the scheduler is called within a SysTick interrupt). Because 4 bits yields a possible range of <kbd>0</kbd> (highest priority) to <kbd>15</kbd> (lowest priority), the lowest NVIC priority used will be <kbd>15</kbd>. When setting <span><kbd>configKERNEL_INTERRUPT_PRIORITY</kbd>,</span> <kbd>15</kbd> needs to be shifted left into the 8 bit representation (used directly in the CortexM registers) as <kbd>(15 &lt;&lt; 4) | 0x0F = 0xFF</kbd> or <kbd>255</kbd>.  Since the lowest 4 bits are don't cares, <kbd>0xF0</kbd> (decimal 240) is also acceptable.  </li>
+<li><kbd>configMAX_SYSCALL_INTERRUPT_PRIORITY</kbd> defines the (logically) highest priority interrupt that is allowed to make calls to the FreeRTOS API. This is set to <kbd>5</kbd> in our examples. Shifting left to fill out the 8 bits gives us a value of <kbd>0x50</kbd> or <kbd>0x5F</kbd> (decimal 80 or 95, respectively):</li>
+</ul>
+</li>
+</ul>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1652 image-border" src="assets/c94abcbe-e57f-476c-b15f-15272efe8f64.png" style="width:54.58em;height:34.42em;"/></p>
+<p>As we can see in the preceding diagram, there are some cases where ISRs can be set up to execute at a priority above anything the RTOS might be doing. When configured as <kbd>0</kbd> to <kbd>4</kbd><span> </span><span>NVIC priorities</span><span>, ISRs are identical to traditional "bare-metal" ISRs.</span></p>
+<div class="packt_infobox">It is <em>very</em> important to ensure that the interrupt priority is properly configured <em>before</em> enabling the interrupt by calling <kbd>NVIC_SetPriority</kbd> with a priority of &lt;= 5. If an interrupt with a priority that is logically higher than <kbd>configMAX_SYSCALL_INTERRUPT_PRIORITY</kbd><span> calls a FreeRTOS API function, you'll be greeted with a <kbd>configASSERT</kbd> failure (see <a href="50d2b6c3-9a4e-45c3-9bfc-1c7f58de0b98.xhtml">Chapter 17</a>, <em>Troubleshooting Tips and Next Steps</em>, for more details on <kbd>configASSERT</kbd>)</span>.</div>
+<p>Now that we have an understanding of the differences between tasks and ISRs, as well as some of the ground rules for using FreeRTOS API functions from within ISRs, let's take another look at the polled driver to see how it can be implemented more efficiently.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating ISR-based drivers</h1>
+                </header>
+            
+            <article>
+                
+<p>In the first iteration of the UART driver, a task polled the UART peripheral registers to determine when a new byte had been received. The constant polling is what caused the task to consume &gt; 95% of CPU cycles. The most meaningful work done by this task-based driver was transferring bytes of data out of the UART peripheral and into the queue. </p>
+<p>In this iteration of the driver, instead of using a task to continuously poll the UART registers, we'll set up the <kbd>UART2</kbd> peripheral and NVIC to provide an interrupt when a new byte is received.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Queue-based driver</h1>
+                </header>
+            
+            <article>
+                
+<p>First, let's look at how to more efficiently implement the polled driver (previously implemented by polling the UART registers within a task). In this implementation, instead of using a task to repeatedly poll the UART registers, a function will be used to set up the peripheral to use interrupts and initiate the transfer. A complete set of ISR function prototypes can be found in the startup file (for the STM32F767 used in our examples, this file is <kbd>Chapter_10/startup_stm32f767xx.s</kbd>).</p>
+<div class="packt_infobox">Each <kbd>*_IRQHandler</kbd> instance in <kbd>startup_stm32f767xx.s</kbd> is used to map the function name to an address in the interrupt vector table. On ARM Cortex-M0+, -M3, -M4, and -M7 devices, this vector table can be relocated by an offset at runtime. See <em>Further reading</em> for some links to more information on these concepts.</div>
+<p>This example has four primary components:</p>
+<ul>
+<li><kbd>uartPrintOutTask</kbd>: This function initializes USART2 and associated hardware, starts a reception, and then prints anything placed in the <kbd>uart2_BytesReceived</kbd> queue.</li>
+<li><kbd>startReceiveInt</kbd>: Sets up an interrupt-based reception for USART2.</li>
+<li><kbd>USART2_IRQHandler</kbd>: An ISR is issued when an interrupt occurs for the USART2 peripheral.</li>
+<li><kbd>startUart4Traffic</kbd>: Starts a continuous stream of data transmitted from UART4 to be received by USART2 (provided the jumpers are correctly set).</li>
+</ul>
+<p>Let's take a look at each component in detail. All excerpts in this section are from <kbd>Chapter_10/Src/mainUartInterruptQueue.c</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">uartPrintOutTask </h1>
+                </header>
+            
+            <article>
+                
+<p>The only task in this example is <kbd>uartPrintOutTask</kbd>: </p>
+<pre>void <strong>uartPrintOutTask</strong>( void* NotUsed)<br/>{<br/>  char nextByte;<br/>  <strong>STM_UartInit</strong>(USART2, 9600, NULL, NULL);<br/> <strong> startReceiveInt</strong>();<br/><br/>  while(1)<br/>  {<br/>    xQueueReceive(<strong>uart2_BytesReceived</strong>, &amp;nextByte, portMAX_DELAY);<br/>    SEGGER_SYSVIEW_PrintfHost("%c", nextByte);<br/>  }<br/>}</pre>
+<p><kbd>uartPrintOutTask</kbd> does the following:</p>
+<ul>
+<li>Performs all peripheral hardware initialization by calling<span> </span><kbd>STM_UartInit</kbd></li>
+<li>Starts an interrupt-based reception by calling <kbd>startReceiveInt</kbd></li>
+<li><em>Consumes</em> and prints each character as it is added to the <kbd>uart2_BytesReceived</kbd><span> </span>queue by calling <kbd>xQueueReceive</kbd></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">startReceiveInt</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>startReceiveInt</kbd> function starts an interrupt-driven reception:</p>
+<pre>static bool rxInProgress = false;<br/><br/>void startReceiveInt( void )<br/>{<br/>    rxInProgress = true;<br/>    USART2-&gt;CR3 |= USART_CR3_EIE; //enable error interrupts<br/>    //enable peripheral and Rx not empty interrupts<br/>    USART2-&gt;CR1 |= (USART_CR1_UE | USART_CR1_RXNEIE);  <br/>    <br/>    NVIC_SetPriority(USART2_IRQn, 6);<br/>    NVIC_EnableIRQ(USART2_IRQn);<br/>}</pre>
+<p><span><kbd>startReceiveInt</kbd> </span><span>sets up everything required to receive data on USART2:</span></p>
+<ul>
+<li><kbd>rxInProgress</kbd> <span>is a flag </span>used by the ISR to indicate a reception is in progress. The ISR (<kbd>USART2_IRQHandler()</kbd>) will not attempt to write to the queue until <kbd>rxInProgress</kbd> is true.</li>
+<li>USART2 is configured to generate <kbd>receive</kbd> and <kbd>error</kbd> interrupts and is then enabled.</li>
+<li>The<span> </span><kbd>NVIC_SetPriority</kbd><span> </span>function (defined by CMSIS in <kbd>Drivers/CMSIS/Include/corex_cm7.h</kbd>) is used to set the interrupt priority. Since this interrupt will call a FreeRTOS API function, this priority must be set at or<span> </span><em>below</em> the<em><span> </span></em>logical priority<span> </span>defined by  <kbd>configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY</kbd><span> </span>in <kbd>FreeRTOSConfig.h</kbd>. On ARM CortexM processors, smaller numbers signify a higher logical priority—in this example, <kbd>#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5</kbd><span>, </span>so assigning a priority of <kbd>6</kbd> to <kbd>USART2_IRQn</kbd> will be adequate for allowing the ISR to make calls to the ISR-safe function (<kbd>xQueueSendFromISR</kbd>) provided by FreeRTOS.</li>
+<li>Finally, the interrupt requests generated by USART2 will be enabled by making a call to<span> </span><kbd>NVIC_EnableIRQ</kbd><span>.   If <kbd>NVIC_EnableIRQ</kbd> is not called, USART2 will still generate requests, but the interrupt controller (the "IC" in NVIC) will not <em>vector</em> the program counter to the ISR (<kbd>USART2_IRQHandler</kbd> will never be called).</span></li>
+</ul>
+<div class="packt_infobox">In this example, as with nearly all the code in this chapter, we're writing directly to the hardware peripheral registers and not using considerable amounts of abstraction. This is done to keep the focus on how the RTOS interacts with the MCU. If code reuse is one of your goals, you'll need to provide some level of abstraction above raw registers (or STM HAL code, if you're using it). Some guidelines on this can be found in <a href="8e78a49a-1bcd-4cfe-a88f-fb86a821c9c7.xhtml"/><a href="8e78a49a-1bcd-4cfe-a88f-fb86a821c9c7.xhtml">Chapter 12</a>, <em>Tips on Creating Well-Abstracted Architecture</em>.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">USART2_IRQHandler</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Here is the code for <kbd>USART2_IRQHandler</kbd>:</p>
+<pre>void USART2_IRQHandler( void )<br/>{<br/>    portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;<br/>    SEGGER_SYSVIEW_RecordEnterISR();<br/><br/>    //error flag clearing omitted for brevity<br/><br/>    if( USART2-&gt;ISR &amp; USART_ISR_RXNE_Msk)<br/>    {<br/>        uint8_t tempVal = (uint8_t) USART2-&gt;RDR;<br/><br/>        if(rxInProgress)<br/>        {<br/>            <strong>xQueueSendFromISR</strong>(<strong>uart2_BytesReceived</strong>, &amp;<strong>tempVal</strong>, <br/>                              &amp;xHigherPriorityTaskWoken);<br/>      }<br/>      SEGGER_SYSVIEW_RecordExitISR();<br/>      portYIELD_FROM_ISR(xHigherPriorityTaskWoken);<br/>}</pre>
+<p>Let's take a closer look at each component of the ISR:</p>
+<ul>
+<li> The USART registers are directly read to determine whether or not the receive not empty (<kbd>RXNE</kbd>) is set. If it is, the contents of the receive data register (<kbd>RDR</kbd>) are stored to a temporary variable (<kbd>tempVal</kbd>)—this read clears the interrupt flag. If a receive is in progress, <kbd>tempVal</kbd> is sent to the queue.</li>
+<li>Calls to <kbd>SEGGER_SYSVIEW_RecordEnterISR</kbd> and <kbd>SEGGER_SYSVIEW_RecordExitISR</kbd> are made upon entry and exit, which gives SEGGER SystemView the visibility to display the interrupt with all of the other tasks in the system.</li>
+<li><span>The </span><kbd>xHigherPriorityTaskWoken</kbd><span> variable is initialized to false. This variable is passed to the </span><kbd>xQueueSendFromISR</kbd><span> function and is used to determine whether a high-priority task (higher than the one currently in the non-ISR context) is blocking because it is waiting on an empty queue. In this case, </span><kbd>xHigherPriorityTaskWoken</kbd><span> will be set to true, indicating a higher-priority task </span><span>should be woken immediately after the ISR exits. When the call to </span><kbd>portYIELD_FROM_ISR</kbd><span> is made, if </span><kbd>xHigherPriorityTaskWoken</kbd><span> is true, the scheduler will immediately switch to the higher-priority task.</span></li>
+</ul>
+<p>Now that the ISR has been written, we'll need to make sure it will actually be called by the hardware at the appropriate time.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tips for linking ISRs</h1>
+                </header>
+            
+            <article>
+                
+<p>When writing ISRs from scratch (as we've done in the previous example), one area that can prove to be a source of unexpected trouble is ensuring your ISR is properly linked in (and executed). That is, even if you've properly set up the peripheral to generate interrupts, your new ISR might never be called because it isn't named properly (instead, the default implementation, defined in a startup file, will likely be called). Here are some tips to make sure that shiny new ISR can be found and properly linked in with the rest of the application:</p>
+<ul>
+<li>STM32 <span><kbd>*_IRQHandler</kbd> function names <em>usually</em> contain the <em>exact</em> peripheral name from the datasheet as a <span>sub-string. For example, USART2 maps to </span></span><kbd>USART2_IRQHandler</kbd><span> (notice the "S") and UART4 maps to </span><kbd>UART4_IRQHandler</kbd><span> (no "S" in the peripheral or function name).</span></li>
+<li><span>When writing a new implementation for an ISR, it is a good idea to copy and paste the exact <kbd>_IQRHandler</kbd> name from the startup file. This reduces the chance of typos, which can cause debug headaches!</span></li>
+<li>STM start-up files implement default handlers for every interrupt as an infinite loop. If you notice your application becoming unresponsive, it is possible you've enabled an interrupt and your <kbd>*_IRQHandler</kbd> definition isn't being linked in properly.</li>
+<li>If you happen to be implementing <kbd><span>*_IRQHandler</span></kbd> inside a C++ file, be sure to use <kbd>extern "C"</kbd> to prevent <em>name mangling</em>. For example, the USART2 definition would be written as <kbd>extern "C" void USART2_IRQHandler( void)</kbd>. This also means the ISR definition must <em>not</em> be inside a class.</li>
+</ul>
+<div class="packt_tip">When implementing ISRs, take your time and be sure to get the details (such as the <em>exact</em> name) right. Don't rush into attempting to debug the rest of your application without first ensuring the ISR is called when expected. Using breakpoints inside the ISR is an excellent way of doing this.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">startUart4Traffic</h1>
+                </header>
+            
+            <article>
+                
+<p>The final component that needs to be explored in this example is how data will be sent to UART2. These examples are meant to simulate external data being received by USART2.  To achieve this without additional hardware, we wired together UART4 Tx and USART2 RX pins earlier in the chapter. The call to <kbd>startUart4Traffic()</kbd> is a <kbd>TimerHandler</kbd> prototype. A oneshot timer is started and set to fire 5 seconds after the application starts.</p>
+<p>The function that does all of the heavy lifting is <kbd>SetupUart4ExternalSim()</kbd>. It sets up a continuous circular DMA transfer (which executes without CPU intervention) that transmits the string <kbd>data from uart4</kbd> repeatedly. A full example using DMA will be covered later in this chapter – for now, it is sufficient to realize that data is being sent to USART2 without involvement from the CPU.</p>
+<div class="packt_infobox"><kbd>startUart4Traffic()</kbd> creates a <em>continuous</em> stream of bytes that will be transmitted out of UART4 Tx and into UART2 Rx (with no flow control). Depending on the selected baud rate and the amount of time it takes for the receiving code to execute, we can expect that, eventually, a byte will be missed on the receiving side during some examples. Keep this in mind when running examples on your own. See the <em>Choosing a driver model</em> section for more details on selecting the appropriate driver type for your application.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Performance analysis</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's take a look at the performance of this implementation by compiling <kbd>mainUartInterruptQueue</kbd>, loading it onto the MCU, and using SystemView to analyze the actual execution:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1647 image-border" src="assets/1db4a7e2-4ed1-4022-864f-efba7ed13ab6.png" style="width:41.17em;height:14.83em;"/></p>
+<p>This time around, things look considerably better.  Here are some noteworthy items from the preceding screenshot:</p>
+<ol>
+<li>The ISR responsible for dealing with the incoming data on USART2 Rx is only consuming around 1.6% of the CPU (much better than the 96% we saw when we were using a polled approach).</li>
+<li>We are still receiving 960 bytes per second—the same as before.</li>
+<li>The small tick mark shown here is the exact point in time when <kbd>tempVal</kbd> is added to <kbd><span>uart2_BytesReceived</span></kbd> by the call to the <kbd>xQueueSendFromISR</kbd> FreeRTOS API function.</li>
+<li>We can see the effect of <kbd>portYIELD_FROM_ISR</kbd> here. The light-blue portion of the <kbd>uartPrint</kbd> task indicates that the task is ready to run. This happens because the <kbd>uartPrint</kbd> task is ready to run since there is an item in the queue. The call to <kbd>portYIELD_FROM_ISR</kbd><span> forces the scheduler to immediately evaluate which task should be brought into context.</span> The green portion (starting at ~21 uS) is SystemView's way of signifying that the task is in a <strong>running</strong> state.</li>
+<li>After the <kbd>uartPrint</kbd> task begins running, it removes the next character from the queue and prints it using <kbd>SEGGER_SYSVIEW_PrintfHost</kbd>.  </li>
+</ol>
+<p class="mce-root">By switching from a poll-based driver to an interrupt-based driver, we've significantly reduced the CPU load. Additionally, systems that use an interrupt-based driver can run other tasks while still receiving data through USART2. This driver also uses a queue-based approach, which provides a very convenient ring buffer, allowing characters to be continuously received and added to the queue, then read whenever it is convenient for higher-level tasks. </p>
+<p class="mce-root">Next, we'll work through an example of a similar driver that doesn't use a queue at all.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A buffer-based driver</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Sometimes, the exact size of a transfer is known in advance. In this case, a pre-existing buffer can be passed to the driver and used in place of a queue. Let's take a look at an example of a buffer-based driver, where the exact number of bytes is known in advance. The hardware setup for this example is identical to the previous examples—we'll concentrate on receiving data through USART2.</span></p>
+<p>Instead of using a queue, <kbd>uartPrintOutTask</kbd> will supply its own buffer to the <kbd>startReceiveInt</kbd> function. Data received by USART2 will be placed directly in the local buffer until the desired number of bytes have been added, then a semaphore will be given by the ISR to provide notification of the completion. The entire message will be printed as a single string, rather than 1 byte at a time, as it is received (which was done in the last example).</p>
+<p>Just like the previous example, there are four main components. However, their responsibilities vary slightly:</p>
+<ul>
+<li><kbd>startReceiveInt</kbd>: Sets up an interrupt-based reception for USART2 and configures the necessary variables used by the ISR for the transfer.</li>
+<li><kbd>uartPrintOutTask</kbd>: This function initializes USART2 and associated hardware, starts a reception, and waits for completion (with a deadline of 100 ms). The complete message is either printed or a timeout occurs and an error is printed.</li>
+<li><kbd>USART2_IRQHandler</kbd>: An ISR is issued when an interrupt occurs for the USART2 peripheral.</li>
+<li><kbd>startUart4Traffic</kbd>: Starts a continuous stream of data transmitted from UART4 to be received by USART2 (provided the jumpers are correctly set).</li>
+</ul>
+<p>Let's take a look at each component in detail. All excerpts in this section are from <kbd>Chapter_10/Src/mainUartInterruptBuffer.c</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">startReceiveInt</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The<span> </span><kbd>startReceiveInt</kbd><span> </span><span>function is very similar to the one used for the queue-based driver:</span></p>
+<pre>static bool rxInProgress = false;<br/>static uint_fast16_t rxLen = 0;<br/>static uint8_t* rxBuff = NULL;<br/>static uint_fast16_t rxItr = 0;<br/><br/>int32_t startReceiveInt( uint8_t* <strong>Buffer</strong>, <strong>uint_fast16_t</strong> Len )<br/>{<br/>    if(!rxInProgress &amp;&amp; (Buffer != NULL))<br/>    {<br/>        <strong>rxInProgress</strong> = true;<br/>        <strong>rxLen</strong> = Len;<br/>        <strong>rxBuff</strong> = Buffer;<br/>        <strong>rxItr</strong> = 0;<br/>        USART2-&gt;CR3 |= USART_CR3_EIE; //enable error interrupts<br/>        USART2-&gt;CR1 |= (USART_CR1_UE | USART_CR1_RXNEIE);<br/>        NVIC_SetPriority(USART2_IRQn, 6);<br/>        NVIC_EnableIRQ(USART2_IRQn);<br/>        return 0;<br/>    }<br/>    return -1;<br/>}</pre>
+<p>Here are the notable differences in this setup:</p>
+<ul>
+<li>This variant takes in a pointer to a buffer (<kbd>Buffer</kbd>), as well as the desired length of the transfer (<kbd>Len</kbd>). A couple of global variables, <kbd>rxBuff</kbd><span> </span>and<span> </span><kbd>rxLen</kbd> (which will be used by the ISR), are initialized using these parameters.</li>
+<li><kbd>rxInProgress</kbd><span> </span>is used to determine whether a reception is already in progress (returning <kbd>-1</kbd>  if it is).</li>
+<li>An iterator (<kbd>rxItr</kbd>) that is used to index into the buffer is initialized to <kbd>0</kbd>.</li>
+</ul>
+<p>All of the remaining functionality of <kbd>startReceiveInt</kbd> is identical to the example covered in the<span> </span><em>Queue-based driver</em><span> section earlier in the chapter</span>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">uartPrintOutTask</h1>
+                </header>
+            
+            <article>
+                
+<p>The <kbd>uartPrintOutTask</kbd> function that is responsible for printing out data received by USART2 is a bit more complex in this example. This example is also capable of comparing the received data against an expected length, as well as some rudimentary error detection:</p>
+<ol>
+<li><span>T</span>he buffer and length variables are initialized and the UART peripheral is set up:</li>
+</ol>
+<pre style="padding-left: 60px">void <strong>uartPrintOutTask</strong>( void* NotUsed)<br/>{<br/>  uint8_t <strong>rxData</strong>[20];<br/>  uint8_t <strong>expectedLen</strong> = 16;<br/>  memset((void*)rxData, 0, 20);<br/><br/><br/>  STM_UartInit(USART2, 9600, NULL, NULL);</pre>
+<ol start="2">
+<li>Then, the body of the <kbd>while</kbd> loop starts a reception by calling <kbd>startReceiveInt</kbd> and then waits for the <kbd>rxDone</kbd> semaphore for up to 100 RTOS ticks for the transfer to complete.</li>
+<li>If the transfer completes in time, the total number of bytes received is compared against <kbd>expectedLen</kbd>. </li>
+</ol>
+<ol start="4">
+<li>If the correct number of bytes are present, the content of <kbd>rxData</kbd> is printed. Otherwise, a message providing an explanation of the discrepancy is printed:</li>
+</ol>
+<pre style="padding-left: 60px">while(1)<br/>{<br/>    <strong>startReceiveInt</strong>(<strong>rxData</strong>, <strong>expectedLen</strong>);<br/>    if(<strong>xSemaphoreTake</strong>(rxDone, 100) == pdPASS)<br/>    {<br/>        if(<strong>expectedLen</strong> == rxItr)<br/>        {<br/>            SEGGER_SYSVIEW_PrintfHost("received: ");<br/>            SEGGER_SYSVIEW_Print((char*)rxData);<br/>        }<br/>        else<br/>        {<br/>            SEGGER_SYSVIEW_PrintfHost("expected %i bytes received" <br/>                                      "%i", expectedLen, rxItr);</pre>
+<p>The remainder of the <kbd>while</kbd> loop and function simply prints <kbd>timeout</kbd> if the semaphore is not taken within 100 ticks.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">USART2_IRQHandler</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">This ISR is also slightly more involved since it is required to keep track of the position in a queue:</p>
+<ol>
+<li class="mce-root">Private globals are used by <kbd>USART2_IRQHandler</kbd> because they need to be accessible by both the ISR and used by both <kbd>USART2_IRQHandler</kbd>  and <kbd>startReceiveInt</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px">static bool rxInProgress = false;<br/>static uint_fast16_t rxLen = 0;<br/>static uint8_t* rxBuff = NULL;<br/>static uint_fast16_t rxItr = 0;</pre>
+<ol start="2">
+<li>The same paradigm for storing <kbd>xHigherPriorityTaskWoken</kbd> and SEGGER SystemView tracing is used in this ISR, just like in the last example:</li>
+</ol>
+<pre style="padding-left: 60px">void USART2_IRQHandler( void )<br/>{<br/>     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;<br/>     SEGGER_SYSVIEW_RecordEnterISR();</pre>
+<ol start="3">
+<li>Next, errors are checked by reading the overrun (<kbd>ORE</kbd>), noise error (<kbd>NE</kbd>), framing error (<kbd>FE</kbd>), and parity error (<kbd>PE</kbd>) bits in the interrupt state register (<kbd>USART2-&gt;ISR</kbd>). </li>
+</ol>
+<p style="padding-left: 60px">If an error is present, it is cleared by a write to the interrupt clear register (<kbd>USART2-&gt;ICR</kbd>) and the <kbd>rxDone</kbd> semaphore is given. It is the responsibility of the caller code to check the number of bits in the buffer by looking at the <kbd>rxItr</kbd> variable (shown in the next code block) to ensure the correct number of bits were successfully received:</p>
+<pre style="padding-left: 60px"><br/> if( USART2-&gt;ISR &amp; ( USART_ISR_ORE_Msk |<br/>                     USART_ISR_NE_Msk |<br/>                     USART_ISR_FE_Msk |<br/>                     USART_ISR_PE_Msk ))<br/>{<br/>    USART2-&gt;ICR |= (USART_ICR_FECF |<br/>                    USART_ICR_PECF |<br/>                    USART_ICR_NCF |<br/>                    USART_ICR_ORECF);<br/>    if(rxInProgress)<br/>    {<br/>        rxInProgress = false;<br/>        xSemaphoreGiveFromISR(rxDone,<br/>        &amp;xHigherPriorityTaskWoken);<br/>    }<br/>}</pre>
+<ol start="4">
+<li>Next, the ISR checks whether a new byte has been received (by reading the <kbd>RXNE</kbd> bit of <kbd>USART2-&gt;ISR</kbd>). If a new byte is available, it is pushed into the <kbd>rxBuff</kbd> buffer and the <kbd>rxItr</kbd> iterator is incremented. </li>
+</ol>
+<p style="padding-left: 60px">After the desired number of bytes have been added to the buffer, the <kbd>rxDone</kbd> semaphore is given to notify <kbd>uartPrintOutTask</kbd>:</p>
+<pre style="padding-left: 60px">if( USART2-&gt;ISR &amp; USART_ISR_RXNE_Msk)<br/>{<br/>    uint8_t tempVal = (uint8_t) USART2-&gt;RDR;<br/>    if(rxInProgress)<br/>    {<br/>        rxBuff[rxItr++] = tempVal;<br/>        if(rxItr &gt;= rxLen)<br/>        {<br/>            rxInProgress = false;<br/>            xSemaphoreGiveFromISR(rxDone, &amp;xHigherPriorityTaskWoken);<br/>        }<br/>    }<br/>}<br/>SEGGER_SYSVIEW_RecordExitISR();<br/>portYIELD_FROM_ISR(xHigherPriorityTaskWoken);</pre>
+<p>Don't forget to put a breakpoint in the ISR to make sure it is being called.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">startUart4Traffic</h1>
+                </header>
+            
+            <article>
+                
+<p>Identical to the previous example, this function sets up a DMA transfer to push data out of the UART4 Tx pin into the USART2 Rx pin.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Performance analysis</h1>
+                </header>
+            
+            <article>
+                
+<p>Now, let's take a look at the performance of this driver implementation. There are several aspects to consider. Unless a transfer is complete, the ISR will normally only transfer a byte into <kbd>rxBuff</kbd>. In this case, the interrupt is fairly short, taking less than 3 us to complete:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1529 image-border" src="assets/5ba829c9-7e44-4a49-94c4-9c0caabc9a6f.png" style="width:42.67em;height:17.17em;"/></p>
+<p>After all 16 bytes have been received, the ISR execution gets a bit more interesting and looks a bit more similar to the previous example:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/0ff7273f-d44e-4b1b-b4a1-f67eb8937997.png" style="width:61.00em;height:15.17em;"/></p>
+<p><span>Here are some noteworthy points from the preceding screenshot:</span></p>
+<ol>
+<li>After all the bytes have been placed into <kbd>rxBuff</kbd>, the <kbd>rxDone</kbd> semaphore is given from the ISR using <kbd>xSemaphoreGiveFromISR</kbd>.</li>
+<li>The task is unblocked after the interrupt is executed by taking the available semaphore (<kbd>xSemaphoreTake(rxDone,100)</kbd>).</li>
+<li>The exact contents of <kbd>rxBuff</kbd> are printed. Note that each line contains the entire string, rather than individual characters. This is because this implementation collects an entire buffer's worth of data before using a semaphore to indicate completion.</li>
+</ol>
+<p>Finally, let's have a look at the complete tally of CPU usage:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/13db11e2-8cf2-4deb-849d-d83e05492654.png" style="width:19.50em;height:8.58em;"/></p>
+<p><span>Here are some noteworthy items from the preceding screenshot:</span></p>
+<ol>
+<li>The ISR for this implementation is using 0.34% of the CPU (instead of 1.56% when each character was pushed to a queue from inside the ISR).</li>
+<li>The FreeRTOS scheduler is using only using 0.06% of the CPU instead of 0.94% (each time items are added to queues, the scheduler runs to determine whether or not tasks should be unblocked because of the addition).</li>
+<li>The frequency of the USART2 ISR remains at <span class="packt_screen">960 Hz</span>, exactly the same as the previous examples, but now the frequency of the <kbd>print</kbd> task has been reduced to only <span class="packt_screen">60 Hz</span>, since the <kbd>uartPrint</kbd> task that only runs after 16 bytes has been transferred into <kbd>rxBuff</kbd>.</li>
+</ol>
+<p><span><span>As we can see, this ISR implementation of the driver uses even fewer CPU cycles than the queue-based approach. Depending on the use case, it can be an attractive alternative. These types of drivers are commonly found in non-RTOS-based systems, where callback functions will be used instead of semaphores. This approach is flexible enough to be used with or without an RTOS by placing a semaphore in the callback. While slightly more complex, this is one of the most flexible approaches for code bases that see a large amount of reuse in different applications.</span></span></p>
+<p>To summarize, the two variants of drivers implemented with an ISR so far have been the following:</p>
+<ul>
+<li><strong>A queue-based driver</strong>: Delivers incoming data to tasks by pushing received data into a queue one character at a time.</li>
+<li><strong>A buffer-based driver</strong>: Delivers incoming data to a single buffer that is pre-allocated by the calling function.</li>
+</ul>
+<p>On the surface, it may seem silly to have two different implementations that both take incoming data from a peripheral and present it to the higher layers of code. It is important to realize these two different variants of a driver for the same hardware vary both in their implementation, efficiency, and ultimately, the interface provided to higher-level code. They may both be moving bytes from the UART peripheral, but they provide higher-level code with drastically different programming models.  These different programming models are each suited to solving different types of problems. </p>
+<p>Next, we'll look at how another piece of hardware inside the MCU can be used to lighten the burden on the CPU when moving large amounts of data.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating DMA-based drivers </h1>
+                </header>
+            
+            <article>
+                
+<p>We saw that, compared to a polled approach, the interrupt-based driver is considerably better in terms of CPU utilization. But what about applications with a high data rate that require millions of transfers per second? The next step in improved efficiency can be obtained by having the CPU involved as little as possible by pushing most of the work for transferring data around onto specialized peripheral hardware within the MCU. </p>
+<div class="packt_infobox">A short introduction to DMA<strong> </strong>was covered in <a href="84f04852-827d-4e79-99d7-6c954ba3e93c.xhtml">Chapter 2</a>, <em>Understanding RTOS Tasks</em>, in case you need a refresher before diving into this example.</div>
+<p>In this example, we'll work through creating a driver using the same buffer-based interface as the interrupt-based driver. The only difference will be the use of DMA hardware to transfer bytes out of the peripheral's read data register (<kbd>RDR</kbd>) and into our buffer. Since we already have a good handle on configuring the USART2 peripheral from our other drivers, the first order of business for this variant is to figure out how to get data from <kbd>USART2-&gt;RDR</kbd> to the DMA controller and then into memory.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Configuring DMA peripherals</h1>
+                </header>
+            
+            <article>
+                
+<p>STM32F767 has two DMA controllers. Each controller has 10 channels and 8 streams to map DMA requests from one location in the MCU to another. On the STM32F767 hardware, streams can do the following:</p>
+<ul>
+<li><span>Can be thought of as a way to <em>flow</em> data from one address to another</span></li>
+<li><span>Can transfer data from peripherals to RAM or RAM to peripherals</span></li>
+<li>Can transfer data from RAM to RAM</li>
+<li><span>Can only transfer data between two points at any given moment in time</span></li>
+</ul>
+<p><span>Each stream has up to 10 channels</span> <span>for mapping a peripheral register into a given stream. In order to configure the DMA controller to handle requests from the USART2 <kbd>receive</kbd></span>, <span>we'll reference table 27 from the <em>STM32F7xx </em></span><span><em>RM0410</em> </span><span>reference manual:</span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1532 image-border" src="assets/a36bd6b0-a7a7-423d-aa0b-30625a0871e0.png" style="width:38.50em;height:18.67em;"/></p>
+<p class="CDPAlignLeft CDPAlign"><span>In this table, we can see that </span><span>DMA1</span><span> </span><span class="packt_screen">Channel 4</span><span>,</span> <span class="packt_screen">Stream 5</span><span> </span><span>is the appropriate setup to use to handle requests from</span> <kbd>USART2_RX</kbd><span>. If we were also interested in handling requests for the transmit side, <span class="packt_screen">Channel 4</span></span><span>,</span> <span><span class="packt_screen">Stream 6</span> would also need to be set up.</span></p>
+<p>Now that we know the channel and stream numbers, we can add some initialization code to set up the DMA1 and USART2 peripherals:</p>
+<ul>
+<li><kbd>DMA1_Stream5</kbd> will be used to transfer data from the <kbd>receive</kbd> data register of USART2 directly into a buffer in RAM.</li>
+<li><kbd>USART2</kbd> will not have interrupts enabled (they are not needed since DMA will perform all transfers from the peripheral register to RAM).</li>
+<li><kbd>DMA1_Stream5</kbd> will be set up to trigger an interrupt after the entire buffer has been filled.</li>
+</ul>
+<p class="mce-root">The next few snippets are from the <kbd>setupUSART2DMA</kbd> function in <kbd>Chapter_10/src/mainUartDMABuff.c</kbd>:</p>
+<ol>
+<li>First, the clock to the DMA peripheral is enabled, interrupt priorities are set up, and the interrupts are enabled in the NVIC:</li>
+</ol>
+<pre style="padding-left: 60px">void setupUSART2DMA( void )<br/>{<br/>  __HAL_RCC_DMA1_CLK_ENABLE();<br/>  <br/>  NVIC_SetPriority(DMA1_Stream5_IRQn, 6);<br/>  NVIC_EnableIRQ(DMA1_Stream5_IRQn);</pre>
+<ol start="2">
+<li>Next, the DMA stream is configured by filling out a <span><kbd>DMA_HandleTypeDef</kbd> </span>struct (<kbd>usart2DmaRx</kbd>) and using <kbd>HAL_DMA_Init()</kbd>:</li>
+</ol>
+<pre style="padding-left: 60px">  HAL_StatusTypeDef retVal;<br/>  memset(&amp;usart2DmaRx, 0, sizeof(usart2DmaRx));<br/>  usart2DmaRx.Instance = <strong>DMA1_Stream5</strong>; //stream 5 is for USART2 Rx<br/><br/>  //channel 4 is for USART2 Rx/Tx<br/>  usart2DmaRx.Init.<strong>Channel = DMA_CHANNEL_4</strong>;<br/>  <br/>  //transfering out of memory and into the peripheral register<br/>  usart2DmaRx.Init.<strong>Direction = DMA_PERIPH_TO_MEMORY</strong>;<br/>  usart2DmaRx.Init.FIFOMode = DMA_FIFOMODE_DISABLE; //no FIFO<br/><br/>  //transfer 1 at a time<br/>  usart2DmaRx.Init.MemBurst = DMA_MBURST_SINGLE; <br/>  usart2DmaRx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;<br/><br/>  //increment 1 byte at a time<br/>  usart2DmaRx.Init.<strong>MemInc = DMA_MINC_ENABLE</strong>;<br/><br/>  //flow control mode set to normal<br/>  usart2DmaRx.Init.Mode = DMA_NORMAL; <br/><br/>  //write 1 at a time to the peripheral<br/>  usart2DmaRx.Init.PeriphBurst = DMA_PBURST_SINGLE; <br/><br/>  //always keep the peripheral address the same (the RX data<br/>  //register is always in the same location)<br/>  usart2DmaRx.Init.PeriphInc = <strong>DMA_PINC_DISABLE</strong>;<br/><br/>  usart2DmaRx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;<br/><br/>  usart2DmaRx.Init.Priority = DMA_PRIORITY_HIGH;<br/>  retVal = HAL_DMA_Init(&amp;usart2DmaRx);<br/>  assert_param( retVal == HAL_OK );<br/><br/>  //enable transfer complete interrupts<br/>  DMA1_Stream5-&gt;CR |= <strong>DMA_SxCR_TCIE</strong>; <br/><br/>  //set the DMA receive mode flag in the USART<br/>  USART2-&gt;CR3 |= <strong>USART_CR3_DMAR_Msk</strong>;</pre>
+<p><kbd>HAL</kbd> initialization provides some sanity checking on the values passed to it. Here's a highlight of the most immediately relevant portions:</p>
+<ul>
+<li><kbd>DMA1_Stream5</kbd> is set as the instance. All calls that use the <kbd>usart2DmaRx</kbd> struct will reference stream <kbd>5</kbd>.</li>
+<li>Channel <kbd>4</kbd> is attached to stream <kbd>5</kbd>.</li>
+<li>Memory incrementing is enabled. The DMA hardware will automatically increment the memory address after a transfer, filling the buffer.</li>
+<li>The peripheral address is not incremented after each transfer—the address of the USART2 receive data register (<kbd>RDR</kbd>) doesn't ever change.</li>
+<li>The <kbd>transfer complete</kbd> interrupt is enabled for <kbd>DMA1_Stream5</kbd>.</li>
+<li>USART2 is set up for <kbd>DMA receive mode</kbd>. It is necessary to set this bit in the USART peripheral configuration to signal that the peripheral's receive register will be mapped to the DMA controller.</li>
+</ul>
+<div class="packt_tip">Additional details about how this struct is used can be found by looking at the <kbd>DMA_HandleTypeDef</kbd> struct definition in <kbd>stm32f7xx_hal_dma.h</kbd> (line 168) and <kbd>HAL_DMA_Init()</kbd> in <kbd>stm32f7xx_hal_dma.c</kbd> (line 172). Cross-reference the registers used by the HAL code with section 8 (page 245) in the <em>STM32F76xxx RM0410</em> reference manual. This same technique is often most productive for understanding <em>exactly</em> what the <kbd>HAL</kbd> code is doing with individual function parameters and struct members.</div>
+<p>Now that the initial DMA configuration is done, we can explore a few different interrupt implementations using DMA instead of interrupts.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A buffer-based driver with DMA </h1>
+                </header>
+            
+            <article>
+                
+<p>Here's an implementation of a driver with identical functionality to the one in the <em>A buffer-based driver</em> section. The difference is the DMA version of the driver doesn't interrupt the application every time a byte is received. The only <kbd>interrupt</kbd> generated is when the entire transfer is complete. To realize this driver, we only need to add the following ISR:</p>
+<pre>void DMA1_Stream5_IRQHandler(void)<br/>{<br/>  portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;<br/>  SEGGER_SYSVIEW_RecordEnterISR();<br/><br/> <strong> if(rxInProgress &amp;&amp; (DMA1-&gt;HISR &amp; DMA_HISR_TCIF5))</strong><br/><strong>  {</strong><br/><strong>    rxInProgress = false;</strong><br/><strong>    DMA1-&gt;HIFCR |= DMA_HIFCR_CTCIF5;</strong><br/><strong>    xSemaphoreGiveFromISR(rxDone, &amp;xHigherPriorityTaskWoken);</strong><br/><strong>  }</strong><br/>  SEGGER_SYSVIEW_RecordExitISR();<br/>  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);<br/>}</pre>
+<p>The significant portions of the driver are in bold. If a reception is in progress (based on the value of <kbd>rxInProgress</kbd> and the transmit complete flag, <kbd>DMA_HISR_TCIF5</kbd>, the following takes place:</p>
+<ul>
+<li>The DMA interrupt flag is cleared.</li>
+<li>The <kbd>rxDone</kbd> semaphore is given.</li>
+</ul>
+<p>This is all that is required when using DMA-based transfers since the DMA controller does all of the bookkeeping associated with the buffer. At this point, the rest of the code functions in an identical way to the <kbd>interrupt</kbd> version (the only difference is that less CPU time is spent servicing interrupts).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Performance analysis</h1>
+                </header>
+            
+            <article>
+                
+<p>Let's take a look at the performance of the DMA-based implementation compared to the interrupt-driven approach:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/ff5bfae7-0dec-4e40-9edb-58d00bcffe90.png" style="width:20.92em;height:7.67em;"/></p>
+<p><span>This time around, we can make the following observations about the overall system behavior:</span></p>
+<ol>
+<li>The (DMA) ISR is now consuming &lt; 0.1% of CPU cycles at 9,600 baud.</li>
+<li>The <span class="packt_screen">Scheduler</span> CPU's consumption is still very low.</li>
+<li>The frequency of the ISR has been reduced to only 60 Hz (from 960 Hz). This is because, rather than creating an interrupt for every byte, there is only an interrupt generated at the end of the transfer of 16 bytes. The <span class="packt_screen">Idle</span> task is being context-switched significantly less often as well. Although it seems trivial with these simple examples, excessive context-switching can become a very real problem in large applications with many tasks and interrupts.  </li>
+</ol>
+<p>The overall flow is similar to that of the interrupt buffer-based approach, with the only difference being that there is only a single ISR executed when the entire transfer is complete (instead of one interrupt for each byte transferred):</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/99336104-c2df-4bba-9049-a32f2313ccf2.png" style="width:66.67em;height:17.42em;"/></p>
+<p>From the preceding screenshot, we can observe the following:</p>
+<ol>
+<li>The DMA ISR is executed once (after all 16 bytes are transferred into the buffer). A semaphore is shown by the tick mark that arrow 1 is pointing to in the screenshot.</li>
+</ol>
+<ol start="2">
+<li>The <span>ISR wakes up the blocked </span><kbd>uartPrint</kbd> function<span>. Arrow 2 is pointing to where the semaphore is taken. </span></li>
+<li>The two <span class="packt_screen">i</span> infoboxes show where the console print messages are generated (~35 and 40 us after the final byte has been received). The remainder of the time this task spends is on re-initializing the buffer and setting up the next transfer.</li>
+</ol>
+<p>Here is a wider view of all of the processor activity. Notice that the only activity occurs approximately once every 16 ms (after all the bytes have been transferred into memory):</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1653 image-border" src="assets/2c06339b-87a6-4308-90c0-cca4b32f7e05.png" style="width:53.25em;height:10.67em;"/></p>
+<p>The real capability of a fully DMA-based approach is most valuable when transferring large amounts of data very quickly. The following example shows the same dataset (only 16 bytes) transferred at 256,400 baud (the fastest that could be reliably achieved without error due to poor signal integrity).</p>
+<p>The baud rate can be easily changed in the examples by modifying <span><kbd>#define BAUDRATE</kbd> </span> in <kbd>main&lt;exampleame&gt;.c</kbd>. They are configured so that a single change will modify both the USART2 and UART4 baud rates.</p>
+<p>The following is an example of transfers being made at 256,000 baud. A new set of 16 bytes is available in the buffer, approximately every 624 µS:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1654 image-border" src="assets/9903f26b-f4aa-4047-a4d1-90c6f33ebf80.png" style="width:68.00em;height:9.92em;"/></p>
+<p>By increasing the baud rate from 9,600 to 256,000, our CPU usage has increased from around 0.5% to around 11%. This is in line with the 26x increase in baud rate—all of the function's calls are proportionate to the baud rate:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1537 image-border" src="assets/09e72b29-d689-42e0-b687-40eacf3fe51e.png" style="width:23.25em;height:8.75em;"/></p>
+<p>Notice the following:</p>
+<ul>
+<li>The DMA interrupt consumes 2.29%.</li>
+<li>Our <kbd>uartPrint</kbd> task is the highest consumer of CPU cycles (a little over 6%).</li>
+</ul>
+<p>Even though we've proved to ourselves that it is possible to efficiently transfer data quickly by using DMA, this current setup doesn't have the same convenience that the interrupt-driven queue solution did. Tasks rely on entire blocks to be transferred, rather than using a queue. This might be fine or might be an inconvenience, depending on what the goals of the higher-level code are. </p>
+<p>Character-based protocols will tend to be easier to implement when written on top of a queue-based driver API, rather than a buffer-based driver API (such as the one we've implemented here). However, we saw in the <em>Queue-based driver</em> section that queues become computationally expensive very quickly. Each byte took around 30 us to be added to the queue. Transferring data at 256,000 baud would consume most of the available CPU in the UART ISR alone (a new byte is received every 40 us and it takes 30 us to process).</p>
+<p>In the past, if you really needed to implement a character-oriented driver, you could roll your own highly efficient ring buffer implementation and feed it directly from low-level ISRs (bypassing most of the FreeRTOS primitives to save time).  However, as of FreeROTS 10, there is another alternative—stream buffers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Stream buffers (FreeRTOS 10+)</h1>
+                </header>
+            
+            <article>
+                
+<p>Stream buffers combine the convenience of a queue-based system with the speed closer to that of the raw buffer implementations we created previously. They have some flexibility limitations that are similar to the limitations of task notification systems compared to semaphores. <em>Stream buffers can only be used by one sender and one receiver at a time.</em> Otherwise, they'll need external protection (such as a mutex), if they are to be used by multiple tasks.</p>
+<p>The programming model for stream buffers is very similar to queues, except that instead of functions being limited to queueing one item at a time, they can queue multiple items at a time (which saves considerable CPU time when queuing blocks of data). In this example, we'll explore stream buffers through an efficient DMA-based circular buffer implementation for UART reception.</p>
+<p>The goals of this driver example are the following:</p>
+<ul>
+<li>Provide an easy-to-use character-based queue for users of the driver.</li>
+<li>Maintain efficiency at high data rates.</li>
+<li>Always be ready to receive data.</li>
+</ul>
+<p>So, let's begin!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using the stream buffer API</h1>
+                </header>
+            
+            <article>
+                
+<p>First, let's take a look at an example of how the stream buffer API will be used by <kbd>uartPrintOutTask</kbd> in this example. The following excerpts are from <kbd>mainUartDMAStreamBufferCont.c</kbd>.</p>
+<p>Here's a look at the definition of <kbd>xSttreamBufferCreate()</kbd>:</p>
+<pre>StreamBufferHandle_t xStreamBufferCreate( size_t xBufferSizeBytes,<br/>                                          size_t xTriggerLevelBytes);</pre>
+<p>Note the following in the preceding code:</p>
+<ul>
+<li><kbd>xBufferSizeBytes</kbd> is the number of bytes the buffer is capable of holding.</li>
+<li><kbd>xTriggerLevelBytes</kbd> is the number of bytes that need to be available in the stream before a call to <kbd>xStreamBufferReceive()</kbd> will return (otherwise, a timeout will occur).</li>
+</ul>
+<p>The following example code sets up a stream buffer:</p>
+<pre>#define NUM_BYTES 100<br/>#define MIN_NUM_BYTES 2<br/>StreamBufferHandle_t rxStream = NULL;<br/><strong>rxStream = xStreamBufferCreate( NUM_BYTES , MIN_NUM_BYTES);</strong><br/>assert_param(rxStream != NULL);</pre>
+<p>In the preceding snippet, we can observe the following:</p>
+<ul>
+<li><kbd>rxStream</kbd> is capable of holding <kbd>NUM_BYTES</kbd> (100 bytes).</li>
+<li>Each time a task blocks data from being added to the stream, it won't be unblocked until at least <kbd>MIN_NUM_BYTES</kbd> (2 bytes) are available in the stream. In this example, calls to <kbd>xStreamBufferReceive</kbd> will block until a minimum of 2 bytes are available in the stream (or a timeout occurs).</li>
+<li>If using the FreeRTOS heap, be sure to check that there is enough space for the allocation of the stream buffer by checking the returned handle isn't <kbd>NULL</kbd>.</li>
+</ul>
+<p>The function for receiving data from a stream buffer is <kbd>xStreamBufferReceive()</kbd>:</p>
+<pre>size_t xStreamBufferReceive( StreamBufferHandle_t xStreamBuffer,<br/>                             void *pvRxData,<br/>                             size_t xBufferLengthBytes,<br/>                             TickType_t xTicksToWait );</pre>
+<p>Here is a straightforward example of receiving data from a stream buffer:</p>
+<pre>void uartPrintOutTask( void* NotUsed)<br/>{<br/>    static const uint8_t maxBytesReceived = 16;<br/>    uint8_t rxBufferedData[maxBytesReceived];<br/><br/>    //initialization code omitted for brevity<br/>    while(1)<br/>    {<br/>        uint8_t numBytes = <strong>xStreamBufferReceive</strong>(  <strong>rxStream,</strong><br/><strong>                                                  rxBufferedData,</strong><br/><strong>                                                  maxBytesReceived,</strong><br/><strong>                                                  100 );</strong><br/>        if(numBytes &gt; 0)<br/>        {<br/>          SEGGER_SYSVIEW_PrintfHost("received: ");<br/>          SEGGER_SYSVIEW_Print((char*)rxBufferedData);<br/>        }<br/>        else<br/>        {<br/>          SEGGER_SYSVIEW_PrintfHost("timeout");<br/> ...</pre>
+<p>In the preceding snippet, note the following:</p>
+<ul>
+<li><kbd>rxStream</kbd>: The pointer/handle to <kbd>StreamBuffer</kbd>.</li>
+<li><kbd>rxBufferedData</kbd>: The local buffer that bytes will be copied into.</li>
+<li><kbd>maxBytesReceived</kbd>: The maximum number of bytes that will be copied into <kbd>rxBufferedData</kbd>.</li>
+<li>The timeout is <kbd>100</kbd> ticks (<kbd>xStreamBufferReceive()</kbd> will return after at least <kbd>xTriggerLevelBytes</kbd> (<kbd>2</kbd> in this example) are available or 100 ticks have elapsed).</li>
+</ul>
+<p><span>Calls to </span><kbd>xStreamBufferReceive()</kbd><span> behave in a similar way to a call to </span><kbd>xQueueReceive()</kbd><span> in that they both block until data is available. However, a call to </span><kbd>xStreamBufferReceive()</kbd><span> will block until the minimum number of bytes (defined when calling </span><kbd>xStreamBufferCreate()</kbd><span>)</span><span> or the specified number of ticks has elapsed.</span></p>
+<p>In this example, the call to <kbd>xStreamBufferReceive()</kbd> blocks until one of the following conditions is met:</p>
+<ul>
+<li>The number of bytes in the buffer exceeds <kbd>MIN_NUM_BYTES</kbd> (<kbd>2</kbd> in this example). If more bytes are available, they will be moved into <kbd>rxBufferedData</kbd>—but only up to the <kbd>maxBytesReceived</kbd> bytes (<kbd>16</kbd> in this example).</li>
+<li>A timeout occurs. All available bytes in the stream are moved into <kbd>rxBufferedData</kbd> .  The exact number of bytes placed into <kbd>rxBufferedData</kbd> is returned by <kbd>xStreamBuffereReceive()<span> -</span></kbd> ( <kbd>0</kbd> or <kbd>1</kbd> in this example).</li>
+</ul>
+<p>Now that we have a good idea of what the receiving side looks like, let's look at some of the details of the driver itself.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Setting up double-buffered DMA</h1>
+                </header>
+            
+            <article>
+                
+<p>As we saw earlier, using DMA can be very beneficial for reducing CPU usage (versus interrupts). However, one of the features that wasn't covered in the last example was continuously populating a queue (the driver required block-based calls to be made before data could be received). The driver in this example will transfer data into the stream buffer constantly, without requiring any intervention from the code calling it. That is, the driver will always be receiving bytes and pushing them into the stream buffer. </p>
+<p>Always receiving data presents two interesting problems for a DMA-based system:</p>
+<ul>
+<li>How to deal with <strong>roll-over</strong>—when a buffer has been completely filled and high-speed data could still be coming in.</li>
+<li>How to terminate transfers before a buffer is completely filled. DMA transfers typically require the number of bytes to be specified before the transfer starts. However, we need a way to stop the transfer when data has stopped being received and copy that data into the stream buffer.</li>
+</ul>
+<p class="mce-root">DMA double buffering will be used to ensure our driver will always be able to accept data (even when a single buffer has been filled). In the previous example, a single buffer was filled and an interrupt was generated, then the data was operated on directly before restarting the transfer. With double buffering, a second buffer is added. After the DMA controller fills the first buffer, it automatically starts filling the second buffer:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1655 image-border" src="assets/02139e92-a978-4408-b468-da094f33ff01.png" style="width:26.83em;height:19.58em;"/></p>
+<p class="mce-root">After the first buffer is filled and the interrupt is generated, the ISR can safely operate on data in the first buffer, <kbd>rxData1</kbd>, <span>while the second buffer, <kbd>rxData2</kbd>, is filled</span>. In our example, we're transferring that data into the FreeRTOS stream buffer from inside the ISR. </p>
+<p>It is important to note that <kbd>xStreamBufferSendFromISR()</kbd><span> adds a </span><em>copy</em><span> of the data to the stream buffer, not a reference. So, in this example, as long as the DMA ISR's call to </span><kbd>xStreamBufferSendFromISR()</kbd><span> executes before </span><kbd>rxData2</kbd><span> has been filled, data will be available with no loss. This is unlike traditional <strong>bare-metal</strong> double-buffer implementations since higher-level code making calls to </span><kbd>xStreamBufferReceive() </kbd><span> isn't required to extract data from <kbd>rxData1</kbd> before  <kbd>rxData2</kbd> is filled. It only needs to call <kbd>xStreamBufferReceive()</kbd> before the stream buffer has been filled:</span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1656 image-border" src="assets/17705c53-8c3d-4ee4-8bd1-494fa6b123eb.png" style="width:21.58em;height:27.25em;"/></p>
+<div class="packt_tip">Even if you're programming for an MCU without an explicit <strong>double-buffer mode</strong>, most DMA controllers will have a <strong>circular</strong> mode with <strong>half-transfer</strong> and <strong>full-transfer</strong> interrupts. In this case, the same functionality can be achieved by generating an interrupt after each half of the buffer is filled.</div>
+<p>The secondary buffer, <kbd>rxData2</kbd>, is set up by writing its address to the <kbd>DMA_SxM1AR</kbd> register (some casting is required to keep the compiler from complaining too loudly that we're writing a pointer to a 32-bit memory address):</p>
+<pre>//setup second address for double buffered mode<br/>DMA1_Stream5-&gt;M1AR = (uint32_t) rxData2;</pre>
+<p>Interestingly enough, STM HAL doesn't support double-buffer mode directly. In fact, calls to <kbd>HAL_DMA_Start</kbd> explicitly disable the mode. So, some manual setup with registers is required (after letting <kbd>HAL</kbd> take care of most of the leg work):</p>
+<pre>//NOTE: HAL_DMA_Start explicitly disables double buffer mode<br/>// so we'll explicitly enable double buffer mode later when<br/>// the actual transfer is started<br/>if(HAL_DMA_Start(&amp;usart2DmaRx, (uint32_t)&amp;(USART2-&gt;RDR), (uint32_t)rxData1,<br/>                 RX_BUFF_LEN) != HAL_OK)<br/>{<br/>    return -1;<br/>}<br/><br/>//disable the stream and controller so we can setup dual buffers<br/>__HAL_DMA_DISABLE(&amp;usart2DmaRx);<br/>//set the double buffer mode<br/>DMA1_Stream5-&gt;CR |= DMA_SxCR_DBM;<br/>//re-enable the stream and controller<br/>__HAL_DMA_ENABLE(&amp;usart2DmaRx);<br/>DMA1_Stream5-&gt;CR |= DMA_SxCR_EN;</pre>
+<p class="mce-root">After the DMA stream is enabled, the UART is enabled, which will start transfers (this is identical to the previous examples).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Populating the stream buffer</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The stream buffer will be populated from inside the DMA ISR:</p>
+<pre>void DMA1_Stream5_IRQHandler(void)<br/>{<br/>    uint16_t numWritten = 0;<br/>    uint8_t* currBuffPtr = NULL;<br/>    portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;<br/>    SEGGER_SYSVIEW_RecordEnterISR();<br/><br/>    if(rxInProgress &amp;&amp; (DMA1-&gt;HISR &amp; DMA_HISR_TCIF5))<br/>    {<br/>        if(DMA1_Stream5-&gt;CR &amp; DMA_SxCR_CT)<br/>            currBuffPtr = rxData1;<br/>        else<br/>            currBuffPtr = rxData2;<br/><br/>        numWritten = xStreamBufferSendFromISR(  rxStream,<br/>                                                currBuffPtr,<br/>                                                RX_BUFF_LEN,<br/>                                                &amp;xHigherPriorityTaskWoken);<br/>        while(numWritten != RX_BUFF_LEN);<br/><br/>        DMA1-&gt;HIFCR |= DMA_HIFCR_CTCIF5;<br/>    }<br/>    SEGGER_SYSVIEW_RecordExitISR();<br/>    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);<br/>}</pre>
+<p>Here are some of the more noteworthy items in this ISR:</p>
+<ul>
+<li><kbd>if(rxInProgress &amp;&amp; (DMA1-&gt;HISR &amp; DMA_HISR_TCIF5))</kbd>: This line guards against the stream buffer being written to before the scheduler is started. Even if the ISR was to execute before the scheduler was started, <kbd>rxInProgress</kbd> <span>wouldn't be true until after everything was initialized. Checking the transmit complete flag, </span><kbd>DMA_HISR_TCIF5</kbd>, <span>guarantees that a transfer has, indeed, completed (rather than entering the ISR because of an error).</span></li>
+<li><kbd>DMA1_Stream5-&gt;CR &amp; DMA_SxCR_CT</kbd>: Checks the current target bit. Since this bit indicates which target buffer (<kbd>DMA_SxM0AR</kbd><span>  or </span><kbd>DMA_SxM1AR</kbd><span>) is currently being <strong>filled</strong> by the DMA controller, we'll take the other and push that data into the stream buffer.</span></li>
+<li>The call to <kbd>xStreamBufferSendFromISR</kbd> pushes the entirety of <kbd>rxBuff1</kbd> or <kbd>rxBuff2</kbd> (each of an <kbd>RX_BUFF_LEN</kbd> length) into <kbd>rxStream</kbd> in one go.</li>
+</ul>
+<p class="mce-root">A few things to remember are as follows:</p>
+<ul>
+<li>Data is being transferred to the stream by value (not reference). That is, FreeRTOS is using<span> </span><kbd>memcpy</kbd><span> </span>to make a copy of all of the data moving into the stream buffer (and again when removing data). The larger the buffer, the more time it will take to copy—additional RAM will also be used.</li>
+<li>Instead of performing the copy inside the interrupt, under certain circumstances, it may be preferable to signal a semaphore or task notification and perform the copy in a high-priority task instead—for example, if a large buffer is being filled. However, you'll need to guarantee that other interrupts don't starve the task performing the <kbd>xStreamBufferSend</kbd> or data will be lost.</li>
+<li><span>There are trade-offs when using DMA. Larger buffers mean fewer interruptions to transfer data, but they also mean an increase in latency. The larger the buffer, the longer the data will sit in the buffer before being processed.</span></li>
+<li>This implementation is only well suited to continuous data streams—if the data stream stops, the last DMA transfer will never complete.</li>
+</ul>
+<p>This approach to pushing received data from a peripheral into memory works very well when data is continuously streaming. It can also work extremely well for the reception of messages with a known number of bytes. However, there are some ways to improve it.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Improving the stream buffer</h1>
+                </header>
+            
+            <article>
+                
+<p>In order to deal with an intermittent data stream, there are two possible approaches (for this specific setup):</p>
+<ul>
+<li> The USART peripheral on this MCU is capable of detecting an "idle line" and generating an interrupt by setting the <kbd>USART_CR1:IDLEE</kbd> bit when an idle line is detected.</li>
+<li>The USART peripheral also has a <kbd>receive</kbd> timeout that can also generate an interrupt after no start bits have been detected for a specified number of bit times (0-16,777,215). 
+<ul>
+<li>This timeout is specified in the <kbd>USART_RTOR:RTO[23:0]</kbd> register.</li>
+<li>The feature can be enabled with <kbd>USART_CR2:RTOEN</kbd> <span>and the interrupts can be enabled with  </span><kbd>USART_CR1:RTOIE</kbd>.</li>
+</ul>
+</li>
+</ul>
+<p>Either of these features could be used to generate a USART interrupt, cut the DMA transfer short, and transfer the data to the stream buffer.</p>
+<p>For extremely high baud rates, care needs to be taken when using the idle line approach because the number of interrupts generated is only capped by the baud rate. If there is inter-character spacing (idle time between each character being sent), you'll wind up with an interrupt-driven approach (with even more overhead than normal).</p>
+<p>On the other hand, using the <kbd>receive</kbd> timeout feature means additional latency before processing the incoming data. As usual, there is no <em>one-size-fits-all</em> solution here.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Analyzing the performance</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">So, how does this DMA stream buffer implementation compare to the ISR-based queue implementation? Well, on one hand, there is no comparison... <em>the ISR based implementation doesn't work at 256,400 baud</em>. At this baud rate, a new character is received every 39 uS. With the ISR taking around 18 us to execute, we simply don't have enough time to also run <kbd>printUartTask()</kbd> reliably without dropping data:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1542 image-border" src="assets/a06c4874-d4bf-439c-ad97-ae7f348fc6ed.png" style="width:45.08em;height:12.42em;"/></p>
+<p class="CDPAlignLeft CDPAlign">Notice that there is absolutely no time spent on the <span class="packt_screen">Idle</span> task—the CPU is completely consumed by attempting to keep up with the incoming data from UART2.</p>
+<p><span><span>As you can see in the following screenshot, data is occasionally dropped when the processor is set up to receive data at 256,400 baud using an ISR that executes once per character:</span></span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1543 image-border" src="assets/b455799d-dae7-45c5-8b44-5b0a964e9d05.png" style="width:26.33em;height:20.67em;"/></p>
+<p>Now, for comparison, here's the (nearly) equivalent implementation using stream buffers and DMA:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1545 image-border" src="assets/c7c73613-e70d-4ef6-bcd9-679451cc9d15.png" style="width:66.08em;height:10.17em;"/></p>
+<p><span><span>The combination of stream buffers and DMA has freed up quite a bit of the CPU time; the queue-based ISR implementation consumed &gt; 100% of the CPU. As we can see in the following processing breakdown, the total CPU usage for a stream buffer using DMA is around 10%:</span></span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1546 image-border" src="assets/32c61441-bf2d-4c51-8527-25d5e6805684.png" style="width:21.58em;height:8.17em;"/></p>
+<p>Note the following:</p>
+<ul>
+<li>The DMA-/stream buffer-based solution leaves nearly 90% of the CPU cycles available for other tasks.</li>
+<li>More time is being spent printing debug statements (and pulling bytes off the queue) than servicing the DMA ISR.</li>
+<li>The multi-byte stream buffer transactions also eliminate a large amount of context switching (notice the scheduler is only utilizing around 1% CPU), which will leave more contiguous time for other processing tasks.</li>
+</ul>
+<p><span>So, now that we've worked through a very simple example of each driver type, which one should you implement?</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Choosing a driver model</h1>
+                </header>
+            
+            <article>
+                
+<p>Selecting the <em>best</em> driver for a given system depends on several different factors:</p>
+<ul>
+<li>How is the calling code designed?</li>
+<li>How much delay is acceptable?</li>
+<li>How fast is data moving?</li>
+<li>What type of device is it?</li>
+</ul>
+<p>Let's answer these questions one by one.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How is the calling code designed?</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">What is the intended design of higher-level code using the driver? Will it operate on individual characters or bytes as they come in? Or does it make more sense for the higher-level code to batch transfers into blocks/frames of bytes? </p>
+<p class="mce-root">Queue-based drivers are very useful when dealing with unknown amounts (or streams) of data that can come in at any point in time. They are also a very natural fit for code that processes individual bytes—<kbd>uartPrintOutTask</kbd><span> </span>was a good example of this:</p>
+<pre> while(1)<br/> {<br/>     <strong>xQueueReceive</strong>(<strong>uart2_BytesReceived</strong>, &amp;nextByte, portMAX_DELAY);<br/>    //do something with the byte received<br/>     <strong>SEGGER_SYSVIEW_PrintfHost</strong>("%c", nextByte);<br/> }</pre>
+<p>While ring-buffer implementations (such as the one in the preceding code) are perfect for streamed data, other code naturally gravitates toward operating on blocks of data. Say, for example, our high-level code is meant to read in one of the structures defined in <a href="495bdcc0-2a86-4b22-9628-4c347e67e49e.xhtml">Chapter 9</a>, <em>Intertask Communication</em>, over a serial port.</p>
+<p>The following excerpt is from<span> </span><kbd>Chapter_9/MainQueueCompositePassByValue.c</kbd>:</p>
+<pre>typedef struct<br/>{<br/>    uint8_t redLEDState : 1;     <br/>    uint8_t blueLEDState : 1;<br/>    uint8_t greenLEDState : 1;<br/>    uint32_t msDelayTime;<br/>}LedStates_t;</pre>
+<p>Rather than operate on individual bytes, it is very convenient for the receiving side to pull in an instance of the entire struct at once. The following code is designed to receive an entire copy of<span> </span><kbd>LedStates_t</kbd><span> </span>from a queue. After the struct is received, it can be operated on by simply referencing members of the struct, such as checking<span> </span><kbd>redLEDState</kbd><span>, i</span>n this example:</p>
+<pre>LedStates_t nextCmd;<br/>while(1)<br/>{<br/>    if(<strong>xQueueReceive(ledCmdQueue, &amp;nextCmd</strong>, portMAX_DELAY) == pdTRUE)<br/>    {<br/>        if(<strong>nextCmd.redLEDState</strong> == 1)<br/>            RedLed.On();<br/>        else<br/>             . . .</pre>
+<p>This can be accomplished by <strong>serializing</strong> the data structure and passing it over the communication medium. Our <kbd>LedStates_t</kbd> struct can be serialized as a block of 5 bytes. All three red, green, and blue state values can be packed into 3 bits of a byte and the delay time will take 4 bytes:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1658 image-border" src="assets/9a624631-0150-4a45-986d-39bf6189d06c.png" style="width:16.17em;height:29.50em;"/></p>
+<div class="packt_tip packt_infobox">Serialization is a broad topic in itself. There are trade-offs to be made for portability, ease of use, code fragility, and speed. A discussion on all of these points is outside the scope of this chapter. Details of endianness and the <em>best</em> way of serializing/deserializing this particular data structure have been purposely ignored in the diagram. The main takeaway is that the struct can be represented by a block of 5 bytes.</div>
+<p>In this case, it makes sense for the underlying peripheral driver to operate on a buffer of 5 bytes, so a buffer-based approach that groups a transfer into a block of 5 bytes is more natural than a stream of bytes. The following pseudo-code outlines an approach based on the buffer-based driver we wrote in the previous section:</p>
+<pre>uint8_t ledCmdBuff[5];<br/><strong>startReceiveInt</strong>(ledCmdBuff, 5);<br/>//wait for reception to complete<br/><strong>xSemaphoreTake</strong>(cmdReceived, portMAX_DELAY);<br/>//populate an led command with data received from the serial port<br/>LedStates_t ledCmd = <strong>parseMsg</strong>(ledCmdBuff);<br/>//send the command to the queue<br/><strong>xQueueSend</strong>(ledCmdQueue, &amp;ledCmd, portMAX_DELAY);</pre>
+<p>In a situation like the previous one, we have covered two different approaches that can provide efficient implementations:</p>
+<ul>
+<li>A buffer-based driver (receiving 5 bytes at a time)</li>
+<li>A stream buffer (the receiving side can be configured to acquire 5 bytes at a time)</li>
+</ul>
+<div class="packt_tip">FreeRTOS message buffers could also be used instead of a stream buffer to provide a more flexible solution. Message buffers are built on top of stream buffers, but have a more flexible blocking configuration. They allow different message sizes to be configured per <kbd>receive</kbd> call, so the same buffer can be used to group receptions into a size of 5 bytes (or any other desired size) each time <kbd>xMessageBufferReceive</kbd> is called. With stream buffers, the message size is rigidly defined when creating the stream buffer by setting the <kbd>xTriggerLevelBytes</kbd> parameter in <kbd>xStreamBufferCreate</kbd>.  Unlike stream buffers, message buffers will only return full messages, not individual bytes.</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How much delay is acceptable?</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Depending on the exact function being implemented, minimal delay may be desired. In this case, buffer-based implementations can sometimes have a slight advantage. They allow the calling code to be set up as an extremely high priority, without causing significant context switching in the rest of the application. </p>
+<p class="mce-root">With a buffer-based setup, after the last byte of a message is transferred, the task will be notified and immediately run. This is better than having the high-priority task perform byte-wise parsing of the message since it will be interrupting other tasks continually each time a byte is received. In a byte-wise queue-based approach, the task waiting on the queue would need to be set to a very high priority if the incoming message was extremely important. This combination causes quite a bit of task context switching versus a buffer approach, which only has a single semaphore (or direct task notification) when the transfer is finished.</p>
+<p class="mce-root">Sometimes, timing constraints are so tight neither queues nor an entire block transfer may be acceptable (bytes might need to be processed as they come in). This approach will sometimes eliminate the need for intermediate buffers as well. A fully custom ISR can be written in these cases, but it won't be easily reused. Try to avoid lumping <strong>business logic</strong> (application-level logic not immediately required for servicing the peripheral) into ISRs whenever possible. It complicates testing and reduces code reuse. After a few months (or years) of writing code like this, you'll likely notice that you've got dozens of ISRs that look <em>almost</em><span> </span>the same but behave in subtlety different ways, which can make for buggy systems when modifications to higher-level code are required.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How fast is data moving?</h1>
+                </header>
+            
+            <article>
+                
+<p>While extremely convenient, queues are a fairly expensive way to pass individual bytes around a system. Even an interrupt-based driver has limitations on how long it has to deal with incoming data. Our example used a meager 9,600 baud transfer. Individual characters were transferred into the queue within 40 us of being received, but what happens if the baud rate is 115,200 baud? Now, instead of having around 1 character per millisecond, each character would need to be added to the queue in less than 9 us. A driver that takes 40 us per interrupt isn't going to be acceptable here, so using a simple queue approach isn't a viable option.</p>
+<p>We saw that the stream buffer implementation with DMA was a viable solution in place of a queue. <span>Using some type of double-buffering technique for high-speed, continuous streams of data is critical. This becomes an especially convenient technique when coupled with a highly efficient RTOS primitive, such as stream buffers or message buffers.</span></p>
+<p>Interrupts and DMA-based drivers that moved data directly into a <strong>raw</strong> memory buffer are also quite viable when speeds are high, but they don't have the convenience of a queue-like interface.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">What type of device are you interfacing?</h1>
+                </header>
+            
+            <article>
+                
+<p>Some peripherals and external devices will naturally lean toward one implementation or another. When receiving asynchronous data, queues are a fairly natural choice because they provide an easy mechanism for constantly capturing incoming data. <span>UARTs, USB virtual comms, network streams, and timer captures are all very naturally implemented with a byte-wise queue implementation (at least at the lowest level).</span></p>
+<p>Synchronous-based devices, such as a <strong>serial peripheral interface</strong> (<strong>SPI</strong>) and <span><strong>Inter-Integrated Circuit</strong> (</span><strong>I2C</strong>), are easily implemented with block-based transfers on the master side since the number of bytes is known ahead of time (the master needs to supply the clock signal for both bytes sent and bytes received).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">When to use queue-based drivers</h1>
+                </header>
+            
+            <article>
+                
+<p>Here are some cases where it is an advantage to use a queue as the interface of a driver:</p>
+<ul>
+<li>When the peripheral/application needs to receive data of an unknown length</li>
+<li>When data must be received asynchronously to requests</li>
+<li>When a driver should receive data from multiple sources without blocking the caller</li>
+<li>When data rates are sufficiently slow to allow a minimum of 10's of µS per interrupt (when being implemented on the hardware, in this example)</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">When to use buffer-based drivers</h1>
+                </header>
+            
+            <article>
+                
+<p>Some cases where raw buffer-based drivers are extremely useful are as follows:</p>
+<ul>
+<li>When large buffers are required because large amounts of data will be received at once</li>
+<li>During transaction-based communication protocols, especially when the length of the received data is known in advance</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">When to use stream buffers</h1>
+                </header>
+            
+            <article>
+                
+<p>Stream buffers provide speed closer to that of raw buffers, but with the added benefit of providing an efficient queue API. They can generally be used anywhere a standard queue would be used (as long as there is only one consumer task). Stream buffers are also efficient enough to be used in place of raw buffers, in many cases. As we saw in the <kbd>mainUartDMAStreamBufferCont.c</kbd> example, they can be combined with circular DMA transfers to provide true continuous data capture, without using a significant number of CPU cycles.</p>
+<p>These are just some of the considerations you'll likely face when creating drivers; they are mainly aimed at communication peripherals (since that's what our examples covered). There are also some considerations to be made when choosing to use third-party libraries and drivers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using third-party libraries (STM HAL)</h1>
+                </header>
+            
+            <article>
+                
+<p>If you've been following along closely, you may have noticed a few things:</p>
+<ul>
+<li>STM HAL (the vendor-supplied hardware abstraction layer) is used for initial peripheral configuration. This is because HAL does a very good job of making peripheral configuration easy. It is also extremely convenient to use tools such as STM Cube to generate some boilerplate code as a point of reference when first interacting with a new chip.</li>
+<li>When it is time to implement details of interrupt-driven transactions, we've been making a lot of calls directly to MCU peripheral registers, rather than letting HAL manage transactions for us. There were a couple of reasons for this:
+<ul>
+<li>We wanted to be closer to the hardware to get a better understanding of how things were really working in the system.</li>
+<li> Some of the setups weren't directly supported by HAL, such as DMA double buffering.</li>
+</ul>
+</li>
+</ul>
+<p>In general, you should use as much vendor-supplied code as you (or your project/company) are comfortable with. If the code is well written and works reliably, then there <em>usually</em> aren't too many arguments for <em>not</em> using it.  </p>
+<p>That being said, here are some potential issues when using vendor-supplied drivers:</p>
+<ul>
+<li>They may use polling instead of interrupts or DMA.</li>
+<li>Tying into interrupts may be cumbersome or inflexible.</li>
+<li>There is potentially <em>lots</em> of extra overhead since many chips/use cases are likely covered by drivers (they need to solve <em>everyone's</em> problems, not just yours).</li>
+<li>It might take longer to fully grasp and understand a complex API than working directly with the peripheral hardware (for simple peripherals).</li>
+</ul>
+<p>The following are examples of when to write <strong>bare-metal</strong> drivers:</p>
+<ul>
+<li>When a vendors driver is broken/buggy</li>
+<li>When speed matters</li>
+<li>When an exotic configuration is required</li>
+<li>As a learning exercise</li>
+</ul>
+<p>Ideally, transitioning between third-party drivers and your own drivers would be perfectly seamless. If it isn't, it means that the higher-level code is tightly coupled to the hardware. This tight coupling is perfectly acceptable for sufficiently small <em>one-off</em> and <em>throw-away</em> projects, but if you're attempting to develop a code base for the long term, investing in creating a loosely coupled architecture will pay dividends. Having loose coupling (eliminating dependencies between the exact driver implementation and higher-level code) also provides flexibility in the implementation of the individual components. Loose coupling ensures transitioning between custom drivers and third-party drivers doesn't necessitate a major rewrite of high-level code. Loose coupling also makes testing small portions of the code base in isolation possible—see <a href="8e78a49a-1bcd-4cfe-a88f-fb86a821c9c7.xhtml">Chapter 12</a><em>, Tips on Creating Well-Abstracted Architecture</em>, for details.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we introduced three different ways of implementing low-level drivers that interface with hardware peripherals in the MCU. Interrupts and polled- and DMA-based drivers were all covered through examples and their performance was analyzed and compared using SEGGER SystemView. We also covered three different ways that FreeRTOS can interact with ISRs: semaphores, queues, and stream buffers. Considerations for choosing between the implementation options were also discussed, as well as when it is appropriate to use third-party peripheral drivers (STM HAL) and when "rolling your own" is best.</p>
+<p>To get the most out of this chapter, you're encouraged to run through it on actual hardware. The development board was chosen (in part) with the hope that you might have access to Arduino shields. After running through the examples, an excellent next step would be to develop a driver for a shield or another piece of real-world hardware. </p>
+<p>This chapter was really just the tip of the iceberg when it comes to driver implementation. There are many additional approaches and techniques that can be used when creating efficient implementations, from using different RTOS primitives beyond what is presented in this chapter to configuring MCU-specific functionality. Your designs don't need to be limited by what happens to be provided by a vendor.</p>
+<p><span>You should now have a solid understanding of the many different ways low-level drivers can be implemented. In the next chapter, we'll take a look at how these drivers can be safely presented to higher-level code across multiple tasks. Providing easy access to drivers makes developing the final application fast and flexible.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p><span>As we conclude, here is a list of questions for you to test your knowledge of this chapter's material. You will find the answers in the </span><em>Assessments</em><span> section of the appendix:</span></p>
+<ol>
+<li>What type of driver is more complicated to write and use?
+<ul>
+<li>Polled</li>
+<li>Interrupt-driven</li>
+</ul>
+</li>
+<li>True or false: In FreeRTOS, it is possible to call any RTOS function from any ISR?
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+<li>True or false: When using an RTOS, interrupts are constantly fighting the scheduler for CPU time?
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+<li>Which technique for a peripheral driver requires the fewest CPU resources when transferring large amounts of high-speed data?
+<ul>
+<li>Polling</li>
+<li>Interrupt</li>
+<li>DMA</li>
+</ul>
+</li>
+<li>What does DMA stand for?</li>
+<li>Name one case when using a raw buffer-based driver is <em>not</em> a good idea.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Further reading</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li><em>Chapter 4</em> in the <em>RM0410 STM32F76xxx</em> reference manual (<em>USART</em>)</li>
+<li>B1.5.4, <em><em>Exception priorities and preemption</em></em> section in the <em>Arm®v7-M Architecture</em> reference manual</li>
+<li>FreeRTOS.org's explanation of CortexM priorities, at <a href="https://www.freertos.org/RTOS-Cortex-M3-M4.html">https://www.freertos.org/RTOS-Cortex-M3-M4.html</a></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

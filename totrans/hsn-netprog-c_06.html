@@ -1,0 +1,797 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Hostname Resolution and DNS</h1>
+                </header>
+            
+            <article>
+                
+<p>Hostname resolution is a vital part of network programming. It allows us to use simple names, such as <kbd>www.example.com</kbd>, instead of tedious addresses such as <kbd>::ffff:192.168.212.115</kbd>. T<span>he mechanism that allows us to resolve hostnames into IP addresses and IP addresses into hostnames </span>is the <strong>Domain Name System</strong> (<strong>DNS</strong>).</p>
+<p>In this chapter, we begin by covering the built-in <kbd>getaddrinfo()</kbd> and <kbd>getnameinfo()</kbd> <span>socket functions </span>in more depth. Later,<span> </span><span>we</span> will build a program that does DNS queries using <strong><span>User Datagram Protocol</span></strong> (<strong>UDP</strong>) from scratch.</p>
+<p>We will cover the following topics in this chapter:</p>
+<ul>
+<li>How DNS works</li>
+<li>Common DNS record types</li>
+<li>The <kbd>getaddrinfo()</kbd> and <kbd>getnameinfo()</kbd> functions</li>
+<li>DNS query data structures</li>
+<li>DNS UDP protocol</li>
+<li>DNS TCP fallback</li>
+<li>Implementing a DNS query program</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>The example programs from this chapter can be compiled with any modern C compiler. We recommend MinGW on Windows and GCC on Linux and macOS. See Appendices B, C, and D for compiler setup.</p>
+<p>The code for this book can be found at <a href="https://github.com/codeplea/Hands-On-Network-Programming-with-C" target="_blank">https://github.com/codeplea/Hands-On-Network-Programming-with-C</a>.</p>
+<p>From the command line, you can download the code for this chapter with the following command:</p>
+<pre><strong>git clone https://github.com/codeplea/Hands-On-Network-Programming-with-C</strong><br/><strong>cd Hands-On-Network-Programming-with-C/chap05</strong></pre>
+<p>Each example program in this chapter runs on Windows, Linux, and macOS. When compiling on Windows, each example program should be linked with the Winsock library. This can be accomplished by passing the <kbd>-lws2_32</kbd> option to <kbd>gcc</kbd>.</p>
+<p>We'll provide the exact commands needed to compile each example as they are introduced.</p>
+<p>All of the example programs in this chapter require the same header files and C macros which we developed in <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs.</em> For brevity, we put these statements in a separate header file, <kbd>chap05.h</kbd>, which we can include in each program. For an explanation of these statements, please refer to <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>.</p>
+<p>The contents of <kbd>chap05.h</kbd> are as follows:</p>
+<pre>/*<span>chap05.h*/</span><br/><br/>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif<br/><br/><br/>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/><br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#define CLOSESOCKET(s) close(s)<br/>#define SOCKET int<br/>#define GETSOCKETERRNO() (errno)<br/>#endif<br/><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;stdlib.h&gt;<br/>#include &lt;string.h&gt;</pre>
+<p class="mce-root">With the <kbd>chap05.h</kbd> header in place, writing portable network programs is much easier. Let's continue now with an explanation of how DNS works, and then we will move on to the actual example programs.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How hostname resolution works</h1>
+                </header>
+            
+            <article>
+                
+<p>The DNS is used to assign names to computers and systems connected to the internet. Similar to how a phone book can be used to link a phone number to a name, the DNS allows us to link a hostname to an IP address.</p>
+<p>When your program needs to connect to a remote computer, such as <kbd>www.example.com</kbd>, it first needs to find the IP address for <kbd>www.example.com</kbd>. In this book so far, we have been using the built-in <kbd>getaddrinfo()</kbd> function for this purpose. When you call <kbd>getaddrinfo()</kbd>, your operating system goes through a number of steps to resolve the domain name.</p>
+<p>First, your operating system checks whether it already knows the IP address for <kbd>www.example.com</kbd>. If you have used that hostname recently, the OS is allowed to remember it in a local cache for a time. This time is referred to as <strong>time-to-live</strong> (<strong>TTL</strong>) and is set by the DNS server responsible for the hostname.</p>
+<p>If the hostname is not found in the local cache, then your operating system will need to query a DNS server. This DNS server is usually provided by your <strong>Internet Service Provider</strong> (<strong>ISP</strong>), but there are also many publicly-available DNS servers. When the DNS server receives a query, it also checks its local cache. This is useful because numerous systems may be relying on one DNS server. If a DNS server receives 1,000 requests for <kbd>gmail.com</kbd> in one minute, it only needs to resolve the hostname the first time. For the other 999 requests, it can simply return the memorized answer from its local cache.</p>
+<p>If the DNS server doesn't have the requested DNS record in its cache, then it needs to query other DNS servers until it connects directly to the DNS server responsible for the target system. Here's an example query resolution broken down step-wise:</p>
+<p>Client A's DNS server is trying to resolve <kbd>www.example.com</kbd> as follows:</p>
+<ol>
+<li>It first connects to a root DNS server and asks for <kbd>www.example.com</kbd>.</li>
+<li>The root DNS server directs it to ask the <kbd>.com</kbd> server.</li>
+<li>Our client's DNS server then connects to the server responsible for <kbd>.com</kbd> and asks for <kbd>www.example.com</kbd>.</li>
+<li>The <kbd>.com</kbd> DNS server gives our server the address of <span>another server – </span><span>the <kbd>example.com</kbd> DNS server.</span></li>
+<li>Our DNS server finally connects to that server and asks about the record for <kbd>www.example.com</kbd>.</li>
+<li>The <span><kbd>example.com</kbd> server then shares the address of <kbd>www.example.com</kbd></span>.</li>
+<li>Our client's DNS server relays it back to our client.</li>
+</ol>
+<p>The following diagram illustrates this visually:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-345 image-border" src="assets/3885e0b3-c552-4775-926d-4cc361781b2a.png" style="width:60.17em;height:34.25em;"/></p>
+<p>In this example, you can see that resolving <kbd>www.example.com</kbd> involved sending eight messages. It's possible that the lookup could have taken even longer. This is why it's imperative for DNS servers to implement caching. Let's assume that <strong>Client B</strong> tries the same query shortly after <strong>Client A</strong>; it's likely that the DNS server would have that value cached:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/ea2e3e19-987a-4c09-80af-f27720d6ad66.png" style="width:37.67em;height:14.67em;"/></p>
+<p>Of course, if a program on <strong>Client A</strong> wants to resolve <kbd>www.example.com</kbd> again, it's likely that it won't have to contact the DNS server at all – the operating system running on <strong>Client A</strong> should have cached the result.</p>
+<p>On Windows, you can show your local DNS cache with the following command:</p>
+<pre><strong>ipconfig /displaydns</strong></pre>
+<p>On Linux or macOS, the command to show your local DNS varies depending on your exact system setup.</p>
+<p>One downside of setting a large TTL value for a domain record is that you have to wait at least that long to be sure that all clients are using the new record and not just retrieving the old cached record.</p>
+<p>In addition to DNS records that link a hostname to an IP address, there are other DNS record types for various purposes. We'll review some of these in the next section.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">DNS record types</h1>
+                </header>
+            
+            <article>
+                
+<p>The DNS has five main types of records—<kbd>A</kbd>, <kbd>AAAA</kbd>, <kbd>MX</kbd>, <kbd>TXT</kbd>, <kbd>CNAME</kbd>, and <kbd>*</kbd> (<kbd>ALL</kbd>/<kbd>ANY</kbd>).</p>
+<p>As we have learned, the DNS's primary purpose is to translate hostnames into IP addresses. This is done with two record types – type <kbd>A</kbd> and type <kbd>AAAA</kbd>. These records work in the same way, but <kbd>A</kbd> records return an IPv4 address, while <kbd>AAAA</kbd> records return an IPv6 address.</p>
+<p>The <kbd>MX</kbd> record type is used to return mail server information. For example, if you wanted to send an email to <kbd>larry@example.com</kbd>, then the <kbd>MX</kbd> record(s) for <kbd>example.com</kbd> would indicate which mail server(s) receives emails for that domain.</p>
+<p><kbd>TXT</kbd> records can be used to store arbitrary information for a hostname. In practice, these are sometimes set to prove ownership of a domain name or to publish email sending guidelines. The <strong>Sender Policy Framework</strong> (<strong>SPF</strong>) standard uses <kbd>TXT</kbd> records to declare which systems are allowed to send mail for a given domain name. You can read more about SPF at <a href="http://www.openspf.org/" target="_blank">http://www.openspf.org/</a>.</p>
+<p><kbd>CNAME</kbd> records can be used to provide an alias for a given name. For example, many websites are accessible at both their root domain name, for example, <kbd>example.com</kbd>, and at the <kbd>www</kbd> subdomain. If <kbd>example.com</kbd> and <kbd>www.example.com</kbd> should point to the same address, then an <kbd>A</kbd> and an <kbd>AAAA</kbd> record can be added for <kbd>example.com</kbd>, while a <kbd>CNAME</kbd> record can be added for <kbd>www.example.com</kbd> pointing to <kbd>example.com</kbd>. Note that DNS clients don't query for <kbd>CNAME</kbd> records directly; instead, a client would ask for the <kbd>A</kbd> or <kbd>AAAA</kbd> record for <kbd>www.example.com</kbd> and the DNS server would reply with the <kbd>CNAME</kbd> record pointing to <kbd>example.com</kbd>. The DNS client would then continue the query using <kbd>example.com</kbd>.</p>
+<p>When doing a DNS query, there is also a pseudo-record type called <kbd>*</kbd> or <kbd>ALL</kbd> or <kbd>ANY</kbd>. If this record is requested from a DNS server, then the DNS server returns all known record types for the current query. Note that a DNS server is allowed to respond with only the records in its cache, and this query is not guaranteed (or even likely) to actually get all of the records for the requested domain.</p>
+<p>When sending a DNS query, each record type has an associated type ID. The IDs for the records discussed so far are as follows:</p>
+<table border="1" style="border-collapse: collapse;width: 100%">
+<tbody>
+<tr>
+<td><strong>Record Type</strong></td>
+<td><strong>Type ID (decimal)</strong></td>
+<td><strong>Description</strong></td>
+</tr>
+<tr>
+<td><kbd>A</kbd></td>
+<td>1</td>
+<td>IPv4 address record</td>
+</tr>
+<tr>
+<td><kbd><span>AAAA</span></kbd></td>
+<td>28</td>
+<td>IPv6 address record</td>
+</tr>
+<tr>
+<td><kbd>MX</kbd></td>
+<td>15</td>
+<td>Mail exchange record</td>
+</tr>
+<tr>
+<td><kbd>TXT</kbd></td>
+<td>16</td>
+<td>Text record</td>
+</tr>
+<tr>
+<td><kbd>CNAME</kbd></td>
+<td>5</td>
+<td>Canonical name</td>
+</tr>
+<tr>
+<td><kbd>*</kbd></td>
+<td>255</td>
+<td>All cached records</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p>There are many other record types in use. Please see the <em>Further reading</em> section at the end of this chapter for more information.</p>
+<p>It should be noted that one hostname may be associated with multiple records of the same type. For example, <kbd>example.com</kbd> could have several <kbd>A</kbd> records, each with a different IPv4 address. This is useful if multiple servers can provide the same service.</p>
+<p>One other aspect of the DNS protocol worth mentioning is security. Let's look at that now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">DNS security</h1>
+                </header>
+            
+            <article>
+                
+<p>While most web traffic and email are encrypted today, DNS is still widely used in an unsecured manner. Protocols do exist to provide security for DNS, but they are not widely adopted yet. This will hopefully change in the near future.</p>
+<p><strong>Domain Name System Security Extensions</strong> (<strong>DNSSEC</strong>) are DNS extensions that provide data authentication. This authentication allows a DNS client to know that a given DNS reply is authentic, but it does not protect against eavesdropping.</p>
+<p><strong>DNS over HTTPS</strong> (<strong>DoH</strong>) is a protocol that provides name resolution over HTTPS. HTTPS provides strong security guarantees, including resistance to interception. We cover HTTPS in <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>, and <a href="f57ffaa2-3eba-45cf-914b-bb6aef36174f.xhtml">Chapter 10</a>, <em>Implementing a Secure Web Server</em>.</p>
+<p>What are the implications of using insecure DNS? First, if DNS is not authenticated, then it could allow an attacker to lie about a domain name's IP address. This could trick a victim into connecting to a server that they think is <kbd>example.com</kbd>, but, in reality, is a malicious server controlled by the attacker at a different IP address. If the user is connecting via a secure protocol, such as HTTPS, then this attack will fail. HTTPS provides additional authentication to prove server identity. However, if the user connects with an insecure protocol, such as HTTP, then the DNS attack could successfully trick the victim into connecting to the wrong server.</p>
+<p>If DNS is authenticated, then these hijacking attacks are prevented. However, without encryption, DNS queries are still susceptible to eavesdropping. This could potentially give an eavesdropper insight into which websites you're visiting and other servers that you are connecting to (for example, which email server you use). This doesn't let an attacker know what you are doing on each website. For example, if you do a DNS query for <kbd>example.com</kbd>, an attacker would know that you planned to visit <kbd>example.com</kbd>, but the attacker would not be able to determine which resources you requested from <kbd>example.com</kbd> – assuming that you use a secure protocol (<span>for example</span>, HTTPS) to retrieve those resources. An attacker with the ability to eavesdrop would be able to see that you established a connection to the <span>IP address of</span> <kbd>example.com</kbd> in any case, so them knowing that you performed a DNS lookup beforehand is not much extra information.</p>
+<p><span>With some security discussion out of the way, let's look at how to do actual DNS lookups. Winsock and Berkeley sockets provide a simple function to do address lookup, called </span><kbd>getaddrinfo()</kbd><span>, which we've used in the previous chapters of this book. We will start with </span><span>this in the next section.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Name/address translation functions</h1>
+                </header>
+            
+            <article>
+                
+<p>It is common for networked programs to need to translate text-based representatives of an address or hostname into an address structure required by the socket programming API. The common function we've been using is <kbd>getaddrinfo()</kbd>. It is a useful function because it is highly portable (available on Windows, Linux, and macOS), and it works for both IPv4 and IPv6 addresses.</p>
+<p>It is also common to need to convert a binary address back into a text format. We use <kbd>getnameinfo()</kbd> for this.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using getaddrinfo()</h1>
+                </header>
+            
+            <article>
+                
+<p>Although we've been using <kbd>getaddrinfo()</kbd> in previous chapters, we'll discuss it in more detail here.</p>
+<p>The declaration for <kbd>getaddrinfo()</kbd> is shown in the following code:</p>
+<pre>int getaddrinfo(const char *node,<br/>                const char *service,<br/>                const struct addrinfo *hints,<br/>                struct addrinfo **res);</pre>
+<p>The preceding code snippet is explained as follows:</p>
+<ul>
+<li><kbd>node</kbd> specifies a hostname or address as a string. Valid examples could be <kbd>example.com</kbd>, <kbd>192.168.1.1</kbd>, or <kbd>::1</kbd>.</li>
+<li><kbd>service</kbd> specifies a service or port number as a string. Valid examples could be <kbd>http</kbd> or <kbd>80</kbd>. Alternately, the null pointer can be passed in for <kbd>service</kbd>, in which case, the resulting address is set to port <kbd>0</kbd>.</li>
+</ul>
+<ul>
+<li><kbd>hints</kbd> is a pointer to a <kbd>struct addrinfo</kbd>, which specifies options for selecting the address. The <kbd>addrinfo</kbd> structure has the following fields:</li>
+</ul>
+<pre style="padding-left: 90px">struct addrinfo {<br/>    int              ai_flags;<br/>    int              ai_family;<br/>    int              ai_socktype;<br/>    int              ai_protocol;<br/>    socklen_t        ai_addrlen;<br/>    struct sockaddr *ai_addr;<br/>    char            *ai_canonname;<br/>    struct addrinfo *ai_next;<br/>};</pre>
+<p style="padding-left: 60px">You should not assume that the fields are stored in the order listed in the previous code, or that additional fields aren't present. There is some variation between operating systems.</p>
+<p>The call to <kbd>getaddrinfo()</kbd> looks at only four fields in <kbd>*hints</kbd>. The rest of the structure should be zeroed-out. The relevant fields are <kbd>ai_family</kbd>, <kbd>ai_socktype</kbd>, <kbd>ai_protocol</kbd>, and <kbd>ai_flags</kbd>:</p>
+<ul>
+<li><kbd>ai_family</kbd> specifies the desired address family. It can be <kbd>AF_INET</kbd> for IPv4, <kbd>AF_INET6</kbd> for IPv6, or <kbd>AF_UNSPEC</kbd> for any address family. <kbd>AF_UNSPEC</kbd> is defined as <kbd>0</kbd>.</li>
+<li><kbd>ai_socktype</kbd> could be <kbd>SOCK_STREAM</kbd> for TCP (see <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em>), or <kbd>SOCK_DGRAM</kbd> for UDP (see <a href="05a32725-5c72-41e4-92aa-2425bf75282e.xhtml">Chapter 4</a>, <em>Establishing UDP Connections</em>). Setting <kbd>ai_socktype</kbd> to <kbd>0</kbd> indicates that the address could be used for either.</li>
+<li><kbd>ai_protocol</kbd> should be left to <kbd>0</kbd>. Strictly speaking, TCP isn't the only streaming protocol supported by the socket interface, and UDP isn't the only datagram protocol supported. <kbd>ai_protocol</kbd> is used to disambiguate, but it's not needed for our purposes.</li>
+<li><kbd>ai_flags</kbd> specifies additional options about how <kbd>getaddrinfo()</kbd> should work. Multiple flags can be used by bitwise OR-ing them together. In C, the bitwise OR operator uses the pipe symbol, <kbd>|</kbd>. So, bitwise OR-ing two flags together would use the <kbd>(flag_one | flag_two)</kbd> code.</li>
+</ul>
+<p>Common flags you may use for the <kbd>ai_flags</kbd> field are:</p>
+<ul>
+<li><kbd>AI_NUMERICHOST</kbd> can be used to prevent name lookups. In this case, <kbd>getaddrinfo()</kbd> would expect <kbd>node</kbd> to be an address such as <kbd>127.0.0.1</kbd> and not a hostname such as <kbd>example.com</kbd>. <span><span><kbd>AI_NUMERICHOST</kbd> can be useful because it prevent</span></span>s <kbd>getaddrinfo()</kbd> from doing a DNS record lookup, which can be slow.</li>
+<li><kbd>AI_NUMERICSERV</kbd> can be used to only accept port numbers for the <kbd>service</kbd> argument. If used, this flag causes <kbd>getaddrinof()</kbd> to reject service names.</li>
+<li><kbd>AI_ALL</kbd> can be used to request both an IPv4 and IPv6 address. The declaration for <kbd>AI_ALL</kbd> seems to be missing on some Windows setups. It can be defined as <kbd>0x0100</kbd> on those platforms.</li>
+<li><kbd>AI_ADDRCONFIG</kbd> forces <kbd>getaddrinfo()</kbd> to only return addresses that match the family type of a configured interface on the local machine. For example, if your machine is IPv4 only, then using <kbd>AI_ADDRCONFIG | AI_ALL</kbd> prevents IPv6 addresses from being returned. It is usually a good idea to use this flag if you plan to connect a socket to the address returned by <kbd>getaddrinfo()</kbd>.</li>
+<li><kbd>AI_PASSIVE</kbd> can be used with <kbd>node = 0</kbd> to request the <em>wildcard address</em>. This is the local address that accepts connections on any of the host's network addresses. It is used on servers with <kbd>bind()</kbd>. If <kbd>node</kbd> is not <kbd>0</kbd>, then <kbd>AI_PASSIVE</kbd> has no effect. See <a href="eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml" target="_blank">Chapter 3</a>, <em>An In-Depth Overview of TCP Connections</em> for example usage.</li>
+</ul>
+<p><span>All other fields in </span><kbd>hints</kbd><span> should be set to <kbd>0</kbd>. You can also pass in <kbd>0</kbd> for the </span><kbd>hints</kbd><span> argument, but different operating systems implement different defaults in that case.</span></p>
+<p>The final parameter to <kbd>getaddrinfo()</kbd>, <kbd>res</kbd>, is a pointer to a pointer to <kbd>struct addrinfo</kbd> and returns the address(es) found by <kbd>getaddrinfo()</kbd>.</p>
+<p>If the call to <kbd>getaddrinfo()</kbd> succeeds, then its return value is <kbd>0</kbd>. In this case, you should call <kbd>freeaddrinfo()</kbd> on <kbd>*res</kbd> when you've finished using the address. Here is an example of using <kbd>getaddrinfo()</kbd> to find the address(es) for <kbd>example.com</kbd>:</p>
+<pre>struct addrinfo hints;<br/>memset(&amp;hints, 0, sizeof(hints));<br/>hints.ai_flags = AI_ALL;<br/>struct addrinfo *peer_address;<br/>if (getaddrinfo("example.com", 0, &amp;hints, &amp;peer_address)) {<br/>    fprintf(stderr, "getaddrinfo() failed. (%d)\n", GETSOCKETERRNO());<br/>    return 1;<br/>}</pre>
+<p>Note that we first zero out <kbd>hints</kbd> using a call to <kbd>memset()</kbd>. We then set the <kbd>AI_ALL</kbd> flag, which specifies that we want both IPv4 and IPv6 addresses returned. This even returns addresses that we don't have a network adapter for. If you only want addresses that your machine can practically connect to, then use <kbd>AI_ALL | AI_ADDRCONFIG</kbd> for the <kbd>ai_flags</kbd> field. We can leave the other fields of <kbd>hints</kbd> as their defaults.</p>
+<p>We then declare a pointer to hold the return address list: <kbd>struct addrinfo *peer_address</kbd>.</p>
+<p>If the call to <kbd>getaddrinfo()</kbd> succeeds, then <kbd>peer_address</kbd> holds the first address result. The next result, if any, is in <kbd>peer_address-&gt;ai_next</kbd>.</p>
+<p>We can loop through all the returned addresses with the following code:</p>
+<pre>struct addrinfo *address = peer_address;<br/>do {<br/>    /* Work with address... */<br/>} while ((address = address-&gt;ai_next));</pre>
+<p>When we've finished using <kbd>peer_address</kbd>, we should free it with the following code:</p>
+<pre>freeaddrinfo(peer_address);</pre>
+<p>Now that we can convert a text address or name into an <kbd>addrinfo</kbd> structure, it is useful to see how to convert the <kbd>addrinfo</kbd> structure back into a text format. Let's look at that now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using getnameinfo()</h1>
+                </header>
+            
+            <article>
+                
+<p><kbd>getnameinfo()</kbd> can be used to convert an <kbd>addrinfo</kbd> structure back into a text format. It works with both IPv4 and IPv6. It also, optionally, converts a port number into a text format number or service name.</p>
+<p>The declaration for <kbd>getnameinfo()</kbd> can be seen in the following code:</p>
+<pre>int getnameinfo(const struct sockaddr *addr, socklen_t addrlen,<br/>        char *host, socklen_t hostlen,<br/>        char *serv, socklen_t servlen, int flags);</pre>
+<p>The first two parameters are passed in from the <kbd>ai_addr</kbd> and <kbd>ai_addrlen</kbd> fields of <kbd>struct addrinfo</kbd>.</p>
+<p>The next two parameters, <kbd>host</kbd> and <kbd>hostlen</kbd>, specify a character buffer and buffer length to store the hostname or IP address text.</p>
+<p>The following two parameters, <kbd>serv</kbd> and <kbd>servlen</kbd>, specify the buffer and length to store the service name.</p>
+<p>If you don't need both the hostname and the service, you can optionally pass in only one of either <kbd>host</kbd> or <kbd>serv</kbd>.</p>
+<p>Flags can be a bitwise OR combination of the following:</p>
+<ul>
+<li><kbd>NI_NAMEREQD</kbd> requires <kbd>getnameinfo()</kbd> to return a hostname and not an address. By default, <kbd>getnameinfo()</kbd> tries to return a hostname but returns an address if it can't. <kbd>NI_NAMEREQD</kbd> will cause an error to be returned if the hostname cannot be determined.</li>
+<li><kbd>NI_DGRAM</kbd> specifies that the service is UDP-based rather than TCP-based. This is only important for ports that have different standard services for UDP versus TCP. This flag is ignored if <kbd>NI_NUMERICSERV</kbd> is set.</li>
+<li><kbd>NI_NUMERICHOST</kbd> requests that <kbd>getnameinfo()</kbd> returns the IP address and not a hostname.</li>
+<li><kbd>NI_NUMERICSERV</kbd> requests that <kbd>getnameinfo()</kbd> returns the port number and not a service name.</li>
+</ul>
+<p>For example, we can use <kbd>getnameinfo()</kbd> as follows:</p>
+<pre>char host[100];<br/>char serv[100];<br/>getnameinfo(address-&gt;ai_addr, address-&gt;ai_addrlen,<br/>        host, sizeof(host),<br/>        serv, sizeof(serv),<br/>        0);<br/><br/>printf("%s %s\n", host, serv);</pre>
+<p>In the preceding code, <kbd>getnameinfo()</kbd> attempts to perform a reverse DNS lookup. This works like the DNS queries we've done in this chapter so far, but backward. A DNS query asks w<em>hich IP address does this hostname point to?</em> A reverse DNS query asks instead, w<em>hich</em> <em>hostname does this IP address point to?</em> Keep in mind that this is not a one-to-one relationship. Many hostnames can point to one IP address, but an IP address can store a DNS record for only one hostname. In fact, reverse DNS records are not even set for many IP addresses.</p>
+<p>If <kbd>address</kbd> is a <kbd>struct addrinfo</kbd> with the address for <kbd>example.com</kbd> port <kbd>80</kbd> (<kbd>http</kbd>), then the preceding code might print as follows:</p>
+<pre>example.com http</pre>
+<p>If the code prints something different for you, it's probably working as intended. It is dependent on which address is in <kbd>address</kbd> and how the reverse DNS is set up for that IP address. Try it with a different address.</p>
+<p>If, instead of the hostname, we would like the IP address, we can modify our code to the following:</p>
+<pre>char host[100];<br/>char serv[100];<br/>getnameinfo(address-&gt;ai_addr, address-&gt;ai_addrlen,<br/>        host, sizeof(host),<br/>        serv, sizeof(serv),<br/>        NI_NUMERICHOST | NI_NUMERICSERV);<br/><br/>printf("%s %s\n", host, serv);</pre>
+<p>In the case of the previous code, it might print the following:</p>
+<pre>93.184.216.34 80</pre>
+<p>Using <kbd>NI_NUMERICHOST</kbd> generally runs much faster too, as it doesn't require <kbd>getnameinfo()</kbd> to send off any reverse DNS queries.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Alternative functions</h1>
+                </header>
+            
+            <article>
+                
+<p>Two widely-available functions that replicate <kbd>getaddrinfo()</kbd> are <kbd>gethostbyname()</kbd> and <kbd>getservbyname()</kbd>. The <kbd>gethostbyname()</kbd> function is obsolete and has been removed from the newer POSIX standards. Furthermore, I recommend against using these functions in new code, because they introduce an IPv4 dependency. It's very possible to use <kbd>getaddrinfo()</kbd> in such a way that your program does not need to be aware of IPv4 versus IPv6, but still supports both.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">IP lookup example program</h1>
+                </header>
+            
+            <article>
+                
+<p>To demonstrate the <kbd>getaddrinfo()</kbd> and <kbd>getnameinfo()</kbd> functions, we will implement a short program. This program takes a name or IP address for its only argument. It then uses <kbd>getaddrinfo()</kbd> to resolve that name or that IP address into an address structure, and the program prints that IP address using <kbd>getnameinfo()</kbd> for the text conversion. If multiple addresses are associated with a name, it prints each of them. It also indicates any errors.</p>
+<p>To begin with, we need to include our required header for this chapter. We also define <kbd>AI_ALL</kbd> for systems that are missing it. The code for this is as follows:</p>
+<pre>/*<span>lookup.c*/</span><br/><br/>#include "chap05.h"<br/><br/>#ifndef AI_ALL<br/>#define AI_ALL 0x0100<br/>#endi</pre>
+<p>We can then begin the <kbd>main()</kbd> function and check that the user passed in a hostname to lookup. If the user doesn't pass in a hostname, we print a helpful reminder. The code for this is as follows:</p>
+<pre>/*<span>lookup.c</span><span> continued*/</span><br/><br/>int main(int argc, char *argv[]) {<br/><br/>    if (argc &lt; 2) {<br/>        printf("Usage:\n\tlookup hostname\n");<br/>        printf("Example:\n\tlookup example.com\n");<br/>        exit(0);<br/>    }</pre>
+<p>We need the following code to initialize Winsock on Windows platforms:</p>
+<pre>/*<span>lookup.c</span><span> continued*/</span><br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>We can then call <kbd>getaddrinfo()</kbd> to convert the hostname or address into a <kbd>struct addrinfo</kbd>. The code for that is as follows:</p>
+<pre>/*<span>lookup.c</span><span> continued*/</span><br/><br/>    printf("Resolving hostname '%s'\n", argv[1]);<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_flags = AI_ALL;<br/>    struct addrinfo *peer_address;<br/>    if (getaddrinfo(argv[1], 0, &amp;hints, &amp;peer_address)) {<br/>        fprintf(stderr, "getaddrinfo() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>The previous code first prints the hostname or address that is passed in as the first command-line argument. This argument is stored in <kbd>argv[1]</kbd>. We then set <kbd>hints.ai_flags = AI_ALL</kbd> to specify that we want all available addresses of any type, including both IPv4 and IPv6 addresses.</p>
+<p><kbd>getaddrinfo()</kbd> is then called with <kbd>argv[1]</kbd>. We pass <kbd>0</kbd> in for the service argument because we don't care about the port number. We are only trying to resolve an address. If <kbd>argv[1]</kbd> contains a name, such as <kbd>example.com</kbd>, then our operating system performs a DNS query (assuming the hostname isn't already in the local cache). If <kbd>argv[1]</kbd> contains an address such as <kbd>192.168.1.1</kbd>, then <kbd>getaddrinfo()</kbd> simply fills in the resulting <kbd>struct addrinfo</kbd> as needed.</p>
+<p>If the user passed in an invalid address or a hostname for which no record could be found, then <kbd>getaddrinfo()</kbd> returns a non-zero value. In that case, our previous code prints out the error.</p>
+<p>Now that <kbd>peer_address</kbd> holds the desired address(es), we can use <kbd>getnameinfo()</kbd> to convert them to text. The following code does that:</p>
+<pre>/*<span>lookup.c</span><span> continued*/</span><br/><br/>    printf("Remote address is:\n");<br/>    struct addrinfo *address = peer_address;<br/>    do {<br/>        char address_buffer[100];<br/>        getnameinfo(address-&gt;ai_addr, address-&gt;ai_addrlen,<br/>                address_buffer, sizeof(address_buffer),<br/>                0, 0,<br/>                NI_NUMERICHOST);<br/>        printf("\t%s\n", address_buffer);<br/>    } while ((address = address-&gt;ai_next));</pre>
+<p>This code works by first storing <kbd>peer_address</kbd> in a new variable, <kbd>address</kbd>. We then enter a loop. <kbd>address_buffer[]</kbd> is declared to store the text address, and we call <kbd>getnameinfo()</kbd> to fill in that address. The last parameter to <kbd>getnameinfo()</kbd>, <kbd>NI_NUMERICHOST</kbd>, indicates that we want it to put the IP address into <kbd>address_buffer</kbd> and not a hostname. The address buffer can then simply be printed out with <kbd>printf()</kbd>.</p>
+<p>If <kbd>getaddrinfo()</kbd> returned multiple addresses, then the next address is pointed to by <kbd>address-&gt;ai_next</kbd>. We assign <kbd>address-&gt;ai_next</kbd> to <kbd>address</kbd> and loop if it is non-zero. This is a simple example of walking through a linked list.</p>
+<p>After we've printed our address, we should use <kbd>freeaddrinfo()</kbd> to free the memory allocated by <kbd>getaddrinfo()</kbd>. We should also call the Winsock cleanup function on Windows. We can do both with the following code:</p>
+<pre>/*<span>lookup.c continued*/</span><br/><br/>    freeaddrinfo(peer_address);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    return 0;<br/>}</pre>
+<p>That concludes our <kbd>lookup</kbd> program.</p>
+<p>You can compile and run <kbd>lookup.c</kbd> on Linux and macOS by using the following command:</p>
+<pre><strong>gcc lookup.c -o lookup</strong><br/><strong>./lookup example.com</strong></pre>
+<p>Compiling and running on Windows with MinGW is done in the following way:</p>
+<pre><strong>gcc lookup.c -o lookup.exe -lws2_32</strong><br/><strong>lookup.exe example.com</strong></pre>
+<p>The following screenshot is an example of using <kbd>lookup</kbd> to print the IP addresses for <kbd>example.com</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6c0777cf-fe92-47b0-9b88-2c0f2737ef5e.png" style="width:36.50em;height:17.08em;"/></p>
+<p>Although <kbd>getaddrinfo()</kbd> makes performing DNS lookups easy, it is useful to know what happens behind the scenes. We will now look at the DNS protocol in more detail.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The DNS protocol</h1>
+                </header>
+            
+            <article>
+                
+<p>When a client wants to resolve a hostname into an IP address, it sends a DNS query to a DNS server. This is typically done over UDP using port <kbd>53</kbd>. The DNS server then performs the lookup, if possible, and returns an answer. The following diagram illustrates this transaction:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/b1727003-67ae-41ac-86c5-afc0e8977d7a.png" style="width:28.58em;height:6.50em;"/></p>
+<p>If the query (or, more commonly, the answer) is too large to fit into one UDP packet, then the query can be performed over TCP instead of UDP. In this case, the size of the query is sent over TCP as a 16-bit value, and then the query itself is sent. This is called <strong>TCP fallback</strong> or <strong>DNS transport over TCP</strong>. However, UDP works for most cases, and UDP is how DNS is used the vast majority of the time.</p>
+<p>It's also important to note that the client must know the IP address of at least one DNS server. If the client doesn't know of any DNS servers, then it has a sort of chicken-and-egg problem. DNS servers are usually provided by your ISP.</p>
+<p>The actual UDP data format is simple and follows the same basic format for both the query and the answer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">DNS message format</h1>
+                </header>
+            
+            <article>
+                
+<p>The following illustration describes the DNS message format:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/debc3c62-a462-47e0-af20-6d25f771e40d.png" style="width:27.08em;height:13.50em;"/></p>
+<p>Every DNS message follows that format, although a query would leave the <strong>Answer</strong>, <strong>Authority</strong>, and <strong>Additional</strong> sections blank. A DNS response commonly doesn't use <strong>Authority</strong> or <strong>Additional</strong>. We won't concern ourselves with the <strong>Authority</strong> or <strong>Additional</strong> sections, as they are not needed for typical DNS queries.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">DNS message header format</h1>
+                </header>
+            
+            <article>
+                
+<p>The header is exactly 12 bytes long and is exactly the same for a DNS query or DNS response. The <strong>Header Format</strong> is illustrated graphically in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/346de5c8-e0a1-4694-bee3-2ffd68761f09.png" style="width:24.00em;height:14.67em;"/></p>
+<p>As the preceding diagram illustrates, the DNS message header contains 13 fields—<strong>ID</strong>, <strong>QR</strong>, <strong>OPCODE</strong>, <strong>AA</strong>, <strong>TC</strong>, <strong>RD</strong>, <strong>RA</strong>, <strong>Z</strong>, <strong>RCODE</strong>, <strong>QDCOUNT</strong>, <strong>ANCOUNT</strong>, <strong>NSCOUNT</strong>, and <strong>ARCOUNT</strong>:</p>
+<ul>
+<li><strong>ID</strong> is any 16-bit value that is used to identify the DNS message. The client is allowed to put any 16 bits into the DNS query, and the DNS server copies those same 16 bits into the DNS response <strong>ID</strong>. This is useful to allow the client to match up which response is in reply to which query, in cases where the client is sending multiple queries.</li>
+<li><strong>QR</strong> is a 1-bit field. It is set to <kbd>0</kbd> to indicate a DNS query or <kbd>1</kbd> to indicate a DNS response.</li>
+<li><strong>Opcode</strong> is a 4-bit field, which specifies the type of query. <kbd>0</kbd> indicates a standard query. <kbd>1</kbd> indicates a reverse query to resolve an IP address into a name. <kbd>2</kbd> indicates a server status request. Other values (<kbd>3</kbd> through <kbd>15</kbd>) are reserved.</li>
+<li><strong>AA</strong> indicates an authoritative answer.</li>
+<li><strong>TC</strong> indicates that the message was truncated. In this case, it should be re-sent using TCP.</li>
+<li><strong>RD</strong> should be set if recursion is desired. We leave this bit set to indicate that we want the DNS server to contact additional servers until it can complete our request.</li>
+<li><strong>RA</strong> indicates in a response whether the DNS server supports recursion.</li>
+<li><strong>Z</strong> is unused and should be set to <kbd>0</kbd>.</li>
+</ul>
+<ul>
+<li><strong>RCODE</strong> is set in a DNS response to indicate the error condition. Its possible values are as follows:</li>
+</ul>
+<table border="1" style="border-collapse: collapse;width: 100%">
+<tbody>
+<tr>
+<td><strong>RCODE</strong></td>
+<td><strong>Description</strong></td>
+</tr>
+<tr>
+<td><kbd>0</kbd></td>
+<td>No error</td>
+</tr>
+<tr>
+<td><kbd>1</kbd></td>
+<td>Format error</td>
+</tr>
+<tr>
+<td><kbd>2</kbd></td>
+<td>Server failure</td>
+</tr>
+<tr>
+<td><kbd>3</kbd></td>
+<td>Name error</td>
+</tr>
+<tr>
+<td><kbd>4</kbd></td>
+<td>Not implemented</td>
+</tr>
+<tr>
+<td><kbd>5</kbd></td>
+<td>Refused</td>
+</tr>
+</tbody>
+</table>
+<p> </p>
+<p style="padding-left: 60px">Please see <strong>RFC 1035</strong><span>: </span><em>DOMAIN NAMES – IMPLEMENTATION AND SPECIFICATION,</em> in the <em>Further reading</em> section of this chapter for more information on the meaning of these values.</p>
+<ul>
+<li><strong>QDCOUNT</strong>, <strong>ANCOUNT</strong>, <strong>NSCOUNT</strong>, and <strong>ARCOUNT</strong> indicate the number of records in their corresponding sections. <strong>QDCOUNT</strong> indicates the number of questions in a DNS query. It is interesting that <strong>QDCOUNT</strong> is a 16-bit value capable of storing large numbers, and yet no real-world DNS server allows more than one question per message. <strong>ANCOUNT</strong> indicates the number of answers, and it is common for a DNS server to return multiple answers in one message.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Question format</h1>
+                </header>
+            
+            <article>
+                
+<p>The DNS <strong>Question Format</strong> consists of a name followed by two 16-bit values—<kbd>QTYPE</kbd> and <kbd>QCLASS</kbd>. This <strong>Question Format</strong> is illustrated as follows:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/d793dee6-5fa1-4bb2-947d-eae5221dd568.png" style="width:24.25em;height:10.67em;"/></p>
+<p><strong>QTYPE</strong> indicates the record type we are asking for, and <strong>QCLASS</strong> should be set to <kbd>1</kbd> to indicate the internet.</p>
+<p>The name field involves a special encoding. First, a hostname should be broken up into its individual labels. For example, <kbd>www.example.com</kbd> would be broken up into <kbd>www</kbd>, <kbd>example</kbd>, and <kbd>com</kbd>. Then, each label should be prepended with 1 byte, indicating the label length. Finally, the entire name ends with a 0 byte.</p>
+<p>Visually, the name <kbd>www.example.com</kbd> is encoded as follows:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/982010ad-4fe5-4e83-b2e5-37d2798aa631.png" style="width:27.33em;height:23.42em;"/></p>
+<p>If the <strong>QTYPE</strong> and <strong>QCLASS</strong> fields were appended to the preceding name example, then it could make up an entire DNS question.</p>
+<p>A DNS response is sometimes required to repeat the same name multiple times. In this case, a DNS server may encode a pointer to an earlier name instead of sending the same name multiple times. A pointer is indicated by a 16-bit value with the two most significant bits set. The lower 14 bits indicate the pointer value. This 14-bit value specifies the location of the name as an offset from the beginning of the message. Having the two most significant bits reserved has an additional side-effect of limiting labels to 63 characters. A longer name would require setting both high bits in the label length specifier, but if both high bits are set, it indicates a pointer and not a label length!</p>
+<p>The answer format is similar to the question format but with a few more fields. Let's look at that next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Answer format</h1>
+                </header>
+            
+            <article>
+                
+<p>The DNS answer format consists of the same three fields that questions have; namely, a name followed by a 16-bit <kbd>TYPE</kbd> and a 16-bit <kbd>CLASS</kbd>. The answer format then has a 32-bit <kbd>TTL</kbd> field. This field specifies how many seconds the answer is allowed to be cached for. <kbd>TTL</kbd> is followed by a 16-bit length specifier, <kbd>RDLENGTH</kbd>, followed by data. The data is <kbd>RDLENGTH</kbd> long, and the data's interpretation is dependent upon the type specified by <kbd>TYPE</kbd>.</p>
+<p>Visually, the answer format is shown in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/d78755d4-2ce9-463f-9bc6-f7f5b8a48a5b.png" style="width:24.17em;height:21.67em;"/></p>
+<p>Keep in mind that most DNS servers use name pointers in their answer names. This is because the DNS response will have<span> alre</span><span>ady</span> included the relevant name in the question section. The answer can simply point back to that, rather than encoding the entire name a second (or third) time.</p>
+<p>Whenever sending binary data over the network, the issue of byte order becomes relevant. Let's consider this now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Endianness</h1>
+                </header>
+            
+            <article>
+                
+<p>The term <strong>endianness</strong> refers to the order in which individual bytes are stored in memory or sent over a network.</p>
+<p>Whenever we read a multi-byte number from a DNS message, we should be aware that it's in big-endian format (or so-called network byte order). The computer you're using likely uses little-endian format, although we are careful to write our code in an endian-independent manner throughout this book. We accomplish this by avoiding the conversion of multiple bytes directly to integers, and instead we interpret bytes one at a time.</p>
+<p>For example, consider a message with a single 8-bit value, such as <kbd>0x05</kbd>. We know that the value of that message is <kbd>5</kbd>. Bytes are sent atomically over a network link, so we also know that anyone receiving our message can unambiguously interpret that message as <kbd>5</kbd>.</p>
+<p>The issue of endianness comes into play when we need more than one byte to store our number. Imagine that we want to send the number <kbd>999</kbd>. This number is too big to fit into 1 byte, so we have to break it up into 2 bytes—a 16-bit value. Because <kbd>999 = (3 * 2<sup>8</sup>) + 231</kbd>, we know that the high-order byte stores <kbd>3</kbd> while the low-order byte stores <kbd>231</kbd>. In hexadecimal, the number <kbd>999</kbd> is <kbd>0x03E7</kbd>. The question is whether to send the high-order or the low-order byte over the network first.</p>
+<p>Network byte order, which is used by the DNS protocol, specifies that the high-order byte is sent first. Therefore, the number <kbd>999</kbd> is sent over the network as a <kbd>0x03</kbd> followed by <kbd>0xE7</kbd>.</p>
+<p>See the <em>Further reading</em> section of this chapter for more information.</p>
+<p>Let's now look at encoding an entire DNS query.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A simple DNS query</h1>
+                </header>
+            
+            <article>
+                
+<p>To perform a simple DNS query, we would put an arbitrary number into <kbd>ID</kbd>, set the <kbd>RD</kbd> bit to <kbd>1</kbd>, and set <kbd>QDCOUNT</kbd> to <kbd>1</kbd>. We would then add a question after the header. That data would be sent as a UDP packet to port <kbd>53</kbd> of a DNS server.</p>
+<p>A hand-constructed DNS for <kbd>example.com</kbd> in C is as follows:</p>
+<pre>char dns_query[] = {0xAB, 0xCD,                           /* ID */<br/>                    0x01, 0x00,                           /* Recursion */<br/>                    0x00, 0x01,                           /* QDCOUNT */<br/>                    0x00, 0x00,                           /* ANCOUNT */<br/>                    0x00, 0x00,                           /* NSCOUNT */<br/>                    0x00, 0x00,                           /* ARCOUNT */<br/>                    7, 'e', 'x', 'a', 'm', 'p', 'l', 'e', /* label */<br/>                    3, 'c', 'o', 'm',                     /* label */<br/>                    0,                                    /* End of name */<br/>                    0x00, 0x01,                           /* QTYPE = A */<br/>                    0x00, 0x01                            /* QCLASS */<br/>                    };</pre>
+<p>This data could be sent as is to a DNS server over port <kbd>53</kbd>.</p>
+<p>The DNS server, if successful, sends a UDP packet back as a response. This packet has <kbd>ID</kbd> set to match our query. <kbd>QR</kbd> is set to indicate a response. <kbd>QDCOUNT</kbd> is set to <kbd>1</kbd>, and our original question is included. <kbd>ANCOUNT</kbd> is some small positive integer that indicates the number of answers included in the message.</p>
+<p>In the next section, we'll implement a program to send and receive DNS messages.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A DNS query program</h1>
+                </header>
+            
+            <article>
+                
+<p>We will now implement a utility to send DNS queries to a DNS server and receive the DNS response.</p>
+<p>This should not normally be needed in the field. It is, however, a good opportunity to better understand the DNS protocol and to get experience of sending binary UDP packets.</p>
+<p>We begin with a function to print a name from a DNS message.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Printing a DNS message name</h1>
+                </header>
+            
+            <article>
+                
+<p>DNS encodes names in a particular way. Normally, each label is indicated by its length, followed by its text. A number of labels can be repeated, and then the name is terminated with a single 0 byte.</p>
+<p>If a length has its two highest bits set (that is, <kbd>0xc0</kbd>), then it and the next byte should be interpreted as a pointer instead.</p>
+<p>We must also be aware at all times that the DNS response from the DNS server could be ill-formed or corrupted. We must try to write our program in such a way that it won't crash if it receives a bad message. This is easier said than done.</p>
+<p>The declaration for our name-printing function looks like this:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>const unsigned char *print_name(const unsigned char *msg,<br/>        const unsigned char *p, const unsigned char *end);</pre>
+<p>We take <kbd>msg</kbd> to be a pointer to the message's beginning, <kbd>p</kbd> to be a pointer to the name to print, and <kbd>end</kbd> to be a pointer to one past the end of the message. <kbd>end</kbd> is required so that we can check that we're not reading past the end of the received message. <kbd>msg</kbd> is required for the same reason, but also so that we can interpret name pointers.</p>
+<p>Inside the <kbd>print_name</kbd> function, our code checks that a proper name is even possible. Because a name should consist of at least a length and some text, we can return an error if <kbd>p</kbd> is already within two characters of the end. The code for that check is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if (p + 2 &gt; end) {<br/>        fprintf(stderr, "End of message.\n"); exit(1);}</pre>
+<p>We then check to see if <kbd>p</kbd> points to a name pointer. If it does, we interpret the pointer and call <kbd>print_name</kbd> recursively to print the name that is pointed to. The code for this is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if ((*p &amp; 0xC0) == 0xC0) {<br/>        const int k = ((*p &amp; 0x3F) &lt;&lt; 8) + p[1];<br/>        p += 2;<br/>        printf(" (pointer %d) ", k);<br/>        print_name(msg, msg+k, end);<br/>        return p;</pre>
+<p>Note that <kbd>0xC0</kbd> in binary is <kbd>0b11000000</kbd>. We use <kbd>(*p &amp; 0xC0) == 0xC0</kbd> to check for a name pointer. In that case, we take the lower 6 bits of <kbd>*p</kbd> and all 8 bits of <kbd>p[1]</kbd> to indicate the pointer. We know that <kbd>p[1]</kbd> is still within the message because of our earlier check that <kbd>p</kbd> was at least 2 bytes from the end. Knowing the name pointer, we can pass a new value of <kbd>p</kbd> to <kbd>print_name()</kbd>.</p>
+<p>If the name is not a pointer, we simply print it one label at a time. The code for printing the name is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    } else {<br/>        const int len = *p++;<br/>        if (p + len + 1 &gt; end) {<br/>            fprintf(stderr, "End of message.\n"); exit(1);}<br/><br/>        printf("%.*s", len, p);<br/>        p += len;<br/>        if (*p) {<br/>            printf(".");<br/>            return print_name(msg, p, end);<br/>        } else {<br/>            return p+1;<br/>        }<br/>    }</pre>
+<p>In the preceding code, <kbd>*p</kbd> is read into <kbd>len</kbd> to store the length of the current label. We are careful to check that reading <kbd>len + 1</kbd> bytes doesn't put us past the end of the buffer. We can then print the next <kbd>len</kbd> characters to the console. If the next byte isn't <kbd>0</kbd>, then the name is continued, and we should print a dot to separate the labels. We call <kbd>print_name()</kbd> recursively to print the next label of the name.</p>
+<p>If the next byte is <kbd>0</kbd>, then that means the name is finished and we return.</p>
+<p>That concludes the <kbd>print_name()</kbd> function.</p>
+<p>Now we will devise a function that prints an entire DNS message.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Printing a DNS message</h1>
+                </header>
+            
+            <article>
+                
+<p>Using <kbd>print_name()</kbd> that we have just defined, we can now construct a function to print an entire DNS message to the screen. DNS messages share the same format for both the request and the response, so our function is able to print either.</p>
+<p>The declaration for our function is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>void print_dns_message(const char *message, int msg_length);</pre>
+<p><kbd>print_dns_message()</kbd> takes a pointer to the start of the message, and an <kbd>int</kbd> data type indicates the message's length.</p>
+<p>Inside <kbd>print_dns_message()</kbd>, we first check that the message is long enough to be a valid DNS message. Recall that the DNS header is 12 bytes long. If a DNS message is less than 12 bytes, we can easily reject it as an invalid message. This also ensures that we can read at least the header without worrying about reading past the end of the received data.</p>
+<p>The code for checking the DNS message length is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if (msg_length &lt; 12) {<br/>        fprintf(stderr, "Message is too short to be valid.\n");<br/>        exit(1);<br/>    }</pre>
+<p>We then copy the <kbd>message</kbd> pointer into a new variable, <kbd>msg</kbd>. We define <kbd>msg</kbd> as an <kbd>unsigned char</kbd> pointer, which makes certain calculations easier to work with.</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const unsigned char *msg = (const unsigned char *)message;</pre>
+<p>If you want to print out the entire raw DNS message, you can do that with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    int i;<br/>    for (i = 0; i &lt; msg_length; ++i) {<br/>        unsigned char r = msg[i];<br/>        printf("%02d:   %02X  %03d  '%c'\n", i, r, r, r);<br/>    }<br/>    printf("\n");</pre>
+<p>Be aware that running the preceding code will print out many lines. This can be annoying, so I would recommend using it<span> only</span> if you are curious about seeing the raw DNS message.</p>
+<p>The message ID can be printed very easily. Recall that the message ID is simply the first two bytes of the message. The following code prints it in a nice hexadecimal format:</p>
+<pre>/*dns_query.c*/<br/><br/>    printf("ID = %0X %0X\n", msg[0], msg[1]);</pre>
+<p>Next, we get the <kbd>QR</kbd> bit from the message header. This bit is the most significant bit of <kbd>msg[2]</kbd>. We use the bitmask <kbd>0x80</kbd> to see whether it is set. If it is, we know that the message is a response; otherwise, it's a query. The following code reads <kbd>QR</kbd> and prints a corresponding message:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const int qr = (msg[2] &amp; 0x80) &gt;&gt; 7;<br/>    printf("QR = %d %s\n", qr, qr ? "response" : "query");</pre>
+<p>The <kbd>OPCODE</kbd>, <kbd>AA</kbd>, <kbd>TC</kbd>, and <kbd>RD</kbd> fields are read in much the same way as <kbd>QR</kbd>. The code for printing them is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const int opcode = (msg[2] &amp; 0x78) &gt;&gt; 3;<br/>    printf("OPCODE = %d ", opcode);<br/>    switch(opcode) {<br/>        case 0: printf("standard\n"); break;<br/>        case 1: printf("reverse\n"); break;<br/>        case 2: printf("status\n"); break;<br/>        default: printf("?\n"); break;<br/>    }<br/><br/>    const int aa = (msg[2] &amp; 0x04) &gt;&gt; 2;<br/>    printf("AA = %d %s\n", aa, aa ? "authoritative" : "");<br/><br/>    const int tc = (msg[2] &amp; 0x02) &gt;&gt; 1;<br/>    printf("TC = %d %s\n", tc, tc ? "message truncated" : "");<br/><br/>    const int rd = (msg[2] &amp; 0x01);<br/>    printf("RD = %d %s\n", rd, rd ? "recursion desired" : "");</pre>
+<p>Finally, we can read in <kbd>RCODE</kbd> for response-type messages. Since <kbd>RCODE</kbd> can have several different values, we use a <kbd>switch</kbd> statement to print them. Here is the code for that:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if (qr) {<br/>        const int rcode = msg[3] &amp; 0x07;<br/>        printf("RCODE = %d ", rcode);<br/>        switch(rcode) {<br/>            case 0: printf("success\n"); break;<br/>            case 1: printf("format error\n"); break;<br/>            case 2: printf("server failure\n"); break;<br/>            case 3: printf("name error\n"); break;<br/>            case 4: printf("not implemented\n"); break;<br/>            case 5: printf("refused\n"); break;<br/>            default: printf("?\n"); break;<br/>        }<br/>        if (rcode != 0) return;<br/>    }</pre>
+<p>The next four fields in the header are the question count, the answer count, the name server count, and the additional count. We can read and print them in the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const int qdcount = (msg[4] &lt;&lt; 8) + msg[5];<br/>    const int ancount = (msg[6] &lt;&lt; 8) + msg[7];<br/>    const int nscount = (msg[8] &lt;&lt; 8) + msg[9];<br/>    const int arcount = (msg[10] &lt;&lt; 8) + msg[11];<br/><br/>    printf("QDCOUNT = %d\n", qdcount);<br/>    printf("ANCOUNT = %d\n", ancount);<br/>    printf("NSCOUNT = %d\n", nscount);<br/>    printf("ARCOUNT = %d\n", arcount);</pre>
+<p>That concludes reading the DNS message header (the first 12 bytes).</p>
+<p>Before reading the rest of the message, we define two new variables as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const unsigned char *p = msg + 12;<br/>    const unsigned char *end = msg + msg_length;</pre>
+<p>In the preceding code, the <kbd>p</kbd> variable is used to walk through the message. We set the <kbd>end</kbd> variable to one past the end of the message. This is to help us detect whether we're about to read past the end of the message – a situation we certainly wish to avoid!</p>
+<p>We read and print each question in the DNS message with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if (qdcount) {<br/>        int i;<br/>        for (i = 0; i &lt; qdcount; ++i) {<br/>            if (p &gt;= end) {<br/>                fprintf(stderr, "End of message.\n"); exit(1);}<br/><br/>            printf("Query %2d\n", i + 1);<br/>            printf("  name: ");<br/><br/>            p = print_name(msg, p, end); printf("\n");<br/><br/>            if (p + 4 &gt; end) {<br/>                fprintf(stderr, "End of message.\n"); exit(1);}<br/><br/>            const int type = (p[0] &lt;&lt; 8) + p[1];<br/>            printf("  type: %d\n", type);<br/>            p += 2;<br/><br/>            const int qclass = (p[0] &lt;&lt; 8) + p[1];<br/>            printf(" class: %d\n", qclass);<br/>            p += 2;<br/>        }<br/>    }</pre>
+<p>Although no real-world DNS server will accept a message with multiple questions, the DNS RFC does clearly define the format to encode multiple questions. For that reason, we make our code loop through each question using a <kbd>for</kbd> loop. First, the <kbd>print_name()</kbd> function, which we defined earlier, is called to print the question name. We then read in and print out the question type and class.</p>
+<p>Printing the answer, authority, and additional sections is slightly more difficult than the question section. These sections start the same way as the question section – with a name, a type, and a class. The code for reading the name, type, and class is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    if (ancount || nscount || arcount) {<br/>        int i;<br/>        for (i = 0; i &lt; ancount + nscount + arcount; ++i) {<br/>            if (p &gt;= end) {<br/>                fprintf(stderr, "End of message.\n"); exit(1);}<br/><br/>            printf("Answer %2d\n", i + 1);<br/>            printf("  name: ");<br/><br/>            p = print_name(msg, p, end); printf("\n");<br/><br/>            if (p + 10 &gt; end) {<br/>                fprintf(stderr, "End of message.\n"); exit(1);}<br/><br/>            const int type = (p[0] &lt;&lt; 8) + p[1];<br/>            printf("  type: %d\n", type);<br/>            p += 2;<br/><br/>            const int qclass = (p[0] &lt;&lt; 8) + p[1];<br/>            printf(" class: %d\n", qclass);<br/>            p += 2;</pre>
+<p>Note that, in the preceding code, we stored the class in a variable called <kbd>qclass</kbd>. This is to be nice to our C++ friends, who are not allowed to use <kbd>class</kbd> as a variable name.</p>
+<p>We then expect to find a 16-bit TTL field, and a 16-bit data length field. The TTL field tells us how many seconds we are allowed to cache an answer for. The data length field tells us how many bytes of additional data are included for the answer. We read TTL and the data length in the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>            const unsigned int ttl = (p[0] &lt;&lt; 24) + (p[1] &lt;&lt; 16) +<br/>                (p[2] &lt;&lt; 8) + p[3];<br/>            printf("   ttl: %u\n", ttl);<br/>            p += 4;<br/><br/>            const int rdlen = (p[0] &lt;&lt; 8) + p[1];<br/>            printf(" rdlen: %d\n", rdlen);<br/>            p += 2;</pre>
+<p>Before we can read in the data of the <kbd>rdlen</kbd> length, we should check that we won't read past the end of the message. The following code achieves that:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>            if (p + rdlen &gt; end) {<br/>                fprintf(stderr, "End of message.\n"); exit(1);}</pre>
+<p>We can then try to interpret the answer data. Each record type stores different data. We need to write code to display each type. For our purposes, we limit this to the <kbd>A</kbd>, <kbd>MX</kbd>, <kbd>AAAA</kbd>, <kbd>TXT</kbd>, and <kbd>CNAME</kbd> records. The code to print each type is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>            if (rdlen == 4 &amp;&amp; type == 1) { /* A Record */<br/>                printf("Address ");<br/>                printf("%d.%d.%d.%d\n", p[0], p[1], p[2], p[3]);<br/><br/>            } else if (type == 15 &amp;&amp; rdlen &gt; 3) { /* MX Record */<br/>                const int preference = (p[0] &lt;&lt; 8) + p[1];<br/>                printf("  pref: %d\n", preference);<br/>                printf("MX: ");<br/>                print_name(msg, p+2, end); printf("\n");<br/><br/>            } else if (rdlen == 16 &amp;&amp; type == 28) { /* AAAA Record */<br/>                printf("Address ");<br/>                int j;<br/>                for (j = 0; j &lt; rdlen; j+=2) {<br/>                    printf("%02x%02x", p[j], p[j+1]);<br/>                    if (j + 2 &lt; rdlen) printf(":");<br/>                }<br/>                printf("\n");<br/><br/>            } else if (type == 16) { /* TXT Record */<br/>                printf("TXT: '%.*s'\n", rdlen-1, p+1);<br/><br/>            } else if (type == 5) { /* CNAME Record */<br/>                printf("CNAME: ");<br/>                print_name(msg, p, end); printf("\n");<br/>            }<br/>            p += rdlen;</pre>
+<p>We can then finish the loop. We check that all the data was read and print a message if it wasn't. If our program is correct, and if the DNS message is properly formatted, we should have read all the data with nothing left over. The following code checks this:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>        }<br/>    }<br/><br/>    if (p != end) {<br/>        printf("There is some unread data left over.\n");<br/>    }<br/><br/>    printf("\n");</pre>
+<p>That concludes the <kbd>print_dns_message()</kbd> function.</p>
+<p>We can now define our <kbd>main()</kbd> function to create the DNS query, send it to a DNS server, and await a response.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Sending the query</h1>
+                </header>
+            
+            <article>
+                
+<p>We start <kbd>main()</kbd> with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>int main(int argc, char *argv[]) {<br/><br/>    if (argc &lt; 3) {<br/>        printf("Usage:\n\tdns_query hostname type\n");<br/>        printf("Example:\n\tdns_query example.com aaaa\n");<br/>        exit(0);<br/>    }<br/><br/>    if (strlen(argv[1]) &gt; 255) {<br/>        fprintf(stderr, "Hostname too long.");<br/>        exit(1);<br/>    }</pre>
+<p>The preceding code checks that the user passed in a hostname and record type to query. If they didn't, it prints a helpful message. It also checks that the hostname isn't more than 255 characters long. Hostnames longer than that aren't allowed by the DNS standard, and checking it now ensures that we don't need to allocate too much memory.</p>
+<p>We then try to interpret the record type requested by the user. We support the following options – <kbd>a</kbd>, <kbd>aaaa</kbd>, <kbd>txt</kbd>, <kbd>mx</kbd>, and <kbd>any</kbd>. The code to read in those types and store their corresponding DNS integer value is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    unsigned char type;<br/>    if (strcmp(argv[2], "a") == 0) {<br/>        type = 1;<br/>    } else if (strcmp(argv[2], "mx") == 0) {<br/>        type = 15;<br/>    } else if (strcmp(argv[2], "txt") == 0) {<br/>        type = 16;<br/>    } else if (strcmp(argv[2], "aaaa") == 0) {<br/>        type = 28;<br/>    } else if (strcmp(argv[2], "any") == 0) {<br/>        type = 255;<br/>    } else {<br/>        fprintf(stderr, "Unknown type '%s'. Use a, aaaa, txt, mx, or any.",<br/>                argv[2]);<br/>        exit(1);<br/>    }</pre>
+<p>Like all of our previous programs, we need to initialize Winsock. The code for that is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>Our program connects to <kbd>8.8.8.8</kbd>, which is a public DNS server run by Google. Refer to <a href="e3e07fa7-ff23-4871-b897-c0d4551e6422.xhtml">Chapter 1</a>,  <em>An Introduction to Networks and Protocols</em>, <em>Domain Names</em>, for a list of additional public DNS servers you can use.</p>
+<p>Recall that we are connecting on UDP port <kbd>53</kbd>. We use <kbd>getaddrinfo()</kbd> to set up the required structures for our socket with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    printf("Configuring remote address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_socktype = SOCK_DGRAM;<br/>    struct addrinfo *peer_address;<br/>    if (getaddrinfo("8.8.8.8", "53", &amp;hints, &amp;peer_address)) {<br/>        fprintf(stderr, "getaddrinfo() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>We then create our socket using the data returned from <kbd>getaddrinfo()</kbd>. The following code does that:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET socket_peer;<br/>    socket_peer = socket(peer_address-&gt;ai_family,<br/>            peer_address-&gt;ai_socktype, peer_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(socket_peer)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        return 1;<br/>    }</pre>
+<p>Our program then constructs the data for the DNS query message. The first 12 bytes compose the header and are known at compile time. We can store them with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    char query[1024] = {0xAB, 0xCD, /* ID */<br/>                        0x01, 0x00, /* Set recursion */<br/>                        0x00, 0x01, /* QDCOUNT */<br/>                        0x00, 0x00, /* ANCOUNT */<br/>                        0x00, 0x00, /* NSCOUNT */<br/>                        0x00, 0x00 /* ARCOUNT */};</pre>
+<p>The preceding code sets our query's ID to <kbd>0xABCD</kbd>, sets a recursion request, and indicates that we are attaching <kbd>1</kbd> question. As mentioned earlier, <kbd>1</kbd> is the only number of questions supported by real-world DNS servers.</p>
+<p>We then need to encode the user's desired hostname into the query. The following code does that:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    char *p = query + 12;<br/>    char *h = argv[1];<br/><br/>    while(*h) {<br/>        char *len = p;<br/>        p++;<br/>        if (h != argv[1]) ++h;<br/><br/>        while(*h &amp;&amp; *h != '.') *p++ = *h++;<br/>        *len = p - len - 1;<br/>    }<br/><br/>    *p++ = 0;</pre>
+<p>The preceding code first sets a new pointer, <kbd>p</kbd>, to the end of the query header. We will be adding to the query starting at <kbd>p</kbd>. We also define a pointer, <kbd>h</kbd>, which we use to loop through the hostname.</p>
+<p>We can loop while <kbd>*h != 0</kbd> because <kbd>*h</kbd> is equal to zero when we've finished reading the hostname. Inside the loop, we use the <kbd>len</kbd> variable to store the position of the label beginning. The value in this position needs to be set to indicate the length of the upcoming label. We then copy characters from <kbd>*h</kbd> to <kbd>*p</kbd> until we find a dot or the end of the hostname. If either is found, the code sets <kbd>*len</kbd> equal to the label length. The code then loops into the next label.</p>
+<p>Finally, outside the loop, we add a terminating 0 byte to finish the name section of the question.</p>
+<p>We then add the question type and question class to the query with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    *p++ = 0x00; *p++ = type; /* QTYPE */<br/>    *p++ = 0x00; *p++ = 0x01; /* QCLASS */</pre>
+<p>We can then calculate the query size by comparing <kbd>p</kbd> to the query beginning. The code for figuring the total query size is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    const int query_size = p - query;</pre>
+<p>Now, with the query message formed, and its length known, we can use <kbd>sendto()</kbd> to transmit the DNS query to the DNS server. The code for sending the query is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    int bytes_sent = sendto(socket_peer,<br/>            query, query_size,<br/>            0,<br/>            peer_address-&gt;ai_addr, peer_address-&gt;ai_addrlen);<br/>    printf("Sent %d bytes.\n", bytes_sent);</pre>
+<p>For debugging purposes, we can also display the query we sent with the following code:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    print_dns_message(query, query_size);</pre>
+<p>The preceding code is useful to see whether we've made any mistakes in encoding our query.</p>
+<p>Now that the query has been sent, we await a DNS response message using <kbd>recvfrom()</kbd>. In a practical program, you may want to use <kbd>select()</kbd> here to time out. It could also be wise to listen for additional messages in the case that an invalid message is received first.</p>
+<p>The code to receive and display the DNS response is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    char read[1024];<br/>    int bytes_received = recvfrom(socket_peer,<br/>            read, 1024, 0, 0, 0);<br/><br/>    printf("Received %d bytes.\n", bytes_received);<br/><br/>    print_dns_message(read, bytes_received);<br/>    printf("\n");</pre>
+<p>We can finish our program by freeing the address(es) from <kbd>getaddrinfo()</kbd> and cleaning up Winsock. The code to complete the <kbd>main()</kbd> function is as follows:</p>
+<pre>/*<span>dns_query.c*/</span><br/><br/>    freeaddrinfo(peer_address);<br/>    CLOSESOCKET(socket_peer);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    return 0;<br/>}</pre>
+<p>That concludes the <kbd>dns_query</kbd> program.</p>
+<p>You can compile and run <kbd>dns_query.c</kbd> on Linux and macOS by running the following command:</p>
+<pre><strong>gcc dns_query.c -o dns_query</strong><br/><strong>./dns_query example.com a</strong></pre>
+<p>Compiling and running on Windows with MinGW is done by using the following command:</p>
+<pre><strong>gcc dns_query.c -o dns_query.exe -lws2_32</strong><br/><strong>dns_query.exe example.com a</strong></pre>
+<p>Try running <kbd>dns_query</kbd> with different domain names and different record types. In particular, try it with <kbd>mx</kbd> and <kbd>txt</kbd> records. If you're brave, try running it with the <kbd>any</kbd> record type. You may find the results interesting.</p>
+<p>The following screenshot is an example of using <kbd>dns_query</kbd> to query the <kbd>A</kbd> record of <kbd>example.com</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/969470fe-66c2-45b8-bc85-cfc29b63d33b.png" style="width:31.42em;height:48.92em;"/></p>
+<p>The next screenshot shows <kbd>dns_query</kbd> querying the <kbd>mx</kbd> record of <kbd>gmail.com</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/fc7393f1-2aa1-42c4-877a-2f78463f726e.png" style="width:30.58em;height:47.50em;"/></p>
+<p>Note that UDP is not always reliable. If our DNS query is lost in transit, then <kbd>dns_query</kbd> hangs while waiting forever for a reply that never comes. This could be fixed by using the <kbd>select()</kbd> function to time out and retry.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>This chapter was all about hostnames and DNS queries. We covered how the DNS works, and we learned that resolving a hostname can involve many UDP packets being sent over the network.</p>
+<p>We looked at <kbd>getaddrinfo()</kbd> in more depth and showed why it is usually the preferred way to do a hostname lookup. We also looked at its sister function, <kbd>getnameinfo()</kbd>, which is capable of converting an address to text or even doing a reverse DNS query.</p>
+<p>Finally, we implemented a program that sent DNS queries from scratch. This program was a good learning experience to better understand the DNS protocol, and it gave us a chance to gain experience in implementing a binary protocol. When implementing a binary protocol, we had to pay special attention to byte order. For the simple DNS message format, this was achieved by carefully interpreting bytes one at a time.</p>
+<p>Now that we've worked with a binary protocol, DNS, we will move on to text-based protocols in the next few chapters. In the next chapter, we will learn about HTTP, the protocol used to request and retrieve web pages.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>Try these questions to test your knowledge of this chapter:</p>
+<ol>
+<li class="mce-root"><span>Which function fills in an address needed for socket programming in a portable and protocol-independent way?</span></li>
+<li>Which socket programming function can be used to convert an IP address back into a name?</li>
+<li>A DNS query converts a name into an address, and a reverse DNS query converts an address back into a name. If you run a DNS query on a name, and then a reverse DNS query on the resulting address, do you always get back the name you started with?</li>
+<li>What are the DNS record types used to return IPv4 and IPv6 addresses for a name?</li>
+<li>Which DNS record type stores special information about email servers?</li>
+<li>Does <kbd>getaddrinfo()</kbd> always return immediately? or can it block?</li>
+<li>What happens when a DNS response is too large to fit into a single UDP packet?</li>
+</ol>
+<p>The answers are in <a href="bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml">Appendix A</a>, <em>Answers to Questions</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Further reading</h1>
+                </header>
+            
+            <article>
+                
+<p>For more information about DNS, please refer to:</p>
+<ul>
+<li><strong>RFC 1034</strong>: <em>DOMAIN NAMES – CONCEPTS AND FACILITIES</em> <em>(</em><a href="https://tools.ietf.org/html/rfc1034">https://tools.ietf.org/html/rfc1034</a>)</li>
+<li><strong>RFC 1035</strong>: <em>DOMAIN NAMES – IMPLEMENTATION AND SPECIFICATION</em> <em>(</em><a href="https://tools.ietf.org/html/rfc1035">https://tools.ietf.org/html/rfc1035</a>)</li>
+<li><span><strong>RFC 3596</strong>: <em>DNS Extensions to Support IP Version 6 (</em></span><a href="https://tools.ietf.org/html/rfc3596">https://tools.ietf.org/html/rfc3596</a>)</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

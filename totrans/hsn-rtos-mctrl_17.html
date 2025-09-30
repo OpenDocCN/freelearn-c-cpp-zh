@@ -1,0 +1,481 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating Loose Coupling with Queues</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">Now that we've covered ways of architecting source code for flexibility, we'll take that a step further and explore how queues can be used to provide natural interface definitions for data exchange. </p>
+<p>In this chapter, we'll develop a simple command queue that can be accessed from multiple physical interfaces. By the end of this chapter, you'll have an excellent understanding of why using common queue definitions is desirable, as well as how to implement both sides of an extremely flexible command queue. This will help you create flexible architectures with implementations that aren't tied to underlying hardware or physical interfaces.</p>
+<p>We will cover the following topics in this chapter:</p>
+<ul>
+<li>Understanding queues as interfaces</li>
+<li>Creating a command queue</li>
+<li>Reusing a queue definition for a new target</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>To complete the hands-on experiments included in this chapter, you will require the following:</p>
+<ul>
+<li class="mce-root"><span>A Nucleo F767 development b</span><span>oard</span></li>
+<li class="mce-root"><span>A Micro-USB cable</span></li>
+<li class="mce-root"><span>STM32CubeIDE</span> and source code (for instructions, visit the <em>Setting up our IDE</em> section in <a href="84a945dc-ff6c-4ec8-8b9c-84842db68a85.xhtml">Chapter 5</a><em>, Selecting an IDE</em>)</li>
+<li class="mce-root">SEGGER J-Link, Ozone, and SystemView (for instructions, visit <a href="699daa80-06ae-4acc-8b93-a81af2eb774b.xhtml">Chapter 6</a>, <em>Debugging Tools for Real-Time Systems</em>)</li>
+<li class="mce-root">Python &gt;= 3.8</li>
+</ul>
+<p><span>All source code for this chapter is available at </span><a href="https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_13">https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_13</a>.<a href="https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_13"/></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Understanding queues as interfaces</h1>
+                </header>
+            
+            <article>
+                
+<p>If you've just finished reading the previous chapter, you've likely picked up on the fact that there are many techniques that can be used to create quality code at one time and then reuse that same code across multiple projects. Just like using layers of abstractions is a technique that increases the likelihood of reusing code across multiple hardware platforms, using queues as interfaces also increases the likelihood that code will be used for more than just one project. </p>
+<p>The concepts presented in this chapter aren't limited to queues—they also apply to stream and message buffers. However, since queues have been around since the beginning of FreeRTOS (and are the most commonly available primitive), we'll use them in our examples. Let's take a look at why using queues is a good idea.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Queues make excellent interface definitions</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Queues provide a very clear line of abstraction. In order to pass data through a queue and get a desired behavior on the other side, all of the data must be present and both the sender and receiver must have a common understanding of what the data format is. This clean line forces a level of conscientious thought as to what exactly needs to be communicated. Sometimes, this level of active thought isn't present when implementing individual functions. The delineation provided by the queue forces additional thought about what the exact information required is, as well as what its format should be. Responsible developers will be more likely to ensure these types of definitive interfaces are thoroughly documented.</p>
+<p>When a queue is viewed as an interface to a subsystem, it pays dividends to document the functionality that will be provided, as well as the exact formatting required to use the subsystem. Often, the fact that an interface is well defined will increase the likelihood of reuse since it will be easily understood.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Queues increase flexibility </h1>
+                </header>
+            
+            <article>
+                
+<p>Queues are beautiful in their simplicity—a sender places something in the queue and whatever task is monitoring the queue will receive the data and act on it. The only things the sender and the received task need to share are the code required for interacting with the queue and the definition of the data flowing through the queue. Since the list of shared resources is so short, there is a natural decoupling effect when queues are used.</p>
+<p>Because of the clean break provided by the queue, the exact implementation of the functionality could change over time. The same functionality can be implemented in many different ways, which won't immediately affect the sender, as long as the queue interface doesn't change.</p>
+<p>It also means that data can be sent to the queue from anywhere; there are no explicit requirements for the physical interface—only the data format. This means that a queue can be designed to receive the same data stream from many different interfaces, which can provide system-level flexibility. The functionality doesn't need to be tied to a specific physical interface (such as Ethernet, USB, UART, SPI, CAN, and so on).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Queues make testing easier</h1>
+                </header>
+            
+            <article>
+                
+<p>Similar to the way hardware abstractions provide easy insertion points for test data, queues also provide excellent places to enter test data. This provides a very convenient entry point for entering test data for code under development. The flexibility of implementation mentioned in the previous section also applies here. If a piece of code is sending data to a queue and expects a response from another queue, the actual implementation doesn't necessarily need to be used—it can be simulated by responding to the command. This approach makes it possible to develop the other side of code in the absence of fully implemented functionality (in case the hardware or subsystem is still under development). This approach is also extremely useful when running unit-level tests; the code-under-test can be easily isolated from the rest of the system.</p>
+<p>Now that we've covered some of the reasons to use queues as interfaces, let's take a look at how this plays out through an example.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating a command queue</h1>
+                </header>
+            
+            <article>
+                
+<p>To see how a queue can be used to keep an architecture loosely coupled, we'll take a look at an application that accepts commands over USB and lights LEDs. While the example application itself is very simple, the concepts presented here scale extremely well. So, regardless of whether there are only a few commands or hundreds, the same approach can be used to keep the architecture flexible.</p>
+<p>This application also shows another example of how to keep higher-level code loosely coupled to the underlying hardware. It ensures the LED command code only uses a defined interface to access a <strong>Pulse Width Modulation</strong> (<strong>PWM</strong>) implementation, rather than directly interacting with the MCU registers/HAL. The architecture consists of the following major components:</p>
+<ul>
+<li><strong>A USB driver</strong>: This is the same USB stack that has been used in previous examples. <kbd>VirtualCommDriverMultiTask.c/h</kbd> has been extended to provide an additional stream buffer to efficiently receive data from a PC (<span><kbd>Drivers/HandsOnRTOS/VirtualCommDriverMultiTask.c/h</kbd>).</span></li>
+<li><span><strong>iPWM</strong>: An additional interface definition (</span><kbd>iPWM</kbd><span>) has been created to describe very simple PWM functionality (defined in</span> <kbd>Chapter_13/Inc/iPWM.h</kbd>).</li>
+<li><strong>PWM implementation</strong>: The implementation of three<span> </span><kbd>iPWM</kbd><span> </span>interfaces for the Nucleo hardware is found in <kbd>Chapter13/Src/pwmImplementation.c</kbd> and <kbd>Chapter13/Src/pwmImplementation.h</kbd>.  </li>
+<li><strong>An LED command executor</strong>: The state machine that drives LED states using pointers to implementations of <kbd>iPWM</kbd> (<kbd>Chapter_13/Src/ledCmdExecutor.c</kbd>).</li>
+<li><kbd>main</kbd>: The <kbd>main</kbd> function, which ties all of the queues, drivers, and interfaces together and kicks off the FreeRTOS scheduler (<kbd>Chapter_13/Src/mainColorSelector.c</kbd>). </li>
+</ul>
+<p>We'll get into the details of exactly how all of these parts fit together and the details of their responsibilities; but first, let's discuss what is going to be placed in the command queue.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Deciding on queue contents</h1>
+                </header>
+            
+            <article>
+                
+<p>When using queues as a way of passing commands to different parts of the system, it is important to think about what the queue should actually hold, instead of what might be coming <em>across the wire</em> in a physical sense. Even though a queue might be used to hold payloads from a datastream with header and footer information, the actual contents of the queue will usually only contain the parsed payload, rather than the entire message.</p>
+<p>Using this approach allows more flexibility in the future to retarget the queue to work over other physical layers.</p>
+<p>Since <kbd>LedCmdExecution()</kbd> will be operating primarily on the <kbd>iPWM</kbd> pointers to interface with the LEDs, it is convenient for the queue to hold a data type that can be used directly by <kbd>iPWM</kbd>.   </p>
+<p>The <kbd>iPWM</kbd> definition from <kbd>Chapter13/Inc/iPWM.h</kbd> is as follows:</p>
+<pre> <strong>typedef void (*iPwmDutyCycleFunc)( float DutyCycle );</strong><br/><br/> typedef struct<br/> {<br/>   const iPwmDutyCycleFunc SetDutyCycle;<br/> }<strong>iPWM;<br/></strong></pre>
+<p>This struct only (currently) consists of a single function pointer: <kbd>iPwmDutyCycleFunc</kbd>.  <kbd>iPwmDutyCycleFunc</kbd> is defined as a constant pointer—after the initialization of the <kbd>iPWM</kbd> struct, the pointer can never be changed. This helps guarantee the pointer won't be overwritten, so constantly checking to ensure it isn't <kbd>NULL</kbd> won't be necessary. </p>
+<p>Wrapping the function pointer in a struct such as <kbd>iPWM</kbd> provides the flexibility of adding additional functions while keeping refactoring to a minimum. We'll be able to pass a single pointer to the <kbd>iPWM</kbd> struct to functions, rather than individual function pointers.</p>
+<div class="packt_tip">If you are creating an <em>interface</em> definition that will be shared with other developers, it is important to be very careful to coordinate and communicate changes among your team!</div>
+<p>The <kbd>DutyCycle</kbd> argument is defined as <kbd>float</kbd>, which makes it easy to keep the interface consistent when interfacing with hardware that has different underlying resolutions. In our implementation, the MCU's timer (<span><kbd>TIM</kbd>) peripherals will be configured to have a 16-bit resolution, but the actual code interfacing to <kbd>iPWM</kbd> doesn't need to be concerned with the available resolution; it can simply map the desired output from <kbd>0.00</kbd> (off)  to <kbd>100.00</kbd> (on).</span></p>
+<div class="packt_tip">For most applications, <kbd>int32_t</kbd> would have been preferred over <kbd>float</kbd> since it has a consistent representation and is easier to serialize. <kbd>float</kbd> is used here to make it easier to see the differences in the data model versus communication. Also, most people tend to think of PWM as a percentage, which maps naturally to <kbd>float</kbd>. </div>
+<p>There are two main considerations when deciding on what data <kbd>LedCmd</kbd> contains: </p>
+<ul>
+<li> <kbd>ledCmdExecutor</kbd> will be dealing with <kbd>iPWM</kbd> directly, so it makes sense to store floats in <kbd>LedCmd</kbd>.   </li>
+<li>We'd also like our LED controller to have different modes of operation, so it will also need a way of passing that information. We'll only have a handful of commands here, so a <kbd>uint8_t</kbd> 8-bit unsigned integer is a good fit. Each <kbd>cmdNum</kbd> case will be represented by <kbd>enum</kbd> (shown later).</li>
+</ul>
+<p>This results in the following structure for <kbd>LedCmd</kbd>:</p>
+<pre>typedef struct<br/>{<br/>  uint8_t cmdNum;<br/>  float red;<br/>  float green;<br/>  float blue;<br/>}<strong>LedCmd</strong>;</pre>
+<p>The <strong>LED Cmd Executor</strong>'s primary interface will be a queue of <kbd>LedCmd</kbd>s. State changes will be performed by writing new values in the queue.</p>
+<div class="mce-root packt_infobox">Since this structure is only 13 bytes, we'll simply pass it by value. Passing by reference (a pointer to the structure) would be faster, but it also complicates the ownership of the data. These trade-offs are discussed in <a href="495bdcc0-2a86-4b22-9628-4c347e67e49e.xhtml"/><a href="495bdcc0-2a86-4b22-9628-4c347e67e49e.xhtml"/><a href="495bdcc0-2a86-4b22-9628-4c347e67e49e.xhtml"/><a href="495bdcc0-2a86-4b22-9628-4c347e67e49e.xhtml">Chapter 9</a>, <em>Intertask Communication</em>.</div>
+<p>Now that we have a data model defined, we can look at the remaining components of this application.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Defining the architecture</h1>
+                </header>
+            
+            <article>
+                
+<p>The command executor architecture is composed of three primary blocks; each block executes asynchronously to the others and communicates via a queue and stream buffer:</p>
+<ul>
+<li><strong>LED Cmd Executor</strong>: <kbd>LedCmdExecution</kbd> in <kbd>ledCmdExecutor.c</kbd><em><strong> </strong></em>receives data from <kbd>ledCmdQueue</kbd> and actuates the LEDs via pointers to <kbd>iPWM</kbd> (one for each color). <kbd>LedCmdExecution</kbd> is a FreeRTOS task that takes <kbd>CmdExecArgs</kbd> as an argument upon creation.</li>
+<li><strong>Frame protocol decoding</strong>: <kbd>mainColorSelector.c</kbd> receives raw data from the stream buffer populated by the USB virtual comm driver, ensures valid framing, and populates the <kbd>LedCmd</kbd> queue.</li>
+<li><strong>The USB virtual comm driver</strong>:<strong> </strong>The USB stack is spread across many files; the primary user-entry point is <kbd>VirtualCommDriverMultiTask.c</kbd>. </li>
+</ul>
+<p>Here's a visual representation of how all of these major components stack up and flow together. Major blocks are listed on the left, while representations of the data they operate on are to the right:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1559 image-border" src="assets/eb1d337c-df75-4ffe-a67f-2b97b6f97078.png" style="width:48.00em;height:46.25em;"/></p>
+<p class="CDPAlignLeft CDPAlign">Let's take a closer look at each one of these components.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">ledCmdExecutor</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign"><kbd>ledCmdExecutor.c</kbd><em><strong><span><span> </span></span></strong></em>implements a simple state machine, whose state is modified when a command is received from the queue.</p>
+<p class="CDPAlignLeft CDPAlign">The available commands are explicitly enumerated by <kbd>LED_CMD_NUM</kbd>. <span>Each <em>command</em> has been given a human-friendly enumeration, along with an explicit definition. The enums are explicitly defined so they can be properly enumerated on the PC side. We also need to make sure the numbers assigned are &lt;= 255, since we'll only be allocating 1 byte in the frame to the command number</span>:</p>
+<pre>typedef enum<br/>{<br/>  CMD_ALL_OFF = 0,<br/>  CMD_ALL_ON = 1,<br/>  CMD_SET_INTENSITY = 2,<br/>  CMD_BLINK = 3<br/>}<strong>LED_CMD_NUM</strong>;</pre>
+<p class="CDPAlignLeft CDPAlign">The only public function is <kbd>LedCmdExecution</kbd>, which will be used as a FreeRTOS task: <kbd>void LedCmdExecution(void* Args)</kbd>.</p>
+<p class="CDPAlignLeft CDPAlign"><kbd>void* Args</kbd> actually has a type of <kbd>CmdExecArgs</kbd>. However, the function signature for a FreeRTOS task requires a single parameter of <kbd>void*</kbd>. The actual data type being passed into <kbd>LedCmdExecution</kbd> is a pointer to this struct:</p>
+<pre>typedef struct<br/>{<br/>  QueueHandle_t ledCmdQueue; <br/>  iPWM * redPWM;<br/>  iPWM * bluePWM;<br/>  iPWM * greenPWM;<br/>}<strong>CmdExecArgs</strong>;</pre>
+<p class="CDPAlignLeft CDPAlign">Passing in references to everything allows multiple instances of the task to be created and run simultaneously. It also provides extremely loose coupling to the underlying <kbd>iPWM</kbd> implementations.</p>
+<p class="CDPAlignLeft CDPAlign"><span><kbd>LedCmdExecution</kbd> has a </span>few local variables to track state:</p>
+<pre>LED_CMD_NUM <strong>currCmdNum</strong> = CMD_ALL_OFF;<br/>bool <strong>ledsOn</strong> = false;<br/>LedCmd <strong>nextLedCmd</strong>;<br/>param_assert(Args == NULL);<br/>CmdExecArgs args = *(CmdExecArgs*)Args;</pre>
+<p class="CDPAlignLeft CDPAlign">Let's take a closer look at these variables:</p>
+<ul>
+<li><kbd>currCmdNum</kbd>: Local storage for the current command being executed.</li>
+<li><kbd>ledsOn</kbd>: Local storage used by the <kbd>blink</kbd> command to track state.</li>
+<li><kbd>nextLedCmd</kbd>: Storage for the next command coming from the queue.</li>
+<li><kbd>args</kbd>: A local variable containing the arguments passed in through the <kbd>void* Args</kbd> parameter of our task (notice the explicit cast and check to ensure <kbd>NULL</kbd> hasn't been passed in instead).</li>
+</ul>
+<p class="CDPAlignLeft CDPAlign">To ensure none of the pointers change, we're making a local copy. This also could have been accomplished by defining the <kbd>CmdExecArgs</kbd> struct to contain the <kbd>const</kbd> variables that could only be set at initialization to save a bit of space.</p>
+<p class="CDPAlignLeft CDPAlign"><span>This main loop has two responsibilities. The first responsibility, seen in the following code, </span><span>is copying a value from </span><kbd>ledCmdQueue</kbd><span> into </span><span>the</span> <kbd>nextLedCmd</kbd><span> </span><span>reading,</span><span> setting the appropriate local variables and the duty cycle of the LEDs.</span></p>
+<p class="CDPAlignLeft CDPAlign"><kbd>ledCmdExecutor.c</kbd> is part of the main loop:</p>
+<pre>if(xQueueReceive(<strong>args.ledCmdQueue, &amp;nextLedCmd</strong>, <strong>250</strong>) == pdTRUE)<br/>{<br/>    switch(nextLedCmd.cmdNum)<br/>    {<br/>        case <strong>CMD_SET_INTENSITY</strong>:<br/>            currCmdNum = CMD_SET_INTENSITY;<br/>            setDutyCycles( &amp;args, nextLedCmd.red, <br/>                           nextLedCmd.green, nextLedCmd.blue);<br/>            break;<br/>        case <strong>CMD_BLINK</strong>:<br/>            currCmdNum = CMD_BLINK;<br/>            blinkingLedsOn = true;<br/>            setDutyCycles(&amp;args, nextLedCmd.red, <br/>                            nextLedCmd.green, nextLedCmd.blue);<br/>            break;<br/>        //additional cases not shown<br/>    }<br/>}</pre>
+<p class="mce-root CDPAlignLeft CDPAlign">The second part of the main loop, seen in the following code, executes if no command has been received from <kbd>ledCmdQueue</kbd> within 250 ticks (250 ms, since our configuration uses a 1 kHz tick). <span>This code toggles the LEDs between their last commanded duty cycle and <kbd>OFF</kbd>:</span></p>
+<p class="CDPAlignLeft CDPAlign"><kbd>ledCmdExecutor.c</kbd> is the second half of the main loop:</p>
+<pre>else if (currCmdNum == CMD_BLINK)<br/>{<br/>    //if there is no new command and we should be blinking<br/>    if(blinkingLedsOn)<br/>    {<br/>        blinkingLedsOn = false;<br/>        setDutyCycles(&amp;args, 0, 0, 0);<br/>    }<br/>    else<br/>    {<br/>        blinkingLedsOn = true;<br/>        setDutyCycles(  &amp;args, nextLedCmd.red, <br/>                        nextLedCmd.green, nextLedCmd.blue);<br/>    }<br/>}</pre>
+<p class="CDPAlignLeft CDPAlign">Finally, the <kbd>setDutyCycles</kbd> <span>helper function </span><span>uses the</span> <kbd>iPWM</kbd> <span>pointers to actuate the PWM duty cycles for the LEDs. The</span> <kbd>iPWM</kbd> <span>pointers were verified as not being</span> <kbd>NULL</kbd> <span>before the main loop, so the check doesn't need to be repeated here:</span></p>
+<pre>void <strong>setDutyCycles</strong>( const CmdExecArgs* Args, float RedDuty,                            float GreenDuty, float BlueDuty)<br/>{<br/>  Args-&gt;redPWM-&gt;SetDutyCycle(RedDuty);<br/>  Args-&gt;greenPWM-&gt;SetDutyCycle(GreenDuty);<br/>  Args-&gt;bluePWM-&gt;SetDutyCycle(BlueDuty);<br/>}</pre>
+<p class="CDPAlignLeft CDPAlign">That wraps up the high-level functionality of our LED command executor. The main purpose of creating a task like this was to illustrate a way to create an extremely loosely coupled and scalable system. While it is silly to toggle a few LEDs in this way, this design paradigm is perfectly scalable to complex systems and capable of being used on different hardware without modification.</p>
+<p class="CDPAlignLeft CDPAlign">Now that we have an idea of what the code does at a high level, let's take a look at how the <kbd>LedCmd</kbd> struct is populated.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Frame decoding</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">As data comes in from the USB, it is placed in a stream buffer by the USB stack. The <kbd>StreamBuffer</kbd> function for incoming data can be accessed from <kbd>GetUsbRxStreamBuff()</kbd> in <kbd>Drivers/HandsOnRTOS/VirtualCommDriverMultiTask.c</kbd>:</p>
+<pre><strong>StreamBufferHandle_t const * GetUsbRxStreamBuff</strong>( void )<br/>{<br/>  return &amp;vcom_rxStream;<br/>}</pre>
+<p class="CDPAlignLeft CDPAlign">This function returns a constant pointer to <kbd>StreamBufferHandle_t</kbd>. This is done so the calling code can access the stream buffer directly, but isn't able to change the pointer's value.</p>
+<p class="CDPAlignLeft CDPAlign">The protocol itself is a strictly binary stream that starts with 0x02 and ends with a CRC-32 checksum, transmitted in little endian byte order:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1560 image-border" src="assets/20ce3e11-1209-4cf8-9e54-c4b59575bbf4.png" style="width:30.67em;height:4.83em;"/></p>
+<p class="mce-root CDPAlignLeft CDPAlign">There are many different ways of serializing data. A simple binary stream was chosen here for simplicity. A few points should be considered:</p>
+<ul>
+<li class="mce-root">The <kbd>0x02</kbd> header is a convenient delimiter that can be used to find the (possible) start of a frame. It is not sufficiently unique since any of the other bytes in the message can also be <kbd>0x02</kbd> (it is a binary stream, not ASCII). The CRC-32 at the end provides assurance that the frame was correctly received.</li>
+<li class="mce-root">Since the frame has exactly 1 byte per LED value, we can represent the 0-100% duty cycle with 0-255 and we are guaranteed to have valid, in-range parameters, without any additional checking.</li>
+<li>This simple method of framing is extremely rigid and provides no flexibility whatsoever. The moment we need to send something else over the wire, we're back to square one. A more flexible (and complex) serialization method is required if flexibility is desired.</li>
+</ul>
+<p class="mce-root CDPAlignLeft CDPAlign">The <kbd>frameDecoder</kbd> function is defined in <kbd>mainColorSelector.c</kbd>:</p>
+<pre>void frameDecoder( void* NotUsed)<br/>{<br/>  LedCmd incomingCmd;<br/>  #define FRAME_LEN 9<br/>  uint8_t frame[FRAME_LEN];<br/>  while(1)<br/>  {<br/>    memset(frame, 0, FRAME_LEN);<br/>    while(frame[0] != 0x02)<br/>    {<br/>      xStreamBufferReceive( *GetUsbRxStreamBuff(), frame, 1,<br/>                                             portMAX_DELAY);<br/>    }<br/>    xStreamBufferReceive( *GetUsbRxStreamBuff(),<br/>      &amp;frame[1],<br/>      FRAME_LEN-1,<br/>      portMAX_DELAY);<br/>    if(CheckCRC(frame, FRAME_LEN))<br/>    {<br/>      incomingCmd.cmdNum = frame[1];<br/>      incomingCmd.red = frame[2]/255.0 * 100;<br/>      incomingCmd.green = frame[3]/255.0 * 100;<br/>      incomingCmd.blue = frame[4]/255.0 * 100;<br/>      xQueueSend(ledCmdQueue, &amp;incomingCmd, 100);<br/>    }<br/>  }<br/>}</pre>
+<p class="CDPAlignLeft CDPAlign">Let's break it down line by line:</p>
+<ul>
+<li class="mce-root"><span> Two local variables,</span> <span><kbd>incomingCmd</kbd> and <kbd>frame</kbd></span><span>, are created.</span> <kbd>incomingCmd</kbd> <span>is used to store the fully parsed command. </span><kbd>frame</kbd> <span>is a buffer of bytes that is used to store exactly one frame's worth of data while this function parses/verifies it:</span></li>
+</ul>
+<pre style="color: black;padding-left: 60px">LedCmd incomingCmd;<br/>#define FRAME_LEN 9<br/>uint8_t frame[FRAME_LEN];</pre>
+<ul>
+<li>At the beginning of the loop, the contents of <kbd>frame</kbd> are cleared. Only clearing the first byte is strictly necessary so we can accurately detect <kbd>0x02</kbd> and since the frame is binary and has a well-defined length (only variable-length strings <em>need</em> to be null-terminated). However, it is very convenient to see <kbd>0</kbd> for unpopulated bytes, if you happen to be watching the variable during debugging:</li>
+</ul>
+<pre style="padding-left: 90px"><span>memset(frame, 0, FRAME_LEN);</span></pre>
+<ul>
+<li>A single byte is copied from the <kbd>StreamBuffer</kbd> function into the frame until <kbd>0x02</kbd> is detected. This should indicate the start of a frame (unless we were unlucky enough to start acquiring data in the middle of a frame with a binary value of <kbd>0x02</kbd> in the payload or CRC):</li>
+</ul>
+<pre style="padding-left: 60px"> while(frame[0] != 0x02)<br/> {<br/>     xStreamBufferReceive( *GetUsbRxStreamBuff(), frame, 1, <br/>                                            portMAX_DELAY);<br/> }</pre>
+<ul>
+<li>The remaining bytes of the frame are received from <kbd>StreamBuffer</kbd>. They are placed in the correct index of the <kbd>frame</kbd> array:</li>
+</ul>
+<pre style="padding-left: 60px"><span>xStreamBufferReceive( *GetUsbRxStreamBuff(), &amp;frame[1], <br/>                           FRAME_LEN-1, portMAX_DELAY);</span></pre>
+<ul>
+<li>The entire frame's CRC is evaluated. If the CRC is invalid, this data is discarded and we'll begin looking for the start of another frame:</li>
+</ul>
+<pre style="padding-left: 60px"><span>if(CheckCRC(frame, FRAME_LEN))</span></pre>
+<ul>
+<li>If the frame was intact, <kbd>incomingCmd</kbd> is filled out with the values in the frame:</li>
+</ul>
+<pre style="padding-left: 60px"> incomingCmd.cmdNum = frame[1];<br/> incomingCmd.red = frame[2]/255.0 * 100;<br/> incomingCmd.green = frame[3]/255.0 * 100;<br/> incomingCmd.blue = frame[4]/255.0 * 100;</pre>
+<ul>
+<li>The populated command is sent to the queue, which is being watched by <kbd>LedCmdExecutor()</kbd>. Up to <kbd>100</kbd> ticks may elapse, waiting for space in the queue to become available before the command is discarded:</li>
+</ul>
+<pre style="padding-left: 60px"> xQueueSend(ledCmdQueue, &amp;incomingCmd, 100);</pre>
+<div class="packt_tip CDPAlignLeft CDPAlign">It is important to note that none of the framing protocol is being placed in <kbd>LedCmd</kbd>, which will be sent through the queue – only the payload is. This allows more flexibility in how data is acquired before being queued, as we will see in the <em>Reusing a queue definition for a new targe</em><em>t </em>section.</div>
+<p class="CDPAlignLeft CDPAlign">Choosing the number of slots available in the queue can have important effects on the response of the application to incoming commands. The more slots that are available, the higher the likelihood that a command will incur a significant delay before being executed. For a system that requires more determinism on when (and if) a command will be executed, it is a good idea to limit the queue length to only a single slot and perform a protocol-level acknowledgment, based on whether the command was successfully queued.</p>
+<p class="mce-root CDPAlignLeft CDPAlign">Now that we've seen how the frame is decoded, the only remaining piece of the puzzle is how data is placed into the USB's receiving stream buffer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The USB virtual comm driver</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root CDPAlignLeft CDPAlign">The USB's receiving <kbd>StreamBuffer</kbd> is populated by<span> </span><kbd>CDC_Receive_FS()</kbd><span> </span>in<span> </span><kbd>Drivers/HandsOnRTOS/usbd_cdc_if.c</kbd>. This will look similar to the code from <a href="c76b2fa5-28ac-4467-bb7e-68593a27f9ce.xhtml">Chapter 11</a>, <em>S</em><em>haring Hardware Peripherals across Tasks, </em>where the transmit side of the driver was developed:</p>
+<pre>static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)<br/>{<br/>  /* USER CODE BEGIN 6 */<br/>  portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;<br/><br/>  USBD_CDC_SetRxBuffer(&amp;hUsbDeviceFS, &amp;Buf[0]);<br/>  xStreamBufferSendFromISR( *GetUsbRxStreamBuff(),<br/>        Buf,<br/>        *Len,<br/>        &amp;xHigherPriorityTaskWoken);<br/><br/>  USBD_CDC_ReceivePacket(&amp;hUsbDeviceFS);<br/>  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);<br/>  return (USBD_OK);<br/>  /* USER CODE END 6 */<br/>}</pre>
+<p class="CDPAlignLeft CDPAlign">Using a stream buffer instead of a queue allows larger blocks of memory to be copied from the USB stack's internal buffers while providing a queue-like interface that has flexibility in the number of bytes copied out of it. This flexibility is one of the reasons coding the protocol layer was so straightforward.</p>
+<div class="packt_infobox CDPAlignLeft CDPAlign">Remember that since a stream buffer is being used, only one task can be a designated reader. Otherwise, access to the stream buffer must be synchronized (that is, by a mutex).</div>
+<p class="CDPAlignLeft CDPAlign">That wraps up all of the MCU-side code in this example. Since this example relies on a binary protocol over USB, let's have a look at how the code can be used.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using the code</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">One of the goals for choosing this example was to have an approachable, real-world use case that was relevant. Most of the time, the use cases for the embedded systems we develop do not include a person typing away on a terminal emulator. To that end, a very simple GUI was created using Python to make it simple to send commands to the Nucleo board. The script is <kbd>Chapter_13/PythonColorSelectorUI/colorSelector.py</kbd>.</p>
+<p class="CDPAlignLeft CDPAlign">A Windows binary is also included (<kbd>Chapter_13/PythonColorSelectorUI/colorSelector.exe</kbd>). <kbd>*.exe</kbd> doesn't require Python to be installed. For other operating systems, you'll need to install the requisite packages listed in <kbd>Chapter_13/PythonColorSelectorUI/requirements.txt</kbd>  and run a Python 3 interpreter to use the script:</p>
+<ol>
+<li>You'll first need to select the STM virtual comm port:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1561 image-border" src="assets/be28c33c-1f8b-49dd-9873-da348ac9bbcf.png" style="width:17.33em;height:13.50em;"/></p>
+<ol start="2">
+<li>After the port has been successfully opened, use the sliders and various buttons to actuate the LEDs on the Nucleo development board. A command frame is constructed on each UI update event and immediately sent over USB to the MCU. The ASCII-encoded hex dump of the last frame sent is displayed:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1562 image-border" src="assets/3b2c45b4-1df7-46c6-9979-2ef793ab26d5.png" style="width:22.92em;height:16.17em;"/></p>
+<p class="CDPAlignLeft CDPAlign">Alternatively, a terminal application capable of sending binary data could also be used (RealTerm is an example for Windows).</p>
+<p class="CDPAlignLeft CDPAlign">So, we have some blinky lights and a (not-so) flashy UI. Let's address the real takeaway of this exercise—the flexibility we've built into our application by using a queue in the way that we did.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Reusing a queue definition for a new target</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">On the surface, it might be hard to appreciate just how flexible a setup such as this one is. On the command-entry side, we have the ability to acquire commands from anything, not just the binary framed protocol over USB. Since the data being placed into the queue was abstracted to not include any protocol-specific information, the underlying protocol could change without requiring any changes downstream.</p>
+<p class="CDPAlignLeft CDPAlign">Let's take a look at a few examples:</p>
+<ul>
+<li>We could write a different routine for parsing incoming data that uses a comma-separated ASCII string, where duty cycles are represented by percentages between 0 and 100 and a string-based enumeration, terminated by a new line: <kbd>BLINK, 20, 30, 100\n</kbd>. This would result in the following value being placed in <kbd>ledCmdQueue</kbd><span>:</span></li>
+</ul>
+<pre style="padding-left: 60px">LedCmd cmd = {.cmdNum=3, .red=20, .blue=30, .green=100};<br/>xQueueSend(ledCmdQueue, &amp;cmd, 100);</pre>
+<ul>
+<li>The underlying interface could change completely (from USB to UART, SPI, I2C, Ethernet, an IoT framework, and so on). </li>
+<li>The commands could come in the form of a non-serialized data source (discrete duty cycles or physical pins of the MCU, for example):</li>
+</ul>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1563 image-border" src="assets/9c4850a9-ddc6-40e9-8acd-66723eba2b2f.png" style="width:36.17em;height:33.92em;"/></p>
+<p class="CDPAlignLeft CDPAlign"><span>There is also no reason for a queue to be limited to being populated by a single task. If it makes sense from a system design perspective, a command executor's queue could be populated by any number of simultaneous sources. The possibilities of how to get data into the system are truly endless, which is great news—especially if you're developing something considerably more complex that will be used in multiple systems. You're free to invest time in writing quality code once, knowing that the exact code will be used in multiple applications because it is flexible enough to adapt while still maintaining a consistent interface.</span></p>
+<p class="CDPAlignLeft CDPAlign">There are two components of the ledCmd executor that provide flexibility—the queue interface and the <kbd>iPWM</kbd> interface.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The queue interface</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">After the  <kbd>LedCmdExecution()</kbd> task is started, the only interaction it has with the higher-level code in the system is through its command queue. Because of this, we are free to change the underlying implementation without directly affecting the higher-level code (as long as the data passed through the queue has the same meaning). </p>
+<p class="CDPAlignLeft CDPAlign">For example, blinking could be implemented differently and none of the code feeding the queue would need to change. Since the only requirements for passing data through the queue are <kbd>uint8_t</kbd> and three floating-point numbers, we're also free to completely rewrite the implementation of <kbd>LedCmdExecution</kbd> (without the <kbd>iPWM</kbd> interface, for example). This change will only affect a single file that starts the task—<kbd>mainColorSelector.c</kbd>, in this example. Any other files that deal with the queue directly will be unaffected. If there were multiple sources feeding the queue (such as a USB, I2C, IoT framework, and so on), none of them would need to be modified, even after completely changing the underlying <kbd>LedCmdExecution</kbd> implementation.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The iPWM interface</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">In this implementation, we've taken flexibility one step further by using a flexible interface to actuate the LEDs (<kbd>iPWM</kbd>). Since all of the calls (such as <kbd>setDutyCycles</kbd>) are defined by a flexible interface (instead of interacting directly with hardware), we're free to substitute any other implementation of <kbd>iPWM</kbd> in place of the MCU's <kbd>TIM</kbd> peripheral implementation included here. </p>
+<p class="CDPAlignLeft CDPAlign">For example, the LED on the other end of the <kbd>iPWM</kbd> interface could be an addressable LED driven by a serial interface, which requires a serial data stream rather than PWM. It may even be remotely located and require another protocol to actuate it. As long as it can be represented by a percentage between 0 and 100, it can be controlled by this code.</p>
+<p class="CDPAlignLeft CDPAlign">Now—realistically—in the real world, you're not likely to go to all of this trouble just to blink a few LEDs! Keep in mind that this is an example with fairly trivial functionality, so we're able to keep our focus on the actual architectural elements. In practice, flexible architectures provide a foundation to build long-living, adaptable code bases on.</p>
+<p class="CDPAlignLeft CDPAlign">All of this flexibility does come with a warning—always be careful of the systems you are designing and ensure they meet their primary requirements. There are always tradeoffs to be made, whether they are between performance, initial development time, BOM cost, code elegance, flash space, or maintainability. After all, a beautifully extensible design doesn't do anyone any good if it doesn't fit in the available ROM and RAM!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p class="CDPAlignLeft CDPAlign">In this chapter, you have gained first-hand experience in creating a simple end-to-end command executor architecture. At this point, you should be quite comfortable with creating queues and will have started to gain a deeper understanding of how they can be used to achieve specific design goals, such as flexibility. You can apply variations of these techniques to many real-world projects. If you're feeling particularly adventurous, feel free to implement one of the suggested protocols or add an entry point for another interface (such as a UART). </p>
+<p class="CDPAlignLeft CDPAlign">In the next chapter, we'll change gears a bit and discuss the available APIs for FreeRTOS, investigating when and why you might prefer one over the others.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>As we conclude, here is a list of questions for you to test your knowledge of this chapter's material. You will find the answers in the <em>Assessments</em> section of the appendix:</p>
+<ol>
+<li>Queues decrease design flexibility since they create a rigid definition of data transfer that must be adhered to:
+<ul>
+<li>True</li>
+<li>False </li>
+</ul>
+</li>
+<li>Queues don't work well with other abstraction techniques; they must only contain simple data types:
+<ul>
+<li>True</li>
+<li>False </li>
+</ul>
+</li>
+<li>When using queues for commands acquired from a serial port, should the queue contain exactly the same information and formatting as the underlying serialized data stream? Why?  </li>
+<li>Name a reason why passing data by value into queues is <em>easier</em> than passing by reference.  </li>
+<li>Name one reason why it is necessary to carefully consider the depth of queues in a real-time embedded system?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

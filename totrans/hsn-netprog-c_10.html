@@ -1,0 +1,471 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Making Your Program Send Email</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will consider the protocol responsible for delivering email on the internet. This protocol is called the <strong>Simple Mail Transfer Protocol</strong> (<strong>SMTP</strong>).</p>
+<p>Following an exposition of the inner workings of email transfer, we will build a simple SMTP client capable of sending short emails.</p>
+<p>The following topics are covered in this chapter:</p>
+<ul>
+<li>How SMTP servers work</li>
+<li>Determining which mail server is responsible for a given domain</li>
+<li>Using SMTP</li>
+<li>Email encoding</li>
+<li>Spam-blocking and email-sending pitfalls</li>
+<li>SPF, DKIM, and DMARC</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>The example programs from this chapter can be compiled with any modern C compiler. We recommend MinGW on Windows and GCC on Linux and macOS. See <a href="47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml">Appendix B</a>, <em>Setting Up Your C Compiler on Windows</em>, <a href="221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml">Appendix C</a>, <em>Setting Up Your C Compiler on Linux</em>, and <a href="632db68e-0911-4238-a2be-bd1aa5296120.xhtml">Appendix D</a>, <em>Setting Up Your C Compiler on macOS</em>, for compiler setup.</p>
+<p>The code for this book can be found at <a href="https://github.com/codeplea/Hands-On-Network-Programming-with-C">https://github.com/codeplea/Hands-On-Network-Programming-with-C</a>.</p>
+<p>From the command line, you can download the code for this chapter with the following command:</p>
+<pre><strong>git clone https://github.com/codeplea/Hands-On-Network-Programming-with-C</strong><br/><strong>cd Hands-On-Network-Programming-with-C/chap08</strong></pre>
+<p>Each example program in this chapter runs on Windows, Linux, and macOS. When compiling on Windows, each example program requires linking with the Winsock library. This can be accomplished by passing the <kbd>-lws2_32</kbd> option to <kbd>gcc</kbd>.</p>
+<p>We provide the exact commands needed to compile each example as they are introduced.</p>
+<p>All of the example programs in this chapter require the same header files and C macros that we developed in <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml" target="_blank">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>. For brevity, we put these statements in a separate header file, <kbd>chap08.h</kbd>, which we can include in each program. For a detailed explanation of these statements, please refer to <a href="https://cdp.packtpub.com/hands_on_network_programming_with_c/wp-admin/post.php?post=31&amp;action=edit#post_25" target="_blank">Chapter 2</a><span>, </span><em>Getting to Grips with Socket APIs</em>.</p>
+<p>The first part of <kbd>chap08.h</kbd> includes the needed networking headers for each platform. The code for this is as follows:</p>
+<pre>/*chap08.h*/<br/><br/>#if defined(_WIN32)<br/>#ifndef _WIN32_WINNT<br/>#define _WIN32_WINNT 0x0600<br/>#endif<br/>#include &lt;winsock2.h&gt;<br/>#include &lt;ws2tcpip.h&gt;<br/>#pragma comment(lib, "ws2_32.lib")<br/><br/>#else<br/>#include &lt;sys/types.h&gt;<br/>#include &lt;sys/socket.h&gt;<br/>#include &lt;netinet/in.h&gt;<br/>#include &lt;arpa/inet.h&gt;<br/>#include &lt;netdb.h&gt;<br/>#include &lt;unistd.h&gt;<br/>#include &lt;errno.h&gt;<br/><br/>#endif</pre>
+<p>We also define some macros to make writing portable code easier, and we'll include the additional headers that our programs require:</p>
+<pre>/*chap08.h<span> continued*/</span><br/><br/>#if defined(_WIN32)<br/>#define ISVALIDSOCKET(s) ((s) != INVALID_SOCKET)<br/>#define CLOSESOCKET(s) closesocket(s)<br/>#define GETSOCKETERRNO() (WSAGetLastError())<br/><br/>#else<br/>#define ISVALIDSOCKET(s) ((s) &gt;= 0)<br/>#define CLOSESOCKET(s) close(s)<br/>#define SOCKET int<br/>#define GETSOCKETERRNO() (errno)<br/>#endif<br/><br/><br/>#include &lt;stdio.h&gt;<br/>#include &lt;stdlib.h&gt;<br/>#include &lt;string.h&gt;</pre>
+<p>That concludes <kbd>chap08.h</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Email servers</h1>
+                </header>
+            
+            <article>
+                
+<p>SMTP is the protocol responsible for delivering emails between servers. It is a text-based protocol operating on TCP <span>port</span> <kbd>25</kbd>.</p>
+<p>Not all emails need to be delivered between systems. For example, imagine you have a Gmail account. If you compose and send an email to your friend who also has a Gmail account, then SMTP is not necessarily used. In this case, Gmail only needs to copy your email into their inbox (or do equivalent database updates).</p>
+<p>On the other hand, consider a case where you send an email to your friend's Yahoo! account. If the email is sent from your Gmail account, then it's clear that the Gmail and Yahoo! servers must communicate. In that case, your email is transmitted from the Gmail server to the Yahoo! server using SMTP.</p>
+<p>This connection is illustrated in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/cc2d0147-cd00-430a-889b-01c9c8ab33eb.png" style="width:24.58em;height:5.58em;"/></p>
+<p>Retrieving your email from your mail service provider is a different issue than delivering email between service providers. Webmail is very popular now for sending and receiving mail from your mail provider. Webmail providers allow mailbox access through a web browser. Web browsers communicate using HTTP (or HTTPS).</p>
+<p>Let's consider the full path of an email from <strong>Alice</strong> to <strong>Bob</strong>. In this example, Alice has <strong>Gmail</strong> as her mail provider, and Bob has <strong>Yahoo!</strong> as his mail provider. Both Alice and Bob access their mailbox using a standard web browser. The path an email takes from Bob to Alice is illustrated by the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/fc5f08f6-9756-47cd-9963-4871398ede99.png" style="width:37.83em;height:12.58em;"/></p>
+<p>As you can see in the preceding diagram, <strong>SMTP</strong> is only used when delivering the mail between mail providers. This usage of SMTP is called <strong>mail transmission</strong>.</p>
+<p>In fact, the email in this example could take other paths. Let's consider that Alice uses a desktop email client instead of webmail. Gmail still supports desktop email clients, and these clients offer many good features, even if they are falling out of fashion. A typical desktop client connects to a mail provider using either: <strong>Internet Message Access Protocol</strong> (<strong>IMAP</strong>) or <strong>Post Office Protocol</strong> (<strong>POP</strong>) and SMTP. In this case, SMTP is used by Alice to deliver her mail to her mail provider (Gmail). This usage of SMTP is called <strong>mail submission</strong>.</p>
+<p class="mce-root"/>
+<p>The Gmail provider then uses SMTP again to deliver the email to the <strong>Yahoo!</strong> mail server. This is illustrated in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/f654b33e-4fdf-4fdc-afb2-6f523c1bb1e9.png" style="width:40.42em;height:13.25em;"/></p>
+<p>In the preceding diagram, the Gmail server would be considered an <strong>SMTP relay</strong>. In general, an SMTP server should only relay mail for trusted users. If an SMTP server relayed all mail, it would become quickly overwhelmed by spammers.</p>
+<p>Many mail providers have a set of mail servers used to accept incoming mail and a separate set of mail servers used to accept outgoing mail from their users.</p>
+<p>It is important to understand that SMTP is used to send mail. SMTP is not used to retrieve mail from a server. IMAP and POP are the common protocols used by desktop mail programs to retrieve mail from a server.</p>
+<p>It is not necessary for Alice to send her mail through her provider's SMTP server. Instead, she could send it directly to Bob's mail provider as illustrated in the following diagram:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/5dd6d1fb-1504-416b-91d0-7f29d8d9da93.png" style="width:38.92em;height:12.83em;"/></p>
+<p>In practice, one usually delegates the delivery responsibility to their mail provider. This has several advantages; namely, the mail provider can attempt a redelivery if the destination mail server isn't available. Other advantages are discussed later in this chapter.</p>
+<p>The program we develop in this chapter is used to deliver mail directly to the recipient's email provider. It is not useful to deliver mail to a relay server because we are not going to implement authentication techniques. Generally, SMTP servers do not relay mail without authenticating that the sender has an account with them.</p>
+<p>The SMTP protocol we describe in this chapter is unsecured and not encrypted. This is convenient for explanation and learning purposes, but in the real world, you may want to secure your email transfer.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">SMTP security</h1>
+                </header>
+            
+            <article>
+                
+<p><span>We describe unsecured SMTP in this chapter. In real-world use, SMTP should be secured if both communicating servers support it. Not all do.</span></p>
+<p><span>Securing SMTP is done by having SMTP connections start out as plaintext on port </span><kbd>25</kbd><span>. The SMTP client then issues a </span><kbd>STARTTLS</kbd><span> command to upgrade to a secure, encrypted connection. This secure connection works by merely running the SMTP commands through a TLS layer; therefore, everything we cover in this chapter is applicable to secure SMTP too. See <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, </span><em>Loading </em><em>Secure Web Pages with HTTPS and OpenSSL,</em><span> for more information about TLS.</span></p>
+<p><span>Mail transmission between servers is always done on port </span><kbd>25</kbd><span>.</span></p>
+<p>Many desktop email clients use TCP <span>ports</span> <kbd>465</kbd> or <kbd>587</kbd> for SMTP mail submission. <strong>Internet Service Providers (ISPs)</strong> prefer these alternative ports for mail submission, and it allows them to block <span>port</span> <kbd>25</kbd> altogether. This is generally justified as a spam prevention technique.</p>
+<p>Next, let's see how to determine which mail server receives mail for a given email address.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Finding an email server</h1>
+                </header>
+            
+            <article>
+                
+<p>Consider the email address <kbd>bob@example.com</kbd>. In this case, <kbd>bob</kbd> identifies the user, while <kbd>example.com</kbd> identifies the domain name of the service provider. These parts are delineated by the <kbd>@</kbd> symbol.</p>
+<p>One domain name can potentially use multiple mail servers. Likewise, one mail server can provide service for many domain names. For this reason, identifying the mail server or servers responsible for receiving mail for <kbd>bob@example.com</kbd> isn't as easy as connecting to <kbd>example.com</kbd>. Instead, the mail server must be identified by performing a DNS lookup for an MX record.</p>
+<p>DNS was covered in depth back in <a href="3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml">Chapter 5</a>, <em>Hostname Resolution and DNS</em>. The program we developed in that chapter can be used to query MX records.</p>
+<p>Otherwise, most operating systems provide a command-line tool for DNS lookup. Windows provides <kbd>nslookup</kbd>, while Linux and macOS provide <kbd>dig</kbd>.</p>
+<p>On Windows, we can find the mail servers responsible for accepting mail <kbd><span class="citation">@gmail.com</span></kbd> using the following command:</p>
+<pre><strong>nslookup -type=mx gmail.com</strong></pre>
+<p>This lookup is shown in the following screenshot:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/6f4e6420-bf5b-491a-9c56-2a09ec4f19d7.png" style="width:48.50em;height:23.17em;"/></p>
+<p>On Linux or macOS, an MX record lookup for a <kbd><span class="citation">@gmail.com</span></kbd> account is done with the following command:</p>
+<pre><strong>dig mx gmail.com</strong></pre>
+<p>The use of <kbd>dig</kbd> is shown in the following screenshot:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/cc1f9572-2088-4dbf-87a6-cf0a0750a8c0.png" style="width:40.83em;height:24.42em;"/></p>
+<p>As you can see in the preceding two screenshots, Gmail uses five mail servers. When multiple MX records are found, mail should be delivered to the server having the lowest MX preference first. If mail delivery fails to that server, then an attempt should be made to deliver to the server having the next lowest preference, and so on. At the time of this writing, Gmail's primary mail server, having a preference of <kbd>5</kbd>, is <kbd>gmail-smtp-in.l.google.com</kbd>. That is the SMTP server you would connect to in order to send mail to an <kbd><span class="citation">@gmail.com</span></kbd> address.</p>
+<p>It is also possible for MX records to have the same preference. Yahoo! uses mail servers having the same preference. The following screenshot shows the MX records for <kbd>yahoo.com</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/36cd8937-4fc7-4057-8168-7f2586deb7ce.png" style="width:44.08em;height:26.33em;"/></p>
+<p>In the preceding screenshot, we see that Yahoo! uses three mail servers. Each server has a preference of <kbd>1</kbd>. This means that mail can be delivered to any one of them with no special preference. If mail delivery fails to the first chosen server, then another server should be chosen at random to retry.</p>
+<p>Programmatically getting the MX record in a cross-platform manner can be difficult. Please see <a href="3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml" target="_blank">Chapter 5</a>, <em>Hostname Resolution and DNS</em>, where this topic was covered in some depth. The SMTP client we develop in this present chapter assumes that the mail server is known in advance.</p>
+<p>Now that we know which server to connect to, let's consider the SMTP protocol itself in more detail.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">SMTP dialog</h1>
+                </header>
+            
+            <article>
+                
+<p>SMTP is a text-based TCP protocol that works on <span>port</span> <kbd>25</kbd>. SMTP works in a lock-step, one-at-a-time dialog, with the client sending commands and the server sending responses for each command.</p>
+<p>In a typical session, the dialog goes as follows:</p>
+<ol>
+<li>The client first establishes a connection to the SMTP server.</li>
+<li>The server initiates with a greeting. This greeting indicates that the server is ready to receive commands.</li>
+<li>The client then issues its own greeting.</li>
+<li>The server responds.</li>
+<li>The client sends a command indicating who the mail is from.</li>
+<li>The server responds to indicate that the sender is accepted.</li>
+<li>The client issues another command, which specifies the mail's recipient.</li>
+<li>The server responds indicating the recipient is accepted.</li>
+<li>The client then issues a <kbd>DATA</kbd> command.</li>
+<li>The server responds asking the client to proceed.</li>
+<li>The client transfers the email.</li>
+</ol>
+<p>The protocol is very simple. In the following example SMTP session, <kbd>mail.example.net</kbd> is the client, and the server is <kbd>mail.example.com</kbd> (<kbd>C</kbd> and <kbd>S</kbd> indicate whether the client or server is sending, respectively):</p>
+<pre>S: 220 mail.example.com SMTP server ready<br/>C: HELO mail.example.net<br/>S: 250 Hello mail.example.net [192.0.2.67]<br/>C: MAIL FROM:&lt;alice@example.net&gt;<br/>S: 250 OK<br/>C: RCPT TO:&lt;bob@example.com&gt;<br/>S: 250 Accepted<br/>C: DATA<br/>S: 354 Enter message, ending with "." on a line by itself<br/>C: Subject: Re: The Cake<br/>C: Date: Fri, 03 May 2019 02:31:20 +0000<br/>C:<br/>C: Do NOT forget to bring the cake!<br/>C: .<br/>S: 250 OK<br/>C: QUIT<br/>S: 221 closing connection</pre>
+<p>Everything the server sends is in reply to the client's commands, except for the first line. The first line is simply in response to the client connecting.</p>
+<p>You may notice that each of the client's commands start with a four-letter word. Each one of the server's responses starts with a three-digit code.</p>
+<p>The common client commands we use are as follows:</p>
+<ul>
+<li><kbd>HELO</kbd> is used for the client to identify itself to the server.</li>
+<li><kbd>MAIL</kbd> is used to specify who is sending the mail.</li>
+<li><kbd>RCPT</kbd> is used to specify a recipient.</li>
+<li><kbd>DATA</kbd> is used to initiate the transfer of the actual email. This email should include both headers and a body.</li>
+<li><kbd>QUIT</kbd> is used to end the session.</li>
+</ul>
+<p>The server response codes used in a successful email transfer are the following:</p>
+<ul>
+<li><kbd>220</kbd>: The service is ready</li>
+<li><kbd>250</kbd>: The requested command was accepted and completed successfully</li>
+<li><kbd>354</kbd>: Start sending the message</li>
+<li><kbd>221</kbd>: The connection is closing</li>
+</ul>
+<p>Error codes vary between providers, but they are generally in the 500 range.</p>
+<p>SMTP servers can also send replies spanning multiple lines. In this case, the very last line begins with the response code followed by a space. All preceding lines begin with the response code followed by a dash. The following example illustrates a multiline response after attempting to deliver to a mailbox that does not exist:</p>
+<pre>C: MAIL FROM:&lt;alice@example.net&gt;<br/>S: 250 OK<br/>C: RCPT TO:&lt;not-a-real-user@example.com&gt;<br/>S: 550-The account you tried to deliver to does not<br/>S: 550-exist. Please double-check the recipient's<br/>S: 550 address for typos and try again.</pre>
+<p>Note that some servers validate that the recipient address is valid before replying to the <kbd>RCPT</kbd> command, but many servers only validate the recipient address after the client sends the email using the <kbd>DATA</kbd> command.</p>
+<p>Although that explains the basics of the protocol used to send mail, we still must consider the format of the email itself. This is covered next.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The format of an email</h1>
+                </header>
+            
+            <article>
+                
+<p>If we make an analogy to physical mail, the SMTP commands <kbd>MAIL FROM</kbd> and <kbd>RCPT TO</kbd> address the envelope. Those commands give the SMTP server information on how the mail is to be delivered. In this analogy, the <kbd>DATA</kbd> command would be the letter inside the envelope. As it's common to address a physical letter inside an envelope, it's also common to repeat the delivery information in the email, even though it was already sent to the SMTP server through the <kbd>MAIL</kbd> and <kbd>RCPT</kbd> commands.</p>
+<p>A simple email may look like the following:</p>
+<pre>From: Alice Doe &lt;alice@example.net&gt;<br/>To: Bob Doe &lt;bob@example.com&gt;<br/>Subject: Re: The Cake<br/>Date: Fri, 03 May 2019 02:31:20 +0000<br/><br/>Hi Bob,<br/><br/>Do NOT forget to bring the cake!<br/><br/>Best,<br/>Alice</pre>
+<p>The entire email is transmitted to an SMTP server following the <kbd>DATA</kbd> command. A single period on an otherwise blank line is transmitted to indicate the end of the email. If the email contains any line beginning with a period, the SMTP client should replace it with two consecutive periods. This prevents the client from indicating the email is over prematurely. The SMTP server knows that any line beginning with two periods should be replaced with a single period.</p>
+<p>The email itself can be divided into two parts—the header and the body. The two parts are delineated by the first blank line.</p>
+<p>The header part consists of various headers that indicate properties of the email. <kbd>From</kbd>, <kbd>To</kbd>, <kbd>Subject</kbd>, and <kbd>Date</kbd> are the most common headers.</p>
+<p>The body part of the email is simply the message being sent.</p>
+<p>With a basic understanding of the email format, we are now ready to begin writing a simple C program to send emails.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">A simple SMTP client program</h1>
+                </header>
+            
+            <article>
+                
+<p>With a basic understanding of both SMTP and the email format, we are ready to program a simple email client. Our client takes as inputs: the destination email server, the recipient's address, the sender's address, the email subject line, and the email body text.</p>
+<p>Our program begins by including the necessary headers with the following statements:</p>
+<pre>/*<span>smtp_send.c*/</span><br/><br/>#include "chap08.h"<br/>#include &lt;ctype.h&gt;<br/>#include &lt;stdarg.h&gt;</pre>
+<p>We also define the following two constants to make buffer allocation and checking easier:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>#define MAXINPUT 512<br/>#define MAXRESPONSE 1024</pre>
+<p>Our program needs to prompt the user for input several times. This is required to get the email server's hostname, the recipient's address, and so on. C provides the <kbd>gets()</kbd> function for this purpose but <kbd>gets()</kbd> is deprecated in the latest C standard. Therefore, we implement our own function.</p>
+<p>The following function, <kbd>get_input()</kbd>, prompts for user input:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>void get_input(const char *prompt, char *buffer)<br/>{<br/>    printf("%s", prompt);<br/><br/>    buffer[0] = 0;<br/>    fgets(buffer, MAXINPUT, stdin);<br/>    const int read = strlen(buffer);<br/>    if (read &gt; 0)<br/>        buffer[read-1] = 0;<br/>}</pre>
+<p>The <kbd>get_input()</kbd> function uses <kbd>fgets()</kbd> to read from <kbd>stdin</kbd>. The buffer passed to <kbd>get_input()</kbd> is assumed to be <kbd>MAXINPUT</kbd> bytes, which we defined at the top of the file.</p>
+<p>The <kbd>fgets()</kbd> function does not remove a newline character from the received input; therefore, we overwrite the last character inputted with a terminating null character.</p>
+<p>It is also very helpful to have a function that can send formatted strings directly over the network. We implement a function called <kbd>send_format()</kbd> for this purpose. It takes a socket, a formatting string, and the additional arguments to send. You can think of <kbd>send_format()</kbd> as being very similar to <kbd>printf()</kbd>. The difference is that <kbd>send_format()</kbd> delivers the formatted text over the network instead of printing to the screen.</p>
+<p>The code for <kbd>send_format()</kbd> is as follows:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>void send_format(SOCKET server, const char *text, ...) {<br/>    char buffer[1024];<br/>    va_list args;<br/>    va_start(args, text);<br/>    vsprintf(buffer, text, args);<br/>    va_end(args);<br/><br/>    send(server, buffer, strlen(buffer), 0);<br/><br/>    printf("C: %s", buffer);<br/>}</pre>
+<p>The preceding code works by first reserving a buffer. <kbd>vsprintf()</kbd> is then used to format the text into that buffer. It is up to the caller to ensure that the formatted output doesn't exceed the reserved buffer space. We are assuming for this program that the user is trusted, but in a production program, you would want to add checks to prevent a buffer overflow here.</p>
+<p>After the output text is formatted into <kbd>buffer</kbd>, it is sent using <kbd>send()</kbd>. We also print the sent text to the screen. A <kbd>C:</kbd> is printed preceding it to indicate that the text was sent by us, the client.</p>
+<p>One of the trickier parts of our SMTP client is parsing the SMTP server responses. This is important because the SMTP client must not issue a second command until a response is received for the first command. If the SMTP client sends a new command before the server is ready, then the server will likely terminate the connection.</p>
+<p>Recall that each SMTP response starts with a three-digit code. We want to parse out this code to check for errors. Each SMTP response is usually followed by text that we ignore. SMTP responses are typically only one line long, but they can sometimes span multiple lines. In this case, each line up to the penultimate line contains a dash character, <kbd>-</kbd>, directly following the three-digit response code.</p>
+<p>To illustrate how multiline responses work, consider the following two responses as equivalent:</p>
+<pre>/*<span>response 1*/</span><br/><br/>250 Message received!</pre>
+<pre>/*<span>response 2*/</span><br/><br/>250-Message<br/>250 received!</pre>
+<p>It is important that our program recognizes multiline responses; it must not mistakenly treat a single multiline response as separate responses.</p>
+<p>We implement a function called <kbd>parse_response()</kbd> for this purpose. It takes in a null-terminated response string and returns the parsed response code. If no code is found or the response isn't complete, then <kbd>0</kbd> is returned instead. The code for this function is as follows:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>int parse_response(const char *response) {<br/>    const char *k = response;<br/>    if (!k[0] || !k[1] || !k[2]) return 0;<br/>    for (; k[3]; ++k) {<br/>        if (k == response || k[-1] == '\n') {<br/>            if (isdigit(k[0]) &amp;&amp; isdigit(k[1]) &amp;&amp; isdigit(k[2])) {<br/>                if (k[3] != '-') {<br/>                    if (strstr(k, "\r\n")) {<br/>                        return strtol(k, 0, 10);<br/>                    }<br/>                }<br/>            }<br/>        }<br/>    }<br/>    return 0;<br/>}</pre>
+<p>The <kbd>parse_response()</kbd> function begins by checking for a null terminator in the first three characters of the response. If a null is found there, then the function can return immediately because <kbd>response</kbd> isn't long enough to constitute a valid SMTP response.</p>
+<p>It then loops through the <kbd>response</kbd> input string. The loop goes until a null-terminating character is found three characters out. Each loop, <kbd>isdigit()</kbd> is used to see whether the current character and the next two characters are all digits. If so, the fourth character, <kbd>k[3]</kbd>, is checked. If <kbd>k[3]</kbd> is a dash, then the response continues onto the next line. However, if <kbd>k[3]</kbd> isn't a dash, then <kbd>k[0]</kbd> represents the beginning of the last line of the SMTP response. In this case, the code checks if the line ending has been received; <kbd>strstr()</kbd> is used for this purpose. It the line ending was received, the code uses <kbd>strtol()</kbd> to convert the response code to an integer.</p>
+<p>If the code loops through <kbd>response()</kbd> without returning, then <kbd>0</kbd> is returned, and the client needs to wait for more input from the SMTP server.</p>
+<p>With <kbd>parse_response()</kbd> out of the way, it is useful to have a function that waits until a particular response code is received over the network. We implement a function called <kbd>wait_on_response()</kbd> for this purpose, which begins as follows:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>void wait_on_response(SOCKET server, int expecting) {<br/>    char response[MAXRESPONSE+1];<br/>    char *p = response;<br/>    char *end = response + MAXRESPONSE;<br/><br/>    int code = 0;</pre>
+<p>In the preceding code, a <kbd>response</kbd> buffer variable is reserved for storing the SMTP server's response. A pointer, <kbd>p</kbd>, is set to the beginning of this buffer; <kbd>p</kbd> will be incremented to point to the end of the received data, but it starts at <kbd>response</kbd> since no data has been received yet. An <kbd>end</kbd> pointer variable is set to the end of the buffer, which is useful to ensure we do not attempt to write past the buffer end.</p>
+<p>Finally, we set <kbd>code = 0</kbd> to indicate that no response code has been received yet.</p>
+<p>The <kbd>wait_on_response()</kbd> function then continues with a loop as follows:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    do {<br/>        int bytes_received = recv(server, p, end - p, 0);<br/>        if (bytes_received &lt; 1) {<br/>            fprintf(stderr, "Connection dropped.\n");<br/>            exit(1);<br/>        }<br/><br/>        p += bytes_received;<br/>        *p = 0;<br/><br/>        if (p == end) {<br/>            fprintf(stderr, "Server response too large:\n");<br/>            fprintf(stderr, "%s", response);<br/>            exit(1);<br/>        }<br/><br/>        code = parse_response(response);<br/><br/>    } while (code == 0);</pre>
+<p>The beginning of the preceding loop uses <kbd>recv()</kbd> to receive data from the SMTP server. The received data is written at <span>point</span> <kbd>p</kbd> in the <kbd>response</kbd> array. We are careful to use <kbd>end</kbd> to make sure received data isn't written past the end of <kbd>response</kbd>.</p>
+<p>After <kbd>recv()</kbd> returns, <kbd>p</kbd> is incremented to the end of the received data, and a null terminating character is set. A check for <kbd>p == end</kbd> ensures that we haven't written to the end of the response buffer.</p>
+<p>Our function from earlier, <kbd>parse_response()</kbd>, is used to check whether a full SMTP response has been received. If so, then <kbd>code</kbd> is set to that response. If not, then <kbd>code</kbd> is equal to <kbd>0</kbd>, and the loop continues to receive additional data.</p>
+<p>After the loop terminates, the <kbd>wait_on_response()</kbd> function checks that the received SMTP response code is as expected. If so, the received data is printed to the screen, and the function returns. The code for this is as follows:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    if (code != expecting) {<br/>        fprintf(stderr, "Error from server:\n");<br/>        fprintf(stderr, "%s", response);<br/>        exit(1);<br/>    }<br/><br/>    printf("S: %s", response);<br/>}</pre>
+<p>That concludes the <kbd>wait_on_response()</kbd> function. This function proves very useful, and it is needed after every command sent to the SMTP server.</p>
+<p>We also define a function called <kbd>connect_to_host()</kbd>, which attempts to open a TCP connection to a given hostname and port number. This function is extremely similar to the code we've used in the previous chapters.</p>
+<p>First <kbd>getaddrinfo()</kbd> is used to resolve the hostname and <kbd>getnameinfo()</kbd> is then used to print the server IP address. The following code achieves those two purposes:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>SOCKET connect_to_host(const char *hostname, const char *port) {<br/>    printf("Configuring remote address...\n");<br/>    struct addrinfo hints;<br/>    memset(&amp;hints, 0, sizeof(hints));<br/>    hints.ai_socktype = SOCK_STREAM;<br/>    struct addrinfo *peer_address;<br/>    if (getaddrinfo(hostname, port, &amp;hints, &amp;peer_address)) {<br/>        fprintf(stderr, "getaddrinfo() failed. (%d)\n", GETSOCKETERRNO());<br/>        exit(1);<br/>    }<br/><br/>    printf("Remote address is: ");<br/>    char address_buffer[100];<br/>    char service_buffer[100];<br/>    getnameinfo(peer_address-&gt;ai_addr, peer_address-&gt;ai_addrlen,<br/>            address_buffer, sizeof(address_buffer),<br/>            service_buffer, sizeof(service_buffer),<br/>            NI_NUMERICHOST);<br/>    printf("%s %s\n", address_buffer, service_buffer);</pre>
+<p>A socket is then created with <kbd>socket()</kbd>, as shown in the following code:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    printf("Creating socket...\n");<br/>    SOCKET server;<br/>    server = socket(peer_address-&gt;ai_family,<br/>            peer_address-&gt;ai_socktype, peer_address-&gt;ai_protocol);<br/>    if (!ISVALIDSOCKET(server)) {<br/>        fprintf(stderr, "socket() failed. (%d)\n", GETSOCKETERRNO());<br/>        exit(1);<br/>    }</pre>
+<p>Once the socket has been created, <kbd>connect()</kbd> is used to establish the connection. The following code shows the use of <kbd>connect()</kbd> and the end of the <kbd>connect_to_host()</kbd> function:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    printf("Connecting...\n");<br/>    if (connect(server,<br/>                peer_address-&gt;ai_addr, peer_address-&gt;ai_addrlen)) {<br/>        fprintf(stderr, "connect() failed. (%d)\n", GETSOCKETERRNO());<br/>        exit(1);<br/>    }<br/>    freeaddrinfo(peer_address);<br/><br/>    printf("Connected.\n\n");<br/><br/>    return server;<br/>}</pre>
+<p>Don't forget to call <kbd>freeaddrinfo()</kbd> to free the memory allocated for the server address, as shown by the preceding code.</p>
+<p>Finally, with those helper functions out of the way, we can begin on <kbd>main()</kbd>. The following code defines <kbd>main()</kbd> and initializes Winsock if required:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>int main() {<br/><br/>#if defined(_WIN32)<br/>    WSADATA d;<br/>    if (WSAStartup(MAKEWORD(2, 2), &amp;d)) {<br/>        fprintf(stderr, "Failed to initialize.\n");<br/>        return 1;<br/>    }<br/>#endif</pre>
+<p>See <a href="4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml">Chapter 2</a>, <em>Getting to Grips with Socket APIs</em>, for more information about initializing Winsock and establishing connections.</p>
+<p>Our program can proceed by prompting the user for an SMTP hostname. This hostname is stored in <kbd>hostname</kbd>, and our <kbd>connect_to_host()</kbd> <span>function </span>is used to open a connection. The following code shows this:</p>
+<pre>    /*<span>smtp_send.c continued*/</span><br/><br/>    char hostname[MAXINPUT];<br/>    get_input("mail server: ", hostname);<br/><br/>    printf("Connecting to host: %s:25\n", hostname);<br/><br/>    SOCKET server = connect_to_host(hostname, "25");</pre>
+<p>After the connection is established, our SMTP client must not issue any commands until the server responds with a <kbd>220</kbd> code. We use <kbd>wait_on_response()</kbd> to wait for this with the following code:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    wait_on_response(server, 220);</pre>
+<p>Once the server is ready to receive commands, we must issue the <kbd>HELO</kbd> command. The following code sends the <kbd>HELO</kbd> command and waits for a <kbd>250</kbd> response code:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    send_format(server, "HELO HONPWC\r\n");<br/>    wait_on_response(server, 250);</pre>
+<p><kbd>HELO</kbd> should be followed by the SMTP client's hostname; however, since we are probably running this client from a development machine, it's likely we don't have a hostname setup. For this reason, we simply send <kbd>HONPWC</kbd>, although any arbitrary string can be used. If you are running this client from a server, then you should change the <kbd>HONPWC</kbd> string to a domain that points to your server.</p>
+<p>Also, note the line ending used in the preceding code. The line ending used by SMTP is a carriage return character followed by a line feed character. In C, this is represented by <kbd>"\r\n"</kbd>.</p>
+<p>Our program then prompts the user for the sending and receiving addresses and issues the appropriate SMTP commands. This is done using <kbd>get_input()</kbd> to prompt the user, <kbd>send_format()</kbd> to issue the SMTP commands, and <kbd>wait_on_response()</kbd> to receive the SMTP server's response:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    char sender[MAXINPUT];<br/>    get_input("from: ", sender);<br/>    send_format(server, "MAIL FROM:&lt;%s&gt;\r\n", sender);<br/>    wait_on_response(server, 250);<br/><br/>    char recipient[MAXINPUT];<br/>    get_input("to: ", recipient);<br/>    send_format(server, "RCPT TO:&lt;%s&gt;\r\n", recipient);<br/>    wait_on_response(server, 250);</pre>
+<p>After the sender and receiver are specified, the next step in the SMTP is to issue the <kbd>DATA</kbd> command. The <kbd>DATA</kbd> command instructs the server to listen for the actual email. It is issued by the following code:</p>
+<pre>/*<span>smtp_send.c continued</span>*/<br/><br/>    send_format(server, "DATA\r\n");<br/>    wait_on_response(server, 354);</pre>
+<p>Our client program then prompts the user for an email subject line. After the subject line is specified, it can send the email headers: <kbd>From</kbd>, <kbd>To</kbd>, and <kbd>Subject</kbd>. The following code does this:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    char subject[MAXINPUT];<br/>    get_input("subject: ", subject);<br/><br/>    send_format(server, "From:&lt;%s&gt;\r\n", sender);<br/>    send_format(server, "To:&lt;%s&gt;\r\n", recipient);<br/>    send_format(server, "Subject:%s\r\n", subject);</pre>
+<p>It is also useful to add a date header. Emails use a special format for dates. We can make use of the <kbd>strftime()</kbd> function to format the date properly. The following code formats the date into the proper email header:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    time_t timer;<br/>    time(&amp;timer);<br/><br/>    struct tm *timeinfo;<br/>    timeinfo = gmtime(&amp;timer);<br/><br/>    char date[128];<br/>    strftime(date, 128, "%a, %d %b %Y %H:%M:%S +0000", timeinfo);<br/><br/>    send_format(server, "Date:%s\r\n", date);</pre>
+<p>In the preceding code, the <kbd>time()</kbd> function is used to get the current date and time, and <kbd>gmtime()</kbd> is used to convert it into a <kbd>timeinfo</kbd> struct. Then, <kbd>strftime()</kbd> is called to format the data and time into a temporary buffer, <kbd>date</kbd>. This formatted string is then transmitted to the SMTP server as an email header.</p>
+<p>After the email headers are sent, the email body is delineated by a blank line. The following code sends this blank line:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    send_format(server, "\r\n");</pre>
+<p>We can then prompt the user for the body of the email using <kbd>get_input()</kbd>. The body is transmitted one line at a time. When the user finishes their email, they should enter a single period on a line by itself. This indicates both to our client and the SMTP server that the email is finished.</p>
+<p>The following code sends user input to the server until a single period is inputted:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    printf("Enter your email text, end with \".\" on a line by itself.\n");<br/><br/>    while (1) {<br/>        char body[MAXINPUT];<br/>        get_input("&gt; ", body);<br/>        send_format(server, "%s\r\n", body);<br/>        if (strcmp(body, ".") == 0) {<br/>            break;<br/>        }<br/>    }</pre>
+<p>If the mail was accepted by the SMTP server, it sends a <kbd>250</kbd> response code. Our client then issues the <kbd>QUIT</kbd> command and checks for a <kbd>221</kbd> response code. The <kbd>221</kbd> response code indicates that the connection is terminating as shown in the following code:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    wait_on_response(server, 250);<br/><br/>    send_format(server, "QUIT\r\n");<br/>    wait_on_response(server, 221);</pre>
+<p>Our SMTP client concludes by closing the socket, cleaning up Winsock (if required), and exiting as shown here:</p>
+<pre>/*<span>smtp_send.c continued*/</span><br/><br/>    printf("\nClosing socket...\n");<br/>    CLOSESOCKET(server);<br/><br/>#if defined(_WIN32)<br/>    WSACleanup();<br/>#endif<br/><br/>    printf("Finished.\n");<br/>    return 0;<br/>}</pre>
+<p>That concludes <kbd>smtp_send.c</kbd>.</p>
+<p>You can compile and run <kbd>smtp_send.c</kbd> on Windows with MinGW using the following:</p>
+<pre><strong>gcc smtp_send.c -o smtp_send.exe -lws2_32</strong><br/><strong>smtp_send.exe</strong></pre>
+<p>On Linux or macOS, compiling and running <kbd>smtp_send.c</kbd> is done by the following:</p>
+<pre><strong>gcc smtp_send.c -o smtp_send</strong><br/><strong>./smtp_send</strong></pre>
+<p>The following screenshot shows the sending of a simple email using <kbd>smtp_send.c</kbd>:</p>
+<p class="CDPAlignCenter CDPAlign"><img src="assets/18ae9fc0-07ef-4066-afca-6be70e0c0e26.png" style="width:32.67em;height:32.17em;"/></p>
+<p>If you're doing a lot of testing, you may find it tedious to type in the email each time. In that case, you can automate it by putting your text in a file and using the <kbd>cat</kbd> utility to read it into <kbd>smtp_send</kbd>. For example, you may have the <kbd>email.txt</kbd> <span>file </span>as follows:</p>
+<pre>/*<span>email.txt*/</span><br/><br/>mail-server.example.net<br/>bob@example.com<br/>alice@example.net<br/>Re: The Cake<br/>Hi Alice,<br/><br/>What about the cake then?<br/><br/>Bob<br/>.</pre>
+<p>With the program input stored in <kbd>email.txt</kbd>, you can send an email using the following command:</p>
+<pre><strong>cat email.txt | ./smtp_send</strong></pre>
+<p>Hopefully, you can send some test emails with <kbd>smtp_send</kbd>. There are, however, a few obstacles you may run into. Your ISP may block outgoing emails from your connection, and many email servers do not accept mail from residential IP address blocks. See the <em>Spam-blocking pitfalls</em> <span>section</span> later in the chapter for more information.</p>
+<p>Although <kbd>smtp_send</kbd> is useful for sending simple text-based messages, you may be wondering how to add formatting to your email. Perhaps you want to send files as attachments. The next section addresses these issues.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Enhanced emails</h1>
+                </header>
+            
+            <article>
+                
+<p>The emails we've been looking at so far have been only simple text. Modern email usage often demands fancier formatted emails.</p>
+<p>We can control the content type of an email using the <kbd>Content-Type</kbd> header. This is very similar to the content type header used by HTTP, which we covered in <a href="f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml">Chapter 7</a>, <em>Building a Simple Web Server</em>.</p>
+<p>If the content type header is missing, a content type of <kbd>text/plain</kbd> is assumed by default. Therefore, the <kbd>Content-Type</kbd> header in the following email is redundant:</p>
+<pre>From: Alice Doe &lt;alice@example.net&gt;<br/>To: Bob Doe &lt;bob@example.com&gt;<br/>Subject: Re: The Cake<br/>Date: Fri, 03 May 2019 02:31:20 +0000<br/>Content-Type: text/plain<br/><br/>Hi Bob,<br/><br/>Do NOT forget to bring the cake!<br/><br/>Best,<br/>Alice</pre>
+<p>If you want formatting support in your email, which is common today, you should use a <kbd>text/html</kbd> content type. In the following email, HTML is used to add emphasis:</p>
+<pre>From: Alice Doe &lt;alice@example.net&gt;<br/>To: Bob Doe &lt;bob@example.com&gt;<br/>Subject: Re: The Cake<br/>Date: Fri, 03 May 2019 02:31:20 +0000<br/>Content-Type: text/html<br/><br/>Hi Bob,&lt;br&gt;<br/>&lt;br&gt;<br/>Do &lt;strong&gt;NOT&lt;/strong&gt; forget to bring the cake!&lt;br&gt;<br/>&lt;br&gt;<br/>Best,&lt;br&gt;<br/>Alice&lt;br&gt;</pre>
+<p>Not all email clients support HTML emails. For this reason, it may be useful to encode your message as both plaintext and HTML. The following email uses this technique:</p>
+<pre>From: Alice Doe &lt;alice@example.net&gt;<br/>To: Bob Doe &lt;bob@example.com&gt;<br/>Subject: Re: The Cake<br/>Date: Fri, 03 May 2019 02:31:20 +0000<br/>MIME-Version: 1.0<br/>Content-Type: multipart/alternative; boundary="SEPARATOR"<br/><br/>This is a message with multiple parts in MIME format.<br/>--SEPARATOR<br/>Content-Type: text/plain<br/><br/>Hi Bob,<br/><br/>Do NOT forget to bring the cake!<br/><br/>Best,<br/>Alice<br/>--SEPARATOR<br/>Content-Type: text/html<br/><br/>Hi Bob,&lt;br&gt;<br/>&lt;br&gt;<br/>Do &lt;strong&gt;NOT&lt;/strong&gt; forget to bring the cake!&lt;br&gt;<br/>&lt;br&gt;<br/>Best,&lt;br&gt;<br/>Alice&lt;br&gt;<br/>--SEPARATOR--</pre>
+<p>The preceding email example uses two headers to indicate that it's a multipart message. The first one, <kbd>MIME-Version: 1.0</kbd>, indicates which version of <strong>Multipurpose Internet Mail Extensions</strong> (<strong><span>MIME</span></strong>) we're using. MIME is used for all emails that aren't simply plaintext.</p>
+<p>The second header, <kbd>Content-Type: multipart/alternative; boundary="SEPARATOR"</kbd>, specifies that we're sending a multipart message. It also specifies a special boundary character sequence that delineates the parts of the email. In our example, <kbd>SEPARATOR</kbd> is used as the boundary. It is important that the boundary not appear in the email text or attachments. In practice, boundary specifiers are often long randomly generated strings.</p>
+<p>Once the boundary has been set, each part of the email begins with <kbd>--SEPARATOR</kbd> on a line by itself. The email ends with <kbd>--SEPARATOR--</kbd>. Note that each part of the message gets its own header section, specific to only that part. These header sections are used to specify the content type for each part.</p>
+<p>It is also often useful to attach files to email, which we will cover now.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Email file attachments</h1>
+                </header>
+            
+            <article>
+                
+<p>If a multipart email is being sent, a part can be designated as an attachment using the <kbd>Content-Disposition</kbd> header. See the following example:</p>
+<pre>From: Alice Doe &lt;alice@example.net&gt;<br/>To: Bob Doe &lt;bob@example.com&gt;<br/>Subject: Re: The Cake<br/>Date: Fri, 03 May 2019 02:31:20 +0000<br/>MIME-Version: 1.0<br/>Content-Type: multipart/alternative; boundary="SEPARATOR"<br/><br/>This is a message with multiple parts in MIME format.<br/>--SEPARATOR<br/>Content-Type: text/plain<br/><br/>Hi Bob,<br/><br/>Please see the attached text file.<br/><br/>Best,<br/>Alice<br/>--SEPARATOR<br/>Content-Disposition: attachment; filename=my_file.txt;<br/>  modification-date="Fri, 03 May 2019 02:26:51 +0000";<br/>Content-Type: application/octet-stream<br/>Content-Transfer-Encoding: base64<br/><br/>VGhpcyBpcyBhIHNpbXBsZSB0ZXh0IG1lc3NhZ2Uu<br/>--SEPARATOR--</pre>
+<p>The preceding example includes a file called <kbd>my_file.txt</kbd>. SMTP is a purely text-based protocol; therefore, any attachments that may include binary data need to be encoded into a text format. Base64 encoding is commonly used for this purpose. In this example, the header, <kbd>Content-Transfer-Encoding: base64</kbd>, specifies that we are going to use Base64 encoding.</p>
+<p>The content of <kbd>my_file.txt</kbd> is <kbd>This is a simple text message</kbd>. That sentence encodes to Base64 as <kbd>VGhpcyBpcyBhIHNpbXBsZSB0ZXh0IG1lc3NhZ2Uu</kbd> as seen in the preceding code.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Spam-blocking pitfalls</h1>
+                </header>
+            
+            <article>
+                
+<p>It can be much harder to send emails today than it was in the past. Spam has become a major problem, and every provider is taking actions to curb it. Unfortunately, many of these actions can also make it much more difficult to send legitimate emails.</p>
+<p>Many residential ISPs don't allow outgoing connections on <span>port</span> <kbd>25</kbd>. If your residential provider blocks <span>port</span> <kbd>25</kbd>, then you won't be able to establish an SMTP connection. In this case, you may consider renting a virtual private server to run this chapter's code.</p>
+<p>Even if your ISP does allow outgoing connections on <span>port</span> <kbd>25</kbd>, many SMTP servers won't accept mail from a residential IP address. Of the servers that do, many will send those emails straight into a spam folder.</p>
+<p>For example, if you attempt to deliver an email to Gmail, you may get a response similar to the following:</p>
+<pre>550-5.7.1 [192.0.2.67] The IP you're using to send mail is not authorized<br/>550-5.7.1 to send email directly to our servers. Please use the SMTP<br/>550-5.7.1 relay at your service provider instead. Learn more at<br/>550 5.7.1  https://support.google.com/mail/?p=NotAuthorizedError</pre>
+<p>Another spam-blocking measure that may trip you up is <strong>Sender Policy Framework</strong> (<strong>SPF</strong>). SPF works by listing which servers can send mail for a given domain. If a sending server isn't on the SPF list, then receiving SMTP servers reject their mail.</p>
+<p><strong>DomainKeys Identified Mail</strong> (<strong>DKIM</strong>) is a measure to authenticate email using digital signatures. Many popular email providers are more likely to treat non-DKIM mail as spam. DKIM signing is very complicated and out of scope for this book.</p>
+<p><strong>Domain-based Message Authentication<em>,</em> Reporting, and Conformance</strong> (<strong>DMARC</strong>) is a technique used for domains to publish whether SPF and/or DKIM is required of mail originating from them, among other things.</p>
+<p>Most commercial email servers use SPF, DKIM, and DMARC. If you're sending email without these, your email will likely be treated as spam. If you're sending email in opposition to these, your email will either be rejected outright or labeled as spam.</p>
+<p>Finally, many popular providers assign a reputation to sending domains and servers. This puts potential emails senders in a catch-22 situation. Email can't be delivered without building a reputation, but a reputation can't be built without successfully delivering lots of emails. As spam continues to be a major problem, we may soon come to a time where only big-name, trusted SMTP servers can operate with each other. Let's hope it doesn't come to that!</p>
+<p>If your program needs to send email reliably, you should likely consider using an email service provider. One option is to allow an SMTP relay to do the final delivery. A potentially easier option is to use a mail sending service that operates an HTTP API.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we looked at how email is delivered over the internet. SMTP, the protocol responsible for email delivery, was studied in some depth. We then constructed a simple program to send short emails using SMTP.</p>
+<p>We looked at the email format too. We saw how MIME could be used to send multipart emails with file attachments.</p>
+<p>We also saw how sending emails over the modern internet is full of pitfalls. Many of these stems from attempts to block spam. Techniques used by providers, such as blocking residential IP addresses, SPF, DKIM, DMARC, and IP address reputation monitoring, may make it difficult for our simple program to deliver email reliably.</p>
+<p>In the next chapter, <a href="47ba170d-42d9-4e38-b5d8-89503e005708.xhtml">Chapter 9</a>, <em>Loading Secure Web Pages with HTTPS and OpenSSL</em>, we look at secure web connections using HTTPS.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<p>Try these questions to test your knowledge from this chapter:</p>
+<ol type="1">
+<li>What port does SMTP operate on?</li>
+<li>How do you determine which SMTP server receives mail for a given domain?</li>
+<li>How do you determine which SMTP server sends mail for a given provider?</li>
+<li>Why won't an SMTP server relay mail without authentication?</li>
+<li>How are binary files sent as email attachments when SMTP is a text-based protocol?</li>
+</ol>
+<p>The answers can be found in <a href="bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml">Appendix A</a>, <em>Answers to Questions</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Further reading</h1>
+                </header>
+            
+            <article>
+                
+<p>For more information about SMTP and email formats, please refer to the following links:</p>
+<ul>
+<li><strong>RFC 821</strong>: <em>Simple Mail Transfer Protocol</em> (<a href="https://tools.ietf.org/html/rfc821">https://tools.ietf.org/html/rfc821</a>)</li>
+<li><strong>RFC 2822</strong>: <em>Internet</em> <em>Message Format</em> (<a href="https://tools.ietf.org/html/rfc2822">https://tools.ietf.org/html/rfc2822</a>)</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

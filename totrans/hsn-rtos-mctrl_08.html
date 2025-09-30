@@ -1,0 +1,820 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Debugging Tools for Real-Time Systems</h1>
+                </header>
+            
+            <article>
+                
+<p>Serious debugging tools are incredibly important in serious embedded systems development. Complex RTOS-based systems can have many tasks and dozens of ISRs that need to be completed in a timely manner. Figuring out whether everything is working properly (or <em>why</em> it isn't) is way easier with the right tools. If you've been troubleshooting with the occasional print statement or blinking LEDs, you're in for a treat!</p>
+<p>We'll be making heavy use of Ozone and SystemView throughout the remainder of this book but first, we'll need to get them set up and look at a quick introduction. Toward the end of this chapter, we'll take a look at other debugging tools, as well as techniques for reducing the number of bugs that get written in the first place.</p>
+<p>In a nutshell, we will be covering the following in this chapter:</p>
+<ul>
+<li>The importance of excellent debugging tools</li>
+<li>Using SEGGER J-Link</li>
+<li>Using SEGGER Ozone</li>
+<li>Using SEGGER SystemView</li>
+<li>Other great tools</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Technical requirements</h1>
+                </header>
+            
+            <article>
+                
+<p>Several pieces of software will be installed and configured in this chapter. Here's what you should already have on hand:</p>
+<ul>
+<li>A Nucleo F767 development board</li>
+<li>A micro-USB cable</li>
+</ul>
+<ul>
+<li>A Windows PC (the Windows OS is only required by the ST-Link Reflash utility)</li>
+<li>STM32CubeIDE (ST-Link drivers are required for the ST-Link Reflash utility)</li>
+</ul>
+<p>All source code for this chapter can be downloaded from <a href="https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapters5_6">https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapters5_6</a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The importance of excellent debugging tools</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">When developing any piece of software, it's all too easy to start writing code without thinking about all of the details. Thanks to code generation tools and third-party libraries, we can very quickly develop a feature-filled application and have it running on actual hardware in fairly short order. However, when it comes to getting <em>every</em> part of a system working 100% of the time, things are a bit more difficult. If a system is stood up too quickly and the components weren't properly tested before integrating them, there would be pieces that work <em>most</em> of the time, but not always.</p>
+<p class="mce-root">Often with embedded systems, only a few parts of the underlying application are visible. It can be challenging to evaluate the overall system health from a user's viewpoint. Historically, good debug tooling was less common for embedded work than non-embedded. Putting print statements everywhere only gets you so far, causes timing problems, and so on. Blinking LEDs is cumbersome and doesn't provide much insight. Analyzing signals via hardware can help to verify symptoms but doesn't always isolate the root cause of an issue. Trying to figure out what code is actually running (and when) in an event-driven system is really challenging without the tools to help visualize execution.</p>
+<p class="mce-root">This is why having a variety of familiar tools at your disposal is extremely helpful. It allows you to focus your efforts on developing small portions of the application confidently. Confidence comes from rigorously verifying each piece of functionality as it is developed and integrated with the rest of the system. However, in order to perform verification, we need to have transparency in different portions of the code (not just the parts that are observable from outside the system). Many times during verification, situations arise when there is a need to observe inter-task execution.</p>
+<p class="mce-root">There are two important areas that help us achieve the objectives of system transparency and observable task relationships: RTOS-aware debugging and RTOS visualization.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">RTOS-aware debugging</h1>
+                </header>
+            
+            <article>
+                
+<p>With traditional debugging setups used for bare-metal (for example, no OS) coding, there was only one stack to observe. Since the programming model was a single super loop with some interrupts, this wasn't much of a problem. At any point in time, the state of the system could be discerned by the following:</p>
+<ul>
+<li>Knowing which function the <strong>program counter</strong> (<strong>PC</strong>) was in</li>
+<li>Knowing which interrupts were active </li>
+<li>Looking at the value of key global variables</li>
+<li>Observing/unwinding the stack</li>
+</ul>
+<p>With an RTOS-based system, the basic approach is very similar but the programming model is extended to include multiple tasks running in <em>parallel</em>. Remember, each task is effectively an isolated infinite loop. Since each task has its own stack and can be in different operating states, some additional information is required to discern the overall system state:</p>
+<ul>
+<li>Knowing the current operational state of each task</li>
+<li>Knowing which task and function the PC was in</li>
+<li>Knowing which interrupts are active </li>
+<li>Looking at the value of key global variables</li>
+<li>Observing/unwinding the stack of each task</li>
+</ul>
+<p><span>Due to the constrained nature of embedded systems, stack usage is often a concern because of the limited RAM of MCUs. In a bare-metal application, there is only one stack. In an RTOS application, each task has its own stack, which means we have more to monitor. Using a debugging system that provides RTOS-aware stack information helps to quickly evaluate the stack usage of each task in the system.</span></p>
+<p><span>Monitoring the worst-case performance of the event response is also a critical aspect of real-time systems development. We must ensure that the system will respond to critical events in a timely manner. </span></p>
+<p><span>There are many different ways to approach this problem. Assuming the event originates with a hardware signal outside the MCU (which is true most of the time), a logic analyzer or oscilloscope can be used to monitor the signal. Code can be inserted in the application to toggle a pin on the MCU after that event has been serviced and the difference in time can be monitored. Depending on the system, access to test equipment, and the events in question, this hardware-centric method may be convenient. </span></p>
+<p><span>Another method is to use software in combination with <strong>instrumentation</strong> in the RTOS. With this method, small hooks are added into the RTOS that notify the monitoring system when events happen. Those events are then transmitted out of the MCU and onto a development PC running a viewing program. This method is what we'll be focusing on in this book—using SEGGER SystemView. This allows a tremendous amount of information and statistics to be collected with very little development effort. The slight downside to this method is that there is a very small amount of uncertainty added since it is a purely software/firmware approach. It relies on the MCU to record when the events happen, which means if an interrupt is significantly delayed in being serviced, it will not be recorded accurately. There is also a strong dependency on the availability of RAM or CPU cycles. This approach can become inconclusive on heavily loaded systems without adequate RAM. However, these downsides have workarounds and aren't encountered on most systems.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">RTOS visualization</h1>
+                </header>
+            
+            <article>
+                
+<p><span>Having the ability to see which tasks are running and how they are interacting is also important. In a preemptive scheduling environment, complex relationships can develop between tasks. For example, in order for an event to be serviced, there might be a few tasks that need to interact with one another. On top of that, there may be several more tasks all vying for processor time. In this scenario, a poorly designed system that is consistently missing deadlines may only be perceived as being <em>sluggish</em> from the user's perspective. With task visualization, a programmer can literally <em>see</em> the relationships between all tasks in the system, which helps considerably with analysis.</span></p>
+<div class="packt_infobox">We will work through a real-world example of visualizing scenarios such as this one in <a href="c6d7a0c6-6f18-4e06-a372-cd1605942ecd.xhtml">Chapter 8</a>, <em>Protecting Data and Synchronizing Tasks</em>, with the <kbd>mainSemPriorityInversion.c</kbd> demo.</div>
+<p><span>The ability to easily discern what state tasks are in over a period of time is extremely helpful when unraveling complex inter-task relationships. SEGGER SystemView will also be used to visualize inter-task relationships.</span></p>
+<p>In order to perform an in-depth analysis on a running system, we'll need a way to attach to the MCU and get information out of it. On Cortex-M MCUs, this is most efficiently done with an external debug probe.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using SEGGER J-Link</h1>
+                </header>
+            
+            <article>
+                
+<p>A debug probe is a device that allows a computer to communicate and program the non-volatile flash of an MCU. It communicates with special hardware on the MCU (called Coresight on ARM Cortex-M processors). The SEGGER J-Link and J-Trace family of debug probes are among the most popular in the industry. SEGGER also offers useful software that integrates with their tools free of charge. The accessibility of these tools and the quality of the accompanying software makes this an excellent fit for use in this book.</p>
+<div class="packt_tip">If you plan on using a paid IDE, the IDE vendor likely has their own proprietary debug probes available. Many excellent software features will likely be tied to their hardware. For example, ARM Keil uVision MDK integrates with ARM Ulink probes and IAR offers their I-Jet debug probes. IDEs such as these also integrate with third-party probes but be aware of what trade-offs there may be before making a purchasing decision.</div>
+<p>There are many options when selecting debug probes from SEGGER <span>—</span>we'll briefly go through some of the options currently available and look at the hardware requirements for each.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Hardware options</h1>
+                </header>
+            
+            <article>
+                
+<p>SEGGER has many different hardware options that cover a wide range of pricing and capabilities. For a complete and current list, check out their website at <a href="https://www.segger.com/products/debug-probes/j-link/models/model-overview/">https://www.segger.com/products/debug-probes/j-link/models/model-overview/</a>.<a href="https://www.segger.com/products/debug-probes/j-link/models/model-overview/"/></p>
+<p>The models generally fit into two main categories: debuggers with full Cortex-M Trace support and those without. </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Segger J-Trace</h1>
+                </header>
+            
+            <article>
+                
+<p>The debuggers with full trace support are referred to as J-Trace. The <strong>Cortex Embedded Trace Macrocell</strong> (<strong>Cortex ETM</strong>) is an extra piece of hardware inside the MCU that allows every instruction that has been executed to be recorded. Transmitting all of this information off the MCU requires a few extra pins for clocking the data out (a clock line and 1-4 data lines). Having the ability to trace every instruction the MCU has executed enables functionality such as code coverage, which provides insight into how much code has been executed (line by line). Knowing exactly which lines of code have been executed and when gives us the opportunity to see where a program is spending most of its time. When we know which individual lines of code are executed most often, it is possible to optimize that small portion of code when improved performance is required.</p>
+<p>In order to take full advantage of the advanced trace features, all of the following is required:</p>
+<ul>
+<li>The MCU must have ETM hardware.</li>
+<li>The specific MCU package must bring the ETM signals out to pins.</li>
+<li>The peripheral configuration must not share ETM signals with other functions.</li>
+<li>The system circuit must be designed to incorporate ETM signals and a connector.</li>
+</ul>
+<p>The most common connector used for Debug and ETM signals is a 0.05" pitch header with the following pinout (the trace signals are highlighted):</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1501 image-border" src="assets/606fde5a-281e-425d-98da-39ae354e764b.png" style="width:18.42em;height:12.75em;"/></p>
+<p>All of this functionality comes at a price, of course. The J-Trace models are at the high end of SEGGER's spectrum, both in terms of functionality and price (typically over USD$1000). Unless you're developing fully custom hardware, also expect to pay for a full evaluation board (over USD$200) rather than the low-cost development hardware used in this book. While these costs are typically completely reasonable for a full-blown engineering budget during new product development, they are too expensive to be widely accessible for individuals.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">SEGGER J-Link</h1>
+                </header>
+            
+            <article>
+                
+<p>SEGGER J-Link has been around in many different forms and has grown to encompass several models. Typically, the higher-end models provide faster clock speeds and a richer experience (faster downloads, responsive debugging, and so on). A few <strong>EDU</strong> models are sold at an extremely large discount for educational purposes (thus the <strong>EDU</strong> designation). These models are fully featured but may not be used for commercial purposes.</p>
+<div class="mce-root packt_infobox"><span>The most common connector used for the Cortex-M is a 0.05" pitch header with the following pinout. Notice, this connector's pinout is the same as the first 10 pins from the Debug+Trace connector (refer to the following diagram).</span></div>
+<div class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1502 image-border" src="assets/01e54c91-a4cc-400f-9059-3deda9ecb214.png" style="width:15.58em;height:10.75em;"/></div>
+<p>SEGGER has done an excellent job designing software interfaces that aren't tied to the underlying hardware. Because of this, their software tools work across different hardware debugger models without modification. This has also resulted in the hardware option we'll be using in this book<span>—</span>the SEGGER J-Link on-board.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">SEGGER J-Link on-board</h1>
+                </header>
+            
+            <article>
+                
+<p>The specific hardware variant of ST-Link we'll be using in our exercises isn't actually made by SEGGER. It is the ST-Link circuitry already included on the Nucleo development board. Nucleo boards have two separate sub-circuits: programming hardware and target hardware. </p>
+<p>The programming hardware sub-circuit is generally referred to as an ST-Link. This <strong>programming hardware</strong> is actually another STM MCU that is responsible for communicating with the PC and programming the <strong>target hardware</strong><span>—</span>the STM32F767. Since Nucleo hardware is primarily aimed at the ARM Mbed ecosystem, the ST-Link MCU is programmed with firmware that implements both the ST-Link and Mbed functionalities:</p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1640 image-border" src="assets/f7807694-5d5b-492d-9d3b-4070bf3f9174.png" style="width:23.25em;height:40.67em;"/></p>
+<p>In order to use the programming hardware on the Nucleo board as a SEGGER JLink, we will be replacing its firmware with SEGGER J-Link on-board firmware. </p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Installing J-Link</h1>
+                </header>
+            
+            <article>
+                
+<p>Detailed installation instructions are available from SEGGER at <a href="https://www.segger.com/products/debug-probes/j-link/models/other-j-links/st-link-on-board/">https://www.segger.com/products/debug-probes/j-link/models/other-j-links/st-link-on-board/</a>. A few notes are also included here for convenience. In order to convert the on-board ST-Link to a J-Link, we'll be downloading and installing two pieces of software: the J-Link tools and the ST-Link re-flashing utility. You should already have the necessary ST-Link drivers installed from the <span>STM32CubeIDE</span> installation carried out in the previous chapter:</p>
+<div class="packt_tip"><span>A Windows PC is only required for the J-Link Reflash utility (it is distributed as <kbd>*.exe</kbd>). If you're not using a Windows PC for development and STM32CubeIDE isn't installed, make sure you install USB drivers for the ST-Link (the optional <em>step 1</em> in the following list).</span></div>
+<ol>
+<li>If you don't have <span>STM32CubeIDE</span> installed already, download and install the ST-Link drivers from <a href="http://www.st.com/en/development-tools/stsw-link009.html">http://www.st.com/en/development-tools/stsw-link009.html</a> (this step is optional). </li>
+<li>Download the appropriate J-Link utilities for your OS from <a href="https://www.segger.com/downloads/jlink">https://www.segger.com/downloads/jlink</a>.</li>
+<li>Install the J-Link utilities<span>— the </span>default options are fine.</li>
+<li>Download the SEGGER J-Link Reflash utility (for Windows OS only) from <a href="https://www.segger.com/downloads/jlink#STLink_Reflash">https://www.segger.com/downloads/jlink#STLink_Reflash</a>.</li>
+<li>Unzip the contents of <kbd>STLinkReflash_&lt;version&gt;.zip</kbd><span>—</span> it will contain two files:
+<ul>
+<li><kbd>JLinkARM.dll</kbd></li>
+<li><kbd>STLinkReflash.exe</kbd></li>
+</ul>
+</li>
+</ol>
+<p>Now, we will convert ST-Link to J-Link.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Converting ST-Link to J-Link</h1>
+                </header>
+            
+            <article>
+                
+<p>Follow these steps to upload J-Link firmware to the ST-Link on the Nucleo development board:</p>
+<ol>
+<li>Plug in a micro USB cable to <kbd>CN1</kbd> on the Nucleo board and attach it to your Windows PC.</li>
+<li>Open <kbd>STLinkReflash_&lt;version&gt;.exe</kbd>.</li>
+<li>Read through and accept the two license agreements.</li>
+<li>Select the first option: <span class="packt_screen">Upgrade to J-Link</span>.</li>
+</ol>
+<p>The debugging hardware on the Nucleo board is now effectively a SEGGER J-Link!</p>
+<p>Now that a J-Link is present, we will be able to use other SEGGER software tools, such as Ozone and SystemView, to debug and visualize our applications.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using SEGGER Ozone</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">SEGGER Ozone is a piece of software that is meant to debug an already-written application. Ozone is independent of the underlying programming environment used to create the application. It can be used in many different modes, but we'll focus on importing an <kbd>*.elf</kbd> file and crossreferencing it with source code to provide FreeRTOS-aware debugging capability to a project created with any toolchain. Let's take a quick look at the various file types we will be working with in Ozone.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">File types used in the examples</h1>
+                </header>
+            
+            <article>
+                
+<p>There are several file types used when programming and debugging embedded systems. These files are common across many different processors and software products and not exclusive to Cortex-M MCUs or the software used in this book.</p>
+<p><strong>Executable and Linkable Format</strong> (<strong>ELF</strong>) files are an executable format that has the ability to store more than the straight <kbd>*.bin</kbd> or <kbd>*.hex</kbd> files commonly flashed directly into an MCU's ROM. The <kbd>*.elf</kbd> files<span> are similar to the <kbd>*.hex</kbd> files in that they contain all of the binary machine code necessary to load a fully functional project onto a target MCU. </span>The <kbd>*.elf</kbd> files also contain links to the original source code filenames and line numbers. Software such as Ozone uses these links to display source code while debugging the application:</p>
+<ul>
+<li><kbd>*.bin</kbd>: A straight binary file (just 1s and 0s). This file format can be directly "burned" into an MCU's internal flash memory, starting at a given address.</li>
+<li><kbd>*.hex</kbd>:<strong> </strong>Usually a variant of Motorolla S-record format. This ASCII-based file format contains both absolute memory addresses and their contents.</li>
+<li><kbd>*.elf</kbd>: Contains both the executable code as well as a header that is used to cross-reference each memory segment to a source file. This means a single ELF file contains enough information to program the target MCU and also cross-reference all of the source code used to create the binary memory segments.</li>
+</ul>
+<div class="packt_infobox">The ELF file does not <em>contain</em> the actual source code used, it only contains absolute file paths that crossreference memory segments to the original source code. This is what allows us to open a <kbd>*.elf</kbd> file in Ozone and step through the C source code while debugging.</div>
+<ul>
+<li><kbd>*.svd</kbd>: C<span>ontains information that maps registers and descriptions to the memory map of the target device. By providing an accurate <kbd>*.svd</kbd> file, Ozone will be able to display peripheral views that are very helpful when troubleshooting MCU peripheral code.</span></li>
+</ul>
+<div class="packt_infobox">A <kbd>*.svd</kbd> file is a file that is usually included with an IDE that supports your MCU. For example, STM32Cube IDE's location for the<span> <kbd>*.svd</kbd> files is</span><br/>
+<em><kbd>C:\ST\STM32CubeIDE_1.2.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.productdb.debug_1.2.0.201912201802\resources\cmsis\STMicroelectronics_CMSIS_SVD</kbd>.<br/></em></div>
+<p>There are other file types used in embedded systems' development as well. This is by no means an exhaustive list<span>—</span>just the ones we'll be using most in the context of the example projects.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Installing SEGGER Ozone</h1>
+                </header>
+            
+            <article>
+                
+<p>To install SEGGER Ozone, follow these two simple steps:</p>
+<ol>
+<li>Download <span>SEGGER </span>Ozone: <a href="https://www.segger.com/downloads/jlink/">https://www.segger.com/downloads/jlink/</a></li>
+<li>Install it using the default options.</li>
+</ol>
+<p class="mce-root">Now, let's cover the necessary steps to create a FreeRTOS-aware Ozone project and take a quick look at some of the interesting features.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Creating Ozone projects</h1>
+                </header>
+            
+            <article>
+                
+<p>Since Ozone is completely independent of the programming environment, in order to debug with it, some configuration is required, which is covered in the following steps:</p>
+<div class="packt_infobox"><span>All projects included in the source tree for this book already have Ozone projects created for them. The following steps are for your reference—you'll only need to go through these steps for your own future projects. Ozone project files, the <kbd>*.jdebug</kbd> files, are already included for all of the projects in this book.</span></div>
+<ol>
+<li>When first opened, select the <span class="packt_screen">Create a New Project </span>prompt.</li>
+<li>For the <span class="packt_screen">Device</span> field, select <span class="packt_screen">STM32F767ZI</span>.</li>
+<li>For <span class="packt_screen">Peripherals</span>, input the directory and location of the <kbd>STM32F7x7.svd</kbd> file:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1504 image-border" src="assets/fd3c1524-135b-4700-b079-ff896763055e.png" style="width:21.17em;height:14.92em;"/></p>
+<ol start="4">
+<li>On the <span class="packt_screen">Connection Settings</span> dialog screen, default values are acceptable.</li>
+<li>On the <span class="packt_screen">Program File</span> dialog screen, navigate to the <kbd>*.elf</kbd> file that is generated by TrueStudio. It should be in the <span class="packt_screen">Debug</span> folder of your project:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1505 image-border" src="assets/cfbb146e-e29c-481c-b0d1-f2a8e1ed6ee6.png" style="width:17.75em;height:12.33em;"/></p>
+<ol start="6">
+<li>Save the <kbd>*.jdebug</kbd> project file and close Ozone.</li>
+<li>Open the <kbd>*.jdebug</kbd> file with a text editor.</li>
+<li class="mce-root"><span>Add a</span> <span>line to the</span> <kbd>*.jdebug</kbd> <span>project file to enable the</span> <span>FreeRTOS plugin (only add the last line in bold):</span></li>
+</ol>
+<pre style="color: black;padding-left: 60px">void OnProjectLoad (void) {<br/>  //<br/>  // Dialog-generated settings<br/>  //<br/>  Project.SetDevice ("STM32F767ZI");<br/>  Project.SetHostIF ("USB", "");<br/>  Project.SetTargetIF ("JTAG");<br/>  Project.SetTIFSpeed ("50 MHz");<br/>  Project.AddSvdFile ("C:\Program Files (x86)\Atollic\TrueSTUDIO for STM32 9.3.0\ide\plugins\com.atollic.truestudio.tsp.stm32_1.0.0.20190212-0734\tsp\sfr\STM32F7x7.svd");<br/> <strong> Project.SetOSPlugin("FreeRTOSPlugin_CM7");</strong></pre>
+<div class="packt_tip">It is a good idea to copy the <kbd>*.svd</kbd> file to a location used for storing source code or build tools since the installation directory for the IDEs is likely to change over time and between machines.</div>
+<p>These steps can be adapted to set up Ozone for any other MCU supported by SEGGER family debuggers.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Attaching Ozone to the MCU</h1>
+                </header>
+            
+            <article>
+                
+<p>Time to roll up our sleeves and get our hands dirty! The next sections will make more sense if you've got some hardware up and running, so you can follow along and do some exploring. Let's get everything set up:</p>
+<ol>
+<li> Open the STM32Cube IDE and open the <kbd>Chapter5_6</kbd> project.</li>
+<li>Right-click on <kbd>Chapter5_6</kbd> and select <span class="packt_screen">Build</span>. This will compile the project into an <kbd>*.elf</kbd> file (that is, <kbd>C:\projects\packtBookRTOS\Chapters5_6\Debug\Chapter5_6.elf</kbd>).</li>
+<li>Open Ozone.</li>
+<li>Select <span class="packt_screen">Open Existing Project</span> from the wizard.</li>
+<li>Select <kbd>C:\projects\packtBookRTOS\Chapters5_6\Chapters5_6.jdebug</kbd>.</li>
+<li>Use Ozone to download the code to the MCU (click the power button):</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1506 image-border" src="assets/2a4459a6-9c8c-4e75-b87f-b2a1f15e4bb7.png" style="width:16.17em;height:8.58em;"/></p>
+<ol start="7">
+<li>Push the play button to start the application (you should see the red, blue, and green LEDs flashing).</li>
+</ol>
+<div class="packt_tip">If your paths are different from what was used when creating the <kbd>*.jdebug</kbd> files, you'll need to reopen the <kbd>.elf</kbd> file (go to <span class="packt_screen">File</span> | <span class="packt_screen">Open</span> and select the file built in <em>step 2</em>).</div>
+<p>Those same six steps can be repeated for any of the projects included in this book. You can also create a copy of the <kbd>.jdebug</kbd> file for other projects by simply opening a different <kbd>*.elf</kbd> file.</p>
+<div class="packt_tip">You may want to bookmark this page. You'll be following these same steps for the 50+ example programs throughout the rest of the book!</div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Viewing tasks</h1>
+                </header>
+            
+            <article>
+                
+<p>A quick view overview of tasks can be seen by enabling the FreeRTOS task view. Using these tasks can prove to be very beneficial while developing RTOS applications: </p>
+<ol>
+<li>After the MCU program has been started, pause execution by clicking the <em>Pause</em> button.</li>
+<li>Now, navigate to <span class="packt_screen">View</span> | <span class="packt_screen">FreeRTOS Task View</span>:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1507 image-border" src="assets/0a46ef4b-1ae5-47aa-9ddf-7a2fe247262e.png" style="width:72.42em;height:10.58em;"/></p>
+<p class="CDPAlignLeft CDPAlign">This view shows many useful pieces of information at a glance:</p>
+<ul>
+<li>Task names and priorities.</li>
+<li><span class="packt_screen">Timeout</span>: How many <em>ticks</em> a blocked task has until it is forced out of the blocked state.</li>
+<li>Each task's stack usage (only the current stack usage is shown by default). Maximum stack usage is disabled in the preceding screenshot (seen by <span class="packt_screen">N/A</span>)<span>—</span>(details on configuring FreeRTOS to monitor maximum stack usage will be covered in <a href="50d2b6c3-9a4e-45c3-9bfc-1c7f58de0b98.xhtml">Chapter 17</a>, <em>Troubleshooting Tips and Next Steps</em>).</li>
+<li><span class="packt_screen">Mutex Count</span>: How many mutexes a task currently holds.</li>
+<li>Notifications: Details on each task's notifications.</li>
+</ul>
+<p>Having a bird's eye view of all of the tasks in the system can be a huge help when developing an RTOS-based application<span>—</span>especially during the initial phases of development.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Task-based stack analysis</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">One of the challenges with debugging an RTOS with non-RTOS aware tools is analyzing the call stack of each task. When the system halts, each task has its own call stack. It is quite common to need to analyze the call stack for multiple tasks at a given point in time. Ozone provides this capability by using <span class="packt_screen">FreeRTOS Task View</span> in conjunction with <span class="packt_screen">Call Stack View</span>.</p>
+<p>After opening both views, each task in <span class="packt_screen">FreeRTOS Task View</span> can be double-clicked to reveal the current call stack of that task in <span class="packt_screen">Call Stack View</span>. To reveal local variables for each task on a function-by-function basis, open <span class="packt_screen">Local Data view</span>. In this view, local variables for the current function highlighted in the call stack will be visible.</p>
+<p> <span>An example combining the task-based call stack analysis with a local variable view is shown here:</span></p>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1508 image-border" src="assets/93051213-82ab-47a3-9536-18189311a414.png" style="width:78.58em;height:38.42em;"/></p>
+<p>Notice the following from this screenshot: </p>
+<ol>
+<li>When the MCU was stopped, it was in the <span class="packt_screen">"</span>IDLE" task (shown by <span class="packt_screen">executing</span> in the <span class="packt_screen">Status</span> column).</li>
+<li>Double-clicking on <span class="packt_screen">"task 3"</span> shows the call stack for <span class="packt_screen">"</span><span class="packt_screen">task 3"</span>. Currently, <kbd>vTaskDelay</kbd> is at the top of the stack.</li>
+<li>Double-clicking on <kbd>StartTask3</kbd> updates the <span class="packt_screen">Local Data</span> window to show values for all local variables in <kbd>StartTask3</kbd>.</li>
+<li><span class="packt_screen">Local Variables</span> for <kbd>StartTask3</kbd> shows the current values for all local variables in <kbd>StartTask3</kbd>. </li>
+</ol>
+<p>SEGGER Ozone provides both a task-aware call stack view and a heads-up view for all running tasks in the system. This combination gives us a powerful tool to dive into the most minute details of each task running on the system. But what happens when we need a bigger picture view of the system? Instead of looking at each task individually, what if we'd prefer to look at the interaction <em>between</em> tasks in the system? This is an area where SEGGER SystemView can help.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using SEGGER SystemView</h1>
+                </header>
+            
+            <article>
+                
+<p>SEGGER SystemView is another software tool that can be used with SEGGER debug probes. It provides a means to visualize the flow of tasks and interrupts in a system. SystemView works by adding a small amount of code into the project. FreeRTOS already has <kbd>Trace Hook Macros</kbd>, which was specifically designed for adding in this type of third-party functionality.</p>
+<p>Unlike Ozone, SystemView doesn't have any programming or debugging capabilities, it is only a <strong>viewer</strong><em>.</em></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Installing SystemView</h1>
+                </header>
+            
+            <article>
+                
+<p>There are two main steps required for making your system visible with SystemView. The software needs to be installed and source code must be instrumented so it will communicate its status over the debug interface.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">SystemView installation</h1>
+                </header>
+            
+            <article>
+                
+<p>To install SystemView, follow these steps:</p>
+<ol>
+<li>Download SystemView for your OS. This is the main binary installer (<a href="https://www.segger.com/downloads/free-utilities">https://www.segger.com/downloads/free-utilities</a>).</li>
+<li>Install using the default options.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Source code configuration</h1>
+                </header>
+            
+            <article>
+                
+<p>In order for SystemView to show a visualization of tasks running on a system, it must be provided with information such as task names, priorities, and the current state of tasks. There are hooks present in FreeRTOS for nearly everything SystemView needs. A few configuration files are used to set up a mapping between the trace hooks already present in FreeRTOS and used by SystemView. Information needs to be collected, which is where the specific RTOS configuration and SystemView target sources come into play:</p>
+<div class="packt_tip">The source code included with this book already has all of these modifications performed, so these steps are <em>only necessary</em> if you'd like to add SystemView functionality to <em>your own FreeRTOS-based projects.</em></div>
+<ol>
+<li>
+<div class="dl_title">Download SystemView FreeRTOS V10 Configuration (v 2.52d was used) from <a href="https://www.segger.com/downloads/free-utilities">https://www.segger.com/downloads/free-utilities </a><span>and apply</span> <kbd>FreeRTOSV10_Core.patch</kbd> <span>to the FreeRTOS source tree using your preferred diff tool.</span></div>
+</li>
+<li>Download and incorporate SystemView Target Sources (v 2.52h was used) from <a href="https://www.segger.com/downloads/free-utilities"><span>https://www.segger.com/downloads/free-utilities</span></a><span>:</span>
+<ol>
+<li>Copy all the source files into the <kbd>.\SEGGER</kbd> folder in your source tree and include them for compilation and linking. In our source tree, the <kbd>SEGGER</kbd> folder is located in <kbd>.\Middlewares\Third_Party\SEGGER</kbd>.</li>
+<li>Copy<span> </span><kbd>SystemView Target Sources\Sample\FreeRTOSV10\SEGGER_SYSVIEW_FreeRTOS.c/h</kbd> into the <kbd>SEGGER</kbd> folder and include it for compilation and linking.</li>
+<li>Copy <kbd>.\Sample\FreeRTOSV10\Config\SEGGER_SYSVIEW_Config_FreeRTOS.c</kbd> <span>into the</span><strong><span> </span></strong><kbd>SEGGER</kbd> <span>folder </span><span>and include it for compilation and linking.</span></li>
+</ol>
+</li>
+</ol>
+<ol start="3">
+<li>Make the following changes to <kbd>FreeRTOSConfig.h</kbd>:
+<ol>
+<li>At the end of the file, add an include for <kbd>SEGGER_SYSVIEW_FreeRTOS.h</kbd>: <kbd>#include "SEGGER_SYSVIEW_FREERTOS.h"</kbd>.</li>
+<li>Add <kbd>#define INCLUDE_xTaskGetIdleTaskHandle 1</kbd>.</li>
+<li>Add <kbd>#define </kbd><span><kbd>INCLUDE_pxTaskGetStackStart 1</kbd>.</span></li>
+</ol>
+</li>
+<li>In <kbd>main.c</kbd> make the following changes:
+<ol>
+<li>Include <kbd>#include &lt;SEGGER_SYSVIEW.h&gt;</kbd>.</li>
+<li>Add a call to <kbd>SEGGER_SYSVIEW_Conf()</kbd> after initialization and before the scheduler is started.</li>
+</ol>
+</li>
+</ol>
+<p class="mce-root">Since SystemView is called inside the context of each task, you'll likely find that the minimum task stack size will need to be increased to avoid stack overflows. This is because the SystemView library requires a small amount of code that runs on the target MCU (which increases the call depth and the number of functions that are placed on the stack). For all the gory details on how to troubleshoot stack overflows (and how to avoid them), see <a href="50d2b6c3-9a4e-45c3-9bfc-1c7f58de0b98.xhtml" target="_blank">Chapter 17</a>, <em>Troubleshooting Tips and Next Steps.</em></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using SystemView</h1>
+                </header>
+            
+            <article>
+                
+<p>After the source-code side of SystemView is straightened out, using the application is very straightforward. To start a capture, make sure you have a running target and your debugger and MCU are connected to the computer:</p>
+<ol>
+<li> Push the <em>Play</em> button.</li>
+<li>Select the appropriate target device settings (shown here):</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1509 image-border" src="assets/4fc401c7-2698-4f87-99c8-24e6419c5516.png" style="width:28.08em;height:36.17em;"/></p>
+<div class="packt_tip">SystemView requires a <em>running</em> target. It will not show any information for a halted MCU (there are no events to display since it is not running). Make sure the LEDs on the board are blinking; follow the steps from the <em>Attaching Ozone to the MCU</em> section if they're not.</div>
+<ol start="3">
+<li>After a second or so, events will be streaming into the log in the top-left <span class="packt_screen">Events</span> view and you will see a live graphical view of the tasks as they're currently executing in <span class="packt_screen">Timeline</span>:</li>
+</ol>
+<p class="CDPAlignCenter CDPAlign"><img class="alignnone size-full wp-image-1856 image-border" src="assets/713ce462-f002-4fb6-a19f-448c610f01f1.png" style="width:61.25em;height:33.33em;"/></p>
+<ul>
+<li><span class="packt_screen">Timeline</span> shows a visual representation of task execution, including different states.</li>
+<li>The <span class="packt_screen">Events</span> view shows a list of events. Selected events are linked to the timeline.</li>
+<li>The <span class="packt_screen">Context</span> view<strong> </strong>shows statistics for all events.</li>
+<li><span class="packt_screen">Terminal</span> can be used to show printf-like messages from your code.</li>
+</ul>
+<p class="mce-root">There are many more useful features, which will be covered while exploring code.</p>
+<p>We're finally done installing the development software! If you've followed along so far, you now have a fully operational IDE, an RTOS visualization solution, and an extremely powerful RTOS-aware debugging system at your disposal. Let's see what other tools can be useful during the course of embedded systems development.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Other great tools</h1>
+                </header>
+            
+            <article>
+                
+<p>The tools covered in this chapter certainly aren't the only ones available for debugging and troubleshooting embedded systems. There are many other tools and techniques that we simply don't have scope to cover (or that weren't a good fit due to the specific constraints placed on the tools used in this book). These topics are mentioned in the following section, with additional links in the <em>Further reading </em>section at the end of the chapter.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Test-driven development </h1>
+                </header>
+            
+            <article>
+                
+<p>Given the fact that the title of this chapter starts with the word <em>debugging,</em> it only seems appropriate to mention the ideal way to <em>debug</em> code is to not write buggy code in the first place. Unit testing isn't a single piece of software, but a component of <strong>Test-Driven Development</strong> (<strong>TDD</strong>)<span>—</span>a development methodology that inverts the way embedded engineers traditionally go about developing their systems. </p>
+<p>Instead of writing a bunch of code that doesn't work and then debugging it, test-driven development starts out by writing tests. After tests are written, production code is written until the tests pass. This approach tends to lead to code that is both testable and easily refactored. Since individual functions are tested using this approach, the resulting production code is much less tied to the underlying hardware (since it isn't easy to test code tied to real hardware). Forcing tests to be written at this level tends to lead to loosely coupled architecture, which is discussed in <a href="e728e173-c9b2-4bb8-91c8-ed348ccf9518.xhtml">Chapter 13</a>, <em>Creating Loose Coupling with Queues</em>. Using the techniques in <a href="e728e173-c9b2-4bb8-91c8-ed348ccf9518.xhtml"/><a href="e728e173-c9b2-4bb8-91c8-ed348ccf9518.xhtml">Chapter 13</a>, <em>Creating Loose Coupling with Queues, </em>works very well in conjunction with unit testing and TDD.</p>
+<p>Generally, TDD isn't as popular in embedded systems. But if it is something you're interested in learning more about, check out a book written specifically on the topic<span>—</span><em>Test Driven Development for Embedded C</em> by J<em>ames Grenning</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Static analysis</h1>
+                </header>
+            
+            <article>
+                
+<p>Static analysis is another way of reducing the number of bugs that creep into a code base. <em>Static</em> refers to the fact that the code doesn't need to be executing for this analysis to take place. A static analyzer looks for common programming errors that are syntactically correct (for example, they compile) but are <em>likely</em> to create buggy code (that is, out-of-bounds array access, and so on) and provides relevant warnings.</p>
+<p>There are many commercially available packages for static analysis, as well as some that are freely available. Cppcheck is included in STM32CubeIDE (simply right-click on a project and select <span class="packt_screen">Run C/C++ Code Analysis</span>). A link to a <strong>Free Open Source Software</strong> (<strong>FOSS</strong>) static analyzer from the Clang project is included at the end of this chapter. PVS-Studio Analyzer is an example of a commercial package that can be used freely for non-commercial projects.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Percepio Tracealyzer</h1>
+                </header>
+            
+            <article>
+                
+<p>Percepio Tracealyzer is a tool similar to <span><span>SEGGER </span></span>SystemView in that it helps the developer to visualize system execution. Tracealyzer takes less effort to set up out of the box than SystemView and provides a more aesthetically focused user experience than SystemView. However, since it is supplied by a different company, the cost of the software is not included with the purchase of a SEGGER debug probe. You can find out more about Tracealyzer at <a href="https://percepio.com/tracealyzer/">https://percepio.com/tracealyzer/</a>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Traditional testing equipment</h1>
+                </header>
+            
+            <article>
+                
+<p>Before all of the attractive pieces of software for visualizing RTOS behavior on a computer screen existed, this task would fall to more traditional test equipment.</p>
+<p>Logic analyzers have been around since MCUs first came into existence and are still among the most versatile tools an embedded system engineer can have in their kit. With a logic analyzer, the timing can be directly measured between when an input enters the system and when an output is provided by the system, as well as the timing between each of the tasks. Looking at the raw low-level signals going in and out of an MCU provides a level of visibility and gut feel for when something isn't right in a way that hexadecimal digits on a screen simply can't. Another advantage of habitually instrumenting at the hardware level - glitches in timing and other erratic behaviors are often noticed without directly looking for them.</p>
+<p>Other tools you'll want to acquire if you're just starting out with embedded systems include a handheld <strong>digital multi-meter</strong> (<strong>DMM</strong>) and oscilloscope for measuring analog signals.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we've covered why having access to excellent debugging tools is important. The exact tools we'll be using to analyze system behavior (SEGGER Ozone and SystemView) have been introduced. You've also been guided through how to get these tools set up for use with future projects. Toward the end, we touched on a few other tools that won't be covered in this book just to raise awareness of them.</p>
+<p><span>Now that we've covered MCU and IDE selection, and we have all of our tooling squared away, we have enough background to get into the real meat of RTOS application development. </span></p>
+<p>Using this toolset will help you gain an in-depth understanding of RTOS behavior and programming as we dive into working examples in the upcoming chapters. You'll also be able to use this same tooling to create high-performing, custom real-time applications in the future.</p>
+<p><span>In the next chapter, we'll get started with writing some code and go into more detail regarding the FreeRTOS scheduler.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Questions</h1>
+                </header>
+            
+            <article>
+                
+<ol>
+<li>J-Link hardware must be purchased to use the tools in this book.
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+<li>The only way to evaluate the effectiveness of a real-time system is to wait and see whether something breaks because a deadline was missed. </li>
+</ol>
+<ol>
+<li style="list-style-type: none">
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+</ol>
+<ol start="3">
+<li>Since RTOSes have one stack per task, they are impossible to debug using a debugger since only the main system stack is visible. </li>
+</ol>
+<ol>
+<li style="list-style-type: none">
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+</ol>
+<ol start="4">
+<li>The only way to ensure a system is completely functional is to write all of the code and then debug it all at once at the end of the project. </li>
+</ol>
+<ol>
+<li style="list-style-type: none">
+<ul>
+<li>True</li>
+<li>False</li>
+</ul>
+</li>
+</ol>
+<ol start="5">
+<li>What is the style of testing called where each individual module is tested?
+<ul>
+<li>Unit testing</li>
+<li>Integration testing</li>
+<li><span>System testing</span></li>
+<li>Black box testing</li>
+</ul>
+</li>
+<li>What is the term given for writing tests before developing production code?</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Further reading</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li><em>Test-Driven Development for Embedded C</em> by <em>James Grenning</em></li>
+<li>SEGGER Ozone manual (<span>UM08025): <a href="https://www.segger.com/downloads/jlink/UM08025">https://www.segger.com/downloads/jlink/UM08025</a> </span></li>
+<li>SEGGER SystemView manual (<span>UM08027): <a href="https://www.segger.com/downloads/jlink/UM08027">https://www.segger.com/downloads/jlink/UM08027</a></span></li>
+<li>Clang Static Analyzer: <a href="https://clang-analyzer.llvm.org">https://clang-analyzer.llvm.org</a></li>
+<li>PVS-Studio Analyzer: <a href="https://www.viva64.com/en/pvs-studio/">https://www.viva64.com/en/pvs-studio/</a></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
