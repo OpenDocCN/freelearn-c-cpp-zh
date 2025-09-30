@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Godot4 游戏开发项目第二版
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/1c4ab12fac2648c1de4cd3b35a7e3832`](https://zh.annas-archive.org/md5/1c4ab12fac2648c1de4cd3b35a7e3832)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
