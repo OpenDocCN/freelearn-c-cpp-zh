@@ -1,181 +1,263 @@
 - en: Chapter 8. Writing an LLVM Backend
+  id: totrans-0
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 第 8 章：编写 LLVM 后端
 - en: 'In this chapter, we will cover the following recipes:'
+  id: totrans-1
   prefs: []
   type: TYPE_NORMAL
+  zh: 在本章中，我们将介绍以下内容：
 - en: Defining registers and register sets
+  id: totrans-2
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 定义寄存器和寄存器集
 - en: Defining the calling convention
+  id: totrans-3
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 定义调用约定
 - en: Defining the instruction set
+  id: totrans-4
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 定义指令集
 - en: Implementing frame lowering
+  id: totrans-5
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 实现帧降低
 - en: Printing an instruction
+  id: totrans-6
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 打印指令
 - en: Selecting an instruction
+  id: totrans-7
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 选择指令
 - en: Adding instruction encoding
+  id: totrans-8
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 添加指令编码
 - en: Supporting a subtarget
+  id: totrans-9
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 支持子目标
 - en: Lowering to multiple instructions
+  id: totrans-10
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 降低到多个指令
 - en: Registering a target
+  id: totrans-11
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 注册目标
 - en: Introduction
+  id: totrans-12
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 简介
 - en: The ultimate goal of a compiler is to produce a target code, or an assembly
     code that can be converted into object code and executed on the actual hardware.
     To generate the assembly code, the compiler needs to know the various aspects
     of the architecture of the target machine—the registers, instruction set, calling
     convention, pipeline, and so on. There are lots of optimizations that can be done
     in this phase as well.
+  id: totrans-13
   prefs: []
   type: TYPE_NORMAL
+  zh: 编译器的最终目标是生成目标代码，或者可以转换为对象代码并在实际硬件上执行的汇编代码。为了生成汇编代码，编译器需要了解目标机器架构的各个方面——寄存器、指令集、调用约定、流水线等。在这个阶段还可以进行许多优化。
 - en: LLVM has its own way of defining the target machine. It uses `tablegen` to specify
     the target registers, instructions, calling convention, and so on. The `tablegen`
     function eases the way we describe a large set of architecture properties in a
     programmatic way.
+  id: totrans-14
   prefs: []
   type: TYPE_NORMAL
+  zh: LLVM 有自己定义目标机器的方式。它使用 `tablegen` 来指定目标寄存器、指令、调用约定等。`tablegen` 函数简化了我们以编程方式描述大量架构属性的方式。
 - en: LLVM has a pipeline structure for the backend, where instructions travel through
     phases like this; from the LLVM IR to `SelectionDAG`, then to `MachineDAG`, then
     to `MachineInstr`, and finally to `MCInst`.
+  id: totrans-15
   prefs: []
   type: TYPE_NORMAL
+  zh: LLVM 的后端具有流水线结构，指令会经过类似这样的阶段；从 LLVM IR 到 `SelectionDAG`，然后到 `MachineDAG`，接着到
+    `MachineInstr`，最后到 `MCInst`。
 - en: The IR is converted into SelectionDAG (**DAG** stands for **Directed Acyclic
     Graph**). Then SelectionDAG legalization occurs where illegal instructions are
     mapped on the legal operations permitted by the target machine. After this stage,
     SelectionDAG is converted to MachineDAG, which is basically an instruction selection
     supported by the backend.
+  id: totrans-16
   prefs: []
   type: TYPE_NORMAL
+  zh: IR 转换为 SelectionDAG（**DAG** 代表 **有向无环图**）。然后进行 SelectionDAG 合法化，将非法指令映射到目标机器允许的合法操作上。在此阶段之后，SelectionDAG
+    转换为 MachineDAG，这基本上是后端支持的指令选择。
 - en: CPUs execute a linear sequence of instructions. The goal of the scheduling step
     is to linearize the DAG by assigning an order to its operations. LLVM's code generator
     employs clever heuristics (such as register pressure reduction) to try and produce
     a schedule that will result in faster code. Register allocation policies also
     play an important role in producing better LLVM code.
+  id: totrans-17
   prefs: []
   type: TYPE_NORMAL
+  zh: CPU 执行一系列线性指令。调度步骤的目标是通过为操作分配顺序来线性化 DAG。LLVM 的代码生成器采用巧妙的启发式方法（如寄存器压力降低）来尝试生成一个能够产生更快速代码的调度。寄存器分配策略在生成更好的
+    LLVM 代码中也起着重要作用。
 - en: This chapter describes how to build an LLVM toy backend from scratch. By the
     end of this chapter, we will be able to generate assembly code for a sample toy
     backend.
+  id: totrans-18
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章介绍了如何从头开始构建一个 LLVM 玩具后端。到本章结束时，我们将能够为示例玩具后端生成汇编代码。
 - en: A sample backend
+  id: totrans-19
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 示例后端
 - en: The sample backend considered in this chapter is a simple RISC-type architecture,
     with a few registers (say r0-r3), a stack pointer (sp), and a link register (lr),
     for storing the return address.
+  id: totrans-20
   prefs: []
   type: TYPE_NORMAL
+  zh: 本章考虑的示例后端是一个简单的 RISC 类型架构，有少量寄存器（例如 r0-r3），一个栈指针（sp）和一个链接寄存器（lr），用于存储返回地址。
 - en: The calling convention of this toy backend is similar to the ARM architecture—arguments
     passed to the function will be stored in register sets r0-r1, and the return value
     will be stored in r0.
+  id: totrans-21
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个玩具后端的调用约定类似于 ARM 架构——传递给函数的参数将存储在寄存器集 r0-r1 中，返回值将存储在 r0 中。
 - en: Defining registers and registers sets
+  id: totrans-22
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 定义寄存器和寄存器集
 - en: This recipe shows you how to define registers and register sets in `.td` files.
     The `tablegen` function will convert this `.td` file into `.inc` files, which
     will be the `#include` declarative in our `.cpp` files and refer to registers.
+  id: totrans-23
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个菜谱展示了如何在 `.td` 文件中定义寄存器和寄存器集。`tablegen` 函数将这个 `.td` 文件转换为 `.inc` 文件，这些文件将成为我们
+    `.cpp` 文件中的 `#include` 声明，并引用寄存器。
 - en: Getting ready
+  id: totrans-24
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: We have defined our toy target machine to have four registers (r0-r3), a stack
     register (sp), and a link register (lr). These can be specified in the `TOYRegisterInfo.td`
     file. The `tablegen` function provides the `Register` class, which can be extended
     to specify the registers.
+  id: totrans-25
   prefs: []
   type: TYPE_NORMAL
+  zh: 我们已经定义了我们的玩具目标机器具有四个寄存器（r0-r3）、一个堆栈寄存器（sp）和一个链接寄存器（lr）。这些可以在`TOYRegisterInfo.td`文件中指定。`tablegen`函数提供了`Register`类，可以扩展以指定寄存器。
 - en: How to do it…
+  id: totrans-26
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点…
 - en: To define the backend architecture using target descriptor files, proceed with
     the following steps.
+  id: totrans-27
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用目标描述文件定义后端架构，请按照以下步骤进行。
 - en: 'Create a new folder in `lib/Target` named `TOY`:'
+  id: totrans-28
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target`目录下创建一个名为`TOY`的新文件夹：
 - en: '[PRE0]'
+  id: totrans-29
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE0]'
 - en: 'Create a new `TOYRegisterInfo.td file` in the new `TOY` folder:'
+  id: totrans-30
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在新创建的`TOY`文件夹中创建一个名为`TOYRegisterInfo.td`的新文件：
 - en: '[PRE1]'
+  id: totrans-31
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE1]'
 - en: 'Define the hardware encoding, namespace, registers, and the register class:'
+  id: totrans-32
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义硬件编码、命名空间、寄存器和寄存器类：
 - en: '[PRE2]'
+  id: totrans-33
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE2]'
 - en: How it works…
+  id: totrans-34
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: The `tablegen` function processes this `.td` file to generate the `.inc` file,
     which generally has enums generated for these registers. These enums can be used
     in the`.cpp` files, in which the registers can be referenced as `TOY::R0`. These
     `.inc` files will be generated when we build the LLVM project.
+  id: totrans-35
   prefs: []
   type: TYPE_NORMAL
+  zh: '`tablegen`函数处理这个`.td`文件以生成`.inc`文件，该文件通常为这些寄存器生成枚举。这些枚举可以在`.cpp`文件中使用，其中寄存器可以引用为`TOY::R0`。这些`.inc`文件将在我们构建LLVM项目时生成。'
 - en: See also
+  id: totrans-36
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: To get more details about how registers are defined for more advanced architecture,
     such as ARM, refer to the `lib/Target/ARM/ARMRegisterInfo.td` file in the source
     code of LLVM.
+  id: totrans-37
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 要获取更多关于如何为更高级的架构（如ARM）定义寄存器的详细信息，请参考LLVM源代码中的`lib/Target/ARM/ARMRegisterInfo.td`文件。
 - en: Defining the calling convention
+  id: totrans-38
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 定义调用约定
 - en: The calling convention specifies how values are passed to and from a function
     call. Our TOY architecture specifies that two arguments are passed in two registers,
     r0 and r1, while the remaining ones are passed to the stack. This recipe shows
@@ -183,8 +265,10 @@
     (the instruction selection lowering phase discussed in [Chapter 6](part0065.xhtml#aid-1TVKI1
     "Chapter 6. Target-independent Code Generator"), *Target Independent Code Generator*)
     via function pointers.
+  id: totrans-39
   prefs: []
   type: TYPE_NORMAL
+  zh: 调用约定指定了值是如何在函数调用之间传递的。我们的TOY架构指定了两个参数将通过两个寄存器（r0和r1）传递，其余的将通过堆栈传递。这个配方展示了如何定义调用约定，该约定将通过函数指针在`ISelLowering`（第6章中讨论的指令选择降低阶段，*目标无关代码生成器*）中使用。
 - en: The calling convention will be defined in the `TOYCallingConv.td` file, which
     will have primarily two sections—one for defining the return value convention,
     and the other for defining the argument passing convention. The return value convention
@@ -192,595 +276,875 @@
     passing convention will specify how the arguments passed will reside and in which
     registers. The `CallingConv` class is inherited while defining the calling convention
     of the toy architecture.
+  id: totrans-40
   prefs: []
   type: TYPE_NORMAL
+  zh: 调用约定将在`TOYCallingConv.td`文件中定义，该文件将主要包含两个部分——一个用于定义返回值约定，另一个用于定义参数传递约定。返回值约定指定了返回值将驻留在何处以及哪些寄存器中。参数传递约定将指定传递的参数将驻留在何处以及哪些寄存器中。在定义玩具架构的调用约定时，将继承`CallingConv`类。
 - en: How to do it…
+  id: totrans-41
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点…
 - en: 'To implement the calling convention, proceed with the following steps:'
+  id: totrans-42
   prefs: []
   type: TYPE_NORMAL
+  zh: 要实现调用约定，请按照以下步骤进行：
 - en: 'Create a new `TOYCallingConv.td` file in the `lib/Target/TOY` folder:'
+  id: totrans-43
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target/TOY`文件夹中创建一个名为`TOYCallingConv.td`的新文件：
 - en: '[PRE3]'
+  id: totrans-44
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE3]'
 - en: 'In that file, define the return value convention, as follows:'
+  id: totrans-45
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在该文件中，定义返回值约定，如下所示：
 - en: '[PRE4]'
+  id: totrans-46
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE4]'
 - en: 'Also, define the argument passing convention, like this:'
+  id: totrans-47
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 此外，定义参数传递约定，如下所示：
 - en: '[PRE5]'
+  id: totrans-48
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE5]'
 - en: 'Define the callee saved register set:'
+  id: totrans-49
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义调用者保存的寄存器集：
 - en: '[PRE6]'
+  id: totrans-50
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE6]'
 - en: How it works…
+  id: totrans-51
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: In the `.td` file you just read about, it has been specified that the return
     values of the integer type of 32 bits are stored in the r0 register. Whenever
     arguments are passed to a function, the first two arguments will be stored in
     the r0 and r1 registers. It is also specified that whenever any data type, such
     as an integer of 8 bits or 16 bits, will be encountered, it will be promoted to
     the 32-bit integer type.
+  id: totrans-52
   prefs: []
   type: TYPE_NORMAL
+  zh: 在你刚才阅读的`.td`文件中，已经指定了32位整型的返回值存储在r0寄存器中。每当向函数传递参数时，前两个参数将存储在r0和r1寄存器中。还指定了每当遇到任何数据类型，如8位或16位的整数时，它将被提升为32位整数类型。
 - en: The `tablegen` function generates a `TOYCallingConv.inc` file, which will be
     referred to in the `TOYISelLowering.cpp` file. The two target `hook` functions
     used to define argument handling are `LowerFormalArguments()` and `LowerReturn()`.
+  id: totrans-53
   prefs: []
   type: TYPE_NORMAL
+  zh: '`tablegen`函数生成一个`TOYCallingConv.inc`文件，该文件将在`TOYISelLowering.cpp`文件中引用。用于定义参数处理的两个目标`hook`函数是`LowerFormalArguments()`和`LowerReturn()`。'
 - en: See also
+  id: totrans-54
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: To see a detailed implementation of advanced architectures, such as ARM, look
     into the `lib/Target/ARM/ARMCallingConv.td` file
+  id: totrans-55
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 要查看高级架构（如ARM）的详细实现，请查看`lib/Target/ARM/ARMCallingConv.td`文件
 - en: Defining the instruction set
+  id: totrans-56
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 定义指令集
 - en: The instruction set of an architecture varies according to various features
     present in the architecture. This recipe demonstrates how instruction sets are
     defined for target architecture.
+  id: totrans-57
   prefs: []
   type: TYPE_NORMAL
+  zh: 架构的指令集根据架构中存在的各种特征而变化。本食谱演示了如何为目标架构定义指令集。
 - en: 'Three things are defined in the instruction target description file: operands,
     the assembly string and the instruction pattern. The specification contains a
     list of definitions or outputs, and a list of uses or inputs. There can be different
     operand classes, such as the `Register` class, and the immediate and more complex
     `register + imm` operands.'
+  id: totrans-58
   prefs: []
   type: TYPE_NORMAL
+  zh: 指令目标描述文件中定义了三个内容：操作数、汇编字符串和指令模式。规范包含定义或输出的列表，以及使用或输入的列表。可以有不同类型的操作数类，例如`Register`类，以及立即数和更复杂的`register
+    + imm`操作数。
 - en: Here, a simple add instruction definition that takes two registers as operands
     is demonstrated.
+  id: totrans-59
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，演示了一个简单的加法指令定义，它接受两个寄存器作为操作数。
 - en: How to do it…
+  id: totrans-60
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作...
 - en: To define an instruction set using target descriptor files, proceed with the
     following steps.
+  id: totrans-61
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用目标描述文件定义指令集，请按照以下步骤进行。
 - en: 'Create a new file called `TOYInstrInfo.td` in the `lib/Target/TOY` folder:'
+  id: totrans-62
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target/TOY`文件夹中创建一个名为`TOYInstrInfo.td`的新文件：
 - en: '[PRE7]'
+  id: totrans-63
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE7]'
 - en: 'Specify the operands, assembly string, and instruction pattern for the `add`
     instruction between two register operands:'
+  id: totrans-64
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 指定两个寄存器操作数之间`add`指令的操作数、汇编字符串和指令模式：
 - en: '[PRE8]'
+  id: totrans-65
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE8]'
 - en: How it works…
+  id: totrans-66
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: The `add` register to the register instruction specifies `$dst` as the result
     operand, which belongs to the `General Register` type class; inputs `$src1` and
     `$src2` as two input operands, which also belong to the `General Register` type
     class; and the instruction assembly string as `"add $dst, $src1, $src2"` of the
     32-bit integer type.
+  id: totrans-67
   prefs: []
   type: TYPE_NORMAL
+  zh: '`add`寄存器到寄存器指令指定`$dst`作为结果操作数，它属于`General Register`类型类；输入`$src1`和`$src2`作为两个输入操作数，它们也属于`General
+    Register`类型类；指令汇编字符串为32位整型的`"add $dst, $src1, $src2"`。'
 - en: 'So, an assembly will be generated for `add` between two registers, like this:'
+  id: totrans-68
   prefs: []
   type: TYPE_NORMAL
+  zh: 因此，将生成两个寄存器之间`add`操作的汇编代码，如下所示：
 - en: '[PRE9]'
+  id: totrans-69
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE9]'
 - en: The preceding code indicates to add the r0 and r1 register contents and store
     the result in the r0 register.
+  id: totrans-70
   prefs: []
   type: TYPE_NORMAL
+  zh: 上述代码指示将r0和r1寄存器的内容相加，并将结果存储在r0寄存器中。
 - en: See also
+  id: totrans-71
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: Many instructions will have the same type of instruction pattern—ALU instructions
     such as `add`, `sub`, and so on. In cases such as this multiclass can be used
     to define the common properties. For more detailed information about the various
     types of instruction sets for advanced architecture, such as ARM, refer to the
     `lib/Target/ARM/ARMInstrInfo.td file`
+  id: totrans-72
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 许多指令将具有相同类型的指令模式——例如`add`、`sub`等ALU指令。在这种情况下，可以使用多类来定义公共属性。有关高级架构（如ARM）的各种指令集的更详细信息，请参阅`lib/Target/ARM/ARMInstrInfo.td`文件
 - en: Implementing frame lowering
+  id: totrans-73
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 实现帧降低
 - en: This recipe talks about frame lowering for target architecture. Frame lowering
     involves emitting the prologue and epilogue of the function call.
+  id: totrans-74
   prefs: []
   type: TYPE_NORMAL
+  zh: 本食谱讨论了目标架构的帧降低。帧降低涉及函数调用的前缀和后缀的生成。
 - en: Getting ready
+  id: totrans-75
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: Note
+  id: totrans-76
   prefs:
   - PREF_H3
   type: TYPE_NORMAL
+  zh: 注意
 - en: Two functions need to be defined for frame lowering, namely `TOYFrameLowering::emitPrologue()`
     and `TOYFrameLowering::emitEpilogue()`.
+  id: totrans-77
   prefs: []
   type: TYPE_NORMAL
+  zh: 需要定义两个用于帧降低的函数，即`TOYFrameLowering::emitPrologue()`和`TOYFrameLowering::emitEpilogue()`。
 - en: How to do it…
+  id: totrans-78
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作…
 - en: 'The following functions are defined in the `TOYFrameLowering.cpp` file in the
     `lib/Target/TOY` folder:'
+  id: totrans-79
   prefs: []
   type: TYPE_NORMAL
+  zh: 以下函数定义在`lib/Target/TOY`文件夹中的`TOYFrameLowering.cpp`文件中：
 - en: 'The `emitPrologue` function can be defined as follows:'
+  id: totrans-80
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`emitPrologue`函数可以定义如下：'
 - en: '[PRE10]'
+  id: totrans-81
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE10]'
 - en: 'The `emitEpilogue` function can be defined like this:'
+  id: totrans-82
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`emitEpilogue`函数可以定义如下：'
 - en: '[PRE11]'
+  id: totrans-83
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE11]'
 - en: 'Here are some helper functions used to determine the offset for the `ADD` stack
     operation:'
+  id: totrans-84
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 以下是一些用于确定`ADD`栈操作偏移量的辅助函数：
 - en: '[PRE12]'
+  id: totrans-85
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE12]'
 - en: 'The following are some more helper functions used to compute the stack size:'
+  id: totrans-86
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 以下是一些用于计算栈大小的辅助函数：
 - en: '[PRE13]'
+  id: totrans-87
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE13]'
 - en: How it works…
+  id: totrans-88
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: The `emitPrologue` function first computes the stack size to determine whether
     the prologue is required at all. Then it adjusts the stack pointer by calculating
     the offset. For the epilogue, it first checks whether the epilogue is required
     or not. Then it restores the stack pointer to what it was at the beginning of
     the function.
+  id: totrans-89
   prefs: []
   type: TYPE_NORMAL
+  zh: '`emitPrologue` 函数首先计算栈大小以确定是否需要使用前导代码。然后通过计算偏移量来调整栈指针。对于后导代码，它首先检查是否需要后导代码。然后恢复栈指针到函数开始时的状态。'
 - en: 'For example, consider this input IR:'
+  id: totrans-90
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，考虑以下输入 IR：
 - en: '[PRE14]'
+  id: totrans-91
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE14]'
 - en: 'The TOY assembly generated will look like this:'
+  id: totrans-92
   prefs: []
   type: TYPE_NORMAL
+  zh: 生成的 TOY 汇编将看起来像这样：
 - en: '[PRE15]'
+  id: totrans-93
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE15]'
 - en: See also
+  id: totrans-94
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: For advanced architecture frame lowering, such as in ARM, refer to the `lib/Target/ARM/ARMFrameLowering.cpp`
     file.
+  id: totrans-95
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于高级架构框架降低，例如在 ARM 中，请参考 `lib/Target/ARM/ARMFrameLowering.cpp` 文件。
 - en: Printing an instruction
+  id: totrans-96
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 打印指令
 - en: Printing an assembly instruction is an important step in generating target code.
     Various classes are defined that work as a gateway to the streamers. The instruction
     string is provided by the `.td` file defined earlier.
+  id: totrans-97
   prefs: []
   type: TYPE_NORMAL
+  zh: 打印汇编指令是生成目标代码的重要步骤。定义了各种类，作为流式传输的网关。指令字符串由之前定义的 `.td` 文件提供。
 - en: Getting ready
+  id: totrans-98
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: The first and foremost step for printing instructions is to define the instruction
     string in the `.td` file, which was done in the *Defining the instruction set*
     recipe.
+  id: totrans-99
   prefs: []
   type: TYPE_NORMAL
+  zh: 打印指令的第一步是在 `.td` 文件中定义指令字符串，这在 *定义指令集* 菜谱中已完成。
 - en: How to do it…
+  id: totrans-100
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作…
 - en: 'Perform the following steps:'
+  id: totrans-101
   prefs: []
   type: TYPE_NORMAL
+  zh: 执行以下步骤：
 - en: 'Create a new folder called `InstPrinter` inside the `TOY` folder:'
+  id: totrans-102
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在 `TOY` 文件夹内创建一个名为 `InstPrinter` 的新文件夹：
 - en: '[PRE16]'
+  id: totrans-103
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE16]'
 - en: 'In a new file, called `TOYInstrFormats.td`, define the `AsmString` variable:'
+  id: totrans-104
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在一个新文件中，称为 `TOYInstrFormats.td`，定义 `AsmString` 变量：
 - en: '[PRE17]'
+  id: totrans-105
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE17]'
 - en: 'Create a new file called `TOYInstPrinter.cpp`, and define the `printOperand`
     function, as follows:'
+  id: totrans-106
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为 `TOYInstPrinter.cpp` 的新文件，并定义 `printOperand` 函数，如下所示：
 - en: '[PRE18]'
+  id: totrans-107
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE18]'
 - en: 'Also, define a function to print the register names:'
+  id: totrans-108
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 此外，定义一个打印寄存器名称的函数：
 - en: '[PRE19]'
+  id: totrans-109
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE19]'
 - en: 'Define a function to print the instruction:'
+  id: totrans-110
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义一个打印指令的函数：
 - en: '[PRE20]'
+  id: totrans-111
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE20]'
 - en: It also requires `MCASMinfo` to be specified to print the instruction. This
     can be done by defining the `TOYMCAsmInfo.h` and `TOYMCAsmInfo.cpp` files.
+  id: totrans-112
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 它还要求指定 `MCASMinfo` 以打印指令。这可以通过定义 `TOYMCAsmInfo.h` 和 `TOYMCAsmInfo.cpp` 文件来完成。
 - en: 'The `TOYMCAsmInfo.h` file can be defined as follows:'
+  id: totrans-113
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: '`TOYMCAsmInfo.h` 文件可以定义如下：'
 - en: '[PRE21]'
+  id: totrans-114
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE21]'
 - en: 'The `TOYMCAsmInfo.cpp` file can be defined like this:'
+  id: totrans-115
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: '`TOYMCAsmInfo.cpp` 文件可以定义如下：'
 - en: '[PRE22]'
+  id: totrans-116
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE22]'
 - en: 'Define the `LLVMBuild.txt` file for the instruction printer:'
+  id: totrans-117
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义指令打印器的 `LLVMBuild.txt` 文件：
 - en: '[PRE23]'
+  id: totrans-118
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE23]'
 - en: 'Define `CMakeLists.txt`:'
+  id: totrans-119
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义 `CMakeLists.txt`：
 - en: '[PRE24]'
+  id: totrans-120
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE24]'
 - en: How it works…
+  id: totrans-121
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 工作原理…
 - en: When the final compilation takes place, the **llc** tool—a static compiler—will
     generate the assembly of the TOY architecture.
+  id: totrans-122
   prefs: []
   type: TYPE_NORMAL
+  zh: 当最终编译发生时，**llc** 工具——一个静态编译器——将生成 TOY 架构的汇编代码。
 - en: 'For example, the following IR, when given to the llc tool, will generate an
     assembly as shown:'
+  id: totrans-123
   prefs: []
   type: TYPE_NORMAL
+  zh: 例如，以下 IR 当提供给 llc 工具时，将生成如下汇编：
 - en: '[PRE25]'
+  id: totrans-124
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE25]'
 - en: Selecting an instruction
+  id: totrans-125
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 选择指令
 - en: An IR instruction in DAG needs to be lowered to a target-specific instruction.
     The SDAG node contains IR, which needs to be mapped on machine-specific DAG nodes.
     The outcome of the selection phase is ready for scheduling.
+  id: totrans-126
   prefs: []
   type: TYPE_NORMAL
+  zh: DAG 中的 IR 指令需要降低到特定目标的指令。SDAG 节点包含 IR，需要映射到机器特定的 DAG 节点。选择阶段的输出已准备好进行调度。
 - en: Getting ready
+  id: totrans-127
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 准备工作
 - en: 'For selecting a machine-specific instruction, a separate class, `TOYDAGToDAGISel`,
     needs to be defined. To compile the file containing this class definition, add
     the filename to the `CMakeLists.txt` file in the `TOY` folder:'
+  id: totrans-128
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 为了选择特定机器的指令，需要定义一个单独的类，`TOYDAGToDAGISel`。要编译包含此类定义的文件，请将文件名添加到 `TOY` 文件夹中的 `CMakeLists.txt`
+    文件中：
 - en: '[PRE26]'
+  id: totrans-129
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE26]'
 - en: 'A pass entry needs to be added in the `TOYTargetMachine.h` and `TOYTargetMachine.cpp`
     files:'
+  id: totrans-130
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 需要在 `TOYTargetMachine.h` 和 `TOYTargetMachine.cpp` 文件中添加一个遍历入口：
 - en: '[PRE27]'
+  id: totrans-131
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE27]'
 - en: 'The following code in `TOYTargetMachine.cpp` will create a pass in the instruction
     selection stage:'
+  id: totrans-132
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`TOYTargetMachine.cpp` 中的以下代码将在指令选择阶段创建一个遍历：'
 - en: '[PRE28]'
+  id: totrans-133
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE28]'
 - en: How to do it…
+  id: totrans-134
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何操作…
 - en: 'To define an instruction selection function, proceed with the following steps:'
+  id: totrans-135
   prefs: []
   type: TYPE_NORMAL
+  zh: 要定义一个指令选择函数，请按照以下步骤进行：
 - en: 'Create a file called `TOYISelDAGToDAG.cpp`:'
+  id: totrans-136
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为 `TOYISelDAGToDAG.cpp` 的文件：
 - en: '[PRE29]'
+  id: totrans-137
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE29]'
 - en: 'Include the following files:'
+  id: totrans-138
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 包含以下文件：
 - en: '[PRE30]'
+  id: totrans-139
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE30]'
 - en: 'Define a new class called `TOYDAGToDAGISel` as follows, which will inherit
     from the `SelectionDAGISel` class:'
+  id: totrans-140
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义一个名为 `TOYDAGToDAGISel` 的新类，如下所示，它将继承自 `SelectionDAGISel` 类：
 - en: '[PRE31]'
+  id: totrans-141
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE31]'
 - en: 'The most important function to define in this class is `Select()`, which will
     return an `SDNode` object specific to the machine instruction:'
+  id: totrans-142
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在这个类中需要定义的最重要函数是`Select()`，它将返回一个针对机器指令的特定`SDNode`对象：
 - en: 'Declare it in the class:'
+  id: totrans-143
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 在类中声明它：
 - en: '[PRE32]'
+  id: totrans-144
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE32]'
 - en: 'Define it further as follows:'
+  id: totrans-145
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 进一步定义如下：
 - en: '[PRE33]'
+  id: totrans-146
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE33]'
 - en: Another important function is used to define the address selection function,
     which will calculate the base and offset of the address for load and store operations.
+  id: totrans-147
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 另一个重要的功能是用于定义地址选择函数，该函数将计算加载和存储操作的基础地址和偏移量。
 - en: 'Declare it as shown here:'
+  id: totrans-148
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 如下所示声明它：
 - en: '[PRE34]'
+  id: totrans-149
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE34]'
 - en: 'Define it further, like this:'
+  id: totrans-150
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 如此定义它：
 - en: '[PRE35]'
+  id: totrans-151
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE35]'
 - en: 'The `createTOYISelDag` pass converts a legalized DAG into a toy-specific DAG,
     ready for instruction scheduling in the same file:'
+  id: totrans-152
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: '`createTOYISelDag`转换将合法化的DAG转换为特定于玩具的DAG，以便在同一文件中进行指令调度：'
 - en: '[PRE36]'
+  id: totrans-153
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE36]'
 - en: How it works…
+  id: totrans-154
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: The `TOYDAGToDAGISel::Select()` function of `TOYISelDAGToDAG.cpp` is used for
     the selection of the OP code DAG node, while `TOYDAGToDAGISel::SelectAddr()` is
     used for the selection of the DATA DAG node with the `addr` type. Note that if
     the address is global or external, we return false for the address, since its
     address is calculated in the global context.
+  id: totrans-155
   prefs: []
   type: TYPE_NORMAL
+  zh: '`TOYISelDAGToDAG.cpp`中的`TOYDAGToDAGISel::Select()`函数用于选择OP代码DAG节点，而`TOYDAGToDAGISel::SelectAddr()`用于选择具有`addr`类型的DATA
+    DAG节点。请注意，如果地址是全局或外部的，我们返回地址为false，因为它的地址是在全局上下文中计算的。'
 - en: See also
+  id: totrans-156
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: For details on the selection of DAG for machine instructions of complex architectures,
     such as ARM, look into the `lib/Target/ARM/ARMISelDAGToDAG.cpp` file in the LLVM
     source code.
+  id: totrans-157
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 关于选择复杂架构（如ARM）的机器指令DAG的详细信息，请查看LLVM源代码中的`lib/Target/ARM/ARMISelDAGToDAG.cpp`文件。
 - en: Adding instruction encoding
+  id: totrans-158
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 添加指令编码
 - en: If the instructions need to be specific for how they are encoded with respect
     to bit fields, this can be done by specifying the bit field in the `.td` file
     when defining an instruction.
+  id: totrans-159
   prefs: []
   type: TYPE_NORMAL
+  zh: 如果指令需要根据它们相对于位字段的编码进行特定化，这可以通过在定义指令时在`.td`文件中指定位字段来实现。
 - en: How to do it…
+  id: totrans-160
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点…
 - en: 'To include instruction encoding while defining instructions, proceed with the
     following steps:'
+  id: totrans-161
   prefs: []
   type: TYPE_NORMAL
+  zh: 在定义指令时包含指令编码，请按照以下步骤进行：
 - en: 'A register operand that will be used to register the `add` instruction will
     have some defined encoding for its instruction. The size of the instruction is
     32 bits, and the encoding for it is as follows:'
+  id: totrans-162
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将用于注册`add`指令的寄存器操作数将有一些定义的指令编码。指令的大小为32位，其编码如下：
 - en: '[PRE37]'
+  id: totrans-163
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE37]'
 - en: This can be achieved by specifying the preceding bit pattern in the `.td` files
+  id: totrans-164
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 这可以通过在`.td`文件中指定前导位模式来实现。
 - en: 'In the `TOYInstrFormats.td` file, define a new variable, called `Inst`:'
+  id: totrans-165
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`TOYInstrFormats.td`文件中，定义一个新变量，称为`Inst`：
 - en: '[PRE38]'
+  id: totrans-166
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE38]'
 - en: 'In the `TOYInstrInfo.td` file, define an instruction encoding:'
+  id: totrans-167
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`TOYInstrInfo.td`文件中，定义一个指令编码：
 - en: '[PRE39]'
+  id: totrans-168
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE39]'
 - en: 'In the `TOY/MCTargetDesc` folder, in the `TOYMCCodeEmitter.cpp` file, the encoding
     function will be called if the machine instruction operand is a register:'
+  id: totrans-169
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`TOY/MCTargetDesc`文件夹中，在`TOYMCCodeEmitter.cpp`文件中，如果机器指令操作数是寄存器，将调用编码函数。
 - en: '[PRE40]'
+  id: totrans-170
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE40]'
 - en: 'Also, in the same file, a function used to encode the instruction is specified:'
+  id: totrans-171
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 此外，在同一文件中，指定了一个用于编码指令的函数：
 - en: '[PRE41]'
+  id: totrans-172
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE41]'
 - en: How it works…
+  id: totrans-173
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: In the `.td` files, the encoding of an instruction has been specified—the bits
     for the operands, the destination, flag conditions, and opcode of the instruction.
     The machine code emitter gets these encodings from the `.inc` file generated by
     `tablegen` from the `.td` files through function calls. It encodes these instructions
     and emits the same for instruction printing.
+  id: totrans-174
   prefs: []
   type: TYPE_NORMAL
+  zh: 在`.td`文件中，已经指定了指令的编码——操作数、目的、标志条件和指令操作码的位。机器代码生成器通过从`.td`文件生成`.inc`文件并通过函数调用获取这些编码。它将这些指令编码并发出相同的指令打印。
 - en: See also
+  id: totrans-175
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: For complex architecture such as ARM, see the `ARMInstrInfo.td` and `ARMInstrInfo.td`
     files in the `lib/Target/ARM` directory of the LLVM trunk
+  id: totrans-176
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于如ARM这样的复杂架构，请查看LLVM主分支`lib/Target/ARM`目录下的`ARMInstrInfo.td`和`ARMInstrInfo.td`文件。
 - en: Supporting a subtarget
+  id: totrans-177
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 支持子目标
 - en: A target may have a subtarget—typically, a variant with instructions—way of
     handling operands, among others. This subtarget feature can be supported in the
     LLVM backend. A subtarget may contain some additional instructions, registers,
@@ -789,154 +1153,224 @@
     for the subtarget feature, for example, NEON for ARM and SSE/AVX for subtarget
     features that support vector instructions. SSE and AVX also support the vector
     instruction set, but their instructions differ from each other.
+  id: totrans-178
   prefs: []
   type: TYPE_NORMAL
+  zh: 目标可能有一个子目标——通常是一个带有指令的变体——处理操作数的方式，以及其他方式。这种子目标特性可以在LLVM后端得到支持。子目标可能包含一些额外的指令、寄存器、调度模型等。ARM有如NEON和THUMB这样的子目标，而x86有如SSE、AVX这样的子目标特性。对于子目标特性，指令集是不同的，例如，ARM的NEON和SSE/AVX支持向量指令的子目标特性。SSE和AVX也支持向量指令集，但它们的指令各不相同。
 - en: How to do it…
+  id: totrans-179
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做...
 - en: 'This recipe will demonstrate how to add a support subtarget feature in the
     backend. A new class that will inherit the `TargetSubtargetInfo` class has to
     be defined:'
+  id: totrans-180
   prefs: []
   type: TYPE_NORMAL
+  zh: 这个示例将演示如何在后端添加对支持子目标特性的支持。必须定义一个新的类，该类将继承`TargetSubtargetInfo`类：
 - en: 'Create a new file called `TOYSubtarget.h`:'
+  id: totrans-181
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为`TOYSubtarget.h`的新文件：
 - en: '[PRE42]'
+  id: totrans-182
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE42]'
 - en: 'Include the following files:'
+  id: totrans-183
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 包含以下文件：
 - en: '[PRE43]'
+  id: totrans-184
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE43]'
 - en: 'Define a new class, called `TOYSubtarget`, with some private members that have
     information on the data layout, target lowering, target selection DAG, target
     frame lowering, and so on:'
+  id: totrans-185
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义一个名为`TOYSubtarget`的新类，其中包含有关数据布局、目标降低、目标选择DAG、目标帧降低等信息的一些私有成员：
 - en: '[PRE44]'
+  id: totrans-186
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE44]'
 - en: 'Declare its constructor:'
+  id: totrans-187
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 声明其构造函数：
 - en: '[PRE45]'
+  id: totrans-188
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE45]'
 - en: This constructor initializes the data members to match that of the specified
     triplet.
+  id: totrans-189
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 这个构造函数初始化数据成员以匹配指定的三元组。
 - en: 'Define some helper functions to return the class-specific data:'
+  id: totrans-190
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 定义一些辅助函数以返回类特定的数据：
 - en: '[PRE46]'
+  id: totrans-191
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE46]'
 - en: 'Create a new file called `TOYSubtarget.cpp`, and define the constructor as
     follows:'
+  id: totrans-192
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为`TOYSubtarget.cpp`的新文件，并按如下方式定义构造函数：
 - en: '[PRE47]'
+  id: totrans-193
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE47]'
 - en: The subtarget has its own data layout defined, with other information such as
     frame lowering, instruction information, subtarget information, and so on.
+  id: totrans-194
   prefs: []
   type: TYPE_NORMAL
+  zh: 子目标有自己的数据布局定义，以及其他信息，如帧降低、指令信息、子目标信息等。
 - en: See also
+  id: totrans-195
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参见
 - en: To dive into the details of subtarget implementation, refer to the `lib/Target/ARM/ARMSubtarget.cpp`
     file in the LLVM source code
+  id: totrans-196
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 要深入了解子目标实现细节，请参考LLVM源代码中的`lib/Target/ARM/ARMSubtarget.cpp`文件
 - en: Lowering to multiple instructions
+  id: totrans-197
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 将代码降低到多个指令
 - en: Let's take an example of implementing a 32-bit immediate load with high/low
     pairs, where MOVW implies moving a 16-bit low immediate and a clear 16 high bit,
     and MOVT implies moving a 16-bit high immediate.
+  id: totrans-198
   prefs: []
   type: TYPE_NORMAL
+  zh: 让我们以实现一个32位立即数加载的高/低对为例，其中MOVW表示移动一个16位低立即数和一个清除的16位高位，而MOVT表示移动一个16位高立即数。
 - en: How to do it…
+  id: totrans-199
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做...
 - en: There can be various ways to implement this multiple instruction lowering. We
     can do this by using pseudo-instructions or in the selection DAG-to-DAG phase.
+  id: totrans-200
   prefs: []
   type: TYPE_NORMAL
+  zh: 实现这种多指令降低可能有多种方式。我们可以通过使用伪指令或在选择DAG到DAG阶段来完成。
 - en: 'To do it without pseudo-instructions, define some constraints. The two instructions
     must be ordered. MOVW clears the high 16 bits. Its output is read by MOVT to fill
     the high 16 bits. This can be done by specifying the constraints in tablegen:'
+  id: totrans-201
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 要在不使用伪指令的情况下完成，定义一些约束。这两条指令必须按顺序执行。MOVW清除了高16位。它的输出通过MOVT读取以填充高16位。这可以通过在tablegen中指定约束来实现：
 - en: '[PRE48]'
+  id: totrans-202
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE48]'
 - en: 'The second way is to define a pseudo-instruction in the `.td` file:'
+  id: totrans-203
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 第二种方式是在`.td`文件中定义伪指令：
 - en: '[PRE49]'
+  id: totrans-204
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE49]'
 - en: 'The pseudo-instruction is then lowered by a target function in the `TOYInstrInfo.cpp`
     file:'
+  id: totrans-205
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后伪指令通过`TOYInstrInfo.cpp`文件中的目标函数降低：
 - en: '[PRE50]'
+  id: totrans-206
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE50]'
 - en: 'Compile the entire LLVM project:'
+  id: totrans-207
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 编译整个LLVM项目：
 - en: 'For example, an `ex.ll` file with IR will look like this:'
+  id: totrans-208
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 例如，一个包含IR的`ex.ll`文件看起来像这样：
 - en: '[PRE51]'
+  id: totrans-209
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE51]'
 - en: 'The assembly generated will look like this:'
+  id: totrans-210
   prefs:
   - PREF_IND
   type: TYPE_NORMAL
+  zh: 生成的汇编代码将如下所示：
 - en: '[PRE52]'
+  id: totrans-211
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE52]'
 - en: How it works…
+  id: totrans-212
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的...
 - en: The first instruction, `movw`, will move 1 in the lower 16 bits and clear the
     high 16 bits. So in r1, `0x00000001` will be written by the first instruction.
     In the next instruction, `movt`, the higher 16 bits will be written. So in r1,
@@ -944,196 +1378,290 @@
     r1 register will have `0x00010001` in it. Whenever a pseudo-instruction is encountered
     as specified in the `.td` file, its expand function is called to specify what
     the pseudo-instruction will expand to.
+  id: totrans-213
   prefs: []
   type: TYPE_NORMAL
+  zh: 第一条指令，`movw`，将移动低16位中的1并清除高16位。因此，第一条指令将在r1中写入`0x00000001`。在下一条指令`movt`中，将写入高16位。因此，在r1中，将写入`0x0001XXXX`，而不会影响低位。最后，r1寄存器中将包含`0x00010001`。每当遇到`.td`文件中指定的伪指令时，其展开函数将被调用以指定伪指令将展开成什么。
 - en: 'In the preceding case, the `mov32` immediate was to be implemented by two instructions:
     `movw` (the lower 16 bits) and `movt` (the higher 16 bits). It was marked as a
     pseudo-instruction in the `.td` file. When this pseudo-instruction needs to be
     emitted, its expand function is called, which builds two machine instructions:
     `MOVLOi16` and `MOVHIi16`. These map to the `movw` and `movt` instructions of
     the target architecture.'
+  id: totrans-214
   prefs: []
   type: TYPE_NORMAL
+  zh: 在前面的例子中，`mov32`立即数将由两条指令实现：`movw`（低16位）和`movt`（高16位）。它在`.td`文件中被标记为伪指令。当需要发出此伪指令时，其展开函数被调用，它构建两个机器指令：`MOVLOi16`和`MOVHIi16`。这些映射到目标架构的`movw`和`movt`指令。
 - en: See also
+  id: totrans-215
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参考也
 - en: To dive deep into implementing such lowering of multiple instructions, look
     at the ARM target implementation in the LLVM source code in the `lib/Target/ARM/ARMInstrInfo.td`
     file.
+  id: totrans-216
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 要深入了解实现这种多指令降低的实现，请查看LLVM源代码中的ARM目标实现，在`lib/Target/ARM/ARMInstrInfo.td`文件中。
 - en: Registering a target
+  id: totrans-217
   prefs:
   - PREF_H1
   type: TYPE_NORMAL
+  zh: 注册目标
 - en: For running the llc tool in the TOY target architecture, it has to be registered
     with the llc tool. This recipe demonstrates which configuration files need to
     be modified to register a target. The build files are modified in this recipe.
+  id: totrans-218
   prefs: []
   type: TYPE_NORMAL
+  zh: 对于在TOY目标架构中运行llc工具，它必须与llc工具注册。这个配方演示了需要修改哪些配置文件来注册一个目标。构建文件在这个配方中被修改。
 - en: How to do it…
+  id: totrans-219
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 如何做到这一点…
 - en: 'To register a target with a static compiler, follow these steps:'
+  id: totrans-220
   prefs: []
   type: TYPE_NORMAL
+  zh: 要使用静态编译器注册目标，请按照以下步骤操作：
 - en: 'First, add the entry of the TOY backend to `llvm_root_dir/CMakeLists.txt`:'
+  id: totrans-221
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 首先，将TOY后端条目添加到`llvm_root_dir/CMakeLists.txt`：
 - en: '[PRE53]'
+  id: totrans-222
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE53]'
 - en: 'Then add the toy entry to `llvm_root_dir/include/llvm/ADT/Triple.h`:'
+  id: totrans-223
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后将toy条目添加到`llvm_root_dir/include/llvm/ADT/Triple.h`：
 - en: '[PRE54]'
+  id: totrans-224
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE54]'
 - en: 'Add the toy entry to `llvm_root_dir/include/llvm/ MC/MCExpr.h`:'
+  id: totrans-225
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将toy条目添加到`llvm_root_dir/include/llvm/ MC/MCExpr.h`：
 - en: '[PRE55]'
+  id: totrans-226
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE55]'
 - en: 'Add the toy entry to `llvm_root_dir/include/llvm/ Support/ELF.h`:'
+  id: totrans-227
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将toy条目添加到`llvm_root_dir/include/llvm/ Support/ELF.h`：
 - en: '[PRE56]'
+  id: totrans-228
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE56]'
 - en: 'Then, add the toy entry to `lib/MC/MCExpr.cpp`:'
+  id: totrans-229
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 然后，将toy条目添加到`lib/MC/MCExpr.cpp`：
 - en: '[PRE57]'
+  id: totrans-230
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE57]'
 - en: 'Next, add the toy entry to `lib/Support/Triple.cpp`:'
+  id: totrans-231
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 接下来，将toy条目添加到`lib/Support/Triple.cpp`：
 - en: '[PRE58]'
+  id: totrans-232
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE58]'
 - en: 'Add the toy directory entry to `lib/Target/LLVMBuild.txt`:'
+  id: totrans-233
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 将toy目录条目添加到`lib/Target/LLVMBuild.txt`：
 - en: '[PRE59]'
+  id: totrans-234
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE59]'
 - en: 'Create a new file called `TOY.h` in the `lib/Target/TOY` folder:'
+  id: totrans-235
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target/TOY`文件夹中创建一个名为`TOY.h`的新文件：
 - en: '[PRE60]'
+  id: totrans-236
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE60]'
 - en: 'Create a new folder called `TargetInfo` in the `lib/Target/TOY` folder. Inside
     that folder, create a new file called `TOYTargetInfo.cpp`, as follows:'
+  id: totrans-237
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target/TOY`文件夹中创建一个名为`TargetInfo`的新文件夹。在该文件夹内，创建一个名为`TOYTargetInfo.cpp`的新文件，如下所示：
 - en: '[PRE61]'
+  id: totrans-238
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE61]'
 - en: 'In the same folder, create the `CMakeLists.txt` file:'
+  id: totrans-239
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在同一文件夹中，创建`CMakeLists.txt`文件：
 - en: '[PRE62]'
+  id: totrans-240
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE62]'
 - en: 'Create an `LLVMBuild.txt` file:'
+  id: totrans-241
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个`LLVMBuild.txt`文件：
 - en: '[PRE63]'
+  id: totrans-242
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE63]'
 - en: 'In the `lib/Target/TOY` folder, create a file called `TOYTargetMachine.cpp`:'
+  id: totrans-243
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在`lib/Target/TOY`文件夹中，创建一个名为`TOYTargetMachine.cpp`的文件：
 - en: '[PRE64]'
+  id: totrans-244
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE64]'
 - en: 'Create a new folder called `MCTargetDesc` and a new file called `TOYMCTargetDesc.h`:'
+  id: totrans-245
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个名为`MCTargetDesc`的新文件夹和一个名为`TOYMCTargetDesc.h`的新文件：
 - en: '[PRE65]'
+  id: totrans-246
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE65]'
 - en: 'Create one more file, called `TOYMCTargetDesc.cpp`, in the same folder:'
+  id: totrans-247
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在同一文件夹中创建一个名为`TOYMCTargetDesc.cpp`的文件：
 - en: '[PRE66]'
+  id: totrans-248
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE66]'
 - en: 'In the same folder, create an `LLVMBuild.txt` file:'
+  id: totrans-249
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 在同一文件夹中，创建一个`LLVMBuild.txt`文件：
 - en: '[PRE67]'
+  id: totrans-250
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE67]'
 - en: 'Create a `CMakeLists.txt` file:'
+  id: totrans-251
   prefs:
   - PREF_OL
   type: TYPE_NORMAL
+  zh: 创建一个`CMakeLists.txt`文件：
 - en: '[PRE68]'
+  id: totrans-252
   prefs:
   - PREF_IND
   type: TYPE_PRE
+  zh: '[PRE68]'
 - en: How it works…
+  id: totrans-253
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 它是如何工作的…
 - en: 'Build the enitre LLVM project, as follows:'
+  id: totrans-254
   prefs: []
   type: TYPE_NORMAL
+  zh: 按照以下方式构建整个LLVM项目：
 - en: '[PRE69]'
+  id: totrans-255
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE69]'
 - en: 'Here, we have specified that we are building the LLVM compiler for the toy
     target. After the build completes, check whether the TOY target appears with the
     `llc` command:'
+  id: totrans-256
   prefs: []
   type: TYPE_NORMAL
+  zh: 在这里，我们指定我们正在为toy目标构建LLVM编译器。构建完成后，检查是否可以通过`llc`命令看到TOY目标：
 - en: '[PRE70]'
+  id: totrans-257
   prefs: []
   type: TYPE_PRE
+  zh: '[PRE70]'
 - en: See also
+  id: totrans-258
   prefs:
   - PREF_H2
   type: TYPE_NORMAL
+  zh: 参考也
 - en: 'For a more detailed description about complex targets that involve pipelining
     and scheduling, follow the chapters in *Tutorial: Creating an LLVM Backend for
     the Cpu0 Architecture* by Chen Chung-Shu and Anoushe Jamshidi'
+  id: totrans-259
   prefs:
   - PREF_UL
   type: TYPE_NORMAL
+  zh: 对于关于涉及流水线和调度的复杂目标的更详细描述，请参考陈中舒和Anoushe Jamshidi所著的*教程：为Cpu0架构创建LLVM后端*中的章节。
