@@ -1,0 +1,1499 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Example - Building Monitoring and Control</h1>
+                </header>
+            
+            <article>
+                
+<p>The monitoring of conditions within a building, including the temperature, humidity, and CO<sub>2</sub> levels is becoming increasingly more common, with the goal being to adjust heating, cooling, and ventilation systems to keep the occupants of the building as comfortable as possible. In this chapter, such a system is explored and implemented. The following topics will be covered:</p>
+<ul>
+<li>Creating complex firmware for the ESP8266</li>
+<li>Integrating an MCU into an IP-based network</li>
+<li>Adding CO<sub>2</sub> and I2C-based sensors</li>
+<li>Using GPIO and PWM to control relays and DC voltage-controlled fans</li>
+<li>Connecting networked nodes using a central controller</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Plants, rooms, and beyond</h1>
+                </header>
+            
+            <article>
+                
+<p>In <span class="ChapterrefPACKT"><a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml"/></span><span class="ChapterrefPACKT"><a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml"/></span><span class="ChapterrefPACKT"><a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml">Chapter 5</a>, <em>Example <span>-</span> Soil Humidity Monitor with Wi-Fi</em></span>, we looked at developing firmware for the ESP8266 MCU to complement a soil humidity sensor and pump, to ensure that a connected plant would be provided with sufficient water from the water tank.</p>
+<p>As we noted in that chapter, the firmware used is highly modular and has the highly flexible MQTT-based interface so that it can be used for a wide variety of modules. This chapter covers the system in which the firmware originated: <strong>Building Management and Control</strong> (<strong>BMaC</strong>), originally developed just to monitor rooms for their temperature, humidity, and CO<sup>2</sup> levels, but later expanded to keep tabs on coffee machines and meeting room occupancy, and ultimately to control the air-conditioning throughout the building.</p>
+<p class="mce-root"/>
+<p>The BMaC project's current development status can be found at the author's GitHub account at <a href="https://github.com/MayaPosch/BMaC"><span class="URLPACKT">https://github.com/MayaPosch/BMaC</span></a>. The version we are covering here is as it exists at this point, with us covering how this system came to be and what it looks like today, and why.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Developmental history</h1>
+                </header>
+            
+            <article>
+                
+<p>The BMaC project started when sensors were to be added around an office building in order to measure temperature and other parameters, such as relative humidity. After deciding to use ESP8266 MCUs along with DHT22 temperature and humidity sensors, a simple prototype was put together, using a basic firmware written using the Sming framework.</p>
+<p>It was found that DHT22 sensors were generally rather bulky and not very precise. The breakout boards used also had an improper resistor mounted on them, leading to the wrong temperature being reported. This sensor type also had the disadvantage of using its own one-wire protocol, instead of a standard interface method.</p>
+<p>The DHT22 sensors got swapped out with BME280 MEMS sensors, which measure temperature, humidity, and also air pressure. A CO<sub>2</sub> sensor was added as well, in the form of the MH-Z19. This required the firmware to support these additional sensors too. The sensor readings would be sent as MQTT messages, with a backend service subscribing to these topics, and writing them to a time series database (InfluxDB), for viewing and analysis.</p>
+<p>Decisions had to be made when the possibility of reading out the counters for products from the fully automatic Jura coffee machines was considered, and with it whether separate firmware would have to be developed.</p>
+<p>Instead of separate firmware, the decision was made to use the same firmware for all ESP8266 nodes. This meant that they needed to have the functionality to somehow enable individual features and to support specific sensors and other features. This led to the development of new firmware, which allowed remote commands, sent over MQTT, to toggle feature modules on or off, along with other management features.</p>
+<p>Along with the new firmware, a <strong>command and control</strong> (<strong>C&amp;C</strong>) server was added, used by the individual nodes to retrieve their configuration, along with an administration application to be used to add new nodes and add or edit the node configuration.</p>
+<p>With this framework in place, it became possible to add new features <span>quickly</span>. These included the addition of motion sensors, for detecting the presence of people in a room, to ultimately the controlling of air-conditioning units, as the existing centralized control in the office building was found to be inadequate.</p>
+<p>The system as a whole can be visualized like this:</p>
+<div class="packt_figure CDPAlignCenter CDPAlign"><img src="assets/d784b62d-39db-497b-91d4-8914218b0cde.png" style="width:26.75em;height:37.83em;"/></div>
+<p class="mce-root"/>
+<p>In the upcoming sections, we will be taking a detailed look at each of these aspects.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Functional modules</h1>
+                </header>
+            
+            <article>
+                
+<p>Here is a list of modules in this firmware:</p>
+<table border="1" style="width: 100%;border-collapse: collapse">
+<tbody>
+<tr>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Name</strong></p>
+</td>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Feature</strong></p>
+</td>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Description</strong></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>THP</p>
+</td>
+<td>
+<p>Temperature, Humidity, Pressure</p>
+</td>
+<td>
+<p>Central class for THP sensors. Enables BME280 functionality by default.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>CO<sub>2</sub></p>
+</td>
+<td>
+<p>CO<sub>2</sub> value</p>
+</td>
+<td>
+<p>Measures CO<sub>2</sub> &lt;indexentry content="functional modules, Building Management and Control (BMaC):CO<sub>2</sub>"&gt;values using an MH-Z19 or compatible sensor.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Jura</p>
+</td>
+<td>
+<p>TopTronics EEPROM counters</p>
+</td>
+<td>
+<p>Reads out the counters for various products from the EEPROM.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>JuraTerm</p>
+</td>
+<td>
+<p>TopTronics remote control</p>
+</td>
+<td>
+<p>Allows a remote service to send TopTronics (classic, v5-style) commands to a supported coffee machine.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Motion</p>
+</td>
+<td>
+<p>Motion detection</p>
+</td>
+<td>
+<p>Uses an HC-SR501 PIR motion sensor or compatible to detect motion.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>PWM</p>
+</td>
+<td>
+<p>PWM output</p>
+</td>
+<td>
+<p>Sets a pulse-width modulation output on one or more pins.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>I/O</p>
+</td>
+<td>
+<p>I/O expansion</p>
+</td>
+<td>
+<p>Supports the MCP23008 eight-channel I/O expander module via I2C.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Switch</p>
+</td>
+<td>
+<p>Persistent switch</p>
+</td>
+<td>
+<p>Controls a switch that uses a latching relay or equivalent for switching.</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>Plant</p>
+</td>
+<td>
+<p>Watering plants</p>
+</td>
+<td>
+<p>Reads out an analog soil sensor to determine soil humidity, activating a pump when needed.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Firmware source</h1>
+                </header>
+            
+            <article>
+                
+<p>In this section, we look at the source code for the ESP8266 firmware as used with the BMaC system.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Core</h1>
+                </header>
+            
+            <article>
+                
+<p>The core of the firmware we already looked at in <span class="ChapterrefPACKT"><a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml">Chapter 5</a>,<span> </span><em>Example <span>-</span><span> </span>Soil Humidity Monitor with Wi-Fi</em></span><span>,</span> including the entry point, the <kbd>OtaCore</kbd> class, and the <kbd>BaseModule</kbd> class, which provide all of the functionality needed to make individual modules initialize and to allow them to be enabled and disabled using the MQTT interface.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Modules</h1>
+                </header>
+            
+            <article>
+                
+<p>Of the firmware modules, we already looked at the plant module in <span class="ChapterrefPACKT"><a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml">Chapter 5</a>,<span> </span><em>Example <span>-</span><span> </span>Soil Humidity Monitor with Wi-Fi</em></span>. Here we will look at the remaining modules, starting with the THP module:</p>
+<pre>#include "base_module.h"<br/>class THPModule {<br/>    public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>};<br/>#include "thp_module.h"<br/>#include "dht_module.h"<br/>#include "bme280_module.h"<br/>bool THPModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_TEMPERATURE_HUMIDITY, <br/>    THPModule::start, THPModule::shutdown);<br/>    return true;<br/>}<br/>bool THPModule::start() {<br/>    BME280Module::init();<br/>    return true;<br/>}<br/>bool THPModule::shutdown() {<br/>    BME280Module::shutdown();<br/>    return true;<br/>}</pre>
+<p>This module has the provisions to act as a generic interface to a wide variety of temperature, humidity, and air-pressure sensors. As this was not a requirement at the time, it merely acted as a pass-through for the BME280 module. It registers itself with the base module when called and calls the respective functions on the BME280 module when its own are called.</p>
+<p>To make it more versatile, the class would be extended to allow for commands to be received—possibly over MQTT as well on its own topic—which would then enable a specific sensor module, or even a collection of them, when using separate temperature and air pressure sensors, for example.</p>
+<p>Regardless of whether it is being used or not in this firmware, let's take a look at the DHT module so that we can compare it with the BME280 module later.</p>
+<pre>#include "ota_core.h"<br/><br/> #include &lt;Libraries/DHTesp/DHTesp.h&gt;<br/><br/> #define DHT_PIN 5 // DHT sensor: GPIO5 ('D1' on NodeMCU)<br/><br/><br/> class DHTModule {<br/>    static DHTesp* dht;<br/>    static int dhtPin;<br/>    static Timer dhtTimer;<br/><br/> public:<br/>    static bool init();<br/>    static bool shutdown();<br/>    static void config(String cmd);<br/>    static void readDHT();<br/> };</pre>
+<p>Of note is that while the class is static, any variables that would take up considerable memory—such as library class instances—are defined as pointers. This forms a compromise between having the module available for easy use and going for a more complicated, fully dynamic solution. As most MCUs tend to keep as much of the program code as possible in the ROM until it is used, this should keep both SRAM and ROM usage to a minimum.</p>
+<pre>#include "dht_module.h"<br/><br/> DHTesp* DHTModule::dht = 0;<br/> int DHTModule::dhtPin = DHT_PIN;<br/> Timer DHTModule::dhtTimer;<br/><br/><br/> bool DHTModule::init() {<br/>    if (!OtaCore::claimPin(dhtPin)) { return false; }<br/>    if (!dht) { dht = new DHTesp(); dht-&gt;setup(dhtPin, DHTesp::DHT22); }<br/>    dhtTimer.initializeMs(2000, DHTModule::readDHT).start();    <br/>    return true;<br/> }</pre>
+<p class="mce-root"/>
+<p>To initialize the module, we ensure that we can safely use the <strong>general-purpose input/output</strong> (<strong>GPIO</strong>) pins we intend to use, create a new instance of the sensor class from the library, and set it up before creating the 2-second timer that will perform the scheduled sensor read-out.</p>
+<p>Since we create a new instance of the  sensor class upon initializing there should never be an existing instance of this class, but we check in case the init() function gets called again a second time for some reason. Calling the initialization function on the timer a second time could also be included in this block, but isn't strictly required as there is no harmful effect from initializing the timer again.</p>
+<pre>bool DHTModule::shutdown() {<br/>    dhtTimer.stop();<br/>    if (!OtaCore::releasePin((ESP8266_pins) dhtPin)) { delete dht; return false; }<br/>    delete dht;<br/>    dht = 0;    <br/>    return true;<br/> }</pre>
+<p>To shut down the module, we stop the timer and release the GPIO pin we were using, before cleaning up all resources we used. As we have claimed the pin we're using previously when we initialized the module we should have no issues releasing it again, but we check to make sure.</p>
+<pre><br/> void DHTModule::config(String cmd) {<br/>    Vector&lt;String&gt; output;<br/>    int numToken = splitString(cmd, '=', output);<br/>    if (output[0] == "set_pin" &amp;&amp; numToken &gt; 1) {<br/>          dhtPin = output[1].toInt();<br/>    }<br/> }</pre>
+<p>This is an example of how one could later change the GPIO pin used by a module, here using the old text-based command format that early versions of the BMaC firmware used to use. We could also receive this information via an MQTT topic, or by actively querying the command and control server. </p>
+<p>Note that to change the pin used by the sensor one would have to restart the sensor by deleting the class instance and creating a new instance.</p>
+<pre> void DHTModule::readDHT() {<br/>    TempAndHumidity th;<br/>    th = dht-&gt;getTempAndHumidity();<br/><br/>    OtaCore::publish("nsa/temperature", OtaCore::getLocation() + ";" + th.temperature);<br/>    OtaCore::publish("nsa/humidity", OtaCore::getLocation() + ";" + th.humidity);<br/> }</pre>
+<p>Next, for the <kbd>BME280</kbd> sensor module, its code looks like this:</p>
+<pre>#include "ota_core.h"<br/><br/> #include &lt;Libraries/BME280/BME280.h&gt;<br/><br/><br/> class BME280Module {<br/>    static BME280* bme280;<br/>    static Timer timer;<br/><br/> public:<br/>    static bool init();<br/>    static bool shutdown();<br/>    static void config(String cmd);<br/>    static void readSensor();<br/> };</pre>
+<p>Finally, it's familiar-looking implementation:</p>
+<pre>#include "bme280_module.h"<br/><br/> BME280* BME280Module::bme280 = 0;<br/> Timer BME280Module::timer;<br/><br/><br/> bool BME280Module::init() {<br/>    if (!OtaCore::starti2c()) { return false; }<br/>    if (!bme280) { bme280 = new BME280(); }<br/><br/>    if (bme280-&gt;EnsureConnected()) {<br/>          OtaCore::log(LOG_INFO, "Connected to BME280 sensor.");<br/>          bme280-&gt;SoftReset();<br/>          bme280-&gt;Initialize();<br/>    }<br/>    else {<br/>          OtaCore::log(LOG_ERROR, "Not connected to BME280 sensor.");<br/>          return false;<br/>    }<br/><br/>    timer.initializeMs(2000, BME280Module::readSensor).start();<br/><br/>    return true;<br/> }<br/><br/><br/> bool BME280Module::shutdown() {<br/>    timer.stop();<br/>    delete bme280;<br/>    bme280 = 0;<br/><br/>    return true;<br/> }<br/><br/><br/> void BME280Module::config(String cmd) {<br/>    Vector&lt;String&gt; output;<br/>    int numToken = splitString(cmd, '=', output);<br/>    if (output[0] == "set_pin" &amp;&amp; numToken &gt; 1) {<br/>          //<br/>    }<br/> }<br/><br/><br/> void BME280Module::readSensor() {<br/>    float t, h, p;<br/>    if (bme280-&gt;IsConnected) {<br/>          t = bme280-&gt;GetTemperature();<br/>          h = bme280-&gt;GetHumidity();<br/>          p = bme280-&gt;GetPressure<br/>          OtaCore::publish("nsa/temperature", OtaCore::getLocation() + ";" + t);<br/>          OtaCore::publish("nsa/humidity", OtaCore::getLocation() + ";" + h);<br/>          OtaCore::publish("nsa/pressure", OtaCore::getLocation() + ";" + p);<br/>    }<br/>    else {<br/>          OtaCore::log(LOG_ERROR, "Disconnected from BME280 sensor.");<br/>    }<br/> }<br/><br/></pre>
+<p>As we can see, this module was basically copied from the DHT one, and then modified to fit the BME280 sensor. The similarities between those two modules was one of the motivations behind developing the THP module, in order to exploit these similarities.</p>
+<p>As with the DHT module, we can see that we rely on an external library to do the heavy lifting for us, with us merely having to call the functions on the library class to set up the sensor and get the data from it.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">CO2 module</h1>
+                </header>
+            
+            <article>
+                
+<p>For the CO<sub>2</sub> module, no attempt has been made yet to make it work with multiple types of CO<sub>2</sub> sensors. The first CO<sub>2</sub> sensor used was the MH-Z14, before it &lt;indexentry content="modules, Building Management and Control (BMaC):CO<sub>2</sub> module"&gt;switched to the more compact MH-Z19 sensor. Both of these use the same protocol on their <strong>universal asynchronous receiver/transmitter</strong> (<strong>UART</strong>) interface, however.</p>
+<p>On the ESP8266 there are two UARTs, though only one is complete, with a receive (RX) and send (TX) line. The second UART only has a TX line. This essentially limits this MCU to a single UART and thus single UART-based sensor.</p>
+<p>These sensors also have a single-wire interface in addition to the UART-based interface, where the sensor outputs the current sensor reading using a specific encoding that has to be received and decoded using the specific distance between pulses on that signal wire. This is similar to the DHT-22's single-wire protocol.</p>
+<p>Using the UART is obviously significantly easier, and it's what we ended up using with this module:</p>
+<pre>#include "base_module.h"<br/><br/> class CO<sub>2</sub>Module {<br/>    static Timer timer;<br/>    static uint8_t readCmd[9];<br/>    static uint8 eventLevel;<br/>    static uint8 eventCountDown;<br/>    static uint8 eventCountUp;<br/><br/>    static void onSerialReceived(Stream &amp;stream, char arrivedChar, unsigned short availableCharsCount);<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void readCO<sub>2</sub>();<br/>    static void config(String cmd);<br/> };</pre>
+<p>We can see here the callback function that will be used with the UART when we receive data. We also have a few other variables whose meaning will &lt;indexentry content="modules, Building Management and Control (BMaC):CO<sub>2</sub> module"&gt;become clear in a moment:</p>
+<pre>#include "CO<sub>2</sub>_module.h"<br/><br/> Timer CO<sub>2</sub>Module::timer;<br/> uint8_t CO<sub>2</sub>Module::readCmd[9] = { 0xFF,0x01,0x86,0x00,0x00,0x00,0x00,0x00,0x79};<br/> uint8 CO<sub>2</sub>Module::eventLevel = 0;<br/> uint8 CO<sub>2</sub>Module::eventCountDown = 10;<br/> uint8 CO<sub>2</sub>Module::eventCountUp = 0;<br/><br/></pre>
+<p>In the static initializations, we define the command that we will be sending to the CO<sub>2</sub> sensor, which will tell it to send us its currently measured value. We define a number of counters and the related timer instance, which we will be using to analyze the CO<sub>2</sub> levels we receive.</p>
+<pre>bool CO<sub>2</sub>Module::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_CO<sub>2</sub>, CO<sub>2</sub>Module::start, CO<sub>2</sub>Module::shutdown);<br/>    return true;<br/> }<br/><br/><br/> bool CO<sub>2</sub>Module::start() {<br/>    if (!OtaCore::claimPin(ESP8266_gpio03)) { return false; }<br/>    if (!OtaCore::claimPin(ESP8266_gpio01)) { return false; }<br/><br/>    Serial.end();<br/>    delay(10);<br/>    Serial.begin(9600);<br/>    Serial.setCallback(&amp;CO<sub>2</sub>Module::onSerialReceived);<br/><br/>    timer.initializeMs(30000, CO<sub>2</sub>Module::readCO<sub>2</sub>).start();<br/>    return true;<br/> }</pre>
+<p>Starting this module triggers the registering of the pins, which we need for the UART, with the UART started at a baud rate of 9,600. Our receive callback is also registered. The pin registration routine in the core class is meant for housekeeping and therefore cannot really fail. In case of an overlapping pin mapping with another module, we might want to release the first pin registration if the second registration fails.</p>
+<p>The GPIO pins used by the serial interface are set in the same core class and would have to be modified there. The main reason behind this lack of configurability is that the GPIO pins on the ESP8266 are fairly limited in what features they support, which is why the hardware UART is basically always found on these two pins, leaving the other pins for other functionality.</p>
+<p>The timer we start will read out the sensor every 30 seconds, keeping in mind that the first 3 minutes of sensor readings are useless as the sensor takes &lt;indexentry content="modules, Building Management and Control (BMaC):CO<sub>2</sub> module"&gt;about that long to warm up.</p>
+<pre>bool CO<sub>2</sub>Module::shutdown() {<br/>    if (!OtaCore::releasePin(ESP8266_gpio03)) { return false; }<br/>    if (!OtaCore::releasePin(ESP8266_gpio01)) { return false; }<br/><br/>    timer.stop();<br/>    Serial.end();<br/>    return true;<br/> }<br/><br/><br/> void CO<sub>2</sub>Module::readCO<sub>2</sub>() {<br/>    Serial.write(readCmd, 9);<br/> }</pre>
+<p>Reading out the sensor is as easy as writing the series of bytes we defined during the static initialization phase to the sensor, and waiting for the sensor to respond by sending data back to us into our RX buffer, which will trigger our callback function.</p>
+<pre> void CO<sub>2</sub>Module::config(String cmd) {<br/>    Vector&lt;String&gt; output;<br/>    int numToken = splitString(cmd, '=', output);<br/>    if (output[0] == "event" &amp;&amp; numToken &gt; 1) {<br/>          // <br/>    }<br/> }<br/><br/></pre>
+<p>The configuration method was also left unimplemented here, but could be used to disable events (explained in the next part) and make various adjustments dynamically:</p>
+<pre>void CO<sub>2</sub>Module::onSerialReceived(Stream &amp;stream, char arrivedChar, unsigned short availableCharsCount) {<br/>    if (availableCharsCount &gt;= 9) {<br/>          char buff[9];<br/>          Serial.readBytes(buff, 9);<br/><br/>          int responseHigh = (int) buff[2];<br/>          int responseLow = (int) buff[3];<br/>          int ppm = (responseHigh * 0xFF) + responseLow;<br/>          String response = OtaCore::getLocation() + ";" + ppm;<br/>          OtaCore::publish("nsa/CO<sub>2</sub>", response);<br/><br/>          if (ppm &gt; 1000) { // T3<br/>                if (eventLevel &lt; 2 &amp;&amp; eventCountUp &lt; 10) {<br/>                      if (++eventCountUp == 10) {<br/>                            eventLevel = 2;<br/>                            eventCountDown = 0;<br/>                            eventCountUp = 0;<br/>                            response = OtaCore::getLocation() + ";" + eventLevel + ";1;" + ppm;<br/>                            OtaCore::publish("nsa/events/CO<sub>2</sub>", response);<br/>                      }<br/>                }<br/>          }<br/>          else if (ppm &gt; 850) { // T2<br/>                if (eventLevel == 0 &amp;&amp; eventCountUp &lt; 10) {<br/>                      if (++eventCountUp == 10) {<br/>                            eventLevel = 1;<br/>                            eventCountDown = 0;<br/>                            eventCountUp = 0;<br/>                            response = OtaCore::getLocation() + ";" + eventLevel + ";1;" + ppm;<br/>                            OtaCore::publish("nsa/events/CO<sub>2</sub>", response);<br/>                      }<br/>                }<br/>                else if (eventLevel == 2 &amp;&amp; eventCountDown &lt; 10) {<br/>                      if (++eventCountDown == 10) {<br/>                            eventLevel = 1;<br/>                            eventCountUp = 0;<br/>                            eventCountDown = 0;<br/>                            response = OtaCore::getLocation() + ";" + eventLevel + ";0;" + ppm;<br/>                            OtaCore::publish("nsa/events/CO<sub>2</sub>", response);<br/>                      }<br/>                }<br/>          }<br/>          else if (ppm &lt; 750) { // T1<br/>                if (eventLevel == 1 &amp;&amp; eventCountDown &lt; 10) {<br/>                      if (++eventCountDown == 10) {<br/>                            eventLevel = 0;<br/>                            eventCountDown = 0;<br/>                            eventCountUp = 0;<br/>                            response = OtaCore::getLocation() + ";" + eventLevel + ";0;" + ppm;<br/>                            OtaCore::publish("nsa/events/CO<sub>2</sub>", response);<br/>                      }<br/>                }<br/>          }<br/>    }<br/> }</pre>
+<p class="mce-root"/>
+<p>In the callback, we get the characters as they come in on the RX line. We wait until we have nine characters waiting for us in the RX buffer, which is the &lt;indexentry content="modules, Building Management and Control (BMaC):CO<sub>2</sub> module"&gt;number of bytes we are expecting to receive from the CO<sub>2</sub> sensor. We could also validate the checksum for the received data, for which the MH-Z19 datasheet gives the following C code:</p>
+<pre>char getCheckSum(char* packet) { <br/>    char i, checksum; <br/>    for ( i = 1; i &lt; 8; i++) { <br/>        checksum += packet[i]; <br/>    } <br/><br/>    checksum = 0xff – checksum; <br/>    checksum += 1; <br/>    return checksum; <br/>}</pre>
+<p>This routine calculates the checksum for the received data as a single byte, which we can then compare with the value contained in the 9th byte of the received data to see whether the values match.</p>
+<p>Returning to our own code, we process the bytes to calculate the<span> <strong>parts per million</strong></span> (<strong>PPM</strong>) of the CO<sub>2</sub> molecules the sensor detected. This value is immediately published to its respective MQTT topic.</p>
+<p>After this, we compare the new PPM value to see whether we have crossed any of the three preset trigger levels, the first one of which indicates a safe CO<sub>2 </sub>level, the second an elevated CO<sub>2 </sub>level, and the third a very high CO<sub>2</sub> level that requires attention. When we exceed or return to a lower trigger level, an event is published for this on the MQTT topic.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Jura</h1>
+                </header>
+            
+            <article>
+                
+<p>This is another module which uses the UART. It was used with a number of Jura coffee machines, which used the common TopTronics electronics used by other coffee machine manufacturers as well. To enable reading out these coffee machines, an ESP8266 module was integrated into a small, plastic enclosure which just had a serial connector on one side. This connected with a standard nine-pin serial cable to the so-called service port on the back of the machine.</p>
+<p>The serial port on the machine provided 5V when it was powered on, which thus also turned on the ESP8266 node when the coffee machine was on. The plastic enclosure could then be hidden away behind the machine.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>The module for this feature looks like this:</p>
+<pre>#include "base_module.h"<br/><br/> class JuraModule {<br/>    static String mqttTxBuffer;<br/>    static Timer timer;<br/><br/>    static bool toCoffeemaker(String cmd);<br/>    static void readStatistics();<br/>    static void onSerialReceived(Stream &amp;stream, char arrivedChar, unsigned short availableCharsCount);<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/> };</pre>
+<p>The only really noticeable thing about this class declaration is the method name involving a coffee maker. We'll see in a second what it does:</p>
+<pre>#include "jura_module.h"<br/> #include &lt;stdlib.h&gt;<br/> Timer JuraModule::timer;<br/> String JuraModule::mqttTxBuffer;<br/> bool JuraModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_JURA, JuraModule::start, JuraModule::shutdown);<br/> }<br/> bool JuraModule::start() {<br/>    if (!OtaCore::claimPin(ESP8266_gpio03)) { return false; }<br/>    if (!OtaCore::claimPin(ESP8266_gpio01)) { return false; }<br/>    Serial.end();<br/>    delay(10);<br/>    Serial.begin(9600);<br/>    Serial.setCallback(&amp;JuraModule::onSerialReceived);<br/>    timer.initializeMs(60000, JuraModule::readStatistics).start();<br/>    return true;<br/> }</pre>
+<p>As is common, the coffee machine's UART runs at 9,600 baud. We set the serial callback method, and start a timer for reading out the EEPROM's product counters. Since we are talking about a coffee machine, reading out the counters more than once a minute is somewhat silly:</p>
+<pre>bool JuraModule::shutdown() {<br/>    if (!OtaCore::releasePin(ESP8266_gpio03)) { return false; } // RX 0<br/>    if (!OtaCore::releasePin(ESP8266_gpio01)) { return false; } // TX 0<br/>    timer.stop();<br/>    Serial.end();<br/>    return true;<br/> }<br/> void JuraModule::readStatistics() {<br/>    String message = "RT:0000";<br/>    JuraModule::toCoffeemaker(message);<br/> }</pre>
+<p>To read out the EEPROM's counters, we need to send the command for this to the machine's UART. This command will tell it to send us the contents of the first row in the EEPROM. Unfortunately, the machine's protocol doesn't use plain text, but requires a bit of special encoding, which we do in the next method:</p>
+<pre>bool JuraModule::toCoffeemaker(String cmd) {<br/>    OtaCore::log(LOG_DEBUG, "Sending command: " + cmd);<br/>    cmd += "\r\n";<br/>    for (int i = 0; i &lt; cmd.length(); ++i) {<br/>          uint8_t ch = static_cast&lt;uint8_t&gt;(cmd[i]);<br/>          uint8_t d0 = 0xFF;<br/>          uint8_t d1 = 0xFF;<br/>          uint8_t d2 = 0xFF;<br/>          uint8_t d3 = 0xFF;<br/>          bitWrite(d0, 2, bitRead(ch, 0));<br/>          bitWrite(d0, 5, bitRead(ch, 1));<br/>          bitWrite(d1, 2, bitRead(ch, 2));<br/>          bitWrite(d1, 5, bitRead(ch, 3));<br/>          bitWrite(d2, 2, bitRead(ch, 4));<br/>          bitWrite(d2, 5, bitRead(ch, 5));<br/>          bitWrite(d3, 2, bitRead(ch, 6)); <br/>          bitWrite(d3, 5, bitRead(ch, 7));<br/>          delay(1); <br/>          Serial.write(d0);<br/>          delay(1); <br/>          Serial.write(d1);<br/>          delay(1); <br/>          Serial.write(d2);<br/>          delay(1); <br/>          Serial.write(d3);<br/>          delay(7);<br/>    }     <br/>    return true;<br/> }</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>This method takes in a string, appending the required EOL characters and encoding each byte into four bytes, putting the data bits into each new byte's second and fifth bit, the rest of the bits all being a 1. These four bytes are then sent to the machine's UART with a small delay between each write to ensure correct reception:</p>
+<pre>void JuraModule::onSerialReceived(Stream &amp;stream, char arrivedChar, <br/>unsigned short availableCharsCount) {<br/><br/>    OtaCore::log(LOG_DEBUG, "Receiving UART 0.");<br/>    while(stream.available()){<br/><br/>        delay(1);<br/>        uint8_t d0 = stream.read();<br/>        delay(1);<br/>        uint8_t d1 = stream.read();<br/>        delay(1);<br/>        uint8_t d2 = stream.read();<br/>        delay(1);<br/>        uint8_t d3 = stream.read();<br/>        delay(7);<br/><br/>        uint8_t d4;<br/>        bitWrite(d4, 0, bitRead(d0, 2));<br/>        bitWrite(d4, 1, bitRead(d0, 5));<br/>        bitWrite(d4, 2, bitRead(d1, 2));<br/>        bitWrite(d4, 3, bitRead(d1, 5));<br/>        bitWrite(d4, 4, bitRead(d2, 2));<br/>        bitWrite(d4, 5, bitRead(d2, 5));<br/>        bitWrite(d4, 6, bitRead(d3, 2));<br/>        bitWrite(d4, 7, bitRead(d3, 5));<br/>        OtaCore::log(LOG_TRACE, String(d4));<br/>        mqttTxBuffer += (char) d4;<br/><br/>        if ('\n' == (char) d4) {<br/>            long int espressoCount = strtol(mqttTxBuffer.substring(3, <br/>            7).c_str(), 0, 16);<br/>            long int espresso2Count = strtol(mqttTxBuffer.substring(7, <br/>            11).c_str(), 0, 16);<br/>            long int coffeeCount = strtol(mqttTxBuffer.substring(11, <br/>            15).c_str(), 0, 16);<br/>            long int coffee2Count = strtol(mqttTxBuffer.substring(15, <br/>            19).c_str(), 0, 16);<br/>            OtaCore::publish("nsa/espresso", OtaCore::getLocation() + <br/>            ";" + espressoCount);<br/>            OtaCore::publish("nsa/espresso2", OtaCore::getLocation() + <br/>            ";" + espresso2Count);<br/>            OtaCore::publish("nsa/coffee", OtaCore::getLocation() + ";" <br/>            + coffeeCount);<br/>            OtaCore::publish("nsa/coffee2", OtaCore::getLocation() + <br/>            ";" + coffee2Count);<br/>            mqttTxBuffer = "";<br/>          }<br/>    }<br/> }</pre>
+<p>In the serial receive callback, we decode each byte we receive using the same process we used to encode the data we sent to the machine, buffering the decoded bytes until we detect the end of the response (linefeed, LF) character. We then read out the 16-bit counters, which we then publish on the MQTT topic for them.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">JuraTerm</h1>
+                </header>
+            
+            <article>
+                
+<p>The JuraTerm module is similar to the Jura one, but it accepts remote commands, encodes them in the same way as the Jura module, and returns the decoded response. In the project it used to be the Jura class until it got superseded by the new Jura class and this one was delegated to just a terminal class. In a future revision this module's functionality will therefore be merged into the main Jura class.</p>
+<pre>#include "base_module.h" 
+ 
+class JuraTermModule {<br/>    static String mqttTxBuffer;<br/><br/>    static bool toCoffeemaker(String cmd);<br/>    static void onSerialReceived(Stream &amp;stream, char arrivedChar, unsigned short availableCharsCount);<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void commandCallback(String message);<br/> };#include "juraterm_module.h"<br/><br/> String JuraTermModule::mqttTxBuffer;<br/><br/> bool JuraTermModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_JURATERM, JuraTermModule::start, JuraTermModule::shutdown);<br/> }<br/><br/><br/> bool JuraTermModule::start() {<br/>    if (!OtaCore::claimPin(ESP8266_gpio03)) { return false; } // RX 0<br/>    if (!OtaCore::claimPin(ESP8266_gpio01)) { return false; } // TX 0<br/><br/>    OtaCore::registerTopic("coffee/command/" + OtaCore::getLocation(), <br/>                            JuraTermModule::commandCallback); <br/>    Serial.end();<br/>    delay(10);<br/>    Serial.begin(9600);<br/>    Serial.setCallback(&amp;JuraTermModule::onSerialReceived);<br/><br/>    return true;<br/> }<br/><br/><br/> bool JuraTermModule::shutdown() {<br/>    if (!OtaCore::releasePin(ESP8266_gpio03)) { return false; } // RX 0<br/>    if (!OtaCore::releasePin(ESP8266_gpio01)) { return false; } // TX 0<br/><br/>    Serial.end();<br/>    OtaCore::deregisterTopic("coffee/command/" + OtaCore::getLocation());<br/>    return true;<br/> }<br/><br/><br/> void JuraTermModule::commandCallback(String message) {<br/>    if (message == "AN:0A") { return; }<br/><br/>    JuraTermModule::toCoffeemaker(message);<br/> }</pre>
+<p>When we start this module, we register an MQTT topic to receive commands. This allows us to receive the coffee machine commands. We basically act as a straight pass-through for these commands, except for this one particular command. This command that we filter out would erase the machine's EEPROM, which is something which we are unlikely to want.</p>
+<p>Again, we use the same method to encode the command:</p>
+<pre> bool JuraTermModule::toCoffeemaker(String cmd) {<br/>    OtaCore::log(LOG_DEBUG, "Sending command: " + cmd);<br/><br/>    cmd += "\r\n";<br/><br/>    for (int i = 0; i &lt; cmd.length(); ++i) {<br/>          uint8_t ch = static_cast&lt;uint8_t&gt;(cmd[i]);<br/>          uint8_t d0 = 0xFF;<br/>          uint8_t d1 = 0xFF;<br/>          uint8_t d2 = 0xFF;<br/>          uint8_t d3 = 0xFF;<br/><br/>          bitWrite(d0, 2, bitRead(ch, 0));<br/>          bitWrite(d0, 5, bitRead(ch, 1));<br/>          bitWrite(d1, 2, bitRead(ch, 2));<br/>          bitWrite(d1, 5, bitRead(ch, 3));<br/>          bitWrite(d2, 2, bitRead(ch, 4));<br/>          bitWrite(d2, 5, bitRead(ch, 5));<br/>          bitWrite(d3, 2, bitRead(ch, 6)); <br/>          bitWrite(d3, 5, bitRead(ch, 7));<br/><br/>          delay(1); <br/>          Serial.write(d0);<br/>          delay(1); <br/>          Serial.write(d1);<br/>          delay(1); <br/>          Serial.write(d2);<br/>          delay(1); <br/>          Serial.write(d3);<br/>          delay(7);<br/>    }     <br/><br/>    return true;<br/> }<br/><br/><br/> void JuraTermModule::onSerialReceived(Stream &amp;stream, char arrivedChar, unsigned short availableCharsCount) {<br/>    OtaCore::log(LOG_DEBUG, "Receiving UART 0.");<br/><br/>    while(stream.available()){<br/>          delay(1);<br/>          uint8_t d0 = stream.read();<br/>          delay(1);<br/>          uint8_t d1 = stream.read();<br/>          delay(1);<br/>          uint8_t d2 = stream.read();<br/>          delay(1);<br/>          uint8_t d3 = stream.read();<br/>          delay(7);<br/><br/>          uint8_t d4;<br/>          bitWrite(d4, 0, bitRead(d0, 2));<br/>          bitWrite(d4, 1, bitRead(d0, 5));<br/>          bitWrite(d4, 2, bitRead(d1, 2));<br/>          bitWrite(d4, 3, bitRead(d1, 5));<br/>          bitWrite(d4, 4, bitRead(d2, 2));<br/>          bitWrite(d4, 5, bitRead(d2, 5));<br/>          bitWrite(d4, 6, bitRead(d3, 2));<br/>          bitWrite(d4, 7, bitRead(d3, 5));<br/><br/>          OtaCore::log(LOG_TRACE, String(d4));<br/><br/>          mqttTxBuffer += (char) d4;<br/>          if ('\n' == (char) d4) {<br/>                OtaCore::publish("coffee/response", OtaCore::getLocation() + ";" + mqttTxBuffer);<br/>                mqttTxBuffer = "";<br/>          }<br/>    }<br/> }</pre>
+<p>Instead of interpreting the data in any way, we merely return the response on its respective MQTT topic.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Motion</h1>
+                </header>
+            
+            <article>
+                
+<p>The motion module is intended to work with <strong>passive infrared</strong> (<strong><span>PIR</span></strong>) sensors. These have onboard logic that determine when a trigger point has been reached, at which point they change an interrupt pin into a high signal. We can use this to determine whether a person is in a room, or is walking through a hallway.</p>
+<p>Its code looks as follows:</p>
+<pre>#include "base_module.h"<br/><br/> #define GPIO_PIN 0<br/><br/> class MotionModule {<br/>    static int pin;<br/>    static Timer timer;<br/>    static Timer warmup;<br/>    static bool motion;<br/>    static bool firstLow;<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void config(String cmd);<br/>    static void warmupSensor();<br/>    static void readSensor();<br/>    static void IRAM_ATTR interruptHandler();<br/> };</pre>
+<p class="mce-root">Of note here is that we explicitly move the interrupt handler method into the MCU's SRAM with the IRAM_ATTR keyword, to prevent any delay when the interrupt gets called.</p>
+<p class="mce-root"/>
+<p>Its implementation is as follows:</p>
+<pre>#include "motion_module.h"<br/>int MotionModule::pin = GPIO_PIN;<br/>Timer MotionModule::timer;<br/>Timer MotionModule::warmup;<br/>bool MotionModule::motion = false;<br/>bool MotionModule::firstLow = true;<br/>bool MotionModule::initialize() {<br/>      BaseModule::registerModule(MOD_IDX_MOTION, MotionModule::start, <br/>      MotionModule::shutdown);<br/>}<br/>bool MotionModule::start() {<br/>    if (!OtaCore::claimPin(ESP8266_gpio00)) { return false; }<br/>    pinMode(pin, INPUT);<br/>    warmup.initializeMs(60000, MotionModule::warmupSensor).start();<br/>   return true;<br/>}</pre>
+<p>A PIR sensor requires warm-up time to stabilize its readings. We give it a minute using the warm-up timer. We also set the mode for the GPIO pin we're using.</p>
+<pre><br/> bool MotionModule::shutdown() {<br/>    if (!OtaCore::releasePin(ESP8266_gpio00)) { return false; } // RX 0<br/><br/>    timer.stop();<br/>    detachInterrupt(pin);<br/><br/>    return true;<br/> }<br/><br/><br/> void MotionModule::config(String cmd) {<br/>    Vector&lt;String&gt; output;<br/>    int numToken = splitString(cmd, '=', output);<br/>    if (output[0] == "set_pin" &amp;&amp; numToken &gt; 1) {<br/>          //<br/>    }<br/> }<br/><br/><br/> void MotionModule::warmupSensor() {<br/>    warmup.stop();<br/>    attachInterrupt(pin, &amp;MotionModule::interruptHandler, CHANGE);<br/><br/>    timer.initializeMs(5000, MotionModule::readSensor).start();<br/> }</pre>
+<p>After the sensor has finished warming up, we stop its timer and attach the interrupt to handle any signals from the sensor. We'll check up on the shared variable with the interrupt routine, to see whether the value has changed, publishing the current value every 5 seconds:</p>
+<pre> void MotionModule::readSensor() {<br/>    if (!motion) {<br/>          if (firstLow) { firstLow = false; }<br/>          else {<br/>                OtaCore::publish("nsa/motion", OtaCore::getLocation() + ";0");<br/>                firstLow = true;<br/>          }<br/>    }<br/>    else if (motion) {<br/>          OtaCore::publish("nsa/motion", OtaCore::getLocation() + ";1");<br/>          firstLow = true;<br/>    }<br/> }</pre>
+<p>When checking the current sensor value, we make it a point to ignore the first time that the sensor reports <kbd>LOW</kbd>. This in order to ensure that we ignore moments when people do not move a lot in the room. The resulting value is then published on the MQTT topic:</p>
+<pre>void IRAM_ATTR MotionModule::interruptHandler() {<br/>    int val = digitalRead(pin);<br/>    if (val == HIGH) { motion = true; }<br/>    else { motion = false; }<br/> }</pre>
+<p>The interrupt handler merely updates the local Boolean value. Because of the relatively long transition times for most processing circuits for PIR sensor there is quite a bit of time (seconds) before the sensor will detect motion again, creating dead zones. Here we keep track of the last registered value.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">PWM</h1>
+                </header>
+            
+            <article>
+                
+<p>The reason why the PWM module was developed was to have a way to generate an analog output voltage using an external RC filter circuit. This was in order to control the fan of the ceiling-mounted air-conditioning units, whose fan controller accepts a voltage of between 0 and 10 volts.</p>
+<p class="mce-root"/>
+<p>An interesting feature of this module is that it has its own binary protocol to allow for remote control, which is how the air-conditioning service can directly control the fan speeds via the ceiling-mounted nodes:</p>
+<pre>#include "base_module.h"<br/><br/> #include &lt;HardwarePWM.h&gt;<br/><br/><br/> class PwmModule {<br/>    static HardwarePWM* hw_pwm;<br/>    static Vector&lt;int&gt; duty;<br/>    static uint8 pinNum;<br/>    static Timer timer;<br/>    static uint8* pins;<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void commandCallback(String message);<br/> };</pre>
+<p>The implementation is as follows:</p>
+<pre>#include "pwm_module.h"<br/><br/> HardwarePWM* PwmModule::hw_pwm = 0;<br/> uint8 PwmModule::pinNum = 0;<br/> Timer PwmModule::timer;<br/> uint8* PwmModule::pins = 0;<br/><br/><br/> enum {<br/>    PWM_START = 0x01,<br/>    PWM_STOP = 0x02,<br/>    PWM_SET_DUTY = 0x04,<br/>    PWM_DUTY = 0x08,<br/>    PWM_ACTIVE = 0x10<br/> };</pre>
+<p>We define the commands that will be available with the PWM module here as an enumeration:</p>
+<pre><br/> bool PwmModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_PWM, PwmModule::start, PwmModule::shutdown);<br/> }<br/><br/><br/> bool PwmModule::start() {<br/>    OtaCore::registerTopic(MQTT_PREFIX + String("pwm/") + OtaCore::getLocation(), PwmModule::commandCallback);<br/><br/>    return true;<br/> }<br/><br/><br/> bool PwmModule::shutdown() {<br/>    OtaCore::deregisterTopic(MQTT_PREFIX + String("pwm/") + OtaCore::getLocation());<br/><br/>    if (hw_pwm) {<br/>          delete hw_pwm;<br/>          hw_pwm = 0;<br/>    }<br/><br/>    return true;<br/> }</pre>
+<p>When we start this module, we register the MQTT topic on which the module will be able to receive commands. When shutting down, we deregister this topic again. We use the <kbd>HardwarePWM</kbd> class from Sming to enable PWM on individual pins.</p>
+<p>The rest of the module is simply the command processor:</p>
+<pre><br/> void PwmModule::commandCallback(String message) {<br/>    OtaCore::log(LOG_DEBUG, "PWM command: " + message);<br/>    if (message.length() &lt; 1) { return; }<br/>    int index = 0;<br/>    uint8 cmd = *((uint8*) &amp;message[index++]);<br/><br/>    if (cmd == PWM_START) {<br/>          if (message.length() &lt; 2) { return; }<br/>          uint8 num = *((uint8*) &amp;message[index++]);<br/><br/>          OtaCore::log(LOG_DEBUG, "Pins to add: " + String(num));<br/><br/>          if (message.length() != (2 + num)) { return; }<br/><br/>          pins = new uint8[num];<br/>          for (int i = 0; i &lt; num; ++i) {<br/>                pins[i] = *((uint8*) &amp;message[index++]);<br/>                if (!OtaCore::claimPin(pins[i])) {<br/>                      OtaCore::log(LOG_ERROR, "Pin is already in use: " + String(pins[i]));<br/><br/>                      OtaCore::publish("pwm/response", OtaCore::getLocation() + ";0", 1);<br/><br/>                      return; <br/>                }<br/><br/>                OtaCore::log(LOG_INFO, "Adding GPIO pin " + String(pins[i]));<br/>          }<br/><br/>          hw_pwm = new HardwarePWM(pins, num);<br/>          pinNum = num;<br/><br/>          OtaCore::log(LOG_INFO, "Added pins to PWM: " + String(pinNum));<br/><br/>          OtaCore::publish("pwm/response", OtaCore::getLocation() + ";1", 1);<br/>    }<br/>    else if (cmd == PWM_STOP) {<br/>          delete hw_pwm;<br/>          hw_pwm = 0;<br/><br/>          for (int i = 0; i &lt; pinNum; ++i) {<br/>                if (!OtaCore::releasePin(pins[i])) {<br/>                      OtaCore::log(LOG_ERROR, "Pin cannot be released: " + String(pins[i]));<br/><br/>                      OtaCore::publish("pwm/response", OtaCore::getLocation() + ";0", 1);<br/><br/>                      return; <br/>                }<br/><br/>                OtaCore::log(LOG_INFO, "Removing GPIO pin " + String(pins[i]));<br/>          }<br/><br/>          delete[] pins;<br/>          pins = 0;<br/><br/>          OtaCore::publish("pwm/response", OtaCore::getLocation() + ";1");<br/>    }<br/>    else if (cmd == PWM_SET_DUTY) {<br/>          if (message.length() &lt; 3) { return; }<br/><br/>          uint8 pin = *((uint8*) &amp;message[index++]);<br/>          uint8 duty = *((uint8*) &amp;message[index++]);<br/>          bool ret = hw_pwm-&gt;setDuty(pin, ((uint32) 222.22 * duty));<br/>          if (!ret) {<br/>                OtaCore::publish("pwm/response", OtaCore::getLocation() + ";0");<br/><br/>                return;<br/>          }<br/><br/>          OtaCore::publish("pwm/response", OtaCore::getLocation() + ";1");<br/>    }<br/>    else if (cmd == PWM_DUTY) {<br/>          if (message.length() &lt; 2) { return; }<br/><br/>          uint8 pin = *((uint8*) &amp;message[index++]);<br/>          uint32 duty = hw_pwm-&gt;getDuty(pin);<br/><br/>          uint8 dutyp = (duty / 222.22) + 1;<br/>          String res = "";<br/>          res += (char) pin;<br/>          res += (char) dutyp;<br/>          OtaCore::publish("pwm/response", OtaCore::getLocation() + ";" + res);<br/>    }<br/>    else if (cmd == PWM_ACTIVE) {<br/>          String res;<br/>          if (pins &amp;&amp; pinNum &gt; 0) {<br/>                res = String((char*) pins, pinNum);<br/>          }<br/><br/>          OtaCore::publish("pwm/response", OtaCore::getLocation() + ";" + res);<br/>    }<br/> }</pre>
+<p>The protocol implemented by the preceding method is the following:</p>
+<table border="1" style="width: 100%;border-collapse: collapse">
+<tbody>
+<tr>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Command</strong></p>
+</td>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Meaning</strong></p>
+</td>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Payload</strong></p>
+</td>
+<td>
+<p class="CDPAlignCenter CDPAlign"><strong>Return value</strong></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x01</p>
+</td>
+<td>
+<p>Start the module</p>
+</td>
+<td>
+<p>uint8 (number of pins)</p>
+<p>uint8* (one byte per pin number)</p>
+</td>
+<td>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x02</p>
+</td>
+<td>
+<p>Stop the module</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x04</p>
+</td>
+<td>
+<p>Set the PWM duty level</p>
+</td>
+<td>
+<p>uint8 (pin number)</p>
+<p>uint8 (duty cycle, 0 - 100)</p>
+</td>
+<td>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x08</p>
+</td>
+<td>
+<p>Get the PWM duty level</p>
+</td>
+<td>
+<p>uint8 (pin number).</p>
+</td>
+<td>
+<p>uint8 (duty level)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x10</p>
+</td>
+<td>
+<p>Returns the active pins</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>uint8* (one pin number per byte)</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>For each command, we parse the string of bytes we receive, checking the number of bytes to see whether we get the expected number, and then interpreting them as commands and their payload. We either return a 0 (failure) or a 1 (success), or a payload with the desired information.</p>
+<p>One obvious addition that could be made here would be to add some kind of checksum to the received command, along with sanity checks on the received data. While code like this will work great in a secure environment with encrypted MQTT links and a reliable network connection, other environments may be less forgiving, with corrupted data and false data being injected.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">I/O</h1>
+                </header>
+            
+            <article>
+                
+<p>Sometimes all we need is just a lot of GPIO pins that connect to things like relays, so that we can turn heating valves on or off. This was the reason behind this module. The nodes that were being installed on the ceiling had not just an I2C bus being used for the environmental sensors, but also the UART for CO<sub>2</sub> measurements and four pins for PWM output.</p>
+<p>As more GPIO was needed to turn the relays that controlled the valves on the water lines to the air-conditioning units on or off, a dedicated GPIO expander chip was added to the I2C bus to provide eight more GPIO pins.</p>
+<p>This module allows for an external service like the air-conditioning service to directly set these new GPIO pins as high or low:</p>
+<pre>#include "base_module.h"<br/><br/> #include &lt;Libraries/MCP23008/MCP23008.h&gt;<br/><br/> class IOModule {<br/>    static MCP23008* mcp;<br/>    static uint8 iodir;<br/>    static uint8 gppu;<br/>    static uint8 gpio;<br/>    static String publishTopic;<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void commandCallback(String message);<br/> };</pre>
+<p>This class wraps the MCP23008 I/O expander device, keeping a local copy of its direction, pull-up, and GPIO state registers for easy updating and control:</p>
+<pre>#include "io_module.h"<br/><br/> #include &lt;Wire.h&gt;<br/><br/> MCP23008* IOModule::mcp = 0;<br/> uint8 IOModule::iodir;     <br/> uint8 IOModule::gppu;<br/> uint8 IOModule::gpio;      <br/> String IOModule::publishTopic;</pre>
+<p>We keep a local copy of three registers on the I2C GPIO expander device—the I/O direction (<kbd>iodir</kbd>), pull-up register (<kbd>gppu</kbd>), and the pin I/O level (<kbd>gpio</kbd>):</p>
+<pre><br/><br/> enum {<br/>    IO_START = 0x01,<br/>    IO_STOP = 0x02,<br/>    IO_STATE = 0x04,<br/>    IO_SET_MODE = 0x08,<br/>    IO_SET_PULLUP = 0x10,<br/>    IO_WRITE = 0x20,<br/>    IO_READ = 0x40,<br/>    IO_ACTIVE = 0x80<br/> };<br/><br/><br/> enum {<br/>    MCP_OUTPUT = 0,<br/>    MCP_INPUT = 1<br/> };</pre>
+<p>We again define a number of commands in the form of an enumeration, along with one for the pin direction of the GPIO expander:</p>
+<pre>bool IOModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_IO, IOModule::start, IOModule::shutdown);<br/> }<br/><br/><br/> bool IOModule::start() {   <br/>    publishTopic = "io/response/" + OtaCore::getLocation();<br/>    OtaCore::registerTopic("io/" + OtaCore::getLocation(), IOModule::commandCallback);<br/><br/>    OtaCore::starti2c();<br/> }<br/><br/><br/> bool IOModule::shutdown() {<br/>    OtaCore::deregisterTopic("io/" + OtaCore::getLocation());<br/>    if (mcp) {<br/>          delete mcp;<br/>          mcp = 0;<br/>    }<br/> }</pre>
+<p>Initializing and starting the module is similar to the PWM module, with us registering an MQTT topic to receive commands on. The difference here is that since we are using an I2C device, we have to make sure that the I2C functionality has been started already.</p>
+<p>Next, we address the command-processing method:</p>
+<pre>void IOModule::commandCallback(String message) {<br/>    OtaCore::log(LOG_DEBUG, "I/O command: " + message);<br/>    uint32 mlen = message.length();<br/>    if (mlen &lt; 1) { return; }<br/>    int index = 0;<br/>    uint8 cmd = *((uint8*) &amp;message[index++]);<br/>    if (cmd == IO_START) {<br/>        if (mlen &gt; 2) {<br/>            OtaCore::log(LOG_INFO, "Enabling I/O Module failed: too <br/>            many parameters.");<br/>            OtaCore::publish(publishTopic, OtaCore::getLocation() + <br/>            ";" + (char) 0x01 + (char) 0x00);<br/>            return; <br/>        }<br/>        // Read out the desired address, or use the default.<br/>        uint8 addr = 0;<br/>        if (mlen == 2) {<br/>            addr = *((uint8*) &amp;message[index++]);<br/>            if (addr &gt; 7) {                     <br/>            // Report failure. QoS 1.<br/>            OtaCore::log(LOG_INFO, "Enabling I/O Module failed: invalid <br/>            i2c address.");<br/>            OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" <br/>            + (char) 0x01 + (char) 0x00);<br/>            return;<br/>        }<br/>    }<br/>    if (!mcp) {<br/>        mcp = new MCP23008(0x40);<br/>    }           <br/>    // Set all pins to output (0) and low (0)<br/>    mcp-&gt;writeIODIR(0x00);<br/>    mcp-&gt;writeGPIO(0x00);<br/>    // Read in current chip values.<br/>    iodir = mcp-&gt;readIODIR();<br/>    gppu = mcp-&gt;readGPPU();<br/>    gpio = mcp-&gt;readGPIO();<br/>    // Validate IODIR and GPIO registers.<br/>    if (iodir != 0 || gpio != 0) {<br/>        delete mcp;<br/>        mcp = 0;<br/>        OtaCore::log(LOG_INFO, "Enabling I/O Module failed: not <br/>        connected.");<br/>         OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" +<br/>         (char) 0x01 + (char) 0x00);<br/>         return;<br/>    }<br/>    OtaCore::log(LOG_INFO, "Enabled I/O Module.");<br/>    OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" +                                                                        <br/>    (char) 0x01 + (char) 0x01);<br/>}<br/>    else if (cmd == IO_STOP) {<br/>        if (mlen &gt; 1) {<br/>            OtaCore::log(LOG_INFO, "Disabling I/O Module failed: too <br/>            many parameters.");<br/>            OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" <br/>            + (char) 0x02 + (char) 0x00);<br/>            return; <br/>        }<br/>        if (mcp) {<br/>            delete mcp;<br/>            mcp = 0;<br/>        }<br/>        OtaCore::log(LOG_INFO, "Disabled I/O Module.");<br/>        OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>        (char) 0x02 + (char) 0x01);<br/>    }<br/>    else if (cmd == IO_STATE) {<br/>          if (mlen &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Reading state failed: too many parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x04 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x04 + (char) 0x01 + <br/>                                                                      ((char) iodir) + ((char) gppu) +<br/>                                                                      ((char) gpio));<br/>    }<br/>    else if (cmd == IO_SET_MODE) {<br/>          if (mlen != 3) {<br/>                OtaCore::log(LOG_INFO, "Reading state failed: incorrect number of parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x08 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          uint8 pnum = *((uint8*) &amp;message[index++]);<br/>          uint8 pstate = *((uint8*) &amp;message[index]);<br/>          if (pnum &gt; 7) {<br/>                OtaCore::log(LOG_INFO, "Setting pin mode failed: unknown pin.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x08 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          if (pstate &gt; 1) {<br/>                // Report failure. QoS 1.<br/>                OtaCore::log(LOG_INFO, "Setting pin mode failed: invalid pin mode.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x08 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          // Set new state of IODIR register.<br/>          if (pstate == MCP_INPUT) { iodir |= 1 &lt;&lt; pnum; } <br/>          else { iodir &amp;= ~(1 &lt;&lt; pnum); }<br/><br/>          if (mcp) {<br/>                OtaCore::log(LOG_DEBUG, "Setting pinmode in library...");<br/>                mcp-&gt;writeIODIR(iodir);<br/>          }<br/><br/>          OtaCore::log(LOG_INFO, "Set pin mode for I/O Module.");<br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x08 + (char) 0x01);<br/>    }<br/>    else if (cmd == IO_SET_PULLUP) {          <br/>          if (mlen != 3) {<br/>                OtaCore::log(LOG_INFO, "Reading state failed: incorrect number of parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x10 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          uint8 pnum = *((uint8*) &amp;message[index++]);<br/>          uint8 pstate = *((uint8*) &amp;message[index]);<br/>          if (pnum &gt; 7) {<br/>                OtaCore::log(LOG_INFO, "Setting pull-up failed: unknown pin.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x10 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          if (pstate &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Setting pull-up failed: invalid state.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x10 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          if (pstate == HIGH) { gppu |= 1 &lt;&lt; pnum; } <br/>          else { gppu &amp;= ~(1 &lt;&lt; pnum); }<br/><br/>          if (mcp) {<br/>                OtaCore::log(LOG_DEBUG, "Setting pull-up in library...");<br/>                mcp-&gt;writeGPPU(gppu);<br/>          }<br/><br/>          OtaCore::log(LOG_INFO, "Changed pull-up for I/O Module.");<br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x10 + (char) 0x01);<br/>    }<br/>    else if (cmd == IO_WRITE) {<br/>          if (mlen != 3) {<br/>                OtaCore::log(LOG_INFO, "Writing pin failed: incorrect number of parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x20 + (char) 0x00);<br/>                return; <br/>          }<br/>          // Set the new GPIO pin level.<br/>          uint8 pnum = *((uint8*) &amp;message[index++]);<br/>          uint8 pstate = *((uint8*) &amp;message[index]);<br/>          if (pnum &gt; 7) {<br/>                OtaCore::log(LOG_INFO, "Writing pin failed: unknown pin.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x20 + (char) 0x00);<br/>                return; <br/>          }<br/>          if (pstate &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Writing pin failed: invalid state.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x20 + (char) 0x00);<br/>                return; <br/>          }<br/>          String state = "low";<br/>          if (pstate == HIGH) { gpio |= 1 &lt;&lt; pnum; state = "high"; } <br/>          else { gpio &amp;= ~(1 &lt;&lt; pnum); }<br/><br/>          OtaCore::log(LOG_DEBUG, "Changed GPIO to: " + ((char) gpio));<br/><br/>          if (mcp) {<br/>                OtaCore::log(LOG_DEBUG, "Setting state to " + state + <br/>                                        " in library for pin " + ((char) pnum));<br/>                mcp-&gt;writeGPIO(gpio);<br/>          }<br/><br/>          OtaCore::log(LOG_INFO, "Wrote pin state for I/O Module.");<br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x20 + (char) 0x01);<br/>    }<br/><br/>    else if (cmd == IO_READ) {<br/><br/>          if (mlen &gt; 2) {<br/>                OtaCore::log(LOG_INFO, "Reading pin failed: too many <br/>                parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation()<br/>                                                                     (char) 0x40 + (char) 0x00);<br/>                return; <br/>          }<br/>          // Read the GPIO pin status and return it.<br/>          uint8 pnum = *((uint8*) &amp;message[index]);<br/><br/>        if (pnum &gt; 7) {<br/>            OtaCore::log(LOG_INFO, "Reading pin failed: unknown pin.");<br/>            OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" <br/>            + (char) 0x40 + (char) 0x00);<br/>        }<br/>          uint8 pstate;<br/><br/>        if (mcp) {<br/>            OtaCore::log(LOG_DEBUG, "Reading pin in library...");<br/>            pstate = (mcp-&gt;readGPIO() &gt;&gt; pnum) &amp; 0x1;<br/>        }<br/>        OtaCore::log(LOG_INFO, "Read pin state for I/O Module.");<br/>        OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>        (char) 0x40 + (char) 0x01 + (char) pnum + (char) pstate);<br/>    }<br/><br/>    else if (cmd == IO_ACTIVE) {<br/><br/>        if (mlen &gt; 1) {<br/>            OtaCore::log(LOG_INFO, "Reading active status failed: too <br/>            many parameters.");<br/>            OtaCore::publish(publishTopic, OtaCore::getLocation() + <br/>            ";" + (char) 0x80 + (char) 0x00);<br/>            return; <br/>        }<br/>        uint8 active = 0;<br/>        if (mcp) { active = 1; }<br/>        char output[] = { 0x80, 0x01, active };<br/>        OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>        String(output, 3));<br/>    }<br/>}</pre>
+<p class="mce-root"/>
+<p>Its protocol looks as follows:</p>
+<table border="1" style="width: 100%;border-collapse: collapse">
+<tbody>
+<tr>
+<td>
+<p><strong>Command</strong></p>
+</td>
+<td>
+<p><strong>Meaning</strong></p>
+</td>
+<td>
+<p><strong>Payload</strong></p>
+</td>
+<td>
+<p><strong>Return value</strong></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x01</p>
+</td>
+<td>
+<p>Start the module</p>
+</td>
+<td>
+<p>uint8 I2C address offset (0-7, optional)</p>
+</td>
+<td>
+<p>0x01</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x02</p>
+</td>
+<td>
+<p>Stop the module</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x02</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x04</p>
+</td>
+<td>
+<p>Returns I/O mode, pull-up, and level state</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x04</p>
+<p>0x00/0x01 (result)</p>
+<p>uint8 (iodir register)</p>
+<p>uint8 (gppu register)</p>
+<p>uint8 (gpio register)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x08</p>
+</td>
+<td>
+<p>Set a pin to a specific mode (In/Out)</p>
+</td>
+<td>
+<p>uint8 (pin number, 0 - 7)</p>
+<p>uint8 (0: output, 1: input)</p>
+</td>
+<td>
+<p>0x08</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x10</p>
+</td>
+<td>
+<p>Set a pin's pull-up resistor (Low/High)</p>
+</td>
+<td>
+<p>uint8 (pin number, 0 - 7)</p>
+<p>uint8 (pin pull-up state, 0/1)</p>
+</td>
+<td>
+<p>0x10</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x20</p>
+</td>
+<td>
+<p>Set a pin to either Low or High</p>
+</td>
+<td>
+<p>uint8 (pin number, 0-7)</p>
+<p>uint8 (pin state, 0/1)</p>
+</td>
+<td>0x20 0x00/0x01</td>
+</tr>
+<tr>
+<td>
+<p>0x40</p>
+</td>
+<td>
+<p>Read the current pin value (Low, High)</p>
+</td>
+<td>
+<p>uint8 (pin number)</p>
+</td>
+<td>
+<p>0x40 0x00/0x01 uint8 (pin number) uint8 (pin value)</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x80</p>
+</td>
+<td>
+<p>Return whether this module has been initialized</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x80 0x00/0x01 uint8 (module state, 0/1).</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="mce-root"/>
+<p>Similar to the protocol for the PWM module, either a Boolean value is returned to indicate success, or the requested payload is returned. We also return the command that was called in the response.</p>
+<p>The command is a single byte, allowing for a maximum of eight commands since we are using bit flags. This could be extended to 256 commands if we wanted to.</p>
+<p>Possible improvements to this module's code include consolidating duplicated code into (inline) function calls and conceivably the use of a sub-class that would manage the setting and toggling of individual bits with a more higher-level API.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Switch</h1>
+                </header>
+            
+            <article>
+                
+<p>Since each section of the office had its own central switch that would switch the water in the pipes that flowed to the FCUs, this had to be controllable from the backend server as well. Using a latching relay configuration, it was possible to both switch between heating and cooling configurations, as well as have a memory element that could be read out by the node:</p>
+<p>This system was assembled on a single board that was used to replace the original manual switch, using the following module to control it:</p>
+<pre>#include "base_module.h"<br/><br/> class SwitchModule {<br/>    static String publishTopic;<br/><br/> public:<br/>    static bool initialize();<br/>    static bool start();<br/>    static bool shutdown();<br/>    static void commandCallback(String message);<br/> };</pre>
+<p>Its implementation is as follows:</p>
+<pre>#include "switch_module.h"<br/>#include &lt;Wire.h&gt;<br/>#define SW1_SET_PIN 5 <br/>#define SW2_SET_PIN 4 <br/>#define SW1_READ_PIN 14 <br/>#define SW2_READ_PIN 12 <br/>String SwitchModule::publishTopic;<br/>enum {<br/>    SWITCH_ONE = 0x01,//Switch the first connected load on, second off.<br/>    SWITCH_TWO = 0x02,//Switch the second connected load on, first off.<br/>    SWITCH_STATE = 0x04,//Returns position of the switch (0x01/0x02).<br/>};<br/>bool SwitchModule::initialize() {<br/>    BaseModule::registerModule(MOD_IDX_SWITCH, SwitchModule::start, <br/>    SwitchModule::shutdown);<br/>}<br/>bool SwitchModule::start() {<br/>    // Register pins.<br/>    if (!OtaCore::claimPin(ESP8266_gpio05)) { return false; }<br/>    if (!OtaCore::claimPin(ESP8266_gpio04)) { return false; }<br/>    if (!OtaCore::claimPin(ESP8266_gpio14)) { return false; }<br/>    if (!OtaCore::claimPin(ESP8266_gpio12)) { return false; }<br/>    publishTopic = "switch/response/" + OtaCore::getLocation();<br/>    OtaCore::registerTopic("switch/" + OtaCore::getLocation(), <br/>    SwitchModule::commandCallback);<br/>// Set the pull-ups on the input pins and configure the output pins.<br/>    pinMode(SW1_SET_PIN, OUTPUT);<br/>    pinMode(SW2_SET_PIN, OUTPUT);<br/>    pinMode(SW1_READ_PIN, INPUT_PULLUP);<br/>    pinMode(SW2_READ_PIN, INPUT_PULLUP);<br/>    digitalWrite(SW1_SET_PIN, LOW);<br/>    digitalWrite(SW2_SET_PIN, LOW);<br/> }<br/> bool SwitchModule::shutdown() {<br/>    OtaCore::deregisterTopic("switch/" + OtaCore::getLocation());<br/>    // Release the pins.<br/>    if (!OtaCore::releasePin(ESP8266_gpio05)) { return false; }<br/>    if (!OtaCore::releasePin(ESP8266_gpio04)) { return false; }<br/>    if (!OtaCore::releasePin(ESP8266_gpio14)) { return false; }<br/>    if (!OtaCore::releasePin(ESP8266_gpio12)) { return false; }<br/> }<br/><br/><br/> void SwitchModule::commandCallback(String message) {<br/>    // Message is the command.<br/>    OtaCore::log(LOG_DEBUG, "Switch command: " + message);<br/><br/>    uint32 mlen = message.length();<br/>    if (mlen &lt; 1) { return; }<br/>    int index = 0;<br/>    uint8 cmd = *((uint8*) &amp;message[index++]);<br/>    if (cmd == SWITCH_ONE) {<br/>          if (mlen &gt; 1) {<br/>                // Report failure. QoS 1.<br/>                OtaCore::log(LOG_INFO, "Switching to position 1 failed: too many parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x01 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          // Set the relay to its first position (reset condition).<br/>          // This causes pins 3 &amp; 10 on the latching relay to become active.<br/>          digitalWrite(SW1_SET_PIN, HIGH);<br/>          delay(1000); // Wait 1 second for the relay to switch position.<br/>          digitalWrite(SW1_SET_PIN, LOW);<br/><br/>          OtaCore::log(LOG_INFO, "Switched to position 1.");<br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x01 + (char) 0x01);<br/>    }<br/>    else if (cmd == SWITCH_TWO) {<br/>          if (mlen &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Switching to position 2 failed: too many parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x02 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          // Set the relay to its first position (reset condition).<br/>          // This causes pins 3 &amp; 10 on the latching relay to become active.<br/>          digitalWrite(SW2_SET_PIN, HIGH);<br/>          delay(1000); // Wait 1 second for the relay to switch position.<br/>          digitalWrite(SW2_SET_PIN, LOW);<br/><br/>          OtaCore::log(LOG_INFO, "Switched to position 1.");<br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x02 + (char) 0x01);<br/>    }<br/>    else if (cmd == SWITCH_STATE) {<br/>          if (mlen &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Reading state failed: too many parameters.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x04 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          // Check the value of the two input pins. If one is low, then that<br/>          // is the active position.<br/>          uint8 active = 2;<br/>          if (digitalRead(SW1_READ_PIN) == LOW) { active = 0; }<br/>          else if (digitalRead(SW2_READ_PIN) == LOW) { active = 1; }<br/><br/>          if (active &gt; 1) {<br/>                OtaCore::log(LOG_INFO, "Reading state failed: no active state found.");<br/>                OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x04 + (char) 0x00);<br/>                return; <br/>          }<br/><br/>          OtaCore::publish(publishTopic, OtaCore::getLocation() + ";" + <br/>                                                                      (char) 0x04 + (char) 0x01 + <br/>                                                                      (char) active);<br/>    }<br/> }</pre>
+<p>This module is very similar to the PWM and I/O modules, with the registering of an MQTT topic to allow communication using its own binary protocol. Here, the device that is being controlled is fairly simple. It is a latching relay with two sides, one of which is connected to the connections that are being switched between, while the other side is used as a one-bit memory cell.</p>
+<p>As both sides of this type of relay will switch simultaneously, we can count on the side connected to the MCU to match the position of that on the side connected to the rest of the system. Even after a power failure or reset of the MCU, we can simply read out the values of the pins connected to the relay to find out the state of the system.</p>
+<p>The resulting protocol looks like this:</p>
+<table border="1" style="width: 100%;border-collapse: collapse">
+<tbody>
+<tr>
+<td>
+<p><strong>Command</strong></p>
+</td>
+<td>
+<p><strong>Meaning</strong></p>
+</td>
+<td>
+<p><strong>Payload</strong></p>
+</td>
+<td>
+<p><strong>Return value</strong></p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x01</p>
+</td>
+<td>
+<p>Switch to Position 1</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x01</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x02</p>
+</td>
+<td>
+<p>Switch to Position 2</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x02</p>
+<p>0x00/0x01</p>
+</td>
+</tr>
+<tr>
+<td>
+<p>0x04</p>
+</td>
+<td>
+<p>Return the current state</p>
+</td>
+<td>
+<p>-</p>
+</td>
+<td>
+<p>0x04</p>
+<p>0x00/0x01 (result)</p>
+<p>uint8 (active pin 0x00, 0x01)</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Command and control server</h1>
+                </header>
+            
+            <article>
+                
+<p>As alluded to earlier in this chapter, a so-called <strong>command and control</strong> (<strong>C&amp;C</strong>) server is essentially a database containing information on individual nodes and their configuration, for use by the nodes themselves and administration tools like the one in the next section.</p>
+<p>It also includes an HTTP server, for use with HTTP-based <strong>over-the-air</strong> (<strong>OTA</strong>) updates. Since the BMaC system is MQTT-based, this server is also written as an MQTT client:</p>
+<pre>#include "listener.h"  
+#include &lt;iostream&gt; 
+#include &lt;string&gt; 
+ 
+using namespace std; 
+ 
+#include &lt;Poco/Util/IniFileConfiguration.h&gt; 
+#include &lt;Poco/AutoPtr.h&gt; 
+#include &lt;Poco/Net/HTTPServer.h&gt; 
+ 
+using namespace Poco::Util; 
+using namespace Poco; 
+using namespace Poco::Net; 
+ 
+#include "httprequestfactory.h" 
+  
+int main(int argc, char* argv[]) { 
+   cout &lt;&lt; "Starting MQTT BMaC Command &amp; Control server...\n"; 
+    
+   int rc; 
+   mosqpp::lib_init(); 
+    
+   cout &lt;&lt; "Initialised C++ Mosquitto library.\n"; 
+    
+   string configFile; 
+   if (argc &gt; 1) { configFile = argv[1]; } 
+   else { configFile = "config.ini"; } 
+    
+   AutoPtr&lt;IniFileConfiguration&gt; config(new IniFileConfiguration(configFile)); 
+   string mqtt_host = config-&gt;getString("MQTT.host", "localhost"); 
+   int mqtt_port = config-&gt;getInt("MQTT.port", 1883); 
+   string defaultFirmware = config-&gt;getString("Firmware.default", "ota_unified.bin"); 
+    
+   Listener listener("Command_and_Control", mqtt_host, mqtt_port, defaultFirmware); 
+    
+   UInt16 port = config-&gt;getInt("HTTP.port", 8080); 
+   HTTPServerParams* params = new HTTPServerParams; 
+   params-&gt;setMaxQueued(100); 
+   params-&gt;setMaxThreads(10); 
+   HTTPServer httpd(new RequestHandlerFactory, port, params); 
+   httpd.start(); 
+    
+   cout &lt;&lt; "Created listener, entering loop...\n"; 
+    
+   while(1) { 
+         rc = listener.loop(); 
+         if (rc){ 
+               cout &lt;&lt; "Disconnected. Trying to reconnect...\n"; 
+               listener.reconnect(); 
+         } 
+   } 
+    
+   cout &lt;&lt; "Cleanup...\n"; 
+ 
+   mosqpp::lib_cleanup(); 
+ 
+   return 0; 
+} </pre>
+<p class="mce-root"/>
+<p>We're using the Mosquitto C++ MQTT client along with the POCO framework to provide us with the required functionality.</p>
+<p>The <kbd>Listener</kbd> class is next:</p>
+<pre>#include &lt;mosquittopp.h&gt; 
+#include &lt;string&gt; 
+ 
+using namespace std; 
+ 
+#include &lt;Poco/Data/Session.h&gt; 
+#include &lt;Poco/Data/SQLite/Connector.h&gt; 
+ 
+using namespace Poco; 
+ 
+ 
+class Listener : public mosqpp::mosquittopp { 
+   Data::Session* session; 
+   string defaultFirmware; 
+    
+public: 
+   Listener(string clientId, string host, int port, string defaultFirmware); 
+   ~Listener(); 
+    
+   void on_connect(int rc); 
+   void on_message(const struct mosquitto_message* message); 
+   void on_subscribe(int mid, int qos_count, const int* granted_qos); 
+}; </pre>
+<p>We include the headers from POCO for the SQLite database functionality, which forms the database backend for this application. The class itself derives from the Mosquitto C++ class, providing us with all the basic MQTT functionalities along with a few function stubs, which we still have to implement in a moment:</p>
+<pre>#include "listener.h" 
+ 
+#include &lt;iostream&gt; 
+#include &lt;fstream&gt; 
+#include &lt;sstream&gt; 
+ 
+using namespace std; 
+ 
+#include &lt;Poco/StringTokenizer.h&gt; 
+#include &lt;Poco/String.h&gt; 
+#include &lt;Poco/Net/HTTPSClientSession.h&gt; 
+#include &lt;Poco/Net/HTTPRequest.h&gt; 
+#include &lt;Poco/Net/HTTPResponse.h&gt; 
+#include &lt;Poco/File.h&gt; 
+ 
+using namespace Poco::Data::Keywords; <br/><br/>struct Node { 
+   string uid; 
+   string location; 
+   UInt32 modules; 
+   float posx; 
+   float posy; 
+}; </pre>
+<p>We define a structure for a single node:</p>
+<pre>Listener::Listener(string clientId, string host, int port, string defaultFirmware) : mosquittopp(clientId.c_str()) { 
+   int keepalive = 60; 
+   connect(host.c_str(), port, keepalive); 
+    
+   Data::SQLite::Connector::registerConnector(); 
+   session = new Poco::Data::Session("SQLite", "nodes.db"); 
+    
+   (*session) &lt;&lt; "CREATE TABLE IF NOT EXISTS nodes (uid TEXT UNIQUE, \ 
+         location TEXT, \ 
+         modules INT, \ 
+         posx FLOAT, \ 
+         posy FLOAT)", now; 
+          
+   (*session) &lt;&lt; "CREATE TABLE IF NOT EXISTS firmware (uid TEXT UNIQUE, \ 
+         file TEXT)", now; 
+ 
+   this-&gt;defaultFirmware = defaultFirmware; 
+} </pre>
+<p>In the constructor, we attempt to connect to the MQTT broker, using the provided host and port. We also set up a connection with the SQLite database, and ensure that it has valid nodes and a firmware table:</p>
+<pre>Listener::~Listener() { 
+   // 
+} 
+ 
+ 
+void Listener::on_connect(int rc) { 
+   cout &lt;&lt; "Connected. Subscribing to topics...\n"; 
+    
+   if (rc == 0) { 
+         string topic = "cc/config";   // announce by nodes coming online. 
+         subscribe(0, topic.c_str()); 
+         topic = "cc/ui/config";       // C&amp;C client requesting configuration. 
+         subscribe(0, topic.c_str()); 
+         topic = "cc/nodes/new";       // C&amp;C client adding new node. 
+         subscribe(0, topic.c_str()); 
+         topic = "cc/nodes/update";    // C&amp;C client updating node. 
+         subscribe(0, topic.c_str()); 
+         topic = "nsa/events/CO<sub>2</sub>";     // CO<sub>2</sub>-related events. 
+         subscribe(0, topic.c_str()); 
+         topic = "cc/firmware";  // C&amp;C client firmware command. 
+         subscribe(0, topic.c_str()); 
+   } 
+   else { 
+         cerr &lt;&lt; "Connection failed. Aborting subscribing.\n"; 
+   } 
+} </pre>
+<p>We reimplement the callback for when a connection has been established with the MQTT broker. In this method, we subscribe to all the MQTT topics in which we are interested.</p>
+<p>The next method is called whenever we receive an MQTT message on one of the topics which we subscribed to:</p>
+<pre>void Listener::on_message(const struct mosquitto_message* message) { 
+   string topic = message-&gt;topic; 
+   string payload = string((const char*) message-&gt;payload, message-&gt;payloadlen); 
+    
+   if (topic == "cc/config") { 
+         if (payload.length() &lt; 1) { 
+               cerr &lt;&lt; "Invalid payload: " &lt;&lt; payload &lt;&lt; ". Reject.\n"; 
+               return; 
+         } </pre>
+<p>We validate the payload we receive for each topic. For this first topic, we expect its payload to contain the MAC address of the node which wants to receive its configuration. We make sure that this seems to be the case, then continue:</p>
+<pre>         Data::Statement select(*session); 
+         Node node; 
+         node.uid = payload; 
+         select &lt;&lt; "SELECT location, modules FROM nodes WHERE uid=?", 
+                     into (node.location), 
+                     into (node.modules), 
+                     use (payload); 
+                      
+         size_t rows = select.execute(); 
+          
+         if (rows == 1) { 
+               string topic = "cc/" + payload; 
+               string response = "mod;" + string((const char*) &amp;node.modules, 4); 
+               publish(0, topic.c_str(), response.length(), response.c_str()); 
+               response = "loc;" + node.location; 
+               publish(0, topic.c_str(), response.length(), response.c_str()); 
+         } 
+         else if (rows &lt; 1) { 
+               // No node with this UID found. 
+               cerr &lt;&lt; "Error: No data set found for uid " &lt;&lt; payload &lt;&lt; endl; 
+         } 
+         else { 
+               // Multiple data sets were found, which shouldn't be possible... 
+               cerr &lt;&lt; "Error: Multiple data sets found for uid " &lt;&lt; payload &lt;&lt; "\n"; 
+         } 
+   } </pre>
+<p>We attempt to find the MAC address in the database, reading out the node's configuration if found and making it the payload for the return message.</p>
+<p>The next topics are used with the administration tool:</p>
+<pre>else if (topic == "cc/ui/config") { 
+<br/>    if (payload == "map") {
+<br/>        ifstream mapFile("map.png", ios::binary); 
+ <br/>        if (!mapFile.is_open()) { 
+<br/>            cerr &lt;&lt; "Failed to open map file.\n"; 
+<br/>            return; 
+<br/>        } 
+                 
+        stringstream ss; 
+               <br/>        ss &lt;&lt; mapFile.rdbuf(); 
+        <br/>        string mapData = ss.str(); 
+        <br/>        publish(0, "cc/ui/config/map", mapData.length(), <br/><br/>        mapData.c_str()); 
+<br/>} </pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>In the case of this payload string, we return the binary data for a map image that should exist in the local folder. This map contains the layout of the building we are administrating, for displaying in the tool. </p>
+<pre>         else if (payload == "nodes") { 
+               Data::Statement countQuery(*session); 
+               int rowCount; 
+               countQuery &lt;&lt; "SELECT COUNT(*) FROM nodes", 
+                     into(rowCount), 
+                     now; 
+                      
+               if (rowCount == 0) { 
+                     cout &lt;&lt; "No nodes found in database, returning...\n"; 
+                     return; 
+               } 
+                
+               Data::Statement select(*session); 
+               Node node; 
+               select &lt;&lt; "SELECT uid, location, modules, posx, posy FROM nodes", 
+                           into (node.uid), 
+                           into (node.location), 
+                           into (node.modules), 
+                           into (node.posx), 
+                           into (node.posy), 
+                           range(0, 1); 
+                            
+               string header; 
+               string nodes; 
+               string nodeStr; 
+               UInt32 nodeCount = 0; 
+               while (!select.done()) { 
+                     select.execute(); 
+                     nodeStr = "NODE"; 
+                     UInt8 length = (UInt8) node.uid.length(); 
+                     nodeStr += string((char*) &amp;length, 1); 
+                     nodeStr += node.uid; 
+                     length = (UInt8) node.location.length(); 
+                     nodeStr += string((char*) &amp;length, 1); 
+                     nodeStr += node.location; 
+                     nodeStr += string((char*) &amp;node.posx, 4); 
+                     nodeStr += string((char*) &amp;node.posy, 4); 
+                     nodeStr += string((char*) &amp;node.modules, 4); 
+                     UInt32 segSize = nodeStr.length(); 
+                      
+                     nodes += string((char*) &amp;segSize, 4); 
+                     nodes += nodeStr; 
+                     ++nodeCount; 
+               } 
+                
+               UInt64 messageSize = nodes.length() + 9; 
+               header = string((char*) &amp;messageSize, 8); 
+               header += "NODES"; 
+               header += string((char*) &amp;nodeCount, 4); 
+               header += nodes; 
+                
+               publish(0, "cc/nodes/all", header.length(), header.c_str()); 
+         } 
+   } </pre>
+<p>The preceding section reads out every single node in the database and returns it in a binary, serialized format.</p>
+<p>Next, we create a new node and add it to the database:</p>
+<pre>   else if (topic == "cc/nodes/new") { 
+         UInt32 index = 0; 
+         UInt32 msgLength = *((UInt32*) payload.substr(index, 4).data()); 
+         index += 4; 
+         string signature = payload.substr(index, 4); 
+         index += 4; 
+          
+         if (signature != "NODE") { 
+               cerr &lt;&lt; "Invalid node signature.\n"; 
+               return; 
+         } 
+          
+         UInt8 uidLength = (UInt8) payload[index++]; 
+         Node node; 
+         node.uid = payload.substr(index, uidLength); 
+         index += uidLength; 
+         UInt8 locationLength = (UInt8) payload[index++]; 
+         node.location = payload.substr(index, locationLength); 
+         index += locationLength; 
+         node.posx = *((float*) payload.substr(index, 4).data()); 
+         index += 4; 
+         node.posy = *((float*) payload.substr(index, 4).data()); 
+         index += 4; 
+         node.modules = *((UInt32*) payload.substr(index, 4).data()); 
+          
+         cout &lt;&lt; "Storing new node for UID: " &lt;&lt; node.uid &lt;&lt; "\n"; 
+          
+         Data::Statement insert(*session); 
+         insert &lt;&lt; "INSERT INTO nodes VALUES(?, ?, ?, ?, ?)", 
+                     use(node.uid), 
+                     use(node.location), 
+                     use(node.modules), 
+                     use(node.posx), 
+                     use(node.posy), 
+                     now; 
+                      
+         (*session) &lt;&lt; "INSERT INTO firmware VALUES(?, ?)", 
+                     use(node.uid), 
+                     use(defaultFirmware), 
+                     now; 
+   } </pre>
+<p class="mce-root"/>
+<p>Updating a node's configuration is also possible:</p>
+<pre>   else if (topic == "cc/nodes/update") { 
+         UInt32 index = 0; 
+         UInt32 msgLength = *((UInt32*) payload.substr(index, 4).data()); 
+         index += 4; 
+         string signature = payload.substr(index, 4); 
+         index += 4; 
+          
+         if (signature != "NODE") { 
+               cerr &lt;&lt; "Invalid node signature.\n"; 
+               return; 
+         } 
+          
+         UInt8 uidLength = (UInt8) payload[index++]; 
+         Node node; 
+         node.uid = payload.substr(index, uidLength); 
+         index += uidLength; 
+         UInt8 locationLength = (UInt8) payload[index++]; 
+         node.location = payload.substr(index, locationLength); 
+         index += locationLength; 
+         node.posx = *((float*) payload.substr(index, 4).data()); 
+         index += 4; 
+         node.posy = *((float*) payload.substr(index, 4).data()); 
+         index += 4; 
+         node.modules = *((UInt32*) payload.substr(index, 4).data()); 
+          
+         cout &lt;&lt; "Updating node for UID: " &lt;&lt; node.uid &lt;&lt; "\n"; 
+          
+         Data::Statement update(*session); 
+         update &lt;&lt; "UPDATE nodes SET location = ?, posx = ?, posy = ?, modules = ? WHERE uid = ?", 
+                     use(node.location), 
+                     use(node.posx), 
+                     use(node.posy), 
+                     use(node.modules), 
+                     use(node.uid), 
+                     now; 
+   } </pre>
+<p>Next, we look at the topic handler for deleting a node's configuration:</p>
+<pre>   else if (topic == "cc/nodes/delete") { 
+         cout &lt;&lt; "Deleting node with UID: " &lt;&lt; payload &lt;&lt; "\n"; 
+          
+         Data::Statement del(*session); 
+         del &lt;&lt; "DELETE FROM nodes WHERE uid = ?", 
+                     use(payload), 
+                     now; 
+                      
+         (*session) &lt;&lt; "DELETE FROM firmware WHERE uid = ?", 
+                     use(payload), 
+                     now; 
+   } </pre>
+<p class="mce-root"/>
+<p>When we looked at the CO<sub>2</sub> module of the firmware earlier, we saw that it generated CO<sub>2</sub> events. These also end up here in this example, in order to generate events in JSON format, which we send to some HTTP-based API. We then use the HTTPS client in POCO to send this JSON to the remote server (here set to localhost):</p>
+<pre>   else if (topic == "nsa/events/CO<sub>2</sub>") { 
+         StringTokenizer st(payload, ";", StringTokenizer::TOK_TRIM | StringTokenizer::TOK_IGNORE_EMPTY); 
+         if (st.count() &lt; 4) { 
+               cerr &lt;&lt; "CO<sub>2</sub> event: Wrong number of arguments. Payload: " &lt;&lt; payload &lt;&lt; "\n"; 
+               return; 
+         } 
+          
+         string state = "ok"; 
+         if (st[1] == "1") { state = "warn"; } 
+         else if (st[1] == "2") { state = "crit"; } 
+         string increase = (st[2] == "1") ? "true" : "false"; 
+         string json = "{ \"state\": \"" + state + "\", \ 
+                                 \"location\": \"" + st[0] + "\", \ 
+                                 \"increase\": " + increase + ", \ 
+                                 \"ppm\": " + st[3] + " }"; 
+                                  
+         Net::HTTPSClientSession httpsClient("localhost"); 
+         try { 
+               Net::HTTPRequest request(Net::HTTPRequest::HTTP_POST, 
+                                                   "/", 
+                                                   Net::HTTPMessage::HTTP_1_1); 
+               request.setContentLength(json.length()); 
+               request.setContentType("application/json"); 
+               httpsClient.sendRequest(request) &lt;&lt; json; 
+                
+               Net::HTTPResponse response; 
+               httpsClient.receiveResponse(response); 
+         } 
+         catch (Exception&amp; exc) { 
+               cout &lt;&lt; "Exception caught while attempting to connect." &lt;&lt; std::endl; 
+               cerr &lt;&lt; exc.displayText() &lt;&lt; std::endl; 
+               return; 
+         } 
+   } </pre>
+<p>Finally, for managing the stored firmware images, we can use the following topic. Which node uses which firmware version can be set in each node's configuration, though as we saw earlier, the default is to use the latest firmware.</p>
+<p class="mce-root"/>
+<p>Using this topic, we can list the available firmware images or upload a new one:</p>
+<pre>   else if (topic == "cc/firmware") { 
+         if (payload == "list") { 
+               std::vector&lt;File&gt; files; 
+               File file("firmware"); 
+               if (!file.isDirectory()) { return; } 
+                
+               file.list(files); 
+               string out; 
+               for (int i = 0; i &lt; files.size(); ++i) { 
+                     if (files[i].isFile()) { 
+                           out += files[i].path(); 
+                           out += ";"; 
+                     } 
+               } 
+                
+               out.pop_back(); 
+                
+               publish(0, "cc/firmware/list", out.length(), out.c_str()); 
+         } 
+         else { 
+               StringTokenizer st(payload, ";", StringTokenizer::TOK_TRIM | StringTokenizer::TOK_IGNORE_EMPTY); 
+                
+               if (st[0] == "change") { 
+                     if (st.count() != 3) { return; } 
+                     (*session) &lt;&lt; "UPDATE firmware SET file = ? WHERE uid = ?", 
+                                             use (st[1]), 
+                                             use (st[2]), 
+                                             now; 
+               } 
+               else if (st[0] == "upload") { 
+                     if (st.count() != 3) { return; } 
+                      
+                     // Write file &amp; truncate if exists. 
+                     string filepath = "firmware/" + st[1];                       
+                     ofstream outfile("firmware/" + st[1], ofstream::binary | ofstream::trunc); 
+                     outfile.write(st[2].data(), st[2].size()); 
+                     outfile.close(); 
+               } 
+         } 
+   } 
+} 
+void Listener::on_subscribe(int mid, int qos_count, const int* granted_qos) { 
+   // 
+} </pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>On each successful MQTT topic subscription, this method is called, allowing us to do something else if needed.</p>
+<p>Next, we look at the HTTP server component, starting with the HTTP request handler factory:</p>
+<pre>#include &lt;Poco/Net/HTTPRequestHandlerFactory.h&gt; 
+#include &lt;Poco/Net/HTTPServerRequest.h&gt; 
+ 
+using namespace Poco::Net; 
+ 
+#include "datahandler.h" 
+ 
+ 
+class RequestHandlerFactory: public HTTPRequestHandlerFactory { 
+public: 
+   RequestHandlerFactory() {} 
+   HTTPRequestHandler* createRequestHandler(const HTTPServerRequest&amp; request) { 
+         return new DataHandler(); 
+   } 
+}; </pre>
+<p>This handler will always return an instance of the following class:</p>
+<pre>#include &lt;iostream&gt; 
+#include &lt;vector&gt; 
+ 
+using namespace std; 
+ 
+#include &lt;Poco/Net/HTTPRequestHandler.h&gt; 
+#include &lt;Poco/Net/HTTPServerResponse.h&gt; 
+#include &lt;Poco/Net/HTTPServerRequest.h&gt; 
+#include &lt;Poco/URI.h&gt; 
+#include &lt;Poco/File.h&gt; 
+ 
+#include &lt;Poco/Data/Session.h&gt; 
+#include &lt;Poco/Data/SQLite/Connector.h&gt; 
+ 
+using namespace Poco::Data::Keywords; 
+ 
+using namespace Poco::Net; 
+using namespace Poco; 
+ 
+ 
+class DataHandler: public HTTPRequestHandler { 
+public: 
+   void handleRequest(HTTPServerRequest&amp; request, HTTPServerResponse&amp; response) { 
+         cout &lt;&lt; "DataHandler: Request from " + request.clientAddress().toString() &lt;&lt; endl; 
+          
+         URI uri(request.getURI()); 
+         string path = uri.getPath(); 
+         if (path != "/") { 
+               response.setStatus(HTTPResponse::HTTP_NOT_FOUND); 
+               ostream&amp; ostr = response.send(); 
+               ostr &lt;&lt; "File Not Found: " &lt;&lt; path; 
+               return; 
+         } 
+          
+         URI::QueryParameters parts; 
+         parts = uri.getQueryParameters(); 
+         if (parts.size() &gt; 0 &amp;&amp; parts[0].first == "uid") { 
+               Data::SQLite::Connector::registerConnector(); 
+               Data::Session* session = new Poco::Data::Session("SQLite", "nodes.db"); 
+                
+               Data::Statement select(*session); 
+               string filename; 
+               select &lt;&lt; "SELECT file FROM firmware WHERE uid=?", 
+                                 into (filename), 
+                                 use (parts[0].second); 
+                
+               size_t rows = select.execute(); 
+                
+               if (rows != 1) { 
+                     response.setStatus(HTTPResponse::HTTP_NOT_FOUND); 
+                     ostream&amp; ostr = response.send(); 
+                     ostr &lt;&lt; "File Not Found: " &lt;&lt; parts[0].second; 
+                     return; 
+               } 
+                
+               string fileroot = "firmware/"; 
+               File file(fileroot + filename); 
+                
+               if (!file.exists() || file.isDirectory()) { 
+                     response.setStatus(HTTPResponse::HTTP_NOT_FOUND); 
+                     ostream&amp; ostr = response.send(); 
+                     ostr &lt;&lt; "File Not Found."; 
+                     return; 
+               } 
+                
+               string mime = "application/octet-stream"; 
+               try { 
+                     response.sendFile(file.path(), mime); 
+               } 
+               catch (FileNotFoundException &amp;e) { 
+                     cout &lt;&lt; "File not found exception triggered..." &lt;&lt; endl; 
+                     cerr &lt;&lt; e.displayText() &lt;&lt; endl; 
+                      
+                     response.setStatus(HTTPResponse::HTTP_NOT_FOUND); 
+                     ostream&amp; ostr = response.send(); 
+                     ostr &lt;&lt; "File Not Found."; 
+                     return; 
+               } 
+               catch (OpenFileException &amp;e) { 
+                     cout &lt;&lt; "Open file exception triggered..." &lt;&lt; endl; 
+                     cerr &lt;&lt; e.displayText() &lt;&lt; endl; 
+                      
+                     response.setStatus(HTTPResponse::HTTP_INTERNAL_SERVER_ERROR); 
+                     ostream&amp; ostr = response.send(); 
+                     ostr &lt;&lt; "Internal Server Error. Couldn't open file."; 
+                     return; 
+               } 
+         } 
+         else { 
+               response.setStatus(HTTPResponse::HTTP_BAD_REQUEST); 
+               response.send(); 
+               return; 
+         } 
+   } 
+}; </pre>
+<p>This class looks fairly impressive, yet mostly does just an SQLite database lookup for the node ID (MAC address) and returns the appropriate firmware image if found.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Administration tool</h1>
+                </header>
+            
+            <article>
+                
+<p>Using the APIs implemented by the C&amp;C server, a GUI-based administration tool was created using the Qt5 framework and the Mosquitto MQTT client library was developed, allowing for the basic management of nodes. They were overlaid on top of a layout graphic of buildings.</p>
+<p>While basically usable, it was found that a graphical tool was fairly complicated to develop. It was also limited to a single floor of a building, unless one were to have a really large map containing all of the floors with the nodes mapped onto this. This would have been quite clumsy, obviously.</p>
+<p>In the source code provided with this chapter, the administration tool can be found as well, to serve as an example of how one could implement it. For the sake of brevity, the code for it has been omitted here.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Air-conditioning service</h1>
+                </header>
+            
+            <article>
+                
+<p>To control air-conditioning units, a service much like the C&amp;C one was developed, using the same basic template. The interesting parts of its source are the following:</p>
+<pre>#include &lt;string&gt;<br/> #include &lt;vector&gt;<br/><br/> using namespace std;<br/><br/> #include &lt;Poco/Data/Session.h&gt;<br/> #include &lt;Poco/Data/SQLite/Connector.h&gt;<br/><br/> #include &lt;Poco/Net/HTTPClientSession.h&gt;<br/> #include &lt;Poco/Net/HTTPSClientSession.h&gt;<br/><br/> #include &lt;Poco/Timer.h&gt;<br/><br/> using namespace Poco;<br/> using namespace Poco::Net;<br/><br/> class Listener;<br/><br/><br/> struct NodeInfo {<br/>    string uid;<br/>    float posx;<br/>    float posy;<br/>    float current;    <br/>    float target;<br/>    bool ch0_state;<br/>    UInt8 ch0_duty;<br/>    bool ch0_valid;<br/>    bool ch1_state;<br/>    UInt8 ch1_duty;<br/>    bool ch1_valid;<br/>    bool ch2_state;<br/>    UInt8 ch2_duty;<br/>    bool ch2_valid;<br/>    bool ch3_state;<br/>    UInt8 ch3_duty;<br/>    bool ch3_valid;<br/>    UInt8 validate;<br/> };<br/><br/><br/> struct ValveInfo {<br/>    string uid;<br/>    UInt8 ch0_valve;<br/>    UInt8 ch1_valve;<br/>    UInt8 ch2_valve;<br/>    UInt8 ch3_valve;<br/> };<br/><br/><br/> struct SwitchInfo {<br/>    string uid;<br/>    bool state;<br/> };<br/><br/><br/> #include "listener.h"<br/><br/><br/> class Nodes {<br/>    static Data::Session* session;<br/>    static bool initialized;<br/>    static HTTPClientSession* influxClient;<br/>    static string influxDb;<br/>    static bool secure;<br/>    static Listener* listener;<br/>    static Timer* tempTimer;<br/>    static Timer* nodesTimer;<br/>    static Timer* switchTimer;<br/>    static Nodes* selfRef;<br/><br/> public:<br/>    static void init(string influxHost, int influxPort, string influxDb, string influx_sec, Listener* listener);<br/>    static void stop();<br/>    static bool getNodeInfo(string uid, NodeInfo &amp;info);<br/>    static bool getValveInfo(string uid, ValveInfo &amp;info);<br/>    static bool getSwitchInfo(string uid, SwitchInfo &amp;info);<br/>    static bool setTargetTemperature(string uid, float temp);<br/>    static bool setCurrentTemperature(string uid, float temp);<br/>    static bool setDuty(string uid, UInt8 ch0, UInt8 ch1, UInt8 ch2, UInt8 ch3);<br/>    static bool setValves(string uid, bool ch0, bool ch1, bool ch2, bool ch3);<br/>    static bool setSwitch(string uid, bool state);<br/>    void updateCurrentTemperatures(Timer&amp; timer);<br/>    void checkNodes(Timer&amp; timer);</pre>
+<pre><br/>    void checkSwitch(Timer&amp; timer);<br/>    static bool getUIDs(vector&lt;string&gt; &amp;uids);<br/>    static bool getSwitchUIDs(vector&lt;string&gt; &amp;uids);<br/> };</pre>
+<p>The definition for this class in the AC service gives a good overview of the functionality of this class. It's essentially a wrapper around an SQLite database, containing information on nodes, valves, and cooling/heating switches. It also contains the timers that will keep triggering the application to check the status of the system, to compare it to the target state, and to make adjustments if necessary.</p>
+<p>This class is used extensively by the <kbd>Listener</kbd> class of this application for keeping track of the status of nodes and the connected AC units, along with those switches and valves controlling the water flow:</p>
+<pre>#include &lt;mosquittopp.h&gt;<br/><br/>#include &lt;string&gt;<br/>#include &lt;map&gt;<br/><br/>using namespace std;<br/><br/>#include &lt;Poco/Mutex.h&gt;<br/><br/>using namespace Poco;<br/><br/><br/>struct NodeInfo;<br/>struct ValveInfo;<br/>struct SwitchInfo;<br/><br/> #include "nodes.h"<br/><br/><br/> class Listener : public mosqpp::mosquittopp {<br/>    map&lt;string, NodeInfo&gt; nodes;<br/>    map&lt;string, ValveInfo&gt; valves;<br/>    map&lt;string, SwitchInfo&gt; switches;<br/>    Mutex nodesLock;<br/>    Mutex valvesLock;<br/>    Mutex switchesLock;<br/>    bool heating;<br/>    Mutex heatingLock;<br/><br/> public:<br/>    Listener(string clientId, string host, int port);<br/>    ~Listener();<br/><br/>    void on_connect(int rc);<br/>    void on_message(const struct mosquitto_message* message);<br/>    void on_subscribe(int mid, int qos_count, const int* granted_qos);<br/>    bool checkNodes();<br/>    bool checkSwitch();<br/> };</pre>
+<p>The way that this application works is that the <kbd>Nodes</kbd> class timers will cause the <kbd>Listener</kbd> class to publish on the topics for the PWM, IO, and Switch modules, inquiring about the state of the devices that are supposed to be active.</p>
+<p>This kind of active loop system is common in industrial applications, as it provides constant validation of the system to detect <span>quickly</span> if something isn't working as intended.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">InfluxDB for recording sensor readings</h1>
+                </header>
+            
+            <article>
+                
+<p>Recording the sensor readings and later the statistics read from the coffee machines was a priority from the beginning. The ideal database for this kind of data is a time series database, of which Influx is a common one. The biggest problem with this database is that it does not support MQTT, only offering its HTTP and native interface.</p>
+<p>To fix this, a simple MQTT-to-Influx HTTP line protocol bridge was written, again using the Mosquitto client library as well as the POCO framework's HTTP functionality:</p>
+<pre>#include "mth.h"<br/><br/>#include &lt;iostream&gt;<br/><br/>using namespace std;<br/><br/>#include &lt;Poco/Net/HTTPRequest.h&gt;<br/>#include &lt;Poco/Net/HTTPResponse.h&gt;<br/>#include &lt;Poco/StringTokenizer.h&gt;<br/>#include &lt;Poco/String.h&gt;<br/><br/>using namespace Poco;<br/><br/><br/>MtH::MtH(string clientId, string host, int port, string topics, string influxHost, <br/>                int influxPort, string influxDb, string influx_sec) : mosquittopp(clientId.c_str()) {<br/>    this-&gt;topics  = topics;<br/>    this-&gt;influxDb = influxDb;<br/>    if (influx_sec == "true") { <br/>          cout &lt;&lt; "Connecting with HTTPS..." &lt;&lt; std::endl;<br/>          influxClient = new Net::HTTPSClientSession(influxHost, influxPort);<br/>          secure = true; <br/>    } <br/>    else {<br/>          cout &lt;&lt; "Connecting with HTTP..." &lt;&lt; std::endl;<br/>          influxClient = new Net::HTTPClientSession(influxHost, influxPort);<br/>          secure = false; <br/>    }<br/><br/>    int keepalive = 60;<br/>    connect(host.c_str(), port, keepalive);<br/> }</pre>
+<p>In the constructor, we connect to the MQTT broker, and create either an HTTP or HTTPS client, depending on which protocol has been set in the configuration file:</p>
+<pre><br/> MtH::~MtH() {<br/>    delete influxClient;<br/> }<br/><br/><br/> void MtH::on_connect(int rc) {<br/>    cout &lt;&lt; "Connected. Subscribing to topics...\n";<br/><br/>    if (rc == 0) {<br/>          StringTokenizer st(topics, ",", StringTokenizer::TOK_TRIM | StringTokenizer::TOK_IGNORE_EMPTY);<br/>          for (StringTokenizer::Iterator it = st.begin(); it != st.end(); ++it) {<br/>                string topic = string(*it);<br/>                cout &lt;&lt; "Subscribing to: " &lt;&lt; topic &lt;&lt; "\n";<br/>                subscribe(0, topic.c_str());<br/><br/>                // Add name of the series to the 'series' map.<br/>                StringTokenizer st1(topic, "/", StringTokenizer::TOK_TRIM | StringTokenizer::TOK_IGNORE_EMPTY);<br/>                string s = st1[st1.count() - 1]; // Get last item.<br/>                series.insert(std::pair&lt;string, string&gt;(topic, s));<br/>          }<br/>    }<br/>    else {<br/>          cerr &lt;&lt; "Connection failed. Aborting subscribing.\n";<br/>    }<br/> }</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mceNonEditable"/>
+<p>Instead of fixed MQTT topics to subscribe to, we use the topics that are defined in the configuration file, here provided to us as a single string with each topic separated by a comma.</p>
+<p>We also create an STL map containing the name of the time series to record for the topic, taking the final part of the MQTT topic after the last slash. One could make this further configurable, but for the topics used in the BMaC system this limitation was no consideration as it not necessary to have more complex topics.</p>
+<pre>void MtH::on_message(const struct mosquitto_message* message) {<br/>    string topic = message-&gt;topic;      <br/>    map&lt;string, string&gt;::iterator it = series.find(topic);<br/>    if (it == series.end()) { <br/>          cerr &lt;&lt; "Topic not found: " &lt;&lt; topic &lt;&lt; "\n";<br/>          return; <br/>    }<br/><br/>    if (message-&gt;payloadlen &lt; 1) {<br/>          cerr &lt;&lt; "No payload found. Returning...\n";<br/>          return;<br/>    }<br/><br/>    string payload = string((const char*) message-&gt;payload, message-<br/>    &gt;payloadlen);<br/>    size_t pos = payload.find(";");<br/>    if (pos == string::npos || pos == 0) {<br/>        cerr &lt;&lt; "Invalid payload: " &lt;&lt; payload &lt;&lt; ". Reject.\n";<br/>        return;<br/>    }<br/><br/>    string uid = payload.substr(0, pos);<br/>    string value = payload.substr(pos + 1);<br/>    string influxMsg; <br/>    influxMsg = series[topic];<br/>    influxMsg += ",location=" + uid;<br/>    influxMsg += " value=" + value;<br/>    try {<br/>        Net::HTTPRequest request(Net::HTTPRequest::HTTP_POST, <br/>        "/write?db=" + influxDb, Net::HTTPMessage::HTTP_1_1);<br/>        request.setContentLength(influxMsg.length());<br/>        request.setContentType("application/x-www-form-urlencoded");<br/>        influxClient-&gt;sendRequest(request) &lt;&lt; influxMsg;<br/><br/>        Net::HTTPResponse response;<br/>        influxClient-&gt;receiveResponse(response);<br/>    }<br/>    catch (Exception&amp; exc) {<br/>        cout &lt;&lt; "Exception caught while attempting to connect." &lt;&lt; <br/>        std::endl;<br/>        cerr &lt;&lt; exc.displayText() &lt;&lt; std::endl;<br/>        return;<br/>    }</pre>
+<p>When we get a new MQTT message in, we find the name of the Influx time series for it, then create a string to send to the InfluxDB server. The assumption here is that the payload consists of the MAC address of the node which sent the message followed by a semi-colon.</p>
+<p>We simply get the part after the semi-colon to set it as the value, and use the MAC as the location. This we then send to the database server.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Security aspects</h1>
+                </header>
+            
+            <article>
+                
+<p>During the development of this system it became soon obvious that security would be a paramount aspect of the system. For that reason we looked at adding transport layer security (TLS) encryption. This would use the integrated axTLS encryption library in the Sming framework together with AES certificates (host and client) to provide both verification that the host (servers) and clients (nodes) are who they say they are, but also provide a secure encrypted link.</p>
+<p>In <a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml">Chapter 5</a><span>,</span><span> </span><em>Example <span>-</span><span> </span>Soil Humidity Monitor with Wi-Fi</em>, we already looked at the handling of these client certificates and setting up of an encrypted MQTT connection. One detail which is not obvious from that were the troubles which we encountered while setting up this certificate system. As mentioned in <a href="886aecf2-8926-4aec-8045-a07ae2cdde84.xhtml">Chapter 5</a><span>,</span><span> </span><em>Example <span>-</span><span> </span>Soil Humidity Monitor with Wi-Fi</em>, the ESP8266 does not have enough memory to allocate the default TLS handshake buffers and requires the use of the SSL fragment size extension on the side of the server (host).</p>
+<p>Unfortunately we found that the commonly used MQTT broker we were using (Mosquitto) did not support this SSL extension and would therefore require that clients used the default double 16 kB buffer. The first solution to this would be to recompile the Mosquitto broker after making a few changes to its source code to change this setting.</p>
+<p>The better solution and the one which we ultimately implemented was to install a proxy software (HAProxy) which functioned as the TLS endpoint, handling the certificates and redirecting the decrypted traffic to the MQTT broker via the local loopback (localhost) interface.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>With the SSL fragment size option set to 1-2 kB everything worked as intended and we had a building-wide, wireless monitoring and control system that allowed for secure communications of sensitive information and delicate control commands.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Future developments</h1>
+                </header>
+            
+            <article>
+                
+<p>There are still many additions that can be made to this system. From the number of sensors that could be supported, further GPIO expander chips, air-conditioning system configurations, room occupancy detection linked into a calendar backend, to clearing out scheduled meetings at an office where nobody showed up, and so on.</p>
+<p>There is also the option of switching from ESP8266 as the MCU to a different one, such as ARM-based MCUs, to get wired Ethernet options, along with better debug and development tools. As convenient as it is to have an MCU with Wi-Fi, which one can just stick anywhere and theoretically have it work, the development tools for the ESP8266 aren't that great, and the lack of wired communication options (without using external chips) means that everything either works or doesn't depending on the quality of the Wi-Fi network.</p>
+<p>As BMaC involves the automation of a building, it is desirable to have a certain level of reliability, which is hard to guarantee with a Wi-Fi network, though for less crucial components (coffee machine statistics, sensor readings, and so on) this is unlikely to be an issue. Conceivably a hybrid network with both wired and wireless options could be the future.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Summary</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we looked at how a building-wide monitoring and management system was developed, what its components looked like, and what lessons were learned during its development.</p>
+<p>The reader is expected to understand now how such a large-scale embedded system is constructed and functions, and should be able either <span>to </span>use the BMaC system themselves or implement a similar system.</p>
+<p><span>In the next chapter we will look at developing embedded projects using the Qt framework.</span></p>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
