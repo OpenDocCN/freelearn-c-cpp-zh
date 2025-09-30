@@ -1,6 +1,6 @@
 
 
-# IDE 支持和 Clangd
+# 第八章：IDE 支持和 Clangd
 
 本章介绍**语言服务器协议（LSP**）以及如何利用它来增强你的**集成开发环境（IDE**）。我们首选的 IDE 是**Visual Studio Code (VS Code**)。LLVM 有自己实现的 LSP，称为**Clangd**。我们将首先描述 LSP，并探讨 Clangd 如何利用它来扩展 IDE 提供的能力。最后，我们将通过示例说明如何通过各种 Clang 工具，如 Clang-Tidy 和 Clang-Format，通过 Clangd 无缝集成到 IDE 中。
 

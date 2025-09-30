@@ -1,6 +1,6 @@
 
 
-# 优化 IR
+# 第七章：优化 IR
 
 LLVM 使用一系列的 passes 来优化 IR。一个 pass 操作于 IR 的一个单元，例如一个函数或一个模块。操作可以是转换，以定义的方式改变 IR，或者分析，收集如依赖等信息。这个一系列的 passes 被称为**pass pipeline**。pass 管理器在 IR 上执行 pass pipeline，这是我们的编译器产生的。因此，你需要了解 pass 管理器做什么以及如何构建一个 pass pipeline。编程语言的语义可能需要开发新的 passes，我们必须将这些 passes 添加到管道中。
 

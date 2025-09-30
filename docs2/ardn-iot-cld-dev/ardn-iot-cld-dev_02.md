@@ -1,6 +1,6 @@
 
 
-# 初识 Arduino IoT Cloud
+# 第二章：初识 Arduino IoT Cloud
 
 每个开发者/程序员/云工程师，当他们开始他们的编码/云之旅时，都非常渴望立即开始使用这个平台。好吧，伙计们，你们的等待结束了，我们以一个*Hello World*问候语欢迎你们进入这一章。这一章不仅提供了一个*Hello World*示例，还包含了**Arduino IoT Cloud**如何工作的许多重要核心概念。这是对所有读者来说最重要的章节，因为这一章将为您概述如何开始使用 Arduino IoT Cloud，因为 Arduino IoT Cloud 平台与其他平台相比有显著的不同。这一章分为两部分；在第一部分，您将学习如何使用**Arduino MKR Wi-Fi 1010**板与 Arduino IoT Cloud 平台交互，在第二部分，您将学习如何使用**Node-RED**的**API**与云平台进行通信。
 

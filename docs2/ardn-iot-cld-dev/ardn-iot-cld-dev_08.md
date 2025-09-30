@@ -1,6 +1,6 @@
 
 
-# 使用 Arduino IoT Cloud SDK 和 JavaScript 进行工作
+# 第八章：使用 Arduino IoT Cloud SDK 和 JavaScript 进行工作
 
 每个平台都提供**APIs**和**SDKs**以使他们的产品与其他平台兼容，并且这些端点被开发者用来创建新的功能以解决现实世界的问题。同样，**Arduino IoT Cloud**也自带内置的功能和特性，但还有三种不同的方式来扩展 Arduino IoT Cloud 平台的功能或使其与其他工具和服务兼容：即**REST APIs**、**SDKs**和**webhooks**。
 

@@ -1,6 +1,6 @@
 
 
-# 使用 Cloud CLI 编写 Arduino IoT Cloud 脚本
+# 第十三章：使用 Cloud CLI 编写 Arduino IoT Cloud 脚本
 
 Arduino Cloud **命令行界面**（**CLI**）是一个自动化工具，对于脚本编写和创建设备、事物和仪表板非常有用。它还提供了执行大量上传（**OTA**）的选项，从而能够管理已部署的 IoT 节点。本章将探讨该工具的高级功能，并提出一些使用场景。
 

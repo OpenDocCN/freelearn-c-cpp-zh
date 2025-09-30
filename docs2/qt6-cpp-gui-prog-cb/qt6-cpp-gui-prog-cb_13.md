@@ -1,6 +1,6 @@
 
 
-# 使用 Qt WebEngine 开发 Web 应用程序
+# 第十三章：使用 Qt WebEngine 开发 Web 应用程序
 
 Qt 包含一个名为 **Qt WebEngine** 的模块，它允许我们将网页浏览器小部件嵌入到我们的程序中，并使用它来显示网页或本地 HTML 内容。在版本 5.6 之前，Qt 使用另一个类似的模块，名为 **Qt WebKit**，该模块现已弃用，并已被基于 Chromium 的 **WebEngine** 模块所取代。Qt 还允许通过 **Qt WebChannel** 在 JavaScript 和 C++ 代码之间进行通信，这使得我们能够更有效地使用此模块。
 

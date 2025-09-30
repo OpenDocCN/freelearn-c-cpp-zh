@@ -1,6 +1,6 @@
 
 
-# Clang-Tidy Linter 框架
+# 第五章：Clang-Tidy Linter 框架
 
 本章介绍了 Clang-Tidy，这是一个基于 clang 的代码检查框架，它利用 **抽象语法树**（**AST**）来识别 C/C++/Objective-C 代码中的反模式。首先，我们将讨论 Clang-Tidy 的功能、它提供的检查类型以及如何使用它们。之后，我们将深入探讨 Clang-Tidy 的架构，并探讨如何创建我们自己的自定义 lint 检查。在本章中，我们将涵盖以下主题：
 

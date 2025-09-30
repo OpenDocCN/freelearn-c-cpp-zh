@@ -1,6 +1,6 @@
 
 
-# 使用 Open Asset Import Library 进行工作
+# 第一章：使用 Open Asset Import Library 进行工作
 
 欢迎来到《精通 C++游戏动画》！你是一个那种看着电脑或控制台游戏中的动画模型，或者 3D 动画工具，并对自己提出问题的人吗？
 
