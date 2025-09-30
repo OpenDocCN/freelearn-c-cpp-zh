@@ -1,362 +1,360 @@
 <html><head></head><body>
-		<div id="_idContainer017">
-			<h1 id="_idParaDest-78"><em class="italic"><a id="_idTextAnchor078"/>Chapter 6</em>: Extending the Preprocessor</h1>
+		<div><h1 id="_idParaDest-78"><em class="italic"><a id="_idTextAnchor078"/>Chapter 6</em>: Extending the Preprocessor</h1>
 			<p>In the previous chapter, we went through the structure of Clang—the official frontend of <strong class="bold">Low-Level Virtual Machine (LLVM)</strong> for C-family languages—and some of its most important components. We also introduced a variety of Clang's tooling and extension options. In this chapter, we're diving into the first phase in Clang's frontend pipeline: the preprocessor.</p>
-			<p>For C-family programming languages, <strong class="bold">preprocessing</strong> is an early compilation phase that replaces any directive starting with a hash (<strong class="source-inline">#</strong>) character—<strong class="source-inline">#include</strong> and <strong class="source-inline">#define</strong>, to name but a few—with some other textual contents (or non-textual <em class="italic">tokens</em>, in some rare cases). For example, the preprocessor will basically <em class="italic">copy and paste</em> contents of header files designated by the <strong class="source-inline">#include</strong> directive into the current compilation unit before parsing it. This technique has the advantage of extracting common code and reusing it. </p>
-			<p>In this chapter, we will briefly explain how Clang's <strong class="bold">preprocessor</strong>/<strong class="bold">Lexer</strong> framework works, along with some crucial <strong class="bold">application programming interfaces</strong> (<strong class="bold">APIs</strong>) that can help your development in this section. In addition, Clang also provides some ways for developers to inject their custom logic into the preprocessing flow via plugins. For example, it allows you to create custom <strong class="source-inline">#pragma</strong> syntax—such as that used by OpenMP (<strong class="source-inline">#pragma omp loop</strong>, for example) —in an easier way. Learning these techniques yields you more options when solving problems of different abstraction levels. Here is the list of sections in this chapter:</p>
+			<p>For C-family programming languages, <code>#</code>) character—<code>#include</code> and <code>#define</code>, to name but a few—with some other textual contents (or non-textual <em class="italic">tokens</em>, in some rare cases). For example, the preprocessor will basically <em class="italic">copy and paste</em> contents of header files designated by the <code>#include</code> directive into the current compilation unit before parsing it. This technique has the advantage of extracting common code and reusing it. </p>
+			<p>In this chapter, we will briefly explain how Clang's <code>#pragma</code> syntax—such as that used by OpenMP (<code>#pragma omp loop</code>, for example) —in an easier way. Learning these techniques yields you more options when solving problems of different abstraction levels. Here is the list of sections in this chapter:</p>
 			<ul>
-				<li>Working with <strong class="source-inline">SourceLocation</strong> and <strong class="source-inline">SourceManager</strong></li>
+				<li>Working with <code>SourceLocation</code> and <code>SourceManager</code></li>
 				<li>Learning preprocessor and lexer essentials</li>
 				<li>Developing custom preprocessor plugins and callbacks</li>
 			</ul>
 			<h1 id="_idParaDest-79"><a id="_idTextAnchor079"/>Technical requirements</h1>
 			<p>This chapter expects you to have a build of the Clang executable. You can obtain this by running the following command:</p>
-			<p class="source-code">$ ninja clang</p>
+			<pre>$ ninja clang</pre>
 			<p>Here is a useful command to print textual content right after preprocessing:</p>
-			<p>The <strong class="source-inline">-E</strong> command-line option for <strong class="source-inline">clang</strong> is pretty useful for printing textual content right after preprocessing. As an example, <strong class="source-inline">foo.c</strong> has the following content:</p>
-			<p class="source-code">#define <strong class="bold">HELLO 4</strong></p>
-			<p class="source-code">int foo(int x) {</p>
-			<p class="source-code">  return <strong class="bold">x + HELLO</strong>;</p>
-			<p class="source-code">}</p>
+			<p>The <code>-E</code> command-line option for <code>clang</code> is pretty useful for printing textual content right after preprocessing. As an example, <code>foo.c</code> has the following content:</p>
+			<pre>#define <strong class="bold">HELLO 4</strong>
+int foo(int x) {
+  return <strong class="bold">x + HELLO</strong>;
+}</pre>
 			<p>Use the following command:</p>
-			<p class="source-code">$ clang <strong class="bold">-E</strong> foo.c</p>
+			<pre>$ clang <strong class="bold">-E</strong> foo.c</pre>
 			<p>The preceding command will give you this output:</p>
-			<p class="source-code">…</p>
-			<p class="source-code">int foo(int x) {</p>
-			<p class="source-code">  return <strong class="bold">x + 4;</strong></p>
-			<p class="source-code">}</p>
-			<p>As you can see, <strong class="source-inline">HELLO</strong> was replaced by <strong class="source-inline">4</strong> in the code. You might be able to use this trick to debug when developing custom extensions in later sections.</p>
+			<pre>…
+int foo(int x) {
+  return <strong class="bold">x + 4;</strong>
+}</pre>
+			<p>As you can see, <code>HELLO</code> was replaced by <code>4</code> in the code. You might be able to use this trick to debug when developing custom extensions in later sections.</p>
 			<p>Code used in this chapter can be found at this link: <a href="https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter06">https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter06</a>.</p>
 			<h1 id="_idParaDest-80"><a id="_idTextAnchor080"/>Working with SourceLocation and SourceManager</h1>
-			<p>When working closely with <a id="_idIndexMarker205"/>source files, one of the most fundamental questions is how a compiler frontend would be able to <em class="italic">locate</em> a piece of string in the file. On one hand, printing format messages well (compilation error and warning messages, for example) is a crucial job, in <a id="_idIndexMarker206"/>which accurate line and column numbers must be displayed. On the other hand, the frontend might need to manage multiple files at a time and access their in-memory content in an efficient way. In Clang, these questions are primarily handled by two classes: <strong class="source-inline">SourceLocation</strong> and <strong class="source-inline">SourceManager</strong>. We're going to give you a brief introduction to them and show how to <a id="_idIndexMarker207"/>use them in practice in the rest of this section.</p>
+			<p>When working closely with <a id="_idIndexMarker205"/>source files, one of the most fundamental questions is how a compiler frontend would be able to <em class="italic">locate</em> a piece of string in the file. On one hand, printing format messages well (compilation error and warning messages, for example) is a crucial job, in <a id="_idIndexMarker206"/>which accurate line and column numbers must be displayed. On the other hand, the frontend might need to manage multiple files at a time and access their in-memory content in an efficient way. In Clang, these questions are primarily handled by two classes: <code>SourceLocation</code> and <code>SourceManager</code>. We're going to give you a brief introduction to them and show how to <a id="_idIndexMarker207"/>use them in practice in the rest of this section.</p>
 			<h2 id="_idParaDest-81"><a id="_idTextAnchor081"/>Introducing SourceLocation</h2>
-			<p>The <strong class="source-inline">SourceLocation</strong> class is <a id="_idIndexMarker208"/>used for representing the location of a piece of code in its file. When it comes to its implementation, using <strong class="bold">line</strong> and <strong class="bold">column</strong> numbers is probably the most intuitive way to do this. However, things might get complicated in real-world scenarios, such that internally, we can't naively use a pair of numbers as the in-memory representations for source code locations. One of the main reasons is that <strong class="source-inline">SourceLocation</strong> instances are <em class="italic">extensively</em> used in Clang's code base and basically live through the entire frontend compilation pipeline. Therefore, it's important to use a concise way to store its information rather than two 32-bit integers (and this might not even be sufficient since we also want to know the origin file!), which can easily bloat Clang's runtime-memory footprint.</p>
-			<p>Clang solves this problem by using the elegantly designed <strong class="source-inline">SourceLocation</strong> as the <strong class="bold">pointer</strong> (or a <em class="italic">handle</em>) to a <a id="_idIndexMarker209"/>large <em class="italic">data buffer</em> that stores all the real source code contents such that <strong class="source-inline">SourceLocation</strong> only uses a single unsigned integer under the hood, which also means its <a id="_idIndexMarker210"/>instances are <strong class="bold">trivially copyable</strong>—a property that can yield some performance benefits. Since <strong class="source-inline">SourceLocation</strong> is merely a pointer, it will only be meaningful and useful when put side by side with the <em class="italic">data buffer</em> we just mentioned, which is managed by the second main character in this story, <strong class="source-inline">SourceManager</strong>.</p>
+			<p>The <code>SourceLocation</code> class is <a id="_idIndexMarker208"/>used for representing the location of a piece of code in its file. When it comes to its implementation, using <code>SourceLocation</code> instances are <em class="italic">extensively</em> used in Clang's code base and basically live through the entire frontend compilation pipeline. Therefore, it's important to use a concise way to store its information rather than two 32-bit integers (and this might not even be sufficient since we also want to know the origin file!), which can easily bloat Clang's runtime-memory footprint.</p>
+			<p>Clang solves this problem by using the elegantly designed <code>SourceLocation</code> as the <code>SourceLocation</code> only uses a single unsigned integer under the hood, which also means its <a id="_idIndexMarker210"/>instances are <code>SourceLocation</code> is merely a pointer, it will only be meaningful and useful when put side by side with the <em class="italic">data buffer</em> we just mentioned, which is managed by the second main character in this story, <code>SourceManager</code>.</p>
 			<p class="callout-heading">Other useful utilities</p>
-			<p class="callout"><strong class="source-inline">SourceRange</strong> is a pair of <strong class="source-inline">SourceLocation</strong> objects that represents the starting and ending of a source code range; <strong class="source-inline">FullSourceLocation</strong> encapsulates the normal <strong class="source-inline">SourceLocation</strong> class and its associated <strong class="source-inline">SourceManager</strong> class into one class so that you only need to carry a single <strong class="source-inline">FullSourceLocation</strong> instance instead of two objects (a <strong class="source-inline">SourceLocation</strong> object and a <strong class="source-inline">SourceManager</strong> object).</p>
+			<p class="callout"><code>SourceRange</code> is a pair of <code>SourceLocation</code> objects that represents the starting and ending of a source code range; <code>FullSourceLocation</code> encapsulates the normal <code>SourceLocation</code> class and its associated <code>SourceManager</code> class into one class so that you only need to carry a single <code>FullSourceLocation</code> instance instead of two objects (a <code>SourceLocation</code> object and a <code>SourceManager</code> object).</p>
 			<h3>Trivially copyable</h3>
 			<p>We were usually taught that <a id="_idIndexMarker211"/>unless there is a good reason, you should avoid passing an object by its value (as a function call argument, for example) in normal situations when writing C++. Since it involves lots of <em class="italic">copying</em> on the data members under the <a id="_idIndexMarker212"/>hood, you should pass by pointers or references instead. However, if carefully designed, a class type instance can be copied back and forth without lots of effort—for example, a class with no member variable or few member variables, plus a default copy constructor. If an instance is trivially copyable, you're encouraged to pass it by its value.</p>
 			<h2 id="_idParaDest-82"><a id="_idTextAnchor082"/>Introducing SourceManager</h2>
-			<p>The <strong class="source-inline">SourceManager</strong> class manages all of the <a id="_idIndexMarker213"/>source files stored inside the memory and provides interfaces to access them. It also provides APIs to deal with source code locations, via <strong class="source-inline">SourceLocation</strong> instances we just introduced. For example, to get the line and column number from a <strong class="source-inline">SourceLocation</strong> instance, run the following code:</p>
-			<p class="source-code">void foo(SourceManager &amp;SM, SourceLocation SLoc) {</p>
-			<p class="source-code">  auto Line = SM.<strong class="bold">getSpellingLineNumber(SLoc)</strong>,</p>
-			<p class="source-code">       Column = SM.<strong class="bold">getSpellingColumnNumber(SLoc)</strong>;</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">}</p>
-			<p>The <strong class="source-inline">Line</strong> and <strong class="source-inline">Column</strong> variables in the preceding code snippet are the line and column number of the source location pointed by <strong class="source-inline">SLoc</strong>, respectively.</p>
-			<p>You might wonder why we are using the term <strong class="source-inline">spellingLineNumber</strong> instead of just <strong class="source-inline">LineNumber</strong> in the preceding code snippet. It turns out that in the cases of macro expansion (or any expansion happening during preprocessing), Clang keeps track of the macro content's <strong class="source-inline">SourceLocation</strong> instance before and after the expansion. A spelling location represents the location where the source code was originally <em class="italic">written</em>, whereas an expansion location is where the macro is expanded.</p>
+			<p>The <code>SourceManager</code> class manages all of the <a id="_idIndexMarker213"/>source files stored inside the memory and provides interfaces to access them. It also provides APIs to deal with source code locations, via <code>SourceLocation</code> instances we just introduced. For example, to get the line and column number from a <code>SourceLocation</code> instance, run the following code:</p>
+			<pre>void foo(SourceManager &amp;SM, SourceLocation SLoc) {
+  auto Line = SM.<strong class="bold">getSpellingLineNumber(SLoc)</strong>,
+       Column = SM.<strong class="bold">getSpellingColumnNumber(SLoc)</strong>;
+  …
+}</pre>
+			<p>The <code>Line</code> and <code>Column</code> variables in the preceding code snippet are the line and column number of the source location pointed by <code>SLoc</code>, respectively.</p>
+			<p>You might wonder why we are using the term <code>spellingLineNumber</code> instead of just <code>LineNumber</code> in the preceding code snippet. It turns out that in the cases of macro expansion (or any expansion happening during preprocessing), Clang keeps track of the macro content's <code>SourceLocation</code> instance before and after the expansion. A spelling location represents the location where the source code was originally <em class="italic">written</em>, whereas an expansion location is where the macro is expanded.</p>
 			<p>You can also create a new spelling and expansion association using the following API:</p>
-			<p class="source-code">SourceLocation NewSLoc = SM.<strong class="bold">createExpansionLoc</strong>(</p>
-			<p class="source-code">  SpellingLoc,    // The original macro spelling location</p>
-			<p class="source-code">  ExpansionStart, // Start of the location where macro is                   //expanded</p>
-			<p class="source-code">  ExpansionEnd,   // End of the location where macro is                   // expanded</p>
-			<p class="source-code">  Len             // Length of the content you want to expand</p>
-			<p class="source-code">);</p>
-			<p>The returned <strong class="source-inline">NewSLoc</strong> is now <a id="_idIndexMarker214"/>associated with both the spelling and expanded locations that can be queried using <strong class="source-inline">SourceManager</strong>.</p>
+			<pre>SourceLocation NewSLoc = SM.<strong class="bold">createExpansionLoc</strong>(
+  SpellingLoc,    // The original macro spelling location
+  ExpansionStart, // Start of the location where macro is                   //expanded
+  ExpansionEnd,   // End of the location where macro is                   // expanded
+  Len             // Length of the content you want to expand
+);</pre>
+			<p>The returned <code>NewSLoc</code> is now <a id="_idIndexMarker214"/>associated with both the spelling and expanded locations that can be queried using <code>SourceManager</code>.</p>
 			<p>These are the important concepts and APIs that will help you dealing with source code locations— especially when working with the preprocessor—in later chapters. The next section will give you some background on preprocessor and lexer development in Clang, which will be useful when working on the project in the later, <em class="italic">Developing custom preprocessor plugins and callbacks </em>section.</p>
 			<h1 id="_idParaDest-83"><a id="_idTextAnchor083"/>Learning preprocessor and lexer essentials</h1>
 			<p>In the previous, <em class="italic">Working with SourceLocation and SourceManager </em>section, we've learned how source locations, which are <a id="_idIndexMarker215"/>an important part of the preprocessor, are represented in Clang. In this section, we will first explain the principle of Clang's preprocessor and lexer, along with their working flow. Then, we'll go into some of the <a id="_idIndexMarker216"/>important components in this flow and briefly explain their usage in the code. These will also prepare you for the project in the, <em class="italic">Developing custom preprocessor plugins and callbacks </em>section later in this chapter.</p>
 			<h2 id="_idParaDest-84"><a id="_idTextAnchor084"/>Understanding the role of the preprocessor and lexer in Clang</h2>
-			<p>The roles and primary actions <a id="_idIndexMarker217"/>performed by Clang's preprocessor and lexer, represented <a id="_idIndexMarker218"/>by the <strong class="source-inline">Preprocessor</strong> and <strong class="source-inline">Lexer</strong> classes respectively, are illustrated in the following diagram:</p>
-			<div>
-				<div id="_idContainer015" class="IMG---Figure">
-					<img src="image/Figure_6.01_B14590.jpg" alt="Figure 6.1 – Role of the Clang preprocessor and lexer &#13;&#10;"/>
+			<p>The roles and primary actions <a id="_idIndexMarker217"/>performed by Clang's preprocessor and lexer, represented <a id="_idIndexMarker218"/>by the <code>Preprocessor</code> and <code>Lexer</code> classes respectively, are illustrated in the following diagram:</p>
+			<div><div><img src="img/Figure_6.01_B14590.jpg" alt="Figure 6.1 – Role of the Clang preprocessor and lexer &#13;&#10;"/>
 				</div>
 			</div>
 			<p class="figure-caption">Figure 6.1 – Role of the Clang preprocessor and lexer </p>
 			<p>We believe most readers here will be familiar <a id="_idIndexMarker219"/>with the concept of a <strong class="bold">token</strong> in the context of the lexer—a substring <a id="_idIndexMarker220"/>from the original source code that acts as the minimum building block for semantic reasoning. In some of the traditional compilers, the <a id="_idIndexMarker221"/>lexer is responsible for chopping the input source code into a sequence of tokens or a <strong class="bold">token stream</strong>, as shown in <a id="_idIndexMarker222"/>the preceding diagram. This token stream will later be fed into the parser to construct the semantic structure.</p>
-			<p>Implementation-wise, Clang takes a slightly different path from traditional compilers (or those from textbooks): <strong class="source-inline">Lexer</strong>, employed by <strong class="source-inline">Preprocessor</strong>, is still the primary performer to cut source code into tokens. However, <strong class="source-inline">Lexer</strong> keeps its hands off whenever encountering a preprocessor directive (that is, anything that starts with a <strong class="source-inline">#</strong>) or a symbol, and relays that task to either the macro expansion, the header file resolver, or pragma handlers that are organized by the <strong class="source-inline">Preprocessor</strong>. These assisting components inject extra tokens, if needed, into the main token stream, which would eventually be returned back to the user of <strong class="source-inline">Preprocessor</strong>. </p>
-			<p>In other words, most consumers of the token stream don't directly interact with <strong class="source-inline">Lexer</strong>, but with the <strong class="source-inline">Preprocessor</strong> instances. This makes people call the <strong class="source-inline">Lexer</strong> class a <em class="italic">raw</em> lexer (as shown in the previous diagram), since <strong class="source-inline">Lexer</strong> by itself only generates a token stream that hasn't been preprocessed. To <a id="_idIndexMarker223"/>give you a more concrete idea of how to use <strong class="source-inline">Preprocessor</strong> to retrieve a token (stream), the following simple code <a id="_idIndexMarker224"/>snippet has been provided. This shows a way to get the next token from the source code currently processing it:</p>
-			<p class="source-code">Token GetNextToken(Preprocessor &amp;PP) {</p>
-			<p class="source-code">  Token Tok;</p>
-			<p class="source-code">  PP.<strong class="bold">Lex(Tok)</strong>;</p>
-			<p class="source-code">  return Tok;</p>
-			<p class="source-code">}</p>
-			<p>As you might have guessed, <strong class="source-inline">Token</strong> is the class representing a single token in Clang, which we're going to introduce shortly in the next paragraph.</p>
+			<p>Implementation-wise, Clang takes a slightly different path from traditional compilers (or those from textbooks): <code>Lexer</code>, employed by <code>Preprocessor</code>, is still the primary performer to cut source code into tokens. However, <code>Lexer</code> keeps its hands off whenever encountering a preprocessor directive (that is, anything that starts with a <code>#</code>) or a symbol, and relays that task to either the macro expansion, the header file resolver, or pragma handlers that are organized by the <code>Preprocessor</code>. These assisting components inject extra tokens, if needed, into the main token stream, which would eventually be returned back to the user of <code>Preprocessor</code>. </p>
+			<p>In other words, most consumers of the token stream don't directly interact with <code>Lexer</code>, but with the <code>Preprocessor</code> instances. This makes people call the <code>Lexer</code> class a <em class="italic">raw</em> lexer (as shown in the previous diagram), since <code>Lexer</code> by itself only generates a token stream that hasn't been preprocessed. To <a id="_idIndexMarker223"/>give you a more concrete idea of how to use <code>Preprocessor</code> to retrieve a token (stream), the following simple code <a id="_idIndexMarker224"/>snippet has been provided. This shows a way to get the next token from the source code currently processing it:</p>
+			<pre>Token GetNextToken(Preprocessor &amp;PP) {
+  Token Tok;
+  PP.<strong class="bold">Lex(Tok)</strong>;
+  return Tok;
+}</pre>
+			<p>As you might have guessed, <code>Token</code> is the class representing a single token in Clang, which we're going to introduce shortly in the next paragraph.</p>
 			<h2 id="_idParaDest-85"><a id="_idTextAnchor085"/>Understanding Token</h2>
-			<p>The <strong class="source-inline">Token</strong> class is the <a id="_idIndexMarker225"/>representation of a single token, either from the source code or a <em class="italic">virtual</em> one that served a special purpose. It is also used extensively by the preprocessing/lexing framework, just like <strong class="source-inline">SourceLocation</strong> that we introduced earlier. Thus, it is designed to be very concise in memory and trivially copyable as well. </p>
-			<p>For the <strong class="source-inline">Token</strong> class, there are two things we want to highlight here, as follows:</p>
+			<p>The <code>Token</code> class is the <a id="_idIndexMarker225"/>representation of a single token, either from the source code or a <em class="italic">virtual</em> one that served a special purpose. It is also used extensively by the preprocessing/lexing framework, just like <code>SourceLocation</code> that we introduced earlier. Thus, it is designed to be very concise in memory and trivially copyable as well. </p>
+			<p>For the <code>Token</code> class, there are two things we want to highlight here, as follows:</p>
 			<ol>
 				<li><strong class="bold">Token kind</strong> tells you <a id="_idIndexMarker226"/>what this token is.</li>
-				<li><strong class="bold">Identifier</strong> represents both <a id="_idIndexMarker227"/>language keywords and arbitrary frontend tokens (a function name, for example). Clang's preprocessor used a dedicated <strong class="source-inline">IdentifierInfo</strong> class to carry extra identifier information, which we're going to cover later in this section.</li>
+				<li><code>IdentifierInfo</code> class to carry extra identifier information, which we're going to cover later in this section.</li>
 			</ol>
 			<h3>Token kind</h3>
-			<p>The token kind tells you <em class="italic">what</em> this <strong class="source-inline">Token</strong> is. Clang's <strong class="source-inline">Token</strong> is <a id="_idIndexMarker228"/>designed to represent not just concrete, physical-language constructions such as keywords and symbols, but also virtual concepts that are inserted by the parser in order to encode as much information as possible using a single <strong class="source-inline">Token</strong>. To visualize the token stream's token kinds, you can use the <a id="_idIndexMarker229"/>following command-line option:</p>
-			<p class="source-code">$ clang -fsyntax-only -Xclang -dump-tokens foo.cc</p>
-			<p><strong class="source-inline">foo.cc</strong> has the following content:</p>
-			<p class="source-code">namespace foo {</p>
-			<p class="source-code">  class MyClass {};</p>
-			<p class="source-code">}</p>
-			<p class="source-code">foo::MyClass Obj;</p>
+			<p>The token kind tells you <em class="italic">what</em> this <code>Token</code> is. Clang's <code>Token</code> is <a id="_idIndexMarker228"/>designed to represent not just concrete, physical-language constructions such as keywords and symbols, but also virtual concepts that are inserted by the parser in order to encode as much information as possible using a single <code>Token</code>. To visualize the token stream's token kinds, you can use the <a id="_idIndexMarker229"/>following command-line option:</p>
+			<pre>$ clang -fsyntax-only -Xclang -dump-tokens foo.cc</pre>
+			<p><code>foo.cc</code> has the following content:</p>
+			<pre>namespace foo {
+  class MyClass {};
+}
+foo::MyClass Obj;</pre>
 			<p>This is the output of the preceding command:</p>
-			<p class="source-code"><strong class="bold">namespace</strong> 'namespace'    [StartOfLine]  Loc=&lt;foo.cc:1:1&gt;</p>
-			<p class="source-code"><strong class="bold">identifier</strong> 'foo'         [LeadingSpace] Loc=&lt;foo.cc:1:11&gt;</p>
-			<p class="source-code"><strong class="bold">l_brace</strong> '{'      [LeadingSpace] Loc=&lt;foo.cc:1:15&gt;</p>
-			<p class="source-code"><strong class="bold">class</strong> 'class'    [StartOfLine] [LeadingSpace]   Loc=&lt;foo.cc:2:3&gt;</p>
-			<p class="source-code"><strong class="bold">identifier</strong> 'MyClass'     [LeadingSpace] Loc=&lt;foo.cc:2:9&gt;</p>
-			<p class="source-code"><strong class="bold">l_brace</strong> '{'      [LeadingSpace] Loc=&lt;foo.cc:2:17&gt;</p>
-			<p class="source-code"><strong class="bold">r_brace</strong> '}'             Loc=&lt;foo.cc:2:18&gt;</p>
-			<p class="source-code"><strong class="bold">semi</strong> ';'                Loc=&lt;foo.cc:2:19&gt;</p>
-			<p class="source-code"><strong class="bold">r_brace</strong> '}'      [StartOfLine]  Loc=&lt;foo.cc:3:1&gt;</p>
-			<p class="source-code"><strong class="bold">identifier</strong> 'foo'         [StartOfLine]  Loc=&lt;foo.cc:5:1&gt;</p>
-			<p class="source-code"><strong class="bold">coloncolon</strong> '::'         Loc=&lt;foo.cc:5:4&gt;</p>
-			<p class="source-code"><strong class="bold">identifier</strong> 'MyClass'            Loc=&lt;foo.cc:5:6&gt;</p>
-			<p class="source-code"><strong class="bold">identifier</strong> 'Obj'         [LeadingSpace] Loc=&lt;foo.cc:5:14&gt;</p>
-			<p class="source-code"><strong class="bold">semi</strong> ';'                Loc=&lt;foo.cc:5:17&gt;</p>
-			<p class="source-code"><strong class="bold">eof</strong> ''          Loc=&lt;foo.cc:5:18&gt;</p>
-			<p>The highlighted parts are the token kinds for each token. The full list of token kinds can be found in <strong class="source-inline">clang/include/clang/Basic/TokenKinds.def</strong>. This file is a useful reference to know the mapping between any language construction (for example, the <strong class="source-inline">return</strong> keyword) and its token kind counterpart (<strong class="source-inline">kw_return</strong>).</p>
-			<p>Although we can't visualize the <a id="_idIndexMarker230"/>virtual tokens—or <strong class="bold">annotation tokens</strong>, as they are called in Clang's code base—we will still explain these using the same example as before. In C++, <strong class="source-inline">::</strong> (the <strong class="source-inline">coloncolon</strong> token kind in the preceding directive) has <a id="_idIndexMarker231"/>several different usages. For example, it can either be for namespace resolution (more formally called <em class="italic">scope resolution </em>in<em class="italic"> C++</em>), as shown in the code snippet earlier, or it can be (optionally) used with the <strong class="source-inline">new</strong> and <strong class="source-inline">delete</strong> operators, as illustrated in the following code snippet:</p>
-			<p class="source-code">int* foo(int N) {</p>
-			<p class="source-code">  return <strong class="bold">::new</strong> int[N]; // Equivalent to 'new int[N]'</p>
-			<p class="source-code">}</p>
-			<p>To make the parsing processing more efficient, the parser will first try to resolve whether the <strong class="source-inline">coloncolon</strong> token is a scope resolution or not. If it is, the token will be replaced by an <strong class="source-inline">annot_cxxscope</strong> annotation token.</p>
-			<p>Now, let's see the API to retrieve the token kind. The <strong class="source-inline">Token</strong> class provides a <strong class="source-inline">getKind</strong> function to retrieve its token kind, as illustrated in the following code snippet:</p>
-			<p class="source-code">bool IsReturn(Token Tok) {</p>
-			<p class="source-code">  return Tok.<strong class="bold">getKind</strong>() == <strong class="bold">tok::kw_return</strong>;</p>
-			<p class="source-code">}</p>
+			<pre><strong class="bold">namespace</strong> 'namespace'    [StartOfLine]  Loc=&lt;foo.cc:1:1&gt;
+<strong class="bold">identifier</strong> 'foo'         [LeadingSpace] Loc=&lt;foo.cc:1:11&gt;
+<strong class="bold">l_brace</strong> '{'      [LeadingSpace] Loc=&lt;foo.cc:1:15&gt;
+<strong class="bold">class</strong> 'class'    [StartOfLine] [LeadingSpace]   Loc=&lt;foo.cc:2:3&gt;
+<strong class="bold">identifier</strong> 'MyClass'     [LeadingSpace] Loc=&lt;foo.cc:2:9&gt;
+<strong class="bold">l_brace</strong> '{'      [LeadingSpace] Loc=&lt;foo.cc:2:17&gt;
+<strong class="bold">r_brace</strong> '}'             Loc=&lt;foo.cc:2:18&gt;
+<strong class="bold">semi</strong> ';'                Loc=&lt;foo.cc:2:19&gt;
+<strong class="bold">r_brace</strong> '}'      [StartOfLine]  Loc=&lt;foo.cc:3:1&gt;
+<strong class="bold">identifier</strong> 'foo'         [StartOfLine]  Loc=&lt;foo.cc:5:1&gt;
+<strong class="bold">coloncolon</strong> '::'         Loc=&lt;foo.cc:5:4&gt;
+<strong class="bold">identifier</strong> 'MyClass'            Loc=&lt;foo.cc:5:6&gt;
+<strong class="bold">identifier</strong> 'Obj'         [LeadingSpace] Loc=&lt;foo.cc:5:14&gt;
+<strong class="bold">semi</strong> ';'                Loc=&lt;foo.cc:5:17&gt;
+<strong class="bold">eof</strong> ''          Loc=&lt;foo.cc:5:18&gt;</pre>
+			<p>The highlighted parts are the token kinds for each token. The full list of token kinds can be found in <code>clang/include/clang/Basic/TokenKinds.def</code>. This file is a useful reference to know the mapping between any language construction (for example, the <code>return</code> keyword) and its token kind counterpart (<code>kw_return</code>).</p>
+			<p>Although we can't visualize the <a id="_idIndexMarker230"/>virtual tokens—or <code>::</code> (the <code>coloncolon</code> token kind in the preceding directive) has <a id="_idIndexMarker231"/>several different usages. For example, it can either be for namespace resolution (more formally called <em class="italic">scope resolution </em>in<em class="italic"> C++</em>), as shown in the code snippet earlier, or it can be (optionally) used with the <code>new</code> and <code>delete</code> operators, as illustrated in the following code snippet:</p>
+			<pre>int* foo(int N) {
+  return <strong class="bold">::new</strong> int[N]; // Equivalent to 'new int[N]'
+}</pre>
+			<p>To make the parsing processing more efficient, the parser will first try to resolve whether the <code>coloncolon</code> token is a scope resolution or not. If it is, the token will be replaced by an <code>annot_cxxscope</code> annotation token.</p>
+			<p>Now, let's see the API to retrieve the token kind. The <code>Token</code> class provides a <code>getKind</code> function to retrieve its token kind, as illustrated in the following code snippet:</p>
+			<pre>bool IsReturn(Token Tok) {
+  return Tok.<strong class="bold">getKind</strong>() == <strong class="bold">tok::kw_return</strong>;
+}</pre>
 			<p>However, if you're only doing checks, just like in the preceding snippet, a more concise function is available, as illustrated here:</p>
-			<p class="source-code">bool IsReturn(Token Tok) {</p>
-			<p class="source-code">  return Tok.<strong class="bold">is(tok::kw_return)</strong>;</p>
-			<p class="source-code">}</p>
-			<p>Though many times, knowing the token kind of a <strong class="source-inline">Token</strong> is sufficient for processing, some language structures require more evidence to judge (for example, tokens that represent a function name, in which case the token kind, <strong class="source-inline">identifier</strong>, is not as important as the name string). Clang uses a specialized class, <strong class="source-inline">IdentifierInfo</strong>, to carry extra information such as the <a id="_idIndexMarker232"/>symbol name for any identifier in the language, which we're going to cover in the next paragraph.</p>
+			<pre>bool IsReturn(Token Tok) {
+  return Tok.<strong class="bold">is(tok::kw_return)</strong>;
+}</pre>
+			<p>Though many times, knowing the token kind of a <code>Token</code> is sufficient for processing, some language structures require more evidence to judge (for example, tokens that represent a function name, in which case the token kind, <code>identifier</code>, is not as important as the name string). Clang uses a specialized class, <code>IdentifierInfo</code>, to carry extra information such as the <a id="_idIndexMarker232"/>symbol name for any identifier in the language, which we're going to cover in the next paragraph.</p>
 			<h3>Identifier</h3>
-			<p>Standard C/C++ uses the word <strong class="bold">identifier</strong> to <a id="_idIndexMarker233"/>represent a wide variety of language concepts, ranging from symbol names (such as function or macro names) to language keywords, which <a id="_idIndexMarker234"/>are called <strong class="bold">reserved identifiers</strong> by the standard. Clang also follows a similar path on the implementation side: it decorates <strong class="source-inline">Token</strong> that fit into the language's standard definition of an identifier with an auxiliary <strong class="source-inline">IdentifierInfo</strong> object. This object encloses properties such as the underlying string content or whether this identifier is associated with a macro function. Here is how you would retrieve the <strong class="source-inline">IdentifierInfo</strong> instance from a <strong class="source-inline">Token</strong> type variable <strong class="source-inline">Tok</strong>:</p>
-			<p class="source-code">IdentifierInfo *II = Tok.getIdentifierInfo();</p>
-			<p>The preceding <strong class="source-inline">getIdentifierInfo</strong> function returns null if <strong class="source-inline">Tok</strong> is not representing an identifier by the language standard's definition. Note that if two identifiers have the <em class="italic">same textual content</em>, they are represented by the same <strong class="source-inline">IdentifierInfo</strong> object. This comes in handy when you want to compare whether different identifier tokens have the same textual contents.</p>
-			<p>Using a dedicated <strong class="source-inline">IdentifierInfo</strong> type on <a id="_idIndexMarker235"/>top of various token kinds has the following advantages:</p>
+			<p>Standard C/C++ uses the word <code>Token</code> that fit into the language's standard definition of an identifier with an auxiliary <code>IdentifierInfo</code> object. This object encloses properties such as the underlying string content or whether this identifier is associated with a macro function. Here is how you would retrieve the <code>IdentifierInfo</code> instance from a <code>Token</code> type variable <code>Tok</code>:</p>
+			<pre>IdentifierInfo *II = Tok.getIdentifierInfo();</pre>
+			<p>The preceding <code>getIdentifierInfo</code> function returns null if <code>Tok</code> is not representing an identifier by the language standard's definition. Note that if two identifiers have the <em class="italic">same textual content</em>, they are represented by the same <code>IdentifierInfo</code> object. This comes in handy when you want to compare whether different identifier tokens have the same textual contents.</p>
+			<p>Using a dedicated <code>IdentifierInfo</code> type on <a id="_idIndexMarker235"/>top of various token kinds has the following advantages:</p>
 			<ul>
-				<li>For a <strong class="source-inline">Token</strong> with an <strong class="source-inline">identifier</strong> token kind, we sometimes want to know if it has been associated with a macro. You can find this out with the <strong class="source-inline">IdentifierInfo::hasMacroDefinition</strong> function.</li>
-				<li>For a token with an <strong class="source-inline">identifier</strong> token kind, storing underlying string content in auxiliary storage (that is, the <strong class="source-inline">IdentifierInfo</strong> object) can save a <strong class="source-inline">Token</strong> object's memory footprint, which is on the hot path of the frontend. You can retrieve the underlying string content with the <strong class="source-inline">IdentifierInfo::getName</strong> function.</li>
-				<li>For a <strong class="source-inline">Token</strong> that represents language keywords, though the framework already provides dedicated token kinds for these sorts of tokens (for example, <strong class="source-inline">kw_return</strong> for the <strong class="source-inline">return</strong> keyword), some of these tokens only become language keywords in later language <a id="_idIndexMarker236"/>standards. For example, the following snippet is legal in standards before C++11:<p class="source-code">void foo(int <strong class="bold">auto</strong>) {}</p></li>
-				<li>You could compile it with the following command:<p class="source-code">$ clang++ <strong class="bold">-std=c++03 -fsyntax-only</strong> …</p><p>If you do so, it won't give you any complaint, until you change the preceding <strong class="source-inline">-std=c++03</strong> standard into <strong class="source-inline">-std=c++11</strong> or a later standard. The error message in the latter case will say that <strong class="source-inline">auto</strong>, a language keyword since C++11, can't be used there. To <a id="_idIndexMarker237"/>give the frontend have an easier time judging if a given token is a keyword in any case, the <strong class="source-inline">IdentifierInfo</strong> object attached on keyword tokens is designed to answer if an identifier is a keyword under a certain language standard (or language feature), using the <strong class="source-inline">IdentifierInfo::isKeyword(…)</strong> function, for example, whereby you pass a <strong class="source-inline">LangOptions</strong> class object (a class carrying information such as the language standard and features currently being used) as the argument to that function.</p></li>
+				<li>For a <code>Token</code> with an <code>identifier</code> token kind, we sometimes want to know if it has been associated with a macro. You can find this out with the <code>IdentifierInfo::hasMacroDefinition</code> function.</li>
+				<li>For a token with an <code>identifier</code> token kind, storing underlying string content in auxiliary storage (that is, the <code>IdentifierInfo</code> object) can save a <code>Token</code> object's memory footprint, which is on the hot path of the frontend. You can retrieve the underlying string content with the <code>IdentifierInfo::getName</code> function.</li>
+				<li>For a <code>Token</code> that represents language keywords, though the framework already provides dedicated token kinds for these sorts of tokens (for example, <code>kw_return</code> for the <code>return</code> keyword), some of these tokens only become language keywords in later language <a id="_idIndexMarker236"/>standards. For example, the following snippet is legal in standards before C++11:<pre>void foo(int <strong class="bold">auto</strong>) {}</pre></li>
+				<li>You could compile it with the following command:<pre>$ clang++ <code>-std=c++03</code> standard into <code>-std=c++11</code> or a later standard. The error message in the latter case will say that <code>auto</code>, a language keyword since C++11, can't be used there. To <a id="_idIndexMarker237"/>give the frontend have an easier time judging if a given token is a keyword in any case, the <code>IdentifierInfo</code> object attached on keyword tokens is designed to answer if an identifier is a keyword under a certain language standard (or language feature), using the <code>IdentifierInfo::isKeyword(…)</code> function, for example, whereby you pass a <code>LangOptions</code> class object (a class carrying information such as the language standard and features currently being used) as the argument to that function.</p></li>
 			</ul>
-			<p>In the next sub-section, we're going to introduce the last important <strong class="source-inline">Preprocessor</strong> concept of this section: how <strong class="source-inline">Preprocessor</strong> handles <em class="italic">macros</em> in C-family languages.</p>
+			<p>In the next sub-section, we're going to introduce the last important <code>Preprocessor</code> concept of this section: how <code>Preprocessor</code> handles <em class="italic">macros</em> in C-family languages.</p>
 			<h2 id="_idParaDest-86"><a id="_idTextAnchor086"/>Handling macros</h2>
 			<p>Implementations for <strong class="bold">macros</strong> of C-family languages are non-trivial. In addition to challenges on <a id="_idIndexMarker238"/>source locations as we introduced earlier—how do we carry source locations of both the macro definitions and the place they're expanded—the ability to re-define and undefine a macro name complicates the whole story. Have a look at the following code snippet for an example of this:</p>
-			<p class="source-code"><strong class="bold">#define FOO(X) (X + 1)</strong></p>
-			<p class="source-code">return FOO(3); // Equivalent to "<strong class="bold">return (3 + 1);</strong>"</p>
-			<p class="source-code"><strong class="bold">#define FOO(X) (X - 100)</strong></p>
-			<p class="source-code">return FOO(3); // Now this is equivalent to "<strong class="bold">return (3 - 100);</strong>"</p>
-			<p class="source-code"><strong class="bold">#undef FOO</strong></p>
-			<p class="source-code">return FOO(3); // "<strong class="bold">FOO(3)</strong>" here will not be expanded in                //preprocessor</p>
-			<p>The preceding C code showed that the definition of <strong class="source-inline">FOO</strong> (if <strong class="source-inline">FOO</strong> is defined) varies on different lexical locations (different lines).</p>
+			<pre><strong class="bold">#define FOO(X) (X + 1)</strong>
+return FOO(3); // Equivalent to "<strong class="bold">return (3 + 1);</strong>"
+<strong class="bold">#define FOO(X) (X - 100)</strong>
+return FOO(3); // Now this is equivalent to "<strong class="bold">return (3 - 100);</strong>"
+<strong class="bold">#undef FOO</strong>
+return FOO(3); // "<strong class="bold">FOO(3)</strong>" here will not be expanded in                //preprocessor</pre>
+			<p>The preceding C code showed that the definition of <code>FOO</code> (if <code>FOO</code> is defined) varies on different lexical locations (different lines).</p>
 			<p class="callout-heading">Local versus Module macros</p>
-			<p class="callout">C++20 has introduced a new <a id="_idIndexMarker239"/>language concept called <strong class="bold">Module</strong>. It resembles the modularity mechanisms in many other object-oriented languages such as Java or Python. You can also define macros in a Module, but they work slightly differently from the traditional macros, which <a id="_idIndexMarker240"/>are called <strong class="bold">local macros</strong> in Clang. For example, you can control the visibility of a Module macro by using keywords such as <strong class="source-inline">export</strong>. We only cover local macros in this book.</p>
+			<p class="callout">C++20 has introduced a new <a id="_idIndexMarker239"/>language concept called <code>export</code>. We only cover local macros in this book.</p>
 			<p>To model this concept, Clang has <a id="_idIndexMarker241"/>constructed a system to record the chain of definitions and un-definitions. Before explaining how it works, here are three of the most important components of this system:</p>
 			<ol>
-				<li value="1"><strong class="source-inline">MacroDirective</strong>: This <a id="_idIndexMarker242"/>class is the logical representation of a <strong class="source-inline">#define</strong> or a <strong class="source-inline">#undef</strong> <em class="italic">statement</em> of a given macro identifier. As shown in the preceding code example, there can be multiple <strong class="source-inline">#define</strong> (and <strong class="source-inline">#undef</strong>) statements on the same macro identifier, so eventually these <strong class="source-inline">MacroDirective</strong> objects will form a chain ordered by their lexical appearances. To be more specific, the <strong class="source-inline">#define</strong> and <strong class="source-inline">#undef</strong> directives are actually represented by subclasses of <strong class="source-inline">MacroDirective</strong>, <strong class="source-inline">DefMacroDirective</strong>, and <strong class="source-inline">UndefMacroDirective</strong>, respectively.</li>
-				<li><strong class="source-inline">MacroDefinition</strong>: This class <a id="_idIndexMarker243"/>represents the <em class="italic">definition</em> of a macro identifier at the current time point. Rather than containing the full macro definition body, this instance is more like a pointer pointing to different macro bodies, which are represented by the <strong class="source-inline">MacroInfo</strong> class that will be introduced shortly, upon resolving a different <strong class="source-inline">MacroDirective</strong> class. This class can also <a id="_idIndexMarker244"/>tell you the (latest) <strong class="source-inline">DefMacroDirective</strong> class that defines this <strong class="source-inline">MacroDefinition</strong> class.</li>
-				<li><strong class="source-inline">MacroInfo</strong>: This class contains the <a id="_idIndexMarker245"/>body, including tokens in the body and macro arguments (if any) of a macro definition.</li>
+				<li value="1"><code>MacroDirective</code>: This <a id="_idIndexMarker242"/>class is the logical representation of a <code>#define</code> or a <code>#undef</code> <em class="italic">statement</em> of a given macro identifier. As shown in the preceding code example, there can be multiple <code>#define</code> (and <code>#undef</code>) statements on the same macro identifier, so eventually these <code>MacroDirective</code> objects will form a chain ordered by their lexical appearances. To be more specific, the <code>#define</code> and <code>#undef</code> directives are actually represented by subclasses of <code>MacroDirective</code>, <code>DefMacroDirective</code>, and <code>UndefMacroDirective</code>, respectively.</li>
+				<li><code>MacroDefinition</code>: This class <a id="_idIndexMarker243"/>represents the <em class="italic">definition</em> of a macro identifier at the current time point. Rather than containing the full macro definition body, this instance is more like a pointer pointing to different macro bodies, which are represented by the <code>MacroInfo</code> class that will be introduced shortly, upon resolving a different <code>MacroDirective</code> class. This class can also <a id="_idIndexMarker244"/>tell you the (latest) <code>DefMacroDirective</code> class that defines this <code>MacroDefinition</code> class.</li>
+				<li><code>MacroInfo</code>: This class contains the <a id="_idIndexMarker245"/>body, including tokens in the body and macro arguments (if any) of a macro definition.</li>
 			</ol>
 			<p>Here is a diagram illustrating the relationship of these classes in regard to the sample code earlier:</p>
-			<div>
-				<div id="_idContainer016" class="IMG---Figure">
-					<img src="image/Figure_6.02_B14590.jpg" alt="Figure 6.2 – How different C++ classes for a macro are related to the previous code example&#13;&#10;"/>
+			<div><div><img src="img/Figure_6.02_B14590.jpg" alt="Figure 6.2 – How different C++ classes for a macro are related to the previous code example&#13;&#10;"/>
 				</div>
 			</div>
 			<p class="figure-caption">Figure 6.2 – How different C++ classes for a macro are related to the previous code example</p>
-			<p>To <a id="_idIndexMarker246"/>retrieve the <strong class="source-inline">MacroInfo</strong> class and its <strong class="source-inline">MacroDefinition</strong> class, we can use the following <strong class="source-inline">Preprocessor</strong> APIs, as follows:</p>
-			<p class="source-code">void printMacroBody(IdentifierInfo *MacroII, Preprocessor &amp;PP) {</p>
-			<p class="source-code">  MacroDefinition Def = PP.<strong class="bold">getMacroDefinition</strong>(MacroII);</p>
-			<p class="source-code">  MacroInfo *Info = <strong class="bold">Def.getMacroInfo</strong>();</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">}</p>
-			<p>The <strong class="source-inline">IdentifierInfo</strong> type argument, <strong class="source-inline">MacroII</strong>, shown in the preceding code snippet, represents the macro name. To further examine the macro body, run the following code:</p>
-			<p class="source-code">void printMacroBody(IdentifierInfo *MacroII, Preprocessor &amp;PP) {</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">  MacroInfo *Info = Def.getMacroInfo();</p>
-			<p class="source-code">  for(Token Tok : <strong class="bold">Info-&gt;tokens</strong>()) {</p>
-			<p class="source-code">    std::cout &lt;&lt; Tok.getName() &lt;&lt; "\n";</p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p>From this section, you've learned the <a id="_idIndexMarker247"/>working flow of <strong class="source-inline">Preprocessor</strong>, as well as two important components: the <strong class="source-inline">Token</strong> class and the sub-system that handles macros. Learning these two gives you a better picture of how Clang's preprocessing works and prepares you for the <strong class="source-inline">Preprocessor</strong> plugin and custom callbacks development in the next section.</p>
+			<p>To <a id="_idIndexMarker246"/>retrieve the <code>MacroInfo</code> class and its <code>MacroDefinition</code> class, we can use the following <code>Preprocessor</code> APIs, as follows:</p>
+			<pre>void printMacroBody(IdentifierInfo *MacroII, Preprocessor &amp;PP) {
+  MacroDefinition Def = PP.<strong class="bold">getMacroDefinition</strong>(MacroII);
+  MacroInfo *Info = <strong class="bold">Def.getMacroInfo</strong>();
+  …
+}</pre>
+			<p>The <code>IdentifierInfo</code> type argument, <code>MacroII</code>, shown in the preceding code snippet, represents the macro name. To further examine the macro body, run the following code:</p>
+			<pre>void printMacroBody(IdentifierInfo *MacroII, Preprocessor &amp;PP) {
+  …
+  MacroInfo *Info = Def.getMacroInfo();
+  for(Token Tok : <strong class="bold">Info-&gt;tokens</strong>()) {
+    std::cout &lt;&lt; Tok.getName() &lt;&lt; "\n";
+  }
+}</pre>
+			<p>From this section, you've learned the <a id="_idIndexMarker247"/>working flow of <code>Preprocessor</code>, as well as two important components: the <code>Token</code> class and the sub-system that handles macros. Learning these two gives you a better picture of how Clang's preprocessing works and prepares you for the <code>Preprocessor</code> plugin and custom callbacks development in the next section.</p>
 			<h1 id="_idParaDest-87"><a id="_idTextAnchor087"/>Developing custom preprocessor plugins and callbacks</h1>
-			<p>As flexible as <a id="_idIndexMarker248"/>other parts of LLVM and Clang, Clang's preprocessing framework also provides a way to insert custom logic via plugins. More <a id="_idIndexMarker249"/>specifically, it allows developers to write plugins to <a id="_idIndexMarker250"/>handle custom <strong class="bold">pragma</strong> directives (that is, allowing users to write something such as <strong class="source-inline">#pragma my_awesome_feature</strong>). In addition, the <strong class="source-inline">Preprocessor</strong> class also provides a more general way to define custom callback functions in <a id="_idIndexMarker251"/>reaction to arbitrary <strong class="bold">preprocessing events</strong>— such as when a macro is expanded or a <strong class="source-inline">#include</strong> directive is resolved, to name but a couple of examples. In this section, we're going to use a simple project that leverages both techniques to demonstrate their usage.</p>
+			<p>As flexible as <a id="_idIndexMarker248"/>other parts of LLVM and Clang, Clang's preprocessing framework also provides a way to insert custom logic via plugins. More <a id="_idIndexMarker249"/>specifically, it allows developers to write plugins to <a id="_idIndexMarker250"/>handle custom <code>#pragma my_awesome_feature</code>). In addition, the <code>Preprocessor</code> class also provides a more general way to define custom callback functions in <a id="_idIndexMarker251"/>reaction to arbitrary <code>#include</code> directive is resolved, to name but a couple of examples. In this section, we're going to use a simple project that leverages both techniques to demonstrate their usage.</p>
 			<h2 id="_idParaDest-88"><a id="_idTextAnchor088"/>The project goal and preparation</h2>
 			<p>Macros in C/C++ have always been notorious for poor <em class="italic">design hygiene</em> that could easily lead to <a id="_idIndexMarker252"/>coding errors when used without care. Have a look at the following code snippet for an example of this:</p>
-			<p class="source-code">#define PRINT(<strong class="bold">val</strong>) \</p>
-			<p class="source-code">  printf("%d\n", <strong class="bold">val * 2</strong>)</p>
-			<p class="source-code">void main() {</p>
-			<p class="source-code">  PRINT(<strong class="bold">1 + 3</strong>);</p>
-			<p class="source-code">}</p>
-			<p><strong class="source-inline">PRINT</strong> in the preceding code snippet looks just like a normal function, thus it's easy to believe that this program will print out <strong class="source-inline">8</strong>. However, <strong class="source-inline">PRINT</strong> is a macro function rather than a normal function, so when it's expanded, the <strong class="source-inline">main</strong> function is equivalent to this:</p>
-			<p class="source-code">void main() {</p>
-			<p class="source-code">  printf("%d\n", <strong class="bold">1 + 3 * 2</strong>);</p>
-			<p class="source-code">}</p>
-			<p>Therefore, the program actually prints <strong class="source-inline">7</strong>. This ambiguity can of course be solved by wrapping every occurrence of the <strong class="source-inline">val</strong> macro argument in the macro body with parenthesis, as illustrated in the following code snippet:</p>
-			<p class="source-code">#define PRINT(val) \</p>
-			<p class="source-code">  printf("%d\n", <strong class="bold">(val) * 2</strong>)</p>
-			<p>Therefore, after macro expansion, the <strong class="source-inline">main</strong> function will look like this:</p>
-			<p class="source-code">void main() {</p>
-			<p class="source-code">  printf("%d\n", <strong class="bold">(1 + 3) * 2</strong>);</p>
-			<p class="source-code">}</p>
-			<p>The project we're going to do here is to develop a custom <strong class="source-inline">#pragma</strong> syntax to warn developers if a certain macro argument, designated by programmers, is not properly enclosed in parentheses, for the sake of preventing the preceding <em class="italic">hygiene</em> problems from happening. Here is an example of this new syntax:</p>
-			<p class="source-code"><strong class="bold">#pragma macro_arg_guard val</strong></p>
-			<p class="source-code">#define PRINT(val) \</p>
-			<p class="source-code">  printf("%d\n", <strong class="bold">val * 94</strong> + <strong class="bold">(val) * 87</strong>);</p>
-			<p class="source-code">void main() {</p>
-			<p class="source-code">  PRINT(1 + 3);</p>
-			<p class="source-code">}</p>
-			<p>Similar to <a id="_idIndexMarker253"/>previous example, if an occurrence of the preceding <strong class="source-inline">val</strong> argument is not enclosed in parentheses, this might introduce potential bugs. </p>
-			<p>In the new <strong class="source-inline">macro_arg_guard</strong> pragma syntax, tokens following the pragma name are the macro argument names to check in the next macro function. Since <strong class="source-inline">val</strong> in the <strong class="source-inline">val * 94</strong> expression from the preceding code snippet is not enclosed in parentheses, it will print the following warning message:</p>
-			<p class="source-code">$ clang … foo.c</p>
-			<p class="source-code">[WARNING] In foo.c:3:18: macro argument 'val' is not enclosed by parenthesis</p>
+			<pre>#define PRINT(<strong class="bold">val</strong>) \
+  printf("%d\n", <strong class="bold">val * 2</strong>)
+void main() {
+  PRINT(<strong class="bold">1 + 3</strong>);
+}</pre>
+			<p><code>PRINT</code> in the preceding code snippet looks just like a normal function, thus it's easy to believe that this program will print out <code>8</code>. However, <code>PRINT</code> is a macro function rather than a normal function, so when it's expanded, the <code>main</code> function is equivalent to this:</p>
+			<pre>void main() {
+  printf("%d\n", <strong class="bold">1 + 3 * 2</strong>);
+}</pre>
+			<p>Therefore, the program actually prints <code>7</code>. This ambiguity can of course be solved by wrapping every occurrence of the <code>val</code> macro argument in the macro body with parenthesis, as illustrated in the following code snippet:</p>
+			<pre>#define PRINT(val) \
+  printf("%d\n", <strong class="bold">(val) * 2</strong>)</pre>
+			<p>Therefore, after macro expansion, the <code>main</code> function will look like this:</p>
+			<pre>void main() {
+  printf("%d\n", <strong class="bold">(1 + 3) * 2</strong>);
+}</pre>
+			<p>The project we're going to do here is to develop a custom <code>#pragma</code> syntax to warn developers if a certain macro argument, designated by programmers, is not properly enclosed in parentheses, for the sake of preventing the preceding <em class="italic">hygiene</em> problems from happening. Here is an example of this new syntax:</p>
+			<pre><strong class="bold">#pragma macro_arg_guard val</strong>
+#define PRINT(val) \
+  printf("%d\n", <strong class="bold">val * 94</strong> + <strong class="bold">(val) * 87</strong>);
+void main() {
+  PRINT(1 + 3);
+}</pre>
+			<p>Similar to <a id="_idIndexMarker253"/>previous example, if an occurrence of the preceding <code>val</code> argument is not enclosed in parentheses, this might introduce potential bugs. </p>
+			<p>In the new <code>macro_arg_guard</code> pragma syntax, tokens following the pragma name are the macro argument names to check in the next macro function. Since <code>val</code> in the <code>val * 94</code> expression from the preceding code snippet is not enclosed in parentheses, it will print the following warning message:</p>
+			<pre>$ clang … foo.c
+[WARNING] In foo.c:3:18: macro argument 'val' is not enclosed by parenthesis</pre>
 			<p>This project, albeit being a <em class="italic">toy example</em>, is actually pretty useful when the macro function becomes pretty big or complicated, in which case manually adding parentheses on <em class="italic">every</em> macro argument occurrence might be an error-prone task. A tool to catch this kind of mistake would definitely be helpful.</p>
 			<p>Before we dive into the coding part, let's set up the project folder. Here is the folder structure:</p>
-			<p class="source-code">MacroGuard</p>
-			<p class="source-code">  |___ CMakeLists.txt</p>
-			<p class="source-code">  |___ MacroGuardPragma.cpp</p>
-			<p class="source-code">  |___ MacroGuardValidator.h</p>
-			<p class="source-code">  |___ MacroGuardValidator.cpp</p>
-			<p>The <strong class="source-inline">MacroGuardPragama.cpp</strong> file includes a custom <strong class="source-inline">PragmaHandler</strong> function, which we're going to cover in the next section, <em class="italic">Implementing a custom pragma handler</em>. For <strong class="source-inline">MacroGuardValidator.h/.cpp</strong>, this includes a custom <strong class="source-inline">PPCallbacks</strong> function used to check if the designated macro body and arguments conform to our rules here. We will introduce this in the later, <em class="italic">Implementing custom preprocessor callbacks </em>section.</p>
-			<p>Since we're setting up an out-of-tree project here, please refer to the <em class="italic">Understanding CMake integration for out-of-tree projects</em> section of <a href="B14590_02_Final_JC_ePub.xhtml#_idTextAnchor029"><em class="italic">Chapter 2</em></a>, <em class="italic">Exploring LLVM's Build System Features</em>, in case you don't know how to import LLVM's own CMake directives (such as the <strong class="source-inline">add_llvm_library</strong> and <strong class="source-inline">add_llvm_executable</strong> CMake functions). And <a id="_idIndexMarker254"/>because we're also dealing with Clang here, we need to use a similar way to import Clang's build configurations, such as the <strong class="source-inline">include</strong> folder path shown in the following code snippet:</p>
-			<p class="source-code"># In MacroGuard/CmakeLists.txt</p>
-			<p class="source-code">…</p>
-			<p class="source-code"># (after importing LLVM's CMake directives)</p>
-			<p class="source-code"><strong class="bold">find_package</strong>(<strong class="bold">Clang </strong>REQUIRED CONFIG)</p>
-			<p class="source-code">include_directories(<strong class="bold">${CLANG_INCLUDE_DIRS}</strong>)</p>
-			<p>The reason we don't need to set up Clang's library path here is because normally, plugins will dynamically link against libraries' implementations provided by the loader program (in our case, the <strong class="source-inline">clang</strong> executable) rather than linking those libraries explicitly during build time.</p>
+			<pre>MacroGuard
+  |___ CMakeLists.txt
+  |___ MacroGuardPragma.cpp
+  |___ MacroGuardValidator.h
+  |___ MacroGuardValidator.cpp</pre>
+			<p>The <code>MacroGuardPragama.cpp</code> file includes a custom <code>PragmaHandler</code> function, which we're going to cover in the next section, <em class="italic">Implementing a custom pragma handler</em>. For <code>MacroGuardValidator.h/.cpp</code>, this includes a custom <code>PPCallbacks</code> function used to check if the designated macro body and arguments conform to our rules here. We will introduce this in the later, <em class="italic">Implementing custom preprocessor callbacks </em>section.</p>
+			<p>Since we're setting up an out-of-tree project here, please refer to the <em class="italic">Understanding CMake integration for out-of-tree projects</em> section of <a href="B14590_02_Final_JC_ePub.xhtml#_idTextAnchor029"><em class="italic">Chapter 2</em></a>, <em class="italic">Exploring LLVM's Build System Features</em>, in case you don't know how to import LLVM's own CMake directives (such as the <code>add_llvm_library</code> and <code>add_llvm_executable</code> CMake functions). And <a id="_idIndexMarker254"/>because we're also dealing with Clang here, we need to use a similar way to import Clang's build configurations, such as the <code>include</code> folder path shown in the following code snippet:</p>
+			<pre># In MacroGuard/CmakeLists.txt
+…
+# (after importing LLVM's CMake directives)
+<strong class="bold">find_package</strong>(<strong class="bold">Clang </strong>REQUIRED CONFIG)
+include_directories(<strong class="bold">${CLANG_INCLUDE_DIRS}</strong>)</pre>
+			<p>The reason we don't need to set up Clang's library path here is because normally, plugins will dynamically link against libraries' implementations provided by the loader program (in our case, the <code>clang</code> executable) rather than linking those libraries explicitly during build time.</p>
 			<p>Finally, we're adding the plugin's build target, as follows:</p>
-			<p class="source-code">set(_SOURCE_FILES</p>
-			<p class="source-code">    MacroGuardPragma.cpp</p>
-			<p class="source-code">    MacroGuardValidator.cpp</p>
-			<p class="source-code">    )</p>
-			<p class="source-code"><strong class="bold">add_llvm_library</strong>(MacroGuardPlugin MODULE</p>
-			<p class="source-code">                 ${_SOURCE_FILES}</p>
-			<p class="source-code">                 PLUGIN_TOOL clang)</p>
+			<pre>set(_SOURCE_FILES
+    MacroGuardPragma.cpp
+    MacroGuardValidator.cpp
+    )
+<strong class="bold">add_llvm_library</strong>(MacroGuardPlugin MODULE
+                 ${_SOURCE_FILES}
+                 PLUGIN_TOOL clang)</pre>
 			<p class="callout-heading">The PLUGIN_TOOL argument</p>
-			<p class="callout">The <strong class="source-inline">PLUGIN_TOOL</strong> argument for the <strong class="source-inline">add_llvm_library</strong> CMake function seen in the preceding code snippet is actually designed exclusively for <a id="_idIndexMarker255"/>Windows platforms, since <strong class="bold">dynamic link library</strong> (<strong class="bold">DLL</strong>) files—the dynamic shared object file format in Windows—has an…interesting rule that requires a loader executable's name to be shown in the DLL file header. <strong class="source-inline">PLUGIN_TOOL</strong> is also used for specifying this plugin loader executable's name.</p>
-			<p>After <a id="_idIndexMarker256"/>setting up the <strong class="source-inline">CMake</strong> script and building the plugin, you can use the following command to run the plugin:</p>
-			<p class="source-code">$ clang … <strong class="bold">-fplugin=/path/to/MacroGuardPlugin.so</strong> foo.c</p>
-			<p>Of course, we haven't currently written any code, so nothing is printed out. In the next section, we will first develop a custom <strong class="source-inline">PragmaHandler</strong> instance to implement our new <strong class="source-inline">#pragma macro_arg_guard</strong> syntax.</p>
+			<pre>Windows platforms, since <code>PLUGIN_TOOL</code> is also used for specifying this plugin loader executable's name.</pre>
+			<p>After <a id="_idIndexMarker256"/>setting up the <code>CMake</code> script and building the plugin, you can use the following command to run the plugin:</p>
+			<pre>$ clang … <strong class="bold">-fplugin=/path/to/MacroGuardPlugin.so</strong> foo.c</pre>
+			<p>Of course, we haven't currently written any code, so nothing is printed out. In the next section, we will first develop a custom <code>PragmaHandler</code> instance to implement our new <code>#pragma macro_arg_guard</code> syntax.</p>
 			<h2 id="_idParaDest-89"><a id="_idTextAnchor089"/>Implementing a custom pragma handler</h2>
-			<p>The first step of <a id="_idIndexMarker257"/>implementing the aforementioned features is to create a custom <strong class="source-inline">#pragma</strong> handler. To do so, we first create a <strong class="source-inline">MacroGuardHandler</strong> class that derives from the <strong class="source-inline">PragmaHandler</strong> class inside the <strong class="source-inline">MacroGuardPragma.cpp</strong> file, as follows:</p>
-			<p class="source-code">struct MacroGuardHandler : public PragmaHandler {</p>
-			<p class="source-code">  MacroGuardHandler() : PragmaHandler(<strong class="bold">"macro_arg_guard"</strong>){}</p>
-			<p class="source-code">  void <strong class="bold">HandlePragma</strong>(Preprocessor &amp;PP, PragmaIntroducer                     Introducer, Token &amp;PragmaTok) override;</p>
-			<p class="source-code">};</p>
-			<p>The <strong class="source-inline">HandlePragma</strong> callback function will be invoked whenever the <strong class="source-inline">Preprocessor</strong> encounters a non-standard pragma directive. We're going to do two things in this function, as follows:</p>
+			<p>The first step of <a id="_idIndexMarker257"/>implementing the aforementioned features is to create a custom <code>#pragma</code> handler. To do so, we first create a <code>MacroGuardHandler</code> class that derives from the <code>PragmaHandler</code> class inside the <code>MacroGuardPragma.cpp</code> file, as follows:</p>
+			<pre>struct MacroGuardHandler : public PragmaHandler {
+  MacroGuardHandler() : PragmaHandler(<strong class="bold">"macro_arg_guard"</strong>){}
+  void <strong class="bold">HandlePragma</strong>(Preprocessor &amp;PP, PragmaIntroducer                     Introducer, Token &amp;PragmaTok) override;
+};</pre>
+			<p>The <code>HandlePragma</code> callback function will be invoked whenever the <code>Preprocessor</code> encounters a non-standard pragma directive. We're going to do two things in this function, as follows:</p>
 			<ol>
-				<li value="1">Retrieve any supplement tokens—treated as the <strong class="bold">pragma arguments</strong>—that follows after the <a id="_idIndexMarker258"/>pragma name token (<strong class="source-inline">macro_arg_guard</strong>).</li>
-				<li>Register a <strong class="source-inline">PPCallbacks</strong> instance that scans the body of the next macro function definition to see if specific macro arguments are properly enclosed by parentheses in there. We will outline the details of this task next.</li>
+				<li value="1">Retrieve any supplement tokens—treated as the <code>macro_arg_guard</code>).</li>
+				<li>Register a <code>PPCallbacks</code> instance that scans the body of the next macro function definition to see if specific macro arguments are properly enclosed by parentheses in there. We will outline the details of this task next.</li>
 			</ol>
-			<p>For the first task, we are <a id="_idIndexMarker259"/>leveraging <strong class="source-inline">Preprocessor</strong> to help us parse the pragma arguments, which are macro argument names to be enclosed. When <strong class="source-inline">HandlePragma</strong> is called, the <strong class="source-inline">Preprocessor</strong> is stopped at the place right after the pragma name token, as illustrated in the following code snippet:</p>
-			<p class="source-code">#pragma macro_arg_guard val</p>
-			<p class="source-code">                       ^--Stop at here</p>
+			<p>For the first task, we are <a id="_idIndexMarker259"/>leveraging <code>Preprocessor</code> to help us parse the pragma arguments, which are macro argument names to be enclosed. When <code>HandlePragma</code> is called, the <code>Preprocessor</code> is stopped at the place right after the pragma name token, as illustrated in the following code snippet:</p>
+			<pre>#pragma macro_arg_guard val
+                       ^--Stop at here</pre>
 			<p>So, all we need to do is keep lexing and storing those tokens until hitting the end of this line:</p>
-			<p class="source-code">void MacroGuardHandler::HandlePragma(Preprocessor &amp;PP,…) {</p>
-			<p class="source-code">  Token Tok;</p>
-			<p class="source-code">  <strong class="bold">PP.Lex(Tok)</strong>;</p>
-			<p class="source-code">  while (Tok.isNot(<strong class="bold">tok::eod</strong>)) {</p>
-			<p class="source-code">    <strong class="bold">ArgsToEnclosed</strong>.push_back(Tok.getIdentifierInfo());</p>
-			<p class="source-code">    PP.Lex(Tok);</p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p>The <strong class="source-inline">eod</strong> token kind in the <a id="_idIndexMarker260"/>preceding code snippet means <strong class="bold">end of directive</strong>. It is exclusively used to mark the end of a preprocessor directive.</p>
-			<p>For the <strong class="source-inline">ArgsToEscped</strong> variable, the following global array stores the designated macro argument's <strong class="source-inline">IdentifierInfo</strong> objects:</p>
-			<p class="source-code"><strong class="bold">SmallVector&lt;const IdentifierInfo*, 2&gt; ArgsToEnclosed</strong>;</p>
-			<p class="source-code">struct MacroGuardHandler: public PragmaHandler {</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">};</p>
-			<p>The reason we're declaring <strong class="source-inline">ArgsToEnclosed</strong> in a global scope is that we're using it to <em class="italic">communicate</em> with our <strong class="source-inline">PPCallbacks</strong> instance later, which will use that array content to perform the validations.</p>
-			<p>Though the implementation <a id="_idIndexMarker261"/>details of our <strong class="source-inline">PPCallbacks</strong> instance, the <strong class="source-inline">MacroGuardValidator</strong> class, will not be covered until the next section, it needs to be registered with the <strong class="source-inline">Preprocessor</strong> when the <strong class="source-inline">HandlePragma</strong> function is called for the first time, as follows:</p>
-			<p class="source-code">struct MacroGuardHandler : public PragmaHandler {</p>
-			<p class="source-code">  <strong class="bold">bool IsValidatorRegistered</strong>;</p>
-			<p class="source-code">  MacroGuardHandler() : PragmaHandler("macro_arg_guard"),</p>
-			<p class="source-code">                        IsValidatorRegistered(false) {}</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">};</p>
-			<p class="source-code">void MacroGuardHandler::HandlePragma(Preprocessor &amp;PP,…) {</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">  if (!IsValidatorRegistered) {</p>
-			<p class="source-code">    auto Validator = std::make_unique&lt;<strong class="bold">MacroGuardValidator</strong>&gt;(…);</p>
-			<p class="source-code">    PP.<strong class="bold">addCallbackPPCallbacks</strong>(std::move(Validator));</p>
-			<p class="source-code">    IsValidatorRegistered = true;</p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p>We also use a flag to make sure it is only registered once. After this, whenever a preprocessing event happens, our <strong class="source-inline">MacroGuardValidator</strong> class will be invoked to handle it. In our case, we are only interested in the <strong class="source-inline">macro definition</strong> event, which signals to <strong class="source-inline">MacroGuardValidator</strong> to validate the macro body that it just defined.</p>
-			<p>Before wrapping up on <strong class="source-inline">PragmaHandler</strong>, we need <a id="_idIndexMarker262"/>some extra code to transform the handler into a plugin, as follows:</p>
-			<p class="source-code">struct MacroGuardHandler : public PragmaHandler {</p>
-			<p class="source-code">  …</p>
-			<p class="source-code">};</p>
-			<p class="source-code">static <strong class="bold">PragmaHandlerRegistry::Add&lt;MacroGuardHandler&gt;</strong></p>
-			<p class="source-code">  X("macro_arg_guard", "Verify if designated macro args are     enclosed");</p>
-			<p>After declaring this variable, when this plugin is loaded into <strong class="source-inline">clang</strong>, a <strong class="source-inline">MacroGuardHandler</strong> instance is inserted into a global <strong class="source-inline">PragmaHandler</strong> registry, which will be queried by the <strong class="source-inline">Preprocessor</strong> whenever it encounters a non-standard <strong class="source-inline">#pragma</strong> directive. Now, Clang is able to recognize our custom <strong class="source-inline">macro_arg_guard</strong> pragma when the plugin is loaded.</p>
+			<pre>void MacroGuardHandler::HandlePragma(Preprocessor &amp;PP,…) {
+  Token Tok;
+  <strong class="bold">PP.Lex(Tok)</strong>;
+  while (Tok.isNot(<strong class="bold">tok::eod</strong>)) {
+    <strong class="bold">ArgsToEnclosed</strong>.push_back(Tok.getIdentifierInfo());
+    PP.Lex(Tok);
+  }
+}</pre>
+			<p>The <code>eod</code> token kind in the <a id="_idIndexMarker260"/>preceding code snippet means <strong class="bold">end of directive</strong>. It is exclusively used to mark the end of a preprocessor directive.</p>
+			<p>For the <code>ArgsToEscped</code> variable, the following global array stores the designated macro argument's <code>IdentifierInfo</code> objects:</p>
+			<pre><strong class="bold">SmallVector&lt;const IdentifierInfo*, 2&gt; ArgsToEnclosed</strong>;
+struct MacroGuardHandler: public PragmaHandler {
+  …
+};</pre>
+			<p>The reason we're declaring <code>ArgsToEnclosed</code> in a global scope is that we're using it to <em class="italic">communicate</em> with our <code>PPCallbacks</code> instance later, which will use that array content to perform the validations.</p>
+			<p>Though the implementation <a id="_idIndexMarker261"/>details of our <code>PPCallbacks</code> instance, the <code>MacroGuardValidator</code> class, will not be covered until the next section, it needs to be registered with the <code>Preprocessor</code> when the <code>HandlePragma</code> function is called for the first time, as follows:</p>
+			<pre>struct MacroGuardHandler : public PragmaHandler {
+  <strong class="bold">bool IsValidatorRegistered</strong>;
+  MacroGuardHandler() : PragmaHandler("macro_arg_guard"),
+                        IsValidatorRegistered(false) {}
+  …
+};
+void MacroGuardHandler::HandlePragma(Preprocessor &amp;PP,…) {
+  …
+  if (!IsValidatorRegistered) {
+    auto Validator = std::make_unique&lt;<strong class="bold">MacroGuardValidator</strong>&gt;(…);
+    PP.<strong class="bold">addCallbackPPCallbacks</strong>(std::move(Validator));
+    IsValidatorRegistered = true;
+  }
+}</pre>
+			<p>We also use a flag to make sure it is only registered once. After this, whenever a preprocessing event happens, our <code>MacroGuardValidator</code> class will be invoked to handle it. In our case, we are only interested in the <code>macro definition</code> event, which signals to <code>MacroGuardValidator</code> to validate the macro body that it just defined.</p>
+			<p>Before wrapping up on <code>PragmaHandler</code>, we need <a id="_idIndexMarker262"/>some extra code to transform the handler into a plugin, as follows:</p>
+			<pre>struct MacroGuardHandler : public PragmaHandler {
+  …
+};
+static <strong class="bold">PragmaHandlerRegistry::Add&lt;MacroGuardHandler&gt;</strong>
+  X("macro_arg_guard", "Verify if designated macro args are     enclosed");</pre>
+			<p>After declaring this variable, when this plugin is loaded into <code>clang</code>, a <code>MacroGuardHandler</code> instance is inserted into a global <code>PragmaHandler</code> registry, which will be queried by the <code>Preprocessor</code> whenever it encounters a non-standard <code>#pragma</code> directive. Now, Clang is able to recognize our custom <code>macro_arg_guard</code> pragma when the plugin is loaded.</p>
 			<h2 id="_idParaDest-90"><a id="_idTextAnchor090"/>Implementing custom preprocessor callbacks</h2>
-			<p><strong class="source-inline">Preprocessor</strong> provides a <a id="_idIndexMarker263"/>set of callbacks, the <strong class="source-inline">PPCallbacks</strong> class, which will be triggered when certain preprocessor events (such as a macro being expanded) happen. The previous, <em class="italic">Implementing a custom pragma handler </em>section, showed you how to register your own <strong class="source-inline">PPCallbacks</strong> implementations, the <strong class="source-inline">MacroGuardValidator</strong>, with <strong class="source-inline">Preprocessor</strong>. Here, we're going to show you how <strong class="source-inline">MacroGuardValidator</strong> validates the macro argument-escaping rule in macro functions.</p>
-			<p>First, in <strong class="source-inline">MacroGuardValidator.h/.cpp</strong>, we put the following skeleton:</p>
-			<p class="source-code">// In MacroGuardValidator.h</p>
-			<p class="source-code">extern SmallVector&lt;const IdentifierInfo*, 2&gt; ArgsToEnclosed;</p>
-			<p class="source-code">class MacroGuardValidator : public <strong class="bold">PPCallbacks</strong> {</p>
-			<p class="source-code">  SourceManager &amp;SM;</p>
-			<p class="source-code">public:</p>
-			<p class="source-code">  explicit MacroGuardValidator(SourceManager &amp;SM) : SM(SM) {}</p>
-			<p class="source-code">  void <strong class="bold">MacroDefined</strong>(const Token &amp;MacroNameToke,</p>
-			<p class="source-code">                    const MacroDirective *MD) override;</p>
-			<p class="source-code">};</p>
-			<p class="source-code">// In MacroGuardValidator.cpp</p>
-			<p class="source-code">void MacroGuardValidator::<strong class="bold">MacroDefined</strong>(const Token &amp;MacroNameTok, const MacroDirective *MD) {</p>
-			<p class="source-code">}</p>
-			<p>Among all the callback <a id="_idIndexMarker264"/>functions in <strong class="source-inline">PPCallbacks</strong>, we're only interested in <strong class="source-inline">MacroDefined</strong>, which will be invoked when a macro definition is processed, represented by the <strong class="source-inline">MacroDirective</strong> type function argument (<strong class="source-inline">MD</strong>). The <strong class="source-inline">SourceManager</strong> type member variable (<strong class="source-inline">SM</strong>) is used for printing <strong class="source-inline">SourceLocation</strong> when we need to show some warning messages.</p>
-			<p>Focusing on <strong class="source-inline">MacroGuardValidator::MacroDefined</strong>, the logic here is pretty simple: for each identifier in the <strong class="source-inline">ArgsToEnclosed</strong> array, we're scanning macro body tokens to check if its occurrences have parentheses as its predecessor and successor tokens. First, let's put in the loop's skeleton, as follows:</p>
-			<p class="source-code">void MacroGuardValidator::MacroDefined(const Token &amp;MacroNameTok, const MacroDirective *MD) {</p>
-			<p class="source-code">  const <strong class="bold">MacroInfo *MI</strong> = MD-&gt;getMacroInfo();</p>
-			<p class="source-code">  // For each argument to be checked…</p>
-			<p class="source-code">  for (const IdentifierInfo *ArgII : <strong class="bold">ArgsToEnclosed</strong>) {</p>
-			<p class="source-code">    // Scanning the macro body</p>
-			<p class="source-code">    for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();</p>
-			<p class="source-code">         TokIdx &lt; TokSize; ++TokIdx) {</p>
-			<p class="source-code">      …</p>
-			<p class="source-code">    }</p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p>If a macro body token's <strong class="source-inline">IdentifierInfo</strong> argument matches <strong class="source-inline">ArgII</strong>, this means there is a <a id="_idIndexMarker265"/>macro argument occurrence, and we check that token's previous and next tokens, as follows:</p>
-			<p class="source-code">for (const IdentifierInfo *ArgII : ArgsToEnclosed) {</p>
-			<p class="source-code">  for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();</p>
-			<p class="source-code">       TokIdx &lt; TokSize; ++TokIdx) {</p>
-			<p class="source-code">    Token <strong class="bold">CurTok = *(MI-&gt;tokens_begin() + TokIdx)</strong>;</p>
-			<p class="source-code">    if (CurTok.getIdentifierInfo() == ArgII) {</p>
-			<p class="source-code">      if (TokIdx &gt; 0 &amp;&amp; TokIdx &lt; TokSize - 1) {</p>
-			<p class="source-code">        auto <strong class="bold">PrevTok</strong> = *(MI-&gt;tokens_begin() + TokIdx - 1),</p>
-			<p class="source-code">             <strong class="bold">NextTok</strong> = *(MI-&gt;tokens_begin() + TokIdx + 1);</p>
-			<p class="source-code">        if (<strong class="bold">PrevTok.is(tok::l_paren) &amp;&amp; NextTok.is            (tok::r_paren)</strong>)</p>
-			<p class="source-code">          continue;</p>
-			<p class="source-code">      }</p>
-			<p class="source-code">      …</p>
-			<p class="source-code">    }  </p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p class="callout-heading">Uniqueness of <strong class="source-inline">IdentifierInfo</strong> instances</p>
-			<p class="callout">Recall that same identifier strings are always represented by the same <strong class="source-inline">IdentifierInfo</strong> object. That's the reason we can simply use pointer comparison here.</p>
-			<p>The <strong class="source-inline">MacroInfo::tokens_begin</strong> function <a id="_idIndexMarker266"/>returns an iterator pointing to the beginning of an array carrying all the macro body tokens.</p>
+			<p><code>Preprocessor</code> provides a <a id="_idIndexMarker263"/>set of callbacks, the <code>PPCallbacks</code> class, which will be triggered when certain preprocessor events (such as a macro being expanded) happen. The previous, <em class="italic">Implementing a custom pragma handler </em>section, showed you how to register your own <code>PPCallbacks</code> implementations, the <code>MacroGuardValidator</code>, with <code>Preprocessor</code>. Here, we're going to show you how <code>MacroGuardValidator</code> validates the macro argument-escaping rule in macro functions.</p>
+			<p>First, in <code>MacroGuardValidator.h/.cpp</code>, we put the following skeleton:</p>
+			<pre>// In MacroGuardValidator.h
+extern SmallVector&lt;const IdentifierInfo*, 2&gt; ArgsToEnclosed;
+class MacroGuardValidator : public <strong class="bold">PPCallbacks</strong> {
+  SourceManager &amp;SM;
+public:
+  explicit MacroGuardValidator(SourceManager &amp;SM) : SM(SM) {}
+  void <strong class="bold">MacroDefined</strong>(const Token &amp;MacroNameToke,
+                    const MacroDirective *MD) override;
+};
+// In MacroGuardValidator.cpp
+void MacroGuardValidator::<strong class="bold">MacroDefined</strong>(const Token &amp;MacroNameTok, const MacroDirective *MD) {
+}</pre>
+			<p>Among all the callback <a id="_idIndexMarker264"/>functions in <code>PPCallbacks</code>, we're only interested in <code>MacroDefined</code>, which will be invoked when a macro definition is processed, represented by the <code>MacroDirective</code> type function argument (<code>MD</code>). The <code>SourceManager</code> type member variable (<code>SM</code>) is used for printing <code>SourceLocation</code> when we need to show some warning messages.</p>
+			<p>Focusing on <code>MacroGuardValidator::MacroDefined</code>, the logic here is pretty simple: for each identifier in the <code>ArgsToEnclosed</code> array, we're scanning macro body tokens to check if its occurrences have parentheses as its predecessor and successor tokens. First, let's put in the loop's skeleton, as follows:</p>
+			<pre>void MacroGuardValidator::MacroDefined(const Token &amp;MacroNameTok, const MacroDirective *MD) {
+  const <strong class="bold">MacroInfo *MI</strong> = MD-&gt;getMacroInfo();
+  // For each argument to be checked…
+  for (const IdentifierInfo *ArgII : <strong class="bold">ArgsToEnclosed</strong>) {
+    // Scanning the macro body
+    for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();
+         TokIdx &lt; TokSize; ++TokIdx) {
+      …
+    }
+  }
+}</pre>
+			<p>If a macro body token's <code>IdentifierInfo</code> argument matches <code>ArgII</code>, this means there is a <a id="_idIndexMarker265"/>macro argument occurrence, and we check that token's previous and next tokens, as follows:</p>
+			<pre>for (const IdentifierInfo *ArgII : ArgsToEnclosed) {
+  for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();
+       TokIdx &lt; TokSize; ++TokIdx) {
+    Token <strong class="bold">CurTok = *(MI-&gt;tokens_begin() + TokIdx)</strong>;
+    if (CurTok.getIdentifierInfo() == ArgII) {
+      if (TokIdx &gt; 0 &amp;&amp; TokIdx &lt; TokSize - 1) {
+        auto <strong class="bold">PrevTok</strong> = *(MI-&gt;tokens_begin() + TokIdx - 1),
+             <strong class="bold">NextTok</strong> = *(MI-&gt;tokens_begin() + TokIdx + 1);
+        if (<strong class="bold">PrevTok.is(tok::l_paren) &amp;&amp; NextTok.is            (tok::r_paren)</strong>)
+          continue;
+      }
+      …
+    }  
+  }
+}</pre>
+			<p class="callout-heading">Uniqueness of <code>IdentifierInfo</code> instances</p>
+			<p class="callout">Recall that same identifier strings are always represented by the same <code>IdentifierInfo</code> object. That's the reason we can simply use pointer comparison here.</p>
+			<p>The <code>MacroInfo::tokens_begin</code> function <a id="_idIndexMarker266"/>returns an iterator pointing to the beginning of an array carrying all the macro body tokens.</p>
 			<p>Finally, we print a warning message if the macro argument token is not enclosed by parentheses, as follows:</p>
-			<p class="source-code">for (const IdentifierInfo *ArgII : ArgsToEnclosed) {</p>
-			<p class="source-code">  for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();</p>
-			<p class="source-code">       TokIdx &lt; TokSize; ++TokIdx) {</p>
-			<p class="source-code">    …</p>
-			<p class="source-code">    if (CurTok.getIdentifierInfo() == ArgII) {</p>
-			<p class="source-code">      if (TokIdx &gt; 0 &amp;&amp; TokIdx &lt; TokSize - 1) {</p>
-			<p class="source-code">        …</p>
-			<p class="source-code">        if (<strong class="bold">PrevTok.is(tok::l_paren) &amp;&amp; NextTok.is            (tok::r_paren)</strong>)</p>
-			<p class="source-code">          continue;</p>
-			<p class="source-code">      }</p>
-			<p class="source-code">      SourceLocation TokLoc = CurTok.<strong class="bold">getLocation</strong>();</p>
-			<p class="source-code">      errs() &lt;&lt; "[WARNING] In " &lt;&lt; <strong class="bold">TokLoc.printToString(SM)              </strong>&lt;&lt; ": ";</p>
-			<p class="source-code">      errs() &lt;&lt; "macro argument '" &lt;&lt; <strong class="bold">ArgII-&gt;getName()</strong></p>
-			<p class="source-code">             &lt;&lt; "' is not enclosed by parenthesis\n";</p>
-			<p class="source-code">    }  </p>
-			<p class="source-code">  }</p>
-			<p class="source-code">}</p>
-			<p>And that's all for this <a id="_idIndexMarker267"/>section. You're now able to develop a <strong class="source-inline">PragmaHandler</strong> plugin that can be dynamically loaded into Clang to handle custom <strong class="source-inline">#pragma</strong> directives. You've also learned how to implement <strong class="source-inline">PPCallbacks</strong> to insert custom logic whenever a preprocessor event happens.</p>
+			<pre>for (const IdentifierInfo *ArgII : ArgsToEnclosed) {
+  for (auto TokIdx = 0U, TokSize = MI-&gt;getNumTokens();
+       TokIdx &lt; TokSize; ++TokIdx) {
+    …
+    if (CurTok.getIdentifierInfo() == ArgII) {
+      if (TokIdx &gt; 0 &amp;&amp; TokIdx &lt; TokSize - 1) {
+        …
+        if (<strong class="bold">PrevTok.is(tok::l_paren) &amp;&amp; NextTok.is            (tok::r_paren)</strong>)
+          continue;
+      }
+      SourceLocation TokLoc = CurTok.<strong class="bold">getLocation</strong>();
+      errs() &lt;&lt; "[WARNING] In " &lt;&lt; <strong class="bold">TokLoc.printToString(SM)              </strong>&lt;&lt; ": ";
+      errs() &lt;&lt; "macro argument '" &lt;&lt; <strong class="bold">ArgII-&gt;getName()</strong>
+             &lt;&lt; "' is not enclosed by parenthesis\n";
+    }  
+  }
+}</pre>
+			<p>And that's all for this <a id="_idIndexMarker267"/>section. You're now able to develop a <code>PragmaHandler</code> plugin that can be dynamically loaded into Clang to handle custom <code>#pragma</code> directives. You've also learned how to implement <code>PPCallbacks</code> to insert custom logic whenever a preprocessor event happens.</p>
 			<h1 id="_idParaDest-91"><a id="_idTextAnchor091"/>Summary</h1>
-			<p>The preprocessor and lexer mark the beginning of a frontend. The former replaces preprocessor directives with other textual contents, while the latter cuts source code into more meaningful tokens. In this chapter, we've learned how these two components cooperate with each other to provide a single view of token streams to work on in later stages. In addition, we've also learned about various important APIs—such as the <strong class="source-inline">Preprocessor</strong> class, the <strong class="source-inline">Token</strong> class, and how macros are represented in Clang—that can be used for the development of this part, especially for creating handler plugins to support custom <strong class="source-inline">#pragma</strong> directives, as well as creating custom preprocessor callbacks for deeper integration with preprocessing events.</p>
+			<p>The preprocessor and lexer mark the beginning of a frontend. The former replaces preprocessor directives with other textual contents, while the latter cuts source code into more meaningful tokens. In this chapter, we've learned how these two components cooperate with each other to provide a single view of token streams to work on in later stages. In addition, we've also learned about various important APIs—such as the <code>Preprocessor</code> class, the <code>Token</code> class, and how macros are represented in Clang—that can be used for the development of this part, especially for creating handler plugins to support custom <code>#pragma</code> directives, as well as creating custom preprocessor callbacks for deeper integration with preprocessing events.</p>
 			<p>Following the order of Clang's compilation stages, the next chapter will show you how to work with an <strong class="bold">abstract syntax tree</strong> (<strong class="bold">AST</strong>) and how to develop an AST plugin to insert custom logic into it.</p>
 			<h1 id="_idParaDest-92"><a id="_idTextAnchor092"/>Exercises</h1>
 			<p>Here are some simple questions and exercises that you might want to play around with by yourself:</p>
 			<ol>
-				<li value="1">Though most of the time <strong class="source-inline">Tokens</strong> are harvested from provided source code, in some cases, <strong class="source-inline">Tokens</strong> might be generated dynamically inside the <strong class="source-inline">Preprocessor</strong>. For example, the <strong class="source-inline">__LINE__</strong> built-in macro is expanded to the current line number, and the <strong class="source-inline">__DATE__</strong> macro is expanded to the current calendar date. How does Clang put that generated textual content into the source code buffer of <strong class="source-inline">SourceManager</strong>? How does Clang assign <strong class="source-inline">SourceLocation</strong> to these tokens?</li>
-				<li>When we were talking about implementing a custom <strong class="source-inline">PragmaHandler</strong>, we were leveraging <strong class="source-inline">Preprocessor::Lex</strong> to fetch <strong class="source-inline">Tokens</strong> followed after the pragma name, until we hit the <strong class="source-inline">eod</strong> token kind. Can we keep lexing <em class="italic">beyond</em> the <strong class="source-inline">eod</strong> token? What interesting things will you do if you can consume arbitrary tokens after the <strong class="source-inline">#pragma</strong> directive?</li>
-				<li>In the <strong class="source-inline">macro guard</strong> project from the <em class="italic">Developing custom preprocessor plugins and callbacks</em> section, the warning message has the format of <strong class="source-inline">[WARNING] In &lt;source location&gt;: ….</strong>. Apparently, this is not a typical compiler warning we see from <strong class="source-inline">clang</strong>, which looks like <strong class="source-inline">&lt;source location&gt;: warning: …</strong>, as shown in the following code snippet:<p class="source-code">./simple_warn.c:2:7: warning: unused variable 'y'…</p><p class="source-code">  int y = x + 1;</p><p class="source-code">      ^</p><p class="source-code">1 warning generated.</p><p>The <strong class="source-inline">warning</strong> string is even colored in supported terminals. How can we print a warning message such as that? Is there an infrastructure in Clang for doing that?</p></li>
+				<li value="1">Though most of the time <code>Tokens</code> are harvested from provided source code, in some cases, <code>Tokens</code> might be generated dynamically inside the <code>Preprocessor</code>. For example, the <code>__LINE__</code> built-in macro is expanded to the current line number, and the <code>__DATE__</code> macro is expanded to the current calendar date. How does Clang put that generated textual content into the source code buffer of <code>SourceManager</code>? How does Clang assign <code>SourceLocation</code> to these tokens?</li>
+				<li>When we were talking about implementing a custom <code>PragmaHandler</code>, we were leveraging <code>Preprocessor::Lex</code> to fetch <code>Tokens</code> followed after the pragma name, until we hit the <code>eod</code> token kind. Can we keep lexing <em class="italic">beyond</em> the <code>eod</code> token? What interesting things will you do if you can consume arbitrary tokens after the <code>#pragma</code> directive?</li>
+				<li>In the <code>macro guard</code> project from the <em class="italic">Developing custom preprocessor plugins and callbacks</em> section, the warning message has the format of <code>[WARNING] In &lt;source location&gt;: ….</code>. Apparently, this is not a typical compiler warning we see from <code>clang</code>, which looks like <code>&lt;source location&gt;: warning: …</code>, as shown in the following code snippet:<pre>./simple_warn.c:2:7: warning: unused variable 'y'…
+  int y = x + 1;
+      ^
+1 warning generated.</pre><p>The <code>warning</code> string is even colored in supported terminals. How can we print a warning message such as that? Is there an infrastructure in Clang for doing that?</p></li>
 			</ol>
 		</div>
 	</body></html>
