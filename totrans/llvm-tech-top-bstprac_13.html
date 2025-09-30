@@ -1,0 +1,665 @@
+<html><head></head><body>
+		<div id="_idContainer040">
+			<h1 id="_idParaDest-135"><em class="italic"><a id="_idTextAnchor141"/>Chapter 10</em>: Processing LLVM IR</h1>
+			<p>In the previous chapter, we learned about PassManager and AnalysisManager in LLVM. We went through some tutorials for developing an LLVM pass and how to retrieve program analysis data via AnalysisManager. The knowledge and skills we acquired help to build the foundation for developers to create composable building blocks for code transformation and program analysis.</p>
+			<p>In this chapter, we are going to focus on the methodology of processing <strong class="bold">LLVM IR</strong>. LLVM IR is a target-independent <strong class="bold">intermediate representation</strong> for program analysis and compiler transformation. You can think of LLVM IR as an <em class="italic">alternative</em> form of the code you want to optimize and compile. However, different from the C/C++ code you're familiar with, LLVM IR describes the program in a different way – we will give you a more concrete idea later. The majority of the <em class="italic">magic</em> that's done by LLVM that makes the input program faster or smaller after the compilation process is performed on LLVM IR. Recall that in the previous chapter, <a href="B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127"><em class="italic">Chapter 9</em></a>, <em class="italic">Working with PassManager and AnalysisManager</em>, we described how different passes are organized in a pipeline fashion – that was the high-level structure of how LLVM transforms the input code. In this chapter, we are going to show you the fine-grained details of how to modify LLVM IR in an efficient way.</p>
+			<p>Although the most straightforward and visual way to view LLVM IR is by its textual representation, LLVM provides libraries that contain a set of powerful modern C++ APIs to interface with the IR. These APIs can inspect the in-memory representation of LLVM IR and help us manipulate it, which effectively changes the target program we are compiling. These LLVM IR libraries can be embedded in a wide variety of applications, allowing developers to transform and analyze their target source code with ease.</p>
+			<p class="callout-heading">LLVM APIs for different programming languages</p>
+			<p class="callout">Officially, LLVM only supports APIs for two languages: C and C++. Between them, C++ is the most feature-complete and update to date, but it also has the most <em class="italic">unstable</em> interface – it might be changed at any time without backward compatibility. On the other hand, C APIs have stable interfaces but come at the cost of lagging behind new feature updates, or even keeping certain features absent. The API bindings for OCaml, Go, and Python are in the source tree as community-driven projects.</p>
+			<p>We will try to guide you with generally applicable learning blocks driven by commonly seen topics and tasks that are supported by many realistic examples. Here is the list of topics we'll cover in this chapter:</p>
+			<ul>
+				<li>Learning LLVM IR basics</li>
+				<li>Working with values and instructions</li>
+				<li>Working with loops</li>
+			</ul>
+			<p>We will start by introducing LLVM IR. Then, we will learn about two of the most essential elements in LLVM IR – values and instructions. Finally, we'll end this chapter by looking at loops in LLVM – a more advanced topic that is crucial for working on performance-sensitive applications.</p>
+			<h1 id="_idParaDest-136"><a id="_idTextAnchor142"/>Technical requirements</h1>
+			<p>The tools we'll need in this chapter are the <strong class="source-inline">opt</strong> command-line utility and <strong class="source-inline">clang</strong>. Please build them using the following command:</p>
+			<p class="source-code">$ ninja opt clang</p>
+			<p>Most of the code in this chapter can be implemented inside LLVM pass – and the pass plugin – as introduced in <a href="B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127"><em class="italic">Chapter 9</em></a>, <em class="italic">Working with PassManager and AnalysisManager</em>. </p>
+			<p>In addition, please install the <strong class="bold">Graphviz</strong> tool. You can consult the following page for an installation guide for your system: <a href="https://graphviz.org/download">https://graphviz.org/download</a>. On Ubuntu, for instance, you can install that package via the following command:</p>
+			<p class="source-code">$ sudo apt install graphviz</p>
+			<p>We will use a command-line tool – the <strong class="source-inline">dot</strong> command – provided by Graphviz to visualize the control flow of a function.</p>
+			<p>The code example mentioned in this chapter can be implemented inside LLVM pass, if not specified otherwise.</p>
+			<h1 id="_idParaDest-137"><a id="_idTextAnchor143"/>Learning LLVM IR basics</h1>
+			<p>LLVM IR<a id="_idIndexMarker476"/> is an alternative form of the program you want to optimize and compile. It is, however, structured differently from normal programming languages such as C/C++. LLVM IR is organized in a hierarchical fashion. The levels in this hierarchy – counting from the top – are <strong class="bold">Module</strong>, <strong class="bold">function</strong>, <strong class="bold">basic block</strong>, and <strong class="bold">instruction</strong>. The following diagram shows their structure:</p>
+			<div>
+				<div id="_idContainer029" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.1.jpg" alt="Figure 10.1 – Hierarchy structure of LLVM IR&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.1 – Hierarchy structure of LLVM IR</p>
+			<p>A <strong class="bold">module</strong> represents <a id="_idIndexMarker477"/>a translation unit – usually a source file. Each module can contain<a id="_idIndexMarker478"/> multiple <strong class="bold">functions</strong> (or global variables). Each contains a <a id="_idIndexMarker479"/>list of <strong class="bold">basic blocks</strong> where each of the basic blocks contains a <a id="_idIndexMarker480"/>list of <strong class="bold">instructions</strong>.</p>
+			<p class="callout-heading">Quick refresher – basic block</p>
+			<p class="callout">A <a id="_idIndexMarker481"/>basic block represents a list of instructions with only one entry and one exit point. In other words, if a basic block is executed, the control flow is guaranteed to walk through every instruction in the block.</p>
+			<p>Knowing the high-level structure of LLVM IR, let's look at one of the LLVM IR examples. Let's say we have the following C code, <strong class="source-inline">foo.c</strong>:</p>
+			<p class="source-code">int foo(int a, int b) {</p>
+			<p class="source-code">  return a &gt; 0? a – b : a + b;</p>
+			<p class="source-code">}</p>
+			<p>We can <a id="_idIndexMarker482"/>use the following <strong class="source-inline">clang</strong> command to generate its <em class="italic">textual</em> LLVM IR counterpart:</p>
+			<p class="source-code">$ clang -emit-llvm -S foo.c</p>
+			<p>The result will be put in the <strong class="source-inline">foo.ll</strong> file. The following diagram shows part of its content, with annotations for the corresponding IR unit:</p>
+			<div>
+				<div id="_idContainer030" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.2.jpg" alt="Figure 10.2 – Part of the content in foo.ll, annotated with the corresponding IR unit&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.2 – Part of the content in foo.ll, annotated with the corresponding IR unit</p>
+			<p>In textual form, an instruction is usually presented in the following format:</p>
+			<p class="source-code">&lt;result&gt; = &lt;operator / op-code&gt; &lt;type&gt;, [operand1, operand2, …]</p>
+			<p>For instance, let's assume we have the following instruction:</p>
+			<p class="source-code">%12 = load i32, i32* %3</p>
+			<p>Here, <strong class="source-inline">%12</strong> is the result value, <strong class="source-inline">load</strong> is the op-code, <strong class="source-inline">i32</strong> is the data type of this instruction, and <strong class="source-inline">%3</strong> is the only operand.</p>
+			<p>In <a id="_idIndexMarker483"/>addition to the textual representation, nearly every component in LLVM IR has a C++ class counterpart with the same name. For instance, a function and a basic block are simply represented by <strong class="source-inline">Function</strong> and the <strong class="source-inline">BasicBlock</strong> C++ class, respectively. </p>
+			<p>Different kinds of instructions are represented by classes that are all derived from the <strong class="source-inline">Instruction</strong> class. For example, the <strong class="source-inline">BinaryOperator</strong> class represents a binary operation instruction, while <strong class="source-inline">ReturnInst</strong> class represents a return statement. We will look at <strong class="source-inline">Instruction</strong> and its child classes in more detail later.</p>
+			<p>The hierarchy<a id="_idIndexMarker484"/> depicted in <em class="italic">Figure 10.1</em> is the <strong class="bold">concrete</strong> structure of LLVM IR. That is, this is how they are stored in memory. On top of that, LLVM also provides other <em class="italic">logical</em> structures to view the relationships of different IR units. They are usually evaluated from the concrete structures and stored as auxiliary data structures or treated as analysis results. Here are some of the most important ones in LLVM:</p>
+			<ul>
+				<li><strong class="bold">Control Flow Graph</strong> (<strong class="bold">CFG</strong>): This<a id="_idIndexMarker485"/> is a graph structure that's organized into basic blocks to show their control flow relations. The vertices in this graph represent basic blocks, while the edges represent a single control flow transfer.</li>
+				<li><strong class="bold">Loop</strong>: This represents the loop<a id="_idIndexMarker486"/> we are familiar with, which consists of multiple basic blocks that have at least one back edge – a control flow edge that goes back to its parent or ancestor vertices. We will look at this in more detail in the last section of this chapter, the <em class="italic">Working with loops</em> section.</li>
+				<li><strong class="bold">Call graph</strong>: Similar to CFG, the call graph<a id="_idIndexMarker487"/> also shows control flow transfers, but the vertices become individual functions and the edges become function call relations.</li>
+			</ul>
+			<p>In the next section, we are going to learn how to iterate through different IR units in both concrete and logical structures.</p>
+			<h2 id="_idParaDest-138"><a id="_idTextAnchor144"/>Iterating different IR units</h2>
+			<p>Iterating <a id="_idIndexMarker488"/>IR units – such as basic blocks or instructions – are <em class="italic">essential</em> to LLVM IR development. It is usually one of the first steps we must complete in many transformation or analysis algorithms – scanning through the whole code and finding an interesting area in order to apply certain measurements. In this section, we are going to learn about the practical aspects of iterating different IR units. We will cover the following topics:</p>
+			<ul>
+				<li>Iterating instructions</li>
+				<li>Iterating basic blocks</li>
+				<li>Iterating the call graph</li>
+				<li>Learning the GraphTraits</li>
+			</ul>
+			<p>Let's start by discussing how to iterate instructions.</p>
+			<h2 id="_idParaDest-139"><a id="_idTextAnchor145"/>Iterating instructions</h2>
+			<p>An instruction is <a id="_idIndexMarker489"/>one of the most basic elements in LLVM IR. It usually represents a single action in the program, such as an arithmetic operation or a function call. Walking through all the instructions in a single basic block or function is the cornerstone of most program analyses and compiler optimizations. </p>
+			<p>To iterate through all the instructions in a basic block, you just need to use a simple for-each loop over the block:</p>
+			<p class="source-code">// `BB` has the type of `BasicBlock&amp;`</p>
+			<p class="source-code"><strong class="bold">for (Instruction &amp;I : BB)</strong> {</p>
+			<p class="source-code">  // Work on `I`</p>
+			<p class="source-code">}</p>
+			<p>We can iterate through all the instructions in a function in two ways. First, we can iterate over all the basic blocks in the function before visiting the instructions. Here is an example:</p>
+			<p class="source-code">// `F` has the type of `Function&amp;`</p>
+			<p class="source-code"><strong class="bold">for (BasicBlock &amp;BB : F) {</strong></p>
+			<p class="source-code">  <strong class="bold">for (Instruction &amp;I : BB) {</strong></p>
+			<p class="source-code">    // Work on `I`</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">}</p>
+			<p>Second, you can leverage a utility called <strong class="source-inline">inst_iterator</strong>. Here is an example:</p>
+			<p class="source-code"><strong class="bold">#include "llvm/IR/InstIterator.h"</strong></p>
+			<p class="source-code">…</p>
+			<p class="source-code">// `F` has the type of `Function&amp;`</p>
+			<p class="source-code"><strong class="bold">for (Instruction &amp;I : instructions(F))</strong> {</p>
+			<p class="source-code">  // Work on `I`</p>
+			<p class="source-code">}</p>
+			<p>Using the <a id="_idIndexMarker490"/>preceding code, you can retrieve all the instructions in this function.</p>
+			<h3>Instruction visitor</h3>
+			<p>There are many cases where<a id="_idIndexMarker491"/> we want to apply different treatments to different types of instructions in a basic block or function. For example, let's assume we have the following code:</p>
+			<p class="source-code">for (Instruction &amp;I : instructions(F)) {</p>
+			<p class="source-code">  switch (<strong class="bold">I.getOpcode()</strong>) {</p>
+			<p class="source-code">  <strong class="bold">case Instruction::BinaryOperator</strong>:</p>
+			<p class="source-code">  // this instruction is a binary operator like `add` or `sub`</p>
+			<p class="source-code">    break;</p>
+			<p class="source-code">  <strong class="bold">case Instruction::Return</strong>:</p>
+			<p class="source-code">    // this is a return instruction</p>
+			<p class="source-code">    break;</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">}</p>
+			<p>Recall that different <a id="_idIndexMarker492"/>kinds of instructions are modeled by (different) classes derived from <strong class="source-inline">Instruction</strong>. Therefore, an <strong class="source-inline">Instruction</strong> instance can represent any of them. The <strong class="source-inline">getOpcode</strong> method shown in the preceding snippet can give you a unique token – namely, <strong class="source-inline">Instruction::BinaryOperator</strong> and <strong class="source-inline">Instruction::Return</strong> in the given code – that tells you about the underlying class. However, if we want to work on the derived class ( <strong class="source-inline">ReturnInst</strong>, in this case) instance rather than the "raw" <strong class="source-inline">Instruction</strong>, we need to do some type casting.</p>
+			<p>LLVM provides a <a id="_idIndexMarker493"/>better way to implement this kind of visiting pattern –<strong class="source-inline">InstVisitor</strong>. <strong class="source-inline">InstVisitor</strong> is a class where each of its member methods is a callback function for a specific instruction type. You can define your own callbacks after inheriting from the <strong class="source-inline">InstVisitor</strong> class. For instance, check out the following code snippet:</p>
+			<p class="source-code">#include "llvm/IR/InstVisitor.h"</p>
+			<p class="source-code">class MyInstVisitor : public <strong class="bold">InstVisitor&lt;MyInstVisitor&gt;</strong> {</p>
+			<p class="source-code">  <strong class="bold">void visitBinaryOperator(BinaryOperator &amp;BOp)</strong> {</p>
+			<p class="source-code">    // Work on binary operator instruction</p>
+			<p class="source-code">    …</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  <strong class="bold">void visitReturnInst(ReturnInst &amp;RI)</strong> {</p>
+			<p class="source-code">    // Work on return instruction</p>
+			<p class="source-code">    …</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">};</p>
+			<p>Each <strong class="source-inline">visitXXX</strong> method shown here is a callback function for a specific instruction type. Note that we are <em class="italic">not</em> overriding each of these methods (there was no <strong class="source-inline">override</strong> keyword attached to the method). Also, instead of defining callbacks for all the instruction types, <strong class="source-inline">InstVisitor</strong> allows you to only define those that we are interested in.</p>
+			<p>Once <strong class="source-inline">MyInstVisitor</strong> has been<a id="_idIndexMarker494"/> defined, we can simply create an instance of it and invoke the <strong class="source-inline">visit</strong> method to launch the visiting process. Let's take the following code as an example:</p>
+			<p class="source-code">// `F` has the type of `Function&amp;`</p>
+			<p class="source-code">MyInstVisitor Visitor;</p>
+			<p class="source-code">Visitor.<strong class="bold">visit(F)</strong>;</p>
+			<p>There<a id="_idIndexMarker495"/> are also <strong class="source-inline">visit</strong> methods for <strong class="source-inline">Instruction</strong>, <strong class="source-inline">BasicBlock</strong>, and <strong class="source-inline">Module</strong>.</p>
+			<p class="callout-heading">Ordering basic blocks and instructions</p>
+			<p class="callout">All the skills we've introduced in this section assume<a id="_idIndexMarker496"/> that the <strong class="bold">ordering</strong> of basic blocks or even instructions to visit is not your primary concern. However, it is important to know that <strong class="source-inline">Function</strong> doesn't store or iterate its enclosing <strong class="source-inline">BasicBlock</strong> instances in a particular <em class="italic">linear</em> order. We will show you how to iterate through all the basic blocks in various meaningful orders shortly.</p>
+			<p>With that, you've learned several ways to iterate instructions from a basic block or a function. Now, let's learn how to iterate basic blocks in a function.</p>
+			<h2 id="_idParaDest-140"><a id="_idTextAnchor146"/>Iterating basic blocks</h2>
+			<p>In the <a id="_idIndexMarker497"/>previous section, we learned how to iterate basic blocks of a function using a simple for loop. However, developers can only receive basic blocks in an <em class="italic">arbitrary</em> order in this way – that ordering gave you neither the execution order nor the control flow information among the blocks. In this section, we will show you how to iterate basic blocks in a more meaningful way.</p>
+			<p>Basic blocks are important elements for expressing the control flow of a function, which can be represented by a directed graph – namely, the <strong class="bold">CFG</strong>. To give you a concrete idea of what a typical CFG looks <a id="_idIndexMarker498"/>like, we can leverage one of the features in the <strong class="source-inline">opt</strong> tool. Assuming you have an LLVM IR file, <strong class="source-inline">foo.ll</strong>, you can use the following command to print out the CFG of each function in Graphviz format:</p>
+			<p class="source-code">$ opt <strong class="bold">-dot-cfg</strong> -disable-output foo.ll</p>
+			<p>This command will generate one <strong class="source-inline">.dot</strong> file for each function in <strong class="source-inline">foo.ll</strong>. </p>
+			<p class="callout-heading">The .dot File might be hidden</p>
+			<p class="callout">The filename of the CFG <strong class="source-inline">.dot</strong> file for each function usually starts with a dot character (<strong class="source-inline">'.'</strong>). On Linux/Unix systems, this effectively <em class="italic">hides</em> the file from the normal <strong class="source-inline">ls</strong> command. So, use the <strong class="source-inline">ls -a</strong> command to show those files instead.</p>
+			<p>Each <strong class="source-inline">.dot</strong> file contains the Graphviz representation of that function's CFG. Graphviz is a general and<a id="_idIndexMarker499"/> textual format for expressing graphs. People usually convert a <strong class="source-inline">.dot</strong> file into other (image) formats before studying it. For instance, using the following command, you can convert a <strong class="source-inline">.dot</strong> file into a PNG image file that visually shows the graph:</p>
+			<p class="source-code">$ dot -Tpng foo.cfg.dot &gt; foo.cfg.png</p>
+			<p>The following diagram shows two examples:</p>
+			<div>
+				<div id="_idContainer031" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.3.jpg" alt="Figure 10.3 – Left: CFG for a function containing branches; right: CFG for a function containing a loop&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.3 – Left: CFG for a function containing branches; right: CFG for a function containing a loop</p>
+			<p>The left-hand side of the preceding diagram shows a CFG for a function containing several branches; the right-hand side shows a CFG for a function containing a single loop.</p>
+			<p>Now, we <a id="_idIndexMarker500"/>know that basic blocks are organized as a directed graph – namely, the CFG. Can we iterate this CFG so that it follows the edges and nodes? LLVM answers this question by providing utilities for iterating a graph in four different ways: topological order, depth first (essentially doing <strong class="bold">DFS</strong>), breadth first (essentially doing <strong class="bold">BFS</strong>), and <strong class="bold">Strongly Connected Components</strong> (<strong class="bold">SCCs</strong>). We are going to learn how to use each of<a id="_idIndexMarker501"/> these utilities in the following subsections.</p>
+			<p>Let's start with topological order traversal.</p>
+			<h3>Topological order traversal</h3>
+			<p>Topological ordering is <a id="_idIndexMarker502"/>a simple linear ordering that guarantees that for each node in the graph, it will only be visited after we've visited all of its parent (predecessor) nodes. LLVM provides <strong class="source-inline">po_iterator</strong> and some other utility functions to implement <em class="italic">reversed</em> topological ordering (reversed topological ordering is easier to implement) on the CFG. The following snippet gives an example of using <strong class="source-inline">po_iterator</strong>:</p>
+			<p class="source-code">#include "llvm/ADT/PostOrderIterator.h"</p>
+			<p class="source-code">#include "llvm/IR/CFG.h"</p>
+			<p class="source-code">// `F` has the type of `<strong class="bold">Function*</strong>`</p>
+			<p class="source-code">for (<strong class="bold">BasicBlock</strong> *BB : <strong class="bold">post_order(F)</strong>) {</p>
+			<p class="source-code">  BB-&gt;printAsOperand(errs());</p>
+			<p class="source-code">  errs() &lt;&lt; "\n";</p>
+			<p class="source-code">}</p>
+			<p>The <strong class="source-inline">post_order</strong> function is just a helper function to create an iteration range of <strong class="source-inline">po_iterator</strong>. Note that the <strong class="source-inline">llvm/IR/CFG.h</strong> header is necessary to make <strong class="source-inline">po_iterator</strong> work on <strong class="source-inline">Function</strong> and <strong class="source-inline">BasicBlock</strong>.</p>
+			<p>If we apply the preceding code to the function containing branches in the preceding diagram, we'll get the following command-line output:</p>
+			<p class="source-code">label %12</p>
+			<p class="source-code">label %9</p>
+			<p class="source-code">label %5</p>
+			<p class="source-code">label %7</p>
+			<p class="source-code">label %3</p>
+			<p class="source-code">label %10</p>
+			<p class="source-code">label %1</p>
+			<p>Alternatively, you can traverse from a specific basic block using nearly the same syntax; for instance:</p>
+			<p class="source-code">// `F` has the type of `<strong class="bold">Function*</strong>`</p>
+			<p class="source-code"><strong class="bold">BasicBlock &amp;EntryBB</strong> = F-&gt;getEntryBlock();</p>
+			<p class="source-code">for (<strong class="bold">BasicBlock</strong> *BB : <strong class="bold">post_order(&amp;EntryBB)</strong>) {</p>
+			<p class="source-code">  BB-&gt;printAsOperand(errs());</p>
+			<p class="source-code">  errs() &lt;&lt; "\n";</p>
+			<p class="source-code">}</p>
+			<p>The preceding<a id="_idIndexMarker503"/> snippet will give you the same result as the previous one since it's traveling from the entry block. You're free to traverse from the arbitrary block, though.</p>
+			<h3>Depth-first and breadth-first traversal</h3>
+			<p><strong class="bold">DFS</strong> and <strong class="bold">BFS</strong> are two of the <a id="_idIndexMarker504"/>most famous and iconic algorithms for visiting <a id="_idIndexMarker505"/>topological structures such as a graph or a tree. For each node in a tree or a graph, DFS will always try to visit its child nodes before visiting other nodes that share the same parents (that is, the <em class="italic">sibling</em> nodes). On the other hand, BFS will traverse all the sibling nodes before moving to its child nodes.</p>
+			<p>LLVM provides <strong class="source-inline">df_iterator</strong> and <strong class="source-inline">bf_iterator</strong> (and some other utility functions) to implement depth-first and breadth-first ordering, respectively. Since their usages are nearly identical, we are only going to demonstrate <strong class="source-inline">df_iterator</strong> here:</p>
+			<p class="source-code">#include "llvm/ADT/DepthFirstIterator.h"</p>
+			<p class="source-code">#include "llvm/IR/CFG.h"</p>
+			<p class="source-code">// `F` has the type of `<strong class="bold">Function*</strong>`</p>
+			<p class="source-code">for (<strong class="bold">BasicBlock</strong> *BB : <strong class="bold">depth_first(F)</strong>) {</p>
+			<p class="source-code">  BB-&gt;printAsOperand(errs());</p>
+			<p class="source-code">  errs() &lt;&lt; "\n";</p>
+			<p class="source-code">}</p>
+			<p>Similar to <strong class="source-inline">po_iterator</strong> and <strong class="source-inline">post_order</strong>, <strong class="source-inline">depth_first</strong> is just a utility function for creating an iteration range of <strong class="source-inline">df_iterator</strong>. To use <strong class="source-inline">bf_iterator</strong>, simply replace <strong class="source-inline">depth_first</strong> with <strong class="source-inline">breadth_first</strong>. If you apply the preceding code to the containing branches in the preceding diagram, it will give you the following command-line output:</p>
+			<p class="source-code">label %1</p>
+			<p class="source-code">label %3</p>
+			<p class="source-code">label %5</p>
+			<p class="source-code">label %9</p>
+			<p class="source-code">label %12</p>
+			<p class="source-code">label %7</p>
+			<p class="source-code">label %10</p>
+			<p>When <a id="_idIndexMarker506"/>using <strong class="source-inline">bf_iterator</strong>/<strong class="source-inline">breadth_first</strong>, we will get the following command-line output for the same example:</p>
+			<p class="source-code">label %1</p>
+			<p class="source-code">label %3</p>
+			<p class="source-code">label %10</p>
+			<p class="source-code">label %5</p>
+			<p class="source-code">label %7</p>
+			<p class="source-code">label %12</p>
+			<p class="source-code">label %9</p>
+			<p><strong class="source-inline">df_iterator</strong> and <strong class="source-inline">bf_iterator</strong> can also<a id="_idIndexMarker507"/> be used with <strong class="source-inline">BasicBlock</strong>, in the same way as <strong class="source-inline">po_iterator</strong> shown previously.</p>
+			<h3>SSC traversal</h3>
+			<p>An <strong class="bold">SCC</strong> represents a subgraph where every enclosing node can be reached <a id="_idIndexMarker508"/>from every other node. In the context of CFG, it is useful to traverse CFG with loops.</p>
+			<p>The basic block traversal methods we introduced earlier are useful tools to reason about the control flow in a function. For a loop-free function, these methods give you a linear view that closely reflects the execution orders of enclosing basic blocks. However, for a function that contains loops, these (linear) traversal methods cannot show the cyclic execution flow that's created by the loops.</p>
+			<p class="callout-heading">Recurring control flow</p>
+			<p class="callout">Loops are not the only programming constructs that create recurring control flows within a function. A few other directives – the <strong class="source-inline">goto</strong> syntax in C/C++, for example – will also introduce a recurring control flow. However, those corner cases will make analyzing the control flow more difficult (which is one of the reasons you shouldn't use <strong class="source-inline">goto</strong> in your code), so when we are talking about recurring control flows, we are only referring to loops.</p>
+			<p>Using <strong class="source-inline">scc_iterator</strong> in LLVM, we can traverse strongly connected basic blocks in a CFG. With this information, we can quickly spot a recurring control flow, which is crucial for some analysis and program transformation tasks. For example, we need to know the back edges and recurring basic blocks in order to accurately propagate the branch probability data along the control flow edges. </p>
+			<p>Here is an example of using <strong class="source-inline">scc_iterator</strong>:</p>
+			<p class="source-code">#include "<strong class="bold">llvm/ADT/SCCIterator.h</strong>"</p>
+			<p class="source-code">#include "llvm/IR/CFG.h"</p>
+			<p class="source-code">// `F` has the type of `Function*`</p>
+			<p class="source-code">for (auto SCCI = <strong class="bold">scc_begin</strong>(&amp;F); !SCCI.<strong class="bold">isAtEnd</strong>(); ++SCCI) {</p>
+			<p class="source-code">  <strong class="bold">const std::vector&lt;BasicBlock*&gt; &amp;SCC</strong> = *SCCI;</p>
+			<p class="source-code">  for (auto *BB : SCC) {</p>
+			<p class="source-code">    BB-&gt;printAsOperand(errs());</p>
+			<p class="source-code">    errs() &lt;&lt; "\n";</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  errs() &lt;&lt; "====\n";</p>
+			<p class="source-code">}</p>
+			<p>Different from the previous traversal methods, <strong class="source-inline">scc_iterator</strong> doesn't provide a handy range-style iteration. Instead, you need to create a <strong class="source-inline">scc_iterator</strong> instance using <strong class="source-inline">scc_begin</strong> and do manual increments. More importantly, you should use the <strong class="source-inline">isAtEnd</strong> method to check the exit condition, rather than doing a comparison with the "end" iterator like we usually do with C++ STL containers. A vector of <strong class="source-inline">BasicBlock</strong> can be dereferenced from a single <strong class="source-inline">scc_iterator</strong>. These <strong class="source-inline">BasicBlock</strong> instances are the basic blocks within a<a id="_idIndexMarker509"/> SCC. The ordering among these SCC instances is roughly the same as in the reversed topological order – namely, the post ordering we saw earlier.</p>
+			<p>If you run the preceding code over the function that contains a loop in the preceding diagram, it gives you the following command-line output:</p>
+			<p class="source-code">label %6</p>
+			<p class="source-code">====</p>
+			<p class="source-code">label %4</p>
+			<p class="source-code">label %2</p>
+			<p class="source-code">====</p>
+			<p class="source-code">label %1</p>
+			<p class="source-code">====</p>
+			<p>This shows that basic blocks <strong class="source-inline">%4</strong> and <strong class="source-inline">%2</strong> are in the same SCC.</p>
+			<p>With that, you've learned how to iterate basic blocks within a function in different ways. In the next section, we are going to learn how to iterate functions within a module by following the call graph.</p>
+			<h2 id="_idParaDest-141"><a id="_idTextAnchor147"/>Iterating the call graph</h2>
+			<p>A call<a id="_idIndexMarker510"/> graph is a direct graph that represents the function call relationships in a module. It plays an important role in <strong class="bold">inter-procedural</strong> code transformation and analysis, namely, analyzing or optimizing code across multiple functions. A famous optimization <a id="_idIndexMarker511"/>called <strong class="bold">function inlining</strong> is an example of this.</p>
+			<p>Before we dive<a id="_idIndexMarker512"/> into the details of iterating nodes in the call graph, let's take a look at how to build a call graph. LLVM uses the <strong class="source-inline">CallGraph</strong> class to represent the call graph of a single <strong class="source-inline">Module</strong>. The following sample code uses a pass module to build a <strong class="source-inline">CallGraph</strong>:</p>
+			<p class="source-code">#include "llvm/Analysis/CallGraph.h"</p>
+			<p class="source-code">struct SimpleIPO : public PassInfoMixin&lt;SimpleIPO&gt; {</p>
+			<p class="source-code">  PreservedAnalyses run(Module &amp;M, ModuleAnalysisManager &amp;MAM) {</p>
+			<p class="source-code">    <strong class="bold">CallGraph CG(M);</strong></p>
+			<p class="source-code">    for (auto &amp;Node : CG) {</p>
+			<p class="source-code">      // Print function name</p>
+			<p class="source-code">      if (Node.first)</p>
+			<p class="source-code">        errs() &lt;&lt; Node.first-&gt;getName() &lt;&lt; "\n";</p>
+			<p class="source-code">    }</p>
+			<p class="source-code">    return PreservedAnalysis::all();</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">};</p>
+			<p>This snippet built a <strong class="source-inline">CallGraph</strong> instance before iterating through all the enclosing functions and printing their names.</p>
+			<p>Just like <strong class="source-inline">Module</strong> and <strong class="source-inline">Function</strong>, <strong class="source-inline">CallGraph</strong> only provides the most basic way to enumerate all its enclosing components. So, how do we traverse <strong class="source-inline">CallGraph</strong> in different ways – for instance, by using SCC – as we saw in the previous section? The answer to this is surprisingly simple: in the exact <em class="italic">same</em> way – using the same set of APIs and the same usages.</p>
+			<p>The secret behind this is a thing called <strong class="source-inline">GraphTraits</strong>.</p>
+			<h2 id="_idParaDest-142"><a id="_idTextAnchor148"/>Learning about GraphTraits</h2>
+			<p><strong class="source-inline">GraphTraits</strong> is a<a id="_idIndexMarker513"/> class designed to provide an abstract interface over various different graphs in LLVM – CFG and call graph, to name a few. It allows other LLVM components – analyses, transformations, or iterator utilities, as we saw in the previous section – to build their works <em class="italic">independently</em> of the underlying graphs. Instead of asking every graph in LLVM to inherit from <strong class="source-inline">GraphTraits</strong> and implement the required <a id="_idIndexMarker514"/>functions, <strong class="source-inline">GraphTraits</strong> takes quite a different approach by using <strong class="bold">template specialization</strong>.</p>
+			<p>Let's say that you have written a simple C++ class that has a template argument that accepts arbitrary types, as shown here:</p>
+			<p class="source-code">template &lt;typename T&gt;</p>
+			<p class="source-code">struct Distance {</p>
+			<p class="source-code">  static T compute(T &amp;PointA, T &amp;PointB) {</p>
+			<p class="source-code">    return PointA – PointB;</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">};</p>
+			<p>This C++ class will compute the distance between two points upon calling the <strong class="source-inline">Distance::compute</strong> method. The types of those points are parameterized by the <strong class="source-inline">T</strong> template argument.</p>
+			<p>If <strong class="source-inline">T</strong> is a numeric type such as <strong class="source-inline">int</strong> or <strong class="source-inline">float</strong>, everything will be fine. However, if <strong class="source-inline">T</strong> is a struct of a class, like the one here, then the default <strong class="source-inline">compute</strong> method implementation will not be able to compile:</p>
+			<p class="source-code">Distance&lt;<strong class="bold">int</strong>&gt;::compute(94, 87); // Success</p>
+			<p class="source-code">…</p>
+			<p class="source-code">struct SimplePoint {</p>
+			<p class="source-code">  float X, Y;</p>
+			<p class="source-code">};</p>
+			<p class="source-code">SimplePoint A, B;</p>
+			<p class="source-code">Distance&lt;<strong class="bold">SimplePoint</strong>&gt;::compute(A, B); // Compilation Error</p>
+			<p>To solve this issue, you can either implement a subtract operator for <strong class="source-inline">SimplePoint</strong>, or you can use template specialization, as shown here:</p>
+			<p class="source-code">// After the original declaration of struct Distance…</p>
+			<p class="source-code">template&lt;&gt;</p>
+			<p class="source-code">struct <strong class="bold">Distance&lt;SimplePoint&gt;</strong> {</p>
+			<p class="source-code">  <strong class="bold">SimplePoint compute(SimplePoint &amp;A, SimplePoint &amp;B)</strong> {</p>
+			<p class="source-code">    return std::sqrt(std::pow(A.X – B.X, 2),…);</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">};</p>
+			<p class="source-code">…</p>
+			<p class="source-code">SimplePoint A, B;</p>
+			<p class="source-code"><strong class="bold">Distance&lt;SimplePoint&gt;</strong>::compute(A, B); // Success</p>
+			<p><strong class="source-inline">Distance&lt;SimplePoint&gt;</strong> in the<a id="_idIndexMarker515"/> previous code describes what <strong class="source-inline">Distance&lt;T&gt;</strong> looks like when <strong class="source-inline">T</strong> is equal to <strong class="source-inline">SimplePoint</strong>. You can think of the original <strong class="source-inline">Distance&lt;T&gt;</strong> as some kind of <strong class="bold">interface</strong> and <strong class="source-inline">Distance&lt;SimplePoint&gt;</strong> being one of its <strong class="bold">implementations</strong>. But be aware that the <strong class="source-inline">compute</strong> method in <strong class="source-inline">Distance&lt;SimplePoint&gt;</strong> is <em class="italic">not</em> an override method of the original <strong class="source-inline">compute</strong> in <strong class="source-inline">Distance&lt;T&gt;</strong>. This is different from normal class inheritance (and virtual methods).</p>
+			<p><strong class="source-inline">GraphTraits</strong> in LLVM is a template class that provides an interface for various graph algorithms, such as <strong class="source-inline">df_iterator</strong> and <strong class="source-inline">scc_iterator</strong>, as we saw previously. Every graph in LLVM will <em class="italic">implement</em> this interface via template specialization. For instance, the following <strong class="source-inline">GraphTraits</strong> specialization is used for modeling the <strong class="bold">CFG</strong> of a function:</p>
+			<p class="source-code">template&lt;&gt;</p>
+			<p class="source-code">struct <strong class="bold">GraphTraits&lt;Function*&gt;</strong> {…}</p>
+			<p>Inside the body of <strong class="source-inline">GraphTraits&lt;Function*&gt;</strong>, there are several (static) methods and <strong class="source-inline">typedef</strong> statements that implement the required interface. For example, <strong class="source-inline">nodes_iterator</strong> is the type that's used for iterating over all the vertices in CFG, while <strong class="source-inline">nodes_begin</strong> provides you with the entry/starting node of this CFG:</p>
+			<p class="source-code">template&lt;&gt;</p>
+			<p class="source-code">struct GraphTraits&lt;Function*&gt; {</p>
+			<p class="source-code">  typedef pointer_iterator&lt;Function::iterator&gt; <strong class="bold">nodes_iterator</strong>;</p>
+			<p class="source-code">  static node_iterator <strong class="bold">nodes_begin</strong>(Function *F) {</p>
+			<p class="source-code">    return nodes_iterator(F-&gt;begin());</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">};</p>
+			<p>In this case, <strong class="source-inline">nodes_iterator</strong> is basically <strong class="source-inline">Function::iterator</strong>. <strong class="source-inline">nodes_begin</strong> simply returns the first basic block in the function (via an iterator). If we look at <strong class="source-inline">GraphTraits</strong> for <strong class="source-inline">CallGraph</strong>, it has completely different implementations of <strong class="source-inline">nodes_iterator</strong> and <strong class="source-inline">nodes_begin</strong>:</p>
+			<p class="source-code">template&lt;&gt;</p>
+			<p class="source-code">struct GraphTraits&lt;CallGraph*&gt; {</p>
+			<p class="source-code">  typedef <strong class="bold">mapped_iterator&lt;CallGraph::iterator,</strong> </p>
+			<p class="source-code">  <strong class="bold">decltype(&amp;CGGetValuePtr)&gt;</strong> nodes_iterator;</p>
+			<p class="source-code">  static node_iterator nodes_begin(CallGraph *CG) {</p>
+			<p class="source-code">    <strong class="bold">return nodes_iterator(CG-&gt;begin(), &amp;CGGetValuePtr);</strong></p>
+			<p class="source-code">  }</p>
+			<p class="source-code">};</p>
+			<p>When developers are<a id="_idIndexMarker516"/> implementing a new graph algorithm, instead of hardcoding it for each kind of graph in LLVM, they can build their algorithms by using <strong class="source-inline">GraphTraits</strong> as an interface to access the key properties of arbitrary graphs.</p>
+			<p>For example, let's say we want to create a new graph algorithm, <strong class="source-inline">find_tail</strong>, which finds the first node in the graph that has no child nodes. Here is the skeleton of <strong class="source-inline">find_tail</strong>:</p>
+			<p class="source-code">template&lt;class GraphTy,</p>
+			<p class="source-code">         <strong class="bold">typename GT = GraphTraits&lt;GraphTy&gt;</strong>&gt;</p>
+			<p class="source-code">  auto find_tail(GraphTy G) {</p>
+			<p class="source-code">  for(auto NI = <strong class="bold">GT::nodes_begin</strong>(G); NI != <strong class="bold">GT::nodes_end</strong>(G);    ++NI) {</p>
+			<p class="source-code">    // A node in this graph</p>
+			<p class="source-code">    auto Node = *NI;</p>
+			<p class="source-code">    // Child iterator for this particular node</p>
+			<p class="source-code">    auto ChildIt = <strong class="bold">GT::child_begin</strong>(Node);</p>
+			<p class="source-code">    auto ChildItEnd = <strong class="bold">GT::child_end</strong>(Node);</p>
+			<p class="source-code">    if (ChildIt == ChildItEnd)</p>
+			<p class="source-code">      // No child nodes</p>
+			<p class="source-code">      return Node;</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">}</p>
+			<p>With the help of this<a id="_idIndexMarker517"/> template and <strong class="source-inline">GraphTraits</strong>, we can <em class="italic">reuse</em> this function on <strong class="source-inline">Function</strong>, <strong class="source-inline">CallGraph</strong>, or any kind of graph in LLVM; for instance:</p>
+			<p class="source-code">// `F` has the type of `<strong class="bold">Function</strong>*`</p>
+			<p class="source-code"><strong class="bold">BasicBlock</strong> *TailBB = find_tail(F);</p>
+			<p class="source-code">// `CG` has the type of `<strong class="bold">CallGraph</strong>*`</p>
+			<p class="source-code"><strong class="bold">CallGraphNode</strong> *TailCGN = find_tail(CG);</p>
+			<p>In short, <strong class="source-inline">GraphTraits</strong> generalizes algorithms – such as <strong class="source-inline">df_iterator</strong> and <strong class="source-inline">scc_iterator</strong>, as we saw previously – in LLVM to <em class="italic">arbitrary</em> graphs using the template specialization technique. This is a clean and efficient way to define interfaces for reusable components.</p>
+			<p>In this section, we learned the hierarchy structure of LLVM IR and how to iterate different IR units – either concrete or logical units, such as CFGs. We also learned the important role of <strong class="source-inline">GraphTraits</strong> for encapsulating different graphs – CFGs and call graphs, to name a few – and exposed a common interface to various algorithms in LLVM, thus making those algorithms more concise and reusable.</p>
+			<p>In the next section, we will learn about how values are represented in LLVM, which describes a picture of how different LLVM IR components are associated with each other. In addition, we will learn about the correct and efficient way to manipulate and update values in LLVM.</p>
+			<h1 id="_idParaDest-143"><a id="_idTextAnchor149"/>Working with values and instructions</h1>
+			<p>In LLVM, a <strong class="bold">value</strong> is a<a id="_idIndexMarker518"/> unique construct – not only does it represent values stored in variables, but it also models a wide range of concepts from constants, global variables, individual instructions, and even basic blocks. In other words, it is one of the <em class="italic">foundations</em> of LLVM IR. </p>
+			<p>The concept of value is<a id="_idIndexMarker519"/> especially important for instructions as it directly interacts with values in the IR. Therefore, in this section, we will put them into the same discussion. We are going to see how values work in LLVM IR and how values are associated with instructions. On top of that, we are going to learn how to create and insert new instructions, as well as how to update them. </p>
+			<p>To learn how to use values in LLVM IR, we must understand the important theory behind this system, which dictates the behavior and the format of LLVM instructions – the <strong class="bold">Single Static Assignment</strong> (<strong class="bold">SSA</strong>) form.</p>
+			<h2 id="_idParaDest-144"><a id="_idTextAnchor150"/>Understanding SSA</h2>
+			<p>SSA is a way of <a id="_idIndexMarker520"/>structuring and designing IR to make program analysis and compiler transformation easier to perform. In SSA, a variable (in the IR) will only be assigned a value exactly <em class="italic">once</em>. This means that we cannot manipulate a variable like this:</p>
+			<p class="source-code">// the following code is NOT in SSA form</p>
+			<p class="source-code">x = 94;</p>
+			<p class="source-code">x = 87; // `x` is assigned the second time, not SSA!</p>
+			<p>Although a variable can only be assigned once, it can be <em class="italic">used</em> multiple times in arbitrary instructions. For instance, check out the following code:</p>
+			<p class="source-code">x = 94;</p>
+			<p class="source-code">y = x + 4; // first time `x` is used</p>
+			<p class="source-code">z = x + 2; // second time `x` is used</p>
+			<p>You might be wondering how normal C/C++ code – which is clearly not in SSA form – gets transformed into an SSA form of IR, such as LLVM. While there is a whole class of different <a id="_idIndexMarker521"/>algorithms and research papers that answer this question, which we are not going to cover here, most of the simple C/C++ code can be transformed using trivial techniques such as renaming. For instance, let's say we have the following (non-SSA) C code:</p>
+			<p class="source-code">x = 94;</p>
+			<p class="source-code">x = x * y; // `x` is assigned more than once, not SSA!</p>
+			<p class="source-code">x = x + 5;</p>
+			<p>Here, we can rename <strong class="source-inline">x</strong> in the first assignment with something like <strong class="source-inline">x0</strong> and <strong class="source-inline">x</strong> on the left-hand side of the second and third assignments with alternative names such as <strong class="source-inline">x1</strong> and <strong class="source-inline">x2</strong>, respectively:</p>
+			<p class="source-code">x0 = 94;</p>
+			<p class="source-code">x1 = x0 * y;</p>
+			<p class="source-code">x2 = x1 + 5;</p>
+			<p>With these simple measurements, we can obtain the SSA form of our original code with the same behavior.</p>
+			<p>To have a more comprehensive understanding of SSA, we must change our way of thinking about what <a id="_idIndexMarker522"/>instructions <em class="italic">look like</em> in a program. In <strong class="bold">imperative programming languages</strong> such as C/C++, we often treat each statement (instruction) as an <strong class="bold">action</strong>. For instance, in the following diagram, on the left-hand side, the first line represents an action that "assigns 94 to variable <strong class="source-inline">x</strong>" where the second line means "do some multiplication using <strong class="source-inline">x</strong> and <strong class="source-inline">y</strong> before storing the result in the <strong class="source-inline">x</strong> variable":</p>
+			<div>
+				<div id="_idContainer032" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.4.jpg" alt="Figure 10.4 – Thinking instructions as &quot;actions&quot;&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.4 – Thinking instructions as "actions"</p>
+			<p>These interpretations <a id="_idIndexMarker523"/>sound intuitive. However, things get tricky when we make some <em class="italic">transformations</em> – which is, of course, a common thing in a compiler – on these instructions. In the preceding diagram, on the right-hand side, when the first instruction becomes <strong class="source-inline">x = 87</strong>, we don't know if this modification <strong class="bold">affects</strong> other instructions. If it does, we are not sure which one of these gets affected. This information not only tells us whether there are other potential opportunities to optimize, but it is also a crucial factor for the <em class="italic">correctness</em> of compiler transformation – after all, no one wants a compiler that will break your code when optimization is enabled. What's worse, let's say we are inspecting the <strong class="source-inline">x</strong> variable on the right-hand side of <strong class="bold">Action 3</strong>. We are interested in the last few instructions that modify this <strong class="source-inline">x</strong>. Here, we have no choice but to list all the instructions that have <strong class="source-inline">x</strong> on their left-hand side (that is, using <strong class="source-inline">x</strong> as the destination), which is pretty inefficient.</p>
+			<p>Instead of looking at the <em class="italic">action</em> aspect of an instruction, we can focus on the <em class="italic">data</em> that's generated by an instruction and get a clear picture of the provenance of each instruction – that is, the region that can be reached by its resulting value. Furthermore, we can easily find out the origins of arbitrary variables/values. The following diagram illustrates this advantage:</p>
+			<div>
+				<div id="_idContainer033" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.5.jpg" alt="Figure 10.5 – SSA highlighting the dataflow among instructions&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.5 – SSA highlighting the dataflow among instructions</p>
+			<p>In other words, SSA <a id="_idIndexMarker524"/>highlights the <strong class="bold">dataflow</strong> in a program so that the compiler will have an easier time tracking, analyzing, and modify the instructions.</p>
+			<p>Instructions in LLVM are organized in SSA form. This means we are more interested in the value, or the data flow generated by an instruction, rather than which variable it stores the result in. Since each instruction in LLVM IR can only produce a single result value, an <strong class="source-inline">Instruction</strong> object – recall that <strong class="source-inline">Instruction</strong> is the C++ class that represents an instruction in LLVM IR – also represents its <strong class="bold">result value</strong>. To be more specific, the concept of <em class="italic">value</em> in LLVM IR is represented by a C++ class called <strong class="source-inline">Value</strong>. <strong class="source-inline">Instruction</strong> is one of its child classes. This means that given an <strong class="source-inline">Instruction</strong> object, we can, of course, cast it to a <strong class="source-inline">Value</strong> object. That particular <strong class="source-inline">Value</strong> object is effectively the result of that <strong class="source-inline">Instruction</strong>:</p>
+			<p class="source-code">// let's say `I` represents an instruction `<strong class="bold">x = a + b</strong>`</p>
+			<p class="source-code">Instruction *I = …;</p>
+			<p class="source-code">Value *V = I; // `V` effectively represents the value `<strong class="bold">x</strong>`</p>
+			<p>This is one of the most important things to know in order to work with LLVM IR, especially to use most of its APIs.</p>
+			<p>While the <strong class="source-inline">Instruction</strong> object represents its own result value, it also has <em class="italic">operands</em> that are served as inputs to the instruction. Guess what? We are also using <strong class="source-inline">Value</strong> objects as operands. For example, let's assume we have the following code:</p>
+			<p class="source-code">Instruction *<strong class="bold">BinI</strong> = BinaryOperator::Create(Instruction::Add,…);</p>
+			<p class="source-code">Instruction *RetI = ReturnInst::Create(…, <strong class="bold">BinI</strong>, …);</p>
+			<p>The preceding snippet is basically creating an arithmetic addition instruction (represented by <strong class="source-inline">BinaryOperator</strong>), whose <em class="italic">result</em> value will be the <em class="italic">operand</em> of another return instruction. The resulting IR is equivalent to the following C/C++ code:</p>
+			<p class="source-code"><strong class="bold">x</strong> = a + b;</p>
+			<p class="source-code">return <strong class="bold">x</strong>;</p>
+			<p>In addition to <strong class="source-inline">Instruction</strong>, <strong class="source-inline">Constant</strong> (the C++ class for different kinds of constant values), <strong class="source-inline">GlobalVariable</strong> (the C++ class for global variables), and <strong class="source-inline">BasicBlock</strong> are all subclasses of <strong class="source-inline">Value</strong>. This means that they're also organized in SSA form and that you can use them as the operands for an <strong class="source-inline">Instruction</strong>.</p>
+			<p>Now, you know what SSA is and learned what impact it has on the design of LLVM IR. In the next section, we are going to discuss how to modify and update values in LLVM IR.</p>
+			<h2 id="_idParaDest-145"><a id="_idTextAnchor151"/>Working with values</h2>
+			<p>SSA makes<a id="_idIndexMarker525"/> us focus on the <em class="italic">data flow</em> among instructions. Since we have a clear view of how values go from one instruction to the other, it's easy to replace the usage of certain values in an instruction. But how is the concept of "value usage" represented in LLVM? The following diagram shows two important C++ classes that answer this question – <strong class="source-inline">User</strong> and <strong class="source-inline">Use</strong>:</p>
+			<div>
+				<div id="_idContainer034" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.6.jpg" alt="Figure 10.6 – The relationship between Value, User, and Use&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.6 – The relationship between Value, User, and Use</p>
+			<p>As we can see, <strong class="source-inline">User</strong> represents the concept of an IR instance (for example, an <strong class="source-inline">Instruction</strong>) that uses a certain <strong class="source-inline">Value</strong>. Furthermore, LLVM uses another class, <strong class="source-inline">Use</strong>, to model the edge between <strong class="source-inline">Value</strong> and <strong class="source-inline">User</strong>. Recall that <strong class="source-inline">Instruction</strong> is a child class of <strong class="source-inline">Value</strong> – which represents the result that's generated by this instruction. In fact, <strong class="source-inline">Instruction</strong> is also derived from <strong class="source-inline">User</strong>, since almost all instructions take at least one operand.</p>
+			<p>A <strong class="source-inline">User</strong> might be pointed to by multiple <strong class="source-inline">Use</strong> instances, which means it uses many <strong class="source-inline">Value</strong> instances. You can use <strong class="source-inline">value_op_iterator</strong> provided by <strong class="source-inline">User</strong> to check out each of these <strong class="source-inline">Value</strong> instances; for example:</p>
+			<p class="source-code">// `Usr` has the type of `User*`</p>
+			<p class="source-code">for (<strong class="bold">Value *</strong>V : Usr-&gt;<strong class="bold">operand_values</strong>()) {</p>
+			<p class="source-code">  // Working with `V`</p>
+			<p class="source-code">}</p>
+			<p>Again, <strong class="source-inline">operand_values</strong> is just a utility function to generate a <strong class="source-inline">value_op_iterator</strong> range.</p>
+			<p>Here is an example of why we want to iterate through all the <strong class="source-inline">User</strong> instances of a <strong class="source-inline">Value</strong>: imagine we are analyzing a program where one of its <strong class="source-inline">Function</strong> instances will return sensitive information – let's say, a <strong class="source-inline">get_password</strong> function. Our goal is to ensure that whenever <strong class="source-inline">get_password</strong> is called within a <strong class="source-inline">Function</strong>, its returned value (sensitive information) won't be leaked via another function call. For example, we want to detect <a id="_idIndexMarker526"/>the following pattern and raise an alarm:</p>
+			<p class="source-code">void vulnerable() {</p>
+			<p class="source-code">  <strong class="bold">v = get_password()</strong>;</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">  bar(<strong class="bold">v</strong>); // WARNING: sensitive information leak to `bar`!</p>
+			<p class="source-code">}</p>
+			<p>One of the most naïve ways to implement this analysis is by inspecting all <strong class="source-inline">User</strong> instances of the sensitive <strong class="source-inline">Value</strong>. Here is some example code:</p>
+			<p class="source-code">User *find_leakage(CallInst *GetPWDCall) {</p>
+			<p class="source-code">  for (auto *<strong class="bold">Usr</strong> : GetPWDCall-&gt;<strong class="bold">users</strong>()) {</p>
+			<p class="source-code">    if (<strong class="bold">isa&lt;CallInst&gt;(Usr)</strong>) {</p>
+			<p class="source-code">      return Usr;</p>
+			<p class="source-code">    }</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">}</p>
+			<p>The <strong class="source-inline">find_leackage</strong> function takes a <strong class="source-inline">CallInst</strong> argument – which represents a <strong class="source-inline">get_password</strong> function call – and returns any <strong class="source-inline">User</strong> instance that uses the <strong class="source-inline">Value</strong> instance that's returned from that <strong class="source-inline">get_password</strong> call.</p>
+			<p>A <strong class="source-inline">Value</strong> instance can be used by multiple different <strong class="source-inline">User</strong> instances. So, similarly, we can iterate through all of them using the following snippet:</p>
+			<p class="source-code">// `V` has the type of `Value*`</p>
+			<p class="source-code">for (<strong class="bold">User *</strong>Usr : V-&gt;<strong class="bold">users</strong>()) {</p>
+			<p class="source-code">  // Working with `Usr`</p>
+			<p class="source-code">}</p>
+			<p>With that, you've <a id="_idIndexMarker527"/>learned how to inspect the <strong class="source-inline">User</strong> instance of a <strong class="source-inline">Value</strong>, or the <strong class="source-inline">Value</strong> instance that's used by the current <strong class="source-inline">User</strong>. In addition, when we're developing a compiler transformation, it is pretty common to change the <strong class="source-inline">Value</strong> instance that's used by a <strong class="source-inline">User</strong> to another one. LLVM provides some handy utilities to do this.</p>
+			<p>First, the <strong class="source-inline">Value::replaceAllUsesWith</strong> method can, as its name suggests, tell all of its <strong class="source-inline">User</strong> instances to use another <strong class="source-inline">Value</strong> instead of it. The following diagram illustrates its effect:</p>
+			<div>
+				<div id="_idContainer035" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.7.jpg" alt="Figure 10.7 – Effect of Value::replaceAllUsesWith&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.7 – Effect of Value::replaceAllUsesWith</p>
+			<p>This method is really useful when you're replacing an <strong class="source-inline">Instruction</strong> with another <strong class="source-inline">Instruction</strong>. Using the preceding diagram to explain this, <strong class="source-inline">V1</strong> is the original <strong class="source-inline">Instruction</strong> and <strong class="source-inline">V2</strong> is the new one. </p>
+			<p>Another utility function that does a similar thing is <strong class="source-inline">User::replaceUsesOfWith(From,To)</strong>. This method effectively scans through all of the operands in this <strong class="source-inline">User</strong> and replaces the usage of a specific <strong class="source-inline">Value</strong> (the <em class="italic">From</em> argument) with another <strong class="source-inline">Value</strong> (the <em class="italic">To</em> argument).</p>
+			<p>The skills you've learned in this section are some of the most fundamental tools for developing a program transformation in LLVM. In the next section, we will talk about how to create and modify instructions.</p>
+			<h2 id="_idParaDest-146"><a id="_idTextAnchor152"/>Working with instructions</h2>
+			<p>Previously, we<a id="_idIndexMarker528"/> learned the basics of <strong class="source-inline">Value</strong> – including its relationship with <strong class="source-inline">Instruction</strong> – and the way to update <strong class="source-inline">Value</strong> instances under the framework of SSA. In this section, we are going to learn some more basic knowledge and skills that give you a better understanding of <strong class="source-inline">Instruction</strong> and help you <em class="italic">modify</em> <strong class="source-inline">Instruction</strong> instances in a correct and efficient way, which is the key to developing a successful compiler optimization.</p>
+			<p>Here is the list of topics we are going to cover in this section:</p>
+			<ul>
+				<li>Casting between different instruction types</li>
+				<li>Inserting a new instruction</li>
+				<li>Replacing an instruction</li>
+				<li>Processing instructions in batches</li>
+			</ul>
+			<p>Let's start by looking at different instruction types.</p>
+			<h3>Casting between different instruction types</h3>
+			<p>In the previous section, we <a id="_idIndexMarker529"/>learned about a useful utility called <strong class="source-inline">InstVisitor</strong>. The <strong class="source-inline">InstVisitor</strong> class helps you determine the underlying class of an <strong class="source-inline">Instruction</strong> instance. It also saves you the efforts of casting between different instruction types. However, we cannot always rely on <strong class="source-inline">InstVisitor</strong> for every task that involves type casting between <strong class="source-inline">Instruction</strong> and its derived classes. More generally speaking, we want a simpler solution for type casting between parent and child classes.</p>
+			<p>Now, you might be wondering, but C++ <em class="italic">already</em> provided this mechanism via the <strong class="source-inline">dynamic_cast</strong> directive, right? Here is an example of <strong class="source-inline">dynamic_cast</strong>:</p>
+			<p class="source-code">class Parent {…};</p>
+			<p class="source-code">class Child1 : public Parent {…};</p>
+			<p class="source-code">class Child2 : public Parent {…};</p>
+			<p class="source-code">void foo() {</p>
+			<p class="source-code">  Parent *P = new Child1();</p>
+			<p class="source-code">  Child1 *C = <strong class="bold">dynamic_cast&lt;Child1*&gt;(P)</strong>; // OK</p>
+			<p class="source-code">  Child2 *O = <strong class="bold">dynamic_cast&lt;Child2*&gt;(P)</strong>; // Error: bails out at                                         // runtime</p>
+			<p class="source-code">}</p>
+			<p>In the <strong class="source-inline">foo</strong> function <a id="_idIndexMarker530"/>used in the preceding code, we can see that in its second line, we can convert <strong class="source-inline">P</strong> into a <strong class="source-inline">Child1</strong> instance because that is its underlying type. On the other hand, we cannot convert <strong class="source-inline">P</strong> into <strong class="source-inline">Child2</strong> – the program will simply crash during runtime if we do so.</p>
+			<p>Indeed, <strong class="source-inline">dynamic_cast</strong> has the exact functionality we are looking for – more formally speaking, the <strong class="bold">Runtime Type Info</strong> (<strong class="bold">RTTI</strong>) feature – but it also comes with high overhead in terms of runtime <a id="_idIndexMarker531"/>performance. What's worse, the default implementation of RTTI in C++ is quite complex, making the resulting program difficult to optimize. Therefore, LLVM <em class="italic">disables</em> RTTI by default. Due to this, LLVM came up with its own system of runtime type casting that is much simpler and more efficient. In this section, we are going to talk about how to use it.</p>
+			<p>LLVM's casting framework provides three functions for dynamic type casting:</p>
+			<ul>
+				<li><strong class="source-inline">isa&lt;T&gt;(val) </strong></li>
+				<li><strong class="source-inline">cast&lt;T&gt;(val)</strong></li>
+				<li><strong class="source-inline">dyn_cast&lt;T&gt;(val)</strong></li>
+			</ul>
+			<p>The first function, <strong class="source-inline">isa&lt;T&gt;</strong> – pronounced "is-a" – checks if the <strong class="source-inline">val</strong> pointer type can be cast to a pointer of the <strong class="source-inline">T</strong> type. Here is an example:</p>
+			<p class="source-code">// `I` has the type of `Instruction*`</p>
+			<p class="source-code">if (<strong class="bold">isa&lt;BinaryOperator&gt;</strong>(I)) {</p>
+			<p class="source-code">  // `I` can be casted to `BinaryOperator*`</p>
+			<p class="source-code">}</p>
+			<p>Note that differently from <strong class="source-inline">dynamic_cast</strong>, you don't need to put <strong class="source-inline">BinaryOperator*</strong> as the template argument in this case – only a type without a pointer qualifier.</p>
+			<p>The <strong class="source-inline">cast&lt;T&gt;</strong> function performs the real type casting from (pointer-type) <strong class="source-inline">val</strong> to a pointer of the <strong class="source-inline">T</strong> type. Here is an example:</p>
+			<p class="source-code">// `I` has the type of `Instruction*`</p>
+			<p class="source-code">if (isa&lt;BinaryOperator&gt;(I)) {</p>
+			<p class="source-code">  <strong class="bold">BinaryOperator *BinOp = cast&lt;BinaryOperator&gt;(I)</strong>;</p>
+			<p class="source-code">}</p>
+			<p>Again, you don't need <a id="_idIndexMarker532"/>to put <strong class="source-inline">BinaryOperator*</strong> as the template argument. Note that if you don't perform type checking using <strong class="source-inline">isa&lt;T&gt;</strong> before calling <strong class="source-inline">cast&lt;T&gt;</strong>, the program will just crash during runtime.</p>
+			<p>The last function, <strong class="source-inline">dyn_cast&lt;T&gt;</strong>, is a combination of <strong class="source-inline">isa&lt;T&gt;</strong> and <strong class="source-inline">cast&lt;T&gt;</strong>; that is, you perform type casting if applicable. Otherwise, it returns a null. Here is an example:</p>
+			<p class="source-code">// `I` has the type of `Instruction*`</p>
+			<p class="source-code"><strong class="bold">if (BinaryOperator *BinOp = dyn_cast&lt;BinaryOperator&gt;(I))</strong> {</p>
+			<p class="source-code">  // Work with `BinOp`</p>
+			<p class="source-code">}</p>
+			<p>Here, we can see some neat syntax that combines the variable declaration (of <strong class="source-inline">BinOp</strong>) with the <strong class="source-inline">if</strong> statement.</p>
+			<p>Be aware that none of these APIs can take null as the argument. On the contrary, <strong class="source-inline">dyn_cast_or_null&lt;T&gt;</strong> doesn't have this limitation. It is basically a <strong class="source-inline">dyn_cast&lt;T&gt;</strong> API that accepts null as input.</p>
+			<p>Now, you know how to check and cast from an arbitrary <strong class="source-inline">Instruction</strong> instance to its underlying instruction type. Starting from the next section, we are finally going to create and modify some instructions.</p>
+			<h3>Inserting a new instruction</h3>
+			<p>In one of the code examples from the previous <em class="italic">Understanding SSA</em> section, we saw a snippet like this:</p>
+			<p class="source-code">Instruction *BinI = BinaryOperator::Create(…);</p>
+			<p class="source-code">Instruction *RetI = ReturnInst::Create(…, BinI, …);</p>
+			<p>As suggested by the<a id="_idIndexMarker533"/> method's name – <strong class="source-inline">Create</strong> – we can infer that these two lines created a <strong class="source-inline">BinaryOperator</strong> and a <strong class="source-inline">ReturnInst</strong> instruction.</p>
+			<p>Most of the instruction classes in LLVM provide factory methods – such as <strong class="source-inline">Create</strong> here – to build a new instance. People are encouraged to use these factory methods versus allocating instruction objects manually via the <strong class="source-inline">new</strong> keyword or <strong class="source-inline">malloc</strong> function. LLVM will manage the instruction object's memory for you – once it's been inserted into a <strong class="source-inline">BasicBlock</strong>. There are several ways to insert a new instruction into a <strong class="source-inline">BasicBlock</strong>:</p>
+			<ul>
+				<li>Factory methods in some instruction classes provide an option to insert the instruction right after it is created. For instance, one of the <strong class="source-inline">Create</strong> method variants in <strong class="source-inline">BinaryOperator</strong> allows you to insert it <em class="italic">before</em> another instruction after the creation. Here is an example:<p class="source-code">Instruction *<strong class="bold">BeforeI</strong> = …;</p><p class="source-code">auto *BinOp = BinaryOperator::Create(Opcode, LHS, RHS,</p><p class="source-code">  "new_bin_op", <strong class="bold">BeforeI</strong>);</p><p>In such a case, the instruction represented by <strong class="source-inline">BinOp</strong> will be placed before the one represented by <strong class="source-inline">BeforeI</strong>. This method, however, can't be ported across different instruction classes. Not every instruction class has factory methods that provide this feature and even if they do provide them, the API might not be the same.</p></li>
+				<li>We can use the <strong class="source-inline">insertBefore</strong>/<strong class="source-inline">insertAfter</strong> methods provided by the <strong class="source-inline">Instruction</strong> class to insert a new instruction. Since all instruction classes are subclasses of <strong class="source-inline">Instruction</strong>, we can use <strong class="source-inline">insertBefore</strong> or <strong class="source-inline">insertAfter</strong> to insert the newly created instruction instance before or after another <strong class="source-inline">Instruction</strong>.</li>
+				<li>We can also use the <strong class="source-inline">IRBuilder</strong> class. <strong class="source-inline">IRBuilder</strong> is a powerful tool for automating some of the instruction creation and insertion steps. It implements a builder design pattern that can insert new instructions one after another when developers invoke one of its creation methods. Here is an example:<p class="source-code">// `BB` has the type of `BasicBlock*`</p><p class="source-code"><strong class="bold">IRBuilder&lt;&gt;</strong> Builder(<strong class="bold">BB /*the insertion point*/</strong>);</p><p class="source-code">// insert a new addition instruction at the end of `BB`</p><p class="source-code">auto *AddI = Builder.<strong class="bold">CreateAdd</strong>(LHS, RHS);</p><p class="source-code">// Create a new `ReturnInst`, which returns the result</p><p class="source-code">// of `AddI`, and <strong class="bold">insert after `AddI`</strong></p><p class="source-code">Builer.<strong class="bold">CreateRet</strong>(AddI);</p><p>First, when we create an <strong class="source-inline">IRBuilder</strong> instance, we need to designate an <em class="italic">insertion point</em> as one of the constructor arguments. This insertion point argument can be a <strong class="source-inline">BasicBlock</strong>, which means we want to insert a new instruction at the<a id="_idIndexMarker534"/> end of <strong class="source-inline">BasicBlock</strong>; it can also be an <strong class="source-inline">Instruction</strong> instance, which means that new instructions are going to be inserted <em class="italic">before</em> that specific <strong class="source-inline">Instruction</strong>. </p><p>You are encouraged to use <strong class="source-inline">IRBuilder</strong> over other mechanisms if possible whenever you need to create and insert new instructions in sequential order.</p></li>
+			</ul>
+			<p>With that, you've learned how to create and insert new instructions. Now, let's look at how to <em class="italic">replace</em> existing instructions with others.</p>
+			<h3>Replacing an instruction</h3>
+			<p>There are many<a id="_idIndexMarker535"/> cases where we will want to replace an existing instruction. For instance, a simple optimizer might replace an arithmetic multiplication instruction with a left-shifting instruction when one of the multiplication's operands is a power-of-two integer constant. In this case, it seems straightforward that we can achieve this by simply changing the <em class="italic">operator</em> (the opcode) and one of the operands in the original <strong class="source-inline">Instruction</strong>. That is <strong class="bold">not</strong> the recommended way to do things, however.</p>
+			<p>To replace an <strong class="source-inline">Instruction</strong> in LLVM, you need to create a new <strong class="source-inline">Instruction</strong> (as the replacement) and <em class="italic">reroute</em> all the SSA definitions and usages from the original <strong class="source-inline">Instruction</strong> to the replacement one. Let's use the power-of-two-multiplication we just saw as an example:</p>
+			<ol>
+				<li>The function we are<a id="_idIndexMarker536"/> going to implement is called <strong class="source-inline">replacePow2Mul</strong>, whose argument is the multiplication instruction to be processed (assuming that we have ensured the multiplication has a constant, power-of-two integer operand). First, we will retrieve the constant integer – represented by the <strong class="source-inline">ConstantInt</strong> class – operand and convert it into its base-2 logarithm value (via the <strong class="source-inline">getLog2</strong> utility function; the exact implementation of <strong class="source-inline">getLog2</strong> is left as an exercise for you):<p class="source-code">void replacePow2Mul(BinaryOperator &amp;Mul) {</p><p class="source-code">  // Find the operand that is a power-of-2 integer   // constant</p><p class="source-code">  int ConstIdx = isa&lt;<strong class="bold">ConstantInt</strong>&gt;(Mul.<strong class="bold">getOperand</strong>(0))? 0    : 1;</p><p class="source-code">  ConstantInt *ShiftAmount = getLog2(Mul.   <strong class="bold">getOperand</strong>(ConstIdx));</p><p class="source-code">}</p></li>
+				<li>Next, we will create a new left-shifting instruction – represented by the <strong class="source-inline">ShlOperator</strong> class:<p class="source-code">void replacePow2Mul(BinaryOperator &amp;Mul) {</p><p class="source-code">  …</p><p class="source-code">  // Get the other operand from the original instruction</p><p class="source-code">  auto *Base = Mul.getOperand(ConstIdx? 0 : 1);</p><p class="source-code">  // Create an instruction representing left-shifting</p><p class="source-code">  <strong class="bold">IRBuilder&lt;&gt;</strong> Builder(&amp;Mul);</p><p class="source-code">  auto *Shl = Builder.<strong class="bold">CreateShl</strong>(Base, ShiftAmount);</p><p class="source-code">}</p></li>
+				<li>Finally, before we <a id="_idIndexMarker537"/>remove the <strong class="source-inline">Mul</strong> instruction, we need to tell all the users of the original <strong class="source-inline">Mul</strong> to use our newly created <strong class="source-inline">Shl</strong> instead:<p class="source-code">void replacePow2Mul(BinaryOperator &amp;Mul) {</p><p class="source-code">  …</p><p class="source-code">  // Using `replaceAllUsesWith` to update users of `Mul`</p><p class="source-code">  Mul.<strong class="bold">replaceAllUsesWith</strong>(Shl);</p><p class="source-code">  Mul.eraseFromParent(); // remove the original                          // instruction</p><p class="source-code">}</p><p>Now, all the original users of <strong class="source-inline">Mul</strong> are using <strong class="source-inline">Shl</strong> instead. Thus, we can safely remove <strong class="source-inline">Mul</strong> from the program.</p></li>
+			</ol>
+			<p>With that, you've learned how to replace an existing <strong class="source-inline">Instruction</strong> properly. In the final subsection, we are going to talk about some tips for processing multiple instructions in a <strong class="source-inline">BasicBlock</strong> or a <strong class="source-inline">Function</strong>.</p>
+			<h3>Tips for processing instructions in batches</h3>
+			<p>So far, we have been<a id="_idIndexMarker538"/> learning how to insert, delete, and replace a single <strong class="source-inline">Instruction</strong>. However, in real-world cases, we usually perform such actions on a <em class="italic">sequence</em> of <strong class="source-inline">Instruction</strong> instances (that are in a <strong class="source-inline">BasicBlock</strong>, for instance). Let's try to do that by putting what we've learned into a <strong class="source-inline">for</strong> loop that iterates through all the instructions in a <strong class="source-inline">BasicBlock</strong>; for instance:</p>
+			<p class="source-code">// `BB` has the type of `BasicBlock&amp;`</p>
+			<p class="source-code">for (Instruction &amp;I : BB) {</p>
+			<p class="source-code">  if (auto *BinOp = dyn_cast&lt;BinaryOperator&gt;(&amp;I)) {</p>
+			<p class="source-code">    if (isMulWithPowerOf2(BinOp))</p>
+			<p class="source-code">      <strong class="bold">replacePow2Mul</strong>(BinOp);</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">}</p>
+			<p>The preceding code used the <strong class="source-inline">replacePow2Mul</strong> function we just saw in the previous section to replace the multiplications in this <strong class="source-inline">BasicBlock</strong> with left-shifting instructions if the multiplication fulfills certain criteria. (This is checked by the <strong class="source-inline">isMulWithPowerOf2</strong> function. Again, the details of this function have been left as an exercise to you.)</p>
+			<p>This code looks pretty <a id="_idIndexMarker539"/>straightforward but unfortunately, it will crash while running this transformation. What happened here was that the <strong class="bold">iterator</strong> that's used for enumerating <strong class="source-inline">Instruction</strong> instances in <strong class="source-inline">BasicBlock</strong> became <em class="italic">stale</em> after running our <strong class="source-inline">replacePow2Mul</strong>. The <strong class="source-inline">Instruction</strong> iterator is unable to keep updated with the changes that have been applied to the <strong class="source-inline">Instruction</strong> instances in this <strong class="source-inline">BasicBlock</strong>. In other words, it's really hard to change the <strong class="source-inline">Instruction</strong> instances while iterating them at the same time.</p>
+			<p>The simplest way to solve this problem is to <strong class="bold">push off</strong> the changes:</p>
+			<p class="source-code">// `BB` has the type of `BasicBlock&amp;`</p>
+			<p class="source-code"><strong class="bold">std::vector&lt;BinaryOperator*&gt; Worklist;</strong></p>
+			<p class="source-code">// Only perform the feasibility check</p>
+			<p class="source-code">for (auto &amp;I : BB) {</p>
+			<p class="source-code">  if (auto *BinOp = dyn_cast&lt;BinaryOperator&gt;(&amp;I)) {</p>
+			<p class="source-code">    if (isMulWithPowerOf2(BinOp)) <strong class="bold">Worklist.push_back(BinOp)</strong>;</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">}</p>
+			<p class="source-code">// Replace the target instructions at once</p>
+			<p class="source-code">for (auto *BinOp : <strong class="bold">Worklist</strong>) {</p>
+			<p class="source-code">  <strong class="bold">replacePow2Mul</strong>(BinOp);</p>
+			<p class="source-code">}</p>
+			<p>The preceding code separates<a id="_idIndexMarker540"/> the previous code example into two parts (as two separate <strong class="source-inline">for</strong> loops). The first <strong class="source-inline">for</strong> loop is still iterating through all the <strong class="source-inline">Instruction</strong> instances in <strong class="source-inline">BasicBlock</strong>. But this time, it only performs the checks (that is, calling <strong class="source-inline">isMulWithPowerOf2</strong>) without replacing the <strong class="source-inline">Instruction</strong> instance right away if it passes the checks. Instead, this <strong class="source-inline">for</strong> loop pushes the candidate <strong class="source-inline">Instruction</strong> into array storage – a <strong class="bold">worklist</strong>. After finishing the first <strong class="source-inline">for</strong> loop, the second <strong class="source-inline">for</strong> loop inspects the <a id="_idIndexMarker541"/>worklist and performs the real replacement by calling <strong class="source-inline">replacePow2Mul</strong> on each worklist item. Since the replacements in the second <strong class="source-inline">for</strong> loop don't invalidate any iterators, we can finally transform the code without any crashes occurring.</p>
+			<p>There are, of course, other ways to circumvent the aforementioned iterator problem, but they are mostly complicated and less readable. Using a worklist is the safest and most expressive way to modify instructions in batches.</p>
+			<p><strong class="source-inline">Value</strong> is a first-class construction in LLVM that outlines the data flow among different entities such as instructions. In this section, we introduced how values are represented in LLVM IR and the model of SSA that makes it easier to analyze and transform it. We also learned how to update values in an efficient way and some useful skills for manipulating instructions. This will help build the foundation for you to build more complex and advanced compiler optimizations using LLVM.</p>
+			<p>In the next section, we will look at a slightly more complicated IR unit – a loop. We are going to learn how loops are represented in LLVM IR and how to work with them.</p>
+			<h1 id="_idParaDest-147"><a id="_idTextAnchor153"/>Working with loops</h1>
+			<p>So far, we <a id="_idIndexMarker542"/>have learned about several IR units such as modules, functions, basic blocks, and instructions. We have also learned about some <em class="italic">logical</em> units such as CFG and call graphs. In this section, we are going to look at a more logical IR unit: a loop.</p>
+			<p>Loops are ubiquitous constructions that are heavily used by programmers. Not to mention that nearly every programming language contains this concept, too. A loop repeatedly executes a certain number of instructions multiple times, which, of course, saves programmers lots of effort from repeating that code by themselves. However, if the loop contains any <em class="italic">inefficient</em> code – for example, a time-consuming memory load that always delivers the same value – the performance slowdown will also be <em class="italic">magnified</em> by the number of iterations. </p>
+			<p>Therefore, it is the compiler's job to eliminate as many flaws as possible from a loop. In addition to removing suboptimal code from loops, since loops are on the critical path of the runtime's performance, people have always been trying to further optimize them with special hardware-based accelerations; for example, replacing a loop with vector instructions, which can process multiple scalar values in just a few cycles. In short, loop optimization is the key to generating faster, more efficient programs. This is especially important in the high-performance and scientific computing communities.</p>
+			<p>In this section, we<a id="_idIndexMarker543"/> are going to learn how to process loops with LLVM. We will try to tackle this topic in two parts:</p>
+			<ul>
+				<li>Learning about loop representation in LLVM</li>
+				<li>Learning about loop infrastructure in LLVM</li>
+			</ul>
+			<p>In LLVM, loops are slightly more complicated than other (logical) IR units. Therefore, we will learn about the high-level concept of a loop in LLVM and its <em class="italic">terminologies</em> first. Then, in the second part, we are going to get our hands on the infrastructure and tools that are used fo<a id="_idTextAnchor154"/>r processing loops in LLVM.</p>
+			<p>Let's start with the first part.</p>
+			<h2 id="_idParaDest-148"><a id="_idTextAnchor155"/>Learning about loop representation in LLVM</h2>
+			<p>A loop is<a id="_idIndexMarker544"/> represented by the <strong class="source-inline">Loop</strong> class in LLVM. This class captures any control flow structure that has a <em class="italic">back edge</em> from an enclosing basic block in one of its predecessor blocks. Before we dive into its details, let's learn how to retrieve a <strong class="source-inline">Loop</strong> instance.</p>
+			<p>As we mentioned previously, a loop is a logical IR unit in LLVM IR. Namely, it is derived (or calculated) from physical IR units. In this case, we need to retrieve the calculated <strong class="source-inline">Loop</strong> instances from <strong class="source-inline">AnalysisManager</strong> – which was first introduced in <a href="B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127"><em class="italic">Chapter 9</em></a>, <em class="italic">Working with PassManager and AnalysisManager</em>. Here is an example showing how to retrieve it in a <strong class="source-inline">Pass</strong> function:</p>
+			<p class="source-code">#include "llvm/Analysis/LoopInfo.h"</p>
+			<p class="source-code">…</p>
+			<p class="source-code">PreservedAnalyses run(Function &amp;F, FunctionAnalysisManager &amp;FAM) {</p>
+			<p class="source-code">  <strong class="bold">LoopInfo &amp;LI = FAM.getResult&lt;LoopAnalysis&gt;(F);</strong></p>
+			<p class="source-code">  // `LI` contains ALL `Loop` instances in `F`</p>
+			<p class="source-code">  for (<strong class="bold">Loop *LP : LI</strong>) {</p>
+			<p class="source-code">    // Working with one of the loops, `LP`</p>
+			<p class="source-code">  }</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">}</p>
+			<p><strong class="source-inline">LoopAnalysis</strong> is an LLVM analysis class that provides us with a <strong class="source-inline">LoopInfo</strong> instance, which includes <em class="italic">all</em> the <strong class="source-inline">Loop</strong> instances in a <strong class="source-inline">Function</strong>. We can iterate through a <strong class="source-inline">LoopInfo</strong> instance<a id="_idIndexMarker545"/> to get an individual <strong class="source-inline">Loop</strong> instance, as shown in the preceding code.</p>
+			<p>Now, let's look into a <strong class="source-inline">Loop</strong> instance.</p>
+			<h3>Learning about loop terminologies</h3>
+			<p>A <strong class="source-inline">Loop</strong> instance<a id="_idIndexMarker546"/> contains multiple <strong class="source-inline">BasicBlock</strong> instances for a particular loop. LLVM assigns a special meaning/name to some of these blocks, as well as the (control flow) edges among them. The following diagram shows this terminology:</p>
+			<div>
+				<div id="_idContainer036" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.8.jpg" alt="Figure 10.8 – Structure and terminology used in a loop&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.8 – Structure and terminology used in a loop</p>
+			<p>Here, every rectangle is a <strong class="source-inline">BasicBlock</strong> instance. However, only blocks residing within the dash line area are included in a <strong class="source-inline">Loop</strong> instance. The preceding diagram also shows two important control flow edges. Let's explain each of these terminologies in detail:</p>
+			<ul>
+				<li><strong class="bold">Header Block</strong>: This<a id="_idIndexMarker547"/> block marks the <em class="italic">entry</em> to a loop. Formally speaking, it dominates all the blocks in the loop. It is also the destination of any back edge.<p><strong class="bold">Pre-Header Block</strong>: Though it is <em class="italic">not</em> part of a <strong class="source-inline">Loop</strong>, it represents the block that has the header block <a id="_idIndexMarker548"/>as the only successor. In other words, it's the only predecessor of the header block. </p><p>The existence of a pre-header block makes it easier to write some of the loop transformations. For instance, when we want to <em class="italic">hoist</em> an instruction to the outside of the loop so that it is only executed once before entering the loop, the pre-header block can be a good place to put this. If we don't have a pre-header block, we need to duplicate this instruction for <em class="italic">every</em> predecessor of the header block.</p></li>
+				<li><strong class="bold">Back Edge</strong>: This is the <a id="_idIndexMarker549"/>control flow edge that goes from one of the blocks in the loop to the header block. A loop might contain several back edges.</li>
+				<li><strong class="bold">Latch Block</strong>: This is the <a id="_idIndexMarker550"/>block that sits at the source of a back edge.</li>
+				<li><strong class="bold">Exiting Block</strong> and <strong class="bold">Exit Block</strong>: These <a id="_idIndexMarker551"/>two names are slightly confusing: the exiting block is the block<a id="_idIndexMarker552"/> that has a control flow edge – the <strong class="bold">Exit Edge</strong> – that goes <em class="italic">outside</em> the loop. The other end of the exit edge, which is not part of the loop, is the exit block. A loop can contain multiple exit blocks (and exiting blocks).</li>
+			</ul>
+			<p>These are the important terminologies for blocks in a <strong class="source-inline">Loop</strong> instance. In addition to the control flow structure, compiler<a id="_idIndexMarker553"/> engineers are also interested in a special value that might exist in a loop: the <strong class="bold">induction variable</strong>. For example, in the following snippet, the <strong class="source-inline">i</strong> variable is the induction variable:</p>
+			<p class="source-code">for (<strong class="bold">int i</strong> = 0; i &lt; 87; ++i){…}</p>
+			<p>A loop might not contain an induction variable – for example, many <strong class="source-inline">while</strong> loops in C/C++ don't have one. Also, it's not always easy to find out about an induction variable, nor its <em class="italic">boundary</em> – the start, end, and stopping values. We will show some of the utilities in the next section to help you with this task. But before that, we are going to discuss an interesting topic regarding the <em class="italic">canonical</em> form of a loop.</p>
+			<h3>Understanding canonical loops</h3>
+			<p>In the previous section, we<a id="_idIndexMarker554"/> learned several pieces of terminology for loops in LLVM, including the pre-header block. Recall that the existence of a pre-header block makes it easier to develop a loop transformation because it creates a simpler loop structure. Following this discussion, there are other properties that make it easier for us to write loop transformations, too. If a <strong class="source-inline">Loop</strong> instance has these nice properties, we usually call it a <strong class="bold">canonical loop</strong>. The optimization pipeline in LLVM will try to "massage" a loop into this canonical form before sending it to any of the loop transformations.</p>
+			<p>Currently, LLVM has two canonical forms for <strong class="source-inline">Loop</strong>: a <strong class="bold">simplified</strong> form and a <strong class="bold">rotated</strong> form. The simplified form has the following properties:</p>
+			<ul>
+				<li>A pre-header block.</li>
+				<li>A single back edge (and thus a single latch block).</li>
+				<li>The predecessors of the exit blocks come from the loop. In other words, the header block dominates all the exit blocks.</li>
+			</ul>
+			<p>To get a simplified loop, you can run <strong class="source-inline">LoopSimplfyPass</strong> over the original loop. In addition, you can use the <strong class="source-inline">Loop::isLoopSimplifyForm</strong> method to check if a <strong class="source-inline">Loop</strong> is in this form.</p>
+			<p>The benefits of having a single back edge include that we can analyze recursive data flow – for instance, the induction variable – more easily. For the last property, if every exit block is dominated by the loop, we can have an easier time "sinking" instructions below the loop without any interference from other control flow paths.</p>
+			<p>Let's look at the <a id="_idIndexMarker555"/>rotated canonical form. Originally, the rotated form was not a formal canonical form in LLVM's loop optimization pipeline. But with more and more loop passes depending on it, it has become the "de facto" canonical form. The following diagram shows what this form looks like:</p>
+			<div>
+				<div id="_idContainer037" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.9.jpg" alt="Figure 10.9 – Structure and terminology of a rotated loop&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.9 – Structure and terminology of a rotated loop</p>
+			<p>To get a rotated loop, you can run <strong class="source-inline">LoopRotationPass</strong> over the original loop. To check if a loop is rotated, you can use the <strong class="source-inline">Loop::isRotatedForm</strong> method.</p>
+			<p>This rotated form is basically transforming an arbitrary loop into a <strong class="source-inline">do{…}while(…)</strong> loop (in C/C++) with some extra checks. More specifically, let's say we have the following <strong class="source-inline">for</strong> loop:</p>
+			<p class="source-code">// `N` is not a constant</p>
+			<p class="source-code">for (int i = 0; i &lt; N; ++i){…}</p>
+			<p>Loop rotation effectively turns it into the following code:</p>
+			<p class="source-code"><strong class="bold">if (i &lt; N)</strong> {</p>
+			<p class="source-code">  do {</p>
+			<p class="source-code">    …</p>
+			<p class="source-code">    ++i;</p>
+			<p class="source-code">  } while(i &lt; N);</p>
+			<p class="source-code">}</p>
+			<p>The highlighted boundary <a id="_idIndexMarker556"/>check in the preceding code is used to ensure that the loop won't execute if the <strong class="source-inline">i</strong> variable is out of bounds at the very beginning. We also call this check the <strong class="bold">loop guard</strong>, as shown in the preceding diagram.</p>
+			<p>In addition to the loop guard, we also found that a rotated loop has a combined header, latch, and exiting block. The rationale behind this is to ensure that every instruction in this block has the same <em class="italic">execution count</em>. This is a useful property for compiler optimizations such as loop vectorization.</p>
+			<p>With that, we have learned about the various loop terminologies and the definition of canonical loops in LLVM. In the next section, we will learn about some APIs that can help you inspect some of these properties and process loops in an efficient way.</p>
+			<h2 id="_idParaDest-149"><a id="_idTextAnchor156"/>Learning about loop infrastructure in LLVM</h2>
+			<p>In the <em class="italic">Learning about loop representation in LLVM</em> section, we learned about the high-level<a id="_idIndexMarker557"/> construction and important properties of a loop in LLVM IR. In this section, we are going to see what APIs are available for us to inspect those properties and further transform the loops. Let's start our discussion from the loop pass – the LLVM pass that applies to <strong class="source-inline">Loop</strong> instances.</p>
+			<p>In <a href="B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127"><em class="italic">Chapter 9</em></a>, <em class="italic">Working with PassManager and AnalysisManager</em>, we learned that there are different kinds of LLVM pass that work on different IR units – for instance, we have seen passes for <strong class="source-inline">Function</strong> and <strong class="source-inline">Module</strong>. These two kinds of passes have a similar function signature for their <strong class="source-inline">run</strong> method – the main entry point of an LLVM pass – as shown here:</p>
+			<p class="source-code">PreservedAnalyses run(<strong class="bold">&lt;IR unit class&gt;</strong> &amp;Unit,</p>
+			<p class="source-code">                      <strong class="bold">&lt;IR unit&gt;AnalysisManager</strong> &amp;AM);</p>
+			<p>Both of their <strong class="source-inline">run</strong> methods take two arguments – a reference to the IR unit instance and an <strong class="source-inline">AnalysisManager</strong> instance.</p>
+			<p>In contrast, a loop<a id="_idIndexMarker558"/> pass has a slightly more complicated <strong class="source-inline">run</strong> method signature, as shown here:</p>
+			<p class="source-code">PreservedAnalyses run(Loop &amp;LP, LoopAnalysisManager &amp;LAM,</p>
+			<p class="source-code">                      <strong class="bold">LoopStandardAnalysisResults</strong> &amp;LAR,</p>
+			<p class="source-code">                      <strong class="bold">LPMUpdater</strong> &amp;U);</p>
+			<p>The <strong class="source-inline">run</strong> method takes four arguments, but we already know about the first two. Here are the descriptions for the other two:</p>
+			<ul>
+				<li>The third argument, <strong class="source-inline">LoopStandardAnalysisResults</strong>, provides you with some analysis data instances, such as <strong class="source-inline">AAResults</strong> (alias analysis data), <strong class="source-inline">DominatorTree</strong>, and <strong class="source-inline">LoopInfo</strong>. These analyses are extensively used by many loop optimizations. However, most of them are managed by either <strong class="source-inline">FunctionAnalysisManager</strong> or <strong class="source-inline">ModuleAnalysisManager</strong>. This means that, originally, developers needed to implement more complicated methods – for example, using the <strong class="source-inline">OuterAnalysisManagerProxy</strong> class – to retrieve them. The <strong class="source-inline">LoopStandardAnalysisResults</strong> instance basically helps you retrieve this analysis data <em class="italic">ahead of time</em>.</li>
+				<li>The last argument is used for notifying <strong class="source-inline">PassManager</strong> of any newly added loops so that it can put those new loops into the queue before processing them later. It can also tell the PassManager to put the current loop into the queue again.</li>
+			</ul>
+			<p>When we are writing a pass, we will want to use the analysis data provided by AnalysisManager – in this case, it is the <strong class="source-inline">LoopAnalysisManager</strong> instance. <strong class="source-inline">LoopAnalysisManager</strong> has a similar usage to other versions of AnalysisManager (<strong class="source-inline">FunctionAnalysisManager</strong>, for example) we learned about in the previous chapter. The only difference is that we need to supply an additional argument to the <strong class="source-inline">getResult</strong> method. Here is an example:</p>
+			<p class="source-code">PreservedAnalyses run(<strong class="bold">Loop &amp;LP</strong>, LoopAnalysisManager &amp;LAM,</p>
+			<p class="source-code">                      <strong class="bold">LoopStandardAnalysisResults &amp;LAR</strong>,</p>
+			<p class="source-code">                      LPMUpdater &amp;U) {</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">  LoopNest &amp;LN = LAM.getResult&lt;LoopNestAnalysis&gt;(<strong class="bold">LP, LAR</strong>);</p>
+			<p class="source-code">  …</p>
+			<p class="source-code">}</p>
+			<p><strong class="source-inline">LoopNest</strong> is the<a id="_idIndexMarker559"/> analysis data that's generated by <strong class="source-inline">LoopNestAnalysis</strong>. (We will talk about both shortly in the <em class="italic">Dealing with nested loops</em> section.)</p>
+			<p>As shown in the previous snippet, <strong class="source-inline">LoopAnalysisManager::getResult</strong> takes another <strong class="source-inline">LoopStandarAnalysisResults</strong> type argument, in addition to the <strong class="source-inline">Loop</strong> instance.</p>
+			<p>Except for having different a <strong class="source-inline">run</strong> method signature and a slightly different usage of <strong class="source-inline">LoopAnalysisManager</strong>, developers can build their loop passes in the same way as other kinds of passes. Now that we've looked at the foundation provided by loop pass and AnalysisManager, it's time to look at some specialized loops. The first one we are going to introduce is the <em class="italic">nested</em> loop. </p>
+			<h3>Dealing with nested loops</h3>
+			<p>So far, we <a id="_idIndexMarker560"/>have been talking about loops with only one layer. However, nested loops – loops with other loop(s) enclosed in them – are also common in real-world scenarios. For example, most of the matrix multiplication implementations require at least two layers of loops.</p>
+			<p>Nested loops are usually depicted as a tree – called a <strong class="bold">loop tree</strong>. In a loop tree, every node represents a loop. If a node has a parent node, this <a id="_idIndexMarker561"/>means that the corresponding loop is <em class="italic">enclosed</em> within the loop<a id="_idIndexMarker562"/> being modeled by the parent. The following diagram shows an example of this:</p>
+			<div>
+				<div id="_idContainer038" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.10.jpg" alt="Figure 10.10 – A loop tree example&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.10 – A loop tree example</p>
+			<p>In the preceding diagram, loops <strong class="source-inline">j</strong> and <strong class="source-inline">g</strong> are enclosed within loop <strong class="source-inline">i</strong>, so they are both child nodes of loop <strong class="source-inline">i</strong> in the loop tree. Similarly, loop <strong class="source-inline">k</strong> – the innermost loop – is modeled as the child node of loop <strong class="source-inline">j</strong> in the tree.</p>
+			<p>The root of a loop tree also represents a <em class="italic">top-level</em> loop in a <strong class="source-inline">Function</strong>. Recall that, previously, we learned how to retrieve all <strong class="source-inline">Loop</strong> instances in a <strong class="source-inline">Function</strong> by iterating through the <strong class="source-inline">LoopInfo</strong> object – each of the <strong class="source-inline">Loop</strong> instances that were retrieved in this way are top-level loops. For a given <strong class="source-inline">Loop</strong> instance, we can retrieve its subloops at the next layer in a similar way. Here is an example:</p>
+			<p class="source-code">// `LP` has the type of `Loop&amp;`</p>
+			<p class="source-code">for (<strong class="bold">Loop *SubLP : LP</strong>) {</p>
+			<p class="source-code">  // `SubLP` is one of the sub-loops at the next layer</p>
+			<p class="source-code">}</p>
+			<p>Note that the preceding snippet only traversed the subloops at the next level, rather than all the descendant subloops. To traverse all descendant subloops in a tree, you have two options:</p>
+			<ul>
+				<li>By using the <strong class="source-inline">Loop::getLoopsInPreorder()</strong> method, you can traverse all the descendant loops of a <strong class="source-inline">Loop</strong> instance in a pre-ordered fashion.</li>
+				<li>In the <em class="italic">Iterating different IR units</em> section, we have learned what <strong class="source-inline">GraphTraits</strong> is and how LLVM uses it for graph traversal. It turns out that LLVM also has a default implementation of <strong class="source-inline">GraphTraits</strong> for the loop tree. Therefore, you can traverse a loop tree with existing graph iterators in LLVM, such as post-ordering and depth-first, to name a few. For example, the following code tries to traverse a<a id="_idIndexMarker563"/> loop tree rooted at <strong class="source-inline">RootL</strong> in a depth-first fashion:<p class="source-code">#include "llvm/Analysis/LoopInfo.h"</p><p class="source-code">#include "llvm/ADT/DepthFirstIterator.h"</p><p class="source-code">…</p><p class="source-code">// `RootL` has the type of `Loop*`</p><p class="source-code">for (<strong class="bold">Loop *L : depth_first(RootL)</strong>) {</p><p class="source-code">  // Work with `L`</p><p class="source-code">}</p><p>With the help of <strong class="source-inline">GraphTraits</strong>, we can have more flexibility when it comes to traversing a loop tree.</p></li>
+			</ul>
+			<p>In addition to dealing with individual loops in a loop tree, LLVM also provides a wrapper class that represents the whole structure – <strong class="source-inline">LoopNest</strong>.</p>
+			<p><strong class="source-inline">LoopNest</strong> is analysis data that's generated by <strong class="source-inline">LoopNestAnalysis</strong>. It encapsulates all the subloops in a given <strong class="source-inline">Loop</strong> instance and provides several "shortcut" APIs for commonly used functionalities. Here are some of the important ones:</p>
+			<ul>
+				<li><strong class="source-inline">getOutermostLoop()</strong>/<strong class="source-inline">getInnermostLoop()</strong>: These utilities retrieve the outer/innermost <strong class="source-inline">Loop</strong> instances. These are pretty handy because many loop optimizations only apply to either the inner or outermost loop.</li>
+				<li><strong class="source-inline">areAllLoopsSimplifyForm()</strong>/<strong class="source-inline">areAllLoopsRotatedForm()</strong>: These useful utilities tell you if all the enclosing loops are in a certain canonical form, as we mentioned in the previous section.</li>
+				<li><strong class="source-inline">getPerfectLoops(…)</strong>: You can use this to get all the <em class="italic">perfect loops</em> in the current loop hierarchy. By perfect loops, we are referring to loops that are nested together without a "gap" between them. Here is an example of perfect loops and non-perfect loops:<p class="source-code">// Perfect loops</p><p class="source-code">for(int i=…) {</p><p class="source-code">  for(int j=…){…}</p><p class="source-code">}</p><p class="source-code">// Non-perfect loops</p><p class="source-code">for(int x=…) {</p><p class="source-code">  <strong class="bold">foo();</strong></p><p class="source-code">  for(int y=…){…}</p><p class="source-code">}</p><p>In the<a id="_idIndexMarker564"/> non-perfect loops example, the <strong class="source-inline">foo</strong> call site is the gap between the upper and lower loops.</p><p>Perfect loops are preferrable in many loop optimizations. For example, it's easier to <em class="italic">unroll</em> perfectly nested loops – ideally, we only need to duplicate the body of the innermost loop.</p></li>
+			</ul>
+			<p>With that, you've learned how to work with nested loops. In the next section, we are going to learn about another important topic for loop optimization: induction variables.</p>
+			<h3>Retrieving induction variables and their range</h3>
+			<p>The induction variable<a id="_idIndexMarker565"/> is a variable that progresses by a certain pattern in each loop iteration. It is the key to many loop optimizations. For example, in order to <em class="italic">vectorize</em> a loop, we need to know how the induction variable is used by the array – the data we want to put in a vector – within the loop. The induction variable can also help <a id="_idIndexMarker566"/>us resolve the <strong class="bold">trip count</strong> – the total number of iterations – of a loop. Before we dive into the details, the following diagram shows some terminology related to induction variables and where they're located in the loop:</p>
+			<div>
+				<div id="_idContainer039" class="IMG---Figure">
+					<img src="image/B14590_Figure_10.11.jpg" alt="Figure 10.11 – Terminology for an induction variable&#13;&#10;"/>
+				</div>
+			</div>
+			<p class="figure-caption">Figure 10.11 – Terminology for an induction variable</p>
+			<p>Now, let's introduce some APIs that can help you retrieve the components shown in the preceding diagram. </p>
+			<p>First, let's talk about the induction variable. The <strong class="source-inline">Loop</strong> class already provides two convenient methods for retrieving the induction variable: <strong class="source-inline">getCanonicalInductionVariable</strong> and <strong class="source-inline">getInductionVariable</strong>. Both methods return a <strong class="source-inline">PHINode</strong> instance as the induction variable (if there are any). The first method can only be used if the induction variable starts from zero and only increments by one on each iteration. On the other hand, the second method can handle more complicated cases, but requires a <strong class="source-inline">ScalarEvolution</strong> instance as the argument.</p>
+			<p><strong class="source-inline">ScalarEvolution</strong> is an interesting and powerful framework in LLVM. Simply put, it tries to track how values <em class="italic">change</em> – for example, through arithmetic operation – over the program path. Putting this into the context of loop optimization, it is used to capture recurrence value-changing behaviors in the loop, which has a strong relationship with the induction variable.</p>
+			<p>To find out more about the induction variable's behavior in a loop, you can retrieve an <strong class="source-inline">InductionDescriptor</strong> instance via <strong class="source-inline">Loop::getInductionDescriptor</strong>. An <strong class="source-inline">InductionDescriptor</strong> instance provides information such as the initial value, the step value, and the instruction that <em class="italic">updates</em> the induction variable at each iteration. The <strong class="source-inline">Loop</strong> class also provides another similar data structure for realizing the boundaries of the induction variable: the <strong class="source-inline">Loop::LoopBounds</strong> class. <strong class="source-inline">LoopBounds</strong> not only provides the initial and step values of the induction variable, but also the prospective ending value, as well as the predicate that's used for checking the exit condition. You can retrieve a <strong class="source-inline">LoopBounds</strong> instance via the <strong class="source-inline">Loop::getBounds</strong> method.</p>
+			<p>Loops are<a id="_idIndexMarker567"/> crucial for a program's runtime performance. In this section, we learned how loops are represented in LLVM IR and how to work with them. We also looked at their high-level concepts and various practical APIs for retrieving the desired loop properties. With this knowledge, you are one step closer to creating a more effective, aggressive loop optimization and gaining even higher performance from your target applications.</p>
+			<h1 id="_idParaDest-150"><a id="_idTextAnchor157"/>Summary</h1>
+			<p>In this section, we learned about LLVM IR – the target-independent intermediate representation that sits at the core of the entire LLVM framework. We provided an introduction to the high-level structure of LLVM IR, followed by practical guidelines on how to walk through different units within its hierarchy. We also focused on instructions, values, and SSA form at, which are crucial for working with LLVM IR efficiently. We also presented several practical skills, tips, and examples on the same topic. Last but not least, we learned how to process loops in LLVM IR – an important technique for optimizing performance-sensitive applications. With these abilities, you can perform a wider range of program analysis and code optimization tasks on LLVM IR.</p>
+			<p>In the next chapter, we will learn about a collection of LLVM utilities APIs that can improve your productivity when it comes to developing, diagnosing, and debugging with LLVM.</p>
+		</div>
+	</body></html>
