@@ -1,0 +1,1675 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Using Geometry and Tessellation Shaders</h1>
+                </header>
+            
+            <article>
+                
+<p>In this chapter, we will cover:</p>
+<ul>
+<li>Point sprites with the geometry shader</li>
+<li>Drawing a wireframe on top of a shaded mesh</li>
+<li>Drawing silhouette lines using the geometry shader</li>
+<li>Tessellating a curve</li>
+<li>Tessellating a 2D quad</li>
+<li>Tessellating a 3D surface</li>
+<li>Tessellating based on depth</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Introduction</h1>
+                </header>
+            
+            <article>
+                
+<p class="chapter-content">Tessellation and geometry shaders provide programmers with additional ways to modify geometry as it progresses through the shader pipeline. Geometry shaders can be used to add, modify, or delete geometry in a very precise and user-controlled manner. Tessellation shaders can also be configured to automatically subdivide geometry to various degrees (levels of detail), potentially creating immensely dense geometry via the GPU.</p>
+<p>In this chapter, we'll look at several examples of geometry and tessellation shaders in various contexts. However, before we get into the recipes, let's investigate how all of this fits together.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The shader pipeline extended</h1>
+                </header>
+            
+            <article>
+                
+<p>The following diagram shows a simplified view of the shader pipeline, when the shader program includes geometry and tessellation shaders:</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/c5e7bd33-7a4f-4522-b079-7e5feb07d9ee.png" style="width:33.17em;height:14.50em;"/></div>
+<p>The tessellation portion of the shader pipeline includes two stages: the <strong>Tessellation Control Shader</strong> (<strong>TCS</strong>) and the <strong>Tessellation Evaluation Shader</strong> (<strong>TES</strong>). The geometry shader follows the tessellation stages and precedes the fragment shader. The tessellation shader and geometry shader are optional; however, when a shader program includes a tessellation or geometry shader, a vertex shader must be included.</p>
+<div class="packt_infobox"><span>All shaders except the vertex shader are optional. When using a geometry shader, there is no requirement that you also include a tessellation shader and vice versa.</span></div>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The geometry shader</h1>
+                </header>
+            
+            <article>
+                
+<p>The <strong>geometry shader</strong> (<strong>GS</strong>) is designed to execute once for each primitive. It has access to all of the vertices of the primitive, as well as the values of any input variables associated with each vertex. In other words, if a previous stage (such as the vertex shader) provides an output variable, the geometry shader has access to the value of that variable for all vertices in the primitive. As a result, the input variables within the geometry shader are always arrays.</p>
+<p>The geometry shader can output zero, one, or more primitives. Those primitives need not be of the same kind that were received by the geometry shader.</p>
+<p>However, the GS can only output one primitive type. For example, a GS could receive a triangle, and output several line segments as a line strip, or a GS could receive a triangle and output zero or many triangles as a triangle strip.</p>
+<p>This enables the GS to act in many different ways. A GS could be responsible for culling (removing) geometry based on some criteria, such as visibility based on occlusions. It could generate additional geometry to augment the shape of the object being rendered. The GS could simply compute additional information about the primitive and pass the primitive along unchanged, or the GS could produce primitives that are entirely different from the input geometry.</p>
+<p>The functionality of the GS is centered around the two built-in functions: <kbd>EmitVertex</kbd> and <kbd>EndPrimitive</kbd>. These two functions allow the GS to send multiple vertices and primitives down the pipeline. The GS defines the output variables for a particular vertex, and then calls <kbd>EmitVertex</kbd>. After that, the GS can proceed to redefine the output variables for the next vertex, call <kbd>EmitVertex</kbd> again, and so on. After emitting all of the vertices for the primitive, the GS can call <kbd>EndPrimitive</kbd> to let the OpenGL system know that all the vertices of the primitive have been emitted. The <kbd>EndPrimitive</kbd> function is implicitly called when the GS finishes execution. If GS does not call <kbd>EmitVertex</kbd> at all, the input primitive is effectively dropped (it is not rendered).</p>
+<p>In the following recipes, we'll examine a few examples of the geometry shader. In the <em>Point sprites with the geometry shader</em> recipe, we'll see an example where the input primitive type is entirely different from the output type. In the <em>Drawing a wireframe on top of a shaded mesh</em> recipe, we'll pass the geometry along unchanged, but also produce some additional information about the primitive to help in drawing wireframe lines. In the <em>Drawing silhouette lines using the geometry shader</em> recipe, we'll see an example where the GS passes along the input primitive, but generates additional primitives as well.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">The tessellation shaders</h1>
+                </header>
+            
+            <article>
+                
+<p>When the tessellation shaders are active, we can only render one kind of primitive: the patch (<kbd>GL_PATCHES</kbd>). Rendering any other kind of primitive (such as triangles, or lines) while a tessellation shader is active is an error. The <strong>patch primitive</strong> is an arbitrary <em>chunk</em> of geometry (or any information) that is completely defined by the programmer. It has no geometric interpretation beyond how it is interpreted within the TCS and TES. The number of vertices within the patch primitive is also configurable. The maximum number of vertices per patch is implementation-dependent, and can be queried via the following command:</p>
+<pre><strong>glGetIntegerv(GL_MAX_PATCH_VERTICES, &amp;maxVerts);</strong></pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>We can define the number of vertices per patch with the following function:</p>
+<pre><strong>glPatchParameteri( GL_PATCH_VERTICES, numPatchVerts ); </strong></pre>
+<p>A very common application of this is when the patch primitive consists of a set of control points that define an interpolated surface or curve (such as a Bezier curve or surface). However, there is no reason why the information within the patch primitive couldn't be used for other purposes.</p>
+<p>The patch primitive is never actually rendered; instead, it is used as additional information for the TCS and TES. The primitives that actually make their way further down the pipeline are created by the <strong>tessellation primitive generator</strong> (<strong>TPG</strong>), which lies between the TCS and TES. Think of the tessellation-primitive generator as a configurable engine that produces primitives based on a set of standard tessellation algorithms. The TCS and TES have access to the entire input patch, but have fundamentally different responsibilities. The TCS is responsible for:</p>
+<ul>
+<li>setting up the TPG</li>
+<li>defining how the primitives should be generated by the TPG (how many and what algorithm to use)</li>
+<li>producing per-vertex output attributes.</li>
+</ul>
+<p>The TES has the job of determining the position (and any other information) of each vertex of the primitives that are produced by the TPG. For example, the TCS might tell the TPG to generate a line strip consisting of 100 line segments, and the TES is responsible for determining the position of each vertex of those 100 line segments. The TES would likely make use of the information within the entire patch primitive in order to do so.</p>
+<p>The TCS is executed once for each vertex in a patch, but has access to all vertices of its associated patch. It can compute additional information about the patch and pass it along to the TES using output variables. However, the most important task of the TCS is to tell the TPG how many primitives it should produce. It does this by defining tessellation levels via the <kbd>gl_TessLevelInner</kbd> and <kbd>gl_TessLevelOuter</kbd> arrays. These arrays define the granularity of the tessellation produced by the TPG.</p>
+<p>The TPG generates primitives based on a particular algorithm (quads, isolines, or triangles). Each algorithm produces primitives in a slightly different fashion, and we will see examples of isolines and quads in the recipes in this chapter. Each vertex of the generated primitives is associated with a position in parameter space (u, v, w). Each coordinate of this position is a number that can range from zero to one. This coordinate can be used to evaluate the location of the vertex, often by interpolation of the patch primitive's vertices.</p>
+<p>The primitive-generation algorithms produce vertices (and the associated parametric coordinates) in a slightly different fashion. The tessellation algorithms for quads and isolines make use of only the first two parametric coordinates: <em>u</em> and <em>v</em>. The following diagram illustrates the process for an input and output patch consisting of four vertices. In the diagram, the TPG uses the quad tessellation algorithm with the inner and outer tessellation levels set at four:</p>
+<div class="packt_figure">
+<div class="CDPAlignCenter CDPAlign"><img src="assets/0f134320-c9fe-44e2-b161-e538b96aed54.png" style="width:43.08em;height:20.08em;"/></div>
+</div>
+<div class="packt_infobox"><span>The number of vertices in the input patch need not be the same as the number of vertices in the output patch, although that will be the case in all of the examples in this chapter.</span></div>
+<p>The TES is executed once for each parameter-space vertex that is generated by the TPG. Somewhat strangely, the TES is actually the shader that defines the algorithm used by the TPG. It does so via its input layout qualifier. As stated earlier, its main responsibility is to determine the position of the vertex (possibly along with other information, such as normal vector and texture coordinate). Typically, the TES uses the parametric coordinate (u,v) provided by the TPG along with the positions of all of the input patch vertices to do so. For example, when drawing a curve, the patch might consists of four vertices, which are the control points for the curve. The TPG would then generate 101 vertices to create a line strip (if the tessellation level was set to 100), and each vertex might have a <em>u</em> coordinate that ranged appropriately between zero and one. The TES would then use that <em>u</em> coordinate along with the positions of the four patch vertices to determine the position of the vertex associated with the shader's execution.</p>
+<p>If all of this seems confusing, start with the <em>Tessellating a curve</em> recipe, and work your way through the following recipes.</p>
+<p>In the <em>Tessellating a curve</em> recipe, we'll go through a basic example where we use tessellation shaders to draw a Bezier curve with four control points. In the <em>Tessellating a 2D quad</em> recipe, we'll try to understand how the quad tessellation algorithm works by rendering a simple quad and visualizing the triangles produced by the TPG. In the <em>Tessellating a 3D surface</em> recipe, we'll use quad tessellation to render a 3D Bezier surface. Finally, in the <em>Tessellating based on depth</em> recipe, we'll see how the tessellation shaders make it easy to implement <strong>level-of-detail</strong> (<strong>LOD</strong>) algorithms.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Point sprites with the geometry shader</h1>
+                </header>
+            
+            <article>
+                
+<p><strong>Point sprites</strong> are simple quads (usually texture mapped) that are aligned such that they are always facing the camera. They are very useful for particle systems in 3D (refer to <a href="36422579-2eed-46ff-95b7-755859c387eb.xhtml"><span class="ChapterrefPACKT">Chapter 9</span></a>, <em>Using Noise in Shaders</em>) or 2D games. The point sprites are specified by the OpenGL application as single-point primitives, via the <kbd>GL_POINTS</kbd> rendering mode. This simplifies the process, because the quad itself and the texture coordinates for the quad are determined automatically. The OpenGL side of the application can effectively treat them as point primitives, avoiding the need to compute the positions of the quad vertices.</p>
+<p>The following image shows a group of point sprites. Each sprite is rendered as a point primitive. The quad and texture coordinates are generated automatically (within the geometry shader) and aligned to face the camera:</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/6358f541-9692-4abf-92cd-ba82a0a22076.png" style="width:22.00em;height:18.83em;"/></div>
+<p>OpenGL already has built-in support for point sprites in the <kbd>GL_POINTS</kbd> rendering mode. When rendering point primitives using this mode, the points are rendered as screen-space squares that have a diameter (side length) as defined by the <kbd>glPointSize</kbd> function. In addition, OpenGL will automatically generate texture coordinates for the fragments of the square. These coordinates run from zero to one in each direction (<span><span>horizontal and vertical</span></span>), and are accessible in the fragment shader via the <kbd>gl_PointCoord</kbd> built-in variable.</p>
+<p>There are various ways to fine-tune the rendering of point sprites within OpenGL. One can define the origin of the automatically-generated texture coordinates using the <kbd>glPointParameter</kbd> functions. The same set of functions also can be used to tweak the way that OpenGL defines the alpha value for points when multi-sampling is enabled.</p>
+<p>The built-in support for point sprites does not allow the programmer to rotate the screen-space squares, or define them as different shapes, such as rectangles or triangles. However, one can achieve similar effects with the creative use of textures and transformations of the texture coordinates. For example, we could transform the texture coordinates using a rotation matrix to create the look of a rotating object even though the geometry itself is not actually rotating. In addition, the size of the point sprite is a screen-space size. In other words, the point size must be adjusted with the depth of the point sprite if we want to get a perspective effect (sprites get smaller with distance).</p>
+<p>If these (and possibly other) issues make the default support for point sprites too limiting, we can use the geometry shader to generate our point sprites. In fact, this technique is a good example of using the geometry shader to generate different kinds of primitives than it receives. The basic idea here is that the geometry shader will receive point primitives (in camera coordinates) and will output a quad centered at the point and aligned so that it is facing the camera. The geometry shader will also automatically generate texture coordinates for the quad.</p>
+<p>If desired, we could generate other shapes, such as hexagons, or we could rotate the quads before they are output from the geometry shader. The possibilities are endless.</p>
+<p>Before jumping directly into the code, let's take a look at some of the mathematics. In the geometry shader, we'll need to generate the vertices of a quad that is centered at a point and aligned with the camera's coordinate system (eye coordinates).</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p>Given the point location (<strong>P</strong>) in camera coordinates, we can generate the vertices of the corners of the quad by simply translating <strong>P</strong> in a plane parallel to the x-y plane of the camera's coordinate system, as shown in the following figure:</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/99afbe00-d819-4ce4-b58d-ed568411d828.png" style="width:28.50em;height:13.08em;"/></div>
+<p>The geometry shader will receive the point location in camera coordinates, and output the quad as a triangle strip with texture coordinates. The fragment shader will then just apply the texture to the quad.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p>For this example, we'll need to render a number of point primitives. The positions can be sent via attribute location <kbd>0</kbd>. There's no need to provide normal vectors or texture coordinates for this one.</p>
+<p>The following uniform variables are defined within the shaders, and need to be set within the OpenGL program:</p>
+<ul>
+<li><kbd>Size2</kbd>: This should be half the width of the sprite's square</li>
+<li><kbd>SpriteTex</kbd>: This is the texture unit containing the point sprite texture</li>
+</ul>
+<p>As usual, uniforms for the standard transformation matrices are also defined within the shaders, and need to be set within the OpenGL program.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p>To create a shader program that can be used to render point primitives as quads, use the following steps:</p>
+<ol>
+<li>The vertex shader will convert the position to camera coordinates and assign to the <kbd>gl_Position</kbd> output variable. Note that we're not converting to clip coordinates just yet:</li>
+</ol>
+<pre style="padding-left: 60px">layout (location = 0) in vec3 VertexPosition;<br/>uniform mat4 ModelViewMatrix;<br/><br/>void main(){<br/>    gl_Position = ModelViewMatrix * vec4(VertexPosition,1.0);<br/>}</pre>
+<ol start="2">
+<li>The geometry shader emits two triangles as a triangle strip. We use the <kbd>gl_in</kbd> variable to access the position from the vertex shader (camera coordinates): </li>
+</ol>
+<pre style="padding-left: 60px">layout( points ) in; 
+layout( triangle_strip, max_vertices = 4 ) out; 
+ 
+uniform float Size2;   // Half the width of the quad 
+ 
+uniform mat4 ProjectionMatrix; 
+
+out vec2 TexCoord; 
+ 
+void main() {
+    mat4 m = ProjectionMatrix;  // Reassign for brevity 
+ 
+    gl_Position = m * (vec4(-Size2,-Size2,0.0,0.0) +  
+                       gl_in[0].gl_Position); 
+    TexCoord = vec2(0.0,0.0); 
+    EmitVertex(); 
+ 
+    gl_Position = m * (vec4(Size2,-Size2,0.0,0.0) +  
+                       gl_in[0].gl_Position); 
+    TexCoord = vec2(1.0,0.0); 
+    EmitVertex(); 
+ 
+    gl_Position = m * (vec4(-Size2,Size2,0.0,0.0) +  
+                       gl_in[0].gl_Position); 
+    TexCoord = vec2(0.0,1.0); 
+    EmitVertex(); 
+ 
+    gl_Position = m * (vec4(Size2,Size2,0.0,0.0) +  
+                       gl_in[0].gl_Position); 
+    TexCoord = vec2(1.0,1.0); 
+    EmitVertex(); 
+ 
+    EndPrimitive(); 
+} </pre>
+<ol start="3">
+<li>The fragment shader applies the texture:</li>
+</ol>
+<pre style="padding-left: 60px">in vec2 TexCoord;  // From the geometry shader 
+ 
+uniform sampler2D SpriteTex; 
+ 
+layout( location = 0 ) out vec4 FragColor; 
+ 
+void main() {
+    FragColor = texture(SpriteTex, TexCoord); 
+} </pre>
+<ol start="4">
+<li>Within the OpenGL render function, render a set of point primitives.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p>The vertex shader is almost as simple as it can get. It converts the point's position to camera coordinates by multiplying by the model-view matrix, and assigns the result to the built-in output variable, <kbd>gl_Position</kbd>.</p>
+<p>In the geometry shader, we start by defining the kind of primitive that this geometry shader expects to receive. The first layout statement indicates that this geometry shader will receive point primitives:</p>
+<pre>layout( points ) in; </pre>
+<p>The next layout statement indicates the kind of primitives produced by this geometry shader, and the maximum number of vertices that will be output:</p>
+<pre>layout( triangle_strip, max_vertices = 4 ) out; </pre>
+<p>In this case, we want to produce a single quad for each point received, so we indicate that the output will be a triangle strip with a maximum of four vertices.</p>
+<p>The input primitive is available to the geometry shader via the built-in input variable, <kbd>gl_in</kbd>. Note that it is an array of structures. You might be wondering why this is an array since a point primitive is only defined by a single position.</p>
+<p>Well, in general, the geometry shader can receive triangles, lines, or points (and possibly adjacency information). So, the number of values available may be more than one. If the input were triangles, the geometry shader would have access to three input values (associated with each vertex). In fact, it could have access to as many as six values when <kbd>triangles_adjacency</kbd> is used (more on that in a later recipe).</p>
+<div class="packt_infobox"><span>The </span><kbd>gl_in</kbd><span> variable is an array of structs. Each struct contains the following fields: </span><kbd>gl_Position</kbd><span>, </span><kbd>gl_PointSize</kbd><span>, and </span><kbd>gl_ClipDistance[]</kbd><span>. In this example, we are only interested in </span><kbd>gl_Position</kbd><span>. However, the others can be set in the vertex shader to provide additional information to the geometry shader.</span></div>
+<p>Within the <kbd>main</kbd> function of the geometry shader, we produce the quad (as a triangle strip) in the following way. For each vertex of the triangle strip, we execute the following steps:</p>
+<ol>
+<li>Compute the attributes for the vertex (in this case the position and texture coordinate), and assign their values to the appropriate output variables (<kbd>gl_Position</kbd> and <kbd>TexCoord</kbd>). Note that the position is also transformed by the projection matrix. We do this because the <kbd>gl_Position</kbd> variable must be provided in clip coordinates to later stages of the pipeline.</li>
+<li>Emit the vertex (send it down the pipeline) by calling the built-in <kbd>EmitVertex()</kbd> function.</li>
+</ol>
+<p>Once we have emitted all vertices for the output primitive, we call <kbd>EndPrimitive()</kbd> to finalize the primitive and send it along.</p>
+<div class="packt_infobox"><span>It is not strictly necessary to call </span><kbd>EndPrimitive()</kbd><span> in this case because it is implicitly called when the geometry shader finishes. However, like closing files, it is a good practice.</span></div>
+<p>The fragment shader is also very simple. It just applies the texture to the fragment using the (interpolated) texture coordinate provided by the geometry shader.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p>This example is fairly straightforward and is intended as a gentle introduction to geometry shaders. We could expand on this by allowing the quad to rotate or to be oriented in different directions. We could also use the texture to discard fragments (in the fragment shader) in order to create point sprites of arbitrary shapes. The power of the geometry shader opens up plenty of possibilities!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenepointsprite.cpp</kbd> file in the example code</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Drawing a wireframe on top of a shaded mesh</h1>
+                </header>
+            
+            <article>
+                
+<p>The preceding recipe demonstrated the use of a geometry shader to produce a different variety of primitives than it received. Geometry shaders can also be used to provide additional information to later stages. They are quite well-suited to doing so because they have access to all of the vertices of the primitive at once, and can do computations based on the entire primitive rather than a single vertex.</p>
+<p>This example involves a geometry shader that does not modify the triangle at all. It essentially passes the primitive along unchanged. However, it computes additional information about the triangle that will be used by the fragment shader to highlight the edges of the polygon. The basic idea here is to draw the edges of each polygon directly on top of the shaded mesh.</p>
+<p>The following image shows an example of this technique. The mesh edges are drawn on top of the shaded surface by using information computed within the geometry shader:</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/85998f4d-e8b2-413b-ae0d-248d1d8ffd20.png" style="width:18.58em;height:14.50em;"/></div>
+<p>There are many techniques for producing wireframe structures on top of shaded surfaces. This technique comes from an NVIDIA whitepaper published in 2007. We make use of the geometry shader to produce the wireframe and shaded surface in a single pass. We also provide some simple anti-aliasing of the mesh lines that are produced, and the results are quite nice (refer to the preceding image).</p>
+<p>To render the wireframe on top of the shaded mesh, we'll compute the distance from each fragment to the nearest triangle edge. When the fragment is within a certain distance from the edge, it will be shaded and mixed with the edge color. Otherwise, the fragment will be shaded normally.</p>
+<p>To compute the distance from a fragment to the edge, we use the following technique. In the geometry shader, we compute the minimum distance from each vertex to the opposite edge (also called the <strong>triangle altitude</strong>). In the following diagram, the desired distances are <strong>ha</strong>, <strong>hb</strong>, and <strong>hc</strong>:</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/e9d927f2-7b3f-4bce-acd6-c80b8c0f1f33.png" style="width:25.83em;height:15.25em;"/></div>
+<p>We can compute these altitudes using the interior angles of the triangle, which can be determined using the law of cosines. For example, to find <strong>ha</strong>, we use the interior angle at vertex <strong>C</strong> (<strong>β</strong>):</p>
+<div class="chapter-content CDPAlignCenter CDPAlign"><img src="assets/ff8aa61a-661c-44d8-8886-7aa2243ec2f7.png" style="width:26.00em;height:11.50em;"/></div>
+<p class="chapter-content">The other altitudes can be computed in a similar way. (Note that <strong>β</strong> could be greater than 90 degrees, in which case, we would want the sine of 180-β. However, the sine of 180-β is the same as the sine of β.) Once we have computed these triangle altitudes, we can create an output vector (an <em>edge-distance</em> vector) within the geometry shader for interpolation across the triangle. The components of this vector represent the distances from the fragment to each edge of the triangle.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="chapter-content">The <em>x</em> component represents the distance from edge <strong>a</strong>, the <em>y</em> component is the distance from edge <strong>b</strong>, and the <em>z</em> component is the distance from edge <strong>c</strong>. If we assign the correct values to these components at the vertices, the hardware will automatically interpolate them for us to provide the appropriate distances at each fragment. At vertex <strong>A</strong>, the value of this vector should be (<strong>ha</strong>, 0, 0) because vertex <strong>A</strong> is at a distance of ha from edge <strong>a</strong> and directly on edges <strong>b</strong> and <strong>c</strong>. Similarly, the value for vertex <strong>B</strong> is (0, <strong>hb</strong>, 0) and for vertex <strong>C</strong> is (0, 0, <strong>hc</strong>). When these three values are interpolated across the triangle, we should have the distance from the fragment to each of the three edges. We will calculate all of this in screen space. That is, we'll transform the vertices to screen space within the geometry shader before computing the altitudes.</p>
+<p class="chapter-content">Since we are working in screen space, there's no need (and it would be incorrect) to interpolate the values in a perspective-correct manner. So we need to be careful to tell the hardware to interpolate linearly. Within the fragment shader, all we need to do is find the minimum of the three distances, and if that distance is less than the line width, we mix the fragment color with the line color. However, we'd also like to apply a bit of anti-aliasing while we're at it. To do so, we'll fade the edge of the line using the GLSL <kbd>smoothstep</kbd> function. We'll scale the intensity of the line in a two-pixel range around the edge of the line. Pixels that are at a distance of one or less from the true edge of the line get 100% of the line color, and pixels that are at a distance of one or more from the edge of the line get 0% of the line color. In between, we'll use the <kbd>smoothstep</kbd> function to create a smooth transition. Of course, the edge of the line itself is a configurable distance (we'll call it <kbd>Line.Width</kbd>) from the edge of the polygon.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The typical setup is needed for this example. The vertex position and normal should be provided in attributes zero and one, respectively, and you need to provide the appropriate parameters for your shading model. As usual, the standard matrices are defined as uniform variables and should be set within the OpenGL application. However, note that this time we also need the viewport matrix (the <kbd>ViewportMatrix</kbd> uniform variable) in order to transform into screen space. There are a few uniforms related to the mesh lines that need to be set:</p>
+<ul>
+<li><kbd>Line.Width</kbd>: This should be half the width of the mesh lines</li>
+<li><kbd>Line.Color</kbd>: This is the color of the mesh lines</li>
+</ul>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that utilizes the geometry shader to produce a wireframe on top of a shaded surface, use the following steps:</p>
+<ol>
+<li>Use the following code for the vertex shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout (location = 0 ) in vec3 VertexPosition; 
+layout (location = 1 ) in vec3 VertexNormal; 
+ 
+out vec3 VNormal; 
+out vec3 VPosition; 
+ 
+uniform mat4 ModelViewMatrix; 
+uniform mat3 NormalMatrix; 
+uniform mat4 ProjectionMatrix; 
+uniform mat4 MVP; 
+ 
+void main() {
+    VNormal = normalize( NormalMatrix * VertexNormal); 
+    VPosition = vec3(ModelViewMatrix *  
+                     vec4(VertexPosition,1.0)); 
+    gl_Position = MVP * vec4(VertexPosition,1.0); 
+} </pre>
+<ol start="2">
+<li>Use the following code for the geometry shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( triangles ) in; 
+layout( triangle_strip, max_vertices = 3 ) out; 
+ 
+out vec3 GNormal; 
+out vec3 GPosition; 
+noperspective out vec3 GEdgeDistance; 
+ 
+in vec3 VNormal[]; 
+in vec3 VPosition[]; 
+ 
+uniform mat4 ViewportMatrix;  // Viewport matrix 
+ 
+void main() {
+    // Transform each vertex into viewport space 
+    vec3 p0 = vec3(ViewportMatrix * (gl_in[0].gl_Position /  
+                             gl_in[0].gl_Position.w)); 
+    vec3 p1 = vec3(ViewportMatrix * (gl_in[1].gl_Position /  
+                             gl_in[1].gl_Position.w)); 
+    vec3 p2 = vec3(ViewportMatrix * (gl_in[2].gl_Position /  
+                            gl_in[2].gl_Position.w)); 
+ 
+    // Find the altitudes (ha, hb and hc) 
+    float a = length(p1 - p2); 
+    float b = length(p2 - p0); 
+    float c = length(p1 - p0); 
+    float alpha = acos( (b*b + c*c - a*a) / (2.0*b*c) ); 
+    float beta = acos( (a*a + c*c - b*b) / (2.0*a*c) ); 
+    float ha = abs( c * sin( beta ) ); 
+    float hb = abs( c * sin( alpha ) ); 
+    float hc = abs( b * sin( alpha ) ); 
+ 
+    // Send the triangle along with the edge distances 
+    GEdgeDistance = vec3( ha, 0, 0 ); 
+    GNormal = VNormal[0]; 
+    GPosition = VPosition[0]; 
+    gl_Position = gl_in[0].gl_Position; 
+    EmitVertex(); 
+ 
+    GEdgeDistance = vec3( 0, hb, 0 ); 
+    GNormal = VNormal[1]; 
+    GPosition = VPosition[1]; 
+    gl_Position = gl_in[1].gl_Position; 
+    EmitVertex(); 
+ 
+    GEdgeDistance = vec3( 0, 0, hc ); 
+    GNormal = VNormal[2]; 
+    GPosition = VPosition[2]; 
+    gl_Position = gl_in[2].gl_Position; 
+    EmitVertex(); 
+ 
+    EndPrimitive(); 
+} </pre>
+<ol start="3">
+<li>Use the following code for the fragment shader:</li>
+</ol>
+<pre style="padding-left: 60px">// *** Insert appropriate uniforms for the Blinn-Phong model *** 
+ 
+// The mesh line settings 
+uniform struct LineInfo { 
+  float Width; 
+  vec4 Color; 
+} Line; 
+ 
+in vec3 GPosition; 
+in vec3 GNormal; 
+noperspective in vec3 GEdgeDistance; 
+ 
+layout( location = 0 ) out vec4 FragColor; 
+vec3 blinnPhong( vec3 pos, vec3 norm ) {
+   // ...
+}
+ 
+void main() { 
+    // The shaded surface color. 
+    vec4 color=vec4(blinnPhong(GPosition, GNormal), 1.0); 
+ 
+    // Find the smallest distance 
+    float d = min( GEdgeDistance.x, GEdgeDistance.y ); 
+    d = min( d, GEdgeDistance.z ); 
+ 
+    // Determine the mix factor with the line color 
+    float mixVal = smoothstep( Line.Width - 1, 
+                               Line.Width + 1, d ); 
+ 
+    // Mix the surface color with the line color 
+    FragColor = mix( Line.Color, color, mixVal ); 
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The vertex shader is pretty simple. It passes the normal and position along to the geometry shader after converting them into camera coordinates. The built-in <kbd>gl_Position</kbd> variable gets the position in clip coordinates. We'll use this value in the geometry shader to determine the screen space coordinates. In the geometry shader, we begin by defining the input and output primitive types for this shader:</p>
+<pre>layout( triangles ) in; 
+layout( triangle_strip, max_vertices = 3 ) out; </pre>
+<p class="mce-root">We don't actually change anything about the geometry of the triangle, so the input and output types are essentially the same. We will output exactly the same triangle that was received as input. The output variables for the geometry shader are <kbd>GNormal</kbd>, <kbd>GPosition</kbd>, and <kbd>GEdgeDistance</kbd>. The first two are simply the values of the normal and position in camera coordinates, passed through unchanged. The third is the vector that will store the distance to each edge of the triangle (described previously). Note that it is defined with the <kbd>noperspective</kbd> qualifier:</p>
+<pre>noperspective out vec3 GEdgeDistance;</pre>
+<p class="mce-root"/>
+<p class="mce-root">The <kbd>noperspective</kbd> qualifier indicates that the values are to be interpolated linearly, instead of the default perspective correct interpolation. As mentioned previously, these distances are in screen space, so it would be incorrect to interpolate them in a non-linear fashion. Within the <kbd>main</kbd> function, we start by transforming the position of each of the three vertices of the triangle from clip coordinates to screen space coordinates by multiplying with the viewport matrix. (Note that it is also necessary to divide by the <em>w</em> coordinate as the clip coordinates are homogeneous and may need to be converted back to true Cartesian coordinates.)</p>
+<p class="mce-root">Next, we compute the three altitudes—<kbd>ha</kbd>, <kbd>hb</kbd>, and <kbd>hc</kbd>—using the law of cosines. Once we have the three altitudes, we set <kbd>GEdgeDistance</kbd> appropriately for the first vertex, pass along <kbd>GNormal</kbd>, <kbd>GPosition</kbd>, and <kbd>gl_Position</kbd> unchanged, and emit the first vertex by calling <kbd>EmitVertex()</kbd>. This finishes the vertex and emits the vertex position and all of the per-vertex output variables. We then proceed similarly for the other two vertices of the triangle, finishing the polygon by calling <kbd>EndPrimitive()</kbd>. In the fragment shader, we start by evaluating the basic shading model and storing the resulting color in <kbd>color</kbd>. At this stage in the pipeline, the three components of the <kbd>GEdgeDistance</kbd> variable should contain the distance from this fragment to each of the three edges of the triangle. We are interested in the minimum distance, so we find the minimum of the three components and store that in the <kbd>d</kbd> variable. The <kbd>smoothstep</kbd> function is then used to determine how much to mix the line color with the shaded color (<kbd>mixVal</kbd>):</p>
+<pre>float mixVal = smoothstep( Line.Width - 1, 
+                           Line.Width + 1, d ); </pre>
+<p class="mce-root">If the distance is less than <kbd>Line.Width - 1</kbd>, then <kbd>smoothstep</kbd> will return a value of <kbd>0</kbd>, and if it is greater than <kbd>Line.Width + 1</kbd>, it will return <kbd>1</kbd>. For values of <kbd>d</kbd> that are in between the two, we'll get a smooth transition. This gives us a value of <kbd>0</kbd> when inside the line, a value of <kbd>1</kbd> when outside the line, and in a two-pixel area around the edge, we'll get a smooth variation between 0 and 1. Therefore, we can use the result to mix the color directly with the line color. Finally, the fragment color is determined by mixing the shaded color with the line color using <kbd>mixVal</kbd> as the interpolation parameter.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">This technique produces very nice-looking results and has relatively few drawbacks. However, it does have some issues with triangles that are large in screen space (extend outside the view volume). If the <em>w</em> coordinate is small or zero, the position in viewport space can approach infinity, producing some ugly artifacts.  This happens when the vertex is at or near the <em>x</em>-<em>y</em> plane in camera space.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root">However, it is a good example of how geometry shaders can be useful for tasks other than the modification of the actual geometry. In this case, we used the geometry shader simply to compute additional information about the primitive as it was being sent down the pipeline. This shader can be dropped in and applied to any mesh without any modification to the OpenGL side of the application. It can be useful when debugging mesh issues or when implementing a mesh modeling program. Other common techniques for accomplishing this effect typically involve rendering the shaded object and wireframe in two passes with a polygon offset (via the <kbd>glPolygonOffset</kbd> function) applied to avoid <strong>z-fighting</strong>, which takes place between the wireframe and the shaded surface beneath. This technique is not always effective because the modified depth values might not always be correct, or as desired, and it can be difficult to find the sweet spot for the polygon offset value. For a good survey of techniques, refer to <em>Section 11.4.2</em> in <em>Real Time Rendering</em>, <em>third edition</em>, by T Akenine-Moller, E Haines, and N Hoffman, AK Peters, 2008.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also...</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/sceneshadewire.cpp</kbd> file in the example code.</li>
+<li>This technique was originally published in an NVIDIA whitepaper in 2007 (<em>Solid Wireframe</em>, <em>NVIDIA Whitepaper WP-03014-001_v01</em> available at <a href="http://developer.nvidia.com"><span class="URLPACKT">developer.nvidia.com</span></a>). The white paper was listed as a Direct3D example, but of course our implementation here is provided in OpenGL.</li>
+<li>The <em>Creating shadows using shadow volumes and the geometry shader</em> recipe in <a href="43239816-a842-483f-9eca-284f919d0bd6.xhtml"><span class="ChapterrefPACKT">Chapter 8</span></a>, <em>Shadows</em>.</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Drawing silhouette lines using the geometry shader</h1>
+                </header>
+            
+            <article>
+                
+<p class="chapter-content">When a cartoon or hand-drawn effect is desired, we often want to draw black outlines around the edges of a model and along ridges or creases (silhouette lines). In this recipe, we'll discuss one technique for doing this using the geometry shader, to produce the additional geometry for the silhouette lines. The geometry shader will approximate these lines by generating small, skinny quads aligned with the edges that make up the silhouette of the object. The following image shows the ogre mesh with black silhouette lines generated by the geometry shader.</p>
+<p class="chapter-content">The lines are made up of small quads that are aligned with certain mesh edges:</p>
+<div class="packt_figure">
+<div class="CDPAlignCenter CDPAlign"><img src="assets/39d7443c-089e-49d6-bcf2-26602ed1ddb7.png" style="width:15.17em;height:15.25em;"/></div>
+</div>
+<p class="mce-root">The technique shown in this recipe is based on a technique published in a blog post by Philip Rideout: <a href="http://prideout.net/blog/?p=54"><span class="URLPACKT">prideout.net/blog/?p=54</span></a>. His implementation uses two passes (base geometry and silhouette), and includes many optimizations, such as anti-aliasing and custom depth testing (with g-buffers). To keep things simple, as our main goal is to demonstrate the features of the geometry shader, we'll implement the technique using a single pass without anti-aliasing or custom depth testing. If you are interested in adding these additional features, refer to Philip's excellent blog post. One of the most important features of the geometry shader is that it allows us to provide additional vertex information beyond just the primitive being rendered. When geometry shaders were introduced in OpenGL, several additional primitive rendering modes were also introduced. These <strong>adjacency modes</strong> allow additional vertex data to be associated with each primitive. Typically, this additional information is related to the nearby primitives within a mesh, but there is no requirement that this be the case (we could actually use the additional information for other purposes if desired). The following list includes the adjacency modes along with a short description:</p>
+<ul>
+<li><kbd>GL_LINES_ADJACENCY</kbd>: This mode defines lines with adjacent vertices (four vertices per line segment)</li>
+<li><kbd>GL_LINE_STRIP_ADJACENCY</kbd>: This mode defines a line strip with adjacent vertices (for <em>n</em> lines, there are <em>n+3</em> vertices)</li>
+<li><kbd>GL_TRIANGLES_ADJACENCY</kbd>: This mode defines triangles along with vertices of adjacent triangles (six vertices per primitive)</li>
+<li><kbd>GL_TRIANGLE_STRIP_ADJACENCY</kbd>: This mode defines a triangle strip along with vertices of adjacent triangles (for <em>n</em> triangles, there are <em>2(n+2)</em> vertices provided)</li>
+</ul>
+<p class="mce-root">For full details on each of these modes, check out the official OpenGL documentation. In this recipe, we'll use the <kbd>GL_TRIANGLES_ADJACENCY</kbd> mode to provide information about adjacent triangles in our mesh. With this mode, we provide six vertices per primitive. The following diagram illustrates the locations of these vertices:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/66d81906-1fe1-4b06-99ef-59f9a8992c80.png" style="width:14.58em;height:12.75em;"/></div>
+<p class="chapter-content">In the preceding diagram, the solid line represents the triangle itself, and the dotted lines represent adjacent triangles. The first, third, and fifth vertices (<strong>0</strong>, <strong>2</strong>, and <strong>4</strong>) make up the triangle itself. The second, fourth, and sixth are vertices that make up the adjacent triangles.</p>
+<p class="chapter-content">Mesh data is not usually provided in this form, so we need to preprocess our mesh to include the additional vertex information. Typically, this only means expanding the element index array by a factor of two. The position, normal, and texture coordinate arrays can remain unchanged.</p>
+<p class="chapter-content">When a mesh is rendered with adjacency information, the geometry shader has access to all six vertices associated with a particular triangle. We can then use the adjacent triangles to determine whether a triangle edge is part of the silhouette of the object. The basic assumption is that an edge is a silhouette edge if the triangle is front-facing and the corresponding adjacent triangle is not front-facing.</p>
+<p class="chapter-content">We can determine whether a triangle is front-facing within the geometry shader by computing the triangle's normal vector (using a cross product). If we are working within eye coordinates (or clip coordinates), the <em>z</em> coordinate of the normal vector will be positive for front-facing triangles. Therefore, we only need to compute the <em>z</em> coordinate of the normal vector, which should save a few cycles. For a triangle with vertices <em>A</em>, <em>B</em>, and <em>C</em>, the <em>z</em> coordinate of the normal vector is given by the following equation:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/18f15f0e-3e95-4434-b8f9-f27ccfbf3c51.png" style="width:30.50em;height:1.42em;"/></div>
+<p class="chapter-content">Once we determine which edges are silhouette edges, the geometry shader will produce additional skinny quads aligned with the silhouette edge. These quads, taken together, will make up the desired dark lines (refer to the previous figure). After generating all the silhouette quads, the geometry shader will output the original triangle.</p>
+<p class="chapter-content">In order to render the mesh in a single pass with appropriate shading for the base mesh, and no shading for the silhouette lines, we'll use an additional output variable. This variable will let the fragment shader know when we are rendering the base mesh and when we are rendering the silhouette edge.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Set up your mesh data so that adjacency information is included. As just mentioned, this probably requires expanding the element index array to include the additional information. This can be done by passing through your mesh and looking for shared edges. Due to space limitations, we won't go through the details here, but the blog post mentioned some time back has some information about how this might be done. Also, the source code for this example contains a simple (albeit not very efficient) technique. The important uniform variables for this example are as follows:</p>
+<ul>
+<li><kbd>EdgeWidth</kbd>: This is the width of the silhouette edge in clip (normalized device) coordinates</li>
+<li><kbd>PctExtend</kbd>: This is a percentage to extend the quads beyond the edge</li>
+<li><kbd>LineColor</kbd>: This is the color of the silhouette edge lines</li>
+</ul>
+<p class="mce-root">As usual, there are also the appropriate uniforms for the shading model, and the standard matrices.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that utilizes the geometry shader to render silhouette edges, use the following steps:</p>
+<ol>
+<li>Use the following code for the vertex shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout (location = 0 ) in vec3 VertexPosition; 
+layout (location = 1 ) in vec3 VertexNormal; 
+ 
+out vec3 VNormal; 
+out vec3 VPosition; 
+ 
+uniform mat4 ModelViewMatrix; 
+uniform mat3 NormalMatrix; 
+uniform mat4 ProjectionMatrix; 
+uniform mat4 MVP; 
+void main() {
+    VNormal = normalize( NormalMatrix * VertexNormal); 
+    VPosition = vec3(ModelViewMatrix *  
+                     vec4(VertexPosition,1.0)); 
+    gl_Position = MVP * vec4(VertexPosition,1.0); 
+} </pre>
+<ol start="2">
+<li>Use the following code for the geometry shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( triangles_adjacency ) in; 
+layout( triangle_strip, max_vertices = 15 ) out; 
+ 
+out vec3 GNormal; 
+out vec3 GPosition; 
+ 
+// Which output primitives are silhouette edges 
+flat out bool GIsEdge; 
+ 
+in vec3 VNormal[];   // Normal in camera coords. 
+in vec3 VPosition[]; // Position in camera coords. 
+ 
+uniform float EdgeWidth;  // Width of sil. edge in clip cds. 
+uniform float PctExtend;  // Percentage to extend quad 
+ 
+bool isFrontFacing( vec3 a, vec3 b, vec3 c ) {
+    return ((a.x * b.y - b.x * a.y) +  
+            (b.x * c.y - c.x * b.y) + 
+            (c.x * a.y - a.x * c.y)) &gt; 0; 
+} 
+void emitEdgeQuad( vec3 e0, vec3 e1 ) {
+    vec2 ext = PctExtend * (e1.xy - e0.xy); 
+    vec2 v = normalize(e1.xy - e0.xy); 
+    vec2 n = vec2(-v.y, v.x) * EdgeWidth; 
+ 
+    // Emit the quad 
+    GIsEdge = true;   // This is part of the sil. edge 
+ 
+    gl_Position = vec4( e0.xy - ext, e0.z, 1.0 );  
+    EmitVertex(); 
+    gl_Position = vec4( e0.xy - n - ext, e0.z, 1.0 );  
+    EmitVertex(); 
+    gl_Position = vec4( e1.xy + ext, e1.z, 1.0 );  
+    EmitVertex(); 
+    gl_Position = vec4( e1.xy - n + ext, e1.z, 1.0 ); 
+    EmitVertex(); 
+ 
+    EndPrimitive(); 
+} 
+ 
+void main() {
+    vec3 p0 = gl_in[0].gl_Position.xyz /  
+              gl_in[0].gl_Position.w; 
+    vec3 p1 = gl_in[1].gl_Position.xyz /  
+              gl_in[1].gl_Position.w; 
+    vec3 p2 = gl_in[2].gl_Position.xyz /  
+              gl_in[2].gl_Position.w; 
+    vec3 p3 = gl_in[3].gl_Position.xyz /  
+              gl_in[3].gl_Position.w; 
+    vec3 p4 = gl_in[4].gl_Position.xyz /  
+              gl_in[4].gl_Position.w; 
+    vec3 p5 = gl_in[5].gl_Position.xyz /  
+              gl_in[5].gl_Position.w; 
+ 
+    if( isFrontFacing(p0, p2, p4) ) { 
+        if( ! isFrontFacing(p0,p1,p2) )  
+                    emitEdgeQuad(p0,p2); 
+        if( ! isFrontFacing(p2,p3,p4) )  
+                    emitEdgeQuad(p2,p4); 
+        if( ! isFrontFacing(p4,p5,p0) )  
+                    emitEdgeQuad(p4,p0); 
+    } 
+ 
+    // Output the original triangle 
+    GIsEdge = false; // Triangle is not part of an edge. 
+ 
+    GNormal = VNormal[0]; 
+    GPosition = VPosition[0]; 
+    gl_Position = gl_in[0].gl_Position; 
+    EmitVertex(); 
+    GNormal = VNormal[2]; 
+    GPosition = VPosition[2]; 
+    gl_Position = gl_in[2].gl_Position; 
+    EmitVertex();
+    GNormal = VNormal[4]; 
+    GPosition = VPosition[4]; 
+    gl_Position = gl_in[4].gl_Position; 
+    EmitVertex(); 
+ 
+    EndPrimitive(); 
+}</pre>
+<p class="mce-root"/>
+<ol start="3">
+<li>Use the following code for the fragment shader:</li>
+</ol>
+<pre style="padding-left: 60px">//*** Light and material uniforms... **** 
+ 
+uniform vec4 LineColor;  // The sil. edge color 
+ 
+in vec3 GPosition;  // Position in camera coords 
+in vec3 GNormal;    // Normal in camera coords. 
+ 
+flat in bool GIsEdge; // Whether or not we're drawing an edge 
+ 
+layout( location = 0 ) out vec4 FragColor; 
+ 
+vec3 toonShade( ) {
+   // *** toon shading algorithm from Chapter 4 *** 
+} 
+ 
+void main() {
+    // If we're drawing an edge, use constant color,  
+    // otherwise, shade the poly. 
+    if( GIsEdge ) { 
+        FragColor = LineColor; 
+    } else { 
+        FragColor = vec4( toonShade(), 1.0 ); 
+    }
+} </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The vertex shader is a simple <em>passthrough</em> shader. It converts the vertex position and normal to camera coordinates and sends them along, via <kbd>VPosition</kbd> and <kbd>VNormal</kbd>. These will be used for shading within the fragment shader and will be passed along (or ignored) by the geometry shader. The position is also converted to clip coordinates (or normalized device coordinates) by transforming with the model-view projection matrix, and it is then assigned to the built-in <kbd>gl_Position</kbd>.</p>
+<p class="chapter-content">The geometry shader begins by defining the input and output primitive types using the layout directive:</p>
+<pre>layout( triangles_adjacency ) in; 
+layout( triangle_strip, max_vertices = 15 ) out;</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="mce-root">This indicates that the input primitive type is triangles with adjacency information, and the output type is triangle strips. This geometry shader will produce a single triangle (the original triangle) and at most one quad for each edge. This corresponds to a maximum of 15 vertices that could be produced, and we indicate that maximum within the output layout directive.</p>
+<p class="chapter-content">The <kbd>GIsEdge</kbd> output variable is used to indicate to the fragment shader whether or not the polygon is an edge quad. The fragment shader will use this value to determine whether to shade the polygon. There is no need to interpolate the value and since it is a Boolean, interpolation doesn't quite make sense, so we use the <kbd>flat</kbd> qualifier.</p>
+<p class="chapter-content">The first few lines within the <kbd>main</kbd> function take the position for each of the six vertices (in clip coordinates) and divide it by the fourth coordinate in order to convert it from its homogeneous representation to the true Cartesian value. This is necessary if we are using a perspective projection, but is not necessary for orthographic projections.</p>
+<p class="chapter-content">Next, we determine whether the main triangle (defined by points <kbd>0</kbd>, <kbd>2</kbd>, and <kbd>4</kbd>) is front-facing. The <kbd>isFrontFacing</kbd> function returns whether the triangle defined by its three parameters is front-facing using the equation described previously. If the main triangle is front-facing, we will emit a silhouette edge quad only if the adjacent triangle is not front-facing.</p>
+<p class="chapter-content">The <kbd>emitEdgeQuad</kbd> function produces a quad that is aligned with an edge defined by the <kbd>e0</kbd> and <kbd>e1</kbd> points. It begins by computing <kbd>ext</kbd>, which is the vector from <kbd>e0</kbd> to <kbd>e1</kbd>, scaled by <kbd>PctExtend</kbd> (in order to slightly lengthen the edge quad). We lengthen the edge quad in order to cover gaps that may appear between quads (we'll discuss this further in <em>There's more...</em>).</p>
+<p class="chapter-content">Note also that we drop the <em>z</em> coordinate here. As the points are defined in clip coordinates, and we are going to produce a quad that is aligned with the x-y plane (facing the camera), we want to compute the positions of the vertices by translating within the x-y plane. Therefore we can ignore the <em>z</em> coordinate for now. We'll use its value unchanged in the final position of each vertex.</p>
+<p class="chapter-content">Next, the <kbd>v</kbd> variable is assigned to the normalized vector from <kbd>e0</kbd> to <kbd>e1</kbd>. The <kbd>n</kbd> variable gets a vector that is perpendicular to <kbd>v</kbd> (in 2D, this can be achieved by swapping the <em>x</em> and <em>y</em> coordinates and negating the new <em>x</em> coordinate). This is just a counter-clockwise 90-degree rotation in 2D. We scale the <kbd>n</kbd> vector by <kbd>EdgeWidth</kbd> because we want the length of the vector to be the same as the width of the quad. The <kbd>ext</kbd> and <kbd>n</kbd> vectors will be used to determine the vertices of the quad, as shown in the following diagram:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/c7c319c1-d834-485f-ae6a-5cccc4cfd2dd.png" style="width:17.00em;height:14.92em;"/></div>
+<p class="chapter-content">The four corners of the quad are given by <strong>e0 - ext</strong>, <strong>e0 - n - ext</strong>, <strong>e1 + ext</strong>, and <strong>e1 - n + ext</strong>. The <em>z</em> coordinate for the lower two vertices is the same as the <em>z</em> coordinate for <strong>e0</strong>, and the <em>z</em> coordinate for the upper two vertices is the <em>z</em> coordinate for <strong>e1</strong>.</p>
+<p class="chapter-content">We then finish up the <kbd>emitEdgeQuad</kbd> function by setting <kbd>GIsEdge</kbd> to <kbd>true</kbd> in order to let the fragment shader know that we are rendering a silhouette edge, and then emitting the four vertices of the quad. The function ends with a call to <kbd>EndPrimitive</kbd> to terminate the processing of the triangle strip for the quad.</p>
+<p class="chapter-content">Back within the <kbd>main</kbd> function, after producing the silhouette edges, we proceed by emitting the original triangle unchanged. <kbd>VNormal</kbd>, <kbd>VPosition</kbd>, and <kbd>gl_Position</kbd> for vertices <kbd>0</kbd>, <kbd>2</kbd>, and <kbd>4</kbd> are passed along without any modification to the fragment shader. Each vertex is emitted with a call to <kbd>EmitVertex</kbd>, and the primitive is completed with <kbd>EndPrimitive</kbd>.</p>
+<p class="chapter-content">Within the fragment shader, we either shade the fragment (using the toon shading algorithm), or simply give the fragment a constant color. The <kbd>GIsEdge</kbd> input variable will indicate which option to choose. If <kbd>GIsEdge</kbd> is <kbd>true</kbd>, then we are rendering a silhouette edge so the fragment is given the line color. Otherwise, we are rendering a mesh polygon, so we shade the fragment using the toon shading technique from <a href="343fbd70-0012-4449-afe6-a724b330b441.xhtml"><span class="ChapterrefPACKT">Chapter 4</span></a>, <em>Lighting and Shading</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">One of the problems with the preceding technique is that <strong>feathering</strong> can occur due to the gaps between consecutive edge quads:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/b429c478-28a1-4a3a-8d84-953af16a5857.png" style="width:16.42em;height:14.33em;"/></div>
+<p class="chapter-content">The preceding diagram shows the feathering of a silhouette edge. The gaps between the polygons can be filled with triangles, but in our example, we simply extend the length of each quad to fill in the gap. This can, of course, cause artifacts if the quads are extended too far, but in practice they haven't been very distracting in my experience.</p>
+<p class="chapter-content">A second issue is related to depth testing. If an edge polygon extends into another area of the mesh, it can be clipped due to the depth test. The following is an example:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/122f9288-2a45-42f8-9d84-4766a7737c9f.png" style="width:14.25em;height:14.17em;"/></div>
+<p class="chapter-content">The edge polygon should extend vertically throughout the middle of the preceding image, but is clipped because it falls behind the part of the mesh that is nearby. This issue can be solved by using custom depth testing when rendering the silhouette edges. Refer to Philip Rideout's blog post mentioned earlier for details on this technique. It may also be possible to turn depth testing off when rendering the edges, being careful not to render any edges from the opposite side of the model.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenesilhouette.cpp</kbd> file in the example code</li>
+<li>A whitepaper on using the geometry shader for fur and fins: <a href="http://developer.download.nvidia.com/whitepapers/2007/SDK10/FurShellsAndFins.pdf"><span class="URLPACKT">http://developer.download.nvidia.com/whitepapers/2007/SDK10/FurShellsAndFins.pdf</span></a></li>
+<li>The <em>Creating shadows using shadow volumes and the geometry shader</em> recipe in <a href="43239816-a842-483f-9eca-284f919d0bd6.xhtml"><span class="ChapterrefPACKT">Chapter 8</span></a>, <em>Shadows</em></li>
+<li>The <em>Creating a cartoon shading effect</em> recipe in <a href="343fbd70-0012-4449-afe6-a724b330b441.xhtml"><span class="ChapterrefPACKT">Chapter 4</span></a>, <em>Lighting and Shading</em></li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tessellating a curve</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">In this recipe, we'll take a look at the basics of tessellation shaders by drawing a <strong>cubic Bezier curve</strong>. A Bezier curve is a parametric curve defined by four control points. The control points define the overall shape of the curve. The first and last of the four points define the start and end of the curve, and the middle points guide the shape of the curve, but do not necessarily lie directly on the curve itself. The curve is defined by interpolating the four control points using a set of <strong>blending functions</strong>. The blending functions define how much each control point contributes to the curve for a given position along the curve. For Bezier curves, the blending functions are known as the <strong>Bernstein polynomials</strong>:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/d3216e61-ff68-42d1-b1da-bd7b83d8b158.png" style="width:13.00em;height:3.00em;"/></div>
+<p class="chapter-content">In the preceding equation, the first term is the binomial coefficient function (shown in the following equation), <strong>n</strong> is the degree of the polynomial, <strong>i</strong> is the polynomial number, and <strong>t</strong> is the parametric parameter:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/3af2d66d-2378-40b9-b401-cabd3ffef959.png" style="width:9.42em;height:3.08em;"/></div>
+<p class="chapter-content">The general parametric form for the Bezier curve is then given as a sum of the products of the Bernstein polynomials with the control points (<strong>P<sub>i</sub></strong>):</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/29024019-198d-4c49-9596-f9cfb163f289.png" style="width:9.42em;height:3.33em;"/></div>
+<p class="chapter-content">In this example, we will draw a cubic Bezier curve, which involves four control points (<em>n = 3</em>):</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/64cbe72d-f2f3-460f-9cc9-1704887d79c2.png" style="width:24.08em;height:1.50em;"/></div>
+<p class="chapter-content">And the cubic Bernstein polynomials are:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/be67b6ba-69c0-4acc-b75b-34ab38eccbc8.png" style="width:9.00em;height:6.50em;"/></div>
+<p class="chapter-content">As stated in the introduction to this chapter, the tessellation functionality within OpenGL involves two shader stages. They are the tessellation control shader (TCS) and the tessellation evaluation shader (TES). In this example, we'll define the number of line segments for our Bezier curve within the TCS (by defining the outer tessellation levels), and evaluate the Bezier curve at each particular vertex location within the TES. The following image shows the output of this example for three different tessellation levels. The left figure uses three line segments (level 3), the middle uses level 5, and the right-hand figure is created with tessellation level 30. The small squares are the control points:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/020120fe-cf25-457f-9d36-caf299c6efe7.png" style="width:40.17em;height:10.17em;"/></div>
+<p class="chapter-content">The control points for the Bezier curve are sent down the pipeline as a patch primitive consisting of four vertices. A patch primitive is a programmer-defined primitive type. Basically, it is a set of vertices that can be used for anything that the programmer chooses. The TCS is executed once for each vertex within the patch, and the TES is executed, a variable number of times, depending on the number of vertices produced by the TPG. The final output of the tessellation stages is a set of primitives. In our case, it will be a line strip.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<p class="chapter-content">Part of the job of the TCS is to define the tessellation level. In very rough terms, the tessellation level is related to the number of vertices that will be generated. In our case, the TCS will be generating a line strip, so the tessellation level is the number of line segments in the line strip. Each vertex that is generated for this line strip will be associated with a tessellation coordinate that will vary between zero and one. We'll refer to this as the <em>u</em> coordinate, and it will correspond to the parametric <em>t</em> <span>parameter </span><span>in the preceding Bezier curve equation.</span></p>
+<div class="packt_infobox"><span>What we've looked at so far is not, in fact, the whole story. Actually, the TCS will trigger the generation of a set of line strips called isolines. Each vertex in this set of isolines will have a <em>u</em> and a <em>v</em> coordinate. The <em>u</em> coordinate will vary from zero to one along a given isoline, and <em>v</em> will be constant for each isoline. The number of distinct values of <em>u</em> and <em>v</em> is associated with two separate tessellation levels, the so-called <em>outer</em> levels. For this example, however, we'll only generate a single line strip, so the second tessellation level (for <em>v</em>) will always be one.</span></div>
+<p class="mce-root">Within the TES, the main task is to determine the position of the vertex associated with this execution of the shader. We have access to the <em>u</em> and <em>v</em> coordinates associated with the vertex, and we also have (read-only) access to all of the vertices of the patch. We can then determine the appropriate position for the vertex by using the parametric equation, with <em>u</em> as the parametric coordinate (<em>t</em> in the preceding equation).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The following are the important uniform variables for this example:</p>
+<ul>
+<li><kbd>NumSegments</kbd>: This is the number of line segments to be produced.</li>
+<li><kbd>NumStrips</kbd>: This is the number of isolines to be produced. For this example, this should be set to <kbd>1</kbd>.</li>
+<li><kbd>LineColor</kbd>: This is the color for the resulting line strip.</li>
+</ul>
+<p class="mce-root">Set the uniform variables within the main OpenGL application. There are a total of four shaders to be compiled and linked. They are the vertex, fragment, tessellation control, and tessellation evaluation shaders.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that will generate a Bezier curve from a patch of four control points, use the following steps:</p>
+<ol>
+<li>Use the following code for the vertex shader. Note that we send the vertex position along to the TCS unmodified:</li>
+</ol>
+<pre style="padding-left: 60px">layout (location = 0 ) in vec2 VertexPosition; 
+ 
+void main() {
+    gl_Position = vec4(VertexPosition, 0.0, 1.0); 
+} </pre>
+<ol start="2">
+<li>Use the following code as the tessellation control shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( vertices=4 ) out; 
+ 
+uniform int NumSegments; 
+uniform int NumStrips; 
+ 
+void main() {
+    // Pass along the vertex position unmodified 
+    gl_out[gl_InvocationID].gl_Position =  
+              gl_in[gl_InvocationID].gl_Position; 
+    // Define the tessellation levels 
+    gl_TessLevelOuter[0] = float(NumStrips); 
+    gl_TessLevelOuter[1] = float(NumSegments); 
+} </pre>
+<ol start="3">
+<li>Use the following code as the tessellation evaluation shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( isolines ) in; 
+uniform mat4 MVP;  // projection * view * model 
+ 
+void main() {
+    // The tessellation u coordinate 
+    float u = gl_TessCoord.x; 
+ 
+    // The patch vertices (control points) 
+    vec3 p0 = gl_in[0].gl_Position.xyz; 
+    vec3 p1 = gl_in[1].gl_Position.xyz; 
+    vec3 p2 = gl_in[2].gl_Position.xyz; 
+    vec3 p3 = gl_in[3].gl_Position.xyz; 
+ 
+    float u1 = (1.0 - u); 
+    float u2 = u * u; 
+ 
+    // Bernstein polynomials evaluated at u 
+    float b3 = u2 * u; 
+    float b2 = 3.0 * u2 * u1; 
+    float b1 = 3.0 * u * u1 * u1; 
+    float b0 = u1 * u1 * u1; 
+ 
+    // Cubic Bezier interpolation 
+    vec3 p = p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3; 
+ 
+    gl_Position = MVP * vec4(p, 1.0); 
+ 
+} </pre>
+<ol start="4">
+<li>Use the following code for the fragment shader:</li>
+</ol>
+<pre style="padding-left: 60px">uniform vec4 LineColor; 
+ 
+layout ( location = 0 ) out vec4 FragColor; 
+ 
+void main() {
+    FragColor = LineColor; 
+} </pre>
+<ol start="5">
+<li>It is important to define the number of vertices per patch within the OpenGL application. You can do so using the <kbd>glPatchParameter</kbd> function:</li>
+</ol>
+<pre style="padding-left: 60px">glPatchParameteri( GL_PATCH_VERTICES, 4); </pre>
+<ol start="6">
+<li>Render the four control points as a patch primitive within the OpenGL application's <kbd>render</kbd> function:</li>
+</ol>
+<pre style="padding-left: 60px">glDrawArrays(GL_PATCHES, 0, 4); </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The vertex shader is just a passthrough shader. It sends the vertex position along to the next stage without any modification.</p>
+<p class="chapter-content">The tessellation control shader begins by defining the number of vertices in the output patch:</p>
+<pre>layout (vertices = 4) out; </pre>
+<p class="mce-root">Note that this is not the same as the number of vertices that will be produced by the tessellation process. In this case, the patch is our four control points, so we use a value of four.</p>
+<p class="mce-root"/>
+<p class="chapter-content">The main method within the TCS passes the input position (of the patch vertex) to the output position without modification. The <kbd>gl_out</kbd> and <kbd>gl_in</kbd> arrays contain the input and output information associated with each vertex in the patch. Note that we assign and read from <kbd>gl_InvocationID</kbd> in these arrays. The <kbd>gl_InvocationID</kbd> variable defines the output patch vertex for which this invocation of the TCS is responsible. The TCS can access all of the <kbd>gl_in</kbd> array, but should only write to the location in <kbd>gl_out</kbd> corresponding to <kbd>gl_InvocationID</kbd>. The other indices will be written by other invocations of the TCS.</p>
+<p class="chapter-content">Next, the TCS sets the tessellation levels by assigning to the <kbd>gl_TessLevelOuter</kbd> array. Note that the values for <kbd>gl_TessLevelOuter</kbd> are floating point numbers rather than integers. They will be rounded up to the nearest integer and clamped automatically by the OpenGL system.</p>
+<p class="chapter-content">The first element in the array defines the number of isolines that will be generated. Each isoline will have a constant value for <kbd>v</kbd>. In this example, the value of <kbd>gl_TessLevelOuter[0]</kbd> should be one since we only want to create a single curve. The second one defines the number of line segments that will be produced in the line strip. Each vertex in the strip will have a value for the parametric <kbd>u</kbd> coordinate that will vary from zero to one.</p>
+<p class="chapter-content">In the TES, we start by defining the input primitive type using a <kbd>layout</kbd> declaration:</p>
+<pre>layout (isolines) in; </pre>
+<p class="mce-root">This indicates the type of subdivision that is performed by the tessellation primitive generator. Other possibilities here include <kbd>quads</kbd> and <kbd>triangles</kbd>.</p>
+<p class="chapter-content">Within the <kbd>main</kbd> function of the TES, the <kbd>gl_TessCoord</kbd> variable contains the tessellation's <kbd>u</kbd> and <kbd>v</kbd> coordinates for this invocation. As we are only tessellating in one dimension, we only need the <kbd>u</kbd> coordinate, which corresponds to the <em>x</em> coordinate of <kbd>gl_TessCoord</kbd>.</p>
+<p class="chapter-content">The next step accesses the positions of the four control points (all the points in our patch primitive). These are available in the <kbd>gl_in</kbd> array.</p>
+<p class="chapter-content">The cubic Bernstein polynomials are then evaluated at <kbd>u</kbd> and stored in <kbd>b0</kbd>, <kbd>b1</kbd>, <kbd>b2</kbd>, and <kbd>b3</kbd>. Next, we compute the interpolated position using the Bezier curve equation. The final position is converted to clip coordinates and assigned to the <kbd>gl_Position</kbd> output variable.</p>
+<p class="chapter-content">The fragment shader simply applies <kbd>LineColor</kbd> to the fragment.</p>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">There's a lot more to be said about tessellation shaders, but this example is intended to be a simple introduction so we'll leave that for the following recipes. Next, we'll look at tessellation across surfaces in two dimensions.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenebezcurve.cpp</kbd> file in the example code</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tessellating a 2D quad</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">One of the best ways to understand OpenGL's hardware tessellation is to visualize the tessellation of a 2D quad. When linear interpolation is used, the triangles that are produced are directly related to the tessellation coordinates (u,v) that are produced by the tessellation primitive generator. It can be extremely helpful to draw a few quads with different inner and outer tessellation levels, and study the triangles produced. We will do exactly that in this recipe.</p>
+<p class="chapter-content">When using quad tessellation, the tessellation primitive generator subdivides (u,v) parameter space into a number of subdivisions based on six parameters. These are the inner tessellation levels for <kbd>u</kbd> and <kbd>v</kbd> (inner level 0 and inner level 1), and the outer tessellation levels for <kbd>u</kbd> and <kbd>v</kbd> along both edges (outer levels 0 to 3). These determine the number of subdivisions along the edges of the parameter space and internally. Let's look at each of these individually:</p>
+<ul>
+<li><strong>Outer level 0 (OL0)</strong>: This is the number of subdivisions along the <em>v</em> direction where <em>u = 0</em></li>
+<li><strong>Outer level 1 (OL1)</strong>: This is the number of subdivisions along the <em>u</em> direction where <em>v = 0</em></li>
+<li><strong>Outer level 2 (OL2)</strong>: This is the number of subdivisions along the <em>v</em> direction where <em>u = 1</em></li>
+<li><strong>Outer level 3 (OL3)</strong>: This is the number of subdivisions along the <em>u</em> direction where <em><em>v = 1</em></em></li>
+<li><strong>Inner level 0 (IL0)</strong>: This is the number of subdivisions along the <em>u</em> direction for all internal values of <em>v</em></li>
+<li><strong>Inner level 1 (IL1)</strong>: This is the number of subdivisions along the <em>v</em> direction for all internal values of <em>u</em></li>
+</ul>
+<p class="mce-root">The following diagram represents the relationship between the tessellation levels and the areas of parameter space that are affected by each. The outer levels define the number of subdivisions along the edges, and the inner levels define the number of subdivisions internally:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/b7bdb2e0-832e-4cca-a02f-853ccb66980b.png" style="width:20.08em;height:17.00em;"/></div>
+<p class="chapter-content"><span>The six tessellation levels described some time back can be configured via the</span> <kbd>gl_TessLevelOuter</kbd> and <kbd>gl_TessLevelInner</kbd> arrays. For example, <kbd>gl_TessLevelInner[0]</kbd> corresponds to <strong>IL0</strong>, <kbd>gl_TessLevelOuter[2]</kbd> corresponds to <strong>OL2</strong>, and so on.</p>
+<p class="chapter-content">If we draw a patch primitive that consists of a single quad (four vertices), and use linear interpolation, the triangles that result can help us to understand how OpenGL does quad tessellation. The following diagram shows the results for various tessellation levels:</p>
+<div class="CDPAlignCenter CDPAlign"><sub><img src="assets/3585c185-39d1-44ae-a026-6116257fcbc3.png" style="width:33.50em;height:33.17em;"/></sub></div>
+<p class="chapter-content">When we use linear interpolation, the triangles that are produced represent a visual representation of parameter (u, v) space. The <em>x</em> axis corresponds to the <em>u</em> coordinate and the <em>y</em> axis corresponds to the <em>v</em> coordinate. The vertices of the triangles are the (u,v) coordinates generated by the tessellation primitive generator. The number of subdivisions can be clearly seen in the mesh of triangles. For example, when the outer levels are set to <strong>2</strong> and the inner levels are set to <strong>8</strong>, you can see that the outer edges have two subdivisions, but within the quad, u and v are subdivided into eight intervals.</p>
+<p class="chapter-content">Before jumping into the code, let's discuss linear interpolation. If the four corners of the quad are as shown in the following figure, then any point within the quad can be determined by linearly interpolating the four corners with respect to the <strong>u</strong> and <strong>v</strong> parameters:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/cf0b2180-2719-49b1-bc0f-01f2153c7645.png" style="width:25.75em;height:9.67em;"/></div>
+<p class="chapter-content">We'll let the tessellation-primitive generator create a set of vertices with appropriate parametric coordinates, and we'll determine the corresponding positions by interpolating the corners of the quad using the preceding equation.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The outer and inner tessellation levels will be determined by the <kbd>Inner</kbd> and <kbd>Outer</kbd> uniform variables. In order to display the triangles, we will use the geometry shader.</p>
+<p class="chapter-content">Set up your OpenGL application to render a patch primitive consisting of four vertices in counterclockwise order, as shown in the previous figure.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that will generate a set of triangles using quad tessellation from a patch of four vertices, use the following steps:</p>
+<ol>
+<li>Use the following code for the vertex shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout (location = 0 ) in vec2 VertexPosition; 
+ 
+void main() {
+    gl_Position = vec4(VertexPosition, 0.0, 1.0); 
+}</pre>
+<ol start="2">
+<li>Use the following code as the tessellation control shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( vertices=4 ) out; 
+ 
+uniform int Outer; 
+uniform int Inner; 
+void main() {
+    // Pass along the vertex position unmodified 
+    gl_out[gl_InvocationID].gl_Position =  
+               gl_in[gl_InvocationID].gl_Position; 
+ 
+    gl_TessLevelOuter[0] = float(Outer); 
+    gl_TessLevelOuter[1] = float(Outer); 
+    gl_TessLevelOuter[2] = float(Outer); 
+    gl_TessLevelOuter[3] = float(Outer); 
+ 
+    gl_TessLevelInner[0] = float(Inner); 
+    gl_TessLevelInner[1] = float(Inner); 
+}</pre>
+<ol start="3">
+<li>Use the following code as the tessellation evaluation shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( quads, equal_spacing, ccw ) in; 
+ 
+uniform mat4 MVP; 
+ 
+void main() {
+    float u = gl_TessCoord.x; 
+    float v = gl_TessCoord.y; 
+ 
+    vec4 p0 = gl_in[0].gl_Position; 
+    vec4 p1 = gl_in[1].gl_Position; 
+    vec4 p2 = gl_in[2].gl_Position; 
+    vec4 p3 = gl_in[3].gl_Position; 
+ 
+    // Linear interpolation 
+    gl_Position = 
+        p0 * (1-u) * (1-v) + 
+        p1 * u * (1-v) + 
+        p3 * v * (1-u) + 
+        p2 * u * v; 
+ 
+    // Transform to clip coordinates 
+    gl_Position = MVP * gl_Position; 
+} </pre>
+<ol start="4">
+<li>Use the geometry shader from the <em>Drawing a wireframe on top of a shaded mesh</em> recipe</li>
+<li>Use the following code as the fragment shader:</li>
+</ol>
+<pre style="padding-left: 60px">uniform float LineWidth; 
+uniform vec4 LineColor; 
+uniform vec4 QuadColor; 
+ 
+noperspective in vec3 GEdgeDistance;  // From geom. shader 
+ 
+layout ( location = 0 ) out vec4 FragColor; 
+ 
+float edgeMix() {
+   // ** insert code here to determine how much of the edge 
+   // color to include (see recipe "Drawing a wireframe on 
+   // top of a shaded mesh").  ** 
+} 
+ 
+void main() {
+    float mixVal = edgeMix(); 
+ 
+    FragColor = mix( QuadColor, LineColor, mixVal );
+} </pre>
+<ol start="6">
+<li>Within the <kbd>render</kbd> function of your main OpenGL program, define the number of vertices within a patch:</li>
+</ol>
+<pre style="padding-left: 60px">glPatchParameteri(GL_PATCH_VERTICES, 4); </pre>
+<ol start="7">
+<li>Render the patch as four 2D vertices in counterclockwise order</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The vertex shader passes the position along to the TCS unchanged.</p>
+<p class="chapter-content">The TCS defines the number of vertices in the patch using the layout directive:</p>
+<pre>layout (vertices=4) out; </pre>
+<p class="mce-root">In the <kbd>main</kbd> function, it passes along the position of the vertex without modification, and sets the inner and outer tessellation levels. All four of the outer tessellation levels are set to the value of <kbd>Outer</kbd>, and both of the inner tessellation levels are set to <kbd>Inner</kbd>.</p>
+<p class="chapter-content">In the tessellation evaluation shader, we define the tessellation mode and other tessellation parameters with the input layout directive:</p>
+<pre>layout ( quads, equal_spacing, ccw ) in; </pre>
+<p class="mce-root">The <kbd>quads</kbd> parameter indicates that the tessellation-primitive generator should tessellate the parameter space using quad tessellation. The <kbd>equal_spacing</kbd> parameter says that the tessellation should be performed such that all subdivisions have equal length. The last parameter, <kbd>ccw</kbd>, indicates that the primitives should be generated with counterclockwise winding.</p>
+<p class="chapter-content">The <kbd>main</kbd> function in the TES starts by retrieving the parametric coordinates for this vertex by accessing the <kbd>gl_TessCoord</kbd> variable. Then we move on to read the positions of the four vertices in the patch from the <kbd>gl_in</kbd> array. We store them in temporary variables to be used in the interpolation calculation.</p>
+<p class="chapter-content">The built-in <kbd>gl_Position</kbd> output variable then gets the value of the interpolated point using the preceding equation. Finally, we convert the position into clip coordinates by multiplying by the model-view projection matrix.</p>
+<p class="chapter-content">Within the fragment shader, we give all fragments a color that is possibly mixed with a line color in order to highlight the edges.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenequadtess.cpp</kbd> file in the example code</li>
+<li>The <em>Drawing a wireframe on top of a shaded mesh</em> recipe</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tessellating a 3D surface</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">As an example of tessellating a 3D surface, let's render (yet again) the <em>teapotahedron.</em> It turns out that the teapot's dataset is actually defined as a set of 4 x 4 patches of control points, suitable for cubic Bezier interpolation. Therefore, drawing the teapot really boils down to drawing a set of cubic Bezier surfaces.</p>
+<p class="chapter-content">Of course, this sounds like a perfect job for tessellation shaders! We'll render each patch of 16 vertices as a patch primitive, use quad tessellation to subdivide the parameter space, and implement the Bezier interpolation within the tessellation evaluation shader.</p>
+<p class="chapter-content">The following image shows an example of the desired output. The left teapot is rendered with inner and outer tessellation level 2, the middle uses level 4, and the teapot on the right uses tessellation level 16. The tessellation evaluation shader computes the Bezier surface interpolation:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/932ce989-229a-448c-9787-af4343d398d6.png" style="width:38.00em;height:11.75em;"/></div>
+<p class="chapter-content">First, let's take a look at how cubic Bezier surface-interpolation works. If our surface is defined by a set of 16 control points (laid out in a 4 x 4 grid) <em>P<sub>ij</sub></em>, with <em>i</em> and <em>j</em> ranging from 0 to 3, the parametric Bezier surface is given by the following equation:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/af432160-f4c7-4a39-bb20-2bfec138a669.png" style="width:16.83em;height:3.92em;"/></div>
+<p class="chapter-content">The instances of <em>B</em> in the preceding equation are the cubic Bernstein polynomials (refer to the previous recipe, <em>Tessellating a 2D quad</em>).</p>
+<p class="chapter-content">We also need to compute the normal vector at each interpolated location. To do so, we have to compute the cross product of the partial derivatives of the preceding equation:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/f6dd88cc-82cd-410e-a09b-d993113c2833.png" style="width:10.75em;height:2.75em;"/></div>
+<p class="chapter-content">The partial derivatives of the Bezier surface boil down to the partial derivatives of the Bernstein polynomials:</p>
+<div class="CDPAlignCenter CDPAlign"><img class="fm-editor-equation" src="assets/e786e253-d99d-4092-9707-7eb73ce7cb73.png" style="width:15.08em;height:7.33em;"/></div>
+<p class="chapter-content">We'll compute the partials within the TES and compute the cross product to determine the normal to the surface at each tessellated vertex.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">Set up your shaders with a vertex shader that simply passes the vertex position along without any modification (you can use the same vertex shader as was used in the <em>Tessellating a 2D quad</em> recipe). Create a fragment shader that implements whatever shading model you choose. The fragment shader should receive the <kbd>TENormal</kbd> and <kbd>TEPosition</kbd> input variables, which will be the normal and position in camera coordinates.</p>
+<p class="chapter-content">The <kbd>TessLevel</kbd> uniform variable should be given the value of the desired tessellation level. All of the inner and outer levels will be set to this value.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that creates Bezier patches from input patches of 16 control points, use the following steps:</p>
+<ol>
+<li>Use the vertex shader from the <em>Tessellating a 2D quad</em> recipe.</li>
+<li>Use the following code for the tessellation control shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( vertices=16 ) out; 
+ 
+uniform int TessLevel; 
+ 
+void main() {
+    // Pass along the vertex position unmodified 
+    gl_out[gl_InvocationID].gl_Position =  
+                 gl_in[gl_InvocationID].gl_Position; 
+ 
+    gl_TessLevelOuter[0] = float(TessLevel); 
+    gl_TessLevelOuter[1] = float(TessLevel); 
+    gl_TessLevelOuter[2] = float(TessLevel); 
+    gl_TessLevelOuter[3] = float(TessLevel); 
+ 
+    gl_TessLevelInner[0] = float(TessLevel); 
+    gl_TessLevelInner[1] = float(TessLevel); 
+}</pre>
+<p class="mce-root"/>
+<p class="mce-root"/>
+<ol start="3"/>
+<ol start="3">
+<li>Use the following code for the tessellation evaluation shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( quads ) in; 
+out vec3 TENormal;   // Vertex normal in camera coords. 
+out vec4 TEPosition; // Vertex position in camera coords 
+ 
+uniform mat4 MVP; 
+uniform mat4 ModelViewMatrix; 
+uniform mat3 NormalMatrix; 
+ 
+void basisFunctions(out float[4] b, out float[4] db, float t) {
+    float t1 = (1.0 - t); 
+    float t12 = t1 * t1; 
+ 
+    // Bernstein polynomials 
+    b[0] = t12 * t1; 
+    b[1] = 3.0 * t12 * t; 
+    b[2] = 3.0 * t1 * t * t; 
+    b[3] = t * t * t; 
+ 
+    // Derivatives 
+    db[0] = -3.0 * t1 * t1; 
+    db[1] = -6.0 * t * t1 + 3.0 * t12; 
+    db[2] = -3.0 * t * t + 6.0 * t * t1; 
+    db[3] = 3.0 * t * t; 
+} 
+ 
+void main() {
+    float u = gl_TessCoord.x; 
+    float v = gl_TessCoord.y; 
+ 
+    // The sixteen control points 
+    vec4 p00 = gl_in[0].gl_Position; 
+    vec4 p01 = gl_in[1].gl_Position; 
+    vec4 p02 = gl_in[2].gl_Position; 
+    vec4 p03 = gl_in[3].gl_Position; 
+    vec4 p10 = gl_in[4].gl_Position; 
+    vec4 p11 = gl_in[5].gl_Position; 
+    vec4 p12 = gl_in[6].gl_Position; 
+    vec4 p13 = gl_in[7].gl_Position; 
+    vec4 p20 = gl_in[8].gl_Position; 
+    vec4 p21 = gl_in[9].gl_Position; 
+    vec4 p22 = gl_in[10].gl_Position; 
+    vec4 p23 = gl_in[11].gl_Position; 
+    vec4 p30 = gl_in[12].gl_Position; 
+    vec4 p31 = gl_in[13].gl_Position; 
+    vec4 p32 = gl_in[14].gl_Position; 
+    vec4 p33 = gl_in[15].gl_Position; 
+    // Compute basis functions 
+    float bu[4], bv[4];   // Basis functions for u and v 
+    float dbu[4], dbv[4]; // Derivitives for u and v 
+    basisFunctions(bu, dbu, u); 
+    basisFunctions(bv, dbv, v); 
+ 
+    // Bezier interpolation 
+    TEPosition = 
+     p00*bu[0]*bv[0] + p01*bu[0]*bv[1] + p02*bu[0]*bv[2] +  
+     p03*bu[0]*bv[3] + 
+     p10*bu[1]*bv[0] + p11*bu[1]*bv[1] + p12*bu[1]*bv[2] +  
+     p13*bu[1]*bv[3] + 
+     p20*bu[2]*bv[0] + p21*bu[2]*bv[1] + p22*bu[2]*bv[2] +  
+     p23*bu[2]*bv[3] + 
+     p30*bu[3]*bv[0] + p31*bu[3]*bv[1] + p32*bu[3]*bv[2] +  
+     p33*bu[3]*bv[3]; 
+ 
+    // The partial derivatives 
+    vec4 du = 
+     p00*dbu[0]*bv[0]+p01*dbu[0]*bv[1]+p02*dbu[0]*bv[2]+  
+     p03*dbu[0]*bv[3]+ 
+     p10*dbu[1]*bv[0]+p11*dbu[1]*bv[1]+p12*dbu[1]*bv[2]+  
+     p13*dbu[1]*bv[3]+ 
+     p20*dbu[2]*bv[0]+p21*dbu[2]*bv[1]+p22*dbu[2]*bv[2]+  
+     p23*dbu[2]*bv[3]+ 
+     p30*dbu[3]*bv[0]+p31*dbu[3]*bv[1]+p32*dbu[3]*bv[2]+  
+     p33*dbu[3]*bv[3]; 
+ 
+    vec4 dv = 
+     p00*bu[0]*dbv[0]+p01*bu[0]*dbv[1]+p02*bu[0]*dbv[2]+  
+     p03*bu[0]*dbv[3]+ 
+     p10*bu[1]*dbv[0]+p11*bu[1]*dbv[1]+p12*bu[1]*dbv[2]+  
+     p13*bu[1]*dbv[3]+ 
+     p20*bu[2]*dbv[0]+p21*bu[2]*dbv[1]+p22*bu[2]*dbv[2]+  
+     p23*bu[2]*dbv[3]+ 
+     p30*bu[3]*dbv[0]+p31*bu[3]*dbv[1]+p32*bu[3]*dbv[2]+  
+     p33*bu[3]*dbv[3]; 
+ 
+    // The normal is the cross product of the partials 
+    vec3 n = normalize( cross(du.xyz, dv.xyz) ); 
+ 
+    // Transform to clip coordinates 
+    gl_Position = MVP * TEPosition; 
+ 
+    // Convert to camera coordinates 
+    TEPosition = ModelViewMatrix * TEPosition; 
+    TENormal = normalize(NormalMatrix * n); 
+}</pre>
+<p class="mce-root"/>
+<ol start="4">
+<li>Implement your favorite shading model within the fragment shader utilizing the output variables from the TES.</li>
+<li>Render the Bezier control points as a 16-vertex patch primitive. Don't forget to set the number of vertices per patch within the OpenGL application:</li>
+</ol>
+<pre style="padding-left: 60px">glPatchParameteri(GL_PATCH_VERTICES, 16); </pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The tessellation control shader starts by defining the number of vertices in the patch using the layout directive:</p>
+<pre>layout( vertices=16 ) out; </pre>
+<p class="mce-root">It then simply sets the tessellation levels to the value of <kbd>TessLevel</kbd>. It passes the vertex position along, without any modification.</p>
+<p class="chapter-content">The tessellation evaluation shader starts by using a layout directive to indicate the type of tessellation to be used. As we are tessellating a 4 x 4 Bezier surface patch, quad tessellation makes the most sense.</p>
+<p class="chapter-content">The <kbd>basisFunctions</kbd> function evaluates the Bernstein polynomials and their derivatives for a given value of the <kbd>t</kbd> parameter. The results are returned in the <kbd>b</kbd> and <kbd>db</kbd> output parameters.</p>
+<p class="chapter-content">Within the <kbd>main</kbd> function, we start by assigning the tessellation coordinates to the <kbd>u</kbd> and <kbd>v</kbd> variables, and reassigning all 16 of the patch vertices to variables with shorter names (to shorten the code that appears later).</p>
+<p class="chapter-content">We then call <kbd>basisFunctions</kbd> to compute the Bernstein polynomials and their derivatives at <kbd>u</kbd> and <kbd>v</kbd>, storing the results in <kbd>bu</kbd>, <kbd>dbu</kbd>, <kbd>bv</kbd>, and <kbd>dbv</kbd>.</p>
+<p class="chapter-content">The next step is the evaluation of the sums from the preceding equations for the position (<kbd>TEPosition</kbd>), the partial derivative with respect to <kbd>u</kbd> (<kbd>du</kbd>), and the partial derivative with respect to <kbd>v</kbd> (<kbd>dv</kbd>). We compute the normal vector as the cross product of <kbd>du</kbd> and <kbd>dv</kbd>.</p>
+<p class="chapter-content">Finally, we convert the position (<kbd>TEPosition</kbd>) to clip coordinates and assign the result to<br/>
+<kbd>gl_Position</kbd>. We also convert it to camera coordinates before it is passed along to the fragment shader.</p>
+<p class="mce-root"/>
+<p class="chapter-content">The normal vector is converted to camera coordinates by multiplying it with <kbd>NormalMatrix</kbd>, and the result is normalized and passed along to the fragment shader via <kbd>TENormal</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenetessteapot.cpp</kbd> file in the example code</li>
+<li>The <em>Tessellating a 2D quad</em> recipe</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Tessellating based on depth</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">One of the greatest things about tessellation shaders is how easy it is to implement <strong>level-of-detail</strong> (<strong>LOD</strong>) algorithms. LOD is a general term in computer graphics that refers to the process of increasing/decreasing the complexity of an object's geometry with respect to the distance from the viewer (or other factors). As an object moves farther away from the camera, less geometric detail is needed to represent the shape because the overall size of the object becomes smaller. However, as the object moves closer to the camera, the object fills more and more of the screen, and more geometric detail is needed to maintain the desired appearance (smoothness or lack of other geometric artifacts).</p>
+<p class="chapter-content">The following image shows a few teapots rendered with tessellation levels that depend on distance from the camera. Each teapot is rendered using exactly the same code on the OpenGL side. The TCS automatically varies the tessellation levels based on depth:</p>
+<div class="CDPAlignCenter CDPAlign"><img src="assets/406640f8-eae1-4876-911c-43b073ea62ba.png" style="width:29.33em;height:12.83em;"/></div>
+<p class="chapter-content">When tessellation shaders are used, the tessellation level is what determines the geometric complexity of the object. As the tessellation levels can be set within the tessellation control shader, it is a simple matter to vary the tessellation levels with respect to the distance from the camera.</p>
+<p class="chapter-content">In this example, we'll vary the tessellation levels linearly (with respect to distance) between a minimum level and a maximum level. We'll compute the <em>distance from the camera</em> as the absolute value of the <em>z</em> coordinate in camera coordinates, (of course, this is not the true distance, but should work fine for the purposes of this example). The tessellation level will then be computed based on that value. We'll also define two additional values (as uniform variables): <kbd>MinDepth</kbd> and <kbd>MaxDepth</kbd>. Objects that are closer to the camera than <kbd>MinDepth</kbd> get the maximum tessellation level, and any objects that are further from the camera than <kbd>MaxDepth</kbd> will get the minimum tessellation level. The tessellation level for objects in between will be linearly interpolated.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">Getting ready</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">This program is nearly identical to the one in the <em>Tessellating a 3D surface</em> recipe. The only difference lies within the TCS. We'll remove the <kbd>TessLevel</kbd> uniform variable, and add a few new ones that are described as follows:</p>
+<ul>
+<li><kbd>MinTessLevel</kbd>: This is the lowest desired tessellation level</li>
+<li><kbd>MaxTessLevel</kbd>: This is the highest desired tessellation level</li>
+<li><kbd>MinDepth</kbd>: This is the minimum <em>distance</em> from the camera, where the tessellation level is maximal</li>
+<li><kbd>MaxDepth</kbd>: This is the maximum <em>distance</em> from the camera, where the tessellation level is at a minimum</li>
+</ul>
+<p class="mce-root">Render your objects as 16-vertex patch primitives as indicated in the <em>Tessellating a 3D surface</em> recipe.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How to do it...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">To create a shader program that varies the tessellation level based on the depth, use the following steps:</p>
+<ol>
+<li>Use the vertex shader and tessellation evaluation shader from the <em>Tessellating a 3D surface</em> recipe.</li>
+<li>Use the following code for the tessellation control shader:</li>
+</ol>
+<pre style="padding-left: 60px">layout( vertices=16 ) out; 
+ 
+uniform int MinTessLevel; 
+uniform int MaxTessLevel; 
+uniform float MaxDepth; 
+uniform float MinDepth; 
+ 
+uniform mat4 ModelViewMatrix; 
+ 
+void main() {
+    // Position in camera coordinates 
+    vec4 p = ModelViewMatrix *  
+                   gl_in[gl_InvocationID].gl_Position; 
+ 
+    // "Distance" from camera scaled between 0 and 1 
+    float depth = clamp( (abs(p.z) - MinDepth) /  
+                         (MaxDepth - MinDepth), 0.0, 1.0 ); 
+ 
+    // Interpolate between min/max tess levels 
+    float tessLevel =  
+          mix(MaxTessLevel, MinTessLevel, depth); 
+ 
+    gl_TessLevelOuter[0] = float(tessLevel); 
+    gl_TessLevelOuter[1] = float(tessLevel); 
+    gl_TessLevelOuter[2] = float(tessLevel); 
+    gl_TessLevelOuter[3] = float(tessLevel); 
+ 
+    gl_TessLevelInner[0] = float(tessLevel); 
+    gl_TessLevelInner[1] = float(tessLevel); 
+ 
+    gl_out[gl_InvocationID].gl_Position =  
+                  gl_in[gl_InvocationID].gl_Position; 
+} </pre>
+<ol start="3">
+<li>As with the previous recipe, implement your favorite shading model within the fragment shader.</li>
+</ol>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">How it works...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">The TCS takes the position and converts it to camera coordinates and stores the result in the <kbd>p</kbd> variable. The absolute value of the <em>z</em> coordinate is then scaled and clamped so that the result is between zero and one. If the <em>z</em> coordinate is equal to <kbd>MaxDepth</kbd>, the value of the depth will be <kbd>1.0</kbd>, if it is equal to <kbd>MinDepth</kbd>, the depth will be <kbd>0.0</kbd>. If <em>z</em> is between <kbd>MinDepth</kbd> and <kbd>MaxDepth</kbd>, the depth will get a value between zero and one. If <em>z</em> is outside that range, it will be clamped to <kbd>0.0</kbd> or <kbd>1.0</kbd> by the <kbd>clamp</kbd> function.</p>
+<p class="chapter-content">The value of <kbd>depth</kbd> is then used to linearly interpolate between <kbd>MaxTessLevel</kbd> and <kbd>MinTessLevel</kbd> using the <kbd>mix</kbd> function. The result (<kbd>tessLevel</kbd>) is used to set the inner and outer tessellation levels.</p>
+<p class="mce-root"/>
+<p class="mce-root"/>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">There's more...</h1>
+                </header>
+            
+            <article>
+                
+<p class="mce-root">There is a somewhat subtle aspect to this example. Recall that the TCS is executed once for each output vertex in the patch. Therefore, assuming that we are rendering cubic Bezier surfaces, this TCS will be executed 16 times for each patch. Each time it is executed, the value of <kbd>depth</kbd> will be slightly different because it is evaluated based on the <em>z</em> coordinate of the vertex. You might be wondering, which of the 16 possible different tessellation levels will be the one that is used? It doesn't make sense for the tessellation level to be interpolated across the parameter space. What's going on?</p>
+<p class="chapter-content">The <kbd>gl_TessLevelInner</kbd> and <kbd>gl_TessLevelOuter</kbd> output arrays are per-patch output variables. This means that only a single value will be used per patch, similar to the way that the flat qualifier works for fragment shader input variables. The OpenGL specification seems to indicate that any of the values from each of the invocations of the TCS could be the value that ends up being used.</p>
+<p>We should also note that if the tessellation level is different for patches that share an edge, then there is the potential for cracks to appear or other visual artifacts. Therefore we should take care to make sure that neighboring patches use the same tessellation level.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    <h1 class="header-title">See also</h1>
+                </header>
+            
+            <article>
+                
+<ul>
+<li>The <kbd>chapter07/scenetessteapotdepth.cpp</kbd> file in the example code</li>
+<li>DirectX 11 Terrain Tessellation at: <a href="http://developer.download.nvidia.com/assets/gamedev/files/sdk/11/TerrainTessellation_WhitePaper.pdf"><span class="URLPACKT">http://developer.download.nvidia.com/assets/gamedev/files/sdk/11/TerrainTessellation_WhitePaper.pdf</span></a></li>
+<li>The <em>Tessellating a 3D surface</em> recipe</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
