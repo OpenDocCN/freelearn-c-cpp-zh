@@ -32,7 +32,7 @@ DEALINGS IN THE SOFTWARE.
 
 以下是本书按章节划分的 44 个示例程序列表。
 
-# 第一章 – 网络和协议简介
+# 第一章：– 网络和协议简介
 
 本章包含以下示例程序：
 
@@ -42,7 +42,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `unix_list.c`: 列出所有本地 IP 地址（仅适用于 Linux 和 macOS）
 
-# 第二章 – 掌握套接字 API
+# 第二章：– 掌握套接字 API
 
 本章包含以下示例程序：
 
@@ -56,7 +56,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `time_server_dual.c`: 与前面的代码相同，但监听 IPv6/IPv4 双栈连接
 
-# 第三章 – TCP 连接的深入概述
+# 第三章：– TCP 连接的深入概述
 
 本章包含以下示例程序：
 
@@ -68,7 +68,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `tcp_serve_chat.c`: 一个将接收到的数据转发给所有其他已连接客户端的 TCP 服务器。
 
-# 第四章 – 建立 UDP 连接
+# 第四章：– 建立 UDP 连接
 
 本章包含以下示例程序：
 
@@ -82,7 +82,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `udp_serve_toupper_simple.c`: 与前面的代码相同，但不使用`select()`
 
-# 第五章 – 主机名解析和 DNS
+# 第五章：– 主机名解析和 DNS
 
 本章包含以下示例程序：
 
@@ -90,13 +90,13 @@ DEALINGS IN THE SOFTWARE.
 
 +   `dns_query.c`: 编码并发送 UDP DNS 查询，然后监听并解码响应
 
-# 第六章 – 构建简单的 Web 客户端
+# 第六章：– 构建简单的 Web 客户端
 
 本章包含以下示例程序：
 
 +   `web_get.c`: 一个从给定 URL 下载网络资源的最小化 HTTP 客户端
 
-# 第七章 – 构建简单的 Web 服务器
+# 第七章：– 构建简单的 Web 服务器
 
 本章包含以下示例程序：
 
@@ -104,13 +104,13 @@ DEALINGS IN THE SOFTWARE.
 
 +   `web_server2.c`: 一个最小化 Web 服务器（无全局变量）
 
-# 第八章 – 使你的程序发送电子邮件
+# 第八章：– 使你的程序发送电子邮件
 
 本章包括以下示例程序：
 
 +   `smtp_send.c`: 一个简单的发送电子邮件的程序
 
-# 第九章 – 使用 HTTPS 和 OpenSSL 加载安全 Web 页面
+# 第九章：– 使用 HTTPS 和 OpenSSL 加载安全 Web 页面
 
 本章的示例使用 OpenSSL。编译时请确保链接到 OpenSSL 库（`-lssl -lcrypto`）：
 
@@ -124,7 +124,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `tls_get_cert.c`: 从 TLS 服务器打印证书
 
-# 第十章 – 实现安全 Web 服务器
+# 第十章：– 实现安全 Web 服务器
 
 本章的示例使用 OpenSSL。编译时请确保链接到 OpenSSL 库（`-lssl -lcrypto`）：
 
@@ -132,7 +132,7 @@ DEALINGS IN THE SOFTWARE.
 
 +   `https_server.c`: 第七章的*构建简单的 Web 服务器*中的 Web 服务器，修改为使用 HTTPS
 
-# 第十一章 – 使用 libssh 建立 SSH 连接
+# 第十一章：– 使用 libssh 建立 SSH 连接
 
 本章的示例使用`libssh`。编译时请确保链接到`libssh`库（`-lssh`）：
 
@@ -146,11 +146,11 @@ DEALINGS IN THE SOFTWARE.
 
 +   `ssh_download.c`: 一个通过 SSH/SCP 下载文件的客户端
 
-# 第十二章 – 网络监控和安全
+# 第十二章：– 网络监控和安全
 
 本章不包含任何示例程序。
 
-# 第十三章 – 套接字编程技巧和陷阱
+# 第十三章：– 套接字编程技巧和陷阱
 
 本章包括以下示例程序：
 
@@ -172,6 +172,6 @@ DEALINGS IN THE SOFTWARE.
 
 +   `setsize.c`: 展示`select()`可以处理的套接字最大数量。
 
-# 第十四章 – 物联网的 Web 编程
+# 第十四章：– 物联网的 Web 编程
 
 本章不包含任何示例程序。

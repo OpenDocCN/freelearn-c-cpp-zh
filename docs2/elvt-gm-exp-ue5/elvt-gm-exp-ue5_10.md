@@ -1,4 +1,4 @@
-# 10
+
 
 # 创建 SuperSideScroller 游戏
 
