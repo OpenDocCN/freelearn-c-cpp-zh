@@ -1,0 +1,114 @@
+# Preface
+
+C++ is a general-purpose programming language built with a bias towards embedded programming and systems programming. Over the years, C++ has evolved and is used to develop software for many different sectors. Given its versatility and robustness, C++ is a wonderful language to start your coding journey with. This book covers exciting projects built in C++ that show how to implement the language in different scenarios. While developing these projects, you will not only learn the language constructs but also how you can use C++ to meet your software requirements.
+
+In this book, you will study a set of applications written in C++, ranging from abstract datatypes to library management systems, graphical applications, games, and a Domain-Specific Language (DSL).
+
+# Who this book is for
+
+This book is for developers who would like to develop software in C++. Basic programming experience would be an added advantage.
+
+# What this book covers
+
+[Chapter 1](f654f53f-736c-4b83-8918-d619a31a7e58.xhtml), *Getting Started with C++*, introduces you to Object-Oriented Programming (OOP) in C++. We start by looking into a simple program that rolls a dice. We write the code, compile, link, and execute the program. We then continue by constructing a simple object-oriented hierarchy, with pointers and dynamic binding. Finally, we create two simple abstract data types: stack and queue. The stack is a set of values ordered in a bottom-to-top manner, where only the top-most value is accessible, while the queue is a traditional queue where we inspect values at the front and add values at the rear.
+
+[Chapter 2](856debf4-f653-4211-928d-b3296fe56d99.xhtml), *Data Structures and Algorithms*, builds on what was learned in the previous chapter, especially the list and set abstract datatypes. We also introduce templates and operator overloading, and we look into linear and binary search algorithms and the insert, select, bubble, merge, and quicksort algorithms.
+
+[Chapter 3](6814bf19-e75b-4083-8447-892dd8416f49.xhtml), *Building a Library Management System*, will help you develop a real-world system: a library management system that is made up of books and customers. The books keep track of the customers that have borrowed and reserved them, and the customers keep track of the books they have borrowed and reserved.
+
+[Chapter 4](34ba2c98-98be-433d-b868-9aa7745dd6a6.xhtml), *Library Management System with Pointers*, further develops the library management system. In the previous chapter, each book and customer were identified by integer numbers. In this chapter, however, we work with pointers. Each book holds pointers to the customers that have borrowed or reserved it, and each customer holds pointers to the books they have borrowed or reserved.
+
+[Chapter 5](411aae8c-9215-4315-8a2e-882bf028834c.xhtml), *Qt Graphical Applications*, dives into three graphical applications that we develop with the Qt graphical library: an analog clock with hour, minute, and second hands, a drawing program that draws lines, rectangles, and ellipses in different colors, and an editor where the user can input and edit text. We will learn how to handle windows and widgets as well as menus and toolbars in the Qt Library. We will also learn how to draw figures and write text, and how to catch mouse and keyboard input.
+
+[Chapter 6](f20d7a19-156f-43e8-92a5-46b9068128fc.xhtml), *Enhancing the Qt Graphical Applications*, further develops the three graphical applications: the analog clock, the drawing program, and the editor. We add digits to the clock dial, we add the possibility to move, modify, and cut-and-paste figures in the drawing program, and we add the possibility to change font and text alignment in the editor.
+
+[Chapter 7](1ce9af28-ea17-439f-945d-2353f6097157.xhtml), *The Games*, introduces you to basic game development. In this chapter, we develop the games Othello, and Noughts and Crosses with the Qt library. In Othello, two players take turn adding marks, colored black and white, to the game grid in order to enclose the opponent's marks. In Noughts and Crosses, two players take turns adding noughts and crosses to a game grid in order to place five marks in a row.
+
+[Chapter 8](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml), *The Computer Plays*, empowers the computer to play against a human player. In Othello, the computer tries to add marks that enclose as many as possible of the opponent’s marks. In Nought and Crosses, the computer tries to add marks to obtain five marks in a row, and to prevent the opponent to get five marks in a row.
+
+[Chapter 9](f443d71b-0be1-4966-9325-9caa11e4627e.xhtml), *Domain–Specific Language*, teaches you to develop a Domain-Specific Language (DSL), which is a language intended for a specific domain. More specifically, we develop a language for writing graphical objects in a Qt widget. We start by formally defining our language with a grammar. We then write a scanner that recognizes meaningful sequences of characters, a parser that checks that the source code complies with the grammar, and a viewer that displays the graphical objects.
+
+[Chapter 10](de1c5ce8-715d-40aa-85ae-f6cbaa9c2ac9.xhtml), *Advanced Domain–Specific Language*, improves on our Domain-Specific Language in several ways: we add selection and iteration that alter the flow of the program, we add variables that can be assigned to values during the program execution, and we add functions with parameters and a return value.
+
+# To get the most out of this book
+
+This book is intended for every reader, from the beginner to the more proficient C++ programmer. However, some previous experience with C++ is useful.
+
+The examples of this book are developed in Visual Studio and Qt Creator.
+
+# Download the example code files
+
+You can download the example code files for this book from your account at [www.packtpub.com](http://www.packtpub.com). If you purchased this book elsewhere, you can visit [www.packtpub.com/support](http://www.packtpub.com/support) and register to have the files emailed directly to you.
+
+You can download the code files by following these steps:
+
+1.  Log in or register at [www.packtpub.com](http://www.packtpub.com/support).
+2.  Select the SUPPORT tab.
+3.  Click on Code Downloads & Errata.
+4.  Enter the name of the book in the Search box and follow the onscreen instructions.
+
+Once the file is downloaded, please make sure that you unzip or extract the folder using the latest version of:
+
+*   WinRAR/7-Zip for Windows
+*   Zipeg/iZip/UnRarX for Mac
+*   7-Zip/PeaZip for Linux
+
+The code bundle for the book is also hosted on GitHub at [https://github.com/PacktPublishing/CPP17-By-Example](https://github.com/PacktPublishing/CPP17-By-Example). We also have other code bundles from our rich catalog of books and videos available at **[https://github.com/PacktPublishing/](https://github.com/PacktPublishing/)**. Check them out!
+
+# Download the color images
+
+We also provide a PDF file that has color images of the screenshots/diagrams used in this book. You can download it here: [https://www.packtpub.com/sites/default/files/downloads/CPP17ByExample_ColorImages.pdf](https://www.packtpub.com/sites/default/files/downloads/CPP17ByExample_ColorImages.pdf).
+
+# Conventions used
+
+There are a number of text conventions used throughout this book.
+
+`CodeInText`: Indicates code words in text. For example; "Let's continue with a class hierarchy, where `Person` is the base class with `Student` and `Employee` as its sub classes:"
+
+A block of code is set as follows:
+
+```cpp
+class Person {
+   public:
+     Person(string name);
+     virtual void print();
+   private:
+     string m_name;
+ };
+```
+
+When we wish to draw your attention to a particular part of a code block, the relevant lines or items are set in bold:
+
+```cpp
+class Person {
+   public:
+     Person(string name);
+     virtual void print();
+   private:
+     string m_name;
+ };
+```
+
+**Bold**: Indicates a new term, an important word, or words that you see onscreen. For example, words in menus or dialog boxes appear in the text like this. Here is an example: "In the first dialog we just press the Next button:"
+
+Warnings or important notes appear like this.
+
+Tips and tricks appear like this.
+
+# Get in touch
+
+Feedback from our readers is always welcome.
+
+**General feedback**: Email `feedback@packtpub.com` and mention the book title in the subject of your message. If you have questions about any aspect of this book, please email us at `questions@packtpub.com`.
+
+**Errata**: Although we have taken every care to ensure the accuracy of our content, mistakes do happen. If you have found a mistake in this book, we would be grateful if you would report this to us. Please visit [www.packtpub.com/submit-errata](http://www.packtpub.com/submit-errata), selecting your book, clicking on the Errata Submission Form link, and entering the details.
+
+**Piracy**: If you come across any illegal copies of our works in any form on the Internet, we would be grateful if you would provide us with the location address or website name. Please contact us at `copyright@packtpub.com` with a link to the material.
+
+**If you are interested in becoming an author**: If there is a topic that you have expertise in and you are interested in either writing or contributing to a book, please visit [authors.packtpub.com](http://authors.packtpub.com/).
+
+# Reviews
+
+Please leave a review. Once you have read and used this book, why not leave a review on the site that you purchased it from? Potential readers can then see and use your unbiased opinion to make purchase decisions, we at Packt can understand what you think about our products, and our authors can see your feedback on their book. Thank you!
+
+For more information about Packt, please visit [packtpub.com](https://www.packtpub.com/).

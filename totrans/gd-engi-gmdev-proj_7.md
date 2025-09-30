@@ -1,0 +1,517 @@
+# Additional Topics
+
+Congratulations! The projects you've built in this book have started you on the road to becoming a Godot expert. However, you've only just scratched the surface of what's possible in Godot. As you become more proficient, and the size of your projects grows, you'll need to know how to find solutions to your problems, how to distribute your games so they can be played, and even how to extend the engine yourself.
+
+In this chapter, you'll learn about the following topics:
+
+*   How to effectively use Godot's built-in documentation
+*   Exporting projects to run on other platforms
+*   Using other programming languages in Godot
+*   How to use Godot's asset library to install plugins
+*   Becoming a Godot contributor
+*   Community resources
+
+# Using Godot's documentation
+
+Learning Godot's API can seem overwhelming at first. How can you learn all the different nodes, and the properties and methods each one contains? Fortunately, Godot's built-in documentation is there to help you. Develop the habit of using it often: it will help you find things when you're learning, but it's also a great way to quickly look up a method or property for reference once you know your way around.
+
+When you are in the Script tab of the editor, you'll see the following buttons in the upper-right corner:
+
+![](img/c6705253-5f60-4e20-b856-b44514b00a14.png)
+
+The Online Docs button will open the documentation website in your browser. If you have a multimonitor setup, it can be very useful to keep the API reference open on one side for quick reference while you're working in Godot.
+
+The other two buttons allow you to view the documentation directly in the Godot editor. The Classes button allows you to browse through the available node and object types, while the Search Help button lets you search for any method or property name. Both searches are *smart*, meaning you can type part of a word and the results will be narrowed down as you type. Take a look at the following screenshot:
+
+![](img/4b65d64e-d1e4-485e-ac09-8d034e201929.png)
+
+When you find the property or method you're looking for, click Open and the documentation reference for that node will appear.
+
+# Reading the API documentation
+
+When you've found the documentation for the node you want, you'll see that it follows a common format, with the name of the node at the top followed by several subsections of information, as shown in the following screenshot:
+
+![](img/8487cfbf-91e0-4ca4-99ec-6c517a9e5bd0.png)
+
+At the top of the document is a list titled Inherits, which shows you the chain of classes that a particular node is built from all the way back to `Object`, which is Godot's base object class. For example, an `Area2D` node has the following inheritance chain:
+
+```cpp
+CollisionObject2D < Node2D < CanvasItem < Node < Object
+```
+
+This lets you quickly see what other properties this type of object may have. You can click on any of the node names to jump to that node's documentation.
+
+You can also see a list of what node types, if any, inherit from that particular node, as well as a general description of the node. Below that, you can see the member variables and methods of the node. The names of most methods and types are links, so you can click on any item to read more about it.
+
+Develop the habit of consulting the API documentation regularly as you work. You'll find that you will quickly begin to develop a stronger understanding of how everything works together.
+
+# Exporting projects
+
+Eventually, your project will reach the stage where you want to share it with the world. *Exporting* your project means converting it into a package that can be run by someone who doesn't have the Godot editor. You can export your project for a number of popular platforms.
+
+At the time of writing, Godot supports the following target platforms:
+
+*   Windows Universal
+*   Windows Desktop
+*   macOS
+*   Linux
+*   Android (mobile)
+*   iOS (mobile)
+*   HTML5 (web)
+
+The method for exporting the project varies depending on the platform you are targeting. For example, to export for iOS, you must be running on a macOS computer with Xcode installed.
+
+Each platform is unique, and some features of your game may not work on some platforms because of hardware limitations, screen size, or other factors. As an example, if you wanted to export the Coin Dash game (from [Chapter 1](fee8a22d-c169-454d-be5e-cf6c0bc78ddb.xhtml), *Introduction*) for the Android platform, your player wouldn't be able to move because the keyboard controls wouldn't work! For that platform, you would need to include touchscreen controls in your game's code (more about this later).
+
+You may even find that you need to set different values in Project Settings for different platforms. You can do this by selecting the setting and clicking Override For....This will create a new setting specific to that platform.
+
+For example, if you want to enable HiDPI support, but not allow it for Android, you can create an override for that setting:
+
+![](img/61608182-ccde-4eb4-9a72-3aad85b2b0a4.png)
+
+Every platform is unique, and there are many factors to consider when configuring your project for export. Consult the official documentation for the latest instructions on exporting to your desired platform.
+
+# Getting the export templates
+
+*Export templates* are versions of Godot that are compiled for each target platform, but don't include the editor. Your project will be combined with the target platform's template to create a standalone application.
+
+To begin, you must download the export templates. Click on Manage Export Templates from the Editor menu:
+
+![](img/195ef423-4bb6-4b4c-b073-6c21f0fc52e8.png)
+
+In this window, you can click Download to fetch the export templates:
+
+![](img/32567d8e-1105-4d5c-85b5-1ce97a0c6a3d.png)
+
+Templates can also be downloaded from the Godot website at [http://godotengine.org/download](http://godotengine.org/download). If you choose to do this, use the Install From File button to complete the installation.
+
+The template's version must match the version of Godot you are using. If you upgrade to a new version of Godot, make sure that you also download the corresponding templates, or your exported project may not work properly.
+
+# Export presets
+
+When you're ready to export your project, click on Project | Export:
+
+![](img/ad0ccadb-d9ae-4977-a56e-53303cdde001.png)
+
+In this window, you can create *presets* for each platform by clicking Add... and selecting the platform from the list. You can make as many presets for each platform as you wish. For example, you may want to create both Debug and Release versions of your projects.
+
+Each platform has its own settings and options, too many to describe here. The default values are typically good, but you should test them thoroughly before distributing the project.
+
+In the Resources tab, you can customize which portions of your project are exported. For example, you can choose to only export selected scenes or to exclude certain source files from the project:
+
+![](img/36c02392-519f-4afa-9fd4-cb3d1d574fde.png)
+
+The Patches tab allows you to create updates for your previously exported projects.
+
+Finally, the Features tab displays a summary of the features (configured in the Options tab) for the platform. These features can determine which properties are customized by the Override value in the Project Settings:
+
+![](img/fd394ab7-855e-450e-95d7-99e76a9f71a5.png)
+
+# Exporting
+
+There are two export buttons at the bottom of the window. The first button, Export PCK/Zip, will only create a PCK, or packed, version of your project's data. This doesn't include an executable, so the game can't be run on its own. This method is useful if you need to provide add-ons or DLC (downloadable content) for your game.
+
+The second button, Export Project, will create an executable version of your game, such as an `.exe` for Windows or an `.apk` for Android.
+
+Click Save and you will have a playable version of your game.
+
+# Example – Coin Dash for Android
+
+If you have an Android device, you can follow this example to export the Coin Dash game for mobile platforms. For other platforms, see Godot's documentation at [http://docs.godotengine.org/en/latest/getting_started/workflow/export](http://docs.godotengine.org/en/latest/getting_started/workflow/export).
+
+Mobile devices come with a wide variety of capabilities. Always consult the official documentation in the preceding link for information on your platform and what restrictions, if any, may apply to your device. In most cases, Godot's default settings will work, but mobile development is sometimes more art than science, and you may need to do some experimenting and searching for help in order to get everything working.
+
+# Modifying the game
+
+Because the game as written in this chapter uses keyboard controls, you won't be able to play on a mobile device without making some changes. Fortunately, Godot has support for touchscreen input. First, open Project Settings, and in the Display/Window section, make sure Orientation is set to portrait and Emulate Touchscreen is On. This will let you test the program on your computer by treating mouse clicks as touch events:
+
+![](img/4eb1eb8d-99ac-4f82-b1f3-6384ea19731d.png)
+
+Next, you need to change the player controls. Instead of using the four direction inputs, the player will move toward the position of the touch event. Change the player script as follows:
+
+```cpp
+var target = Vector2()
+
+func _input(event):
+    if event is InputEventScreenTouch and event.pressed:
+        target = event.position
+
+func _process(delta):
+    velocity = (target - position).normalized() * speed
+    if (target - position).length() > 5:
+        position += velocity * delta
+    else:
+        velocity = Vector2()
+
+    if velocity.length() > 0:
+        $AnimatedSprite.animation = "run"
+        $AnimatedSprite.flip_h = velocity.x < 0
+    else:
+        $AnimatedSprite.animation = "idle"
+```
+
+Try it out and make sure that mouse clicks are causing the player to move. If everything is working, you're ready to set up your computer for Android development.
+
+# Preparing your system
+
+In order to export your project to Android, you'll need to download the Android **software development kit** (**SDK**) from [https://developer.android.com/studio/](https://developer.android.com/studio/) and the **Java Development Kit** (**JDK**) from [http://www.oracle.com/technetwork/java/javase/downloads/index.html](http://www.oracle.com/technetwork/java/javase/downloads/index.html).
+
+When you run Android Studio for the first time, click on Configure | SDK Manager and make sure that you install Android SDK Platform-Tools:
+
+![](img/21d5825c-db2c-4937-a628-28ef9f437ba1.png)
+
+This will install the `adb` command-line tool, which Godot uses to communicate with your device. 
+
+After you've installed the development tools, create a debug keystore by running the following command:
+
+```cpp
+keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999
+```
+
+In Godot, click on Editor | Editor Settings, find the Export/Android section, and set the paths to the applications on your system. Note that you'll only have to do this once, as the editor settings are independent of the project settings:
+
+![](img/427b20c5-a194-4c1c-90c3-f366cce2231e.png)
+
+# Exporting
+
+You're now ready to export. Click on Project | Export and add a preset for Android (see the previous section). Click the Export Project button and you'll have an **Android Package Kit** (**APK**) you can install on your device. You can do this with a graphical tool or from the command line using `adb`:
+
+```cpp
+adb install dodge.apk
+```
+
+Note that if your system supports it, connecting a compatible Android device will cause the one-click deploy button to appear in the Godot editor:
+
+![](img/90669180-e5d9-4972-aa5b-def88fe52334.png)
+
+Clicking this button will export the project and install it on your device in one step. Your device may need to be in developer mode for this to happen: consult your device's documentation for details.
+
+# Shaders
+
+A *shader* is a program that is designed to run in the GPU, and alters the way that objects appear on the screen. Shaders are used extensively in both 2D and 3D development to create a variety of visual effects. They are called shaders because they were originally used for shading and lighting effects, but today they are used for any number of visual effects. Because they run in the GPU in *parallel*, they are very fast, but also come with some restrictions.
+
+This section is a very brief introduction to the concept of shaders. For a more in-depth understanding, see [https://thebookofshaders.com/](https://thebookofshaders.com/) and Godot's shader documentation at [http://docs.godotengine.org/en/latest/tutorials/shading/shading_language.html](http://docs.godotengine.org/en/latest/tutorials/shading/shading_language.html).
+
+In Godot 3.0, shaders are written in a language very similar to GLSL ES 3.0\. If you are familiar with C, you will find the syntax very similar. If you are not, it may look strange to you at first. See the end of this section for links to further resources where you can learn more.
+
+Shaders in Godot come in three types: **spatial** (for 3D rendering), **canvas item** (for 2D), and **particles** (for rendering particle effects). The first line of your shader must declare which of these types you are writing.
+
+After determining the type of shader, you have another three choices of what render phase(s) you want to affect: fragment, vertex, and/or light. Fragment shaders are used to set the color of every affected pixel. Vertex shaders are used to modify the vertices of a shape or mesh (and thus are typically used more in 3D applications). Finally, light shaders are applied to alter the way light is processed for an object.
+
+After choosing the type(s) of your shader, you will then write code that will be run *simultaneously* on every affected item. This is where the real power of shaders comes from. For example, when using a fragment shader, the code is run on every pixel of the object at the same time. This is a very different process than what you might be used to using a traditional language, where you would loop over each pixel one at a time. That kind of sequential code just isn't fast enough to handle the huge number of pixels modern games need to process.
+
+Consider a game running at the relatively low resolution of 480 x 720\. The total number of pixels on the screen is almost 350,000\. Any manipulation of those pixels in code must happen in less than 1/60 of a second to avoid lag—even less when you consider the rest of your code that also has to run for every frame: game logic, animation, networking, and everything else. This is why GPUs are so important, especially for high-end games that may be processing millions of pixels for each frame.
+
+# Creating a shader
+
+To demonstrate some shader effects, create a scene with a `Sprite` node and choose any texture you like. This demo will use the cactus image from Coin Dash:
+
+![](img/463c0233-a0eb-4eb3-b277-c6735f6f8354.png)
+
+A shader can be added to any `CanvasItem` derived node—in this case, `Sprite`, via its Material property. In this property, select New Shader Material and click on the newly created resource. The first property is Shader, where you can choose a New Shader. When you do, a Shader panel appears at the bottom of the editor window.
+
+This is where you'll write your shader code:
+
+![](img/5a995e5d-f680-483a-a029-508304802b53.png)
+
+A blank shader looks like the following:
+
+```cpp
+shader_type canvas_item; // choose spatial, canvas_item, or particles
+
+void fragment(){
+    // code in this function runs on every pixel
+}
+
+void vertex() {
+    // code in this function runs on each vertex
+}
+
+void light() {
+    // code in this function affects light processing
+}
+```
+
+For the purposes of this example, you'll be coding a 2D-fragment shader, so you won't need to include the other two functions.
+
+Shader functions have a number of *built-ins*, which are either input values or output values. For example, the `TEXTURE` input built-in contains the pixel data of the object's texture, while the `COLOR` output built-in is used to set the result of your calculation. Remember, a fragment shader's purpose is to affect the color of every processed pixel.
+
+When working with shaders in the `TEXTURE` property, for example, coordinates are measured in a *normalized* (that is, ranging from `0` to `1`) coordinate space. This coordinate space is called `UV` to distinguish it from the *x*/*y* coordinate space:
+
+![](img/d858c8c4-b43a-4ca9-bf30-fd64569b5a9b.png)
+
+As a result, all values in coordinate vectors will range from `0` and `1`.
+
+As a very small example, this first shader will take the pixels of the cactus image and change them all to a single color. To allow you to choose the color, you can use a `uniform` variable.
+
+Uniforms allow you to pass data into the shader from outside. Declaring a `uniform` variable will cause it to appear in the Inspector (similar to how `export` works in GDScript) and also allow you to set it via code.
+
+Type the following code into the Shader panel:
+
+```cpp
+shader_type canvas_item;
+
+uniform vec4 fill_color:hint_color;
+
+void fragment(){
+    COLOR.rgb = fill_color.rgb;
+}
+```
+
+You should see the image change immediately: The whole image turns black. To select a different color, click on the Material in the inspector, and you'll see your `uniform` variable listed under Shader Param:
+
+![](img/26a67d2a-a8c8-48ce-aca6-15e29e85f6e5.png)
+
+You're not done, however. The image just turned to a colored rectangle, but you only want the cactus to change color, not its surrounding transparent pixels. Add one more line after setting `COLOR.rgb`:
+
+```cpp
+COLOR.a = texture(TEXTURE, UV).a;
+```
+
+This last line makes the shader output every pixel with the same alpha (transparency) value as the pixel in the original texture. Now the empty area around the cactus remains transparent, with an alpha of `0`.
+
+The following code shows one more example. In this shader, you create a blur effect by setting each pixel's color to the average value of the pixels around it:
+
+```cpp
+shader_type canvas_item;
+
+uniform float radius = 10.0;
+
+void fragment(){
+    vec4 new_color = texture(TEXTURE, UV);
+    vec2 pixel_size = TEXTURE_PIXEL_SIZE; // size of the texture in pixels
+
+    new_color += texture(TEXTURE, UV + vec2(0, -radius) * pixel_size);
+    new_color += texture(TEXTURE, UV + vec2(0, radius) * pixel_size);
+    new_color += texture(TEXTURE, UV + vec2(-radius, 0) * pixel_size);
+    new_color += texture(TEXTURE, UV + vec2(radius, 0) * pixel_size);
+
+    COLOR = new_color / 5.0;
+}
+```
+
+Note that since you've added five color values together (the original pixel's, plus the four that are found by moving in each direction around it), you need to divide by `5.0` to get the average value. The larger you make the `radius`, the more "smeared" the image looks: 
+
+![](img/b3bf98cc-b90a-414b-8220-ea3b88809136.png)
+
+# Learning more
+
+Shaders are capable of an amazing range of effects. Experimenting with Godot's shader language is a great way to learn the basics, but there is also a wealth of resources on the internet for learning more. When learning about shaders, you can use resources that aren't specific to Godot, and you shouldn't have much trouble getting them to work in Godot. The concept is the same across all types of graphics applications.
+
+To see some examples of just how powerful shaders can be, visit [https://www.shadertoy.com/](https://www.shadertoy.com/).
+
+# Using other languages
+
+The projects in this book have all been written using GDScript. GDScript has a number of advantages that make it the best choice for building your games. It is very tightly integrated with Godot's API, and its Python-style syntax makes it useful for rapid development while also being very beginner-friendly.
+
+It's not the only option, however. Godot also supports two other "official" scripting languages, and also provides tools for integrating code using a variety of other languages.
+
+# C#
+
+With the release of Godot 3.0 in early 2018, support was added for C# as a scripting language for the first time. C# is very popular in game development, and the Godot version is based on the Mono 5.2 .NET framework. Because of its wide use, there are many resources available for learning C# and a great deal of existing code in the language for accomplishing a variety of game-related functions.
+
+At the time of writing, the current Godot version is 3.0.2\. In this version, C# support should be considered preliminary; it is functional, but has not been fully tested. Some features and capabilities, such as exporting projects, are not yet supported.
+
+If you want to try out the C# implementation, you'll need to first make sure you have Mono installed, which you can get from [http://www.mono-project.com/download/](http://www.mono-project.com/download/). You must also download the Godot version that has C# support included, which you can find at [http://godotengine.org/download](http://godotengine.org/download) where it is labeled Mono Version.
+
+You'll probably also want to use an external editor—such as Visual Studio Code or MonoDevelop—that provides more debugging and language functionality than Godot's built-in editor. You can set this in Editor Settings under the Mono section.
+
+To attach a C# script to a node, select the language from the Attach Node Script dialog:
+
+![](img/8143f89b-e0ba-42c2-b9b4-e32f385fa9d9.png)
+
+In general, scripting in C# works very much the same as what you've seen with GDScript. The main difference is that API functions are renamed in `PascalCase` to follow C# standards instead of `snake_case`, which is the standard for GDScript.
+
+Here is an example of `KinematicBody2D` movement using C#:
+
+```cpp
+using Godot;
+using System;
+
+public class Movement : KinematicBody2D
+{
+    [Export] public int speed = 200;
+
+    Vector2 velocity = new Vector2();
+
+    public void GetInput()
+    {
+        velocity = new Vector2();
+        if (Input.IsActionPressed("right"))
+        {
+            velocity.x += 1;
+        }
+        if (Input.IsActionPressed("left"))
+        {
+            velocity.x -= 1;
+        }
+        if (Input.IsActionPressed("down"))
+        {
+            velocity.y += 1;
+        }
+        if (Input.IsActionPressed("up"))
+        {
+            velocity.y -= 1;
+        }
+        velocity = velocity.Normalized() * speed;
+    }
+
+    public override void _PhysicsProcess(float delta)
+    {
+        GetInput();
+        MoveAndSlide(velocity);
+    }
+}
+```
+
+For more details about using C#, see the **Scripting** section of the documentation at [http://docs.godotengine.org/en/latest/getting_started/scripting/](http://docs.godotengine.org/en/latest/getting_started/scripting/).
+
+# VisualScript
+
+Visual scripting is intended to provide an alternative scripting method using a drag-and-drop visual metaphor instead of written code. To create a script, you drag nodes (not to be confused with Godot's nodes) representing functions and data, and connect them by drawing lines. Running your script means following the path of the line through the nodes. The goal of this style of presentation is to provide a more intuitive way to visualize program flow for non-programmers, such as artists or animators, who need to collaborate on a project.
+
+In practice, this goal has yet to be reached in a practical way. Godot's VisualScript was also added for the first time in version 3.0, and it is currently not mature enough as a feature to be used in an actual project. As with C#, it should be considered in testing, and if you're interested in it, your testing and feedback will be very valuable to the Godot team in improving its functionality.
+
+One potential strength of VisualScript is to use it as a second layer of scripting. You can create an object's core behavior in GDScript, and then a game designer can use a VisualScript that calls the functions of those scripts in visual nodes.
+
+The following screenshot is an example VisualScript project. Here, you can see a portion of the player movement code in Coin Dash:
+
+![](img/403dd779-a314-4348-ac3e-e4a3cc6238de.png)
+
+The player movement code in Coin Dash
+
+# Native code – GDNative
+
+There are many programming languages to choose from. Each has its strengths and weaknesses, as well as its fans who prefer to use it over other options. While it doesn't make sense to support every language directly in Godot, there are situations where GDScript is no longer sufficient to solve a particular problem. Perhaps you want to use an existing external library, or you're doing something computationally intensive—such as AI or procedural world generation—that doesn't make sense for GDScript.
+
+Because GDScript is an interpreted language, it trades performance for flexibility. This means that for some processor-intensive code, it can run unacceptably slow. In this case, the highest performance would be achieved by running native code written in a compiled language. In this situation, you can move that code to a GDNative library.
+
+GDNative is a C API that can be used by external libraries to interface with Godot. These external libraries can be your own or any existing third-party libraries that you may need for a particular project.
+
+In GDScript, you can then use the `GDNative` and `GDNativeLibrary` classes to load and call functions from these libraries. The following code is an example of calling a library that has been saved as a `GDNativeLibrary` resource file:
+
+```cpp
+extends Node
+
+func _ready():
+    var lib = GDNative.new()
+    lib.library = load("res://somelib.tres")
+    lib.initialize()
+
+    // call functions in the library
+    var result = lib.call_native("call_type", "some_function", arguments_array)
+
+    lib.terminate()
+```
+
+Whereas, the library might look something like this (in C):
+
+```cpp
+#include <gdnative.h>
+
+void GDN_EXPORT godot_gdnative_init(godot_gdnative_init_options *p_options) {
+    // initialization code
+}
+
+void GDN_EXPORT godot_gdnative_terminate(godot_gdnative_terminate_options *p_options) {
+    // termination code
+}
+
+void GDN_EXPORT godot_nativescript_init(void *p_handle) {
+
+}
+
+godot_variant GDN_EXPORT some_function(void *args) {
+    // Do something
+}
+```
+
+Keep in mind that writing code like this is definitely more involved than sticking to pure GDScript. In a native language, you'll need to handle calling constructors and destructors for objects and manually manage working with Godot's `Variant` class. You should only resort to using GDNative when performance truly becomes an issue, and even then, only use it if the functionality really demands its use.
+
+If this section made no sense at all to you, don't worry. Most Godot developers will never need to delve into this side of development. Even if you find yourself needing higher-performance code, you may only need to look at the Asset library to find that someone has already created a library for you. You can find out about the Asset library in the next section.
+
+# Language bindings
+
+Another benefit of GDNative is that it has allowed proponents of other languages to create API bindings to enable scripting in those languages.
+
+At the time of writing, several projects are available that use GDNative to allow you to use other languages for scripting. These include C, C++, Python, Nim, D, Go, and others. While these additional language bindings are still relatively new at the time of writing, they each have a dedicated group of developers working on them. If you're interested in using a particular language with Godot, a Google search of "godot + <language name>" will help you find what's available.
+
+# Asset library
+
+At the top of the editor window, in the Workspaces section, you'll find a button labeled AssetLib:
+
+![](img/9ed44bb7-f49b-49aa-9336-47b72d373f85.png)
+
+Clicking this button will take you to Godot's Asset library. This is a collection of add-ons, tools, and utilities contributed by the Godot community that you may find useful in your projects. For example, if you search for `State`, you'll see that there is a tool called **finite state machine** (**FSM**) available in the library. You can click on its name for more information, and if you decide you want to try it out, click Install to download it into the `res://addons/` folder, which will be created if it doesn't already exist:
+
+![](img/bc9864cf-eea1-4b42-816d-0d89d179ab23.png)
+
+You then need to enable the add-on by opening Project Settings and choosing the Plugins tab:
+
+![](img/2f864cfb-035c-48bb-9947-8a0e34926305.png)
+
+The plugin is now ready to use. Be sure to read the plugin author's instructions to understand how it works.
+
+# Contributing to Godot
+
+Godot is an open source, community-driven project. All of the work that's done to build, test, document, and otherwise support Godot is done primarily by passionate individuals contributing their time and skills. For the majority of contributors, it is a labor of love, and they take pride in helping to build something of quality that people enjoy using.
+
+In order for Godot to continue growing and improving, there is always a need for more members of the community to step up and contribute. There are many ways you can help out, regardless of your skill level or the amount of time you can commit.
+
+# Contributing to the engine
+
+There are two main ways you can directly contribute to Godot's development. If you visit [https://github.com/godotengine/godot](https://github.com/godotengine/godot), you can see Godot's source code, as well as find out exactly what's being worked on. Click the Clone or Download button, and you'll have the up-to-the-minute source code and can test out the latest features. You'll need to build the engine, but don't be intimidated: Godot is one of the easiest open source projects to compile that you'll find. See [http://docs.godotengine.org/en/latest/development/compiling/](http://docs.godotengine.org/en/latest/development/compiling/) for instructions.
+
+If you're not able to actually contribute to the C++ code, go to the Issues tab, where you can report or read about bugs and suggestions for improvements. There is always a need for people to confirm bug reports, test fixes, and give their opinions on new features.
+
+# Writing documentation
+
+Godot's official documentation is only as good as its community's contributions. From something as small as correcting a typo to writing an entire tutorial, all levels of help are very welcome. The home of the official documentatin is [https://github.com/godotengine/godot-docs](https://github.com/godotengine/godot-docs). 
+
+Hopefully, by now you've taken some time to browse through the official documentation and get an idea of what's available. If you spot something wrong or something missing, open an issue at the aforementioned GitHub link. If you're comfortable with using GitHub, you can even go ahead and submit a pull request yourself. Just make sure you read all the guidelines first so that your contribution will be accepted. You can find the guidelines at [http://docs.godotengine.org/en/latest/community/contributing/](http://docs.godotengine.org/en/latest/community/contributing/).
+
+If you speak a language other than English, translations are also very much needed, and will be greatly appreciated by Godot's non-English-speaking users. See [https://hosted.weblate.org/projects/godot-engine/godot-docs/](https://hosted.weblate.org/projects/godot-engine/godot-docs/) for how to contribute in your language.
+
+# Donations
+
+Godot is a not-for-profit project, and user donations go a long way to help pay for hosting costs and development resources, such as hardware. Financial contributions also allow the project to pay core developers, allowing them to dedicate themselves part- or full-time to working on the engine.
+
+The easiest way to contribute to Godot is via the Patreon page at [https://www.patreon.com/godotengine](https://www.patreon.com/godotengine).
+
+# Getting help – community resources
+
+Godot's online community is one of its strengths. Because of its open source nature, there is a wide variety of people working together to improve the engine, write documentation, and help each other with issues.
+
+You can find a full list of community resources at [https://godotengine.org/community](https://godotengine.org/community).
+
+These links may change over time, but the following are the main community resources you should be aware of.
+
+# GitHub
+
+** [https://github.com/godotengine/](https://github.com/godotengine/)**
+
+The Godot GitHub repository is where Godot's developers work. You can find Godot's source code here, if you find yourself needing to compile a custom version of the engine for your own use.
+
+If you find any kind of problem with the engine itself—something that doesn't work, a typo in the documentation, and so on—this is the place where you should report it.
+
+# Godot Q and A
+
+[https://godotengine.org/qa/](https://godotengine.org/qa/)
+
+This is Godot's official help site. You can post questions here for the community to answer, as well as search the growing database of previously answered questions. If you happen to see a question you know the answer to, you can help out as well.
+
+# Discord / Forum
+
+[https://discord.gg/zH7NUgz](https://discord.gg/zH7NUgz)
+
+[http://godotdevelopers.org/](http://godotdevelopers.org/)
+
+While not *official*, these are two very active communities of Godot users where you can get help, find answers to questions, and discuss your project with others.
+
+# Summary
+
+In this chapter, you learned about a few additional topics that will help you continue to level up your Godot skills. Godot has a great many features in addition to those explored in this book. You'll need to know where to look and where to ask for help as you move on to working on projects of your own.
+
+You also learned about some more advanced topics, such as working with other programming languages and using shaders to enhance your game's visual effects.
+
+In addition, since Godot is built by its community, you learned how you can participate and become part of the team that is making it one of the fastest-growing projects of its kind.

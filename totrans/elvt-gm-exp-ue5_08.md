@@ -1,0 +1,927 @@
+# 8
+
+# Creating User Interfaces with UMG
+
+In the previous chapter, we learned about general-purpose utilities that allow you to properly structure and organize the code and assets in your project by using blueprint function libraries, actor components, and interfaces.
+
+In this chapter, we will dive into the topic of game **User Interfaces** (**UIs**), which are present in almost every video game. The game UI is one of the main ways in which to show information to the player, such as how many lives they have left, how many bullets are in their weapon, which weapon they are carrying, and more. It also allows the player to interact with the game by choosing whether to continue the game, create a new game, choose which level they want to play in, and more. This is shown to the player mostly in the form of images and text.
+
+In this chapter, we’ll cover the following topics:
+
+*   Game UI
+*   UMG basics
+*   Introducing anchors
+*   Understanding progress bars
+
+# Technical requirements
+
+The project for this chapter can be found in the Chapter08 folder of the code bundle for this book, which can be downloaded here: [https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition).
+
+# Game UI
+
+Usually, UIs are added on top of the rendering of the game, which means that they are in front of everything else you see in the game and behave as layers (you can add them on top of one another just like in Photoshop). However, there is an exception to this: *diegetic UI*. This type of UI isn’t layered onto the game’s screen but rather exists inside the game itself. A great example of this can be found in the game *Dead Space*, where you control a character in a third-person view, and can see their health points by looking at the contraption attached to their back, inside the game world.
+
+There are usually two different types of game UI: **menus** and **HUDs**.
+
+Menus are UI panels that allow the player to interact with them, either by pressing a button or a key on their input device.
+
+This can be done in the form of many different menus, including the following:
+
+*   Main menus, where the player can choose whether to continue the game, create a new game, exit the game, and more
+*   Level select menus, where the player can choose which level to play
+*   Many other options
+
+HUDs are UI panels that are present during gameplay. They give the player information that they should always know, such as how many lives they have left, which special abilities they can use, and more.
+
+In this chapter, we will be covering game UI and how to make both a menu and a HUD for our game.
+
+Note
+
+We won’t be covering diegetic UI here, as it is beyond the scope of this book.
+
+So, how do we go about creating a game UI in UE5? The main way to do it is by using **Unreal Motion Graphics** (**UMG**), which is the tool that allows you to make a game UI (also called widgets in UE5 terms), featuring menus and HUDs, and add them to the screen.
+
+Let’s jump into this topic in the following section.
+
+# UMG basics
+
+In UE5, the main way to create a game UI is by using the `Graph` tab.
+
+Widgets are the way UE5 allows you to represent a game UI. Widgets can be basic UI elements such as `Image` elements, but they can also be combined to create more complex and complete widgets, such as menus and HUDs, which is exactly what we will be doing in this chapter.
+
+In the following exercise, let’s create our first widget in UE5 using the UMG tool.
+
+## Exercise 8.01 – creating a Widget Blueprint
+
+In this exercise, we will be creating our first Widget Blueprint. Additionally, we will be learning about the basic elements of UMG and how we can use them to create a game UI.
+
+The following steps will help you to complete this exercise:
+
+1.  In order to create our first widget, open the editor, go to the **ThirdPersonCPP -> Blueprints** folder inside the **Content Browser** section, and *right-click*.
+2.  Go to the very last section, **User Interface**, and select **Widget Blueprint**.
+3.  After that, select **UserWidget** from the list of parent classes available:
+
+![Figure 8.1 – Selecting the UserWidget parent class ](img/Figure_8.01_B18531.jpg)
+
+Figure 8.1 – Selecting the UserWidget parent class
+
+Selecting this option will create a new `Widget Blueprint` asset, which is the name of a widget asset in UE5.
+
+1.  Name this widget `TestWidget` and open it. You will see the interface for editing a Widget Blueprint, where you’ll be creating your own widgets and UI. Here’s a breakdown of all the tabs present in this window:
+
+![Figure 8.2 – The Widget Blueprint editor broken down into six windows ](img/Figure_8.02_B18531.jpg)
+
+Figure 8.2 – The Widget Blueprint editor broken down into six windows
+
+The details about the tabs in the preceding screenshot are listed as follows:
+
+*   `Button` elements, `Text Box` elements, `Image` elements, `Slider` elements, `Check Box` elements, and more.
+*   **Hierarchy** – This tab shows you all the UI elements currently present in your widget. As you can see, currently, we only have a **Canvas Panel** element in our hierarchy.
+*   **Designer** – This tab shows you how your widget looks visually, according to the elements present in the hierarchy, and how they’re laid out. Because the only element we currently have in our widget doesn’t have a visual representation, this tab is currently empty.
+*   **Details** – This tab shows you the properties of the UI element you have currently selected. If you select the existing **Canvas Panel** element, all the options in the preceding screenshot should appear.
+*   Because this asset is a `Widget Blueprint` asset, these two buttons allow you to switch between the **Designer** view, which is the one presented in the screenshot, and the **Graph** view, which looks exactly like the window of a normal blueprint class.
+
+1.  Now, let’s look at some of the available UI elements in our `Canvas Panel` element.
+2.  Usually, **Canvas Panel** elements are added to the root of Widget Blueprints because they allow you to drag a UI element to any position you want in the **Designer** tab. This way, you can lay out these elements as you wish: at the center of the screen, in the upper-left corner, at the bottom center of the screen, and more. Now, let’s drag another very important UI element into our widget: a **Button** element. In order to add a **Canvas Panel** element to your widget, go to the **Panel** category inside the **Palette** window and drag a **Canvas Panel** element into your widget’s root inside the **Hierarchy** window (the first piece of text that says **[TestWidget]**) or inside the **Designer** window:
+
+![Figure 8.3 – Dragging the Canvas Panel element into the Hierarchy window ](img/Figure_8.03_B18531.jpg)
+
+Figure 8.3 – Dragging the Canvas Panel element into the Hierarchy window
+
+1.  In the **Palette** tab, find the **Button** element and drag it into the **Designer** window (hold the left mouse button while you drag):
+
+![Figure 8.4 – A Button element being dragged from the Palette window into the Designer window ](img/Figure_8.04_B18531.jpg)
+
+Figure 8.4 – A Button element being dragged from the Palette window into the Designer window
+
+Once you have done this, you’ll be able to resize the button to the size you want by dragging the little white dots around it (keep in mind that you’ll only be able to do this to an element that is inside a **Canvas Panel** element):
+
+![Figure 8.5 – The result of resizing a UI element using the white dots around it ](img/Figure_8.05_B18531.jpg)
+
+Figure 8.5 – The result of resizing a UI element using the white dots around it
+
+Another way for you to drag elements inside each other in a widget is to drag them inside the **Hierarchy** tab instead of the **Designer** tab.
+
+1.  Now drag a `Text` element inside our **Button** element, but this time, use the **Hierarchy** tab:
+
+![Figure 8.6 – Dragging a Text element from the Palette window into the Hierarchy window ](img/Figure_8.06_B18531.jpg)
+
+Figure 8.6 – Dragging a Text element from the Palette window into the Hierarchy window
+
+`Text` elements can contain text specified by you with a certain size and font that you can modify in the `Details` panel. After you’ve dragged the `Text` element inside the `Button` element using the `Hierarchy` tab, this is what the `Designer` tab should look like:
+
+![Figure 8.7 – The Button element in the Designer tab, after adding a Text element as its child ](img/Figure_8.07_B18531.jpg)
+
+Figure 8.7 – The Button element in the Designer tab, after adding a Text element as its child
+
+Let’s change a few properties of the preceding `Text` block.
+
+1.  Select it in either the `Hierarchy` tab or the **Designer** tab, and take a look at the **Details** panel:
+
+![Figure 8.8 – The Details panel, showing the properties of the Text element we added ](img/Figure_8.08_B18531.jpg)
+
+Figure 8.8 – The Details panel, showing the properties of the Text element we added
+
+Here, you’ll find several properties that you can edit to your liking. For now, we just want to focus on two of them: the content of the text and its color and opacity.
+
+1.  Update the **Content** tab of the **Text** **element** from **Text Block** to **Button 1**:
+
+![Figure 8.9 – Changing the Text property of the Text element to Button 1 ](img/Figure_8.09_B18531.jpg)
+
+Figure 8.9 – Changing the Text property of the Text element to Button 1
+
+Next, let’s change the `Color and Opacity` property setting from `White` to `Black`.
+
+1.  Click on the `Color` property in UE5\. It allows you to input colors in many different ways, including a color wheel, **Saturation** and **Value** bars, **RGB** and **HSV** value sliders, and more.
+2.  For now, change the color from white to black by dragging the **Value** bar (the one that goes from white to black from top to bottom) all the way to the bottom and then pressing **OK**:
+
+![Figure 8.10 – Selecting the color black in the Color Picker window ](img/Figure_8.10_B18531.jpg)
+
+Figure 8.10 – Selecting the color black in the Color Picker window
+
+1.  After these changes, this is what the button should look like:
+
+![Figure 8.11 – The Button element after we change the Text element’s Text property and its color ](img/Figure_8.11_B18531.jpg)
+
+Figure 8.11 – The Button element after we change the Text element’s Text property and its color
+
+And with that, we conclude our first exercise of this chapter. You now know some of the essential basics of UMG, such as how to add `Button` and `Text` elements to your widgets.
+
+Before we jump into our next exercise, first, let’s learn about anchors.
+
+# Introducing anchors
+
+As you might be aware, video games are played on many different screen sizes with many different resolutions. Because of that, it is important to make sure that the menus you create can adapt to all these different resolutions effectively. That is the main purpose of **Anchors**.
+
+Anchors allow you to specify how you want a UI element’s size to adapt as the screen resolution changes by specifying the proportion of the screen you want it to occupy. Using anchors, you can always have a UI element in the upper-left corner of the screen, or always occupying half of the screen, no matter the size and resolution of that screen.
+
+As the size of the screen or resolution changes, your widget will scale and move relative to its anchor. Only elements that are direct children of a `Canvas Panel` element can have an anchor, which you can visualize through the `Designer` tab) when you select said element:
+
+![Figure 8.12 – The Anchor Medallion in the upper-left corner of the outline, as shown in the Designer window ](img/Figure_8.12_B18531.jpg)
+
+Figure 8.12 – The Anchor Medallion in the upper-left corner of the outline, as shown in the Designer window
+
+By default, the anchor is collapsed into the upper-left corner, which means that you won’t have much control over how the button is scaled as the resolution changes. Let’s change that in the next exercise.
+
+## Exercise 8.02 – editing UMG anchors
+
+In this exercise, we will be changing the anchors in our widget in order to have our button’s size and shape adapt to a wide range of screen resolutions and sizes.
+
+The following steps will help you to complete this exercise:
+
+1.  Select the button we created in the previous exercise. Then, head to the `Anchor` presets, which will align the UI element according to the pivots shown.
+
+We’ll want to have our button centered on the screen.
+
+1.  Click on the pivot that’s at the center of the screen:
+
+![Figure 8.13 – The button’s Anchors property, with the center Anchor preset outlined in a box ](img/Figure_8.13_B18531.jpg)
+
+Figure 8.13 – The button’s Anchors property, with the center Anchor preset outlined in a box
+
+You’ll see that our Anchor Medallion has now changed places:
+
+![Figure 8.14 – The Anchor Medallion after we change the button’s Anchor property to the center ](img/Figure_8.14_B18531.jpg)
+
+Figure 8.14 – The Anchor Medallion after we change the button’s Anchor property to the center
+
+Now that the Anchor Medallion is at the center of the screen, we still won’t have much control over how the button will scale across different resolutions, but at least we know that it’ll scale relative to the center of the screen.
+
+In order to have our button centered on the screen, we’ll have to change the button’s position to be at the center of the screen, too.
+
+1.  Repeat the previous step of picking the center anchor, but this time, before you select it, hold the *Ctrl* key in order to snap the button’s position to this anchor. After you click on it, release the *Ctrl* key. You should see a result similar to the following screenshot:
+
+![Figure 8.15 – The Button element being moved near its selected anchor in the center ](img/Figure_8.15_B18531.jpg)
+
+Figure 8.15 – The Button element being moved near its selected anchor in the center
+
+As you can see from the preceding screenshot, our button has changed position, but it isn’t properly centered on the screen yet. That is because of its alignment.
+
+The `Alignment` property is of the `Vector2D` type (a tuple with two `float` properties: `X` and `Y`) and dictates the center of the UI element relative to its total size. By default, it’s set to `(0,0)`, meaning the center of the element is its upper-left corner, which explains the result in the preceding screenshot. It can go all the way to `(1,1)`, which is the lower-right corner. In this case, given that we want the alignment to center the button, we want it to be `(0.5, 0.5)`.
+
+1.  In order to update a UI element’s alignment when picking an `Anchor` point, you have to hold the *Shift* key and repeat the previous step. Alternately, to update both the position and the alignment of the button, picking the center `Anchor` point while holding both the *Ctrl* and *Shift* keys will do the job. The following screenshot should then be the result:
+
+![Figure 8.16 – The Button element being centered relative to its selected Anchor point in the center ](img/Figure_8.16_B18531.jpg)
+
+Figure 8.16 – The Button element being centered relative to its selected Anchor point in the center
+
+At this point, when changing the resolution of the screen, we know that this button will always remain at the center of the screen. However, in order to maintain the button’s size relative to the resolution, we’ll need to make a few more modifications.
+
+1.  Drag the lower-right *petal* of the Anchor Medallion all the way to the lower-right corner of the button:
+
+![Figure 8.17 – Dragging the lower-right petal of the Anchor Medallion to update the Button element’s Anchor point ](img/Figure_8.17_B18531.jpg)
+
+Figure 8.17 – Dragging the lower-right petal of the Anchor Medallion to update the Button element’s Anchor point
+
+1.  Drag the upper-left *petal* of the Anchor Medallion all the way to the upper-left corner of the button:
+
+![Figure 8.18 – Dragging the upper-left petal of the Anchor Medallion to update the Button element’s Anchor ](img/Figure_8.18_B18531.jpg)
+
+Figure 8.18 – Dragging the upper-left petal of the Anchor Medallion to update the Button element’s Anchor
+
+Note
+
+The percentages you see around the button when changing the `Anchor` point are the space the element is occupying on the screen, shown as a percentage. For instance, looking at the preceding screenshot, we can see that the button is occupying `11.9%` of the widget’s space on the *X* coordinate and `8.4%` of the widget’s space on the *Y* coordinate.
+
+You can set the size of a UI element to the size of its anchor by holding the *Ctrl* key while moving the Anchor Medallion *petals*.
+
+Now our button will, finally, adapt to varying screen sizes and resolutions due to these changes to its anchor.
+
+Additionally, you can use the `Details` panel to manually edit all of the properties we just edited by using the Anchor Medallion and moving the button:
+
+![Figure 8.19 – The properties we changed using the Anchor Medallion, as shown in the Details window ](img/Figure_8.19_B18531.jpg)
+
+Figure 8.19 – The properties we changed using the Anchor Medallion, as shown in the Details window
+
+Lastly, we need to know how we can visualize our widget with different resolutions in the `Designer` tab.
+
+1.  Drag the double arrow in the lower-right corner of the outlined box inside the `Designer` tab:
+
+![Figure 8.20 – The double arrow in the lower-right corner of the outlined box inside the Designer tab ](img/Figure_8.20_B18531.jpg)
+
+Figure 8.20 – The double arrow in the lower-right corner of the outlined box inside the Designer tab
+
+By dragging the double arrow, you can resize the canvas to any screen resolution you want. In the following screenshot, you’ll see the most used resolutions for a variety of devices, and you can preview your widget in each of them:
+
+![Figure 8.21 – The resolutions we can choose to preview in the Designer window ](img/Figure_8.21_B18531.jpg)
+
+Figure 8.21 – The resolutions we can choose to preview in the Designer window
+
+Note
+
+You can find a full reference to UMG’s anchors at [https://docs.unrealengine.com/en-US/Engine/UMG/UserGuide/Anchors](https://docs.unrealengine.com/en-US/Engine/UMG/UserGuide/Anchors).
+
+And that concludes our exercise. You’ve learned about anchors and how to adapt your widgets to varying screen sizes and resolutions.
+
+Now that we’ve learned about some of the basics of UMG, let’s see how we can create a widget C++ class for this Widget Blueprint. That is what we’re going to do in the next exercise.
+
+## Exercise 8.03 – creating the RestartWidget C++ class
+
+In this exercise, we will learn how to create a widget C++ class, which the Widget Blueprint that we created will inherit from. It will get added to the screen when the player dies in our **Dodgeball** game so that the player can have the option to restart the level. This widget will have a button that will restart the level when the player clicks on it.
+
+The first step of this exercise will be adding the UMG-related modules to our project. Unreal Engine comprises several different modules, and in each project, you have to specify which ones you’re going to use. Our project came with a few general modules when the source code files were generated, but we’ll need to add a few more.
+
+The following steps will help you complete this exercise:
+
+1.  Open the `Dodgeball.build.cs` file, which is a C# file and not a C++ file, located inside your project’s `Source` folder.
+2.  Open the file, and you’ll find the `AddRange` function from the `PublicDependency ModuleNames` property being called. This is the function that tells the engine which modules this project intends to use. As a parameter, an array of strings is sent, with the names of all the intended modules for the project. Given that we intend on using UMG, we’ll need to add the UMG-related modules: `UMG`, `Slate`, and `SlateCore`:
+
+    ```cpp
+    PublicDependencyModuleNames.AddRange(new string[] { "Core", 
+      "CoreUObject", "Engine", "InputCore", 
+      "EnhancedInput", "HeadMountedDisplay", "UMG", 
+      "Slate", "SlateCore" });
+    ```
+
+Now that we’ve notified the engine that we’ll be using the UMG modules, let’s create our widget C++ class:
+
+1.  Open the Unreal Editor interface.
+2.  Right-click on the **Content Browser** section and select **New C++ Class**.
+3.  Set the **Show All Classes** checkbox to **true**.
+4.  Search for the `UserWidget` class and choose that as the new class’s parent class.
+5.  Name the new C++ class `RestartWidget`.
+
+After the files have been opened in Visual Studio, start making modifications to our widget C++ class, as mentioned in the next steps.
+
+1.  The first thing we’ll add to this class is a `public` `class UButton*` property, called `RestartButton`, which represents the button the player will press in order to restart the level. You will want it to be bound to a button in the blueprint class that inherits from this class, by using the `UPROPERTY` macro with the `BindWidget` meta tag. This will force that Widget Blueprint to have a `Button` element, called `RestartButton`, that we can access in C++ through this property and then freely edit its properties, such as its size and position, in the blueprint:
+
+    ```cpp
+    UPROPERTY(meta = (BindWidget))
+    class UButton* RestartButton;
+    ```
+
+Note
+
+Using the `BindWidget` meta tag will cause a compilation error if the Widget Blueprint that inherits from this C++ class doesn’t have an element with the same type and name. If you don’t want this to happen, you will have to mark `UPROPERTY` as an optional `BindWidget` like so:
+
+`UPROPERTY(meta = (BindWidget, OptionalWidget = true))`
+
+This will make it so that binding this property is optional and doesn’t cause a compilation error when compiling the Widget Blueprint.
+
+Next, we’re going to add the function that will be called when the player clicks on the `RestartButton` property, which will restart the level. We will be doing this using the `GameplayStatics` object’s `OpenLevel` function and then sending the name of the current level.
+
+1.  In the widget class’s header file, add a declaration for a `protected` function called `OnRestartClicked` that returns nothing and receives no parameters. This function must be marked as `UFUNCTION`:
+
+    ```cpp
+    protected:
+    UFUNCTION()
+    void OnRestartClicked();
+    ```
+
+2.  In the class’s source file, add an `include` for the `GameplayStatics` object:
+
+    ```cpp
+    #include "Kismet/GameplayStatics.h"
+    ```
+
+3.  Then, add an implementation for our `OnRestartClicked` function:
+
+    ```cpp
+    void URestartWidget::OnRestartClicked()
+    {
+    }
+    ```
+
+4.  Inside this implementation, call the `GameplayStatics` object’s `OpenLevel` function. This function receives, as parameters, a world context object, which will be the `this` pointer, and the name of the level, which we’ll have to fetch using the `GameplayStatics` object’s `GetCurrentLevelName` function. Additionally, this last function must receive a world context object, which will also be the `this` pointer:
+
+    ```cpp
+    UGameplayStatics::OpenLevel(this, 
+      FName(*UGameplayStatics::GetCurrentLevelName(
+      this)));
+    ```
+
+Note
+
+The call to the `GameplayStatics` object’s `GetCurrentLevelName` function must be preceded with `*` because it returns an `FString` type, UE5’s string type, and must be dereferenced in order to be passed to the `FName` constructor.
+
+The next step will be to bind this function in such a way that it is called when the player presses the `RestartButton` property:
+
+1.  In order to do this, we’ll have to override a function that belongs to the `UserWidget` class, called `NativeOnInitialized`. This function is only called once, similarly to the actor’s `BeginPlay` function, which makes it appropriate to do our setup. Add a declaration for the `public` `NativeOnInitialized` function with both the `virtual` and `override` keywords in our widget class’s header file:
+
+    ```cpp
+    virtual void NativeOnInitialized() override;
+    ```
+
+2.  Next, in the class’s source file, add the implementation of this function. Inside it, call its `Super` function and add an `if` statement that checks whether our `RestartButton` property is different from `nullptr`:
+
+    ```cpp
+    void URestartWidget::NativeOnInitialized()
+    {
+      Super::NativeOnInitialized();
+      if (RestartButton != nullptr)
+      {
+      }
+    }
+    ```
+
+3.  If the `if` statement is true, we’ll want to bind our `OnRestartClicked` function to the button’s `OnClicked` event. We can do this by accessing the button’s `OnClicked` property and calling its `AddDynamic` function. This sends, as parameters, the object we want to call that function on, the `this` pointer, and a pointer to the function to be called, that is, the `OnRestartClicked` function:
+
+    ```cpp
+    if (RestartButton != nullptr)
+    {
+      RestartButton->OnClicked.AddDynamic(this, 
+      &URestartWidget::OnRestartClicked);
+    }
+    ```
+
+4.  Because we’re accessing functions related to the `Button` class, we’ll also have to include it:
+
+    ```cpp
+    #include "Components/Button.h"
+    ```
+
+Note
+
+A button’s `OnClicked` event will be called when the player presses and releases that button with the mouse. There are other events related to the button, including the `OnPressed` event (when the player presses the button), the `OnReleased` event (when the player releases the button), and the `OnHover` and `OnUnhover` events (when the player, respectively, starts and stops hovering the mouse over that button).
+
+The `AddDynamic` function must receive, as a parameter, a pointer to a function marked with the `UFUNCTION` macro. If it doesn’t, you will get an error when calling that function. This is why we marked the `OnRestartClicked` function with the `UFUNCTION` macro.
+
+After you’ve done these steps, compile your changes and open the editor.
+
+1.  Open the `TestWidget` Widget Blueprint that you created earlier. We’ll want to associate this Widget Blueprint with the `RestartWidget` class we just created, so we need to reparent it.
+2.  From the Widget Blueprint’s `RestartWidget` C++ class as its new parent class:
+
+![Figure 8.22 – Reparenting the TestWidget’s class to RestartWidget ](img/Figure_8.22_B18531.jpg)
+
+Figure 8.22 – Reparenting the TestWidget’s class to RestartWidget
+
+You’ll notice that the Widget Blueprint now has a compilation error related to the `BindWidget` meta tag that we created in the C++ class:
+
+![Figure 8.23 – Compiler errors after setting the parent class to the RestartWidget class ](img/Figure_8.23_B18531.jpg)
+
+Figure 8.23 – Compiler errors after setting the parent class to the RestartWidget class
+
+This is caused by the fact that the C++ class couldn’t find a `Button` property called `RestartButton`.
+
+In order to fix this, we’ll need to rename our `Button` element inside the Widget Blueprint to `RestartButton`:
+
+![Figure 8.24 – Renaming the Button element to RestartButton ](img/Figure_8.24_B18531.jpg)
+
+Figure 8.24 – Renaming the Button element to RestartButton
+
+After you’ve done this, close the Widget Blueprint and change its name from `TestWidget` to `BP_RestartWidget`, the same way you just did in the previous step.
+
+That concludes the creation of our widget class. Now, you understand how to connect a widget C++ class to a Widget Blueprint, which is a very important step toward handling game UI in UE5.
+
+The next thing we need to do is create our `Player Controller` C++ class, which will be responsible for instantiating our `RestartWidget` class and adding it to the screen. We will be doing this in the following exercise.
+
+## Exercise 8.04 – creating the logic for adding the RestartWidget class to the screen
+
+In this exercise, we will create the logic responsible for adding our newly created `RestartWidget` class to the screen. It will appear on the screen when the player dies so that they have the option to restart the level.
+
+In order to do this, we’ll have to create a new `Player Controller` C++ class, which you can do by following these steps:
+
+1.  Open the Unreal Editor interface.
+2.  *Right-click* on the `Content Browser` section and select `New C++ Class`.
+3.  Search for the `Player Controller` class and choose that as the new class’s parent class.
+4.  Name the new C++ class `DodgeballPlayerController`.
+5.  Open the class’s files in Visual Studio.
+
+When our player runs out of health points, the `DodgeballCharacter` class will access this `Player Controller` class and call a function that will add the `RestartWidget` class to the screen. Follow these next steps in order to make this happen.
+
+In order to know the class of the widget to add to the screen (which will be a Widget Blueprint asset and not a Widget C++ class), we’ll need to use the `TSubclassOf` type.
+
+1.  In the class’s header file, add a `public` `TSubclassOf<class URestartWidget>` property called `BP_RestartWidget`. Be sure to make it a `UPROPERTY` function with the `EditDefaultsOnly` tag so that we can edit it in the blueprint class:
+
+    ```cpp
+    public:
+    UPROPERTY(EditDefaultsOnly)
+    TSubclassOf<class URestartWidget> BP_RestartWidget;
+    ```
+
+In order to instantiate this widget and add it to the screen, we’ll need to save a reference to it.
+
+1.  Add a new `private` variable of the `class URestartWidget*` type and call it `RestartWidget`. Be sure to make it a `UPROPERTY` function with no tags:
+
+    ```cpp
+    private:
+    UPROPERTY()
+    class URestartWidget* RestartWidget;
+    ```
+
+Note
+
+Although this property isn’t supposed to be editable in a blueprint class, we have to make this reference a `UPROPERTY` function; otherwise, the garbage collector will destroy the contents of this variable.
+
+The next thing we need is a function responsible for adding our widget to the screen.
+
+1.  Add a declaration for a `public` function that returns nothing and receives no parameters, called `ShowRestartWidget`:
+
+    ```cpp
+    void ShowRestartWidget();
+    ```
+
+2.  Now, head to our class’s source file. First, add an `include` to the `RestartWidget` class:
+
+    ```cpp
+    #include "RestartWidget.h"
+    ```
+
+3.  Then, add the implementation of our `ShowRestartWidget` function, where we’ll start by checking whether our `BP_RestartWidget` variable is not a `nullptr` variable:
+
+    ```cpp
+    void ADodgeballPlayerController::ShowRestartWidget()
+    {
+      if (BP_RestartWidget != nullptr)
+      {
+      }
+    }
+    ```
+
+4.  If that variable is valid (different from `nullptr`), we want to pause the game using the `SetPause` function of **Player Controller**. This will ensure that the game stops until the player decides to do something (which, in our case, will be pressing the button that restarts the level):
+
+    ```cpp
+    SetPause(true);
+    ```
+
+The next thing we’ll do is change the input mode. In UE5, there are three input modes: `Game Only`, `Game and UI`, and `UI Only`. If your Input mode includes `Game`, that means that the player character and the player controller will receive inputs through the input actions. If your `Input` mode includes `UI`, that means that the widgets that are on the screen will receive inputs from the player. When we show this widget on the screen, we won’t want the player character to receive any input.
+
+1.  Hence, update to the `UI Only` `Input` mode. You can do this by calling the `Player Controller` `SetInputMode` function and passing the `FInputModeUIOnly` type as a parameter:
+
+    ```cpp
+    SetInputMode(FInputModeUIOnly());
+    ```
+
+Following this, we want to show the mouse cursor so that the player can see which button they are hovering the mouse on.
+
+1.  We will do this by setting the `Player Controller` `bShowMouseCursor` property to `true`:
+
+    ```cpp
+    bShowMouseCursor = true;
+    ```
+
+2.  Now, we can actually instantiate our widget using the `Player Controller`’s `CreateWidget` function, passing as a template parameter the C++ Widget class, which, in our case, is `RestartWidget`. Then, as normal parameters, we will pass Owning Player, which is the `Player Controller` class that owns this widget and that we’ll send using the `this` pointer, and the widget class, which will be our `BP_RestartWidget` property:
+
+    ```cpp
+    RestartWidget = CreateWidget<URestartWidget>(this, 
+      BP_RestartWidget);
+    ```
+
+3.  After we instantiate the widget, we’ll want to add it to the screen, using the widget’s `AddToViewport` function:
+
+    ```cpp
+    RestartWidget->AddToViewport();
+    ```
+
+4.  That concludes our `ShowRestartWidget` function. However, we also need to create the function that will remove the `RestartWidget` class from the screen. In the class’s header file, add a declaration for a function just like the `ShowRestartWidget` function, but this time called `HideRestartWidget`:
+
+    ```cpp
+    void HideRestartWidget();
+    ```
+
+5.  In the class’s source file, add the implementation for the `HideRestartWidget` function:
+
+    ```cpp
+    void ADodgeballPlayerController::HideRestartWidget()
+    {
+    }
+    ```
+
+6.  The first thing we should do in this function is to remove the widget from the screen by calling its `RemoveFromParent` function, and destroy it using the `Destruct` function:
+
+    ```cpp
+    RestartWidget->RemoveFromParent();
+    RestartWidget->Destruct();
+    ```
+
+7.  Then, we want to unpause the game using the `SetPause` function we used in the previous function:
+
+    ```cpp
+    SetPause(false);
+    ```
+
+8.  Finally, let’s set the `Input` mode to `Game Only` and hide the mouse cursor in the same way we did in the previous function (this time, we pass the `FInputModeGameOnly` type instead):
+
+    ```cpp
+    SetInputMode(FInputModeGameOnly());
+    bShowMouseCursor = false;
+    ```
+
+And that concludes the logic for our `Player Controller` C++ class. The next thing we should do is call the function that will add our widget to the screen.
+
+1.  Go to the `DodgeballCharacter` class’s source file and add the `include` keyword to our newly created `DodgeballPlayerController` class:
+
+    ```cpp
+    #include "DodgeballPlayerController.h"
+    ```
+
+2.  Within the `DodgeballCharacter` class’s implementation of the `OnDeath_Implementation` function, replace the call to the `QuitGame` function with the following:
+    *   Get the character’s player controller using the `GetController` function. You’ll want to save the result in a variable of the `DodgeballPlayerController*` type, called `PlayerController`. Because the function will return a variable of the `Controller` type, you’ll also need to cast it to our `PlayerController` class:
+
+        ```cpp
+        ADodgeballPlayerController* PlayerController = Cast<ADodgeballPlayerController>(GetController());
+        ```
+
+    *   Check whether the `PlayerController` variable is valid. If it is, call its `ShowRestartWidget` function:
+
+        ```cpp
+        if (PlayerController != nullptr)
+        {
+          PlayerController->ShowRestartWidget();
+        }
+        ```
+
+After these modifications, the last thing left for us to do is to call the function that will hide our widget from the screen. Open the `RestartWidget` class’s source file and implement the following modifications.
+
+1.  Add an `include` to the `DodgeballPlayerController` class, which contains the function that we will be calling:
+
+    ```cpp
+    #include "DodgeballPlayerController.h"
+    ```
+
+2.  Inside the `OnRestartClicked` function implementation, before the call to the `OpenLevel` function, we must fetch the widget’s `OwningPlayer`, which is of the `PlayerController` type, using the `GetOwningPlayer` function, and cast it to the `DodgeballPlayerController` class:
+
+    ```cpp
+    ADodgeballPlayerController* PlayerController = 
+      Cast<ADodgeballPlayerController>(GetOwningPlayer());
+    ```
+
+3.  Then, if the `PlayerController` variable is valid, we call its `HideRestartWidget` function:
+
+    ```cpp
+    if (PlayerController != nullptr)
+    {
+      PlayerController->HideRestartWidget();
+    }
+    ```
+
+After you’ve followed all these steps, close the editor, compile your changes, and open the editor again.
+
+You have now concluded this exercise. We have added all the necessary logic to add our `RestartWidget` class to the screen. The only thing left for us to do is create the blueprint class of our newly created `DodgeballPlayerController` class, which we’ll be doing in the next exercise.
+
+## Exercise 8.05 – setting up the DodgeballPlayerController blueprint class
+
+In this exercise, we will be creating the blueprint class for `DodgeballPlayerController` in order to specify which widget we want to add to the screen. Then, we will tell UE5 to use this blueprint class when the game starts.
+
+In order to do that, follow these steps:
+
+1.  Go to the **ThirdPersonCPP -> Blueprints** directory in the **Content Browser** section, right-click on it, and create a new blueprint class.
+2.  Search for the **DodgeballPlayerController** class and select it as the parent class.
+3.  Rename this blueprint class to `BP_DodgeballPlayerController`. After that, open this blueprint asset.
+4.  Go to its `Class Defaults` tab and set the class’s `BP_RestartWidget` property to the `BP_RestartWidget` Widget Blueprint we created.
+
+Now, the only thing left for us to do is to make sure that this `Player Controller` blueprint class is being used in the game.
+
+In order to do this, we’ll have to follow a few more steps.
+
+1.  Go to the `ThirdPersonCPP` -> `Blueprints` directory in the `DodgeballGameMode` class and select it as the parent class. Then, rename this `Blueprint` class to `BP_DodgeballGameMode`.
+
+This class is responsible for telling the game which classes to use for each element of the game, such as which `Player Controller` class to use, among other things.
+
+1.  Open the asset, go to its `PlayerControllerClass` property to the `BP_DodgeballPlayerController` class we just created:
+
+![Figure 8.25 – Setting the PlayerControllerClass property to BP_DodgeballPlayerController ](img/Figure_8.25_B18531.jpg)
+
+Figure 8.25 – Setting the PlayerControllerClass property to BP_DodgeballPlayerController
+
+1.  Close the asset and select the **Blueprints** drop-down option inside the editor toolbar that is at the top of the **Level Viewport** window. From there, select the second **Game Mode** option, inside the **World Override** category (which should, currently, be set to **DodgeballGameMode**), **-> Select GameModeBase Class -> BP_DodgeballGameMode**. This will tell the editor to use this new **Game Mode** option in the current level.
+
+Note
+
+Additionally, you can set the **Game Mode** option inside the **Project Settings** category, which will tell the editor to use that **Game Mode** option on all levels. However, if a level overrides this option by setting the **Game Mode** option in the **World Override** category, that option will be ignored.
+
+Now, play the game and let your character get hit by a dodgeball `three` times. After the third time, you should see the game get paused and show `BP_RestartWidget`:
+
+![Figure 8.26 – Our BP_RestartWidget property being added to the screen after the player runs out of health points ](img/Figure_8.26_B18531.jpg)
+
+Figure 8.26 – Our BP_RestartWidget property being added to the screen after the player runs out of health points
+
+And when you click on `Button 1` using your mouse, you should see the level reset to its initial state:
+
+![Figure 8.27 – The level restarts after the player presses the button shown in the previous screenshot ](img/Figure_8.27_B18531.jpg)
+
+Figure 8.27 – The level restarts after the player presses the button shown in the previous screenshot
+
+And that concludes our exercise. Now you know how to create widgets and show them in your game. This is another crucial step in your journey toward becoming a skilled game developer.
+
+Before we move on to the next exercise, in the next section, let’s take a look at progress bars.
+
+# Understanding progress bars
+
+One of the ways that video games can represent character stats such as health, stamina, and more is through **Progress Bars**, which are what we’ll use to communicate to the player how much health their character has. Essentially, progress bars are a shape, usually rectangular, that can be filled and emptied in order to show the player how a specific stat is progressing. If you want to show the player that their character’s health is only half its maximum value, you could do this by showing the progress bar as half full. In this section, that is exactly what we’ll be doing. This progress bar will be the only element in our **Dodgeball** game’s HUD.
+
+In order to create this `ThirdPersonCPP` -> `Blueprints` directory inside the `Widget Blueprint` class from the `User Interface` category. Then, select `BP_HUDWidget`. After that, open the new Widget Blueprint.
+
+Add a `Canvas Panel` element to the root of this widget, just like we did in *step 6* of *Exercise 8.01 – improving the RestartWidget class*.
+
+In UE5, progress bars are just another UI element, such as `Button` elements and `Text` elements, which means we can drag them from the **Palette** tab into our **Designer** tab. Take a look at the following example:
+
+![Figure 8.28 – Dragging a Progress Bar element into the Designer window ](img/Figure_8.28_B18531.jpg)
+
+Figure 8.28 – Dragging a Progress Bar element into the Designer window
+
+At first, this progress bar might look similar to a button; however, it contains two specific properties that are important for a progress bar:
+
+*   `0` to `1`.
+*   **Bar Fill Type** – This allows you to specify how you want this progress bar to fill (from left to right, top to bottom, and so on):
+
+![Figure 8.29 – The progress bar’s Percent and Bar Fill Type properties ](img/Figure_8.29_B18531.jpg)
+
+Figure 8.29 – The progress bar’s Percent and Bar Fill Type properties
+
+If you set the `0.5`, the progress bar will be updated accordingly to fill half of its length:
+
+![Figure 8.30 – The progress bar filled halfway to the right ](img/Figure_8.30_B18531.jpg)
+
+Figure 8.30 – The progress bar filled halfway to the right
+
+Before you continue, set the `1`.
+
+Now, let’s change the progress bar’s color from blue (its default color) to red. In order to do this, go to the `RGB(1,0,0)`):
+
+![Figure 8.31 – The progress bar’s color being changed to red ](img/Figure_8.31_B18531.jpg)
+
+Figure 8.31 – The progress bar’s color being changed to red
+
+After you’ve done this, your progress bar should now use red as its fill color.
+
+To conclude our progress bar’s setup, let’s update its position, size, and anchors. Follow these steps to achieve this:
+
+1.  In the `X` axis, and `0.083` on the `Y` axis
+2.  `0.208` on the `X` axis, and `0.116` on the `Y` axis
+3.  Set the `0`.
+
+Your progress bar should now look like this:
+
+![Figure 8.32 – The progress bar after all the modifications in this section have been completed  ](img/Figure_8.32_B18531.jpg)
+
+Figure 8.32 – The progress bar after all the modifications in this section have been completed
+
+And with that, we can conclude the topic of progress bars. Our next step is going to be to add all the logic necessary to use this progress bar as a health bar, by updating its **Percent** property alongside the player character’s health. In the next exercise, we’ll do exactly that.
+
+## Exercise 8.06 – creating the health bar C++ logic
+
+In this exercise, we will be adding all the necessary C++ logic to update the progress bar inside our HUD as the player character’s health changes.
+
+In order to do this, follow these steps:
+
+1.  Open the editor and create a new C++ class that inherits from `UserWidget`, similar to how we did in *Exercise 8.03 – creating the RestartWidget C++ class*. However, this time, call it `HUDWidget`. This will be the C++ class that will be used for our HUD widget.
+2.  In the `HUDWidget` class’s header file, add a new `public` property of the `class UProgressBar*` type called `HealthBar`. This type is used to represent a progress bar, like the one we created in the previous section, in C++. Be sure to declare this property as a `UPROPERTY` function with the `BindWidget` tag:
+
+    ```cpp
+    UPROPERTY(meta = (BindWidget))
+    class UProgressBar* HealthBar;
+    ```
+
+3.  Add a declaration for a `public` function, called `UpdateHealthPercent`, which returns nothing and receives a `float HealthPercent` property as a parameter. This function will be called in order to update the **Percent** property of our progress bar:
+
+    ```cpp
+    void UpdateHealthPercent(float HealthPercent);
+    ```
+
+4.  In the `HUDWidget` class’s source file, add the implementation for the `UpdateHealthPercent` function, which will call the `HealthBar` property’s `SetPercent` function, passing the `HealthPercent` property as a parameter:
+
+    ```cpp
+    void UHUDWidget::UpdateHealthPercent(float HealthPercent)
+    {
+      HealthBar->SetPercent(HealthPercent);
+    }
+    ```
+
+5.  Because we’ll be using the `ProgressBar` C++ class, we’ll need to add an `include` to it at the top of the class’s source file:
+
+    ```cpp
+    #include "Components/ProgressBar.h"
+    ```
+
+The next step will be to add all the necessary logic to our `Player Controller` class, which is responsible for adding the `HUDWidget` class to the screen. Implement the following steps in order to achieve this:
+
+1.  Inside the `DodgeballPlayerController` class’s header file, add a `public` property of the `TSubclassOf<class UHUDWidget>` type, called `BP_HUDWidget`. Be sure to mark it as a `UPROPERTY` function with the `EditDefaultsOnly` tag.
+
+This property will allow us to specify, in the `DodgeballPlayerController` blueprint class, which widget we want to use as our HUD:
+
+```cpp
+UPROPERTY(EditDefaultsOnly)
+TSubclassOf<class UHUDWidget> BP_HUDWidget;
+```
+
+1.  Add another property, this time `private`, of the `class UHUDWidget*` type, called `HUDWidget`. Mark it as a `UPROPERTY` function, but without any tags:
+
+    ```cpp
+    UPROPERTY()
+    class UHUDWidget* HUDWidget;
+    ```
+
+2.  Add a `protected` declaration for the `BeginPlay` function, and mark it as both `virtual` and `override`:
+
+    ```cpp
+    virtual void BeginPlay() override;
+    ```
+
+3.  Add a declaration for a new `public` function, called `UpdateHealthPercent`, which returns nothing and receives `float HealthPercent` as a parameter.
+
+This function will be called by our player character class in order to update the health bar in our HUD:
+
+```cpp
+void UpdateHealthPercent(float HealthPercent);
+```
+
+1.  Now head over to the `DodgeballPlayerController` class’s source file. Start by adding an `include` to our `HUDWidget` class:
+
+    ```cpp
+    #include "HUDWidget.h"
+    ```
+
+2.  Then, add the implementation for the `BeginPlay` function, where we’ll start by calling the `Super` object’s `BeginPlay` function:
+
+    ```cpp
+    void ADodgeballPlayerController::BeginPlay()
+    {
+      Super::BeginPlay();
+    }
+    ```
+
+3.  After that function call, check whether the `BP_HUDWidget` property is valid. If it is, call the `CreateWidget` function with the `UHUDWidget` template parameter and pass `Owning Player`, `this`, and the `BP_HUDWidget` widget class, as parameters. Be sure to set the `HUDWidget` property to the return value of this function call:
+
+    ```cpp
+    if (BP_HUDWidget != nullptr)
+    {
+      HUDWidget = CreateWidget<UHUDWidget>(this, 
+      BP_HUDWidget);
+    }
+    ```
+
+4.  After setting the `HUDWidget` property, call its `AddToViewport` function:
+
+    ```cpp
+    HUDWidget->AddToViewport();
+    ```
+
+5.  Lastly, add the implementation for the `UpdateHealthPercent` function, where we’ll check whether the `HUDWidget` property is valid. If it is, call its `UpdateHealthPercent` function and pass the `HealthPercent` property as a parameter:
+
+    ```cpp
+    void ADodgeballPlayerController::UpdateHealthPercent(float 
+      HealthPercent)
+    {
+      if (HUDWidget != nullptr)
+      {
+        HUDWidget->UpdateHealthPercent(HealthPercent);
+      }
+    }
+    ```
+
+Now that we’ve added the logic responsible for adding the HUD to the screen and allowing it to be updated, we’ll need to make some modifications to the other classes. Follow the next steps in order to do so.
+
+Currently, our `Health` interface, which we created in the previous chapter, only has the `OnDeath` event, which is called whenever an object runs out of health points. In order to update our health bar every time the player takes damage, we need to allow our `HealthInterface` class to notify an object whenever that happens.
+
+1.  Open the `HealthInterface` class’s header file and add a declaration similar to the one we did for the `OnDeath` event in *Exercise 7.04 – creating the HealthInterface class*, but this time for the `OnTakeDamage` event. This event will be called whenever an object takes damage:
+
+    ```cpp
+    UFUNCTION(BlueprintNativeEvent, Category = Health)
+    void OnTakeDamage();
+    virtual void OnTakeDamage_Implementation() = 0;
+    ```
+
+2.  Now that we have added this event to our `Interface` class, let’s add the logic that calls that event: open the `HealthComponent` class’s source file and, inside its implementation of the `LoseHealth` function, after subtracting the `Amount` property from the `Health` property, check whether the `Owner` implements the `Health` interface and, if it does, call its `OnTakeDamage` event. Do this the same way we already did later in that same function for our `OnDeath` event, but this time, simply change the name of the event to `OnTakeDamage`:
+
+    ```cpp
+    if (GetOwner()->Implements<UHealthInterface>())
+    {
+      IHealthInterface::Execute_OnTakeDamage(GetOwner());
+    }
+    ```
+
+Because our health bar will require the player character’s health points as a percentage, we need to perform the following steps.
+
+1.  Add a `public` function to our `HealthComponent` class that returns just that: in the `HealthComponent` class’s header file, add a declaration for a `FORCEINLINE` function that returns a `float` property. This function should be called `GetHealthPercent` and be a `const` function. Its implementation will simply consist of returning the `Health` property divided by `100`, which we will assume is the maximum amount of health points an object can have in our game:
+
+    ```cpp
+    FORCEINLINE float GetHealthPercent() const { return Health / 
+      100.f; }
+    ```
+
+2.  Now go to the `DodgeballCharacter` class’s header file and add a declaration for a `public` `virtual` function called `OnTakeDamage_Implementation`, which returns nothing and receives no parameters. Mark it as `virtual` and `override`:
+
+    ```cpp
+    virtual void OnTakeDamage_Implementation() override;
+    ```
+
+3.  In the `DodgeballCharacter` class’s source file, add an implementation for the `OnTakeDamage_Implementation` function we just declared. Copy the content of the `OnDeath_Implementation` function to this new function’s implementation, but make this change: instead of calling the `ShowRestartWidget` function of `PlayerController`, call its `UpdateHealthPercent` function, and pass the return value of the `HealthComponent` property’s `GetHealthPercent` function as a parameter:
+
+    ```cpp
+    void ADodgeballCharacter::OnTakeDamage_Implementation()
+    {
+      ADodgeballPlayerController* PlayerController = 
+      Cast<ADodgeballPlayerController>(GetController());
+      if (PlayerController != nullptr)
+      {
+        PlayerController->
+        UpdateHealthPercent(HealthComponent
+        ->GetHealthPercent());
+      }
+    }
+    ```
+
+This concludes this exercise’s code setup. After you’ve done these changes, compile your code, open the editor, and perform the following steps.
+
+1.  Open the `BP_HUDWidget` Widget Blueprint and reparent it to the `HUDWidget` class, in the same way you did in *Exercise 8.03 – creating the RestartWidget C++ class*.
+2.  This should cause a compilation error, which you’ll be able to fix by renaming our progress bar element to `HealthBar`.
+3.  Close this Widget Blueprint, open the `BP_DodgeballPlayerController` blueprint class, and set its `BP_HUDWidget` property to the `BP_HUDWidget` Widget Blueprint:
+
+![Figure 8.33 – Setting the BP_HUDWidget property to BP_HUDWidget ](img/Figure_8.33_B18531.jpg)
+
+Figure 8.33 – Setting the BP_HUDWidget property to BP_HUDWidget
+
+After you’ve done these changes, play the level. You should notice the **Health Bar** progress bar in the upper-left corner of the screen:
+
+![Figure 8.34 – The progress bar showing in the upper-left corner of the screen ](img/Figure_8.34_B18531.jpg)
+
+Figure 8.34 – The progress bar showing in the upper-left corner of the screen
+
+When the player character gets hit by a dodgeball, you should notice the `Health Bar` progress bar being emptied:
+
+![Figure 8.35 – The progress bar being emptied as the player character loses health points ](img/Figure_8.35_B18531.jpg)
+
+Figure 8.35 – The progress bar being emptied as the player character loses health points
+
+And with that, we conclude this exercise. You’ve learned all the necessary steps in order to add a HUD to the screen and update it during the game.
+
+## Activity 8.01 – improving the RestartWidget class
+
+In this activity, we will be adding a `RestartWidget` class that reads **Game Over** in order for the player to know that they just lost the game; adding an **Exit** button, which will allow the player to exit the game; and also updating the text of our existing button to **Restart** so that the players know what should happen when they click on that button.
+
+The following steps will help you complete this activity:
+
+1.  Open the `BP_RestartWidget` Widget Blueprint.
+2.  Drag a new `Text` element into the existing `Canvas Panel` element.
+3.  Modify the `Text` element’s properties:
+    *   Expand the `0.291` on the `X` axis and `0.115` on the `Y` axis. Then, set its `0.708` on the `X` axis and `0.255` on the `Y` axis.
+    *   Set the `0`.
+    *   Set the `GAME OVER`.
+    *   Set the `RGBA(1.0, 0.082, 0.082, 1.0)`.
+    *   Expand the `100`.
+    *   Set the **Justification** property to **Align Text Center**.
+4.  Select the other `Text` element inside the `RestartButton` property, and change its `Restart`.
+5.  Duplicate the `RestartButton` property and change the copy’s name to `ExitButton`.
+6.  Change the `Text` element inside the `ExitButton` property to `Exit`.
+7.  Expand the `ExitButton` property, and set its `0.425` on the *X* axis and `0.615` on the *Y* axis. Then, set its `0.574` on the *X* axis and `0.725` on the *Y* axis.
+8.  Set the `ExitButton` properties of `0`.
+
+After you’ve done these changes, we’ll need to add the logic responsible for handling the `ExitButton` property click, which will exit the game:
+
+1.  Save the changes made to the `BP_RestartWidget` Widget Blueprint and open the `RestartWidget` class’s header file in Visual Studio. In this file, add a declaration for a `protected` function called `OnExitClicked` that returns nothing and receives no parameters. Be sure to mark it as`UFUNCTION`.
+2.  Duplicate the existing `RestartButton` property, but call it `ExitButton` instead.
+3.  Inside the `RestartWidget` class’s source file, add an implementation for the `OnExitClicked` function. Copy the contents of the `OnBeginOverlap` function from inside the `VictoryBox` class’s source file into the `OnExitClicked` function, but remove the cast being done to the `DodgeballCharacter` class.
+4.  In the `NativeOnInitialized` function implementation, bind the `OnExitClicked` function we created to the `OnClicked` event of the `ExitButton` property, in the same way that we did for the `RestartButton` property in *Exercise 8.03 – creating the RestartWidget C++ class*.
+
+And that concludes our code setup for this activity. Compile your changes, and open the editor. Then, open the `BP_RestartWidget` property and compile it just to make sure there are no compilation errors due to the `BindWidget` tags.
+
+Once you’ve done this, play the level again, let the player character be hit by three dodgeballs, and notice the `Restart` widget appear with our new modifications:
+
+![Figure 8.36 – The updated BP_RestartWidget property being shown after the player runs out of health points ](img/Figure_8.36_B18531.jpg)
+
+Figure 8.36 – The updated BP_RestartWidget property being shown after the player runs out of health points
+
+If you press the `Restart` button, you should be able to replay the level, and if you press the `Exit` button, the game should end.
+
+And that concludes our activity. You’ve consolidated the basics of using a **Widget blueprint** and changing its element’s properties. Now you are ready to start making your own menus.
+
+Note
+
+The solution for this activity can be found on GitHub here: [https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions).
+
+# Summary
+
+With this chapter concluded, you have now learned how to make a game UI in UE5, understanding things such as menus and HUDs. You’ve seen how to manipulate a Widget Blueprint’s UI elements, including Button elements, Text elements, and Progress Bar elements; work with anchors effectively, which is instrumental in allowing your game UI to adapt elegantly to multiple screens; listen to mouse events in C++, such as the `OnClick` event, and use that to create your own game logic; and how to add the widgets you create to the screen, either at specific events or have them present at all times.
+
+In the next chapter, we’ll be taking a look at polishing our **Dodgeball** game by adding audiovisual elements, such as sound and particle effects, as well as making a new level.

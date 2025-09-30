@@ -1,0 +1,126 @@
+# Preface
+
+Packt first contacted me about writing this book nearly a year ago. It's been a long journey, harder than I anticipated at times, and I've learned a lot. The book you hold now is the culmination of many long days, and I'm proud to finally present it.
+
+I think C is a beautiful programming language. No other language in everyday use gets you as close to the machine as C does. I've used C to program 8-bit microcontrollers with only 16 bytes of RAM, just the same as I've used it to program modern desktops with multi-core, multi-GHz processors. It's truly remarkable that C works efficiently in both contexts.
+
+Network programming is a fun topic, but it's also a very deep one; a lot is going on at many levels. Some programming languages hide these abstractions. In the Python programming language, for example, you can download an entire web page using only one line of code. This isn't the case in C! In C, if you want to download a web page, you have to know how everything works. You need to know sockets, you need to know **Transfer Control Protocol** (**TCP**), and you need to know HTTP. In C network programming, nothing is hidden.
+
+C is a great language to learn network programming in. This is not only because we get to see all the details, but also because the popular operating systems all use kernels written in C. No other language gives you the same first-class access as C does. In C, everything is under your control – you can lay out your data structures exactly how you want, manage memory precisely as you please, and even shoot yourself in the foot just the way you want.
+
+When I first began writing this book, I surveyed other resources related to learning network programming with C. I found much misinformation – not only on the web, but even in print. There is a lot of C networking code that is done wrong. Internet tutorials about C sockets often use deprecated functions and ignore memory safety completely. When it comes to network programming, you can't take the *it works so it's good enough programming-by-coincidence* approach. You have to use reasoning.
+
+In this book, I take care to approach network programming in a modern and safe way. The example programs are carefully designed to work with both IPv4 and IPv6, and they are all written in a portable, operating system-independent way, whenever possible. Wherever there is an opportunity for memory errors, I try to take notice and point out these concerns. Security is too often left as an afterthought. I believe security is important, and it should be planned in the system from the beginning. Therefore, in addition to teaching network basics, this book spends a lot of time working with secure protocols, such as TLS.
+
+I hope you enjoy reading this book as much as I enjoyed writing it.
+
+# Who this book is for
+
+This book is for the C or C++ programmer who wants to add networking features to their software. It is also designed for the student or professional who simply wants to learn about network programming and common network protocols.
+
+It is assumed that the reader already has some familiarity with the C programming language. This includes a basic proficiency with pointers, basic data structures, and manual memory management.
+
+# What this book covers
+
+[Chapter 1](e3e07fa7-ff23-4871-b897-c0d4551e6422.xhtml), *Introducing Networks and Protocols*, introduces the important concepts related to networking. This chapter includes example programs to determine your IP address pragmatically.
+
+[Chapter 2](4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml), *Getting to Grips with Socket APIs*, introduces socket programming APIs and has you build your first networked program—a tiny web server.
+
+[Chapter 3](eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml), *An In-Depth Overview of TCP Connections*, focuses on programming TCP sockets. In this chapter, example programs are developed for both the client and server sides.
+
+[Chapter 4](05a32725-5c72-41e4-92aa-2425bf75282e.xhtml), *Establishing UDP Connections*, covers programming with **User Datagram Protocol** (**UDP**) sockets.
+
+[Chapter 5](3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml), *Hostname Resolution and DNS*, explains how hostnames are translated into IP addresses. In this chapter, we build an example program to perform manual DNS query lookups using UDP.
+
+[Chapter 6](de3d2e9b-b94e-47d1-872c-c2ecb34c4026.xhtml), *Building a Simple Web Client*, introduces HTTP—the protocol that powers websites. We dive right in and build an HTTP client in C.
+
+[Chapter 7](f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml), *Building a Simple Web Server*, describes how to construct a fully functional web server in C. This program is able to serve a static website to any modern web browser.
+
+[Chapter 8](47e209f2-0231-418c-baef-82db74df8c29.xhtml), *Making Your Program Send Email*, describes **Simple Mail Transfer Protocol** (**SMTP**)—the protocol that is powering email. In this chapter, we develop a program that can send email over the internet.
+
+[Chapter 9](47ba170d-42d9-4e38-b5d8-89503e005708.xhtml), *Loading Secure Web Pages with HTTPS and OpenSSL*, explores TLS—the protocol that secures web pages. In this chapter, we develop an HTTPS client that is capable of downloading web pages securely.
+
+[Chapter 10](f57ffaa2-3eba-45cf-914b-bb6aef36174f.xhtml), *Implementing a Secure Web Server*, continues on the security theme and explores the construction of a secure HTTPS web server.
+
+[Chapter 11](c9d0a1dc-878b-4961-825e-65688fac08ae.xhtml), *Establishing SSH Connections with libssh*, continues with the secure protocol theme. The use of **Secure Shell** (**SSH**) is covered to connect to a remote server, execute commands, and download files securely.
+
+[Chapter 12](1d616e6f-d234-4269-8507-f007ffc1b7d0.xhtml), *Network Monitoring and Security*, discusses the tools and techniques used to test network functionality, troubleshoot problems, and eavesdrop on insecure communication protocols.
+
+[Chapter 13](11c5bb82-e55f-4977-bf7f-5dbe791fde92.xhtml), *Socket Programming Tips and Pitfalls*, goes into detail about TCP and addresses many important edge cases that appear in socket programming. The techniques covered are invaluable for creating robust network programs.
+
+[Chapter 14](c8466f85-a6e3-4d33-beb7-0a9f38d35062.xhtml), *Web Programming for the Internet of Things*, gives an overview of the design and programming for **Internet of Things** (**IoT**) applications.
+
+[Appendix A](bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml), *Answers to Questions*, provides answers to the comprehension questions given at the end of each chapter.
+
+[Appendix B](47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml), *Setting Up Your C Compiler on Windows*, gives instructions for setting up a development environment on Windows that is needed for compiling all of the example programs in this book.
+
+[Appendix C](221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml), *Setting Up Your C Compiler on Linux*, provides the setup instructions for preparing your Linux computer to be capable of compiling all of the example programs in this book.
+
+[Appendix D](632db68e-0911-4238-a2be-bd1aa5296120.xhtml), *Setting Up Your C Compiler on macOS*, gives step-by-step instructions for configuring your macOS system to be capable of compiling all of the example programs in this book.
+
+[Appendix E](3c739c9b-b740-4ee9-8ba4-6cfc34ae5185.xhtml), *Example Programs*, lists each example program, by chapter, included in this book's code repository.
+
+# To get the most out of this book
+
+The reader is expected to be proficient in the C programming language. This includes a familiarity with memory management, the use of pointers, and basic data structures.
+
+A Windows, Linux, or macOS development machine is recommended; you can refer to the appendices for setup instructions.
+
+This book takes a hands-on approach to learning and includes 44 example programs. Working through these examples as you read the book will help enforce the concepts.
+
+The code for this book is released under the MIT open source license. The reader is encouraged to use, modify, improve, and even publish their changes to these example programs.
+
+# Download the example code files
+
+You can download the example code files for this book from your account at [www.packt.com](http://www.packt.com). If you purchased this book elsewhere, you can visit [www.packt.com/support](http://www.packt.com/support) and register to have the files emailed directly to you.
+
+The code bundle for the book is also publicly hosted on GitHub at **[https://github.com/codeplea/hands-on-network-programming-with-c](https://github.com/codeplea/hands-on-network-programming-with-c)**. In case there's an update to the code, it will be updated on that GitHub repository. Each chapter that introduces example programs begins with the commands needed to download the book's code.
+
+# Download the color images
+
+We also provide a PDF file that has color images of the screenshots/diagrams used in this book. You can download it here: [http://www.packtpub.com/sites/default/files/downloads/9781789349863_ColorImages.pdf](http://www.packtpub.com/sites/default/files/downloads/9781789349863_ColorImages.pdf).
+
+# Conventions used
+
+There are a number of text conventions used throughout this book.
+
+`CodeInText`: Indicates code words in text, variable names, function names, directory names, filenames, file extensions, pathnames, URLs, and user input. Here is an example: "Use the `select()` function to wait for network data."
+
+A block of code is set as follows:
+
+```cpp
+/* example program */
+
+#include <stdio.h>
+int main() {
+    printf("Hello World!\n");
+    return 0;
+}
+```
+
+Any command-line input or output is written as follows:
+
+```cpp
+gcc hello.c -o hello
+./hello
+```
+
+**Bold**: Indicates a new term, an important word, or words that you see on screen. For example, words in menus or dialog boxes appear in the text like this. Here is an example: "Select System info from the Administration panel."
+
+# Get in touch
+
+Feedback from our readers is always welcome.
+
+**General feedback**: If you have questions about any aspect of this book, mention the book title in the subject of your message and email us at `customercare@packtpub.com`.
+
+**Errata**: Although we have taken every care to ensure the accuracy of our content, mistakes do happen. If you have found a mistake in this book, we would be grateful if you would report this to us. Please visit [www.packt.com/submit-errata](http://www.packt.com/submit-errata), selecting your book, clicking on the Errata Submission Form link, and entering the details.
+
+**Piracy**: If you come across any illegal copies of our works in any form on the internet, we would be grateful if you would provide us with the location address or website name. Please contact us at `copyright@packt.com` with a link to the material.
+
+**If you are interested in becoming an author**: If there is a topic that you have expertise in, and you are interested in either writing or contributing to a book, please visit [authors.packtpub.com](http://authors.packtpub.com/).
+
+# Reviews
+
+Please leave a review. Once you have read and used this book, why not leave a review on the site that you purchased it from? Potential readers can then see and use your unbiased opinion to make purchase decisions, we at Packt can understand what you think about our products, and our authors can see your feedback on their book. Thank you!
+
+For more information about Packt, please visit [packt.com](http://www.packt.com/).

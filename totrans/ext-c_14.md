@@ -1,0 +1,932 @@
+# Chapter 14
+
+# Synchronization
+
+In the previous chapter, we went through the basic concepts and the widely used terminology of concurrency. In this chapter, we are going to focus on issues that might appear as a result of using concurrency in a program. Like the previous chapter, we won't deal with any C source code; instead, we'll place our focus solely on the concepts and the theoretical background around concurrency issues and resolving them.
+
+As part of this chapter, we're going to learn about:
+
+*   **Concurrency-related issues, namely, race conditions, and data races**: We will discuss the effect of having a shared state among multiple tasks and how simultaneous access to the shared variable can lead to issues.
+*   **Concurrency control techniques used to synchronize access to a shared state**: We will be mainly talking about these techniques from a theoretical point of view, and we will be explaining the approaches we could take to overcome concurrency-related issues.
+*   **Concurrency in POSIX**: As part of this topic, we discuss how POSIX can standardize the way we should develop concurrent programs. We briefly explain and compare multithreaded and multi-process programs.
+
+In the first section, we will further discuss how the non-deterministic nature of concurrent environments can lead to concurrency issues, as we mentioned in the previous chapter. We will also talk about how we can categorize such issues.
+
+# Concurrency issues
+
+Throughout the previous chapter, we have seen that a modifiable shared state can cause issues when some concurrent tasks are able to change the shared state's value. Exploring this further we might ask, what kind of issues may occur? What is the main reason behind them? We will answer these questions within this section.
+
+First of all, we need to distinguish the different types of concurrency issues that might occur. Some concurrency issues only exist when no concurrency control mechanism is in place, and some are introduced by using a concurrency control technique.
+
+Regarding the issues in the first group, they happen when you can see that different interleavings result in different *overall states*. Upon identifying one of these issues, the next step of course will be to begin thinking about a suitable fix to resolve said issue.
+
+Regarding the second group, they only arise following a fix being put in place. This means that when you fix a concurrency issue, you may introduce a new issue that has a totally different nature and a different root cause; this is what makes concurrent programs problematic to deal with.
+
+As an example, suppose that you have a number of tasks that all have read/write access to the same shared data source. After running the tasks multiple times, you find out that your algorithms, written for different tasks, do not function as they are supposed to. This is leading to accidental crashes or logical errors that occur randomly. Since the occurrences of crashes and wrong results are random and not predictable in your case, you could reasonably presume that it might be concurrency issues.
+
+You begin to analyze the algorithms over and over again, and finally you find the problem; there is a *data race* over the shared data source. Now you need to come up with a fix that tries to control the access to the shared data source. You implement a solution and run the system again, and surprisingly you find out that sometimes some of the tasks never get the chance to access the data source. We technically say that these tasks are *starved*. A new issue, with a completely different nature from the first issue, has been introduced by your changes!
+
+Therefore, we now have two different groups of concurrency issues, these being:
+
+*   The issues that exist in a concurrent system while having no control (synchronization) mechanism in place. We call them *intrinsic concurrency issues*.
+*   The issues that happen after the attempted resolution of an issue in the first group. We call them *post-synchronization issues*.
+
+The reason behind calling the first group *intrinsic* is due to the fact that these issues are present intrinsically in all concurrent systems. You cannot avoid them, and you have to deal with them via the use of control mechanisms. In a way, they can be considered as a property of the concurrent systems rather than being issues. Despite that, we treat them as issues because their non-deterministic nature interferes with our ability to develop the deterministic programs that we require.
+
+The issues in the second group only happen when you use control mechanisms in the wrong way. Note that control mechanisms are not problematic at all and indeed are necessary to bring back the determinism to our programs. If they are used in the wrong fashion, however, they can lead to secondary concurrency problems. These secondary problems, or post-concurrency issues, can be considered as new bugs being introduced by a programmer, rather than being an intrinsic property of a concurrent system.
+
+In the following sections, we are going to introduce the issues in both groups. First, we start with intrinsic issues and we discuss the main reason behind having these intrinsic problematic properties in concurrent environments.
+
+# Intrinsic concurrency issues
+
+Every concurrent system with more than one task can have a number of possible interleavings, which can be thought of as an intrinsic property of the system. From what we've learned so far, we know that this property has a non-deterministic nature, which causes the instructions of different tasks to be executed in a chaotic order in each run, while still following the *happens-before constraints*. Note that this is something that has already been explained in the previous chapter.
+
+Interleavings are not problematic by themselves and, as we've explained before, they're an intrinsic property of a concurrent system. But in some cases, this property dissatisfies some constraints that are meant to be conserved. This is exactly when interleavings yield issues.
+
+We know that it's possible to have many interleavings while a number of tasks are being executed concurrently. Yet issues only arise when a constraint of the system, which should have been invariant, happens to be changed by the interleavings from one run to another. Therefore, our goal is to employ some control mechanisms, which sometimes are referred to as *synchronization mechanisms*, in order to keep that constraint unchanged and invariant.
+
+This constraint is usually expressed through a list of conditions and criteria, which from now on we will refer to as *invariant constraints*. These constraints can be about almost anything in a concurrent system.
+
+The invariant constraints can be something very simple, like the example we gave in previous chapters, in which the program should have printed two 3s in its output. They can also be very complex, like conserving the *data integrity* of all the external data sources in a huge concurrent software program.
+
+**Note**:
+
+It's very hard to produce every possible interleaving. In some cases, a specific interleaving is only possible with a very low probability. It might happen one time in a million, if at all.
+
+This is another dangerous aspect of concurrent development. While some interleavings might only occur once in a million, when they do go wrong, they go wrong badly. They can cause, for example, a plane crash or a serious device malfunction during a brain surgery!
+
+Every concurrent system has some least well-defined invariant constraints. As we progress through the chapter, we give examples and for every example, we shall discuss its invariant constraints. This is because we need these constraints to be able to design a specific concurrent system that will satisfy them and keep them invariant.
+
+The interleavings happening in a concurrent system should satisfy the already defined invariant constraints. If they do not, something is wrong with the system. This is where invariant constraints become a very important factor. Whenever there are interleavings that dissatisfy the invariant constraints of a system, we say that we have a *race* *condition* in the system.
+
+A race condition is an issue that is caused by the intrinsic property of concurrent systems, or in other words, the interleavings. Whenever we get a race condition, the invariant constraints of the system are in danger of being missed.
+
+The consequences of failing to satisfy the invariant constraints can be observed as either logical errors or sudden crashes. There are numerous examples in which the values stored in the shared variables are not reflecting the true state. This is mainly because of having different interleavings that corrupt the *data integrity* of the shared variable.
+
+We will explain data integrity-related issues later on in this chapter but, for now, let's look at the following example. Like we said before, we have to define the invariant constraints of an example before being able to jump to it. *Example 14.1* shown in *Code Box 14-1* has only one invariant constraint, and it is to have the final correct value in the shared `Counter` variable, which should be `3`. There are three concurrent tasks in this example. Every task is supposed to increment the `Counter` by one, and this is the logic that we have aimed for in the following code box:
+
+```cpp
+Concurrent System {
+    Shared State {
+      Counter : Integer = 0
+    }
+
+    Task T1 {
+      A : Integer
+        1.1\. A = Counter
+        1.2\. A = A + 1
+        1.2\. Counter = A
+    }
+    Task T2 {
+      B : Integer
+        2.1\. B = Counter
+        2.2\. B = B + 1
+        2.2\. Counter = B
+    }
+    Task T3 {
+      A : Integer
+        3.1\. A = Counter
+        3.2\. A = A + 1
+        3.2\. Counter = A
+    }
+}
+```
+
+Code Box 14-1: A system of three concurrent tasks operating a single shared variable
+
+In the preceding code box, you see a concurrent system written in pseudo-code. As you can see, there are three tasks in the concurrent system. There is also a section for shared states. In the preceding system, `Counter` is the only shared variable that is accessible by all three tasks.
+
+Every task can have a number of local variables. These local variables are private to the task and other tasks cannot see them. That's why we can have two local variables with the same `A`, but every one of them is different and local to its owner task.
+
+Note that tasks cannot operate directly on the shared variables, and they can only read their values or change their values. That's basically why you need to have some local variables. As you can see, the tasks can only increment a local variable and not the shared variable directly. This is in close harmony with what we see in multithreading and multi-processing systems, and that's why we've chosen the preceding configuration to represent a concurrent system.
+
+The example shown in *Code Box 14-1* shows us how the race condition can result in a logical error. It is easy to find an interleaving that results in having the value `2` in the shared `Counter` variable. Just look at the interleaving in *Code Box 14-2*:
+
+```cpp
+  Task Scheduler |    Task T1   |    Task T2   |  Task T3
+---------------------------------------------------------
+  Context Switch |              |              |
+                 |  A = Counter |              | 
+                 |  A = A + 1   |              | 
+                 |  Counter = A |              | 
+  Context Switch |              |              |
+                 |              |  B = Counter |
+                 |              |  B = B + 1   |
+  Context Switch |              |              |
+                 |              |              |  A = Counter
+  Context Switch |              |              |
+                 |              |  Counter = B |
+  Context Switch |              |              |
+                 |              |              |  A = A + 1
+                 |              |              |  Counter = A
+```
+
+Code Box 14-2: An interleaving violating the invariant constraint defined for Code Box 14.1
+
+Here, it is easy to trace the interleaving. Instructions `2.3` and `3.3` (as seen in *Code Box 14-1*) both store the value `2` inside the shared `Counter` variable. The preceding situation is called a *data race*, something that we explain in more detail later in this section.
+
+The next example, shown in *Code Box 14-3*, demonstrates how a race condition can result in a crash.
+
+**Note**:
+
+In the following section we will be using a C pseudo-codes example. This is because we have not yet introduced the POSIX API, which is necessary for writing C codes that create and manage threads or processes.
+
+The following code is an example that can result in a segmentation fault if it is written with C:
+
+```cpp
+Concurrent System {
+    Shared State {
+      char *ptr = NULL; // A shared char pointer which is
+                        // supposed to point to a memory
+                        // address in the Heap space. It
+                        // becomes null by default.
+    }
+    Task P {
+        1.1\. ptr = (char*)malloc(10 * sizeof(char));
+        1.2\. strcpy(ptr, "Hello!");
+        1.3\. printf("%s\n", ptr);
+    }
+    Task Q {
+        2.1\. free(ptr);
+        2.2\. ptr = NULL;
+    }
+}
+```
+
+Code Box 14-3: An interleaving violating the invariant constraint of the example seen in Code Box 14-1
+
+One of the obvious invariant constraints that we are concerned about as part of this example is to not let a task crash, something that is *implicitly* included in our invariant constraints. If a task cannot survive to complete its job, then having an invariant constraint is contradictory in the first place.
+
+There are some interleavings that cause the preceding tasks to crash. Next, we explain two of them:
+
+*   Firstly, suppose that instruction `2.1` is executed first. Since `ptr` is null, then task `Q` will crash, while task `P` continues. As a result, and in the multithreading use case where both tasks (threads) belong to the same process, the whole program containing two tasks will crash. The main reason behind the crash is deleting a null pointer.
+*   The other interleaving is when instruction `2.2` is executed before `1.2` but after `1.1`. In this case, task `P` will crash, while task `Q` finishes without a problem. The main reason behind the crash is dereferencing a null pointer.
+
+Therefore, as you see in the previous examples, having a race condition in a concurrent system can lead to different situations, like logical errors or sudden crashes. Two occurrences that obviously need to be resolved properly.
+
+It's worth taking a moment to make sure that we understand that not all race conditions in a concurrent system can be easily identified. Some of the race conditions remain hidden until they show themselves much later. This is why I opened this chapter by saying that concurrent programs are problematic to deal with.
+
+With that said, sometimes we'll use *race detectors* to find the existing race conditions in branches of code that would be executed less often. They can be used in fact to identify the interleavings leading to a race condition.
+
+**Note**:
+
+The race condition can be detected by a group of programs called *race detectors*. They are grouped based on being static or dynamic.
+
+*Static race detectors* will go through the source code and try to produce all the interleavings based on the observed instructions, while *dynamic race detectors* run the program first and then wait for a code execution that is suspected to be a race condition. Both are used in combination to mitigate the risk of having race conditions.
+
+Now, it is time for a question. Is there a single primary reason behind all race conditions? We need to answer this question in order to come up with a solution that removes the race conditions. We know that whenever an interleaving dissatisfies the invariant constraint, a race condition happens. Therefore, to answer the question, we need to conduct a deeper analysis of the possible invariant constraints and see how they can be missed.
+
+From what we've observed across various concurrent systems, in order to keep an invariant constraint satisfied there are always a number of instructions found in different tasks that should be executed in a strict order across all interleavings.
+
+Hence, those interleavings that follow this order don't violate the invariant constraint. We are satisfied with regard to these interleavings, and we observe the desired output. The interleavings that don't keep to the strict order will dissatisfy the invariant constraint and thus can be considered as problematic interleavings.
+
+For these interleavings, we need to employ mechanisms to restore the order and make sure that the invariant constraints are always satisfied. *Example 14.2* can be seen in *Code Box 14-4*. The constraint that should remain invariant is to **have 1 printed in the output**. While this constraint is a bit immature, and you won't see it in real concurrent applications, it serves to help us understand the concepts we are discussing:
+
+```cpp
+Concurrent System {
+  Shared State {
+    X : Integer = 0
+  }
+  Task P {
+      1.1\. X = 1
+  }
+  Task Q {
+      2.1\. print X
+  }
+}
+```
+
+Code Box 14-4: A very simple concurrent system suffering from a race condition
+
+The preceding example can have two different outputs based on the interleavings it has. If we want to have `1` printed in the output, which is enforced by the invariant constraint, then we need to define a strict order for the instructions in the two different tasks.
+
+For this purpose, the print instructions, `2.1`, must be executed only after instruction `1.1`. Since there is another interleaving that easily violates such order, hence the invariant constraint, then we have a race condition. We need a strict order between these instructions. However, putting them in the desired order is not an easy job. We will be discussing the ways to restore this order later on in this chapter.
+
+Let's look at *example 14.3*, below. In the following code, we have a system of three tasks. We should note that there is no shared state in this system. Yet, with that being said, we have a race condition. Let's define the invariant constraint of the following system to be **printing always 1 first, 2 second, and 3 last**:
+
+```cpp
+Concurrent System {
+  Shared State {
+  }
+  Task P {
+      1.1\. print 3
+  }
+  Task Q {
+      2.1\. print 1
+  }
+  Task R {
+      3.1\. print 2
+  }
+}
+```
+
+Code Box 14-5: Another very simple concurrent system suffering from race condition but without having any shared state
+
+Even in this very simple system, you cannot guarantee which task is going to begin first, and because of that, we have a race condition. Therefore, to satisfy the invariant constraint, we need to execute the instructions in the following order: `2.1`, `3.1`, `1.1`. This order must be kept in all possible interleavings.
+
+The preceding example reveals an important feature of race conditions, that is: To have a race condition in a concurrent system, we don't need to have a shared state. Instead, to avoid having a race condition, we need to keep some of the instructions in a strict order all the time. We should take note that race conditions only happen because a small set of instructions, usually known as a *critical section*, that are executed out of order, while other instructions can be executed in any order.
+
+Having both a writable shared state and a specific invariant constraint in regard to the shared state can impose a strict order between the *read* and *write* instructions targeting that shared state. One of the most important constraints about a writable shared state is the data integrity. It simply means that all tasks should always be able to read the latest and the freshest value of the shared state, in addition to being aware of any update made to the shared state before continuing with their own instructions that modify the shared state.
+
+*Example 14.4*, shown in *Code Box 14-6*, explains the data integrity constraint and, more importantly, how it can be missed easily:
+
+```cpp
+Concurrent System {
+  Shared State {
+    X : Integer = 2
+  }
+  Task P {
+    A : Integer
+      1.1\. A = X
+      1.2\. A = A + 1
+      1.3\. X = A
+  }
+  Task Q {
+    B : Integer
+      2.1\. B = X
+      2.2\. B = B + 3
+      2.3\. X = B
+  }
+}
+```
+
+Code Box 14-6: A concurrent system suffering from a data race over shared variable X
+
+Consider the following interleaving. Firstly, instruction `1.1` is executed. Therefore, the value of `X` is copied to the local variable `A`. However, task `P` is not so lucky, so a context switch happens, and the CPU is granted to task `Q`. Instruction `2.1` is then executed, and then the value of `X` is copied to the local variable `B`. Therefore, both variables `A` and `B` have the same value, `2`.
+
+Now, task `Q` is lucky and can continue its execution. Instruction `2.2` is then executed, and `B` becomes `5`. Task `Q` continues and writes the value `5` to the shared state `X`. So, `X` becomes `5`.
+
+Now, the next context switch happens, and the CPU is given back to task `P`. It continues with instruction `1.2`. This is where the integrity constraint is missed.
+
+The shared state `X` has been updated by task `Q`, but task `P` is using the old value `2` for the rest of its calculations. Eventually, it resets the value of `X` to `3`, something that can hardly be a result that the programmer wishes for. To keep the constraint of the data integrity satisfied, we have to make sure that instruction `1.1` is executed only after instruction `2.3`, or that instruction `2.1` is executed only after instruction `1.3`, otherwise the data integrity is potentially compromised.
+
+**Note**:
+
+You may ask yourself why we have used the local variables `A` and `B` when we could easily write `X = X + 1` or `X = X + 3`.
+
+As we explained in the previous chapter, the instruction `X = X + 1`, which in C is written as `X++`, is not an *atomic* instruction. It simply means that it cannot be done in just one instruction and it needs more than one. This is because we never have direct access to a variable in memory when doing an operation on it.
+
+We always use a temporary variable, or a CPU register, to keep the latest value and perform the operation on the temporary variable or register and then transfer the result back to memory. Therefore, no matter how you write it, there is always a temporary variable locally associated to the task.
+
+You will see that the situation is even worse in systems with more than one CPU core. We have also CPU caches that cache the variables and don't transfer the result back to the variable in the main memory immediately.
+
+Let's talk about another definition. Whenever some interleavings invalidate the constraint of the data integrity related to a shared state, it is said that we have a data race over that shared state.
+
+Data races are very similar to race conditions, but to have a data race we need to have a shared state among different tasks and that shared state must be modifiable (writable) by at least one of the tasks. In other words, the shared state should not be read-only for all tasks, and there should be at least one task which may write to the shared state based on its logic.
+
+As we said before, for a read-only shared state, we *can't* have a data race. This is due to the fact that one cannot ruin the data integrity of a read-only shared state since the value of the shared state cannot be modified.
+
+*Example 14.5*, shown in *Code Box 14-7*, shows how we can have a race condition, while at the same time no data race is possible over a read-only shared state:
+
+```cpp
+Concurrent System {
+  Shared State {
+    X : Integer (read-only) = 5
+  }
+  Task P {
+    A : Integer
+      1.1\. A = X
+      1.2\. A = A + 1
+      1.2\. print A
+  }
+  Task Q {
+      2.1\. print X
+  }
+  Task R {
+    B : Integer
+      3.1\. B = X + 1
+      3.2\. B = B + 1
+      3.3\. print B
+  }
+}
+```
+
+Code Box 14-7: A concurrent system with a read-only shared state
+
+Suppose that the invariant constraint of the preceding example is to **keep the data integrity of X and first print 5, then 6, and finally 7**. Certainly, we have a race condition because a strict order is required among different `print` instructions.
+
+However, since the shared variable is read-only, there is no data race. Note that instructions `1.2` and `3.2` only modify their local variables, and thus they cannot be considered as modifications to the shared state.
+
+As the final note in this section: Don't expect race conditions to be resolved easily! You will certainly need to employ some synchronization mechanisms in order to create the required order between certain instructions from different tasks. This will force all possible interleavings follow the given order. In fact, you will see in the next section that we have to introduce some new interleavings that obey the desired order.
+
+We will talk about these mechanisms later in this chapter; before that, we need to explain the concurrency-related issues occurring after using some synchronization methods. The next section is all about *post-synchronization* issues and how they are different from intrinsic issues.
+
+# Post-synchronization issues
+
+Next, we're going to talk about three of the key issues that are expected to occur as a result of misusing the control mechanisms. You could experience one or even all of these issues together because they have different root causes:
+
+*   **New intrinsic issues**: Applying control mechanisms may result in having different race conditions or data races. Control mechanisms are to enforce a strict order between instructions, and this may cause newer intrinsic issues to occur. The fact that control mechanisms introduce new interleavings is the basis of experiencing new concurrency-related behaviors and issues. As a consequence of having new race conditions and new data races, new logical errors and crashes can occur. You'll have to go through the employed synchronization techniques and tune them based on your program's logic in order to fix these new issues.
+*   **Starvation**: When a task in a concurrent system doesn't have access to a shared resource for a long period of time, mainly because of employing a specific control mechanism, it is said that the task has become starved. A starved task cannot access the shared resource, and thus it cannot execute its purpose effectively. If other tasks rely on the cooperation of a starved task, they themselves may also get starved.
+*   **Deadlock**: When all the tasks in a concurrent system are waiting for each other and none of them is advancing, we say that a deadlock is reached. It happens mainly due to a control mechanism being applied in the wrong way, which in turn makes tasks enter an infinite loop waiting for the other task to release a shared resource or unlock a lock object, and so on. This is usually called a *circular wait*. While the tasks are waiting, none of them will be able to continue their execution, and as a result, the system will go into a coma-like situation. Some illustration describing a deadlock situation can be [found on the Wikipedia page found at: h](https://en.wikipedia.org/wiki/Deadlock)ttps://en.wikipedia.org/wiki/Deadlock.
+
+    In a deadlock situation, all the tasks are stuck and waiting for each other. But there are often situations in which only a portion of tasks, only one or two of them, are stuck and the rest can continue. We call them *semi-deadlock* situations. We are going to see more of these semi-deadlock situations in the upcoming sections.
+
+*   **Priority inversion**: There are situations in which, after employing a synchronization technique, a task with a higher priority to use a shared resource is blocked behind a low priority task and this way, their priorities are reversed. This is another type of secondary issues that can happen because of a wrongly implemented synchronization technique.
+
+Starvation doesn't exist by default in a concurrent system; when no synchronization technique is imposed upon the operating system's task scheduler, the system is fair and doesn't allow any task to become starved. Only having some control mechanisms employed by the programmer can lead to starvation. Likewise, the occurrence of a deadlock also doesn't exist within a concurrent system until the programmer gets involved. The main reason for most deadlock situations is when locks are employed in such a way that all tasks in a concurrent system are waiting for each other to release the lock. Generally, deadlocks are a more common issue than starvation within a concurrent system.
+
+Now, we should move on and talk about the control mechanisms. In the next section, we will be talking about various synchronization techniques that can be used to overcome race conditions.
+
+# Synchronization techniques
+
+In this section, we're going to talk about the synchronization techniques, or concurrency control techniques, or concurrent control mechanisms, that are used to overcome intrinsic concurrency-related issues. Looking back at what we've explained so far, control mechanisms try to overcome the problems that a portion of interleavings may cause in a system.
+
+Each concurrent system has its own invariant constraints, and not all interleavings are going to keep all of them satisfied. For those interleavings that dissatisfy the system's invariant constraints, we need to invent a method to impose a specific order between instructions. In other words, we should *create* new interleavings that satisfy the invariant constraint and replace the bad interleavings with them. After using a certain synchronization technique, we will have a totally new concurrent system with some new interleavings, and our hope is that the new system is going to keep the invariant constraints satisfied and not to produce any post-synchronization issues.
+
+Note that in order to employ a synchronization technique, we will need to both write new code and change the existing code. When you change the existing code, you are effectively changing the order of instructions, and hence the interleavings. Changing the code simply creates a new concurrent system with new interleavings.
+
+How does having new interleavings solve our concurrent issues? By introducing newly added engineered interleavings we impose some extra happens-before constraints between different instructions from different tasks, which keeps the invariant constraints satisfied.
+
+Note that happens-before constraints always exist between two adjacent instructions in a single task, but we don't have them between two instructions from two different tasks in a concurrent system and by using synchronization techniques, we define some new happens-before constraints that govern the order of execution between two different tasks.
+
+Having a totally new concurrent system means having new, different, issues. The first-hand concurrent system was a natural system in which the task scheduler was the only entity driving the context switches. But in the later system, we are facing an artificial and engineered concurrent system where the task scheduler is not the only effective element. The concurrency control mechanisms employed to conserve the system's invariant constraints are other important factors. Therefore, newer issues called *post-synchronization issues*, which were discussed in the previous section, will show up.
+
+Employing a proper control technique to synchronize a number of tasks and make them obey a specific order is dependent on the first-hand concurrent environment. As an example, the control mechanisms used in a multi-processing program can be different from the methods that are used in a multithreading program.
+
+Because of this, we cannot discuss the control mechanisms here in great detail without using real C code. We will therefore discuss them in an abstract way that is true for all concurrent systems, regardless of their implementation methods. The following techniques and concepts are therefore valid in all concurrent systems, but their implementations are greatly dependent upon the true nature of the surrounding environment and the system itself.
+
+## Busy-waits and spin locks
+
+As a generic solution, in order to force an instruction from a task to be executed after another instruction from another task, the former task should wait for the later task to execute its instruction first. In the meantime, the former task may gain the CPU because of a context switch, but it shouldn't continue execution, and it should still wait. In other words, the former task should pause and wait until the later task has executed its instruction.
+
+When the latter task is able to complete the execution of its instruction, then there are two options available. Either the former task itself checks again and sees that the latter task has done its job or there should be a way for the latter task to notify the former task and let it know that it can now continue to execute its instruction.
+
+The scenario described is similar to a situation in which two people try to do something in a defined order. One of them must wait for the other to complete their job, and only then the other person can continue to do their own job. We can say that almost all control mechanisms use an approach analogous to this, but the implementations of this are diverse, and they are mostly dependent on the available mechanisms in a specific environment. We'll explain one of these environments, a POSIX-compliant system, and the available mechanisms in it, as part of the last section in this chapter.
+
+Let's explain the preceding control technique, which is central to all other techniques, using an example. *Example 14.6*, shown in *Code Box 14-8*, is a system of two concurrent tasks, and we want to define the invariant constraint as **having first A, and then B printed in the output**. Without any control mechanism in place, it looks like the following code box:
+
+```cpp
+Concurrent System {
+  Task P {
+    1.1\. print 'A'
+  }
+  Task Q {
+    2.1\. print 'B'
+  }
+}
+```
+
+Code Box 14-8: A concurrent system representing example 14.6 before introducing an control mechanism
+
+It is clear that we have a race condition based on the defined invariant constraint. The interleaving `{2.1, 1.1}` prints `B` and then `A`, which is against the invariant constraint. Therefore, we need to use a control mechanism to keep a specific order between the preceding instructions.
+
+We want to have `2.1` executed only when instruction `1.1` has been executed. The following pseudo-code shown in *Code Box 14-9* demonstrates how we design and employ the previously-explained approach in order to bring back the order between the instructions:
+
+```cpp
+Concurrent System {
+  Shared State {
+    Done : Boolean = False
+  }
+  Task P {
+    1.1\. print 'A'
+    1.2\. Done = True
+  }
+  Task Q {
+    2.1\. While Not Done Do Nothing
+    2.2\. print 'B'
+  }
+}
+```
+
+Code Box 14-9: A solution for example 14.6 using busy-waiting
+
+As you can see, we had to add more instructions to synchronize the tasks. Therefore, it seems we have added a bunch of new interleavings. To be more precise, we are facing a completely new concurrent system in comparison to the previous one. This new system has its own set of interleavings that are in no way comparable to interleavings in the old system.
+
+One thing is common among all these new interleavings, and that is the fact that instruction `1.1` always happens before instruction `2.2`; this is what we wanted to achieve by adding the control mechanism. No matter which interleaving is chosen or how the context switches occur, we have enforced a happens-before constraint between instructions `1.1` and `2.2`.
+
+How is this possible? In the preceding system, we introduced a new shared state, `Done`, which is a Boolean variable initially set to `False`. Whenever task `P` prints `A`, it sets `Done` to `True`. Then, task `Q`, which was waiting for `Done` to become `True`, exits the `while` loop at line `2.1` and prints `B`. In other words, task `Q` waits in a `while` loop until the shared state `Done` becomes `True` and it is an indication that the task `P` has completed its `print` command. Everything seems to be fine with the proposed solution, and in fact, it just works fine.
+
+Try to imagine the following interleaving. When task `P` loses the CPU core and task `Q` gains the CPU core, if `Done` is not true, then task `Q` remains in the loop until it loses the CPU core again. This means, while the task `Q` has the CPU core, the required condition is not met yet, it doesn't leave the loop, and it tries to use its *time slice* to do almost nothing other than *polling* and checking whether the condition has been met. It does it until the CPU core is taken back. In other words, the task `Q` waits and *wastes* its time until the CPU core is granted back to task `P` and task `P` can now print `A`.
+
+In technical language, we say that the task `Q` is in a *busy-wait* until a specific condition is met. It monitors (or polls) a condition continuously in a busy-wait until it becomes true and then it exits the busy-wait. Whatever you call it, the task `Q` is wasting the CPU's precious time despite the fact that the preceding solution solves our problem perfectly.
+
+**Note**:
+
+Busy-waiting is not an efficient approach to wait for an event to happen, but it is a simple one. Since inside a busy-wait nothing special can be done by a task, it wastes its given time slice completely. Busy-waits are avoided in long waits. That wasted time of CPU could be granted to some other task in order to complete a portion of its job. However, in some circumstances in which the waiting times are expected to be short, busy-waits are used.
+
+In real C programs, and also in other programming languages, *locks* are usually used to enforce some strict order. A lock is simply an object, or a variable, that we use to wait for a condition to be met or an event to happen. Note that in the previous example, `Done` is not a lock but a flag.
+
+To comprehend the term *lock*, we can think of it as if we were trying to acquire a lock before executing instruction `2.2`. Only once the lock is acquired can you continue and exit the loop. Inside the loop, we are waiting for the lock to become available. We can have various types of locks, which we explain in future sections.
+
+In the next section, we're going to do the waiting scenario discussed previously, but this time using a more efficient approach that doesn't waste the CPU core's time. It has many names, but we can call it *wait/notify* or the *sleep/notify* mechanism.
+
+## Sleep/notify mechanism
+
+Rather than using a busy-wait loop as discussed in the previous section, a different scenario can also be imagined. Task `Q` could go to sleep instead of busy-waiting on the `Done` flag and the task `P` could notify it about the change in the flag when it made the flag `True`.
+
+In other words, task `Q` goes to sleep as soon as it finds the flag is not `True` and lets the task `P` acquire the CPU core faster and execute its logic. In return, the task `P` will awaken the task `Q` after modifying the flag to `True`. In fact, this approach is the *de facto* implementation in most operating systems to avoid busy-waits and bring control mechanisms into the play more efficiently.
+
+The following pseudo-code demonstrates how to use this approach to rewrite the solution to the example given in the previous section:
+
+```cpp
+Concurrent System {
+  Task P {
+      1.1\. print 'A'
+      1.2\. Notify Task Q
+  }
+  Task Q {
+      2.1\. Go To Sleep Mode
+      2.2\. print 'B'
+  }
+}
+```
+
+Code Box 14-10: A solution for example 14.6 using sleep/notify
+
+We'll need to review some new concepts before being able to explain the preceding pseudo-code. The first is how a task can *sleep*. As long as a task is asleep, it won't get any CPU share. When a task puts itself into the sleeping mode, the task scheduler will become aware of this. After this, the task scheduler won't give any time slice to the asleep task.
+
+What is the benefit of tasks going to sleep? The tasks that go to sleep won't waste the CPU's time by going into a busy-wait. Instead of starting a busy-wait to poll a condition, the tasks go to sleep and get notified when the condition has been met. This will significantly increase the *CPU utilization* factor, and the tasks that really need the CPU share will obtain it.
+
+When a task goes into the sleeping mode, there should be a mechanism to wake it up. This mechanism is normally done by *notifying* or *signaling* the asleep task. A task can be notified to leave the sleeping mode, and as soon as it becomes awake and notified, the task scheduler puts it back in the queue and gives it the CPU again. Then the task will continue execution just after the line that has put it into sleeping mode.
+
+In the code we wrote, the task `Q` enters the sleeping mode as soon as it starts to execute. When it goes into sleeping mode, it won't have any CPU share until it becomes notified and awakened by task `P`. Task `P` notifies task `Q` only when it has printed `A`. Then, task `Q` becomes awake and it obtains the CPU, and it continues and prints `B`.
+
+With this method there's no busy-wait, and there is no wasting of the CPU's time. Note when going to the sleeping mode and notifying an asleep task, both have specific system calls and are supported in most operating systems, especially the POSIX-compliant ones.
+
+At first glance, it seems that the preceding solution has solved our problem, and in an efficient manner – indeed, it does! Yet, there is an interleaving that yields a post-synchronization issue. It happens when you have the following order of execution in the preceding system:
+
+```cpp
+1.1 print 'A'
+1.2\. Notify Task Q
+2.1\. Go To Sleep Mode
+2.2\. print 'B'
+```
+
+Code Box 14-11: An interleaving that puts the concurrent system presented in Code Box 14-10 into a semi-deadlock situation
+
+In the preceding interleaving, the task `P` has printed `A`, and then it has notified task `Q`, which is not asleep yet because it hasn't yet obtained the CPU. When the task `Q` gains the CPU, it goes into sleeping mode immediately. However, there are no other tasks running to notify it. Therefore, task `Q` won't obtain the CPU anymore simply because the task scheduler doesn't give the CPU core to an asleep task. This is the first example of employing a synchronization technique and observing its consequence as a post-synchronization issue.
+
+For solving this issue, we need to use a Boolean flag again. Now, task `Q` should check the flag before going to sleep. Here is our final solution:
+
+```cpp
+Concurrent System {
+  Shared State {
+    Done : Boolean = False
+  }
+  Task P {
+      1.1\. print 'A'
+      1.2\. Done = True
+      1.3\. Notify Task Q
+  }
+  Task Q {
+      2.1\. While Not Done {
+      2.2\.     Go To Sleep Mode If Done is False (Atomic)
+      2.3\. }
+      2.4\. print 'B'
+  }
+}
+```
+
+Code Box 14-12: An improved solution for example 14.6 based on the sleep/notify approach
+
+As you see in the preceding pseudo-code, task `Q` sleeps if the flag `Done` has not been set to `True`. Instruction `2.2` is put inside a loop that simply checks the flag and goes to sleep only if `Done` is `False`. One important note about instruction `2.2` is that it must be an atomic instruction, otherwise the solution is not complete, and it would suffer from the same problem.
+
+**Note**:
+
+For those of you who have some experience with concurrent systems, having this instruction declared as atomic might seem a bit surprising. The main reason behind this is the fact that regarding the preceding example, a true tangible synchronization only happens when we define a clear critical section and protect it using a mutex. As we go forward, this becomes more evident and after going through more conceptual topics, we can finally provide a tangible and real solution.
+
+The loop is required because an asleep task could be notified by anything in the system, not only the task `P`. In real systems, operating systems and other tasks can notify a task but here, we are only interested in notifications received from task `P`.
+
+Therefore, when the task is notified and awakened, it should check the flag again and go back to sleep if the flag has not yet been set. As we explained before, this solution seems to be working based on the explanations that we've given so far, but it's not a complete solution, as it can also cause a semi-deadlock situation on a machine with multiple CPU cores. We explain this further in the section, *Multiple processor units*.
+
+**Note**:
+
+Solutions based on the wait/notify mechanism are usually developed using condition variables. Condition variables also have counterparts in POSIX API, and we will cover them conceptually in a dedicated section, which comes shortly.
+
+All synchronization mechanisms have some sort of waiting involved. This is the only way you can keep some tasks synchronized. At some point, some of them should wait, and some others should continue. This is the point that we need to introduce *semaphores*; these are the standard tools for making a piece of logic wait or continue in a concurrent environment. We focus on this in the next section.
+
+## Semaphores and mutexes
+
+It was in the 1960s when Edsger Dijkstra, a very well-known Dutch computer scientist and mathematician, together with his team designed a new operating system called *THE Multiprogramming System* or *THE OS* for the Electrologica X8 computer, which had its own unique architecture at the time.
+
+It was less than 10 years before the invention of Unix, and later C, by Bell Labs. They were using assembly for wiring THE OS. THE OS was a multitasking operating system, and it had a multi-level architecture. The highest level was the user, and the lowest level was the task scheduler. In Unix terminology, the lowest level was equivalent to having *task scheduler* and *process management unit* together in the kernel ring. One of the ideas that Dijkstra and his team invented to overcome certain concurrency-related difficulties, and for sharing different resources among different tasks, was the concept of *semaphores*.
+
+Semaphores are simply variables, or objects, which are used to synchronize access to a shared resource. We are going to explain them thoroughly in this section and introduce a specific type of semaphores, mutexes that are used widely in concurrent programs and exist in almost any programming language today.
+
+When a task is going to access a shared resource, which can be a simple variable or a shared file, the task should check a predefined semaphore first and ask for permission to continue and access the shared resource. We can use an analogous example to explain a semaphore and its role.
+
+Imagine a doctor, and some patients wishing to be visited by the doctor. Suppose that there is no mechanism for having a prescheduled appointment, and the patients can go to the doctor whenever they want. Our doctor has a secretary who manages the patients, keeps them in a queue, and grants them permission to go into the doctor's room.
+
+We assume that the doctor can see multiple patients (up to a certain number) at a time, which is a bit unusual based on our daily experiences, but you can assume that our doctor is extraordinary and can see multiple patients at once; perhaps multiple patients are happy to sit together within one consultation. In certain real use cases, semaphores protect resources that can be used by many consumers. So, please bear with the preceding assumption for now.
+
+Whenever a new patient arrives at the doctor's office, they should go to the secretary first in order to be registered. The secretary has a list that is simply written on a piece of paper, where they'll write the name of the new patient. Now, the patient should wait for the secretary to summon them and grant them access to the doctor's room. On the other hand, whenever a patient leaves the doctor's room, this information goes to the secretary, who will remove the patient's name from the list.
+
+At each moment, the secretary's list reflects the patients inside the doctor's room and being visited plus those patients who are waiting to be visited. When a new patient leaves the doctor's room, a new patient who is waiting on the list can enter the doctor's room. This process continues until all the patients have seen the doctor.
+
+Now, let's map it to a concurrent computer system to see how semaphores do the same thing as the secretary in our analogy.
+
+In the example, the doctor is a shared resource. They can be accessed by a number of patients, which are analogous to the tasks wishing to access the shared resource. The secretary is a semaphore. Like the secretary who has a list, each semaphore has a queue of pending tasks that are waiting to obtain access to the shared resource. The doctor's room can be considered as a *critical section*.
+
+A critical section is simply a set of instructions that are protected by a semaphore. Tasks cannot enter it without waiting behind a semaphore. On the other hand, it is the semaphore's job to protect the critical section. Whenever a task tries to enter a critical section, it should let a specific semaphore know about it.
+
+Likewise, when a task is done and wants to exit the critical section, it should let the same semaphore know about it. As you can see, there is a very good correspondence between our doctor example and the semaphores. Let's continue with a more programmatic example and try to find the semaphores and other elements in it.
+
+**Note**:
+
+Critical sections should satisfy certain conditions. These conditions will be explained as we progress through the chapter.
+
+The following example, *example 14.7*, shown in *Code Box 14-13*, is again about two tasks trying to increment a shared counter. We have already discussed this example in previous sections in multiple places, but this time, we are going to give a solution based on semaphores:
+
+```cpp
+Concurrent System {
+  Shared State {
+    S : Semaphore which allows only 1 task at a time
+    Counter: Integer = 0
+  }
+  Task P {
+    A : Local Integer
+      1.1\. EnterCriticalSection(S)
+      1.2\. A = Counter
+      1.3\. A = A + 1
+      1.4\. Counter = A
+      1.5\. LeaveCriticalSection(S)
+  }
+  Task Q {
+    B : Local Integer
+      2.1\. EnterCriticalSection(S)
+      2.2\. B = Counter
+      2.3\. B = B + 2
+      2.4\. Counter = B
+      2.5\. LeaveCriticalSection(S)
+  }
+}
+```
+
+Code Box 14-13: Using semaphores to synchronize two tasks
+
+In the preceding system, we have two different shared states: a shared semaphore `S` that is supposed to protect the access to another shared variable `Counter`. `S` only allows one task at a time to enter a critical section being protected by it. The critical sections are the instructions encompassed by `EnterCriticalSection(S)` and `LeaveCriticalSection(S)` instructions, and as you can see, each task has a different critical section protected by `S`.
+
+To enter a critical section, a task should execute the instruction `EnterCriticalSection(S)`. If another task is already in its own critical section, the instruction `EnterCriticalSection(S)` becomes blocking and doesn't finish, and so the current task should wait until the semaphore allows it to pass and enter its critical section.
+
+The `EnterCriticalSection(S)` instruction can have various implementations depending on the scenario. It can be simply a busy-wait, or it can just make the waiting task go to the sleeping mode. The latter approach is more common, and the tasks waiting for their critical sections usually go to sleep.
+
+In the preceding example, the semaphore `S` was used in a way that only one task could enter its critical section. But semaphores are more generic, and they can allow more than one task (up to a certain number defined when creating the semaphore) to enter their critical sections. A semaphore that only allows one task to enter the critical section at a time is usually called a *binary semaphore* or a *mutex*. Mutexes are far more common than semaphores, and you will always see them in concurrent codes. The POSIX API exposes both semaphores and mutexes, and you can use them depending on the situation.
+
+The term **mutex** stands for **mutual exclusion**. Suppose that we have two tasks and each of them have a critical section accessing the same shared resource. In order to have a solution based on mutual exclusion that is race condition free, the following conditions should be met regarding the tasks:
+
+*   Only one of them can enter the critical section at any time, and the other task should wait until the former task leaves the critical section.
+*   The solution should be deadlock free. A task waiting behind a critical section should be able to enter it eventually. In some cases, an upper limit for the waiting time (the *contention time*) is assumed.
+*   The task in the critical section cannot be pulled out by *preemption* in order to let the other task enter the critical section. In other words, the solution should be *preemption free* and *collaborative*.
+
+Mutexes exist to allow such solutions based on mutual exclusion to be developed. Note that the critical sections should also follow similar conditions. They should allow only one task inside, and they should be deadlock free. Note that the semaphores also satisfy the last two conditions, but they can allow more than one task to enter their critical sections at a time.
+
+We can say that mutual exclusion is the most important concept in concurrency and is a dominant factor in various control mechanisms that we have at hand. In other words, in every synchronization technique that you might know, you will see a footprint of mutual exclusion through using semaphores and mutexes (but mostly mutexes).
+
+Semaphores and mutexes are said to be *lockable* objects. In a different but more formal terminology, the act of waiting for a semaphore and entering the critical section is the same as *locking* the semaphore. Likewise, the act of leaving a critical section and updating the semaphore is the same as to *unlocking* the semaphore.
+
+Therefore, locking and unlocking the semaphores can be considered as two algorithms used to wait and acquire the access to the critical section and to release the critical section respectively. As an example, *spin locking* is acquiring access to a critical section by busy-waiting on a semaphore, and certainly, we can have other types of locking and unlocking algorithms as well. We will explain these various locking algorithms while we are developing concurrent programs using POSIX API in *Chapter 16*, *Thread Synchronization*.
+
+If we are going to write the preceding solution based on locking and unlocking terminology, it would be like the following:
+
+```cpp
+Concurrent System {
+  Shared State {
+    S : Semaphore which allows only 1 task at a time
+    Counter: Integer = 0
+  }
+  Task P {
+    A : Local Integer
+      1.1\. Lock(S)
+      1.2\. A = Counter
+      1.3\. A = A + 1
+      1.4\. Counter = A
+      1.5\. Unlock(S)
+  }
+  Task Q {
+    B : Local Integer
+      2.1\. Lock(S)
+      2.2\. B = Counter
+      2.3\. B = B + 2
+      2.4\. Counter = B
+      2.5\. Unlock(S)
+  }
+}
+```
+
+Code Box 14-14: Using lock and unlock operations to work with semaphores
+
+From now on, we will be using the locking and unlocking terminology in our pseudo-code snippets, and this terminology has been used throughout the POSIX API as well.
+
+We are going to finish this section by giving the final definition. When a number of tasks are willing to enter a critical section, they are trying to lock a semaphore, but only a certain number of them (depending on the semaphore) can acquire the lock and enter the critical section. The other tasks will be waiting to acquire the lock. The act of waiting to acquire a lock over a semaphore is called *contention*. More tasks yield more contention, and the contention time is a measure of how much the execution of tasks is slowed down.
+
+Obviously, it takes some time for the tasks in contention to acquire the lock, and as more tasks we get, the more they should wait to enter their critical sections. The amount of time that a task waits in the contention state is usually called the *contention time*. The contention time can be a non-functional requirement for a concurrent system that should be monitored carefully to prevent any performance degradation.
+
+We could conclude that mutexes are our primary tool to synchronize some concurrent tasks. We also have mutexes in POSIX threading API and almost every programming language that supports concurrency. Apart from mutexes, *condition variables* also play an important role when we need to wait for an indefinite amount of time in order to satisfy a certain condition.
+
+We are going to discuss the condition variables, but before that, we need to talk about memory barriers and concurrent environments with multiple processor units, either multiple CPUs or a CPU with multiple cores. Therefore, the next section is dedicated to this topic.
+
+## Multiple processor units
+
+When you have only one processor unit in your computer system, a CPU with only one core, the tasks trying to access a specific address in the main memory always read the latest and freshest value even if that address is cached in the CPU core. It's a common practice to cache the value of certain memory addresses inside the CPU core as part of its *local cache* and even keep the changes made to those addresses inside the cache as well. This will increase the performance by reducing the number of reading and writing operations on the main memory. On certain events, the CPU core will propagate the changes in its local cache back to the main memory in order to keep its cache and the main memory synchronized.
+
+These local caches still exist when you have more than one processor unit. By multiple processor units, we mean either one CPU with more than one core or multiple CPUs with any number of cores. Note that every CPU core has its own local cache.
+
+Therefore, when two different tasks are executed on two different CPU cores, working on the same address in the main memory, each CPU core has cached the value of the same memory address in its own local cache. This means if one of them tries to write to the shared memory address, the changes are only applied to its local cache, and not to the main memory and the other CPU core's local cache.
+
+Doing this leads to many different problems because when the task running in the other CPU core tries to read the latest value from the shared memory address, it cannot see the latest changes since it would read from its local cache, which doesn't have the latest changes.
+
+This problem, which comes from having a different local cache for each CPU core, is solved by introducing a *memory coherence protocol* among CPU cores. Therefore, by following a coherence protocol, all tasks running on different CPU cores will see the same value in their local caches when the value is changed in one of the CPU cores. In other words, we say that the memory address is visible to all other processors. Following a memory coherence protocol brings *memory visibility* to all tasks running on different processor units. Cache coherence and memory visibility are two important factors that should be considered in concurrent systems being run on more than one processor unit.
+
+Let's go back to our first sleep-notify-based solution for *example 14.6* that was explained in the previous two sections. The invariant constraint for *example 14.6* was to **have first A and then B in the output**.
+
+The following pseudo-code was our final solution, and we used the sleep/notify mechanism to enforce the desired ordering between `print` instructions. We said that the solution is not bug-free and can yield post-synchronization issues. In the following paragraph, we will explain how the problem shows up:
+
+```cpp
+Concurrent System {
+  Shared State {
+    Done : Boolean = False
+  }
+  Task P {
+      1.1\. print 'A'
+      1.2\. Done = True
+      1.3\. Notify Task Q
+  }
+  Task Q {
+      2.1\. While Not Done {
+      2.2\.     Go To Sleep Mode If Done is False (Atomic)
+      2.3\. }
+      2.4\. print 'B'
+  }
+}
+```
+
+Code Box 14-15: The solution proposed for example 14.6 based on the sleep/notify technique
+
+Suppose that the tasks `P` and `Q` are running on different CPU cores. In this case, each CPU core has an entry for the shared variable `Done` in its local cache. Note that, again, we have declared instruction `2.2` to be atomic, and note that this is an essential assumption until we come up with a proper mutex-based solution to resolve this. Suppose an interleaving in which the task `P` executes instruction `1.2` and notifies task `Q`, which could be sleeping. Therefore, task `P` updates the value of `Done` in its local cache, but it doesn't mean that it writes it back to the main memory or it updates the other CPU core's local cache.
+
+With that being said, there's no guarantee that we will see a change in the main memory and the task `Q`'s local cache. Therefore, there is a chance that when the task `Q` obtains CPU and reads its local cache, it sees that `Done` has the value `False` and goes into the sleeping mode while task `P` is finished and has sent its notification signal a while ago, and no more notifying signals will be emitted by the task `P`. Eventually, the task `Q` goes to sleep forever and a semi-deadlock situation happens.
+
+To resolve this issue, one needs to use memory barriers or memory fences. They are instructions that act like a barrier and upon executing (passing) them, all values updated in just one local cache are propagated into the main memory and other local caches. They become visible to all tasks executing in other CPU cores. In other words, memory barriers synchronize all CPU cores' local caches and the main memory.
+
+Finally, we can propose our complete solution as follows. Note that, again, we have declared instruction `2.3` to be atomic, and note that this is an essential assumption until we come up with a proper mutex-based solution to resolve this:
+
+```cpp
+Concurrent System {
+  Shared State {
+      Done : Boolean = False
+  }
+  Task P {
+      1.1\. print 'A'
+      1.2\. Done = True
+      1.3\. Memory Barrier
+      1.4\. Notify Task Q
+  }
+  Task Q {
+      2.1\. Do {
+      2.2\.     Memory Barrier
+      2.3\.     Go To Sleep Mode If Done is False (Atomic)
+      2.4\. } While Not Done
+      2.5\. print 'B'
+  }
+}
+```
+
+Code Box 14-16: Improving the solution proposed for example 14.6 using memory barriers
+
+By employing memory barriers in the preceding pseudo-code, we are certain that any updates to the shared variable `Done` can be seen by task `Q`. It would be a good idea for you to go through different possible interleavings and see for yourself how the memory barrier helps to make the shared variable `Done` visible to task `Q` and prevent any unwanted semi-deadlock situation.
+
+Note that creating a task, locking a semaphore, and unlocking a semaphore are three operations that act as memory barriers and synchronize all the CPU cores' local caches and main memory, and propagate the recent changes made to the shared states.
+
+The following pseudo-code is the same as the preceding solution but using mutexes this time. As part of the following solution, we are going to use a mutex and finally resolve the issue that made us declare the instruction `Go To Sleep Mode If Done` is `False` as atomic. Though take note that mutexes are semaphores, which allows only one task to be in the critical section at each time and, like semaphores, locking and unlocking mutexes can act as a memory barrier:
+
+```cpp
+Concurrent System {
+  Shared State {
+      Done : Boolean = False
+      M : Mutex
+  }
+  Task P {
+      1.1\. print 'A'
+      1.2\. Lock(M)
+      1.3\. Done = True
+      1.4\. Unlock(M)
+      1.5\. Notify Task Q
+  }
+  Task Q {
+      2.1\. Lock(M)
+      2.2\. While Not Done {
+      2.3\.     Go To Sleep Mode And Unlock(M) (Atomic)
+      2.4\.     Lock(M)
+      2.5\. }
+      2.6\. Unlock(M)
+      2.7\. print 'B'
+  }
+}
+```
+
+Code Box 14-17: Improving the solution proposed for example 14.6 using a mutex
+
+The instructions `Lock(M)` and `Unlock(M)` act as memory barriers so guarantees memory visibility in all tasks. As a reminder, the instructions between `Lock(M)` and `Unlock(M)` are considered as critical sections in each task.
+
+Note that when a task locks a mutex (or semaphore), there are three occasions in which the mutex gets unlocked automatically:
+
+*   The task uses the `Unlock` command to unlock a mutex.
+*   When a task is finished, all the locked mutexes become unlocked.
+*   When a task goes into sleeping mode, the locked mutexes become unlocked.
+
+    **Note**:
+
+    The third bullet point in the preceding list is not generally true. If a task wants to sleep for a certain amount of time inside a critical section being protected by a mutex, it is certainly possible to sleep without needing to unlock the mutex. That's why we have declared instruction `2.3` as atomic and we have added `Unlock(M)` to it. For a complete appreciation of such scenarios, we need to touch on *condition variables*, which come shortly in the upcoming sections.
+
+Therefore, when instruction `2.3` is executed as an atomic instruction, the already locked mutex `M` becomes unlocked. When the task is notified again, it will reobtain the lock using instruction `2.4`, and then it can proceed into its critical section again.
+
+As a final note in this section, when a task has locked a mutex, it cannot lock it again, and attempting to lock it further usually leads to a deadlock situation. Only a *recursive mutex* can be locked many times by a single task. Note that while a recursive mutex is locked (no matter how many times), all other tasks will be blocked upon trying to lock it. Lock and unlock operations always come in pairs, therefore if a task has locked a recursive mutex twice, it should unlock it twice as well.
+
+So far, we have discussed and used the sleep/notify technique in a number of examples. You will get a full appreciation of sleep/notify technique only when you become introduced to a new concept: condition variables. Condition variables together with mutexes have built a basis for implementing control techniques, which effectively synchronize many tasks on a single shared resource. But before that, let's talk about another possible solution to *example 14.6*.
+
+# Spin locks
+
+Before starting to talk about the condition variables and the true way that the sleep/notify technique should get implemented, let's go back a little bit and use busy-waiting together with mutexes to write a new solution for *example 14.6*. As a reminder, the example was about **having first A and then B printed in the standard output**.
+
+The following is the proposed solution that uses a mutex equipped with the spin locking algorithm. The mutex acts as a memory barrier, so we won't have any memory visibility issues, and it effectively synchronizes the tasks `P` and `Q` over the `Done` shared flag:
+
+```cpp
+Concurrent System {
+  Shared State {
+      Done : Boolean = False
+      M : Mutex
+  }
+  Task P {
+      1.1\. print 'A'
+      1.2\. SpinLock(M)
+      1.2\. Done = True
+      1.3\. SpinUnlock(M)
+  }
+  Task Q {
+      2.1  SpinLock(M)
+      2.2\. While Not Done {
+      2.3\.   SpinUnlock(M)
+      2.4\.   SpinLock(M)
+      2.5\. }
+      2.6\. SpinUnlock(M)
+      2.4\. print 'B'
+  }
+}
+```
+
+Code Box 14-18: The solution for example 14.6 using a mutex and spin locking algorithms
+
+The preceding pseudo-code is the first solution that can be written as a valid C code using the POSIX threading API. None of the previously given pseudo-codes could be written as real programs because either they were too abstract to be implemented or they were problematic in certain scenarios, like being run in a system with multiple processor units. But the preceding pseudo-code can be translated into any programming language that supports concurrency.
+
+In the preceding code, we are using *spinlocks*, which are simply busy-waiting algorithms. Whenever you lock a spinlock mutex, it goes into a busy-wait loop until the mutex becomes available and then it continues.
+
+I think everything in the preceding pseudo-code is easy to follow, except instructions `2.3` and `2.4`, which are strange successive lock and unlock instructions inside a loop! Actually, this is the most beautiful part of the code. A series of locking and unlocking the spinlock mutex `M` is in progress while the task `Q` obtains the CPU core.
+
+What if we didn't have instructions `2.3` and `2.4`? Then the lock at instruction `2.1` would have kept the mutex locked until instruction `2.6`, which means that task `P` never could find a chance to get the access to the shared flag `Done`. Those locking and unlocking instructions allow the task `P` to find a chance and update the flag `Done` via instruction `1.2`. Otherwise, the mutex will be held by the task `Q` all the time and the task `P` can never proceed to instruction `1.2`. In other words, the system goes into a semi-deadlock situation. The pseudo-code demonstrates a beautiful harmony of locking/unlocking operations, which nicely solves our problem using spinlocks.
+
+Note that in high-performance systems in which putting a task into sleeping mode is very expensive in comparison to the rate of events happening in the system, spin locks are very common. When using spin locks, the tasks should be written in a way that they can unlock a mutex as soon as possible. For this to happen, the critical sections should be small enough. As you can see in our code, we have a critical section with only one Boolean check (the loop condition).
+
+In the next section, we explore condition variables and their properties.
+
+## Condition variables
+
+The solutions we have provided in the previous sections to satisfy *example 14.6* cannot be implemented using a programming language because we don't know how to put a task into sleep mode and how to notify another task programmatically. In this section, we are going to introduce condition variables, a new concept that can help us to make a task wait and get notified accordingly.
+
+Condition variables are simple variables (or objects) that can be used to put a task into sleeping mode or notify other sleeping tasks and wake them up. Note that sleeping mode discussed here is different from sleeping for a number of seconds or milliseconds to make a delay and it particularly means that the task doesn't want to receive any more CPU share. Like mutexes that are used to protect a critical section, condition variables are used to enable *signaling* between different tasks.
+
+Again, like mutexes that have associated *lock* and *unlock* operations, the condition variables have *sleep* and *notify* operations. However, every programming language has its own terminology here, and in some of them you may find *wait* and *signal* instead of sleep and notify, but the logic behind them remains the same.
+
+A condition variable must be used together with a mutex. Having a solution that uses a condition variable without a mutex simply lacks the *mutual exclusion* property. Remember that a condition variable must be shared between multiple tasks to be helpful and, as a shared resource, we need synchronized access to it. This is often achieved with a mutex that guards the critical sections. The following pseudo-code shows how we can use condition variables and mutexes to wait for a certain condition, or an event in general, and specifically to wait for the shared flag `Done` to become `True` in *example 14.6*:
+
+```cpp
+Concurrent System {
+  Shared State {
+      Done : Boolean = False
+      CV   : Condition Variable
+      M    : Mutex
+  }
+  Task P {
+        1.1\. print 'A'
+        1.2\. Lock(M)
+        1.3\. Done = True
+        1.4\. Notify(CV)
+        1.5\. Unlock(M)
+  }
+  Task Q {
+        2.1\. Lock(M)
+        2.2\. While Not Done {
+        2.3\.     Sleep(M, CV)
+        2.4\. }
+        2.5\. Unlock(M)
+        2.6\. print 'B'
+  }
+}
+```
+
+Code Box 14-19: The solution for example 14.6 using a condition variable
+
+The preceding solution is the most genuine way to use condition variables to implement strict ordering between two instructions in a concurrent system. Instructions `1.4` and `2.3` are using the condition variable `CV`. As you can see, the operation `Sleep` needs to know about both the mutex `M` and the condition variable `CV` because it needs to unlock `M` when the task `Q` is going to sleep and reacquiring the lock over `M` when it has become notified.
+
+Note that when the task `Q` is notified, it continues its logic that is inside the `Sleep` operation, and locking `M` again is part of that. Instruction `1.4` also only works when you have acquired the lock over `M`, otherwise race conditions happen. It would be a good and beneficial challenge to go through possible interleavings and see how the preceding mutex and condition variable are going to enforce the desired order between instructions `1.1` and `2.6` all the time.
+
+As a final definition in this section, a mutex object together with a condition variable is usually referred to as a *monitor* object. We also have a concurrency-related design pattern called *monitor object*, which is about employing the preceding technique to reorder instructions in some concurrent tasks.
+
+In the previous sections, we showed how semaphores, mutexes, and condition variables together with locking, unlocking, sleep, and notify algorithms can be used to implement control mechanisms that are used to enforce a strict order between some instructions in various concurrent tasks and to protect critical sections. These concepts will be used in the upcoming chapters in order to write multithreaded and multi-process programs in C. The next section will talk about the concurrency support in the POSIX standard that has been implemented and provided by many Unix-like operating systems.
+
+# Concurrency in POSIX
+
+As we explained in the previous sections, concurrency or multitasking is a functionality provided by the kernel of an operating system. Not all kernels have been concurrent since their birth, but most of them support concurrency today. It is nice to know that the first version of Unix was not concurrent, but it gained this feature very soon after its birth.
+
+If you remember *Chapter 10*, *Unix – History and Architecture*, we explained how single Unix specification and POSIX tried to standardize the API exposed by the shell ring in a Unix-like operating system. Concurrency has been part of these standards for a long time, and so far, it has allowed many developers to write concurrent programs for POSIX-compliant operating systems. The concurrency support in POSIX has been widely used and implemented in a vast range of operating systems, such as Linux and macOS.
+
+Concurrency in a POSIX-compliant operating system is generally provided in two ways. You can either have a concurrent program executing as some different processes, which is called *multi-processing*, or you can have your concurrent program running as some different threads as part of the same process, which is called *multithreading*. In this section, we are going to talk about these two methods and compare them from a programmer's point of view. But before that, we need to know more about the internals of a kernel supporting concurrency. The next section briefly explains what you will find in such a kernel.
+
+## Kernels supporting concurrency
+
+Almost all kernels being developed and maintained today are multitasking. As we already know, every kernel has a *task scheduler unit* that shares CPU cores among many running processes and threads that were generally referred to as tasks in this and the previous chapter.
+
+Before being able to move on, we need to describe processes and threads and their differences with respect to concurrency. Whenever you run a program, a new process is created, and the program's logic is run inside that process. Processes are isolated from each other, and one process cannot have access to another process's internals, like its memory.
+
+Threads are very similar to processes, but they are local to a certain process. They are used to bring concurrency into a single process through having multiple threads of execution that together execute multiple series of instructions in a concurrent way. A single thread cannot be shared between two processes, and it is local and bound to its owner process. All threads in a process are able to access their owner process's memory as a shared resource, while every thread has its own Stack region that of course is accessible by other threads in the same process. In addition, both processes and threads can use CPU share, and the task scheduler in most kernels uses the same *scheduling* algorithm for sharing the CPU cores among them.
+
+Note that when we're talking at the kernel level, we prefer to use the term *task* instead of the terms *thread* or *process*. From the kernel's point of view, there is a queue of tasks waiting to have a CPU core to execute their instructions, and it is the duty of the task scheduler unit to provide this facility to all of them in a fair fashion.
+
+**Note**:
+
+In Unix-like kernels, we usually use the term *task* for both processes and threads. In fact, the terms thread or process are *userspace* terms, and they cannot be used in kernel terminology. Therefore, Unix-like kernels have task scheduler units that try to fairly manage access to CPU cores among various tasks.
+
+In different kernels, the task schedulers use different strategies and algorithms to do the scheduling. But most of them can be grouped into two giant categories of scheduling algorithms:
+
+*   Cooperative scheduling
+*   Preemptive scheduling
+
+Cooperative scheduling is about granting the CPU core to a task and waiting for the task's cooperation to release the CPU core. This approach is not *preemptive* in the sense that in most normal cases, there is no force employed to take back the CPU core from the task. There should be a high priority *preemptive signal* to make the scheduler to take back the CPU core by preemption. Otherwise, the scheduler and all tasks in the system should wait until the active task releases the CPU core at will. Modern kernels are not usually designed this way, but you can still find kernels employing cooperative scheduling for very specific applications, like *real-time processing*. Early versions of macOS and Windows used cooperative scheduling, but nowadays they use a preemptive scheduling approach.
+
+In contrast to cooperative scheduling, we have preemptive scheduling. In preemptive scheduling, a task is allowed to use a CPU core until it is taken back by the scheduler. In a specific type of preemptive scheduling, a task is allowed to use the given CPU core for a certain amount of time. This type of preemptive scheduling is called *time-sharing*, and it is the most employed scheduling strategy in current kernels. The time interval that has been given to a task to use the CPU has various names, and it can be called a *time slice*, a *time slot*, or a *quantum* in various academic sources.
+
+There are also various types of time-sharing scheduling based on the algorithm used. *Round-robin* is the most widely used time-sharing algorithm and has been employed by various kernels, with some modifications of course. The round-robin algorithm allows fair and *starvation-free* access to a shared resource, which is a CPU core in this case.
+
+Despite the fact that the round-robin algorithm is simple and not prioritized, it can be modified to allow multiple priority levels for tasks. Having different priority levels is usually a requirement for modern kernels because there are certain types of tasks that are initiated by the kernel itself or other important units inside the kernel, and these tasks should be served before any other ordinary task.
+
+As we said before, there are two ways of bringing concurrency into a piece of software. The first approach is multi-processing, which uses *user processes* to do parallel tasks in a multitasking environment. The second approach is multithreading, which uses *user threads* to break tasks into parallel flows of execution inside a single process. It is also very common to use a combination of both techniques in a big software project. Despite the fact that both techniques bring concurrency to software, they have fundamental differences in respect to their different natures.
+
+In the following two sections, we will talk about multi-processing and multithreading in greater detail. In the next two chapters, we will cover multithreaded development in C, and in the two chapters after that, we will discuss multi-processing.
+
+# Multi-processing
+
+Multi-processing simply means using processes to do concurrent tasks. A very good example is the **Common Gateway Interface** (**CGI**) standard in web servers. The web servers employing this technique launch a new *interpreter process* for each HTTP request. This way, they can serve multiple requests simultaneously.
+
+On such web servers, for a high throughput of requests, you might see that many interpreter processes are spawned and running at the same time, each of which is handling a different HTTP request. Since they are different processes, they are isolated and cannot see the memory regions of each other. Fortunately, in the CGI use case, the interpreter processes don't need to communicate with each other or share data. But this is not always the case.
+
+There are many examples in which a number of processes are doing some concurrent tasks, and they need to share crucial pieces of information in order to let the software continue functioning. As an example, we can refer to the Hadoop infrastructure. There are many nodes in a Hadoop cluster, and each node has a number of processes keeping the cluster running.
+
+These processes need to constantly share pieces of information in order to keep the cluster up and running. There are many more examples of such distributed systems with multiple nodes, like Gluster, Kafka, and cryptocurrency networks. All of them need a great deal of intercommunication and message-passing between processes located on different nodes in order to remain up and running.
+
+As long as the processes or threads are functioning without having a shared state in the middle, there is not much difference between multi-processing and multithreading. You probably can use processes instead of threads and vice versa. But with introducing a shared state between them, we see a huge difference between using processes or threads, or even a combination of both. One difference is in the available synchronization techniques. While the APIs exposed to use these mechanisms are more or less the same, the complexity of working in multi-process environments is much higher and the underlying implementations are different. Another difference between multi-processing and multithreading is the techniques we use for having shared states. While threads are able to use all the techniques available to processes, they have the luxury that they can use the same memory region to share a state. As you see in the upcoming chapters, this makes a big difference.
+
+To elaborate more, a process has a private memory, and other processes cannot read or modify it, so it's not that easy to use the process's memory for sharing something with other processes. But this is much simpler with threads. All threads within the same process have access to the same process's memory; hence they can use it for storing a shared state.
+
+Next, you can find the techniques that can be used by processes to access a shared state among themselves. More information regarding these techniques will be given in upcoming chapters:
+
+*   **File system**: This can be considered as the simplest way to share data between a number of processes. This approach is very old and is supported by almost all operating systems. An example is configuration files that are read by many processes in a software project. If the file is going to be written by one of the processes, synchronization techniques should be employed in order to prevent data races and other concurrency-related issues.
+*   **Memory-mapped file**: In all POSIX-compliant operating systems and Microsoft Windows, we can have memory regions that are mapped to files on disk. These memory regions can be shared among a number of processes to be read and modified.
+
+    This technique is very similar to the file system approach, but it has fewer headaches caused by streaming data to and from a file descriptor using the File API. Proper synchronization mechanisms should be employed if the content of the mapped region can be modified by any of the processes that have access to it.
+
+*   **Network**: For processes located on different computers, the only way to communicate is by using the network infrastructure and the socket programming API. The socket programming API is a great part of the SUS and POSIX standards, and it exists in almost every operating system.
+
+    The details regarding this technique are huge, and many books exist just to cover this technique. Various protocols, various architectures, different methods for handling data flow, and many more details all exist as subparts of this technique. We try to cover part of it in *Chapter 20*, *Socket Programming*, but it may need a completely separate book to go through the different aspects of IPC via networks.
+
+*   **Signals**: Processes being run within the same operating system can send signals to each other. While this is more used for passing command signals, it can be also used for sharing a small state (payload). The value for the shared state can be carried on the signal and intercepted by the target process.
+*   **Shared memory**: In POSIX-compliant operating systems and Microsoft Windows, we can have a region of memory shared among a number of processes. Therefore, they can use this shared region to store variables and share some values. Shared memory is not protected against data races, so the processes willing to use it as a placeholder for their modifiable shared states need to employ a proper synchronization mechanism in order to avoid any concurrency problems. A shared memory region can be used by many processes at the same time.
+*   **Pipes**: In POSIX-compliant operating systems and Microsoft Windows, pipes are one-way communication channels. They can be used in order to transfer a shared state between two processes. One of the processes writes to the pipe, and the other one reads from it.
+
+    A pipe can be either named or anonymous, each of which has its own specific use cases. We will give more details and examples in *Chapter 19*, *Single-Host IPC and Sockets*, when talking about various available IPC techniques on a single machine.
+
+*   **Unix domain sockets**: In POSIX-compliant operating systems, and recently Windows 10, we have communication endpoints known as *Unix sockets*. Processes located on the same machine and running within the same operating system can use *Unix domain sockets* to pass information over a full-duplex channel. Unix domain sockets are very similar to network sockets, but all the data is transferred through the kernel, hence it provides a very fast way of transferring data. Multiple processes can use the same Unix domain socket in order to communicate and share data. Unix domain sockets can also be used for special use cases, like transferring a file descriptor between processes on the same machine. The good thing about Unix domain sockets is that we need to use the same socket programming API as if they were network sockets.
+*   **Message queue**: This exists in almost every operating system. A message queue is maintained in the kernel that can be used by various processes to send and receive a number of messages. The processes are not required to know about each other, and it is enough for them to only have access to the message queue.
+
+    This technique is only used to make processes on the same machine able to communicate with each other.
+
+*   **Environment variables**: Unix-like operating systems and Microsoft Windows offer a set of variables that are kept in the operating system itself.
+
+    These variables are called environment variables, and they can be accessible to processes within the system.
+
+As an example, this method is heavily used in CGI implementations introduced in the first paragraph of this section, especially when the main webserver process wants to pass HTTP request data to the spawned interpreter process.
+
+Regarding the control techniques to make a number of threads/processes synchronized, you will see that the techniques used in multi-processing and multithreading environments share a very similar API provided by the POSIX standard. But probably the underlying implementation of a mutex or a condition variable is different in multithreading and multiprocessing usages. We will give examples of this in the upcoming chapters.
+
+# Multithreading
+
+Multithreading is about employing *user threads* to perform parallel tasks in a concurrent environment. It's very rare to find a non-trivial program that has only a single thread; almost every program you'll encounter is multithreaded. Threads can only exist inside processes; we cannot have any thread without an owner process. Each process has at least one thread, which is usually called the *main thread*. A program that is using a single thread to perform all its tasks is called a *single-threaded* program. All threads within a process have access to the same memory regions, and this means that we won't have to come up with a complex scenario to share a piece of data, like we do in multi-processing.
+
+Since threads are very similar to processes, they can use all the techniques that processes use to share or transfer a state. Therefore, all the techniques explained in the previous section can be employed by threads to access a shared state or transfer data among themselves. But threads have another advantage over processes in this sense, and that's having access to the same memory regions. Hence, one of the common methods of sharing a piece of data among a number of threads is to use the memory by declaring some variables.
+
+Since each thread has its own Stack memory, it can be used as a placeholder for keeping shared states. A thread can give an address pointing to somewhere inside its Stack to another thread, and it can be easily accessed by the other thread because all of these memory addresses belong to the process's Stack segment. The threads can also easily access the same Heap space owned by the process and use it as a place holder to store their shared states. We will give several examples of using the Stack and Heap regions as some placeholders for shared states in the next chapter.
+
+The synchronization techniques are also very similar to the techniques used by the processes. Even the POSIX API remains the same between processes and threads. It's likely due to the fact that a POSIX-compliant operating system treats processes and threads in almost the same way. In the next chapter, we will explain how to use the POSIX API to declare semaphores, mutexes, and condition variables and more in a multithreaded program.
+
+As a final note on Windows, regarding the POSIX Threading API (pthreads), Microsoft Windows doesn't support it. Therefore, Windows has its own API, which creates and manages threads. This API is part of the Win32 native library, which we won't go through in this book, but you can certainly find many resources on the web that cover it.
+
+# Summary
+
+In this chapter, we discussed the issues we might expect to encounter while developing a concurrent program, and the solutions we should employ to resolve them. The following are the main points that we covered in this chapter.
+
+*   We covered concurrency issues. Intrinsic issues exist in all concurrent systems when different interleavings dissatisfy the invariant constraints of a system.
+*   We discussed post-synchronization issues that only occur after employing a synchronization technique in a poor and wrong way.
+*   We explored the control mechanisms employed to keep the invariant constraints satisfied.
+*   Semaphores are key tools in implementing control mechanisms. Mutexes are a special category of semaphores that allow only one task at a time to enter a critical section based on mutual exclusion conditions.
+*   Monitor objects that encapsulate a mutex and a condition variable can be used in situations when a task is waiting for a condition to be met.
+*   We finally took the first step towards concurrency development by introducing multi-processing and multithreading in the POSIX standard.
+
+The next chapter is the first of a pair of chapters (*Chapter 15*, *Thread Execution*, and *Chapter 16*, *Thread Synchronization*) that discuss multithreaded development in POSIX-compliant operating systems. *Chapter 15*, *Thread Execution* mainly talks about threads and how they are executed. *Chapter 16*, *Thread Synchronization* goes through the available concurrency control mechanisms for multithreaded environments, and together they convey all the topics required for writing a multithreaded program.

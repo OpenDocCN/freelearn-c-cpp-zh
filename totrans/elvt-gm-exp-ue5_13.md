@@ -1,0 +1,979 @@
+# 13
+
+# Creating and Adding the Enemy Artificial Intelligence
+
+In the previous chapter, you added layered animations for the player character using animation blending with a combination of Anim Slots, Animation Blueprints, and blending functions such as `Layered blend per bone`. With this knowledge, you were able to smoothly blend the throwing animation montage with the base movement state machine to create layered animations for the character.
+
+The primary focus of this chapter is to take the C++ enemy class you created in [*Chapter 12*](B18531_12.xhtml#_idTextAnchor247), *Animation Blending and Montages*, and bring this enemy to life using AI. UE5 uses many different tools to achieve AI, such as AI Controllers, Blackboards, and Behavior Trees, all of which you will learn about and use in this chapter.
+
+In this chapter, we will cover the following topics:
+
+*   How to use a Navigation Mesh to create a navigable space inside of the game world that the enemy can move in.
+*   How to create an enemy AI pawn that can navigate between patrol point locations inside the game world using a combination of the AI tools present inside `Blackboards` and `Behavior Trees`.
+*   How to use a Transform Vector to convert local transform into world transform.
+*   How to create a player projectile class in C++, and how to implement the `OnHit()`collision event function to recognize and log when the projectile hits an object in the game world.
+
+By the end of this chapter, you will be able to create a navigable space where the enemy can move. You will also be able to create an enemy AI pawn and navigate it across locations using `Blackboards` and `Behavior Trees`. Lastly, you will know how to create and implement a player projectile class and add visual elements to it. Before you jump into these systems, let’s take a moment to learn about how AI has been used in games in recent history. AI has certainly evolved since the days of *Super Mario Bros*.
+
+# Technical requirements
+
+For this chapter, you will need the following technical requirements:
+
+*   Unreal Engine 5 installed
+*   Visual Studio 2019 installed
+
+The project for this chapter can be found in the `Chapter13` folder of the code bundle for this book, which can be downloaded from
+
+[https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition).
+
+# Enemy AI
+
+What is **artificial intelligence** (**AI**)? This term can mean many things, depending on the field and context where it is used, so let’s define it in a way that makes sense regarding the subject of video games.
+
+**AI** is an entity that is aware of its environment and performs choices that will help it optimally achieve its intended purpose. AI uses what are called **finite state machines** to switch between more than one state based on the input it receives from the user or its environment. For example, a video game AI can switch between an offensive state to a defensive state based on its current health.
+
+In games such as *Hello Neighbor*, which was developed in Unreal Engine 4, and *Alien: Isolation*, the goal of the AI is to find the player as efficiently as possible, but also to follow some predetermined patterns defined by the developers to ensure that the player can outsmart it. *Hello Neighbor* adds a very creative element to its AI by having it learn from the players’ past actions and try to outsmart the player based on the knowledge it learns.
+
+You can find an informative breakdown of how the AI works in the following video by the publishers of the game, *TinyBuild Games*: [https://www.youtube.com/watch?v=Hu7Z52RaBGk](https://www.youtube.com/watch?v=Hu7Z52RaBGk).
+
+Interesting and fun AI is crucial to any game, and depending on the game you are making, this can mean a very complex or very simplistic AI. The AI that you will be creating for the `SuperSideScroller` game will not be as sophisticated as those mentioned previously, but it will fill the needs of the game we are seeking to create.
+
+Let’s break down how the enemy will behave:
+
+*   The enemy will be a very simple enemy that has a basic back and forth movement pattern and will not support any attacks; only by colliding with the player character will they be able to inflict any damage.
+*   However, we need to set the locations for the enemy AI to move between.
+*   Next, we must decide whether the AI should change locations, should constantly move between locations, or whether there should be a pause inbetween selecting a new location to move to.
+
+Fortunately for us, UE5 provides us with a wide array of tools that we can use to develop such complex AI. In the case of our project, however, we will use these tools to create a simplistic enemy type. Let’s start by discussing what an AI Controller is in UE5.
+
+# AI Controller
+
+Let’s discuss what the main difference is between a **Player Controller** and an **AI Controller**. Both of these actors derive from the base **Controller** class. A **Controller** is used to take control of a **Pawn** or **Character** to control the actions of said pawn or character.
+
+While a `UWorld` class.
+
+Note
+
+You will learn more about the `UWorld` class in [*Chapter 14*](B18531_14.xhtml#_idTextAnchor298), *Spawning the Player Projectile*, but as a reference, you can read more here: [https://docs.unrealengine.com/en-US/API/Runtime/Engine/Engine/UWorld/index.xhtml](https://docs.unrealengine.com/en-US/API/Runtime/Engine/Engine/UWorld/index.xhtml).
+
+The most important aspect of both the Player Controller and the AI Controller is the pawns they will control. Let’s learn more about how AI Controllers handle this.
+
+## Auto Possess AI
+
+Like all Controllers, the AI Controller must possess a *pawn*. In C++, you can use the following function to possess a pawn:
+
+```cpp
+void AController::Possess(APawn* InPawn)
+```
+
+You can also use the following function to unpossess a pawn:
+
+```cpp
+void AController::UnPossess()
+```
+
+There’s also the `void AController::OnPossess(APawn* InPawn)` and `void AController::OnUnPossess()`functions, which are called whenever the `Possess()` and `UnPossess()`functions are called, respectively.
+
+When it comes to AI, especially in the context of UE5, there are two methods in which AI Pawns or Characters can be possessed by an AI Controller. Let’s take a look at these options:
+
+*   `Placed in World`: This first method is how you will be handling AI in this project; you will manually place these enemy actors into your game world, and the AI will take care of the rest once the game begins.
+*   `Spawned`: This second method is only a little more complicated because it requires an explicit function call, either in C++ or Blueprint, to `Spawn` an instance of a specified class. The `Spawn Actor` method requires a handful of parameters, including the `World` object and `Transform` parameters such as `Location` and `Rotation`, to ensure that the instance that is spawned is spawned correctly.
+*   `Placed in World or Spawned`: If you are unsure of which method you want to use, a safe option would be `Placed in World or Spawned`; that way, both methods are supported.
+*   For the `SuperSideScroller` game, you will be using the `Placed` `in` `World` option because the AI you will create will be manually placed in the game level.
+
+Let’s move to our first exercise where we will implement the AI Controller for the enemy.
+
+## Exercise 13.01 – implementing AI Controllers
+
+Before the enemy pawn can do anything, it needs to be possessed by an AI Controller. This also needs to happen before any logic can be performed by the AI. By the end of this exercise, you will have created an AI Controller and applied it to the enemy that you created in the previous chapter. Let’s begin by creating the AI Controller.
+
+Follow these steps to complete this exercise:
+
+1.  Head to the `Content/Enemy` directory.
+2.  *Right-click* on the `Enemy` folder and select the `AI`. In the new `AI` folder directory, *right-click* and select the **Blueprint Class** option.
+3.  From the `AIController` class.
+4.  *Left-click* this class option and then *left-click* on the blue `AIController` class. Also, take note of the tooltip that appears when hovering over the class option; it contains useful information about this class from the developers:
+
+![Figure 13.1 – The AIController asset class, as found in the Pick Parent Class dialog box ](img/Figure_13.01_B18531.jpg)
+
+Figure 13.1 – The AIController asset class, as found in the Pick Parent Class dialog box
+
+1.  With this new `AIController Blueprint` created, name this asset `BP_AIControllerEnemy`.
+
+With the AI Controller created and named, it’s time to assign this asset to the first enemy Blueprint that you made in the previous chapter.
+
+1.  Navigate to the `/Enemy/Blueprints` directory to find `BP_Enemy`. *Double-click* to open this Blueprint.
+2.  In the `Pawn`. This is where you can set different parameters regarding the AI functionality of `Pawn` or `Character`.
+3.  The `AI Controller Class` parameter determines, as its name suggests, which AI Controller to use for this enemy. *Left-click* on the dropdown to find and select the AI Controller you made earlier–that is, `BP_AIController_Enemy`.
+
+With this exercise complete, the enemy AI now knows which AI Controller to use. This is crucial because it is in the AI Controller where the AI will use and execute the `Behavior Tree` you will create later in this chapter.
+
+The AI Controller is now assigned to the enemy, which means you are almost ready to start developing the actual intelligence for this AI. However, there is still one important topic to discuss before doing so, and that is the **Navigation Mesh**.
+
+# Navigation Mesh
+
+One of the most crucial aspects of any AI in video games is the ability to navigate the environment in a sophisticated manner. In UE5, there is a way for the engine to tell the AI which parts of an environment are navigable and which parts are not. This is done through a **Navigation Mesh**, or **Nav Mesh** for short.
+
+The term *mesh* is misleading here because it’s implemented through a volume in the editor. We will need a Nav Mesh in our level so that our AI can effectively navigate the playable bounds of the game world. We’ll add one together in the following exercise.
+
+UE5 also supports a **Dynamic Navigation Mesh**, which allows the Nav Mesh to update in real time as dynamic objects move around the environment. This results in the AI recognizing these changes in the environment and updating their pathing/navigation appropriately. This book will not cover this, but you can access the configuration options via **Project Settings** | **Navigation Mesh** | **Runtime Generation**.
+
+Now that we have learned about the **Navigation Mesh**, let’s start our first exercise where we will add the **Navigation Mesh** to our level.
+
+## Exercise 13.02 – implementing a Nav Mesh Volume for the AI enemy
+
+In this exercise, you will add a Navigation Mesh to `SideScrollerExampleMap` and explore how Navigation Meshes work in UE5\. You’ll also learn how to parameterize this volume for the needs of your game. This exercise will be performed within the UE5 editor.
+
+By the end of this exercise, you will have a stronger understanding of the Nav Mesh. You will also be able to implement this volume in your levels in the activity that follows this exercise. Let’s begin by adding the Nav Mesh Volume to the level.
+
+Follow these steps to complete this exercise:
+
+1.  If you do not already have the map open, please open **ThirdPersonExampleMap** by navigating to **File** and *left-clicking* on the **Open Level** option. From the **Open Level** dialog box, navigate to **/ThirdPersonCPP/Maps** to find **SideScrollerExampleMap**. Select this map by *left-clicking* and then *left-click* **Open** at the bottom to open the map.
+2.  With the map opened, navigate to the **Window** menu at the top-left of the editor, and make sure you select the **Place Actors** panel option. The **Place Actors** panel contains a set of easily accessible actor types such as **Volumes**, **Lights**, **Geometry**, and others. Under the **Volumes** category, you will find the **Nav Mesh Bounds Volume** option.
+3.  *Left-click* and drag this volume into the map/scene. By default, you will see the outline of the volume in the editor. Press the *P* key to visualize the **Navigation** area that the volume encompasses, but make sure that the volume is intersecting with the ground geometry to see the green visualization, as shown in the following screenshot:
+
+![Figure 13.2 – Areas outlined in green are perceived as navigable by the engine and the AI ](img/Figure_13.02_B18531.jpg)
+
+Figure 13.2 – Areas outlined in green are perceived as navigable by the engine and the AI
+
+With the Nav Mesh Volume in place, let’s adjust its shape so that the volume extends to the entire area of the level. After this, you’ll learn how to adjust the parameters of the Nav Mesh Volume for the game.
+
+1.  *Left-click* to select `X: 3000.0`, `Y: 3000.0`, and `Z: 3000.0`.
+
+Notice that when the shape and dimensions of **NavMeshBoundsVolume** change, **Nav Mesh** will adjust and recalculate the navigable area. This can be seen in the following screenshot. You will also notice that the upper platforms are not navigable; you will fix this later:
+
+![Figure 13.3 – Now, NavMeshBoundsVolume extends to the entire playable area of the example map ](img/Figure_13.03_B18531.jpg)
+
+Figure 13.3 – Now, NavMeshBoundsVolume extends to the entire playable area of the example map
+
+By completing this exercise, you have placed your first `RecastNavMesh` actor, which is also created when placing `NavMeshBoundsVolume` in the level.
+
+# Recasting the Nav Mesh
+
+When you added **NavMeshBoundsVolume**, you may have noticed that another actor was created automatically: a **RecastNavMesh** actor called **RecastNavMesh-Default**. This **RecastNavMesh** acts as the “brain” of the Nav Mesh because it contains the parameters needed to adjust the Nav Mesh that directly influences how the AI navigates the given area.
+
+The following screenshot shows this asset, as seen from the **World Outliner** tab:
+
+![Figure 13.4 – The RecastNavMesh actor, as seen from the World Outliner tab ](img/Figure_13.04_B18531.jpg)
+
+Figure 13.4 – The RecastNavMesh actor, as seen from the World Outliner tab
+
+Note
+
+There are a lot of parameters that exist in `RecastNavMesh`, and we will only be covering the important parameters in this book. For more information, check out [https://docs.unrealengine.com/en-US/API/Runtime/NavigationSystem/NavMesh/ARecastNavMesh/index.xhtml](https://docs.unrealengine.com/en-US/API/Runtime/NavigationSystem/NavMesh/ARecastNavMesh/index.xhtml).
+
+There are only two primary sections that are important to you right now:
+
+*   **Display**: The **Display** section, as its name suggests, only contains parameters that affect the visual debug display of the generated navigable area of **NavMeshBoundsVolume**. It is recommended that you try toggling each of the parameters under this category to see how they affect the display of the generated Nav Mesh.
+*   `2.0f` to get the full height.
+*   `44` degrees, and this is a parameter you will leave alone unless your game requires it to change.
+*   **Agent Max Step Height** refers to the height of steps, in terms of staircase steps, that can be navigated by the AI. Much like **Agent Max Slope**, this is a parameter that you will more than likely leave alone unless your game specifically requires this value to change.
+
+Now that you have learned about the Recast Nav Mesh parameters, let’s put this knowledge into practice in the next exercise, which will walk you through changing a few of these parameters.
+
+## Exercise 13.03 – recasting Nav Mesh Volume parameters
+
+Now that you have the **Nav Mesh** Volume in the level, it is time to change the parameters of the **Recast Nav Mesh** actor so that the Nav Mesh allows the enemy AI to navigate across platforms that are thinner than others. This exercise will be performed within the UE5 editor.
+
+Here, you will simply be updating `Cell Size` and `Agent Height` so that they fit the needs of your character and the accuracy needed for the Nav Mesh:
+
+```cpp
+Cell Size: 5.0f
+Agent Height: 192.0f
+```
+
+The following screenshot shows that the extended platform is now navigable because of the changes we made to `Cell Size`:
+
+![Figure 13.5 – Changing Cell Size from 19.0f to 5.0f allows for the narrow extended platform to be navigable ](img/Figure_13.05_B18531.jpg)
+
+Figure 13.5 – Changing Cell Size from 19.0f to 5.0f allows for the narrow extended platform to be navigable
+
+With `SuperSideScrollerExampleMap` set up with its own `NavMeshBoundsVolume` actor that you can use for the remainder of this project.
+
+## Activity 13.01 – creating a new level
+
+Now that you have added `NavMeshBoundsVolume` to the example map, it is time to create a map for the rest of the `Super SideScroller` game. By creating a map, you will have a better understanding of how `NavMeshBoundsVolume` and the properties of `RecastNavMesh` affect the environment they are placed in.
+
+Note
+
+Before moving on to the solution for this activity, if you need an example level that will work for the remaining chapters that cover the `SuperSideScroller` game, then don’t worry – this chapter comes with the `SuperSideScroller.umap` asset, as well as a map called `SuperSideScroller_NoNavMesh`, which does not contain `NavMeshBoundsVolume`. You can use `SuperSideScroller.umap` as a reference for how to create a level or to get ideas on how to improve your level. You can download the map from [https://packt.live/3lo7v2f](https://packt.live/3lo7v2f).
+
+Follow these steps to create a simplistic map:
+
+1.  Create a **New Level**.
+2.  Name this level `SuperSideScroller`.
+3.  Using the **Static Mesh** assets provided by default in the **Content Drawer** interface of this project, create an interesting space with different elevations to navigate. Add your player character’s **Blueprint** to the level, and make sure it is possessed by **Player Controller 0**.
+4.  Add the `1000.0`, `5000.0`, and `2000.0` in the *X*, *Y*, and *Z* axes, respectively.
+5.  Make sure that you enable debug visualization for **NavMeshBoundsVolume** by pressing the *P* key.
+6.  Adjust the parameters of the `Cell Size` parameter is set to `5.0f`, `Agent Radius` is set to `42.0f`, and `Agent Height` is set to `192.0f`. Use these values as a reference.
+
+**Expected Output**
+
+![Figure 13.6 – The SuperSideScroller map ](img/Figure_13.06_B18531.jpg)
+
+Figure 13.6 – The SuperSideScroller map
+
+By the end of this activity, you will have a level that contains the required `NavMeshBoundsVolume` and settings for the `RecastNavMesh` actor. This will allow the AI we’ll develop in the upcoming exercises to function correctly. Again, if you are unsure of how the level should look, please refer to the provided example map, `SuperSideScroller.umap`. Now, it is time to jump into developing the AI for the `SuperSideScroller` game.
+
+Note
+
+The solution for this activity can be found on GitHub here: [https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions).
+
+# Behavior trees and Blackboards
+
+Behavior Trees and Blackboards work together to allow our AI to follow different logical paths and make decisions based on a variety of conditions and variables.
+
+A **behavior tree** is a visual scripting tool that allows you to tell a pawn what to do based on certain factors and parameters. For example, a Behavior Tree can tell an AI to move to a certain location based on whether the AI can see the player.
+
+To give an example of how `Behavior Trees` and `Blackboards` are used in games, let’s look at the game *Gears of War 5*, which was developed with UE5\. The AI in `Blackboard`. The logic that determines how these variables are used and how the AI will use this information is performed inside the Behavior Tree.
+
+The `Blackboard` is where you define the set of variables that are required to have the Behavior Tree perform actions and use those values for decision-making.
+
+The `Behavior Tree` is where you create the tasks that you want the AI to perform, such as moving to a location or performing a custom task that you create. Like many of the in-editor tools in UE5, `Behavior Trees` are, for the most part, a very visual scripting experience.
+
+`Blackboards` are where you define the variables, also known as `Blackboard`, `Behavior Trees` would have no way of passing and storing information across different Tasks, Services, or Decorators, rendering it useless:
+
+![Figure 13.7 – An example set of variables inside a Blackboard that can be accessed in the behavior tree ](img/Figure_13.07_B18531.jpg)
+
+Figure 13.7 – An example set of variables inside a Blackboard that can be accessed in the behavior tree
+
+Behavior Trees are composed of a set of **objects** – that is, **Composites**, **Tasks**, **Decorators**, and **Services** – that work together to define how the AI will behave and respond based on the conditions and logic flow that you set. All Behavior Trees begin with what is called the Root where the logic flow begins; this cannot be modified and has only one execution branch. Let’s take a look at these objects in more detail.
+
+Note
+
+For more information regarding the C++ API for `Behavior Tree` Behavior Tree, please refer to the following documentation: [https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Composites](https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Composites).
+
+Composite nodes tell the `Behavior Tree` how to go about performing tasks and other actions. The following screenshot shows the full list of Composite nodes that Unreal Engine gives you by default: **Selector**, **Sequence**, and **Simple Parallel**.
+
+Composite nodes can also have Decorators and Services attached to them so that optional conditions can be applied before a `Behavior Tree` branch is executed:
+
+![Figure 13.8 – Composite nodes – Selector, Sequence, and Simple Parallel ](img/Figure_13.08_B18531.jpg)
+
+Figure 13.8 – Composite nodes – Selector, Sequence, and Simple Parallel
+
+Let’s look at these nodes in more detail:
+
+*   `FinishWithResult` task is successful, the parent `Root` to execute again and `FinishWithResult` to execute once more. This pattern will continue until `FinishWithResult` fails. The `MakeNoise`. If `MakeNoise` fails, the `Root` will execute again. If the `MakeNoise` task succeeds, then the Selector will succeed, and the `Root` will execute again. Depending on the flow of the behavior tree, if the Selector fails or succeeds, the next Composite branch will begin to execute. In the following screenshot, there are no other Composite nodes, so if the Selector fails or succeeds, the `Root` node will be executed again. However, if there were a **Sequence** Composite node with multiple **Selector** nodes underneath, each Selector would attempt to successfully execute its children. Regardless of success or failure, each **Selector** will attempt execution sequentially:
+
+![Figure 13.9 – An example of how a Selector Composite node can be used in a behavior tree ](img/Figure_13.09_B18531.jpg)
+
+Figure 13.9 – An example of how a Selector Composite node can be used in a behavior tree
+
+Note that when adding tasks and `Composite` nodes, you will notice numeric values on the top-right corners of each node. These numbers indicate the order in which these nodes will be executed. The pattern follows the *top* to *bottom*, *left* to *right* paradigm, and these values help you keep track of the ordering. Any disconnected task or `Composite` node will be given a value of `–1` to indicate that it is unused.
+
+*   `Move To` task is successful, then the parent `Wait` task. If the `Wait` task is successful, then the Sequence is successful, and `Root` will execute again. If the `Move To` task fails, however, the `Root` will execute again, causing the `Wait` task to never execute:
+
+![Figure 13.10 – An example of how a Sequence Composite node can be used in a behavior tree ](img/Figure_13.10_B18531.jpg)
+
+Figure 13.10 – An example of how a Sequence Composite node can be used in a behavior tree
+
+*   `5` seconds is being executed at the same time as a new **Sequence** of tasks is being executed:
+
+![Figure 13.11 – An example of how a Selector Composite node can be used in a behavior tree ](img/Figure_13.11_B18531.jpg)
+
+Figure 13.11 – An example of how a Selector Composite node can be used in a behavior tree
+
+The **Simple Parallel** Composite node is also the only **Composite** node that has a parameter in its **Details** panel, which is **Finish Mode**. There are two options:
+
+*   `Wait` task finishes, the background tree Sequence will abort and the entire **Simple Parallel** will execute again.
+*   `Wait` task will finish after `5` seconds, but the entire **Simple Parallel** will wait for the **Move To** and **PlaySound** tasks to execute before restarting.
+
+Note
+
+For more information regarding the C++ API for Composites, please refer to the following documentation: [https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Composites/](https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Composites/).
+
+Now that we have a better understanding of Composite nodes, let’s take a look at a few examples of Task nodes.
+
+## Tasks
+
+These are tasks that our AI can perform. Unreal Engine provides us with built-in tasks for us to use by default, but we can also create our own in both Blueprints and C++. This includes tasks such as telling our AI to **Move To** a specific location, **Rotate To Face Target**, and even telling the AI to fire its weapon. It’s also important to know that you can create custom tasks using Blueprints. Let’s briefly discuss two of the tasks you will be using to develop the AI for the enemy character:
+
+*   `Behavior Trees`, and you will be using this task in the upcoming exercises in this chapter. **Move To task** uses the navigation system to tell the AI how and where to move based on the location it is given. You will use this task to tell the AI enemy where to go.
+*   `Behavior Trees` because it allows a delay inbetween task execution if the logic requires it. This can be used to allow the AI to wait a few seconds before moving to a new location.
+
+Note
+
+For more information regarding the C++ API for tasks, please refer to the following documentation: [https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Tasks/](https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Tasks/).
+
+## Decorators
+
+Decorators are conditions that can be added to tasks or **Composite** nodes, such as a **Sequence** or **Selector**, that allow branching logic to occur. As an example, we can have a **Decorator** that checks whether or not the enemy knows the location of the player. If so, we can tell that enemy to move toward that last known location. If not, we can tell our AI to generate a new location and move there instead. It is also important to know that you can create custom decorators using Blueprints.
+
+Let’s also briefly discuss the decorator you will be using to develop the AI for the enemy character – the `Behavior Trees` is not executing until you know the AI has reached its given location.
+
+Note
+
+For more information regarding the C++ API for decorators, please refer to the following documentation: [https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Decorators/UBTDecorator_BlueprintBase/](https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Decorators/UBTDecorator_BlueprintBase/).
+
+Now that we have a better understanding of Task nodes, let’s briefly discuss Service nodes.
+
+## Services
+
+Services work a lot like decorators because they can be linked with tasks and `Composite` nodes. The main difference is that a **Service** allows us to execute a branch of nodes based on the interval defined in the service. It is also important to know that you can create custom services using Blueprints.
+
+Note
+
+For more information regarding the C++ API for services, please refer to the following documentation: [https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Services/](https://docs.unrealengine.com/4.27/en-US/API/Runtime/AIModule/BehaviorTree/Services/).
+
+With knowledge of Composite, Task, and Service nodes under our belt, let’s move on to the next exercise where we will create the `Behavior Tree` and `Blackboard` for the enemy.
+
+## Exercise 13.04 – creating the AI behavior tree and Blackboard
+
+Now that you have had an overview of `Behavior Trees` and `Blackboards`, this exercise will guide you through creating these assets, telling the AI Controller to use the `Behavior Tree` you created, and assigning the `Blackboard` to the `Behavior Tree`. The `Blackboard` and `Behavior Tree` assets you will create here will be used for the `SuperSideScroller` game. This exercise will be performed within the UE5 editor.
+
+Follow these steps to complete this exercise:
+
+1.  Within the `/Enemy/AI` directory. This is the same directory where you created the AI Controller.
+2.  In this directory, *right-click* within the blank area of the `Behavior Tree` asset. Name this asset `BT_EnemyAI`.
+3.  In the same directory as the previous step, *right-click* again within the blank area of the `Blackboard` asset. Name this asset `BB_EnemyAI`.
+
+Before we move on to telling the AI Controller to run this new `Behavior Tree`, let’s assign the `Blackboard` to this `Behavior Tree` so that they are connected.
+
+1.  Open `BT_EnemyAI` by *double-clicking* the asset in the `Blackboard Asset` parameter.
+2.  *Left-click* the drop-down menu on this parameter and find the `BB_EnemyAI` `Blackboard` asset you created earlier. Compile and save the `Behavior Tree`before closing it.
+3.  Next, open the AI Controller’s `BP_AIController_Enemy` asset by *double-clicking* it inside the `Run Behavior Tree` function.
+
+The `Run Behavior Tree` function is very straightforward: you assign a `Behavior Tree` successfully began its execution.
+
+1.  Lastly, connect the `Run Behavior Tree` function and assign `BT_EnemyAI`, which you created earlier in this exercise:
+
+![Figure 13.12 – Assigning the BT_EnemyAI behavior tree ](img/Figure_13.12_B18531.jpg)
+
+Figure 13.12 – Assigning the BT_EnemyAI behavior tree
+
+1.  With this exercise complete, the enemy AI Controller now knows to run the **BT_EnemyAI** Behavior Tree, and this Behavior Tree knows to use the Blackboard asset called **BB_EnemyAI**. With this in place, you can begin to use the Behavior Tree logic to develop the AI so that the enemy character can move around the level.
+
+## Exercise 13.05 – creating a new behavior tree task
+
+The goal of this exercise is to develop an AI task for the enemy AI that will allow the character to find a random point to move to within the bounds of the **Nav Mesh** Volume in your level.
+
+Although the `SuperSideScroller` game will only allow two-dimensional movement, let’s get the AI to move anywhere within the 3D space of the level that you created in *Activity 13.01 – creating a new level*, and then work to constrain the enemy to two dimensions.
+
+Follow these steps to create this new task for the enemy:
+
+1.  First, open the `Blackboard` asset you created in the previous exercise, `BB_EnemyAI`.
+2.  *Left-click* on the `Blackboard` and select the **Vector** option. Name this vector **MoveToLocation**. You will use this **vector** variable to track the next move for the AI as it decides where to move to.
+
+For this enemy AI, you will need to create a new **Task** because the currently available tasks inside Unreal do not fit the needs of the enemy behavior.
+
+1.  Navigate to and open the `Behavior Tree` asset you created in the previous exercise, `BT_EnemyAI`.
+2.  *Left-click* on the `Task`, it will automatically open the task asset for you. However, if you have already created a task, a dropdown list of options will appear when selecting the **New Task** option. Before working on the logic of this **Task**, you must rename the asset.
+3.  Close the `BTTask_BlueprintBase_New`. Rename this asset `BTTask_FindLocation`.
+4.  With the new **Task** asset named, *double-click* to open **Task Editor**. New tasks will have empty Blueprint graphs and will not provide you with any default events to use in the graph.
+5.  *Right-click* within the graph and from the context-sensitive search, find the **Event Receive Execute AI** option.
+6.  *Left-click* the **Event Receive Execute AI** option to create the event node in the **Task** graph, as shown in the following screenshot:
+
+![Figure 13.13 – Event Receive Execute AI returns both Owner Controller and Controlled Pawn ](img/Figure_13.13_B18531.jpg)
+
+Figure 13.13 – Event Receive Execute AI returns both Owner Controller and Controlled Pawn
+
+Note
+
+The `Event Receive Execute AI` event will give you access to both **Owner Controller** and **Controlled Pawn**. You will use **Controlled Pawn** for this task in the upcoming steps.
+
+1.  Each `Finish Execute` function so that the `Behavior Tree` asset knows when it can move on to the next `Task` or branches of the tree. *Right-click* in the graph and search for `Finish Execute` via the context-sensitive search.
+2.  *Left-click* the **Finish Execute** option from the context-sensitive search to create the node inside the Blueprint graph of your **Task**, as shown in the following screenshot:
+
+![Figure 13.14 – The Finish Execute function, which has a Boolean parameter that determines whether the task is successful ](img/Figure_13.14_B18531.jpg)
+
+Figure 13.14 – The Finish Execute function, which has a Boolean parameter that determines whether the task is successful
+
+1.  The next function that you need is called **GetRandomLocationInNavigableRadius**. This function, as its name suggests, returns a random vector location within a defined radius of the navigable area. This will allow the enemy character to find random locations and move to those locations.
+2.  *Right-click* in the graph and search for `GetRandomLocationInNavigableRadius` inside the context-sensitive search. *Left-click* the **GetRandomLocationInNavigableRadius** option to place this function inside the graph.
+
+With these two functions in place, and with **Event Receive Execute** AI-ready, it is time to obtain the random location for the enemy AI.
+
+1.  From the `GetActorLocation` function via the context-sensitive search:
+
+![Figure 13.15 – The enemy pawn’s location will serve as the origin of the random point selection ](img/Figure_13.15_B18531.jpg)
+
+Figure 13.15 – The enemy pawn’s location will serve as the origin of the random point selection
+
+1.  Connect the vector return value from `GetRandomLocationInNavigableRadius` function, as shown in the following screenshot. Now, this function will use the enemy AI pawn’s location as the origin for determining the next random point:
+
+![Figure 13.16 – Now, the enemy pawn location will be used as the origin of the random point vector search ](img/Figure_13.16_B18531.jpg)
+
+Figure 13.16 – Now, the enemy pawn location will be used as the origin of the random point vector search
+
+1.  Next, you need to tell the `GetRandomLocationInNavigableRadius` function the radius in which to check for the random point in the navigable area of the level. Set this value to `1000.0f`.
+
+The remaining parameters, `Nav Data` and `Filter Class`, can remain as is. Now that you are getting a random location from `GetRandomLocationInNavigableRadius`, you will need to be able to store this value in the `Blackboard` vector that you created earlier in this exercise.
+
+1.  To get a reference to the `Blackboard` vector variable, you need to create a new variable inside of this `Task` that’s of the `Blackboard Key Selector` type. Create this new variable and name it `NewLocation`.
+2.  Now, you need to make this variable a `Public` variable so that it can be exposed inside the `Behavior Tree`. *Left-click* on the “eye” icon so that the eye is visible.
+3.  With the `Blackboard Key Selector` variable ready, *left-click* and drag out a `Getter` of this variable. Then, pull from this variable and search for `Set Blackboard Value as Vector`, as shown in the following screenshot:
+
+![Figure 13.17 – Set Blackboard Value has a variety of different types to support the different variables that can exist inside the Blackboard ](img/Figure_13.17_B18531.jpg)
+
+Figure 13.17 – Set Blackboard Value has a variety of different types to support the different variables that can exist inside the Blackboard
+
+1.  Connect the `RandomLocation` output vector from `GetRandomLocationInNavigableRadius` to the `Value` vector input parameter of `Set Blackboard Value as Vector`. Then, connect the execution pins of these two function nodes. The result will look as follows:
+
+![Figure 13.18 – Now, the Blackboard vector value is assigned to this new random location ](img/Figure_13.18_B18531.jpg)
+
+Figure 13.18 – Now, the Blackboard vector value is assigned to this new random location
+
+Lastly, you will use the `Return Value` Boolean output parameter of the `GetRandomLocationInNavigableRadius` function to determine whether the task executes successfully.
+
+1.  Connect the Boolean output parameter to the `Success` input parameter of the `Finish Execute` function and connect the execution pins of the **Set Blackboard Value as Vector** and **Finish Execute** function nodes. The following screenshot shows the final result of the **Task** logic:
+
+![Figure 13.19 – The final setup for the task ](img/Figure_13.19_B18531.jpg)
+
+Figure 13.19 – The final setup for the task
+
+Note
+
+You can find the preceding screenshot in full resolution for better viewing at the following link: [https://packt.live/3lmLyk5](https://packt.live/3lmLyk5).
+
+By completing this exercise, you have created your first custom `Behavior Tree` and see the enemy AI move around your level.
+
+## Exercise 13.06 – creating the behavior tree logic
+
+The goal of this exercise is to implement the new task you created in the previous exercise inside the `Behavior Tree` to have the enemy AI find a random location within the navigable space of your level and then move to this location. You will use a combination of the **Composite**, **Task**, and **Service** nodes to accomplish this behavior. This exercise will be performed within the UE5 editor.
+
+Follow these steps to complete this exercise:
+
+1.  To start, open the `Behavior Trees` you created in *Exercise 13.04 – creating the AI behavior tree and Blackboard*, which is `BT_EnemyAI`.
+2.  Inside this `Behavior Tree`, *left-click* and drag from the bottom of the `Root` node and select the `Root` that’s connected to the **Sequence** Composite node.
+3.  Next, from the **Sequence** node, *left-click* and drag to bring up the context-sensitive menu. In this menu, search for the task you created in the previous exercise – that is, **BTTask_FindLocation**.
+4.  By default, the `Blackboard`. If this doesn’t happen, you can assign this Selector manually in the **Details** panel of the task.
+
+Now, `Blackboard`. This means that the random location that’s returned from the task will be assigned to the `Blackboard` variable and you can reference this variable in other tasks.
+
+Now that you have found a valid random location and assigned this location to the `Blackboard` variable – that is, **MovetoLocation** – you can use the **Move To** task to tell the AI to move to this location.
+
+1.  *Left-click* and pull from the `Behavior Tree` will now look as follows:
+
+![Figure 13.20 – After selecting the random location, the Move To task will let the AI move to this new location ](img/Figure_13.20_B18531.jpg)
+
+Figure 13.20 – After selecting the random location, the Move To task will let the AI move to this new location
+
+1.  By default, the `50.0f`.
+
+Now, the `Behavior Tree` finds the random location using the `Blackboard` vector variable called **MovetoLocation**.
+
+The last thing to do here is to add a decorator to the **Sequence** Composite node so that the enemy character is not at a random location before the tree is executed again to find and move it to that new location.
+
+1.  *Right-click* on the top area of the **Sequence** node and select **Add Decorator**. From the dropdown, *left-click* and select **Is at Location**.
+2.  Since you already have a vector parameter inside `Blackboard`, the **Is at Location** decorator should automatically assign the **MoveToLocation** vector variable as **Blackboard Key**. Verify this by selecting the decorator and making sure **Blackboard Key** is assigned to **MoveToLocation**.
+3.  With the decorator in place, you have completed the `Behavior Tree`. The final result will look as follows:
+
+![Figure 13.21 – The final setup for the behavior tree for the AI enemy ](img/Figure_13.21_B18531.jpg)
+
+Figure 13.21 – The final setup for the behavior tree for the AI enemy
+
+This `Behavior Tree` is telling the AI to find a random location using `Blackboard` `Behavior Tree` will execute the **Move To** task, which will tell the AI to move to this new random location. The **Sequence** node is wrapped in a decorator that ensures that the enemy AI is at **MoveToLocation** before executing again, just as a safety net for the AI.
+
+1.  Before you can test the new AI behavior, make sure that you have placed **BP_Enemy AI** into your level if one is not already there from previous exercises and activities.
+2.  Now, if you use **PIE** or **Simulate**, you will see the enemy AI run around the map and move to random locations within the **Nav Mesh Volume**:
+
+![Figure 13.22 – The enemy AI will now move from location to location ](img/Figure_13.22_B18531.jpg)
+
+Figure 13.22 – The enemy AI will now move from location to location
+
+Note
+
+There can be some cases where the enemy AI will not move. This can be caused by the GetRandomLocationInNavigableRadius function not returning `True`. This is a known issue, and if it occurs, please restart the editor and try again.
+
+1.  By completing this exercise, you have created a fully functional `Behavior Tree` that allows the enemy AI to find and move to a random location within the navigable bounds of your level usingthe **Nav Mesh Volume**. The task you created in the previous exercise allows you to find this random point, while the **Move To** task allows the AI character to move toward this new location.
+
+Due to how the `Behavior Tree` start over and choose a new random location.
+
+Now, you can move on to the next activity, where you will add to this `Behavior Tree` to have the AI wait between selecting a new random point so that the enemy isn’t constantly moving.
+
+## Activity 13.02 – AI moving to the player’s location
+
+In the previous exercise, you made the AI enemy character move to random locations within the bounds of **Nav Mesh** Volume by using a custom **Task** and the **Move To** task together.
+
+In this activity, you will continue from the previous exercise and update the `Behavior Tree`. You will take advantage of the **Wait** task by using a decorator, and also create a new custom task to have the AI follow the player character and update its position every few seconds.
+
+Follow these steps to complete this activity:
+
+1.  Inside the **BT_EnemyAI Behavior Tree** that you created in the previous exercise, you will continue from where you left off and create a new task. Do this by selecting **New Task** from the toolbar and choosing **BTTask_BlueprintBase**. Name this new task **BTTask_FindPlayer**.
+2.  In the **BTTask_FindPlayer** task, create a new event called **Event Receive Execute AI**.
+3.  Find the `Get Player Character` function to get a reference to the player; make sure that you use **Player Index 0**.
+4.  From the player character, call the `Get Actor Location` function to find the player’s current location.
+5.  Create a new `Blackboard` Key `Selector` variable inside this task. Name this variable `NewLocation`.
+6.  *Left-click* and drag the `NewLocation` variable into the graph. From this variable, search for the `Set Blackboard Value` function as a `Vector`.
+7.  Connect `Vector` function to the execution pin of the event’s **Receive Execute AI** node.
+8.  Add the `Finish Execute` function, ensuring that the Boolean `True`.
+9.  Lastly, connect `Vector` function to the `Finish Execute` function.
+10.  Save and compile the task Blueprint and return to the`BT_EnemyAI` `Behavior Tree`.
+11.  Replace the **BTTask_FindLocation** task with the new **BTTask_FindPlayer** task so that this new task is now the first task underneath the **Sequence** Composite node.
+12.  Add a new `PlaySound` task as the third task underneath the **Sequence** Composite node by following the custom **BTTask_FindLocation** and **Move To** tasks.
+13.  In the `Sound to Play` parameter, add the **Explosion_Cue SoundCue** asset.
+14.  Add an **Is At Location** decorator to the **PlaySound** task and ensure that the **MovetoLocation** Key is assigned to this **Decorator**.
+15.  Add a new **Wait** task as the fourth task underneath the **Sequence** Composite node following the **PlaySound** tasks.
+16.  Set the `2.0f` seconds before completing successfully.
+
+The expected output is as follows:
+
+![Figure 13.23 – Enemy AI following the player and updating to the player’s location every 2 seconds ](img/Figure_13.23_B18531.jpg)
+
+Figure 13.23 – Enemy AI following the player and updating to the player’s location every 2 seconds
+
+The enemy AI character will move to the player’s last known location in the navigable space of the level and pause for `2.0f` seconds between each player position.
+
+Note
+
+The solution for this activity can be found on GitHub here: [https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions).
+
+With this activity complete, you have learned how to create a new task that allows the AI to find the player’s location and move to the player’s last known position. Before moving on to the next set of exercises, remove the `Behavior` `Tree` is returned correctly. You will be using the **BTTask_FindLocation** task in the upcoming exercises.
+
+In the next exercise, you will address this issue by developing a new Blueprint actor that will allow you to set up specific positions that the AI can move toward.
+
+## Exercise 13.07 – creating the enemy patrol locations
+
+The current issue with the AI enemy character is that they can move freely around the 3D navigable space because the `Behavior Tree` allows them to find a random location within that space. Instead, the AI needs to be given patrol points that you can specify and change in the editor. Then, it will choose one of these patrol points at random to move to. This is what you will do for the `SuperSideScroller` game: create patrol points that the enemy AI can move to. This exercise will show you how to create these patrol points using a simple **Blueprint** actor. This exercise will be performed within the UE5 editor.
+
+Follow these steps to complete this exercise:
+
+1.  First, navigate to the **/Enemy/Blueprints/** directory. This is where you will create the new Blueprint actor that will be used for the AI patrol points.
+2.  In this directory, *right-click* and choose the **Blueprint Class** option by *left-clicking* this option from the menu.
+3.  From the `Actor` class:
+
+![Figure 13.24 – The Actor class is the base class for all objects that can be placed or spawned in the game world ](img/Figure_13.24_B18531.jpg)
+
+Figure 13.24 – The Actor class is the base class for all objects that can be placed or spawned in the game world
+
+1.  Name this new asset **BP_AIPoints** and open this Blueprint by *double-clicking* the asset in the **Content Drawer** interface.
+
+Note
+
+The interface for Blueprints shares many of the same features and layouts as other systems, such as Animation Blueprints and tasks, so this should all look familiar to you.
+
+1.  Navigate to the `Points`.
+2.  From the **Variable Type** dropdown, *left-click* and select the **Vector** option.
+3.  Next, you will need to make this vector variable an **Array** so that you can store multiple patrol locations. *Left-click* the yellow icon next to **Vector** and *left-click* to select the **Array** option.
+4.  The last step for setting up the `Show` **3D Widget** option is only available for variables that involve an actor transform, such as vectors and transforms.
+
+With the simple actor set up, it is time to place the actor in the level and begin setting up the patrol point locations.
+
+1.  Add the **BP_AIPoints** actor Blueprint to your level, as shown in the following screenshot:
+
+![Figure 13.25 – The BP_AIPoints actor is now in the level ](img/Figure_13.25_B18531.jpg)
+
+Figure 13.25 – The BP_AIPoints actor is now in the level
+
+1.  With the **BP_AIPoints** actor selected, navigate to its **Details** panel and find the **Points** variable.
+2.  Next, you can add a new element to the vector array by *left-clicking* on the **+** symbol, as shown here:
+
+![Figure 13.26 – You can have many elements inside an array, but the larger the array, the more memory is allocated ](img/Figure_13.26_B18531.jpg)
+
+Figure 13.26 – You can have many elements inside an array, but the larger the array, the more memory is allocated
+
+1.  When you add a new element to the vector array, you will see a 3D widget appear that you can then *left-click* to select and move around the level, as shown here:
+
+![Figure 13.27 – The first patrol point vector location ](img/Figure_13.27_B18531.jpg)
+
+Figure 13.27 – The first patrol point vector location
+
+Note
+
+As you update the position of the 3D widget that represents the element of the vector array, the 3D coordinates will update in the **Details** panel for the **Points** variable.
+
+1.  Finally, add as many elements into the vector array as you would like for the context of your level. Keep in mind that the positions of these patrol points should line up so that they make a straight line along the horizontal axis, parallel to the direction in which the character will move. The following screenshot shows the setup in the example `SideScroller.umap` level that’s included in this exercise:
+
+![Figure 13.28 – The example patrol point path, as seen in the SideScroller.umap example level ](img/Figure_13.28_B18531.jpg)
+
+Figure 13.28 – The example patrol point path, as seen in the SideScroller.umap example level
+
+1.  Continue to repeat the previous step to create multiple patrol points and position the 3D widgets as you see fit. You can use the provided **SideScroller.umap** example level as a reference on how to set up these patrol points.
+
+By completing this exercise, you have created a new `Behavior Tree` so that the AI can move between these patrol points. Before you set up this functionality, let’s learn a bit more about vectors and Vector Transformation, as this knowledge will prove useful in the next exercise.
+
+# Vector Transformation
+
+Before you jump into the next exercise, it is important that you learn about Vector Transformation and, more importantly, what the `Transform Location` function does. When it comes to an actor’s location, there are two ways of thinking of its position: in terms of world space and local space. An actor’s position in world space is its location relative to the world itself; in more simple terms, this is the location where you place the actor in the level. An actor’s local position is its location relative to either itself or a parent actor.
+
+Let’s consider the **BP_AIPoints** actor as an example of what world space and local space are. Each of the locations of the **Points** array is a local-space vector because they are positions relative to the world-space position of the **BP_AIPoints** actor itself. The following screenshot shows the list of vectors in the **Points** array, as shown in the previous exercise. These values are positions relative to the location of the **BP_AIPoints** actor in your level:
+
+![Figure 13.29 – The local-space position vectors of the Points array, relative to the world-space position of the BP_AIPoints actor ](img/Figure_13.29_B18531.jpg)
+
+Figure 13.29 – The local-space position vectors of the Points array, relative to the world-space position of the BP_AIPoints actor
+
+To have the enemy AI move to the correct world space location of these points, you need to use a function called `Transform Location`. This function takes in two parameters:
+
+*   `T`: This is the supplied transform that you will use to convert the vector location parameter from a local-space value into a world-space value.
+*   `Location`: This is the location that is to be converted from local space into world space.
+
+The result of this Vector Transformation is then returned as the return value of the function. You will use this function in the next exercise to return a randomly selected vector point from the `Points` array and convert that value from a local-space vector into a world-space vector. This new world-space vector will then be used to tell the enemy AI where to move relative to the world. Let’s implement this now.
+
+## Exercise 13.08 – selecting a random point in an array
+
+Now that you know more about vectors and Vector Transformation, in this exercise, you will create a simple `Blueprint` function to select one of the *patrol point* vector locations and transform its vector from a local space value into a world space value using a built-in function called `Behavior Tree` so that the AI will move to the correct position. This exercise will be performed within the UE5 editor.
+
+Follow these steps to complete this exercise. Let’s start by creating the new function:
+
+1.  Navigate back to the `GetNextPoint`.
+2.  Before you add logic to this function, select this function by *left-clicking* it under the **Functions** category to access its **Details** panel.
+3.  In the **Details** panel, enable the **Pure** parameter so that this function is labeled as a **Pure Function**. You learned about **Pure Functions** in [*Chapter 11*](B18531_11.xhtml#_idTextAnchor222), *Working with Blend Space 1D, Key Bindings, and State Machines*, when working in the Animation Blueprint for the player character; the same thing is happening here.
+4.  Next, the `GetNextPoint` function needs to return a vector that the `Behavior Tree` can use to tell the enemy AI where to move to. Add this new output by *left-clicking* on the `NextPoint`, as shown in the following screenshot:
+
+![Figure 13.30 – Functions can return multiple variables of different types, depending on the needs of your logic ](img/Figure_13.30_B18531.jpg)
+
+Figure 13.30 – Functions can return multiple variables of different types, depending on the needs of your logic
+
+1.  When adding an **Output** variable, the function will automatically generate a **Return** node and place it in the function graph, as shown in the following screenshot. You will use this output to return the new vector patrol point for the enemy AI to move to:
+
+![Figure 13.31 – The automatically generated Return Node for the function, including the Next Point vector output variable ](img/Figure_13.31_B18531.jpg)
+
+Figure 13.31 – The automatically generated Return Node for the function, including the Next Point vector output variable
+
+Now that the function’s groundwork is completed, let’s start adding the logic.
+
+1.  To pick a random position, first, you need to find the length of the `Points` array. Create a `Points` vector and from this vector variable, *left-click* and drag to search for the `Length` function, as shown in the following screenshot:
+
+![Figure 13.32 – The Length function is a pure function that returns the length of the array ](img/Figure_13.32_B18531.jpg)
+
+Figure 13.32 – The Length function is a pure function that returns the length of the array
+
+1.  With the integer output of the `Length` function, *left-click* and drag out to use the context-sensitive search to find the `Random Integer` function, as shown in the following screenshot. The `Random Integer` function returns a random integer between `0` and `Max value`; in this case, this is the length of the `Points` vector array:
+
+![Figure 13.33 – Using Random Integer will allow the function to return a random vector from the Points vector array ](img/Figure_13.33_B18531.jpg)
+
+Figure 13.33 – Using Random Integer will allow the function to return a random vector from the Points vector array
+
+Here, you are generating a random integer between 0 and the length of the `Points` vector array. Next, you need to find the element of the `Points` vector array at the index position of the returned `Random Integer` function.
+
+1.  Do this by creating a new `Getter of the Points` vector array. Then, *left-click* and drag to search for the `Get(a copy)`function.
+2.  Next, connect the return value of the `Random Integer` function to the input of the `Get (a copy)` function. This will tell the function to choose a random integer and use that integer as the index to return from the `Points` vector array.
+
+Now that you are getting a random vector from the `Points` vector array, you need to use the `Transform Location` function to convert the location from a local space vector into a world space vector.
+
+As you have learned already, the vectors in the `Points` vector array are local space positions relative to the position of the `BP_AIPoints` actor in the level. As a result, you need to use the `Transform Location` function to convert the randomly selected local space vector into a world space vector so that the AI enemy moves to the correct position.
+
+1.  *Left-click* and drag from the vector output of the `Get(a copy)`function and, via the context-sensitive search, find the `Transform Location` function.
+2.  Connect the vector output of the `Get(a copy)`function to the `Location` input of the `Transform Location` function.
+3.  The final step is to use the transform of the Blueprint actor itself as the `T` parameter of the `Transform Location` function. Do this by *right-clicking* inside the graph and, via the context-sensitive search, finding the `GetActorTransform` function and connecting it to the `Transform Location` parameter, `T`.
+4.  Finally, connect the `Return Value` vector from the `Transform Location` function and connect it to the `NewPoint` vector output of the function:
+
+![Figure 13.34 – The final logic has been set up for the GetNextPoint function ](img/Figure_13.34_B18531.jpg)
+
+Figure 13.34 – The final logic has been set up for the GetNextPoint function
+
+Note
+
+You can find the preceding screenshot in full resolution for better viewing at the following link: [https://packt.live/35jlilb](https://packt.live/35jlilb).
+
+By completing this exercise, you have created a new Blueprint function inside the `Points` array variable, transforms it into a world space vector value using the `Transform Location` function, and returns this new vector value. You will use this function inside the `Behavior Tree`, so that the enemy will move to one of the points you have set up. Before you can do this, the enemy AI needs a reference to the **BP_AIPoints** actor so that it knows which points it can select from and move to. We’ll do this in the following exercise.
+
+## Exercise 13.09 – referencing the patrol point actor
+
+Now that the `Object Reference` variable to the enemy character Blueprint and assign the `Object Reference` variable.
+
+Note
+
+An `Object Reference` variable stores a reference to a specific class object or actor. With this variable, you can get access to the publicly exposed variables, events, and functions that this class has available.
+
+Follow these steps to complete this exercise:
+
+1.  Navigate to the `/Enemy/Blueprints/` directory and open the enemy character Blueprint, **BP_Enemy**, by *double-clicking* the asset from **the Content Drawer** interface.
+2.  Create a new variable of the `BP_AIPoints` type and make sure the variable is of the `Object Reference` variable type.
+3.  To reference the existing `Instance Editable` parameter. Name this variable `Patrol Points`.
+4.  Now that you have set the object reference, navigate to your level and select your enemy AI. The following screenshot shows the enemy AI placed in the provided example level – that is, `SuperSideScroller.umap`. If you don’t have an enemy in your level, please place one now:
+
+Note
+
+Placing an enemy into a level works the same as it does for any other actor in UE5: *left-click* and drag the enemy AI Blueprint from the **Content Drawer** interface into the level.
+
+![Figure 13.35 – The enemy AI placed in the SuperSideScroller.umap level ](img/Figure_13.35_B18531.jpg)
+
+Figure 13.35 – The enemy AI placed in the SuperSideScroller.umap level
+
+1.  From its `Patrol Points` variable under the `BP_AIPoints` actor we already placed in the level in *Exercise 13.07 – creating the enemy patrol locations*. Do this by *left-clicking* the dropdown menu for the `Patrol Points` variable and finding the actor from the list.
+
+With this exercise complete, the enemy AI in your level now has a reference to the **BP_AIPoints** actor in your level. With a valid reference in place, the enemy AI can use this actor to determine which set of points to move between inside the **BTTask_FindLocation** task. All that is left to do now is update the **BTTask_FindLocation** task so that it uses these points instead of finding a random location.
+
+## Exercise 13.10 – updating BTTask_FindLocation
+
+The final step in completing the enemy AI patrolling behavior is to replace the logic inside `GetNextPoint` function from the **BP_AIPoints** actor instead of finding a random location within the navigable space of your level. This exercise will be performed within the UE5 editor.
+
+As a reminder, go back to *Exercise 13.05 – creating a new behavior tree task*, and see what the **BTTask_FindLocation** task looked like before you start.
+
+Follow these steps to complete this exercise:
+
+1.  First, you must take the returned `Patrol Points` object reference variable from the previous exercise:
+
+![Figure 13.36 – Casting also ensures that the returned Controlled Pawn is of the BP_Enemy class type ](img/Figure_13.36_B18531.jpg)
+
+Figure 13.36 – Casting also ensures that the returned Controlled Pawn is of the BP_Enemy class type
+
+1.  Next, you can access the `Patrol Points` object reference variable by *left-clicking* and dragging from the `Patrol Points`.
+2.  From the `Patrol Points` reference, you can *left-click* and drag to search for the `GetNextPoint` function that you created in *Exercise 13.08 – selecting a random point in an array*.
+3.  Now, you can connect the `NextPoint` vector output parameter of the `GetNextPoint` function to the `Set Blackboard Value as Vector` function and connect the execution pins from the cast to the `Set Blackboard Value as Vector` function. Now, each time the **BTTask_FindLocation** task is executed, a new random patrol point will be set.
+4.  Lastly, connect the `Set Blackboard Value as Vector` function to the `Finish Execute` function and manually set the `Success` parameter to `True` so that this task will always succeed if the cast is successful.
+5.  As a failsafe, create a duplicate of `Cast` function. Then, set the `Success` parameter to `False`. This will act as a failsafe so that if, for any reason, `BP_Enemy` class, the task will fail. This is a good debugging practice to ensure the functionality of the task for its intended AI class:
+
+![Figure 13.37 – It is always good practice to account for any casting failures in your logic ](img/Figure_13.37_B18531.jpg)
+
+Figure 13.37 – It is always good practice to account for any casting failures in your logic
+
+Note
+
+You can find the preceding screenshot in full resolution for better viewing at the following link: [https://packt.live/3n58THA](https://packt.live/3n58THA).
+
+With the **BTTask_FindLocation** task updated to use the random patrol point from the **BP_AIPoints** actor reference in the enemy, the enemy AI will now move between the patrol points at random:
+
+![Figure 13.38 – The enemy AI is now moving between the patrol point locations in the level ](img/Figure_13.38_B18531.jpg)
+
+Figure 13.38 – The enemy AI is now moving between the patrol point locations in the level
+
+With this exercise complete, the enemy AI now uses the reference to the **BP_AIPoints** actor in the level to find and move to the patrol points in the level. Each instance of the enemy character in the level can have a reference to another unique instance of the **BP_AIPoints** actor or can share the same instance reference. It is up to you how you would like each enemy AI to move throughout the level.
+
+# Player projectile
+
+For the last section of this chapter, you will focus on creating the base of the player projectile, which can be used to destroy enemies. The goal is to create the appropriate actor class, introduce the required collision and projectile movement components to the class, and set up the necessary parameters for the projectile’s motion behavior.
+
+For the sake of simplicity, the player projectile will not use gravity, will destroy enemies with one hit, and the projectile itself will be destroyed on hitting any surface; it will not bounce off walls, for example. The primary goal of the player projectile is to have a projectile that the player can spawn and use to destroy enemies throughout the level. In this chapter, you will set up the framework’s basic functionality, while in [*Chapter 14*](B18531_14.xhtml#_idTextAnchor298), *Spawning the Player Projectile*, you will add sound and visual effects. Let’s get started by creating the `PlayerProjectile` class.
+
+## Exercise 13.11 – creating the player projectile
+
+So far, we have been working in the UE5 editor to create our enemy AI. For the `player projectile` class, we will be using C++ and Visual Studio. The player projectile will allow the player to destroy enemies that are placed in the level. This projectile will have a short lifespan, travel at a high speed, and collide with both enemies and the environment.
+
+The goal of this exercise is to set up the base actor class for the player projectile and begin outlining the functions and components needed in the header file for the projectile.
+
+Follow these steps to complete this exercise:
+
+1.  First, you will need to create a new C++ class by using the `Actor` class as the parent class for the player projectile. Next, name this new actor class `PlayerProjectile` and *left-click* on the **Create Class** option at the bottom right of the menu prompt.
+
+After creating the new class, Visual Studio will generate the required source and header files for the class and open these files for you. The `Actor` base class comes included with a handful of default functions that you will not need for the player projectile.
+
+1.  Find the following lines of code inside the `PlayerProjectile.h` file and remove them:
+
+    ```cpp
+    protected:
+      // Called when the game starts or when spawned
+      virtual void BeginPlay() override;
+    public:
+      // Called every frame
+      virtual void Tick(float DeltaTime) override;
+    ```
+
+These lines of code represent the declarations of the `Tick()` and `BeginPlay()` functions that are included in every Actor-based class by default. The `Tick()` function is called on every frame and allows you to perform logic on every frame, which can get expensive, depending on what you are trying to do. The `BeginPlay()` function is called when this actor is initialized and play has started. This can be used to perform logic on the actor as soon as it enters the world. We are removing these functions because they are not required for the player projectile and will just clutter the code.
+
+1.  After removing these lines from the `PlayerProjectile.h` header file, you can remove the following lines from the `PlayerProjectile.cpp` source files as well:
+
+    ```cpp
+    // Called when the game starts or when spawned
+    void APlayerProjectile::BeginPlay()
+    {
+      Super::BeginPlay();
+    }
+    // Called every frame
+    void APlayerProjectile::Tick(float DeltaTime)
+    {
+      Super::Tick(DeltaTime);
+    }
+    ```
+
+These lines of code represent the function implementations of the two functions you removed in the previous step – that is, `Tick()` and `BeginPlay()`. Again, these are being removed because they serve no purpose for the player projectile and just add clutter to the code. Additionally, without the declarations inside the `PlayerProjectile.h` header file, you would receive a compilation error if you were to try to compile this code asis. The only remaining function will be the constructor for the projectile class, which you will use to initialize the components of the projectile in the next exercise. Now that you have removed the unnecessary code from the `PlayerProjectile` class, let’s add the functions and components required for the projectile.
+
+1.  Inside the `PlayerProjectile.h` header file, add the following components:
+
+    ```cpp
+    public:
+      //Sphere collision component
+      UPROPERTY(VisibleDefaultsOnly, Category = 
+      Projectile)
+      class USphereComponent* CollisionComp;
+
+    private:
+      //Projectile movement component
+      UPROPERTY(VisibleAnywhere, BlueprintReadOnly, 
+      Category = Movement, meta = 
+      (AllowPrivateAccess = "true"))
+      class UProjectileMovementComponent* 
+      ProjectileMovement;
+      //Static mesh component
+      UPROPERTY(EditAnywhere, Category = Projectile)
+      class UStaticMeshComponent* MeshComp;
+    ```
+
+You are adding three different components here. The first is the collision component, which you will use for the projectile to recognize collisions with enemies and environment assets. The next component is the projectile movement component, which you should be familiar with from the previous project. This will allow the projectile to behave like a projectile. The final component is `StaticMeshComponent`. You will use this to give the projectile a visual representation so that it can be seen in-game.
+
+1.  Next, add the following function signature code to the `PlayerProjectile.h` header file, under the `public` access modifier:
+
+    ```cpp
+    UFUNCTION()
+    void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, 
+      UPrimitiveComponent* OtherComp, FVector 
+      NormalImpulse, const FHitResult& 
+      Hit);
+    ```
+
+This final event declaration will allow the player projectile to respond to `OnHit` events from the `CollisionComp` component you created in the previous step.
+
+1.  To have this code compile, you will need to implement the function from the previous step in the `PlayerProjectile.cpp` source file. Add the following code:
+
+    ```cpp
+    void APlayerProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* 
+      OtherActor, UPrimitiveComponent* OtherComp, FVector 
+      NormalImpulse, const 
+      FHitResult& Hit)
+    {
+    }
+    ```
+
+The `OnHit` event provides you with a lot of information about the collision that takes place. The most important parameter that you will be working with in the next exercise is the `OtherActor` parameter. The `OtherActor` parameter will tell you the actor that this `OnHit` event is responding to. This will allow you to know if this other actor is an enemy. You will use this information to destroy the enemies when the projectile hits them.
+
+1.  Lastly, navigate back into the Unreal Engine editor and *left-click* the **Compile** option to compile the new code.
+
+With this exercise complete, you now have the framework ready for the `PlayerProjectile` class. The class contains the required components for `OnHit` collision so that the projectile can recognize collisions with other actors.
+
+In the next exercise, you will continue to customize and enable parameters for `PlayerProjectile` so that it behaves the way you need it to for the `SuperSideScroller` project.
+
+## Exercise 13.12 – initializing the PlayerProjectile class’s settings
+
+Now that the framework of the `PlayerProjectile` class is in place, it’s time to update the constructor of this class with the default settings needed for the projectile so that it moves and behaves as you want it to. To do this, you will need to initialize the **Projectile Movement**, **Collision**, and **Static Mesh** components.
+
+Follow these steps to complete this exercise:
+
+1.  Open Visual Studio and navigate to the `PlayerProjectile.cpp` source file.
+2.  Before adding any code to the constructor, include the following files inside the `PlayerProjectile.cpp` source file:
+
+    ```cpp
+    #include "GameFramework/ProjectileMovementComponent.h"
+    #include "Components/SphereComponent.h"
+    #include "Components/StaticMeshComponent.h"
+    ```
+
+These header files will allow you to initialize and update the parameters of the projectile movement component, the sphere collision component, and `StaticMeshComponent`, respectively. Without these files, the `PlayerProjectile` class wouldn’t know how to handle these components and how to access their functions and parameters.
+
+1.  By default, the `APlayerProjectile::APlayerProjectile()` constructor function includes the following line:
+
+    ```cpp
+    PrimaryActorTick.bCanEverTick = true;
+    ```
+
+This line of code can be removed entirely because it is not required in the player projectile.
+
+1.  In the `PlayerProjectile.cpp` source file, add the following lines to the `APlayerProjectile::APlayerProjectile()` constructor:
+
+    ```cpp
+    CollisionComp = CreateDefaultSubobject
+      <USphereComponent>(TEXT("SphereComp"));
+    CollisionComp->InitSphereRadius(15.0f);
+    CollisionComp->BodyInstance.SetCollisionProfileName("BlockAll");
+    CollisionComp->OnComponentHit.AddDynamic(this, &APlayerProjectile::OnHit);
+    ```
+
+The first line initializes the sphere collision component and assigns it to the `CollisionComp` variable you created in the previous exercise. The sphere collision component has a parameter called `InitSphereRadius`. This will determine the size, or radius, of the collision actor by default; in this case, a value of `15.0f` works well. Next, `SetCollisionProfileName` sets the collision component to `BlockAll` so that the collision profile is set to `BlockAll`. This means this collision component will respond to `OnHit` when it collides with other objects. Lastly, the last line you added allows the `OnComponentHit` event to respond to the function you created in the previous exercise:
+
+```cpp
+void APlayerProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* 
+  OtherActor, UPrimitiveComponent* OtherComp, FVector 
+  NormalImpulse, const 
+  FHitResult& Hit)
+{
+}
+```
+
+This means that when the collision component receives the `OnComponentHit` event from a collision event, it will respond with that function; however, this function is empty at the moment. You will add code to this function later in this chapter.
+
+Note
+
+You can learn more about how to create custom collision profiles at [https://docs.unrealengine.com/4.26/en-US/InteractiveExperiences/Physics/Collision/HowTo/AddCustomCollisionType/](https://docs.unrealengine.com/4.26/en-US/InteractiveExperiences/Physics/Collision/HowTo/AddCustomCollisionType/).
+
+1.  The last thing you must do with `Collision Component` is set this component as the `Root Component` of the player projectile actor. Add the following line of code to the constructor, after the lines from *Step 4*:
+
+    ```cpp
+    // Set as root component
+    RootComponent = CollisionComp;
+    ```
+
+2.  With the collision component set up and ready, let’s move on to the `Projectile Movement` component. Add the following lines to the constructor:
+
+    ```cpp
+    // Use a ProjectileMovementComponent to govern this projectile's movement
+    ProjectileMovement = 
+      CreateDefaultSubobject<
+      UProjectileMovementComponent>(
+      TEXT("ProjectileComp"))
+      ;
+    ProjectileMovement->UpdatedComponent = CollisionComp;
+    ProjectileMovement->ProjectileGravityScale = 0.0f;
+    ProjectileMovement->InitialSpeed = 800.0f;
+    ProjectileMovement->MaxSpeed = 800.0f;
+    ```
+
+This first line initializes `ProjectileMovementComponent` and assigns it to the `ProjectileMovement` variable you created in the previous exercise. Next, we set `CollisionComp` as the updated component of the projectile movement component. The reason we’re doing this is that `ProjectileMovementComponent` will use the `Root` of the actor as the component to move. Then, we set the gravity scale of the projectile to `0.0f` because the player projectile should not be affected by gravity; this behavior should allow the projectile to travel at the same speed, at the same height, and not be influenced by gravity. Lastly, we set both the `InitialSpeed` and `MaxSpeed` parameters to `500.0f`. This will allow the projectile to instantly start moving at this speed and remain at this speed for the duration of its lifetime. The player projectile will not support any kind of acceleration motion.
+
+1.  With the projectile movement component initialized and set up, it is time to do the same for `StaticMeshComponent`. Add the following code after the lines from the previous step:
+
+    ```cpp
+    MeshComp = 
+    CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComp"));
+    MeshComp->AttachToComponent(RootComponent, 
+      FAttachmentTransformRules::KeepWorldTransform);
+    ```
+
+This first line initializes `StaticMeshComponent` and assigns it to the `MeshComp` variable you created in the previous exercise. Then, it attaches this `StaticMeshComponent` to `RootComponent` using a struct called `FAttachmentTransformRules` to ensure that `StaticMeshComponent` keeps its world transform during the attachment, which is `CollisionComp` from *Step 5* of this exercise.
+
+Note
+
+You can find more information about the `FAttachmentTransformRules` struct here: [https://docs.unrealengine.com/en-US/API/Runtime/Engine/Engine/FAttachmentTransformRules/index.xhtml](https://docs.unrealengine.com/en-US/API/Runtime/Engine/Engine/FAttachmentTransformRules/index.xhtml).
+
+1.  Lastly, let’s give `PlayerProjectile` an initial life span of `3` seconds so that the projectile will automatically be destroyed if it doesn’t collide with anything after this time. Add the following code to the end of the constructor:
+
+    ```cpp
+    InitialLifeSpan = 3.0f;
+    ```
+
+2.  Lastly, navigate back into the Unreal Engine editor and *left-click* the **Compile** option to compile the new code.
+
+By completing this exercise, you have set up the groundwork for **Player Projectile** so that it can be created as a Blueprint actor inside the editor. All three required components have been initialized and contain the default parameters that you want for this projectile. All we need to do now is create the Blueprint from this class to see it in the level.
+
+## Activity 13.03 – creating the player projectile Blueprint
+
+To conclude this chapter, you will create the Blueprint actor from the new `PlayerProjectile` class and customize this actor so that it uses a placeholder shape for `UE_LOG()` function to the `APlayerProjectile::OnHit` function inside the `PlayerProjectile.cpp` source file so that you can ensure that this function is called when the projectile comes into contact with an object in the level.
+
+Follow these steps:
+
+1.  Inside the `Projectile` in the `/MainCharacter` directory.
+2.  In this directory, create a new Blueprint from the `PlayerProjectile` class, which you created in *Exercise 13.11 – creating the player projectile*. Name this Blueprint `BP_PlayerProjectile`.
+3.  Open `MeshComp` component to access its settings.
+4.  Add the `Shape_Sphere` mesh to the `Static Mesh` parameter of the `MeshComp` component.
+5.  Update the transform of `MeshComp` so that it fits the `Scale and Location of the CollisionComp` component. Use the following values:
+
+    ```cpp
+    Location:(X=0.000000,Y=0.000000,Z=-10.000000)
+    Scale: (X=0.200000,Y=0.200000,Z=0.200000)
+    ```
+
+6.  Compile and save the **BP_PlayerProjectile** Blueprint.
+7.  Navigate to the `PlayerProjectile.cpp` source file in Visual Studio and find the `APlayerProjectile::OnHit` function.
+8.  Inside the function, implement the `UE_LOG` call so that the logged line is of `HIT`. `UE_LOG` , as covered back in [*Chapter 11*](B18531_11.xhtml#_idTextAnchor222), *Working with Blend Space 1D, Key Bindings, and State Machines*.
+9.  Compile your code changes and navigate to the level where you placed the **BP_PlayerProjectile** actor in the previous exercise. If you haven’t added this actor to the level, do so now.
+10.  Before testing, make sure that you open **Output Log** under **Window**. From the **Window** dropdown, hover over the **Developers Tools** option and *left-click* to select **Output Log**.
+11.  Use `PIE` and watch out for the log warning inside **Output Log** when the projectile collides with something.
+
+The following is the expected output:
+
+![Figure 13.39 – The scale of MeshComp fits the size of CollisionComp better ](img/Figure_13.39_B18531.jpg)
+
+Figure 13.39 – The scale of MeshComp fits the size of CollisionComp better
+
+The log warning should look as follows:
+
+![Figure 13.40 – When the projectile hits an object, HIT is shown in the Output Log area ](img/Figure_13.40_B18531.jpg)
+
+Figure 13.40 – When the projectile hits an object, HIT is shown in the Output Log area
+
+With this final activity complete, `Throw` action. You will update the `APlayerProjectile::OnHit` function so that it destroys the enemy that it collides with and becomes an effective offensive tool for the player to use against the enemies.
+
+Note
+
+The solution for this activity can be found on GitHub here: [https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions](https://github.com/PacktPublishing/Elevating-Game-Experiences-with-Unreal-Engine-5-Second-Edition/tree/main/Activity%20solutions).
+
+# Summary
+
+In this chapter, you learned how to use the different aspects of the AI tools offered by UE5, including `Blackboards`, `Behavior Trees`, and AI Controllers. By using a combination of both custom-created tasks and default tasks provided by UE5, as well as a decorator, you were able to have the enemy AI navigate within the bounds of the Nav Mesh you added to your level.
+
+On top of this, you created a new `Blueprint` actor that allows you to add patrol points with the use of a `Vector` array variable. Then, you added a new function to this actor that selects one of these points at random, converts its location from local space into world space, and then returns this new value for use by the enemy character.
+
+With the ability to randomly select a patrol point, you updated the custom `BTTask_FindLocation` task to find and move to the selected patrol point, allowing the enemy to move from each patrol point at random. This brought the enemy AI character to a whole new level of interaction in terms of the player and the environment.
+
+Lastly, you created the `PlayerProjectile` class, which the player will be able to use to destroy enemies within the environment. You took advantage of both `Projectile Movement Component` and `Sphere Component` to allow for both projectile movement and to recognize and respond to collisions within the environment.
+
+With the `PlayerProjectile` class in a functional state, it is time to move on to the next chapter, where you will use `Anim Notifies` to spawn the projectile when the player uses the `Throw` action.

@@ -1,0 +1,338 @@
+# Web Programming for the Internet of Things
+
+In this chapter, we turn our attention to the **Internet of Things** (**IoT**). The IoT is an exciting new trend where internet connectivity is added to everyday physical objects. When combined with embedded electronics and sensors, internet access allows physical objects to interact with one another and be controlled and monitored from anywhere in the world.
+
+The following topics are covered in this chapter:
+
+*   Defining the IoT
+*   Connectivity types
+*   Bandwidth considerations
+*   Controller types
+*   Ethics of the IoT
+*   Security for the IoT
+
+# Technical requirements
+
+This chapter contains no C code. Instead, it focuses on the theory, techniques, and practices used in the IoT domain.
+
+# What is the IoT?
+
+We now live in a world where almost anything that can be connected to the internet, has been. These devices make up the IoT, and they are in every part of our lives.
+
+In the kitchen at home, devices with internet connectivity include fridges, microwave ovens, conventional ovens, food scales, dishwashers, coffee-makers, and even juicers.
+
+Elsewhere in the home, we have smart TVs, gaming consoles, thermostats, furnaces, washing machines, light switches, light bulbs, yoga mats, alarm clocks, cameras, doorbells, bathroom scales, baby monitors, sound systems, and speakers—all connected to the internet. Of course, your whole house may be supplied with electricity, water, and gas from networked smart meters. When you leave home, do you go through an IoT garage door to get in your always-connected car with built-in Wi-Fi? Many do.
+
+In the industrial sector, IoT devices are central to **Industry 4.0**, commonly considered the fourth industrial revolution. Using internet connectivity to interconnect every device in the manufacturing supply chain has allowed for unprecedented optimizations in efficiency.
+
+The IoT is even affecting the way we grow food. In agriculture, IoT devices allow farmers to monitor relevant weather conditions, such as temperature, humidity, sunlight, rainfall, and wind speed. This information informs decisions improving yield and quality.
+
+Of course, these are just a few examples of IoT applications. The concept is also applied to concerns in environment, healthcare, infrastructure, transportation, and more.
+
+When adding internet connectivity to a device, you have several options. There are certainly pros and cons to each connection option. We review them next.
+
+# Connectivity options
+
+Once you've figured out what your device does, and that it benefits from an internet connection, you still have to decide how to connect it. There are many options with various trade-offs.
+
+# Wi-Fi
+
+Perhaps Wi-Fi needs no introduction. Almost every modern home with internet access has Wi-Fi available. This is in large part because residential **Internet Service Providers** (**ISPs**) typically use modems with built-in Wi-Fi. If your IoT device is deployed indoors, there is a good chance that a Wi-Fi network is available. This is particularly true for residential and commercial devices.
+
+Wi-Fi is the most popular **Wireless Local Area Network** (**WLAN**) technology and is based around the IEEE 802.11 standards. It typically operates on either a 2.4 GHZ or a 5 GHZ radio frequency.
+
+Two main operation modes are provided by Wi-Fi. In **ad hoc**** mode**, devices communicate directly to one another. However, **infrastructure**** mode** is much more common. In infrastructure mode, devices on a WLAN all connect to a **W****ireless Access Point** (**WAP**). The WAP then generally provides internet access for the whole WLAN.
+
+Wi-Fi provides good bandwidth, low latency, and basic security features, but it has higher power needs than other short-range wireless standards. Although newer versions of Wi-Fi can achieve speeds of 1 Gbps, these are not yet commonly seen in practice. In any case, for an IoT device application, we are typically concerned about internet access. The Wi-Fi performance of the IoT device's connection to the local router is not usually the bottleneck, but rather, the available internet service to the router is.
+
+One downside to using Wi-Fi connectivity in your IoT device is in the setup difficulty. Most Wi-Fi networks are secured with a password, and therefore your device needs to somehow obtain the network name and password before being able to connect. If your device has a built-in screen and keyboard (or touchscreen), then entering the network password is trivial.
+
+However, for IoT devices without large screens, getting the network password configured can sometimes be complicated. One solution is to have your end user put the configuration information on an SD card or USB storage device. Your device then reads the password from this storage and can connect to the network. The problem with this solution is that it is tedious, and many users may not be technically capable of completing this setup.
+
+An alternative setup is to first connect the device to a computer or smartphone (perhaps through Bluetooth) for the initial configuration. This has the downside of requiring the user to obtain such a setup device (not everyone has a smartphone), as well as requiring extra work in developing the setup application.
+
+A third setup method is to have the IoT device initially provide its own Wi-Fi network. In other words, the device acts as a temporary access point. The user then utilizes a laptop or smartphone to connect directly to the device. The user opens a browser, and the device serves a web page on which the user can configure the device. Once the parameters are entered, the IoT device connects to the local Wi-Fi hotspot and is now configured for internet access.
+
+The following diagram illustrates this setup method:
+
+![](img/ee5e3b6c-3184-455e-a91c-35f4e1b42ca2.png)
+
+The advantage of this setup method is that no special software needs to be developed for the setup. Any device that can connect to a Wi-Fi network and has a standard web browser will work.
+
+Keep in mind that Wi-Fi networks change occasionally. It is good security practice to change Wi-Fi passwords from time to time, and each time this happens, the IoT device will need to be reconfigured.
+
+Although Wi-Fi is convenient, if a wired connection is available, it's often easier and better.
+
+# Ethernet
+
+A wired Ethernet connection is ideal for any IoT device, if it's available. Ethernet provides easy setup and extreme reliability. The newest standards allow for a bandwidth of 400 Gbps, and its low latency is unrivaled. It is even possible to provide power over Ethernet in some cases, further simplifying deployment.
+
+The downside to Ethernet connections is, of course, that a physical cable is required. Many offices already have Ethernet run to each room, and Ethernet-connected IoT devices work well there. In residential and industrial settings, however, running new wires can be tedious. Wireless connections are, therefore, often easier in those settings.
+
+When available, Ethernet setup is easy. Oftentimes, a device only needs to be plugged in and it's ready to work.
+
+Keep in mind that, with Ethernet, as with Wi-Fi, you're relying on internet access being available at your IoT device installation site. This internet access is generally much slower than the Ethernet connection you will have on the local network. As this internet access is provided by your customer, its quality can vary greatly.
+
+What if Wi-Fi and Ethernet aren't available? What if your device needs to be mobile? In those cases, cellular internet access may be your best option.
+
+# Cellular
+
+Cellular (mobile networks) can be a great connection option for IoT devices. It is particularly useful for two reasons. First, cellular service is available nearly everywhere. This makes cellular ideal for mobile IoT devices. Second, all network setup can be completed at the time of manufacture. This makes deployment easy, hassle-free, and can lower ongoing support costs when compared to other options.
+
+The drawback to cellular connectivity is higher cost. First, the IoT device must contain a cellular modem. Cellular modems are costlier than Wi-Fi modems and Ethernet transceivers. In addition, certain testing and certification is required before a device is allowed on operator networks.
+
+Cellular devices must also pay for access. With Wi-Fi or Ethernet, an IoT device is assumed to be able to leech off local internet access. With cellular, someone must pay the bill for each specific device. Usually, it makes sense for the IoT device manufacturer to provision and maintain service for each device. For devices requiring low bandwidth, an LTE cellular connection can be maintained for well under $1.00 (USD) per device per month. Any device that requires significant bandwidth is much more costly to service.
+
+An additional benefit of cellular is that many mobile network providers can route your traffic through a **Virtual Private Network** (**VPN**). This is done by the network operator, and you won't be billed for the additional bandwidth of the VPN overhead. A VPN isolates your IoT devices from the internet and allows communication only with your trusted servers. It is convenient because many of your security concerns are taken care of by the cellular provider.
+
+We've covered three options for direct internet access, but many IoT devices don't need to access the internet directly. Some work in conjunction with a computer or smartphone for access. One wireless technology commonly used with this method is Bluetooth.
+
+# Bluetooth
+
+Bluetooth is a popular short-range wireless technology standard for use in **Wireless Personal Area Networks** (**WPAN**). Like Wi-Fi, Bluetooth operates on the 2.4 GHz radio band.
+
+Bluetooth can be used for direct internet access, but this is uncommon in practice. Bluetooth is usually used to connect an IoT device to another device that has internet access. For example, many smartwatches use Bluetooth to pair with smartphones. The smartphone then has internet access through either a Wi-Fi or cellular connection.
+
+The following diagram shows a Bluetooth **smart watch** connection:
+
+![](img/34f7e3f8-6f22-4551-a7f6-69f7d1d2b895.png)
+
+This works very well for the smart watch, as it is usually expected to be in close proximity to a **smartphone**.
+
+Of course, you may object philosophically to the smart watch being considered an IoT device. In this case, it's more of a sensor for a smartphone app than a standalone IoT device. Nonetheless, it fits into the ecosystem of the IoT. This type of piggy-back connectivity can be a good option and should not be overlooked.
+
+As a similar technology to Bluetooth, **IEEE 802.15.4**-based wireless networks are commonly deployed to allow a whole network of IoT devices to intercommunicate.
+
+# IEEE 802.15.4 WPANs
+
+**IEEE 802.15.4** is a technical standard for **low-rate wireless personal area networks** (**LR-WPAN**). The standard was first defined in 2003, and it provides the foundation that other protocols are built on. For example, the **Zigbee**, **6LoWPAN**, **Thread**, **ISA100.1**, **WirelessHART**, **WiSUN**, and **MiFi** protocols are all based on the IEEE 802.15.4 standard, just to name a few.
+
+IEEE 802.15.4-based protocols are useful for low-power, limited-range applications. Typical ranges extend to about 10 meters with a transfer rate of 250 Kbps. Because of the low power requirements, battery-powered devices are often able to operate for multiple years on a single charge.
+
+Some protocols built on IEEE 802.15.4, such as 6LoWPAN, allow devices to communicate using IP directly, similar to how Wi-Fi is typically used. Other protocols are commonly used only to send data to a central hub device. This hub is then responsible for processing IoT device data and communicating over the internet, if needed.
+
+As a concrete example, home automation networks are often built on the IEEE 802.15.4 standard. In many cases, these networks are seldom used to provide direct internet access to each IoT device. Instead, a hub is commonly used to allow a network of devices to communicate. The hub then coordinates the data and forwards it on to the internet.
+
+A **mesh network topology** is common in IEEE 802.15.4-based setups. This allows devices remote from the hub to communicate through closer devices.
+
+The following diagram illustrates a mesh network for home automation:
+
+![](img/0f33cb5c-94c4-4c5e-93dd-b3fdef521033.png)
+
+In the preceding diagram, we see an IEEE 802.15.4-based network for a home automation setup. Various IoT devices, such as lights and kitchen gadgets, communicate with a **Coordinator/Hub**. This hub controls and coordinates the connected devices. The hub itself uses Wi-Fi to connect to the local network, and this internet connection allows for remote control and monitoring of IoT devices.
+
+Now that we've covered a few of the most popular connection options, let's turn our attention to IoT hardware choices.
+
+# Hardware choices
+
+When designing an IoT device, there are many choices for hardware. In many cases, these choices ultimately must be made based on the functionality of the device, and not on their connectivity options. Remember, IoT devices need to have a useful purpose besides just connecting to the internet.
+
+Let's look at three options for hardware—single-board computers, microcontrollers, and **Field-Programmable Gate Arrays** (**FPGAs**).
+
+# Single-board computers
+
+**Single-Board Computers** (**SBCs**) are complete computers built on a single circuit board. They include all the usual pieces of a functional computer—the **Central Processing Unit** (**CPU**), **Random Access Memory** (**RAM**), non-volatile storage, and input/output ports.
+
+SBCs are capable of running full-featured operating systems. Linux is commonly used.
+
+The **Raspberry Pi Zero W**, for example, is an SBC measuring just 2.6 by 1.2 inches. It has 512 MB of RAM built-in and uses a micro SD card for storage. Wi-Fi and Bluetooth connectivity is also included. The Raspberry Pi Zero W currently retails for about $10 (USD).
+
+The following photo shows a Raspberry Pi Zero W:
+
+![](img/1334f39c-8fc6-4453-8899-5280f5ef11b5.png)
+
+Because SBCs run normal desktop operating systems, such as Linux, programming them is easy. In fact, all of the network programs we've developed throughout this book are applicable.
+
+In addition to standard computer connectors for video, audio, and USB, SBCs usually have some **General-Purpose Input/Output** (**GPIO**) pins to work with. This gives them some basic microcontroller-like functionality. These GPIO pins are capable of reading a digital input signal and providing a digital output signal. On the Raspberry Pi, some pins are also able to provide **Pulse Width Modulation** (**PWM**) outputs, as well as various board-level serial protocols—**Serial**** Peripheral Interface** (**SPI**), **Inter-Integrated Circuit** (**I2C**), and **Asynchronous Serial**.
+
+Although SBCs are very easy to get started with, they do have a few drawbacks. They are relatively expensive, they require a lot of power, and their use of general-purpose operating systems isn't always ideal for embedded systems. Microcontrollers, by comparison, are much cheaper and optimized to handle real-time performance constraints.
+
+# Microcontrollers
+
+A **microcontroller** is a small computer contained on a single integrated circuit. Microcontrollers contain all the parts needed for a functional computer, including a CPU, RAM, and non-volatile storage.
+
+While SBCs usually have processor speeds in the hundreds or thousands of MHz, it is common for microcontrollers to be clocked at less than 100 MHz. It's not uncommon to see microcontrollers clocked at even 1 MHz or less. Microcontrollers often have RAM varying from between a few dozen bytes to a few megabytes. These humble specifications also mean that microcontrollers can get by on very little power. It's not uncommon to see microcontrollers needing only a few nano-amps when in sleep mode.
+
+Microcontrollers usually come with lots of GPIO pins and useful peripherals, such as timers, real-time clocks, communication interfaces, **Pulse Width Modulation** (**PWM**) outputs, **Analog-to-Digital** **C****onverter** (**ADC**) comparators, **Digital-to-Analog Converter **(**DAC**), **Watch-Dog Timers** (**WDT**), serial transceivers, and more.
+
+These microcontroller peripherals are often vital to the functioning of an IoT device core functionality. For example, a PWM generator peripheral can be used for precise motor control, while an ADC may be needed to read a sensor. Remember, the internet part of an IoT device is largely secondary; the device must perform some useful function first. What use is an internet-connected thermostat if it can't sense the temperature?
+
+Microcontrollers come in various architectures and bus widths. 8-bit, 16-bit, and 32-bit controllers are all common. Although for IoT devices, 8-bit controllers are probably under-powered.
+
+Modern desktop computers almost always use the Von Neumann architecture, but many microcontrollers use the Harvard architecture.
+
+In the Von Neumann architecture, which dominates the desktop processor market, memory stores both data and instructions. This necessitates that processor instructions are the same width as the data they are processing. Harvard architecture machines, by contrast, use completely separate memories to store instructions and data. It is common for Harvard architecture microcontrollers to use different word sizes for instructions compared to data. For example, a 16-bit Harvard architecture microcontroller may process data in 16-bit words, but its instructions could be encoded as 24-bit words. While data is stored in RAM, instructions are read directly from non-volatile memory, such as **FLASH** or **EEPROM**.
+
+It is also possible to find microcontrollers with built-in networking functionality, including support for Wi-Fi, Ethernet, Bluetooth, IEEE 802.15.4, and others.
+
+As an example, the ESP8266 32-bit microcontroller, produced by Espressif Systems, comes with Wi-Fi transceiver and TCP/IP stack.
+
+The following diagram shows an ESP8266 microcontroller on a breakout board:
+
+![](img/4be263ae-82eb-4279-b103-9072c85b40c1.png)
+
+Microcontrollers that don't have built-in transceivers can be connected to external modems with those capabilities.
+
+Microcontrollers are often programmed directly, without an operating system. Some programmers prefer operating systems, and many different microcontroller operating systems are available. These operating systems often make it easier for a microcontroller to perform various tasks while simplifying program layout and retaining real-time capabilities. It should be noted that these microcontroller operating systems generally lack memory segmentation and other safety features taken for granted in desktop operating systems.
+
+Microcontrollers are great when you don't need much processing power, but do require real-time processing guarantees. What about when you need both processing power and real-time guarantees? See FPGAs.
+
+# FPGAs
+
+**Field-Programmable Gate Arrays** (**FPGAs**) are integrated circuits containing arrays of programmable logic blocks. These logic blocks can be programmed and combined to implement complex functions. Essentially, any logic that an **Application-Specific Integrated Circuit** (**ASIC**) can perform can also be done on an FPGA.
+
+FPGAs are useful for highly demanding processing tasks requiring real-time guarantees, especially tasks that benefit from highly-parallel processing. For example, a video-processing algorithm that is too demanding for a single-board computer, much less a microcontroller, may be trivial for an FPGA.
+
+FPGAs are programmed using **Hardware Description Languages** (**HDL**). The two most common languages used are **Verilog** and **VHSIC Hardware Description Language** (**VHDL**). These languages are much different than C. While C is an imperative language that gives the steps to take to complete a calculation, HDLs are declarative languages, giving descriptions of how logic gates should be connected.
+
+In practice, it is common to implement a soft microprocessor core in an FPGA. This soft processor can then be programmed like any other microprocessor and is used for sundry tasks that don't require much processing power. For example, an FPGA that processes video may implement a microprocessor that is responsible for the setup and configuration functions of the system. These soft processors are commonly programmed in C.
+
+Regardless of which type of hardware your IoT device uses, if it doesn't have suitable built-in communication, you will need an external transceiver or modem.
+
+# External transceivers and modems
+
+External transceivers and modems are available for Wi-Fi, cellular, Ethernet, Bluetooth, and any other protocol you can think of.
+
+The following photo shows an industrial IoT device that uses a cellular modem:
+
+![](img/4b89c3fb-18b1-4966-86c2-21ece79be781.png)
+
+In the preceding diagram, the lower circuit board implements the functionality of the device (monitoring cryogenic liquids, in this case). On this board, the power supply system, sensor electronics, and a low-cost, 16-bit microcontroller are found. A cellular modem is located on the top circuit board, which plugs into a socket on the lower board.
+
+External modems often communicate with their host (microcontroller) through asynchronous serial. The protocols used vary considerably among systems.
+
+One common protocol family for communicating with modems is the **Hayes command set** also called **AT commands**. These commands consist of short text-based messages. AT commands were more or less standardized for placing phone calls, but have been extended to managing internet connections. Unfortunately, almost every modem manufacturer does the extension differently.
+
+If you're using an external modem, you need to consult that modem's documentation for the exact protocol used to communicate with it. Socket-style drivers are often not available, but many of the core networking concepts explored in this book still apply.
+
+With connectivity out of the way, let's turn our attention to **IoT device protocols**.
+
+# IoT protocols
+
+Most IoT devices work by sending their data to a few central servers—the cloud. These servers process and store the IoT device data and allow remote access and configuration.
+
+For example, take a smart thermostat. It continuously sends temperature data to a central server. This server stores the data. If a user wants to view the data, they connect their personal computer or smartphone to that central server. They don't connect directly to the IoT device itself. When they want to change their thermostat settings, they send this change to the central server, which then relays it to the IoT thermostat.
+
+The following diagram illustrates this concept:
+
+![](img/04a483f1-f2ed-4c60-9b5d-2378ba4e2c5e.png)
+
+In the preceding diagram, note that all communication goes through the server. There is never direct communication from the smartphone to the IoT device.
+
+Using a central server has several advantages. It allows the IoT device to do much less processing. The server can further process that data and format it into graphs and such. The server can also send emails or other alerts, and the server is able to store much more data than the IoT device is capable of. Furthermore, the server gives both the IoT device and the user's device (a laptop or smartphone) a place to connect to. Without a central server, getting the user's device to connect to the IoT device would be its own challenge.
+
+The actual protocols used by IoT devices vary. Many devices use HTTPS. In these cases, the device usually requests an HTTPS page while passing collected data. The web server will then collect the data and return any needed information to the IoT device.
+
+There are a few protocol standards aimed specifically for IoT devices, such as **Constrained Application Protocol** (**CoAP**) and **Message Queuing Telemetry Transport** (**MQTT**).
+
+However, custom designed TCP and UDP protocols are also common. These custom protocols can achieve a much higher level of efficiency where bandwidth is a concern.
+
+Perhaps we will see more protocol standardization in the coming years. This could have an enormous advantage in allowing devices to better interoperate. As it is now, devices rarely interoperate with devices from different manufacturers.
+
+Another important consideration when deploying an IoT device is how to update the code after the device is shipped.
+
+# Firmware updates
+
+IoT devices are connected to the internet, and this gives us an advantage for product updates. When new functionality or bug fixes are developed, we can use the internet to push updates to our IoT devices.
+
+This process is easy when using an SBC. You just push the update as you would for any software.
+
+If your product uses a microcontroller or FPGA, then things get a bit more complicated. Your device will need to download a firmware image, and then transfer that into non-volatile memory as required.
+
+If the device's power is interrupted during the firmware update phase, the device could be left in an unusable state. This can be prevented through careful design. If the device has enough memory to store the firmware twice, it is possible to download the entire firmware update without overwriting the original. In this case, the device can detect the failed update (by using a checksum, watchdog timer, or someother mechanism) and revert to the previous state.
+
+In any case, there are a few practices that should be followed by any IoT device doing remote updates.
+
+First, it is essential for security that any firmware update is authenticated. If this step is missed, then an attacker could send a fake update to your device. Once your device is running the attacker's code, nothing else you do for security matters. We will discuss security in more detail later in this chapter.
+
+Despite the focus on authentication, you should consider allowing your device's owner to install unauthenticated firmware. It is a basic user freedom to run the code they want to run on their own devices, and some consider it unethical to attempt to prevent this. In any case, it is not technically possible to retain control of a device that's not physically under your control. In other words, if you attempt to prevent a user from installing their own firmware through **Digital Rights Management** (**DRM**), you should expect your efforts to be eventually defeated.
+
+It is often considered good practice to allow the device to return to its original factory configuration. This usually means storing the factory firmware in a separate non-volatile memory, such as a low-cost flash chip. This is important in the rare case that a firmware update fails. If a firmware update fails, the device may be unable to boot. If a redundant firmware copy was stored, then the device can be rolled back to its original factory state with some sort of physical reset mechanism. From this state, the update can be retried.
+
+Now that we've covered some technical considerations of IoT design, let's turn our attention to a few ethical concerns.
+
+# Ethics of IoT
+
+Much criticism has been leveled at the IoT concept regarding privacy, security, and other ethical concerns. This isn't surprising, given these devices' pervasive presence in our lives.
+
+Most IoT devices work in conjunction with a central server. This server gets essentially all of the collected data from the IoT devices it services. This raises questions about data ownership and privacy.
+
+# Privacy and data collection
+
+Many IoT devices collect lots of data as part of their operation. For example, a smart thermostat collects temperature data about its environment. This is required for it to function. This data may seem harmless at first glance, but once you consider how people use smart thermostats, you realize that the data is more important than it first appears.
+
+In the smart thermostat example, people will set different temperatures based on when they expect to be awake, asleep, or away. From this data, you can infer approximately at what time someone leaves for work in the morning and what time they get back. When a person leaves their house for a week-long holiday, it will be clearly reflected in the data.
+
+If even a seemingly innocuous smart thermostat gives great insight into a person's behavior, imagine how much more data a smartphone or home assistant collects!
+
+If we accept that this data collection is inherent to the device's functionality, then its collection seems justified. Consider, then, if the IoT company has an obligation to the user to keep their data secure or confidential. Then who owns this data? Is it owned by the company collecting it, or does the customer who provides that data own it? The old understanding was that the data was solely the property of the company collecting it, but there is a recent push to reclassify that. Legal opinions vary, and this is still mostly uncharted territory.
+
+In any case, if you're collecting data, even seemingly innocuous data, please treat it with respect. Please also allow your users the freedom to see and download copies of that data you are storing on them.
+
+# End-of-life planning
+
+Another consideration when designing an IoT device is what happens when that device is no longer being manufactured? Many IoT companies will simply stop supporting their old devices after a while, and these devices then become useless. This is because they often require connecting to a central server to function, and once this central server goes offline, they literally cannot function.
+
+There is an alternative. When designing an IoT device, it is possible to make it function in a reduced capacity even without internet connectivity. For example, it is possible to design a smart thermostat to continue working as a manual thermostat even when it cannot establish a connection to its central server.
+
+When designing your IoT device, please take into consideration if you can keep it useful even after your company discontinues support for it. In some cases, this isn't possible, but in many cases, it appears that companies purposely limit their devices only to spite their customers. Don't be like those companies.
+
+# Security
+
+In recent years, a lot of IoT devices have been deployed with little thought given to security. As companies rush to push devices to market quickly, security too often doesn't even enter the equation. The situation has gotten so bad that there is now a common saying: "*The* S *in IoT stands for* security."
+
+The security problem may be compounded by the fact that insecure IoT devices don't often expose the device developers to liability. For example, if you develop an insecure server, then your company is open to attack. However, if you develop an insecure IoT device, your company is fine; it's just your customers who are open to attack.
+
+If you're developing an IoT device, I implore you—do the right thing and think about security early and often.
+
+According to the **Open Web Application Security Project** (**OWASP**), the top ten IoT security problems are as follows:
+
+1.  Weak, guessable, or hardcoded passwords
+2.  Insecure network services
+3.  Insecure ecosystem interfaces
+4.  Lack of secure update mechanism
+5.  Use of insecure or outdated components
+6.  Insufficient privacy protection
+7.  Insecure data transfer and storage
+8.  Lack of device management
+9.  Insecure default settings
+10.  Lack of physical hardening
+
+You can find more information from the OWASP Foundation at [https://owasp.org/](https://owasp.org/).
+
+Many of the preceding problems are easily addressable simply by caring. For example, many devices are still shipped with hardcoded passwords or backdoors. There isn't much to say about this problem from a technical perspective—just don't ship your products with hardcoded passwords or backdoors*.*
+
+Some advocate that all IoT devices should use HTTPS to provide a basic level of security—the so-called **Secure Hypertext Internet of Things** (**SHIoT**). See [Chapter 9](47ba170d-42d9-4e38-b5d8-89503e005708.xhtml), *Loading Secure Web Pages with HTTPS and OpenSSL*, for information about HTTPS from the client's perspective.
+
+For embedded HTTPS, you may find the OpenSSL library too heavyweight. Consider using a TLS implementation designed for embedded use. These embedded-first libraries are also able to take advantage of encryption hardware built in to common microcontrollers. **wolfSSL** is one such open-source library. In addition to TLS for TCP, wolfSSL also supports DTLS for securing UDP-based protocols.
+
+Using TLS can go a long way to secure an IoT device, but it is not a panacea. In particular, certificates must be carefully managed. Don't make the mistake of assuming that encryption is good enough. Encryption only protects against passive attacks; both encryption and authentication are needed to protect against active attacks.
+
+Sometimes, minimizing bandwidth is a priority.  This is particularly true for cellular connections. In many use-cases, an IoT device with limited bandwidth will find TLS and DTLS too heavyweight. Establishing a new TLS or DTLS connection can take several kilobytes on average.
+
+If your cellular provider is able to tunnel your traffic over a secure VPN, without metering the VPN overhead, you may be able to forgo implementing secure communication at the application level. In this case, your device can use TCP or UDP directly, and the VPN connection ensures that this traffic will never be visible over the internet. This level of security isn't appropriate for all use-cases, as your traffic is still visible to your network provider.
+
+In the case that you must secure a protocol yourself, you may take advantage of the fact that you have control over the manufacturing of your IoT device. It is possible to assign each device a unique encryption key at the time of manufacture. This technique is called **Pre-Shared Key** (**PSK**). With PSK, devices can secure their communication using symmetric ciphers, avoiding much of the overhead required by TLS, DTLS, and other heavyweight solutions. If doing symmetric encryption, keep in mind that encryption is useless against an active attacker unless you also implement authentication. This is done using a **Message Authentication Code** (**MAC**).
+
+If you do use **PSK**, be sure to use a unique key for each individual device. Reusing the same key is not appropriate.
+
+In any case, it is advisable to run your security scheme by a security professional before and during implementation. Even a small, nearly insignificant mistake with encryption or authentication can compromise an entire system.
+
+# Summary
+
+In this chapter, we looked at the high-level design of IoT devices. We looked at different types of hardware that IoT devices can be built on—SBCs, microcontrollers, and FPGAs. We considered the various ways these devices can connect to the internet, including wired and wireless connections, and we weighed some trade-offs associated with each.
+
+We also took into consideration some of the protocol choices that IoT devices can use and reiterated the importance of security.
+
+# Questions
+
+Try these questions to test your knowledge from this chapter:
+
+1.  What are the drawbacks of using Wi-Fi connectivity?
+2.  What are the drawbacks of using Ethernet connectivity?
+3.  What are the drawbacks of using cellular connectivity?
+4.  What are some advantages of using a Single-Board Computer with embedded Linux? What are the drawbacks?
+5.  What are some advantages of using a microcontroller in your IoT device?
+6.  Is the use of HTTPS always appropriate in IoT device communication?
+
+The answers to these questions can be found in [Appendix A](bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml), *Answers to Questions*.
