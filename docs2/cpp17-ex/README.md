@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# C++17 示例
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/b8b6b1cd57099dd88cf2f1045e179753`](https://zh.annas-archive.org/md5/b8b6b1cd57099dd88cf2f1045e179753)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

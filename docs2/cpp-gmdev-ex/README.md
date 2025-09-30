@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# C++ 游戏开发示例
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/262fd2303f01348f0fc754084f6f20af`](https://zh.annas-archive.org/md5/262fd2303f01348f0fc754084f6f20af)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
