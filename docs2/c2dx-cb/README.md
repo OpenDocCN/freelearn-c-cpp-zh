@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Cocos2dx 秘籍
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/dffde412782476e8d2c8a68a14d9ff20`](https://zh.annas-archive.org/md5/dffde412782476e8d2c8a68a14d9ff20)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

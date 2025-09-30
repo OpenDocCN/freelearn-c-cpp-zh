@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# 架构模式指南
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/c89a9bf04617b8818ff7f0cd5be49990`](https://zh.annas-archive.org/md5/c89a9bf04617b8818ff7f0cd5be49990)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
