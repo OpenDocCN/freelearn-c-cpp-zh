@@ -1,0 +1,1256 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;3.&#xA0;Exploration and Combat"><div class="titlepage"><div><div><h1 class="title"><a id="ch03"/>Chapter 3. Exploration and Combat</h1></div></div></div><p>We have a design for our game and an Unreal project set up for our game. It's now time to dive into the actual game code.</p><p>In this chapter, we'll be making a game character that moves around the world, defining our game data, and prototyping a basic combat system for the game. We will cover the following topics in this chapter:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Creating the player pawn</li><li class="listitem" style="list-style-type: disc">Defining characters, classes, and enemies</li><li class="listitem" style="list-style-type: disc">Keeping track of active party members</li><li class="listitem" style="list-style-type: disc">Creating a basic turn-based combat engine</li><li class="listitem" style="list-style-type: disc">Triggering a game over screen</li></ul></div><p>This particular chapter is the most C++ heavy portion of the book, and provides the basic framework that the rest of the book is going to use. Because this chapter provides much of the backend of our game, the code in this chapter must work to completion before moving on to the rest of the content in the book. If you bought this book because you are a programmer looking for more background in creating a framework for an RPG, this chapter is for you! If you bought this book because you are a designer, and care more about building upon the framework rather than programming it from scratch, you will probably be more into the upcoming chapters because those chapters contain less C++ and more UMG and Blueprints. No matter who you are, it is a good idea to download the source code provided through the directions located in the preface of the book in case you get stuck or would like to skip chapters based on your interests.</p><div class="section" title="Creating the player pawn"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec23"/>Creating the player pawn</h1></div></div></div><p>The <a id="id94" class="indexterm"/>very first thing we are going to do is create a new Pawn class. In Unreal, the <span class="emphasis"><em>Pawn</em></span> is the representation of a character. It handles the movement, physics, and rendering of a character.</p><p>Here's how our character pawn is going to work. The player is divided into two parts: there's the Pawn that, as mentioned earlier, is responsible for handling the movement, physics, and rendering. Then there's the Player Controller, responsible for translating the player's input<a id="id95" class="indexterm"/> into making the Pawn perform what the player wants.</p><div class="section" title="The Pawn"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec42"/>The Pawn</h2></div></div></div><p>Now, let's <a id="id96" class="indexterm"/>create the actual pawn.</p><p>Create a new C++ class and select <code class="literal">Character</code> as the parent class for it. We will be deriving this class from the <code class="literal">Character</code> class because <code class="literal">Character</code> has a lot of built-in move functions that we can use for our field player. Name the class <code class="literal">RPGCharacter</code>. Open <code class="literal">RPGCharacter.h</code> and change the class definition using the following code:</p><div class="informalexample"><pre class="programlisting">UCLASS(config = Game)
+class ARPGCharacter : public ACharacter
+{
+  GENERATED_BODY()
+
+  /** Camera boom positioning the camera behind the character */
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true")) class USpringArmComponent* CameraBoom;
+
+  /** Follow camera */
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true")) class UCameraComponent* FollowCamera;
+public:
+  ARPGCharacter();
+
+  /**Base turn rate, in deg/sec. Other scaling may affect final turn rate.*/
+  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera)
+    float BaseTurnRate;
+
+protected:
+
+  /** Called for forwards/backward input */
+  void MoveForward(float Value);
+
+  /** Called for side to side input */
+  void MoveRight(float Value);
+
+  /**
+  * Called via input to turn at a given rate.
+  * @param Rate  This is a normalized rate, i.e. 1.0 means 100% of desired turn rate
+  */
+  void TurnAtRate(float Rate);
+
+protected:
+  // APawn interface
+virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
+  // End of APawn interface
+
+public:
+  /** Returns CameraBoom subobject **/
+FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+  /** Returns FollowCamera subobject **/
+FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+};</pre></div><p>Next, open <code class="literal">RPGCharacter.cpp</code> and <a id="id97" class="indexterm"/>replace it with the following code:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "RPGCharacter.h"
+
+ARPGCharacter::ARPGCharacter()
+{
+  // Set size for collision capsule
+  GetCapsuleComponent()-&gt;InitCapsuleSize(42.f, 96.0f);
+
+  // set our turn rates for input
+  BaseTurnRate = 45.f;
+
+// Don't rotate when the controller rotates. //Let that just affect the camera.
+  bUseControllerRotationPitch = false;
+  bUseControllerRotationYaw = false;
+  bUseControllerRotationRoll = false;
+
+  // Configure character movement
+// Character moves in the direction of input...
+GetCharacterMovement()-&gt;bOrientRotationToMovement = true; // ...at this rotation rate  
+GetCharacterMovement()-&gt;RotationRate = FRotator(0.0f, 540.0f, 0.0f); 
+
+  // Create a camera boom
+CameraBoom = CreateDefaultSubobject&lt;USpringArmComponent&gt;(TEXT("CameraBoom"));
+  CameraBoom-&gt;SetupAttachment(RootComponent);
+// The camera follows at this distance behind the character  CameraBoom-&gt;TargetArmLength = 300.0f; 
+CameraBoom-&gt;RelativeLocation = FVector(0.f, 0.f, 500.f);// Rotate the arm based on the controller
+CameraBoom-&gt;bUsePawnControlRotation = true; 
+
+// Create a follow camera
+FollowCamera = CreateDefaultSubobject&lt;UCameraComponent&gt;(TEXT("FollowCamera"));
+FollowCamera-&gt;SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Camera does not rotate relative to arm
+FollowCamera-&gt;bUsePawnControlRotation = false;  FollowCamera-&gt;RelativeRotation = FRotator(-45.f, 0.f, 0.f);
+
+/* Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) are set in the derived blueprint asset named MyCharacter (to avoid direct content references in C++)*/
+}
+
+//////////////////////////////////////////////////////////////////
+// Input
+
+void ARPGCharacter::SetupPlayerInputComponent(class UInputComponent* InputComponent)
+{
+  // Set up gameplay key bindings
+  check(InputComponent);
+
+InputComponent-&gt;BindAxis("MoveForward", this, &amp;ARPGCharacter::MoveForward);
+InputComponent-&gt;BindAxis("MoveRight", this, &amp;ARPGCharacter::MoveRight);
+
+/* We have 2 versions of the rotation bindings to handle different kinds of devices differently "turn" handles devices that provide an absolute delta, such as a mouse. "turnrate" is for devices that we choose to treat as a rate of change, such as an analog joystick*/
+InputComponent-&gt;BindAxis("Turn", this, &amp;APawn::AddControllerYawInput);
+InputComponent-&gt;BindAxis("TurnRate", this, &amp;ARPGCharacter::TurnAtRate);
+}
+
+
+void ARPGCharacter::TurnAtRate(float Rate)
+{
+  // calculate delta for this frame from the rate information
+AddControllerYawInput(Rate * BaseTurnRate * GetWorld()-&gt;GetDeltaSeconds());
+}
+
+void ARPGCharacter::MoveForward(float Value)
+{
+  if ((Controller != NULL) &amp;&amp; (Value != 0.0f))
+  {
+    // find out which way is forward
+    const FRotator Rotation = Controller-&gt;GetControlRotation();
+    const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+    // get forward vector
+    const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    AddMovementInput(Direction, Value);
+  }
+}
+
+void ARPGCharacter::MoveRight(float Value)
+{
+  if ((Controller != NULL) &amp;&amp; (Value != 0.0f))
+  {
+    // find out which way is right
+    const FRotator Rotation = Controller-&gt;GetControlRotation();
+    const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+    // get right vector 
+    const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+    // add movement in that direction
+    AddMovementInput(Direction, Value);
+  }
+}</pre></div><p>If you have ever created and worked with the <a id="id98" class="indexterm"/>C++ <span class="strong"><strong>ThirdPerson</strong></span> game template, you will notice that we are not reinventing the wheel here. The <code class="literal">RPGCharacter</code> class should look familiar because it is a modified version of the ThirdPerson <code class="literal">Character</code> class code given to us when we create a C++ ThirdPerson template, provided for us to use by Epic Games.</p><p>Since <a id="id99" class="indexterm"/>we are not creating a fast-paced action game and are simply using the Pawn as an RPG character to maneuver out in the field, we eliminated mechanics that are often associated with action games, such as jumping. But we kept in the code that is important to us, which is the ability to move forward, backward, left, and right; rotational behaviors of the pawn; a camera that will follow the character around in an isometric view; a collision capsule for the character to be able to collide with collidable objects; configuration for character movement; and a camera boom, which will allow the camera to move closer to the character in case it runs into collisions such as a wall or other meshes, important for not blocking a player's view. If you want to edit the character mechanics, feel free to do so by following the comments in the code to change the values of some specific mechanics such as <code class="literal">TargetArmLength</code> to change the distance of the camera from the player, or adding jumping, which can be seen in the ThirdPerson character template that came with the Engine.</p><p>Because we derived the <code class="literal">RPGCharacter</code> class from the <code class="literal">Character</code> class, its default camera is not rotated for an isometric view; instead, the camera rotations and locations are zeroed out by default to the pawn's location. So what we did was add a <code class="literal">CameraBoom</code> relative location in <code class="literal">RPGCharacter.cpp</code> (<code class="literal">CameraBoom-&gt;RelativeLocation = FVector(0.f, 0.f, 500.f);</code>); this offsets the camera 500 units up on the <span class="emphasis"><em>z</em></span> axis. Along with rotating the camera that follows the player -45 units on the pitch (<code class="literal">FollowCamera-&gt;RelativeRotation = FRotator(-45.f, 0.f, 0.f);</code>), we get a traditional isometric view. If you would like to edit these values to customize your camera even more, it is suggested; for instance, if you still think your camera is too close to the player, you can simply change the relative location of <code class="literal">CameraBoom</code> on the <span class="emphasis"><em>z</em></span> axis to a value higher than 500 units, and/or adjust <code class="literal">TargetArmLength</code> to something larger than 300.</p><p>Lastly, if you take a look at the <code class="literal">MoveForward</code> and <code class="literal">MoveRight</code> movement functions, you will notice that no movement is being added to the pawn unless the value that is passed to <code class="literal">MoveForward</code> or <code class="literal">MoveRight</code> is not equal to 0. Later on in this chapter, we will bind keys <span class="emphasis"><em>W</em></span>, <span class="emphasis"><em>A</em></span>, <span class="emphasis"><em>S</em></span>, and <span class="emphasis"><em>D</em></span> to these functions and set each one of these inputs to pass a scalar of 1 or -1 to the corresponding movement function as values. This 1 or -1 value is then used as a multiplier to the direction of the pawn, which will then allow the player to move in a specific direction based on its walk speed. For instance, if we set <span class="emphasis"><em>W</em></span> as a keybind to <code class="literal">MoveForward</code> with a scalar of 1, and <span class="emphasis"><em>S</em></span> as a keybind to <code class="literal">MoveFoward</code> with a scalar of -1, when the player presses <span class="emphasis"><em>W</em></span>, the value in the <code class="literal">MoveFoward</code> function will be equal to 1 and cause the pawn to move in the positive forward direction as a result. Alternatively, if the player presses the <span class="emphasis"><em>S</em></span> key, -1 is then passed into the value used by the <code class="literal">MoveForward</code> function, which will cause the pawn to move in the negative forward direction (in other words, backwards). Similar logic can be said about the <code class="literal">MoveRight</code> function, which is why we don't have a <code class="literal">MoveLeft</code> function—simply because pressing the <span class="emphasis"><em>A</em></span> key would cause the <a id="id100" class="indexterm"/>player to move in the negative right direction, which is in fact left.</p></div><div class="section" title="The GameMode class"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec43"/>The GameMode class</h2></div></div></div><p>Now, in <a id="id101" class="indexterm"/>order to use this pawn as a player character, we need to set up a new game mode class. This game mode will then specify the default pawn and player controller classes to use. We'll also be able to make a Blueprint of the game mode and override these defaults.</p><p>Create a new class and choose <code class="literal">GameMode</code> as the parent class. Name this new class <code class="literal">RPGGameMode</code> (if <code class="literal">RPGGameMode</code> already exists in your project, simply navigate to your C++ source directory and proceed to open up <code class="literal">RPGGameMode.h</code>, as listed in the next step).</p><p>Open <code class="literal">RPGGameMode.h</code> and change the class definition using the following code:</p><div class="informalexample"><pre class="programlisting">UCLASS()
+class RPG_API ARPGGameMode : public AGameMode
+{
+  GENERATED_BODY()
+
+  ARPGGameMode( const class FObjectInitializer&amp; ObjectInitializer );
+};</pre></div><p>Just as we've done before, we're just defining a constructor for the CPP file to implement.</p><p>We're going to implement that constructor now in <code class="literal">RPGGameMode.cpp</code>:</p><div class="informalexample"><pre class="programlisting">#include "RPGCharacter.h"
+
+ARPGGameMode::ARPGGameMode( const class FObjectInitializer&amp; ObjectInitializer )
+  : Super( ObjectInitializer )
+{
+
+  DefaultPawnClass = ARPGCharacter::StaticClass();
+}</pre></div><p>Here, we include the <code class="literal">RPGCharacter.h</code> file so that we can reference these classes. Then, in the constructor, we set the class as the default class to use for the Pawn.</p><p>Now, if you compile this code, you should be able to assign your new game mode class as the default game mode. To do this, go to <span class="strong"><strong>Edit</strong></span> | <span class="strong"><strong>Project Settings</strong></span>, find the <span class="strong"><strong>Default Modes</strong></span> box, expand the <span class="strong"><strong>Default GameMode</strong></span> drop-down menu, and select <span class="strong"><strong>RPGGameMode</strong></span>.</p><p>However, we don't necessarily want to use this class directly. Instead, if we make a Blueprint, we can expose the properties of the game mode that can be modified in the Blueprint.</p><p>So, let's make a <a id="id102" class="indexterm"/>new Blueprint Class in <span class="strong"><strong>Content</strong></span> | <span class="strong"><strong>Blueprints</strong></span>, pick <code class="literal">RPGGameMode</code> as its parent class, and call it <code class="literal">DefaultRPGGameMode</code>:</p><div class="mediaobject"><img src="graphics/B04548_03_01.jpg" alt="The GameMode class"/></div><p>If you open the Blueprint and navigate to the <span class="strong"><strong>Defaults</strong></span> tab, you can modify the settings for the game mode for <span class="strong"><strong>Default Pawn Class</strong></span>, <span class="strong"><strong>HUD Class</strong></span>, <span class="strong"><strong>Player Controller Class</strong></span>, and more settings:</p><div class="mediaobject"><img src="graphics/B04548_03_02.jpg" alt="The GameMode class"/></div><p>However, we still <a id="id103" class="indexterm"/>have one extra step before we can test our new Pawn. If you run the game, you will not see the Pawn at all. In fact, it will appear as if nothing is happening. We need to give our Pawn a skinned mesh and also make the camera follow the pawn.</p></div><div class="section" title="Adding the skinned mesh"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec44"/>Adding the skinned mesh</h2></div></div></div><p>For now, we're <a id="id104" class="indexterm"/>just going to import the prototype character that comes with the ThirdPerson sample. To do this, make a new project based on the ThirdPerson sample. Locate the <code class="literal">ThirdPersonCharacter</code> Blueprint class in <span class="strong"><strong>Content</strong></span> | <span class="strong"><strong>ThirdPersonCPP</strong></span> | <span class="strong"><strong>Blueprints</strong></span> and migrate it to the <code class="literal">Content</code> folder of your RPG project by right-clicking on the <code class="literal">ThirdPersonCharacter</code> Blueprint class and navigating to <span class="strong"><strong>Asset Actions</strong></span> | <span class="strong"><strong>Migrate…</strong></span>. This action should copy <code class="literal">ThirdPersonCharacter</code> with all its assets into your RPG project:</p><div class="mediaobject"><img src="graphics/B04548_03_03.jpg" alt="Adding the skinned mesh"/></div><p>Now, let's<a id="id105" class="indexterm"/> create a new Blueprint for our Pawn. Create a new Blueprint class and select <span class="strong"><strong>RPGCharacter</strong></span> as the parent class. Name it <span class="strong"><strong>FieldPlayer</strong></span>.</p><p>Expand <span class="strong"><strong>Mesh</strong></span> located in the <span class="strong"><strong>Details</strong></span> tab when selecting the <span class="strong"><strong>Mesh</strong></span> component from the <span class="strong"><strong>Components</strong></span> tab and choose <span class="strong"><strong>SK_Mannequin</strong></span> as the skeletal mesh for the pawn. Next, expand <span class="strong"><strong>Animation</strong></span> and choose <span class="strong"><strong>ThirdPerson_AnimBP</strong></span> as the animation Blueprint to use. You will most likely need to move your character's mesh down the <span class="emphasis"><em>z</em></span> axis so that the bottom of the character's feet meet the bottom of the collision capsule. Also be sure that the character mesh is facing the same direction that the blue arrow in the component is facing. You may need to rotate the character on the <span class="emphasis"><em>z</em></span> axis as well to ensure that the character is facing the right direction:</p><div class="mediaobject"><img src="graphics/B04548_03_04.jpg" alt="Adding the skinned mesh"/></div><p>Finally, open <a id="id106" class="indexterm"/>your game mode Blueprint and change the pawn to your new <span class="strong"><strong>FieldPlayer</strong></span> Blueprint.</p><p>Now, our character will be visible, but we may not be able to move it yet because we have not bound keys to any of our movement variables. To do so, go into <span class="strong"><strong>Project Settings</strong></span> and locate <span class="strong"><strong>Input</strong></span>. Expand <span class="strong"><strong>Bindings</strong></span> and then expand <span class="strong"><strong>Axis Mappings</strong></span>. Add an axis mapping by pressing the <span class="strong"><strong>+</strong></span> button. Call the first axis mapping <span class="strong"><strong>MoveRight</strong></span>, which should match the <code class="literal">MoveRight</code> movement variable you created earlier in this chapter. Add two key bindings for <span class="strong"><strong>MoveRight</strong></span> by pressing the <span class="strong"><strong>+</strong></span> button. Let one of those keys be <span class="emphasis"><em>A</em></span> with a scale of -1 and other be <span class="emphasis"><em>D</em></span> with a scale of 1. Add another axis mapping for <span class="strong"><strong>MoveForward</strong></span>; only this time, have a <span class="emphasis"><em>W</em></span> key binding with a scale of 1 and an <span class="emphasis"><em>S</em></span> key binding with a scale of -1:</p><div class="mediaobject"><img src="graphics/B04548_03_05.jpg" alt="Adding the skinned mesh"/></div><p>Once you<a id="id107" class="indexterm"/> play test, you should see your character moving and animating using the <span class="emphasis"><em>W</em></span>, <span class="emphasis"><em>A</em></span>, <span class="emphasis"><em>S</em></span>, and <span class="emphasis"><em>D</em></span> keys you bound to the player.</p><p>When you run the game, the camera should track the player in an overhead view. Now that we have a character that can explore the game world, let's take a look at defining characters and party members.</p></div></div></div>
+<div class="section" title="Defining characters and enemies"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec24"/>Defining characters and enemies</h1></div></div></div><p>In the last chapter, we <a id="id108" class="indexterm"/>covered how to use Data Tables to import custom data. Before that, we decided on what stats would play into combat and how. Now <a id="id109" class="indexterm"/>we're going to combine those to define our game's characters, classes, and enemy encounters.</p><div class="section" title="Classes"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec45"/>Classes</h2></div></div></div><p>Remember that in <a class="link" href="ch01.html" title="Chapter 1. Getting Started with RPG Design in Unreal">Chapter 1</a>, <span class="emphasis"><em>Getting Started with RPG Design in Unreal</em></span>, we established that our <a id="id110" class="indexterm"/>characters have the following stats:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Health</li><li class="listitem" style="list-style-type: disc">Max health</li><li class="listitem" style="list-style-type: disc">Magic</li><li class="listitem" style="list-style-type: disc">Max magic</li><li class="listitem" style="list-style-type: disc">Attack power</li><li class="listitem" style="list-style-type: disc">Defense</li><li class="listitem" style="list-style-type: disc">Luck</li></ul></div><p>Of these, we can discard health and magic because they vary during the game, while the other values are predefined based on the character class. The remaining stats are what we will define in the Data Table. As mentioned in <a class="link" href="ch01.html" title="Chapter 1. Getting Started with RPG Design in Unreal">Chapter 1</a>, <span class="emphasis"><em>Getting Started with RPG Design in Unreal</em></span>, we also need to store what the value should be at level 50 (the maximum level). Characters will also have some abilities they start out with, and some they learn as they level up.</p><p>We'll define these in the character class spreadsheet, along with the name of the class. So our character class schema will look something like the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Class name (string)</li><li class="listitem" style="list-style-type: disc">Starting max HP (integer)</li><li class="listitem" style="list-style-type: disc">Max HP at level 50 (integer)</li><li class="listitem" style="list-style-type: disc">Starting max MP (integer)</li><li class="listitem" style="list-style-type: disc">Max MP at level 50 (integer)</li><li class="listitem" style="list-style-type: disc">Starting attack (integer)</li><li class="listitem" style="list-style-type: disc">Attack at level 50 (integer)</li><li class="listitem" style="list-style-type: disc">Starting defense (integer)</li><li class="listitem" style="list-style-type: disc">Defense at level 50 (integer)</li><li class="listitem" style="list-style-type: disc">Starting luck (integer)</li><li class="listitem" style="list-style-type: disc">Luck at level 50 (integer)</li><li class="listitem" style="list-style-type: disc">Starting abilities (string array)</li><li class="listitem" style="list-style-type: disc">Learned abilities (string array)</li><li class="listitem" style="list-style-type: disc">Learned ability levels (integer array)</li></ul></div><p>The ability string arrays will contain the ID of the ability (the value of the reserved <code class="literal">name</code> field in UE4). Additionally, there are two separate cells for learned abilities—one that contains the ability IDs, another that contains the levels at which those abilities are learned.</p><p>In a production <a id="id111" class="indexterm"/>game, one thing you might consider is writing a custom tool to help manage this data and reduce human error. However, writing such a tool is outside the scope of this book.</p><p>Now, instead of creating a spreadsheet for this, we're actually going to first create the class and then the Data Table inside Unreal. The reason for this is that at the time of writing, the proper syntax to specify arrays in a cell of a Data Table is not well documented. However, arrays can still be edited from inside the Unreal editor, so we'll simply create the table there and use Unreal's array editor.</p><p>Firstly, as usual, create a new class. The class will be used as an object that you can call from, so choose <code class="literal">Object</code> as the parent class. Name this class <code class="literal">FCharacterClassInfo</code> and, for organization purposes, path your new class to your <code class="literal">Source/RPG/Data</code> folder.</p><p>Open <code class="literal">FCharacterClassInfo.h</code> and replace the class definition with the following code:</p><div class="informalexample"><pre class="programlisting">USTRUCT( BlueprintType )
+struct FCharacterClassInfo : public FTableRowBase
+{
+  GENERATED_USTRUCT_BODY()
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    FString Class_Name;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 StartMHP;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 StartMMP;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 StartATK;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 StartDEF;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 StartLuck;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 EndMHP;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 EndMMP;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 EndATK;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 EndDEF;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    int32 EndLuck;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    TArray&lt;FString&gt; StartingAbilities;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    TArray&lt;FString&gt; LearnedAbilities;
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "ClassInfo" )
+    TArray&lt;int32&gt; LearnedAbilityLevels;
+};</pre></div><p>Most of this <a id="id112" class="indexterm"/>code should be familiar to you already; however, you may not recognize the last three fields. These are all of the <code class="literal">TArray</code> type, which is a dynamic array type provided by Unreal. Essentially, a <code class="literal">TArray</code> can have elements dynamically added to it and removed from it, unlike a standard C++ array.</p><p>Upon compiling this code, create a new folder called <code class="literal">Data</code> within your <code class="literal">Content</code> folder so that you can stay organized by keeping Data Tables that you create within the <code class="literal">Data</code> folder. Navigate to <span class="strong"><strong>Content</strong></span> | <span class="strong"><strong>Data</strong></span> in the Content Browser and create a new Data Table by right-clicking on <span class="strong"><strong>Content Browser</strong></span> and choosing <span class="strong"><strong>Miscellaneous</strong></span> | <span class="strong"><strong>Data Table</strong></span>. Then, select <span class="strong"><strong>Character Class Info</strong></span> from the drop-down list. Name your Data Table <span class="strong"><strong>CharacterClasses</strong></span> and then double-click to open it.</p><p>To add a new entry, hit the <span class="strong"><strong>+</strong></span> button. Then, give a name to the new entry by entering something in the <span class="strong"><strong>Row Name</strong></span> field and pressing <span class="emphasis"><em>Enter</em></span>.</p><p>After an entry has been added, you can select the entry in the <span class="strong"><strong>Data Table</strong></span> pane and edit its properties in the <span class="strong"><strong>Row Editor</strong></span> pane.</p><p>Let's add a <a id="id113" class="indexterm"/>Soldier class to the list. We will it give the name <code class="literal">S1</code> (which we'll use to refer to the character class from other Data Tables) and it will have the following properties:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Class Name</strong></span>: Soldier</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Start MHP</strong></span>: 100</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Start MMP</strong></span>: 100</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Start ATK</strong></span>: 5</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Start DEF</strong></span>: 0</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Start Luck</strong></span>: 0</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>End MHP</strong></span>: 800</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>End MMP</strong></span>: 500</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>End ATK</strong></span>: 20</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>End DEF</strong></span>: 20</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>End Luck</strong></span>: 10</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Starting Abilities</strong></span>: (leave empty for now)</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Learned Abilities</strong></span>: (leave empty for now)</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Learned Ability Levels</strong></span>: (leave empty for now)</li></ul></div><p>When you are finished, your Data Table should look like this:</p><div class="mediaobject"><img src="graphics/B04548_03_06.jpg" alt="Classes"/></div><p>If you have <a id="id114" class="indexterm"/>more character classes that you would like to define, continue to add them to your Data Table.</p></div><div class="section" title="Characters"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec46"/>Characters</h2></div></div></div><p>With <a id="id115" class="indexterm"/>classes defined, let's take a look at characters. Since most of the important combat-related data is already defined as part of a character's class, the character itself is going to be quite a bit simpler. In fact, for now, our characters will be defined by just two things: the name of the character and the character's class.</p><p>Firstly, create a new C++ class called <code class="literal">FCharacterInfo</code> whose parent is <code class="literal">Object</code>, and path it to the <code class="literal">Source/RPG/Data</code> folder. Now, replace the class definition in <code class="literal">FCharacterInfo.h</code> with this:</p><div class="informalexample"><pre class="programlisting">USTRUCT(BlueprintType)
+struct FCharacterInfo : public FTableRowBase
+{
+  GENERATED_USTRUCT_BODY()
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "CharacterInfo" )
+  FString Character_Name;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "CharacterInfo" )
+  FString Class_ID;
+};</pre></div><p>As we did earlier, we're just defining the two fields for the character (character name and class ID).</p><p>After compiling, create a new Data Table in your <code class="literal">Data</code> folder that you created earlier from within the Content Browser and select <span class="strong"><strong>CharacterInfo</strong></span> as the class; call it <code class="literal">Characters</code>. Add a new entry with the name <code class="literal">S1</code>. You can name this character whatever you like (we named our character soldier <span class="strong"><strong>Kumo</strong></span>), but for class ID, enter <code class="literal">S1</code> (as this is the name of the Soldier class we defined earlier).</p></div><div class="section" title="Enemies"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec47"/>Enemies</h2></div></div></div><p>As for enemies, rather <a id="id116" class="indexterm"/>than defining a separate character and class information, we'll create a simplified combined table for these two pieces of information. An enemy generally does not have to deal with experience and leveling up, so we can omit any data related to this. Additionally, enemies do not consume MP as players do, so we can omit this data as well.</p><p>Therefore, our enemy data will have the following properties:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc">Enemy name (string array)</li><li class="listitem" style="list-style-type: disc">MHP (integer)</li><li class="listitem" style="list-style-type: disc">ATK (integer)</li><li class="listitem" style="list-style-type: disc">DEF (integer)</li><li class="listitem" style="list-style-type: disc">Luck (integer)</li><li class="listitem" style="list-style-type: disc">Abilities (string array)</li></ul></div><p>Much like <a id="id117" class="indexterm"/>the previous Data Class creations, we create a new C++ class that derives from <code class="literal">Object</code>, but this time we will call it <code class="literal">FEnemyInfo</code> and place it with the rest of our data in the <code class="literal">Source/RPG/Data</code> directory.</p><p>At this point, you should have an understanding of how to construct the class for this data, but let's take a look at the struct header anyway. In <code class="literal">FEnemyInfo.h</code>, replace your class definition with the following:</p><div class="informalexample"><pre class="programlisting">USTRUCT( BlueprintType )
+struct FEnemyInfo : public FTableRowBase
+{
+  GENERATED_USTRUCT_BODY()
+
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "EnemyInfo" )
+    FString EnemyName;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "EnemyInfo" )
+    int32 MHP;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "EnemyInfo" )
+    int32 ATK;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "EnemyInfo" )
+    int32 DEF;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "EnemyInfo" )
+    int32 Luck;
+
+  UPROPERTY( BlueprintReadOnly, EditAnywhere, Category = "EnemyInfo" )
+    TArray&lt;FString&gt; Abilities;
+};</pre></div><p>After compiling, create a new Data Table, select <code class="literal">EnemyInfo</code> as the class, and call the Data Table <code class="literal">Enemies</code>. Add a new entry with the name <code class="literal">S1</code> and the following properties:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Enemy Name</strong></span>: Goblin</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>MHP</strong></span>: 20</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>ATK</strong></span>: 5</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>DEF</strong></span>: 0</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Luck</strong></span>: 0</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Abilities</strong></span>: (leave empty for now)</li></ul></div><p>At this<a id="id118" class="indexterm"/> point, we've got the data for a character, the character's class, and a single enemy for the character to fight. Next, let's start keeping track of which characters are in the active party and what their current stats are.</p></div></div>
+<div class="section" title="Party members"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec25"/>Party members</h1></div></div></div><p>Before we <a id="id119" class="indexterm"/>can keep track of party members, we'll need a way to track a character's current state, such as how much HP the character has or what it has equipped.</p><p>To do this, we'll create a new class named <code class="literal">GameCharacter</code>. As usual, create a new class and pick <code class="literal">Object</code> as the parent class.</p><p>The header for this class looks like the following code snippet:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "Data/FCharacterInfo.h"
+#include "Data/FCharacterClassInfo.h"
+
+#include "GameCharacter.generated.h"
+
+UCLASS( BlueprintType )
+class RPG_API UGameCharacter : public UObject
+{
+  GENERATED_BODY()
+
+public:
+  FCharacterClassInfo* ClassInfo;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  FString CharacterName;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 MHP;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 MMP;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 HP;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 MP;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 ATK;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 DEF;
+
+  UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = CharacterInfo )
+  int32 LUCK;
+
+public:
+  static UGameCharacter* CreateGameCharacter( FCharacterInfo* characterInfo, UObject* outer );
+
+public:
+  void BeginDestroy() override;
+};</pre></div><p>For now, we're <a id="id120" class="indexterm"/>keeping track of the character's name, character's source class information, and character's current stats. Later, we will use the <code class="literal">UCLASS</code> and <code class="literal">UPROPERTY</code> macros to expose information to the Blueprint. We'll add other information later as we work on the combat system.</p><p>As for the <code class="literal">.cpp</code> file, it will look like this:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "GameCharacter.h"
+
+UGameCharacter* UGameCharacter::CreateGameCharacter( FCharacterInfo* characterInfo, UObject* outer )
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;( outer );
+
+  // locate character classes asset
+  UDataTable* characterClasses = Cast&lt;UDataTable&gt;( StaticLoadObject( UDataTable::StaticClass(), NULL, TEXT( "DataTable'/Game/Data/CharacterClasses.CharacterClasses'" ) ) );
+
+  if( characterClasses == NULL )
+  {
+    UE_LOG( LogTemp, Error, TEXT( "Character classes datatable not found!" ) );
+  }
+  else
+  {
+    character-&gt;CharacterName = characterInfo-&gt;Character_Name;
+    FCharacterClassInfo* row = characterClasses-&gt;FindRow&lt;FCharacterClassInfo&gt;( *( characterInfo-&gt;Class_ID ), TEXT( "LookupCharacterClass" ) );
+    character-&gt;ClassInfo = row;
+
+    character-&gt;MHP = character-&gt;ClassInfo-&gt;StartMHP;
+    character-&gt;MMP = character-&gt;ClassInfo-&gt;StartMMP;
+    character-&gt;HP = character-&gt;MHP;
+    character-&gt;MP = character-&gt;MMP;
+
+    character-&gt;ATK = character-&gt;ClassInfo-&gt;StartATK;
+    character-&gt;DEF = character-&gt;ClassInfo-&gt;StartDEF;
+    character-&gt;LUCK = character-&gt;ClassInfo-&gt;StartLuck;
+  }
+
+  return character;
+}
+
+void UGameCharacter::BeginDestroy()
+{
+  Super::BeginDestroy();
+}</pre></div><p>The <code class="literal">CreateGameCharacter</code> factory for our <code class="literal">UGameCharacter</code> class takes a pointer to an <code class="literal">FCharacterInfo</code> struct, which<a id="id121" class="indexterm"/> is returned from a Data Table, and also an <code class="literal">Outer</code> object, which is passed to the <code class="literal">NewObject</code> function. It then attempts to find the character class Data Table from a path, and if the result is not null, it locates the proper row in the Data Table, stores the result, and also initializes the stats and the <code class="literal">CharacterName</code> field. In the preceding code, you can see the path where the character class Data Table is located. You can get this path by right-clicking on your Data Table from the Content Browser, selecting <span class="strong"><strong>Copy Reference</strong></span>, and then pasting the result into your code.</p><p>While this is currently a very basic bare-bones representation of a character, it will work for now. Next, we're going to store a list of these characters as the current party.</p><div class="section" title="The GameInstance class"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec48"/>The GameInstance class</h2></div></div></div><p>We have already created <a id="id122" class="indexterm"/>a <code class="literal">GameMode</code> class, and this might seem like the perfect place to keep track of information such as party members and inventory, right?</p><p>However, <code class="literal">GameMode</code> does not persist between level loads! This means that unless you save some information to disk, you lose all of that data whenever you load a new area.</p><p>The <code class="literal">GameInstance</code> class was introduced to deal with just this sort of problem. A <code class="literal">GameInstance</code> class persists through the whole game, regardless of level loads, unlike <code class="literal">GameMode</code>. We're going to create a new <code class="literal">GameInstance</code> class to keep track of our persistent data, such as party members and inventory.</p><p>Create a new class, and this time, select <code class="literal">GameInstance</code> as the parent class (you'll have to search for it). Name it <code class="literal">RPGGameInstance</code>.</p><p>In the header file, we're going to add a <code class="literal">TArray</code> of the <code class="literal">UGameCharacter</code> pointers, a flag to know whether the game has been initialized, and an <code class="literal">Init</code> function. Your <code class="literal">RPGGameInstance.h</code> file should look like this:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "Engine/GameInstance.h"
+#include "GameCharacter.h"
+#include "RPGGameInstance.generated.h"
+UCLASS()
+class RPG_API URPGGameInstance : public UGameInstance
+{
+  GENERATED_BODY()
+
+  URPGGameInstance( const class FObjectInitializer&amp; ObjectInitializer );
+
+public:
+  TArray&lt;UGameCharacter*&gt; PartyMembers;
+
+protected:
+  bool isInitialized;
+
+public:
+  void Init();
+};</pre></div><p>In the <code class="literal">Init</code> function for the game instance, we'll add a single default party member and then set the <code class="literal">isInitialized</code> flag<a id="id123" class="indexterm"/> to <code class="literal">true</code>. Your <code class="literal">RPGGameInstance.cpp</code> should look like this:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "RPGGameInstance.h"
+URPGGameInstance::URPGGameInstance(const class FObjectInitializer&amp; 
+ObjectInitializer)
+: Super(ObjectInitializer)
+{
+  isInitialized = false;
+}
+
+void URPGGameInstance::Init()
+{
+  if( this-&gt;isInitialized ) return;
+
+  this-&gt;isInitialized = true;
+
+  // locate characters asset
+  UDataTable* characters = Cast&lt;UDataTable&gt;( StaticLoadObject( UDataTable::StaticClass(), NULL, 
+TEXT( "DataTable'/Game/Data/Characters.Characters'" ) ) );
+        if( characters == NULL )
+  {
+    UE_LOG( LogTemp, Error, TEXT( "Characters data table not found!" ) );
+      
+    return;
+  }
+
+  // locate character
+  FCharacterInfo* row = characters-&gt;FindRow&lt;FCharacterInfo&gt;( TEXT( "S1" ), TEXT( "LookupCharacterClass" ) );
+
+  if( row == NULL )
+  {
+    UE_LOG( LogTemp, Error, TEXT( "Character ID 'S1' not found!" ) );
+    return;
+  }
+
+  // add character to party
+  this-&gt;PartyMembers.Add( UGameCharacter::CreateGameCharacter( row, this ) );
+}</pre></div><p>You may run into a linker error at this point if you try to compile. It is recommended that before you move on, save and close everything. Then restart your project. After you do that, compile the project.</p><p>To set this <a id="id124" class="indexterm"/>class as your <code class="literal">GameInstance</code> class, in Unreal, open <span class="strong"><strong>Edit</strong></span> | <span class="strong"><strong>Project Settings</strong></span>, go to <span class="strong"><strong>Maps &amp; Modes</strong></span>, scroll down to the <span class="strong"><strong>Game Instance</strong></span> box, and pick <span class="strong"><strong>RPGGameInstance</strong></span> from the drop-down list. Finally, from the game mode, we override <code class="literal">BeginPlay</code> to call this <code class="literal">Init</code> function.</p><p>Open <code class="literal">RPGGameMode.h</code> and add <code class="literal">virtual void BeginPlay() override;</code> at the end of your class so that your header will now look like this:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "GameFramework/GameMode.h"
+#include "RPGGameMode.generated.h"
+
+UCLASS()
+class RPG_API ARPGGameMode : public AGameMode
+{
+  GENERATED_BODY()
+
+  ARPGGameMode(const class FObjectInitializer&amp; ObjectInitializer);
+  virtual void BeginPlay() override;
+};</pre></div><p>And in <code class="literal">RPGGameMode.cpp</code>, cast <code class="literal">RPGGameInstance</code> at <code class="literal">BeginPlay</code> so that <code class="literal">RPGGameMode.cpp</code> now looks like this:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "RPGGameMode.h"
+#include "RPGCharacter.h"
+#include "RPGGameInstance.h"
+
+ARPGGameMode::ARPGGameMode(const class FObjectInitializer&amp; 
+ObjectInitializer)
+: Super(ObjectInitializer)
+{
+  DefaultPawnClass = ARPGCharacter::StaticClass();
+   }
+
+void ARPGGameMode::BeginPlay()
+{
+  Cast&lt;URPGGameInstance&gt;(GetGameInstance())-&gt;Init();
+}</pre></div><p>Once you compile the code, you now have a list of active party members. It's time to start prototyping the combat engine.</p></div></div>
+<div class="section" title="Turn-based combat"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec26"/>Turn-based combat</h1></div></div></div><p>So, as <a id="id125" class="indexterm"/>mentioned in <a class="link" href="ch01.html" title="Chapter 1. Getting Started with RPG Design in Unreal">Chapter 1</a>, <span class="emphasis"><em>Getting Started with RPG Design in Unreal</em></span>, combat is turn-based. All characters first choose an action to perform; then, the actions are executed in order.</p><p>Combat will be split into two main phases: <span class="strong"><strong>Decision</strong></span>, in which all characters decide on their course of action; and <span class="strong"><strong>Action</strong></span>, in which all characters execute their chosen course of action.</p><p>Let's create a class with an empty parent to handle combat for us, which we'll call <code class="literal">CombatEngine</code>, and path it to a new directory located in <code class="literal">Source/RPG/Combat</code>, where we can organize all of our combat-related classes. Formulate the header file to look like this:</p><div class="informalexample"><pre class="programlisting">#pragma once
+#include "RPG.h"
+#include "GameCharacter.h"
+
+enum class CombatPhase : uint8
+{
+  CPHASE_Decision,
+  CPHASE_Action,
+  CPHASE_Victory,
+  CPHASE_GameOver,
+};
+
+class RPG_API CombatEngine
+{
+public:
+  TArray&lt;UGameCharacter*&gt; combatantOrder;
+  TArray&lt;UGameCharacter*&gt; playerParty;
+  TArray&lt;UGameCharacter*&gt; enemyParty;
+
+  CombatPhase phase;
+
+protected:
+  UGameCharacter* currentTickTarget;
+  int tickTargetIndex;
+
+public:
+  CombatEngine( TArray&lt;UGameCharacter*&gt; playerParty, TArray&lt;UGameCharacter*&gt; enemyParty );
+  ~CombatEngine();
+
+  bool Tick( float DeltaSeconds );
+
+protected:
+  void SetPhase( CombatPhase phase );
+  void SelectNextCharacter();
+};</pre></div><p>There's a lot going on here, so I'll explain.</p><p>Firstly, our <a id="id126" class="indexterm"/>combat engine is designed to be allocated when an encounter starts and deleted when combat is over.</p><p>An instance of <code class="literal">CombatEngine</code> keeps three <code class="literal">TArray</code>: one for combat order (a list of all participants in combat, in the order they will take turns in), another for a list of players, and the third one for a list of enemies. It also keeps track of <code class="literal">CombatPhase</code>. There are two main phases of combat: <code class="literal">Decision</code> and <code class="literal">Action</code>. Each round starts in <code class="literal">Decision</code>; in this phase, all characters are allowed to choose their course of action. Then, combat transitions to the <code class="literal">Action</code> phase; in this phase, all characters perform their previously chosen course of action.</p><p>The <code class="literal">GameOver</code> and <code class="literal">Victory</code> phases will be transitioned to when all enemies are dead or all players are dead, respectively (which is why the player and enemy lists are kept separate).</p><p>The <code class="literal">CombatEngine</code> class defines a <code class="literal">Tick</code> function. This will be called by the game mode of every frame as long as combat is not over, and it returns <code class="literal">true</code> when combat has finished (or <code class="literal">false</code> otherwise). It takes the duration of the last frame in seconds as a parameter.</p><p>There's also the <code class="literal">currentTickTarget</code> and <code class="literal">tickTargetIndex</code>. During the <code class="literal">Decision</code> and <code class="literal">Action</code> phases, we'll keep a pointer to a single character. For instance, during the <code class="literal">Decision</code> phase, this pointer starts with the first character in the combat order. At every frame, the character will be asked to make a decision—which will be a function that returns <code class="literal">true</code> if the character has made a decision, or <code class="literal">false</code> otherwise. If the function returns <code class="literal">true</code>, the pointer will advance to the next character and so on until all characters have decided at which point the combat transitions to the <code class="literal">Action</code> phase.</p><p>The CPP for this file is fairly big, so let's take it in small chunks. Firstly, the constructor and destructor are as follows:</p><div class="informalexample"><pre class="programlisting">CombatEngine::CombatEngine( TArray&lt;UGameCharacter*&gt; playerParty, TArray&lt;UGameCharacter*&gt; enemyParty )
+{
+  this-&gt;playerParty = playerParty;
+  this-&gt;enemyParty = enemyParty;
+
+  // first add all players to combat order
+  for( int i = 0; i &lt; playerParty.Num(); i++ )
+  {
+    this-&gt;combatantOrder.Add( playerParty[i] );
+  }
+
+  // next add all enemies to combat order
+  for( int i = 0; i &lt; enemyParty.Num(); i++ )
+  {
+    this-&gt;combatantOrder.Add( enemyParty[i] );
+  }
+
+  this-&gt;tickTargetIndex = 0;
+  this-&gt;SetPhase( CombatPhase::CPHASE_Decision );
+}
+
+CombatEngine::~CombatEngine()
+{
+}</pre></div><p>The constructor <a id="id127" class="indexterm"/>first assigns the player party and enemy party fields and then adds all players followed by all enemies to the combat order list. Finally, it sets the <code class="literal">tick</code> target index to 0 (the first character in the combat order) and the combat phase to <code class="literal">Decision</code>.</p><p>Next, the <code class="literal">Tick</code> function is as follows:</p><div class="informalexample"><pre class="programlisting">bool CombatEngine::Tick( float DeltaSeconds )
+{
+  switch( phase )
+  {
+    case CombatPhase::CPHASE_Decision:
+      // todo: ask current character to make decision
+
+      // todo: if decision made
+      SelectNextCharacter();
+
+      // no next character, switch to action phase
+      if( this-&gt;tickTargetIndex == -1 )
+      {
+        this-&gt;SetPhase( CombatPhase::CPHASE_Action );
+      }
+      break;
+    case CombatPhase::CPHASE_Action:
+      // todo: ask current character to execute decision
+
+      // todo: when action executed
+      SelectNextCharacter();
+
+      // no next character, loop back to decision phase
+      if( this-&gt;tickTargetIndex == -1 )
+      {
+        this-&gt;SetPhase( CombatPhase::CPHASE_Decision );
+      }
+      break;
+    // in case of victory or combat, return true (combat is finished)
+    case CombatPhase::CPHASE_GameOver:
+    case CombatPhase::CPHASE_Victory:
+      return true;
+      break;
+  }
+
+  // check for game over
+  int deadCount = 0;
+  for( int i = 0; i &lt; this-&gt;playerParty.Num(); i++ )
+  {
+    if( this-&gt;playerParty[ i ]-&gt;HP &lt;= 0 ) deadCount++;
+  }
+
+  // all players have died, switch to game over phase
+  if( deadCount == this-&gt;playerParty.Num() )
+  {
+    this-&gt;SetPhase( CombatPhase::CPHASE_GameOver );
+    return false;
+  }
+
+  // check for victory
+  deadCount = 0;
+  for( int i = 0; i &lt; this-&gt;enemyParty.Num(); i++ )
+  {
+    if( this-&gt;enemyParty[ i ]-&gt;HP &lt;= 0 ) deadCount++;
+  }
+
+  // all enemies have died, switch to victory phase
+  if( deadCount == this-&gt;enemyParty.Num() )
+  {
+    this-&gt;SetPhase( CombatPhase::CPHASE_Victory );
+    return false;
+  }
+
+  // if execution reaches here, combat has not finished - return false
+  return false;
+}</pre></div><p>Firstly, we<a id="id128" class="indexterm"/> switch on the current combat phase. In the case of <code class="literal">Decision</code>, it currently just selects the next character or, if there is no next character, switches to the <code class="literal">Action</code> phase. It is the same for <code class="literal">Action</code>—except that if there is no next character, it loops back to the <code class="literal">Decision</code> phase.</p><p>Later, this will be modified to call functions on the character in order to make and execute decisions (and additionally, the "select next character" code will only be called once the character has finished deciding or executing).</p><p>In the case of <code class="literal">GameOver</code> or <code class="literal">Victory</code>, <code class="literal">Tick</code> returning <code class="literal">true</code> means combat is over. Otherwise, it first checks whether all players are dead (in this case, it is game over) or whether all enemies are dead (in this case, players win combat). In both cases, the function will return <code class="literal">true</code> as combat is finished.</p><p>The very end of the function returns <code class="literal">false</code>, which means combat has not yet finished.</p><p>Next, we have the <code class="literal">SetPhase</code> function:</p><div class="informalexample"><pre class="programlisting">void CombatEngine::SetPhase( CombatPhase phase )
+{
+  this-&gt;phase = phase;
+
+  switch( phase )
+  {
+    case CombatPhase::CPHASE_Action:
+    case CombatPhase::CPHASE_Decision:
+      // set the active target to the first character in the combat order
+      this-&gt;tickTargetIndex = 0;
+      this-&gt;SelectNextCharacter();
+      break;
+    case CombatPhase::CPHASE_Victory:
+      // todo: handle victory
+      break;
+    case CombatPhase::CPHASE_GameOver:
+      // todo: handle game over
+      break;
+  }
+}</pre></div><p>This function sets the combat phase, and in the case of <code class="literal">Action</code> or <code class="literal">Decision</code>, it sets the <code class="literal">tick</code> target to the<a id="id129" class="indexterm"/> first character in the combat order. Both <code class="literal">Victory</code> and <code class="literal">GameOver</code> have stubs to handle the respective states.</p><p>Finally, we have the <code class="literal">SelectNextCharacter</code> function:</p><div class="informalexample"><pre class="programlisting">void CombatEngine::SelectNextCharacter()
+{
+  for( int i = this-&gt;tickTargetIndex; i &lt; this-&gt;combatantOrder.Num(); i++ )
+  {
+    GameCharacter* character = this-&gt;combatantOrder[ i ];
+
+    if( character-&gt;HP &gt; 0 )
+    {
+      this-&gt;tickTargetIndex = i + 1;
+      this-&gt;currentTickTarget = character;
+      return;
+    }
+  }
+
+  this-&gt;tickTargetIndex = -1;
+  this-&gt;currentTickTarget = nullptr;
+}</pre></div><p>This function starts at the current <code class="literal">tickTargetIndex</code> and, from there, finds the first non-dead character in the combat order. If one is found, it sets the <code class="literal">tick</code> target index to the next index and the <code class="literal">tick</code> target to the found character. Otherwise, it sets the <code class="literal">tick</code> target index to -1 and the <code class="literal">tick</code> target to a null pointer (which is interpreted to mean no remaining characters in combat order).</p><p>There's a very important thing missing at this point: characters cannot yet make or execute decisions.</p><p>Let's add this to the <code class="literal">GameCharacter</code> class. For now, they will just be stubs.</p><p>Firstly, we'll add the <code class="literal">testDelayTimer</code> field to <code class="literal">GameCharacter.h</code>. This will just be for testing purposes:</p><div class="informalexample"><pre class="programlisting">protected:
+  float testDelayTimer;</pre></div><p>Next, we add several public functions to the class:</p><div class="informalexample"><pre class="programlisting">public:
+  void BeginMakeDecision();
+  bool MakeDecision( float DeltaSeconds );
+
+  void BeginExecuteAction();
+  bool ExecuteAction( float DeltaSeconds );</pre></div><p>We split <code class="literal">Decision</code> and <code class="literal">Action</code> into two functions each—the first function tells the character to begin making a decision or executing an action, the second function essentially queries the character until the decision is made or action is finished.</p><p>The<a id="id130" class="indexterm"/> implementation for these two functions in <code class="literal">GameCharacter.cpp</code> will, for now, just log a message and a delay for 1 second:</p><div class="informalexample"><pre class="programlisting">void UGameCharacter::BeginMakeDecision()
+{
+  UE_LOG( LogTemp, Log, TEXT( "Character %s making decision" ), *this-&gt;CharacterName );
+  this-&gt;testDelayTimer = 1;
+}
+
+bool UGameCharacter::MakeDecision( float DeltaSeconds )
+{
+  this-&gt;testDelayTimer -= DeltaSeconds;
+  return this-&gt;testDelayTimer &lt;= 0;
+}
+
+void UGameCharacter::BeginExecuteAction()
+{
+  UE_LOG( LogTemp, Log, TEXT( "Character %s executing action" ), *this-&gt;CharacterName );
+  this-&gt;testDelayTimer = 1;
+}
+
+bool UGameCharacter::ExecuteAction( float DeltaSeconds )
+{
+  this-&gt;testDelayTimer -= DeltaSeconds;
+  return this-&gt;testDelayTimer &lt;= 0;
+}</pre></div><p>We're also going to add a pointer to the combat instance. Since the combat engine references characters, having characters reference the combat engine would produce a circular dependency. To solve this, we're going to add a forward declaration at the top of <code class="literal">GameCharacter.h</code> directly after our includes:</p><div class="informalexample"><pre class="programlisting">class CombatEngine;</pre></div><p>Then, the <code class="literal">include</code> statement for the combat engine will actually be placed in <code class="literal">GameCharacter.cpp</code> rather than in the header file:</p><div class="informalexample"><pre class="programlisting">#include "Combat/CombatEngine.h"</pre></div><p>Next, we'll make the combat engine call the <code class="literal">Decision</code> and <code class="literal">Action</code> functions. Firstly, we'll add a protected variable to <code class="literal">CombatEngine.h</code>:</p><div class="informalexample"><pre class="programlisting">bool waitingForCharacter;</pre></div><p>This will be used to switch between, for example, <code class="literal">BeginMakeDecision</code> and <code class="literal">MakeDecision</code>.</p><p>Next, we'll modify the <code class="literal">Decision</code> and <code class="literal">Action</code> phases in the <code class="literal">Tick</code> function. Firstly, we'll modify the <code class="literal">Decision</code> switch case:</p><div class="informalexample"><pre class="programlisting">case CombatPhase::CPHASE_Decision:
+{
+  if( !this-&gt;waitingForCharacter )
+  {
+    this-&gt;currentTickTarget-&gt;BeginMakeDecision();
+    this-&gt;waitingForCharacter = true;
+  }
+
+  bool decisionMade = this-&gt;currentTickTarget-&gt;MakeDecision( DeltaSeconds );
+
+  if( decisionMade )
+  {
+    SelectNextCharacter();
+
+    // no next character, switch to action phase
+    if( this-&gt;tickTargetIndex == -1 )
+    {
+      this-&gt;SetPhase( CombatPhase::CPHASE_Action );
+    }
+  }
+}
+break;</pre></div><p>If <code class="literal">waitingForCharacter</code> is <code class="literal">false</code>, it calls <code class="literal">BeginMakeDecision</code> and sets <code class="literal">waitingForCharacter</code> to <code class="literal">true</code>.</p><p>Keep note of <a id="id131" class="indexterm"/>the brackets enclosing the whole case statement—if you do not add these brackets, you will get compile errors about the <code class="literal">decisionMade</code> initialization being skipped by the case statement.</p><p>Next, it calls <code class="literal">MakeDecision</code> and passes the frame time. If this function returns <code class="literal">true</code>, it selects the next character, or failing that, switches to the <code class="literal">Action</code> phase.</p><p>The <code class="literal">Action</code> phase looks identical to the following:</p><div class="informalexample"><pre class="programlisting">case CombatPhase::CPHASE_Action:
+{
+  if( !this-&gt;waitingForCharacter )
+  {
+    this-&gt;currentTickTarget-&gt;BeginExecuteAction();
+    this-&gt;waitingForCharacter = true;
+  }
+
+  bool actionFinished = this-&gt;currentTickTarget-&gt;ExecuteAction( DeltaSeconds );
+
+  if( actionFinished )
+  {
+    SelectNextCharacter();
+
+    // no next character, switch to action phase
+    if( this-&gt;tickTargetIndex == -1 )
+    {
+      this-&gt;SetPhase( CombatPhase::CPHASE_Decision );
+    }
+  }
+}
+break;</pre></div><p>Next, we'll <a id="id132" class="indexterm"/>modify <code class="literal">SelectNextCharacter</code> so that it sets <code class="literal">waitingForCharacter</code> to <code class="literal">false</code>:</p><div class="informalexample"><pre class="programlisting">void CombatEngine::SelectNextCharacter()
+{
+  this-&gt;waitingForCharacter = false;
+  for (int i = this-&gt;tickTargetIndex; i &lt; this-&gt;combatantOrder.
+    Num(); i++)
+  {
+    UGameCharacter* character = this-&gt;combatantOrder[i];
+
+    if (character-&gt;HP &gt; 0)
+    {
+      this-&gt;tickTargetIndex = i + 1;
+      this-&gt;currentTickTarget = character;
+      return;
+    }
+  }
+
+  this-&gt;tickTargetIndex = -1;
+  this-&gt;currentTickTarget = nullptr;
+}</pre></div><p>Finally, a few remaining details: our combat engine should set the <code class="literal">CombatInstance</code> pointer of all characters to point to itself, which we'll do in the constructor; then we'll clear the pointer in the destructor and also release enemy pointers. So first, create a pointer to <code class="literal">combatInstance</code> in <code class="literal">GameCharacter.h</code> right after your <code class="literal">UProperty</code> declarations and before your protected variables:</p><div class="informalexample"><pre class="programlisting">CombatEngine* combatInstance;</pre></div><p>Then,<a id="id133" class="indexterm"/> in <code class="literal">CombatEngine.cpp</code>, replace your constructor and deconstructor with this:</p><div class="informalexample"><pre class="programlisting">CombatEngine::CombatEngine( TArray&lt;UGameCharacter*&gt; playerParty, TArray&lt;UGameCharacter*&gt; enemyParty )
+{
+  this-&gt;playerParty = playerParty;
+  this-&gt;enemyParty = enemyParty;
+
+  // first add all players to combat order
+  for (int i = 0; i &lt; playerParty.Num(); i++)
+  {
+    this-&gt;combatantOrder.Add(playerParty[i]);
+  }
+
+  // next add all enemies to combat order
+  for (int i = 0; i &lt; enemyParty.Num(); i++)
+  {
+    this-&gt;combatantOrder.Add(enemyParty[i]);
+  }
+
+  this-&gt;tickTargetIndex = 0;
+  this-&gt;SetPhase(CombatPhase::CPHASE_Decision);
+
+  for( int i = 0; i &lt; this-&gt;combatantOrder.Num(); i++ )
+  {
+    this-&gt;combatantOrder[i]-&gt;combatInstance = this;
+  }
+
+  this-&gt;tickTargetIndex = 0;
+  this-&gt;SetPhase( CombatPhase::CPHASE_Decision );
+}
+
+CombatEngine::~CombatEngine()
+{
+  // free enemies
+  for( int i = 0; i &lt; this-&gt;enemyParty.Num(); i++ )
+  {
+    this-&gt;enemyParty[i] = nullptr;
+  }
+
+  for( int i = 0; i &lt; this-&gt;combatantOrder.Num(); i++ )
+  {
+    this-&gt;combatantOrder[i]-&gt;combatInstance = nullptr;
+  }
+}</pre></div><p>The <a id="id134" class="indexterm"/>combat engine itself is almost fully functional at this point. We still need to hook it up to the rest of the game, but with a way to trigger combat and update it from the game mode.</p><p>So, firstly in our <code class="literal">RPGGameMode</code> class, we will add a pointer to the current combat instance and also override the <code class="literal">Tick</code> function; additionally, keep track of a list of enemy characters (decorated with <code class="literal">UPROPERTY</code> so that enemies can be garbage-collected):</p><div class="informalexample"><pre class="programlisting">#pragma once
+#include "GameFramework/GameMode.h"
+#include "GameCharacter.h"
+#include "Combat/CombatEngine.h"
+#include "RPGGameMode.generated.h"
+
+UCLASS()
+class RPG_API ARPGGameMode : public AGameMode
+{
+  GENERATED_BODY()
+
+  ARPGGameMode( const class FObjectInitializer&amp; ObjectInitializer );
+  virtual void BeginPlay() override;
+  virtual void Tick( float DeltaTime ) override;
+
+public:
+  CombatEngine* currentCombatInstance;
+  TArray&lt;UGameCharacter*&gt; enemyParty;
+};</pre></div><p>Next, in the <code class="literal">.cpp</code> file, we implement the <code class="literal">Tick</code> function:</p><div class="informalexample"><pre class="programlisting">void ARPGGameMode::Tick( float DeltaTime )
+{
+  if( this-&gt;currentCombatInstance != nullptr )
+  {
+    bool combatOver = this-&gt;currentCombatInstance-&gt;Tick( DeltaTime );
+    if( combatOver )
+    {
+      if( this-&gt;currentCombatInstance-&gt;phase == CombatPhase::CPHASE_GameOver )
+      {
+        UE_LOG( LogTemp, Log, TEXT( "Player loses combat, game over" ) );
+                }
+      else if( this-&gt;currentCombatInstance-&gt;phase == CombatPhase::CPHASE_Victory )
+      {
+        UE_LOG( LogTemp, Log, TEXT( "Player wins combat" ) );
+      }
+
+      // enable player actor
+      UGameplayStatics::GetPlayerController( GetWorld(), 0 )-&gt;SetActorTickEnabled( true );
+
+      delete( this-&gt;currentCombatInstance );
+      this-&gt;currentCombatInstance = nullptr;
+      this-&gt;enemyParty.Empty();
+    }
+  }
+}</pre></div><p>For now, this <a id="id135" class="indexterm"/>simply checks whether there is currently an instance of combat; if so, it calls that instance's <code class="literal">Tick</code> function. If it returns <code class="literal">true</code>, the game mode checks for either <code class="literal">Victory</code> or <code class="literal">GameOver</code> (for now, it just logs a message to the console). Then, it deletes the combat instance, sets the pointer to null, and clears the enemy party list (which will make the enemies eligible for garbage collection since the list was decorated with the <code class="literal">UPROPERTY</code> macro). It also enables the tick of the player actor (we're going to disable the tick when combat begins so that the player actor freezes in place for the duration of combat).</p><p>However, we aren't ready to start combat encounters just yet! There are no enemies for players to fight.</p><p>We have a table of enemies defined, but our <code class="literal">GameCharacter</code> class does not support being initialized from <code class="literal">EnemyInfo</code>.</p><p>To support this, we will add a new factory to the <code class="literal">GameCharacter</code> class (be sure you add the <code class="literal">include</code> statement for the <code class="literal">EnemyInfo</code> class as well):</p><div class="informalexample"><pre class="programlisting">static UGameCharacter* CreateGameCharacter( FEnemyInfo* enemyInfo, UObject* outer );</pre></div><p>Also, the implementation of this constructor overload in <code class="literal">GameCharacter.cpp</code> would be as follows:</p><div class="informalexample"><pre class="programlisting">UGameCharacter* UGameCharacter::CreateGameCharacter( FEnemyInfo* enemyInfo, UObject* outer )
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;( outer );
+
+  character-&gt;CharacterName = enemyInfo-&gt;EnemyName;
+  character-&gt;ClassInfo = nullptr;
+
+  character-&gt;MHP = enemyInfo-&gt;MHP;
+  character-&gt;MMP = 0;
+  character-&gt;HP = enemyInfo-&gt;MHP;
+  character-&gt;MP = 0;
+
+  character-&gt;ATK = enemyInfo-&gt;ATK;
+  character-&gt;DEF = enemyInfo-&gt;DEF;
+  character-&gt;LUCK = enemyInfo-&gt;Luck;
+
+  return character;
+}</pre></div><p>It's very <a id="id136" class="indexterm"/>simple by comparison; simply assign the name and null for <code class="literal">ClassInfo</code> (as enemies do not have classes associated with them) and other stats (both MMP and MP are set to zero, as enemy abilities will not consume MP).</p><p>To test our combat system, we will create a function in <code class="literal">RPGGameMode.h</code> that can be called from the Unreal console:</p><div class="informalexample"><pre class="programlisting">UFUNCTION(exec)
+void TestCombat();</pre></div><p>The <code class="literal">UFUNCTION(exec)</code> macro is what allows this function to be called as a console command.</p><p>The implementation of this function is placed in <code class="literal">RPGGameMode.cpp</code>, as follows:</p><div class="informalexample"><pre class="programlisting">void ARPGGameMode::TestCombat()
+{
+  // locate enemies asset
+  UDataTable* enemyTable = Cast&lt;UDataTable&gt;( StaticLoadObject( UDataTable::StaticClass(), NULL, 
+TEXT( "DataTable'/Game/Data/Enemies.Enemies'" ) ) );
+
+  if( enemyTable == NULL )
+  {
+    UE_LOG( LogTemp, Error, TEXT( "Enemies data table not found!" ) );
+    return;
+  }
+
+  // locate enemy
+  FEnemyInfo* row = enemyTable-&gt;FindRow&lt;FEnemyInfo&gt;( TEXT( "S1" ), TEXT( "LookupEnemyInfo" ) );
+
+  if( row == NULL )
+  {
+    UE_LOG( LogTemp, Error, TEXT( "Enemy ID 'S1' not found!" ) );
+    return;
+  }
+
+  // disable player actor
+  UGameplayStatics::GetPlayerController( GetWorld(), 0 )-&gt;SetActorTickEnabled( false );
+
+  // add character to enemy party
+  UGameCharacter* enemy = UGameCharacter::CreateGameCharacter( row, this );
+  this-&gt;enemyParty.Add( enemy );
+
+  URPGGameInstance* gameInstance = Cast&lt;URPGGameInstance&gt;( GetGameInstance() );
+
+  this-&gt;currentCombatInstance = new CombatEngine( gameInstance-&gt;PartyMembers, this-&gt;enemyParty );
+
+  UE_LOG( LogTemp, Log, TEXT( "Combat started" ) );
+}</pre></div><p>It locates the <a id="id137" class="indexterm"/>enemy Data Table, picks the enemy with ID <code class="literal">S1</code>, constructs a new <code class="literal">GameCharacter</code>, constructs a list of enemies, adds the new enemy character, and then creates a new instance of <code class="literal">CombatEngine</code>, passing the player party and the enemy list. It also disables the tick of the player actor so that the player stops updating when combat begins.</p><p>Finally, you should be able to test the combat engine. Start the game and press the tilde (<span class="emphasis"><em>~</em></span>) key to bring up the console command textbox. Enter <code class="literal">TestCombat</code> and press <span class="emphasis"><em>Enter</em></span>.</p><p>Take a look at the output window and you should see something like the following:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>LogTemp: Combat started</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin making decision</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Goblin executing action</strong></span>
+<span class="strong"><strong>LogTemp: Character Kumo making decision</strong></span>
+</pre></div><p>This <a id="id138" class="indexterm"/>shows that the combat engine is working as intended—firstly, all characters make a decision, execute their decisions, then they make a decision again, and so on. Since nobody is actually doing anything (much less dealing any damage), combat just goes on forever at the moment.</p><p>There are two issues with this: firstly, the aforementioned problem that nobody actually does anything yet. Additionally, player characters need to have a different way of making decisions than enemies (player characters will need a UI to pick actions, whereas enemies should pick actions automatically).</p><p>We'll solve the first issue before tackling decision making.</p><div class="section" title="Performing actions"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec49"/>Performing actions</h2></div></div></div><p>In <a id="id139" class="indexterm"/>order to allow characters to perform actions, we will boil all combat actions down to a single common interface. A good place to start is for this interface to map to what we already have—that is, the character's <code class="literal">BeginExecuteAction</code> and <code class="literal">ExecuteAction</code> functions.</p><p>Let's create a new <code class="literal">ICombatAction</code> interface for this, which can start off as a class that is not parented to anything and in a new path called <code class="literal">Source/RPG/Combat/Actions</code>; the <code class="literal">ICombatAction.h</code> file should look like this:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "GameCharacter.h"
+
+class UGameCharacter;
+
+class ICombatAction
+{
+public:
+  virtual void BeginExecuteAction( UGameCharacter* character ) = 0;
+  virtual bool ExecuteAction( float DeltaSeconds ) = 0;
+};</pre></div><p>
+<code class="literal">BeginExecuteAction</code> takes a pointer to the character that this action is executing for. <code class="literal">ExecuteAction</code>, as before, takes the duration of the previous frame in seconds.</p><p>In <code class="literal">ICombatAction.cpp</code>, remove the default constructor and deconstructor so that the file looks like this:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "ICombatAction.h"</pre></div><p>Next, we <a id="id140" class="indexterm"/>can create a new empty C++ class to implement this interface. Just as a test, we'll replicate the functionality that the characters are already doing (that is, absolutely nothing) in a new class called <code class="literal">TestCombatAction</code> to be pathed to the <code class="literal">Source/RPG/Combat/Actions</code> folder.</p><p>Firstly, the header will be as follows:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "ICombatAction.h"
+
+class TestCombatAction : public ICombatAction
+{
+protected:
+  float delayTimer;
+
+public:
+  virtual void BeginExecuteAction( UGameCharacter* character ) override;
+  virtual bool ExecuteAction( float DeltaSeconds ) override;
+};</pre></div><p>The <code class="literal">.cpp</code> file will be as follows:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "TestCombatAction.h"
+
+void TestCombatAction::BeginExecuteAction( UGameCharacter* character )
+{
+  UE_LOG( LogTemp, Log, TEXT( "%s does nothing" ), *character-&gt;CharacterName );
+  this-&gt;delayTimer = 1.0f;
+}
+
+bool TestCombatAction::ExecuteAction( float DeltaSeconds )
+{
+  this-&gt;delayTimer -= DeltaSeconds;
+  return this-&gt;delayTimer &lt;= 0.0f;
+}</pre></div><p>Next, we'll change the character so that it can store and execute actions.</p><p>Firstly, let's replace the test delay timer field with a combat action pointer. Later, we'll make it public for when we create a decision making system in <code class="literal">GameCharacter.h</code>:</p><div class="informalexample"><pre class="programlisting">public:
+  ICombatAction* combatAction;</pre></div><p>Also remember to include <code class="literal">ICombatAction</code> at the top of <code class="literal">GameCharacter.h</code>, followed by a class declaration for <code class="literal">ICombatAction</code>:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "Data/FCharacterInfo.h"
+#include "Data/FEnemyInfo.h"
+#include "Data/FCharacterClassInfo.h"
+#include "Combat/Actions/ICombatAction.h"
+#include "GameCharacter.generated.h"
+
+class CombatEngine;
+class ICombatAction;</pre></div><p>Next, we <a id="id141" class="indexterm"/>need to change our decision functions to assign a combat action, and the action functions to execute this action in <code class="literal">GameCharacter.cpp</code>:</p><div class="informalexample"><pre class="programlisting">void UGameCharacter::BeginMakeDecision()
+{
+  UE_LOG( LogTemp, Log, TEXT( "Character %s making decision" ), *( this-&gt;CharacterName ) );
+  this-&gt;combatAction = new TestCombatAction();
+}
+
+bool UGameCharacter::MakeDecision( float DeltaSeconds )
+{
+  return true;
+}
+
+void UGameCharacter::BeginExecuteAction()
+{
+  this-&gt;combatAction-&gt;BeginExecuteAction( this );
+}
+
+bool UGameCharacter::ExecuteAction( float DeltaSeconds )
+{
+  bool finishedAction = this-&gt;combatAction-&gt;ExecuteAction( DeltaSeconds );
+  if( finishedAction )
+  {
+    delete( this-&gt;combatAction );
+    return true;
+  }
+
+  return false;
+}</pre></div><p>Also remember to use <code class="literal">include TestCombatAction</code> at the top of <code class="literal">GameCharacter.cpp</code>:</p><div class="informalexample"><pre class="programlisting">#include "Combat/Actions/TestCombatAction.h"</pre></div><p>
+<code class="literal">BeginMakeDecision</code> now assigns a new instance of <code class="literal">TestCombatAction</code>. <code class="literal">MakeDecision</code> just returns <code class="literal">true</code>. <code class="literal">BeginExecuteAction</code> calls the function of the same name on the stored combat action, passing the character as the pointer. Finally, <code class="literal">ExecuteAction</code> calls the function of the same name, and if the result is <code class="literal">true</code>, it deletes the pointer and returns <code class="literal">true</code>; otherwise it returns <code class="literal">false</code>.</p><p>By<a id="id142" class="indexterm"/> running this and testing combat, you should get nearly identical output, but now it says <code class="literal">does nothing</code> instead of <code class="literal">executing action</code>.</p><p>Now that we have a way for characters to store and execute actions, we can work on a decision making system for characters.</p></div><div class="section" title="Making decisions"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec50"/>Making decisions</h2></div></div></div><p>As we <a id="id143" class="indexterm"/>did with actions, we're going to create an interface for decision making that follows a similar pattern to the <code class="literal">BeginMakeDecision</code> and <code class="literal">MakeDecision</code> functions. Similar to the <code class="literal">ICombatAction</code> class, we will create an empty <code class="literal">IDecisionMaker</code> class and we will path it to a new directory, <code class="literal">Source/RPG/Combat/DecisionMakers</code>. The following will be <code class="literal">IDecisionMaker.h</code>:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "GameCharacter.h"
+
+class UGameCharacter;
+
+class IDecisionMaker
+{
+public:
+  virtual void BeginMakeDecision( UGameCharacter* character ) = 0;
+  virtual bool MakeDecision( float DeltaSeconds ) = 0;
+};</pre></div><p>Also, remove the constructor and deconstructor to <code class="literal">IDecisionMaker.cpp</code>, so that it looks like this:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "IDecisionMaker.h"</pre></div><p>Now, we can create the <code class="literal">TestDecisionMaker</code> C++ class and path it to <code class="literal">Source/RPG/Combat/DecisionMakers</code> as well. Then, program <code class="literal">TestDecisionMaker.h</code> as follows:</p><div class="informalexample"><pre class="programlisting">#pragma once
+#include "IDecisionMaker.h"
+
+class RPG_API TestDecisionMaker : public IDecisionMaker
+{
+public:
+  virtual void BeginMakeDecision( UGameCharacter* character ) override;
+  virtual bool MakeDecision( float DeltaSeconds ) override;
+};</pre></div><p>Then, program <code class="literal">TestDecisionMaker.cpp</code> as follows:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "TestDecisionMaker.h"
+
+#include "../Actions/TestCombatAction.h"
+
+void TestDecisionMaker::BeginMakeDecision( UGameCharacter* character )
+{
+  character-&gt;combatAction = new TestCombatAction();
+}
+
+bool TestDecisionMaker::MakeDecision( float DeltaSeconds )
+{
+  return true;
+}</pre></div><p>Next, we'll <a id="id144" class="indexterm"/>add a pointer to <code class="literal">IDecisionMaker</code> to the game character class and modify the <code class="literal">BeginMakeDecision</code> and <code class="literal">MakeDecision</code> functions to use the decision maker in <code class="literal">GameCharacter.h</code>:</p><div class="informalexample"><pre class="programlisting">public:
+  IDecisionMaker* decisionMaker;</pre></div><p>Also remember to include <code class="literal">ICombatAction</code> at the top of <code class="literal">GameCharacter.h</code> followed by a class declaration for <code class="literal">ICombatAction</code>:</p><div class="informalexample"><pre class="programlisting">#pragma once
+
+#include "Data/FCharacterInfo.h"
+#include "Data/FEnemyInfo.h"
+#include "Data/FCharacterClassInfo.h"
+#include "Combat/Actions/ICombatAction.h"
+#include "Combat/DecisionMakers/IDecisionMaker.h"
+#include "GameCharacter.generated.h"
+
+class CombatEngine;
+class ICombatAction;
+class IDecisionMaker;</pre></div><p>Next, replace <a id="id145" class="indexterm"/>the <code class="literal">BeginDestroy</code>, <code class="literal">BeginMakeDecision</code>, and <code class="literal">MakeDecision</code> functions in <code class="literal">GameCharacter.cpp</code> with this:</p><div class="informalexample"><pre class="programlisting">void UGameCharacter::BeginDestroy()
+{
+  Super::BeginDestroy();
+  delete( this-&gt;decisionMaker );
+}
+
+void UGameCharacter::BeginMakeDecision()
+{
+  this-&gt;decisionMaker-&gt;BeginMakeDecision( this );}
+
+bool UGameCharacter::MakeDecision( float DeltaSeconds )
+{
+  return this-&gt;decisionMaker-&gt;MakeDecision( DeltaSeconds );
+}</pre></div><p>Note that we delete the decision maker in the destructor. The decision maker will be assigned when the character is created, and should therefore be deleted when the character is released.</p><p>We will then include <code class="literal">TestDecisionMaker</code> implementations to allow each party to make combat decisions, so include <code class="literal">TestDecisionMaker</code> at the top of the class:</p><div class="informalexample"><pre class="programlisting">#include "Combat/DecisionMakers/TestDecisionMaker.h"</pre></div><p>The final step here is to assign a decision maker in the constructors for the character. To both constructor overloads, add the following line of code: <code class="literal">character-&gt;decisionMaker = new TestDecisionMaker();</code>. When you are finished, the player and enemy character constructors should look like this:</p><div class="informalexample"><pre class="programlisting">UGameCharacter* UGameCharacter::CreateGameCharacter(
+  FCharacterInfo* characterInfo, UObject* outer)
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;(outer);
+
+  // locate character classes asset
+  UDataTable* characterClasses = Cast&lt;UDataTable&gt;(
+    StaticLoadObject(UDataTable::StaticClass(), NULL, TEXT(
+      "DataTable'/Game/Data/CharacterClasses.CharacterClasses'"))
+    );
+
+  if (characterClasses == NULL)
+  {
+    UE_LOG(LogTemp, Error, 
+TEXT("Character classes datatable not found!" ) );
+  }
+  else
+  {
+    character-&gt;CharacterName = characterInfo-&gt;Character_Name;
+    FCharacterClassInfo* row = 
+characterClasses-&gt;FindRow&lt;FCharacterClassInfo&gt;
+(*(characterInfo-&gt;Class_ID), TEXT("LookupCharacterClass"));
+    character-&gt;ClassInfo = row;
+
+    character-&gt;MHP = character-&gt;ClassInfo-&gt;StartMHP;
+    character-&gt;MMP = character-&gt;ClassInfo-&gt;StartMMP;
+    character-&gt;HP = character-&gt;MHP;
+    character-&gt;MP = character-&gt;MMP;
+
+    character-&gt;ATK = character-&gt;ClassInfo-&gt;StartATK;
+    character-&gt;DEF = character-&gt;ClassInfo-&gt;StartDEF;
+    character-&gt;LUCK = character-&gt;ClassInfo-&gt;StartLuck;
+
+    character-&gt;decisionMaker = new TestDecisionMaker();
+  }
+
+  return character;
+}
+
+UGameCharacter* UGameCharacter::CreateGameCharacter(FEnemyInfo* enemyInfo, UObject* outer)
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;(outer);
+
+  character-&gt;CharacterName = enemyInfo-&gt;EnemyName;
+  character-&gt;ClassInfo = nullptr;
+
+  character-&gt;MHP = enemyInfo-&gt;MHP;
+  character-&gt;MMP = 0;
+  character-&gt;HP = enemyInfo-&gt;MHP;
+  character-&gt;MP = 0;
+
+  character-&gt;ATK = enemyInfo-&gt;ATK;
+  character-&gt;DEF = enemyInfo-&gt;DEF;
+  character-&gt;LUCK = enemyInfo-&gt;Luck;
+
+  character-&gt;decisionMaker = new TestDecisionMaker();
+
+  return character;
+}</pre></div><p>Run the <a id="id146" class="indexterm"/>game and test combat again, and you should get very similar output to what was already there. However, the big difference is that it's now possible to assign different implementations of a decision maker to different characters, and those decision makers have an easy way to assign combat actions to be executed. For instance, it will now be easy to make our test combat action deal with the damage of a target. However, before we do this, let's make a small change to the <code class="literal">GameCharacter</code> class.</p></div><div class="section" title="Target selection"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec51"/>Target selection</h2></div></div></div><p>We're <a id="id147" class="indexterm"/>going to add a field to <code class="literal">GameCharacter</code> that identifies a character as either a player or an enemy. Additionally, we'll add a <code class="literal">SelectTarget</code> function that selects the first live character from either the current combat instance's <code class="literal">enemyParty</code> or <code class="literal">playerParty</code>, depending on whether this character is a player or an enemy.</p><p>Firstly, in <code class="literal">GameCharacter.h</code>, we'll add a public <code class="literal">isPlayer</code> field:</p><div class="informalexample"><pre class="programlisting">bool isPlayer;</pre></div><p>Then, we'll add a <code class="literal">SelectTarget</code> function, as follows:</p><div class="informalexample"><pre class="programlisting">UGameCharacter* SelectTarget();</pre></div><p>In <code class="literal">GameCharacter.cpp</code>, we'll assign the <code class="literal">isPlayer</code> field in the constructors (this is easy enough, as we have separate constructors for players and enemies):</p><div class="informalexample"><pre class="programlisting">UGameCharacter* UGameCharacter::CreateGameCharacter(
+  FCharacterInfo* characterInfo, UObject* outer)
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;(outer);
+
+  // locate character classes asset
+  UDataTable* characterClasses = Cast&lt;UDataTable&gt;(
+    StaticLoadObject(UDataTable::StaticClass(), NULL, TEXT(
+      "DataTable'/Game/Data/CharacterClasses.CharacterClasses'"))
+    );
+
+  if (characterClasses == NULL)
+  {
+    UE_LOG(LogTemp, Error,
+      TEXT("Character classes datatable not found!"));
+  }
+  else
+  {
+    character-&gt;CharacterName = characterInfo-&gt;Character_Name;
+    FCharacterClassInfo* row =
+      characterClasses-&gt;FindRow&lt;FCharacterClassInfo&gt;
+(*(characterInfo-&gt;Class_ID), TEXT("LookupCharacterClass"));
+    character-&gt;ClassInfo = row;
+
+    character-&gt;MHP = character-&gt;ClassInfo-&gt;StartMHP;
+    character-&gt;MMP = character-&gt;ClassInfo-&gt;StartMMP;
+    character-&gt;HP = character-&gt;MHP;
+    character-&gt;MP = character-&gt;MMP;
+
+    character-&gt;ATK = character-&gt;ClassInfo-&gt;StartATK;
+    character-&gt;DEF = character-&gt;ClassInfo-&gt;StartDEF;
+    character-&gt;LUCK = character-&gt;ClassInfo-&gt;StartLuck;
+
+    character-&gt;decisionMaker = new TestDecisionMaker();
+  }
+  character-&gt;isPlayer = true;
+  return character;
+}
+
+UGameCharacter* UGameCharacter::CreateGameCharacter(FEnemyInfo* enemyInfo, UObject* outer)
+{
+  UGameCharacter* character = NewObject&lt;UGameCharacter&gt;(outer);
+
+  character-&gt;CharacterName = enemyInfo-&gt;EnemyName;
+  character-&gt;ClassInfo = nullptr;
+
+  character-&gt;MHP = enemyInfo-&gt;MHP;
+  character-&gt;MMP = 0;
+  character-&gt;HP = enemyInfo-&gt;MHP;
+  character-&gt;MP = 0;
+
+  character-&gt;ATK = enemyInfo-&gt;ATK;
+  character-&gt;DEF = enemyInfo-&gt;DEF;
+  character-&gt;LUCK = enemyInfo-&gt;Luck;
+
+  character-&gt;decisionMaker = new TestDecisionMaker();
+  character-&gt;isPlayer = false;
+  return character;
+}</pre></div><p>Finally, the<a id="id148" class="indexterm"/> <code class="literal">SelectTarget</code> function is as follows:</p><div class="informalexample"><pre class="programlisting">UGameCharacter* UGameCharacter::SelectTarget()
+{
+  UGameCharacter* target = nullptr;
+
+  TArray&lt;UGameCharacter*&gt; targetList = this-&gt;combatInstance-&gt;enemyParty;
+  if( !this-&gt;isPlayer )
+  {
+    targetList = this-&gt;combatInstance-&gt;playerParty;
+  }
+
+  for( int i = 0; i &lt; targetList.Num(); i++ )
+  {
+    if( targetList[ i ]-&gt;HP &gt; 0 )
+    {
+      target = targetList[i];
+      break;
+    }
+  }
+
+  if( target-&gt;HP &lt;= 0 )
+  {
+    return nullptr;
+  }
+
+  return target;
+}</pre></div><p>This first figures out which list (enemies or players) to use as potential targets and then goes through that list to find the first non-dead target. If there is no target, this function returns a null pointer.</p></div><div class="section" title="Dealing damage"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec52"/>Dealing damage</h2></div></div></div><p>Now<a id="id149" class="indexterm"/> that there's an easy way to select targets, let's make our <code class="literal">TestCombatAction</code> class finally deal some damage!</p><p>We'll add a couple of fields to maintain references to the character and the target, and also a constructor that takes the target as a parameter:</p><div class="informalexample"><pre class="programlisting">protected:
+  UGameCharacter* character;
+  UGameCharacter* target;
+
+public:
+  TestCombatAction( UGameCharacter* target );</pre></div><p>Also, the<a id="id150" class="indexterm"/> implementation is by creating and updating the <code class="literal">BeginExecuteAction</code> function in <code class="literal">TestCombatAction.cpp</code>, as follows:</p><div class="informalexample"><pre class="programlisting">void TestCombatAction::BeginExecuteAction( UGameCharacter* character )
+{
+  this-&gt;character = character;
+
+  // target is dead, select another target
+  if( this-&gt;target-&gt;HP &lt;= 0 )
+  {
+    this-&gt;target = this-&gt;character-&gt;SelectTarget();
+  }
+
+  // no target, just return
+  if( this-&gt;target == nullptr )
+  {
+    return;
+  }
+
+  UE_LOG( LogTemp, Log, TEXT( "%s attacks %s" ), *character-&gt;CharacterName, *target-&gt;CharacterName );
+
+  target-&gt;HP -= 10;
+
+  this-&gt;delayTimer = 1.0f;
+}</pre></div><p>And then have the constructor of the class set the target:</p><div class="informalexample"><pre class="programlisting">TestCombatAction::TestCombatAction(UGameCharacter* target)
+{
+  this-&gt;target = target;
+}</pre></div><p>Firstly, the constructor assigns the target pointer. Then, the <code class="literal">BeginExecuteAction</code> function assigns the character reference and checks to see whether the target is alive. If the target is dead, it picks a new target via the <code class="literal">SelectTarget</code> function we just created. If the target pointer is now null, there is no target and this function just returns null. Otherwise, it logs a message of the form <span class="emphasis"><em>[character] attacks [target]</em></span>, subtracts some HP from the target, and sets the delay timer as before.</p><p>The next step is to change our <code class="literal">TestDecisionMaker</code> to pick a target and pass this target to the <code class="literal">TestCombatAction</code> constructor. This is a relatively simple change in <code class="literal">TestDecisionMaker.cpp</code>:</p><div class="informalexample"><pre class="programlisting">void TestDecisionMaker::BeginMakeDecision( UGameCharacter* character )
+{
+  // pick a target
+  UGameCharacter* target = character-&gt;SelectTarget();
+  character-&gt;combatAction = new TestCombatAction( target );
+}</pre></div><p>At this <a id="id151" class="indexterm"/>point, you should be able to run the game, start a test encounter, and also see an output similar to the following:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>LogTemp: Combat started</strong></span>
+<span class="strong"><strong>LogTemp: Kumo attacks Goblin</strong></span>
+<span class="strong"><strong>LogTemp: Goblin attacks Kumo</strong></span>
+<span class="strong"><strong>LogTemp: Kumo attacks Goblin</strong></span>
+<span class="strong"><strong>LogTemp: Player wins combat</strong></span>
+</pre></div><p>Finally, we have a combat system in which our two parties can attack each other and one or the other can win.</p><p>Next, we'll begin hooking this up to a user interface.</p></div><div class="section" title="Combat UI with UMG"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec53"/>Combat UI with UMG</h2></div></div></div><p>To get <a id="id152" class="indexterm"/>started, we'll need to set up our project to properly import UMG and Slate-related classes.</p><p>First, open <code class="literal">RPG.Build.cs</code> (or <code class="literal">[ProjectName].Build.cs</code>) and change the first line of the constructor to the following code:</p><div class="informalexample"><pre class="programlisting">PublicDependencyModuleNames.AddRange( new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UMG", "Slate", "SlateCore" } );</pre></div><p>This adds the <code class="literal">UMG</code>, <code class="literal">Slate</code>, and <code class="literal">SlateCore</code> strings to the existing string array.</p><p>Next, open <code class="literal">RPG.h</code> and make sure the following lines of code are there:</p><div class="informalexample"><pre class="programlisting">#include "Runtime/UMG/Public/UMG.h"
+#include "Runtime/UMG/Public/UMGStyle.h"
+#include "Runtime/UMG/Public/Slate/SObjectWidget.h"
+#include "Runtime/UMG/Public/IUMGModule.h"
+#include "Runtime/UMG/Public/Blueprint/UserWidget.h"</pre></div><p>Now compile the project. This may take a while.</p><p>Next, we're going to create a base class for the combat UI. Basically, we'll use this base class to allow our C++ game code to communicate with Blueprint UMG code by defining Blueprint-implementable functions in the header, which are functions that can be implemented by Blueprint and called from C++.</p><p>Create a <a id="id153" class="indexterm"/>new class named <code class="literal">CombatUIWidget</code> and select <code class="literal">UserWidget</code> as the parent class; then path it to <code class="literal">Source/RPG/UI</code>. Replace the contents of <code class="literal">CombatUIWidget.h</code> with the following code:</p><div class="informalexample"><pre class="programlisting">#pragma once
+#include "GameCharacter.h"
+
+#include "Blueprint/UserWidget.h"
+#include "CombatUIWidget.generated.h"
+
+UCLASS()
+class RPG_API UCombatUIWidget : public UUserWidget
+{
+  GENERATED_BODY()
+
+public:
+  UFUNCTION( BlueprintImplementableEvent, Category = "Combat UI" )
+  void AddPlayerCharacterPanel( UGameCharacter* target );
+
+  UFUNCTION( BlueprintImplementableEvent, Category = "Combat UI" )
+  void AddEnemyCharacterPanel( UGameCharacter* target );
+};</pre></div><p>For the most part, we're just defining a couple of functions. The <code class="literal">AddPlayerCharacterPanel</code> and <code class="literal">AddEnemyCharacterPanel</code> functions will be responsible for taking a character pointer and spawning a widget for that character (to display the character's current status).</p><p>Next, after compiling the code, back in the editor, create a new folder in the <code class="literal">Contents/Blueprints</code> directory called <code class="literal">UI</code>. In the <code class="literal">Content/Blueprints/UI</code> directory, create a new Widget Blueprint named <code class="literal">CombatUI</code>. After you've created and opened the Blueprint, go to <span class="strong"><strong>File</strong></span> | <span class="strong"><strong>Reparent Blueprint</strong></span> and select <span class="strong"><strong>CombatUIWidget</strong></span> as the parent class.</p><p>In the <span class="strong"><strong>Designer</strong></span> interface, create two Horizontal Box widgets and name them <code class="literal">enemyPartyStatus</code> and <code class="literal">playerPartyStatus</code>. These will hold child widgets for enemies and players respectively, to display the status of each character. For both of these, be sure to enable the <span class="strong"><strong>Is Variable</strong></span> checkbox so that they will be available as variables to Blueprint. Save and compile the Blueprint.</p><p>We will position the <code class="literal">enemyPartyStatus</code> Horizontal Box at the top of the Canvas Panel. It will help to first set a top horizontal anchor.</p><p>Then set the values for the Horizontal Box as follows, <span class="strong"><strong>Offset Left</strong></span>: 10, <span class="strong"><strong>Position Y</strong></span>: 10, <span class="strong"><strong>Offset Right</strong></span>: 10, <span class="strong"><strong>Size Y</strong></span>: 200.</p><p>Proceed to <a id="id154" class="indexterm"/>position the <code class="literal">playerPartyStatus</code> Horizontal Box in a similar way; the only major difference is that we will anchor the box to the bottom of the Canvas Panel and position it so it spans the bottom of the screen:</p><div class="mediaobject"><img src="graphics/B04548_03_07.jpg" alt="Combat UI with UMG"/></div><p>Next, we'll create widgets to display player and enemy character statuses. Firstly, we'll make a base widget that each will inherit from.</p><p>Create a new Widget Blueprint and name it <code class="literal">BaseCharacterCombatPanel</code>. In this Blueprint, navigate to the graph, then add a new variable from the <span class="strong"><strong>MyBlueprint</strong></span> tab, <span class="strong"><strong>CharacterTarget</strong></span>, and select the <span class="strong"><strong>Game Character</strong></span> variable type from the <span class="strong"><strong>Object Reference</strong></span> category.</p><p>Next, we'll make separate widgets for the enemies and players.</p><p>Create a new Widget Blueprint and name it <code class="literal">PlayerCharacterCombatPanel</code>. Set the new Blueprint's parent to <code class="literal">BaseCharacterCombatPanel</code>.</p><p>In the <span class="strong"><strong>Designer</strong></span> interface, add three text widgets. One label will be for the character's name, another for the character's HP, and third one for the character's MP. Position each Text Block so that they are anchored to the bottom left of the screen, and well within the 200 high pixels of the <code class="literal">playerPartyStatus</code> box size that we created in the <code class="literal">CombatUI</code> widget:</p><div class="mediaobject"><img src="graphics/B04548_03_08.jpg" alt="Combat UI with UMG"/></div><p>Also be sure<a id="id155" class="indexterm"/> to check <span class="strong"><strong>Size to Content</strong></span> located in the <span class="strong"><strong>Details</strong></span> panel of each Text Block so that the Text Block can resize if the content does not fit within the Text Block parameters.</p><p>Create a new binding for each of these by selecting the widget and clicking on <span class="strong"><strong>Bind</strong></span> next to the <span class="strong"><strong>Text</strong></span> input in the <span class="strong"><strong>Details</strong></span> panel:</p><div class="mediaobject"><img src="graphics/B04548_03_09.jpg" alt="Combat UI with UMG"/></div><p>This will create a new Blueprint function that will be responsible for generating the Text Block.</p><p>To bind the HP Text Block, for example, you can execute the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Right-click in an open area in the grid, search for <span class="strong"><strong>Get Character Target</strong></span>, and then select it.</li><li class="listitem">Drag the output pin of this node and select <span class="strong"><strong>Get HP</strong></span> under <span class="strong"><strong>Variables</strong></span> | <span class="strong"><strong>Character Info</strong></span>.</li><li class="listitem">Create a new <span class="strong"><strong>Format Text</strong></span> node. Set the text to <span class="strong"><strong>HP: {HP}</strong></span> and then connect the output of <span class="strong"><strong>Get HP</strong></span> to the <span class="strong"><strong>HP</strong></span> input of the <span class="strong"><strong>Format Text</strong></span> node.</li><li class="listitem">Finally, connect the output of the <span class="strong"><strong>Format Text</strong></span> node to the <span class="strong"><strong>Return</strong></span> value of the <span class="strong"><strong>Return</strong></span> node.</li></ol></div><p>You can repeat similar steps for the character name and MP Text Blocks.</p><p>After<a id="id156" class="indexterm"/> you've created <code class="literal">PlayerCharacterCombatPanel</code>, you can repeat the same steps to create <code class="literal">EnemyCharacterCombatPanel</code>, except without the MP Text Block (as mentioned before, enemies do not consume MP). The only major difference is that the Text Blocks in <code class="literal">EnemyCharacterCombatPanel</code> need to be placed at the top of the screen to match the positioning of the <code class="literal">enemyPartyStatus</code> Horizontal Box from the <code class="literal">CombatUI</code> widget.</p><p>The resulting graph for displaying the MP will look something like the following screenshot:</p><div class="mediaobject"><img src="graphics/B04548_03_10.jpg" alt="Combat UI with UMG"/></div><p>Now that we have widgets for players and enemies, let's implement the <code class="literal">AddPlayerCharacterPanel</code> and <code class="literal">AddEnemyCharacterPanel</code> functions in the <code class="literal">CombatUI</code> Blueprint.</p><p>Firstly, we'll create a helper Blueprint function to spawn character status widgets. Name this new function <code class="literal">SpawnCharacterWidget</code> and add the following parameters to the input:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Target Character</strong></span> (of type Game Character Reference)</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Target Panel</strong></span> (of type Panel Widget Reference)</li><li class="listitem" style="list-style-type: disc"><span class="strong"><strong>Class</strong></span> (of type Base Character Combat Panel Class)</li></ul></div><p>This function will perform the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new widget of the given class using <span class="strong"><strong>Create Widget</strong></span>.</li><li class="listitem">Cast the new widget to the <code class="literal">BaseCharacterCombatPanel</code> type.</li><li class="listitem">Set the <span class="strong"><strong>Character Target</strong></span> of the result to the <span class="strong"><strong>TargetCharacter</strong></span> input.</li><li class="listitem">Add the new widget as a child of the <span class="strong"><strong>TargetPanel</strong></span> input.</li></ol></div><p>And <a id="id157" class="indexterm"/>that looks like this in Blueprint:</p><div class="mediaobject"><img src="graphics/B04548_03_11.jpg" alt="Combat UI with UMG"/></div><p>Next, in the event graph for the <code class="literal">CombatUI</code> Blueprint, right-click and add the <code class="literal">EventAddPlayerCharacterPanel</code> and <code class="literal">EventAddEnemyCharacterPanel</code> events. Hook each of these up to a <code class="literal">SpawnCharacterWidget</code> node, connecting the <span class="strong"><strong>Target</strong></span> output to the <span class="strong"><strong>Target Character</strong></span> input and the appropriate panel variable to the <span class="strong"><strong>Target Panel</strong></span> input, as follows:</p><div class="mediaobject"><img src="graphics/B04548_03_12.jpg" alt="Combat UI with UMG"/></div><p>Finally, we <a id="id158" class="indexterm"/>can spawn this UI from our game mode at the beginning of combat and destroy it at the end of combat. In the header of <code class="literal">RPGGameMode</code>, add a pointer to <code class="literal">UCombatUIWidget</code> and also a class to spawn for the combat UI (so we can select a Widget Blueprint that inherits from our <code class="literal">CombatUIWidget</code> class); these should be public:</p><div class="informalexample"><pre class="programlisting">UPROPERTY()
+UCombatUIWidget* CombatUIInstance;
+
+UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "UI" )
+TSubclassOf&lt;class UCombatUIWidget&gt; CombatUIClass;</pre></div><p>Also make sure that <code class="literal">RPGGameMode.h</code> includes the <code class="literal">CombatWidget</code>; at this point, your list of includes at the top of <code class="literal">RPGGameMode.h</code> should look like this:</p><div class="informalexample"><pre class="programlisting">#include "GameFramework/GameMode.h"
+#include "GameCharacter.h"
+#include "Combat/CombatEngine.h"
+#include "UI/CombatUIWidget.h"
+#include "RPGGameMode.generated.h"</pre></div><p>At the <a id="id159" class="indexterm"/>end of the <code class="literal">TestCombat</code> function in <code class="literal">RPGGameMode.cpp</code>, we'll spawn a new instance of this widget, as follows:</p><div class="informalexample"><pre class="programlisting">this-&gt;CombatUIInstance = CreateWidget&lt;UCombatUIWidget&gt;( GetGameInstance(), this-&gt;CombatUIClass );
+this-&gt;CombatUIInstance-&gt;AddToViewport();
+
+UGameplayStatics::GetPlayerController(GetWorld(), 0)
+-&gt;bShowMouseCursor = true;
+
+for( int i = 0; i &lt; gameInstance-&gt;PartyMembers.Num(); i++ )
+  this-&gt;CombatUIInstance-&gt;AddPlayerCharacterPanel( gameInstance-&gt;PartyMembers[i] );
+
+for( int i = 0; i &lt; this-&gt;enemyParty.Num(); i++ )
+  this-&gt;CombatUIInstance-&gt;AddEnemyCharacterPanel( this-&gt;enemyParty[i] );</pre></div><p>This creates the widget, adds the viewport to it, adds a mouse cursor, and then calls its <code class="literal">AddPlayerCharacterPanel</code> and <code class="literal">AddEnemyCharacterPanel</code> functions for all players and enemies respectively.</p><p>After combat is over, we'll remove the widget from the viewport and set the reference to null so it can be garbage-collected; your <code class="literal">Tick</code> function should now look like this:</p><div class="informalexample"><pre class="programlisting">void ARPGGameMode::Tick(float DeltaTime)
+{
+  if (this-&gt;currentCombatInstance != nullptr)
+  {
+    bool combatOver = this-&gt;currentCombatInstance-&gt;Tick(DeltaTime
+    );
+    if (combatOver)
+    {
+      if (this-&gt;currentCombatInstance-&gt;phase == CombatPhase::
+        CPHASE_GameOver)
+      {
+        UE_LOG(LogTemp, Log, 
+        TEXT("Player loses combat, game over" ) );
+      }
+      else if 
+      (this-&gt;currentCombatInstance-&gt;phase == 
+      CombatPhase::  CPHASE_Victory)
+      {
+        UE_LOG(LogTemp, Log, TEXT("Player wins combat"));
+      }
+      UGameplayStatics::GetPlayerController(GetWorld(),0)
+      -&gt;bShowMouseCursor = false;
+
+      // enable player actor
+      UGameplayStatics::GetPlayerController(GetWorld(), 0)-&gt;
+        SetActorTickEnabled(true);
+
+      this-&gt;CombatUIInstance-&gt;RemoveFromViewport();
+      this-&gt;CombatUIInstance = nullptr;
+
+      delete(this-&gt;currentCombatInstance);
+      this-&gt;currentCombatInstance = nullptr;
+      this-&gt;enemyParty.Empty();
+    }
+  }
+}</pre></div><p>At this <a id="id160" class="indexterm"/>point, you can compile, but the game will crash if you test the combat. That is because you need to set <code class="literal">DefaultRPGGameMode</code> class defaults to use <code class="literal">CombatUI</code> as the <code class="literal">CombatUIClass</code> that you created in <code class="literal">RPGGameMode.h</code>. Otherwise, the system will not know that the <code class="literal">CombatUIClass</code> variable is to be pointing to <code class="literal">CombatUI</code>, which is a widget, and therefore won't be able to create the widget. Note that the editor may crash the first time you do this step.</p><div class="mediaobject"><img src="graphics/B04548_03_13.jpg" alt="Combat UI with UMG"/></div><p>Now, if you run the game and start combat, you should see the status of the goblin and the status of the player. Both should have their HP reducing until the goblin's health reaches zero; at this point, the UI disappears (as combat is over).</p><p>Next, we're <a id="id161" class="indexterm"/>going to change things so that instead of the player characters automatically making decisions, the player gets to choose their actions via the UI.</p></div><div class="section" title="UI-driven decision making"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec54"/>UI-driven decision making</h2></div></div></div><p>One idea<a id="id162" class="indexterm"/> is to change how the decision maker is assigned to the player—rather than assigning one when the player is first created, we could make our <code class="literal">CombatUIWidget</code> class implement the decision maker and just assign it when combat starts (and clear the pointer when combat ends).</p><p>We're going to have to make a couple of changes to <code class="literal">GameCharacter.cpp</code>. First, in the player overload of <code class="literal">CreateGameCharacter</code>, remove the following line of code:</p><div class="informalexample"><pre class="programlisting">character-&gt;decisionMaker = new TestDecisionMaker();</pre></div><p>Then, in the <code class="literal">BeginDestroy</code> function, we'll wrap the <code class="literal">delete</code> line in an <code class="literal">if</code> statement:</p><div class="informalexample"><pre class="programlisting">if( !this-&gt;isPlayer )
+  delete( this-&gt;decisionMaker );</pre></div><p>The reason for this is that the decision maker for players will be the UI—and we do not want to delete the UI manually (doing so would crash Unreal). Instead, the UI will be garbage-collected automatically as long as there are no <code class="literal">UPROPERY</code> decorated pointers to it.</p><p>Next, in <code class="literal">CombatUIWidget.h</code>, we'll make the class implement the <code class="literal">IDecisionMaker</code> interface <a id="id163" class="indexterm"/>and add <code class="literal">BeginMakeDecision</code> and <code class="literal">MakeDecision</code> as public functions:</p><div class="informalexample"><pre class="programlisting">#pragma once
+#include "GameCharacter.h"
+#include "Blueprint/UserWidget.h"
+#include "CombatUIWidget.generated.h"
+
+UCLASS()
+class RPG_API UCombatUIWidget : public UUserWidget, public IDecisionMaker
+{
+  GENERATED_BODY()
+
+public:
+  UFUNCTION(BlueprintImplementableEvent, Category = "Combat UI")
+    void AddPlayerCharacterPanel(UGameCharacter* target);
+
+  UFUNCTION(BlueprintImplementableEvent, Category = "Combat UI")
+    void AddEnemyCharacterPanel(UGameCharacter* target);
+
+  void BeginMakeDecision(UGameCharacter* target);
+  bool MakeDecision(float DeltaSeconds);
+};</pre></div><p>We're also going to add a couple of helper functions that can be called by our UI Blueprint graph:</p><div class="informalexample"><pre class="programlisting">public:
+  UFUNCTION( BlueprintCallable, Category = "Combat UI" )
+  TArray&lt;UGameCharacter*&gt; GetCharacterTargets();
+
+  UFUNCTION( BlueprintCallable, Category = "Combat UI" )
+  void AttackTarget( UGameCharacter* target );</pre></div><p>The first function retrieves a list of potential targets for the current character. The second function will give the character a new <code class="literal">TestCombatAction</code> with the given target.</p><p>Additionally, we'll add a function to be implemented in the Blueprint that will show a set of actions for the current character:</p><div class="informalexample"><pre class="programlisting">UFUNCTION( BlueprintImplementableEvent, Category = "Combat UI" )
+void ShowActionsPanel( UGameCharacter* target );</pre></div><p>We're also going to add a flag and a definition for <code class="literal">currentTarget</code>, as follows:</p><div class="informalexample"><pre class="programlisting">protected:
+ UGameCharacter* currentTarget;
+  bool finishedDecision;</pre></div><p>This will be <a id="id164" class="indexterm"/>used to signal that a decision has been made (and that <code class="literal">MakeDecision</code> should return <code class="literal">true</code>).</p><p>The implementations of these four functions are fairly straightforward in <code class="literal">CombatUIWidget.cpp</code>:</p><div class="informalexample"><pre class="programlisting">#include "RPG.h"
+#include "CombatUIWidget.h"
+#include "../Combat/CombatEngine.h"
+#include "../Combat/Actions/TestCombatAction.h"
+
+void UCombatUIWidget::BeginMakeDecision( UGameCharacter* target )
+{
+  this-&gt;currentTarget = target;
+  this-&gt;finishedDecision = false;
+
+  ShowActionsPanel( target );
+}
+
+bool UCombatUIWidget::MakeDecision( float DeltaSeconds )
+{
+  return this-&gt;finishedDecision;
+}
+
+void UCombatUIWidget::AttackTarget( UGameCharacter* target )
+{
+  TestCombatAction* action = new TestCombatAction( target );
+  this-&gt;currentTarget-&gt;combatAction = action;
+
+  this-&gt;finishedDecision = true;
+}
+
+TArray&lt;UGameCharacter*&gt; UCombatUIWidget::GetCharacterTargets()
+{
+  if( this-&gt;currentTarget-&gt;isPlayer )
+  {
+    return this-&gt;currentTarget-&gt;combatInstance-&gt;enemyParty;
+  }
+  else
+  {
+    return this-&gt;currentTarget-&gt;combatInstance-&gt;playerParty;
+  }
+}</pre></div><p>
+<code class="literal">BeginMakeDecision</code> sets the current target, sets the <code class="literal">finishedDecision</code> flag to <code class="literal">false</code>, and then calls <code class="literal">ShowActionsPanel</code> (which will be handled in our UI Blueprint graph).</p><p>
+<code class="literal">MakeDecision</code> simply returns the value of the <code class="literal">finishedDecision</code> flag.</p><p>
+<code class="literal">AttackTarget</code> assigns a new <code class="literal">TestCombatAction</code> to the character and then sets <code class="literal">finishedDecision</code> to <code class="literal">true</code> to signal that a decision has been made.</p><p>Finally, <code class="literal">GetCharacterTargets</code> returns an array of this character's possible opponents.</p><p>Since the <a id="id165" class="indexterm"/>UI now implements the <code class="literal">IDecisionMaker</code> interface, we can assign it as the decision maker for the player characters. Firstly, in the <code class="literal">TestCombat</code> function of <code class="literal">RPGGameMode.cpp</code>, we'll change the loop that iterates over the characters so that it assigns the UI as the decision maker:</p><div class="informalexample"><pre class="programlisting">for( int i = 0; i &lt; gameInstance-&gt;PartyMembers.Num(); i++ )
+{
+  this-&gt;CombatUIInstance-&gt;AddPlayerCharacterPanel( gameInstance-&gt;PartyMembers[i] );
+  gameInstance-&gt;PartyMembers[i]-&gt;decisionMaker = this-&gt;CombatUIInstance;
+}</pre></div><p>Then, we'll set the players' decision makers to null when combat is over:</p><div class="informalexample"><pre class="programlisting">for( int i = 0; i &lt; this-&gt;currentCombatInstance-&gt;playerParty.Num(); i++ )
+{
+  this-&gt;currentCombatInstance-&gt;playerParty[i]-&gt;decisionMaker = nullptr;
+}</pre></div><p>Now, player characters will use the UI to make decisions. However, the UI currently does nothing. We'll need to work in Blueprint to add this functionality.</p><p>Firstly, we'll create a widget for the attack target options. Name it <code class="literal">AttackTargetOption</code>, add a button, and put a Text Block in the button. Check <span class="strong"><strong>Size to Content</strong></span> so that the button will dynamically resize to any Text Block that is in the button. Then position it at the top-left corner of the Canvas Panel.</p><p>In the Graph, add two new variables. One is the <code class="literal">targetUI</code> of the Combat UI Reference type. The other is the <code class="literal">target</code> of the Game Character Reference type. From the <span class="strong"><strong>Designer</strong></span> view, click on your button, then scroll down the <span class="strong"><strong>Details</strong></span> panel and click on <span class="strong"><strong>OnClicked</strong></span> to create an event for the button. The button will use the <code class="literal">targetUI</code> reference to call the <span class="strong"><strong>Attack Target</strong></span> function and the <code class="literal">target</code> reference (which is the target this button represents) to pass to the <span class="strong"><strong>Attack Target</strong></span> function.</p><p>The graph for <a id="id166" class="indexterm"/>the button-click event is fairly simple; just route the execution to the <span class="strong"><strong>Attack Target</strong></span> function of the assigned <code class="literal">targetUI</code> and pass the <code class="literal">target</code> reference as a parameter:</p><div class="mediaobject"><img src="graphics/B04548_03_14.jpg" alt="UI-driven decision making"/></div><p>Next, we'll add a panel for character actions to the main combat UI. This is a Canvas Panel with a single button child for <span class="strong"><strong>Attack</strong></span> and a Vertical Box for the target list:</p><div class="mediaobject"><img src="graphics/B04548_03_15.jpg" alt="UI-driven decision making"/></div><p>Name<a id="id167" class="indexterm"/> the <span class="strong"><strong>Attack</strong></span> button <code class="literal">attackButton</code>. Name the Vertical Box <code class="literal">targets</code>. And name the Canvas Panel encapsulating these items as <code class="literal">characterActions</code>. These should have <span class="strong"><strong>Is Variable</strong></span> enabled so that they are visible to Blueprint.</p><p>Then, in the Blueprint graph, we'll implement the <span class="strong"><strong>Show Actions Panel</strong></span> event. This will first route execution to a <span class="strong"><strong>Set Visibility</strong></span> node, which will enable the <span class="strong"><strong>Actions</strong></span> panel and then route execution to another <span class="strong"><strong>Set Visibility</strong></span> node that hides the target list:</p><div class="mediaobject"><img src="graphics/B04548_03_16.jpg" alt="UI-driven decision making"/></div><p>The Blueprint graph for when the <span class="strong"><strong>Attack</strong></span> button is clicked is fairly large, so we'll take a look at it in small chunks.</p><p>Firstly, create an <code class="literal">OnClicked</code> event for your <code class="literal">attackButton</code> by selecting the button in the <span class="strong"><strong>Designer</strong></span> view and clicking on <span class="strong"><strong>OnClicked</strong></span> in the <span class="strong"><strong>Events</strong></span> portion of the <span class="strong"><strong>Details</strong></span> panel. In the graph, we then use a <span class="strong"><strong>Clear Children</strong></span> node when the button is clicked to clear out any target options<a id="id168" class="indexterm"/> that may have been previously added:</p><div class="mediaobject"><img src="graphics/B04548_03_17.jpg" alt="UI-driven decision making"/></div><p>Then, we use a <span class="strong"><strong>ForEachLoop</strong></span> coupled with a <span class="strong"><strong>CompareInt</strong></span> node to iterate over all characters returned by <span class="strong"><strong>Get Character Targets</strong></span> that have HP &gt; 0 (not dead):</p><div class="mediaobject"><img src="graphics/B04548_03_18.jpg" alt="UI-driven decision making"/></div><p>From the <span class="strong"><strong>&gt;</strong></span> (greater than) pin of the <span class="strong"><strong>CompareInt</strong></span> node, we create a new instance of the <span class="strong"><strong>AttackTargetOption</strong></span> widget <a id="id169" class="indexterm"/>and add it to the attack target list Vertical Box:</p><div class="mediaobject"><img src="graphics/B04548_03_19.jpg" alt="UI-driven decision making"/></div><p>Then, for the widget we just added, we connect a <span class="strong"><strong>Self</strong></span> node to set its <code class="literal">targetUI</code> variable and pass the <span class="strong"><strong>Array Element</strong></span> pin of the <span class="strong"><strong>ForEachLoop</strong></span> to set its <code class="literal">target</code> variable:</p><div class="mediaobject"><img src="graphics/B04548_03_20.jpg" alt="UI-driven decision making"/></div><p>Finally, from<a id="id170" class="indexterm"/> the <span class="strong"><strong>Completed</strong></span> pin of the <span class="strong"><strong>ForEachLoop</strong></span>, we set the visibility of the target option list to <span class="strong"><strong>Visible</strong></span>:</p><div class="mediaobject"><img src="graphics/B04548_03_21.jpg" alt="UI-driven decision making"/></div><p>After all this is done, we still need to hide the <span class="strong"><strong>Actions</strong></span> panel when an action is chosen. We'll add a new function to the <code class="literal">CombatUI</code> called <span class="strong"><strong>Hide Action Panel</strong></span>. This function is very simple; it just sets the visibility of the action panel to <span class="strong"><strong>Hidden</strong></span>:</p><div class="mediaobject"><img src="graphics/B04548_03_22.jpg" alt="UI-driven decision making"/></div><p>Also, in<a id="id171" class="indexterm"/> the click handler in the <span class="strong"><strong>AttackTargetOption</strong></span> graph, we connect the execution pin of the <span class="strong"><strong>Attack Target</strong></span> node to this <span class="strong"><strong>Hide Action Panel</strong></span> function:</p><div class="mediaobject"><img src="graphics/B04548_03_23.jpg" alt="UI-driven decision making"/></div><p>Lastly, you will need to bind the Text Block that was in the button located in the <span class="strong"><strong>AttackTargetOption</strong></span> widget. So go into the <span class="strong"><strong>Designer</strong></span> view and create a bind for the text just like you have done with previous Text Blocks in this chapter. Now in the graph, link <span class="strong"><strong>target</strong></span> to the <span class="strong"><strong>Character Name</strong></span>, and adjust the format of the text to show the <code class="literal">CharacterName</code> variable, and link it to the <span class="strong"><strong>return</strong></span> node of your text. This Blueprint should show the current target's character name on the button:</p><div class="mediaobject"><img src="graphics/B04548_03_24.jpg" alt="UI-driven decision making"/></div><p>After all<a id="id172" class="indexterm"/> this, you should be able to run the game and start a test encounter, and on the player's turn, you'll see an <span class="strong"><strong>Attack</strong></span> button that allows you to pick the goblin to attack.</p><p>Our combat engine is now fully functional. The final step of this chapter will be to create a game over screen so that when all party members have died, the player will see a <span class="strong"><strong>Game Over</strong></span> message.</p></div><div class="section" title="Creating the game over screen"><div class="titlepage"><div><div><h2 class="title"><a id="ch03lvl2sec55"/>Creating the game over screen</h2></div></div></div><p>The<a id="id173" class="indexterm"/> first step is to create the screen itself. Create a new Widget Blueprint called <span class="strong"><strong>GameOverScreen</strong></span>. We'll just add an image to which we can do a full-screen anchor, and zero out the offsets in the <span class="strong"><strong>Details</strong></span> panel. You can also set the color to black. Also add a Text Block with the text <span class="strong"><strong>Game Over</strong></span>, and a button with a child Text Block <span class="strong"><strong>Restart</strong></span>:</p><div class="mediaobject"><img src="graphics/B04548_03_25.jpg" alt="Creating the game over screen"/></div><p>Create<a id="id174" class="indexterm"/> an <code class="literal">OnClicked</code> event for the <span class="strong"><strong>Restart</strong></span> button. In the Blueprint graph, link the event for the button to Restart Game whose target is <span class="strong"><strong>Get Game Mode</strong></span> (you may have to uncheck <span class="strong"><strong>Context Sensitive</strong></span> to find this node):</p><div class="mediaobject"><img src="graphics/B04548_03_26.jpg" alt="Creating the game over screen"/></div><p>You will also need to show the mouse cursor here. The best way to do this is from <span class="strong"><strong>Event Construct</strong></span>; link <span class="strong"><strong>Set Show Mouse Cursor</strong></span>, whose target is <span class="strong"><strong>Get Player Controller</strong></span>. Be sure to check the <span class="strong"><strong>Show Mouse Cursor</strong></span> box. Between <span class="strong"><strong>Event Construct</strong></span> and <span class="strong"><strong>Set Show Mouse Cursor</strong></span>, put a 0.2-second delay so that you are assured that the mouse re-appears after you removed it when combat ended:</p><div class="mediaobject"><img src="graphics/B04548_03_27.jpg" alt="Creating the game over screen"/></div><p>Next, in <code class="literal">RPGGameMode.h</code>, we <a id="id175" class="indexterm"/>add a public property for the widget type to be used for game over:</p><div class="informalexample"><pre class="programlisting">UPROPERTY( EditDefaultsOnly, BlueprintReadOnly, Category = "UI" )
+TSubclassOf&lt;class UUserWidget&gt; GameOverUIClass;</pre></div><p>In the case of game over, we create the widget and add it to the viewport, which we can add as a condition nested in the <code class="literal">if( combatOver )</code> condition within <code class="literal">void ARPGGameMode::Tick( float DeltaTime )</code> in <code class="literal">RPGGameMode.cpp</code>:</p><div class="informalexample"><pre class="programlisting">if( this-&gt;currentCombatInstance-&gt;phase == CombatPhase::CPHASE_GameOver )
+{
+  UE_LOG( LogTemp, Log, TEXT( "Player loses combat, game over" ) );
+
+  Cast&lt;URPGGameInstance&gt;( GetGameInstance() )-&gt;PrepareReset();
+
+  UUserWidget* GameOverUIInstance = CreateWidget&lt;UUserWidget&gt;( GetGameInstance(), this-&gt;GameOverUIClass );
+  GameOverUIInstance-&gt;AddToViewport();
+}</pre></div><p>As you can see, we're also calling a <code class="literal">PrepareReset</code> function on the game instance. This function isn't defined yet, so we'll create it now in <code class="literal">RPGGameInstance.h</code> as a public function:</p><div class="informalexample"><pre class="programlisting">public:
+  void PrepareReset();</pre></div><p>Then implement it in <code class="literal">RPGGameInstance.cpp</code>:</p><div class="informalexample"><pre class="programlisting">cpp.void URPGGameInstance::PrepareReset()
+{
+  this-&gt;isInitialized = false;
+  this-&gt;PartyMembers.Empty();
+}</pre></div><p>In this <a id="id176" class="indexterm"/>case, the purpose of <code class="literal">PrepareReset</code> is to set <code class="literal">isInitialized</code> to <code class="literal">false</code> so that the next time <code class="literal">Init</code> is called, the party members are reloaded. We are also emptying the <code class="literal">partyMembers</code> array so that when party members are added back into the array, we don't append them to instances of party members from our last playthrough (we don't want to reset the game with dead party members).</p><p>At this point, you can compile. But before we can test this, we need to set the <span class="strong"><strong>Game Over UIClass</strong></span> that we created and set it to <span class="strong"><strong>GameOverScreen</strong></span> as a class default in <span class="strong"><strong>DefaultRPGGameMode</strong></span>:</p><div class="mediaobject"><img src="graphics/B04548_03_28.jpg" alt="Creating the game over screen"/></div><p>Much like the last time you did this, the editor may crash, but when you come back to <span class="strong"><strong>DefaultRPGGameMode</strong></span>, you should see that <span class="strong"><strong>GameOverScreen</strong></span> is set correctly.</p><p>In order to test this, we'll need to give the goblin more health than the player. Open the enemies table and give the goblin anything over 100 HP (for instance, 200 would do). Then, start an encounter and play until the main party member runs out of health. You should then see a <span class="strong"><strong>Game Over</strong></span> screen pop up, and by clicking on <span class="strong"><strong>Restart</strong></span>, you will restart the level and <a id="id177" class="indexterm"/>the main party member will be back up to 100 HP.</p></div></div>
+<div class="section" title="Summary"><div class="titlepage"><div><div><h1 class="title"><a id="ch03lvl1sec27"/>Summary</h1></div></div></div><p>In this chapter, we created a foundation for the core gameplay of an RPG. We have a character that can explore the overworld, a system for keeping track of party members, a turn-based combat engine, and a game over condition.</p><p>In the next chapters, we'll expand this by adding an inventory system, allowing the player to consume items, and give their party members equipment to boost their stats.</p></div></body></html>
