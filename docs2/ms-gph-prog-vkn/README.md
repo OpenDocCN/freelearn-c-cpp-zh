@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# 精通 Vulkan 图形编程
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/bd99537db5aea50bb67b1f343d4f582e`](https://zh.annas-archive.org/md5/bd99537db5aea50bb67b1f343d4f582e)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

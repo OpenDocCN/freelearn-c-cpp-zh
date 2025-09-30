@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# C++ 测试驱动开发
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/926fd2f5982d529b0df13c71daf02822`](https://zh.annas-archive.org/md5/926fd2f5982d529b0df13c71daf02822)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
