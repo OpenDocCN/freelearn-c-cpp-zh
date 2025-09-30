@@ -1,0 +1,495 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Vocabulary Types</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">It has been increasingly recognized over the past decade that one of the important roles of a standard language or standard library is to provide <em class="calibre22">vocabulary types</em>. A "vocabulary" type is a type that purports to provide a single <em class="calibre22">lingua franca</em>, a common language, for dealing with its domain.</p>
+<p class="calibre2">Notice that even before C++ existed, the C programming language had already made a decent shot at the vocabulary of some areas, providing standard types or type aliases for integer math (<kbd class="calibre12">int</kbd>), floating-point math (<kbd class="calibre12">double</kbd>), timepoints expressed in the Unix epoch (<kbd class="calibre12">time_t</kbd>), and byte counts (<kbd class="calibre12">size_t</kbd>).</p>
+<p class="calibre2">In this chapter we'll learn:</p>
+<ul class="calibre14">
+<li class="calibre15">The history of vocabulary types in C++, from <kbd class="calibre12">std::string</kbd> to <kbd class="calibre12">std::any</kbd></li>
+<li class="calibre15">The definitions of <em class="calibre22">algebraic data type</em>, <em class="calibre22">product type</em>, and <em class="calibre22">sum type</em></li>
+<li class="calibre15">How to manipulate tuples and visit variants</li>
+<li class="calibre15">The role of <kbd class="calibre12">std::optional&lt;T&gt;</kbd> as "maybe a <kbd class="calibre12">T</kbd>" or "not yet a <kbd class="calibre12">T</kbd>"</li>
+<li class="calibre15"><kbd class="calibre12">std::any</kbd> as the algebraic-data-type equivalent of "infinity"</li>
+<li class="calibre15">How to implement type erasure, how it's used in <kbd class="calibre12">std::any</kbd> and <kbd class="calibre12">std::function</kbd>, and its intrinsic limitations</li>
+<li class="calibre15">Some pitfalls with <kbd class="calibre12">std::function</kbd>, and third-party libraries that fix them</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The story of std::string</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Consider the domain of character strings; for example, the phrase <kbd class="calibre12">hello world</kbd>. In C, the <em class="calibre22">lingua franca</em> for dealing with strings was <kbd class="calibre12">char *</kbd>:</p>
+<pre class="calibre23">    char *greet(const char *name) {<br class="title-page-name"/>      char buffer[100];<br class="title-page-name"/>      snprintf(buffer, 100, "hello %s", name);<br class="title-page-name"/>      return strdup(buffer);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test() {<br class="title-page-name"/>      const char *who = "world";<br class="title-page-name"/>      char *hw = greet(who);<br class="title-page-name"/>      assert(strcmp(hw, "hello world") == 0);<br class="title-page-name"/>      free(hw);<br class="title-page-name"/>    }</pre>
+<p class="calibre2">This was all right for a while, but dealing with raw <kbd class="calibre12">char *</kbd>s had some problems for the users of the language and the creators of third-party libraries and routines. For one thing, the C language was so old that <kbd class="calibre12">const</kbd> had not been invented at the outset, which meant that certain old routines would expect their strings as <kbd class="calibre12">char *</kbd> and certain newer ones expect <kbd class="calibre12">const char *</kbd>. For another thing, <kbd class="calibre12">char *</kbd> didn't carry a <em class="calibre22">length</em> with it; so some functions expected both a pointer and a length, and some functions expected only the pointer and simply couldn't deal with embedded bytes of value <kbd class="calibre12">'\0'</kbd>.</p>
+<p class="calibre2">The most vital piece missing from the <kbd class="calibre12">char *</kbd> puzzle was <em class="calibre22">lifetime management</em> and <em class="calibre22">ownership</em> (as discussed at the start of <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>). When a C function wants to receive a string from its caller, it takes <kbd class="calibre12">char *</kbd> and generally leaves it up to the caller to manage the ownership of the characters involved. But what if it wants to <em class="calibre22">return</em> a string? Then it has to return <kbd class="calibre12">char *</kbd> and hope that the caller remembers to free it (<kbd class="calibre12">strdup</kbd>, <kbd class="calibre12">asprintf</kbd>), or take in a buffer from the caller and hope it's big enough for the output (<kbd class="calibre12">sprintf</kbd>, <kbd class="calibre12">snprintf</kbd>, <kbd class="calibre12">strcat</kbd>). The difficulty of managing the ownership of strings in C (and in pre-standard C++) was so great that there was a proliferation of "string libraries" to deal with the problem: Qt's <kbd class="calibre12">QString</kbd>, glib's <kbd class="calibre12">GString</kbd>, and so on.</p>
+<p class="calibre2">Into this chaos stepped C++ in 1998 with a miracle: a <em class="calibre22">standard</em> string class! The new <kbd class="calibre12">std::string</kbd> encapsulated the bytes of a string <em class="calibre22">and</em> its length, in a natural way; it could deal correctly with embedded null bytes; it supported formerly complicated operations such as <kbd class="calibre12">hello + world</kbd> by quietly allocating exactly as much memory as it needed; and because of RAII, it would never leak memory or incite confusion about who owned the underlying bytes. Best of all, it had an implicit conversion from <kbd class="calibre12">char *</kbd>:</p>
+<pre class="calibre23">    std::string greet(const std::string&amp; name) {<br class="title-page-name"/>      return "hello " + name;<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test() {<br class="title-page-name"/>      std::string who = "world";<br class="title-page-name"/>      assert(greet(who) == "hello world");<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Now C++ functions dealing with strings (such as <kbd class="calibre12">greet()</kbd> in the preceding code) could take <kbd class="calibre12">std::string</kbd> parameters and return <kbd class="calibre12">std::string</kbd> results. Even better, because the string type was <em class="calibre22">standardized</em>, within a few years you could be reasonably confident that when you picked up some third-party library to integrate it into your codebase, any of its functions that took strings (filenames, error messages, what-have-you) would be using <kbd class="calibre12">std::string</kbd>. Everybody could communicate more efficiently and effectively by sharing the <em class="calibre22">lingua franca</em> of <kbd class="calibre12">std::string</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Tagging reference types with reference_wrapper</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Another vocabulary type introduced in C++03 was <kbd class="calibre12">std::reference_wrapper&lt;T&gt;</kbd>. It has a simple implementation:</p>
+<pre class="calibre23">    namespace std {<br class="title-page-name"/>      template&lt;typename T&gt;<br class="title-page-name"/>      class reference_wrapper {<br class="title-page-name"/>        T *m_ptr;<br class="title-page-name"/>        public:<br class="title-page-name"/>        reference_wrapper(T&amp; t) noexcept : m_ptr(&amp;t) {}<br class="title-page-name"/><br class="title-page-name"/>        operator T&amp; () const noexcept { return *m_ptr; }<br class="title-page-name"/>        T&amp; get() const noexcept { return *m_ptr; }<br class="title-page-name"/>      };<br class="title-page-name"/><br class="title-page-name"/>      template&lt;typename T&gt;<br class="title-page-name"/>      reference_wrapper&lt;T&gt; ref(T&amp; t);<br class="title-page-name"/>    } // namespace std</pre>
+<p class="calibre2"><kbd class="calibre12">std::reference_wrapper</kbd> has a slightly different purpose from vocabulary types such as <kbd class="calibre12">std::string</kbd> and <kbd class="calibre12">int</kbd>; it's meant specifically as a way to the "tag" values that we'd like to behave as references in contexts where passing native C++ references doesn't work the way we'd like:</p>
+<pre class="calibre23">     int result = 0;<br class="title-page-name"/>     auto task = [](int&amp; r) {<br class="title-page-name"/>       r = 42;<br class="title-page-name"/>     };<br class="title-page-name"/><br class="title-page-name"/>     // Trying to use a native reference wouldn't compile.<br class="title-page-name"/>     //std::thread t(task, result);<br class="title-page-name"/><br class="title-page-name"/>     // Correctly pass result "by reference" to the new thread.<br class="title-page-name"/>     std::thread t(task, std::ref(result));</pre>
+<p class="calibre2">The constructor of <kbd class="calibre12">std::thread</kbd> is written with specific special cases to handle <kbd class="calibre12">reference_wrapper</kbd> parameters by "decaying" them into native references. The same special cases apply to the standard library functions <kbd class="calibre12">make_pair</kbd>, <kbd class="calibre12">make_tuple</kbd>, <kbd class="calibre12">bind</kbd>, <kbd class="calibre12">invoke</kbd>, and everything based on <kbd class="calibre12">invoke</kbd> (such as <kbd class="calibre12">std::apply</kbd>, <kbd class="calibre12">std::function::operator()</kbd>, and <kbd class="calibre12">std::async</kbd>).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">C++11 and algebraic types</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">As C++11 took shape, there was growing recognition that another area ripe for vocabularization was that of the so-called <em class="calibre22">algebraic data types</em>. Algebraic types arise naturally in the functional-programming paradigm. The essential idea is to think about the domain of a type--that is, the set of all possible values of that type. To keep things simple, you might want to think about C++ <kbd class="calibre12">enum</kbd> types, because it's easy to talk about the number of different values that an object of <kbd class="calibre12">enum</kbd> type might assume at one time or another:</p>
+<pre class="calibre23">    enum class Color {<br class="title-page-name"/>      RED = 1,<br class="title-page-name"/>      BLACK = 2,<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    enum class Size {<br class="title-page-name"/>      SMALL = 1,<br class="title-page-name"/>      MEDIUM = 2,<br class="title-page-name"/>      LARGE = 3,<br class="title-page-name"/>    };</pre>
+<p class="calibre2">Given the types <kbd class="calibre12">Color</kbd> and <kbd class="calibre12">Size</kbd>, can you create a data type whose instances might assume any of 2 <span>×</span> 3 = 6 values? Yes; this type represents "one of each" of <kbd class="calibre12">Color</kbd> and <kbd class="calibre12">Size</kbd>, and is called a <em class="calibre22">product type</em>, because its set of possible values is the <em class="calibre22">Cartesian product</em> of its elements' sets of possible values.</p>
+<p class="calibre2">How about a data type whose instances might assume any of 2 + 3 = 5 different values? Also yes; this type represents "either a <kbd class="calibre12">Color</kbd> or a <kbd class="calibre12">Size</kbd> but never both at once," and is called a <em class="calibre22">sum type</em>. (Confusingly, mathematicians do not use the term <em class="calibre22">Cartesian sum</em> for this concept.)</p>
+<p class="calibre2">In a functional-programming language such as Haskell, these two exercises would be spelled like this:</p>
+<pre class="calibre23">    data SixType = ColorandSizeOf Color Size;<br class="title-page-name"/>    data FiveType = ColorOf Color | SizeOf Size;</pre>
+<p class="calibre2">In C++, they're spelled like this:</p>
+<pre class="calibre23">    using sixtype = std::pair&lt;Color, Size&gt;;<br class="title-page-name"/>    using fivetype = std::variant&lt;Color, Size&gt;;</pre>
+<p class="calibre2">The class template <kbd class="calibre12">std::pair&lt;A, B&gt;</kbd> represents an ordered pair of elements: one of type <kbd class="calibre12">A</kbd>, followed by one of type <kbd class="calibre12">B</kbd>. It's very similar to a plain old <kbd class="calibre12">struct</kbd> with two elements, except that you don't have to write the struct definition yourself:</p>
+<pre class="calibre23">    template&lt;class A, class B&gt;<br class="title-page-name"/>    struct pair {<br class="title-page-name"/>      A first;<br class="title-page-name"/>      B second;<br class="title-page-name"/>    };</pre>
+<p class="calibre2">Notice that there are only cosmetic differences between <kbd class="calibre12">std::pair&lt;A, A&gt;</kbd> and <kbd class="calibre12">std::array&lt;A, 2&gt;</kbd>. We might say that <kbd class="calibre12">pair</kbd> is a <em class="calibre22">heterogeneous</em> version of <kbd class="calibre12">array</kbd> (except that <kbd class="calibre12">pair</kbd> is restricted to holding only two elements).</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Working with std::tuple</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">C++11 introduced a full-fledged heterogeneous array; it's called <kbd class="calibre12">std::tuple&lt;Ts...&gt;</kbd>. A tuple of only two element types--for example, <kbd class="calibre12">tuple&lt;int, double&gt;</kbd>--is no different from <kbd class="calibre12">pair&lt;int, double&gt;</kbd>. But tuples can hold more than just a pair of elements; though the magic of C++11 variadic templates they can hold triples, quadruples, quintuples,... hence the generic name <kbd class="calibre12">tuple</kbd>. For example, <kbd class="calibre12">tuple&lt;int, int, char, std::string&gt;</kbd> is analogous to a <kbd class="calibre12">struct</kbd> whose members are an <kbd class="calibre12">int</kbd>, another <kbd class="calibre12">int</kbd>, a <kbd class="calibre12">char</kbd>, and finally a <kbd class="calibre12">std::string</kbd>.</p>
+<p class="calibre2">Because the first element of a tuple has a different type from the second element, we can't use the "normal" <kbd class="calibre12">operator[](size_t)</kbd> to access the elements by indices that might vary at runtime. Instead, we must tell the compiler <em class="calibre22">at compile time</em> which element of the tuple we're planning to access, so that the compiler can figure out what type to give the expression. The C++ way to provide information at compile time is to force it into the type system via template parameters, and so that's what we do. When we want to access the first element of a tuple <kbd class="calibre12">t</kbd>, we call <kbd class="calibre12">std::get&lt;0&gt;(t)</kbd>. To access the second element, we call <kbd class="calibre12">std::get&lt;1&gt;(t)</kbd>, and so on.</p>
+<p class="calibre2">This becomes the pattern for dealing with <kbd class="calibre12">std::tuple</kbd>--where the homogeneous container types tend to have <em class="calibre22">member functions</em> for accessing and manipulating them, the heterogeneous algebraic types tend to have <em class="calibre22">free function templates</em> for accessing and manipulating them.</p>
+<p class="calibre2">However, generally speaking, you won't do a lot of <em class="calibre22">manipulating</em> of tuples. Their primary use-case, outside of template metaprogramming, is as an economical way to temporarily bind a number of values together in a context that requires a single value. For example, you might remember <kbd class="calibre12">std::tie</kbd> from the example in section "The simplest container" in <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>. It's a cheap way of binding together an arbitrary number of values into a single unit that can be compared lexicographically with <kbd class="calibre12">operator&lt;</kbd>. The "sense" of the lexicographical comparison depends on the order in which you bind the values together:</p>
+<pre class="calibre23">    using Author = std::pair&lt;std::string, std::string&gt;;<br class="title-page-name"/>    std::vector&lt;Author&gt; authors = {<br class="title-page-name"/>      {"Fyodor", "Dostoevsky"},<br class="title-page-name"/>      {"Sylvia", "Plath"},<br class="title-page-name"/>      {"Vladimir", "Nabokov"},<br class="title-page-name"/>      {"Douglas", "Hofstadter"},<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    // Sort by first name then last name.<br class="title-page-name"/>    std::sort(<br class="title-page-name"/>      authors.begin(), authors.end(),<br class="title-page-name"/>      [](auto&amp;&amp; a, auto&amp;&amp; b) {<br class="title-page-name"/>        return std::tie(a.first, a.second) &lt; std::tie(b.first, b.second);<br class="title-page-name"/>      }<br class="title-page-name"/>    );<br class="title-page-name"/>    assert(authors[0] == Author("Douglas", "Hofstadter"));<br class="title-page-name"/><br class="title-page-name"/>    // Sort by last name then first name.<br class="title-page-name"/>    std::sort(<br class="title-page-name"/>      authors.begin(), authors.end(),<br class="title-page-name"/>      [](auto&amp;&amp; a, auto&amp;&amp; b) {<br class="title-page-name"/>        return std::tie(a.second, a.first) &lt; std::tie(b.second, b.first);<br class="title-page-name"/>      }<br class="title-page-name"/>    );<br class="title-page-name"/>    assert(authors[0] == Author("Fyodor", "Dostoevsky"));</pre>
+<p class="calibre2">The reason that <kbd class="calibre12">std::tie</kbd> is so cheap is that it actually creates a tuple of <em class="calibre22">references</em> to its arguments' memory locations, rather than copying its arguments' values. This leads to a second common use for <kbd class="calibre12">std::tie</kbd>: simulating the "multiple assignment" found in languages such as Python:</p>
+<pre class="calibre23">    std::string s;<br class="title-page-name"/>    int i;<br class="title-page-name"/><br class="title-page-name"/>    // Assign both s and i at once.<br class="title-page-name"/>    std::tie(s, i) = std::make_tuple("hello", 42);</pre>
+<div class="packt_tip">Notice that the phrase "at once" in the preceding comment doesn't have any bearing on concurrency (see <a href="part0108.html#36VSO0-2fdac365b8984feebddfbb9250eaf20d" class="calibre28">Chapter 7</a>, <em class="calibre29">Concurrency</em>) or the order in which the side effects are performed; I just mean that both values can be assigned in a single assignment statement, instead of taking two or more lines.</div>
+<p class="calibre2">As the preceding example illustrates, <kbd class="calibre12">std::make_tuple(a, b, c...)</kbd> can be used to create a tuple of <em class="calibre22">values</em>; that is, <kbd class="calibre12">make_tuple</kbd> does construct copies of its arguments' values, rather than merely taking their addresses.</p>
+<p class="calibre2">Lastly, in C++17 we are allowed to use constructor template parameter deduction to write simply <kbd class="calibre12">std::tuple(a, b, c...)</kbd>; but it's probably best to avoid this feature unless you know specifically that you want its behaviour. The only thing that template parameter deduction will do differently from <kbd class="calibre12">std::make_tuple</kbd> is that it will preserve <kbd class="calibre12">std::reference_wrapper</kbd> arguments rather than decaying them to native C++ references:</p>
+<pre class="calibre23">    auto [i, j, k] = std::tuple{1, 2, 3};<br class="title-page-name"/><br class="title-page-name"/>    // make_tuple decays reference_wrapper...<br class="title-page-name"/>    auto t1 = std::make_tuple(i, std::ref(j), k);<br class="title-page-name"/>    static_assert(std::is_same_v&lt; decltype(t1),<br class="title-page-name"/>      std::tuple&lt;int, int&amp;, int&gt;<br class="title-page-name"/>    &gt;);<br class="title-page-name"/><br class="title-page-name"/>    // ...whereas the deduced constructor does not.<br class="title-page-name"/>    auto t2 = std::tuple(i, std::ref(j), k);<br class="title-page-name"/>    static_assert(std::is_same_v&lt; decltype(t2),<br class="title-page-name"/>      std::tuple&lt;int, std::reference_wrapper&lt;int&gt;, int&gt;<br class="title-page-name"/>    &gt;);</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Manipulating tuple values</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Most of these functions and templates are useful only in the context of template metaprogramming; you're unlikely to use them on a daily basis:</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">std::get&lt;I&gt;(t)</kbd>: Retrieves a reference to the <kbd class="calibre12">I</kbd>th element of <kbd class="calibre12">t</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">std::tuple_size_v&lt;decltype(t)&gt;</kbd>: Tells the <em class="calibre22">size</em> of the given tuple. Because this is a compile-time constant property of the tuple's type, this is expressed as a variable template parameterized on that type. If you'd rather use more natural-looking syntax, you can write a helper function in either of the following ways:</li>
+</ul>
+<pre class="calibre23">        template&lt;class T&gt;<br class="title-page-name"/>        constexpr size_t tuple_size(T&amp;&amp;)<br class="title-page-name"/>        {<br class="title-page-name"/>          return std::tuple_size_v&lt;std::remove_reference_t&lt;T&gt;&gt;;<br class="title-page-name"/>        }<br class="title-page-name"/><br class="title-page-name"/>        template&lt;class... Ts&gt;<br class="title-page-name"/>        constexpr size_t simpler_tuple_size(const std::tuple&lt;Ts...&gt;&amp;)<br class="title-page-name"/>        {<br class="title-page-name"/>          return sizeof...(Ts);<br class="title-page-name"/>        }</pre>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">std::tuple_element_t&lt;I, decltype(t)&gt;</kbd>: Tells the <em class="calibre22">type</em> of the <kbd class="calibre12">I</kbd>th element of the given tuple type. Again, the standard library exposes this information in a more awkward way than the core language does. Generally, to find the type of the <kbd class="calibre12">I</kbd>th element of a tuple, you'd just write <kbd class="calibre12">decltype(std::get&lt;I&gt;(t))</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">std::tuple_cat(t1, t2, t3...)</kbd>: Concatenates all the given tuples together, end to end.</li>
+<li class="calibre15"><kbd class="calibre12">std::forward_as_tuple(a, b, c...)</kbd>: Creates a tuple of references, just like <kbd class="calibre12">std::tie</kbd>; but whereas <kbd class="calibre12">std::tie</kbd> demands lvalue references, <kbd class="calibre12">std::forward_as_tuple</kbd> will accept any kind of references as input, and perfectly forward them into the tuple so that they can later be extracted by <kbd class="calibre12">std::get&lt;I&gt;(t)...</kbd>:</li>
+</ul>
+<pre class="calibre23">        template&lt;typename F&gt;<br class="title-page-name"/>        void run_zeroarg(const F&amp; f);<br class="title-page-name"/><br class="title-page-name"/>        template&lt;typename F, typename... Args&gt;<br class="title-page-name"/>        void run_multiarg(const F&amp; f, Args&amp;&amp;... args)<br class="title-page-name"/>        {<br class="title-page-name"/>          auto fwd_args =<br class="title-page-name"/>            std::forward_as_tuple(std::forward&lt;Args&gt;(args)...);<br class="title-page-name"/>          auto lambda = [&amp;f, fwd_args]() {<br class="title-page-name"/>            std::apply(f, fwd_args);<br class="title-page-name"/>          };<br class="title-page-name"/>          run_zeroarg(f);<br class="title-page-name"/>        }</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">A note about named classes</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">As we saw in <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>, when we compared <kbd class="calibre12">std::array&lt;double, 3&gt;</kbd> to <kbd class="calibre12">struct Vec3</kbd>, using an STL class template can shorten your development time and eliminate sources of error by reusing well-tested STL components; but it can also make your code less readable or give your types <em class="calibre22">too much</em> functionality. In our example from <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo,</em> <kbd class="calibre12">std::array&lt;double, 3&gt;</kbd> turned out to be a poor choice for <kbd class="calibre12">Vec3</kbd> because it exposed an unwanted <kbd class="calibre12">operator&lt;</kbd>.</p>
+<p class="calibre2">Using any of the algebraic types (<kbd class="calibre12">tuple</kbd>, <kbd class="calibre12">pair</kbd>, <kbd class="calibre12">optional</kbd>, or <kbd class="calibre12">variant</kbd>) directly in your interfaces and APIs is probably a mistake. You'll find that your code is easier to read, understand, and maintain if you write named classes for your own "domain-specific vocabulary" types, even if--<em class="calibre22">especially</em> if--they end up being thin wrappers around the algebraic types.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Expressing alternatives with std::variant</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Whereas <kbd class="calibre12">std::tuple&lt;A,B,C&gt;</kbd> is a <em class="calibre22">product type</em>, <kbd class="calibre12">std::variant&lt;A,B,C&gt;</kbd> is a <em class="calibre22">sum type</em>. A variant is allowed to hold either an <kbd class="calibre12">A</kbd>, a <kbd class="calibre12">B</kbd>, or a <kbd class="calibre12">C</kbd>--but never more (or less) than one of those at a time. Another name for this concept is <em class="calibre22">discriminated union</em>, because a variant behaves a lot like a native C++ <kbd class="calibre12">union</kbd>; but unlike a native <kbd class="calibre12">union</kbd>, a variant is always able to tell you which of its elements, <kbd class="calibre12">A</kbd>, <kbd class="calibre12">B</kbd>, or <kbd class="calibre12">C</kbd>, is "active" at any given time. The official name for these elements is "alternatives," since only one can be active at once:</p>
+<pre class="calibre23">    std::variant&lt;int, double&gt; v1;<br class="title-page-name"/><br class="title-page-name"/>    v1 = 1; // activate the "int" member<br class="title-page-name"/>    assert(v1.index() == 0);<br class="title-page-name"/>    assert(std::get&lt;0&gt;(v1) == 1);<br class="title-page-name"/><br class="title-page-name"/>    v1 = 3.14; // activate the "double" member<br class="title-page-name"/>    assert(v1.index() == 1);<br class="title-page-name"/>    assert(std::get&lt;1&gt;(v1) == 3.14);<br class="title-page-name"/>    assert(std::get&lt;double&gt;(v1) == 3.14);<br class="title-page-name"/><br class="title-page-name"/>    assert(std::holds_alternative&lt;int&gt;(v1) == false);<br class="title-page-name"/>    assert(std::holds_alternative&lt;double&gt;(v1) == true);<br class="title-page-name"/><br class="title-page-name"/>    assert(std::get_if&lt;int&gt;(&amp;v1) == nullptr);<br class="title-page-name"/>    assert(*std::get_if&lt;double&gt;(&amp;v1) == 3.14);</pre>
+<p class="calibre2">As with <kbd class="calibre12">tuple</kbd>, you can get a specific element of the <kbd class="calibre12">variant</kbd> using <kbd class="calibre12">std::get&lt;I&gt;(v)</kbd>. If your variant object's alternatives are all distinct (which should be the most common case, unless you're doing deep metaprogramming), you can use <kbd class="calibre12">std::get&lt;T&gt;(v)</kbd> with types as well as with indices--for an example, look at the preceding code sample, where <kbd class="calibre12">std::get&lt;0&gt;(v1)</kbd> and <kbd class="calibre12">std::get&lt;int&gt;(v1)</kbd> work interchangeably because the zeroth alternative in the variant <kbd class="calibre12">v1</kbd> is of type <kbd class="calibre12">int</kbd>. Unlike <kbd class="calibre12">tuple</kbd>, however, <kbd class="calibre12">std::get</kbd> on a variant is allowed to fail! If you call <kbd class="calibre12">std::get&lt;double&gt;(v1)</kbd> while <kbd class="calibre12">v1</kbd> currently holds a value of type <kbd class="calibre12">int</kbd>, then you'll get an exception of type <kbd class="calibre12"><span>std::bad_variant_access</span></kbd>. <kbd class="calibre12">std::get_if</kbd> is the "non-throwing" version of <kbd class="calibre12">std::get</kbd>. As shown in the preceding example, <kbd class="calibre12">get_if</kbd> returns a <em class="calibre22">pointer</em> to the specified alternative if it's the active one, and otherwise returns a null pointer. Therefore the following code snippets are all equivalent:</p>
+<pre class="calibre23">    // Worst...<br class="title-page-name"/>    try {<br class="title-page-name"/>      std::cout &lt;&lt; std::get&lt;int&gt;(v1) &lt;&lt; std::endl;<br class="title-page-name"/>    } catch (const std::bad_variant_access&amp;) {}<br class="title-page-name"/><br class="title-page-name"/>    // Still bad...<br class="title-page-name"/>    if (v1.index() == 0) {<br class="title-page-name"/>      std::cout &lt;&lt; std::get&lt;int&gt;(v1) &lt;&lt; std::endl; <br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // Slightly better... <br class="title-page-name"/>    if (std::holds_alternative&lt;int&gt;(v1)) {<br class="title-page-name"/>      std::cout &lt;&lt; std::get&lt;int&gt;(v1) &lt;&lt; std::endl;<br class="title-page-name"/>    } <br class="title-page-name"/><br class="title-page-name"/>    // ...Best.<br class="title-page-name"/>    if (int *p = std::get_if&lt;int&gt;(&amp;v1)) {<br class="title-page-name"/>      std::cout &lt;&lt; *p &lt;&lt; std::endl; <br class="title-page-name"/>    }</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Visiting variants</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">In the preceding example, we showed how when we had a variable <kbd class="calibre12">std::variant&lt;int, double&gt; v</kbd>, calling <kbd class="calibre12">std::get&lt;double&gt;(v)</kbd> would give us the current value <em class="calibre22">if</em> the variant currently held a <kbd class="calibre12">double</kbd>, but would throw an exception if the variant held an <kbd class="calibre12">int</kbd>. This might have struck you as odd--since <kbd class="calibre12">int</kbd> is convertible to <kbd class="calibre12">double</kbd>, why couldn't it just have given us the converted value?</p>
+<p class="calibre2">We can get that behaviour if we want it, but not from <kbd class="calibre12">std::get</kbd>. We have to re-express our desire this way: "I have a variant. If it currently holds a <kbd class="calibre12">double</kbd>, call it <kbd class="calibre12">d</kbd>, then I want to get <kbd class="calibre12">double(d)</kbd>. If it holds an <kbd class="calibre12">int i</kbd>, then I want to get <kbd class="calibre12">double(i)</kbd>." That is, we have a list of behaviors in mind, and we want to invoke exactly one of those behaviors on whichever alternative is currently held by our variant <kbd class="calibre12">v</kbd>. The standard library expresses this algorithm by the perhaps obscure name <kbd class="calibre12">std::visit</kbd>:</p>
+<pre class="calibre23">    struct Visitor {<br class="title-page-name"/>      double operator()(double d) { return d; }<br class="title-page-name"/>      double operator()(int i) { return double(i); }<br class="title-page-name"/>      double operator()(const std::string&amp;) { return -1; }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    using Var = std::variant&lt;int, double, std::string&gt;;<br class="title-page-name"/><br class="title-page-name"/>    void show(Var v)<br class="title-page-name"/>    {<br class="title-page-name"/>      std::cout &lt;&lt; std::visit(Visitor{}, v) &lt;&lt; std::endl;<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test() <br class="title-page-name"/>    {<br class="title-page-name"/>      show(3.14);<br class="title-page-name"/>      show(1);<br class="title-page-name"/>      show("hello world");<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Generally speaking, when we <kbd class="calibre12">visit</kbd> a variant, all of the behaviors that we have in mind are fundamentally similar. Because we're writing in C++, with its overloading of functions and operators, we can generally express our similar behaviors using exactly identical syntax. If we can express them with identical syntax, we can wrap them up into a template function or--the most common case--a C++14 generic lambda, like this:</p>
+<pre class="calibre23">    std::visit([](const auto&amp; alt) {<br class="title-page-name"/>      if constexpr (std::is_same_v&lt;decltype(alt), const std::string&amp;&gt;) {<br class="title-page-name"/>        std::cout &lt;&lt; double(-1) &lt;&lt; std::endl;<br class="title-page-name"/>      } else {<br class="title-page-name"/>        std::cout &lt;&lt; double(alt) &lt;&lt; std::endl;<br class="title-page-name"/>      }<br class="title-page-name"/>    }, v);</pre>
+<div class="packt_tip">Notice the use of C++17 <kbd class="calibre25">if constexpr</kbd> to take care of the one case that's fundamentally unlike the others. It's somewhat a matter of taste whether you prefer to use explicit switching on <kbd class="calibre25">decltype</kbd> like this, or to make a helper class such as the previous code sample's <kbd class="calibre25">Visitor</kbd> and rely on overload resolution to pick out the correct overload of <kbd class="calibre25">operator()</kbd> for each possible alternative.</div>
+<p class="calibre2">There is also a variadic version of <kbd class="calibre12">std::visit</kbd> taking two, three, or even more <kbd class="calibre12">variant</kbd> objects, of the same or different types. This version of <kbd class="calibre12">std::visit</kbd> can be used to implement a kind of "multiple dispatch," as shown in the following code. However, you almost certainly will never need this version of <kbd class="calibre12">std::visit</kbd> unless you're doing really intense metaprogramming:</p>
+<pre class="calibre23">    struct MultiVisitor {<br class="title-page-name"/>      template&lt;class T, class U, class V&gt;<br class="title-page-name"/>      void operator()(T, U, V) const { puts("wrong"); }<br class="title-page-name"/><br class="title-page-name"/>      void operator()(char, int, double) const { puts("right!"); }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::variant&lt;int, double, char&gt; v1 = 'x';<br class="title-page-name"/>      std::variant&lt;char, int, double&gt; v2 = 1;<br class="title-page-name"/>      std::variant&lt;double, char, int&gt; v3 = 3.14;<br class="title-page-name"/>      std::visit(MultiVisitor{}, v1, v2, v3); // prints "right!"<br class="title-page-name"/>    }</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">What about make_variant? and a note on value semantics</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Since you can create a tuple object with <kbd class="calibre12">std::make_tuple</kbd>, or a pair with <kbd class="calibre12">make_pair</kbd>, you might reasonably ask, "Where is <kbd class="calibre12">make_variant</kbd>?" It turns out that there is none. The primary reason for its absence is that whereas <kbd class="calibre12">tuple</kbd> and <kbd class="calibre12">pair</kbd> are product types, <kbd class="calibre12">variant</kbd> is a sum type. To create a tuple, you always have to provide all <em class="calibre22">n</em> of its elements' values, and so the element types can always be inferred. With <kbd class="calibre12">variant</kbd>, you only have to provide one of its values--of type let's say <kbd class="calibre12">A</kbd>--but the compiler can't create a <kbd class="calibre12">variant&lt;A,B,C&gt;</kbd> object without knowing the identities of types <kbd class="calibre12">B</kbd> and <kbd class="calibre12">C</kbd> as well. So there'd be no point in providing a function <kbd class="calibre12">my::make_variant&lt;A,B,C&gt;(a)</kbd>, given that the actual class constructor can be spelled more concisely than that: <kbd class="calibre12">std::variant&lt;A,B,C&gt;(a)</kbd>.</p>
+<p class="calibre2">We have already alluded to the secondary reason for the existence of <kbd class="calibre12">make_pair</kbd> and <kbd class="calibre12">make_tuple</kbd>: They automatically decay the special vocabulary type <kbd class="calibre12">std::reference_wrapper&lt;T&gt;</kbd> into <kbd class="calibre12">T&amp;</kbd>, so that <kbd class="calibre12">std::make_pair(std::ref(a), std::cref(b))</kbd> creates an object of type <kbd class="calibre12">std::pair&lt;A&amp;, const B&amp;&gt;</kbd>. Objects of "pair-of-reference" or "tuple-of-reference" type behave very strangely: you can compare and copy them with the usual semantics, but when you assign to an object of this type, rather than "rebinding" the reference elements (so that they refer to the objects on the right-hand side), the assignment operator actually "assigns through," changing the values of the referred-to objects. As we saw in the code sample in section "Working with <kbd class="calibre12">std::tuple</kbd>", this deliberate oddity allows us to use <kbd class="calibre12">std::tie</kbd> as a sort of "multiple assignment" statement.</p>
+<p class="calibre2">So another reason that we might expect or desire to see a <kbd class="calibre12">make_variant</kbd> function in the standard library would be for its reference-decaying ability. However, this is a moot point for one simple reason--the standard forbids making variants whose elements are reference types! We will see later in this chapter that <kbd class="calibre12">std::optional</kbd> and <kbd class="calibre12">std::any</kbd> are likewise forbidden from holding reference types. (However, <kbd class="calibre12">std::variant&lt;std::reference_wrapper&lt;T&gt;, ...&gt;</kbd> is perfectly legitimate.) This prohibition comes because the designers of the library have not come to a consensus as to what a variant of references should mean. Or, for that matter, what a <em class="calibre22">tuple</em> of references should mean! only reason we have tuples of references in the language today is because <kbd class="calibre12">std::tie</kbd> seemed like such a good idea in 2011. In 2017, nobody is particularly eager to compound the confusion by introducing variants, optionals, or "anys" of references.</p>
+<p class="calibre2">We have established that a <kbd class="calibre12">std::variant&lt;A,B,C&gt;</kbd> always holds exactly one value of type <kbd class="calibre12">A</kbd>, <kbd class="calibre12">B</kbd>, or <kbd class="calibre12">C</kbd>--no more and no less. Well, that's not technically correct. <em class="calibre22">Under very unusual circumstances,</em> it is possible to construct a variant with no value whatsoever. The only way to make this happen is to construct the variant with a value of type <kbd class="calibre12">A</kbd>, and then assign it a value of type <kbd class="calibre12">B</kbd> in such a way that the <kbd class="calibre12">A</kbd> is successfully destroyed but the <span>constructor</span> <kbd class="calibre12">B</kbd> throws an exception and the <kbd class="calibre12">B</kbd> is never actually emplaced. When this happens, the variant object enters a state known as "valueless by exception":</p>
+<pre class="calibre23">    struct A {<br class="title-page-name"/>      A() { throw "ha ha!"; }<br class="title-page-name"/>    };<br class="title-page-name"/>    struct B {<br class="title-page-name"/>      operator int () { throw "ha ha!"; }<br class="title-page-name"/>    };<br class="title-page-name"/>    struct C {<br class="title-page-name"/>      C() = default;<br class="title-page-name"/>      C&amp; operator=(C&amp;&amp;) = default;<br class="title-page-name"/>      C(C&amp;&amp;) { throw "ha ha!"; }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::variant&lt;int, A, C&gt; v1 = 42;<br class="title-page-name"/><br class="title-page-name"/>      try {<br class="title-page-name"/>        v1.emplace&lt;A&gt;();<br class="title-page-name"/>      } catch (const char *haha) {}<br class="title-page-name"/>      assert(v1.valueless_by_exception());<br class="title-page-name"/><br class="title-page-name"/>      try {<br class="title-page-name"/>        v1.emplace&lt;int&gt;(B());<br class="title-page-name"/>      } catch (const char *haha) {}<br class="title-page-name"/>      assert(v1.valueless_by_exception());<br class="title-page-name"/>    }</pre>
+<p class="calibre2">This will never happen to you, unless you are writing code where your constructors or conversion operators throw exceptions. Furthermore, by using <kbd class="calibre12">operator=</kbd> instead of <kbd class="calibre12">emplace</kbd>, you can avoid valueless variants in every case except when you have a move constructor that throws:</p>
+<pre class="calibre23">    v1 = 42;<br class="title-page-name"/><br class="title-page-name"/>    // Constructing the right-hand side of this assignment<br class="title-page-name"/>    // will throw; yet the variant is unaffected.<br class="title-page-name"/>    try { v1 = A(); } catch (...) {}<br class="title-page-name"/>    assert(std::get&lt;int&gt;(v1) == 42);<br class="title-page-name"/><br class="title-page-name"/>    // In this case as well.<br class="title-page-name"/>    try { v1 = B(); } catch (...) {}<br class="title-page-name"/>    assert(std::get&lt;int&gt;(v1) == 42);<br class="title-page-name"/><br class="title-page-name"/>    // But a throwing move-constructor can still foul it up.<br class="title-page-name"/>    try { v1 = C(); } catch (...) {}<br class="title-page-name"/>    assert(v1.valueless_by_exception());</pre>
+<p class="calibre2">Recall from the discussion of <kbd class="calibre12">std::vector</kbd> in <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>, that your types' move constructors should always be marked <kbd class="calibre12">noexcept</kbd>; so, if you follow that advice religiously, you'll be able to avoid dealing with <kbd class="calibre12">valueless_by_exception</kbd> at all.</p>
+<p class="calibre2">Anyway, when a variant <em class="calibre22">is</em> in this state, its <kbd class="calibre12">index()</kbd> method returns <kbd class="calibre12">size_t(-1)</kbd> (a constant also known as <kbd class="calibre12">std::variant_npos</kbd>) and any attempt to <kbd class="calibre12">std::visit</kbd> it will throw an exception of type <kbd class="calibre12">std::bad_variant_access</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Delaying initialization with std::optional</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">You might already be thinking that one potential use for <kbd class="calibre12">std::variant</kbd> would be to represent the notion of "Maybe I have an object, and maybe I don't." For example, we could represent the "maybe I don't" state using the standard tag type <kbd class="calibre12">std::monostate</kbd>:</p>
+<pre class="calibre23">    std::map&lt;std::string, int&gt; g_limits = {<br class="title-page-name"/>      { "memory", 655360 }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    std::variant&lt;std::monostate, int&gt;<br class="title-page-name"/>    get_resource_limit(const std::string&amp; key)<br class="title-page-name"/>    {<br class="title-page-name"/>      if (auto it = g_limits.find(key); it != g_limits.end()) {<br class="title-page-name"/>        return it-&gt;second;<br class="title-page-name"/>      }<br class="title-page-name"/>      return std::monostate{};<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      auto limit = get_resource_limit("memory");<br class="title-page-name"/>      if (std::holds_alternative&lt;int&gt;(limit)) {<br class="title-page-name"/>        use( std::get&lt;int&gt;(limit) );<br class="title-page-name"/>      } else {<br class="title-page-name"/>        use( some_default );<br class="title-page-name"/>      }<br class="title-page-name"/>    }</pre>
+<p class="calibre2">You'll be pleased to know that this is <em class="calibre22">not</em> the best way to accomplish that goal! The standard library provides the <em class="calibre22">vocabulary type</em> <kbd class="calibre12">std::optional&lt;T&gt;</kbd> specifically to deal with the notion of "maybe I have an object, maybe I don't."</p>
+<pre class="calibre23">    std::optional&lt;int&gt;<br class="title-page-name"/>    get_resource_limit(const std::string&amp; key)<br class="title-page-name"/>    {<br class="title-page-name"/>      if (auto it = g_limits.find(key); it != g_limits.end()) {<br class="title-page-name"/>        return it-&gt;second;<br class="title-page-name"/>      }<br class="title-page-name"/>      return std::nullopt;<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      auto limit = get_resource_limit("memory");<br class="title-page-name"/>      if (limit.has_value()) {<br class="title-page-name"/>        use( *limit );<br class="title-page-name"/>      } else {<br class="title-page-name"/>        use( some_default );<br class="title-page-name"/>      }<br class="title-page-name"/>    }</pre>
+<p class="calibre2">In the logic of algebraic data types, <kbd class="calibre12">std::optional&lt;T&gt;</kbd> is a sum type: it has exactly as many possible values as <kbd class="calibre12">T</kbd> does, plus one. This one additional value is called the "null," "empty," or "disengaged" state, and is represented in source code by the special constant <kbd class="calibre12">std::nullopt</kbd>.</p>
+<div class="packt_infobox">Do not confuse <kbd class="calibre25">std::nullopt</kbd> with the similarly named <kbd class="calibre25">std::nullptr</kbd>! They have nothing in common except that they're both vaguely null-ish.</div>
+<p class="calibre2">Unlike <kbd class="calibre12">std::tuple</kbd> and <kbd class="calibre12">std::variant</kbd> with their mess of free (non-member) functions, the <kbd class="calibre12">std::optional&lt;T&gt;</kbd> class is full of convenient member functions. <kbd class="calibre12">o.has_value()</kbd> is true if the optional object <kbd class="calibre12">o</kbd> currently holds a value of type <kbd class="calibre12">T</kbd>. The "has-value" state is commonly known as the "engaged" state; an optional object containing a value is "engaged" and an optional object in the empty state is "disengaged."</p>
+<p class="calibre2">The comparison operators <kbd class="calibre12">==</kbd>, <kbd class="calibre12">!=</kbd>, <kbd class="calibre12">&lt;</kbd>, <kbd class="calibre12">&lt;=</kbd>, <kbd class="calibre12">&gt;</kbd>, and <kbd class="calibre12">&gt;=</kbd> are all overloaded for <kbd class="calibre12">optional&lt;T&gt;</kbd> if they are valid for <kbd class="calibre12">T</kbd>. To compare two optionals, or to compare an optional to a value of type <kbd class="calibre12">T</kbd>, all you need to remember is that an optional in the disengaged state compares "less than" any real value of <kbd class="calibre12">T</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">bool(o)</kbd> is a synonym for <kbd class="calibre12">o.has_value()</kbd>, and <kbd class="calibre12">!o</kbd> is a synonym for <kbd class="calibre12">!o.has_value()</kbd>. Personally, I recommend that you always use <kbd class="calibre12">has_value</kbd>, since there's no difference in runtime cost; the only difference is in the readability of your code. If you do use the abbreviated conversion-to-<kbd class="calibre12">bool</kbd> form, be aware that for a <kbd class="calibre12">std::optional&lt;bool&gt;</kbd>, <kbd class="calibre12">o == false</kbd> and <kbd class="calibre12">!o</kbd> mean very different things!</p>
+<p class="calibre2"><kbd class="calibre12">o.value()</kbd> returns a reference to the value contained by <kbd class="calibre12">o</kbd>. If <kbd class="calibre12">o</kbd> is currently disengaged, then <kbd class="calibre12">o.value()</kbd> throws an exception of type <kbd class="calibre12">std::bad_optional_access</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">*o</kbd> (using the overloaded unary <kbd class="calibre12">operator*</kbd>) returns a reference to the value contained by <kbd class="calibre12">o</kbd>, without checking for engagement. If <kbd class="calibre12">o</kbd> is currently disengaged and you call <kbd class="calibre12">*o</kbd>, that's undefined behavior, just as if you called <kbd class="calibre12">*p</kbd> on a null pointer. You can remember this behavior by noticing that the C++ standard library likes to use punctuation for its most efficient, least sanity-checked operations. For example, <kbd class="calibre12">std::vector::operator[]</kbd> does less bounds-checking than <kbd class="calibre12">std::vector::at()</kbd>. Therefore, by the same logic, <kbd class="calibre12">std::optional::operator*</kbd> does less bounds-checking than <kbd class="calibre12">std::optional::value()</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">o.value_or(x)</kbd> returns a copy of the value contained by <kbd class="calibre12">o</kbd>, or, if <kbd class="calibre12">o</kbd> is disengaged, it returns a copy of <kbd class="calibre12">x</kbd> converted to type <kbd class="calibre12">T</kbd>. We can use <kbd class="calibre12">value_or</kbd> to rewrite the preceding code sample into a one-liner of utter simplicity and readability:</p>
+<pre class="calibre23">    std::optional&lt;int&gt; get_resource_limit(const std::string&amp;);<br class="title-page-name"/><br class="title-page-name"/>    void test() {<br class="title-page-name"/>      auto limit = get_resource_limit("memory");<br class="title-page-name"/>      use( limit.value_or(some_default) );<br class="title-page-name"/>    }</pre>
+<p class="calibre2">The preceding examples have shown how to use <kbd class="calibre12">std::optional&lt;T&gt;</kbd> as a way to handle "maybe a <kbd class="calibre12">T</kbd>" in flight (as a function return type, or as a parameter type). Another common and useful way to use <kbd class="calibre12">std::optional&lt;T&gt;</kbd> is as a way to handle "not yet a <kbd class="calibre12">T</kbd>" at rest, as a class data member. For example, suppose we have some type <kbd class="calibre12">L</kbd> which is not default-constructible, such as the closure type produced by a lambda expression:</p>
+<pre class="calibre23">    auto make_lambda(int arg) {<br class="title-page-name"/>      return [arg](int x) { return x + arg; };<br class="title-page-name"/>    }<br class="title-page-name"/>    using L = decltype(make_lambda(0));<br class="title-page-name"/><br class="title-page-name"/>    static_assert(!std::is_default_constructible_v&lt;L&gt;);<br class="title-page-name"/>    static_assert(!std::is_move_assignable_v&lt;L&gt;);</pre>
+<p class="calibre2">Then a class with a member of that type would also fail to be default-constructible:</p>
+<pre class="calibre23">    class ProblematicAdder {<br class="title-page-name"/>      L fn_;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    static_assert(!std::is_default_constructible_v&lt;ProblematicAdder&gt;);</pre>
+<p class="calibre2">But, by giving our class a member of type <kbd class="calibre12">std::optional&lt;L&gt;</kbd>, we allow it to be used in contexts that require default-constructibility:</p>
+<pre class="calibre23">    class Adder {<br class="title-page-name"/>      std::optional&lt;L&gt; fn_;<br class="title-page-name"/>      public:<br class="title-page-name"/>      void setup(int first_arg) {<br class="title-page-name"/>        fn_.emplace(make_lambda(first_arg));<br class="title-page-name"/>      }<br class="title-page-name"/>      int call(int second_arg) {<br class="title-page-name"/>        // this will throw unless setup() was called first<br class="title-page-name"/>        return fn_.value()(second_arg);<br class="title-page-name"/>      }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    static_assert(std::is_default_constructible_v&lt;Adder&gt;);<br class="title-page-name"/><br class="title-page-name"/>    void test() {<br class="title-page-name"/>      Adder adder;<br class="title-page-name"/>      adder.setup(4);<br class="title-page-name"/>      int result = adder.call(5);<br class="title-page-name"/>      assert(result == 9); <br class="title-page-name"/>    }</pre>
+<p class="calibre2">It would be very difficult to implement this behavior without <kbd class="calibre12">std::optional</kbd>. You could do it with placement-new syntax, or using a <kbd class="calibre12">union</kbd>, but essentially you'd have to reimplement at least half of <kbd class="calibre12">optional</kbd> yourself. Much better to use <kbd class="calibre12">std::optional</kbd>!</p>
+<div class="packt_infobox">And notice that if for some reason we wanted to get undefined behavior instead of the possibility of throwing from <kbd class="calibre25">call()</kbd>, we could just replace <kbd class="calibre25">fn_.value()</kbd> with <kbd class="calibre25">*fn_</kbd>.</div>
+<p class="calibre2"><kbd class="calibre12">std::optional</kbd> is truly one of the biggest wins among the new features of C++17, and you'll benefit immensely by getting familiar with it.</p>
+<p class="calibre2">From <kbd class="calibre12">optional</kbd>, which could be described as a sort of limited one-type <kbd class="calibre12">variant</kbd>, we now approach the other extreme: the algebraic-data-type equivalent of <em class="calibre22">infinity</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Revisiting variant</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The <kbd class="calibre12">variant</kbd> data type is good at representing simple alternatives, but as of C++17, it is not particularly suitable for representing <em class="calibre22">recursive</em> data types such as JSON lists. That is, the following C++17 code will fail to compile:</p>
+<pre class="calibre23">    using JSONValue = std::variant&lt;<br class="title-page-name"/>      std::nullptr_t,<br class="title-page-name"/>      bool,<br class="title-page-name"/>      double,<br class="title-page-name"/>      std::string,<br class="title-page-name"/>      std::vector&lt;JSONValue&gt;,<br class="title-page-name"/>      std::map&lt;std::string, JSONValue&gt;<br class="title-page-name"/>    &gt;;</pre>
+<p class="calibre2">There are several possible workarounds. The most robust and correct is to continue using the C++11 Boost library <kbd class="calibre12">boost::variant</kbd>, which specifically supports recursive variant types via the marker type <kbd class="calibre12">boost::recursive_variant_</kbd>:</p>
+<pre class="calibre23">    using JSONValue = boost::variant&lt;<br class="title-page-name"/>      std::nullptr_t,<br class="title-page-name"/>      bool,<br class="title-page-name"/>      double,<br class="title-page-name"/>      std::string,<br class="title-page-name"/>      std::vector&lt;boost::recursive_variant_&gt;,<br class="title-page-name"/>      std::map&lt;std::string, boost::recursive_variant_&gt;<br class="title-page-name"/>    &gt;;</pre>
+<p class="calibre2">You could also get around the problem by introducing a new class type called <kbd class="calibre12">JSONValue</kbd>, which either <strong class="calibre1">HAS-A</strong> or <strong class="calibre1">IS-A</strong> <kbd class="calibre12">std::variant</kbd> of the recursive type.</p>
+<div class="packt_infobox">Notice that in the following example I chose HAS-A rather than IS-A; inheriting from non-polymorphic standard library types is almost always a really bad idea.</div>
+<p class="calibre2">Since forward references to class types are acceptable to C++, this will compile:</p>
+<pre class="calibre23">    struct JSONValue {<br class="title-page-name"/>      std::variant&lt;<br class="title-page-name"/>        std::nullptr_t,<br class="title-page-name"/>        bool,<br class="title-page-name"/>        double,<br class="title-page-name"/>        std::string,<br class="title-page-name"/>        std::vector&lt;JSONValue&gt;,<br class="title-page-name"/>        std::map&lt;std::string, JSONValue&gt;<br class="title-page-name"/>      &gt; value_;<br class="title-page-name"/>    };</pre>
+<p class="calibre2">The final possibility is to switch to an algebraic type from the standard library that is even more powerful than <kbd class="calibre12">variant</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Infinite alternatives with std::any</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">To paraphrase Henry Ford, an object of type <kbd class="calibre12">std::variant&lt;A, B, C&gt;</kbd> can hold a value<br class="title-page-name"/>
+of any type--as long as it's <kbd class="calibre12">A</kbd>, <kbd class="calibre12">B</kbd>, or <kbd class="calibre12">C</kbd>. But suppose we wanted to hold a value of <em class="calibre22">truly</em> any type? Perhaps our program will load plugins at runtime that might contain new types impossible to predict. We can't specify those types in a <kbd class="calibre12">variant</kbd>. Or perhaps we are in the "recursive data type" situation detailed in the preceding section.</p>
+<p class="calibre2">For these situations, the C++17 standard library provides an algebraic-data-type version of "infinity": the type <kbd class="calibre12">std::any</kbd>. This is a sort of a container (see <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>) for a single object of any type at all. The container may be empty, or it may contain an object. You can perform the following fundamental operations on an <kbd class="calibre12">any</kbd> object:</p>
+<ul class="calibre14">
+<li class="calibre15">Ask if it currently holds an object</li>
+<li class="calibre15">Put a new object into it (destroying the old object, whatever it was)</li>
+<li class="calibre15">Ask the type of the held object</li>
+<li class="calibre15">Retrieve the held object, by correctly naming its type</li>
+</ul>
+<p class="calibre2">In code the first three of these operations look like this:</p>
+<pre class="calibre23">    std::any a; // construct an empty container<br class="title-page-name"/><br class="title-page-name"/>    assert(!a.has_value());<br class="title-page-name"/><br class="title-page-name"/>    a = std::string("hello");<br class="title-page-name"/>    assert(a.has_value());<br class="title-page-name"/>    assert(a.type() == typeid(std::string));<br class="title-page-name"/><br class="title-page-name"/>    a = 42;<br class="title-page-name"/>    assert(a.has_value());<br class="title-page-name"/>    assert(a.type() == typeid(int));</pre>
+<p class="calibre2">The fourth operation is a little more fiddly. It is spelled <kbd class="calibre12">std::any_cast</kbd>, and, like <kbd class="calibre12">std::get</kbd> for variants, it comes in two flavors: a <kbd class="calibre12">std::get</kbd>-like flavor that throws <kbd class="calibre12">std::bad_any_cast</kbd> on failure, and a <kbd class="calibre12">std::get_if</kbd>-like flavor that returns a null pointer on failure:</p>
+<pre class="calibre23">    if (std::string *p = std::any_cast&lt;std::string&gt;(&amp;a)) {<br class="title-page-name"/>      use(*p);<br class="title-page-name"/>    } else {<br class="title-page-name"/>      // go fish!<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    try {<br class="title-page-name"/>      std::string&amp; s = std::any_cast&lt;std::string&amp;&gt;(a);<br class="title-page-name"/>      use(s);<br class="title-page-name"/>    } catch (const std::bad_any_cast&amp;) {<br class="title-page-name"/>      // go fish!<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Observe that in either case, you must name the type that you want to retrieve from the <kbd class="calibre12">any</kbd> object. If you get the type wrong, then you'll get an exception or a null pointer. There is no way to say "Give me the held object, no matter what type it is," since then what would be the type of that expression?</p>
+<p class="calibre2">Recall that when we faced a similar problem with <kbd class="calibre12">std::variant</kbd> in the preceding section, we solved it by using <kbd class="calibre12">std::visit</kbd> to visit some generic code onto the held alternative. Unfortunately, there is no equivalent <kbd class="calibre12">std::visit</kbd> for <kbd class="calibre12">any</kbd>. The reason is simple and insurmountable: separate compilation. Suppose in one source file, <kbd class="calibre12">a.cc</kbd>, I have:</p>
+<pre class="calibre23">    template&lt;class T&gt; struct Widget {};<br class="title-page-name"/><br class="title-page-name"/>    std::any get_widget() {<br class="title-page-name"/>      return std::make_any&lt;Widget&lt;int&gt;&gt;();<br class="title-page-name"/>    }</pre>
+<p class="calibre2">And in another source file, <kbd class="calibre12">b.cc</kbd>, (perhaps compiled into a different plugin, <kbd class="calibre12">.dll</kbd>, or shared object file) I have:</p>
+<pre class="calibre23">    template&lt;class T&gt; struct Widget {};<br class="title-page-name"/><br class="title-page-name"/>    template&lt;class T&gt; int size(Widget&lt;T&gt;&amp; w) {<br class="title-page-name"/>      return sizeof w;<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::any a = get_widget();<br class="title-page-name"/>      int sz = hypothetical_any_visit([](auto&amp;&amp; w){<br class="title-page-name"/>        return size(w);<br class="title-page-name"/>      }, a);<br class="title-page-name"/>      assert(sz == sizeof(Widget&lt;int&gt;));<br class="title-page-name"/>    }</pre>
+<p class="calibre2">How should the compiler know, when compiling <kbd class="calibre12">b.cc</kbd>, that it needs to output a template instantiation for <kbd class="calibre12">size(Widget&lt;int&gt;&amp;)</kbd> as opposed to, let's say, <kbd class="calibre12">size(Widget&lt;double&gt;&amp;)</kbd>? When someone changes <kbd class="calibre12">a.cc</kbd> to return <kbd class="calibre12">make_any(Widget&lt;char&gt;&amp;)</kbd>, how should the compiler know that it needs to recompile <kbd class="calibre12">b.cc</kbd> with a fresh instantiation of <kbd class="calibre12">size(Widget&lt;char&gt;&amp;)</kbd> and that the instantiation of <kbd class="calibre12">size(Widget&lt;int&gt;&amp;)</kbd> is no longer needed--unless of course we're anticipating being linked against a <kbd class="calibre12">c.cc</kbd> that <em class="calibre22">does</em> require that instantiation! Basically, there's no way for the compiler to figure out what kind of code-generation might possibly be needed by visitation, on a container that can by definition contain <em class="calibre22">any</em> type and trigger <em class="calibre22">any</em> code-generation.</p>
+<p class="calibre2">Therefore, in order to extract any function of the contained value of an <kbd class="calibre12">any</kbd>, you must know up front what the type of that contained value might be. (And if you guess wrong--go fish!)</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">std::any versus polymorphic class types</h1>
+                
+            
+            <article>
+                
+<p class="calibre2"><kbd class="calibre12">std::any</kbd> occupies a position in between the compile-time polymorphism of <kbd class="calibre12">std::variant&lt;A, B, C&gt;</kbd> and the runtime polymorphism of polymorphic inheritance hierarchies and <kbd class="calibre12">dynamic_cast</kbd>. You might wonder whether <kbd class="calibre12">std::any</kbd> interacts with the machinery of <kbd class="calibre12">dynamic_cast</kbd> at all. The answer is "no, it does not"--nor is there any standard way to get that behavior. <kbd class="calibre12">std::any</kbd> is one hundred percent statically type-safe: there is no way to break into it and get a "pointer to the data" (for example, a <kbd class="calibre12">void *</kbd>) without knowing the exact static type of that data:</p>
+<pre class="calibre23">    struct Animal {<br class="title-page-name"/>      virtual ~Animal() = default;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct Cat : Animal {};<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::any a = Cat{};<br class="title-page-name"/><br class="title-page-name"/>      // The held object is a "Cat"...<br class="title-page-name"/>      assert(a.type() == typeid(Cat));<br class="title-page-name"/>      assert(std::any_cast&lt;Cat&gt;(&amp;a) != nullptr);<br class="title-page-name"/><br class="title-page-name"/>      // Asking for a base "Animal" will not work.<br class="title-page-name"/>      assert(a.type() != typeid(Animal));<br class="title-page-name"/>      assert(std::any_cast&lt;Animal&gt;(&amp;a) == nullptr);<br class="title-page-name"/><br class="title-page-name"/>      // Asking for void* certainly will not work!<br class="title-page-name"/>      assert(std::any_cast&lt;void&gt;(&amp;a) == nullptr);<br class="title-page-name"/>    }</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Type erasure in a nutshell</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Let's look briefly at how <kbd class="calibre12">std::any</kbd> might be implemented by the standard library. The core idea is called "type erasure," and the way we achieve it is to identify the salient or relevant operations that we want to support for <em class="calibre22">all</em> types <kbd class="calibre12">T</kbd>, and then "erase" every other idiosyncratic operation that might be supported by any specific type <kbd class="calibre12">T</kbd>.</p>
+<p class="calibre2">For <kbd class="calibre12">std::any</kbd>, the salient operations are as follows:</p>
+<ul class="calibre14">
+<li class="calibre15">Constructing a copy of the contained object</li>
+<li class="calibre15">Constructing a copy of the contained object "by move"</li>
+<li class="calibre15">Getting <kbd class="calibre12">typeid</kbd> of the contained object</li>
+</ul>
+<p class="calibre2">Construction and destruction are also required, but those two operations are concerned with the lifetime management of the contained object itself, not "what you can do with it," so at least in this case we don't need to consider them.</p>
+<p class="calibre2">So we invent a polymorphic class type (call it <kbd class="calibre12">AnyBase</kbd>) which supports only those three operations as overrideable <kbd class="calibre12">virtual</kbd> methods, and then we create a brand-new derived class (call it <kbd class="calibre12">AnyImpl&lt;T&gt;</kbd>) each time the programmer actually stores an object of a specific type <kbd class="calibre12">T</kbd> into <kbd class="calibre12">any</kbd>:</p>
+<pre class="calibre23">    class any;<br class="title-page-name"/><br class="title-page-name"/>    struct AnyBase {<br class="title-page-name"/>      virtual const std::type_info&amp; type() = 0;<br class="title-page-name"/>      virtual void copy_to(any&amp;) = 0;<br class="title-page-name"/>      virtual void move_to(any&amp;) = 0;<br class="title-page-name"/>      virtual ~AnyBase() = default;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    template&lt;typename T&gt;<br class="title-page-name"/>    struct AnyImpl : AnyBase {<br class="title-page-name"/>      T t_;<br class="title-page-name"/>      const std::type_info&amp; type() {<br class="title-page-name"/>        return typeid(T);<br class="title-page-name"/>      }<br class="title-page-name"/>      void copy_to(any&amp; rhs) override {<br class="title-page-name"/>        rhs.emplace&lt;T&gt;(t_);<br class="title-page-name"/>      }<br class="title-page-name"/>      void move_to(any&amp; rhs) override {<br class="title-page-name"/>        rhs.emplace&lt;T&gt;(std::move(t_));<br class="title-page-name"/>      }<br class="title-page-name"/>      // the destructor doesn't need anything<br class="title-page-name"/>      // special in this case<br class="title-page-name"/>    };</pre>
+<p class="calibre2">With these helper classes, the code to implement <kbd class="calibre12">std::any</kbd> becomes fairly trivial, especially when we use a smart pointer (see <a href="part0093.html#2OM4A0-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 6</a>, <em class="calibre22">Smart Pointers</em>) to manage the lifetime of our <kbd class="calibre12">AnyImpl&lt;T&gt;</kbd> object:</p>
+<pre class="calibre23">    class any {<br class="title-page-name"/>      std::unique_ptr&lt;AnyBase&gt; p_ = nullptr;<br class="title-page-name"/>      public:<br class="title-page-name"/>      template&lt;typename T, typename... Args&gt;<br class="title-page-name"/>      std::decay_t&lt;T&gt;&amp; emplace(Args&amp;&amp;... args) {<br class="title-page-name"/>        p_ = std::make_unique&lt;AnyImpl&lt;T&gt;&gt;(std::forward&lt;Args&gt;(args)...);<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      bool has_value() const noexcept {<br class="title-page-name"/>        return (p_ != nullptr);<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      void reset() noexcept {<br class="title-page-name"/>        p_ = nullptr;<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      const std::type_info&amp; type() const {<br class="title-page-name"/>        return p_ ? p_-&gt;type() : typeid(void);<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      any(const any&amp; rhs) {<br class="title-page-name"/>        *this = rhs;<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      any&amp; operator=(const any&amp; rhs) {<br class="title-page-name"/>        if (rhs.has_value()) {<br class="title-page-name"/>          rhs.p_-&gt;copy_to(*this);<br class="title-page-name"/>        }<br class="title-page-name"/>        return *this;<br class="title-page-name"/>      }<br class="title-page-name"/>    };</pre>
+<p class="calibre2">The preceding code sample omits the implementation of move-assignment. It can be done in the same way as copy-assignment, or it can be done by simply swapping the pointers. The standard library actually prefers to swap pointers when possible, because that is guaranteed to be <kbd class="calibre12">noexcept</kbd>; the only reason that you might see <kbd class="calibre12">std::any</kbd> <em class="calibre22">not</em> swapping pointers is if it uses a "small object optimization" to avoid heap allocation altogether for very small, nothrow-move-constructible types <kbd class="calibre12">T</kbd>. As of this writing, libstdc++ (the library used by GCC) will use small object optimization and avoid heap allocation for types up to 8 bytes in size; libc++ (the library used by Clang) will use small object optimization for types up to 24 bytes in size.</p>
+<p class="calibre2">Unlike the standard containers discussed in <a href="part0052.html#1HIT80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 4</a>, <em class="calibre22">The Container Zoo</em>, <kbd class="calibre12">std::any</kbd> does <em class="calibre22">not</em> take an allocator parameter and does <em class="calibre22">not</em> allow you to customize or configure the source of its heap memory. If you use C++ on a real-time or memory-constrained system where heap allocation is not allowed, then you should not use <kbd class="calibre12">std::any</kbd>. Consider an alternative such as Tiemo Jung's <kbd class="calibre12">tj::inplace_any&lt;Size, Alignment&gt;</kbd>. If all else fails, you have now seen how to roll your own!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">std::any and copyability</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Notice that our definition of <kbd class="calibre12">AnyImpl&lt;T&gt;::copy_to</kbd> required <kbd class="calibre12">T</kbd> to be copy-constructible. This is true of the standard <kbd class="calibre12">std::any</kbd> as well; there is simply no way to store a move-only type into a <kbd class="calibre12">std::any</kbd> object. The way to work around this is with a sort of a "shim" wrapper, whose purpose is to make its move-only object conform to the syntactic requirement of copy-constructibility while eschewing any actual copying:</p>
+<pre class="calibre23">    using Ptr = std::unique_ptr&lt;int&gt;;<br class="title-page-name"/><br class="title-page-name"/>    template&lt;class T&gt;<br class="title-page-name"/>    struct Shim {<br class="title-page-name"/>      T get() { return std::move(*t_); }<br class="title-page-name"/><br class="title-page-name"/>      template&lt;class... Args&gt;<br class="title-page-name"/>      Shim(Args&amp;&amp;... args) : t_(std::in_place,<br class="title-page-name"/>        std::forward&lt;Args&gt;(args)...) {}<br class="title-page-name"/><br class="title-page-name"/>      Shim(Shim&amp;&amp;) = default;<br class="title-page-name"/>      Shim&amp; operator=(Shim&amp;&amp;) = default;<br class="title-page-name"/>      Shim(const Shim&amp;) { throw "oops"; }<br class="title-page-name"/>      Shim&amp; operator=(const Shim&amp;) { throw "oops"; }<br class="title-page-name"/>      private:<br class="title-page-name"/>      std::optional&lt;T&gt; t_;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      Ptr p = std::make_unique&lt;int&gt;(42);<br class="title-page-name"/><br class="title-page-name"/>      // Ptr cannot be stored in std::any because it is move-only.<br class="title-page-name"/>      // std::any a = std::move(p);<br class="title-page-name"/><br class="title-page-name"/>      // But Shim&lt;Ptr&gt; can be!<br class="title-page-name"/>      std::any a = Shim&lt;Ptr&gt;(std::move(p));<br class="title-page-name"/>      assert(a.type() == typeid(Shim&lt;Ptr&gt;));<br class="title-page-name"/> <br class="title-page-name"/>      // Moving a Shim&lt;Ptr&gt; is okay...<br class="title-page-name"/>      std::any b = std::move(a);<br class="title-page-name"/><br class="title-page-name"/>      try {<br class="title-page-name"/>        // ...but copying a Shim&lt;Ptr&gt; will throw.<br class="title-page-name"/>        std::any c = b;<br class="title-page-name"/>      } catch (...) {}<br class="title-page-name"/><br class="title-page-name"/>      // Get the move-only Ptr back out of the Shim&lt;Ptr&gt;.<br class="title-page-name"/>      Ptr r = std::any_cast&lt;Shim&lt;Ptr&gt;&amp;&gt;(b).get();<br class="title-page-name"/>      assert(*r == 42);<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Notice the use of <kbd class="calibre12">std::optional&lt;T&gt;</kbd> in the preceding code sample; this guards our fake copy constructor against the possibility that <kbd class="calibre12">T</kbd> might not be default-constructible.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Again with the type erasure: std::function</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">We observed that for <kbd class="calibre12">std::any</kbd>, the salient operations were as follows:</p>
+<ul class="calibre14">
+<li class="calibre15">Constructing a copy of the contained object</li>
+<li class="calibre15">Constructing a copy of the contained object "by move"</li>
+<li class="calibre15">Getting the <kbd class="calibre12">typeid</kbd> of the contained object</li>
+</ul>
+<p class="calibre2">Suppose we were to add one to this set of salient operations? Let's say our set is:</p>
+<ul class="calibre14">
+<li class="calibre15">Constructing a copy of the contained object</li>
+<li class="calibre15">Constructing a copy of the contained object "by move"</li>
+<li class="calibre15">Getting the <kbd class="calibre12">typeid</kbd> of the contained object</li>
+<li class="calibre15">Calling the contained object with a particular fixed sequence of argument types <kbd class="calibre12">A...</kbd>, and converting the result to some particular fixed type <kbd class="calibre12">R</kbd></li>
+</ul>
+<p class="calibre2">The type-erasure of this set of operations corresponds to the standard library type <kbd class="calibre12">std::function&lt;R(A...)&gt;</kbd>!</p>
+<pre class="calibre23">    int my_abs(int x) { return x &lt; 0 ? -x : x; }<br class="title-page-name"/>    long unusual(long x, int y = 3) { return x + y; }<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::function&lt;int(int)&gt; f; // construct an empty container<br class="title-page-name"/>      assert(!f);<br class="title-page-name"/><br class="title-page-name"/>      f = my_abs; // store a function in the container<br class="title-page-name"/>      assert(f(-42) == 42);<br class="title-page-name"/><br class="title-page-name"/>      f = [](long x) { return unusual(x); }; // or a lambda!<br class="title-page-name"/>      assert(f(-42) == -39);<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Copying <kbd class="calibre12">std::function</kbd> always makes a copy of the contained object, if the contained object has state. Of course if the contained object is a function pointer, you won't observe any difference; but you can see the copying happen if you try it with an object of user-defined class type, or with a stateful lambda:</p>
+<pre class="calibre23">    f = [i=0](int) mutable { return ++i; };<br class="title-page-name"/>    assert(f(-42) == 1); <br class="title-page-name"/>    assert(f(-42) == 2);<br class="title-page-name"/><br class="title-page-name"/>    auto g = f;<br class="title-page-name"/>    assert(f(-42) == 3);<br class="title-page-name"/>    assert(f(-42) == 4);<br class="title-page-name"/>    assert(g(-42) == 3);<br class="title-page-name"/>    assert(g(-42) == 4);</pre>
+<p class="calibre2">Just as with <kbd class="calibre12">std::any</kbd>, <kbd class="calibre12">std::function&lt;R(A...)</kbd> allows you to retrieve the <kbd class="calibre12">typeid</kbd> of the contained object, or to retrieve a pointer to the object itself as long as you statically know (or can guess) its type:</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">f.target_type()</kbd> is the equivalent of <kbd class="calibre12">a.type()</kbd></li>
+<li class="calibre15"><kbd class="calibre12">f.target&lt;T&gt;()</kbd> is the equivalent of <kbd class="calibre12">std::any_cast&lt;T*&gt;(&amp;a)</kbd></li>
+</ul>
+<pre class="calibre23">    if (f.target_type() == typeid(int(*)(int))) {<br class="title-page-name"/>      int (*p)(int) = *f.target&lt;int (*)(int)&gt;();<br class="title-page-name"/>      use(p);<br class="title-page-name"/>    } else {<br class="title-page-name"/>      // go fish!<br class="title-page-name"/>    }</pre>
+<p class="calibre2">That said, I have never seen a use-case for these methods in real life. Generally, if you have to ask what the contained type of a <kbd class="calibre12">std::function</kbd> is, you've already done something wrong.</p>
+<p class="calibre2">The most important use-case for <kbd class="calibre12">std::function</kbd> is as a vocabulary type for passing "behaviors" across module boundaries, where using a template would be impossible--for example, when you need to pass a callback to a function in an external library, or when you're writing a library that needs to receive a callback from its caller:</p>
+<pre class="calibre23">    // templated_for_each is a template and must be visible at the<br class="title-page-name"/>    // point where it is called.<br class="title-page-name"/>    template&lt;class F&gt;<br class="title-page-name"/>    void templated_for_each(std::vector&lt;int&gt;&amp; v, F f) {<br class="title-page-name"/>      for (int&amp; i : v) {<br class="title-page-name"/>        f(i);<br class="title-page-name"/>      }<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // type_erased_for_each has a stable ABI and a fixed address.<br class="title-page-name"/>    // It can be called with only its declaration in scope.<br class="title-page-name"/>    extern void type_erased_for_each(std::vector&lt;int&gt;&amp;,<br class="title-page-name"/>      std::function&lt;void(int)&gt;);</pre>
+<p class="calibre2">We started this chapter talking about <kbd class="calibre12">std::string</kbd>, the standard vocabulary type for passing strings between functions; now, as the end of the chapter draws near, we're talking about <kbd class="calibre12">std::function</kbd>, the standard vocabulary type for passing <em class="calibre22">functions</em> between functions!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">std::function, copyability, and allocation</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Just like <kbd class="calibre12">std::any</kbd>, <kbd class="calibre12">std::function</kbd> requires that whatever object you store in it must be copy-constructible. This can present a problem if you are using a lot of lambdas that capture <kbd class="calibre12">std::future&lt;T&gt;</kbd>, <kbd class="calibre12">std::unique_ptr&lt;T&gt;</kbd>, or other move-only types: such lambda types will be move-only themselves. One way to fix that was demonstrated in the <em class="calibre22">std::any and copyability</em> <span>section</span> in this chapter: we could introduce a shim that is syntactically copyable but throws an exception if you try to copy it.</p>
+<p class="calibre2">When working with <kbd class="calibre12">std::function</kbd> and lambda captures, it might often be preferable to capture your move-only lambda captures by <kbd class="calibre12">shared_ptr</kbd>. We'll cover <kbd class="calibre12">shared_ptr</kbd> in the next chapter:</p>
+<pre class="calibre23">    auto capture = [](auto&amp; p) {<br class="title-page-name"/>      using T = std::decay_t&lt;decltype(p)&gt;;<br class="title-page-name"/>      return std::make_shared&lt;T&gt;(std::move(p));<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>   std::promise&lt;int&gt; p;<br class="title-page-name"/><br class="title-page-name"/>   std::function&lt;void()&gt; f = [sp = capture(p)]() {<br class="title-page-name"/>     sp-&gt;set_value(42);<br class="title-page-name"/>   };</pre>
+<p class="calibre2">Like <kbd class="calibre12">std::any</kbd>, <kbd class="calibre12">std::function</kbd> does <em class="calibre22">not</em> take an allocator parameter and does <em class="calibre22">not</em> allow you to customize or configure the source of its heap memory. If you use C++ on a real-time or memory-constrained system where heap allocation is not allowed, then you should not use <kbd class="calibre12">std::function</kbd>. Consider an alternative such as Carl Cook's <kbd class="calibre12">sg14::inplace_function&lt;R(A...), Size, Alignment&gt;</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Summary</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Vocabulary types like <kbd class="calibre12">std::string</kbd> and <kbd class="calibre12">std::function</kbd> allow us to share a <em class="calibre22">lingua franca</em> for dealing with common programming concepts. In C++17, we have a rich set of vocabulary types for dealing with the <em class="calibre22">algebraic data types</em>: <kbd class="calibre12">std::pair</kbd> and <kbd class="calibre12">std::tuple</kbd> (product types), <kbd class="calibre12">std::optional</kbd> and <kbd class="calibre12">std::variant</kbd> (sum types), and <kbd class="calibre12">std::any</kbd> (the ultimate in sum types--it can store almost anything). However, don't get carried away and start using <kbd class="calibre12">std::tuple</kbd> and <kbd class="calibre12">std::variant</kbd> return types from every function! Named class types are still the most effective way to keep your code readable.</p>
+<p class="calibre2">Use <kbd class="calibre12">std::optional</kbd> to signal the possible lack of a value, or to signal the "not-yet-ness" of a data member.</p>
+<p class="calibre2">Use <kbd class="calibre12">std::get_if&lt;T&gt;(&amp;v)</kbd> to query the type of a <kbd class="calibre12">variant</kbd>; use <kbd class="calibre12">std::any_cast&lt;T&gt;(&amp;a)</kbd> to query the type of an <kbd class="calibre12">any</kbd>. Remember that the type you provide must be an exact match; if it's not, you'll get <kbd class="calibre12">nullptr</kbd>.</p>
+<p class="calibre2">Be aware that <kbd class="calibre12">make_tuple</kbd> and <kbd class="calibre12">make_pair</kbd> do more than construct <kbd class="calibre12">tuple</kbd> and <kbd class="calibre12">pair</kbd> objects; they also decay <kbd class="calibre12">reference_wrapper</kbd> objects into native references. Use <kbd class="calibre12">std::tie</kbd> and <kbd class="calibre12">std::forward_as_tuple</kbd> to create tuples of references. <kbd class="calibre12">std::tie</kbd> is particularly useful for multiple assignment and for writing comparison operators. <kbd class="calibre12">std::forward_as_tuple</kbd> is useful for metaprogramming.</p>
+<p class="calibre2">Be aware that <kbd class="calibre12">std::variant</kbd> always has the possibility of being in a "valueless by exception" state; but know that you don't have to worry about that case unless you write classes with throwing move-constructors. Separately: don't write classes with throwing move-constructors!</p>
+<p class="calibre2">Be aware that the <em class="calibre22">type-erased</em> types <kbd class="calibre12">std::any</kbd> and <kbd class="calibre12">std::function</kbd> implicitly use the heap. Third-party libraries provide non-standard <kbd class="calibre12">inplace_</kbd> versions of these types. Be aware that <kbd class="calibre12">std::any</kbd> and <kbd class="calibre12">std::function</kbd> require copyability of their contained types. Use "capture by <kbd class="calibre12">shared_ptr</kbd>" to deal with this case if it arises.</p>
+<p class="calibre2"/>
+<p class="calibre2"/>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>

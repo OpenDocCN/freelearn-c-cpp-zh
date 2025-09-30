@@ -1,0 +1,568 @@
+<html><head></head><body>
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The Container Zoo</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">In the previous two chapters, we introduced the ideas of <em class="calibre22">iterators</em> and <em class="calibre22">ranges</em> (<a target="_blank" href="part0026.html#OPEK0-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 2</a>, <em class="calibre22">Iterators and Ranges</em>) and the vast library of standard <em class="calibre22">generic algorithms</em> that operate on ranges of data elements defined by pairs of those iterators (<a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>). In this chapter, we'll look at where those data elements themselves are allocated and stored. That is, now that we know all about how to iterate, the question gains urgency: what is it that we are iterating <em class="calibre22">over?</em></p>
+<p class="calibre2">In the Standard Template Library, the answer to that question is generally: We are iterating over some sub-range of the elements contained in a <em class="calibre22">container</em>. A container is simply a C++ class (or class template) which, by its nature, <em class="calibre22">contains</em> (or <em class="calibre22">owns</em>) a homogeneous range of data elements, and exposes that range for iteration by generic algorithms.</p>
+<p class="calibre2">Topics we will cover in this chapter are:</p>
+<ul class="calibre14">
+<li class="calibre15">The notion of one object <em class="calibre22">owning</em> another (this being the essential difference between a <em class="calibre22">container</em> and a <em class="calibre22">range</em>)</li>
+<li class="calibre15">The sequence containers (<kbd class="calibre12">array</kbd>, <kbd class="calibre12">vector</kbd>, <kbd class="calibre12">list</kbd>, and <kbd class="calibre12">forward_list</kbd>)</li>
+<li class="calibre15">The pitfalls of iterator invalidation and reference invalidation</li>
+<li class="calibre15">The container adaptors (<kbd class="calibre12">stack</kbd>, <kbd class="calibre12">queue</kbd>, and <kbd class="calibre12">priority_queue</kbd>)</li>
+<li class="calibre15">The associative containers (<kbd class="calibre12">set</kbd>, <kbd class="calibre12">map</kbd>, and friends)</li>
+<li class="calibre15">When it is appropriate to provide a <em class="calibre22">comparator</em>, <em class="calibre22">hash function</em>, <em class="calibre22">equality comparator</em>, or <em class="calibre22">allocator</em> as additional template type parameters</li>
+</ul>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The notion of ownership</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">When we say that object <kbd class="calibre12">A</kbd> <em class="calibre22">owns</em> object <kbd class="calibre12">B</kbd>, what we mean is that object <kbd class="calibre12">A</kbd> manages the lifetime of object <kbd class="calibre12">B</kbd>--that <kbd class="calibre12">A</kbd> controls the construction, copying, moving, and destruction of object <kbd class="calibre12">B</kbd>. The user of object <kbd class="calibre12">A</kbd> can (and should) "forget about" managing <kbd class="calibre12">B</kbd> (for example, via explicit calls to <kbd class="calibre12">delete B</kbd>, <kbd class="calibre12">fclose(B)</kbd>, and so on).</p>
+<p class="calibre2">The simplest way for an object <kbd class="calibre12">A</kbd> to "own" an object <kbd class="calibre12">B</kbd> is for <kbd class="calibre12">B</kbd> to be a member variable of <kbd class="calibre12">A</kbd>. For example:</p>
+<pre class="calibre23">    struct owning_A {<br class="title-page-name"/>      B b_;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct non_owning_A {<br class="title-page-name"/>      B&amp; b_;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      B b;<br class="title-page-name"/><br class="title-page-name"/>      // a1 takes ownership of [a copy of] b.<br class="title-page-name"/>      owning_A a1 { b };<br class="title-page-name"/><br class="title-page-name"/>      // a2 merely holds a reference to b;<br class="title-page-name"/>      // a2 doesn't own b.<br class="title-page-name"/>      non_owning_A a2 { b };<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Another way is for <kbd class="calibre12">A</kbd> to hold a pointer to <kbd class="calibre12">B</kbd>, with the appropriate code in <kbd class="calibre12">~A()</kbd> (and, if necessary, in the copy and move operations of <kbd class="calibre12">A</kbd>) to clean up the resources associated with that pointer:</p>
+<pre class="calibre23">    struct owning_A {<br class="title-page-name"/>      B *b_;<br class="title-page-name"/><br class="title-page-name"/>      explicit owning_A(B *b) : b_(b) {}<br class="title-page-name"/><br class="title-page-name"/>      owning_A(owning_A&amp;&amp; other) : b_(other.b_) {<br class="title-page-name"/>        other.b_ = nullptr;<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      owning_A&amp; operator= (owning_A&amp;&amp; other) {<br class="title-page-name"/>        delete b_;<br class="title-page-name"/>        b_ = other.b_;<br class="title-page-name"/>        other.b_ = nullptr;<br class="title-page-name"/>        return *this;<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      ~owning_A() {<br class="title-page-name"/>        delete b_;<br class="title-page-name"/>      }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct non_owning_A {<br class="title-page-name"/>      B *b_;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      B *b = new B;<br class="title-page-name"/><br class="title-page-name"/>      // a1 takes ownership of *b.<br class="title-page-name"/>      owning_A a1 { b };<br class="title-page-name"/><br class="title-page-name"/>      // a2 merely holds a pointer to *b;<br class="title-page-name"/>      // a2 doesn't own *b.<br class="title-page-name"/>      non_owning_A a2 { b };<br class="title-page-name"/>    }</pre>
+<p class="calibre2">The notion of <em class="calibre22">ownership</em> is tightly bound up with the C++-specific catchphrase <strong class="calibre1">Resource Allocation Is Initialization</strong>, which you will often see abbreviated as <strong class="calibre1">RAII</strong>. (That cumbersome abbreviation should properly have been more like "Resource Freeing Is Destruction", but that acronym was taken.)</p>
+<p class="calibre2">The goal of the standard <em class="calibre22">container classes</em> is to provide access to a particular bunch of data objects <kbd class="calibre12">B</kbd>, while making sure that the <em class="calibre22">ownership</em> of those objects is always clear--namely, a container always has ownership of its data elements. (Contrariwise, an <em class="calibre22">iterator</em>, or a pair of iterators defining a <em class="calibre22">range</em>, never owns its data elements; we saw in <a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>, that the standard iterator-based algorithms such as <kbd class="calibre12">std::remove_if</kbd> never actually deallocate any elements, but instead simply permute the values of the elements in various ways.)</p>
+<p class="calibre2">In the remainder of this chapter, we'll explore the various standard container classes.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The simplest container: std::array&lt;T, N&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The simplest standard container class is <kbd class="calibre12">std::array&lt;T, N&gt;</kbd>, which behaves just like a built-in ("C-style") array. The first template parameter to <kbd class="calibre12">std::array</kbd> indicates the type of the array's elements, and the second template parameter indicates the number of elements in the array. This is one of the very few places in the standard library where a template parameter is an integer value instead of the name of a type.</p>
+<div class="cdpaligncenter"><img src="../images/00006.jpeg" class="calibre30"/></div>
+<p class="calibre2">Normal C-style arrays, being part of the core language (and a part that dates back to the 1970s, at that!), do not provide any built-in operations that would take linear time to run. C-style arrays let you index into them with <kbd class="calibre12">operator[]</kbd>, and compare their addresses, since those operations can be done in constant time; but if you want to assign the entire contents of one C-style array to another, or compare the contents of two arrays, you'll find that you can't do it straightforwardly. You'll have to use some of the standard algorithms we discussed in <a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <span><em class="calibre22">The Iterator-Pair Algorithms</em>,</span> such as <kbd class="calibre12">std::copy</kbd> or <kbd class="calibre12">std::equal</kbd> (the function template <kbd class="calibre12">std::swap</kbd>, being an "algorithm" already, <em class="calibre22">does</em> work for C-style arrays. It would be a shame if it didn't work.):</p>
+<pre class="calibre23">    std::string c_style[4] = {<br class="title-page-name"/>      "the", "quick", "brown", "fox"<br class="title-page-name"/>    };<br class="title-page-name"/>    assert(c_style[2] == "brown");<br class="title-page-name"/>    assert(std::size(c_style) == 4);<br class="title-page-name"/>    assert(std::distance(std::begin(c_style), std::end(c_style)) == 4);<br class="title-page-name"/><br class="title-page-name"/>    // Copying via operator= isn't supported.<br class="title-page-name"/>    std::string other[4]; <br class="title-page-name"/>    std::copy(std::begin(c_style), std::end(c_style), std::begin(other));<br class="title-page-name"/><br class="title-page-name"/>    // Swapping IS supported... in linear time, of course.<br class="title-page-name"/>    using std::swap;<br class="title-page-name"/>    swap(c_style, other);<br class="title-page-name"/><br class="title-page-name"/>    // Comparison isn't supported; you have to use a standard algorithm.<br class="title-page-name"/>    // Worse, operator== does the "wrong" thing: address comparison!<br class="title-page-name"/>    assert(c_style != other);<br class="title-page-name"/>    assert(std::equal(<br class="title-page-name"/>      c_style, c_style + 4,<br class="title-page-name"/>      other, other + 4 <br class="title-page-name"/>    ));<br class="title-page-name"/>    assert(!std::lexicographical_compare(<br class="title-page-name"/>      c_style, c_style + 4,<br class="title-page-name"/>      other, other + 4<br class="title-page-name"/>   ));</pre>
+<p class="calibre2"><kbd class="calibre12">std::array</kbd> behaves just like a C-style array, but with more syntactic sugar. It offers <kbd class="calibre12">.begin()</kbd> and <kbd class="calibre12">.end()</kbd> member functions; and it overloads the operators <kbd class="calibre12">=</kbd>, <kbd class="calibre12">==</kbd>, and <kbd class="calibre12">&lt;</kbd> to do the natural things. All of these operations still take time linear in the size of the array, because they have to walk through the array copying (or swapping or comparing) each individual element one at a time.</p>
+<p class="calibre2">One gripe about <kbd class="calibre12">std::array</kbd>, which you'll see recurring for a few of these standard container classes, is that when you construct a <kbd class="calibre12">std::array</kbd> with an initializer list inside a set of curly braces, you actually need to write <em class="calibre22">two</em> sets of curly braces. That's one set for the "outer object" of type <kbd class="calibre12">std::array&lt;T, N&gt;</kbd>, and another set for the "inner data member" of type <kbd class="calibre12">T[N]</kbd>. This is a bit annoying at first, but the double-brace syntax will quickly become second nature once you have used it a few times:</p>
+<pre class="calibre23">    std::array&lt;std::string, 4&gt; arr = {{<br class="title-page-name"/>      "the", "quick", "brown", "fox"<br class="title-page-name"/>    }};<br class="title-page-name"/>    assert(arr[2] == "brown");<br class="title-page-name"/><br class="title-page-name"/>    // .begin(), .end(), and .size() are all provided.<br class="title-page-name"/>    assert(arr.size() == 4);<br class="title-page-name"/>    assert(std::distance(arr.begin(), arr.end()) == 4);<br class="title-page-name"/><br class="title-page-name"/>    // Copying via operator= is supported... in linear time.<br class="title-page-name"/>    std::array&lt;std::string, 4&gt; other;<br class="title-page-name"/>    other = arr;<br class="title-page-name"/><br class="title-page-name"/>    // Swapping is also supported... in linear time.<br class="title-page-name"/>    using std::swap;<br class="title-page-name"/>    swap(arr, other);<br class="title-page-name"/><br class="title-page-name"/>    // operator== does the natural thing: value comparison!<br class="title-page-name"/>    assert(&amp;arr != &amp;other); // The arrays have different addresses... <br class="title-page-name"/>    assert(arr == other); // ...but still compare lexicographically equal.<br class="title-page-name"/>    assert(arr &gt;= other); // Relational operators are also supported.</pre>
+<p class="calibre2">One other benefit of <kbd class="calibre12">std::array</kbd> is that you can return one from a function, which you can't do with C-style arrays:</p>
+<pre class="calibre23">    // You can't return a C-style array from a function.<br class="title-page-name"/>    // auto cross_product(const int (&amp;a)[3], const int (&amp;b)[3]) -&gt; int[3];<br class="title-page-name"/><br class="title-page-name"/>    // But you can return a std::array.<br class="title-page-name"/>    auto cross_product(const std::array&lt;int, 3&gt;&amp; a,<br class="title-page-name"/>     const std::array&lt;int, 3&gt;&amp; b) -&gt; std::array&lt;int, 3&gt;<br class="title-page-name"/>    {<br class="title-page-name"/>      return {{<br class="title-page-name"/>        a[1] * b[2] - a[2] * b[1],<br class="title-page-name"/>        a[2] * b[0] - a[0] * b[2],<br class="title-page-name"/>        a[0] * b[1] - a[1] * b[0],<br class="title-page-name"/>      }};<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Because <kbd class="calibre12">std::array</kbd> has a copy constructor and a copy assignment operator, you can also store them in containers: for example, <kbd class="calibre12">std::vector&lt;std::array&lt;int, 3&gt;&gt;</kbd> is fine whereas <kbd class="calibre12">std::vector&lt;int[3]&gt;</kbd> wouldn't work.</p>
+<p class="calibre2">However, if you find yourself returning arrays from functions or storing arrays in containers very often, you should consider whether "array" is really the right abstraction for your purposes. Would it be more appropriate to wrap that array up into some kind of class type?</p>
+<p class="calibre2">In the case of our <kbd class="calibre12">cross_product</kbd> example, it turns out to be an extremely good idea to encapsulate our "array of three integers" in a class type. Not only does this allow us to name the members (<kbd class="calibre12">x</kbd>, <kbd class="calibre12">y</kbd>, and <kbd class="calibre12">z</kbd>), but we can also initialize objects of the <kbd class="calibre12">Vec3</kbd> class type more easily (no second pair of curly braces!) and perhaps most importantly for our future sanity, we can avoid defining the comparison operators such as <kbd class="calibre12">operator&lt;</kbd> which don't actually make sense for our mathematical domain. Using <kbd class="calibre12">std::array</kbd>, we have to deal with the fact that the array <kbd class="calibre12">{1, 2, 3}</kbd> compares "less than" the array <kbd class="calibre12">{1, 3, -9}</kbd>--but when we define our own <kbd class="calibre12">class Vec3</kbd>, we can simply omit any mention of <kbd class="calibre12">operator&lt;</kbd> and thus ensure that nobody will ever accidentally misuse it in a mathematical context:</p>
+<pre class="calibre23">    struct Vec3 {<br class="title-page-name"/>      int x, y, z;<br class="title-page-name"/>      Vec3(int x, int y, int z) : x(x), y(y), z(z) {}<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    bool operator==(const Vec3&amp; a, const Vec3&amp; b) {<br class="title-page-name"/>      return std::tie(a.x, a.y, a.z) ==<br class="title-page-name"/>         std::tie(b.x, b.y, b.z);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    bool operator!=(const Vec3&amp; a, const Vec3&amp; b) {<br class="title-page-name"/>      return !(a == b);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // Operators &lt; &lt;= &gt; &gt;= don't make sense for Vec3<br class="title-page-name"/><br class="title-page-name"/>    Vec3 cross_product(const Vec3&amp; a, const Vec3&amp; b) {<br class="title-page-name"/>      return {<br class="title-page-name"/>        a.y * b.z - a.z * b.y,<br class="title-page-name"/>        a.z * b.x - a.x * b.z,<br class="title-page-name"/>        a.x * b.y - a.y * b.x,<br class="title-page-name"/>      };<br class="title-page-name"/>    }</pre>
+<p class="calibre2"><kbd class="calibre12">std::array</kbd> holds its elements inside itself. Therefore, <kbd class="calibre12">sizeof (std::array&lt;int, 100&gt;)</kbd> is equal to <kbd class="calibre12">sizeof (int[100])</kbd>, which is equal to <kbd class="calibre12">100 * sizeof (int)</kbd>. Don't make the mistake of trying to place a gigantic array on the stack as a local variable!</p>
+<pre class="calibre23">    void dont_do_this()<br class="title-page-name"/>    {<br class="title-page-name"/>      // This variable takes up 4 megabytes of stack space ---<br class="title-page-name"/>      // enough to blow your stack and cause a segmentation fault!<br class="title-page-name"/>      int arr[1'000'000];<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void dont_do_this_either()<br class="title-page-name"/>    {<br class="title-page-name"/>      // Changing it into a C++ std::array doesn't fix the problem.<br class="title-page-name"/>      std::array&lt;int, 1'000'000&gt; arr;<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Working with "gigantic arrays" is a job for the next container on our list: <kbd class="calibre12">std::vector</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The workhorse: std::vector&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2"><kbd class="calibre12">std::vector</kbd> represents a contiguous array of data elements, but allocated on the heap instead of on the stack. This improves on <kbd class="calibre12">std::array</kbd> in two ways: First, it allows us to create a really gigantic array without blowing our stack. Second, it allows us to resize the underlying array dynamically--unlike <kbd class="calibre12">std::array&lt;int, 3&gt;</kbd> where the size of the array is an immutable part of the type, a <kbd class="calibre12">std::vector&lt;int&gt;</kbd> has no intrinsic size. A vector's <kbd class="calibre12">.size()</kbd> method actually yields useful information about the current state of the vector.</p>
+<p class="calibre2">A <kbd class="calibre12">std::vector</kbd> has one other salient attribute: its <em class="calibre22">capacity</em>. The capacity of a vector is always at least as large as its size, and represents the number of elements that the vector currently <em class="calibre22">could</em> hold, before it would need to reallocate its underlying array:</p>
+<div class="cdpaligncenter"><img src="../images/00007.jpeg" class="calibre31"/></div>
+<p class="calibre2">Other than its resizeability, <kbd class="calibre12">vector</kbd> behaves similarly to <kbd class="calibre12">array</kbd>. Like arrays, vectors are copyable (copying all their data elements, in linear time) and comparable (<kbd class="calibre12">std::vector&lt;T&gt;::operator&lt;</kbd> will report the lexicographical order of the operands by delegating to <kbd class="calibre12">T::operator&lt;</kbd>).</p>
+<p class="calibre2">Generally speaking, <kbd class="calibre12">std::vector</kbd> is the most commonly used container in the entire standard library. Any time you need to store a "lot" of elements (or "I'm not sure how many elements I have"), your first thought should always be to use a <kbd class="calibre12">vector</kbd>. Why? Because <kbd class="calibre12">vector</kbd> gives you all the flexibility of a resizeable container, with all the simplicity and efficiency of a contiguous array.</p>
+<p class="calibre2">Contiguous arrays are the most efficient data structures (on typical hardware) because they provide good <em class="calibre22">locality</em>, also known as <kbd class="calibre12">cache-friendliness</kbd>. When you're traversing a vector in order from its <kbd class="calibre12">.begin()</kbd> to its <kbd class="calibre12">.end()</kbd>, you're also traversing <em class="calibre22">memory</em> in order, which means that the computer's hardware can predict with very high accuracy the next piece of memory you're going to look at. Compare this to a linked list, in which traversing from <kbd class="calibre12">.begin()</kbd> to <kbd class="calibre12">.end()</kbd> might well involve following pointers all over the address space, and accessing memory locations in no sensible order. With a linked list, pretty much every address you hit will be unrelated to the previous one, and so none of them will be in the CPU's cache. With a vector (or array), the opposite is true: every address you hit will be related to the previous one by a simple linear relationship, and the CPU will be able to have the values all ready and waiting for you by the time you need them.</p>
+<p class="calibre2">Even if your data is "more structured" than a simple list of values, you can often get away with using a <kbd class="calibre12">vector</kbd> to store it. We'll see near the end of this chapter how you can use <kbd class="calibre12">vector</kbd> to simulate a stack or a priority queue.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Resizing a std::vector</h1>
+                
+            
+            <article>
+                
+<p class="calibre2"><kbd class="calibre12">std::vector</kbd> has a whole family of member functions concerned with adding and deleting elements. These member functions aren't present in <kbd class="calibre12">std::array</kbd> because <kbd class="calibre12">std::array</kbd> isn't resizable; but they <em class="calibre22">are</em> present in most of the other containers we're going to be talking about in this chapter. So it's a good idea to get familiar with them now.</p>
+<p class="calibre2">Let's start with the two primitive operations specific to <kbd class="calibre12">vector</kbd> itself: <kbd class="calibre12">.resize()</kbd> and <kbd class="calibre12">.reserve()</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">vec.reserve(c)</kbd> updates the capacity of the vector--it "reserves" space for as many as <kbd class="calibre12">c</kbd> elements (total) in the underlying array. If <kbd class="calibre12">c &lt;= vec.capacity()</kbd> then nothing happens; but if <kbd class="calibre12">c &gt; vec.capacity()</kbd> then the vector will have to reallocate its underlying array. Reallocation follows an algorithm equivalent to the following:</p>
+<pre class="calibre23">    template&lt;typename T&gt;<br class="title-page-name"/>    inline void destroy_n_elements(T *p, size_t n)<br class="title-page-name"/>    {<br class="title-page-name"/>      for (size_t i = 0; i &lt; n; ++i) {<br class="title-page-name"/>        p[i].~T();<br class="title-page-name"/>      }<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    template&lt;typename T&gt;<br class="title-page-name"/>    class vector {<br class="title-page-name"/>      T *ptr_ = nullptr;<br class="title-page-name"/>      size_t size_ = 0;<br class="title-page-name"/>      size_t capacity_ = 0;<br class="title-page-name"/><br class="title-page-name"/>      public:<br class="title-page-name"/>      // ...<br class="title-page-name"/><br class="title-page-name"/>      void reserve(size_t c) {<br class="title-page-name"/>        if (capacity_ &gt;= c) {<br class="title-page-name"/>          // do nothing<br class="title-page-name"/>          return;<br class="title-page-name"/>        }<br class="title-page-name"/><br class="title-page-name"/>        // For now, we'll ignore the problem of<br class="title-page-name"/>        // "What if malloc fails?"<br class="title-page-name"/>        T *new_ptr = (T *)malloc(c * sizeof (T));<br class="title-page-name"/><br class="title-page-name"/>        for (size_t i=0; i &lt; size_; ++i) {<br class="title-page-name"/>          if constexpr (std::is_nothrow_move_constructible_v&lt;T&gt;) {<br class="title-page-name"/>            // If the elements can be moved without risking<br class="title-page-name"/>            // an exception, then we'll move the elements.<br class="title-page-name"/>            ::new (&amp;new_ptr[i]) T(std::move(ptr_[i]));<br class="title-page-name"/>          } else {<br class="title-page-name"/>            // If moving the elements might throw an exception,<br class="title-page-name"/>            // then moving isn't safe. Make a copy of the elements<br class="title-page-name"/>            // until we're sure that we've succeeded; then destroy<br class="title-page-name"/>            // the old elements.<br class="title-page-name"/>            try {<br class="title-page-name"/>              ::new (&amp;new_ptr[i]) T(ptr_[i]);<br class="title-page-name"/>            } catch (...) {<br class="title-page-name"/>              destroy_n_elements(new_ptr, i);<br class="title-page-name"/>              free(new_ptr);<br class="title-page-name"/>              throw;<br class="title-page-name"/>            }<br class="title-page-name"/>          }<br class="title-page-name"/>        }<br class="title-page-name"/>        // Having successfully moved or copied the elements,<br class="title-page-name"/>        // destroy the old array and point ptr_ at the new one.<br class="title-page-name"/>        destroy_n_elements(ptr_, size_);<br class="title-page-name"/>        free(ptr_);<br class="title-page-name"/>        ptr_ = new_ptr;<br class="title-page-name"/>        capacity_ = c;<br class="title-page-name"/>      }<br class="title-page-name"/><br class="title-page-name"/>      ~vector() {<br class="title-page-name"/>        destroy_n_elements(ptr_, size_);<br class="title-page-name"/>        free(ptr_);<br class="title-page-name"/>      }<br class="title-page-name"/>    };</pre>
+<p class="calibre2">If you've been reading this book in order, you might recognize that the crucial for-loop in this <kbd class="calibre12">.reserve()</kbd> function closely resembles the implementation of <kbd class="calibre12">std::uninitialized_copy(a,b,c)</kbd> from <a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>. Indeed, if you were implementing <kbd class="calibre12">.reserve()</kbd> on a container that was not allocator-aware (see <a target="_blank" href="part0129.html#3R0OI0-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 8</a>, <em class="calibre22">Allocators</em>), you might reuse that standard algorithm:</p>
+<pre class="calibre23">    // If the elements can be moved without risking<br class="title-page-name"/>    // an exception, then we'll move the elements.<br class="title-page-name"/>    std::conditional_t&lt;<br class="title-page-name"/>      std::is_nothrow_move_constructible_v&lt;T&gt;,<br class="title-page-name"/>      std::move_iterator&lt;T*&gt;,<br class="title-page-name"/>      T*<br class="title-page-name"/>      &gt; first(ptr_);<br class="title-page-name"/><br class="title-page-name"/>    try {<br class="title-page-name"/>      // Move or copy the elements via a standard algorithm.<br class="title-page-name"/>      std::uninitialized_copy(first, first + size_, new_ptr);<br class="title-page-name"/>    } catch (...) {<br class="title-page-name"/>      free(new_ptr);<br class="title-page-name"/>      throw;<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // Having successfully moved or copied the elements,<br class="title-page-name"/>    // destroy the old array and point ptr_ at the new one.<br class="title-page-name"/>    std::destroy(ptr_, ptr_ + size_);<br class="title-page-name"/>    free(ptr_);<br class="title-page-name"/>    ptr_ = new_ptr;<br class="title-page-name"/>    capacity_ = c;</pre>
+<p class="calibre2"><kbd class="calibre12">vec.resize(s)</kbd> changes the size of the vector--it chops elements off the end of the vector (calling their destructors in the process), or adds additional elements to the vector (default-constructing them), until the size of the vector is equal to <kbd class="calibre12">s</kbd>. If <kbd class="calibre12">s &gt; vec.capacity()</kbd>, then the vector will have to reallocate its underlying array, just as in the <kbd class="calibre12">.reserve()</kbd> case.</p>
+<p class="calibre2">You may have noticed that when a vector reallocates its underlying array, the elements change addresses: the address of <kbd class="calibre12">vec[0]</kbd> before the reallocation is different from the address of <kbd class="calibre12">vec[0]</kbd> after the reallocation. Any pointers that pointed to the vector's old elements become "dangling pointers." And since <kbd class="calibre12">std::vector::iterator</kbd> is essentially just a pointer as well, any <em class="calibre22">iterators</em> that pointed to the vector's old elements become invalid as well. This phenomenon is called <em class="calibre22">iterator invalidation</em>, and it is a major source of bugs in C++ code. Watch out when you're dealing with iterators and resizing vectors at the same time!</p>
+<p class="calibre2">Here are some classic cases of iterator invalidation:</p>
+<pre class="calibre23">    std::vector&lt;int&gt; v = {3, 1, 4};<br class="title-page-name"/><br class="title-page-name"/>    auto iter = v.begin();<br class="title-page-name"/>    v.reserve(6); // iter is invalidated!<br class="title-page-name"/><br class="title-page-name"/>    // This might look like a way to produce the result<br class="title-page-name"/>    // {3, 1, 4, 3, 1, 4}; but if the first insertion<br class="title-page-name"/>    // triggers reallocation, then the next insertion<br class="title-page-name"/>    // will be reading garbage from a dangling iterator!<br class="title-page-name"/>    v = std::vector{3, 1, 4};<br class="title-page-name"/>    std::copy(<br class="title-page-name"/>      v.begin(),<br class="title-page-name"/>      v.end(),<br class="title-page-name"/>      std::back_inserter(v)<br class="title-page-name"/>    );</pre>
+<p class="calibre2">And here's another case, familiar from many other programming languages as well, in which erasing elements from a container while iterating over it produces subtle bugs:</p>
+<pre class="calibre23">    auto end = v.end();<br class="title-page-name"/>    for (auto it = v.begin(); it != end; ++it) {<br class="title-page-name"/>      if (*it == 4) {<br class="title-page-name"/>        v.erase(it); // WRONG!<br class="title-page-name"/>      }<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // Asking the vector for its .end() each time<br class="title-page-name"/>    // through the loop does fix the bug...<br class="title-page-name"/>    for (auto it = v.begin(); it != v.end(); ) {<br class="title-page-name"/>      if (*it == 4) {<br class="title-page-name"/>        it = v.erase(it);<br class="title-page-name"/>      } else {<br class="title-page-name"/>        ++it;<br class="title-page-name"/>      }<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // ...But it's much more efficient to use the<br class="title-page-name"/>    // erase-remove idiom.<br class="title-page-name"/>    v.erase(<br class="title-page-name"/>      std::remove_if(v.begin(), v.end(), [](auto&amp;&amp; elt) {<br class="title-page-name"/>        return elt == 4;<br class="title-page-name"/>      }),<br class="title-page-name"/>      v.end()<br class="title-page-name"/>    );</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Inserting and erasing in a std::vector</h1>
+                
+            
+            <article>
+                
+<p class="calibre2"><kbd class="calibre12">vec.push_back(t)</kbd> adds an item to the end of the vector. There is no corresponding <kbd class="calibre12">.push_front()</kbd> member function, because as you can see from the diagram at the start of this section, there's no efficient way to push anything onto the <em class="calibre22">front</em> of a vector.</p>
+<p class="calibre2"><kbd class="calibre12">vec.emplace_back(args...)</kbd> is a perfect-forwarding variadic function template that acts just like <kbd class="calibre12">.push_back(t)</kbd>, except that, instead of placing a copy of <kbd class="calibre12">t</kbd> at the end of the vector, it places a <kbd class="calibre12">T</kbd> object constructed as if by <kbd class="calibre12">T(args...)</kbd>.</p>
+<p class="calibre2"><span>Both <kbd class="calibre12">push_back</kbd> and <kbd class="calibre12">emplace_back</kbd> have what is called "amortized</span> <span>constant time" performance. To see what this means, consider what would happen</span> <span>to a naive vector if you call <kbd class="calibre12">v.emplace_back()</kbd> a hundred times in a row.</span> <span>With each call, the vector needs to get just a little bit bigger; so it reallocates</span> <span>its underlying array and moves all <kbd class="calibre12">v.size()</kbd> elements from the old</span> <span>array to the new one. Soon you'd be spending more time copying old data</span> <span>from place to place than you're spending actually "pushing back" new data!</span> <span>Fortunately, <kbd class="calibre12">std::vector</kbd> is smart enough to avoid this trap. Whenever</span> <span>an operation such as <kbd class="calibre12">v.emplace_back()</kbd> causes reallocation, the vector won't</span> <span>make room for just <kbd class="calibre12">capacity() + 1</kbd> elements in the new array; it will make room</span> <span>for <kbd class="calibre12">k * capacity()</kbd> elements (where <kbd class="calibre12">k</kbd> is 2 for libc++ and libstdc++,</span> <span>and approximately 1.5 for Visual Studio). So, although reallocation gets more</span> <span>and more expensive as the vector grows, you do fewer and fewer reallocations per</span> <span><kbd class="calibre12">push_back</kbd>--and so the cost of a single <kbd class="calibre12">push_back</kbd> is constant,</span> <span><em class="calibre22">on average</em>. This trick is known as <em class="calibre22">geometric resizing</em>.</span></p>
+<p class="calibre2"><kbd class="calibre12">vec.insert(it, t)</kbd> adds an item into the middle of the vector, at the position indicated by the iterator <kbd class="calibre12">it</kbd>. If <kbd class="calibre12">it == vec.end()</kbd>, then this is equivalent to <kbd class="calibre12">push_back</kbd>; if <kbd class="calibre12">it == vec.begin()</kbd>, then this is a poor man's version of <kbd class="calibre12">push_front</kbd>. Notice that, if you insert anywhere but the end of the vector, all the elements after the insertion point in the underlying array <span>will get shifted over to make room</span>; this can be expensive.</p>
+<p class="calibre2">There are several different overloads of <kbd class="calibre12">.insert()</kbd>. Generally speaking, none of these will be useful to you, but you might want to be aware of them in order to interpret the cryptic error messages (or cryptic runtime bugs) that will show up if you accidentally provide the wrong arguments to <kbd class="calibre12">.insert()</kbd> and overload resolution ends up picking one of these instead of the one you expected:</p>
+<pre class="calibre23">    std::vector&lt;int&gt; v = {1, 2};<br class="title-page-name"/>    std::vector&lt;int&gt; w = {5, 6};<br class="title-page-name"/><br class="title-page-name"/>    // Insert a single element.<br class="title-page-name"/>    v.insert(v.begin() + 1, 3);<br class="title-page-name"/>    assert((v == std::vector{1, 3, 2}));<br class="title-page-name"/><br class="title-page-name"/>    // Insert n copies of a single element.<br class="title-page-name"/>    v.insert(v.end() - 1, 3, 4);<br class="title-page-name"/>    assert((v == std::vector{1, 3, 4, 4, 4, 2}));<br class="title-page-name"/><br class="title-page-name"/>    // Insert a whole range of elements.<br class="title-page-name"/>    v.insert(v.begin() + 3, w.begin(), w.end());<br class="title-page-name"/>    assert((v == std::vector{1, 3, 4, 5, 6, 4, 4, 2}));<br class="title-page-name"/><br class="title-page-name"/>    // Insert a braced list of elements.<br class="title-page-name"/>    v.insert(v.begin(), {7, 8});<br class="title-page-name"/>    assert((v == std::vector{7, 8, 1, 3, 4, 5, 6, 4, 4, 2}));</pre>
+<p class="calibre2"><kbd class="calibre12">vec.emplace(it, args...)</kbd> is to <kbd class="calibre12">insert</kbd> as <kbd class="calibre12">emplace_back</kbd> is to <kbd class="calibre12">push_back</kbd>: it's a perfect-forwarding version of the C++03 function. Prefer <kbd class="calibre12">emplace</kbd> and <kbd class="calibre12">emplace_back</kbd> over <kbd class="calibre12">insert</kbd> and <kbd class="calibre12">push_back</kbd>, when possible.</p>
+<p class="calibre2"><kbd class="calibre12">vec.erase(it)</kbd> erases a single item from the middle of a vector, at the position indicated by the iterator <kbd class="calibre12">it</kbd>. There's also a two-iterator version, <kbd class="calibre12">vec.erase(it, it)</kbd>, which erases a contiguous range of items. Notice that this two-iterator version is the same one we used in the <em class="calibre22">erase-remove idiom</em> in the previous chapter.</p>
+<p class="calibre2">To delete just the last element from the vector, you could use either <kbd class="calibre12">vec.erase(vec.end()-1)</kbd> or <kbd class="calibre12">vec.erase(vec.end()-1, vec.end())</kbd>; but since this is a common operation, the standard library provides a synonym in the form of <kbd class="calibre12">vec.pop_back()</kbd>. You can implement a dynamically growable <em class="calibre22">stack</em> using nothing more than the <kbd class="calibre12">push_back()</kbd> and <kbd class="calibre12">pop_back()</kbd> methods of <kbd class="calibre12">std::vector</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Pitfalls with vector&lt;bool&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The <kbd class="calibre12">std::vector</kbd> template has one special case: <kbd class="calibre12">std::vector&lt;bool&gt;</kbd>. Since the <kbd class="calibre12">bool</kbd> datatype has only two possible values, the values of eight bools can be packed into a single byte. <kbd class="calibre12">std::vector&lt;bool&gt;</kbd> uses this optimization, which means that it uses eight times less heap-allocated memory than you might naturally expect.</p>
+<div class="cdpaligncenter"><img src="../images/00008.jpeg" class="calibre32"/></div>
+<p class="calibre2">The downside of this packing is that the return type of <kbd class="calibre12">vector&lt;bool&gt;::operator[]</kbd> cannot be <kbd class="calibre12">bool&amp;</kbd>, because the vector doesn't store actual <kbd class="calibre12">bool</kbd> objects anywhere. Therefore, <kbd class="calibre12">operator[]</kbd> returns a customized class type, <kbd class="calibre12">std::vector&lt;bool&gt;::reference</kbd>, which is convertible to <kbd class="calibre12">bool</kbd> but which is not, itself, a <kbd class="calibre12">bool</kbd> (types like this are often called "proxy types" or "proxy references").</p>
+<p class="calibre2">The result type of <kbd class="calibre12">operator[] const</kbd> is "officially" <kbd class="calibre12">bool</kbd>, but in practice, some libraries (notably libc++) return a proxy type for <kbd class="calibre12">operator[] const</kbd>. This means that code using <kbd class="calibre12">vector&lt;bool&gt;</kbd> is not only subtle but sometimes non-portable as well; I advise avoiding <kbd class="calibre12">vector&lt;bool&gt;</kbd> if you can:</p>
+<pre class="calibre23">    std::vector&lt;bool&gt; vb = {true, false, true, false};<br class="title-page-name"/><br class="title-page-name"/>    // vector&lt;bool&gt;::reference has one public member function:<br class="title-page-name"/>    vb[3].flip();<br class="title-page-name"/>    assert(vb[3] == true);<br class="title-page-name"/><br class="title-page-name"/>    // The following line won't compile!<br class="title-page-name"/>    // bool&amp; oops = vb[0];<br class="title-page-name"/><br class="title-page-name"/>    auto ref = vb[0];<br class="title-page-name"/>    assert((!std::is_same_v&lt;decltype(ref), bool&gt;));<br class="title-page-name"/>    assert(sizeof vb[0] &gt; sizeof (bool));<br class="title-page-name"/><br class="title-page-name"/>    if (sizeof std::as_const(vb)[0] == sizeof (bool)) {<br class="title-page-name"/>      puts("Your library vendor is libstdc++ or Visual Studio");<br class="title-page-name"/>    } else {<br class="title-page-name"/>      puts("Your library vendor is libc++");<br class="title-page-name"/>    }</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Pitfalls with non-noexcept move constructors</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Recall the implementation of <kbd class="calibre12">vector::resize()</kbd> from section <em class="calibre22">Resizing a std::vector</em>. When the vector resizes, it reallocates its underlying array and moves its elements into the new array--unless the element type is not "nothrow move-constructible," in which case it <em class="calibre22">copies</em> its elements! What this means is that resizing a vector of your own class type will be unnecessarily "pessimized" unless you go out of your way to specify that your move constructor is <kbd class="calibre12">noexcept</kbd>.</p>
+<p class="calibre2">Consider the following class definitions:</p>
+<pre class="calibre23">    struct Bad {<br class="title-page-name"/>      int x = 0;<br class="title-page-name"/>      Bad() = default;<br class="title-page-name"/>      Bad(const Bad&amp;) { puts("copy Bad"); }<br class="title-page-name"/>      Bad(Bad&amp;&amp;) { puts("move Bad"); }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct Good {<br class="title-page-name"/>      int x = 0;<br class="title-page-name"/>      Good() = default;<br class="title-page-name"/>      Good(const Good&amp;) { puts("copy Good"); }<br class="title-page-name"/>      Good(Good&amp;&amp;) noexcept { puts("move Good"); }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    class ImplicitlyGood {<br class="title-page-name"/>      std::string x;<br class="title-page-name"/>      Good y;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    class ImplicitlyBad {<br class="title-page-name"/>      std::string x;<br class="title-page-name"/>      Bad y;<br class="title-page-name"/>    };</pre>
+<p class="calibre2">We can test the behavior of these classes in isolation using a test harness such as the following. Running <kbd class="calibre12">test()</kbd> will print "copy Bad--move Good--copy Bad--move Good." What an appropriate mantra!</p>
+<pre class="calibre23">    template&lt;class T&gt;<br class="title-page-name"/>    void test_resizing()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::vector&lt;T&gt; vec(1);<br class="title-page-name"/>      // Force a reallocation on the vector.<br class="title-page-name"/>      vec.resize(vec.capacity() + 1);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      test_resizing&lt;Good&gt;();<br class="title-page-name"/>      test_resizing&lt;Bad&gt;();<br class="title-page-name"/>      test_resizing&lt;ImplicitlyGood&gt;();<br class="title-page-name"/>      test_resizing&lt;ImplicitlyBad&gt;();<br class="title-page-name"/>    }</pre>
+<p class="calibre2">This is a subtle and arcane point, but it can have a major effect on the efficiency of your C++ code in practice. A good rule of thumb is: Whenever you declare your own move constructor or swap function, make sure you declare it <kbd class="calibre12">noexcept</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The speedy hybrid: std::deque&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Like <kbd class="calibre12">std::vector</kbd>, <kbd class="calibre12">std::deque</kbd> presents the interface of a contiguous array--it is random-access, and its elements are stored in contiguous blocks for cache-friendliness. But unlike <kbd class="calibre12">vector</kbd>, its elements are only "chunkwise" contiguous. A single deque is made up of an arbitrary number of "chunks," each containing a fixed number of elements. To insert more elements on either end of the container is cheap; to insert elements in the middle is still expensive. In memory it looks something like this:</p>
+<div class="cdpaligncenter"><img src="../images/00009.jpeg" class="calibre33"/></div>
+<p class="calibre2"><kbd class="calibre12">std::deque&lt;T&gt;</kbd> exposes all the same member functions as <kbd class="calibre12">std::vector&lt;T&gt;</kbd>, including an overloaded <kbd class="calibre12">operator[]</kbd>. In addition to vector's <kbd class="calibre12">push_back</kbd> and <kbd class="calibre12">pop_back</kbd> methods, <kbd class="calibre12">deque</kbd> exposes an efficient <kbd class="calibre12">push_front</kbd> and <kbd class="calibre12">pop_front</kbd>.</p>
+<p class="calibre2">Notice that, when you repeatedly <kbd class="calibre12">push_back</kbd> into a vector, you eventually trigger a reallocation of the underlying array and invalidate all your iterators and all your pointers and references to elements within the container. With <kbd class="calibre12">deque</kbd>, iterator invalidation still happens, but individual elements never change their addresses unless you insert or erase elements in the middle of the deque (in which case one end of the deque or the other will have to shift outward to make room, or shift inward to fill the gap):</p>
+<pre class="calibre23">    std::vector&lt;int&gt; vec = {1, 2, 3, 4};<br class="title-page-name"/>    std::deque&lt;int&gt; deq = {1, 2, 3, 4};<br class="title-page-name"/>    int *vec_p = &amp;vec[2];<br class="title-page-name"/>    int *deq_p = &amp;deq[2];<br class="title-page-name"/>    for (int i=0; i &lt; 1000; ++i) {<br class="title-page-name"/>      vec.push_back(i);<br class="title-page-name"/>      deq.push_back(i);<br class="title-page-name"/>    }<br class="title-page-name"/>    assert(vec_p != &amp;vec[2]);<br class="title-page-name"/>    assert(deq_p == &amp;deq[2]);</pre>
+<p class="calibre2">Another advantage of <kbd class="calibre12">std::deque&lt;T&gt;</kbd> is that there is no specialization for <kbd class="calibre12">std::deque&lt;bool&gt;</kbd>; the container presents a uniform public interface no matter what <kbd class="calibre12">T</kbd> is.</p>
+<p class="calibre2">The disadvantage of <kbd class="calibre12">std::deque&lt;T&gt;</kbd> is that its iterators are significantly more expensive to increment and dereference, since they have to navigate the array of pointers depicted in the following diagram. This is a significant enough disadvantage that it makes sense to stick with <kbd class="calibre12">vector</kbd>, unless you happen to need quick insertion and deletion at both ends of the container.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">A particular set of skills: std::list&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The container <kbd class="calibre12">std::list&lt;T&gt;</kbd> represents a linked list in memory. Schematically, it looks like this:</p>
+<div class="cdpaligncenter"><img src="../images/00010.jpeg" class="calibre34"/></div>
+<p class="calibre2">Notice that each node in the list contains pointers to its "next" and "previous" nodes, so this is a doubly linked list. The benefit of a doubly linked list is that its iterators can move both forwards and backwards through the list--that is, <kbd class="calibre12">std::list&lt;T&gt;::iterator</kbd> is a <em class="calibre22">bidirectional iterator</em> (but it is not <em class="calibre22">random-access</em>; getting to the <em class="calibre22">n</em>th element of the list still requires O(<em class="calibre22">n</em>) time).</p>
+<p class="calibre2"><kbd class="calibre12">std::list</kbd> supports many of the same operations as <kbd class="calibre12">std::vector</kbd>, except for those operations that require random access (such as <kbd class="calibre12">operator[]</kbd>). It can afford to add member functions for pushing and popping from the front of the list, since pushing and popping from a <kbd class="calibre12">list</kbd> doesn't require expensive move operations.</p>
+<p class="calibre2">In general, <kbd class="calibre12">std::list</kbd> is much less performant than a contiguous data structure such as <kbd class="calibre12">std::vector</kbd> or <kbd class="calibre12">std::deque</kbd>, because following pointers to "randomly" allocated addresses is much harder on the cache than following pointers into a contiguous block of memory. Therefore, you should treat <kbd class="calibre12">std::list</kbd> as a generally <em class="calibre22">undesirable</em> container; you should only pull it out of your toolbox when you absolutely need one of the things it does <em class="calibre22">better</em> than <kbd class="calibre12">vector</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">What are the special skills of std::list?</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">First, there's no <em class="calibre22">iterator invalidation</em> for lists! <kbd class="calibre12">lst.push_back(v)</kbd> and <kbd class="calibre12">lst.push_front(v)</kbd> always operate in constant time, and don't ever need to "resize" or "move" any data.</p>
+<p class="calibre2">Second, many mutating operations that would be expensive on <kbd class="calibre12">vector</kbd> or require out-of-line storage ("scratch space") become cheap for linked lists. Here are some examples:</p>
+<p class="calibre2"><kbd class="calibre12">lst.splice(it, otherlst)</kbd> "splices" the entirety of <kbd class="calibre12">otherlst</kbd> into <kbd class="calibre12">lst</kbd>, as if by repeated calls to <kbd class="calibre12">lst.insert(it++, other_elt)</kbd>; except that the "inserted" nodes are actually stolen from the right-hand <kbd class="calibre12">otherlst</kbd>. The entire splicing operation can be done with just a couple of pointer swaps. After this operation, <kbd class="calibre12">otherlst.size() == 0</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">lst.merge(otherlst)</kbd> similarly empties out <kbd class="calibre12">otherlst</kbd> into <kbd class="calibre12">lst</kbd> using only pointer swaps, but has the effect of "merging sorted lists." For example:</p>
+<pre class="calibre23">    std::list&lt;int&gt; a = {3, 6};<br class="title-page-name"/>    std::list&lt;int&gt; b = {1, 2, 3, 5, 6};<br class="title-page-name"/><br class="title-page-name"/>    a.merge(b);<br class="title-page-name"/>    assert(b.empty());<br class="title-page-name"/>    assert((a == std::list{1, 2, 3, 3, 5, 6, 6}));</pre>
+<p class="calibre2">As always with STL operations that involve comparison, there is a version taking a comparator: <kbd class="calibre12">lst.merge(otherlst, less)</kbd>.</p>
+<p class="calibre2">Another operation that can be done only with pointer swaps is reversing the list in place: <kbd class="calibre12">lst.reverse()</kbd> switches all the "next" and "previous" links so that the head of the list is now the tail, and vice versa.</p>
+<p class="calibre2">Notice that all of these operations <em class="calibre22">mutate the list in place</em>, and generally return <kbd class="calibre12">void</kbd>.</p>
+<p class="calibre2">Another kind of operation that is cheap on linked lists (but not on contiguous containers) is removal of elements. Recall from <a href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>, that the STL provides algorithms such as <kbd class="calibre12">std::remove_if</kbd> and <kbd class="calibre12">std::unique</kbd> for use with contiguous containers; these algorithms shuffle the "removed" elements to the end of the container so that they can be picked off in a single <kbd class="calibre12">erase()</kbd>. With <kbd class="calibre12">std::list</kbd>, shuffling elements is more expensive than simply erasing them in-place. So, <kbd class="calibre12">std::list</kbd> provides the following member functions, with names that are unfortunately similar to the non-erasing STL algorithms:</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">lst.remove(v)</kbd> removes <em class="calibre22">and erases</em> all elements equal to <kbd class="calibre12">v</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">lst.remove_if(p)</kbd> removes <em class="calibre22">and erases</em> all elements <kbd class="calibre12">e</kbd> which satisfy the unary predicate <kbd class="calibre12">p(e)</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">lst.unique()</kbd> removes <em class="calibre22">and erases</em> all but the first element of each "run" of consecutive equal elements. As always with STL operations that involve comparison, there is a version taking a comparator: <kbd class="calibre12">lst.unique(eq)</kbd> removes and erases <kbd class="calibre12">e2</kbd> whenever <kbd class="calibre12">p(e1, e2)</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">lst.sort()</kbd> sorts the list in-place. This is particularly helpful because the permutative algorithm <kbd class="calibre12">std::sort(ctr.begin(), ctr.end())</kbd> does not work on the non-random-access <kbd class="calibre12">std::list::iterator</kbd>.</li>
+</ul>
+<p class="calibre2">It's strange that <kbd class="calibre12">lst.sort()</kbd> can only sort the entire container, instead of taking a sub-range the way <kbd class="calibre12">std::sort</kbd> does. But if you want to sort just a sub-range of <kbd class="calibre12">lst</kbd>, you can do it with--say it with me--just a couple of pointer swaps!</p>
+<pre class="calibre23">    std::list&lt;int&gt; lst = {3, 1, 4, 1, 5, 9, 2, 6, 5};<br class="title-page-name"/>    auto begin = std::next(lst.begin(), 2);<br class="title-page-name"/>    auto end = std::next(lst.end(), -2);<br class="title-page-name"/><br class="title-page-name"/>    // Sort just the range [begin, end)<br class="title-page-name"/>    std::list&lt;int&gt; sub; <br class="title-page-name"/>    sub.splice(sub.begin(), lst, begin, end);<br class="title-page-name"/>    sub.sort();<br class="title-page-name"/>    lst.splice(end, sub);<br class="title-page-name"/>    assert(sub.empty());<br class="title-page-name"/><br class="title-page-name"/>    assert((lst == std::list{3, 1, 1, 2, 4, 5, 9, 6, 5}));</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Roughing it with std::forward_list&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The standard container <kbd class="calibre12">std::forward_list&lt;T&gt;</kbd> is a linked list like <kbd class="calibre12">std::list</kbd>, but with fewer amenities--no way to get its size, no way to iterate backward. In memory it looks similar to <kbd class="calibre12">std::list&lt;T&gt;</kbd>, but with smaller nodes:</p>
+<div class="cdpaligncenter"><img src="../images/00011.jpeg" class="calibre35"/></div>
+<p class="calibre2">Nevertheless, <kbd class="calibre12">std::forward_list</kbd> retains almost all of the "special skills" of <kbd class="calibre12">std::list</kbd>. The only operations that it can't do are <kbd class="calibre12">splice</kbd> (because that involves inserting "before" the given iterator) and <kbd class="calibre12">push_back</kbd> (because that involves finding the end of the list in constant time).</p>
+<p class="calibre2"><kbd class="calibre12">forward_list</kbd> replaces these missing member functions with <kbd class="calibre12">_after</kbd> versions:</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">flst.erase_after(it)</kbd> to erase the element <em class="calibre22">after</em> the given position</li>
+<li class="calibre15"><kbd class="calibre12">flst.insert_after(it, v)</kbd> to insert a new element <em class="calibre22">after</em> the given position</li>
+<li class="calibre15"><kbd class="calibre12">flst.splice_after(it, otherflst)</kbd> to insert the elements of <kbd class="calibre12">otherflst</kbd> <em class="calibre22">after</em> the given position</li>
+</ul>
+<p class="calibre2">As with <kbd class="calibre12">std::list</kbd>, you should avoid using <kbd class="calibre12">forward_list</kbd> at all unless you are in need of its particular set of skills.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Abstracting with std::stack&lt;T&gt; and std::queue&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">We've now seen three different standard containers with the member functions <kbd class="calibre12">push_back()</kbd> and <kbd class="calibre12">pop_back()</kbd> (and, although we didn't mention it, <kbd class="calibre12">back()</kbd> to retrieve a reference to the last element of the container). These are the operations we'd need if we wanted to implement a stack data structure.</p>
+<p class="calibre2">The standard library provides a convenient way to abstract the idea of a stack, with the container known as (what else?) <kbd class="calibre12">std::stack</kbd>. Unlike the containers we've seen so far, though, <kbd class="calibre12">std::stack</kbd> takes an extra template parameter.</p>
+<p class="calibre2"><kbd class="calibre12">std::stack&lt;T, Ctr&gt;</kbd> represents a stack of elements of type <kbd class="calibre12">T</kbd>, where the underlying storage is managed by an instance of the container type <kbd class="calibre12">Ctr</kbd>. For example, <kbd class="calibre12">stack&lt;T, vector&lt;T&gt;&gt;</kbd> uses a vector to manage its elements; <kbd class="calibre12">stack&lt;T, list&lt;T&gt;&gt;</kbd> uses a list; and so on. The default value for the template parameter <kbd class="calibre12">Ctr</kbd> is actually <kbd class="calibre12">std::deque&lt;T&gt;</kbd>; you may recall that <kbd class="calibre12">deque</kbd> takes up more memory than <kbd class="calibre12">vector</kbd> but has the benefit of never needing to reallocate its underlying array or move elements post-insertion.</p>
+<p class="calibre2">To interact with a <kbd class="calibre12">std::stack&lt;T, Ctr&gt;</kbd>, you must restrict yourself to only the operations <kbd class="calibre12">push</kbd> (corresponding to <kbd class="calibre12">push_back</kbd> on the underlying container), <kbd class="calibre12">pop</kbd> (corresponding to <kbd class="calibre12">pop_back</kbd>), <kbd class="calibre12">top</kbd> (corresponding to <kbd class="calibre12">back</kbd>), and a few other accessors such as <kbd class="calibre12">size</kbd> and <kbd class="calibre12">empty</kbd>:</p>
+<pre class="calibre23">    std::stack&lt;int&gt; stk;<br class="title-page-name"/>    stk.push(3); stk.push(1); stk.push(4);<br class="title-page-name"/>    assert(stk.top() == 4);<br class="title-page-name"/>    stk.pop();<br class="title-page-name"/>    assert(stk.top() == 1);<br class="title-page-name"/>    stk.pop();<br class="title-page-name"/>    assert(stk.top() == 3);</pre>
+<p class="calibre2">One bizarre feature of <kbd class="calibre12">std::stack</kbd> is that it supports the comparison operators <kbd class="calibre12">==</kbd>, <kbd class="calibre12">!=</kbd>, <kbd class="calibre12">&lt;</kbd>, <kbd class="calibre12">&lt;=</kbd>, <kbd class="calibre12">&gt;</kbd>, and <kbd class="calibre12">&gt;=</kbd>; and that these operators work by comparing the underlying containers (using whatever semantics the underlying container type has defined). Since the underlying container type generally compares via lexicographical order, the result is that comparing two stacks compares them "lexicographically bottom up."</p>
+<pre class="calibre23">    std::stack&lt;int&gt; a, b;<br class="title-page-name"/>    a.push(3); a.push(1); a.push(4);<br class="title-page-name"/>    b.push(2); b.push(7);<br class="title-page-name"/>    assert(a != b);<br class="title-page-name"/><br class="title-page-name"/>    assert(a.top() &lt; b.top()); // that is, 4 &lt; 7<br class="title-page-name"/>    assert(a &gt; b); // because 3 &gt; 2</pre>
+<p class="calibre2">This is fine if you're using only <kbd class="calibre12">==</kbd> and <kbd class="calibre12">!=</kbd>, or if you're relying on <kbd class="calibre12">operator&lt;</kbd> to produce a consistent ordering for <kbd class="calibre12">std::set</kbd> or <kbd class="calibre12">std::map</kbd>; but it's certainly surprising the first time you see it!</p>
+<p class="calibre2">The standard library also provides an abstraction for "queue." <kbd class="calibre12">std::queue&lt;T, Ctr&gt;</kbd> exposes the methods <kbd class="calibre12">push_back</kbd> and <kbd class="calibre12">pop_front</kbd> (corresponding to <kbd class="calibre12">push_back</kbd> and <kbd class="calibre12">pop_front</kbd> on the underlying container), as well as a few other accessors such as <kbd class="calibre12">front</kbd>, <kbd class="calibre12">back</kbd>, <kbd class="calibre12">size</kbd>, and <kbd class="calibre12">empty</kbd>.</p>
+<p class="calibre2">Knowing that the container must support these primitive operations as efficiently as possible, you should be able to guess the <em class="calibre22">default</em> value of <kbd class="calibre12">Ctr</kbd>. Yes, it's <kbd class="calibre12">std::deque&lt;T&gt;</kbd>, the low-overhead double-ended queue.</p>
+<p class="calibre2">Notice that, if you were implementing a queue from scratch using <kbd class="calibre12">std::deque&lt;T&gt;</kbd>, you could choose whether to push on the front of the deque and pop from the back, or to push on the back of the deque and pop from the front. The standard <kbd class="calibre12">std::queue&lt;T, std::deque&lt;T&gt;&gt;</kbd> chooses specifically to push on the back and pop from the front, which is easy to remember if you think about a "queue" in the real world. When you're queueing up at a ticket counter or a lunch line, you join the queue at the back and are served when you get to the front--never vice versa! It is a useful art to choose technical terms (such as <kbd class="calibre12">queue</kbd>, <kbd class="calibre12">front</kbd>, and <kbd class="calibre12">back</kbd>) whose technical meanings are an accurate mirror of their real-world counterparts.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The useful adaptor: std::priority_queue&lt;T&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">In <a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>, we introduced the family of "heap" algorithms: <kbd class="calibre12">make_heap</kbd>, <kbd class="calibre12">push_heap</kbd>, and <kbd class="calibre12">pop_heap</kbd>. You can use these algorithms to give a range of elements the max-heap property. If you maintain the max-heap property on your data as an invariant, you get a data structure commonly known as a <em class="calibre22">priority queue</em>. In data-structure textbooks, a priority queue is often depicted as a kind of <em class="calibre22">binary tree</em>, but as we saw in <a href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>, there's nothing about the max-heap property that requires an explicitly pointer-based tree structure.</p>
+<p class="calibre2">The standard container <kbd class="calibre12">std::priority_queue&lt;T, Ctr, Cmp&gt;</kbd> represents a priority queue, represented internally as an instance of <kbd class="calibre12">Ctr</kbd> where the elements of the <kbd class="calibre12">Ctr</kbd> are invariably in max-heap order (as determined by an instance of the comparator type <kbd class="calibre12">Cmp</kbd>).</p>
+<p class="calibre2">The default value of <kbd class="calibre12">Ctr</kbd> in this case is <kbd class="calibre12">std::vector&lt;T&gt;</kbd>. Remember that <kbd class="calibre12">vector</kbd> is the most efficient container; the only reason <kbd class="calibre12">std::stack</kbd> and <kbd class="calibre12">std::queue</kbd> chose <kbd class="calibre12">deque</kbd> as their default is that they didn't want to move elements after they'd been inserted. But with a priority queue, the elements are moving all the time, moving up and down in the max-heap as other elements are inserted or erased. So there's no particular benefit to using <kbd class="calibre12">deque</kbd> as the underlying container; therefore, the standard library followed the same rule I've been repeating like a drumbeat--use <kbd class="calibre12">std::vector</kbd> unless you have a specific reason to need something else!</p>
+<p class="calibre2">The default value of <kbd class="calibre12">Cmp</kbd> is the standard library type <kbd class="calibre12">std::less&lt;T&gt;</kbd>, which represents <kbd class="calibre12">operator&lt;</kbd>. In other words, the <kbd class="calibre12">std::priority_queue</kbd> container uses the same comparator by default as the <kbd class="calibre12">std::push_heap</kbd> and <kbd class="calibre12">std::pop_heap</kbd> algorithms from <a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>.</p>
+<p class="calibre2">The member functions exposed by <kbd class="calibre12">std::priority_queue&lt;T, Ctr&gt;</kbd> are <kbd class="calibre12">push</kbd>, <kbd class="calibre12">pop</kbd>, and <kbd class="calibre12">top</kbd>. Conceptually, the item at the front of the underlying container is at the "top" of the heap. One thing to remember is that in a max-heap, the item at the "top" of the heap is the <em class="calibre22">greatest</em> item--think of the items as playing King of the Hill, so that the biggest one wins and ends up on the top of the heap.</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">pq.push(v)</kbd> inserts a new item into the priority queue, as if by <kbd class="calibre12">std::push_heap()</kbd> on the underlying container</li>
+<li class="calibre15"><kbd class="calibre12">pq.top()</kbd> <span>returns a reference to the element currently on top of the priority queue, as if by calling</span> <kbd class="calibre12">ctr.front()</kbd> <span>on the underlying container</span></li>
+<li class="calibre15"><kbd class="calibre12">pq.pop()</kbd> <span>pops off the maximum element and updates the heap, as if by</span> <kbd class="calibre12">std::pop_heap()</kbd> <span>on the underlying container</span></li>
+</ul>
+<p class="calibre2">To get a <em class="calibre22">min-heap</em> instead of a max-heap, simply reverse the sense of the comparator you provide to the <kbd class="calibre12">priority_queue</kbd> template:</p>
+<pre class="calibre23">    std::priority_queue&lt;int&gt; pq1;<br class="title-page-name"/>    std::priority_queue&lt;int, std::vector&lt;int&gt;, std::greater&lt;&gt;&gt; pq2;<br class="title-page-name"/><br class="title-page-name"/>    for (int v : {3, 1, 4, 1, 5, 9}) {<br class="title-page-name"/>      pq1.push(v);<br class="title-page-name"/>      pq2.push(v);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    assert(pq1.top() == 9); // max-heap by default<br class="title-page-name"/>    assert(pq2.top() == 1); // min-heap by choice</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The trees: std::set&lt;T&gt; and std::map&lt;K, V&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The class template <kbd class="calibre12">std::set&lt;T&gt;</kbd> provides the interface of a "unique set" for any <kbd class="calibre12">T</kbd> that implements <kbd class="calibre12">operator&lt;</kbd>. As always with STL operations that involve comparison, there is a version taking a comparator: <kbd class="calibre12">std::set&lt;T, Cmp&gt;</kbd> provides "unique set" functionality using <kbd class="calibre12">Cmp(a,b)</kbd> instead of <kbd class="calibre12">(a &lt; b)</kbd> to sort the data elements.</p>
+<p class="calibre2">A <kbd class="calibre12">std::set</kbd> is conceptually a binary search tree, analogous to Java's <kbd class="calibre12">TreeSet</kbd>. In all popular implementations it's specifically a <em class="calibre22">red-black tree</em>, which is a particular kind of self-balancing binary search tree: even if you are constantly inserting and removing items from the tree, it will never get <em class="calibre22">too</em> unbalanced, which means that <kbd class="calibre12">insert</kbd> and <kbd class="calibre12">find</kbd> will always run in O(log <em class="calibre22">n</em>) time on average. Notice the number of pointers involved in its memory layout:</p>
+<div class="cdpaligncenter"><img src="../images/00012.jpeg" class="calibre36"/></div>
+<p class="calibre2">Since, by definition, a binary search tree's elements are stored in their sort order (least to greatest), it would not be meaningful for <kbd class="calibre12">std::set</kbd> to provide member functions <kbd class="calibre12">push_front</kbd> or <kbd class="calibre12">push_back</kbd>. Instead, to add an element <kbd class="calibre12">v</kbd> to the set, you use <kbd class="calibre12">s.insert(v)</kbd>; and to delete an element, you use <kbd class="calibre12">s.erase(v)</kbd> or <kbd class="calibre12">s.erase(it)</kbd>:</p>
+<pre class="calibre23">    std::set&lt;int&gt; s;<br class="title-page-name"/>    for (int i : {3, 1, 4, 1, 5}) {<br class="title-page-name"/>      s.insert(i);<br class="title-page-name"/>    }<br class="title-page-name"/><br class="title-page-name"/>    // A set's items are stored sorted and deduplicated.<br class="title-page-name"/>    assert((s == std::set{1, 3, 4, 5}));<br class="title-page-name"/><br class="title-page-name"/>    auto it = s.begin();<br class="title-page-name"/>    assert(*it == 1);<br class="title-page-name"/>    s.erase(4);<br class="title-page-name"/>    s.erase(it); // erase *it, which is 1<br class="title-page-name"/><br class="title-page-name"/>    assert((s == std::set{3, 5}));</pre>
+<p class="calibre2">The return value of <kbd class="calibre12">s.insert(v)</kbd> is interesting. When we <kbd class="calibre12">insert</kbd> into a vector, there are only two possible outcomes: either the value is successfully added to the vector (and we get back an iterator to the newly inserted element), or else the insertion fails and an exception is thrown. When we <kbd class="calibre12">insert</kbd> into a set, there is a third possible outcome: maybe the insertion doesn't happen because there is already a copy of <kbd class="calibre12">v</kbd> in the set! That's not a "failure" worthy of exceptional control flow, but it's still something that the caller might want to know about. So <kbd class="calibre12">s.insert(v)</kbd> always returns a <kbd class="calibre12">pair</kbd> of return values: <kbd class="calibre12">ret.first</kbd> is the usual iterator to the copy of <kbd class="calibre12">v</kbd> now in the data structure (no matter whether it was just now inserted), and <kbd class="calibre12">ret.second</kbd> is <kbd class="calibre12">true</kbd> if the pointed-to <kbd class="calibre12">v</kbd> was just inserted and <kbd class="calibre12">false</kbd> if the pointed-to <kbd class="calibre12">v</kbd> was already in the set to begin with:</p>
+<pre class="calibre23">    std::set&lt;int&gt; s;<br class="title-page-name"/>    auto [it1, b1] = s.insert(1);<br class="title-page-name"/>    assert(*it1 == 1 &amp;&amp; b1 == true);<br class="title-page-name"/><br class="title-page-name"/>    auto [it2, b2] = s.insert(2);<br class="title-page-name"/>    assert(*it2 == 2 &amp;&amp; b2 == true);<br class="title-page-name"/><br class="title-page-name"/>    auto [it3, b3] = s.insert(1); // again<br class="title-page-name"/>    assert(*it3 == 1 &amp;&amp; b3 == false);</pre>
+<div class="packt_tip">The square-bracketed variable definitions in the preceding snippet are using C++17 <em class="calibre29">structured bindings</em>.</div>
+<p class="calibre2">As the example just prior to this one shows, the elements of a <kbd class="calibre12">set</kbd> are stored in order--not just conceptually but visibly, in that <kbd class="calibre12">*s.begin()</kbd> is going to be the least element in the set and <kbd class="calibre12">*std::prev(s.end())</kbd> is going to be the greatest element. Iterating over the set using a standard algorithm or a ranged <kbd class="calibre12">for</kbd> loop will give you the set's elements in ascending order (remember, what "ascending" means is dictated by your choice of comparator--the <kbd class="calibre12">Cmp</kbd> parameter to the class template <kbd class="calibre12">set</kbd>).</p>
+<p class="calibre2">The tree-based structure of a <kbd class="calibre12">set</kbd> implies that some standard algorithms such as <kbd class="calibre12">std::find</kbd> and <kbd class="calibre12">std::lower_bound</kbd> (<a target="_blank" href="part0036.html#12AK80-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 3</a>, <em class="calibre22">The Iterator-Pair Algorithms</em>) will still work, but only inefficiently--the algorithm's iterators will spend a lot of time climbing up and down in the foothills of the tree, whereas if we had access to the tree structure itself, we could descend directly from the root of the tree and find a given element's position very quickly. Therefore, <kbd class="calibre12">std::set</kbd> provides member functions that can be used as replacements for the inefficient algorithms:</p>
+<ul class="calibre14">
+<li class="calibre15">For <kbd class="calibre12">std::find(s.begin(), s.end(), v)</kbd>, use <kbd class="calibre12">s.find(v)</kbd></li>
+<li class="calibre15">For <kbd class="calibre12">std::lower_bound(s.begin(), s.end(), v)</kbd>, use <kbd class="calibre12">s.lower_bound(v)</kbd></li>
+<li class="calibre15">For <kbd class="calibre12">std::upper_bound(s.begin(), s.end(), v)</kbd>, use <kbd class="calibre12">s.upper_bound(v)</kbd></li>
+<li class="calibre15">For <kbd class="calibre12">std::count(s.begin(), s.end(), v)</kbd>, use <kbd class="calibre12">s.count(v)</kbd></li>
+<li class="calibre15">For <kbd class="calibre12">std::equal_range(s.begin(), s.end(), v)</kbd>, use <kbd class="calibre12">s.equal_range(v)</kbd></li>
+</ul>
+<p class="calibre2">Notice that <kbd class="calibre12">s.count(v)</kbd> will only ever return 0 or 1, because the set's elements are deduplicated. This makes <kbd class="calibre12">s.count(v)</kbd> a handy synonym for the set-membership operation--what Python would call <kbd class="calibre12">v in s</kbd> or what Java would call <kbd class="calibre12">s.contains(v)</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">std::map&lt;K, V&gt;</kbd> is just like <kbd class="calibre12">std::set&lt;K&gt;</kbd>, except that each key <kbd class="calibre12">K</kbd> is allowed to have a value <kbd class="calibre12">V</kbd> associated with it; this makes a data structure analogous to Java's <kbd class="calibre12">TreeMap</kbd> or Python's <kbd class="calibre12">dict</kbd>. As always, there's <kbd class="calibre12">std::map&lt;K, V, Cmp&gt;</kbd> if you need a sorting order on your keys that's different from the natural <kbd class="calibre12">K::operator&lt;</kbd>. Although you won't often think of <kbd class="calibre12">std::map</kbd> as "just a thin wrapper around a <kbd class="calibre12">std::set</kbd> of pairs," that's exactly how it looks in memory:</p>
+<div class="cdpaligncenter"><img src="../images/00013.jpeg" class="calibre37"/></div>
+<p class="calibre2"><kbd class="calibre12">std::map</kbd> supports indexing with <kbd class="calibre12">operator[]</kbd>, but with a surprising twist. When you index into a size-zero vector with <kbd class="calibre12">vec[42]</kbd>, you get undefined behavior. When you index into a size-zero <em class="calibre22">map</em> with <kbd class="calibre12">m[42]</kbd>, the map helpfully inserts the key-value pair <kbd class="calibre12">{42, {}}</kbd> into itself and returns a reference to the second element of that pair!</p>
+<p class="calibre2">This quirky behavior is actually helpful for writing code that's easy on the eyes:</p>
+<pre class="calibre23">    std::map&lt;std::string, std::string&gt; m;<br class="title-page-name"/>    m["hello"] = "world";<br class="title-page-name"/>    m["quick"] = "brown";<br class="title-page-name"/>    m["hello"] = "dolly";<br class="title-page-name"/>    assert(m.size() == 2);</pre>
+<p class="calibre2">But it can lead to confusion if you don't pay attention:</p>
+<pre class="calibre23">    assert(m["literally"] == "");<br class="title-page-name"/>    assert(m.size() == 3);</pre>
+<p class="calibre2">You'll notice that there is no <kbd class="calibre12">operator[] const</kbd> for maps, because <kbd class="calibre12">operator[]</kbd> always reserves the potential to insert a new key-value pair into <kbd class="calibre12">*this</kbd>. If you have a const map--or just a map that you really don't want to insert into right now--then the appropriate way to query it non-mutatively is with <kbd class="calibre12">m.find(k)</kbd>. Another reason to avoid <kbd class="calibre12">operator[]</kbd> is if your map's value type <kbd class="calibre12">V</kbd> is not default-constructible, in which case <kbd class="calibre12">operator[]</kbd> simply won't compile. In that case (real talk: in <em class="calibre22">any</em> case) you should use <kbd class="calibre12">m.insert(kv)</kbd> or <kbd class="calibre12">m.emplace(k, v)</kbd> to insert the new key-value pair exactly as you want it, instead of default-constructing a value just to assign over it again. Here's an example:</p>
+<pre class="calibre23">    // Confusingly, "value_type" refers to a whole key-value pair.<br class="title-page-name"/>    // The types K and V are called "key_type" and "mapped_type",<br class="title-page-name"/>    // respectively.<br class="title-page-name"/>    using Pair = decltype(m)::value_type;<br class="title-page-name"/><br class="title-page-name"/>    if (m.find("hello") == m.end()) {<br class="title-page-name"/>      m.insert(Pair{"hello", "dolly"});<br class="title-page-name"/><br class="title-page-name"/>      // ...or equivalently...<br class="title-page-name"/>      m.emplace("hello", "dolly");<br class="title-page-name"/>    }</pre>
+<p class="calibre2">Received wisdom in the post–C++11 world is that <kbd class="calibre12">std::map</kbd> and <kbd class="calibre12">std::set</kbd>, being based on trees of pointers, are so cache-unfriendly that you should avoid them by default and prefer to use <kbd class="calibre12">std::unordered_map</kbd> and <kbd class="calibre12">std::unordered_set</kbd> instead.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">A note about transparent comparators</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">In the last code example, I wrote <kbd class="calibre12">m.find("hello")</kbd>. Notice that <kbd class="calibre12">"hello"</kbd> is a value of type <kbd class="calibre12">const char[6]</kbd>, whereas <kbd class="calibre12">decltype(m)::key_type</kbd> is <kbd class="calibre12">std::string</kbd>, and (since we didn't specify anything special) <kbd class="calibre12">decltype(m)::key_compare</kbd> is <kbd class="calibre12">std::less&lt;std::string&gt;</kbd>. This means that when we call <kbd class="calibre12">m.find("hello")</kbd>, we're calling a function whose first parameter is of type <kbd class="calibre12">std::string</kbd>--and so we're implicitly constructing <kbd class="calibre12">std::string("hello")</kbd> to pass as the argument to <kbd class="calibre12">find</kbd>. In general, the argument to <kbd class="calibre12">m.find</kbd> is going to get implicitly converted to <kbd class="calibre12">decltype(m)::key_type</kbd>, which may be an expensive conversion.</p>
+<p class="calibre2">If our <kbd class="calibre12">operator&lt;</kbd> behaves properly, we can avoid this overhead by changing the comparator of <kbd class="calibre12">m</kbd> to some class with a <em class="calibre22">heterogeneous</em> <kbd class="calibre12">operator()</kbd> which also defines the member typedef <kbd class="calibre12">is_transparent</kbd>, like this:</p>
+<pre class="calibre23">    struct MagicLess {<br class="title-page-name"/>      using is_transparent = std::true_type;<br class="title-page-name"/><br class="title-page-name"/>      template&lt;class T, class U&gt;<br class="title-page-name"/>      bool operator()(T&amp;&amp; t, U&amp;&amp; u) const {<br class="title-page-name"/>        return std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u);<br class="title-page-name"/>      }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    void test()<br class="title-page-name"/>    {<br class="title-page-name"/>      std::map&lt;std::string, std::string, MagicLess&gt; m;<br class="title-page-name"/><br class="title-page-name"/>      // The STL provides std::less&lt;&gt; as a synonym for MagicLess.<br class="title-page-name"/>      std::map&lt;std::string, std::string, std::less&lt;&gt;&gt; m2;<br class="title-page-name"/><br class="title-page-name"/>      // Now 'find' no longer constructs a std::string!<br class="title-page-name"/>      auto it = m2.find("hello");<br class="title-page-name"/>    }</pre>
+<p class="calibre2">The "magic" here is all happening inside the library's implementation of <kbd class="calibre12">std::map</kbd>; the <kbd class="calibre12">find</kbd> member function specifically checks for the member <kbd class="calibre12">is_transparent</kbd> and changes its behavior accordingly. The member functions <kbd class="calibre12">count</kbd>, <kbd class="calibre12">lower_bound</kbd>, <kbd class="calibre12">upper_bound</kbd>, and <kbd class="calibre12">equal_range</kbd> all change their behavior as well. But oddly, the member function <kbd class="calibre12">erase</kbd> does not! This is probably because it would be too difficult for overload resolution to distinguish an intended <kbd class="calibre12">m.erase(v)</kbd> from an intended <kbd class="calibre12">m.erase(it)</kbd>. Anyway, if you want heterogeneous comparison during deletion as well, you can get it in two steps:</p>
+<pre class="calibre23">    auto [begin, end] = m.equal_range("hello");<br class="title-page-name"/>    m.erase(begin, end);</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Oddballs: std::multiset&lt;T&gt; and std::multimap&lt;K, V&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">In STL-speak, a "set" is an ordered, deduplicated collection of elements. So naturally, a "multiset" is an ordered, non-deduplicated collection of elements! Its memory layout is exactly the same as the layout of <kbd class="calibre12">std::set</kbd>; only its invariants are different. Notice in the following diagram that <kbd class="calibre12">std::multiset</kbd> allows two elements with value <kbd class="calibre12">42</kbd>:</p>
+<div class="cdpaligncenter"><img src="../images/00014.jpeg" class="calibre38"/></div>
+<p class="calibre2"><kbd class="calibre12">std::multiset&lt;T, Cmp&gt;</kbd> behaves just like <kbd class="calibre12">std::set&lt;T, Cmp&gt;</kbd>, except that it can store duplicate elements. The same goes for <kbd class="calibre12">std::multimap&lt;K, V, Cmp&gt;</kbd>:</p>
+<pre class="calibre23">    std::multimap&lt;std::string, std::string&gt; mm;<br class="title-page-name"/>    mm.emplace("hello", "world");<br class="title-page-name"/>    mm.emplace("quick", "brown");<br class="title-page-name"/>    mm.emplace("hello", "dolly");<br class="title-page-name"/>    assert(mm.size() == 3);<br class="title-page-name"/><br class="title-page-name"/>    // Key-value pairs are stored in sorted order.<br class="title-page-name"/>    // Pairs with identical keys are guaranteed to be<br class="title-page-name"/>    // stored in the order in which they were inserted.<br class="title-page-name"/>    auto it = mm.begin();<br class="title-page-name"/>    using Pair = decltype(mm)::value_type;<br class="title-page-name"/>    assert(*(it++) == Pair("hello", "world"));<br class="title-page-name"/>    assert(*(it++) == Pair("hello", "dolly"));<br class="title-page-name"/>    assert(*(it++) == Pair("quick", "brown"));</pre>
+<p class="calibre2">In a multiset or multimap, <kbd class="calibre12">mm.find(v)</kbd> returns an iterator to <em class="calibre22">some</em> element (or key-value pair) matching <kbd class="calibre12">v</kbd>--not necessarily the first one in iteration order. <kbd class="calibre12">mm.erase(v)</kbd> erases all the elements (or key-value pairs) with keys equal to <kbd class="calibre12">v</kbd>. And <kbd class="calibre12">mm[v]</kbd> doesn't exist. For example:</p>
+<pre class="calibre23">    std::multimap&lt;std::string, std::string&gt; mm = {<br class="title-page-name"/>      {"hello", "world"},<br class="title-page-name"/>      {"quick", "brown"},<br class="title-page-name"/>      {"hello", "dolly"},<br class="title-page-name"/>    };<br class="title-page-name"/>    assert(mm.count("hello") == 2);<br class="title-page-name"/>    mm.erase("hello");<br class="title-page-name"/>    assert(mm.count("hello") == 0);</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">
+Moving elements without moving them</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Recall that, with <kbd class="calibre12">std::list</kbd>, we were able to splice lists together, move elements from one list to another, and so on, by using the <span>"particular set of skills" of</span> <kbd class="calibre12">std::list</kbd>. As of C++17, the tree-based containers have acquired similar skills!</p>
+<p class="calibre2">The syntax for merging two sets or maps (or multisets or multimaps) is deceptively similar to the syntax for merging sorted <kbd class="calibre12">std::list</kbd>:</p>
+<pre class="calibre23">    std::map&lt;std::string, std::string&gt; m = {<br class="title-page-name"/>      {"hello", "world"},<br class="title-page-name"/>      {"quick", "brown"},<br class="title-page-name"/>    };<br class="title-page-name"/>    std::map&lt;std::string, std::string&gt; otherm = {<br class="title-page-name"/>      {"hello", "dolly"},<br class="title-page-name"/>      {"sad", "clown"},<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    // This should look familiar!<br class="title-page-name"/>    m.merge(otherm);<br class="title-page-name"/><br class="title-page-name"/>    assert((otherm == decltype(m){<br class="title-page-name"/>      {"hello", "dolly"},<br class="title-page-name"/>    }));<br class="title-page-name"/><br class="title-page-name"/>    assert((m == decltype(m){<br class="title-page-name"/>      {"hello", "world"},<br class="title-page-name"/>      {"quick", "brown"},<br class="title-page-name"/>      {"sad", "clown"},<br class="title-page-name"/>    }));</pre>
+<p class="calibre2">However, notice what happens when there are duplicates! The duplicated elements are <em class="calibre22">not</em> transferred; they're left behind in the right-hand-side map! This is the exact opposite of what you'd expect if you're coming from a language such as Python, where <kbd class="calibre12">d.update(otherd)</kbd> inserts all the mappings from the right-hand dict into the left-hand dict, overwriting anything that was there already.</p>
+<p class="calibre2">The C++ equivalent of <kbd class="calibre12">d.update(otherd)</kbd> is <kbd class="calibre12">m.insert(otherm.begin(), otherm.end()</kbd>. The only case in which it makes sense to use <kbd class="calibre12">m.merge(otherm)</kbd> is if you know that you don't want to overwrite duplicates, <em class="calibre22">and</em> you're okay with trashing the old value of <kbd class="calibre12">otherm</kbd> (for example, if it's a temporary that's going out of scope soon).</p>
+<p class="calibre2">Another way to transfer elements between tree-based containers is to use the member functions <kbd class="calibre12">extract</kbd> and <kbd class="calibre12">insert</kbd> to transfer individual elements:</p>
+<pre class="calibre23">    std::map&lt;std::string, std::string&gt; m = {<br class="title-page-name"/>      {"hello", "world"},<br class="title-page-name"/>      {"quick", "brown"},<br class="title-page-name"/>    };<br class="title-page-name"/>    std::map&lt;std::string, std::string&gt; otherm = {<br class="title-page-name"/>      {"hello", "dolly"},<br class="title-page-name"/>      {"sad", "clown"},<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    using Pair = decltype(m)::value_type;<br class="title-page-name"/><br class="title-page-name"/>    // Insertion may succeed...<br class="title-page-name"/>    auto nh1 = otherm.<strong class="calibre1">extract</strong>("sad");<br class="title-page-name"/>    assert(nh1.key() == "sad" &amp;&amp; nh1.mapped() == "clown");<br class="title-page-name"/>    auto [it2, inserted2, nh2] = m.<strong class="calibre1">insert</strong>(std::move(nh1));<br class="title-page-name"/>    assert(*it2 == Pair("sad", "clown") &amp;&amp; inserted2 == true &amp;&amp; nh2.empty());<br class="title-page-name"/><br class="title-page-name"/>    // ...or be blocked by an existing element.<br class="title-page-name"/>    auto nh3 = otherm.<strong class="calibre1">extract</strong>("hello");<br class="title-page-name"/>    assert(nh3.key() == "hello" &amp;&amp; nh3.mapped() == "dolly");<br class="title-page-name"/>    auto [it4, inserted4, nh4] = m.<strong class="calibre1">insert</strong>(std::move(nh3));<br class="title-page-name"/>    assert(*it4 == Pair("hello", "world") &amp;&amp; inserted4 == false &amp;&amp; !nh4.empty());<br class="title-page-name"/><br class="title-page-name"/>    // Overwriting an existing element is a pain.<br class="title-page-name"/>    m.<strong class="calibre1">insert_or_assign</strong>(nh4.key(), nh4.mapped());<br class="title-page-name"/><br class="title-page-name"/>    // It is often easiest just to delete the element that's<br class="title-page-name"/>    // blocking our desired insertion.<br class="title-page-name"/>    m.erase(it4);<br class="title-page-name"/>    m.<strong class="calibre1">insert</strong>(std::move(nh4));</pre>
+<p class="calibre2">The type of the object returned by <kbd class="calibre12">extract</kbd> is something called a "node handle"--essentially a pointer into the guts of the data structure. You can use the accessor methods <kbd class="calibre12">nh.key()</kbd> and <kbd class="calibre12">nh.mapped()</kbd> to manipulate the pieces of the entry in a <kbd class="calibre12">std::map</kbd> (or <kbd class="calibre12">nh.value()</kbd> for the single piece of data in an element of a <kbd class="calibre12">std::set</kbd>). Thus you can extract, manipulate, and reinsert a key without ever copying or moving its actual data! In the following code sample, the "manipulation" consists of a call to <kbd class="calibre12">std::transform</kbd>:</p>
+<pre class="calibre23">    std::map&lt;std::string, std::string&gt; m = {<br class="title-page-name"/>      {"hello", "world"},<br class="title-page-name"/>      {"quick", "brown"},<br class="title-page-name"/>    };<br class="title-page-name"/>    assert(m.begin()-&gt;first == "hello");<br class="title-page-name"/>    assert(std::next(m.begin())-&gt;first == "quick");<br class="title-page-name"/><br class="title-page-name"/>    // Upper-case the {"quick", "brown"} mapping, with<br class="title-page-name"/>    // absolutely no memory allocations anywhere.<br class="title-page-name"/>    auto nh = m.extract("quick");<br class="title-page-name"/>    std::transform(nh.key().begin(), nh.key().end(), nh.key().begin(), ::toupper);<br class="title-page-name"/>    m.insert(std::move(nh));<br class="title-page-name"/><br class="title-page-name"/>    assert(m.begin()-&gt;first == "QUICK");<br class="title-page-name"/>    assert(std::next(m.begin())-&gt;first == "hello");</pre>
+<p class="calibre2">As you can see, the interface to this functionality isn't as tidy as <kbd class="calibre12">lst.splice(it, otherlst)</kbd>; the subtlety of the interface is one reason it took until C++17 to get this functionality into the standard library. There is one clever bit to notice, though: Suppose you <kbd class="calibre12">extract</kbd> a node from a set and then throw an exception before you've managed to <kbd class="calibre12">insert</kbd> it into the destination set. What happens to the orphaned node--does it leak? It turns out that the designers of the library thought of this possibility; if a node handle's destructor is called before the node handle has been inserted into its new home, the destructor will correctly clean up the memory associated with the node. Therefore, <kbd class="calibre12">extract</kbd> by itself (without <kbd class="calibre12">insert</kbd>) will behave just like <kbd class="calibre12">erase</kbd>!</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">The hashes: std::unordered_set&lt;T&gt; and std::unordered_map&lt;K, V&gt;</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">The <kbd class="calibre12">std::unordered_set</kbd> class template represents a chained hash table--that is, a fixed-size array of "buckets," each bucket containing a singly linked list of data elements. As new data elements are added to the container, each element is placed in the linked list associated with the "hash" of the element's value. This is almost exactly the same as Java's <kbd class="calibre12">HashSet</kbd>. In memory it looks like this:</p>
+<div class="cdpaligncenter"><img src="../images/00015.jpeg" class="calibre39"/></div>
+<p class="calibre2">The literature on hash tables is extensive, and <kbd class="calibre12">std::unordered_set</kbd> does not represent even remotely the state of the art; but because it eliminates a certain amount of pointer-chasing, it tends to perform better than the tree-based <kbd class="calibre12">std::set</kbd>.</p>
+<div class="packt_tip">To eliminate the rest of the pointers, you'd have to replace the linked lists with a technique called "open addressing," which is far out of scope for this book; but it's worth looking up if <kbd class="calibre25">std::unordered_set</kbd> proves too slow for your use-case.</div>
+<p class="calibre2"><kbd class="calibre12">std::unordered_set</kbd> was designed to be a drop-in replacement for <kbd class="calibre12">std::set</kbd>, so it provides the same interface that we've already seen: <kbd class="calibre12">insert</kbd> and <kbd class="calibre12">erase</kbd>, plus iteration with <kbd class="calibre12">begin</kbd> and <kbd class="calibre12">end</kbd>. However, unlike <kbd class="calibre12">std::set</kbd>, the elements of a <kbd class="calibre12">std::unordered_set</kbd> are not stored in sorted order (it's <em class="calibre22">unordered</em>, you see?) and it provides only forward iterators, as opposed to the bidirectional iterators provided by <kbd class="calibre12">std::set</kbd>. (Check the preceding illustration--there are "next" pointers but no "previous" pointers, so iterating backwards in a <kbd class="calibre12">std::unordered_set</kbd> is impossible.)</p>
+<p class="calibre2"><kbd class="calibre12">std::unordered_map&lt;K, V&gt;</kbd> is to <kbd class="calibre12">std::unordered_set&lt;T&gt;</kbd> as <kbd class="calibre12">std::map&lt;K, V&gt;</kbd> is to <kbd class="calibre12">std::set&lt;T&gt;</kbd>. That is, it looks exactly the same in memory, except that it stores key-value pairs instead of just keys:</p>
+<div class="cdpaligncenter"><img src="../images/00016.jpeg" class="calibre40"/></div>
+<p class="calibre2">Like <kbd class="calibre12">set</kbd> and <kbd class="calibre12">map</kbd>, which take an optional comparator parameter, <kbd class="calibre12">unordered_set</kbd> and <kbd class="calibre12">unordered_map</kbd> take some optional parameters as well. The two optional parameters are <kbd class="calibre12">Hash</kbd> (which defaults to <kbd class="calibre12">std::hash&lt;K&gt;</kbd>) and <kbd class="calibre12">KeyEqual</kbd> (which defaults to <kbd class="calibre12">std::equal_to&lt;K&gt;</kbd>, which is to say, <kbd class="calibre12">operator==</kbd>). Passing in a different hash function or a different key-comparison function causes the hash table to use those functions instead of the defaults. This might be useful if you're interfacing with some old-school C++ class type that doesn't implement value semantics or <kbd class="calibre12">operator==</kbd>:</p>
+<pre class="calibre23">    class Widget {<br class="title-page-name"/>    public:<br class="title-page-name"/>      virtual bool IsEqualTo(Widget const *b) const;<br class="title-page-name"/>      virtual int GetHashValue() const;<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct myhash {<br class="title-page-name"/>      size_t operator()(const Widget *w) const {<br class="title-page-name"/>        return w-&gt;GetHashValue();<br class="title-page-name"/>      }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    struct myequal {<br class="title-page-name"/>      bool operator()(const Widget *a, const Widget *b) const {<br class="title-page-name"/>        return a-&gt;IsEqualTo(b);<br class="title-page-name"/>      }<br class="title-page-name"/>    };<br class="title-page-name"/><br class="title-page-name"/>    std::unordered_set&lt;Widget *, myhash, myequal&gt; s;</pre>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Load factor and bucket lists</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Like Java's <kbd class="calibre12">HashSet</kbd>, <kbd class="calibre12">std::unordered_set</kbd> exposes all kinds of administrative details about its buckets. You probably will never need to interact with these administrative functions!</p>
+<ul class="calibre14">
+<li class="calibre15"><kbd class="calibre12">s.bucket_count()</kbd> returns the current number of buckets in the array.</li>
+<li class="calibre15"><kbd class="calibre12">s.bucket(v)</kbd> returns the index <em class="calibre22">i</em> of the bucket in which you'd find the<br class="title-page-name"/>
+element <kbd class="calibre12">v</kbd>, if it existed in this <kbd class="calibre12">unordered_set</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">s.bucket_size(i)</kbd> returns the number of elements in the <em class="calibre22">i</em>th bucket. Observe that invariably <kbd class="calibre12">s.count(v) &lt;= s.bucket_size(s.bucket(v))</kbd>.</li>
+<li class="calibre15"><kbd class="calibre12">s.load_factor()</kbd> returns <kbd class="calibre12">s.size() / s.bucket_count()</kbd> as a <kbd class="calibre12">float</kbd> value.</li>
+<li class="calibre15"><kbd class="calibre12">s.rehash(n)</kbd> increases (or decreases) the size of the bucket array to exactly <kbd class="calibre12">n</kbd>.</li>
+</ul>
+<p class="calibre2">You might have noticed that <kbd class="calibre12">load_factor</kbd> seems out of place so far; what's so important about <kbd class="calibre12">s.size() / s.bucket_count()</kbd> that it gets its own member function? Well, this is the mechanism by which <kbd class="calibre12">unordered_set</kbd> scales itself as its number of elements grows. Each <kbd class="calibre12">unordered_set</kbd> object <kbd class="calibre12">s</kbd> has a value <kbd class="calibre12">s.max_load_factor()</kbd> indicating exactly how large <kbd class="calibre12">s.load_factor()</kbd> is allowed to get. If an insertion would push <kbd class="calibre12">s.load_factor()</kbd> over the top, then <kbd class="calibre12">s</kbd> will reallocate its array of buckets and rehash its elements in order to keep <kbd class="calibre12">s.load_factor()</kbd> smaller than <kbd class="calibre12">s.max_load_factor()</kbd>.</p>
+<p class="calibre2"><kbd class="calibre12">s.max_load_factor()</kbd> is <kbd class="calibre12">1.0</kbd> by default. You can set it to a different value <kbd class="calibre12">k</kbd> by using the one-parameter overload: <kbd class="calibre12">s.max_load_factor(k)</kbd>. However, that's basically never necessary or a good idea.</p>
+<p class="calibre2">One administrative operation that <em class="calibre22">does</em> make sense is <kbd class="calibre12">s.reserve(k)</kbd>. Like <kbd class="calibre12">vec.reserve(k)</kbd> for vectors, this <kbd class="calibre12">reserve</kbd> member function means "I'm planning to do insertions that bring the size of this container up into the vicinity of <kbd class="calibre12">k</kbd>. Please pre-allocate enough space for those <kbd class="calibre12">k</kbd> elements right now." In the case of <kbd class="calibre12">vector</kbd>, that meant allocating an array of <kbd class="calibre12">k</kbd> elements. In the case of <kbd class="calibre12">unordered_set</kbd>, it means allocating a bucket array of <kbd class="calibre12">k / max_load_factor()</kbd> pointers, so that even if <kbd class="calibre12">k</kbd> elements are inserted (with the expected number of collisions), the load factor will still only be <kbd class="calibre12">max_load_factor()</kbd>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Where does the memory come from?</h1>
+                
+            
+            <article>
+                
+<p class="calibre2">Throughout this whole chapter, I've actually been lying to you! Each of the containers described in this chapter--except for <kbd class="calibre12">std::array</kbd>--takes one <em class="calibre22">more</em> optional template type parameter. This parameter is called the <em class="calibre22">allocator</em>, and it indicates where the memory comes from for operations such as "reallocating the underlying array" or "allocating a new node on the linked list." <kbd class="calibre12">std::array</kbd> doesn't need an allocator because it holds all of its memory inside itself; but every other container type needs to know where to get its allocations from.</p>
+<p class="calibre2">The default value for this template parameter is the standard library type <kbd class="calibre12">std::allocator&lt;T&gt;</kbd>, which is certainly good enough for most users. We'll talk more about allocators in <a target="_blank" href="part0129.html#3R0OI0-2fdac365b8984feebddfbb9250eaf20d" class="calibre4">Chapter 8</a>, <em class="calibre22">Allocators</em>.</p>
+
+
+            </article>
+
+            
+        </section>
+    
+
+        <section>
+
+                            <header>
+                    </header><h1 class="header-title" id="calibre_pb_0">Summary</h1>
+                
+            
+            <article>
+                
+<p class="calibre2"><span>In this chapter we've learned the following:</span> A <em class="calibre22">container</em> manages the <em class="calibre22">ownership</em> of a collection of elements. STL containers are always class templates parameterized on the element type, and sometimes on other relevant parameters as well. Every container except <kbd class="calibre12">std::array&lt;T, N&gt;</kbd> can be parameterized by an <em class="calibre22">allocator</em> type to specify the manner in which it allocates and deallocates memory. Containers that use comparison can be parameterized by a <em class="calibre22">comparator</em> type. Consider using transparent comparator types such as <kbd class="calibre12">std::less&lt;&gt;</kbd> instead of homogeneous comparators.</p>
+<p class="calibre2">When using <kbd class="calibre12">std::vector</kbd>, watch out for reallocation and address invalidation. When using most container types, watch out for iterator invalidation.</p>
+<p class="calibre2">The standard library's philosophy is to support no operation that is naturally inefficient (such as <kbd class="calibre12">vector::push_front</kbd>); and to support any operation that is naturally efficient (such as <kbd class="calibre12">list::splice</kbd>). If you can think of an efficient implementation for a particular operation, odds are that the STL has already implemented it under some name; you just have to figure out how it's spelled.</p>
+<p class="calibre2">When in doubt, use <kbd class="calibre12">std::vector</kbd>. Use other container types only when you need their particular set of skills. Specifically, avoid the pointer-based containers (<kbd class="calibre12">set</kbd>, <kbd class="calibre12">map</kbd>, <kbd class="calibre12">list</kbd>) unless you need their special skills (maintaining sorted order; extracting, merging, and splicing).</p>
+<p class="calibre2">Online references such as <a href="http://cppreference.com" target="_blank" class="calibre4">cppreference.com</a> are your best resource for figuring these things out.</p>
+<p class="calibre2"/>
+<p class="calibre2"/>
+
+
+            </article>
+
+            
+        </section>
+    </body></html>
