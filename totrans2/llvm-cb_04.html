@@ -1,0 +1,317 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;4.&#xA0;Preparing Optimizations" id="aid-1CQAE1"><div class="titlepage"><div><div><h1 class="title"><a id="ch04"/>Chapter 4. Preparing Optimizations</h1></div></div></div><p>In this chapter, we will cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Various levels of optimization</li><li class="listitem">Writing your own LLVM pass</li><li class="listitem">Running your own pass with the opt tool</li><li class="listitem">Using another pass in a new pass</li><li class="listitem">Registering a pass with pass manager</li><li class="listitem">Writing an analysis pass</li><li class="listitem">Writing an alias analysis pass</li><li class="listitem">Using other analysis passes</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec41"/>Introduction</h1></div></div></div><p>Once the source code transformation completes, the output is in the <a id="id164" class="indexterm"/>LLVM IR form. This IR serves as a common platform for converting into assembly code, depending on the backend. However, before converting into an assembly code, the IR can be optimized to produce more effective code. The IR is in the SSA<a id="id165" class="indexterm"/> form, where every new assignment to a variable is a new variable itself—a classic case of an SSA representation.</p><p>In the LLVM infrastructure, a pass serves the purpose of optimizing LLVM IR. A pass runs over the LLVM IR, processes the IR, analyzes it, identifies the optimization opportunities, and modifies the IR to produce optimized code. The command-line interface <span class="strong"><strong>opt</strong></span>
+<a id="id166" class="indexterm"/> is used to run optimization passes on LLVM IR.</p><p>In the upcoming chapters, various optimization techniques will be discussed. Also, how to write and register a new optimization pass will be explored.</p></div></div>
+<div class="section" title="Various levels of optimization" id="aid-1DOR01"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec42"/>Various levels of optimization</h1></div></div></div><p>There are various<a id="id167" class="indexterm"/> levels of optimization, starting at 0 and going up to 3 (there is also <code class="literal">s</code> for space optimization). The code gets more and more optimized as the optimization level increases. Let's try to explore the various optimization levels.</p><div class="section" title="Getting ready..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec113"/>Getting ready...</h2></div></div></div><p>Various optimization levels can be understood by running the opt command-line interface on LLVM IR. For this, an example C program can first be converted to IR using the <a id="id168" class="indexterm"/>
+<span class="strong"><strong>Clang</strong></span> frontend.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open an <code class="literal">example.c</code> file and write the following code in it:<div class="informalexample"><pre class="programlisting">$ vi  example.c
+int main(int argc, char **argv) {
+  int i, j, k, t = 0;
+  for(i = 0; i &lt; 10; i++) {
+    for(j = 0; j &lt; 10; j++) {
+      for(k = 0; k &lt; 10; k++) {
+        t++;
+      }
+    }
+    for(j = 0; j &lt; 10; j++) {
+      t++;
+    }
+  }
+  for(i = 0; i &lt; 20; i++) {
+    for(j = 0; j &lt; 20; j++) {
+      t++;
+    }
+    for(j = 0; j &lt; 20; j++) {
+      t++;
+    }
+  }
+  return t;
+}</pre></div></li><li class="listitem">Now convert this into LLVM IR using the <code class="literal">clang</code> command, as shown here:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang –S –O0 –emit-llvm example.c</strong></span>
+</pre></div><p>A new file, <code class="literal">example.ll</code>, will be generated, containing LLVM IR. This file will be used to demonstrate the various optimization levels available.</p></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec114"/>How to do it…</h2></div></div></div><p>Do the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The opt <a id="id169" class="indexterm"/>command-line tool can be run on the IR-generated <code class="literal">example.ll</code> file:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt –O0 –S example.ll</strong></span>
+</pre></div><p>The <code class="literal">–O0</code> syntax specifies the least optimization level.</p></li><li class="listitem">Similarly, you can run other optimization levels:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt –O1 –S example.ll</strong></span>
+<span class="strong"><strong>$ opt –O2 –S example.ll</strong></span>
+<span class="strong"><strong>$ opt –O3 –S example.ll</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec115"/>How it works…</h2></div></div></div><p>The opt command-line interface takes the <code class="literal">example.ll</code> file as the input and runs the series of passes specified in each optimization level. It can repeat some passes in the same optimization level. To see which passes are being used in each optimization level, you have to add the <code class="literal">--debug-pass=Structure</code> command-line option with the previous opt commands.</p></div><div class="section" title="See Also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec116"/>See Also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To know more on various other options that can be used with the <a id="id170" class="indexterm"/>opt tool, refer to <a class="ulink" href="http://llvm.org/docs/CommandGuide/opt.html">http://llvm.org/docs/CommandGuide/opt.html</a></li></ul></div></div></div>
+<div class="section" title="Writing your own LLVM pass" id="aid-1ENBI1"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec43"/>Writing your own LLVM pass</h1></div></div></div><p>All LLVM passes are subclasses of <a id="id171" class="indexterm"/>the <code class="literal">pass</code> class, and they implement functionality by overriding the virtual methods inherited from <code class="literal">pass</code>. LLVM applies a chain of analyses and transformations on the target program. A pass is an instance of the Pass LLVM class.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec117"/>Getting ready</h2></div></div></div><p>Let's see how to write a pass. Let's name the pass <code class="literal">function block counter</code>; once done, it will simply display the name of the function and count the basic blocks in that function when run. First, a <code class="literal">Makefile</code> needs to be written for the pass. Follow the given steps to write a <code class="literal">Makefile</code>:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open a <code class="literal">Makefile</code> in the <code class="literal">llvm lib/Transform</code> folder:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi Makefile</strong></span>
+</pre></div></li><li class="listitem">Specify the path to the LLVM root folder and the library name, and make this pass a loadable module by specifying it in <code class="literal">Makefile</code>, as follows:<div class="informalexample"><pre class="programlisting">LEVEL = ../../..
+LIBRARYNAME = FuncBlockCount
+LOADABLE_MODULE = 1
+include $(LEVEL)/Makefile.common</pre></div></li></ol><div style="height:10px; width: 1px"/></div><p>This <code class="literal">Makefile</code> specifies<a id="id172" class="indexterm"/> that all the <code class="literal">.cpp</code> files in the current directory are to be compiled and linked together in a shared object.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec118"/>How to do it…</h2></div></div></div><p>Do the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new <code class="literal">.cpp</code> file called <code class="literal">FuncBlockCount.cpp</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi FuncBlockCount.cpp</strong></span>
+</pre></div></li><li class="listitem">In this file, include some header files from LLVM:<div class="informalexample"><pre class="programlisting">#include "llvm/Pass.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/raw_ostream.h"</pre></div></li><li class="listitem">Include the <code class="literal">llvm</code> namespace to enable access to LLVM functions:<div class="informalexample"><pre class="programlisting">using namespace llvm;</pre></div></li><li class="listitem">Then start with an anonymous namespace:<div class="informalexample"><pre class="programlisting">namespace {</pre></div></li><li class="listitem">Next declare the pass:<div class="informalexample"><pre class="programlisting">struct FuncBlockCount : public FunctionPass {</pre></div></li><li class="listitem">Then declare the pass identifier, which will be used by LLVM to identify the pass:<div class="informalexample"><pre class="programlisting">static char ID;
+FuncBlockCount() : FunctionPass(ID) {}</pre></div></li><li class="listitem">This step is one of the most important steps in writing a pass—writing a <code class="literal">run</code> function. Since this pass inherits <code class="literal">FunctionPass</code> and runs on a function, a <code class="literal">runOnFunction</code> is defined to be run on a function:<div class="informalexample"><pre class="programlisting">bool runOnFunction(Function &amp;F) override {
+      errs() &lt;&lt; "Function " &lt;&lt; F.getName() &lt;&lt; '\n';
+      return false;
+    }
+  };
+}</pre></div><p>This function prints the name of the function that is being processed.</p></li><li class="listitem">The next step is to initialize the pass ID:<div class="informalexample"><pre class="programlisting">char FuncBlockCount::ID = 0;</pre></div></li><li class="listitem">Finally, the pass <a id="id173" class="indexterm"/>needs to be registered, with a command-line argument and a name:<div class="informalexample"><pre class="programlisting">static RegisterPass&lt;FuncBlockCount&gt; X("funcblockcount", "Function Block Count", false, false);</pre></div><p>Putting everything together, the entire code looks like this:</p><div class="informalexample"><pre class="programlisting">#include "llvm/Pass.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/raw_ostream.h"
+using namespace llvm;
+namespace {
+struct FuncBlockCount : public FunctionPass {
+  static char ID;
+  FuncBlockCount() : FunctionPass(ID) {}
+  bool runOnFunction(Function &amp;F) override {
+    errs() &lt;&lt; "Function " &lt;&lt; F.getName() &lt;&lt; '\n';
+    return false;
+  }
+           };
+        }
+       char FuncBlockCount::ID = 0;
+       static RegisterPass&lt;FuncBlockCount&gt; X("funcblockcount", "Function Block Count", false, false);</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec119"/>How it works</h2></div></div></div><p>A simple <code class="literal">gmake</code> command compiles the file, so a new file <code class="literal">FuncBlockCount.so</code> is generated at the LLVM root directory. This shared object file can be dynamically loaded to the opt tool to run it on a piece of LLVM IR code. How to load and run it will be demonstrated in the next section.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec120"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To know more on how <a id="id174" class="indexterm"/>a pass can be built from scratch, visit <a class="ulink" href="http://llvm.org/docs/WritingAnLLVMPass.html">http://llvm.org/docs/WritingAnLLVMPass.html</a></li></ul></div></div></div>
+<div class="section" title="Running your own pass with the opt tool" id="aid-1FLS41"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec44"/>Running your own pass with the opt tool</h1></div></div></div><p>The pass <a id="id175" class="indexterm"/>written in the <a id="id176" class="indexterm"/>previous recipe, <span class="emphasis"><em>Writing your own LLVM pass</em></span>, is ready to be run on the LLVM IR. This pass needs to be loaded dynamically for the opt tool to recognize and execute it.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec121"/>How to do it…</h2></div></div></div><p>Do the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write the <a id="id177" class="indexterm"/>C test code in the <code class="literal">sample.c </code>file, which we <a id="id178" class="indexterm"/>will convert into an <code class="literal">.ll</code> file in the next step:<div class="informalexample"><pre class="programlisting">$ vi sample.c
+
+int foo(int n, int m) {
+  int sum = 0;
+  int c0;
+  for (c0 = n; c0 &gt; 0; c0--) {
+    int c1 = m;
+    for (; c1 &gt; 0; c1--) {
+      sum += c0 &gt; c1 ? 1 : 0;
+    }
+  }
+  return sum;
+}</pre></div></li><li class="listitem">Convert the C test code into LLVM IR using the following command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang –O0 –S –emit-llvm sample.c –o sample.ll</strong></span>
+</pre></div><p>This will generate a <code class="literal">sample.ll</code> file.</p></li><li class="listitem">Run the new pass with the opt tool, as follows:<div class="informalexample"><pre class="programlisting">$ opt  -load (path_to_.so_file)/FuncBlockCount.so  -funcblockcount sample.ll</pre></div><p>The output will look something like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Function foo</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec122"/>How it works…</h2></div></div></div><p>As seen in the preceding code, the shared object loads dynamically into the opt command-line tool and runs the pass. It goes over the function and displays its name. It does not modify the IR. Further enhancement in the new pass is demonstrated in the next recipe.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec123"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To know more about the various types of the <a id="id179" class="indexterm"/>Pass class, visit <a class="ulink" href="http://llvm.org/docs/WritingAnLLVMPass.html#pass-classes-and-requirements">http://llvm.org/docs/WritingAnLLVMPass.html#pass-classes-and-requirements</a></li></ul></div></div></div>
+<div class="section" title="Using another pass in a new pass" id="aid-1GKCM1"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec45"/>Using another pass in a new pass</h1></div></div></div><p>A pass may <a id="id180" class="indexterm"/>require another pass to get some analysis data, heuristics, or any such<a id="id181" class="indexterm"/> information to decide on a further course of action. The pass may just require some analysis such as memory dependencies, or it may require the altered IR as well. The new pass that you just saw simply prints the name of the function. Let's see how to enhance it to count the basic blocks in a loop, which also demonstrates how to use other pass results.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec124"/>Getting ready</h2></div></div></div><p>The code used in the previous recipe remains the same. Some modifications are required, however, to enhance it—as demonstrated in next section—so that it counts the number of basic blocks in the IR.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec125"/>How to do it…</h2></div></div></div><p>The <code class="literal">getAnalysis</code> function is used to specify which other pass will be used:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Since the new pass will be counting the number of basic blocks, it requires loop information. This is specified using the <code class="literal">getAnalysis</code> loop function:<div class="informalexample"><pre class="programlisting"> LoopInfo *LI = &amp;getAnalysis&lt;LoopInfoWrapperPass&gt;().getLoopInfo();</pre></div></li><li class="listitem">This will call the <code class="literal">LoopInfo</code> pass to get information on the loop. Iterating through this object gives the basic block information:<div class="informalexample"><pre class="programlisting">unsigned num_Blocks = 0;
+  Loop::block_iterator bb;
+  for(bb = L-&gt;block_begin(); bb != L-&gt;block_end();++bb)
+    num_Blocks++;
+  errs() &lt;&lt; "Loop level " &lt;&lt; nest &lt;&lt; " has " &lt;&lt; num_Blocks
+&lt;&lt; " blocks\n";</pre></div></li><li class="listitem">This will go over the loop to count the basic blocks inside it. However, it counts only the basic blocks in the outermost loop. To get information on the innermost loop, recursive calling of the <code class="literal">getSubLoops</code> function will help. Putting the logic in a separate function and calling it recursively makes more sense:<div class="informalexample"><pre class="programlisting">void countBlocksInLoop(Loop *L, unsigned nest) {
+  unsigned num_Blocks = 0;
+  Loop::block_iterator bb;
+  for(bb = L-&gt;block_begin(); bb != L-&gt;block_end();++bb)
+    num_Blocks++;
+  errs() &lt;&lt; "Loop level " &lt;&lt; nest &lt;&lt; " has " &lt;&lt; num_Blocks
+&lt;&lt; " blocks\n";
+  std::vector&lt;Loop*&gt; subLoops = L-&gt;getSubLoops();
+  Loop::iterator j, f;
+  for (j = subLoops.begin(), f = subLoops.end(); j != f;
+++j)
+    countBlocksInLoop(*j, nest + 1);
+}
+ 
+virtual bool runOnFunction(Function &amp;F) {
+  LoopInfo *LI = &amp;getAnalysis&lt;LoopInfoWrapperPass&gt;().getLoopInfo();
+  errs() &lt;&lt; "Function " &lt;&lt; F.getName() + "\n";
+  for (Loop *L : *LI)
+    countBlocksInLoop(L, 0);
+  return false;
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec126"/>How it works…</h2></div></div></div><p>The newly modified pass<a id="id182" class="indexterm"/> now needs to run on a sample program. Follow the<a id="id183" class="indexterm"/> given steps to modify and run the sample program:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open the <code class="literal">sample.c</code> file and replace its content with the following program:<div class="informalexample"><pre class="programlisting">int main(int argc, char **argv) {
+  int i, j, k, t = 0;
+  for(i = 0; i &lt; 10; i++) {
+    for(j = 0; j &lt; 10; j++) {
+      for(k = 0; k &lt; 10; k++) {
+        t++;
+      }
+    }
+    for(j = 0; j &lt; 10; j++) {
+      t++;
+    }
+  }
+  for(i = 0; i &lt; 20; i++) {
+    for(j = 0; j &lt; 20; j++) {
+      t++;
+    }
+    for(j = 0; j &lt; 20; j++) {
+      t++;
+    }
+  }
+  return t;
+}</pre></div></li><li class="listitem">Convert it into a <code class="literal">.ll</code> file using Clang:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang –O0 –S –emit-llvm sample.c –o sample.ll</strong></span>
+</pre></div></li><li class="listitem">Run the new <a id="id184" class="indexterm"/>pass on <a id="id185" class="indexterm"/>the previous sample program:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt  -load (path_to_.so_file)/FuncBlockCount.so  -funcblockcount sample.ll</strong></span>
+</pre></div><p>The output will look something like this:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Function main</strong></span>
+<span class="strong"><strong>Loop level 0 has 11 blocks</strong></span>
+<span class="strong"><strong>Loop level 1 has 3 blocks</strong></span>
+<span class="strong"><strong>Loop level 1 has 3 blocks</strong></span>
+<span class="strong"><strong>Loop level 0 has 15 blocks</strong></span>
+<span class="strong"><strong>Loop level 1 has 7 blocks</strong></span>
+<span class="strong"><strong>Loop level 2 has 3 blocks</strong></span>
+<span class="strong"><strong>Loop level 1 has 3 blocks</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="There's more…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec127"/>There's more…</h2></div></div></div><p>The LLVM's pass manager provides a debug pass option that gives us the chance to see which passes interact with our analyses and optimizations, as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt  -load (path_to_.so_file)/FuncBlockCount.so  -funcblockcount sample.ll –disable-output –debug-pass=Structure</strong></span>
+</pre></div></div></div>
+<div class="section" title="Registering a pass with pass manager" id="aid-1HIT81"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec46"/>Registering a pass with pass manager</h1></div></div></div><p>Until now, a new pass was a<a id="id186" class="indexterm"/> dynamic object that was run independently. The<a id="id187" class="indexterm"/> opt tool consists of a pipeline of such passes that are registered with the pass manager, and a part of LLVM. Let's see how to register our pass with the Pass Manager.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec128"/>Getting ready</h2></div></div></div><p>The <code class="literal">PassManager</code> class takes a list of passes, ensures that their prerequisites are set up correctly, and then schedules the passes to run efficiently. The Pass Manager does two main tasks to try to reduce the execution time of a series of passes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Shares the analysis results to avoid recomputing analysis results as much as possible</li><li class="listitem">Pipelines the execution of passes to the program to get better cache and memory usage behavior out of a series of passes by pipelining the passes together</li></ul></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec129"/>How to do it…</h2></div></div></div><p>Follow the given steps to <a id="id188" class="indexterm"/>register a pass with Pass Manager:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Define a <code class="literal">DEBUG_TYPE</code> macro, specifying the <a id="id189" class="indexterm"/>debugging name in the <code class="literal">FuncBlockCount.cpp</code> file:<div class="informalexample"><pre class="programlisting">#define DEBUG_TYPE "func-block-count"</pre></div></li><li class="listitem">In the <code class="literal">FuncBlockCount</code> struct, specify the <code class="literal">getAnalysisUsage</code> syntax as follows:<div class="informalexample"><pre class="programlisting">void getAnalysisUsage(AnalysisUsage &amp;AU) const override {
+    AU.addRequired&lt;LoopInfoWrapperPass&gt;();
+  }</pre></div></li><li class="listitem">Now initialize the macros for initialization of the new pass:<div class="informalexample"><pre class="programlisting">INITIALIZE_PASS_BEGIN(FuncBlockCount, " funcblockcount ",
+                     "Function Block Count", false, false)
+INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
+
+INITIALIZE_PASS_END(FuncBlockCount, "funcblockcount",
+                   "Function Block Count", false, false)
+
+Pass *llvm::createFuncBlockCountPass() { return new FuncBlockCount(); }</pre></div></li><li class="listitem">Add the <code class="literal">createFuncBlockCount</code> Pass function in the <code class="literal">LinkAllPasses.h</code> file, located at <code class="literal">include/llvm/</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>(void) llvm:: createFuncBlockCountPass ();</strong></span>
+</pre></div></li><li class="listitem">Add the declaration to the <code class="literal">Scalar.h</code> file, located at <code class="literal">include/llvm/Transforms</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Pass * createFuncBlockCountPass ();</strong></span>
+</pre></div></li><li class="listitem">Also modify the constructor of the pass:<div class="informalexample"><pre class="programlisting">FuncBlockCount() : FunctionPass(ID) {initializeFuncBlockCount Pass (*PassRegistry::getPassRegistry());}</pre></div></li><li class="listitem">In the <code class="literal">Scalar.cpp file</code>, located at <code class="literal">lib/Transforms/Scalar/</code>, add the initialization pass entry:<div class="informalexample"><pre class="programlisting">initializeFuncBlockCountPass (Registry);</pre></div></li><li class="listitem">Add this initialization declaration to the <code class="literal">InitializePasses.h</code> file, which is located at <code class="literal">include/llvm/</code>:<div class="informalexample"><pre class="programlisting">void initializeFuncBlockCountPass (Registry);</pre></div></li><li class="listitem">Finally, add the <code class="literal">FuncBlockCount.cpp</code> filename to the <code class="literal">CMakeLists.txt</code> file, located at <code class="literal">lib/Transforms/Scalar/</code>:<div class="informalexample"><pre class="programlisting">FuncBlockCount.cpp</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec130"/>How it works…</h2></div></div></div><p>Compile the<a id="id190" class="indexterm"/> LLVM with the <code class="literal">cmake</code> command as specified<a id="id191" class="indexterm"/> in <a class="link" title="Chapter 1. LLVM Design and Use" href="part0015.xhtml#aid-E9OE1">Chapter 1</a>, <span class="emphasis"><em>LLVM Design and Use</em></span>. The Pass Manager will include this pass in the pass pipeline of the opt command-line tool. Also, this pass can be run in isolation from the command line:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt –funcblockcount sample.ll</strong></span>
+</pre></div></div><div class="section" title="See Also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec131"/>See Also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To know more about adding a pass in Pass Manager<a id="id192" class="indexterm"/> in simple steps, study the LoopInstSimplify pass at <a class="ulink" href="http://llvm.org/viewvc/llvm-project/llvm/trunk/lib/Transforms/Scalar/LoopInstSimplify.cpp">http://llvm.org/viewvc/llvm-project/llvm/trunk/lib/Transforms/Scalar/LoopInstSimplify.cpp</a></li></ul></div></div></div>
+<div class="section" title="Writing an analysis pass" id="aid-1IHDQ1"><div class="titlepage"><div><div><h1 class="title"><a id="ch04lvl1sec47"/>Writing an analysis pass</h1></div></div></div><p>The analysis pass provides <a id="id193" class="indexterm"/>higher-level information about IR without actually changing the IR. The results that the analysis pass provides can be used by another analysis pass to compute its result. Also, once an analysis pass calculates the result, its result can be used several times by different passes until the IR on which this pass was run is changed. In this recipe, we will write an analysis pass that counts and outputs the number of opcodes used in a function.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec132"/>Getting ready</h2></div></div></div><p>First of all, we write the test code on which we will be running our pass:</p><div class="informalexample"><pre class="programlisting">$ cat testcode.c
+int func(int a, int b){
+  int sum = 0;
+  int iter;
+  for (iter = 0; iter &lt; a; iter++) {
+    int iter1;
+    for (iter1 = 0; iter1 &lt; b; iter1++) {
+      sum += iter &gt; iter1 ? 1 : 0;
+    }
+  }
+  return sum;
+}</pre></div><p>Transform this into a <code class="literal">.bc</code> file, which we will use as the input to the analysis pass:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang -c -emit-llvm testcode.c -o testcode.bc</strong></span>
+</pre></div><p>Now create the file containing the pass source code in <code class="literal">llvm_root_dir/lib/Transforms/opcodeCounter</code>. Here, <code class="literal">opcodeCounter</code> is the directory we have created, and it is where our pass's source code will reside.</p><p>Make the necessary <code class="literal">Makefile</code> changes so that this pass can be compiled.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec133"/>How to do it…</h2></div></div></div><p>Now let's start writing<a id="id194" class="indexterm"/> the source code for our analysis pass:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Include the necessary header files and use the <code class="literal">llvm</code> namespace:<div class="informalexample"><pre class="programlisting">#define DEBUG_TYPE "opcodeCounter"
+#include "llvm/Pass.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/raw_ostream.h"
+#include &lt;map&gt;
+using namespace llvm;</pre></div></li><li class="listitem">Create the structure defining the pass:<div class="informalexample"><pre class="programlisting">namespace {
+struct CountOpcode: public FunctionPass {</pre></div></li><li class="listitem">Within the structure, create the necessary data structures to count the number of opcodes and to denote the pass ID of the pass:<div class="informalexample"><pre class="programlisting">std::map&lt; std::string, int&gt; opcodeCounter;
+static char ID;
+CountOpcode () : FunctionPass(ID) {}</pre></div></li><li class="listitem">Within the preceding structure, write the code for the actual implementation of the pass, overloading the <code class="literal">runOnFunction</code> function:<div class="informalexample"><pre class="programlisting">virtual bool runOnFunction (Function &amp;F) {
+ llvm::outs() &lt;&lt; "Function " &lt;&lt; F.getName () &lt;&lt; '\n';
+for ( Function::iterator bb = F.begin(), e = F.end(); bb != e; ++bb) {
+  for ( BasicBlock::iterator i = bb-&gt;begin(), e = bb-&gt;end(); i!= e; ++i) {
+    if(opcodeCounter.find(i-&gt;getOpcodeName()) == opcodeCounter.end()) {
+    opcodeCounter[i-&gt;getOpcodeName()] = 1;
+    } else {
+    opcodeCounter[i-&gt;getOpcodeName()] += 1;
+    }
+  }
+}
+
+std::map&lt; std::string, int&gt;::iterator i = opcodeCounter.begin();
+std::map&lt; std::string, int&gt;::iterator e = opcodeCounter.end();
+while (i != e) {
+  llvm::outs()  &lt;&lt; i-&gt;first &lt;&lt; ": " &lt;&lt; i-&gt;second &lt;&lt; "\n";
+  i++;
+}
+llvm::outs()  &lt;&lt; "\n";
+opcodeCounter.clear();
+return false;
+}
+};
+}</pre></div></li><li class="listitem">Write the<a id="id195" class="indexterm"/> code for registering the pass:<div class="informalexample"><pre class="programlisting">char CountOpcode::ID = 0;
+<code class="literal">static RegisterPass&lt;CountOpcode&gt; X("opcodeCounter", "Count number of opcode in a functions");</code>
+</pre></div></li><li class="listitem">Compile the pass using the <code class="literal">make</code> or <code class="literal">cmake</code> command.</li><li class="listitem">Run the pass on the test code using the opt tool to get the information on the number of opcodes present in the function:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -load path-to-build-folder/lib/LLVMCountopcodes.so -opcodeCounter -disable-output testcode.bc</strong></span>
+<span class="strong"><strong>Function func</strong></span>
+<span class="strong"><strong>add: 3</strong></span>
+<span class="strong"><strong>alloca: 5</strong></span>
+<span class="strong"><strong>br: 8</strong></span>
+<span class="strong"><strong>icmp: 3</strong></span>
+<span class="strong"><strong>load: 10</strong></span>
+<span class="strong"><strong>ret: 1</strong></span>
+<span class="strong"><strong>select: 1</strong></span>
+<span class="strong"><strong>store: 8</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec134"/>How it works…</h2></div></div></div><p>This analysis pass works on a function level, running once for each function in the program. Hence, we have inherited the <code class="literal">FunctionPass</code> function when declaring the <code class="literal">CountOpcodes : public FunctionPass</code> struct.</p><p>The <code class="literal">opcodeCounter</code> function keeps a count of every opcode that has been used in the function. In the following for loops, we collect the opcodes from all the functions:</p><div class="informalexample"><pre class="programlisting">for (Function::iterator bb = F.begin(), e = F.end(); bb != e; ++bb) {
+for (BasicBlock::iterator i = bb-&gt;begin(), e = bb-&gt;end(); i != e; ++i) {</pre></div><p>The first <code class="literal">for</code> loop iterates over all the basic blocks present in the function, and the second for loop iterates over all the instructions present in the basic block.</p><p>The code in the<a id="id196" class="indexterm"/> first <code class="literal">for</code> loop is the actual code that collects the opcodes and their numbers. The code below the <code class="literal">for</code> loops is meant for printing the results. As we have used a map to store the result, we iterate over it to print the pair of the opcode name and its number in the function.</p><p>We return <code class="literal">false</code> because we are not modifying anything in the test code. The last two lines of the code are meant for registering this pass with the given name so that the opt tool can use this pass.</p><p>Finally, on execution of the test code, we get the output as different opcodes used in the function and their numbers.</p></div></div>
+<div class="section" title="Writing an alias analysis pass"><div class="titlepage" id="aid-1JFUC2"><div><div><h1 class="title"><a id="ch04lvl1sec48"/>Writing an alias analysis pass</h1></div></div></div><p>Alias analysis is a technique <a id="id197" class="indexterm"/>by which we get to know whether two pointers point to the same location—that is, whether the same location can be accessed in more ways than one. By getting the results of this analysis, you can decide about further optimizations, such as common subexpression elimination. There are different ways and algorithms to perform alias analysis. In this recipe, we will not deal with these algorithms, but we will see how LLVM provides the infrastructure to write your own alias analysis pass. In this recipe, we will write an alias analysis pass to see how to get started with writing such a pass. We will not make use of any specific algorithm, but will return the <code class="literal">MustAlias</code> response in every case of the analysis.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec135"/>Getting ready</h2></div></div></div><p>Write the test code that will be the input for alias analysis. Here, we will take the <code class="literal">testcode.c</code> file used in the previous recipe as the test code.</p><p>Make the necessary <code class="literal">Makefile</code> changes, make changes to register the pass by adding entries for the pass in <code class="literal">llvm/lib/Analysis/Analysis.cpp llvm/include/llvm/InitializePasses.h</code>, <code class="literal">llvm/include/llvm/LinkAllPasses.h</code>, <code class="literal">llvm/include/llvm/Analysis/Passes.h</code> and create a file in <code class="literal">llvm_source_dir/lib/Analysis/ named EverythingMustAlias.cpp</code> that will contain the source code for our pass.</p></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec136"/>How to do it...</h2></div></div></div><p>Do the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Include the<a id="id198" class="indexterm"/> necessary header files and use the <code class="literal">llvm</code> namespace:<div class="informalexample"><pre class="programlisting">#include "llvm/Pass.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+using namespace llvm;</pre></div></li><li class="listitem">Create a structure for our pass by inheriting the <code class="literal">ImmutablePass</code> and <code class="literal">AliasAnalysis</code> classes:<div class="informalexample"><pre class="programlisting">namespace {
+struct EverythingMustAlias : public ImmutablePass, public AliasAnalysis {</pre></div></li><li class="listitem">Declare the data structures and constructor:<div class="informalexample"><pre class="programlisting">static char ID;
+EverythingMustAlias() : ImmutablePass(ID) {}
+initializeEverythingMustAliasPass(*PassRegistry::getPassRegistry());}</pre></div></li><li class="listitem">Implement the <code class="literal">getAdjustedAnalysisPointer</code> function:<div class="informalexample"><pre class="programlisting">    void *getAdjustedAnalysisPointer(const void *ID) override {
+      if (ID == &amp;AliasAnalysis::ID)
+        return (AliasAnalysis*)this;
+      return this;
+    }</pre></div></li><li class="listitem">Implement the <code class="literal">initializePass</code> function to initialize the pass:<div class="informalexample"><pre class="programlisting">bool doInitialization(Module &amp;M) override {
+     DL = &amp;M.getDataLayout();
+      return true;
+    }</pre></div></li><li class="listitem">Implement the <code class="literal">alias</code> function:<div class="informalexample"><pre class="programlisting">void *getAdjustedAnalysisPointer(const void *ID) override {
+      if (ID == &amp;AliasAnalysis::ID)
+        return (AliasAnalysis*)this;
+      return this;
+    }
+};
+}</pre></div></li><li class="listitem">Register<a id="id199" class="indexterm"/> the pass:<div class="informalexample"><pre class="programlisting">char EverythingMustAlias::ID = 0;
+INITIALIZE_AG_PASS(EverythingMustAlias, AliasAnalysis, "must-aa",
+"Everything Alias (always returns 'must' alias)", true, true, true)
+
+ImmutablePass *llvm::createEverythingMustAliasPass() { return new EverythingMustAlias(); }</pre></div></li><li class="listitem">Compile the pass using the <code class="literal">cmake</code> or <code class="literal">make</code> command.</li><li class="listitem">Execute the test code using the <code class="literal">.so</code> file that is formed after compiling the pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt  -must-aa -aa-eval -disable-output testcode.bc</strong></span>
+<span class="strong"><strong>===== Alias Analysis Evaluator Report =====</strong></span>
+<span class="strong"><strong> 10 Total Alias Queries Performed</strong></span>
+<span class="strong"><strong> 0 no alias responses (0.0%)</strong></span>
+<span class="strong"><strong> 0 may alias responses (0.0%)</strong></span>
+<span class="strong"><strong> 0 partial alias responses (0.0%)</strong></span>
+<span class="strong"><strong> 10 must alias responses (100.0%)</strong></span>
+<span class="strong"><strong> Alias Analysis Evaluator Pointer Alias Summary: 0%/0%/0%/100%</strong></span>
+<span class="strong"><strong> Alias Analysis Mod/Ref Evaluator Summary: no mod/ref!</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec137"/>How it works…</h2></div></div></div><p>The <code class="literal">AliasAnalysis</code> class gives the interface that the various alias analysis implementations should support. It exports the <code class="literal">AliasResult</code> and <code class="literal">ModRefResult</code> enums, representing the results of the <code class="literal">alias</code> and <code class="literal">modref</code> query respectively.</p><p>The <code class="literal">alias</code> method is used to check whether two memory objects are pointing to the same location or not. It takes two memory objects as the input and returns <code class="literal">MustAlias</code>, <code class="literal">PartialAlias</code>, <code class="literal">MayAlias</code>, or <code class="literal">NoAlias</code> as appropriate.</p><p>The <code class="literal">getModRefInfo</code> method returns the information on whether the execution of an instruction can read or modify a memory location. The pass in the preceding example works by returning the value <code class="literal">MustAlias</code> for every set of two pointers, as we have implemented it that way. Here, we have inherited the <code class="literal">ImmutablePasses</code> class, which suits our pass, as it is a very basic pass. We have inherited the <code class="literal">AliasAnalysis</code> pass, which provides the interface for our implementation.</p><p>The <code class="literal">getAdjustedAnalysisPointer</code> function is used when a pass implements an analysis interface through multiple inheritance. If needed, it should override this to adjust the pointer <a id="id200" class="indexterm"/>as required for the specified pass information.</p><p>The <code class="literal">initializePass</code> function is used to initialize the pass that contains the <code class="literal">InitializeAliasAnalysis</code> method, which should contain the actual implementation of the alias analysis.</p><p>The <code class="literal">getAnalysisUsage</code> method is used to declare any dependency on other passes by explicitly calling the <code class="literal">AliasAnalysis::getAnalysisUsage</code> method.</p><p>The <code class="literal">alias</code> method is used to determine whether two memory objects alias each other or not. It takes two memory objects as the input and returns the <code class="literal">MustAlias</code>, <code class="literal">PartialAlias</code>, <code class="literal">MayAlias</code>, or <code class="literal">NoAlias</code> responses as appropriate.</p><p>The code following the <code class="literal">alias</code> method is meant for registering the pass. Finally, when we use this pass over the test code, we get 10 <code class="literal">MustAlias</code> responses (<code class="literal">100.0%</code>) as the result, as implemented in our pass.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec138"/>See also</h2></div></div></div><p>For a more detailed insight into<a id="id201" class="indexterm"/> LLVM alias analysis, refer to <a class="ulink" href="http://llvm.org/docs/AliasAnalysis.html">http://llvm.org/docs/AliasAnalysis.html</a>.</p></div></div>
+<div class="section" title="Using other analysis passes"><div class="titlepage" id="aid-1KEEU2"><div><div><h1 class="title"><a id="ch04lvl1sec49"/>Using other analysis passes</h1></div></div></div><p>In this recipe, we will take a <a id="id202" class="indexterm"/>brief look into the other analysis passes that are provided by LLVM and can be used to get analysis information about a basic block, function, module, and so on. We will look into passes that have already been implemented in LLVM, and how we can use them for our purpose. We will not go through all the passes but take a look at only some of them.</p><div class="section" title="Getting ready…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec139"/>Getting ready…</h2></div></div></div><p>Write the test code in the <code class="literal">testcode1.c</code> file, which will be used for analysis purposes:</p><div class="informalexample"><pre class="programlisting">$ cat testcode1.c
+void func() {
+int i;
+char C[2];
+char A[10];
+for(i = 0; i != 10; ++i) {
+  ((short*)C)[0] = A[i];
+  C[1] = A[9-i];
+}
+}</pre></div><p>Convert the C code to bitcode format, using the following command line:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang -c -emit-llvm testcode1.c -o testcode1.bc</strong></span>
+</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec140"/>How to do it…</h2></div></div></div><p>Follow the steps given to <a id="id203" class="indexterm"/>use other analysis passes:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Use the alias analysis evaluator pass by passing <code class="literal">–aa-eval</code> as a command-line option to the opt tool:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -aa-eval -disable-output testcode1.bc</strong></span>
+<span class="strong"><strong>===== Alias Analysis Evaluator Report =====</strong></span>
+<span class="strong"><strong>36 Total Alias Queries Performed</strong></span>
+<span class="strong"><strong>0 no alias responses (0.0%)</strong></span>
+<span class="strong"><strong>36 may alias responses (100.0%)	</strong></span>
+<span class="strong"><strong>0 partial alias responses (0.0%)</strong></span>
+<span class="strong"><strong>0 must alias responses (0.0%)</strong></span>
+<span class="strong"><strong>Alias Analysis Evaluator Pointer Alias Summary: 0%/100%/0%/0%</strong></span>
+<span class="strong"><strong>Alias Analysis Mod/Ref Evaluator Summary: no mod/ref!</strong></span>
+</pre></div></li><li class="listitem">Print the dominator tree information using the <code class="literal">–print-dom-info</code> command-line option along with opt:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt  -print-dom-info -disable-output testcode1.bc</strong></span>
+<span class="strong"><strong>=============================--------------------------------</strong></span>
+<span class="strong"><strong>Inorder Dominator Tree:</strong></span>
+<span class="strong"><strong>  [1] %0 {0,9}</strong></span>
+<span class="strong"><strong>    [2] %1 {1,8}</strong></span>
+<span class="strong"><strong>      [3] %4 {2,5}</strong></span>
+<span class="strong"><strong>        [4] %19 {3,4}</strong></span>
+<span class="strong"><strong>      [3] %22 {6,7}</strong></span>
+</pre></div></li><li class="listitem">Count the number of queries made by one pass to another using the <code class="literal">–count-aa</code> command-line option along with opt:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -count-aa -basicaa -licm -disable-output testcode1.bc</strong></span>
+<span class="strong"><strong>No alias:    [4B] i32* %i, [1B] i8* %7</strong></span>
+<span class="strong"><strong>No alias:    [4B] i32* %i, [2B] i16* %12</strong></span>
+<span class="strong"><strong>No alias:    [1B] i8* %7, [2B] i16* %12</strong></span>
+<span class="strong"><strong>No alias:    [4B] i32* %i, [1B] i8* %16</strong></span>
+<span class="strong"><strong>Partial alias:    [1B] i8* %7, [1B] i8* %16</strong></span>
+<span class="strong"><strong>No alias:    [2B] i16* %12, [1B] i8* %16</strong></span>
+<span class="strong"><strong>Partial alias:    [1B] i8* %7, [1B] i8* %16</strong></span>
+<span class="strong"><strong>No alias:    [4B] i32* %i, [1B] i8* %18</strong></span>
+<span class="strong"><strong>No alias:    [1B] i8* %18, [1B] i8* %7</strong></span>
+<span class="strong"><strong>No alias:    [1B] i8* %18, [1B] i8* %16</strong></span>
+<span class="strong"><strong>Partial alias:    [2B] i16* %12, [1B] i8* %18</strong></span>
+<span class="strong"><strong>Partial alias:    [2B] i16* %12, [1B] i8* %18</strong></span>
+
+<span class="strong"><strong>===== Alias Analysis Counter Report =====</strong></span>
+<span class="strong"><strong> Analysis counted:</strong></span>
+<span class="strong"><strong>  12 Total Alias Queries Performed</strong></span>
+<span class="strong"><strong>  8 no alias responses (66%)</strong></span>
+<span class="strong"><strong>  0 may alias responses (0%)</strong></span>
+<span class="strong"><strong>  4 partial alias responses (33%)</strong></span>
+<span class="strong"><strong>  0 must alias responses (0%)</strong></span>
+<span class="strong"><strong>  Alias Analysis Counter Summary: 66%/0%/33%/0%</strong></span>
+
+<span class="strong"><strong>  0 Total Mod/Ref Queries Performed</strong></span>
+</pre></div></li><li class="listitem">Print the alias<a id="id204" class="indexterm"/> sets in a program using the <code class="literal">-print-alias-sets</code> command-line option with opt:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt  -basicaa -print-alias-sets -disable-output testcode1.bc</strong></span>
+<span class="strong"><strong>Alias Set Tracker: 3 alias sets for 5 pointer values.</strong></span>
+<span class="strong"><strong>  AliasSet[0x336b120, 1] must alias, Mod/Ref   Pointers: (i32* %i, 4)</strong></span>
+<span class="strong"><strong>  AliasSet[0x336b1c0, 2] may alias, Ref       Pointers: (i8* %7, 1), (i8* %16, 1)</strong></span>
+<span class="strong"><strong>  AliasSet[0x338b670, 2] may alias, Mod       Pointers: (i16* %12, 2), (i8* %18, 1)</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec141"/>How it works…</h2></div></div></div><p>In the first case, where we use the <code class="literal">-aa-eval</code> option, the opt tool runs the alias analysis evaluator pass, which outputs the analysis on the screen. It iterates through all pairs of pointers in the function and queries whether the two are aliases of each other or not.</p><p>Using the <code class="literal">-print-dom-info</code> option, the pass for printing the dominator tree is run, through which information about the dominator tree can be obtained.</p><p>In the third case, we execute the <code class="literal">opt -count-aa -basicaa –licm</code> command. The <code class="literal">count-aa</code> command option counts the number of queries made by the <code class="literal">licm</code> pass to the <code class="literal">basicaa</code> pass. This information is obtained by the count alias analysis pass using the opt tool.</p><p>To print all the alias sets<a id="id205" class="indexterm"/> within a program, we use the <code class="literal">- print-alias-sets</code> command-line option. In this case, it prints the alias sets obtained after analyzing with the <code class="literal">basicaa</code> pass.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch04lvl2sec142"/>See also</h2></div></div></div><p>Refer to <a class="ulink" href="http://llvm.org/docs/Passes.html#anal">http://llvm.org/docs/Passes.html#anal</a> to know about more passes not <a id="id206" class="indexterm"/>mentioned here.</p></div></div></body></html>

@@ -1,0 +1,378 @@
+<html><head></head><body>
+<div id="page" style="height:0pt"/><div class="book" title="Chapter&#xA0;3.&#xA0;Advanced LLVM IR" id="QMFO1-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03" class="calibre1"/>Chapter 3. Advanced LLVM IR</h1></div></div></div><p class="calibre7">LLVM provides a powerful intermediate representation for efficient compiler transformations and analysis, while providing a natural means to debug and visualize the transformations. The IR is so designed that it can be easily mapped to high level languages. LLVM IR provides typed information, which can be used for various optimizations.</p><p class="calibre7">In the last chapter, you learned how to create some simple LLVM instructions within a function and module. Starting from simple examples such as emitting binary operations, we constructed functions in a module and also created some complex programming paradigms such as if-else and loops. LLVM provides a rich set of instructions and intrinsics to emit a complex IR.</p><p class="calibre7">In this chapter, we will go through some more examples of LLVM IR which involve memory operations. Some advanced topics such as aggregate data types and operations on them will also be covered. The topics covered in this chapter are as follows:</p><div class="book"><ul class="itemizedlist"><li class="listitem">Getting the address of an element</li><li class="listitem">Reading from the memory</li><li class="listitem">Writing into a memory location</li><li class="listitem">Inserting a scalar into a vector</li><li class="listitem">Extracting a scalar from a vector</li></ul></div></div>
+
+<div class="book" title="Chapter&#xA0;3.&#xA0;Advanced LLVM IR" id="QMFO1-684481f6e3394b1e8596d1aa3001290f">
+<div class="book" title="Memory access operations"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_1"><a id="ch03lvl1sec22" class="calibre1"/>Memory access operations</h1></div></div></div><p class="calibre7">Memory is an important<a id="id99" class="calibre1"/> component of almost all computing systems. Memory stores data, which needs to be read to perform operations on the computing system. Results of the operations are stored back in the memory.</p><p class="calibre7">The first step is to get the location of the desired element from the memory and store the address in which that particular element can be found. You will now learn how to calculate the <a id="id100" class="calibre1"/>address and perform load-store operations.</p></div></div>
+<div class="book" title="Getting the address of an element" id="RL0A1-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec23" class="calibre1"/>Getting the address of an element</h1></div></div></div><p class="calibre7">In LLVM, the <code class="email">getelementptr</code> instruction is used to get the address of an element in an aggregate data <a id="id101" class="calibre1"/>structure. It only calculates the address and does<a id="id102" class="calibre1"/> not access the memory.</p><p class="calibre7">The first argument of the <code class="email">getelementptr</code> instruction is a type used as the basis for calculating the address. The second argument is pointer or vector of pointers which act as base of the address - which in our array case will be <code class="email">a</code>. The next arguments are the indices of the element to be accessed.</p><p class="calibre7">The Language reference (<a class="calibre1" href="http://llvm.org/docs/LangRef.html#getelementptr-instruction">http://llvm.org/docs/LangRef.html#getelementptr-instruction</a>) mentions important notes on <code class="email">getelementptr</code> instruction as follows:</p><div class="blockquote"><blockquote class="blockquote1"><p class="calibre20">The first index always indexes the pointer value given as the first argument, the second index indexes a value of the type pointed to (not necessarily the value directly pointed to, since the first index can be non-zero), etc. The first type indexed into must be a pointer value, subsequent types can be arrays, vectors, and structs. Note that subsequent types being indexed into can never be pointers, since that would require loading the pointer before continuing calculation.</p></blockquote></div><p class="calibre7">This essentially implies two important things:</p><div class="book"><ol class="orderedlist"><li class="listitem" value="1">Every pointer has an index, and the first index is always an array index. If it's a pointer to a structure, you have to use index 0 to mean (the first such structure), then the index of the element.</li><li class="listitem" value="2">The first type parameter helps GEP identify the sizes of the base structure and its elements, thus easily calculating the address. The resulting type (<code class="email">%a1</code>) is not necessarily the same.</li></ol><div class="calibre21"/></div><p class="calibre7">More elaborated explanation is provided at <a class="calibre1" href="http://llvm.org/docs/GetElementPtr.html">http://llvm.org/docs/GetElementPtr.html</a>
+</p><p class="calibre7">Let's assume that we have a pointer to a vector of two 32 bit integers <code class="email">&lt;2 x i32&gt;* %a</code> and we want to access second integer from the vector. The  address  will be calculated as</p><div class="informalexample"><pre class="programlisting">%a1 = getelementptr i32, &lt;2 x i32&gt;* %a, i32 1 </pre></div><p class="calibre7">To emit this instruction, LLVM API can be used as follows:</p><p class="calibre7">First create an array type which will be passed as argument to the function.</p><div class="informalexample"><pre class="programlisting">Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 2);
+  Type *ptrTy = vecTy-&gt;getPointerTo(0);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), ptrTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+Value *getGEP(IRBuilder&lt;&gt; &amp;Builder, Value *Base, Value *Offset) {
+  return Builder.CreateGEP(Builder.getInt32Ty(), Base, Offset, "a1");
+}</pre></div><p class="calibre7"> The whole code looks like: </p><div class="informalexample"><pre class="programlisting">#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include &lt;vector&gt;
+using namespace llvm;
+
+static LLVMContext &amp;Context = getGlobalContext();
+static Module *ModuleOb = new Module("my compiler", Context);
+static std::vector&lt;std::string&gt; FunArgs;
+
+Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 2);
+  Type *ptrTy = vecTy-&gt;getPointerTo(0);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), ptrTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+void setFuncArgs(Function *fooFunc, std::vector&lt;std::string&gt; FunArgs) {
+  unsigned Idx = 0;
+  Function::arg_iterator AI, AE;
+  for (AI = fooFunc-&gt;arg_begin(), AE = fooFunc-&gt;arg_end(); AI != AE;
+       ++AI, ++Idx)
+    AI-&gt;setName(FunArgs[Idx]);
+}
+
+BasicBlock *createBB(Function *fooFunc, std::string Name) {
+  return BasicBlock::Create(Context, Name, fooFunc);
+}
+
+Value *getGEP(IRBuilder&lt;&gt; &amp;Builder, Value *Base, Value *Offset) {
+  return Builder.CreateGEP(Builder.getInt32Ty(), Base, Offset, "a1");
+}
+
+int main(int argc, char *argv[]) {
+  FunArgs.push_back("a");
+  static IRBuilder&lt;&gt; Builder(Context);
+  Function *fooFunc = createFunc(Builder, "foo");
+  setFuncArgs(fooFunc, FunArgs);
+  Value *Base = fooFunc-&gt;arg_begin();
+  BasicBlock *entry = createBB(fooFunc, "entry");
+  Builder.SetInsertPoint(entry);
+  Value *gep = getGEP(Builder, Base, Builder.getInt32(1));
+  verifyFunction(*fooFunc);
+  ModuleOb-&gt;dump();
+  return 0;
+}</pre></div><p class="calibre7">Compile the code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">$ clang++ toy.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core` -fno-rtti -o toy</strong></span>
+<span class="strong"><strong class="calibre2">$ ./toy</strong></span>
+</pre></div><p class="calibre7">Output:</p><div class="informalexample"><pre class="programlisting">; ModuleID = 'my compiler'
+
+define i32 @foo(&lt;2 x i32&gt;* %a) {
+entry:
+  %a1 = getelementptr i32, &lt;2 x i32&gt;* %a, i32 1
+  ret i32 0
+}</pre></div></div>
+<div class="book" title="Reading from the memory" id="SJGS1-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec24" class="calibre1"/>Reading from the memory</h1></div></div></div><p class="calibre7">Now, since we have the <a id="id103" class="calibre1"/>address, we are ready to read the data from that address and assign the read value to a variable.</p><p class="calibre7">In LLVM the <code class="email">load</code> instruction is used to read from a memory location. This simple instruction or combination of similar instructions may then be mapped to some of the sophisticated memory read instructions in low-level assembly.</p><p class="calibre7">A <code class="email">load</code> instruction takes an argument, which is the memory address from which the data should be read. We obtained the address in the previous section by the <code class="email">getelementptr</code> instruction in <code class="email">a1</code>.</p><p class="calibre7">The <code class="email">load</code> instruction looks like the following:</p><div class="informalexample"><pre class="programlisting">%val = load i32, i32* a1</pre></div><p class="calibre7">This means that the <code class="email">load</code> will take the data pointed by <code class="email">a1</code> and save in <code class="email">%val</code>.</p><p class="calibre7">To emit this we can use the API provided by LLVM in a function, as shown in the following code:</p><div class="informalexample"><pre class="programlisting">Value *getLoad(IRBuilder&lt;&gt; &amp;Builder, Value *Address) {
+  return Builder.CreateLoad(Address, "load");
+}</pre></div><p class="calibre7">Let's also return the loaded value:</p><div class="informalexample"><pre class="programlisting">   builder.CreateRet(val);</pre></div><p class="calibre7">The whole code is as follows:</p><div class="informalexample"><pre class="programlisting">#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include &lt;vector&gt;
+using namespace llvm;
+
+static LLVMContext &amp;Context = getGlobalContext();
+static Module *ModuleOb = new Module("my compiler", Context);
+static std::vector&lt;std::string&gt; FunArgs;
+
+Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 2);
+  Type *ptrTy = vecTy-&gt;getPointerTo(0);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), ptrTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+void setFuncArgs(Function *fooFunc, std::vector&lt;std::string&gt; FunArgs) {
+  unsigned Idx = 0;
+  Function::arg_iterator AI, AE;
+  for (AI = fooFunc-&gt;arg_begin(), AE = fooFunc-&gt;arg_end(); AI != AE;
+       ++AI, ++Idx)
+    AI-&gt;setName(FunArgs[Idx]);
+}
+
+BasicBlock *createBB(Function *fooFunc, std::string Name) {
+  return BasicBlock::Create(Context, Name, fooFunc);
+}
+
+Value *getGEP(IRBuilder&lt;&gt; &amp;Builder, Value *Base, Value *Offset) {
+  return Builder.CreateGEP(Builder.getInt32Ty(), Base, Offset, "a1");
+}
+
+<span class="strong"><strong class="calibre2">Value *getLoad(IRBuilder&lt;&gt; &amp;Builder, Value *Address) {</strong></span>
+<span class="strong"><strong class="calibre2">  return Builder.CreateLoad(Address, "load");</strong></span>
+<span class="strong"><strong class="calibre2">}</strong></span>
+
+int main(int argc, char *argv[]) {
+  FunArgs.push_back("a");
+  static IRBuilder&lt;&gt; Builder(Context);
+  Function *fooFunc = createFunc(Builder, "foo");
+  setFuncArgs(fooFunc, FunArgs);
+  Value *Base = fooFunc-&gt;arg_begin();
+  BasicBlock *entry = createBB(fooFunc, "entry");
+  Builder.SetInsertPoint(entry);
+  Value *gep = getGEP(Builder, Base, Builder.getInt32(1));
+<span class="strong"><strong class="calibre2">  Value *load = getLoad(Builder, gep);</strong></span>
+  Builder.CreateRet(load);
+  verifyFunction(*fooFunc);
+  ModuleOb-&gt;dump();
+  return 0;
+}</pre></div><p class="calibre7">Compile the <a id="id104" class="calibre1"/>following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">$ clang++ toy.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core` -fno-rtti -o toy</strong></span>
+<span class="strong"><strong class="calibre2">$ ./toy</strong></span>
+</pre></div><p class="calibre7">The following is the output:</p><div class="informalexample"><pre class="programlisting">; ModuleID = 'my compiler'
+
+define i32 @foo(&lt;2 x i32&gt;* %a) {
+entry:
+  %a1 = getelementptr i32, &lt;2 x i32&gt;* %a, i32 1
+  %load = load i32, i32* %a1
+  ret i32 %load
+}</pre></div></div>
+<div class="book" title="Writing into a memory location" id="TI1E1-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec25" class="calibre1"/>Writing into a memory location</h1></div></div></div><p class="calibre7">LLVM uses the <code class="email">store</code> instruction to<a id="id105" class="calibre1"/> write into a memory location. There are two arguments to the <code class="email">store</code> instruction: a value to store and an address at which to store it. The <code class="email">store</code> instruction has no return value. Let's say that we want to write a data to the second element of the vector of two integers. The <code class="email">store</code> instruction looks like <code class="email">store i32 3, i32* %a1</code>. To emit the <code class="email">store</code> instruction, we can use the following API provided by LLVM:</p><div class="informalexample"><pre class="programlisting">void getStore(IRBuilder&lt;&gt; &amp;Builder, Value *Address, Value *V) {
+  Builder.CreateStore(V, Address);
+}</pre></div><p class="calibre7">For example, we will multiply the second element of the <code class="email">&lt;2 x i32&gt;</code> vector by <code class="email">16</code> and store it back at the same location.</p><p class="calibre7">Consider the following code:</p><div class="informalexample"><pre class="programlisting">#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include &lt;vector&gt;
+using namespace llvm;
+
+static LLVMContext &amp;Context = getGlobalContext();
+static Module *ModuleOb = new Module("my compiler", Context);
+static std::vector&lt;std::string&gt; FunArgs;
+
+Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 2);
+  Type *ptrTy = vecTy-&gt;getPointerTo(0);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), ptrTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+void setFuncArgs(Function *fooFunc, std::vector&lt;std::string&gt; FunArgs) {
+  unsigned Idx = 0;
+  Function::arg_iterator AI, AE;
+  for (AI = fooFunc-&gt;arg_begin(), AE = fooFunc-&gt;arg_end(); AI != AE;
+       ++AI, ++Idx)
+    AI-&gt;setName(FunArgs[Idx]);
+}
+
+BasicBlock *createBB(Function *fooFunc, std::string Name) {
+  return BasicBlock::Create(Context, Name, fooFunc);
+}
+
+Value *createArith(IRBuilder&lt;&gt; &amp;Builder, Value *L, Value *R) {
+  return Builder.CreateMul(L, R, "multmp");
+}
+
+Value *getGEP(IRBuilder&lt;&gt; &amp;Builder, Value *Base, Value *Offset) {
+  return Builder.CreateGEP(Builder.getInt32Ty(), Base, Offset, "a1");
+}
+
+Value *getLoad(IRBuilder&lt;&gt; &amp;Builder, Value *Address) {
+  return Builder.CreateLoad(Address, "load");
+}
+
+<span class="strong"><strong class="calibre2">void getStore(IRBuilder&lt;&gt; &amp;Builder, Value *Address, Value *V) {</strong></span>
+<span class="strong"><strong class="calibre2">  Builder.CreateStore(V, Address);</strong></span>
+<span class="strong"><strong class="calibre2">}</strong></span>
+
+int main(int argc, char *argv[]) {
+  FunArgs.push_back("a");
+  static IRBuilder&lt;&gt; Builder(Context);
+  Function *fooFunc = createFunc(Builder, "foo");
+  setFuncArgs(fooFunc, FunArgs);
+  Value *Base = fooFunc-&gt;arg_begin();
+  BasicBlock *entry = createBB(fooFunc, "entry");
+  Builder.SetInsertPoint(entry);
+  Value *gep = getGEP(Builder, Base, Builder.getInt32(1));
+  Value *load = getLoad(Builder, gep);
+  Value *constant = Builder.getInt32(16);
+  Value *val = createArith(Builder, load, constant);
+  <span class="strong"><strong class="calibre2">getStore(Builder, gep, val);</strong></span>
+  Builder.CreateRet(val);
+  verifyFunction(*fooFunc);
+  ModuleOb-&gt;dump();
+  return 0;
+}</pre></div><p class="calibre7">Compile the<a id="id106" class="calibre1"/> following code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">$ clang++ toy.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core` -fno-rtti -o toy</strong></span>
+<span class="strong"><strong class="calibre2">$ ./toy</strong></span>
+</pre></div><p class="calibre7">The resulting output will be as follows:</p><div class="informalexample"><pre class="programlisting">; ModuleID = 'my compiler'
+
+define i32 @foo(&lt;2 x i32&gt;* %a) {
+entry:
+  %a1 = getelementptr i32, &lt;2 x i32&gt;* %a, i32 1
+  %load = load i32, i32* %a1
+  %multmp = mul i32 %load, 16
+  store i32 %multmp, i32* %a1
+  ret i32 %multmp
+}</pre></div></div>
+<div class="book" title="Inserting a scalar into a vector" id="UGI01-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec26" class="calibre1"/>Inserting a scalar into a vector</h1></div></div></div><p class="calibre7">LLVM also provides the<a id="id107" class="calibre1"/> API to emit an instruction, which inserts a scalar into a <a id="id108" class="calibre1"/>vector type. Note that this vector is different from an array. A vector type is a simple derived type that represents a vector of elements. Vector types are used when multiple primitive data are operated in parallel using<a id="id109" class="calibre1"/> <span class="strong"><strong class="calibre2">single instruction multiple data</strong></span> (<span class="strong"><strong class="calibre2">SIMD</strong></span>). A vector type requires a size (number of elements) and an underlying primitive data type. For example, we have a vector <code class="email">Vec</code> that has four integers of <code class="email">i32</code> type <code class="email">&lt;4 x i32&gt;</code>. Now, we want to insert the values 10, 20, 30, and 40 at 0, 1, 2, and 3 indexes of the vector. </p><p class="calibre7">The <code class="email">insertelement</code> instruction takes three arguments. The first argument is a value of vector type. The second operand is a scalar value whose type must equal the element type of the first operand. The third operand is an index indicating the position at which to insert the value. The resultant value is a vector of the same type.</p><p class="calibre7">The <code class="email">insertelement</code> instruction looks like the following:</p><div class="informalexample"><pre class="programlisting">%vec0 = insertelement &lt;4 x double&gt; Vec, %val0, %idx</pre></div><p class="calibre7">This can be further understood by keeping the following in mind:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">Vec</code> is of vector type <code class="email">&lt; 4 x i32 &gt;</code></li><li class="listitem"><code class="email">val0</code> is the value to be inserted</li><li class="listitem"><code class="email">idx</code> is the index at which the value is to be inserted in the vector</li></ul></div><p class="calibre7">Consider the following code:</p><div class="informalexample"><pre class="programlisting">#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include &lt;vector&gt;
+using namespace llvm;
+
+static LLVMContext &amp;Context = getGlobalContext();
+static Module *ModuleOb = new Module("my compiler", Context);
+static std::vector&lt;std::string&gt; FunArgs;
+
+Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 4);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), vecTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+void setFuncArgs(Function *fooFunc, std::vector&lt;std::string&gt; FunArgs) {
+  unsigned Idx = 0;
+  Function::arg_iterator AI, AE;
+  for (AI = fooFunc-&gt;arg_begin(), AE = fooFunc-&gt;arg_end(); AI != AE;
+       ++AI, ++Idx)
+    AI-&gt;setName(FunArgs[Idx]);
+}
+
+BasicBlock *createBB(Function *fooFunc, std::string Name) {
+  return BasicBlock::Create(Context, Name, fooFunc);
+}
+
+<span class="strong"><strong class="calibre2">Value *getInsertElement(IRBuilder&lt;&gt; &amp;Builder, Value *Vec, Value *Val,</strong></span>
+<span class="strong"><strong class="calibre2">                        Value *Index) {</strong></span>
+<span class="strong"><strong class="calibre2">  return Builder.CreateInsertElement(Vec, Val, Index);</strong></span>
+<span class="strong"><strong class="calibre2">}</strong></span>
+
+int main(int argc, char *argv[]) {
+  FunArgs.push_back("a");
+  static IRBuilder&lt;&gt; Builder(Context);
+  Function *fooFunc = createFunc(Builder, "foo");
+  setFuncArgs(fooFunc, FunArgs);
+
+  BasicBlock *entry = createBB(fooFunc, "entry");
+  Builder.SetInsertPoint(entry);
+
+  Value *Vec = fooFunc-&gt;arg_begin();
+  for (unsigned int i = 0; i &lt; 4; i++)
+    <span class="strong"><strong class="calibre2">Value *V = getInsertElement(Builder, Vec, </strong></span>    <span class="strong"><strong class="calibre2">Builder.getInt32((i + 1) * 10), Builder.getInt32(i));</strong></span>
+
+  Builder.CreateRet(Builder.getInt32(0));
+  verifyFunction(*fooFunc);
+  ModuleOb-&gt;dump();
+  return 0;
+}</pre></div><p class="calibre7">Compile the<a id="id110" class="calibre1"/> following<a id="id111" class="calibre1"/> code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">$ clang++ toy.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core` -fno-rtti -o toy</strong></span>
+<span class="strong"><strong class="calibre2">$ ./toy  </strong></span>
+</pre></div><p class="calibre7">The resulting output is as follows:</p><div class="informalexample"><pre class="programlisting">; ModuleID = 'my compiler'
+
+define i32 @foo(&lt;4 x i32&gt; %a) {
+entry:
+  %0 = insertelement &lt;4 x i32&gt; %a, i32 10, i32 0
+  %1 = insertelement &lt;4 x i32&gt; %a, i32 20, i32 1
+  %2 = insertelement &lt;4 x i32&gt; %a, i32 30, i32 2
+  %3 = insertelement &lt;4 x i32&gt; %a, i32 40, i32 3
+  ret i32 0
+}</pre></div><p class="calibre7">The <a id="id112" class="calibre1"/>vector <code class="email">Vec</code> <a id="id113" class="calibre1"/>will have <code class="email">&lt;10, 20, 30, 40&gt;</code> values.</p></div>
+<div class="book" title="Extracting a scalar from a vector" id="VF2I1-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec27" class="calibre1"/>Extracting a scalar from a vector</h1></div></div></div><p class="calibre7">An individual scalar element<a id="id114" class="calibre1"/> can be extracted from a vector. LLVM provides the <code class="email">extractelement</code> instruction <a id="id115" class="calibre1"/>for the same. The first operand of an <code class="email">extractelement</code> instruction is a value of vector type. The second operand is an index indicating the position from which to extract the element.</p><p class="calibre7">The <code class="email">extractelement</code> instruction looks like the following:</p><div class="informalexample"><pre class="programlisting">result = extractelement &lt;4 x i32&gt; %vec, i32 %idx</pre></div><p class="calibre7">This can be further understood by keeping the following in mind:</p><div class="book"><ul class="itemizedlist"><li class="listitem"><code class="email">vec</code> is a vector</li><li class="listitem"><code class="email">idx</code> is the index at which the data to be extracted lies</li><li class="listitem"><code class="email">result</code> is of scalar type, which is <code class="email">i32</code> here</li></ul></div><p class="calibre7">Let's take an example where we want to add all the elements of a given vector and return an integer.</p><p class="calibre7">Consider the following code:</p><div class="informalexample"><pre class="programlisting">#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include &lt;vector&gt;
+using namespace llvm;
+
+static LLVMContext &amp;Context = getGlobalContext();
+static Module *ModuleOb = new Module("my compiler", Context);
+static std::vector&lt;std::string&gt; FunArgs;
+
+Function *createFunc(IRBuilder&lt;&gt; &amp;Builder, std::string Name) {
+  Type *u32Ty = Type::getInt32Ty(Context);
+  Type *vecTy = VectorType::get(u32Ty, 4);
+  FunctionType *funcType =
+      FunctionType::get(Builder.getInt32Ty(), vecTy, false);
+  Function *fooFunc =
+      Function::Create(funcType, Function::ExternalLinkage, Name, ModuleOb);
+  return fooFunc;
+}
+
+void setFuncArgs(Function *fooFunc, std::vector&lt;std::string&gt; FunArgs) {
+  unsigned Idx = 0;
+  Function::arg_iterator AI, AE;
+  for (AI = fooFunc-&gt;arg_begin(), AE = fooFunc-&gt;arg_end(); AI != AE;
+       ++AI, ++Idx)
+    AI-&gt;setName(FunArgs[Idx]);
+}
+
+BasicBlock *createBB(Function *fooFunc, std::string Name) {
+  return BasicBlock::Create(Context, Name, fooFunc);
+}
+
+Value *createArith(IRBuilder&lt;&gt; &amp;Builder, Value *L, Value *R) {
+  return Builder.CreateAdd(L, R, "add");
+}
+
+<span class="strong"><strong class="calibre2">Value *getExtractElement(IRBuilder&lt;&gt; &amp;Builder, Value *Vec, Value *Index) {</strong></span>
+<span class="strong"><strong class="calibre2">  return Builder.CreateExtractElement(Vec, Index);</strong></span>
+<span class="strong"><strong class="calibre2">}</strong></span>
+
+int main(int argc, char *argv[]) {
+  FunArgs.push_back("a");
+  static IRBuilder&lt;&gt; Builder(Context);
+  Function *fooFunc = createFunc(Builder, "foo");
+  setFuncArgs(fooFunc, FunArgs);
+
+  BasicBlock *entry = createBB(fooFunc, "entry");
+  Builder.SetInsertPoint(entry);
+
+  Value *Vec = fooFunc-&gt;arg_begin();
+  SmallVector&lt;Value *, 4&gt; V;
+  for (unsigned int i = 0; i &lt; 4; i++)
+    <span class="strong"><strong class="calibre2">V[i] = getExtractElement(Builder, Vec, Builder.getInt32(i));</strong></span>
+
+  Value *add1 = createArith(Builder, V[0], V[1]);
+  Value *add2 = createArith(Builder, add1, V[2]);
+  Value *add = createArith(Builder, add2, V[3]);
+
+  Builder.CreateRet(add);
+  verifyFunction(*fooFunc);
+  ModuleOb-&gt;dump();
+  return 0;
+}</pre></div><p class="calibre7">Compile the<a id="id116" class="calibre1"/> following <a id="id117" class="calibre1"/>code:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong class="calibre2">$ clang++ toy.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core` -fno-rtti -o toy</strong></span>
+<span class="strong"><strong class="calibre2">$ ./toy  </strong></span>
+</pre></div><p class="calibre7">Output: </p><div class="informalexample"><pre class="programlisting">ModuleID = 'my compiler'
+
+define i32 @foo(&lt;4 x i32&gt; %a) {
+entry:
+  %0 = extractelement &lt;4 x i32&gt; %a, i32 0
+  %1 = extractelement &lt;4 x i32&gt; %a, i32 1
+  %2 = extractelement &lt;4 x i32&gt; %a, i32 2
+  %3 = extractelement &lt;4 x i32&gt; %a, i32 3
+  %add = add i32 %0, %1
+  %add1 = add i32 %add, %2
+  %add2 = add i32 %add1, %3
+  ret i32 %add2
+}</pre></div></div>
+<div class="book" title="Summary" id="10DJ41-684481f6e3394b1e8596d1aa3001290f"><div class="book"><div class="book"><div class="book"><h1 class="title" id="calibre_pb_0"><a id="ch03lvl1sec28" class="calibre1"/>Summary</h1></div></div></div><p class="calibre7">Memory operations form an important instruction for most of the target architecture. Some of the architectures have sophisticated instructions to move data in and out of the memory. Some even perform binary operations directly on the memory operands, while some of them load data from memory into registers and then perform operations on them (CISC vs RISC). Many load-store operations are also done by LLVM instrinsics. For examples, please refer to <a class="calibre1" href="http://llvm.org/docs/LangRef.html#masked-vector-load-and-store-intrinsics">http://llvm.org/docs/LangRef.html#masked-vector-load-and-store-intrinsics</a>.</p><p class="calibre7">LLVM IR provides a common playfield for all the architectures. It provides elementary instructions for data operations on memory or on aggregate data types. The architectures, while lowering LLVM IR, may combine IR instructions to emit their specific instructions. In this chapter, we went through some advanced IR instructions and also looked into examples of them. For a detailed study, refer to <a class="calibre1" href="http://llvm.org/docs/LangRef.html">http://llvm.org/docs/LangRef.html</a>, which provides the authoritative resource for LLVM IR instructions.</p><p class="calibre7">In the next chapter, you will study how LLVM IR can be optimized to reduce instructions and emit a clean code.</p></div></body></html>

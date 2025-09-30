@@ -1,0 +1,850 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;7.&#xA0;Optimizing the Machine Code" id="aid-2BASE1"><div class="titlepage"><div><div><h1 class="title"><a id="ch07"/>Chapter 7. Optimizing the Machine Code</h1></div></div></div><p>In this chapter, we will cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Eliminating common subexpressions from machine code</li><li class="listitem">Analyzing live intervals</li><li class="listitem">Allocating registers</li><li class="listitem">Inserting the prologue-epilogue code</li><li class="listitem">Code emission</li><li class="listitem">Tail call optimization</li><li class="listitem">Sibling call optimization</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch07lvl1sec73"/>Introduction</h1></div></div></div><p>The machine code<a id="id326" class="indexterm"/> generated so far is yet to be assigned real target architecture registers. The registers seen so far have been virtual registers, which are infinite in number. The machine code generated is in the SSA form. However, the target registers are limited in number. Hence, register allocation algorithms require a lot of heuristic calculations to allocate registers in an optimal way.</p><p>But, before register allocation, there exists opportunities for code optimization. The machine code being in the SSA form also makes it easy to apply optimizing algorithms. The algorithms for some optimizing techniques, such as machine dead code elimination and machine common subexpression elimination, are almost the same as in the LLVM IR. The difference lies in the constraints to be checked.</p><p>Here, one of the machine code optimization techniques implemented in the LLVM trunk code repository—machine CSE— will be discussed so that you can understand how algorithms are implemented for machine code.</p></div></div>
+<div class="section" title="Eliminating common subexpression from machine code"><div class="titlepage" id="aid-2C9D02"><div><div><h1 class="title"><a id="ch07lvl1sec74"/>Eliminating common subexpression from machine code</h1></div></div></div><p>The aim of the CSE <a id="id327" class="indexterm"/>algorithm is to<a id="id328" class="indexterm"/> eliminate common subexpressions to make machine code compact and remove unnecessary, duplicate code. Let's look at the code in the LLVM trunk to understand how it is implemented. The detailed code is in the <code class="literal">lib/CodeGen/MachineCSE.cpp</code> file.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec214"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The <code class="literal">MachineCSE</code> class runs on a machine function, and hence it should inherit the <code class="literal">MachineFunctionPass</code> class. It has various members, such as <code class="literal">TargetInstructionInfo</code>, which is used to get information about the target instruction (used in performing CSE); <code class="literal">TargetRegisterInfo</code>, which is used to get information about the target register (whether it belongs to a reserved register class, or to more such similar classes; and <code class="literal">MachineDominatorTree</code>, which is used to get information about the dominator tree for the machine block:<div class="informalexample"><pre class="programlisting">class MachineCSE : public MachineFunctionPass {
+    const TargetInstrInfo *TII;
+    const TargetRegisterInfo *TRI;
+    AliasAnalysis *AA;
+    MachineDominatorTree *DT;
+    MachineRegisterInfo *MRI;</pre></div></li><li class="listitem">The constructor for this class is defined as follows, which initializes the pass:<div class="informalexample"><pre class="programlisting">public:
+    static char ID; // Pass identification
+    MachineCSE() : MachineFunctionPass(ID), LookAheadLimit(5), CurrVN(0) {
+      initializeMachineCSEPass(*PassRegistry::getPassRegistry());
+    }</pre></div></li><li class="listitem">The <code class="literal">getAnalysisUsage()</code> function determines which passes will run before this pass to get statistics that can be used in this pass:<div class="informalexample"><pre class="programlisting">    void getAnalysisUsage(AnalysisUsage &amp;AU) const override {
+      AU.setPreservesCFG();
+      MachineFunctionPass::getAnalysisUsage(AU);
+      AU.addRequired&lt;AliasAnalysis&gt;();
+      AU.addPreservedID(MachineLoopInfoID);
+      AU.addRequired&lt;MachineDominatorTree&gt;();
+      AU.addPreserved&lt;MachineDominatorTree&gt;();
+    }</pre></div></li><li class="listitem">Declare some helper functions in this pass to check for simple copy propagation and <a id="id329" class="indexterm"/>trivially dead<a id="id330" class="indexterm"/> definitions, check for the liveness of physical registers and their definition uses, and so on:<div class="informalexample"><pre class="programlisting">  private:
+…..
+…..
+
+bool PerformTrivialCopyPropagation(MachineInstr *MI,
+                                   MachineBasicBlock *MBB);
+
+bool isPhysDefTriviallyDead(unsigned Reg,
+         MachineBasicBlock::const_iterator I,
+         MachineBasicBlock::const_iterator E) const;
+
+bool hasLivePhysRegDefUses(const MachineInstr *MI,
+                     const MachineBasicBlock *MBB,
+                   SmallSet&lt;unsigned,8&gt; &amp;PhysRefs,
+              SmallVectorImpl&lt;unsigned&gt; &amp;PhysDefs,
+                          bool &amp;PhysUseDef) const;
+
+bool PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
+                      SmallSet&lt;unsigned,8&gt; &amp;PhysRefs, SmallVectorImpl&lt;unsigned&gt; &amp;PhysDefs,
+                      bool &amp;NonLocal) const;</pre></div></li><li class="listitem">Some more helper functions help to determine the legality and profitability of the expression being a CSE candidate:<div class="informalexample"><pre class="programlisting">    bool isCSECandidate(MachineInstr *MI);
+    bool isProfitableToCSE(unsigned CSReg, unsigned Reg,
+                     MachineInstr *CSMI, MachineInstr *MI);
+
+Actual CSE performing function
+    bool PerformCSE(MachineDomTreeNode *Node);</pre></div></li></ol><div style="height:10px; width: 1px"/></div><p>Let's look at the actual implementation of a CSE function:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The <code class="literal">runOnMachineFunction()</code> function is called first as the pass runs:<div class="informalexample"><pre class="programlisting">bool MachineCSE::runOnMachineFunction(MachineFunction &amp;MF){
+  if (skipOptnoneFunction(*MF.getFunction()))
+    return false;
+
+  TII = MF.getSubtarget().getInstrInfo();
+  TRI = MF.getSubtarget().getRegisterInfo();
+  MRI = &amp;MF.getRegInfo();
+  AA = &amp;getAnalysis&lt;AliasAnalysis&gt;();
+  DT = &amp;getAnalysis&lt;MachineDominatorTree&gt;();
+  return PerformCSE(DT-&gt;getRootNode());
+}</pre></div></li><li class="listitem">The <code class="literal">PerformCSE()</code> function <a id="id331" class="indexterm"/>is called<a id="id332" class="indexterm"/> next. It takes the root node of the <code class="literal">DomTree</code>, performs a DFS walk on the <code class="literal">DomTree</code> (starting from the root node), and populates a work list consisting of the nodes of the <code class="literal">DomTree</code>. After the DFS traverses through the <code class="literal">DomTree</code>, it processes the <code class="literal">MachineBasicBlock</code> class corresponding to each node in the work list:<div class="informalexample"><pre class="programlisting">bool MachineCSE::PerformCSE(MachineDomTreeNode *Node) {
+  SmallVector&lt;MachineDomTreeNode*, 32&gt; Scopes;
+  SmallVector&lt;MachineDomTreeNode*, 8&gt; WorkList;
+  DenseMap&lt;MachineDomTreeNode*, unsigned&gt; OpenChildren;
+
+  CurrVN = 0;
+// DFS to populate worklist
+  WorkList.push_back(Node);
+  do {
+    Node = WorkList.pop_back_val();
+    Scopes.push_back(Node);
+    const std::vector&lt;MachineDomTreeNode*&gt; &amp;Children = Node-&gt;getChildren();
+    unsigned NumChildren = Children.size();
+    OpenChildren[Node] = NumChildren;
+    for (unsigned i = 0; i != NumChildren; ++i) {
+      MachineDomTreeNode *Child = Children[i];
+      WorkList.push_back(Child);
+    }
+  } while (!WorkList.empty());
+
+  // perform CSE.
+  bool Changed = false;
+  for (unsigned i = 0, e = Scopes.size(); i != e; ++i) {
+    MachineDomTreeNode *Node = Scopes[i];
+    MachineBasicBlock *MBB = Node-&gt;getBlock();
+    EnterScope(MBB);
+    Changed |= ProcessBlock(MBB);
+    ExitScopeIfDone(Node, OpenChildren);
+  }
+
+  return Changed;
+}</pre></div></li><li class="listitem">The next important function is the <code class="literal">ProcessBlock()</code> function, which acts on the machine basic block. The instructions in the <code class="literal">MachineBasicBlock</code> class are iterated and checked for <a id="id333" class="indexterm"/>legality and<a id="id334" class="indexterm"/> profitability if they can be a CSE candidate:<div class="informalexample"><pre class="programlisting">bool MachineCSE::ProcessBlock(MachineBasicBlock *MBB) {
+  bool Changed = false;
+
+  SmallVector&lt;std::pair&lt;unsigned, unsigned&gt;, 8&gt; CSEPairs;
+  SmallVector&lt;unsigned, 2&gt; ImplicitDefsToUpdate;
+
+// Iterate over each Machine instructions in the MachineBasicBlock
+  for (MachineBasicBlock::iterator I = MBB-&gt;begin(), E = MBB-&gt;end(); I != E; ) {
+    MachineInstr *MI = &amp;*I;
+    ++I;
+
+// Check if this can be a CSE candidate.
+    if (!isCSECandidate(MI))
+      continue;
+
+
+    bool FoundCSE = VNT.count(MI);
+    if (!FoundCSE) {
+      // Using trivial copy propagation to find more CSE opportunities.
+      if (PerformTrivialCopyPropagation(MI, MBB)) {
+        Changed = true;
+
+        // After coalescing MI itself may become a copy.
+        if (MI-&gt;isCopyLike())
+          continue;
+
+        // Try again to see if CSE is possible.
+        FoundCSE = VNT.count(MI);
+      }
+    }
+
+    bool Commuted = false;
+    if (!FoundCSE &amp;&amp; MI-&gt;isCommutable()) {
+      MachineInstr *NewMI = TII-&gt;commuteInstruction(MI);
+      if (NewMI) {
+        Commuted = true;
+        FoundCSE = VNT.count(NewMI);
+        if (NewMI != MI) {
+          // New instruction. It doesn't need to be kept.
+          NewMI-&gt;eraseFromParent();
+          Changed = true;
+        } else if (!FoundCSE)
+          // MI was changed but it didn't help, commute it back!
+          (void)TII-&gt;commuteInstruction(MI);
+      }
+    }
+
+    // If the instruction defines physical registers and the values *may* be
+    // used, then it's not safe to replace it with a common subexpression.
+    // It's also not safe if the instruction uses physical registers.
+    bool CrossMBBPhysDef = false;
+    SmallSet&lt;unsigned, 8&gt; PhysRefs;
+    SmallVector&lt;unsigned, 2&gt; PhysDefs;
+    bool PhysUseDef = false;
+
+// Check if this instruction has been marked for CSE. Check if it is using physical register, if yes then mark as non-CSE candidate
+ if (FoundCSE &amp;&amp; hasLivePhysRegDefUses(MI, MBB, PhysRefs,
+                                                PhysDefs, PhysUseDef)) {
+      FoundCSE = false;
+…
+…
+    }
+
+    if (!FoundCSE) {
+      VNT.insert(MI, CurrVN++);
+      Exps.push_back(MI);
+      continue;
+    }
+
+    // Finished job of determining if there exists a common subexpression.
+  // Found a common subexpression, eliminate it.
+    unsigned CSVN = VNT.lookup(MI);
+    MachineInstr *CSMI = Exps[CSVN];
+    DEBUG(dbgs() &lt;&lt; "Examining: " &lt;&lt; *MI);
+    DEBUG(dbgs() &lt;&lt; "*** Found a common subexpression: " &lt;&lt; *CSMI);
+
+    // Check if it's profitable to perform this CSE.
+    bool DoCSE = true;
+    unsigned NumDefs = MI-&gt;getDesc().getNumDefs() +
+                       MI-&gt;getDesc().getNumImplicitDefs();
+
+    for (unsigned i = 0, e = MI-&gt;getNumOperands(); NumDefs &amp;&amp; i != e; ++i) {
+      MachineOperand &amp;MO = MI-&gt;getOperand(i);
+      if (!MO.isReg() || !MO.isDef())
+        continue;
+      unsigned OldReg = MO.getReg();
+      unsigned NewReg = CSMI-&gt;getOperand(i).getReg();
+
+      // Go through implicit defs of CSMI and MI, if a def is not dead at MI,
+      // we should make sure it is not dead at CSMI.
+      if (MO.isImplicit() &amp;&amp; !MO.isDead() &amp;&amp; CSMI-&gt;getOperand(i).isDead())
+        ImplicitDefsToUpdate.push_back(i);
+      if (OldReg == NewReg) {
+        --NumDefs;
+        continue;
+      }
+
+      assert(TargetRegisterInfo::isVirtualRegister(OldReg) &amp;&amp;
+             TargetRegisterInfo::isVirtualRegister(NewReg) &amp;&amp;
+             "Do not CSE physical register defs!");
+
+      if (!isProfitableToCSE(NewReg, OldReg, CSMI, MI)) {
+        DEBUG(dbgs() &lt;&lt; "*** Not profitable, avoid CSE!\n");
+        DoCSE = false;
+        break;
+      }
+
+      // Don't perform CSE if the result of the old instruction cannot exist
+      // within the register class of the new instruction.
+      const TargetRegisterClass *OldRC = MRI-&gt;getRegClass(OldReg);
+      if (!MRI-&gt;constrainRegClass(NewReg, OldRC)) {
+        DEBUG(dbgs() &lt;&lt; "*** Not the same register class, avoid CSE!\n");
+        DoCSE = false;
+        break;
+      }
+
+      CSEPairs.push_back(std::make_pair(OldReg, NewReg));
+      --NumDefs;
+    }
+
+    // Actually perform the elimination.
+    if (DoCSE) {
+      for (unsigned i = 0, e = CSEPairs.size(); i != e; ++i) {
+        MRI-&gt;replaceRegWith(CSEPairs[i].first, CSEPairs[i].second);
+        MRI-&gt;clearKillFlags(CSEPairs[i].second);
+      }
+
+      // Go through implicit defs of CSMI and MI, if a def is not dead at MI,
+      // we should make sure it is not dead at CSMI.
+      for (unsigned i = 0, e = ImplicitDefsToUpdate.size(); i != e; ++i)
+        CSMI-&gt;getOperand(ImplicitDefsToUpdate[i]).setIsDead(false);
+
+      if (CrossMBBPhysDef) {
+        // Add physical register defs now coming in from a predecessor to MBB
+        // livein list.
+        while (!PhysDefs.empty()) {
+          unsigned LiveIn = PhysDefs.pop_back_val();
+          if (!MBB-&gt;isLiveIn(LiveIn))
+            MBB-&gt;addLiveIn(LiveIn);
+        }
+        ++NumCrossBBCSEs;
+      }
+
+      MI-&gt;eraseFromParent();
+      ++NumCSEs;
+      if (!PhysRefs.empty())
+        ++NumPhysCSEs;
+      if (Commuted)
+        ++NumCommutes;
+      Changed = true;
+    } else {
+      VNT.insert(MI, CurrVN++);
+      Exps.push_back(MI);
+    }
+    CSEPairs.clear();
+    ImplicitDefsToUpdate.clear();
+  }
+
+  return Changed;
+}</pre></div></li><li class="listitem">Let's also look into the<a id="id335" class="indexterm"/> legality and<a id="id336" class="indexterm"/> profitability functions to determine the CSE candidates:<div class="informalexample"><pre class="programlisting">bool MachineCSE::isCSECandidate(MachineInstr *MI) {
+// If Machine Instruction is PHI, or inline ASM or implicit defs, it is not a candidate for CSE.
+
+  if (MI-&gt;isPosition() || MI-&gt;isPHI() || MI-&gt;isImplicitDef() || MI-&gt;isKill() ||
+      MI-&gt;isInlineAsm() || MI-&gt;isDebugValue())
+    return false;
+
+  // Ignore copies.
+  if (MI-&gt;isCopyLike())
+    return false;
+
+  // Ignore instructions that we obviously can't move.
+  if (MI-&gt;mayStore() || MI-&gt;isCall() || MI-&gt;isTerminator() || MI-&gt;hasUnmodeledSideEffects())
+    return false;
+
+  if (MI-&gt;mayLoad()) {
+    // Okay, this instruction does a load. As a refinement, we allow the target
+    // to decide whether the loaded value is actually a constant. If so, we can
+    // actually use it as a load.
+    if (!MI-&gt;isInvariantLoad(AA))
+      return false;
+  }
+  return true;
+}</pre></div></li><li class="listitem">The profitability function is written as follows:<div class="informalexample"><pre class="programlisting">bool MachineCSE::isProfitableToCSE(unsigned CSReg, unsigned Reg,
+  MachineInstr *CSMI, MachineInstr *MI) {
+
+  // If CSReg is used at all uses of Reg, CSE should not increase register
+  // pressure of CSReg.
+  bool MayIncreasePressure = true;
+  if (TargetRegisterInfo::isVirtualRegister(CSReg) &amp;&amp;
+      TargetRegisterInfo::isVirtualRegister(Reg)) {
+    MayIncreasePressure = false;
+    SmallPtrSet&lt;MachineInstr*, 8&gt; CSUses;
+    for (MachineInstr &amp;MI : MRI-&gt;use_nodbg_instructions(CSReg)) {
+      CSUses.insert(&amp;MI);
+    }
+    for (MachineInstr &amp;MI : MRI-&gt;use_nodbg_instructions(Reg)) {
+      if (!CSUses.count(&amp;MI)) {
+        MayIncreasePressure = true;
+        break;
+      }
+    }
+  }
+  if (!MayIncreasePressure) return true;
+
+  // Heuristics #1: Don't CSE "cheap" computation if the def is not local or in
+  // an immediate predecessor. We don't want to increase register pressure and
+  // end up causing other computation to be spilled.
+  if (TII-&gt;isAsCheapAsAMove(MI)) {
+    MachineBasicBlock *CSBB = CSMI-&gt;getParent();
+    MachineBasicBlock *BB = MI-&gt;getParent();
+    if (CSBB != BB &amp;&amp; !CSBB-&gt;isSuccessor(BB))
+      return false;
+  }
+
+  // Heuristics #2: If the expression doesn't not use a vr and the only use
+  // of the redundant computation are copies, do not cse.
+  bool HasVRegUse = false;
+  for (unsigned i = 0, e = MI-&gt;getNumOperands(); i != e; ++i) {
+    const MachineOperand &amp;MO = MI-&gt;getOperand(i);
+    if (MO.isReg() &amp;&amp; MO.isUse() &amp;&amp;
+        TargetRegisterInfo::isVirtualRegister(MO.getReg())) {
+      HasVRegUse = true;
+      break;
+    }
+  }
+  if (!HasVRegUse) {
+    bool HasNonCopyUse = false;
+    for (MachineInstr &amp;MI : MRI-&gt;use_nodbg_instructions(Reg)) {
+      // Ignore copies.
+      if (!MI.isCopyLike()) {
+        HasNonCopyUse = true;
+        break;
+      }
+    }
+    if (!HasNonCopyUse)
+      return false;
+  }
+
+  // Heuristics #3: If the common subexpression is used by PHIs, do not reuse
+  // it unless the defined value is already used in the BB of the new use.
+  bool HasPHI = false;
+  SmallPtrSet&lt;MachineBasicBlock*, 4&gt; CSBBs;
+  for (MachineInstr &amp;MI : MRI-&gt;use_nodbg_instructions(CSReg)) {
+    HasPHI |= MI.isPHI();
+    CSBBs.insert(MI.getParent());
+  }
+
+  if (!HasPHI)
+    return true;
+  return CSBBs.count(MI-&gt;getParent());
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec215"/>How it works…</h2></div></div></div><p>The <code class="literal">MachineCSE</code> pass <a id="id337" class="indexterm"/>runs on a machine function. It gets <a id="id338" class="indexterm"/>the <code class="literal">DomTree</code> information and then traverses the <code class="literal">DomTree</code> in the DFS way, creating a work list of nodes that are essentially <code class="literal">MachineBasicBlocks</code>. It then processes each block for CSE. In each block, it iterates through all the instructions and checks whether any instruction is a candidate for CSE. Then it checks whether it is profitable to eliminate the identified expression. Once it has found that the identified CSE is profitable to eliminate, it <a id="id339" class="indexterm"/>eliminates the <code class="literal">MachineInstruction</code> class from the <code class="literal">MachineBasicBlock</code> class. It <a id="id340" class="indexterm"/>also performs a simple copy propagation of the machine instruction. In some cases, the <code class="literal">MachineInstruction</code> may not be a candidate for CSE in its initial run, but may become one after copy propagation.</p></div><div class="section" title="See more"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec216"/>See more</h2></div></div></div><p>To see more machine code optimization in the SSA form, look into the implementation of the machine dead code elimination pass in the <code class="literal">lib/CodeGen/DeadMachineInstructionElim.cpp file</code>.</p></div></div>
+<div class="section" title="Analyzing live intervals"><div class="titlepage" id="aid-2D7TI2"><div><div><h1 class="title"><a id="ch07lvl1sec75"/>Analyzing live intervals</h1></div></div></div><p>Further on in this <a id="id341" class="indexterm"/>chapter, we will be looking into register allocation. Before we head to that, however, you must understand the concepts of <span class="strong"><strong>live variable</strong></span>
+<a id="id342" class="indexterm"/> and<a id="id343" class="indexterm"/> <span class="strong"><strong>live interval</strong></span>. By live intervals, we mean the range in which a variable is live, that is, from the point where a variable is defined to its last use. For this, we need to calculate the set of registers that are immediately dead after the instruction (the last use of a variable), and the set of registers that are used by the instruction but not after the instruction. We calculate live variable information for each virtual register and physical register in the function. Using SSA to sparsely compute the lifetime information for the virtual registers enables us to only track the physical registers within a block. Before register allocation, LLVM assumes that physical registers are live only within a single basic block. This enables it to perform a single, local analysis to resolve physical register lifetimes within each basic block. After performing the live variable analysis, we have the information required for performing live interval analysis and building live intervals. For this, we start numbering the basic block and machine instructions. After that live-in values, typically arguments in registers are handled. Live intervals for virtual registers are computed for some ordering of the machine instructions (<span class="emphasis"><em>1</em></span>, <span class="emphasis"><em>N</em></span>). A live interval is an interval (<span class="emphasis"><em>i</em></span>, <span class="emphasis"><em>j</em></span>) for which a variable is live, where <span class="emphasis"><em>1 &gt;= i &gt;= j &gt; N</em></span>.</p><p>In this recipe, we will take a sample program and see how we can list down the live intervals for that program. We will look at how LLVM works to calculate these intervals.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec217"/>Getting ready</h2></div></div></div><p>To get started, we need a piece of test code on which we will be performing live interval analysis. For simplicity, we will use C code and then convert it into LLVM IR:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write a test<a id="id344" class="indexterm"/> program with an <code class="literal">if</code> - <code class="literal">else</code> block:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat interval.c</strong></span>
+<span class="strong"><strong>void donothing(int a) {</strong></span>
+<span class="strong"><strong>  return;</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>int func(int i) {</strong></span>
+<span class="strong"><strong>  int a = 5;</strong></span>
+<span class="strong"><strong>  donothing(a);</strong></span>
+<span class="strong"><strong>  int m = a;</strong></span>
+<span class="strong"><strong>  donothing(m);</strong></span>
+<span class="strong"><strong>  a = 9;</strong></span>
+<span class="strong"><strong>  if (i &lt; 5) {</strong></span>
+<span class="strong"><strong>    int b = 3;</strong></span>
+<span class="strong"><strong>    donothing(b);</strong></span>
+<span class="strong"><strong>    int z = b;</strong></span>
+<span class="strong"><strong>    donothing(z);</strong></span>
+<span class="strong"><strong>  }</strong></span>
+<span class="strong"><strong>  else {</strong></span>
+<span class="strong"><strong>    int k = a;</strong></span>
+<span class="strong"><strong>    donothing(k);</strong></span>
+<span class="strong"><strong>  }</strong></span>
+
+<span class="strong"><strong>  return m;</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Use Clang to convert the C code into IR, and then view the generated IR using the <code class="literal">cat</code> command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ clang -cc1 -emit-llvm interval.c</strong></span>
+
+<span class="strong"><strong>$ cat interval.ll</strong></span>
+<span class="strong"><strong>; ModuleID = 'interval.c'</strong></span>
+<span class="strong"><strong>target datalayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"</strong></span>
+<span class="strong"><strong>target triple = "x86_64-unknown-linux-gnu"</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define void @donothing(i32 %a) #0 {</strong></span>
+<span class="strong"><strong>  %1 = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  store i32 %a, i32* %1, align 4</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define i32 @func(i32 %i) #0 {</strong></span>
+<span class="strong"><strong>  %1 = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  %a = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  %m = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  %b = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  %z = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  %k = alloca i32, align 4</strong></span>
+<span class="strong"><strong>  store i32 %i, i32* %1, align 4</strong></span>
+<span class="strong"><strong>  store i32 5, i32* %a, align 4</strong></span>
+<span class="strong"><strong>  %2 = load i32, i32* %a, align 4</strong></span>
+<span class="strong"><strong>  call void @donothing(i32 %2)</strong></span>
+<span class="strong"><strong>  %3 = load i32, i32* %a, align 4</strong></span>
+<span class="strong"><strong>  store i32 %3, i32* %m, align 4</strong></span>
+<span class="strong"><strong>  %4 = load i32, i32* %m, align 4</strong></span>
+<span class="strong"><strong>  call void @donothing(i32 %4)</strong></span>
+<span class="strong"><strong>  store i32 9, i32* %a, align 4</strong></span>
+<span class="strong"><strong>  %5 = load i32, i32* %1, align 4</strong></span>
+<span class="strong"><strong>  %6 = icmp slt i32 %5, 5</strong></span>
+<span class="strong"><strong>  br i1 %6, label %7, label %11</strong></span>
+
+<span class="strong"><strong>; &lt;label&gt;:7                               ; preds = %0</strong></span>
+<span class="strong"><strong>  store i32 3, i32* %b, align 4</strong></span>
+<span class="strong"><strong>  %8 = load i32, i32* %b, align 4</strong></span>
+<span class="strong"><strong>  call void @donothing(i32 %8)</strong></span>
+<span class="strong"><strong>  %9 = load i32, i32* %b, align 4</strong></span>
+<span class="strong"><strong>  store i32 %9, i32* %z, align 4</strong></span>
+<span class="strong"><strong>  %10 = load i32, i32* %z, align 4</strong></span>
+<span class="strong"><strong>  call void @donothing(i32 %10)</strong></span>
+<span class="strong"><strong>  br label %14</strong></span>
+
+<span class="strong"><strong>; &lt;label&gt;:11                              ; preds = %0</strong></span>
+<span class="strong"><strong>  %12 = load i32, i32* %a, align 4</strong></span>
+<span class="strong"><strong>  store i32 %12, i32* %k, align 4</strong></span>
+<span class="strong"><strong>  %13 = load i32, i32* %k, align 4</strong></span>
+<span class="strong"><strong>  call void @donothing(i32 %13)</strong></span>
+<span class="strong"><strong>  br label %14</strong></span>
+
+<span class="strong"><strong>; &lt;label&gt;:14                              ; preds = %11, %7</strong></span>
+<span class="strong"><strong>  %15 = load i32, i32* %m, align 4</strong></span>
+<span class="strong"><strong>  ret i32 %15</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }</strong></span>
+
+<span class="strong"><strong>!llvm.ident = !{!0}</strong></span>
+
+<span class="strong"><strong>!0 = !{!"clang version 3.7.0 (trunk 234045)"}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec218"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">To list the live <a id="id345" class="indexterm"/>intervals, we will need to modify the code of the <code class="literal">LiveIntervalAnalysis.cpp</code> file by adding code to print the live intervals. We will add the following lines (marked with a <code class="literal">+</code> symbol before each added line):<div class="informalexample"><pre class="programlisting">void LiveIntervals::computeVirtRegInterval(LiveInterval &amp;LI) {
+  assert(LRCalc &amp;&amp; "LRCalc not initialized.");
+  assert(LI.empty() &amp;&amp; "Should only compute empty intervals.");
+  LRCalc-&gt;reset(MF, getSlotIndexes(), DomTree, &amp;getVNInfoAllocator());
+  LRCalc-&gt;calculate(LI, MRI-&gt;shouldTrackSubRegLiveness(LI.reg));
+  computeDeadValues(LI, nullptr);
+
+/**** add the following code ****/
++ llvm::outs() &lt;&lt; "********** INTERVALS **********\n";
+
+  // Dump the regunits.
+  + for (unsigned i = 0, e = RegUnitRanges.size(); i != e; ++i)
+    + if (LiveRange *LR = RegUnitRanges[i])
+      + llvm::outs() &lt;&lt; PrintRegUnit(i, TRI) &lt;&lt; ' ' &lt;&lt; *LR &lt;&lt; '\n';
+
+  // Dump the virtregs.
+  + llvm::outs() &lt;&lt; "virtregs:";
+  + for (unsigned i = 0, e = MRI-&gt;getNumVirtRegs(); i != e; ++i) {
+    + unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
+    + if (hasInterval(Reg))
+      + llvm::outs() &lt;&lt; getInterval(Reg) &lt;&lt; '\n';
+  + }</pre></div></li><li class="listitem">Build LLVM<a id="id346" class="indexterm"/> after modifying the preceding source file, and install it on the path.</li><li class="listitem">Now compile the test code in the IR form using the <code class="literal">llc</code> command. You will get the live intervals:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc interval.ll</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>%vreg2 [144r,192r:0)  0@144r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>%vreg2 [144r,192r:0)  0@144r</strong></span>
+<span class="strong"><strong>%vreg5 [544r,592r:0)  0@544r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>%vreg2 [144r,192r:0)  0@144r</strong></span>
+<span class="strong"><strong>%vreg5 [544r,592r:0)  0@544r</strong></span>
+<span class="strong"><strong>%vreg6 [352r,368r:0)  0@352r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>%vreg2 [144r,192r:0)  0@144r</strong></span>
+<span class="strong"><strong>%vreg5 [544r,592r:0)  0@544r</strong></span>
+<span class="strong"><strong>%vreg6 [352r,368r:0)  0@352r</strong></span>
+<span class="strong"><strong>%vreg7 [416r,464r:0)  0@416r</strong></span>
+<span class="strong"><strong>********** INTERVALS **********</strong></span>
+<span class="strong"><strong>virtregs:%vreg0 [16r,32r:0)  0@16r</strong></span>
+<span class="strong"><strong>%vreg1 [80r,96r:0)  0@80r</strong></span>
+<span class="strong"><strong>%vreg2 [144r,192r:0)  0@144r</strong></span>
+<span class="strong"><strong>%vreg5 [544r,592r:0)  0@544r</strong></span>
+<span class="strong"><strong>%vreg6 [352r,368r:0)  0@352r</strong></span>
+<span class="strong"><strong>%vreg7 [416r,464r:0)  0@416r</strong></span>
+<span class="strong"><strong>%vreg8 [656r,672r:0)  0@656r</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec219"/>How it works…</h2></div></div></div><p>In the preceding<a id="id347" class="indexterm"/> example, we saw how live intervals are associated with each virtual register. The program points at the beginning and the end of live intervals are marked in square brackets. The process of generating these live intervals starts from the <code class="literal">LiveVariables::runOnMachineFunction(MachineFunction</code>
+<code class="literal"> &amp;mf)</code> function in the <code class="literal">lib/CodeGen/LiveVariables.cpp file</code>, where it assigns the definition and usage of the registers using the <code class="literal">HandleVirtRegUse</code> and <code class="literal">HandleVirtRegDef</code> functions. It gets the <code class="literal">VarInfo</code> object for the given virtual register using the <code class="literal">getVarInfo</code> function.</p><p>The <code class="literal">LiveInterval</code> and <code class="literal">LiveRange</code> classes are defined in <code class="literal">LiveInterval.cpp</code>. The functions in this file takes the information on the liveliness of each variable and then checks whether they overlap or not.</p><p>In the <code class="literal">LiveIntervalAnalysis.cpp</code> file, we have the implementation of the live interval analysis pass, which scans the basic blocks (ordered in a linear fashion) in depth-first order, and creates a live interval for each virtual and physical register. This analysis is used by the register <a id="id348" class="indexterm"/>allocators, which will be discussed in next recipe.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec220"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">If you want to see in detail how the virtual registers for different basic blocks get generated, and see the lifetime of these virtual registers, use the <code class="literal">–debug-only=regalloc</code> command-line option with the <code class="literal">llc</code> tool when compiling the test case. You need a debug build of the LLVM for this.</li><li class="listitem">To get more detail on live intervals, go through these code files:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">Lib/CodeGen/ LiveInterval.cpp</code></li><li class="listitem"><code class="literal">Lib/CodeGen/ LiveIntervalAnalysis.cpp</code></li><li class="listitem"><code class="literal">Lib/CodeGen/ LiveVariables.cpp</code></li></ul></div></li></ul></div></div></div>
+<div class="section" title="Allocating registers"><div class="titlepage" id="aid-2E6E42"><div><div><h1 class="title"><a id="ch07lvl1sec76"/>Allocating registers</h1></div></div></div><p>Register allocation is the <a id="id349" class="indexterm"/>task of assigning physical registers to virtual registers. Virtual registers can be infinite, but the physical registers for a machine are limited. So, register allocation is aimed at maximizing the number of physical registers getting assigned to virtual registers. In this recipe, we will see how registers are represented in LLVM, how can we tinker with the register information, the steps taking place, and built-in register allocators.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec221"/>Getting ready</h2></div></div></div><p>You need to build and install LLVM.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec222"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">To see how registers are represented in LLVM, open the <code class="literal">build-folder/lib/Target/X86/X86GenRegisterInfo.inc</code> file and check out the first few lines, which show that registers are represented as integers:<div class="informalexample"><pre class="programlisting">namespace X86 {
+enum {
+  NoRegister,
+  AH = 1,
+  AL = 2,
+  AX = 3,
+  BH = 4,
+  BL = 5,
+  BP = 6,
+  BPL = 7,
+  BX = 8,
+  CH = 9,
+…</pre></div></li><li class="listitem">For architectures that have <a id="id350" class="indexterm"/>registers that share the same physical location, check out the <code class="literal">RegisterInfo.td</code> file of that architecture for alias information. Let's check out the <code class="literal">lib/Target/X86/X86RegisterInfo.td</code> file. By looking at the following code snippet, we see how the <code class="literal">EAX</code>, <code class="literal">AX</code>, and <code class="literal">AL</code> registers are aliased (we only specify the smallest register alias):<div class="informalexample"><pre class="programlisting">def AL : X86Reg&lt;"al", 0&gt;;
+def DL : X86Reg&lt;"dl", 2&gt;;
+def CL : X86Reg&lt;"cl", 1&gt;;
+def BL : X86Reg&lt;"bl", 3&gt;;
+
+def AH : X86Reg&lt;"ah", 4&gt;;
+def DH : X86Reg&lt;"dh", 6&gt;;
+def CH : X86Reg&lt;"ch", 5&gt;;
+def BH : X86Reg&lt;"bh", 7&gt;;
+
+def AX : X86Reg&lt;"ax", 0, [AL,AH]&gt;;
+def DX : X86Reg&lt;"dx", 2, [DL,DH]&gt;;
+def CX : X86Reg&lt;"cx", 1, [CL,CH]&gt;;
+def BX : X86Reg&lt;"bx", 3, [BL,BH]&gt;;
+
+// 32-bit registers
+let SubRegIndices = [sub_16bit] in {
+def EAX : X86Reg&lt;"eax", 0, [AX]&gt;, DwarfRegNum&lt;[-2, 0, 0]&gt;;
+def EDX : X86Reg&lt;"edx", 2, [DX]&gt;, DwarfRegNum&lt;[-2, 2, 2]&gt;;
+def ECX : X86Reg&lt;"ecx", 1, [CX]&gt;, DwarfRegNum&lt;[-2, 1, 1]&gt;;
+def EBX : X86Reg&lt;"ebx", 3, [BX]&gt;, DwarfRegNum&lt;[-2, 3, 3]&gt;;
+def ESI : X86Reg&lt;"esi", 6, [SI]&gt;, DwarfRegNum&lt;[-2, 6, 6]&gt;;
+def EDI : X86Reg&lt;"edi", 7, [DI]&gt;, DwarfRegNum&lt;[-2, 7, 7]&gt;;
+def EBP : X86Reg&lt;"ebp", 5, [BP]&gt;, DwarfRegNum&lt;[-2, 4, 5]&gt;;
+def ESP : X86Reg&lt;"esp", 4, [SP]&gt;, DwarfRegNum&lt;[-2, 5, 4]&gt;;
+def EIP : X86Reg&lt;"eip", 0, [IP]&gt;, DwarfRegNum&lt;[-2, 8, 8]&gt;;
+…</pre></div></li><li class="listitem">To change the number of physical registers available, go to the <code class="literal">TargetRegisterInfo.td</code> file and manually comment out some of the registers, which are the last parameters of the <code class="literal">RegisterClass</code>. Open the <code class="literal">X86RegisterInfo.cpp</code> file and remove the registers <code class="literal">AH</code>, <code class="literal">CH</code>, and <code class="literal">DH</code>:<div class="informalexample"><pre class="programlisting">def GR8 : RegisterClass&lt;"X86", [i8],  8,
+                        (add AL, CL, DL, AH, CH, DH, BL, BH, SIL, DIL, BPL, SPL,
+                             R8B, R9B, R10B, R11B, R14B, R15B, R12B, R13B)&gt; {</pre></div></li><li class="listitem">When you build LLVM, the <code class="literal">.inc</code> file in the first step will have been changed and will not contain the <code class="literal">AH</code>, <code class="literal">CH</code>, and DH registers.</li><li class="listitem">Use the test case from the <a id="id351" class="indexterm"/>previous recipe, <span class="emphasis"><em>Analyzing live intervals</em></span>, in which we performed live interval analysis, and run the register allocation techniques provided by LLVM, namely <code class="literal">fast</code>, <code class="literal">basic</code>, <code class="literal">greedy</code>, and <code class="literal">pbqp</code>. Let's run two of them here and compare the results:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc –regalloc=basic interval.ll –o intervalregbasic.s</strong></span>
+</pre></div><p>Next, create the <code class="literal">intervalregbasic.s</code> file as shown:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat intervalregbasic.s</strong></span>
+<span class="strong"><strong>  .text</strong></span>
+<span class="strong"><strong>  .file  "interval.ll"</strong></span>
+<span class="strong"><strong>  .globl  donothing</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  donothing,@function</strong></span>
+<span class="strong"><strong>donothing:                              # @donothing</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>  movl  %edi, -4(%rsp)</strong></span>
+<span class="strong"><strong>  retq</strong></span>
+<span class="strong"><strong>.Lfunc_end0:</strong></span>
+<span class="strong"><strong>  .size  donothing, .Lfunc_end0-donothing</strong></span>
+
+<span class="strong"><strong>  .globl  func</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  func,@function</strong></span>
+<span class="strong"><strong>func:                                   # @func</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>  subq  $24, %rsp</strong></span>
+<span class="strong"><strong>  movl  %edi, 20(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $5, 16(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $5, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  16(%rsp), %edi</strong></span>
+<span class="strong"><strong>  movl  %edi, 12(%rsp)</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  $9, 16(%rsp)</strong></span>
+<span class="strong"><strong>  cmpl  $4, 20(%rsp)</strong></span>
+<span class="strong"><strong>  jg  .LBB1_2</strong></span>
+<span class="strong"><strong># BB#1:</strong></span>
+<span class="strong"><strong>  movl  $3, 8(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $3, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  8(%rsp), %edi</strong></span>
+<span class="strong"><strong>  movl  %edi, 4(%rsp)</strong></span>
+<span class="strong"><strong>  jmp  .LBB1_3</strong></span>
+<span class="strong"><strong>.LBB1_2:</strong></span>
+<span class="strong"><strong>  movl  16(%rsp), %edi</strong></span>
+<span class="strong"><strong>  movl  %edi, (%rsp)</strong></span>
+<span class="strong"><strong>.LBB1_3:</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  12(%rsp), %eax</strong></span>
+<span class="strong"><strong>  addq  $24, %rsp</strong></span>
+<span class="strong"><strong>  retq</strong></span>
+<span class="strong"><strong>.Lfunc_end1:</strong></span>
+<span class="strong"><strong>  .size  func, .Lfunc_end1-func</strong></span>
+</pre></div><p>Next, run the<a id="id352" class="indexterm"/> following command to compare the two files:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc –regalloc=pbqp interval.ll –o intervalregpbqp.s</strong></span>
+</pre></div><p>Create the <code class="literal">intervalregbqp.s</code> file:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$cat intervalregpbqp.s</strong></span>
+<span class="strong"><strong>  .text</strong></span>
+<span class="strong"><strong>  .file  "interval.ll"</strong></span>
+<span class="strong"><strong>  .globl  donothing</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  donothing,@function</strong></span>
+<span class="strong"><strong>donothing:                              # @donothing</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>  movl  %edi, %eax</strong></span>
+<span class="strong"><strong>  movl  %eax, -4(%rsp)</strong></span>
+<span class="strong"><strong>  retq</strong></span>
+<span class="strong"><strong>.Lfunc_end0:</strong></span>
+<span class="strong"><strong>  .size  donothing, .Lfunc_end0-donothing</strong></span>
+
+<span class="strong"><strong>  .globl  func</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  func,@function</strong></span>
+<span class="strong"><strong>func:                                   # @func</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>  subq  $24, %rsp</strong></span>
+<span class="strong"><strong>  movl  %edi, %eax</strong></span>
+<span class="strong"><strong>  movl  %eax, 20(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $5, 16(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $5, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  16(%rsp), %eax</strong></span>
+<span class="strong"><strong>  movl  %eax, 12(%rsp)</strong></span>
+<span class="strong"><strong>  movl  %eax, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  $9, 16(%rsp)</strong></span>
+<span class="strong"><strong>  cmpl  $4, 20(%rsp)</strong></span>
+<span class="strong"><strong>  jg  .LBB1_2</strong></span>
+<span class="strong"><strong># BB#1:</strong></span>
+<span class="strong"><strong>  movl  $3, 8(%rsp)</strong></span>
+<span class="strong"><strong>  movl  $3, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  8(%rsp), %eax</strong></span>
+<span class="strong"><strong>  movl  %eax, 4(%rsp)</strong></span>
+<span class="strong"><strong>  jmp  .LBB1_3</strong></span>
+<span class="strong"><strong>.LBB1_2:</strong></span>
+<span class="strong"><strong>  movl  16(%rsp), %eax</strong></span>
+<span class="strong"><strong>  movl  %eax, (%rsp)</strong></span>
+<span class="strong"><strong>.LBB1_3:</strong></span>
+<span class="strong"><strong>  movl  %eax, %edi</strong></span>
+<span class="strong"><strong>  callq  donothing</strong></span>
+<span class="strong"><strong>  movl  12(%rsp), %eax</strong></span>
+<span class="strong"><strong>  addq  $24, %rsp</strong></span>
+<span class="strong"><strong>  retq</strong></span>
+<span class="strong"><strong>.Lfunc_end1:</strong></span>
+<span class="strong"><strong>  .size  func, .Lfunc_end1-func</strong></span>
+</pre></div></li><li class="listitem">Now, use a <code class="literal">diff</code> tool and <a id="id353" class="indexterm"/>compare the two assemblies side by side.</li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec223"/>How it works…</h2></div></div></div><p>The mapping of virtual registers on physical registers can be done in two ways:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><span class="strong"><strong>Direct Mapping</strong></span>: By making<a id="id354" class="indexterm"/> use of the <code class="literal">TargetRegisterInfo</code> and <code class="literal">MachineOperand</code> classes. This depends on the developer, who needs to provide the location where load and store instructions should be inserted in order to get and store values in the memory.</li><li class="listitem"><span class="strong"><strong>Indirect Mapping</strong></span>: This depends <a id="id355" class="indexterm"/>on the <code class="literal">VirtRegMap</code> class to insert loads and stores, and to get and set values from the memory. Use the <code class="literal">VirtRegMap::assignVirt2Phys(vreg, preg)</code> function to map a virtual register on a physical one.</li></ul></div><p>Another important role that the register allocator plays is in SSA form deconstruction. As traditional instruction sets do not support the <code class="literal">phi</code> instruction, we must replace it with other instructions to generate the machine code. The traditional way was to replace the <code class="literal">phi</code> instruction with the <code class="literal">copy</code> instruction.</p><p>After this stage, we do the actual mapping on the physical registers. We have four implementations of register allocation in LLVM, which have their algorithms for mapping the virtual registers on the physical registers. It is not possible to cover in detail any of those algorithms here. If you want to try and understand them, refer to the next section.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec224"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To learn more about the algorithms used in LLVM, look through the source codes located at <code class="literal">lib/CodeGen/</code>:<div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">lib/CodeGen/RegAllocBasic.cpp</code></li><li class="listitem"><code class="literal">lib/CodeGen/ RegAllocFast.cpp</code></li><li class="listitem"><code class="literal">lib/CodeGen/ RegAllocGreedy.cpp</code></li><li class="listitem"><code class="literal">lib/CodeGen/ RegAllocPBQP.cpp</code></li></ul></div></li></ul></div></div></div>
+<div class="section" title="Inserting the prologue-epilogue code"><div class="titlepage" id="aid-2F4UM2"><div><div><h1 class="title"><a id="ch07lvl1sec77"/>Inserting the prologue-epilogue code</h1></div></div></div><p>Inserting the <a id="id356" class="indexterm"/>prologue-epilogue code involves stack unwinding, finalizing the function layout, saving callee-saved registers and emitting the prologue and epilogue code. It also replaces abstract frame indexes with appropriate references. This pass runs after the register allocation phase.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec225"/>How to do it…</h2></div></div></div><p>The skeleton and the important functions defined in the <code class="literal">PrologueEpilogueInserter</code> class are as follows:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The prologue epilogue inserter pass runs on a machine function, hence it inherits the <code class="literal">MachineFunctionPass</code> class. Its constructor initializes the pass:<div class="informalexample"><pre class="programlisting">class PEI : public MachineFunctionPass {
+  public:
+    static char ID;
+    PEI() : MachineFunctionPass(ID) {
+      initializePEIPass(*PassRegistry::getPassRegistry());
+    }</pre></div></li><li class="listitem">There are various helper functions defined in this class that help insert the prologue and epilogue code:<div class="informalexample"><pre class="programlisting">    void calculateSets(MachineFunction &amp;Fn);
+    void calculateCallsInformation(MachineFunction &amp;Fn);
+    void calculateCalleeSavedRegisters(MachineFunction &amp;Fn);
+    void insertCSRSpillsAndRestores(MachineFunction &amp;Fn);
+    void calculateFrameObjectOffsets(MachineFunction &amp;Fn);
+    void replaceFrameIndices(MachineFunction &amp;Fn);
+    void replaceFrameIndices(MachineBasicBlock *BB, MachineFunction &amp;Fn,
+                             int &amp;SPAdj);
+    void scavengeFrameVirtualRegs(MachineFunction &amp;Fn);</pre></div></li><li class="listitem">The main function, <code class="literal">insertPrologEpilogCode()</code>, does the task of inserting the prologue and epilogue code:<div class="informalexample"><pre class="programlisting">    void insertPrologEpilogCode(MachineFunction &amp;Fn);</pre></div></li><li class="listitem">The first function to execute in this pass is the <code class="literal">runOnFunction()</code> function. The comments in the code show the various operations carried out, such as calculating the call frame size, adjusting the stack variables, inserting the spill code for the callee-saved register for modified registers, calculating the actual frame offset, inserting the prologue and epilogue code for the function, replacing the <a id="id357" class="indexterm"/>abstract frame index with the actual offsets, and so on:<div class="informalexample"><pre class="programlisting">bool PEI::runOnMachineFunction(MachineFunction &amp;Fn) {
+  const Function* F = Fn.getFunction();
+  const TargetRegisterInfo *TRI = Fn.getSubtarget().getRegisterInfo();
+  const TargetFrameLowering *TFI = Fn.getSubtarget().getFrameLowering();
+
+  assert(!Fn.getRegInfo().getNumVirtRegs() &amp;&amp; "Regalloc must assign all vregs");
+
+  RS = TRI-&gt;requiresRegisterScavenging(Fn) ? new RegScavenger() : nullptr;
+  FrameIndexVirtualScavenging = TRI-&gt;requiresFrameIndexScavenging(Fn);
+
+  // Calculate the MaxCallFrameSize and AdjustsStack variables for the
+  // function's frame information. Also eliminates call frame pseudo
+  // instructions.
+  calculateCallsInformation(Fn);
+
+  // Allow the target machine to make some adjustments to the function
+  // e.g. UsedPhysRegs before calculateCalleeSavedRegisters.
+  TFI-&gt;processFunctionBeforeCalleeSavedScan(Fn, RS);
+
+  // Scan the function for modified callee saved registers and insert spill code
+  // for any callee saved registers that are modified.
+  calculateCalleeSavedRegisters(Fn);
+
+  // Determine placement of CSR spill/restore code:
+  // place all spills in the entry block, all restores in return blocks.
+  calculateSets(Fn);
+
+  // Add the code to save and restore the callee saved registers
+  if (!F-&gt;hasFnAttribute(Attribute::Naked))
+    insertCSRSpillsAndRestores(Fn);
+
+  // Allow the target machine to make final modifications to the function
+  // before the frame layout is finalized.
+  TFI-&gt;processFunctionBeforeFrameFinalized(Fn, RS);
+
+  // Calculate actual frame offsets for all abstract stack objects...
+  calculateFrameObjectOffsets(Fn);
+
+  // Add prolog and epilog code to the function.  This function is required
+  // to align the stack frame as necessary for any stack variables or
+  // called functions.  Because of this, calculateCalleeSavedRegisters()
+  // must be called before this function in order to set the AdjustsStack
+  // and MaxCallFrameSize variables.
+  if (!F-&gt;hasFnAttribute(Attribute::Naked))
+    insertPrologEpilogCode(Fn);
+
+  // Replace all MO_FrameIndex operands with physical register references
+  // and actual offsets.
+  replaceFrameIndices(Fn);
+
+  // If register scavenging is needed, as we've enabled doing it as a
+  // post-pass, scavenge the virtual registers that frame index elimination
+  // inserted.
+  if (TRI-&gt;requiresRegisterScavenging(Fn) &amp;&amp; FrameIndexVirtualScavenging)
+    scavengeFrameVirtualRegs(Fn);
+
+  // Clear any vregs created by virtual scavenging.
+  Fn.getRegInfo().clearVirtRegs();
+
+  // Warn on stack size when we exceeds the given limit.
+  MachineFrameInfo *MFI = Fn.getFrameInfo();
+  uint64_t StackSize = MFI-&gt;getStackSize();
+  if (WarnStackSize.getNumOccurrences() &gt; 0 &amp;&amp; WarnStackSize &lt; StackSize) {
+    DiagnosticInfoStackSize DiagStackSize(*F, StackSize);
+    F-&gt;getContext().diagnose(DiagStackSize);
+  }
+  delete RS;
+  ReturnBlocks.clear();
+  return true;
+}</pre></div></li><li class="listitem">The main function that inserts prologue-epilogue code is the <code class="literal">insertPrologEpilogCode()</code> function. This function first takes the <code class="literal">TargetFrameLowering</code> object and then emits a prologue code for that function corresponding to that target. After that, for each basic block in that function, it checks whether there is <a id="id358" class="indexterm"/>a return statement. If there is a return statement, then it emits an epilogue code for that function:<div class="informalexample"><pre class="programlisting">void PEI::insertPrologEpilogCode(MachineFunction &amp;Fn) {
+  const TargetFrameLowering &amp;TFI = *Fn.getSubtarget().getFrameLowering();
+
+  // Add prologue to the function.
+  TFI.emitPrologue(Fn);
+
+  // Add epilogue to restore the callee-save registers in each exiting block
+  for (MachineFunction::iterator I = Fn.begin(), E = Fn.end(); I != E; ++I) {
+    // If last instruction is a return instruction, add an epilogue
+    if (!I-&gt;empty() &amp;&amp; I-&gt;back().isReturn())
+      TFI.emitEpilogue(Fn, *I);
+  }
+
+  // Emit additional code that is required to support segmented stacks, if
+  // we've been asked for it.  This, when linked with a runtime with support
+  // for segmented stacks (libgcc is one), will result in allocating stack
+  // space in small chunks instead of one large contiguous block.
+  if (Fn.shouldSplitStack())
+    TFI.adjustForSegmentedStacks(Fn);
+
+  // Emit additional code that is required to explicitly handle the stack in
+  // HiPE native code (if needed) when loaded in the Erlang/OTP runtime. The
+  // approach is rather similar to that of Segmented Stacks, but it uses a
+  // different conditional check and another BIF for allocating more stack
+  // space.
+  if (Fn.getFunction()-&gt;getCallingConv() == CallingConv::HiPE)
+    TFI.adjustForHiPEPrologue(Fn);
+}</pre></div></li></ul></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec226"/>How it works…</h2></div></div></div><p>The preceding code invokes<a id="id359" class="indexterm"/> the <code class="literal">emitEpilogue()</code> and the <code class="literal">emitPrologue()</code> functions in the <code class="literal">TargetFrameLowering</code> class, which will be discussed in the target-specific frame lowering recipes in later chapters.</p></div></div>
+<div class="section" title="Code emission" id="aid-2G3F81"><div class="titlepage"><div><div><h1 class="title"><a id="ch07lvl1sec78"/>Code emission</h1></div></div></div><p>The code emission phase<a id="id360" class="indexterm"/> lowers the code from code generator abstractions (such as <code class="literal">MachineFunction</code> class, <code class="literal">MachineInstr</code> class, and so on) to machine code layer abstractions (<code class="literal">MCInst</code> class, <code class="literal">MCStreamer</code> class, and so on). The important classes in this phase are the target-independent <code class="literal">AsmPrinter</code> class, target-specific subclasses of <code class="literal">AsmPrinter</code>, and the <code class="literal">TargetLoweringObjectFile</code> class.</p><p>The MC layer is responsible for emitting object files, which consist of labels, directives, and instructions; while the <code class="literal">CodeGen</code> layer consists of <code class="literal">MachineFunctions</code>, <code class="literal">MachineBasicBlock</code> and <code class="literal">MachineInstructions</code>. A key class used at this point in time is the <code class="literal">MCStreamer</code> class, which consists of assembler APIs. The <code class="literal">MCStreamer</code> class has functions such as <code class="literal">EmitLabel</code>, <code class="literal">EmitSymbolAttribute</code>, <code class="literal">SwitchSection</code>, and so on, which directly correspond to the aforementioned assembly-level directives.</p><p>There are four important things that need to be implemented for the target in order to emit code:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Define a subclass of the <code class="literal">AsmPrinter</code> class for the target. This class implements the general lowering process, converting the <code class="literal">MachineFunctions</code> functions into MC label constructs. The <code class="literal">AsmPrinter</code> base class methods and routines help implement a target-specific <code class="literal">AsmPrinter</code> class. The <code class="literal">TargetLoweringObjectFile</code> class implements much of the common logic for the <code class="literal">ELF</code>, <code class="literal">COFF</code>, or <code class="literal">MachO</code> targets.</li><li class="listitem">Implement an instruction printer for the target. The instruction printer takes an <code class="literal">MCInst</code> class and renders it into a <code class="literal">raw_ostream</code> class as text. Most of this is automatically generated from the <code class="literal">.td</code> file (when you specify something like add <code class="literal">$dst</code>, <code class="literal">$src1</code>, <code class="literal">$src2</code> in the instructions), but you need to implement routines to print operands.</li><li class="listitem">Implement code that lowers a <code class="literal">MachineInstr</code> class to an <code class="literal">MCInst</code> <code class="literal">class</code>, usually implemented in <code class="literal">&lt;target&gt;MCInstLower.cpp</code>. This lowering process is often target-specific, and is responsible for turning jump table entries, constant pool indices, global variable addresses, and so on into <code class="literal">MCLabels</code>, as appropriate. The instruction printer or the encoder takes the <code class="literal">MCInsts</code> that are generated.</li><li class="listitem">Implement a subclass of <code class="literal">MCCodeEmitter</code> that lowers <code class="literal">MCInsts</code> to machine code bytes and relocations. This is important if you want to support direct <code class="literal">.o</code> file emission, or want to implement an assembler for your target.</li></ul></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec227"/>How to do it…</h2></div></div></div><p>Let's visit some important <a id="id361" class="indexterm"/>functions in the <code class="literal">AsmPrinter</code> base class in the <code class="literal">lib/CodeGen/AsmPrinter/AsmPrinter.cpp</code> file:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem"><code class="literal">EmitLinkage()</code>: This emits the linkage of the given variables or functions:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitLinkage(const GlobalValue *GV, MCSymbol *GVSym) const ;</pre></div></li><li class="listitem"><code class="literal">EmitGlobalVariable()</code>: This emits the specified global variable to the <code class="literal">.s</code> file:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV);</pre></div></li><li class="listitem"><code class="literal">EmitFunctionHeader()</code>: This emits the header of the current function:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitFunctionHeader();</pre></div></li><li class="listitem"><code class="literal">EmitFunctionBody()</code>: This method emits the body and trailer of a function:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitFunctionBody();</pre></div></li><li class="listitem"><code class="literal">EmitJumpTableInfo()</code>: This prints assembly representations of the jump tables used by the current function to the current output stream:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitJumpTableInfo();</pre></div></li><li class="listitem"><code class="literal">EmitJumpTableEntry()</code>: This emits a jump table entry for the specified <code class="literal">MachineBasicBlock</code> class to the current stream:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI, const MachineBasicBlock *MBB,
+unsigned UID) const;</pre></div></li><li class="listitem">Emit integer types of 8, 16, or 32 bit size:<div class="informalexample"><pre class="programlisting">void AsmPrinter::EmitInt8(int Value) const {
+  OutStreamer.EmitIntValue(Value, 1);
+}
+
+void AsmPrinter::EmitInt16(int Value) const {
+  OutStreamer.EmitIntValue(Value, 2);
+}
+
+void AsmPrinter::EmitInt32(int Value) const {
+OutStreamer.EmitIntValue(Value, 4);
+}</pre></div></li></ul></div><p>For detailed <a id="id362" class="indexterm"/>implementation on code emission, see the <code class="literal">lib/CodeGen/AsmPrinter/AsmPrinter.cpp</code> file. One important thing to note is that this class uses the <code class="literal">OutStreamer</code> class object to output assembly instructions. The details of target-specific code emission will be covered in later chapters.</p></div></div>
+<div class="section" title="Tail call optimization"><div class="titlepage" id="aid-2H1VQ2"><div><div><h1 class="title"><a id="ch07lvl1sec79"/>Tail call optimization</h1></div></div></div><p>In this recipe, we will see how <span class="strong"><strong>tail call optimization</strong></span>
+<a id="id363" class="indexterm"/> is done in LLVM. Tail call optimization is a technique where the callee reuses the stack of the caller instead of adding a new stack frame to the call stack, hence saving stack space and the number of returns when dealing with mutually recursive functions.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec228"/>Getting ready</h2></div></div></div><p>We need to make sure of the following:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The <code class="literal">llc</code> tool must be installed in <code class="literal">$PATH</code></li><li class="listitem">The <code class="literal">tailcallopt</code> option must be enabled</li><li class="listitem">The test code must have a tail call</li></ul></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec229"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write the test code<a id="id364" class="indexterm"/> for checking tail call optimization:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat tailcall.ll</strong></span>
+<span class="strong"><strong>declare fastcc i32 @tailcallee(i32 inreg %a1, i32 inreg %a2, i32 %a3, i32 %a4)</strong></span>
+
+<span class="strong"><strong>define fastcc i32 @tailcaller(i32 %in1, i32 %in2) {</strong></span>
+<span class="strong"><strong>  %l1 = add i32 %in1, %in2</strong></span>
+<span class="strong"><strong>  %tmp = tail call fastcc i32 @tailcallee(i32 inreg %in1, i32 inreg %in2, i32 %in1, i32 %l1)</strong></span>
+<span class="strong"><strong>  ret i32 %tmp</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Run the <code class="literal">llc</code> tool with the <code class="literal">–tailcallopt</code> option on the test code to generate the assembly file with the tailcall-optimized code:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc -tailcallopt tailcall.ll</strong></span>
+</pre></div></li><li class="listitem">Display the<a id="id365" class="indexterm"/> output generated:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat tailcall.s</strong></span>
+<span class="strong"><strong>  .text</strong></span>
+<span class="strong"><strong>  .file  "tailcall.ll"</strong></span>
+<span class="strong"><strong>  .globl  tailcaller</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  tailcaller,@function</strong></span>
+<span class="strong"><strong>tailcaller:                             # @tailcaller</strong></span>
+<span class="strong"><strong>  .cfi_startproc</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>  pushq  %rax</strong></span>
+<span class="strong"><strong>.Ltmp0:</strong></span>
+<span class="strong"><strong>  .cfi_def_cfa_offset 16</strong></span>
+<span class="strong"><strong>                     # kill: ESI&lt;def&gt; ESI&lt;kill&gt; RSI&lt;def&gt;</strong></span>
+<span class="strong"><strong>                     # kill: EDI&lt;def&gt; EDI&lt;kill&gt; RDI&lt;def&gt;</strong></span>
+<span class="strong"><strong>  leal  (%rdi,%rsi), %ecx</strong></span>
+<span class="strong"><strong>                     # kill: ESI&lt;def&gt; ESI&lt;kill&gt; RSI&lt;kill&gt;</strong></span>
+<span class="strong"><strong>  movl  %edi, %edx</strong></span>
+<span class="strong"><strong>  popq  %rax</strong></span>
+<span class="strong"><strong>  jmp  tailcallee              # TAILCALL</strong></span>
+<span class="strong"><strong>.Lfunc_end0:</strong></span>
+<span class="strong"><strong>  .size  tailcaller, .Lfunc_end0-tailcaller</strong></span>
+<span class="strong"><strong>  .cfi_endproc</strong></span>
+
+<span class="strong"><strong>  .section  ".note.GNU-stack","",@progbits</strong></span>
+</pre></div></li><li class="listitem">Using the <code class="literal">llc</code> tool, generate the assembly again but without using the <code class="literal">-tailcallopt</code> option:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc tailcall.ll -o tailcall1.s</strong></span>
+</pre></div></li><li class="listitem">Display the output using the <code class="literal">cat</code> command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat tailcall1.s</strong></span>
+<span class="strong"><strong>  .text</strong></span>
+<span class="strong"><strong>  .file  "tailcall.ll"</strong></span>
+<span class="strong"><strong>  .globl  tailcaller</strong></span>
+<span class="strong"><strong>  .align  16, 0x90</strong></span>
+<span class="strong"><strong>  .type  tailcaller,@function</strong></span>
+<span class="strong"><strong>tailcaller:                             # @tailcaller</strong></span>
+<span class="strong"><strong>  .cfi_startproc</strong></span>
+<span class="strong"><strong># BB#0:</strong></span>
+<span class="strong"><strong>                     # kill: ESI&lt;def&gt; ESI&lt;kill&gt; RSI&lt;def&gt;</strong></span>
+<span class="strong"><strong>                     # kill: EDI&lt;def&gt; EDI&lt;kill&gt; RDI&lt;def&gt;</strong></span>
+<span class="strong"><strong>  leal  (%rdi,%rsi), %ecx</strong></span>
+<span class="strong"><strong>                     # kill: ESI&lt;def&gt; ESI&lt;kill&gt; RSI&lt;kill&gt;</strong></span>
+<span class="strong"><strong>  movl  %edi, %edx</strong></span>
+<span class="strong"><strong>  jmp  tailcallee              # TAILCALL</strong></span>
+<span class="strong"><strong>.Lfunc_end0:</strong></span>
+<span class="strong"><strong>  .size  tailcaller, .Lfunc_end0-tailcaller</strong></span>
+<span class="strong"><strong>  .cfi_endproc</strong></span>
+<span class="strong"><strong>  .section  ".note.GNU-stack","",@progbits</strong></span>
+</pre></div><p>Compare the two<a id="id366" class="indexterm"/> assemblies using a diff tool. We used the meld tool here:</p><div class="mediaobject"><img src="../Images/image00267.jpeg" alt="How to do it…"/></div><p style="clear:both; height: 1em;"> </p></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec230"/>How it works…</h2></div></div></div><p>The tail call optimization <a id="id367" class="indexterm"/>is a compiler optimization technique, which a compiler can use to make a call to a function and take up no additional stack space; we don't need to create a new stack frame for this function call. This happens if the last instruction executed in a function is a call to another function. A point to note is that the caller function now does not need the stack space; it simply calls a function (another function or itself) and returns whatever value the called function would have returned. This optimization can make recursive calls take up constant and limited space. In this optimization, the code might not always be in the form for which a tail call is possible. It tries and modifies the source to see whether a tail call is possible or not.</p><p>In the preceding test case, we see that a push-and-pop instruction is added due to tail call optimization. In LLVM, the tail call optimization is handled by the architecture-specific <code class="literal">ISelLowering.cpp</code> file; for x86, it is the <code class="literal">X86ISelLowering.cpp</code> file:</p><div class="informalexample"><pre class="programlisting">The code in function SDValue X86TargetLowering::LowerCall (…….)
+bool IsMustTail = CLI.CS &amp;&amp; CLI.CS-&gt;isMustTailCall();
+  if (IsMustTail) {
+    // Force this to be a tail call.  The verifier rules are enough to ensure
+    // that we can lower this successfully without moving the return address
+    // around.
+    isTailCall = true;
+  } else if (isTailCall) {
+    // Check if it's really possible to do a tail call.
+    isTailCall = IsEligibleForTailCallOptimization(Callee, CallConv,
+                    isVarArg, SR != NotStructReturn,
+                    MF.getFunction()-&gt;hasStructRetAttr(), CLI.RetTy,
+                    Outs, OutVals, Ins, DAG);</pre></div><p>The preceding code is used to call the <code class="literal">IsEligibleForTailCallOptimization()</code> function when the <code class="literal">tailcallopt</code> flag is passed. The <code class="literal">IsEligibleForTailCallOptimization()</code> function decides whether or not the piece of code is eligible for tail call optimization. If it is, then the code generator will make the necessary changes.</p></div></div>
+<div class="section" title="Sibling call optimisation" id="aid-2I0GC1"><div class="titlepage"><div><div><h1 class="title"><a id="ch07lvl1sec80"/>Sibling call optimisation</h1></div></div></div><p>In this recipe, we will see how <a id="id368" class="indexterm"/>
+<span class="strong"><strong>sibling call optimization</strong></span> works in LLVM. Sibling call optimization can be looked at as an optimized tail call, the only constraint being that the functions should share a similar function signature, that is, matching return types and matching function arguments.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec231"/>Getting ready</h2></div></div></div><p>Write a test case for sibling call optimization, making sure that the caller and callee have the same calling conventions (in either C or <span class="strong"><strong>fastcc</strong></span>), and that the call in the tail position is a tail call:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat sibcall.ll</strong></span>
+<span class="strong"><strong>declare i32 @bar(i32, i32)</strong></span>
+
+<span class="strong"><strong>define i32 @foo(i32 %a, i32 %b, i32 %c) {</strong></span>
+<span class="strong"><strong>  entry:</strong></span>
+<span class="strong"><strong>    %0 = tail call i32 @bar(i32 %a, i32 %b)</strong></span>
+<span class="strong"><strong>  ret i32 %0</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec232"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Run the <code class="literal">llc</code> tool to <a id="id369" class="indexterm"/>generate the assembly:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc sibcall.ll</strong></span>
+</pre></div></li><li class="listitem">View the generated assembly using the <code class="literal">cat</code> command:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat sibcall.s</strong></span>
+<span class="strong"><strong>    .text</strong></span>
+<span class="strong"><strong>    .file    "sibcall.ll"</strong></span>
+<span class="strong"><strong>    .globl    foo</strong></span>
+<span class="strong"><strong>    .align    16, 0x90</strong></span>
+<span class="strong"><strong>    .type    foo,@function</strong></span>
+<span class="strong"><strong>foo:                                    # @foo</strong></span>
+<span class="strong"><strong>    .cfi_startproc</strong></span>
+<span class="strong"><strong># BB#0:                                 # %entry</strong></span>
+<span class="strong"><strong>    jmp    bar                     # TAILCALL</strong></span>
+<span class="strong"><strong>.Lfunc_end0:</strong></span>
+<span class="strong"><strong>    .size    foo, .Lfunc_end0-foo</strong></span>
+<span class="strong"><strong>    .cfi_endproc</strong></span>
+
+<span class="strong"><strong>    .section    ".note.GNU-stack","",@progbits</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch07lvl2sec233"/>How it works…</h2></div></div></div><p>Sibling call <a id="id370" class="indexterm"/>optimization is a restricted version of tail call optimization that can be performed on tail calls without passing the <code class="literal">tailcallopt</code> option. Sibling call optimization works in a similar way to tail call optimization, except that the sibling calls are automatically detected and do not need any ABI changes. The similarity needed in the function signatures is because when the caller function (which calls a tail recursive function) tries to clean up the callee's argument, after the callee has done its work, this may lead to memory leak if the callee exceeds the argument space to perform a sibling call to a function requiring more stack space for arguments.</p></div></div></body></html>

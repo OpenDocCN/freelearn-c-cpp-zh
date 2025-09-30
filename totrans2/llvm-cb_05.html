@@ -1,0 +1,643 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;5.&#xA0;Implementing Optimizations" id="aid-1LCVG1"><div class="titlepage"><div><div><h1 class="title"><a id="ch05"/>Chapter 5. Implementing Optimizations</h1></div></div></div><p>In this chapter, we will cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Writing a dead code elimination pass</li><li class="listitem">Writing an inlining transformation pass</li><li class="listitem">Writing a pass for memory optimization</li><li class="listitem">Combining LLVM IR</li><li class="listitem">Transforming and optimizing loops</li><li class="listitem">Reassociating expressions</li><li class="listitem">Vectorizing IR</li><li class="listitem">Other optimization passes</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec50"/>Introduction</h1></div></div></div><p>In the previous chapter, we saw how to write a pass in LLVM. We also demonstrated writing a few analysis passes with an example of alias analysis. Those passes just read the source code and gave us information about it. In this chapter, we will go further and write transformation passes that will actually change the source code, trying to optimize it for the faster execution of code. In the first two recipes, we will show you how a transformation pass is written and how it changes the code. After that, we will see how we can make changes in the code of passes to tinker with the behavior of the passes.</p></div></div>
+<div class="section" title="Writing a dead code elimination pass"><div class="titlepage" id="aid-1MBG22"><div><div><h1 class="title"><a id="ch05lvl1sec51"/>Writing a dead code elimination pass</h1></div></div></div><p>In this recipe, you <a id="id207" class="indexterm"/>will learn how to eliminate dead code from the program. By dead code elimination, we mean removing the code that has no effect whatsoever on the results that the source program outputs on executing. The main reasons to do so are reduction of the program size, which makes the code quality good and makes it easier to debug the code later on; and improving the run time of the program, as the unnecessary code is prevented from being executed. In this recipe, we will show you a variant of dead code elimination, called aggressive dead code elimination, that assumes every piece of code to be dead until proven otherwise. We will see how to implement this pass ourselves, and what modifications we need to make so that the pass can run just like other passes in the <code class="literal">lib/Transforms/Scalar</code> folder of the LLVM trunk.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec143"/>Getting ready</h2></div></div></div><p>To show the <a id="id208" class="indexterm"/>implementation of dead code elimination, we will need a piece of test code, on which we will run the aggressive dead code elimination pass:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat testcode.ll</strong></span>
+<span class="strong"><strong>declare i32 @strlen(i8*) readonly nounwind</strong></span>
+<span class="strong"><strong>define void @test() {</strong></span>
+<span class="strong"><strong>  call i32 @strlen( i8* null )</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div><p>In this test code, we can see that a call to the <code class="literal">strlen</code> function is made in the <code class="literal">test</code> function, but the return value is not used. So, this should be treated as dead code by our pass.</p><p>In the file, include the <code class="literal">InitializePasses.h</code> file, located at <code class="literal">/llvm/</code>; and in the <code class="literal">llvm</code> namespace, add an entry for the pass that we are going to write:</p><div class="informalexample"><pre class="programlisting">namespace llvm {
+…
+…
+void initializeMYADCEPass(PassRegistry&amp;);    // Add this line</pre></div><p>In the <code class="literal">scalar.h</code> file, located at <code class="literal">include/llvm-c/scalar.h/Transform/</code>, add the entry for the pass:</p><div class="informalexample"><pre class="programlisting">void LLVMAddMYAggressiveDCEPass(LLVMPassManagerRef PM);</pre></div><p>In the <code class="literal">include/llvm/Transform/scalar.h</code> file, add the entry for the pass in the <code class="literal">llvm</code> namespace:</p><div class="informalexample"><pre class="programlisting">FunctionPass *createMYAggressiveDCEPass();</pre></div><p>In the <code class="literal">lib/Transforms/Scalar/scalar.cpp</code> file, add the entry for the pass in two places. In the <code class="literal">void</code> <code class="literal">llvm::initializeScalarOpts(PassRegistry</code> <code class="literal">&amp;Registry)</code> function, add the following code:</p><div class="informalexample"><pre class="programlisting">initializeMergedLoadStoreMotionPass(Registry);  // already present in the file
+initializeMYADCEPass(Registry);    // add this line
+initializeNaryReassociatePass(Registry);  // already present in the file
+…
+…
+void LLVMAddMemCpyOptPass(LLVMPassManagerRef PM) {
+  unwrap(PM)-&gt;add(createMemCpyOptPass());
+}
+
+// add the following three lines
+void LLVMAddMYAggressiveDCEPass(LLVMPassManagerRef PM) {
+  unwrap(PM)-&gt;add(createMYAggressiveDCEPass());
+}
+
+void LLVMAddPartiallyInlineLibCallsPass(LLVMPassManagerRef PM) {
+  unwrap(PM)-&gt;add(createPartiallyInlineLibCallsPass());
+}
+…</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec144"/>How to do it…</h2></div></div></div><p>We will now <a id="id209" class="indexterm"/>write the code for the pass:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Include the necessary header files:<div class="informalexample"><pre class="programlisting">#include "llvm/Transforms/Scalar.h"
+#include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Pass.h"
+using namespace llvm;</pre></div></li><li class="listitem">Declare the structure of our pass:<div class="informalexample"><pre class="programlisting">namespace {
+struct MYADCE : public FunctionPass {
+  static char ID; // Pass identification, replacement for typeid
+  MYADCE() : FunctionPass(ID) {
+    initializeMYADCEPass(*PassRegistry::getPassRegistry());
+  }
+
+  bool runOnFunction(Function&amp; F) override;
+
+  void getAnalysisUsage(AnalysisUsage&amp; AU) const override {
+    AU.setPreservesCFG();
+  }
+};
+}</pre></div></li><li class="listitem">Initialize the pass and its ID:<div class="informalexample"><pre class="programlisting">char MYADCE::ID = 0;
+INITIALIZE_PASS(MYADCE, "myadce", "My Aggressive Dead Code Elimination", false, false)</pre></div></li><li class="listitem">Implement<a id="id210" class="indexterm"/> the actual pass in the <code class="literal">runOnFunction</code> function:<div class="informalexample"><pre class="programlisting">bool MYADCE::runOnFunction(Function&amp; F) {
+  if (skipOptnoneFunction(F))
+    return false;
+
+  SmallPtrSet&lt;Instruction*, 128&gt; Alive;
+  SmallVector&lt;Instruction*, 128&gt; Worklist;
+
+  // Collect the set of "root" instructions that are known live.
+  for (Instruction &amp;I : inst_range(F)) {
+    if (isa&lt;TerminatorInst&gt;(I) || isa&lt;DbgInfoIntrinsic&gt;(I) || isa&lt;LandingPadInst&gt;(I) || I.mayHaveSideEffects()) {
+      Alive.insert(&amp;I);
+      Worklist.push_back(&amp;I);
+    }
+  }
+
+  // Propagate liveness backwards to operands.
+  while (!Worklist.empty()) {
+    Instruction *Curr = Worklist.pop_back_val();
+    for (Use &amp;OI : Curr-&gt;operands()) {
+      if (Instruction *Inst = dyn_cast&lt;Instruction&gt;(OI))
+        if (Alive.insert(Inst).second)
+          Worklist.push_back(Inst);
+    }
+  }
+
+// the instructions which are not in live set are considered dead in this pass. The instructions which do not effect the control flow, return value and do not have any side effects are hence deleted.
+  for (Instruction &amp;I : inst_range(F)) {
+    if (!Alive.count(&amp;I)) {
+      Worklist.push_back(&amp;I);
+      I.dropAllReferences();
+    }
+  }
+
+  for (Instruction *&amp;I : Worklist) {
+    I-&gt;eraseFromParent();
+  }
+
+  return !Worklist.empty();
+}
+}
+
+
+FunctionPass *llvm::createMYAggressiveDCEPass() {
+  return new MYADCE();
+}</pre></div></li><li class="listitem">Run the<a id="id211" class="indexterm"/> preceding pass after compiling the <code class="literal">testcode.ll</code> file, which can be found in the <span class="emphasis"><em>Getting ready</em></span> section of this recipe:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -myadce -S testcode.ll</strong></span>
+
+<span class="strong"><strong>; ModuleID = 'testcode.ll'</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind readonly</strong></span>
+<span class="strong"><strong>declare i32 @strlen(i8*) #0</strong></span>
+
+<span class="strong"><strong>define void @test() {</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec145"/>How it works…</h2></div></div></div><p>The pass works by first collecting a list of all the root instructions that are live in the first <code class="literal">for</code> loop of the <code class="literal">runOnFunction</code> function.</p><p>Using this information, we move backwards, propagating liveness to the operands in the <code class="literal">while</code> <code class="literal">(!Worklist.empty())</code> loop.</p><p>In the next <code class="literal">for</code> loop, we remove the instructions that are not live, that is, dead. Also, we check whether any reference was made to these values. If so, we drop all such references, which are also dead.</p><p>On running the the pass on the test code, we see the dead code; the call to the <code class="literal">strlen</code> function is removed.</p><p>Note that the code has<a id="id212" class="indexterm"/> been added to the LLVM trunk revision number 234045. So, when you are actually trying to implement it, some definitions might be updated. In this case, modify the code accordingly.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec146"/>See also</h2></div></div></div><p>For various other kinds of dead code elimination method, you can refer to the <code class="literal">llvm/lib/Transfroms/Scalar</code> folder, where the code for other kinds of DCEs is present.</p></div></div>
+<div class="section" title="Writing an inlining transformation pass"><div class="titlepage" id="aid-1NA0K2"><div><div><h1 class="title"><a id="ch05lvl1sec52"/>Writing an inlining transformation pass</h1></div></div></div><p>As we know, by <a id="id213" class="indexterm"/>inlining we mean expanding the function body of the function called at the call site, as it may prove useful through faster execution of code. The compiler takes the decision whether to inline a function or not. In this recipe, you will learn to how to write a simple function-inlining pass that makes use of the implementation in LLVM for inlining. We will write a pass that will handle the functions marked with the <code class="literal">alwaysinline</code> attribute.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec147"/>Getting ready</h2></div></div></div><p>Let's write a test code that we will run our pass on. Make the necessary changes in the <code class="literal">lib/Transforms/IPO/IPO.cpp</code> and <code class="literal">include/llvm/InitializePasses.h</code> files, the <code class="literal">include/llvm/Transforms/IPO.h</code> file, and the <code class="literal">/include/llvm-c/Transforms/IPO.h</code> file to include the following pass. Also make the necessary <code class="literal">makefile</code> changes to include his pass:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat testcode.c</strong></span>
+<span class="strong"><strong>define i32 @inner1() alwaysinline {</strong></span>
+<span class="strong"><strong>  ret i32 1</strong></span>
+<span class="strong"><strong>}</strong></span>
+<span class="strong"><strong>define i32 @outer1() {</strong></span>
+<span class="strong"><strong>  %r = call i32 @inner1()</strong></span>
+<span class="strong"><strong>  ret i32 %r</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec148"/>How to do it…</h2></div></div></div><p>We will now write the code for the pass:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Include the necessary header files:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>#include "llvm/Transforms/IPO.h"</strong></span>
+<span class="strong"><strong>#include "llvm/ADT/SmallPtrSet.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Analysis/AliasAnalysis.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Analysis/AssumptionCache.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Analysis/CallGraph.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Analysis/InlineCost.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/CallSite.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/CallingConv.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/DataLayout.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/Instructions.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/IntrinsicInst.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/Module.h"</strong></span>
+<span class="strong"><strong>#include "llvm/IR/Type.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Transforms/IPO/InlinerPass.h"</strong></span>
+
+<span class="strong"><strong>using namespace llvm;</strong></span>
+</pre></div></li><li class="listitem">Describe the class<a id="id214" class="indexterm"/> for our pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>namespace {</strong></span>
+
+<span class="strong"><strong>class MyInliner : public Inliner {</strong></span>
+<span class="strong"><strong>  InlineCostAnalysis *ICA;</strong></span>
+
+<span class="strong"><strong>public:</strong></span>
+<span class="strong"><strong>    MyInliner() : Inliner(ID, -2000000000,</strong></span>
+<span class="strong"><strong>/*InsertLifetime*/ true),</strong></span>
+<span class="strong"><strong>                    ICA(nullptr) {</strong></span>
+<span class="strong"><strong>    initializeMyInlinerPass(*PassRegistry::getPassRegistry());</strong></span>
+<span class="strong"><strong>  }</strong></span>
+
+<span class="strong"><strong>  MyInliner(bool InsertLifetime)</strong></span>
+<span class="strong"><strong>      : Inliner(ID, -2000000000, InsertLifetime), ICA(nullptr) {</strong></span>
+<span class="strong"><strong>    initializeMyInlinerPass(*PassRegistry::getPassRegistry());</strong></span>
+<span class="strong"><strong>  }</strong></span>
+
+<span class="strong"><strong>  static char ID;</strong></span>
+
+<span class="strong"><strong>  InlineCost getInlineCost(CallSite CS) override;</strong></span>
+
+<span class="strong"><strong>  void getAnalysisUsage(AnalysisUsage &amp;AU) const override;</strong></span>
+<span class="strong"><strong>  bool runOnSCC(CallGraphSCC &amp;SCC) override;</strong></span>
+
+<span class="strong"><strong>  using llvm::Pass::doFinalization;</strong></span>
+<span class="strong"><strong>  bool doFinalization(CallGraph &amp;CG) override {</strong></span>
+<span class="strong"><strong>    return removeDeadFunctions(CG, /*AlwaysInlineOnly=*/ true);</strong></span>
+<span class="strong"><strong>  }</strong></span>
+<span class="strong"><strong>};</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Initialize the pass<a id="id215" class="indexterm"/> and add the dependencies:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>char MyInliner::ID = 0;</strong></span>
+<span class="strong"><strong>INITIALIZE_PASS_BEGIN(MyInliner, "my-inline",</strong></span>
+<span class="strong"><strong>                "Inliner for always_inline functions", false, false)</strong></span>
+<span class="strong"><strong>INITIALIZE_AG_DEPENDENCY(AliasAnalysis)</strong></span>
+<span class="strong"><strong>INITIALIZE_PASS_DEPENDENCY(AssumptionTracker)</strong></span>
+<span class="strong"><strong>INITIALIZE_PASS_DEPENDENCY(CallGraphWrapperPass)</strong></span>
+<span class="strong"><strong>INITIALIZE_PASS_DEPENDENCY(InlineCostAnalysis)</strong></span>
+<span class="strong"><strong>INITIALIZE_PASS_END(MyInliner, "my-inline",</strong></span>
+<span class="strong"><strong>                "Inliner for always_inline functions", false, false)</strong></span>
+
+<span class="strong"><strong>Pass *llvm::createMyInlinerPass() { return new MyInliner(); }</strong></span>
+
+<span class="strong"><strong>Pass *llvm::createMynlinerPass(bool InsertLifetime) {</strong></span>
+<span class="strong"><strong>  return new MyInliner(InsertLifetime);</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Implement the function to get the inlining cost:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>InlineCost MyInliner::getInlineCost(CallSite CS) {</strong></span>
+<span class="strong"><strong>  Function *Callee = CS.getCalledFunction();</strong></span>
+<span class="strong"><strong>if (Callee &amp;&amp; !Callee-&gt;isDeclaration() &amp;&amp;</strong></span>
+<span class="strong"><strong>      CS.hasFnAttr(Attribute::AlwaysInline) &amp;&amp;</strong></span>
+<span class="strong"><strong>      ICA-&gt;isInlineViable(*Callee))</strong></span>
+<span class="strong"><strong>    return InlineCost::getAlways();</strong></span>
+
+<span class="strong"><strong>  return InlineCost::getNever();</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Write the other <a id="id216" class="indexterm"/>helper methods:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>bool MyInliner::runOnSCC(CallGraphSCC &amp;SCC) {</strong></span>
+<span class="strong"><strong>  ICA = &amp;getAnalysis&lt;InlineCostAnalysis&gt;();</strong></span>
+<span class="strong"><strong>  return Inliner::runOnSCC(SCC);</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>void MyInliner::getAnalysisUsage(AnalysisUsage &amp;AU) const {</strong></span>
+<span class="strong"><strong>  AU.addRequired&lt;InlineCostAnalysis&gt;();</strong></span>
+<span class="strong"><strong>  Inliner::getAnalysisUsage(AU);</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Compile the pass. After compiling, run it on the preceding test case:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -inline-threshold=0 -always-inline -S test.ll</strong></span>
+
+<span class="strong"><strong>; ModuleID = 'test.ll'</strong></span>
+
+<span class="strong"><strong>; Function Attrs: alwaysinline</strong></span>
+<span class="strong"><strong>define i32 @inner1() #0 {</strong></span>
+<span class="strong"><strong>  ret i32 1</strong></span>
+<span class="strong"><strong>}</strong></span>
+<span class="strong"><strong>define i32 @outer1() {</strong></span>
+<span class="strong"><strong>  ret i32 1</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec149"/>How it works...</h2></div></div></div><p>This pass that we have written will work for the functions with the <code class="literal">alwaysinline</code> attribute. The pass will always inline such functions.</p><p>The main function at work here is <code class="literal">InlineCost</code> <code class="literal">getInlineCost(CallSite</code> <code class="literal">CS)</code>. This is a function in the <code class="literal">inliner.cpp</code> file, which needs to be overridden here. So, on the basis of the inlining cost calculated here, we decide whether or not to inline a function. The actual implementation, on how the inlining process works, is in the <code class="literal">inliner.cpp</code> file.</p><p>In this case, we <a id="id217" class="indexterm"/>return <code class="literal">InlineCost::getAlways()</code>; for the functions marked with the <code class="literal">alwaysinline</code> attribute. For the others, we return <code class="literal">InlineCost::getNever()</code>. In this way, we can implement inlining for this simple case. If you want to dig deeper and try other variations of inlining—and learn how to make decisions about inlining—you can check out the <code class="literal">inlining.cpp</code> file.</p><p>When this pass is run over the test code, we see that the call of the <code class="literal">inner1</code> function is replaced by its actual function body.</p></div></div>
+<div class="section" title="Writing a pass for memory optimization" id="aid-1O8H61"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec53"/>Writing a pass for memory optimization</h1></div></div></div><p>In this recipe, we will <a id="id218" class="indexterm"/>briefly discuss a transformation pass that <a id="id219" class="indexterm"/>deals with memory optimization.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec150"/>Getting ready</h2></div></div></div><p>For this recipe, you will need the opt tool installed.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec151"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write the test code on which we will run the <code class="literal">memcpy</code> optimization pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat memcopytest.ll</strong></span>
+<span class="strong"><strong>@cst = internal constant [3 x i32] [i32 -1, i32 -1, i32 -1], align 4</strong></span>
+
+<span class="strong"><strong>declare void @llvm.memcpy.p0i8.p0i8.i64(i8* nocapture, i8* nocapture, i64, i32, i1) nounwind</strong></span>
+<span class="strong"><strong>declare void @foo(i32*) nounwind</strong></span>
+
+<span class="strong"><strong>define void @test1() nounwind {</strong></span>
+<span class="strong"><strong>  %arr = alloca [3 x i32], align 4</strong></span>
+<span class="strong"><strong>  %arr_i8 = bitcast [3 x i32]* %arr to i8*</strong></span>
+<span class="strong"><strong>  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %arr_i8, i8* bitcast ([3 x i32]* @cst to i8*), i64 12, i32 4, i1 false)</strong></span>
+<span class="strong"><strong>  %arraydecay = getelementptr inbounds [3 x i32], [3 x i32]* %arr, i64 0, i64 0</strong></span>
+<span class="strong"><strong>  call void @foo(i32* %arraydecay) nounwind</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Run the <code class="literal">memcpyopt</code> pass<a id="id220" class="indexterm"/> on the preceding test <a id="id221" class="indexterm"/>case:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -memcpyopt -S memcopytest.ll</strong></span>
+<span class="strong"><strong>; ModuleID = ' memcopytest.ll'</strong></span>
+
+<span class="strong"><strong>@cst = internal constant [3 x i32] [i32 -1, i32 -1, i32 -1], align 4</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>declare void @llvm.memcpy.p0i8.p0i8.i64(i8* nocapture, i8* nocapture readonly, i64, i32, i1) #0</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>declare void @foo(i32*) #0</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define void @test1() #0 {</strong></span>
+<span class="strong"><strong>  %arr = alloca [3 x i32], align 4</strong></span>
+<span class="strong"><strong>  %arr_i8 = bitcast [3 x i32]* %arr to i8*</strong></span>
+<span class="strong"><strong>  call void @llvm.memset.p0i8.i64(i8* %arr_i8, i8 -1, i64 12, i32 4, i1 false)</strong></span>
+<span class="strong"><strong>  %arraydecay = getelementptr inbounds [3 x i32]* %arr, i64 0, i64 0</strong></span>
+<span class="strong"><strong>  call void @foo(i32* %arraydecay) #0</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i32, i1) #0</strong></span>
+
+<span class="strong"><strong>attributes #0 = { nounwind }</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec152"/>How it works…</h2></div></div></div><p>The <code class="literal">Memcpyopt</code> pass deals with eliminating the <code class="literal">memcpy</code> calls wherever possible, or transforms them into other calls.</p><p>Consider this <code class="literal">memcpy</code> call:</p><p>
+<code class="literal">call void @llvm.memcpy.p0i8.p0i8.i64(i8* %arr_i8, i8* bitcast ([3 x i32]* @cst to i8*), i64 12, i32 4, i1 false)</code>.</p><p>In the preceding test case, this pass converts it into a <code class="literal">memset</code> call:</p><p>
+<code class="literal">call void @llvm.memset.p0i8.i64(i8* %arr_i8, i8 -1, i64 12, i32 4, i1 false)</code>
+</p><p>If we look into the <a id="id222" class="indexterm"/>source code of the pass, we realize that <a id="id223" class="indexterm"/>this transformation is brought about by the <code class="literal">tryMergingIntoMemset</code> function in the <code class="literal">MemCpyOptimizer.cpp</code> file in <code class="literal">llvm/lib/Transforms/Scalar</code>.</p><p>The <code class="literal">tryMergingIntoMemset</code> function looks for some other pattern to fold away when scanning forward over instructions. It looks for stores in the neighboring memory and, on seeing consecutive ones, it attempts to merge them together into <code class="literal">memset</code>.</p><p>The <code class="literal">processMemSet</code> function looks out for any other neighboring <code class="literal">memset</code> to this <code class="literal">memset</code>, which helps us widen out the <code class="literal">memset</code> call to create a single larger store.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec153"/>See also</h2></div></div></div><p>To see the details of the various types of <a id="id224" class="indexterm"/>memory optimization passes, go to <a class="ulink" href="http://llvm.org/docs/Passes.html#memcpyopt-memcpy-optimization">http://llvm.org/docs/Passes.html#memcpyopt-memcpy-optimization</a>.</p></div></div>
+<div class="section" title="Combining LLVM IR" id="aid-1P71O1"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec54"/>Combining LLVM IR</h1></div></div></div><p>In this recipe, you will learn <a id="id225" class="indexterm"/>about instruction combining in LLVM. By instruction combining, we mean replacing a sequence of instructions with more efficient instructions that produce the same result in fewer machine cycles. In this recipe, we will see how we can make modifications in the LLVM code to combine certain instructions.</p><div class="section" title="Getting started"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec154"/>Getting started</h2></div></div></div><p>To test our implementation, we will write test code that we will use to verify that our implementation is working properly to combine instructions:</p><div class="informalexample"><pre class="programlisting">define i32 @test19(i32 %x, i32 %y, i32 %z) {
+ %xor1 = xor i32 %y, %z
+ %or = or i32 %x, %xor1
+ %xor2 = xor i32 %x, %z
+ %xor3 = xor i32 %xor2, %y
+ %res = xor i32 %or, %xor3
+ ret i32 %res
+}</pre></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec155"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open the <code class="literal">lib/Transforms/InstCombine/InstCombineAndOrXor.cpp</code> file.</li><li class="listitem">In the <code class="literal">InstCombiner::visitXor(BinaryOperator</code> <code class="literal">&amp;I)</code> function, go to the <code class="literal">if</code> <a id="id226" class="indexterm"/>condition—<code class="literal">if</code> <code class="literal">(Op0I</code> <code class="literal">&amp;&amp;</code> <code class="literal">Op1I)</code>—and add this:<div class="informalexample"><pre class="programlisting">if (match(Op0I, m_Or(m_Xor(m_Value(B), m_Value(C)), m_Value(A))) &amp;&amp;
+        match(Op1I, m_Xor( m_Xor(m_Specific(A), m_Specific(C)), m_Specific(B)))) {
+      return BinaryOperator::CreateAnd(A, Builder-&gt;CreateXor(B,C)); }</pre></div></li><li class="listitem">Now build LLVM again so that the Opt tool can use the new functionality and run the test case in this way:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>Opt –instcombine –S testcode.ll</strong></span>
+<span class="strong"><strong>define i32 @test19(i32 %x, i32 %y, i32 %z) {</strong></span>
+<span class="strong"><strong>%1 = xor i32 %y, %z</strong></span>
+<span class="strong"><strong>  %res = and i32 %1, %x</strong></span>
+<span class="strong"><strong>  ret i32 %res</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec156"/>How it works…</h2></div></div></div><p>In this recipe, we added code to the instruction combining file, which handles transformations involving the AND, OR, and XOR operators.</p><p>We added code for matching the pattern of the <code class="literal">(A</code> <code class="literal">|</code> <code class="literal">(B</code> <code class="literal">^</code> <code class="literal">C))</code> <code class="literal">^</code> <code class="literal">((A</code> <code class="literal">^</code> <code class="literal">C)</code> <code class="literal">^</code> <code class="literal">B)</code> form, and reduced it to <code class="literal">A</code> <code class="literal">&amp;</code> <code class="literal">(B</code> <code class="literal">^</code> <code class="literal">C)</code>. The <code class="literal">if (match(Op0I, m_Or(m_Xor(m_Value(B), m_Value(C)), m_Value(A))) &amp;&amp;        match(Op1I, m_Xor( m_Xor(m_Specific(A), m_Specific(C)), m_Specific(B))))</code> line looks out for the pattern similar to the one shown at the start of this paragraph.</p><p>The <code class="literal">return</code> <code class="literal">BinaryOperator::CreateAnd(A,</code> <code class="literal">Builder-&gt;CreateXor(B,C));</code> line returns the reduced value after building a new instruction, replacing the previous matched code.</p><p>When we run the <code class="literal">instcombine</code> pass over the test code, we get the reduced result. You can see the number of<a id="id227" class="indexterm"/> operations is reduced from five to two.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec157"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">The topic of instruction combining is very wide, and there are loads and loads of possibilities. Similar to the instruction combining function is the instruction simplify function, where we simplify complicated instructions but don't necessarily reduce the number of instructions, as is the case with instruction combining. To look more deeply into this, go through the code in the <code class="literal">lib/Transforms/InstCombine</code> folder</li></ul></div></div></div>
+<div class="section" title="Transforming and optimizing loops" id="aid-1Q5IA1"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec55"/>Transforming and optimizing loops</h1></div></div></div><p>In this recipe, we will<a id="id228" class="indexterm"/> see how we can transform and optimize loops to get <a id="id229" class="indexterm"/>shorter execution times. We will mainly be looking into the <span class="strong"><strong>Loop-Invariant Code Motion</strong></span> (<span class="strong"><strong>LICM</strong></span>)<a id="id230" class="indexterm"/> optimization technique, and see how it works and how it transforms the code. We will also look at a relatively simpler technique called <a id="id231" class="indexterm"/>
+<span class="strong"><strong>loop deletion</strong></span>, where we eliminate loops with non-infinite, computable trip counts that have no side effects on a function's return value.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec158"/>Getting ready</h2></div></div></div><p>You must have the opt tool built for this recipe.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec159"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write the test cases for the LICM pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat testlicm.ll</strong></span>
+<span class="strong"><strong>define void @testfunc(i32 %i) {</strong></span>
+<span class="strong"><strong>; &lt;label&gt;:0</strong></span>
+<span class="strong"><strong>  br label %Loop</strong></span>
+<span class="strong"><strong>Loop:        ; preds = %Loop, %0</strong></span>
+<span class="strong"><strong>  %j = phi i32 [ 0, %0 ], [ %Next, %Loop ]        ; &lt;i32&gt; [#uses=1]</strong></span>
+<span class="strong"><strong>  %i2 = mul i32 %i, 17        ; &lt;i32&gt; [#uses=1]</strong></span>
+<span class="strong"><strong>  %Next = add i32 %j, %i2        ; &lt;i32&gt; [#uses=2]</strong></span>
+<span class="strong"><strong>  %cond = icmp eq i32 %Next, 0        ; &lt;i1&gt; [#uses=1]</strong></span>
+<span class="strong"><strong>  br i1 %cond, label %Out, label %Loop</strong></span>
+<span class="strong"><strong>Out:        ; preds = %Loop</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Execute the LICM pass on this test code:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt licmtest.ll -licm -S</strong></span>
+<span class="strong"><strong>; ModuleID = 'licmtest.ll'</strong></span>
+
+<span class="strong"><strong>define void @testfunc(i32 %i) {</strong></span>
+<span class="strong"><strong>  %i2 = mul i32 %i, 17</strong></span>
+<span class="strong"><strong>  br label %Loop</strong></span>
+
+<span class="strong"><strong>Loop:                                             ; preds = %Loop, %0</strong></span>
+<span class="strong"><strong>  %j = phi i32 [ 0, %0 ], [ %Next, %Loop ]</strong></span>
+<span class="strong"><strong>  %Next = add i32 %j, %i2</strong></span>
+<span class="strong"><strong>  %cond = icmp eq i32 %Next, 0</strong></span>
+<span class="strong"><strong>  br i1 %cond, label %Out, label %Loop</strong></span>
+
+<span class="strong"><strong>Out:                                              ; preds = %Loop</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Write the test <a id="id232" class="indexterm"/>code for the <a id="id233" class="indexterm"/>loop deletion pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat deletetest.ll</strong></span>
+<span class="strong"><strong>define void @foo(i64 %n, i64 %m) nounwind {</strong></span>
+<span class="strong"><strong>entry:</strong></span>
+<span class="strong"><strong>  br label %bb</strong></span>
+
+<span class="strong"><strong>bb:</strong></span>
+<span class="strong"><strong>  %x.0 = phi i64 [ 0, %entry ], [ %t0, %bb2 ]</strong></span>
+<span class="strong"><strong>  %t0 = add i64 %x.0, 1</strong></span>
+<span class="strong"><strong>  %t1 = icmp slt i64 %x.0, %n</strong></span>
+<span class="strong"><strong>  br i1 %t1, label %bb2, label %return</strong></span>
+<span class="strong"><strong>bb2:</strong></span>
+<span class="strong"><strong>  %t2 = icmp slt i64 %x.0, %m</strong></span>
+<span class="strong"><strong>  br i1 %t1, label %bb, label %return</strong></span>
+
+<span class="strong"><strong>return:</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Finally, run the loop deletion pass over the test code:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt deletetest.ll -loop-deletion -S</strong></span>
+<span class="strong"><strong>; ModuleID = "deletetest.ll'</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define void @foo(i64 %n, i64 %m) #0 {</strong></span>
+<span class="strong"><strong>entry:</strong></span>
+<span class="strong"><strong>  br label %return</strong></span>
+
+<span class="strong"><strong>return:                                           ; preds = %entry</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>attributes #0 = { nounwind }</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec160"/>How it works…</h2></div></div></div><p>The LICM pass<a id="id234" class="indexterm"/> performs loop-invariant code motion; it tries to move the <a id="id235" class="indexterm"/>code that is not modified in the loop out of the loop. It can go either above the loop in the pre-header block, or after the loop exits from the exit block.</p><p>In the example shown earlier, we saw the <code class="literal">%i2</code> <code class="literal">=</code> <code class="literal">mul</code> <code class="literal">i32</code> <code class="literal">%i,</code> <code class="literal">17</code> part of the code being moved above the loop, as it is not getting modified within the loop block shown in that example.</p><p>The loop deletion pass looks out for loops with non-infinite trip counts that have no effect on the return value of the function.</p><p>In the test code, we saw how both the basic blocks <code class="literal">bb:</code> and <code class="literal">bb2:</code>, which have the loop part, get deleted. We also saw how the <code class="literal">foo</code> function directly branches to the return statement.</p><p>There are many other techniques for optimizing loops, such as <code class="literal">loop-rotate</code>, <code class="literal">loop-unswitch</code>, and <code class="literal">loop-unroll</code>, which you can try yourself. You will then see how they affect the code.</p></div></div>
+<div class="section" title="Reassociating expressions" id="aid-1R42S1"><div class="titlepage"><div><div><h1 class="title"><a id="ch05lvl1sec56"/>Reassociating expressions</h1></div></div></div><p>In this recipe, you will learn about<a id="id236" class="indexterm"/> reassociating expressions and how it helps in optimization.</p><div class="section" title="Getting Ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec161"/>Getting Ready</h2></div></div></div><p>The opt tool should be installed for this recipe to work.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec162"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write the test case for a simple reassociate transformation:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat testreassociate.ll</strong></span>
+<span class="strong"><strong>define i32 @test(i32 %b, i32 %a) {</strong></span>
+<span class="strong"><strong>  %tmp.1 = add i32 %a, 1234</strong></span>
+<span class="strong"><strong>  %tmp.2 = add i32 %b, %tmp.1</strong></span>
+<span class="strong"><strong>  %tmp.4 = xor i32 %a, -1</strong></span>
+<span class="strong"><strong>  ; (b+(a+1234))+~a -&gt; b+1233</strong></span>
+<span class="strong"><strong>  %tmp.5 = add i32 %tmp.2, %tmp.4</strong></span>
+<span class="strong"><strong>  ret i32 %tmp.5</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Run the reassociate pass on this test case to see how the code is modified:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt testreassociate.ll  –reassociate –die –S</strong></span>
+<span class="strong"><strong>define i32 @test(i32 %b, i32 %a) {</strong></span>
+<span class="strong"><strong>%tmp.5 = add i32 %b, 1233</strong></span>
+<span class="strong"><strong>ret i32 %tmp.5</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works …"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec163"/>How it works …</h2></div></div></div><p>By reassociation, we mean applying algebraic properties such as associativity, commutativity, and distributivity to rearrange an expression to enable other optimizations, such as constant folding, LICM, and so on.</p><p>In the preceding example, we used the inverse property to eliminate patterns such as <code class="literal">"X</code> <code class="literal">+</code> <code class="literal">~X"</code> <code class="literal">-&gt;</code> <code class="literal">"-1"</code> using reassociation.</p><p>The first three lines of the test case give us the expression of the form <code class="literal">(b+(a+1234))+~a</code>. In this expression, using the reassociate pass, we transform <code class="literal">a+~a</code> <code class="literal">to</code> <code class="literal">-1</code>. Hence, in the result, we get the final return value as <code class="literal">b+1234-1</code> <code class="literal">=</code> <code class="literal">b+1233</code>.</p><p>The code that handles this transformation is in the <code class="literal">Reassociate.cpp</code> file, located under <code class="literal">lib/Transforms/Scalar</code>.</p><p>If you look into this file, specifically <a id="id237" class="indexterm"/>the code segment, you can see that it checks whether there are <code class="literal">a</code> and <code class="literal">~a</code> in the operand list:</p><div class="informalexample"><pre class="programlisting">if (!BinaryOperator::isNeg(TheOp) &amp;&amp; !BinaryOperator::isNot(TheOp))
+      continue;
+
+    Value *X = nullptr;
+    …
+    …
+    else if (BinaryOperator::isNot(TheOp))
+      X = BinaryOperator::getNotArgument(TheOp);
+
+unsigned FoundX = FindInOperandList(Ops, i, X);</pre></div><p>The following code is responsible for handling and inserting the <code class="literal">-1</code> value when it gets such values in the expression:</p><div class="informalexample"><pre class="programlisting">if (BinaryOperator::isNot(TheOp)) {
+      Value *V = Constant::getAllOnesValue(X-&gt;getType());
+      Ops.insert(Ops.end(), ValueEntry(getRank(V), V));
+      e += 1;
+    }</pre></div></div></div>
+<div class="section" title="Vectorizing IR"><div class="titlepage" id="aid-1S2JE2"><div><div><h1 class="title"><a id="ch05lvl1sec57"/>Vectorizing IR</h1></div></div></div><p>
+<span class="strong"><strong>Vectorization</strong></span>
+<a id="id238" class="indexterm"/> is an important optimization for compilers where we can vectorize code to execute an instruction on multiple datasets in one go. If the backend architecture supports vector registers, a broad range of data can be loaded into those vector registers, and special vector instructions can be executed on the registers.</p><p>There are two types of vectorization in LLVM—<span class="strong"><strong>Superword-Level Parallelism</strong></span> (<span class="strong"><strong>SLP</strong></span>)<a id="id239" class="indexterm"/> and<a id="id240" class="indexterm"/> <span class="strong"><strong>loop vectorization</strong></span>. Loop vectorization deals with vectorization opportunities in a loop, while SLP vectorization deals with vectorizing straight-line code in a basic block. In this recipe, we will see how <a id="id241" class="indexterm"/>straight-line code is vectorized.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec164"/>Getting ready</h2></div></div></div><p>SLP vectorization constructs a bottom-up tree of the IR expression, and broadly compares the nodes of the tree to see whether they are similar and hence can be combined to form vectors. The file to be modified is <code class="literal">lib/Transform/Vectorize/SLPVectorizer.cpp</code>.</p><p>We will try to vectorize a piece of straight-line code, such as <code class="literal">return</code> <code class="literal">a[0]</code> <code class="literal">+</code> <code class="literal">a[1]</code> <code class="literal">+</code> <code class="literal">a[2]</code> <code class="literal">+</code> <code class="literal">a[3]</code>.</p><p>The expression tree for the preceding type of code will be a somewhat one-sided tree. We will run a DFS to store the operands and the operators.</p><p>The IR for the preceding<a id="id242" class="indexterm"/> kind of expression will look like this:</p><div class="informalexample"><pre class="programlisting">define i32 @hadd(i32* %a) {
+entry:
+    %0 = load i32* %a, align 4
+    %arrayidx1 = getelementptr inbounds i32* %a, i32 1
+    %1 = load i32* %arrayidx1, align 4
+    %add = add nsw i32 %0, %1
+    %arrayidx2 = getelementptr inbounds i32* %a, i32 2
+    %2 = load i32* %arrayidx2, align 4
+    %add3 = add nsw i32 %add, %2
+    %arrayidx4 = getelementptr inbounds i32* %a, i32 3
+    %3 = load i32* %arrayidx4, align 4
+    %add5 = add nsw i32 %add3, %3
+    ret i32 %add5
+}</pre></div><p>The vectorization model follows three steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Checking whether it's legal to vectorize.</li><li class="listitem">Calculating the profitability of the vectorized code over the scalarized code.</li><li class="listitem">Vectorizing the code if these two conditions are satisfied.</li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How to do it..."><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec165"/>How to do it...</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open the <code class="literal">SLPVectorizer.cpp</code> file. A new function needs to be implemented for DFS traversal of the expression tree for the IR shown in the <span class="emphasis"><em>Getting ready</em></span> section:<div class="informalexample"><pre class="programlisting">bool matchFlatReduction(PHINode *Phi, BinaryOperator *B, const DataLayout *DL) {
+
+  if (!B)
+    return false;
+
+  if (B-&gt;getType()-&gt;isVectorTy() ||
+    !B-&gt;getType()-&gt;isIntegerTy())
+    return false;
+
+ReductionOpcode = B-&gt;getOpcode();
+ReducedValueOpcode = 0;
+ReduxWidth = MinVecRegSize / DL-&gt;getTypeAllocSizeInBits(B-&gt;getType());
+ReductionRoot = B;
+ReductionPHI = Phi;
+
+if (ReduxWidth &lt; 4)
+  return false;
+if (ReductionOpcode != Instruction::Add)
+  return false;
+
+SmallVector&lt;BinaryOperator *, 32&gt; Stack;
+ReductionOps.push_back(B);
+ReductionOpcode = B-&gt;getOpcode();
+Stack.push_back(B);
+
+// Traversal of the tree.
+while (!Stack.empty()) {
+  BinaryOperator *Bin = Stack.back();
+  if (Bin-&gt;getParent() != B-&gt;getParent())
+    return false;
+  Value *Op0 = Bin-&gt;getOperand(0);
+  Value *Op1 = Bin-&gt;getOperand(1);
+  if (!Op0-&gt;hasOneUse() || !Op1-&gt;hasOneUse())
+    return false;
+  BinaryOperator *Op0Bin = dyn_cast&lt;BinaryOperator&gt;(Op0); BinaryOperator *Op1Bin = dyn_cast&lt;BinaryOperator&gt;(Op1); Stack.pop_back();
+
+  // Do not handle case where both the operands are binary
+//operators
+  if (Op0Bin &amp;&amp; Op1Bin)
+    return false;
+  // Both the operands are not binary operator.
+  if (!Op0Bin &amp;&amp; !Op1Bin) {
+    ReducedVals.push_back(Op1);
+    ReducedVals.push_back(Op0);
+
+    ReductionOps.push_back(Bin);
+    continue;
+}
+
+// One of the Operand is binary operand, push that into stack
+// for further processing. Push the other non-binary operand //into ReducedVals.
+  if (Op0Bin) {
+    if (Op0Bin-&gt;getOpcode() != ReductionOpcode)
+      return false;
+    Stack.push_back(Op0Bin);
+    ReducedVals.push_back(Op1);
+
+    ReductionOps.push_back(Op0Bin);
+  }
+
+  if (Op1Bin) {
+
+    if (Op1Bin-&gt;getOpcode() != ReductionOpcode)
+      return false;
+    Stack.push_back(Op1Bin);
+    ReducedVals.push_back(Op0);
+    ReductionOps.push_back(Op1Bin);
+  }
+}
+SmallVector&lt;Value *, 16&gt; Temp;
+// Reverse the loads from a[3], a[2], a[1], a[0]
+
+// to a[0], a[1], a[2], a[3] for checking incremental
+// consecutiveness further ahead.
+while (!ReducedVals.empty())
+  Temp.push_back(ReducedVals.pop_back_val());
+ReducedVals.clear();
+for (unsigned i = 0, e = Temp.size(); i &lt; e; ++i)
+  ReducedVals.push_back(Temp[i]);
+  return true;
+}</pre></div></li><li class="listitem">Calculate the cost<a id="id243" class="indexterm"/> of the resultant vectorized IR and conclude whether it is profitable to vectorize. In the <code class="literal">SLPVectorizer.cpp</code> file, add the following lines to the <code class="literal">getReductionCost()</code> function:<div class="informalexample"><pre class="programlisting">int HAddCost = INT_MAX;
+// If horizontal addition pattern is identified, calculate cost.
+
+// Such horizontal additions can be modeled into combination of
+
+// shuffle sub-vectors and vector adds and one single extract element
+
+// from last resultant vector.
+
+// e.g. a[0]+a[1]+a[2]+a[3] can be modeled as // %1 = load &lt;4 x&gt; %0
+// %2 = shuffle %1 &lt;2, 3, undef, undef&gt;
+// %3 = add &lt;4 x&gt; %1, %2
+// %4 = shuffle %3 &lt;1, undef, undef, undef&gt;
+
+// %5 = add &lt;4 x&gt; %3, %4
+
+// %6 = extractelement %5 &lt;0&gt;
+if (IsHAdd) {
+  unsigned VecElem = VecTy-&gt;getVectorNumElements();
+  unsigned NumRedxLevel = Log2_32(VecElem);
+  HAddCost = NumRedxLevel *
+   (TTI-&gt;getArithmeticInstrCost(ReductionOpcode, VecTy) + TTI-&gt;getShuffleCost(TargetTransformInfo::SK_ExtractSubvector, VecTy, VecElem / 2, VecTy)) + TTI-&gt;getVectorInstrCost(Instruction::ExtractElement, VecTy, 0);
+  }</pre></div></li><li class="listitem">In the same function, after <a id="id244" class="indexterm"/>calculating <code class="literal">PairwiseRdxCost</code> and <code class="literal">SplittingRdxCost</code>, compare them with <code class="literal">HAddCost</code>:<div class="informalexample"><pre class="programlisting">VecReduxCost = HAddCost &lt; VecReduxCost ? HAddCost : VecReduxCost;</pre></div></li><li class="listitem">In the <code class="literal">vectorizeChainsInBlock()</code> function, call the <code class="literal">matchFlatReduction()</code> function you just defined:<div class="informalexample"><pre class="programlisting">// Try to vectorize horizontal reductions feeding into a return.
+if (ReturnInst *RI = dyn_cast&lt;ReturnInst&gt;(it))
+
+if (RI-&gt;getNumOperands() != 0)
+if (BinaryOperator *BinOp =
+   dyn_cast&lt;BinaryOperator&gt;(RI-&gt;getOperand(0))) {
+
+  DEBUG(dbgs() &lt;&lt; "SLP: Found a return to vectorize.\n");
+
+  HorizontalReduction HorRdx;
+  IsReturn = true;
+
+  if ((HorRdx.matchFlatReduction(nullptr, BinOp, DL) &amp;&amp; HorRdx.tryToReduce(R, TTI)) || tryToVectorizePair(BinOp-&gt;getOperand(0), BinOp-&gt;getOperand(1), R)) {
+  Changed = true;
+
+  it = BB-&gt;begin();
+  e = BB-&gt;end();
+  continue;
+
+}
+}</pre></div></li><li class="listitem">Define two global flags<a id="id245" class="indexterm"/> to keep a track of horizontal reduction, which feeds into a return:<div class="informalexample"><pre class="programlisting">static bool IsReturn = false;
+static bool IsHAdd = false;</pre></div></li><li class="listitem">Allow the vectorization of small trees if they feed into a return. Add the following line to the <code class="literal">isFullyVectorizableTinyTree()</code> function:<div class="informalexample"><pre class="programlisting">if (VectorizableTree.size() == 1 &amp;&amp; IsReturn &amp;&amp; IsHAdd)return true;</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec166"/>How it works…</h2></div></div></div><p>Compile the LLVM project after saving the file containing the preceding code, and run the opt tool on the example IR, as follows:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Open the <code class="literal">example.ll</code> file and paste the following IR in it:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>define i32 @hadd(i32* %a) {</strong></span>
+<span class="strong"><strong>entry:</strong></span>
+<span class="strong"><strong>    %0 = load i32* %a, align 4</strong></span>
+<span class="strong"><strong>    %arrayidx1 = getelementptr inbounds i32* %a, i32 1</strong></span>
+<span class="strong"><strong>    %1 = load i32* %arrayidx1, align 4</strong></span>
+<span class="strong"><strong>    %add = add nsw i32 %0, %1</strong></span>
+<span class="strong"><strong>    %arrayidx2 = getelementptr inbounds i32* %a, i32 2</strong></span>
+<span class="strong"><strong>    %2 = load i32* %arrayidx2, align 4</strong></span>
+<span class="strong"><strong>    %add3 = add nsw i32 %add, %2</strong></span>
+<span class="strong"><strong>    %arrayidx4 = getelementptr inbounds i32* %a, i32 3</strong></span>
+<span class="strong"><strong>    %3 = load i32* %arrayidx4, align 4</strong></span>
+<span class="strong"><strong>    %add5 = add nsw i32 %add3, %3</strong></span>
+<span class="strong"><strong>    ret i32 %add5</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Run the opt tool on <code class="literal">example.ll</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -basicaa -slp-vectorizer -mtriple=aarch64-unknown-linux-gnu -mcpu=cortex-a57</strong></span>
+</pre></div><p>The output will be vectorized code, like the following:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>define i32 @hadd(i32* %a) {</strong></span>
+
+<span class="strong"><strong>entry:</strong></span>
+
+<span class="strong"><strong>%0 = bitcast i32* %a to &lt;4 x i32&gt;*</strong></span>
+<span class="strong"><strong>%1 = load &lt;4 x i32&gt;* %0, align 4 %rdx.shuf = shufflevector &lt;4 x i32&gt; %1, &lt;4 x i32&gt; undef, &lt;4 x i32&gt; &lt;i32 2, i32 3, i32 undef, i32 undef&gt;</strong></span>
+
+<span class="strong"><strong>%bin.rdx = add &lt;4 x i32&gt; %1,</strong></span>
+
+<span class="strong"><strong>%rdx.shuf %rdx.shuf1 = shufflevector &lt;4 x i32&gt;</strong></span>
+
+<span class="strong"><strong>%bin.rdx, &lt;4 x i32&gt; undef, &lt;4 x i32&gt; &lt;i32 1, i32 undef, i32 undef, i32 undef&gt; %bin.rdx2 = add &lt;4 x i32&gt; %bin.rdx, %rdx.shuf1</strong></span>
+
+<span class="strong"><strong>%2 = extractelement &lt;4 x i32&gt; %bin.rdx2, i32 0</strong></span>
+
+<span class="strong"><strong>ret i32 %2</strong></span>
+
+<span class="strong"><strong>}</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div><p>As observed, the code gets <a id="id246" class="indexterm"/>vectorized. The <code class="literal">matchFlatReduction()</code> function performs a DFS traversal of the expression and stores all the loads in <code class="literal">ReducedVals</code>, while adds are stored in <code class="literal">ReductionOps</code>. After this, the cost of horizontal vectorization is calculated in <code class="literal">HAddCost</code> and compared with scalar cost. It turns out to be profitable. Hence, it vectorizes the expression. This is handled in the <code class="literal">tryToReduce()</code> function, which is already implemented.</p></div><div class="section" title="See also…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec167"/>See also…</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">For detailed vectorization concepts, refer to the paper <span class="emphasis"><em>Loop-Aware SLP in GCC</em></span> by Ira Rosen, Dorit Nuzman, and Ayal Zaks</li></ul></div></div></div>
+<div class="section" title="Other optimization passes"><div class="titlepage" id="aid-1T1402"><div><div><h1 class="title"><a id="ch05lvl1sec58"/>Other optimization passes</h1></div></div></div><p>In this recipe, we will <a id="id247" class="indexterm"/>look at some more transformational passes, which are more like of utility passes. We will look at the <code class="literal">strip-debug-symbols</code> pass and the <code class="literal">prune-eh</code> pass.</p><div class="section" title="Getting ready…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec168"/>Getting ready…</h2></div></div></div><p>The opt tool must be installed.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec169"/>How to do it…</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Write a test case for checking the strip-debug pass, which strips off the debug symbols from the test code:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat teststripdebug.ll</strong></span>
+<span class="strong"><strong>@x = common global i32 0                          ; &lt;i32*&gt; [#uses=0]</strong></span>
+
+<span class="strong"><strong>define void @foo() nounwind readnone optsize ssp {</strong></span>
+<span class="strong"><strong>entry:</strong></span>
+<span class="strong"><strong>  tail call void @llvm.dbg.value(metadata i32 0, i64 0, metadata !5, metadata !{}), !dbg !10</strong></span>
+<span class="strong"><strong>  ret void, !dbg !11</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>declare void @llvm.dbg.value(metadata, i64, metadata, metadata) nounwind readnone</strong></span>
+
+<span class="strong"><strong>!llvm.dbg.cu = !{!2}</strong></span>
+<span class="strong"><strong>!llvm.module.flags = !{!13}</strong></span>
+<span class="strong"><strong>!llvm.dbg.sp = !{!0}</strong></span>
+<span class="strong"><strong>!llvm.dbg.lv.foo = !{!5}</strong></span>
+<span class="strong"><strong>!llvm.dbg.gv = !{!8}</strong></span>
+
+<span class="strong"><strong>!0 = !MDSubprogram(name: "foo", linkageName: "foo", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: true, file: !12, scope: !1, type: !3, function: void ()* @foo)</strong></span>
+<span class="strong"><strong>!1 = !MDFile(filename: "b.c", directory: "/tmp")</strong></span>
+<span class="strong"><strong>!2 = !MDCompileUnit(language: DW_LANG_C89, producer: "4.2.1 (Based on Apple Inc. build 5658) (LLVM build)", isOptimized: true, emissionKind: 0, file: !12, enums: !4, retainedTypes: !4)</strong></span>
+<span class="strong"><strong>!3 = !MDSubroutineType(types: !4)</strong></span>
+<span class="strong"><strong>!4 = !{null}</strong></span>
+<span class="strong"><strong>!5 = !MDLocalVariable(tag: DW_TAG_auto_variable, name: "y", line: 3, scope: !6, file: !1, type: !7)</strong></span>
+<span class="strong"><strong>!6 = distinct !MDLexicalBlock(line: 2, column: 0, file: !12, scope: !0)</strong></span>
+<span class="strong"><strong>!7 = !MDBasicType(tag: DW_TAG_base_type, name: "int", size: 32, align: 32, encoding: DW_ATE_signed)</strong></span>
+<span class="strong"><strong>!8 = !MDGlobalVariable(name: "x", line: 1, isLocal: false, isDefinition: true, scope: !1, file: !1, type: !7, variable: i32* @x)</strong></span>
+<span class="strong"><strong>!9 = !{i32 0}</strong></span>
+<span class="strong"><strong>!10 = !MDLocation(line: 3, scope: !6)</strong></span>
+<span class="strong"><strong>!11 = !MDLocation(line: 4, scope: !6)</strong></span>
+<span class="strong"><strong>!12 = !MDFile(filename: "b.c", directory: "/tmp")</strong></span>
+<span class="strong"><strong>!13 = !{i32 1, !"Debug Info Version", i32 3}</strong></span>
+</pre></div></li><li class="listitem">Run the <code class="literal">strip-debug-symbols</code> pass by passing the <code class="literal">–strip-debug</code> command-line <a id="id248" class="indexterm"/>option to the <code class="literal">opt</code> tool:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -strip-debug teststripdebug.ll  -S</strong></span>
+<span class="strong"><strong>; ModuleID = ' teststripdebug.ll'</strong></span>
+
+<span class="strong"><strong>@x = common global i32 0</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind optsize readnone ssp</strong></span>
+<span class="strong"><strong>define void @foo() #0 {</strong></span>
+<span class="strong"><strong>entry:</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>attributes #0 = { nounwind optsize readnone ssp }</strong></span>
+
+<span class="strong"><strong>!llvm.module.flags = !{!0}</strong></span>
+
+<span class="strong"><strong>!0 = metadata !{i32 1, metadata !"Debug Info Version", i32 2}</strong></span>
+</pre></div></li><li class="listitem">Write a test case for <a id="id249" class="indexterm"/>checking the <code class="literal">prune-eh</code> pass:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cat simpletest.ll</strong></span>
+<span class="strong"><strong>declare void @nounwind() nounwind</strong></span>
+
+<span class="strong"><strong>define internal void @foo() {</strong></span>
+<span class="strong"><strong>  call void @nounwind()</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>define i32 @caller() {</strong></span>
+<span class="strong"><strong>  invoke void @foo( )</strong></span>
+<span class="strong"><strong>        to label %Normal unwind label %Except</strong></span>
+
+<span class="strong"><strong>Normal:        ; preds = %0</strong></span>
+<span class="strong"><strong>  ret i32 0</strong></span>
+
+<span class="strong"><strong>Except:        ; preds = %0</strong></span>
+<span class="strong"><strong>    landingpad { i8*, i32 } personality i32 (...)* @__gxx_personality_v0</strong></span>
+<span class="strong"><strong>                catch i8* null</strong></span>
+<span class="strong"><strong>  ret i32 1</strong></span>
+<span class="strong"><strong>}</strong></span>
+<span class="strong"><strong>declare i32 @__gxx_personality_v0(...)</strong></span>
+</pre></div></li><li class="listitem">Run the pass to remove unused exception information by passing the <code class="literal">–prune-eh</code> command-line option to the opt tool:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ opt -prune-eh -S simpletest.ll</strong></span>
+<span class="strong"><strong>; ModuleID = 'simpletest.ll'</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>declare void @nounwind() #0</strong></span>
+
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define internal void @foo() #0 {</strong></span>
+<span class="strong"><strong>  call void @nounwind()</strong></span>
+<span class="strong"><strong>  ret void</strong></span>
+<span class="strong"><strong>}</strong></span>
+<span class="strong"><strong>; Function Attrs: nounwind</strong></span>
+<span class="strong"><strong>define i32 @caller() #0 {</strong></span>
+<span class="strong"><strong>  call void @foo()</strong></span>
+<span class="strong"><strong>  br label %Normal</strong></span>
+
+<span class="strong"><strong>Normal:                                           ; preds = %0</strong></span>
+<span class="strong"><strong>  ret i32 0</strong></span>
+<span class="strong"><strong>}</strong></span>
+
+<span class="strong"><strong>declare i32 @__gxx_personality_v0(...)</strong></span>
+
+<span class="strong"><strong>attributes #0 = { nounwind }</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec170"/>How it works…</h2></div></div></div><p>In the first case, where we are<a id="id250" class="indexterm"/> running the <code class="literal">strip-debug</code> pass, it removes the debug information from the code, and we can get compact code. This pass must be used only when we are looking for compact code, as it can delete the names of virtual registers and the symbols for internal global variables and functions, thus making the source code less readable and making it difficult to reverse engineer the code.</p><p>The part of code that handles this transformation is located in the <code class="literal">llvm/lib/Transforms/IPO/StripSymbols.cpp</code> file, where the <code class="literal">StripDeadDebugInfo::runOnModule</code> function is responsible for stripping the debug information.</p><p>The second test is for removing unused exception information using the <code class="literal">prune-eh</code> pass, which implements an interprocedural pass. This walks the call-graph, turning invoke instructions into call instructions only if the callee cannot throw an exception, and marking functions as <code class="literal">nounwind</code> if they cannot throw the exceptions.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch05lvl2sec171"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Refer to <a class="ulink" href="http://llvm.org/docs/Passes.html#transform-passes">http://llvm.org/docs/Passes.html#transform-passes</a> for <a id="id251" class="indexterm"/>other transformation passes</li></ul></div></div></div></body></html>

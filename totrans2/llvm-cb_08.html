@@ -1,0 +1,757 @@
+<html><head></head><body><div class="chapter" title="Chapter&#xA0;8.&#xA0;Writing an LLVM Backend" id="aid-2IV0U1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08"/>Chapter 8. Writing an LLVM Backend</h1></div></div></div><p>In this chapter, we will cover the following recipes:</p><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Defining registers and register sets</li><li class="listitem">Defining the calling convention</li><li class="listitem">Defining the instruction set</li><li class="listitem">Implementing frame lowering</li><li class="listitem">Printing an instruction</li><li class="listitem">Selecting an instruction</li><li class="listitem">Adding instruction encoding</li><li class="listitem">Supporting a subtarget</li><li class="listitem">Lowering to multiple instructions</li><li class="listitem">Registering a target</li></ul></div><div class="section" title="Introduction"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec81"/>Introduction</h1></div></div></div><p>The ultimate goal of a compiler is to produce a target code, or an assembly code that can be converted into object code and executed on the actual hardware. To generate the assembly code, the compiler needs to know the various aspects of the architecture of the target machine—the registers, instruction set, calling convention, pipeline, and so on. There are lots of optimizations that can be done in this phase as well.</p><p>LLVM has its own way of defining the target machine. It uses <code class="literal">tablegen</code> to specify the target registers, instructions, calling convention, and so on. The <code class="literal">tablegen</code> function eases the way we describe a large set of architecture properties in a programmatic way.</p><p>LLVM has a pipeline structure for the backend, where instructions travel through phases like this; from the LLVM IR to <code class="literal">SelectionDAG</code>, then to <code class="literal">MachineDAG</code>, then to <code class="literal">MachineInstr</code>, and finally to <code class="literal">MCInst</code>.</p><p>The IR is converted into SelectionDAG (<span class="strong"><strong>DAG</strong></span> stands for <span class="strong"><strong>Directed Acyclic Graph</strong></span>). Then <a id="id371" class="indexterm"/>SelectionDAG legalization occurs where illegal instructions are mapped on the legal operations permitted by the target machine. After this stage, SelectionDAG is converted to MachineDAG, which is basically an instruction selection supported by the backend.</p><p>CPUs execute a linear sequence of instructions. The goal of the scheduling step is to linearize the DAG by assigning an order to its operations. LLVM's code generator employs clever heuristics (such as register pressure reduction) to try and produce a schedule that will result in faster code. Register allocation policies also play an important role in producing better LLVM code.</p><p>This chapter describes how to build an LLVM toy backend from scratch. By the end of this chapter, we will be able to generate assembly code for a sample toy backend.</p><div class="section" title="A sample backend"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec234"/>A sample backend</h2></div></div></div><p>The sample backend<a id="id372" class="indexterm"/> considered in this chapter is a simple RISC-type architecture, with a few registers (say r0-r3), a stack pointer (sp), and a link register (lr), for storing the return address.</p><p>The calling convention of this toy backend is similar to the ARM architecture—arguments passed to the function will be stored in register sets r0-r1, and the return value will be stored in r0.</p></div></div></div>
+<div class="section" title="Defining registers and registers sets" id="aid-2JTHG1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec82"/>Defining registers and registers sets</h1></div></div></div><p>This recipe shows you<a id="id373" class="indexterm"/> how to define registers and register sets in <code class="literal">.td</code> files. The <code class="literal">tablegen</code> function<a id="id374" class="indexterm"/> will convert this <code class="literal">.td</code> file into <code class="literal">.inc</code> files, which will<a id="id375" class="indexterm"/> be the <code class="literal">#include</code> declarative in our <code class="literal">.cpp</code> files and refer to registers.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec235"/>Getting ready</h2></div></div></div><p>We have defined our toy target machine to have four registers (r0-r3), a stack register (sp), and a link register (lr). These can be specified in the <code class="literal">TOYRegisterInfo.td</code> file. The <code class="literal">tablegen</code> function provides the <code class="literal">Register</code> class, which can be extended to specify the registers.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec236"/>How to do it…</h2></div></div></div><p>To define the backend architecture using target descriptor files, proceed with the following steps.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new folder in <code class="literal">lib/Target</code> named <code class="literal">TOY</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ mkdir llvm_root_directory/lib/Target/TOY</strong></span>
+</pre></div></li><li class="listitem">Create a new <code class="literal">TOYRegisterInfo.td file</code> in the new <code class="literal">TOY</code> folder:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cd llvm_root_directory/lib/Target/TOY</strong></span>
+<span class="strong"><strong>$ vi TOYRegisterInfo.td</strong></span>
+</pre></div></li><li class="listitem">Define the hardware encoding, namespace, registers, and the register class:<div class="informalexample"><pre class="programlisting">class TOYReg&lt;bits&lt;16&gt; Enc, string n&gt; : Register&lt;n&gt; {
+  let HWEncoding = Enc;
+  let Namespace = "TOY";
+}
+
+foreach i = 0-3 in {
+    def R#i : R&lt;i, "r"#i &gt;;
+}
+
+def SP  : TOYReg&lt;13, "sp"&gt;;
+def LR  : TOYReg&lt;14, "lr"&gt;;
+
+def GRRegs : RegisterClass&lt;"TOY", [i32], 32,
+  (add R0, R1, R2, R3, SP)&gt;;</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec237"/>How it works…</h2></div></div></div><p>The <code class="literal">tablegen</code> function<a id="id376" class="indexterm"/> processes this <code class="literal">.td</code> file to generate the <code class="literal">.inc</code> file, which generally has<a id="id377" class="indexterm"/> enums generated for these registers. These enums can be used in the<code class="literal">.cpp</code> files, in which the registers can be referenced as <code class="literal">TOY::R0</code>. These <code class="literal">.inc</code> files will be generated when we build the LLVM project.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec238"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To get more details about how registers are defined for more advanced architecture, such as ARM, refer to the <code class="literal">lib/Target/ARM/ARMRegisterInfo.td</code> file in the source code of LLVM.</li></ul></div></div></div>
+<div class="section" title="Defining the calling convention" id="aid-2KS221"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec83"/>Defining the calling convention</h1></div></div></div><p>The calling convention <a id="id378" class="indexterm"/>specifies how values are passed to and from a function call. Our TOY architecture specifies that two arguments are passed in two registers, r0 and r1, while the remaining ones are passed to the stack. This recipe shows you how to define the calling convention, which will be used in <code class="literal">ISelLowering</code> (the instruction selection lowering phase discussed in <a class="link" title="Chapter 6. Target-independent Code Generator" href="part0065.xhtml#aid-1TVKI1">Chapter 6</a>, <span class="emphasis"><em>Target Independent Code Generator</em></span>) via function pointers.</p><p>The calling convention will be defined in the <code class="literal">TOYCallingConv.td</code> file, which will have primarily two sections—one for defining the return value convention, and the other for defining the argument passing convention. The return value convention specifies how the return values will reside and in which registers. The argument passing convention will specify how the arguments passed will reside and in which registers. The <code class="literal">CallingConv</code> class is inherited while defining the calling convention of the toy architecture.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec239"/>How to do it…</h2></div></div></div><p>To implement the <a id="id379" class="indexterm"/>calling convention, proceed with the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new <code class="literal">TOYCallingConv.td</code> file in the <code class="literal">lib/Target/TOY</code> folder:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi TOYCallingConv.td</strong></span>
+</pre></div></li><li class="listitem">In that file, define the return value convention, as follows:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>def RetCC_TOY : CallingConv&lt;[</strong></span>
+<span class="strong"><strong>  CCIfType&lt;[i32], CCAssignToReg&lt;[R0]&gt;&gt;,</strong></span>
+<span class="strong"><strong>  CCIfType&lt;[i32], CCAssignToStack&lt;4, 4&gt;&gt;</strong></span>
+<span class="strong"><strong>]&gt;;</strong></span>
+</pre></div></li><li class="listitem">Also, define the argument passing convention, like this:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>def CC_TOY : CallingConv&lt;[</strong></span>
+<span class="strong"><strong>  CCIfType&lt;[i8, i16], CCPromoteToType&lt;i32&gt;&gt;,</strong></span>
+<span class="strong"><strong>  CCIfType&lt;[i32], CCAssignToReg&lt;[R0, R1]&gt;&gt;,</strong></span>
+<span class="strong"><strong>  CCIfType&lt;[i32], CCAssignToStack&lt;4, 4&gt;&gt;</strong></span>
+<span class="strong"><strong>]&gt;;</strong></span>
+</pre></div></li><li class="listitem">Define the callee saved register set:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>def CC_Save : CalleeSavedRegs&lt;(add R2, R3)&gt;;</strong></span>
+</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec240"/>How it works…</h2></div></div></div><p>In the <code class="literal">.td</code> file you just read about, it has been specified that the return values of the integer type of 32 bits are stored in the r0 register. Whenever arguments are passed to a function, the first two arguments will be stored in the r0 and r1 registers. It is also specified that whenever any data type, such as an integer of 8 bits or 16 bits, will be encountered, it will be promoted to the 32-bit integer type.</p><p>The <code class="literal">tablegen</code> function generates a <code class="literal">TOYCallingConv.inc</code> file, which will be referred to in the <code class="literal">TOYISelLowering.cpp</code> file. The two target <code class="literal">hook</code> functions used to define argument handling are <code class="literal">LowerFormalArguments()</code> and <code class="literal">LowerReturn()</code>.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec241"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To see a detailed implementation of advanced architectures, such as ARM, look into the <code class="literal">lib/Target/ARM/ARMCallingConv.td</code> file</li></ul></div></div></div>
+<div class="section" title="Defining the instruction set" id="aid-2LQIK1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec84"/>Defining the instruction set</h1></div></div></div><p>The instruction set of an architecture<a id="id380" class="indexterm"/> varies according to various features present in the architecture. This recipe demonstrates how instruction sets are defined for target architecture.</p><p>Three things are defined in the instruction target description file: operands, the assembly string and the instruction pattern. The specification contains a list of definitions or outputs, and a list of uses or inputs. There can be different operand classes, such as the <code class="literal">Register</code> class, and the immediate and more complex <code class="literal">register + imm</code> operands.</p><p>Here, a simple add instruction definition that takes two registers as operands is demonstrated.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec242"/>How to do it…</h2></div></div></div><p>To define an instruction set using target descriptor files, proceed with the following steps.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new file called <code class="literal">TOYInstrInfo.td</code> in the <code class="literal">lib/Target/TOY</code> folder:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi TOYInstrInfo.td</strong></span>
+</pre></div></li><li class="listitem">Specify the operands, assembly string, and instruction pattern for the <code class="literal">add</code> instruction between two register operands:<div class="informalexample"><pre class="programlisting">def ADDrr : InstTOY&lt;(outs GRRegs:$dst),
+                    (ins GRRegs:$src1, GRRegs:$src2),
+                     "add $dst, $src1,z$src2",
+[(set i32:$dst, (add i32:$src1, i32:$src2))]&gt;;</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec243"/>How it works…</h2></div></div></div><p>The <code class="literal">add</code> register to the register instruction specifies <code class="literal">$dst</code> as the result operand, which belongs to the <code class="literal">General Register</code> type class; inputs <code class="literal">$src1</code> and <code class="literal">$src2</code> as two input operands, which also belong to the <code class="literal">General Register</code> type class; and the instruction assembly string as <code class="literal">"add $dst, $src1, $src2"</code> of the 32-bit integer type.</p><p>So, an assembly will be generated for <code class="literal">add</code> between two registers, like this:</p><div class="informalexample"><pre class="programlisting">add r0, r0, r1</pre></div><p>The preceding code  indicates to add the r0 and r1 register contents and store the result in the r0 register.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec244"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">Many instructions will have the same type of instruction pattern—ALU instructions such as <code class="literal">add</code>, <code class="literal">sub</code>, and so on. In cases such as this multiclass can be used to define the common properties. For more detailed information about the various types of instruction sets for advanced architecture, such as ARM, refer to the <code class="literal">lib/Target/ARM/ARMInstrInfo.td file</code></li></ul></div></div></div>
+<div class="section" title="Implementing frame lowering" id="aid-2MP361"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec85"/>Implementing frame lowering</h1></div></div></div><p>This recipe talks about frame lowering for<a id="id381" class="indexterm"/> target architecture. Frame lowering involves emitting the prologue and epilogue of the function call.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec245"/>Getting ready</h2></div></div></div><div class="note" title="Note"><h3 class="title"><a id="note08"/>Note</h3><p>Two functions need to be defined for frame lowering, namely <code class="literal">TOYFrameLowering::emitPrologue()</code> and <code class="literal">TOYFrameLowering::emitEpilogue()</code>.</p></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec246"/>How to do it…</h2></div></div></div><p>The following functions are defined in the <code class="literal">TOYFrameLowering.cpp</code> file in the <code class="literal">lib/Target/TOY</code> folder:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">The <code class="literal">emitPrologue</code> function can be defined as follows:<div class="informalexample"><pre class="programlisting">void TOYFrameLowering::emitPrologue(MachineFunction &amp;MF) const {
+  const TargetInstrInfo &amp;TII = *MF.getSubtarget().getInstrInfo();
+  MachineBasicBlock &amp;MBB = MF.front();
+  MachineBasicBlock::iterator MBBI = MBB.begin();
+  DebugLoc dl = MBBI != MBB.end() ? MBBI-&gt;getDebugLoc() : DebugLoc();
+  uint64_t StackSize = computeStackSize(MF);
+  if (!StackSize) {
+    return;
+  }
+  unsigned StackReg = TOY::SP;
+  unsigned OffsetReg = materializeOffset(MF, MBB, MBBI, (unsigned)StackSize);
+  if (OffsetReg) {
+    BuildMI(MBB, MBBI, dl, TII.get(TOY::SUBrr), StackReg)
+        .addReg(StackReg)
+        .addReg(OffsetReg)
+        .setMIFlag(MachineInstr::FrameSetup);
+  } else {
+    BuildMI(MBB, MBBI, dl, TII.get(TOY::SUBri), StackReg)
+        .addReg(StackReg)
+        .addImm(StackSize)
+        .setMIFlag(MachineInstr::FrameSetup);
+  }
+}</pre></div></li><li class="listitem">The <code class="literal">emitEpilogue</code> function can <a id="id382" class="indexterm"/>be defined like this:<div class="informalexample"><pre class="programlisting">void TOYFrameLowering::emitEpilogue(MachineFunction &amp;MF,
+                                    MachineBasicBlock &amp;MBB) const {
+
+  const TargetInstrInfo &amp;TII = *MF.getSubtarget().getInstrInfo();
+MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
+  DebugLoc dl = MBBI-&gt;getDebugLoc();
+  uint64_t StackSize = computeStackSize(MF);
+  if (!StackSize) {
+    return;
+  }
+  unsigned StackReg = TOY::SP;
+  unsigned OffsetReg = materializeOffset(MF, MBB, MBBI, (unsigned)StackSize);
+  if (OffsetReg) {
+    BuildMI(MBB, MBBI, dl, TII.get(TOY::ADDrr), StackReg)
+        .addReg(StackReg)
+        .addReg(OffsetReg)
+        .setMIFlag(MachineInstr::FrameSetup);
+  } else {
+    BuildMI(MBB, MBBI, dl, TII.get(TOY::ADDri), StackReg)
+        .addReg(StackReg)
+        .addImm(StackSize)
+        .setMIFlag(MachineInstr::FrameSetup);
+  }
+}</pre></div></li><li class="listitem">Here are some helper functions used to determine the offset for the <code class="literal">ADD</code> stack operation:<div class="informalexample"><pre class="programlisting">static unsigned materializeOffset(MachineFunction &amp;MF, MachineBasicBlock &amp;MBB, MachineBasicBlock::iterator MBBI, unsigned Offset) {
+  const TargetInstrInfo &amp;TII = *MF.getSubtarget().getInstrInfo();
+  DebugLoc dl = MBBI != MBB.end() ? MBBI-&gt;getDebugLoc() : DebugLoc();
+  const uint64_t MaxSubImm = 0xfff;
+  if (Offset &lt;= MaxSubImm) {
+    return 0;
+  } else {
+    unsigned OffsetReg = TOY::R2;
+    unsigned OffsetLo = (unsigned)(Offset &amp; 0xffff);
+    unsigned OffsetHi = (unsigned)((Offset &amp; 0xffff0000) &gt;&gt; 16);
+    BuildMI(MBB, MBBI, dl, TII.get(TOY::MOVLOi16), OffsetReg)
+        .addImm(OffsetLo)
+        .setMIFlag(MachineInstr::FrameSetup);
+    if (OffsetHi) {
+      BuildMI(MBB, MBBI, dl, TII.get(TOY::MOVHIi16), OffsetReg)
+          .addReg(OffsetReg)
+          .addImm(OffsetHi)
+          .setMIFlag(MachineInstr::FrameSetup);
+    }
+    return OffsetReg;
+  }
+}</pre></div></li><li class="listitem">The following are some <a id="id383" class="indexterm"/>more helper functions used to compute the stack size:<div class="informalexample"><pre class="programlisting">uint64_t TOYFrameLowering::computeStackSize(MachineFunction &amp;MF) const {
+  MachineFrameInfo *MFI = MF.getFrameInfo();
+  uint64_t StackSize = MFI-&gt;getStackSize();
+  unsigned StackAlign = getStackAlignment();
+  if (StackAlign &gt; 0) {
+    StackSize = RoundUpToAlignment(StackSize, StackAlign);
+  }
+  return StackSize;
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec247"/>How it works…</h2></div></div></div><p>The <code class="literal">emitPrologue</code> function first computes the stack size to determine whether the prologue is required at all. Then it adjusts the stack pointer by calculating the offset. For the epilogue, it first checks whether the epilogue is required or not. Then it restores the stack pointer to what it was at the beginning of the function.</p><p> For example, consider this input IR:</p><div class="informalexample"><pre class="programlisting">%p = alloca i32, align 4
+store i32 2, i32* %p
+%b = load i32* %p, align 4
+%c = add nsw i32 %a, %b</pre></div><p>The TOY assembly<a id="id384" class="indexterm"/> generated will look like this:</p><div class="informalexample"><pre class="programlisting">sub sp, sp, #4 ; prologue
+movw r1, #2
+str r1, [sp]
+add r0, r0, #2
+add sp, sp, #4 ; epilogue</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec248"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">For advanced architecture frame lowering, such as in ARM, refer to the <code class="literal">lib/Target/ARM/ARMFrameLowering.cpp</code> file.</li></ul></div></div></div>
+<div class="section" title="Printing an instruction" id="aid-2NNJO1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec86"/>Printing an instruction</h1></div></div></div><p>Printing an assembly<a id="id385" class="indexterm"/> instruction is an important step in generating target code. Various classes are defined that work as a gateway to the streamers. The instruction string is provided by the <code class="literal">.td</code> file defined earlier.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec249"/>Getting ready</h2></div></div></div><p>The first and foremost step for printing instructions is to define the instruction string in the <code class="literal">.td</code> file, which was done in the <span class="emphasis"><em>Defining the instruction set</em></span> recipe.</p></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec250"/>How to do it…</h2></div></div></div><p>Perform the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new folder called <code class="literal">InstPrinter</code> inside the <code class="literal">TOY</code> folder:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cd lib/Target/TOY</strong></span>
+<span class="strong"><strong>$ mkdir InstPrinter</strong></span>
+</pre></div></li><li class="listitem">In a new file, called <code class="literal">TOYInstrFormats.td</code>, define the <code class="literal">AsmString</code> variable:<div class="informalexample"><pre class="programlisting">class InstTOY&lt;dag outs, dag ins, string asmstr, list&lt;dag&gt; pattern&gt;
+    : Instruction {
+  field bits&lt;32&gt; Inst;
+  let Namespace = "TOY";
+  dag OutOperandList = outs;
+  dag InOperandList = ins;
+  let AsmString   = asmstr;
+  let Pattern = pattern;
+  let Size = 4;
+}</pre></div></li><li class="listitem">Create a new file called <code class="literal">TOYInstPrinter.cpp</code>, and define the <code class="literal">printOperand</code> function, as follows:<div class="informalexample"><pre class="programlisting">void TOYInstPrinter::printOperand(const MCInst *MI, unsigned OpNo, raw_ostream &amp;O) {
+  const MCOperand &amp;Op = MI-&gt;getOperand(OpNo);
+  if (Op.isReg()) {
+    printRegName(O, Op.getReg());
+    return;
+  }
+
+  if (Op.isImm()) {
+    O &lt;&lt; "#" &lt;&lt; Op.getImm();
+    return;
+  }
+  assert(Op.isExpr() &amp;&amp; "unknown operand kind in printOperand");
+  printExpr(Op.getExpr(), O);
+}</pre></div></li><li class="listitem">Also, define a<a id="id386" class="indexterm"/> function to print the register names:<div class="informalexample"><pre class="programlisting">void TOYInstPrinter::printRegName(raw_ostream &amp;OS, unsigned RegNo) const {
+  OS &lt;&lt; StringRef(getRegisterName(RegNo)).lower();
+}</pre></div></li><li class="listitem">Define a function to print the instruction:<div class="informalexample"><pre class="programlisting">void TOYInstPrinter::printInst(const MCInst *MI, raw_ostream &amp;O,StringRef Annot) {
+  printInstruction(MI, O);
+  printAnnotation(O, Annot);
+}</pre></div></li><li class="listitem">It also requires <code class="literal">MCASMinfo</code> to be specified to print the instruction. This can be done by defining the <code class="literal">TOYMCAsmInfo.h</code> and <code class="literal">TOYMCAsmInfo.cpp</code> files.<p>The <code class="literal">TOYMCAsmInfo.h</code> file can be defined as follows:</p><div class="informalexample"><pre class="programlisting">#ifndef TOYTARGETASMINFO_H
+#define TOYTARGETASMINFO_H
+
+#include "llvm/MC/MCAsmInfoELF.h"
+
+namespace llvm {
+class StringRef;
+class Target;
+
+class TOYMCAsmInfo : public MCAsmInfoELF {
+  virtual void anchor();
+
+public:
+  explicit TOYMCAsmInfo(StringRef TT);
+};
+
+} // namespace llvm
+#endif</pre></div><p>The <code class="literal">TOYMCAsmInfo.cpp</code> file can be defined like this:</p><div class="informalexample"><pre class="programlisting">#include "TOYMCAsmInfo.h"
+#include "llvm/ADT/StringRef.h"
+using namespace llvm;
+
+void TOYMCAsmInfo::anchor() {}
+
+TOYMCAsmInfo::TOYMCAsmInfo(StringRef TT) {
+  SupportsDebugInformation = true;
+  Data16bitsDirective = "\t.short\t";
+  Data32bitsDirective = "\t.long\t";
+  Data64bitsDirective = 0;
+  ZeroDirective = "\t.space\t";
+  CommentString = "#";
+
+  AscizDirective = ".asciiz";
+
+  HiddenVisibilityAttr = MCSA_Invalid;
+  HiddenDeclarationVisibilityAttr = MCSA_Invalid;
+  ProtectedVisibilityAttr = MCSA_Invalid;
+}</pre></div></li><li class="listitem">Define <a id="id387" class="indexterm"/>the <code class="literal">LLVMBuild.txt</code> file for the instruction printer:<div class="informalexample"><pre class="programlisting">[component_0]
+type = Library
+name = TOYAsmPrinter
+parent = TOY
+required_libraries = MC Support
+add_to_library_groups = TOY</pre></div></li><li class="listitem">Define <code class="literal">CMakeLists.txt</code>:<div class="informalexample"><pre class="programlisting">add_llvm_library(LLVMTOYAsmPrinter
+  TOYInstPrinter.cpp
+  )</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec251"/>How it works…</h2></div></div></div><p>When the final <a id="id388" class="indexterm"/>compilation takes place, the <span class="strong"><strong>llc</strong></span> tool—a static compiler—will generate the assembly of the TOY architecture.</p><p>For example, the following IR, when given to the llc tool, will generate an assembly as shown:</p><div class="informalexample"><pre class="programlisting">target datalayout = "e-m:e-p:32:32-i1:8:32-i8:8:32- i16:16:32-i64:32-f64:32-a:0:32-n32"
+target triple = "toy"
+define i32 @foo(i32 %a, i32 %b) {
+   %c = add nsw i32 %a, %b
+   ret i32 %c
+}
+
+$ llc foo.ll
+.text
+.file "foo.ll"
+.globl foo
+.type foo,@function
+foo:     # @foo
+# BB#0:   # %entry
+add r0, r0, r1
+b lr
+.Ltmp0:
+.size foo, .Ltmp0-foo</pre></div></div></div>
+<div class="section" title="Selecting an instruction" id="aid-2OM4A1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec87"/>Selecting an instruction</h1></div></div></div><p>An IR instruction in DAG <a id="id389" class="indexterm"/>needs to be lowered to a target-specific instruction. The SDAG node contains IR, which needs to be mapped on machine-specific DAG nodes. The outcome of the selection phase is ready for scheduling.</p><div class="section" title="Getting ready"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec252"/>Getting ready</h2></div></div></div><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">For selecting a machine-specific instruction, a separate class, <code class="literal">TOYDAGToDAGISel</code>, needs to be defined. To compile the file containing this class definition, add the filename to the <code class="literal">CMakeLists.txt</code> file in the <code class="literal">TOY</code> folder:<div class="informalexample"><pre class="programlisting">$ vi CMakeLists .txt
+add_llvm_target(...
+...
+TOYISelDAGToDAG.cpp
+...
+)</pre></div></li><li class="listitem">A pass entry<a id="id390" class="indexterm"/> needs to be added in the <code class="literal">TOYTargetMachine.h</code> and <code class="literal">TOYTargetMachine.cpp</code> files:<div class="informalexample"><pre class="programlisting">$ vi TOYTargetMachine.h
+const TOYInstrInfo *getInstrInfo() const override {
+return getSubtargetImpl()-&gt;getInstrInfo();
+}</pre></div></li><li class="listitem">The following code in <code class="literal">TOYTargetMachine.cpp</code> will create a pass in the instruction selection stage:<div class="informalexample"><pre class="programlisting">class TOYPassConfig : public TargetPassConfig {
+public:
+...
+virtual bool addInstSelector();
+};
+...
+bool TOYPassConfig::addInstSelector() {
+addPass(createTOYISelDag(getTOYTargetMachine()));
+return false;
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec253"/>How to do it…</h2></div></div></div><p>To define an instruction selection function, proceed with the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a file called <code class="literal">TOYISelDAGToDAG.cpp</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi TOYISelDAGToDAG.cpp</strong></span>
+</pre></div></li><li class="listitem">Include the following files:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>#include "TOY.h"</strong></span>
+<span class="strong"><strong>#include "TOYTargetMachine.h"</strong></span>
+<span class="strong"><strong>#include "llvm/CodeGen/SelectionDAGISel.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Support/Compiler.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Support/Debug.h"</strong></span>
+<span class="strong"><strong>#include "TOYInstrInfo.h"</strong></span>
+</pre></div></li><li class="listitem">Define a new class called <code class="literal">TOYDAGToDAGISel</code> as follows, which will inherit from the <code class="literal">SelectionDAGISel</code> class:<div class="informalexample"><pre class="programlisting">class TOYDAGToDAGISel : public SelectionDAGISel {
+  const TOYSubtarget &amp;Subtarget;
+
+public:
+  explicit TOYDAGToDAGISel(TOYTargetMachine &amp;TM, CodeGenOpt::Level OptLevel)
+: SelectionDAGISel(TM, OptLevel),   Subtarget(*TM.getSubtargetImpl()) {}
+};</pre></div></li><li class="listitem">The most<a id="id391" class="indexterm"/> important function to define in this class is <code class="literal">Select()</code>, which will return an <code class="literal">SDNode</code> object specific to the machine instruction:<p>Declare it in the class:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>SDNode *Select(SDNode *N);</strong></span>
+</pre></div><p>Define it further as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>SDNode *TOYDAGToDAGISel::Select(SDNode *N) {</strong></span>
+<span class="strong"><strong>  return SelectCode(N);</strong></span>
+<span class="strong"><strong>}</strong></span>
+</pre></div></li><li class="listitem">Another important function is used to define the address selection function, which will calculate the base and offset of the address for load and store operations.<p>Declare it as shown here:</p><div class="informalexample"><pre class="programlisting">    bool SelectAddr(SDValue Addr, SDValue &amp;Base, SDValue &amp;Offset);</pre></div><p>Define it further, like this:</p><div class="informalexample"><pre class="programlisting">bool TOYDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &amp;Base, SDValue &amp;Offset) {
+  if (FrameIndexSDNode *FIN = dyn_cast&lt;FrameIndexSDNode&gt;(Addr)) {
+        Base = CurDAG-&gt;getTargetFrameIndex(FIN-&gt;getIndex(),
+                                       getTargetLowering()- &gt;getPointerTy());
+        Offset = CurDAG-&gt;getTargetConstant(0, MVT::i32);
+        return true;
+    }
+  if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
+        Addr.getOpcode() == ISD::TargetGlobalAddress ||
+        Addr.getOpcode() == ISD::TargetGlobalTLSAddress) {
+        return false; // direct calls.
+  }
+
+    Base = Addr;
+    Offset = CurDAG-&gt;getTargetConstant(0, MVT::i32);
+    return true;
+}</pre></div></li><li class="listitem">The <code class="literal">createTOYISelDag</code> pass converts a legalized DAG into a toy-specific DAG, ready <a id="id392" class="indexterm"/>for instruction scheduling in the same file:<div class="informalexample"><pre class="programlisting">FunctionPass *llvm::createTOYISelDag(TOYTargetMachine &amp;TM, CodeGenOpt::Level OptLevel) {
+return new TOYDAGToDAGISel(TM, OptLevel);
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec254"/>How it works…</h2></div></div></div><p>The <code class="literal">TOYDAGToDAGISel::Select()</code> function of <code class="literal">TOYISelDAGToDAG.cpp</code> is used for the selection of the OP code DAG node, while <code class="literal">TOYDAGToDAGISel::SelectAddr()</code> is used for the selection of the DATA DAG node with the <code class="literal">addr</code> type. Note that if the address is global or external, we return false for the address, since its address is calculated in the global context.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec255"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">For details on the selection of DAG for machine instructions of complex architectures, such as ARM, look into the <code class="literal">lib/Target/ARM/ARMISelDAGToDAG.cpp</code> file in the LLVM source code.</li></ul></div></div></div>
+<div class="section" title="Adding instruction encoding" id="aid-2PKKS1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec88"/>Adding instruction encoding</h1></div></div></div><p>If the instructions need <a id="id393" class="indexterm"/>to be specific for how they are encoded with respect to bit fields, this can be done by specifying the bit field in the <code class="literal">.td</code> file when defining an instruction.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec256"/>How to do it…</h2></div></div></div><p>To include instruction encoding while defining instructions, proceed with the following steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">A register operand that will be used to register the <code class="literal">add</code> instruction will have some defined encoding for its instruction. The size of the instruction is 32 bits, and the encoding for it is as follows:<div class="informalexample"><pre class="programlisting">bits 0 to 3 -&gt; src2, second register operand
+bits 4 to 11 -&gt; all zeros
+bits 12 to 15 -&gt; dst, for destination register
+bits 16 to 19 -&gt; src1, first register operand
+bit 20 -&gt; zero
+bit 21 to 24 -&gt; for opcode
+bit 25 to 27 -&gt; all zeros
+bit 28 to 31 -&gt; 1110</pre></div><p>This can be achieved by specifying the preceding bit pattern in the <code class="literal">.td</code> files</p></li><li class="listitem">In the <code class="literal">TOYInstrFormats.td</code> file, define<a id="id394" class="indexterm"/> a new variable, called <code class="literal">Inst</code>:<div class="informalexample"><pre class="programlisting">class InstTOY&lt;dag outs, dag ins, string asmstr, list&lt;dag&gt; pattern&gt;
+      : Instruction {
+  field bits&lt;32&gt; Inst;
+
+  let Namespace = "TOY";
+    …
+   …
+    let AsmString   = asmstr;
+   …
+ …
+ }</pre></div></li><li class="listitem">In the <code class="literal">TOYInstrInfo.td</code> file, define an instruction encoding:<div class="informalexample"><pre class="programlisting">def ADDrr : InstTOY&lt;(outs GRRegs:$dst),(ins GRRegs:$src1, GRRegs:$src2) ... &gt; {
+bits&lt;4&gt; src1;
+bits&lt;4&gt; src2;
+bits&lt;4&gt; dst;
+let Inst{31-25} = 0b1100000;
+let Inst{24-21} = 0b1100; // Opcode
+let Inst{20} = 0b0;
+let Inst{19-16} = src1; // Operand 1
+let Inst{15-12} = dst; // Destination
+let Inst{11-4} = 0b00000000;
+let Inst{3-0} = src2;
+}</pre></div></li><li class="listitem">In the <code class="literal">TOY/MCTargetDesc</code> folder, in the <code class="literal">TOYMCCodeEmitter.cpp</code> file, the encoding function will be called if the machine instruction operand is a register:<div class="informalexample"><pre class="programlisting">unsigned TOYMCCodeEmitter::getMachineOpValue(const MCInst &amp;MI,
+                                             const MCOperand &amp;MO,
+                                             SmallVectorImpl&lt;MCFixup&gt; &amp;Fixups,
+                                             const MCSubtargetInfo &amp;STI) const {
+    if (MO.isReg()) {
+      return CTX.getRegisterInfo()- &gt;getEncodingValue(MO.getReg());
+  }</pre></div></li><li class="listitem">Also, in the same file, a<a id="id395" class="indexterm"/> function used to encode the instruction is specified:<div class="informalexample"><pre class="programlisting">void TOYMCCodeEmitter::EncodeInstruction(const MCInst &amp;MI, raw_ostream &amp;OS, SmallVectorImpl&lt;MCFixup&gt; &amp;Fixups, const MCSubtargetInfo &amp;STI) const {
+      const MCInstrDesc &amp;Desc = MCII.get(MI.getOpcode());
+      if (Desc.getSize() != 4) {
+        llvm_unreachable("Unexpected instruction size!");
+  }
+
+      const uint32_t Binary = getBinaryCodeForInstr(MI, Fixups, STI);
+
+  EmitConstant(Binary, Desc.getSize(), OS);
+ ++MCNumEmitted;
+}</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec257"/>How it works…</h2></div></div></div><p>In the <code class="literal">.td</code> files, the encoding of an instruction has been specified—the bits for the operands, the destination, flag conditions, and opcode of the instruction. The machine code emitter gets these encodings from the <code class="literal">.inc</code> file generated by <code class="literal">tablegen</code> from the <code class="literal">.td</code> files through function calls. It encodes these instructions and emits the same for instruction printing.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec258"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">For complex architecture such as ARM, see the <code class="literal">ARMInstrInfo.td</code> and <code class="literal">ARMInstrInfo.td</code> files in the <code class="literal">lib/Target/ARM</code> directory of the LLVM trunk</li></ul></div></div></div>
+<div class="section" title="Supporting a subtarget" id="aid-2QJ5E1"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec89"/>Supporting a subtarget</h1></div></div></div><p>A target may <a id="id396" class="indexterm"/>have a subtarget—typically, a variant with instructions—way of handling operands, among others. This subtarget feature can be supported in the LLVM backend. A subtarget may contain some additional instructions, registers, scheduling models, and so on. ARM has subtargets such as NEON and THUMB, while x86 has subtarget features such as SSE, AVX, and so on. The instruction set differs for the subtarget feature, for example, NEON for ARM and SSE/AVX for subtarget features that support vector instructions. SSE and AVX also support the vector instruction set, but their instructions differ from each other.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec259"/>How to do it…</h2></div></div></div><p>This recipe will <a id="id397" class="indexterm"/>demonstrate how to add a support subtarget feature in the backend. A new class that will inherit the <code class="literal">TargetSubtargetInfo</code> class has to be defined:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">Create a new file called <code class="literal">TOYSubtarget.h</code>:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ vi TOYSubtarget.h</strong></span>
+</pre></div></li><li class="listitem">Include the following files:<div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>#include "TOY.h"</strong></span>
+<span class="strong"><strong>#include "TOYFrameLowering.h"</strong></span>
+<span class="strong"><strong>#include "TOYISelLowering.h"</strong></span>
+<span class="strong"><strong>#include "TOYInstrInfo.h"</strong></span>
+<span class="strong"><strong>#include "TOYSelectionDAGInfo.h"</strong></span>
+<span class="strong"><strong>#include "TOYSubtarget.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Target/TargetMachine.h"</strong></span>
+<span class="strong"><strong>#include "llvm/Target/TargetSubtargetInfo.h"</strong></span>
+<span class="strong"><strong>#include "TOYGenSubtargetInfo.inc"</strong></span>
+</pre></div></li><li class="listitem">Define a new class, called <code class="literal">TOYSubtarget</code>, with some private members that have information on the data layout, target lowering, target selection DAG, target frame lowering, and so on:<div class="informalexample"><pre class="programlisting">class TOYSubtarget : public TOYGenSubtargetInfo {
+  virtual void anchor();
+
+private:
+  const DataLayout DL;       // Calculates type size &amp; alignment.
+  TOYInstrInfo InstrInfo;
+  TOYTargetLowering TLInfo;
+  TOYSelectionDAGInfo TSInfo;
+  TOYFrameLowering FrameLowering;
+  InstrItineraryData InstrItins;</pre></div></li><li class="listitem">Declare its constructor:<div class="informalexample"><pre class="programlisting">TOYSubtarget(const std::string &amp;TT, const std::string &amp;CPU, const std::string &amp;FS, TOYTargetMachine &amp;TM);</pre></div><p>This constructor initializes the data members to match that of the specified triplet.</p></li><li class="listitem">Define some<a id="id398" class="indexterm"/> helper functions to return the class-specific data:<div class="informalexample"><pre class="programlisting">const InstrItineraryData *getInstrItineraryData() const override {
+  return &amp;InstrItins;
+}
+
+const TOYInstrInfo *getInstrInfo() const override { return &amp;InstrInfo; }
+
+const TOYRegisterInfo *getRegisterInfo() const override {
+  return &amp;InstrInfo.getRegisterInfo();
+}
+
+const TOYTargetLowering *getTargetLowering() const override {
+  return &amp;TLInfo;
+}
+
+const TOYFrameLowering *getFrameLowering() const override {
+  return &amp;FrameLowering;
+}
+
+const TOYSelectionDAGInfo *getSelectionDAGInfo() const override {
+  return &amp;TSInfo;
+}
+
+const DataLayout *getDataLayout() const override { return &amp;DL; }
+
+void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
+
+TO LC,
+
+Please maintain the representation of the above code EXACTLY as seen above.</pre></div></li><li class="listitem">Create a new file called <code class="literal">TOYSubtarget.cpp</code>, and define the constructor as follows:<div class="informalexample"><pre class="programlisting">TOYSubtarget::TOYSubtarget(const std::string &amp;TT, const std::string &amp;CPU, const std::string &amp;FS, TOYTargetMachine &amp;TM)
+      DL("e-m:e-p:32:32-i1:8:32-i8:8:32-i16:16:32-i64:32- f64:32-a:0:32-n32"),
+      InstrInfo(), TLInfo(TM), TSInfo(DL), FrameLowering() {}</pre></div></li></ol><div style="height:10px; width: 1px"/></div><p>The subtarget has its own data layout defined, with other information such as frame lowering, instruction information, subtarget information, and so on.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec260"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To dive into the details of subtarget implementation, refer to the <code class="literal">lib/Target/ARM/ARMSubtarget.cpp</code> file in the LLVM source code</li></ul></div></div></div>
+<div class="section" title="Lowering to multiple instructions" id="aid-2RHM01"><div class="titlepage"><div><div><h1 class="title"><a id="ch08lvl1sec90"/>Lowering to multiple instructions</h1></div></div></div><p>Let's take an example of<a id="id399" class="indexterm"/> implementing a 32-bit immediate load with high/low pairs, where MOVW implies moving a 16-bit low immediate and a clear 16 high bit, and MOVT implies moving a 16-bit high immediate.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec261"/>How to do it…</h2></div></div></div><p>There can be various ways to implement this multiple instruction lowering. We can do this by using pseudo-instructions or in the selection DAG-to-DAG phase.</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">To do it without pseudo-instructions, define some constraints. The two instructions must be ordered. MOVW clears the high 16 bits. Its output is read by MOVT to fill the high 16 bits. This can be done by specifying the constraints in tablegen:<div class="informalexample"><pre class="programlisting">def MOVLOi16 : MOV&lt;0b1000, "movw", (ins i32imm:$imm),
+                  [(set i32:$dst, i32imm_lo:$imm)]&gt;;
+def MOVHIi16 : MOV&lt;0b1010, "movt", (ins GRRegs:$src1, i32imm:$imm),
+                  [/* No Pattern */]&gt;;</pre></div><p>The second way is to define a pseudo-instruction in the <code class="literal">.td</code> file:</p><div class="informalexample"><pre class="programlisting">def MOVi32 : InstTOY&lt;(outs GRRegs:$dst), (ins i32imm:$src), "", [(set i32:$dst, (movei32 imm:$src))]&gt; {
+  let isPseudo = 1;
+}</pre></div></li><li class="listitem">The pseudo-instruction is then lowered by a target function in the <code class="literal">TOYInstrInfo.cpp</code> file:<div class="informalexample"><pre class="programlisting">bool TOYInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterato r MI) const {
+  if (MI-&gt;getOpcode() == TOY::MOVi32){
+    DebugLoc DL = MI-&gt;getDebugLoc();
+    MachineBasicBlock &amp;MBB = *MI-&gt;getParent();
+
+    const unsigned DstReg = MI-&gt;getOperand(0).getReg();
+    const bool DstIsDead = MI-&gt;getOperand(0).isDead();
+
+    const MachineOperand &amp;MO = MI-&gt;getOperand(1);
+
+    auto LO16 = BuildMI(MBB, MI, DL, get(TOY::MOVLOi16), DstReg);
+    auto HI16 = BuildMI(MBB, MI, DL, get(TOY::MOVHIi16))
+                    .addReg(DstReg, RegState::Define | getDeadRegState(DstIsDead))
+                    .addReg(DstReg);
+
+  MBB.erase(MI);
+    return true;
+  }
+}</pre></div></li><li class="listitem">Compile the <a id="id400" class="indexterm"/>entire LLVM project:<p>For example, an <code class="literal">ex.ll</code> file with IR will look like this:</p><div class="informalexample"><pre class="programlisting">define i32 @foo(i32 %a) #0 {
+%b = add nsw i32 %a, 65537 ; 0x00010001
+ret i32 %b
+}</pre></div><p>The assembly generated will look like this:</p><div class="informalexample"><pre class="programlisting">movw r1, #1
+movt r1, #1
+add r0, r0, r1
+b lr</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec262"/>How it works…</h2></div></div></div><p>The first instruction, <code class="literal">movw</code>, will move 1 in the lower 16 bits and clear the high 16 bits. So in r1, <code class="literal">0x00000001</code> will be written by the first instruction. In the next instruction, <code class="literal">movt</code>, the higher 16 bits will be written. So in r1, <code class="literal">0x0001XXXX</code> will be written, without disturbing the lower bits. Finally, the r1 register will have <code class="literal">0x00010001</code> in it. Whenever a pseudo-instruction is encountered as specified in the <code class="literal">.td</code> file, its expand function is called to specify what the pseudo-instruction will expand to.</p><p>In the preceding case, the <code class="literal">mov32</code> immediate was to be implemented by two instructions: <code class="literal">movw</code> (the lower 16 bits) and <code class="literal">movt</code> (the higher 16 bits). It was marked as a pseudo-instruction in the <code class="literal">.td</code> file. When this pseudo-instruction needs to be emitted, its expand function is called, which builds two machine instructions: <code class="literal">MOVLOi16</code> and <code class="literal">MOVHIi16</code>. These map to the <code class="literal">movw</code> and <code class="literal">movt</code> instructions of the target architecture.</p></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec263"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">To dive deep into implementing such lowering of multiple instructions, look at the ARM target implementation in the LLVM source code in the <code class="literal">lib/Target/ARM/ARMInstrInfo.td</code> file.</li></ul></div></div></div>
+<div class="section" title="Registering a target"><div class="titlepage" id="aid-2SG6I2"><div><div><h1 class="title"><a id="ch08lvl1sec91"/>Registering a target</h1></div></div></div><p>For running the llc tool in <a id="id401" class="indexterm"/>the TOY target architecture, it has to be registered with the llc tool. This recipe demonstrates which configuration files need to be modified to register a target. The build files are modified in this recipe.</p><div class="section" title="How to do it…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec264"/>How to do it…</h2></div></div></div><p>To register a target with a static compiler, follow these steps:</p><div class="orderedlist"><ol class="orderedlist arabic"><li class="listitem">First, add the entry of the TOY backend to <code class="literal">llvm_root_dir/CMakeLists.txt</code>:<div class="informalexample"><pre class="programlisting">set(LLVM_ALL_TARGETS
+  AArch64
+  ARM
+  …
+  …
+  TOY
+  )</pre></div></li><li class="listitem">Then add the toy entry to <code class="literal">llvm_root_dir/include/llvm/ADT/Triple.h</code>:<div class="informalexample"><pre class="programlisting">class Triple {
+public:
+  enum ArchType {
+    UnknownArch,
+
+    arm,        // ARM (little endian): arm, armv.*, xscale
+    armeb,      // ARM (big endian): armeb
+    aarch64,    // AArch64 (little endian): aarch64
+    …
+   …
+
+toy     // TOY: toy
+};</pre></div></li><li class="listitem">Add the toy entry to <code class="literal">llvm_root_dir/include/llvm/ MC/MCExpr.h</code>:<div class="informalexample"><pre class="programlisting">class MCSymbolRefExpr : public MCExpr {
+public:
+enum VariantKind {
+...
+VK_TOY_LO,
+VK_TOY_HI,
+};</pre></div></li><li class="listitem">Add the toy entry to <code class="literal">llvm_root_dir/include/llvm/ Support/ELF.h</code>:<div class="informalexample"><pre class="programlisting">enum {
+  EM_NONE          = 0, // No machine
+  EM_M32           = 1, // AT&amp;T WE 32100
+  …
+  …
+  EM_TOY           = 220 // whatever is the next number
+};</pre></div></li><li class="listitem">Then, add the <a id="id402" class="indexterm"/>toy entry to <code class="literal">lib/MC/MCExpr.cpp</code>:<div class="informalexample"><pre class="programlisting">StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
+switch (Kind) {
+
+  …
+  …
+  case VK_TOY_LO: return "TOY_LO";
+  case VK_TOY_HI: return "TOY_HI";
+  }
+…
+}</pre></div></li><li class="listitem">Next, add the toy entry to <code class="literal">lib/Support/Triple.cpp</code>:<div class="informalexample"><pre class="programlisting">const char *Triple::getArchTypeName(ArchType Kind) {
+  switch (Kind) {
+ …
+ …
+ case toy:         return "toy";
+
+}
+
+const char *Triple::getArchTypePrefix(ArchType Kind) {
+  switch (Kind) {
+ …
+ …
+case toy:         return "toy";
+  }
+}
+
+Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
+…
+…
+    .Case("toy", toy)
+…
+}
+
+static Triple::ArchType parseArch(StringRef ArchName) {
+…
+…
+    .Case("toy", Triple::toy)
+…
+}
+
+
+static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
+…
+…
+case llvm::Triple::toy:
+    return 32;
+
+…
+…
+}
+
+Triple Triple::get32BitArchVariant() const {
+…
+…
+case Triple::toy:
+    // Already 32-bit.
+    break;
+…
+}
+
+Triple Triple::get64BitArchVariant() const {
+…
+…
+case Triple::toy:
+    T.setArch(UnknownArch);
+    break;
+
+…
+…
+}</pre></div></li><li class="listitem">Add the toy directory entry to <code class="literal">lib/Target/LLVMBuild.txt</code>:<div class="informalexample"><pre class="programlisting">[common]
+subdirectories = ARM AArch64 CppBackend Hexagon MSP430 … … TOY</pre></div></li><li class="listitem">Create a new<a id="id403" class="indexterm"/> file called <code class="literal">TOY.h</code> in the <code class="literal">lib/Target/TOY</code> folder:<div class="informalexample"><pre class="programlisting">#ifndef TARGET_TOY_H
+#define TARGET_TOY_H
+
+#include "MCTargetDesc/TOYMCTargetDesc.h"
+#include "llvm/Target/TargetMachine.h"
+
+namespace llvm {
+class TargetMachine;
+class TOYTargetMachine;
+
+FunctionPass *createTOYISelDag(TOYTargetMachine &amp;TM,
+                               CodeGenOpt::Level OptLevel);
+} // end namespace llvm;
+
+#endif</pre></div></li><li class="listitem">Create a new folder called <code class="literal">TargetInfo</code> in the <code class="literal">lib/Target/TOY</code> folder. Inside that folder, create a new file called <code class="literal">TOYTargetInfo.cpp</code>, as follows:<div class="informalexample"><pre class="programlisting">#include "TOY.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Support/TargetRegistry.h"
+using namespace llvm;
+
+Target llvm::TheTOYTarget;
+
+extern "C" void LLVMInitializeTOYTargetInfo() {
+  RegisterTarget&lt;Triple::toy&gt; X(TheTOYTarget, "toy", "TOY");
+}</pre></div></li><li class="listitem">In the same folder, create the <code class="literal">CMakeLists.txt</code> file:<div class="informalexample"><pre class="programlisting">add_llvm_library(LLVMTOYInfo
+  TOYTargetInfo.cpp
+  )</pre></div></li><li class="listitem">Create an <code class="literal">LLVMBuild.txt</code> file:<div class="informalexample"><pre class="programlisting">[component_0]
+type = Library
+name = TOYInfo
+parent = TOY
+required_libraries = Support
+add_to_library_groups = TOY</pre></div></li><li class="listitem">In the <code class="literal">lib/Target/TOY</code> folder, create <a id="id404" class="indexterm"/>a file called <code class="literal">TOYTargetMachine.cpp</code>:<div class="informalexample"><pre class="programlisting">#include "TOYTargetMachine.h"
+#include "TOY.h"
+#include "TOYFrameLowering.h"
+#include "TOYInstrInfo.h"
+#include TOYISelLowering.h"
+#include "TOYSelectionDAGInfo.h"
+#include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/Module.h"
+#include "llvm/PassManager.h"
+#include "llvm/Support/TargetRegistry.h"
+using namespace llvm;
+
+TOYTargetMachine::TOYTargetMachine(const Target &amp;T, StringRef TT, StringRef CPU, StringRef FS, const TargetOptions &amp;Options,
+Reloc::Model RM, CodeModel::Model CM,
+                                   CodeGenOpt::Level OL)
+    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+      Subtarget(TT, CPU, FS, *this) {
+  initAsmInfo();
+}
+
+namespace {
+class TOYPassConfig : public TargetPassConfig {
+public:
+  TOYPassConfig(TOYTargetMachine *TM, PassManagerBase &amp;PM)
+      : TargetPassConfig(TM, PM) {}
+
+  TOYTargetMachine &amp;getTOYTargetMachine() const {
+    return getTM&lt;TOYTargetMachine&gt;();
+  }
+
+  virtual bool addPreISel();
+  virtual bool addInstSelector();
+  virtual bool addPreEmitPass();
+};
+} // namespace
+
+TargetPassConfig *TOYTargetMachine::createPassConfig(PassManagerBase &amp;PM) {
+  return new TOYPassConfig(this, PM);
+}
+
+bool TOYPassConfig::addPreISel() { return false; }
+
+bool TOYPassConfig::addInstSelector() {
+  addPass(createTOYISelDag(getTOYTargetMachine(), getOptLevel()));
+  return false;
+}
+
+bool TOYPassConfig::addPreEmitPass() { return false; }
+
+// Force static initialization.
+extern "C" void LLVMInitializeTOYTarget() {
+  RegisterTargetMachine&lt;TOYTargetMachine&gt; X(TheTOYTarget);
+}
+
+void TOYTargetMachine::addAnalysisPasses(PassManagerBase &amp;PM) {}</pre></div></li><li class="listitem">Create a new folder <a id="id405" class="indexterm"/>called <code class="literal">MCTargetDesc</code> and a new file called <code class="literal">TOYMCTargetDesc.h</code>:<div class="informalexample"><pre class="programlisting">#ifndef TOYMCTARGETDESC_H
+#define TOYMCTARGETDESC_H
+
+#include "llvm/Support/DataTypes.h"
+
+namespace llvm {
+class Target;
+class MCInstrInfo;
+class MCRegisterInfo;
+class MCSubtargetInfo;
+class MCContext;
+class MCCodeEmitter;
+class MCAsmInfo;
+class MCCodeGenInfo;
+class MCInstPrinter;
+class MCObjectWriter;
+class MCAsmBackend;
+
+class StringRef;
+class raw_ostream;
+
+extern Target TheTOYTarget;
+
+MCCodeEmitter *createTOYMCCodeEmitter(const MCInstrInfo &amp;MCII, const MCRegisterInfo &amp;MRI, const MCSubtargetInfo &amp;STI, MCContext &amp;Ctx);
+
+MCAsmBackend *createTOYAsmBackend(const Target &amp;T, const MCRegisterInfo &amp;MRI, StringRef TT, StringRef   CPU);
+
+MCObjectWriter *createTOYELFObjectWriter(raw_ostream &amp;OS, uint8_t OSABI);
+
+} // End llvm namespace
+
+#define GET_REGINFO_ENUM
+#include "TOYGenRegisterInfo.inc"
+
+#define GET_INSTRINFO_ENUM
+#include "TOYGenInstrInfo.inc"
+
+#define GET_SUBTARGETINFO_ENUM
+#include "TOYGenSubtargetInfo.inc"
+
+#endif</pre></div></li><li class="listitem">Create one <a id="id406" class="indexterm"/>more file, called <code class="literal">TOYMCTargetDesc.cpp</code>, in the same folder:<div class="informalexample"><pre class="programlisting">#include "TOYMCTargetDesc.h"
+#include "InstPrinter/TOYInstPrinter.h"
+#include "TOYMCAsmInfo.h"
+#include "llvm/MC/MCCodeGenInfo.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCStreamer.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/TargetRegistry.h"
+
+#define GET_INSTRINFO_MC_DESC
+#include "TOYGenInstrInfo.inc"
+
+#define GET_SUBTARGETINFO_MC_DESC
+#include "TOYGenSubtargetInfo.inc"
+
+#define GET_REGINFO_MC_DESC
+#include "TOYGenRegisterInfo.inc"
+
+using namespace llvm;
+
+static MCInstrInfo *createTOYMCInstrInfo() {
+  MCInstrInfo *X = new MCInstrInfo();
+  InitTOYMCInstrInfo(X);
+  return X;
+}
+
+static MCRegisterInfo *createTOYMCRegisterInfo(StringRef TT) {
+  MCRegisterInfo *X = new MCRegisterInfo();
+  InitTOYMCRegisterInfo(X, TOY::LR);
+  return X;
+}
+
+static MCSubtargetInfo *createTOYMCSubtargetInfo(StringRef TT, StringRef CPU,
+                                                 StringRef FS) {
+  MCSubtargetInfo *X = new MCSubtargetInfo();
+  InitTOYMCSubtargetInfo(X, TT, CPU, FS);
+  return X;
+}
+
+static MCAsmInfo *createTOYMCAsmInfo(const MCRegisterInfo &amp;MRI, StringRef TT) {
+  MCAsmInfo *MAI = new TOYMCAsmInfo(TT);
+  return MAI;
+}
+
+static MCCodeGenInfo *createTOYMCCodeGenInfo(StringRef TT, Reloc::Model RM,
+                                             CodeModel::Model CM,
+                                             CodeGenOpt::Level OL) {
+  MCCodeGenInfo *X = new MCCodeGenInfo();
+  if (RM == Reloc::Default) {
+    RM = Reloc::Static;
+  }
+  if (CM == CodeModel::Default) {
+    CM = CodeModel::Small;
+  }
+  if (CM != CodeModel::Small &amp;&amp; CM != CodeModel::Large) {
+    report_fatal_error("Target only supports CodeModel Small or Large");
+  }
+
+  X-&gt;InitMCCodeGenInfo(RM, CM, OL);
+  return X;
+}
+
+static MCInstPrinter *
+createTOYMCInstPrinter(const Target &amp;T, unsigned SyntaxVariant,
+                       const MCAsmInfo &amp;MAI, const MCInstrInfo &amp;MII,
+                       const MCRegisterInfo &amp;MRI, const MCSubtargetInfo &amp;STI) {
+  return new TOYInstPrinter(MAI, MII, MRI);
+}
+
+static MCStreamer *
+createMCAsmStreamer(MCContext &amp;Ctx, formatted_raw_ostream &amp;OS, bool isVerboseAsm, bool useDwarfDirectory,MCInstPrinter *InstPrint, MCCodeEmitter *CE,MCAsmBackend *TAB, bool ShowInst) {
+  return createAsmStreamer(Ctx, OS, isVerboseAsm,   useDwarfDirectory, InstPrint,  CE,   TAB, ShowInst);
+}
+
+static MCStreamer *createMCStreamer(const Target &amp;T, StringRef TT,
+                                    MCContext &amp;Ctx, MCAsmBackend &amp;MAB,
+                                    raw_ostream &amp;OS,
+                                    MCCodeEmitter *Emitter,
+                                    const MCSubtargetInfo &amp;STI,
+                                    bool RelaxAll,
+                                    bool NoExecStack) {
+  return createELFStreamer(Ctx, MAB, OS, Emitter, false, NoExecStack);
+}
+
+
+// Force static initialization.
+extern "C" void LLVMInitializeTOYTargetMC() {
+  // Register the MC asm info.
+  RegisterMCAsmInfoFn X(TheTOYTarget, createTOYMCAsmInfo);
+
+  // Register the MC codegen info.
+  TargetRegistry::RegisterMCCodeGenInfo(TheTOYTarget, createTOYMCCodeGenInfo);
+
+  // Register the MC instruction info.
+  TargetRegistry::RegisterMCInstrInfo(TheTOYTarget, createTOYMCInstrInfo);
+
+  // Register the MC register info.
+  TargetRegistry::RegisterMCRegInfo(TheTOYTarget, createTOYMCRegisterInfo);
+
+  // Register the MC subtarget info.
+  TargetRegistry::RegisterMCSubtargetInfo(TheTOYTarget,
+                                          createTOYMCSubtargetInfo);
+
+  // Register the MCInstPrinter
+  TargetRegistry::RegisterMCInstPrinter(TheTOYTarget, createTOYMCInstPrinter);
+
+  // Register the ASM Backend.   TargetRegistry::RegisterMCAsmBackend(TheTOYTarget, createTOYAsmBackend);
+
+  // Register the assembly streamer.
+  TargetRegistry::RegisterAsmStreamer(TheTOYTarget, createMCAsmStreamer);
+
+  // Register the object streamer.
+  TargetRegistry::RegisterMCObjectStreamer(TheTOYTarget, createMCStreamer);
+
+  // Register the MCCodeEmitter
+  TargetRegistry::RegisterMCCodeEmitter(TheTOYTarget, createTOYMCCodeEmitter);
+}</pre></div></li><li class="listitem">In the same folder, create an <code class="literal">LLVMBuild.txt</code> file:<div class="informalexample"><pre class="programlisting">[component_0]
+type = Library
+name = TOYDesc
+parent = TOY
+required_libraries = MC Support TOYAsmPrinter TOYInfo
+add_to_library_groups = TOY</pre></div></li><li class="listitem">Create a <code class="literal">CMakeLists.txt</code> file:<div class="informalexample"><pre class="programlisting">add_llvm_library(LLVMTOYDesc
+  TOYMCTargetDesc.cpp)</pre></div></li></ol><div style="height:10px; width: 1px"/></div></div><div class="section" title="How it works…"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec265"/>How it works…</h2></div></div></div><p>Build the enitre LLVM <a id="id407" class="indexterm"/>project, as follows:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ cmake llvm_src_dir –DCMAKE_BUILD_TYPE=Release – DLLVM_TARGETS_TO_BUILD="TOY"</strong></span>
+<span class="strong"><strong>$ make</strong></span>
+</pre></div><p>Here, we have specified that we are building the LLVM compiler for the toy target. After the build completes, check whether the TOY target appears with the <code class="literal">llc</code> command:</p><div class="informalexample"><pre class="programlisting">
+<span class="strong"><strong>$ llc –version</strong></span>
+<span class="strong"><strong>…</strong></span>
+<span class="strong"><strong>…</strong></span>
+<span class="strong"><strong>Registered Targets :</strong></span>
+<span class="strong"><strong>toy – TOY</strong></span>
+</pre></div></div><div class="section" title="See also"><div class="titlepage"><div><div><h2 class="title"><a id="ch08lvl2sec266"/>See also</h2></div></div></div><div class="itemizedlist"><ul class="itemizedlist"><li class="listitem">For a more detailed description about complex targets that involve pipelining and scheduling, follow the chapters in <span class="emphasis"><em>Tutorial: Creating an LLVM Backend for the Cpu0 Architecture</em></span> by Chen Chung-Shu and Anoushe Jamshidi</li></ul></div></div></div></body></html>
