@@ -1,10 +1,10 @@
 # 附录 C
 
-在本书的这一部分，我们将快速回顾如何安装 MySQL 服务器。这是实现第 8 章[使用 MySQL 数据库](afdb55d7-2322-4dce-ad9d-ff737f8c3b4b.xhtml)中食谱所必需的。
+在本书的这一部分，我们将快速回顾如何安装 MySQL 服务器。这是实现第八章使用 MySQL 数据库中食谱所必需的。
 
 # 安装 MySQL 服务器
 
-您需要从[https://dev.mysql.com/downloads/](https://dev.mysql.com/downloads/)下载 MySQL 社区服务器。截至编写时，可用的最新 MySQL 服务器版本是 8.0.15。将被下载的安装文件命名为 `mysql-installer-community-8.0.15.0.msi`。
+您需要从[`dev.mysql.com/downloads/`](https://dev.mysql.com/downloads/)下载 MySQL 社区服务器。截至编写时，可用的最新 MySQL 服务器版本是 8.0.15。将被下载的安装文件命名为 `mysql-installer-community-8.0.15.0.msi`。
 
 1.  简单双击文件以启动安装。第一个出现的屏幕是许可协议。阅读提到的不同条款和条件。如果您同意这些条款，请点击“我接受许可条款”复选框，然后点击“下一步”按钮。
 
@@ -108,4 +108,4 @@
 
 ![截图](img/bfb7f41a-302e-4669-80a7-cefc95706130.png)
 
-现在，您已经准备好使用 MySQL 来实现第 8 章 [使用 MySQL 数据库](afdb55d7-2322-4dce-ad9d-ff737f8c3b4b.xhtml)中的食谱了。
+现在，您已经准备好使用 MySQL 来实现第八章 使用 MySQL 数据库中的食谱了。

@@ -1,12 +1,12 @@
-# *第11章*：物联网太阳能（电压）测量
+# *第十一章*：物联网太阳能（电压）测量
 
 面对全球变暖的挑战，太阳能被认为是**可再生能源**中最有希望的一种。它被认为是在减少对化石燃料的依赖和满足不断增长的电力需求方面最好的替代品之一（Ryan，2005）。为了实现这一点，阳光被转化为电能，而阳光是通过太阳能板收集的。
 
-在本章中，您将继续为STM32 Blue Pill微控制器板创建物联网软件，使用电压传感器来测量太阳能板收集的太阳能。该应用将通过NodeMCU ESP8266微控制器板将感应数据发送到互联网。
+在本章中，您将继续为 STM32 Blue Pill 微控制器板创建物联网软件，使用电压传感器来测量太阳能板收集的太阳能。该应用将通过 NodeMCU ESP8266 微控制器板将感应数据发送到互联网。
 
 在本章中，我们将涵盖以下主要主题：
 
-+   将太阳能板连接到Blue Pill板
++   将太阳能板连接到 Blue Pill 板
 
 +   从电压传感器模块读取数据
 
@@ -14,7 +14,7 @@
 
 +   在互联网上显示传感器数据结果
 
-在本章之后，您将具备开发物联网应用和提升您的简历的扎实技能，因为它是工业4.0的核心元素。您将学习的第一个技能是从连接到STM32 Blue Pill的传感器读取太阳能板电压。此外，您将学习如何通过NodeMCU 8266开发板将读取的信息发送到互联网。最后，您将了解如何在移动物联网应用上可视化传感器值。
+在本章之后，您将具备开发物联网应用和提升您的简历的扎实技能，因为它是工业 4.0 的核心元素。您将学习的第一个技能是从连接到 STM32 Blue Pill 的传感器读取太阳能板电压。此外，您将学习如何通过 NodeMCU 8266 开发板将读取的信息发送到互联网。最后，您将了解如何在移动物联网应用上可视化传感器值。
 
 # 技术要求
 
@@ -22,13 +22,13 @@
 
 +   一个无焊面包板。
 
-+   一个Blue Pill微控制器板。
++   一个 Blue Pill 微控制器板。
 
-+   一个NodeMCU微控制器。
++   一个 NodeMCU 微控制器。
 
-+   一个ST-Link/V2电子接口，用于将编译后的代码上传到Blue Pill板。请注意，ST-Link/V2需要四根公对公跳线。
++   一个 ST-Link/V2 电子接口，用于将编译后的代码上传到 Blue Pill 板。请注意，ST-Link/V2 需要四根公对公跳线。
 
-+   一个B25电压传感器。
++   一个 B25 电压传感器。
 
 +   一个太阳能板。
 
@@ -38,13 +38,13 @@
 
 +   电源。
 
-所有组件都可以在您偏好的电子供应商处轻松找到。记住，您将需要Arduino IDE和GitHub仓库来完成本章：[https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter11](https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter11)
+所有组件都可以在您偏好的电子供应商处轻松找到。记住，您将需要 Arduino IDE 和 GitHub 仓库来完成本章：[`github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter11`](https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter11)
 
-本章的“代码在行动”视频可以在这里找到：[https://bit.ly/2U4YMsT](https://bit.ly/2U4YMsT)
+本章的“代码在行动”视频可以在这里找到：[`bit.ly/2U4YMsT`](https://bit.ly/2U4YMsT)
 
-下一节将介绍太阳能板和B25电压测量传感器，以及如何将它们与STM32 Blue Pill微控制器板接口连接。
+下一节将介绍太阳能板和 B25 电压测量传感器，以及如何将它们与 STM32 Blue Pill 微控制器板接口连接。
 
-# 将太阳能板连接到Blue Pill板
+# 将太阳能板连接到 Blue Pill 板
 
 首先，我们需要了解两个组件：太阳能板和电压测量传感器。在了解基础知识后，我们可以构建我们的太阳能能量测量系统。
 
@@ -98,53 +98,67 @@
 
 1.  将电压传感器和 STM32 Blue Pill 放在无焊面包板上。留出一些空位以添加电线。
 
-1.  将传感器的**地**（**GND**）引脚连接到STM32 Blue Pill的GND端子。
+1.  将传感器的**地**（**GND**）引脚连接到 STM32 Blue Pill 的 GND 端子。
 
-1.  接下来，你需要将传感器的模拟输出连接到STM32 Blue Pill卡上的模拟输入，并将传感器的S连接到Blue Pill的**A0**引脚，如图*图11.5*所示：![图11.5 – 电压传感器连接到Blue Pill](img/B16413_Figure_11.5.jpg)
+1.  接下来，你需要将传感器的模拟输出连接到 STM32 Blue Pill 卡上的模拟输入，并将传感器的 S 连接到 Blue Pill 的**A0**引脚，如图*图 11.5*所示：![图 11.5 – 电压传感器连接到 Blue Pill](img/B16413_Figure_11.5.jpg)
 
-    图11.5 – 电压传感器连接到Blue Pill
+    图 11.5 – 电压传感器连接到 Blue Pill
 
-1.  最后，你需要一个电源连接来将太阳能板连接到板上。使用STLink将脚本上传到STM32 Blue Pill微控制器板。*图11.6*总结了所有硬件连接：
+1.  最后，你需要一个电源连接来将太阳能板连接到板上。使用 STLink 将脚本上传到 STM32 Blue Pill 微控制器板。*图 11.6*总结了所有硬件连接：
 
-![图11.6：电压传感器连接电路](img/B16413_Figure_11.6.jpg)
+![图 11.6：电压传感器连接电路](img/B16413_Figure_11.6.jpg)
 
-图11.6：电压传感器连接电路
+图 11.6：电压传感器连接电路
 
 以下截图展示了本项目的原理图：
 
-![图11.7 – 电压传感器连接的原理图](img/B16413_Figure_11.7.jpg)
+![图 11.7 – 电压传感器连接的原理图](img/B16413_Figure_11.7.jpg)
 
-图11.7 – 电压传感器连接的原理图
+图 11.7 – 电压传感器连接的原理图
 
-原理图显示了电气连接。光伏板的VCC和地端子连接到传感器的VCC和GND引脚。为了将Blue Pill与传感器接口，其地引脚连接到Blue Pill的GND总线，最后，传感器的模拟输出（**S**）插入到STM32微控制器的A0引脚。*图11.8*显示了太阳能测量系统：
+原理图显示了电气连接。光伏板的 VCC 和地端子连接到传感器的 VCC 和 GND 引脚。为了将 Blue Pill 与传感器接口，其地引脚连接到 Blue Pill 的 GND 总线，最后，传感器的模拟输出（**S**）插入到 STM32 微控制器的 A0 引脚。*图 11.8*显示了太阳能测量系统：
 
-![图11.8 – 太阳能测量系统](img/B16413_Figure_11.8.jpg)
+![图 11.8 – 太阳能测量系统](img/B16413_Figure_11.8.jpg)
 
-图11.8 – 太阳能测量系统
+图 11.8 – 太阳能测量系统
 
 现在我们已经完成了组件的连接，我们创建了一个简单的电路用于我们的电压测量系统，如前图所示。
 
-在本节中，我们了解了太阳能板，并遇到了电压传感器及其组件。我们还学习了如何将太阳能电池连接到电压传感器，以及如何将电压传感器连接到STM32 Blue Pill。
+在本节中，我们了解了太阳能板，并遇到了电压传感器及其组件。我们还学习了如何将太阳能电池连接到电压传感器，以及如何将电压传感器连接到 STM32 Blue Pill。
 
-是时候进入下一节了，该节将展示如何编写C代码来完成我们的物联网太阳能监测系统的第一个功能。
+是时候进入下一节了，该节将展示如何编写 C 代码来完成我们的物联网太阳能监测系统的第一个功能。
 
 # 从电压传感器模块读取数据
 
 是时候学习如何编写一个程序来读取电压传感器的信息并在串行监视器上显示其读数了。
 
-让我们编写程序来接收STM32 Blue Pill的传感器数据：
+让我们编写程序来接收 STM32 Blue Pill 的传感器数据：
 
-1.  声明STM32 Blue Pill卡上哪个引脚将用作传感器数据的输入：
+1.  声明 STM32 Blue Pill 卡上哪个引脚将用作传感器数据的输入：
 
-    [PRE0]
+    ```cpp
+    0 (labeled A0 on the Blue Pill).
+    ```
 
-1.  接下来，在`setup()`部分，开始串行数据传输，并将传输速度设置为9600 bps，并告知微控制器分配给A0的引脚类型：
+1.  接下来，在`setup()`部分，开始串行数据传输，并将传输速度设置为 9600 bps，并告知微控制器分配给 A0 的引脚类型：
 
-    [PRE1]
+    ```cpp
+    void setup() {
+      Serial.begin(9600);
+      pinMode(sensorPin, INPUT);
+    }
+    ```
 
 1.  现在，在`loop()`中，首先读取输入引脚的传感器数据，将其值发送到串行端口，并等待一秒钟：
 
-    [PRE2]
+    ```cpp
+    void loop() {
+      int sensorValue = analogRead(sensorPin);
+      Serial.print("Voltage: ");
+      Serial.println(sensorValue);
+      delay(1000);
+    }
+    ```
 
 1.  我们将程序加载到 STM32 板上，并查看 Arduino IDE 的串行绘图器，以了解我们从传感器读取的模拟信号的波形，结果可见于 *图 11.9*：![图 11.9 – 串行绘图器中的传感器信号波形](img/B16413_Figure_11.9.jpg)
 
@@ -154,11 +168,19 @@
 
 1.  我们将在脚本中添加两行来显示电压值，并对将信号值发送到串行端口的行进行注释：
 
-    [PRE3]
+    ```cpp
+    void loop() {
+      int sensorValue = analogRead(sensorPin);
+    map() function transforms a number from one range to another:
+
+    ```
 
     map(value, fromLow, fromHigh, toLow, toHigh)
 
-    [PRE4]
+    ```cpp
+
+    The first parameter that `map()` receives is the value to be converted. In our program, it is the value read from the sensor. The value of `fromLow` will be mapped to `toLow`, and `fromHigh` to `toHigh`, and all values within the range.Now, upload it to the Blue Pill board. Now you can see in the **serial monitor** the voltage value as shown in *Figure 11.10*:
+    ```
 
 ![图 11.10 – 串行监视器读数](img/B16413_Figure_11.10.jpg)
 
@@ -174,7 +196,7 @@
 
 # 编写程序将感应数据发送到互联网
 
-在本节中，我们将继续使用 NodeMCU 开发板从 STM32 接收数据并将其发送到互联网。然而，与 [*第 10 章*](B16413_10_Final_NM_ePub.xhtml#_idTextAnchor135) 中的 *IoT 植物花盆湿度传感器* 不同，其中两个微控制器之间直接发送数字值（1 或 0），我们现在需要在这些微控制器之间使用串行通信发送电压值。
+在本节中，我们将继续使用 NodeMCU 开发板从 STM32 接收数据并将其发送到互联网。然而，与 *第十章* 中的 *IoT 植物花盆湿度传感器* 不同，其中两个微控制器之间直接发送数字值（1 或 0），我们现在需要在这些微控制器之间使用串行通信发送电压值。
 
 串行传输是通过使用 RX/TX 引脚发送数据来完成的。
 
@@ -182,11 +204,26 @@
 
 1.  在 `setup()` 中，我们需要添加新的串行数据传输到 115200 bps。这是 NodeMCU 板的推荐速度：
 
-    [PRE5]
+    ```cpp
+    void setup() {
+      serial.begin(9600);
+      Serial1.begin(115200);
+    }
+    ```
 
 1.  `loop()` 实例需要在读取传感器和电压转换后添加新的一行。`write()` 函数将数据作为整数值发送：
 
-    [PRE6]
+    ```cpp
+    void loop() {
+      int sensorValue = analogRead(sensorPin);
+      double voltageValue = map(sensorValue, 0, 1023, 0, 25);
+      Serial.print("Voltage: ");
+      //Serial.println(sensorValue);
+      Serial.println(voltageValue);
+      Serial1.write((int)voltageValue);
+      delay(1000);
+    }
+    ```
 
 1.  要完成 NodeMCU 和 STM32 之间的通信，需要添加 *图 11.11* 和 *图 11.12* 中显示的附加连接：![图 11.11 – 微控制器串行通信电路](img/B16413_Figure_11.11.jpg)
 
@@ -198,57 +235,68 @@
 
     图 11.12 – 微控制器串行通信原理图
 
-    将NodeMCU的RX引脚连接到STM32的TX引脚（B6），并将NodeMCU的TX引脚连接到STM32的RX引脚（B7）。
+    将 NodeMCU 的 RX 引脚连接到 STM32 的 TX 引脚（B6），并将 NodeMCU 的 TX 引脚连接到 STM32 的 RX 引脚（B7）。
 
-    *图11.13*显示了实际系统中所有连接的方式，包括电压传感器：
+    *图 11.13*显示了实际系统中所有连接的方式，包括电压传感器：
 
-    ![图11.13 – STM32和NodeMCU串行连接](img/B16413_Figure_11.13.jpg)
+    ![图 11.13 – STM32 和 NodeMCU 串行连接](img/B16413_Figure_11.13.jpg)
 
-    图11.13 – STM32和NodeMCU串行连接
+    图 11.13 – STM32 和 NodeMCU 串行连接
 
-1.  现在，为了完成NodeMCU和STM32之间的串行连接，我们将创建一个新的草图，`Chapter11/voltage_iot.`
+1.  现在，为了完成 NodeMCU 和 STM32 之间的串行连接，我们将创建一个新的草图，`Chapter11/voltage_iot.`
 
 1.  在`setup()`中，指示串行数据传输：
 
-    [PRE7]
+    ```cpp
+    void setup() {
+      Serial.begin(115200);
+    }
+    ```
 
 1.  最后一步是`loop()`：
 
-    [PRE8]
+    ```cpp
+    void loop() {
+      double data = Serial.read();
+      Serial.print("Voltage: ");
+      Serial.println(data);
+      delay(1000);
+    } 
+    ```
 
-    使用前面的代码，NodeMCU将从STM32接收传感器值，并将其显示在串行监视器上。
+    使用前面的代码，NodeMCU 将从 STM32 接收传感器值，并将其显示在串行监视器上。
 
-草图现在已完成。将其上传到NodeMCU板，并在上传完成后重置它。现在您可以看到，在**串行监视器**中，传感器值，如下面的截图所示：
+草图现在已完成。将其上传到 NodeMCU 板，并在上传完成后重置它。现在您可以看到，在**串行监视器**中，传感器值，如下面的截图所示：
 
 现在是时候进入下一节了，该节将向您展示如何在网上可视化数据。
 
 # 在互联网上显示传感器数据结果
 
-在[*第9章*](B16413_09_Final_NM_ePub.xhtml#_idTextAnchor122)，“物联网温度记录系统”，和[*第10章*](B16413_10_Final_NM_ePub.xhtml#_idTextAnchor135)，“物联网植物花盆湿度传感器”中，我们学习了如何在本地网络内编程物联网应用。在本章的这一节中，我们将学习如何将数据发送到本地网络之外的云。
+在*第九章*，“物联网温度记录系统”，和*第十章*，“物联网植物花盆湿度传感器”中，我们学习了如何在本地网络内编程物联网应用。在本章的这一节中，我们将学习如何将数据发送到本地网络之外的云。
 
-众多云平台允许我们将我们的物联网设备连接到它们的服务。大多数平台允许我们免费使用基本服务。如果需要更完整的服务，则可能需要付费，通常是每月支付。这次我们将使用Blynk平台，它有几个免费选项，我们将使用这些选项。
+众多云平台允许我们将我们的物联网设备连接到它们的服务。大多数平台允许我们免费使用基本服务。如果需要更完整的服务，则可能需要付费，通常是每月支付。这次我们将使用 Blynk 平台，它有几个免费选项，我们将使用这些选项。
 
-Blynk为Android和iOS都提供了应用程序，这将使我们能够监控太阳能电池板上的电压值。
+Blynk 为 Android 和 iOS 都提供了应用程序，这将使我们能够监控太阳能电池板上的电压值。
 
 让我们看看如何使用移动应用程序从互联网发送和查看我们的信息：
 
-1.  下载Blynk应用程序。
+1.  下载 Blynk 应用程序。
 
-    对于Android，从[https://play.google.com/store/apps/details?id=cc.blynk&hl=en_US](https://play.google.com/store/apps/details?id=cc.blynk&hl=en_US)下载。
+    对于 Android，从[`play.google.com/store/apps/details?id=cc.blynk&hl=en_US`](https://play.google.com/store/apps/details?id=cc.blynk&hl=en_US)下载。
 
-    对于iOS，从[https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481](https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481)下载。
+    对于 iOS，从[`apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481`](https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481)下载。
 
-1.  创建一个新账户：![图11.14 – Blynk，主页屏幕](img/B16413_Figure_11.14.jpg)
+1.  创建一个新账户：![图 11.14 – Blynk，主页屏幕](img/B16413_Figure_11.14.jpg)
 
-    图11.14 – Blynk，主页屏幕
+    图 11.14 – Blynk，主页屏幕
 
-1.  一旦创建账户，创建一个新的项目。输入名称，选择ESP8266作为设备，并将WiFi设置为连接类型。然后点击**创建项目**：![图11.15 – Blynk，创建新账户](img/B16413_Figure_11.15.jpg)
+1.  一旦创建账户，创建一个新的项目。输入名称，选择 ESP8266 作为设备，并将 WiFi 设置为连接类型。然后点击**创建项目**：![图 11.15 – Blynk，创建新账户](img/B16413_Figure_11.15.jpg)
 
-    图11.15 – Blynk，创建新账户
+    图 11.15 – Blynk，创建新账户
 
-1.  您将收到一封包含应用程序所需令牌的电子邮件，您也可以在**设置**中找到：![图11.16 – Blynk，菜单屏幕](img/B16413_Figure_11.16.jpg)
+1.  您将收到一封包含应用程序所需令牌的电子邮件，您也可以在**设置**中找到：![图 11.16 – Blynk，菜单屏幕](img/B16413_Figure_11.16.jpg)
 
-    图11.16 – Blynk，菜单屏幕
+    图 11.16 – Blynk，菜单屏幕
 
 1.  输入一个名称，选择**ESP8266**作为设备，并选择**WiFi**作为连接类型。点击**创建项目**：![图 11.17 – Blynk，创建新项目](img/B16413_Figure_11.17.jpg)
 
@@ -266,7 +314,7 @@ Blynk为Android和iOS都提供了应用程序，这将使我们能够监控太�
 
 1.  最后，将 `Chapter11/voltage_iot` 程序上传到 NodeMCU 并执行它。
 
-我们已经到达了 [*第 11 章*](B16413_11_Final_NM_ePub.xhtml#_idTextAnchor145) 的结尾，“物联网太阳能（电压）测量”。恭喜！
+我们已经到达了 *第十一章* 的结尾，“物联网太阳能（电压）测量”。恭喜！
 
 # 摘要
 
@@ -280,4 +328,4 @@ Blynk为Android和iOS都提供了应用程序，这将使我们能够监控太�
 
 # 进一步阅读
 
-Ryan, V., *什么是太阳能？* 技术学生，2005: [https://technologystudent.com/energy1/solar1.htm](https://technologystudent.com/energy1/solar1.htm)
+Ryan, V., *什么是太阳能？* 技术学生，2005: [`technologystudent.com/energy1/solar1.htm`](https://technologystudent.com/energy1/solar1.htm)

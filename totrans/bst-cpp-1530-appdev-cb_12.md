@@ -1,4 +1,4 @@
-# 第 12 章。冰山一角
+# 第十二章。冰山一角
 
 在本章中，我们将涵盖：
 
@@ -48,41 +48,97 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 1.  我们首先描述图类型：
 
-    [PRE0]
+    ```cpp
+    #include <boost/graph/adjacency_list.hpp>
+    #include <string>
+
+    typedef std::string vertex_t;
+    typedef boost::adjacency_list<
+        boost::vecS
+        , boost::vecS
+        , boost::bidirectionalS
+        , vertex_t
+    > graph_type;
+    ```
 
 1.  现在我们来构建它：
 
-    [PRE1]
+    ```cpp
+        graph_type graph;
+    ```
 
 1.  让我们使用一个非可移植的技巧来加速图构建：
 
-    [PRE2]
+    ```cpp
+        static const std::size_t vertex_count = 5;
+        graph.m_vertices.reserve(vertex_count);
+    ```
 
 1.  现在我们已经准备好向图中添加顶点了：
 
-    [PRE3]
+    ```cpp
+    typedef boost::graph_traits<graph_type>
+                ::vertex_descriptor descriptor_t;
+
+        descriptor_t cpp 
+            = boost::add_vertex(vertex_t("C++"), graph);
+        descriptor_t stl 
+            = boost::add_vertex(vertex_t("STL"), graph);
+        descriptor_t boost 
+            = boost::add_vertex(vertex_t("Boost"), graph);
+        descriptor_t guru 
+            = boost::add_vertex(vertex_t("C++ guru"), graph);
+        descriptor_t ansic 
+            = boost::add_vertex(vertex_t("C"), graph);
+    ```
 
 1.  是时候用边连接顶点了：
 
-    [PRE4]
+    ```cpp
+        boost::add_edge(cpp, stl, graph);
+        boost::add_edge(stl, boost, graph);
+        boost::add_edge(boost, guru, graph);
+        boost::add_edge(ansic, guru, graph);
+    ```
 
 1.  我们编写一个搜索顶点的函数：
 
-    [PRE5]
+    ```cpp
+    template <class GraphT>
+    void find_and_print(const GraphT& g, boost::string_ref name) {
+    ```
 
 1.  现在我们将编写代码来获取所有顶点的迭代器：
 
-    [PRE6]
+    ```cpp
+        typedef typename boost::graph_traits<graph_type>
+                ::vertex_iterator vert_it_t;
+
+        vert_it_t it, end;
+        boost::tie(it, end) = boost::vertices(g);
+    ```
 
 1.  是时候运行搜索以查找所需的顶点了：
 
-    [PRE7]
+    ```cpp
+        typedef boost::graph_traits<graph_type>::vertex_descriptor desc_t;
+        for (; it != end; ++ it) {
+            desc_t desc = *it;
+            if (boost::get(boost::vertex_bundle, g)[desc] 
+                     == name.data()) {
+                break;
+            }
+        }
+        assert(it != end);
+        std::cout << name << '\n';
+    } /* find_and_print */
+    ```
 
 ## 它是如何工作的...
 
-在第1步，我们描述了我们的图必须看起来像什么以及它必须基于什么类型。`boost::adjacency_list`是一个表示图作为二维结构的类，其中第一个维度包含顶点，第二个维度包含该顶点的边。`boost::adjacency_list`必须是表示图的默认选择；它适用于大多数情况。
+在第 1 步，我们描述了我们的图必须看起来像什么以及它必须基于什么类型。`boost::adjacency_list`是一个表示图作为二维结构的类，其中第一个维度包含顶点，第二个维度包含该顶点的边。`boost::adjacency_list`必须是表示图的默认选择；它适用于大多数情况。
 
-第一个模板参数`boost::adjacency_list`描述了用于表示每个顶点的边列表的结构；第二个描述了存储顶点的结构。我们可以使用特定的选择器为这些结构选择不同的STL容器，如下表所示：
+第一个模板参数`boost::adjacency_list`描述了用于表示每个顶点的边列表的结构；第二个描述了存储顶点的结构。我们可以使用特定的选择器为这些结构选择不同的 STL 容器，如下表所示：
 
 | 选择器 | STL 容器 |
 | --- | --- |
@@ -97,9 +153,9 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 第五个模板参数描述了将用作顶点的数据类型。在我们的例子中，我们选择了`std::string`。我们也可以支持边的数据类型，并将其作为模板参数提供。
 
-第2步和第3步是微不足道的，但在第4步，您将看到一种非可移植的方式来加快图构建。在我们的例子中，我们使用`std::vector`作为存储顶点的容器，因此我们可以强制它为所需数量的顶点保留内存。这导致在将顶点插入图时，内存分配/释放和复制操作更少。这一步是非可移植的，因为它高度依赖于`boost::adjacency_list`的当前实现以及存储顶点的所选容器类型。
+第 2 步和第 3 步是微不足道的，但在第 4 步，您将看到一种非可移植的方式来加快图构建。在我们的例子中，我们使用`std::vector`作为存储顶点的容器，因此我们可以强制它为所需数量的顶点保留内存。这导致在将顶点插入图时，内存分配/释放和复制操作更少。这一步是非可移植的，因为它高度依赖于`boost::adjacency_list`的当前实现以及存储顶点的所选容器类型。
 
-在第4步，我们看到如何将顶点添加到图中。注意`boost::graph_traits<graph_type>`的使用。`boost::graph_traits`类用于获取特定于图类型的类型。我们将在本章后面看到其用法和一些特定于图类型的描述。第5步展示了我们需要做什么来通过边连接顶点。
+在第 4 步，我们看到如何将顶点添加到图中。注意`boost::graph_traits<graph_type>`的使用。`boost::graph_traits`类用于获取特定于图类型的类型。我们将在本章后面看到其用法和一些特定于图类型的描述。第 5 步展示了我们需要做什么来通过边连接顶点。
 
 ### 注意
 
@@ -107,9 +163,9 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 `boost::add_edge(ansic, guru, edge_t(initialization_parameters), graph)`
 
-注意，在第6步中，图类型是一个`template`参数。这建议为了实现更好的代码重用并使此函数能够与其它图类型一起工作。
+注意，在第 6 步中，图类型是一个`template`参数。这建议为了实现更好的代码重用并使此函数能够与其它图类型一起工作。
 
-在第7步，我们看到如何遍历图中的所有顶点。顶点迭代器的类型来自`boost::graph_traits`。函数`boost::tie`是`Boost.Tuple`的一部分，用于从元组中获取值到变量中。因此，调用`boost::tie(it, end) = boost::vertices(g)`将`begin`迭代器放入`it`变量中，将`end`迭代器放入`end`变量中。
+在第 7 步，我们看到如何遍历图中的所有顶点。顶点迭代器的类型来自`boost::graph_traits`。函数`boost::tie`是`Boost.Tuple`的一部分，用于从元组中获取值到变量中。因此，调用`boost::tie(it, end) = boost::vertices(g)`将`begin`迭代器放入`it`变量中，将`end`迭代器放入`end`变量中。
 
 这可能让你感到惊讶，但顶点迭代器的解引用并不返回顶点数据。相反，它返回顶点描述符 `desc`，可以在 `boost::get(boost::vertex_bundle, g)[desc]` 中使用以获取顶点数据，就像我们在第 8 步中所做的那样。顶点描述符类型在许多 `Boost.Graph` 函数中使用；我们在第 5 步的边构造函数中看到了它的使用。
 
@@ -121,7 +177,9 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 `Boost.Graph` 库不是 C++11 的一部分，也不会成为 C++1y 的一部分。当前的实现不支持 C++11 功能。如果我们使用的是难以复制的顶点，我们可以使用以下技巧来提高速度：
 
-[PRE8]
+```cpp
+vertex_descriptor desc = boost::add_vertex(graph);boost::get(boost::vertex_bundle, g_)[desc] = std::move(vertex_data);
+```
 
 它避免了 `boost::add_vertex(vertex_data, graph)` 的复制构造，而是使用带有移动赋值的默认构造。
 
@@ -131,7 +189,7 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 +   阅读关于 *可视化图* 的食谱可以帮助你更轻松地处理图。你也可以考虑阅读以下链接中的官方文档：
 
-    [http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_contents.html](http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_contents.html)
+    [`www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_contents.html`](http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_contents.html)
 
 # 可视化图
 
@@ -149,15 +207,70 @@ Boost 是一个庞大的库集合。其中一些库很小，适合日常使用�
 
 1.  让我们像前一个食谱中那样为 `graph_type` 编写 `std::ostream` 操作符：
 
-    [PRE9]
+    ```cpp
+    #include <boost/graph/graphviz.hpp>
+    std::ostream& operator<<(std::ostream& out, const graph_type& g) {
+        detail::vertex_writer<graph_type> vw(g);
+        boost::write_graphviz(out, g, vw);
+        return out;
+    }
+    ```
 
 1.  在前面的步骤中使用到的 `detail::vertex_writer` 结构必须定义为以下内容：
 
-    [PRE10]
+    ```cpp
+    namespace detail {
+
+        template <class GraphT>
+        class vertex_writer {
+            const GraphT& g_;
+
+        public:
+            explicit vertex_writer(const GraphT& g)
+                : g_(g)
+            {}
+
+            template <class VertexDescriptorT>
+            void operator()(std::ostream& out, 
+               const VertexDescriptorT& d) const 
+            {
+               out << " [label=\""
+                   << boost::get(boost::vertex_bundle, g_)[d] 
+                   << "\"]"; 
+            }
+        }; // vertex_writer
+
+    } // namespace detail
+    ```
 
 就这些了。现在，如果我们使用 `std::cout << graph;` 命令可视化前一个食谱中的图，输出可以被用来使用 `dot` 命令行工具创建图形图片：
 
-[PRE11]
+```cpp
+$ dot -Tpng -o dot.png
+
+digraph G {
+
+0 [label="C++"];
+
+1 [label="STL"];
+
+2 [label="Boost"];
+
+3 [label="C++ guru"];
+
+4 [label="C"];
+
+0->1 ;
+
+1->2 ;
+
+2->3 ;
+
+4->3 ;
+
+}
+
+```
 
 前一个命令的输出如图所示：
 
@@ -181,9 +294,9 @@ C++11 不包含 `Boost.Graph` 或图形可视化的工具。但你不必担心�
 
 +   *与图一起工作* 的配方包含有关 `Boost.Graphs` 构造的信息。
 
-+   你可以在 [http://www.graphviz.org/](http://www.graphviz.org/) 找到关于 DOT 格式和 Graphviz 的很多信息。
++   你可以在 [`www.graphviz.org/`](http://www.graphviz.org/) 找到关于 DOT 格式和 Graphviz 的很多信息。
 
-+   Boost 的官方文档 `Boost.Graph` 库包含多个示例和有用的信息，可以在 [http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_](http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_)[contents.html](http://contents.html) 找到。
++   Boost 的官方文档 `Boost.Graph` 库包含多个示例和有用的信息，可以在 [`www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_`](http://www.boost.org/doc/libs/1_53_0/libs/graph/doc/table_of_)[contents.html](http://contents.html) 找到。
 
 # 使用真正的随机数生成器
 
@@ -201,19 +314,35 @@ C++11 不包含 `Boost.Graph` 或图形可视化的工具。但你不必担心�
 
 1.  我们需要包含以下头文件：
 
-    [PRE12]
+    ```cpp
+    #include <boost/config.hpp>
+    #include <boost/random/random_device.hpp>
+    #include <boost/random/uniform_int_distribution.hpp>
+    ```
 
 1.  高级随机数提供者在不同的平台上有不同的名称：
 
-    [PRE13]
+    ```cpp
+        static const std::string provider =
+    #ifdef BOOST_WINDOWS
+            "Microsoft Strong Cryptographic Provider"
+    #else
+            "/dev/urandom"
+    #endif
+        ;
+    ```
 
 1.  现在我们已经准备好使用 `Boost.Random` 初始化生成器：
 
-    [PRE14]
+    ```cpp
+        boost::random_device device(provider);
+    ```
 
 1.  让我们获取一个在 1000 到 65535 之间返回值的均匀分布：
 
-    [PRE15]
+    ```cpp
+        boost::random::uniform_int_distribution<unsigned short> random(1000);
+    ```
 
 就这样。现在我们可以使用 `random(device)` 调用来获取真正的随机数。
 
@@ -237,7 +366,7 @@ C++11 支持不同的分布类和生成器。您将在 `std::` 命名空间中�
 
 +   官方文档包含了一个完整的生成器和分布列表及其描述；它可在以下链接中找到：
 
-    [http://www.boost.org/doc/libs/1_53_0/doc/html](http://www.boost.org/doc/libs/1_53_0/doc/html) [/boost_random.html](http:///boost_random.html)
+    [`www.boost.org/doc/libs/1_53_0/doc/html`](http://www.boost.org/doc/libs/1_53_0/doc/html) [/boost_random.html](http:///boost_random.html)
 
 # 使用可移植的数学函数
 
@@ -255,15 +384,30 @@ C++11 支持不同的分布类和生成器。您将在 `std::` 命名空间中�
 
 1.  我们需要以下头文件：
 
-    [PRE16]
+    ```cpp
+    #include <boost/math/special_functions.hpp>
+    #include <cassert>
+    ```
 
 1.  断言无穷大和 NaN 可以这样做：
 
-    [PRE17]
+    ```cpp
+    template <class T>
+    void check_float_inputs(T value) {
+        assert(!boost::math::isinf(value));
+        assert(!boost::math::isnan(value));
+    ```
 
 1.  使用以下代码来更改符号：
 
-    [PRE18]
+    ```cpp
+        if (boost::math::signbit(value)) {
+            value = boost::math::changesign(value);
+        }
+
+        // ...
+    } // check_float_inputs
+    ```
 
 就这些！现在我们可以检查 `check_float_inputs(std::sqrt(-1.0))` 和 `check_float_inputs(std::numeric_limits<double>::max() * 2.0)` 将导致断言。
 
@@ -289,13 +433,22 @@ C99 包含了本食谱中描述的所有函数。为什么在 Boost 中需要它
 
 ## 参见
 
-+   Boost 的官方文档包含许多有趣的示例和教程，这些可以帮助你熟悉 `Boost.Math`；浏览到 [http://www.boost.org/doc/libs/1_53_0/libs/math/doc/html/index.html](http://www.boost.org/doc/libs/1_53_0/libs/math/doc/html/index.html)
++   Boost 的官方文档包含许多有趣的示例和教程，这些可以帮助你熟悉 `Boost.Math`；浏览到 [`www.boost.org/doc/libs/1_53_0/libs/math/doc/html/index.html`](http://www.boost.org/doc/libs/1_53_0/libs/math/doc/html/index.html)
 
 # 编写测试用例
 
 本食谱和下一个食谱致力于自动测试 `Boost.Test` 库，该库被许多 Boost 库使用。让我们动手实践，为我们的类编写一些测试。
 
-[PRE19]
+```cpp
+#include <stdexcept>
+struct foo {
+    int val_;
+
+    operator int() const;
+    bool is_not_null() const;
+    void throws() const; // throws(std::logic_error)
+};
+```
 
 ## 准备工作
 
@@ -307,55 +460,82 @@ C99 包含了本食谱中描述的所有函数。为什么在 Boost 中需要它
 
 1.  要使用它，我们需要定义宏并包含以下头文件：
 
-    [PRE20]
+    ```cpp
+    #define BOOST_TEST_MODULE test_module_name
+    #include <boost/test/unit_test.hpp>
+    ```
 
 1.  每组测试都必须在测试用例中编写：
 
-    [PRE21]
+    ```cpp
+    BOOST_AUTO_TEST_CASE(test_no_1) {
+    ```
 
 1.  检查某个函数是否返回`true`的结果如下：
 
-    [PRE22]
+    ```cpp
+        foo f1 = {1}, f2 = {2};
+        BOOST_CHECK(f1.is_not_null());
+    ```
 
 1.  检查不等性的实现方式如下：
 
-    [PRE23]
+    ```cpp
+        BOOST_CHECK_NE(f1, f2);
+    ```
 
 1.  检查抛出异常的代码如下：
 
-    [PRE24]
+    ```cpp
+        BOOST_CHECK_THROW(f1.throws(), std::logic_error);
+    } // BOOST_AUTO_TEST_CASE(test_no_1)
+    ```
 
 就这样！编译和链接后，我们将得到一个可执行文件，该文件将自动测试`foo`并以人类可读的格式输出测试结果。
 
 ## 它是如何工作的...
 
-编写单元测试很容易；你知道函数是如何工作的，以及在特定情况下它应该产生什么结果。所以你只需检查预期的结果是否与函数的实际输出相同。这就是我们在步骤3中所做的。我们知道`f1.is_not_null()`将返回`true`，并进行了检查。在步骤4中，我们知道`f1`不等于`f2`，因此也进行了检查。调用`f1.throws()`将产生`std::logic_error`异常，并检查是否抛出了预期类型的异常。
+编写单元测试很容易；你知道函数是如何工作的，以及在特定情况下它应该产生什么结果。所以你只需检查预期的结果是否与函数的实际输出相同。这就是我们在步骤 3 中所做的。我们知道`f1.is_not_null()`将返回`true`，并进行了检查。在步骤 4 中，我们知道`f1`不等于`f2`，因此也进行了检查。调用`f1.throws()`将产生`std::logic_error`异常，并检查是否抛出了预期类型的异常。
 
-在步骤2中，我们正在创建一个测试用例——一组检查以验证`foo`结构的正确行为。在单个源文件中我们可以有多个测试用例。例如，如果我们添加以下代码：
+在步骤 2 中，我们正在创建一个测试用例——一组检查以验证`foo`结构的正确行为。在单个源文件中我们可以有多个测试用例。例如，如果我们添加以下代码：
 
-[PRE25]
+```cpp
+BOOST_AUTO_TEST_CASE(test_no_2) {
+    foo f1 = {1}, f2 = {2};
+    BOOST_REQUIRE_NE(f1, f2);
+    // ...
+} // BOOST_AUTO_TEST_CASE(test_no_2)
+```
 
 此代码将与`test_no_1`测试用例一起运行。传递给`BOOST_AUTO_TEST_CASE`宏的参数只是测试用例的唯一名称，在出错时会显示。
 
-[PRE26]
+```cpp
+Running 2 test cases...
+main.cpp(15): error in "test_no_1": check f1.is_not_null() failed
+main.cpp(17): error in "test_no_1": check f1 != f2 failed [0 == 0]
+main.cpp(19): error in "test_no_1": exception std::logic_error is expected
+main.cpp(24): fatal error in "test_no_2": critical check f1 != f2 failed [0 == 0]
+
+*** 4 failures detected in test suite "test_module_name"
+```
 
 `BOOST_REQUIRE_*`和`BOOST_CHECK_*`宏之间有一个小的区别。如果`BOOST_REQUIRE_*`宏检查失败，当前测试用例的执行将停止，`Boost.Test`将运行下一个测试用例。然而，失败的`BOOST_CHECK_*`不会停止当前测试用例的执行。
 
-步骤1需要额外的注意。注意`BOOST_TEST_MODULE`宏定义。这个宏必须在包含`Boost.Test`头文件之前定义，否则程序链接将失败。更多信息可以在本食谱的“也见”部分找到。
+步骤 1 需要额外的注意。注意`BOOST_TEST_MODULE`宏定义。这个宏必须在包含`Boost.Test`头文件之前定义，否则程序链接将失败。更多信息可以在本食谱的“也见”部分找到。
 
 ## 还有更多...
 
-一些读者可能会想，“为什么我们在步骤4中写`BOOST_CHECK_NE(f1, f2)`而不是`BOOST_CHECK(f1 != f2)`？”答案很简单：步骤4中的宏提供了更易读和更详细的输出。
+一些读者可能会想，“为什么我们在步骤 4 中写`BOOST_CHECK_NE(f1, f2)`而不是`BOOST_CHECK(f1 != f2)`？”答案很简单：步骤 4 中的宏提供了更易读和更详细的输出。
 
-C++11缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测试C++11代码。记住，你拥有的测试越多，你得到的代码就越可靠！
+C++11 缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测试 C++11 代码。记住，你拥有的测试越多，你得到的代码就越可靠！
 
 ## 也见
 
 +   “在一个测试模块中组合多个测试用例”食谱中包含有关测试和`BOOST_TEST_MODULE`宏的更多信息
 
-+   请参阅Boost的官方文档以获取完整的测试宏列表和`Boost.Test`高级特性的信息；它可在以下链接中找到：
++   请参阅 Boost 的官方文档以获取完整的测试宏列表和`Boost.Test`高级特性的信息；它可在以下链接中找到：
 
-    [http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/index.html](http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/index.html)
+    [`www.boost.org/doc/libs/1_53_0/libs/test/doc/html/index.html`](http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/index.html)
 
 # 在一个测试模块中组合多个测试用例
 
@@ -365,7 +545,7 @@ C++11缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测
 
 ## 准备工作
 
-此菜谱需要具备基本的C++知识。此菜谱部分重用了前一个菜谱中的代码，并且还需要链接到`boost_unit_test_framework`库的静态版本。
+此菜谱需要具备基本的 C++知识。此菜谱部分重用了前一个菜谱中的代码，并且还需要链接到`boost_unit_test_framework`库的静态版本。
 
 ## 如何做到这一点...
 
@@ -373,11 +553,30 @@ C++11缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测
 
 1.  在前一个菜谱的`main.cpp`中的所有头文件中，只留下这两行：
 
-    [PRE27]
+    ```cpp
+    #define BOOST_TEST_MODULE test_module_name
+    #include <boost/test/unit_test.hpp>
+    ```
 
 1.  让我们将前一个示例中的测试用例移动到两个不同的源文件中：
 
-    [PRE28]
+    ```cpp
+    // developer1.cpp
+    #include <boost/test/unit_test.hpp>
+    #include "foo.hpp"
+    BOOST_AUTO_TEST_CASE(test_no_1) {
+        // ...
+    }
+
+    ///////////////////////////////////////////////////////////
+
+    // developer2.cpp
+    #include <boost/test/unit_test.hpp>
+    #include "foo.hpp"
+    BOOST_AUTO_TEST_CASE(test_no_2) {
+        // ...
+    }
+    ```
 
 就这样！因此，编译和链接所有源文件和两个测试用例将在程序执行时工作。
 
@@ -391,65 +590,119 @@ C++11缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测
 
 `Boost.Test`库之所以好，是因为它能够选择性地运行测试。我们可以选择要运行的测试，并将它们作为命令行参数传递。例如，以下命令将只运行`test_no_1`测试用例：
 
-[PRE29]
+```cpp
+./testing_advanced –run=test_no_1
+
+```
 
 以下命令将运行两个测试用例：
 
-[PRE30]
+```cpp
+./testing_advanced –run=test_no_1,test_no_2
 
-不幸的是，C++11标准没有内置的测试支持，而且看起来C++1y也不会采用`Boost.Test`的类和方法。
+```
+
+不幸的是，C++11 标准没有内置的测试支持，而且看起来 C++1y 也不会采用`Boost.Test`的类和方法。
 
 ## 相关内容
 
-+   *编写测试用例* 菜单包含有关`Boost.Test`库的更多信息。有关`Boost.Test`的更多信息，请阅读Boost的官方文档，网址为[http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/utf.html](http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/utf.html)。
++   *编写测试用例* 菜单包含有关`Boost.Test`库的更多信息。有关`Boost.Test`的更多信息，请阅读 Boost 的官方文档，网址为[`www.boost.org/doc/libs/1_53_0/libs/test/doc/html/utf.html`](http://www.boost.org/doc/libs/1_53_0/libs/test/doc/html/utf.html)。
 
-+   勇敢的读者可以查看Boost库中的一些测试用例。这些测试用例位于`boost`文件夹中的`libs`子文件夹中。例如，`Boost.LexicalCast`测试用例位于`boost_1_53_0\libs\conversion\test`。
++   勇敢的读者可以查看 Boost 库中的一些测试用例。这些测试用例位于`boost`文件夹中的`libs`子文件夹中。例如，`Boost.LexicalCast`测试用例位于`boost_1_53_0\libs\conversion\test`。
 
 # 操作图像
 
-我给你留了一些真正美味的东西作为甜点——Boost的**通用图像库**（**GIL**），它允许你操作图像而无需过多关注图像格式。
+我给你留了一些真正美味的东西作为甜点——Boost 的**通用图像库**（**GIL**），它允许你操作图像而无需过多关注图像格式。
 
 让我们用它做一些简单而有趣的事情；让我们写一个程序，将任何图片取反。
 
 ## 准备工作
 
-这个配方需要基本的C++、模板和`Boost.Variant`知识。示例需要链接PNG库。
+这个配方需要基本的 C++、模板和`Boost.Variant`知识。示例需要链接 PNG 库。
 
 ## 如何做...
 
-为了简单起见，我们将只处理PNG图像。
+为了简单起见，我们将只处理 PNG 图像。
 
 1.  让我们从包含头文件开始：
 
-    [PRE31]
+    ```cpp
+    #include <boost/gil/gil_all.hpp>
+    #include <boost/gil/extension/io/png_dynamic_io.hpp>
+    #include <string>
+    ```
 
 1.  现在我们需要定义我们希望与之工作的图像类型：
 
-    [PRE32]
+    ```cpp
+        typedef boost::mpl::vector<
+                boost::gil::gray8_image_t,
+                boost::gil::gray16_image_t,
+                boost::gil::rgb8_image_t,
+                boost::gil::rgb16_image_t
+        > img_types;
+    ```
 
-1.  以这种方式实现打开现有PNG图像：
+1.  以这种方式实现打开现有 PNG 图像：
 
-    [PRE33]
+    ```cpp
+        std::string file_name(argv[1]);
+        boost::gil::any_image<img_types> source;
+        boost::gil::png_read_image(file_name, source);
+    ```
 
 1.  我们需要将操作应用于图片，如下所示：
 
-    [PRE34]
+    ```cpp
+        boost::gil::apply_operation(
+            view(source),
+            negate()
+        );
+    ```
 
 1.  以下代码行将帮助你写入图像：
 
-    [PRE35]
+    ```cpp
+        boost::gil::png_write_view("negate_" + file_name, 
+          const_view(source));
+    ```
 
 1.  让我们看看修改操作：
 
-    [PRE36]
+    ```cpp
+    struct negate {
+        typedef void result_type; // required
+
+        template <class View>
+        void operator()(const View& source) const {
+            // ...
+        }
+    }; // negate
+    ```
 
 1.  `operator()`的主体包括获取通道类型：
 
-    [PRE37]
+    ```cpp
+    typedef typename View::value_type value_type;
+    typedef typename boost::gil::channel_type<value_type>::type 
+        channel_t;
+    ```
 
 1.  它也遍历像素：
 
-    [PRE38]
+    ```cpp
+    const std::size_t channels 
+        = boost::gil::num_channels<View>::value;
+    const channel_t max_val = (std::numeric_limits<channel_t>::max)();
+
+    for (unsigned int y = 0; y < source.height(); ++y) {
+        for (unsigned int x = 0; x < source.width(); ++x) {
+            for (unsigned int c = 0; c < channels; ++c) {
+                source(x, y)[c] = max_val - source(x, y)[c];
+            }
+        }
+    }
+    ```
 
 现在我们来看看我们程序的结果：
 
@@ -461,32 +714,32 @@ C++11缺乏对单元测试的支持。然而，可以使用`Boost.Test`库来测
 
 ## 它是如何工作的...
 
-在第2步中，我们正在描述我们希望与之工作的图像类型。这些图像是每像素8位和16位的灰度图像以及每像素8位和16位的RGB图片。
+在第 2 步中，我们正在描述我们希望与之工作的图像类型。这些图像是每像素 8 位和 16 位的灰度图像以及每像素 8 位和 16 位的 RGB 图片。
 
 `boost::gil::any_image<img_types>`类是一种`Boost.Variant`，可以持有`img_types`变量之一的图像。正如你可能已经猜到的，`boost::gil::png_read_image`将图像读取到图像变量中。
 
-第4步中的`boost::gil::apply_operation`函数几乎等于`Boost.Variant`库中的`boost::apply_visitor`。注意`view(source)`的使用。`boost::gil::view`函数在图像周围构建一个轻量级包装器，将其解释为二维像素数组。
+第 4 步中的`boost::gil::apply_operation`函数几乎等于`Boost.Variant`库中的`boost::apply_visitor`。注意`view(source)`的使用。`boost::gil::view`函数在图像周围构建一个轻量级包装器，将其解释为二维像素数组。
 
-你还记得我们为`Boost.Variant`从`boost::static_visitor`派生访问者吗？当我们使用GIL的变体版本时，我们需要在`visitor`内部创建一个`result_type`类型定义。你可以在第6步中看到它。
+你还记得我们为`Boost.Variant`从`boost::static_visitor`派生访问者吗？当我们使用 GIL 的变体版本时，我们需要在`visitor`内部创建一个`result_type`类型定义。你可以在第 6 步中看到它。
 
-一点理论：图像由称为像素的点组成。单个图像具有相同类型的像素。然而，不同图像的像素可能在通道数和单通道颜色位上有所不同。通道表示一种主颜色。在RGB图像的情况下，我们将有一个由三个通道组成的像素——红色、绿色和蓝色。在灰度图像的情况下，我们将有一个表示灰度的单个通道。
+一点理论：图像由称为像素的点组成。单个图像具有相同类型的像素。然而，不同图像的像素可能在通道数和单通道颜色位上有所不同。通道表示一种主颜色。在 RGB 图像的情况下，我们将有一个由三个通道组成的像素——红色、绿色和蓝色。在灰度图像的情况下，我们将有一个表示灰度的单个通道。
 
-回到我们的图像。在第2步中，我们描述了我们希望与之工作的图像类型。在第3步中，其中一种图像类型从文件中读取并存储在源变量中。在第4步中，为所有图像类型实例化了`negate`访问者的`operator()`方法。
+回到我们的图像。在第 2 步中，我们描述了我们希望与之工作的图像类型。在第 3 步中，其中一种图像类型从文件中读取并存储在源变量中。在第 4 步中，为所有图像类型实例化了`negate`访问者的`operator()`方法。
 
-在第7步中，我们可以看到如何从图像视图中获取通道类型。
+在第 7 步中，我们可以看到如何从图像视图中获取通道类型。
 
-在第8步中，我们遍历像素和通道并将它们取反。取反是通过`max_val - source(x, y)[c]`完成的，并将结果写回图像视图。
+在第 8 步中，我们遍历像素和通道并将它们取反。取反是通过`max_val - source(x, y)[c]`完成的，并将结果写回图像视图。
 
-我们在步骤5中写回一个图像。
+我们在步骤 5 中写回一个图像。
 
 ## 还有更多...
 
-C++11没有内置处理图像的方法。
+C++11 没有内置处理图像的方法。
 
 `Boost.GIL`库运行速度快且效率高。编译器对其代码进行了很好的优化，我们甚至可以使用一些`Boost.GIL`方法来帮助优化器展开循环。但本章只讨论了库的一些基础知识，所以现在是时候停止了。
 
 ## 参见
 
-+   关于`Boost.GIL`的更多信息可以在Boost的官方文档中找到；请访问[http://www.boost.org/doc/libs/1_53_0/libs/gil/doc/index.html](http://www.boost.org/doc/libs/1_53_0/libs/gil/doc/index.html)
++   关于`Boost.GIL`的更多信息可以在 Boost 的官方文档中找到；请访问[`www.boost.org/doc/libs/1_53_0/libs/gil/doc/index.html`](http://www.boost.org/doc/libs/1_53_0/libs/gil/doc/index.html)
 
-+   参见[第1章](ch01.html "第1章。开始编写您的应用程序")中的*在变量/容器中存储多个选定的类型*配方，以获取有关`Boost.Variant`库的更多信息
++   参见第一章中的*在变量/容器中存储多个选定的类型*配方，以获取有关`Boost.Variant`库的更多信息

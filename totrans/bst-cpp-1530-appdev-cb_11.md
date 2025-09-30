@@ -1,4 +1,4 @@
-# 第11章。与系统一起工作
+# 第十一章。与系统一起工作
 
 在本章中，我们将介绍以下内容：
 
@@ -18,19 +18,19 @@
 
 # 简介
 
-每个操作系统都有许多系统调用，以略微不同的方式执行几乎相同的事情。这些调用在性能上有所不同，并且在不同操作系统之间有所不同。Boost为这些调用提供了可移植和安全的包装器。了解这些包装器对于编写良好的程序至关重要。
+每个操作系统都有许多系统调用，以略微不同的方式执行几乎相同的事情。这些调用在性能上有所不同，并且在不同操作系统之间有所不同。Boost 为这些调用提供了可移植和安全的包装器。了解这些包装器对于编写良好的程序至关重要。
 
-本章致力于操作系统的工作。我们在[第6章](ch06.html "第6章。操作任务")“操作任务”中看到了如何处理网络通信和信号。在本章中，我们将更深入地研究文件系统以及创建和删除文件。我们将了解数据如何在不同的系统进程之间传递，如何以最大速度读取文件，以及如何执行其他技巧。
+本章致力于操作系统的工作。我们在第六章“操作任务”中看到了如何处理网络通信和信号。在本章中，我们将更深入地研究文件系统以及创建和删除文件。我们将了解数据如何在不同的系统进程之间传递，如何以最大速度读取文件，以及如何执行其他技巧。
 
 # 列出目录中的文件
 
-有STL函数和类可以读取和写入文件中的数据。但没有函数可以列出目录中的文件，获取文件类型，或获取文件访问权限。
+有 STL 函数和类可以读取和写入文件中的数据。但没有函数可以列出目录中的文件，获取文件类型，或获取文件访问权限。
 
-让我们看看如何使用Boost来修复这样的不公正。我们将创建一个程序，列出当前目录中的文件名、写访问权限和文件类型。
+让我们看看如何使用 Boost 来修复这样的不公正。我们将创建一个程序，列出当前目录中的文件名、写访问权限和文件类型。
 
 ## 准备工作
 
-一些基本的C++知识就足够使用此配方了。
+一些基本的 C++知识就足够使用此配方了。
 
 此配方需要链接到`boost_system`和`boost_filesystem`库。
 
@@ -40,51 +40,96 @@
 
 1.  我们需要包含以下两个头文件：
 
-    [PRE0]
+    ```cpp
+    #include <boost/filesystem/operations.hpp>
+    #include <iostream>
+    ```
 
 1.  现在需要指定一个目录：
 
-    [PRE1]
+    ```cpp
+    int main() {
+        boost::filesystem::directory_iterator begin("./");
+    ```
 
 1.  指定目录后，遍历其内容：
 
-    [PRE2]
+    ```cpp
+        boost::filesystem::directory_iterator end;
+        for (; begin != end; ++ begin) {
+    ```
 
 1.  下一步是获取文件信息：
 
-    [PRE3]
+    ```cpp
+            boost::filesystem::file_status fs =
+                boost::filesystem::status(*begin);
+    ```
 
 1.  现在输出文件信息：
 
-    [PRE4]
+    ```cpp
+            switch (fs.type()) {
+            case boost::filesystem::regular_file:
+                std::cout << "FILE       "; 
+                break;
+            case boost::filesystem::symlink_file:
+                std::cout << "SYMLINK    "; 
+                break;
+            case boost::filesystem::directory_file:
+                std::cout << "DIRECTORY  "; 
+                break;
+            default:
+                std::cout << "OTHER      "; 
+                break;
+            }
+            if (fs.permissions() & boost::filesystem::owner_write) {
+                std::cout << "W ";
+            } else {
+                std::cout << "  ";
+            }
+    ```
 
 1.  最后一步将是输出文件名：
 
-    [PRE5]
+    ```cpp
+            std::cout << *begin << '\n';
+        } /*for*/
+    } /*main*/
+    ```
 
 就这样。现在，如果我们运行程序，它将输出类似以下内容：
 
-[PRE6]
+```cpp
+FILE W "./main.o"
+FILE W "./listing_files"
+DIRECTORY W "./some_directory"
+FILE W "./Makefile"
+```
 
 ## 它是如何工作的...
 
 `Boost.Filesystem`的函数和类只是围绕系统特定的函数来处理文件。
 
-注意第2步中`/`的使用。POSIX系统使用斜杠来指定路径；默认情况下，Windows使用反斜杠。然而，Windows也理解正斜杠，所以`./`在所有流行的操作系统上都会工作，它表示“当前目录”。
+注意第 2 步中`/`的使用。POSIX 系统使用斜杠来指定路径；默认情况下，Windows 使用反斜杠。然而，Windows 也理解正斜杠，所以`./`在所有流行的操作系统上都会工作，它表示“当前目录”。
 
-看看第3步，我们正在默认构造`boost::filesystem::directory_iterator`类。它就像一个`std::istream_iterator`类，在默认构造时充当`end`迭代器。
+看看第 3 步，我们正在默认构造`boost::filesystem::directory_iterator`类。它就像一个`std::istream_iterator`类，在默认构造时充当`end`迭代器。
 
-第4步有点棘手，不是因为这个函数难以理解，而是因为发生了许多转换。取消引用 `begin` 迭代器返回 `boost::filesystem::directory_entry`，它被隐式转换为 `boost::filesystem::path`，用作 `boost::filesystem::status` 函数的参数。实际上，我们可以做得更好：
+第 4 步有点棘手，不是因为这个函数难以理解，而是因为发生了许多转换。取消引用 `begin` 迭代器返回 `boost::filesystem::directory_entry`，它被隐式转换为 `boost::filesystem::path`，用作 `boost::filesystem::status` 函数的参数。实际上，我们可以做得更好：
 
-[PRE7]
+```cpp
+boost::filesystem::file_status fs = begin->status();
+```
 
 ### 小贴士
 
 仔细阅读参考文档以避免不必要的隐式转换。
 
-第5步很明显，所以我们正在转向第6步，在那里再次发生隐式路径转换。一个更好的解决方案将是以下：
+第 5 步很明显，所以我们正在转向第 6 步，在那里再次发生隐式路径转换。一个更好的解决方案将是以下：
 
-[PRE8]
+```cpp
+std::cout << begin->path() << '\n';
+```
 
 在这里，`begin->path()` 返回一个对包含在 `boost::filesystem::directory_entry` 中的 `boost::filesystem::path` 变量的常量引用。
 
@@ -96,17 +141,20 @@
 
 +   *删除和创建文件及目录* 菜谱将展示 `Boost.Filesystem` 的另一个使用示例。
 
-+   读取Boost的官方文档以获取关于`Boost.Filesystem`更多功能的信息；它可在以下链接找到：
++   读取 Boost 的官方文档以获取关于`Boost.Filesystem`更多功能的信息；它可在以下链接找到：
 
-    [http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm](http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm)。
+    [`www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm`](http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm)。
 
-+   `Boost.Filesystem` 库被提议包含在 C++1y 中。草案可在 [http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3399.html](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3399.h) 找到。
++   `Boost.Filesystem` 库被提议包含在 C++1y 中。草案可在 [`www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3399.html`](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3399.h) 找到。
 
 # 删除和创建文件及目录
 
 让我们考虑以下代码行：
 
-[PRE9]
+```cpp
+    std::ofstream ofs("dir/subdir/file.txt");
+    ofs << "Boost.Filesystem is fun!";
+```
 
 在这些行中，我们尝试在 `dir/subdir` 目录中的 `file.txt` 写入一些内容。如果没有这样的目录，这个尝试将会失败。与文件系统交互的能力对于编写良好的工作代码是必要的。
 
@@ -124,53 +172,82 @@
 
 1.  和往常一样，我们需要包含一些头文件：
 
-    [PRE10]
+    ```cpp
+    #include <boost/filesystem/operations.hpp>
+    #include <cassert>
+    #include <fstream>
+    ```
 
 1.  现在我们需要一个变量来存储错误（如果有）：
 
-    [PRE11]
+    ```cpp
+    int main() {
+        boost::system::error_code error;
+    ```
 
 1.  如果需要，我们还将创建目录，如下所示：
 
-    [PRE12]
+    ```cpp
+        boost::filesystem::create_directories(
+            "dir/subdir", error);
+        assert(!error);
+    ```
 
 1.  然后我们将向文件写入数据：
 
-    [PRE13]
+    ```cpp
+        std::ofstream ofs("dir/subdir/file.txt");
+        ofs << "Boost.Filesystem is fun!";
+        assert(ofs);
+        ofs.close();
+    ```
 
 1.  我们需要尝试创建 `symlink`：
 
-    [PRE14]
+    ```cpp
+        boost::filesystem::create_directory_symlink("dir/subdir", "symlink", error);
+    ```
 
 1.  然后我们需要检查文件是否可以通过`symlink`访问：
 
-    [PRE15]
+    ```cpp
+        if (!error) {
+            std::cerr << "Symlink created\n";
+            assert(boost::filesystem::exists("symlink/file.txt"));
+    ```
 
 1.  或者，如果`symlink`创建失败，则删除创建的文件：
 
-    [PRE16]
+    ```cpp
+        } else {
+            std::cerr << "Failed to create a symlink\n";
+            boost::filesystem::remove("dir/subdir/file.txt", error);
+            assert(!error);
+        } /*if (!error)*/
+    } /*main*/
+    ```
 
 ## 它是如何工作的...
 
-我们在几乎所有关于*操作任务*的配方中看到了`boost::system::error_code`的使用。它可以存储有关错误的信息，并在Boost库中得到广泛使用。
+我们在几乎所有关于*操作任务*的配方中看到了`boost::system::error_code`的使用。它可以存储有关错误的信息，并在 Boost 库中得到广泛使用。
 
 ### 注意
 
 如果你没有向`Boost.Filesystem`函数提供一个`boost::system::error_code`实例，代码将编译良好，但发生错误时，将抛出异常。通常，除非你在分配内存方面遇到问题，否则会抛出`boost::filesystem::filesystem_error`异常。
 
-仔细查看第3步。我们使用了`boost::filesystem::create_directories`函数，而不是`boost::filesystem::create_directory`，因为后者不能创建子目录。
+仔细查看第 3 步。我们使用了`boost::filesystem::create_directories`函数，而不是`boost::filesystem::create_directory`，因为后者不能创建子目录。
 
 剩余步骤很容易理解，不应引起任何麻烦。
 
 ## 还有更多...
 
-`boost::system::error_code`类是C++11的一部分，可以在`std::`命名空间中的`<system_error>`头文件中找到。`Boost.Filesystem`的类不是C++11的一部分，但它们被提议包含在C++1y中，预计将在2014年准备好。
+`boost::system::error_code`类是 C++11 的一部分，可以在`std::`命名空间中的`<system_error>`头文件中找到。`Boost.Filesystem`的类不是 C++11 的一部分，但它们被提议包含在 C++1y 中，预计将在 2014 年准备好。
 
 最后，对那些将要使用`Boost.Filesystem`的人有一个小建议；当文件系统操作中发生的错误是常规的，使用`boost::system::error_codes`。否则，捕获异常更可取且更可靠。
 
 ## 另请参阅
 
-+   *列出目录中的文件*配方还包含有关`Boost.Filesystem`的信息。阅读Boost的官方文档以获取更多信息及示例，请访问[http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm](http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm)。
++   *列出目录中的文件*配方还包含有关`Boost.Filesystem`的信息。阅读 Boost 的官方文档以获取更多信息及示例，请访问[`www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm`](http://www.boost.org/doc/libs/1_53_0/libs/filesystem/doc/index.htm)。
 
 # 快速从一个进程传递数据到另一个进程
 
@@ -180,7 +257,7 @@
 
 ## 准备工作
 
-此配方需要具备C++的基本知识。还需要了解原子变量（有关原子变量的更多信息，请参阅*另请参阅*部分）。某些平台需要链接到运行时库。
+此配方需要具备 C++的基本知识。还需要了解原子变量（有关原子变量的更多信息，请参阅*另请参阅*部分）。某些平台需要链接到运行时库。
 
 ## 如何操作...
 
@@ -188,51 +265,81 @@
 
 1.  我们需要包含以下头文件以进行进程间通信：
 
-    [PRE17]
+    ```cpp
+    #include <boost/interprocess/managed_shared_memory.hpp>
+    ```
 
 1.  在头文件、`typedef`和检查之后，将帮助我们确保原子变量可用于此示例：
 
-    [PRE18]
+    ```cpp
+    #include <boost/atomic.hpp>
+
+    typedef boost::atomic<int> atomic_t;
+    #if (BOOST_ATOMIC_INT_LOCK_FREE != 2)
+    #error "This code requires lock-free boost::atomic<int>"
+    #endif
+    ```
 
 1.  创建或获取共享内存段：
 
-    [PRE19]
+    ```cpp
+    boost::interprocess::managed_shared_memory 
+         segment(boost::interprocess::open_or_create, "shm-cache", 1024);
+    ```
 
 1.  获取或构造一个`原子`变量：
 
-    [PRE20]
+    ```cpp
+      atomic_t& atomic 
+          = *segment.find_or_construct<atomic_t> //1
+              ("shm-counter") // 2
+              (0)             // 3
+      ;
+    ```
 
 1.  以通常的方式处理`原子`变量：
 
-    [PRE21]
+    ```cpp
+        std::cout << "I have index " << ++ atomic 
+            << "\nPress any key...";
+        std::cin.get();
+    ```
 
 1.  销毁`原子`变量：
 
-    [PRE22]
+    ```cpp
+        int snapshot = -- atomic;
+        if (!snapshot) {
+            segment.destroy<atomic_t>("shm-counter");
+            boost::interprocess::shared_memory_object
+                    ::remove("shm-cache");
+        }
+    } /*main*/
+    ```
 
 那就结束了！现在如果我们同时运行这个程序的多实例，我们会看到每个新的实例都会增加它的索引值。
 
 ## 它是如何工作的...
 
-这个方法的核心理念是获取一个对所有进程可见的内存段，并在其中放置一些数据。让我们看看第3步，我们在这里检索这样一个内存段。在这里，`shm-cache`是段的名称（不同的段名称不同）；你可以给段起任何你喜欢的名字。第一个参数是`boost::interprocess::open_or_create`，这意味着`boost::interprocess::managed_shared_memory`将打开一个名为`shm-cache`的现有段，或者如果不存在，则构造它。最后一个参数是段的尺寸。
+这个方法的核心理念是获取一个对所有进程可见的内存段，并在其中放置一些数据。让我们看看第 3 步，我们在这里检索这样一个内存段。在这里，`shm-cache`是段的名称（不同的段名称不同）；你可以给段起任何你喜欢的名字。第一个参数是`boost::interprocess::open_or_create`，这意味着`boost::interprocess::managed_shared_memory`将打开一个名为`shm-cache`的现有段，或者如果不存在，则构造它。最后一个参数是段的尺寸。
 
 ### 注意
 
-分段的尺寸必须足够大，以便能够容纳`Boost.Interprocess`库特定的数据。这就是为什么我们使用了`1024`而不是`sizeof(atomic_t)`。但实际上这并不重要，因为操作系统会将这个值四舍五入到最近的更大的支持值，这通常等于或大于4千字节。
+分段的尺寸必须足够大，以便能够容纳`Boost.Interprocess`库特定的数据。这就是为什么我们使用了`1024`而不是`sizeof(atomic_t)`。但实际上这并不重要，因为操作系统会将这个值四舍五入到最近的更大的支持值，这通常等于或大于 4 千字节。
 
-第4步是一个棘手的部分，因为我们在这里同时执行多个任务。在这一步的`2`部分，我们将在段中查找或构造一个名为`shm-counter`的变量。在第4步的`3`部分，我们将提供一个参数，如果它在第2步中没有找到，这个参数将被用来初始化变量。只有在变量没有找到并且需要构造时，这个参数才会被使用，否则它将被忽略。仔细看看第二行（`1`部分）。看到对解引用操作符`*`的调用。我们这样做是因为`segment.find_or_construct<atomic_t>`返回一个指向`atomic_t`的指针，而在C++中使用裸指针是一种不良风格。
+第 4 步是一个棘手的部分，因为我们在这里同时执行多个任务。在这一步的`2`部分，我们将在段中查找或构造一个名为`shm-counter`的变量。在第 4 步的`3`部分，我们将提供一个参数，如果它在第 2 步中没有找到，这个参数将被用来初始化变量。只有在变量没有找到并且需要构造时，这个参数才会被使用，否则它将被忽略。仔细看看第二行（`1`部分）。看到对解引用操作符`*`的调用。我们这样做是因为`segment.find_or_construct<atomic_t>`返回一个指向`atomic_t`的指针，而在 C++中使用裸指针是一种不良风格。
 
 ### 注意
 
 注意，我们正在使用共享内存中的原子变量！这是必需的，因为两个或多个进程可以同时操作同一个`shm-counter`原子变量。
 
-当你与共享内存中的对象一起工作时，你必须非常小心；不要忘记销毁它们！在第6步，我们正在使用它们的名称销毁对象和段。
+当你与共享内存中的对象一起工作时，你必须非常小心；不要忘记销毁它们！在第 6 步，我们正在使用它们的名称销毁对象和段。
 
 ## 还有更多...
 
-仔细看看第2步，我们在这里检查`BOOST_ATOMIC_INT_LOCK_FREE != 2`。我们检查`atomic_t`不会使用互斥锁。这非常重要，因为通常互斥锁在共享内存中不会工作。所以如果`BOOST_ATOMIC_INT_LOCK_FREE`不等于`2`，我们将得到未定义的行为。
+仔细看看第 2 步，我们在这里检查`BOOST_ATOMIC_INT_LOCK_FREE != 2`。我们检查`atomic_t`不会使用互斥锁。这非常重要，因为通常互斥锁在共享内存中不会工作。所以如果`BOOST_ATOMIC_INT_LOCK_FREE`不等于`2`，我们将得到未定义的行为。
 
-不幸的是，C++11没有提供跨进程类，据我所知，`Boost.Interprocess`没有被提议包含在C++1y中。
+不幸的是，C++11 没有提供跨进程类，据我所知，`Boost.Interprocess`没有被提议包含在 C++1y 中。
 
 ### 注意
 
@@ -244,19 +351,19 @@
 
 +   *同步进程间通信*配方将向您介绍更多关于共享内存、进程间通信以及同步访问共享内存中的资源。
 
-+   参见第5章，多线程中的*使用原子操作快速访问公共资源*配方，以获取有关原子的更多信息。
++   参见第五章，多线程中的*使用原子操作快速访问公共资源*配方，以获取有关原子的更多信息。
 
-+   Boost的官方文档`Boost.Interprocess`也可能有所帮助；它可在[http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)找到。
++   Boost 的官方文档`Boost.Interprocess`也可能有所帮助；它可在[`www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)找到。
 
-+   如何增加管理段在[http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess/managed_memory_segments.html#interprocess.managed_memory_segments.managed_memory_segment_advanced_features.growin](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess/managed_memory_segments.html#interprocess.managed_memory_segments.managed_memory_segment_advanced_features.growin)[g_managed_memory](http://g_managed_memory)中描述。
++   如何增加管理段在[`www.boost.org/doc/libs/1_53_0/doc/html/interprocess/managed_memory_segments.html#interprocess.managed_memory_segments.managed_memory_segment_advanced_features.growin`](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess/managed_memory_segments.html#interprocess.managed_memory_segments.managed_memory_segment_advanced_features.growin)[g_managed_memory](http://g_managed_memory)中描述。
 
 # 同步进程间通信
 
-在上一个配方中，我们看到了如何创建共享内存以及如何将一些对象放入其中。现在是我们做一些有用的事情的时候了。让我们从一个例子开始，这个例子来自第5章的*创建work_queue类*配方，*多线程*，并使其适用于多个进程。在这个例子的最后，我们将得到一个可以存储不同任务并在进程间传递它们的类。
+在上一个配方中，我们看到了如何创建共享内存以及如何将一些对象放入其中。现在是我们做一些有用的事情的时候了。让我们从一个例子开始，这个例子来自第五章的*创建 work_queue 类*配方，*多线程*，并使其适用于多个进程。在这个例子的最后，我们将得到一个可以存储不同任务并在进程间传递它们的类。
 
 ## 准备工作
 
-本配方使用前一个配方中的技术。您还需要阅读第5章的*创建work_queue类*配方，*多线程*，并理解其主要思想。这个例子需要在某些平台上链接到运行时库。
+本配方使用前一个配方中的技术。您还需要阅读第五章的*创建 work_queue 类*配方，*多线程*，并理解其主要思想。这个例子需要在某些平台上链接到运行时库。
 
 ## 如何做到这一点...
 
@@ -264,43 +371,116 @@
 
 1.  本配方需要很多头文件：
 
-    [PRE23]
+    ```cpp
+    #include <boost/interprocess/managed_shared_memory.hpp>
+    #include <boost/interprocess/containers/deque.hpp>
+    #include <boost/interprocess/allocators/allocator.hpp>
+    #include <boost/interprocess/sync/interprocess_mutex.hpp>
+    #include <boost/interprocess/sync/interprocess_condition.hpp>
+    #include <boost/interprocess/sync/scoped_lock.hpp>
+
+    #include <boost/optional.hpp>
+    ```
 
 1.  现在我们需要定义我们的结构，`task_structure`，它将被用来存储任务：
 
-    [PRE24]
+    ```cpp
+    struct task_structure {
+        // ...
+    };
+    ```
 
 1.  让我们开始编写`work_queue`类：
 
-    [PRE25]
+    ```cpp
+    class work_queue {
+    public:
+        typedef task_structure task_type;
+        typedef boost::interprocess::managed_shared_memory
+            managed_shared_memory_t;
+
+        typedef boost::interprocess::allocator<
+            task_type, 
+            managed_shared_memory_t::segment_manager
+        > allocator_t;
+    ```
 
 1.  按照以下方式编写`work_queue`的成员：
 
-    [PRE26]
+    ```cpp
+    private:
+        managed_shared_memory_t segment_;
+        const allocator_t allocator_;
+
+        typedef boost::interprocess::deque<task_type, allocator_t>
+            deque_t;
+
+        typedef boost::interprocess::interprocess_mutex mutex_t;
+        typedef boost::interprocess::interprocess_condition
+            condition_t;
+        typedef boost::interprocess::scoped_lock<mutex_t>
+            scoped_lock_t;
+
+        deque_t& tasks_;
+        mutex_t& mutex_;
+        boost::interprocess::interprocess_condition& cond_;
+    ```
 
 1.  成员的初始化应如下所示：
 
-    [PRE27]
+    ```cpp
+    public:
+        explicit work_queue()
+            : segment_(
+                  boost::interprocess::open_or_create,
+                  "work-queue",
+                  1024 * 1024 * 64
+            )
+            , allocator_(segment_.get_segment_manager())
+            , tasks_(
+                *segment_.find_or_construct<deque_t>
+                  ("work-queue:deque")(allocator_)
+            )
+            , mutex_(
+                *segment_.find_or_construct<mutex_t>
+                  ("work-queue:mutex")()
+            )
+            , cond_(
+                *segment_.find_or_construct<condition_t>
+                  ("work-queue:condition")()
+            )
+        {}
+    ```
 
 1.  我们需要对`work_queue`的成员函数做一些小的修改，例如使用`scoped_lock_t`而不是原始的唯一锁：
 
-    [PRE28]
+    ```cpp
+        boost::optional<task_type> try_pop_task() {
+            boost::optional<task_type> ret;
+            scoped_lock_t lock(mutex_);
+            if (!tasks_.empty()) {
+                ret = tasks_.front();
+                tasks_.pop_front();
+            }
+            return ret;
+        }
+    ```
 
 ## 它是如何工作的...
 
-在这个菜谱中，我们几乎与第5章中“创建工作队列类”菜谱中做的是完全相同的事情，即*多线程*，但是在我们在共享内存中分配数据时，进行内存分配或使用同步原语时必须格外小心。
+在这个菜谱中，我们几乎与第五章中“创建工作队列类”菜谱中做的是完全相同的事情，即*多线程*，但是在我们在共享内存中分配数据时，进行内存分配或使用同步原语时必须格外小心。
 
 在存储具有指针或引用作为成员字段的共享内存对象时，请格外小心。我们将在下一菜谱中看到如何处理指针。
 
-看看步骤2。我们没有使用`boost::function`作为任务类型，因为它包含指针，所以在共享内存中不会工作。
+看看步骤 2。我们没有使用`boost::function`作为任务类型，因为它包含指针，所以在共享内存中不会工作。
 
-第3步之所以有趣，是因为`allocator_t`。它是一种所有容器都必须用来分配元素的分配器类型。它是一个有状态的分配器，这意味着它将与容器一起复制。此外，它不能被默认构造。
+第 3 步之所以有趣，是因为`allocator_t`。它是一种所有容器都必须用来分配元素的分配器类型。它是一个有状态的分配器，这意味着它将与容器一起复制。此外，它不能被默认构造。
 
 如果没有从共享内存段分配内存，它将不可用于其他进程；这就是为什么需要一个特定于容器的分配器的原因。
 
-第4步相当简单，除了我们只有对`tasks_`、`mutex_`和`cond_`的引用。这样做是因为对象本身是在共享内存中构建的。因此，`work_queue`只能存储它们的引用。
+第 4 步相当简单，除了我们只有对`tasks_`、`mutex_`和`cond_`的引用。这样做是因为对象本身是在共享内存中构建的。因此，`work_queue`只能存储它们的引用。
 
-在第5步中，我们正在初始化成员。这段代码对你来说很熟悉；我们在前一个菜谱中做了完全相同的事情。请注意，我们在构建时向`tasks_`提供了一个分配器实例。这是因为`allocator_t`不能由容器本身构造。
+在第 5 步中，我们正在初始化成员。这段代码对你来说很熟悉；我们在前一个菜谱中做了完全相同的事情。请注意，我们在构建时向`tasks_`提供了一个分配器实例。这是因为`allocator_t`不能由容器本身构造。
 
 ### 注意
 
@@ -308,11 +488,15 @@
 
 ## 还有更多...
 
-如前一个菜谱中提到的，C++11没有`Boost.Interprocess`中的类。此外，你不得在共享内存段中使用C++11或C++03容器。其中一些容器可能可以工作，但这种行为是不可移植的。
+如前一个菜谱中提到的，C++11 没有`Boost.Interprocess`中的类。此外，你不得在共享内存段中使用 C++11 或 C++03 容器。其中一些容器可能可以工作，但这种行为是不可移植的。
 
 如果你查看一些`<boost/interprocess/containers/*.hpp>`头文件，你会发现它们只是使用了`Boost.Containers`库中的容器：
 
-[PRE29]
+```cpp
+namespace boost { namespace interprocess {
+    using boost::container::vector;
+}}
+```
 
 `Boost.Interprocess`的容器具有`Boost.Containers`库的所有优点，包括右值引用及其在较旧编译器上的模拟。
 
@@ -322,17 +506,23 @@
 
 +   *使用共享内存中的指针*菜谱
 
-+   有关同步原语和多线程的更多信息，请参阅[第5章](ch05.html "Chapter 5. Multithreading")，*多线程*。
++   有关同步原语和多线程的更多信息，请参阅第五章，*多线程*。
 
-+   请参阅Boost官方文档中的`Boost.Interprocess`库以获取更多示例和信息；它可在以下链接中找到：
++   请参阅 Boost 官方文档中的`Boost.Interprocess`库以获取更多示例和信息；它可在以下链接中找到：
 
-    [http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)
+    [`www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)
 
 # 在共享内存中使用指针
 
-很难想象在不使用指针的情况下编写一些C++核心类。指针和引用在C++中无处不在，它们在共享内存中不起作用！所以如果我们有一个这样的结构在共享内存中，并将共享内存中某个整数的地址赋给`pointer_`，我们不会在尝试从`with_pointer`的这个实例使用`pointer_`的其他进程中得到正确的地址：
+很难想象在不使用指针的情况下编写一些 C++核心类。指针和引用在 C++中无处不在，它们在共享内存中不起作用！所以如果我们有一个这样的结构在共享内存中，并将共享内存中某个整数的地址赋给`pointer_`，我们不会在尝试从`with_pointer`的这个实例使用`pointer_`的其他进程中得到正确的地址：
 
-[PRE30]
+```cpp
+struct with_pointer {
+    int* pointer_;
+    // ...
+    int value_holder_;
+};
+```
 
 我们如何修复这个问题？
 
@@ -344,11 +534,28 @@
 
 修复它非常简单；我们只需要用`offset_ptr<>`替换指针：
 
-[PRE31]
+```cpp
+#include <boost/interprocess/offset_ptr.hpp>
+struct correct_struct {
+    boost::interprocess::offset_ptr<int> pointer_;
+    // ...
+    int value_holder_;
+};
+```
 
 现在我们可以像使用普通指针一样使用它：
 
-[PRE32]
+```cpp
+correct_struct& ref = *segment
+    .construct<correct_struct>("structure")();
+
+ref.pointer_ = &ref.value_holder_;
+assert(ref.pointer_ == &ref.value_holder_);
+assert(*ref.pointer_ == ref.value_holder_);
+
+ref.value_holder_ = ethalon_value;
+assert(*ref.pointer_ == ethalon_value);
+```
 
 ## 它是如何工作的...
 
@@ -368,11 +575,11 @@
 
 偏移指针比常规指针稍微慢一些，因为每次解引用时都需要计算地址。但这种差异通常不足以让你烦恼。
 
-C++11没有偏移指针。
+C++11 没有偏移指针。
 
 ## 参见
 
-+   Boost的官方文档包含了大量示例和更高级的`Boost.Interprocess`功能；它可在[http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)找到。
++   Boost 的官方文档包含了大量示例和更高级的`Boost.Interprocess`功能；它可在[`www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html)找到。
 
 +   “*最快读取文件*”配方中包含了关于`Boost.Interprocess`库一些非传统用法的信息。
 
@@ -382,7 +589,7 @@ C++11没有偏移指针。
 
 ## 准备工作
 
-为了这个配方，需要具备C++和`std::fstream`容器的基本知识。
+为了这个配方，需要具备 C++和`std::fstream`容器的基本知识。
 
 ## 如何做到这一点...
 
@@ -390,23 +597,36 @@ C++11没有偏移指针。
 
 1.  我们需要包含来自`Boost.Interprocess`库的两个头文件：
 
-    [PRE33]
+    ```cpp
+    #include <boost/interprocess/file_mapping.hpp>
+    #include <boost/interprocess/mapped_region.hpp>
+    ```
 
 1.  现在我们需要打开一个文件：
 
-    [PRE34]
+    ```cpp
+    const boost::interprocess::mode_t mode = boost::interprocess::read_only;
+    boost::interprocess::file_mapping fm(filename, mode);
+    ```
 
 1.  这个菜谱的主要部分是将所有文件映射到内存中：
 
-    [PRE35]
+    ```cpp
+    boost::interprocess::mapped_region region(fm, mode, 0, 0);
+    ```
 
 1.  获取文件中数据的指针：
 
-    [PRE36]
+    ```cpp
+    const char* begin
+       = reinterpret_cast<const char*>(region.get_address());
+    ```
 
 就这样！现在我们可以像使用正常内存一样处理文件：
 
-[PRE37]
+```cpp
+const char* pos = std::find(begin, begin + region.get_size(), '\1');
+```
 
 ## 它是如何工作的...
 
@@ -414,27 +634,46 @@ C++11没有偏移指针。
 
 为什么它比传统的读写操作更快？那是因为在大多数情况下，读写操作被实现为内存映射和将数据复制到用户指定的缓冲区。所以读取通常要做更多的工作。
 
-正如STL的情况一样，我们在打开文件时必须提供一个打开模式。请参阅第2步，其中我们提供了`boost::interprocess::read_only`模式。
+正如 STL 的情况一样，我们在打开文件时必须提供一个打开模式。请参阅第 2 步，其中我们提供了`boost::interprocess::read_only`模式。
 
-请参阅第3步，其中我们一次性映射了整个文件。这个操作实际上非常快，因为操作系统不会从磁盘读取数据，而是等待请求成为映射区域的一部分。在请求映射区域的一部分后，操作系统将从磁盘加载该部分的文件。正如我们所见，内存映射操作是懒加载的，映射区域的大小不会影响性能。
+请参阅第 3 步，其中我们一次性映射了整个文件。这个操作实际上非常快，因为操作系统不会从磁盘读取数据，而是等待请求成为映射区域的一部分。在请求映射区域的一部分后，操作系统将从磁盘加载该部分的文件。正如我们所见，内存映射操作是懒加载的，映射区域的大小不会影响性能。
 
 ### 注意
 
-然而，32位操作系统无法内存映射大文件，因此您需要分块映射它们。POSIX（Linux）操作系统要求定义`_FILE_OFFSET_BITS=64`，以便整个项目能够在32位平台上处理大文件。否则，操作系统将无法映射超过4GB的文件部分。
+然而，32 位操作系统无法内存映射大文件，因此您需要分块映射它们。POSIX（Linux）操作系统要求定义`_FILE_OFFSET_BITS=64`，以便整个项目能够在 32 位平台上处理大文件。否则，操作系统将无法映射超过 4GB 的文件部分。
 
 现在是时候测量性能了：
 
-[PRE38]
+```cpp
+$ TIME="%E" time ./reading_files m
 
-正如预期的那样，内存映射文件比传统的读取操作略快。我们还可以看到，纯C方法与C++的`std::ifstream`类的性能相同，所以请勿在C++中使用与`FILE*`相关的函数。这些函数仅适用于C，不适用于C++！
+mapped_region: 0:00.08
+
+$ TIME="%E" time ./reading_files r
+
+ifstream: 0:00.09
+
+$ TIME="%E" time ./reading_files a
+
+C:
+ 0:00.09
+
+```
+
+正如预期的那样，内存映射文件比传统的读取操作略快。我们还可以看到，纯 C 方法与 C++的`std::ifstream`类的性能相同，所以请勿在 C++中使用与`FILE*`相关的函数。这些函数仅适用于 C，不适用于 C++！
 
 为了`std::ifstream`的最佳性能，请务必以二进制模式打开文件并按块读取数据：
 
-[PRE39]
+```cpp
+std::ifstream f(filename, std::ifstream::binary);
+// ...
+char c[kilobyte];
+f.read(c, kilobyte);
+```
 
 ## 还有更多...
 
-不幸的是，内存映射文件的类不是C++11的一部分，而且看起来它们也不会在C++14中出现。
+不幸的是，内存映射文件的类不是 C++11 的一部分，而且看起来它们也不会在 C++14 中出现。
 
 向内存映射区域写入也是一种非常快速的操作。操作系统将缓存写入操作，并且不会立即将修改刷新到磁盘。操作系统和`std::ofstream`数据缓存之间有一个区别。如果`std::ofstream`数据被应用程序缓存并且应用程序终止，那么缓存的数据可能会丢失。当数据被操作系统缓存时，应用程序的终止不会导致数据丢失。电源故障和系统崩溃在这两种情况下都会导致数据丢失。
 
@@ -444,7 +683,7 @@ C++11没有偏移指针。
 
 +   `Boost`.`Interprocess`库包含了许多与系统一起工作的有用功能；本书并未涵盖所有这些功能。您可以在官方网站上了解更多关于这个伟大库的信息：
 
-    [http://www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html](http://www.boost.org/doc/libs/1_53_0/doc/html/interproces)
+    [`www.boost.org/doc/libs/1_53_0/doc/html/interprocess.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/interproces)
 
 # 协程 – 保存状态和推迟执行
 
@@ -454,7 +693,7 @@ C++11没有偏移指针。
 
 ## 准备工作
 
-为了使用这个配方，需要具备C++和模板的基本知识。阅读一些关于`Boost.Function`的配方也可能有所帮助。
+为了使用这个配方，需要具备 C++和模板的基本知识。阅读一些关于`Boost.Function`的配方也可能有所帮助。
 
 ## 如何实现...
 
@@ -462,37 +701,83 @@ C++11没有偏移指针。
 
 1.  `Boost.Coroutine`库将负责几乎所有的事情。我们只需要包含其头文件：
 
-    [PRE40]
+    ```cpp
+    #include <boost/coroutine/coroutine.hpp>
+    ```
 
 1.  使用所需的签名创建一个协程类型：
 
-    [PRE41]
+    ```cpp
+    typedef boost::coroutines::coroutine< 
+        std::string&(std::size_t max_characters_to_process) 
+    > corout_t;
+    ```
 
 1.  创建一个协程：
 
-    [PRE42]
+    ```cpp
+    void coroutine_task(corout_t::caller_type& caller);
+
+    int main() {
+        corout_t coroutine(coroutine_task);
+    ```
 
 1.  现在我们可以执行子程序，同时在主程序中等待事件：
 
-    [PRE43]
+    ```cpp
+        // Doing some work
+        // ...    
+        while (!spinlock.try_lock()) {
+            // We may do some useful work, before 
+            // attempting to lock a spinlock once more
+            coroutine(10); // Small delays
+        }
+        // Spinlock is locked
+
+        // ...
+        while (!port.block_ready()) {
+            // We may do some useful work, before 
+            // attempting to get block of data once more
+            coroutine(300);  // Bigger delays
+            std::string& s = coroutine.get();
+            // ...
+        }
+    ```
 
 1.  协程方法应该看起来像这样：
 
-    [PRE44]
+    ```cpp
+    void coroutine_task(corout_t::caller_type& caller) {
+        std::string result;
+
+        // Returning back to main program
+        caller(result);
+
+        while (1) {
+            std::size_t max_characters_to_process = caller.get();
+            // Do process some characters
+            // ...
+
+            // Returning result, switching back
+            // to main program
+            caller(result);
+        } /*while*/
+    }
+    ```
 
 ## 工作原理...
 
-在第2步，我们使用函数签名`std::string& (std::size_t)`作为模板参数来描述我们的子程序签名。这意味着子程序接受`std::size_t`并返回一个字符串的引用。
+在第 2 步，我们使用函数签名`std::string& (std::size_t)`作为模板参数来描述我们的子程序签名。这意味着子程序接受`std::size_t`并返回一个字符串的引用。
 
-第3步之所以有趣，是因为`coroutine_task`的签名。请注意，这个签名适用于所有协程任务。`caller`是用于从调用者获取参数并将执行结果返回给调用者的变量。
+第 3 步之所以有趣，是因为`coroutine_task`的签名。请注意，这个签名适用于所有协程任务。`caller`是用于从调用者获取参数并将执行结果返回给调用者的变量。
 
-第3步需要额外的注意，因为`corout_t`的构造函数将自动启动协程执行。这就是为什么我们在协程任务开始时调用`caller(result)`（它将我们带回到`main`方法）。
+第 3 步需要额外的注意，因为`corout_t`的构造函数将自动启动协程执行。这就是为什么我们在协程任务开始时调用`caller(result)`（它将我们带回到`main`方法）。
 
-当我们在第4步中调用`coroutine(10)`时，我们正在导致协程程序执行。执行将在第一个`caller(result)`方法之后跳转到第5步，在那里我们将从`caller.get()`获取一个值`10`并继续我们的执行，直到`caller(result)`。之后，执行将返回到第4步，紧随`coroutine(10)`调用之后。接下来，对`coroutine(10)`或`coroutine(300)`的调用将继续从第5步中第二个`caller(result)`方法之后的地点继续子程序的执行。
+当我们在第 4 步中调用`coroutine(10)`时，我们正在导致协程程序执行。执行将在第一个`caller(result)`方法之后跳转到第 5 步，在那里我们将从`caller.get()`获取一个值`10`并继续我们的执行，直到`caller(result)`。之后，执行将返回到第 4 步，紧随`coroutine(10)`调用之后。接下来，对`coroutine(10)`或`coroutine(300)`的调用将继续从第 5 步中第二个`caller(result)`方法之后的地点继续子程序的执行。
 
 ![工作原理...](img/4880OS_11_02.jpg)
 
-在第4步中查看`std::string& s = coroutine.get()`。在这里，我们将从第5步中描述的`coroutine_task`的开始获取`std::string`的结果。我们甚至可以修改它，`coroutine_task`将看到修改后的值。让我描述一下协程和线程之间的主要区别。当一个协程执行时，主任务什么都不做。当主任务执行时，协程任务什么都不做。你无法对线程有这种保证。使用协程，你可以明确指定何时开始子任务以及何时结束它。在单核环境中，线程可以在任何时刻切换；你无法控制这种行为。
+在第 4 步中查看`std::string& s = coroutine.get()`。在这里，我们将从第 5 步中描述的`coroutine_task`的开始获取`std::string`的结果。我们甚至可以修改它，`coroutine_task`将看到修改后的值。让我描述一下协程和线程之间的主要区别。当一个协程执行时，主任务什么都不做。当主任务执行时，协程任务什么都不做。你无法对线程有这种保证。使用协程，你可以明确指定何时开始子任务以及何时结束它。在单核环境中，线程可以在任何时刻切换；你无法控制这种行为。
 
 ### 注意
 
@@ -508,12 +793,12 @@ C++11没有偏移指针。
 
 协程使用`boost::coroutines::detail::forced_unwind`异常来释放非`std::exception`派生的资源。你必须注意不要在协程任务中捕获该异常。
 
-C++11没有协程。但协程尽可能使用C++11的特性，甚至在C++03编译器上模拟右值引用。你不能复制`boost::coroutines::coroutine<>`，但你可以使用`Boost.Move`来移动它们。
+C++11 没有协程。但协程尽可能使用 C++11 的特性，甚至在 C++03 编译器上模拟右值引用。你不能复制`boost::coroutines::coroutine<>`，但你可以使用`Boost.Move`来移动它们。
 
 ## 参见
 
-+   Boost的官方文档包含了`Boost.Coroutines`库的更多示例、性能注释、限制和使用案例；它可在以下链接找到：
++   Boost 的官方文档包含了`Boost.Coroutines`库的更多示例、性能注释、限制和使用案例；它可在以下链接找到：
 
-    [http://www.boost.org/doc/libs/1_53_0/libs/coroutine/doc/html/index.htm](http://www.boost.org/doc/libs/1_53_0/libs/coroutine/doc/html/index.htm)
+    [`www.boost.org/doc/libs/1_53_0/libs/coroutine/doc/html/index.htm`](http://www.boost.org/doc/libs/1_53_0/libs/coroutine/doc/html/index.htm)
 
-+   查看第3章（[Chapter 3. Managing Resources](ch03.html "Chapter 3. Managing Resources")）的食谱，*Managing Resources*，以及第5章（[Chapter 5. Multithreading](ch05.html "Chapter 5. Multithreading")）的*Multithreading*，以了解`Boost.Coroutine`、`Boost.Thread`和`Boost.Function`库之间的区别
++   查看第三章（Chapter 3. Managing Resources）的食谱，*Managing Resources*，以及第五章（Chapter 5. Multithreading）的*Multithreading*，以了解`Boost.Coroutine`、`Boost.Thread`和`Boost.Function`库之间的区别

@@ -1,4 +1,4 @@
-# 第 6 章. 快速简单的精灵 - 维多利亚时代高峰期
+# 第六章. 快速简单的精灵 - 维多利亚时代高峰期
 
 *在我们的第四个使用 Cocos2d-x 构建的游戏示例中，我将向你展示一个快速原型设计的简单技巧。在游戏开发中，你通常希望尽快测试你游戏的核心想法，因为一个游戏在你脑海中可能听起来很有趣，但现实中可能根本行不通。快速原型设计技术允许你在开发过程的早期就测试你的游戏，并在此基础上构建好的想法。*
 
@@ -42,19 +42,35 @@
 
 1.  滚动到最后一个 `createGameScreen` 方法，并添加以下行：
 
-    [PRE0]
+    ```cpp
+    auto quickSprite = Sprite::create("blank.png");
+    quickSprite->setTextureRect(Rect(0, 0, 100, 100));
+    quickSprite->setColor(Color3B(255,255,255));
+
+    quickSprite->setPosition(Vec2(_screenSize.width * 0.5, _screenSize.height * 0.5));
+    this->addChild(quickSprite);
+    ```
 
     就这样。精灵是用一个名为 `blank.png` 的纹理创建的。这是一个位于 `Resources` 文件夹中的 1 x 1 像素的白色方块。然后我们将精灵纹理矩形的大小设置为 100 x 100 像素（`setTextureRect`），并用白色填充它（`setColor`）。通过调整纹理矩形的大小，我们实际上调整了精灵的大小。如果你现在运行游戏，你应该会在屏幕中央看到一个白色方块。
 
 1.  现在删除之前的行，并用这些替换：
 
-    [PRE1]
+    ```cpp
+    _gameBatchNode = SpriteBatchNode::create("blank.png", 200);
+    this->addChild(_gameBatchNode, kMiddleground);
+    ```
 
     这创建了 `_gameBatchNode`，它使用相同的 `blank.png` 文件作为其源纹理。现在我们准备好在 `_gameBatchNode` 内放置尽可能多的矩形，并且如果需要，为每个矩形设置不同的颜色。换句话说，我们可以用一张微小的图片构建整个测试游戏。这正是我们现在要做的。
 
 1.  因此，为了完成这里的任务，添加这些最后一行：
 
-    [PRE2]
+    ```cpp
+    _terrain = Terrain::create();
+    _gameBatchNode->addChild(_terrain, kMiddleground);
+
+    _player = Player::create();
+    _gameBatchNode->addChild(_player, kBackground);
+    ```
 
 ## *刚才发生了什么？*
 
@@ -88,19 +104,52 @@
 
 1.  `_player`对象是通过一个静态方法创建的，该方法使用我们的`blank.png`文件来纹理精灵。该方法还调用`initPlayer`，这就是你应该为该方法输入的内容：
 
-    [PRE3]
+    ```cpp
+    void Player::initPlayer () {
+        this->setAnchorPoint(Vec2(0.5f, 1.0f));
+        this->setPosition(Vec2(_screenSize.width * 0.2f, _nextPosition.y));
+
+        _height = 228;
+        _width = 180;
+        this->setTextureRect(Rect(0, 0, _width, _height));
+        this->setColor(Color3B(255,255,255));
+    }
+    ```
 
     `_player`对象的注册点将在精灵的顶部。这个顶部中心锚点的原因更多是与`_player`对象在漂浮时将被如何动画处理有关，而不是与任何碰撞逻辑要求有关。
 
 1.  接下来是`setFloating`：
 
-    [PRE4]
+    ```cpp
+    void Player::setFloating (bool value) {
+
+        if (_floating == value) return;
+
+        if (value && _hasFloated) return;
+
+        _floating = value;
+
+        if (value) {
+            _hasFloated = true;
+            _vector.y += PLAYER_JUMP * 0.5f;
+        }
+    }
+    ```
 
     `_hasFloated`属性将确保玩家在空中只能打开一次雨伞。当我们把`_floating`设置为`true`时，我们给`_player.y`向量一个加速。
 
 1.  我们从`_player`的更新方法开始：
 
-    [PRE5]
+    ```cpp
+    void Player::update (float dt) {
+        if (_speed + P_ACCELERATION <= _maxSpeed) {
+            _speed += P_ACCELERATION;
+        } else {
+            _speed = _maxSpeed;
+        }
+
+        _vector.x = _speed;
+    ```
 
     随着时间的推移，游戏将增加`_player`对象的`_maxSpeed`，使游戏难度增加。这些第一行代码使得从`_players`当前的`_speed`到`_maxSpeed`的转换更加平滑，而不是立即改变。
 
@@ -110,7 +159,34 @@
 
 1.  接下来，我们根据`_player`对象的`_state`移动状态更新`_player`对象：
 
-    [PRE6]
+    ```cpp
+    switch (_state) {
+
+        case kPlayerMoving:
+            _vector.y -= FORCE_GRAVITY;
+            if (_hasFloated) _hasFloated = false;
+            break;
+
+       case kPlayerFalling:
+          if (_floating ) {
+             _vector.y -= FLOATNG_GRAVITY;
+             _vector.x *= FLOATING_FRICTION;
+
+          } else {
+             _vector.y -= FORCE_GRAVITY;
+             _vector.x *= AIR_FRICTION;
+             _floatingTimer = 0;
+          }
+          break;
+
+       case kPlayerDying:
+          _vector.y -= FORCE_GRAVITY;
+          _vector.x = -_speed;
+          this->setPositionX(this->getPositionX() + _vector.x);
+          break;
+
+    }
+    ```
 
     我们根据移动状态的不同，对重力和摩擦力有不同的取值。
 
@@ -118,7 +194,27 @@
 
 1.  我们以以下内容结束：
 
-    [PRE7]
+    ```cpp
+        if (_jumping) {
+            _state = kPlayerFalling;
+            _vector.y += PLAYER_JUMP * 0.25f;
+            if (_vector.y > PLAYER_JUMP ) _jumping = false;
+        }
+
+        if (_vector.y < -TERMINAL_VELOCITY) 
+            _vector.y = -TERMINAL_VELOCITY;
+
+        _nextPosition.y = this->getPositionY() + _vector.y;
+
+        if (_floating) {
+            _floatingTimer += dt;
+            if (_floatingTimer > _floatingTimerMax) {
+                _floatingTimer = 0;
+                this->setFloating(false);
+            }
+        }
+    }
+    ```
 
     当玩家按下屏幕进行跳跃时，我们不应该让精灵立即跳跃。状态的变化应该总是平滑发生的。因此，我们在`_player`中有一个名为`_jumping`的布尔属性。当玩家按下屏幕时，它被设置为`true`，我们缓慢地给`_vector.y`添加跳跃力。所以玩家按屏幕的时间越长，跳跃就越高，快速轻触会导致跳跃较短。这是任何平台游戏都值得添加的一个好功能。
 
@@ -136,7 +232,17 @@
 
 1.  在 `setupBlock` 方法中，`Block` 对象被正确地纹理化：
 
-    [PRE8]
+    ```cpp
+    void Block::setupBlock (int width, int height, int type) {
+
+        _type = type;
+
+        _width = width * _tileWidth;
+        _height = height * _tileHeight;
+
+        this->setAnchorPoint(Vec2(0,0));
+        this->setTextureRect(Rect(0, 0, _width, _height));
+    ```
 
     `Block` 对象的外观将基于其类型、宽度和高度。
 
@@ -144,7 +250,35 @@
 
 1.  然后我们根据类型设置 `Block` 对象的颜色：
 
-    [PRE9]
+    ```cpp
+        switch (type) {
+
+            case kBlockGap:
+                this->setVisible(false);
+                return;
+
+            case kBlock1:
+
+                this->setColor(Color3B(200,200,200));
+                break;
+            case kBlock2:
+
+                this->setColor(Color3B(150,150,150));
+                break;
+            case kBlock3:
+
+                this->setColor(Color3B(100,100,100));
+                break;
+            case kBlock4:
+
+                this->setColor(Color3B(50,50,50));
+            break;
+        }
+
+        this->setVisible(true);
+
+    }
+    ```
 
     `kBlockGap` 表示没有建筑，只有 `_player` 对象必须跳过的空隙。在这种情况下，我们使方块不可见并从函数中返回。所以，再次强调，空隙在我们的逻辑中实际上是块的一种类型。
 
@@ -170,7 +304,9 @@
 
 这些数组是：
 
-[PRE10]
+```cpp
+int patterns[] = {1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,3,3,3};
+```
 
 这包含了我们在空隙之间一行中拥有的建筑（`Blocks`）的数量信息。
 
@@ -178,7 +314,10 @@
 
 接下来，考虑以下行：
 
-[PRE11]
+```cpp
+int widths[] = {2,2,2,2,2,3,3,3,3,3,3,4,4,4,4,4,4};
+int heights[] =  {0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,2,2,2,3,3,3,3,3,3,4};
+```
 
 前面的行指定了每个新建筑的宽度和高度。这些将乘以我们为游戏确定的瓷砖大小，以获得你在`Block:setupBlock`中看到的最终宽度和高度值。
 
@@ -186,7 +325,9 @@
 
 最后：
 
-[PRE12]
+```cpp
+int types[] =  {1,2,3,4,1,3,2,4,3,2,1,4,2,3,1,4,2,3,1,2,3,2,3,4,1,2,4,3,1,3,1,4,2,4,2,1,2,3};
+```
 
 这些是建筑类型，这个数组将不会像前三个那样洗牌，所以这是我们将用于整个游戏的`types`的`patterns`数组，它将连续循环。你可以让它尽可能长。
 
@@ -204,13 +345,35 @@
 
 然后`Terrain`类负责在三个阶段构建游戏的地形。首先我们初始化`_terrain`对象，创建一个`Block`对象的池子。然后我们向`_terrain`对象添加第一个方块，直到达到最小宽度，以确保整个屏幕都填充了`Blocks`。最后我们分配各种方块对象。
 
-# 是时候行动了——初始化我们的Terrain类
+# 是时候行动了——初始化我们的 Terrain 类
 
 我们将在下一步中介绍这些步骤：
 
 1.  首先需要实现的重要方法是`initTerrain`：
 
-    [PRE13]
+    ```cpp
+    void Terrain::initTerrain () {
+
+        _increaseGapInterval = 5000;
+        _increaseGapTimer = 0;
+        _gapSize = 2;
+
+        //init object pools
+        for (int i = 0; i < 20; i++) {
+              auto block = Block::create();
+              this->addChild(block);
+              _blockPool.pushBack(block);
+        }
+
+       _minTerrainWidth = _screenSize.width * 1.5f;
+
+        random_shuffle(_blockPattern.begin(), _blockPattern.end());
+        random_shuffle(_blockWidths.begin(), _blockWidths.end());
+        random_shuffle(_blockHeights.begin(), _blockHeights.end());
+
+       this->addBlocks(0);
+    }
+    ```
 
     我们有一个计时器来增加间隙的宽度（我们开始时使用两个瓷砖长度的间隙）。
 
@@ -222,13 +385,46 @@
 
 1.  `addBlocks`方法应该看起来像这样：
 
-    [PRE14]
+    ```cpp
+    void Terrain::addBlocks(int currentWidth) {
+
+        while (currentWidth < _minTerrainWidth)
+       {   
+          auto block = _blockPool.at(_blockPoolIndex);
+          _blockPoolIndex++;
+          if (_blockPoolIndex == _blockPool.size()) {
+            _blockPoolIndex = 0;
+          }
+          this->initBlock(block);
+          currentWidth +=  block->getWidth();
+          _blocks.pushBack(block);
+       }
+       this->distributeBlocks();
+    }
+    ```
 
     `while` 循环内部的逻辑将继续添加方块，直到 `_terrain` 对象的 `currentWidth` 达到 `_minTerrainWidth`。为了达到 `_minTerrainWidth`，我们从池中检索的每个新方块都会被添加到 `_blocks` 向量中。
 
 1.  方块根据它们的宽度进行分布：
 
-    [PRE15]
+    ```cpp
+    void Terrain::distributeBlocks() {
+        int count = (int) _blocks.size();
+        int i;
+
+       for (i = 0; i < count; i++) {
+          auto block =  _blocks.at(i);
+          if (i != 0) {
+            auto prev_block = _blocks.at(i - 1);
+            block->setPositionX( prev_block->getPositionX() + prev_block->getWidth());
+          }
+          else
+          {
+            block->setPositionX ( 0 ); 
+          }
+       }
+    }
+    ```
 
 ## *发生了什么？*
 
@@ -240,13 +436,33 @@
 
 1.  因此，在 `Terrain` 类中，我们以如下方式开始 `initBlock` 方法：
 
-    [PRE16]
+    ```cpp
+    void Terrain::initBlock(Block * block) {
+
+        int blockWidth;
+        int blockHeight;
+
+        int type = _blockTypes[_currentTypeIndex];
+        _currentTypeIndex++;
+
+        if (_currentTypeIndex == _blockTypes.size()) {
+            _currentTypeIndex = 0;
+        }
+    ```
 
     首先确定我们正在初始化的建筑类型。看看我们是如何使用存储在 `_currentTypeIndex` 中的索引遍历 `_blockTypes` 数组的。我们会对其他 `patterns` 数组使用类似的逻辑。
 
 1.  然后，让我们开始构建我们的方块：
 
-    [PRE17]
+    ```cpp
+    if (_startTerrain) {
+       //...
+    } else {
+        _lastBlockHeight = 2;
+        _lastBlockWidth = rand() % 2 + 2;
+        block->setupBlock (_lastBlockWidth, _lastBlockHeight, type);
+    }
+    ```
 
     玩家必须点击屏幕开始游戏（`_startTerrain`）。在此之前，我们显示具有相同高度（两个地砖）和随机宽度的建筑：
 
@@ -256,7 +472,17 @@
 
 1.  考虑到我们设置为 `_startTerrain`：
 
-    [PRE18]
+    ```cpp
+    if (_startTerrain) {
+        if (_showGap) {
+            int gap = rand() % _gapSize;
+            if (gap < 2) gap = 2;
+
+            block->setupBlock (gap, 0, kBlockGap);
+            _showGap = false;
+        } else {
+            //...
+    ```
 
     在下面的屏幕截图中，你可以看到我们方块使用的不同宽度：
 
@@ -266,7 +492,40 @@
 
 1.  如果这次我们不创建间隙，我们将根据 `_blockWidths` 和 `_blockHeights` 的当前索引值确定新方块的宽度和高度：
 
-    [PRE19]
+    ```cpp
+    } else {
+
+        blockWidth = _blockWidths[_currentWidthIndex];
+
+        _currentWidthIndex++;
+        if (_currentWidthIndex == _blockWidths.size()) {
+            random_shuffle(_blockWidths.begin(),  _blockWidths.end());
+            _currentWidthIndex = 0;
+        }
+
+        if (_blockHeights[_currentHeightIndex] != 0) {
+
+            //change height of next block
+            blockHeight = _blockHeights[_currentHeightIndex];
+            //if difference too high, decrease it
+            if (blockHeight - _lastBlockHeight > 2 && _gapSize ==  2)  
+            {
+                blockHeight = 1;
+            }
+
+        } else {
+            blockHeight = _lastBlockHeight;
+        }
+        _currentHeightIndex++;
+        if (_currentHeightIndex == _blockHeights.size()) {
+            _currentHeightIndex = 0;
+            random_shuffle(_blockHeights.begin(),  _blockHeights.end());
+        }
+
+        block->setupBlock (blockWidth, blockHeight, type);
+        _lastBlockWidth = blockWidth;
+        _lastBlockHeight = blockHeight;
+    ```
 
     注意，我们在遍历完数组后重新洗牌了数组（`random_shuffle`）。
 
@@ -276,7 +535,22 @@
 
 1.  我们通过更新当前建筑系列的计数来确定是否应该显示下一个间隙，或者不显示：
 
-    [PRE20]
+    ```cpp
+    //select next block series pattern
+    _currentPatternCnt++;
+
+    if (_currentPatternCnt > _blockPattern[_currentPatternIndex]) {
+        _showGap = true;
+        //start new pattern
+        _currentPatternIndex++;
+        if (_currentPatternIndex == _blockPattern.size()) {
+            random_shuffle(_blockPattern.begin(),  _blockPattern.end());
+            _currentPatternIndex = 0;
+        }
+        _currentPatternCnt = 1;
+        }
+    }
+    ```
 
 ## *发生了什么？*
 
@@ -290,7 +564,35 @@
 
 1.  `move` 方法接收一个参数，即 `x` 轴上的移动量：
 
-    [PRE21]
+    ```cpp
+    void Terrain::move (float xMove) {
+        if (xMove < 0) return;
+
+        if (_startTerrain) {
+
+            if (xMove > 0 && _gapSize < 5)              _increaseGapTimer += xMove;
+
+            if (_increaseGapTimer > _increaseGapInterval) {
+                _increaseGapTimer = 0;
+                _gapSize += 1;
+            }
+        }
+
+        this->setPositionX(this->getPositionX() - xMove);
+
+       auto  block = _blocks.at(0);  
+       if (_position.x + block->getWidth() < 0) {
+          auto firstBlock = _blocks.at(0);
+          _blocks.erase(0);
+          _blocks.pushBack(firstBlock);
+          _position.x +=  block->getWidth();
+
+          float width_cnt = this->getWidth() - block->getWidth() - ( _blocks.at(0))->getWidth();
+          this->initBlock(block);
+          this->addBlocks(width_cnt);
+        }
+    }
+    ```
 
     `xMove` 的值来自 `_player` 的速度。
 
@@ -300,7 +602,34 @@
 
 1.  接下来，我们的 `reset` 方法：
 
-    [PRE22]
+    ```cpp
+    void Terrain::reset() {
+
+        this->setPosition(Vec2(0,0));
+        _startTerrain = false;
+
+        int currentWidth = 0;
+        for (auto block : _blocks) {
+           this->initBlock(block);
+           currentWidth +=  block->getWidth();
+        }
+
+       while (currentWidth < _minTerrainWidth) {
+            auto block = _blockPool.at(_blockPoolIndex);
+            _blockPoolIndex++;
+            if (_blockPoolIndex == _blockPool.size()) {
+                _blockPoolIndex = 0;
+            }
+            _blocks.pushBack(block);
+            this->initBlock(block);
+            currentWidth +=  block->getWidth();
+       }
+
+       this->distributeBlocks();
+        _increaseGapTimer = 0;
+        _gapSize = 2;
+    }
+    ```
 
     每次我们重新启动游戏时都会调用 `reset` 方法。我们将 `_terrain` 移回到其起始点，并重新初始化 `_terrain` 对象中当前的所有 `Block` 对象。这是因为在 `_startTerrain = false`，这意味着所有方块应该具有相同的高度和随机的宽度。
 
@@ -332,7 +661,27 @@
 
 1.  仍然在 `Terrain.cpp` 中：
 
-    [PRE23]
+    ```cpp
+    void Terrain::checkCollision (Player * player) {
+
+       if (player->getState() == kPlayerDying) return;
+       bool inAir = true;
+       for (auto block : _blocks) {
+          if (block->getType() == kBlockGap) continue;
+
+          //if within x, check y (bottom collision)
+          if (player->right() >= this->getPositionX() + block->left() && player->left() <= this->getPositionX() + block->right()) {
+
+            if (player->bottom() >= block->top() && player->next_bottom() <= block->top() && player->top() > block->top()) {
+               player->setNextPosition(Vec2(player->getNextPosition().x, block->top() + player->getHeight()));
+               player->setVector ( Vec2(player->getVector().x, 0) );
+               player->setRotation(0.0);
+               inAir = false;
+               break;
+             }       
+          }
+       }
+    ```
 
     首先，我们声明`_player`对象当前正在下落，`inAir = true;`我们将让碰撞检查来确定这是否会保持为真。
 
@@ -344,7 +693,24 @@
 
 1.  接下来，我们检查`x`轴上的碰撞，这意味着`_player`对象的右侧与块的左侧：
 
-    [PRE24]
+    ```cpp
+    for (auto block : _blocks) {
+      if (block->getType() == kBlockGap) continue;
+      //now if within y, check x (side collision)
+      if ((player->bottom() < block->top() && player->top() >  block->bottom()) || (player->next_bottom() < block->top() &&  player->next_top() > block->bottom())) {
+       if (player->right() >= this->getPositionX() + block->getPositionX()  && player->left() < this->getPositionX() + block->getPositionX()) {
+          player->setPositionX( this->getPositionX() +  block->getPositionX() - player->getWidth() * 0.5f );
+          player->setNextPosition(Vec2(this->getPositionX() +  block->getPositionX() - player->getWidth() * 0.5f,  player->getNextPosition().y));
+          player->setVector ( Vec2(player->getVector().x * -0.5f,  player->getVector().y) );
+          if (player->bottom() + player->getHeight() * 0.2f <  block->top()) {
+             player->setState(kPlayerDying);
+             return;
+          }
+          break;
+         }
+      }
+    }
+    ```
 
     相似的步骤用于确定我们是否有可行的块。
 
@@ -352,7 +718,15 @@
 
 1.  我们通过更新`_player`对象的状态来结束，基于我们的碰撞结果：
 
-    [PRE25]
+    ```cpp
+        if (inAir) {
+            player->setState(kPlayerFalling);
+        } else {
+            player->setState(kPlayerMoving);
+            player->setFloating (false);
+        }
+    }
+    ```
 
 ## *发生了什么事？*
 
@@ -372,19 +746,49 @@
 
 1.  首先，我们处理我们的`onTouchBegan`方法：
 
-    [PRE26]
+    ```cpp
+    bool GameLayer::onTouchBegan(Touch* touch, Event* event) {
+
+        if (!_running) {
+
+            if (_player->getState() == kPlayerDying) {
+                _terrain->reset();
+                _player->reset();
+                resetGame();
+            }
+            return true;
+        }
+    ```
 
     如果我们没有运行游戏，并且`_player`对象死亡，我们在触摸时重置游戏。
 
 1.  接下来，如果地形尚未开始，插入以下内容：
 
-    [PRE27]
+    ```cpp
+        if (!_terrain->getStartTerrain()) {
+            _terrain->setStartTerrain ( true );
+            return true;
+        }
+    ```
 
     记住，一开始建筑都是相同的高度，没有缝隙。一旦玩家按下屏幕，我们就通过`setStartTerrain`开始改变这一点。
 
 1.  我们最后完成：
 
-    [PRE28]
+    ```cpp
+        if (touch) {
+          if (_player->getState() == kPlayerFalling) {
+                _player->setFloating ( _player->getFloating() ? false : true );
+
+           } else {
+
+              if (_player->getState() !=  kPlayerDying) _player->setJumping(true);
+           }
+           return true;
+        }
+        return false;
+    }
+    ```
 
     现在，我们进入了游戏状态，如果 `_player` 对象正在下落，我们就通过调用 `setFloating` 来打开或关闭雨伞，具体情况而定。
 
@@ -392,7 +796,11 @@
 
 1.  在触摸结束之后，我们只需要停止任何跳跃：
 
-    [PRE29]
+    ```cpp
+    void GameLayer::onTouchEnded(Touch* touch, Event* event) {
+        _player->setJumping(false);
+    }
+    ```
 
 ## *刚才发生了什么？*
 
@@ -406,21 +814,59 @@
 
 1.  在 `GameLayer.cpp` 中：
 
-    [PRE30]
+    ```cpp
+    void GameLayer::update(float dt) {
+
+        if (!_running) return;
+
+        if (_player->getPositionY() < -_player->getHeight() ||
+            _player->getPositionX() < -_player->getWidth() * 0.5f)  {
+
+                _running = false;
+
+        }
+    ```
 
     如果 `_player` 对象离屏幕，我们停止游戏。
 
 1.  现在更新所有元素、位置并检查碰撞：
 
-    [PRE31]
+    ```cpp
+    _player->update(dt);
+
+        _terrain->move(_player->getVector().x);
+
+        if (_player->getState() != kPlayerDying) 
+            _terrain->checkCollision(_player);
+
+        _player->place();
+    ```
 
 1.  将 `_gameBatchNode` 与 `_player` 对象相关移动：
 
-    [PRE32]
+    ```cpp
+    if (_player->getNextPosition().y > _screenSize.height * 0.6f) {
+            _gameBatchNode->setPositionY( (_screenSize.height *  0.6f - _player->getNextPosition().y) * 0.8f);
+
+        } else {
+            _gameBatchNode->setPositionY  ( 0 );
+        }
+    ```
 
 1.  随着时间的推移，通过增加 `_player` 对象的最大速度来使游戏难度逐渐提高：
 
-    [PRE33]
+    ```cpp
+    if (_terrain->getStartTerrain() && _player->getVector().x > 0) {
+
+            _speedIncreaseTimer += dt;
+            if (_speedIncreaseTimer > _speedIncreaseInterval) {
+                _speedIncreaseTimer = 0;
+                _player->setMaxSpeed (_player->getMaxSpeed() + 4);
+            }
+        }
+
+    }
+    ```
 
 ## *刚才发生了什么？*
 

@@ -2,23 +2,23 @@
 
 大多数商业软件应用都是通过一组复杂业务需求创建的，以解决特定的业务问题或需求。然而，期望所有软件开发者/架构师都是业务领域的专家，并期望他们了解整个业务功能也是不切实际的。另一方面，我们如何创建具有价值的软件，并让具有自动化业务需求的消费者使用该软件？软件应用不能只是技术卓越的展示品，但在大多数情况下，它们也必须具有真正的自动化业务卓越的便利性。领域驱动设计和模型是我们问题的答案。
 
-本节将涵盖大多数DDD方面和模式，这些模式有助于成功实施基于DDD的软件。
+本节将涵盖大多数 DDD 方面和模式，这些模式有助于成功实施基于 DDD 的软件。
 
 ![图片](img/b2d2b6ab-d5ef-40d4-ad36-9b48065c3518.png)
 
 上述图表是尝试通过领域和技术专家的协作努力来可视化由领域驱动软件模型。
 
-DDD的概念、原则和模式将技术和商业卓越结合到任何复杂的软件应用中，这些应用可以创建和管理。DDD是由Evan提出的，本章的大部分内容受到了他的书籍《领域驱动设计 - 软件核心的复杂性处理》的影响，同时也受到了Scott Millett和Nick Tune的书籍《模式-原则-实践》的影响。
+DDD 的概念、原则和模式将技术和商业卓越结合到任何复杂的软件应用中，这些应用可以创建和管理。DDD 是由 Evan 提出的，本章的大部分内容受到了他的书籍《领域驱动设计 - 软件核心的复杂性处理》的影响，同时也受到了 Scott Millett 和 Nick Tune 的书籍《模式-原则-实践》的影响。
 
-本节旨在涵盖DDD的一些基本方面，并详细讨论一些常见的领域驱动设计模式。
+本节旨在涵盖 DDD 的一些基本方面，并详细讨论一些常见的领域驱动设计模式。
 
-# DDD的原则、特性和实践
+# DDD 的原则、特性和实践
 
-在我们深入各种设计模式之前，让我们先谈谈DDD的基本原则，然后是一些主要特性组成部分，以及一些最佳实践，这些实践有助于团队采用和遵循DDD。
+在我们深入各种设计模式之前，让我们先谈谈 DDD 的基本原则，然后是一些主要特性组成部分，以及一些最佳实践，这些实践有助于团队采用和遵循 DDD。
 
 # 原则
 
-DDD的基本原则在以下章节中描述。
+DDD 的基本原则在以下章节中描述。
 
 # 专注于核心领域
 
@@ -52,7 +52,7 @@ DDD的基本原则在以下章节中描述。
 
 +   **边界上下文**：一个系统满足现实世界复杂业务问题的基本目标，提供对什么是可以一致的以及什么是可以独立的清晰和共享的理解。
 
-+   **实体**：这些是可以改变其属性而不改变其身份的可变对象（例如，即使员工的电子邮件ID、地址和姓名发生变化，员工的ID也不会改变）。
++   **实体**：这些是可以改变其属性而不改变其身份的可变对象（例如，即使员工的电子邮件 ID、地址和姓名发生变化，员工的 ID 也不会改变）。
 
 +   **值对象**：这些是不可变对象（与实体不同），只能通过其属性的状态来区分。值对象的等价性不是基于其身份的。（两个位置对象可以通过其经纬度值相同。）
 
@@ -64,7 +64,7 @@ DDD的基本原则在以下章节中描述。
 
 # 最佳实践
 
-我们列出了一些针对打算在软件开发产品开发中采用DDD的团队的最佳实践：
+我们列出了一些针对打算在软件开发产品开发中采用 DDD 的团队的最佳实践：
 
 +   收集需求并捕获所需的行为
 
@@ -86,13 +86,13 @@ DDD的基本原则在以下章节中描述。
 
 在本节中，我们将浏览一系列模式，从领域模型构建企业应用程序。将这些设计模式与面向对象概念结合应用于系统，有助于满足业务需求。
 
-本节涵盖了DDD设计模式的重大方面，分为战略设计模式和战术设计模式。
+本节涵盖了 DDD 设计模式的重大方面，分为战略设计模式和战术设计模式。
 
 # 战略模式
 
 该小组的主要目标是促进业务和软件开发团队之间的理解和共识，更侧重于业务利益和目标。战略模式帮助软件开发团队成员通过识别核心领域来关注对业务更重要和关键的事情。核心领域是公司的一个特定领域，甚至是一个关键的特定部分。
 
-战略模式的主要组成部分包括通用语言、领域、子领域、核心领域、边界上下文和上下文映射。我们将看到如何通过本章讨论的战略设计模式，如边界上下文、消息传递和REST，将这些组成部分整合到不同的系统中。
+战略模式的主要组成部分包括通用语言、领域、子领域、核心领域、边界上下文和上下文映射。我们将看到如何通过本章讨论的战略设计模式，如边界上下文、消息传递和 REST，将这些组成部分整合到不同的系统中。
 
 # 通用语言
 
@@ -114,7 +114,7 @@ DDD的基本原则在以下章节中描述。
 
 ![](img/4ca6eb76-6a72-46f1-83ef-1d3175cd3572.png)
 
-在我们深入探讨模式之前，让我们先回顾一下边界上下文的概念。前面的图示显示了两个上下文中的账户；尽管账户没有差异，但上下文是有区别的。以下几节将讨论有助于整合任何DDD解决方案的边界上下文的模式。
+在我们深入探讨模式之前，让我们先回顾一下边界上下文的概念。前面的图示显示了两个上下文中的账户；尽管账户没有差异，但上下文是有区别的。以下几节将讨论有助于整合任何 DDD 解决方案的边界上下文的模式。
 
 # 集成边界上下文
 
@@ -146,17 +146,17 @@ DDD的基本原则在以下章节中描述。
 
 # 采用 SOA 原则
 
-使用 DDD 和 SOA 概念和模式构建高度可扩展的系统。将边界上下文作为 SOA 服务构建，以解决边界上下文集成中的技术和社交挑战（集成团队和高速开发）。请参阅[第 7 章](45460494-ac40-47e3-9d76-731dd2a48e12.xhtml)，*面向服务的架构 (SOA)*，以了解更多关于 SOA 原则和实践的细节。
+使用 DDD 和 SOA 概念和模式构建高度可扩展的系统。将边界上下文作为 SOA 服务构建，以解决边界上下文集成中的技术和社交挑战（集成团队和高速开发）。请参阅第七章，*面向服务的架构 (SOA)*，以了解更多关于 SOA 原则和实践的细节。
 
 # 与遗留系统集成
 
-遗留系统在现实世界中总是存在，当我们试图将最新的行业改进融入其中时，它们会带来令人兴奋的挑战。在DDD中，这个问题更有趣，因为有许多实用的模式可以帮助限制遗留系统对系统其他部分的影响，管理复杂性，并帮助设计师避免在将新代码集成到遗留模块或组件时降低其显式性（违反DDD哲学）。
+遗留系统在现实世界中总是存在，当我们试图将最新的行业改进融入其中时，它们会带来令人兴奋的挑战。在 DDD 中，这个问题更有趣，因为有许多实用的模式可以帮助限制遗留系统对系统其他部分的影响，管理复杂性，并帮助设计师避免在将新代码集成到遗留模块或组件时降低其显式性（违反 DDD 哲学）。
 
 在本节中，我们将讨论气泡上下文、自主气泡上下文，并将遗留系统作为服务进行展示。
 
 # 气泡上下文
 
-如果一个团队想要开始将领域驱动设计（DDD）应用于遗留系统，但尚未熟悉DDD实践，那么可以考虑气泡上下文模式。由于遗留系统中的边界上下文可能是一个独立的代码库，气泡上下文模式提供了清晰的方向，帮助团队创建领域模型并不断演进。气泡上下文反映了DDD迭代哲学的最好方面，并通过完全控制领域模型来推进。
+如果一个团队想要开始将领域驱动设计（DDD）应用于遗留系统，但尚未熟悉 DDD 实践，那么可以考虑气泡上下文模式。由于遗留系统中的边界上下文可能是一个独立的代码库，气泡上下文模式提供了清晰的方向，帮助团队创建领域模型并不断演进。气泡上下文反映了 DDD 迭代哲学的最好方面，并通过完全控制领域模型来推进。
 
 它被认为是最适合促进频繁迭代并在涉及遗留代码的情况下获得洞察力的。
 
@@ -178,15 +178,15 @@ DDD的基本原则在以下章节中描述。
 
 ![图片](img/f38594dc-1293-4a6c-9a0a-7f1feb3385bd.png)
 
-每个新的上下文仍然需要将遗留系统的响应转换为内部表示；然而，通过简化的开放主机API，可以减轻转换复杂性。
+每个新的上下文仍然需要将遗留系统的响应转换为内部表示；然而，通过简化的开放主机 API，可以减轻转换复杂性。
 
-使用这种模式，需要对遗留上下文（与气泡上下文不同）进行一些修改；此外，由于有多个消费者，标准化可消费API SLA可能具有挑战性。
+使用这种模式，需要对遗留上下文（与气泡上下文不同）进行一些修改；此外，由于有多个消费者，标准化可消费 API SLA 可能具有挑战性。
 
-我们可以清楚地证明，现实世界中许多遗留系统都希望采用领域驱动设计（DDD）；然而，由于缺乏合适的模式和考虑到成本和影响，有真正的理由和犹豫不决去转向DDD。识别和利用这些模型应该会缓解情况，并鼓励组织为他们的遗留系统采用DDD，并朝着更快交付的方向发展。
+我们可以清楚地证明，现实世界中许多遗留系统都希望采用领域驱动设计（DDD）；然而，由于缺乏合适的模式和考虑到成本和影响，有真正的理由和犹豫不决去转向 DDD。识别和利用这些模型应该会缓解情况，并鼓励组织为他们的遗留系统采用 DDD，并朝着更快交付的方向发展。
 
 # 分布式边界上下文集成策略
 
-在现代世界中，由于各种原因，分布是不可避免的，主要是为了系统能力，如可用性、可伸缩性、可靠性和容错性。本节简要介绍了分布式边界上下文的一些集成策略，例如数据库集成、平面文件集成、消息传递和REST。我们将探讨这些模式如何帮助集成分布式边界上下文。此外，我们还将简要了解反应式解决方案如何帮助集成策略。
+在现代世界中，由于各种原因，分布是不可避免的，主要是为了系统能力，如可用性、可伸缩性、可靠性和容错性。本节简要介绍了分布式边界上下文的一些集成策略，例如数据库集成、平面文件集成、消息传递和 REST。我们将探讨这些模式如何帮助集成分布式边界上下文。此外，我们还将简要了解反应式解决方案如何帮助集成策略。
 
 # 数据库集成
 
@@ -208,7 +208,7 @@ DDD的基本原则在以下章节中描述。
 
 # 事件驱动架构和消息传递
 
-消息和事件驱动架构模式将分布式系统中边界上下文之间的建模发挥到极致。在本节中，DDD旨在确保您理解EDA和消息模式在DDD上下文中的重要性。同时，强调在上下文之间实现异步消息和EDA模式的好处。这些好处包括即使在子系统失败的情况下也能提高可靠性。我们在第8章[事件驱动架构模式](dd57ac86-dadf-486b-9ecd-068e1f8ffc59.xhtml)和第9章[微服务架构模式](45854889-267b-45bb-b951-a54c22f5d850.xhtml)中已经很好地覆盖了EDA和消息模式，并鼓励您参考这些章节，以获得关于事件驱动和消息模式的见解。
+消息和事件驱动架构模式将分布式系统中边界上下文之间的建模发挥到极致。在本节中，DDD 旨在确保您理解 EDA 和消息模式在 DDD 上下文中的重要性。同时，强调在上下文之间实现异步消息和 EDA 模式的好处。这些好处包括即使在子系统失败的情况下也能提高可靠性。我们在第八章事件驱动架构模式和第九章微服务架构模式中已经很好地覆盖了 EDA 和消息模式，并鼓励您参考这些章节，以获得关于事件驱动和消息模式的见解。
 
 # 战术模式
 
@@ -244,13 +244,13 @@ DDD的基本原则在以下章节中描述。
 
 # 实体
 
-如介绍部分所述，实体是一个可变对象。它可以改变其属性而不会改变其身份。例如，产品是一个实体，它是唯一的，一旦设置，就不会改变其ID（独特性）。
+如介绍部分所述，实体是一个可变对象。它可以改变其属性而不会改变其身份。例如，产品是一个实体，它是唯一的，一旦设置，就不会改变其 ID（独特性）。
 
 然而，其价格、描述等可以根据需要更改多次。
 
 ![图片](img/96f748f2-ac41-4feb-b6d5-d5376530207c.png)
 
-前面的图展示了实体及其示例。员工ID是唯一的，永远不会改变。然而，有一个可以通过访问器方法修改的联系方式。
+前面的图展示了实体及其示例。员工 ID 是唯一的，永远不会改变。然而，有一个可以通过访问器方法修改的联系方式。
 
 实体具有以下属性：
 
@@ -482,30 +482,30 @@ DDD的基本原则在以下章节中描述。
 
 您还可以参考以下在线资源：
 
-+   DDD 快速入门：[https://www.infoq.com/minibooks/domain-driven-design-quickly](https://www.infoq.com/minibooks/domain-driven-design-quickly)
++   DDD 快速入门：[`www.infoq.com/minibooks/domain-driven-design-quickly`](https://www.infoq.com/minibooks/domain-driven-design-quickly)
 
-+   框架和工具：[https://isis.apache.org/documentation.html](https://isis.apache.org/documentation.html)
++   框架和工具：[`isis.apache.org/documentation.html`](https://isis.apache.org/documentation.html)
 
-+   三个指导原则：[https://techbeacon.com/get-your-feet-wet-domain-driven-design-3-guiding-principles](https://techbeacon.com/get-your-feet-wet-domain-driven-design-3-guiding-principles)
++   三个指导原则：[`techbeacon.com/get-your-feet-wet-domain-driven-design-3-guiding-principles`](https://techbeacon.com/get-your-feet-wet-domain-driven-design-3-guiding-principles)
 
-+   DDD 入门：[https://dzone.com/storage/assets/1216461-dzone-rc-domain-driven-design.pdf](https://dzone.com/storage/assets/1216461-dzone-rc-domain-driven-design.pdf)
++   DDD 入门：[`dzone.com/storage/assets/1216461-dzone-rc-domain-driven-design.pdf`](https://dzone.com/storage/assets/1216461-dzone-rc-domain-driven-design.pdf)
 
-+   模型评估和管理：[https://arxiv.org/ftp/arxiv/papers/1409/1409.2361.pdf](https://arxiv.org/ftp/arxiv/papers/1409/1409.2361.pdf)
++   模型评估和管理：[`arxiv.org/ftp/arxiv/papers/1409/1409.2361.pdf`](https://arxiv.org/ftp/arxiv/papers/1409/1409.2361.pdf)
 
-+   [https://www.infoq.com/articles/ddd-in-practice](https://www.infoq.com/articles/ddd-in-practice) (DDD 的特性)
++   [`www.infoq.com/articles/ddd-in-practice`](https://www.infoq.com/articles/ddd-in-practice) (DDD 的特性)
 
-+   [https://www.codeproject.com/Articles/1158628/Domain-Driven-Design-What-You-Need-to-Know-About-S](https://www.codeproject.com/Articles/1158628/Domain-Driven-Design-What-You-Need-to-Know-About-S)
++   [`www.codeproject.com/Articles/1158628/Domain-Driven-Design-What-You-Need-to-Know-About-S`](https://www.codeproject.com/Articles/1158628/Domain-Driven-Design-What-You-Need-to-Know-About-S)
 
-+   [https://www.codeproject.com/Articles/1164363/Domain-Driven-Design-Tactical-Design-Patterns-Part](https://www.codeproject.com/Articles/1164363/Domain-Driven-Design-Tactical-Design-Patterns-Part)
++   [`www.codeproject.com/Articles/1164363/Domain-Driven-Design-Tactical-Design-Patterns-Part`](https://www.codeproject.com/Articles/1164363/Domain-Driven-Design-Tactical-Design-Patterns-Part)
 
-+   [https://www.slideshare.net/SpringCentral/ddd-rest-domain-driven-apis-for-the-web](https://www.slideshare.net/SpringCentral/ddd-rest-domain-driven-apis-for-the-web)
++   [`www.slideshare.net/SpringCentral/ddd-rest-domain-driven-apis-for-the-web`](https://www.slideshare.net/SpringCentral/ddd-rest-domain-driven-apis-for-the-web)
 
-+   [https://www.infoq.com/presentations/ddd-rest](https://www.infoq.com/presentations/ddd-rest)
++   [`www.infoq.com/presentations/ddd-rest`](https://www.infoq.com/presentations/ddd-rest)
 
-+   [https://ordina-jworks.github.io/conference/2016/07/10/SpringIO16-DDD-Rest.html](https://ordina-jworks.github.io/conference/2016/07/10/SpringIO16-DDD-Rest.html)
++   [`ordina-jworks.github.io/conference/2016/07/10/SpringIO16-DDD-Rest.html`](https://ordina-jworks.github.io/conference/2016/07/10/SpringIO16-DDD-Rest.html)
 
-+   [https://www.slideshare.net/canpekdemir/domain-driven-design-71055163](https://www.slideshare.net/canpekdemir/domain-driven-design-71055163)
++   [`www.slideshare.net/canpekdemir/domain-driven-design-71055163`](https://www.slideshare.net/canpekdemir/domain-driven-design-71055163)
 
-+   [https://msdn.microsoft.com/magazine/dn342868.aspx](https://msdn.microsoft.com/magazine/dn342868.aspx)
++   [`msdn.microsoft.com/magazine/dn342868.aspx`](https://msdn.microsoft.com/magazine/dn342868.aspx)
 
-+   [http://mkuthan.github.io/blog/2013/11/04/ddd-architecture-summary/](http://mkuthan.github.io/blog/2013/11/04/ddd-architecture-summary/)
++   [`mkuthan.github.io/blog/2013/11/04/ddd-architecture-summary/`](http://mkuthan.github.io/blog/2013/11/04/ddd-architecture-summary/)

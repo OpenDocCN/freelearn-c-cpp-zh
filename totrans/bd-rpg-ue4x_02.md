@@ -1,42 +1,42 @@
-# 第2章。Unreal中的脚本和数据
+# 第二章。Unreal 中的脚本和数据
 
 现在我们有了可以工作的设计，我们可以开始开发游戏了。
 
-然而，在我们能够这样做之前，我们将探索各种方法，了解我们如何在Unreal游戏引擎中与游戏代码和游戏数据一起工作。
+然而，在我们能够这样做之前，我们将探索各种方法，了解我们如何在 Unreal 游戏引擎中与游戏代码和游戏数据一起工作。
 
-本章将指导您完成安装Unreal和Visual Studio以及创建新的Unreal Engine项目的步骤。此外，您还将学习如何创建新的C++游戏代码，使用蓝图和蓝图图，以及使用自定义数据为您的游戏工作。在本章中，我们将涵盖以下主题：
+本章将指导您完成安装 Unreal 和 Visual Studio 以及创建新的 Unreal Engine 项目的步骤。此外，您还将学习如何创建新的 C++游戏代码，使用蓝图和蓝图图，以及使用自定义数据为您的游戏工作。在本章中，我们将涵盖以下主题：
 
-+   下载Unreal
++   下载 Unreal
 
-+   为Unreal设置Visual Studio
++   为 Unreal 设置 Visual Studio
 
-+   设置新的Unreal项目
++   设置新的 Unreal 项目
 
-+   创建新的C++类
++   创建新的 C++类
 
 +   创建蓝图和蓝图图
 
 +   使用数据表导入电子表格数据
 
-# 下载Unreal
+# 下载 Unreal
 
-在开始之前，请确保您的计算机上至少有18 GB的空闲磁盘空间。您需要这些磁盘空间来存储Unreal的开发环境和项目文件。
+在开始之前，请确保您的计算机上至少有 18 GB 的空闲磁盘空间。您需要这些磁盘空间来存储 Unreal 的开发环境和项目文件。
 
-我们现在需要下载Unreal。为此，请访问[https://www.unrealengine.com](https://www.unrealengine.com)并点击**GET UNREAL**按钮。
+我们现在需要下载 Unreal。为此，请访问[`www.unrealengine.com`](https://www.unrealengine.com)并点击**GET UNREAL**按钮。
 
-在您下载Unreal之前，您需要创建一个Epic Games账户。**GET UNREAL**按钮将带您到一个账户创建表单，所以填写并提交它。
+在您下载 Unreal 之前，您需要创建一个 Epic Games 账户。**GET UNREAL**按钮将带您到一个账户创建表单，所以填写并提交它。
 
-登录后，您将看到**下载**按钮。这将下载Epic Games Launcher的安装程序（从这个启动器，您可以下载Unreal版本4.12）。
+登录后，您将看到**下载**按钮。这将下载 Epic Games Launcher 的安装程序（从这个启动器，您可以下载 Unreal 版本 4.12）。
 
-# 下载Visual Studio
+# 下载 Visual Studio
 
-我们很快就需要开始编程，所以如果您还没有，现在是下载Visual Studio的时候了，这是我们编写引擎和游戏逻辑框架所需的集成开发环境。幸运的是，Microsoft免费提供了Visual Studio Community。
+我们很快就需要开始编程，所以如果您还没有，现在是下载 Visual Studio 的时候了，这是我们编写引擎和游戏逻辑框架所需的集成开发环境。幸运的是，Microsoft 免费提供了 Visual Studio Community。
 
-要下载Visual Studio Community，请访问[https://www.visualstudio.com/](https://www.visualstudio.com/)并下载Community 2015。这将下载Visual Studio的安装程序。下载后，只需运行安装程序即可。请注意，Visual Studio Community 2015默认不安装C++，所以请确保在**功能**下安装Visual C++、Visual C++ 2015的通用工具和C++的Microsoft Foundation Classes。如果您没有安装C++，您将无法在Visual Studio中编写或编译为UE4编写的代码，因为UE4是基于C++构建的。
+要下载 Visual Studio Community，请访问[`www.visualstudio.com/`](https://www.visualstudio.com/)并下载 Community 2015。这将下载 Visual Studio 的安装程序。下载后，只需运行安装程序即可。请注意，Visual Studio Community 2015 默认不安装 C++，所以请确保在**功能**下安装 Visual C++、Visual C++ 2015 的通用工具和 C++的 Microsoft Foundation Classes。如果您没有安装 C++，您将无法在 Visual Studio 中编写或编译为 UE4 编写的代码，因为 UE4 是基于 C++构建的。
 
-# 为Unreal设置Visual Studio
+# 为 Unreal 设置 Visual Studio
 
-安装Visual Studio后，您可以采取一些步骤来使在Unreal中使用C++代码更容易。这些步骤并非绝对必要，可以安全地跳过。
+安装 Visual Studio 后，您可以采取一些步骤来使在 Unreal 中使用 C++代码更容易。这些步骤并非绝对必要，可以安全地跳过。
 
 ## 添加“解决方案平台”下拉列表
 
@@ -46,11 +46,11 @@
 
 点击此按钮，将鼠标悬停在**Add**或**Remove**按钮上，然后点击**Solution Platforms**以将菜单添加到工具栏。
 
-**Solution Platforms**下拉列表允许你在目标平台之间切换项目（例如，Windows、Mac等）。
+**Solution Platforms**下拉列表允许你在目标平台之间切换项目（例如，Windows、Mac 等）。
 
 ## 禁用错误列表标签
 
-Visual Studio中的错误列表在你编译项目之前显示它检测到的错误。虽然这通常非常有用，但在Unreal中，它可能会频繁检测到假阳性，并且比有帮助还要令人烦恼。
+Visual Studio 中的错误列表在你编译项目之前显示它检测到的错误。虽然这通常非常有用，但在 Unreal 中，它可能会频繁检测到假阳性，并且比有帮助还要令人烦恼。
 
 要禁用错误列表，首先关闭**Error List**标签（你可以在下面的面板中找到，如下面的截图所示）：
 
@@ -60,31 +60,31 @@ Visual Studio中的错误列表在你编译项目之前显示它检测到的错�
 
 ![禁用错误列表标签](img/B04548_02_11.jpg)
 
-# 设置新的Unreal项目
+# 设置新的 Unreal 项目
 
-现在你已经下载并安装了Unreal和Visual Studio，我们将为我们的游戏创建一个项目。
+现在你已经下载并安装了 Unreal 和 Visual Studio，我们将为我们的游戏创建一个项目。
 
-Unreal提供了一系列你可以使用的入门套件，但为了我们的游戏，我们将从头开始编写所有脚本。
+Unreal 提供了一系列你可以使用的入门套件，但为了我们的游戏，我们将从头开始编写所有脚本。
 
-在登录Epic Games Launcher后，你首先想要下载Unreal Engine。本书使用版本4.12。你可以使用更高版本，但根据版本的不同，一些代码和引擎的导航可能会有所不同。创建新项目的步骤如下：
+在登录 Epic Games Launcher 后，你首先想要下载 Unreal Engine。本书使用版本 4.12。你可以使用更高版本，但根据版本的不同，一些代码和引擎的导航可能会有所不同。创建新项目的步骤如下：
 
 1.  首先，在**Unreal Engine**标签下，选择**Library**。然后，在**Engine Versions**下，点击**Add Versions**并选择你想要下载的版本。
 
 1.  下载完引擎后，点击**Launch**按钮。
 
-1.  一旦Unreal Engine启动，点击**New Project**标签。然后，点击**C++**标签并选择**Basic Code**。
+1.  一旦 Unreal Engine 启动，点击**New Project**标签。然后，点击**C++**标签并选择**Basic Code**。
 
 1.  最后，选择你的项目位置并给它命名（在我的情况下，我给项目命名为`RPG`）。
 
-在我的情况下，创建项目后，引擎会自动关闭并打开Visual Studio。在这个时候，我发现最好关闭Visual Studio，回到Epic Games Launcher，并重新启动引擎。然后，从这里打开你的新项目。最后，在编辑器启动后，转到**File** | **Open Visual Studio**。
+在我的情况下，创建项目后，引擎会自动关闭并打开 Visual Studio。在这个时候，我发现最好关闭 Visual Studio，回到 Epic Games Launcher，并重新启动引擎。然后，从这里打开你的新项目。最后，在编辑器启动后，转到**File** | **Open Visual Studio**。
 
-原因是，虽然你可以通过编译Visual Studio项目来启动编辑器，但在某些罕见情况下，你可能每次想要编译新的更改时都必须关闭编辑器。另一方面，如果你从编辑器（而不是反过来）启动Visual Studio，你可以在Visual Studio中做出更改，然后从编辑器内部编译代码。
+原因是，虽然你可以通过编译 Visual Studio 项目来启动编辑器，但在某些罕见情况下，你可能每次想要编译新的更改时都必须关闭编辑器。另一方面，如果你从编辑器（而不是反过来）启动 Visual Studio，你可以在 Visual Studio 中做出更改，然后从编辑器内部编译代码。
 
-到目前为止，你已经有一个空白的Unreal项目和准备就绪的Visual Studio。
+到目前为止，你已经有一个空白的 Unreal 项目和准备就绪的 Visual Studio。
 
-# 创建新的C++类
+# 创建新的 C++类
 
-我们现在将按照以下步骤创建一个新的C++类：
+我们现在将按照以下步骤创建一个新的 C++类：
 
 1.  要做到这一点，从 Unreal 编辑器中，点击 **文件** | **新建 C++ 类**。我们将创建一个演员类，因此选择 **Actor** 作为基类。演员是放置在场景中的对象（从网格到灯光，再到声音等等）。
 
@@ -94,11 +94,20 @@ Unreal提供了一系列你可以使用的入门套件，但为了我们的游�
 
 1.  在此点应该已经打开的 `MyNewActor.h` 文件应该在 `GENERATED_BODY()` 行之后包含以下代码：
 
-    [PRE0]
+    ```cpp
+    public:   virtual void BeginPlay();
+    ```
 
 1.  然后，在 `MyNewActor.cpp` 文件中，添加一个日志，在 `void AnyNewActor::BeginPlay()` 函数中打印 **Hello, world!**，该函数在游戏开始时运行：
 
-    [PRE1]
+    ```cpp
+    void AnyNewActor::BeginPlay()
+    {
+        Super::BeginPlay();
+
+        GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("Hello World!"));
+    }
+    ```
 
 1.  然后，切换回编辑器并点击主工具栏中的 **编译** 按钮。
 
@@ -160,21 +169,21 @@ Unreal 中的蓝图是一种基于 C++ 的专有可视化脚本语言。蓝图�
 
 # 使用数据表导入电子表格数据
 
-在虚幻引擎中，**数据表**是导入和使用从电子表格应用程序导出的自定义游戏数据的方法。为此，您首先确保您的电子表格遵循一些格式指南；此外，您编写一个包含电子表格一行数据的C++结构体。然后，您导出一个CSV文件，并将您的C++结构体选择为该文件的数据类型。
+在虚幻引擎中，**数据表**是导入和使用从电子表格应用程序导出的自定义游戏数据的方法。为此，您首先确保您的电子表格遵循一些格式指南；此外，您编写一个包含电子表格一行数据的 C++结构体。然后，您导出一个 CSV 文件，并将您的 C++结构体选择为该文件的数据类型。
 
 ## 电子表格格式
 
 您的电子表格必须遵循一些简单的规则，才能正确导出到虚幻引擎。
 
-非常第一个单元格必须保持空白。在此之后，第一行将包含字段的名称。这些将与您稍后C++结构体中的变量名相同，因此不要使用空格或其他特殊字符。
+非常第一个单元格必须保持空白。在此之后，第一行将包含字段的名称。这些将与您稍后 C++结构体中的变量名相同，因此不要使用空格或其他特殊字符。
 
-第一列将包含每个条目的**查找键**。也就是说，如果这个电子表格中第一项的第一单元格是1，那么在虚幻引擎中，您将使用1来查找该条目。这必须对每一行都是唯一的。
+第一列将包含每个条目的**查找键**。也就是说，如果这个电子表格中第一项的第一单元格是 1，那么在虚幻引擎中，您将使用 1 来查找该条目。这必须对每一行都是唯一的。
 
 然后，以下列包含每个变量的值。
 
 ## 一个示例电子表格
 
-让我们创建一个简单的工作表导入到Unreal中。它应该看起来像这样：
+让我们创建一个简单的工作表导入到 Unreal 中。它应该看起来像这样：
 
 ![一个示例工作表](img/B04548_02_08.jpg)
 
@@ -186,19 +195,35 @@ Unreal 中的蓝图是一种基于 C++ 的专有可视化脚本语言。蓝图�
 
 +   列**C**包含`SomeString`字段的值。就像列**B**一样，第一个单元格包含字段名称（`SomeString`），后面的单元格包含该字段的值。
 
-我使用Google表格——使用这个，你会点击**文件** | **另存为** | **逗号分隔值 (.csv, 当前工作表)**来导出为CSV。大多数电子表格应用程序都有导出为CSV格式的功能。
+我使用 Google 表格——使用这个，你会点击**文件** | **另存为** | **逗号分隔值 (.csv, 当前工作表)**来导出为 CSV。大多数电子表格应用程序都有导出为 CSV 格式的功能。
 
-到目前为止，你有一个可以导入Unreal的CSV文件。然而，现在不要导入它。在我们这样做之前，我们需要为它创建一个C++结构体。
+到目前为止，你有一个可以导入 Unreal 的 CSV 文件。然而，现在不要导入它。在我们这样做之前，我们需要为它创建一个 C++结构体。
 
 ## 数据表结构体
 
-正如您之前创建演员类一样，让我们创建一个新的类。选择`Actor`作为父类，并给它一个像`TestCustomData`这样的名字。我们的类实际上不会从`Actor`继承（并且，就这个而言，它不会是一个类），但这样做允许Unreal在后台为我们生成一些代码。
+正如您之前创建演员类一样，让我们创建一个新的类。选择`Actor`作为父类，并给它一个像`TestCustomData`这样的名字。我们的类实际上不会从`Actor`继承（并且，就这个而言，它不会是一个类），但这样做允许 Unreal 在后台为我们生成一些代码。
 
 接下来，打开`TestCustomData.h`文件，并用以下代码替换整个文件：
 
-[PRE2]
+```cpp
+#pragma once
 
-注意变量名与工作表中的表头单元格完全相同——这很重要，因为它显示了Unreal如何将工作表中的列与该结构体的字段匹配。
+#include "TestCustomData.generated.h"
+
+USTRUCT(BlueprintType)
+struct FTestCustomData : public FTableRowBase
+{
+  GENERATED_USTRUCT_BODY()
+
+  UPROPERTY( BlueprintReadOnly, Category = "TestCustomData" )
+  int32 SomeNumber;
+
+  UPROPERTY( BlueprintReadOnly, Category = "TestCustomData" )
+  FString SomeString;
+};
+```
+
+注意变量名与工作表中的表头单元格完全相同——这很重要，因为它显示了 Unreal 如何将工作表中的列与该结构体的字段匹配。
 
 接下来，从`TestCustomData.cpp`文件中删除所有内容，除了`#include`语句。
 
@@ -208,9 +233,9 @@ Unreal 中的蓝图是一种基于 C++ 的专有可视化脚本语言。蓝图�
 
 ## 导入工作表
 
-接下来，只需将你的CSV文件拖放到**内容浏览器**标签页中。这将弹出一个窗口，询问你想要如何导入数据以及数据的类型。将第一个下拉列表保留为**数据表**，展开第二个下拉列表以选择**TestCustomData**（你刚刚创建的结构体）。
+接下来，只需将你的 CSV 文件拖放到**内容浏览器**标签页中。这将弹出一个窗口，询问你想要如何导入数据以及数据的类型。将第一个下拉列表保留为**数据表**，展开第二个下拉列表以选择**TestCustomData**（你刚刚创建的结构体）。
 
-点击**确定**，它将导入CSV文件。如果你在**内容浏览器**标签页中双击该资产，你会看到工作表中包含的项目列表：
+点击**确定**，它将导入 CSV 文件。如果你在**内容浏览器**标签页中双击该资产，你会看到工作表中包含的项目列表：
 
 ![导入工作表](img/B04548_02_09.jpg)
 
@@ -222,20 +247,31 @@ Unreal 中的蓝图是一种基于 C++ 的专有可视化脚本语言。蓝图�
 
 首先，在`GENERATED_BODY`行之后添加以下代码：
 
-[PRE3]
+```cpp
+public:
+  UPROPERTY( BlueprintReadWrite, EditAnywhere, Category = "My New Actor")
+  UDataTable* DataTable;
+```
 
 上述代码将数据表暴露给蓝图，并允许在蓝图内对其进行编辑。接下来，我们将获取第一行并记录其`SomeString`字段。在`MyNewActor.cpp`文件中，将以下代码添加到`BeginPlay`函数的末尾：
 
-[PRE4]
+```cpp
+if( DataTable != NULL )
+{
+  FTestCustomData* row = DataTable->FindRow<FTestCustomData>( TEXT( "2" ), TEXT(" LookupTestCustomData"  ) );
+  FString someString = row->SomeString;
+  UE_LOG( LogTemp, Warning, TEXT( "%s" ), *someString );
+}
+```
 
 您还需要在`MyNewActor.cpp`文件的顶部添加`#include TestCustomData.h`，这样您就可以在其中看到数据表属性。
 
-在编辑器中编译代码。接下来，打开您从actor类创建的蓝图。切换到**类默认值**选项卡，找到**My New Actor**组（这应该在最顶部）。这应该显示一个可以展开以选择您导入的CSV文件的**数据表**字段。
+在编辑器中编译代码。接下来，打开您从 actor 类创建的蓝图。切换到**类默认值**选项卡，找到**My New Actor**组（这应该在最顶部）。这应该显示一个可以展开以选择您导入的 CSV 文件的**数据表**字段。
 
 编译并保存蓝图，然后按**播放**。你应该能在控制台中看到条目`2`的`SomeString`值。
 
 # 摘要
 
-在本章中，我们设置了Unreal和Visual Studio，并创建了一个新项目。此外，我们学习了如何在C++中创建新的actor类，什么是蓝图，以及如何创建和使用蓝图图进行可视化脚本编写。最后，我们学习了如何从电子表格应用程序导入自定义数据，并在游戏代码中查询它们。
+在本章中，我们设置了 Unreal 和 Visual Studio，并创建了一个新项目。此外，我们学习了如何在 C++中创建新的 actor 类，什么是蓝图，以及如何创建和使用蓝图图进行可视化脚本编写。最后，我们学习了如何从电子表格应用程序导入自定义数据，并在游戏代码中查询它们。
 
 在下一章，我们将开始深入研究一些实际的游戏代码，并开始原型化我们的游戏。

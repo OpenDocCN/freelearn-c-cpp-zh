@@ -1,4 +1,4 @@
-# 第7章。添加外观 – 维多利亚时代高峰时段
+# 第七章。添加外观 – 维多利亚时代高峰时段
 
 *现在我们有了测试游戏，是时候让它变得漂亮了！我们将介绍添加到游戏中以使其看起来更美观的新精灵元素，并涵盖一个或两个新主题。然而，到目前为止，你应该能够理解这个项目最终代码中的所有内容。*
 
@@ -18,7 +18,7 @@
 
 # 维多利亚时代高峰时段 – 游戏画面
 
-从本书的**支持**页面（[www.packtpub.com/support](http://www.packtpub.com/support)）下载`4198_07_START_PROJECT.zip`文件，并在Xcode中运行项目。你应该能够识别出我们在测试版本中所做的所有工作，并定位到一些额外的元素。你还会看到实际的游戏玩法中没有任何新增内容。
+从本书的**支持**页面（[www.packtpub.com/support](http://www.packtpub.com/support)）下载`4198_07_START_PROJECT.zip`文件，并在 Xcode 中运行项目。你应该能够识别出我们在测试版本中所做的所有工作，并定位到一些额外的元素。你还会看到实际的游戏玩法中没有任何新增内容。
 
 在《维多利亚时代高峰时段》中，我想让地形成为游戏中的主要挑战，但我也想向你展示如何轻松地添加新元素到建筑中并与它们交互。
 
@@ -76,15 +76,43 @@
 
 1.  每个方块将存储四种不同类型的纹理的引用，代表游戏中使用的四种类型的建筑 (`_tile1`, `_tile2`, `_tile3` 和 `_tile4`)。因此，我们现在在 `initBlock` 方法中存储这些信息：
 
-    [PRE0]
+    ```cpp
+    void Block::initBlock() {
+
+      _tile1 = SpriteFrameCache::getInstance()- >getSpriteFrameByName ("building_1.png");
+      _tile2 = SpriteFrameCache::getInstance()- >getSpriteFrameByName ("building_2.png");
+      _tile3 = SpriteFrameCache::getInstance()- >getSpriteFrameByName ("building_3.png");
+      _tile4 = SpriteFrameCache::getInstance()- >getSpriteFrameByName ("building_4.png");
+    ```
 
 1.  每个方块还存储了两种纹理的引用，用于建筑屋顶瓦片 (`_roof1` 和 `_roof2`):
 
-    [PRE1]
+    ```cpp
+    _roof1 = SpriteFrameCache::getInstance()-> getSpriteFrameByName ("roof_1.png");
+      _roof2 = SpriteFrameCache::getInstance()- >getSpriteFrameByName ("roof_2.png");
+    ```
 
 1.  接下来，我们创建并分配形成我们建筑的各个精灵瓦片：
 
-    [PRE2]
+    ```cpp
+    //create tiles
+    for (int i = 0; i < 5; i++) {
+       auto tile = Sprite::createWithSpriteFrameName("roof_1.png");
+       tile->setAnchorPoint(Vec2(0, 1));
+       tile->setPosition(Vec2(i * _tileWidth, 0));
+       tile->setVisible(false);
+       this->addChild(tile, kMiddleground, kRoofTile);
+       _roofTiles.pushBack(tile);
+       for (int j = 0; j < 4; j++) {
+          tile =  Sprite::createWithSpriteFrameName("building_1.png");
+          tile->setAnchorPoint(Vec2(0, 1));
+          tile->setPosition(Vec2(i * _tileWidth, -1 *  (_tileHeight * 0.47f + j * _tileHeight)));
+          tile->setVisible(false);
+          this->addChild(tile, kBackground, kWallTile);
+          _wallTiles.pushBack(tile);
+       }
+    }
+    ```
 
     一个方块由 `_wallTiles` 向量中存储的 20 个精灵和 `_roofTiles` 向量中存储的 5 个精灵组成。因此，当我们初始化一个 `Block` 对象时，实际上创建了一个宽度为五个瓦片、高度为四个瓦片的建筑。我决定游戏中的任何建筑都不会超过这个大小。如果你决定更改这个，那么你需要在的地方进行更改。
 
@@ -92,19 +120,83 @@
 
 1.  接下来是我们的新 `setupBlock` 方法，这是将不必要的瓦片和烟囱变为不可见并展开可见烟囱的地方。我们开始这个方法如下：
 
-    [PRE3]
+    ```cpp
+    void Block::setupBlock (int width, int height, int type) {
+
+      this->setPuffing(false);
+
+      _type = type;
+
+      _width = width * _tileWidth;
+      //add the roof height to the final height of the block
+      _height = height * _tileHeight + _tileHeight * 0.49f;
+      this->setPositionY(_height);
+
+      SpriteFrame * wallFrame;
+      SpriteFrame * roofFrame = rand() % 10 > 6 ? _roof1 :  _roof2;
+
+      int num_chimneys;
+      float chimneyX[] = {0,0,0,0,0};
+    ```
 
 1.  然后，根据建筑类型，我们为烟囱精灵提供不同的 `x` 位置，并确定我们将用于墙面瓦片的纹理：
 
-    [PRE4]
+    ```cpp
+    switch (type) {
+
+      case kBlockGap:
+        this->setVisible(false);
+        return;
+
+      case kBlock1:
+        wallFrame = _tile1;
+        chimneyX[0] = 0.2f;
+        chimneyX[1] = 0.8f;
+        num_chimneys = 2;
+        break;
+      case kBlock2:
+        wallFrame = _tile2;
+        chimneyX[0] = 0.2f;
+         chimneyX[1] = 0.8f;
+        chimneyX[2] = 0.5f;
+        num_chimneys = 3;
+        break;
+      case kBlock3:
+        wallFrame = _tile3;
+        chimneyX[0] = 0.2f;
+        chimneyX[1] = 0.8f;
+        chimneyX[2] = 0.5f;
+        num_chimneys = 3;
+
+        break;
+      case kBlock4:
+        wallFrame = _tile4;
+        chimneyX[0] = 0.2f;
+        chimneyX[1] = 0.5f;
+        num_chimneys = 2;
+        break;
+    }
+    ```
 
 1.  然后该方法继续定位可见的烟囱。我们最终转向建筑的纹理化。纹理屋顶和墙砖的逻辑是相同的；例如，以下是墙壁如何通过通过`setDisplayFrame`方法更改每个墙精灵的纹理来铺贴，然后使未使用的砖块不可见：
 
-    [PRE5]
+    ```cpp
+    count = _wallTiles->count();
+      for (i  = 0; i < count; i++) {
+        tile = (Sprite *) _wallTiles->objectAtIndex(i);
+        if (tile->getPositionX() < _width && tile ->getPositionY() > -_height) {
+          tile->setVisible(true);
+          tile->setDisplayFrame(wallFrame);
+        } else {
+          tile->setVisible(false);
+        }
+      }
+    }
+    ```
 
 ## *发生了什么事？*
 
-当我们在`initBlock`中实例化一个块时，我们创建了一个由墙砖和屋顶砖块组成的5 x 4建筑，每个都是一个精灵。当我们需要将这个建筑变成3 x 2建筑，或4 x 4建筑，或任何其他建筑时，我们只需在`setupBlock`的末尾将多余的砖块设置为不可见。
+当我们在`initBlock`中实例化一个块时，我们创建了一个由墙砖和屋顶砖块组成的 5 x 4 建筑，每个都是一个精灵。当我们需要将这个建筑变成 3 x 2 建筑，或 4 x 4 建筑，或任何其他建筑时，我们只需在`setupBlock`的末尾将多余的砖块设置为不可见。
 
 屋顶使用的纹理是随机选择的，但墙壁使用的纹理是基于建筑类型（来自我们的`patterns`数组）。它也位于这个`for`循环中，所有定位在新建筑宽度高度点以上的砖块都被设置为不可见。
 
@@ -114,9 +206,11 @@
 
 如果你进入`Terrain.cpp`中的静态`create`方法，你会注意到对象仍然使用对`blank.png`纹理的引用创建：
 
-[PRE6]
+```cpp
+terrain->initWithSpriteFrameName("blank.png")
+```
 
-事实上，测试版本中使用的相同的1 x 1像素图像现在在我们的精灵图集中，只是这次图像是透明的。
+事实上，测试版本中使用的相同的 1 x 1 像素图像现在在我们的精灵图集中，只是这次图像是透明的。
 
 这是一种有点黑客式的方法，但却是必要的，因为只有当精灵的纹理源与创建批处理节点使用的纹理相同时，才能将其放置在批处理节点内。但是`Terrain`只是一个容器，它没有纹理。然而，通过将其`blank`纹理设置为包含在我们的精灵图集中的某个东西，我们可以将`_terrain`放置在`_gameBatchNode`中。
 
@@ -128,7 +222,7 @@
 
 # 创建视差效果
 
-Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人惊讶的事情是，你实际上很少能用到它！`ParallaxNode`有助于使用有限层或有限滚动创建透视效果，这意味着如果你的游戏屏幕有滚动限制，你可以使用它。将`ParallaxNode`应用于可以无限滚动的游戏屏幕，例如*Victorian Rush Hour*中的屏幕，通常需要比构建自己的效果更多的努力。
+Cocos2d-x 有一个名为`ParallaxNode`的特殊节点，关于它的一个令人惊讶的事情是，你实际上很少能用到它！`ParallaxNode`有助于使用有限层或有限滚动创建透视效果，这意味着如果你的游戏屏幕有滚动限制，你可以使用它。将`ParallaxNode`应用于可以无限滚动的游戏屏幕，例如*Victorian Rush Hour*中的屏幕，通常需要比构建自己的效果更多的努力。
 
 通过在不同深度以不同速度移动对象来创建透视效果。一个层看起来离屏幕越远，其速度应该越慢。在游戏中，这通常意味着玩家精灵的速度被分成所有在其后面的层，并乘以出现在玩家精灵前面的层：
 
@@ -142,23 +236,47 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 1.  因此，在我们的`update`方法中，你会找到以下代码行：
 
-    [PRE7]
+    ```cpp
+    if (_player->getVector().x > 0) {
+      _background->setPositionX(_background->getPosition().x -  _player->getVector().x * 0.25f);
+    ```
 
     首先，我们移动包含城市景观纹理沿`x`轴重复三次的`_background`精灵，并以`_player`精灵的四分之一速度移动它。
 
 1.  `_background`精灵向左滚动，一旦第一张城市景观纹理离开屏幕，我们就将整个`_background`容器向右移动到第二张城市景观纹理应该出现的位置。我们通过从精灵的总宽度中减去精灵的位置来获取这个值：
 
-    [PRE8]
+    ```cpp
+    float diffx;
+
+    if (_background->getPositionX() < -_background ->getContentSize().width) {
+      diffx = fabs(_background->getPositionX()) - _background ->getContentSize().width;
+      _background->setPositionX(-diffx);
+    }
+    ```
 
     因此，实际上，我们只滚动容器内的第一个纹理精灵。
 
 1.  使用`_foreground`精灵及其包含的三个路灯精灵重复类似的过程。只有`_foreground`精灵以玩家精灵的四倍速度移动。这些代码如下所示：
 
-    [PRE9]
+    ```cpp
+    _foreground->setPositionX(_foreground->getPosition().x - _player->getVector().x * 4);
+
+    if (_foreground->getPositionX() < -_foreground ->getContentSize().width * 4) {
+      diffx = fabs(_foreground->getPositionX()) - _foreground ->getContentSize().width * 4;
+      _foreground->setPositionX(-diffx);
+    }
+    ```
 
 1.  我们还在透视效果中使用了我们的`cloud`精灵。由于它们出现在城市景观之后，因此距离`_player`更远，云层的移动速度更低（`0.15`）：
 
-    [PRE10]
+    ```cpp
+    for (auto cloud : _clouds) {
+       cloud->setPositionX(cloud->getPositionX() - _player->getVector().x * 0.15f);
+       if (cloud->getPositionX() + cloud->getBoundingBox().size.width * 0.5f < 0 ) {
+          cloud->setPositionX(_screenSize.width + cloud->getBoundingBox().size.width * 0.5f);
+       }
+    }
+    ```
 
 ## *发生了什么？*
 
@@ -174,13 +292,19 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 ![向我们的游戏中添加菜单](img/00028.jpeg)
 
-# 现在是时候创建菜单和MenuItem了
+# 现在是时候创建菜单和 MenuItem 了
 
 在`GameLayer.cpp`中，向下滚动到`createGameScreen`方法。我们将在这个方法的末尾添加新的逻辑。
 
 1.  首先，创建开始游戏按钮的菜单项：
 
-    [PRE11]
+    ```cpp
+    auto menuItemOn =  Sprite::createWithSpriteFrameName("btn_new_on.png");
+    auto menuItemOff =  Sprite::createWithSpriteFrameName("btn_new_off.png");
+
+    auto starGametItem = MenuItemSprite::create( menuItemOff,
+    menuItemOn, CC_CALLBACK_1(GameLayer::startGame, this));
+    ```
 
     我们通过为按钮的每个状态传递一个精灵来创建一个`MenuItemSprite`对象。当用户触摸一个`MenuItemSprite`对象时，关闭状态的精灵变为不可见，而开启状态的精灵变为可见，所有这些操作都在触摸开始事件中完成。如果触摸结束或取消，关闭状态将再次显示。
 
@@ -188,23 +312,56 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 1.  接下来，我们添加教程按钮：
 
-    [PRE12]
+    ```cpp
+    menuItemOn =  Sprite::createWithSpriteFrameName("btn_howto_on.png");
+    menuItemOff =  Sprite::createWithSpriteFrameName("btn_howto_off.png");
+
+    auto howToItem = MenuItemSprite::create( menuItemOff,  menuItemOn, CC_CALLBACK_1(GameLayer::showTutorial, this));
+    ```
 
 1.  然后是创建菜单的时间：
 
-    [PRE13]
+    ```cpp
+    _mainMenu = Menu::create(howToItem, starGametItem, nullptr);
+    _mainMenu->alignItemsHorizontallyWithPadding(120);
+    _mainMenu->setPosition(Vec2(_screenSize.width *  0.5f, _screenSize.height * 0.54));
+
+    this->addChild(_mainMenu, kForeground);
+    ```
 
     `Menu`构造函数可以接收你希望显示的任意数量的`MenuItemSprite`对象。这些项目随后通过以下调用进行分布：`alignItemsHorizontally`、`alignItemsHorizontallyWithPadding`、`alignItemsVerticallyWithPadding`、`alignItemsInColumns`和`alignItemsInRows`。项目将按照传递给`Menu`构造函数的顺序显示。
 
 1.  然后我们需要添加我们的回调函数：
 
-    [PRE14]
+    ```cpp
+    void GameLayer::startGame (Ref* pSender) {
+      _tutorialLabel->setVisible(false);
+      _intro->setVisible(false);
+      _mainMenu->setVisible(false);
+
+      _jam->runAction(_jamMove);
+      SimpleAudioEngine::getInstance() ->playEffect("start.wav");
+      _terrain->setStartTerrain ( true );
+      _state = kGamePlay;
+    }
+
+    void GameLayer::showTutorial (Ref* pSender) {
+      _tutorialLabel->setString ("Tap the screen to make the player jump.");
+      _state = kGameTutorialJump;
+      _jam->runAction(_jamMove);
+      _intro->setVisible(false);
+      _mainMenu->setVisible(false);
+      SimpleAudioEngine::getInstance() ->playEffect("start.wav");
+      _tutorialLabel->setVisible(true);
+
+    }
+    ```
 
     这些是在我们的菜单按钮被点击时调用的，一个用于开始游戏，一个用于显示教程。
 
 ## *发生了什么？*
 
-我们刚刚创建了游戏的主菜单。`Menu`可以为我们节省很多时间处理按钮的所有交互逻辑。尽管它可能不如Cocos2d-x中的其他项目灵活，但如果我们需要它，了解它的存在仍然是有用的。
+我们刚刚创建了游戏的主菜单。`Menu`可以为我们节省很多时间处理按钮的所有交互逻辑。尽管它可能不如 Cocos2d-x 中的其他项目灵活，但如果我们需要它，了解它的存在仍然是有用的。
 
 我们将在下一节处理教程部分。
 
@@ -226,11 +383,27 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 1.  在那个方法中，添加以下行以创建我们的`Label`对象：
 
-    [PRE15]
+    ```cpp
+    _tutorialLabel = Label::createWithTTF("", "fonts/Times.ttf", 60);
+    _tutorialLabel->setPosition(Vec2 (_screenSize.width *  0.5f, _screenSize.height * 0.6f) );
+    this->addChild(_tutorialLabel, kForeground);
+    _tutorialLabel->setVisible(false);
+    ```
 
 1.  我们在我们的游戏状态枚举列表中添加了四个状态。这些将代表教程中的不同步骤：
 
-    [PRE16]
+    ```cpp
+    typedef enum {
+      kGameIntro,
+      kGamePlay,
+      kGameOver,
+      kGameTutorial,
+      kGameTutorialJump,
+      kGameTutorialFloat,
+      kGameTutorialDrop
+
+    } GameState;
+    ```
 
     第一个教程状态`kGameTutorial`作为与其他游戏状态的分隔符。因此，如果`_state`的值大于`kGameTutorial`，我们就处于教程模式。
 
@@ -238,27 +411,81 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 1.  如果你还记得，我们的`showTutorial`方法从一条消息开始，告诉玩家触摸屏幕使精灵跳跃：
 
-    [PRE17]
+    ```cpp
+    _tutorialLabel->setString ("Tap the screen to make the player jump.");
+    _state = kGameTutorialJump;
+    ```
 
 1.  然后，在 `update` 方法的末尾，我们开始添加显示我们教程剩余信息的行。首先，如果玩家精灵正在跳跃并且刚刚开始下落，我们使用以下代码：
 
-    [PRE18]
+    ```cpp
+    if (_state > kGameTutorial) {
+      if (_state == kGameTutorialJump) {
+        if (_player->getState() == kPlayerFalling && _player ->getVector().y < 0) {
+          _player->stopAllActions();
+          _jam->setVisible(false);
+          _jam->stopAllActions();
+          _running = false;
+          _tutorialLabel->setString ("While in the air, tap the screen to float.");
+          _state = kGameTutorialFloat;
+        }
+    ```
 
     如你所见，我们让玩家知道再次点击将打开雨伞并导致精灵漂浮。
 
 1.  接下来，当精灵在空中漂浮时，当它到达建筑物的一定距离时，我们通知玩家，再次点击将关闭雨伞并导致精灵下落。以下是这些指令的代码：
 
-    [PRE19]
+    ```cpp
+      } else if (_state == kGameTutorialFloat) {
+        if (_player->getPositionY() < _screenSize.height *  0.95f) {
+          _player->stopAllActions();
+          _running = false;
+          _tutorialLabel->setString ("While floating, tap the screen again to drop.");
+          _state = kGameTutorialDrop;
+        }
+    ```
 
 1.  之后，教程将完成，并显示玩家可以开始游戏的消息：
 
-    [PRE20]
+    ```cpp
+      } else {
+        _tutorialLabel->setString ("That's it. Tap the screen to play.");
+        _state = kGameTutorial;
+      }
+    }
+    ```
 
     每当我们更改教程状态时，我们会暂时暂停游戏并等待点击。我们将在 `onTouchBegan` 中处理其余的逻辑，所以我们将稍后添加它。
 
 1.  在 `onTouchBegan` 函数内部，在 `switch` 语句中，添加以下情况：
 
-    [PRE21]
+    ```cpp
+    case kGameTutorial:
+      _tutorialLabel->setString("");
+      _tutorialLabel->setVisible(false);
+      _terrain->setStartTerrain ( true );
+      _state = kGamePlay;
+      break;
+
+    case kGameTutorialJump:
+      if (_player->getState() == kPlayerMoving) {
+        SimpleAudioEngine::getInstance() ->playEffect("jump.wav");
+        _player->setJumping(true);
+      }
+      break;
+
+    case kGameTutorialFloat:
+      if (!_player->getFloating()) {
+        _player->setFloating (true);
+        _running = true;
+      }
+      break;
+
+    case kGameTutorialDrop:
+      _player->setFloating (false);
+      _running = true;
+      break;
+    ```
 
 ## *发生了什么？*
 
@@ -274,7 +501,15 @@ Cocos2d-x有一个名为`ParallaxNode`的特殊节点，关于它的一个令人
 
 1.  将 `LOCAL_SRC_FILES` 中的行编辑为以下内容：
 
-    [PRE22]
+    ```cpp
+    LOCAL_SRC_FILES := hellocpp/main.cpp \
+                       ../../Classes/AppDelegate.cpp \
+                       ../../Classes/Block.cpp \
+                       ../../Classes/GameSprite.cpp \
+                       ../../Classes/Player.cpp \
+                       ../../Classes/Terrain.cpp \
+                       ../../Classes/GameLayer.cpp
+    ```
 
 1.  将游戏导入 Eclipse 并等待所有类编译完成。
 

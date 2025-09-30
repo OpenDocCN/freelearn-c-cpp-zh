@@ -54,15 +54,15 @@
 
     这种方法减少了与类交互的复杂性，并使得将来更新类实现变得更加容易：
 
-![图2.1：类直接暴露了用户代码使用的功能，隐藏了它实际上是用两个浮点数实现的这一事实](img/Image70122.jpg)
+![图 2.1：类直接暴露了用户代码使用的功能，隐藏了它实际上是用两个浮点数实现的这一事实](img/Image70122.jpg)
 
-###### 图2.1：类直接暴露了用户代码使用的功能，隐藏了它实际上是用两个浮点数实现的这一事实
+###### 图 2.1：类直接暴露了用户代码使用的功能，隐藏了它实际上是用两个浮点数实现的这一事实
 
-我们讨论了可以将GPS坐标表示为纬度和经度的事实。稍后，我们可能会决定将坐标表示为从**北极**的距离。多亏了信息隐藏，我们可以改变类的实现方式，而类的用户不会受到影响，因为我们没有改变类提供的功能：
+我们讨论了可以将 GPS 坐标表示为纬度和经度的事实。稍后，我们可能会决定将坐标表示为从**北极**的距离。多亏了信息隐藏，我们可以改变类的实现方式，而类的用户不会受到影响，因为我们没有改变类提供的功能：
 
-![图2.2：类的实现方式发生变化，但由于它对用户隐藏，并且功能没有改变，用户不需要改变他们的代码与类的交互方式](img/Image70130.jpg)
+![图 2.2：类的实现方式发生变化，但由于它对用户隐藏，并且功能没有改变，用户不需要改变他们的代码与类的交互方式](img/Image70130.jpg)
 
-###### 图2.2：类的实现方式发生变化，但由于它对用户隐藏，并且功能没有改变，用户不需要改变他们的代码与它的交互方式
+###### 图 2.2：类的实现方式发生变化，但由于它对用户隐藏，并且功能没有改变，用户不需要改变他们的代码与它的交互方式
 
 类向用户公开的功能集通常被称为**公共接口**。
 
@@ -72,9 +72,13 @@
 
 +   **封装**：这是将数据和我们可以对其执行的操作组合在一起的原则。由于数据被隐藏在类中，用户无法访问或操作它。类必须提供与它交互的功能。C++通过允许用户将用于与类交互的操作和实现这些操作所使用的数据放在同一个单元中来实现封装：**类**。
 
-让我们探索C++中类的结构及其相关信息。以下是一个类的基本结构：
+让我们探索 C++中类的结构及其相关信息。以下是一个类的基本结构：
 
-[PRE0]
+```cpp
+class ClassName { 
+  // class body
+};
+```
 
 #### 注意
 
@@ -100,19 +104,31 @@ C++中有以下三种访问修饰符：
 
 访问修饰符后面跟着冒号来限定类中的一个区域，并且在该区域中定义的任何成员都具有它前面的访问修饰符。以下是语法：
 
-[PRE1]
+```cpp
+class ClassName {
+  private:
+    int privateDataMember;
+    int privateMemberFunction();
+  protected:
+    float protectedDataMember;
+    float protectedMemberFunction();
+  public:
+    double publicDataMember;
+    double publicMemberFunction();
+};
+```
 
 #### 注意
 
 默认情况下，类成员具有`private`访问修饰符。
 
-在C++中，我们也可以使用`struct`关键字来定义一个类。`struct`与类相同，唯一的区别是，默认情况下，访问修饰符是`public`，而对于类来说，它是`private`。
+在 C++中，我们也可以使用`struct`关键字来定义一个类。`struct`与类相同，唯一的区别是，默认情况下，访问修饰符是`public`，而对于类来说，它是`private`。
 
 以下并排的代码片段是等效的：
 
 ![](img/C11557_03_03.jpg)
 
-###### 图3.2：类和struct代码片段之间的区别
+###### 图 3.2：类和 struct 代码片段之间的区别
 
 是否使用`struct`或`class`取决于使用的约定：通常，当我们想要一个可以从代码的任何地方访问的数据成员集合时，我们使用`structs`；另一方面，当我们正在模拟一个更复杂的概念时，我们使用类。
 
@@ -122,11 +138,21 @@ C++中有以下三种访问修饰符：
 
 我们可以以创建任何基本类型相同的方式创建一个实例：先定义变量的类型，然后是变量的名称。让我们看看以下示例。
 
-[PRE2]
+```cpp
+class Coordinates {
+  public:
+    float latitude;
+    float longitude;
+    float distance(const Coordinates& other_coordinate);
+};
+```
 
 以下是一个示例，展示了具有多个实例的类：
 
-[PRE3]
+```cpp
+Coordinates newYorkPosition;
+Coordinates tokyoPosition;
+```
 
 在这里，我们有`Coordinates`类的两个实例，每个实例都有其`latitude`和`longitude`，它们可以独立改变。一旦我们有一个实例，我们就可以访问它的成员。
 
@@ -134,17 +160,25 @@ C++中有以下三种访问修饰符：
 
 对于之前定义的变量，我们可以使用以下代码来访问它们的`latitude`：
 
-[PRE4]
+```cpp
+float newYorkLatitude = newYorkPosition.latitude;
+```
 
 如果我们想调用一个成员函数，我们可以这样调用它：
 
-[PRE5]
+```cpp
+float distance = newYorkPosition.distance(tokyoPosition);
+```
 
 另一方面，当我们编写`class`方法的主体时，我们处于类的范围内。这意味着我们可以通过直接使用它们的名称来访问类的其他成员，而无需使用*点*运算符。当前实例的成员将被使用。
 
 假设`distance`方法实现如下：
 
-[PRE6]
+```cpp
+float Coordinates::distance(const Coordinates& other_coordinate) {
+  return pythagorean_distance(latitude, longitude, other_coodinate.latitude, other_coordinate.longitude);
+}
+```
 
 当我们调用 `newYorkPosition.distance(tokyoPosition);` 时，`distance` 方法是在 `newYorkPosition` 实例上被调用的。这意味着 `distance` 方法中的 `latitude` 和 `longitude` 指的是 `newYorkPosition.latitude` 和 `newYorkPosition.longitude`，而 `other_coordinate.latitude` 指的是 `tokyoPosition.latitude`。
 
@@ -160,13 +194,19 @@ C++中有以下三种访问修饰符：
 
 然而，有时我们希望所有实例共享相同的值。在这种情况下，我们可以通过创建一个 `static` 字段，将字段与类关联而不是与实例关联。让我们检查以下语法：
 
-[PRE7]
+```cpp
+class ClassName {
+  static Type memberName;
+};
+```
 
 将只有一个 `memberName` 字段，它被所有实例共享。像任何 C++ 变量一样，`memberName` 需要存储在内存中。我们不能使用实例对象的存储，因为 `memberName` 与任何特定实例无关。`memberName` 以类似 *全局变量* 的方式存储。
 
 在声明 `static` 变量的类之外，在一个 `.cpp` 文件中，我们可以定义 `static` 变量的值。初始化值的语法如下：
 
-[PRE8]
+```cpp
+Type ClassName::memberName = value;
+```
 
 #### 注意
 
@@ -178,7 +218,27 @@ C++中有以下三种访问修饰符：
 
 让我们看看一个类中的静态字段如何在头文件中定义，以及如何在`.cpp`文件中为其赋值：
 
-[PRE9]
+```cpp
+// In the .h file
+class Coordinates {
+  // Data member
+  float latitude_ = 0;
+  // Data member
+  float longitude_ = 0; 
+public:
+  // Static data member declaration
+  static const Coordinates hearthCenter;
+  // Member function declaration
+  float distanceFrom(Coordinates other);
+  // Member function definition
+  float distanceFromCenter() {
+    return distanceFrom(hearthCenter);
+  }
+};
+// In the .cpp file 
+// Static data member definition
+const Coordinates Coordinates::hearthCenter = Coordinates(0, 0);
+```
 
 当访问实例的成员时，我们学习了如何使用点运算符。
 
@@ -190,23 +250,51 @@ C++中有以下三种访问修饰符：
 
 让我们检查以下练习，以了解静态变量是如何工作的。
 
-### 练习7：使用静态变量
+### 练习 7：使用静态变量
 
-让我们编写一个程序来打印和查找从1到10的数字的平方：
+让我们编写一个程序来打印和查找从 1 到 10 的数字的平方：
 
 1.  包含所需的头文件。
 
 1.  编写`squares()`函数和以下逻辑：
 
-    [PRE10]
+    ```cpp
+    void squares() 
+    {  
+        static int count = 1; 
+        int x = count * count;
+        x = count * count;
+        std::cout << count << "*" << count;
+        std::cout << ": " << x <<std::endl;
+        count++;
+    }
+    ```
 
 1.  现在，在`main`函数中，添加以下代码：
 
-    [PRE11]
+    ```cpp
+    int main() 
+    { 
+        for (int i=1; i<11; i++)     
+            squares(); 
+        return 0; 
+    }
+    ```
 
     输出如下：
 
-    [PRE12]
+    ```cpp
+    1*1: 1
+    2*2: 4
+    3*3: 9
+    4*4: 16
+    5*5: 25
+    6*6: 36
+    7*7: 49
+    8*8: 64
+    9*9: 81
+    10*10: 100
+    ```
 
 除了静态字段之外，类还可以有静态方法。
 
@@ -222,11 +310,20 @@ C++中有以下三种访问修饰符：
 
 声明成员函数只是在一个类体内部声明一个函数的事情。让我们检查以下语法：
 
-[PRE13]
+```cpp
+class Car
+{
+  public:
+  void turnOn() {}
+};
+```
 
 成员函数，就像类的数据成员一样，可以使用应用于对象的点（`.`）运算符来访问：
 
-[PRE14]
+```cpp
+Car car;
+car.turnOn();
+```
 
 让我们了解如何在类作用域之外声明成员函数。
 
@@ -236,19 +333,43 @@ C++中有以下三种访问修饰符：
 
 以下是在类外部定义成员函数的定义，这是通过使用作用域解析运算符（`::`）来声明所引用的函数是类的成员来完成的。在类体中，函数使用其原型进行声明：
 
-[PRE15]
+```cpp
+class Car
+{
+  public:
+  void turnOn();
+};
+void Car::turnOn() {}
+```
 
-### 使用const成员函数
+### 使用 const 成员函数
 
 类的成员函数可以被指定为`const`，这意味着该函数限制其访问为只读。此外，当成员函数访问`const`成员数据时，它必须为`const`。因此，不允许`const`成员函数修改对象的状态或调用这样做的方法。
 
 要将成员函数声明为`const`，我们在函数声明中使用`const`关键字，位于函数名之后和函数体之前：
 
-[PRE16]
+```cpp
+const std::string& getColor() const
+{
+  // Function body
+}
+```
 
 除了我们在上一章中学到的重载规则之外，成员函数可以在它们的`const-ness`上进行重载，这意味着两个函数可以具有相同的签名，除了一个是`const`而另一个不是。当对象被声明为`const`时，将调用`const`成员函数；否则，调用非`const`函数。让我们考察以下代码：
 
-[PRE17]
+```cpp
+class Car
+{
+  std::string& getColor() {}
+  const std::string& getColor() const {}
+};
+Car car;
+// Call std::string& getColor()
+car.getColor();
+const Car constCar; 
+// Call const Color& getColor() const
+constCar.getColor();
+```
 
 #### 注意
 
@@ -262,7 +383,11 @@ C++中有以下三种访问修饰符：
 
 +   第三个是一个返回`const`引用的`const`函数：
 
-    [PRE18]
+    ```cpp
+    type& function() const {}
+    const type& function() {}
+    const type& function() const {}
+    ```
 
 ### `this`关键字
 
@@ -270,7 +395,22 @@ C++中有以下三种访问修饰符：
 
 在以下示例中，`setColorToRed()`和`setColorToBlue()`执行相同的操作。两者都设置一个数据成员，但前者使用`this`关键字来引用当前对象：
 
-[PRE19]
+```cpp
+class Car
+{
+  std::string color;
+  void setColorToRed()
+  {
+    this->color = "Red";
+    // explicit use of this
+  }
+  void setColorToBlue()
+  {
+    color = "Blue";
+    // same as this->color = "Blue";
+  }
+};
+```
 
 #### 注意
 
@@ -284,19 +424,41 @@ C++中有以下三种访问修饰符：
 
 1.  然后，添加以下函数以打印所需输出：
 
-    [PRE20]
+    ```cpp
+    class PrintName {
+        std::string name;
+
+    };
+    ```
 
 1.  现在，让我们使用`this`关键字完成程序，并添加一个结束语。在之前的类中定义以下方法：
 
-    [PRE21]
+    ```cpp
+    public:
+       void set_name(const std::string &name){
+           this->name = name;
+       }    
+       void print_name() {
+           std::cout << this->name << "! Welcome to the C++ community :)" << std::endl;
+       }
+    ```
 
 1.  编写如下`main`函数：
 
-    [PRE22]
+    ```cpp
+    int main()
+    {
+    PrintName object;
+    object.set_name("Marco");
+    object.print_name();
+    }
+    ```
 
     输出如下：
 
-    [PRE23]
+    ```cpp
+    Marco! Welcome to the C++ community :)
+    ```
 
     #### 注意
 
@@ -306,7 +468,16 @@ C++中有以下三种访问修饰符：
 
 定义为属于类接口的概念性函数或操作，非成员类相关函数不是类本身的一部分。让我们考察以下示例：
 
-[PRE24]
+```cpp
+class Circle{
+  public:
+    int radius;
+};
+ostream& print(ostream& os, const Circle& circle) {
+  os << "Circle's radius: " << circle.radius;
+  return os;
+}
+```
 
 打印函数将圆的半径写入给定的流，这通常是标准输出。
 
@@ -334,7 +505,7 @@ C++中有以下三种访问修饰符：
 
     #### 注意
 
-    这个活动的解决方案可以在第288页找到。
+    这个活动的解决方案可以在第 288 页找到。
 
 ## 构造函数和析构函数
 
@@ -342,7 +513,15 @@ C++中有以下三种访问修饰符：
 
 在下面的例子中，我们将声明一个名为`Rectangle`的`struct`，并按照以下方式为其设置值：
 
-[PRE25]
+```cpp
+struct Rectangle {
+  int height;
+  int width;
+};
+Rectangle rectangle;
+// What will the following print function print?
+std::cout << "Height: " << rectangle.height << std::endl;
+```
 
 这行代码将打印一个随机值，因为我们从未设置`int`的值。C++对基本类型的初始化规则是它们获得非指定值。
 
@@ -356,13 +535,23 @@ C++中有以下三种访问修饰符：
 
 与任何其他函数一样，构造函数可以接受参数并具有函数体。我们可以在变量的名称后添加参数列表来调用构造函数：
 
-[PRE26]
+```cpp
+Rectangle rectangle(parameter1, paramter2, ..., parameterN);
+```
 
 当没有参数时，我们可以避免使用括号，就像我们在前面的例子中所做的那样。
 
 `Rectangle`结构体不带参数的构造函数示例如下：
 
-[PRE27]
+```cpp
+struct Rectangle {
+  int height, width;
+  Rectangle() {
+    height = 0;
+    width = 0;
+  }
+};
+```
 
 #### 注意
 
@@ -378,15 +567,24 @@ C++中有以下三种访问修饰符：
 
 将其实现为一个`struct`，其中所有字段都是`public`。参考以下代码：
 
-[PRE28]
+```cpp
+struct Date {
+  int day;
+  int month;
+  int year;
+};
+```
 
 现在，用户可以轻松地执行以下操作：
 
-[PRE29]
+```cpp
+Date date;
+date.month = 153;
+```
 
-之前的代码没有意义，因为格里高利历中只有12个月。
+之前的代码没有意义，因为格里高利历中只有 12 个月。
 
-对于日期，一个类不变性是月份总是在1到12之间，日期总是在1到31之间，并且根据月份，甚至更少。
+对于日期，一个类不变性是月份总是在 1 到 12 之间，日期总是在 1 到 31 之间，并且根据月份，甚至更少。
 
 不论用户对`Date`对象进行的任何更改，不变性都必须始终成立。
 
@@ -396,7 +594,7 @@ C++中有以下三种访问修饰符：
 
 #### 注意
 
-不变性的概念并不仅限于C++语言，并且没有专门的设施来指定类的不变性。一个最佳实践是在类代码中一起记录类的预期不变性，以便与该类一起工作的开发者可以轻松地检查预期的不变性并确保他们遵守它。
+不变性的概念并不仅限于 C++语言，并且没有专门的设施来指定类的不变性。一个最佳实践是在类代码中一起记录类的预期不变性，以便与该类一起工作的开发者可以轻松地检查预期的不变性并确保他们遵守它。
 
 在代码中使用断言也有助于识别何时不遵守不变性。这可能意味着代码中存在错误。
 
@@ -406,13 +604,22 @@ C++中有以下三种访问修饰符：
 
 我们在本章前面展示了`Rectangle`类的默认构造函数的示例。如果我们想添加一个从正方形创建矩形的构造函数，我们可以在`Rectangle`类中添加以下构造函数：
 
-[PRE30]
+```cpp
+class Rectangle {
+  public: 
+    Rectangle(); // as before
+    Rectangle (Square square);
+}; 
+```
 
 第二个构造函数是一个重载构造函数，它将根据类对象的初始化方式被调用。
 
 在以下示例中，第一行将调用带有空参数的构造函数，而第二行将调用重载构造函数：
 
-[PRE31]
+```cpp
+Rectangle obj; // Calls the first constructor
+Rectangle obj(square); // Calls the second overloaded constructor
+```
 
 #### 注意
 
@@ -420,27 +627,49 @@ C++中有以下三种访问修饰符：
 
 根据之前的定义，以下转换是可能的：
 
-[PRE32]
+```cpp
+Square square;
+Rectangle rectangle(square);
+```
 
 构造函数被初始化，并且它从类型`Square`转换为`Rectangle`。
 
 同样，编译器在调用函数时也可以创建隐式转换，如下面的示例所示：
 
-[PRE33]
+```cpp
+void use_rectangle(Rectangle rectangle);
+int main() {
+  Square square;
+  use_rectangle(square);
+}
+```
 
 当调用`use_rectangle`时，编译器通过调用转换构造函数创建一个新的`Rectangle`类型的对象，该构造函数接受一个`Square`。
 
 避免这种情况的一种方法是在构造函数定义前使用`explicit`指定符：
 
-[PRE34]
+```cpp
+explicit class_name(type arg) {}
+```
 
 让我们看看`Rectangle`的另一种实现，它有一个显式构造函数：
 
-[PRE35]
+```cpp
+class ExplicitRectangle {
+  public: 
+    explicit ExplicitRectangle(Square square);
+}; 
+```
 
 当我们尝试使用`Square`调用一个接受`ExplicitRectangle`的函数时，我们会得到一个错误：
 
-[PRE36]
+```cpp
+void use_explicit_rectangle(ExplicitRectangle rectangle);
+int main() {
+    Square square;
+    use_explicit_rectangle(square); // Error!
+}
+```
 
 ### 构造函数成员初始化
 
@@ -448,19 +677,37 @@ C++中有以下三种访问修饰符：
 
 让我们看看以下示例：
 
-[PRE37]
+```cpp
+class Rectangle {
+  public:
+    Rectangle(): width(0), height(0) { } //Empty function body, as the variables have already been initialized
+  private:
+    int width;
+    int height;
+};
+```
 
 注意，在这个最后的情况下，构造函数除了初始化其成员外没有做任何事情。因此，它有一个空函数体。
 
 现在，如果我们尝试打印`Rectangle`对象的宽度和高度，我们会注意到它们被正确地初始化为`0`：
 
-[PRE38]
+```cpp
+Rectangle rectangle; 
+std::cout << "Width: " << rectangle.width << std::endl;  // 0
+std::cout << "Height: " << rectangle.height << std::endl; // 0
+```
 
-初始化列表是C++中初始化成员变量的推荐方式，当数据成员是`const`时是必要的。
+初始化列表是 C++中初始化成员变量的推荐方式，当数据成员是`const`时是必要的。
 
 当使用初始化列表时，成员构造的顺序是它们在类内部声明的顺序；而不是它们在初始化列表中出现的顺序。让我们看看以下示例：
 
-[PRE39]
+```cpp
+class Example {
+    Example() : second(0), first(0) {}
+    int first;
+    int second;
+};
+```
 
 当调用`Example`类的默认构造函数时，`first`方法将首先被初始化，然后是`second`方法，即使它们在初始化列表中的顺序不同。
 
@@ -474,23 +721,37 @@ C++中有以下三种访问修饰符：
 
 #### 注意
 
-我们将在第6章中讨论基类和虚函数。
+我们将在第六章中讨论基类和虚函数。
 
 即使这些类没有构造函数，也可以通过使用括号括起来的逗号分隔的初始化子句列表来初始化，如下所示：
 
-[PRE40]
+```cpp
+struct Rectangle {
+  int length;
+  int width;
+};
+Rectangle rectangle = {10, 15};
+std::cout << rectangle.length << "," << rectangle.width;
+// Prints: 10, 15
+```
 
 ### 析构函数
 
 当对象超出作用域时，会自动调用**析构函数**，并用于销毁其类的对象。
 
-析构函数与类名相同，前面有一个波浪号(`~`)，并且不接收任何参数也不返回任何值（甚至不是void）。让我们来看一个例子：
+析构函数与类名相同，前面有一个波浪号(`~`)，并且不接收任何参数也不返回任何值（甚至不是 void）。让我们来看一个例子：
 
-[PRE41]
+```cpp
+class class_name {
+  public:
+    class_name() {} // constructor
+    ~class_name() {} // destructor
+};
+```
 
 执行析构函数的主体并销毁在主体内部分配的任何自动对象后，类的析构函数会调用所有直接成员的析构函数。数据成员的销毁顺序与它们的构造顺序相反。
 
-### 练习9：创建一个简单的坐标程序以演示构造函数和析构函数的使用
+### 练习 9：创建一个简单的坐标程序以演示构造函数和析构函数的使用
 
 让我们编写一个简单的程序来演示构造函数和析构函数的使用：
 
@@ -498,15 +759,38 @@ C++中有以下三种访问修饰符：
 
 1.  现在，将以下代码添加到`Coordinates`类中：
 
-    [PRE42]
+    ```cpp
+    class Coordinates {
+        public:
+        Coordinates(){
+            std::cout << "Constructor called!" << std::endl;
+        }
+
+        ~Coordinates(){
+            std::cout << "Destructor called!" << std::endl;
+        }
+    };
+    ```
 
 1.  在`main`函数中，添加以下代码：
 
-    [PRE43]
+    ```cpp
+    int main() 
+    { 
+
+      Coordinates c;  
+      // Constructor called!
+      // Destructor called!
+
+    }
+    ```
 
     输出如下：
 
-    [PRE44]
+    ```cpp
+    Constructor called!
+    Destructor called!
+    ```
 
 ### 默认构造函数和析构函数
 
@@ -516,11 +800,11 @@ C++中有以下三种访问修饰符：
 
 默认构造函数可能不会初始化数据成员。具有内置或复合类型成员的类通常应在类内部初始化这些成员或定义其默认构造函数版本。
 
-### 活动8：在2D地图上表示位置
+### 活动 8：在 2D 地图上表示位置
 
-Alice正在编写一个程序来展示世界地图的2D版本。用户需要能够保存位置，例如他们的房子、餐厅或工作场所。为了启用此功能，Alice需要能够表示世界中的位置。
+Alice 正在编写一个程序来展示世界地图的 2D 版本。用户需要能够保存位置，例如他们的房子、餐厅或工作场所。为了启用此功能，Alice 需要能够表示世界中的位置。
 
-创建一个名为`Coordinates`的类，其数据成员是点的2D坐标。为了确保对象始终正确初始化，实现一个构造函数来初始化类的数据成员。
+创建一个名为`Coordinates`的类，其数据成员是点的 2D 坐标。为了确保对象始终正确初始化，实现一个构造函数来初始化类的数据成员。
 
 让我们执行以下步骤：
 
@@ -530,21 +814,21 @@ Alice正在编写一个程序来展示世界地图的2D版本。用户需要能�
 
 1.  通过添加两个参数`latitude`和`longitude`的`public`构造函数来扩展类，这些参数用于初始化类的数据成员。
 
-1.  Alice现在可以使用这个`Coordinates`类来表示地图上的2D位置。
+1.  Alice 现在可以使用这个`Coordinates`类来表示地图上的 2D 位置。
 
     #### 注意
 
-    本活动的解决方案可以在第289页找到。
+    本活动的解决方案可以在第 289 页找到。
 
 ## 资源获取即初始化
 
 **资源获取即初始化**，或简称**RAII**，是一种编程习惯，用于通过将其绑定到对象的生存周期来自动管理资源的生命周期。
 
-通过智能地使用对象的构造函数和析构函数，你可以实现RAII。前者获取资源，而后者负责实现它。当资源无法获取时，构造函数可以抛出异常，而析构函数绝不能抛出异常。
+通过智能地使用对象的构造函数和析构函数，你可以实现 RAII。前者获取资源，而后者负责实现它。当资源无法获取时，构造函数可以抛出异常，而析构函数绝不能抛出异常。
 
-通常，当资源的使用涉及`open()`/`close()`、`lock()`/`unlock()`、`start()`/`stop()`、`init()`/`destroy()`或类似函数调用时，通过RAII类的实例操作资源是一种良好的实践。
+通常，当资源的使用涉及`open()`/`close()`、`lock()`/`unlock()`、`start()`/`stop()`、`init()`/`destroy()`或类似函数调用时，通过 RAII 类的实例操作资源是一种良好的实践。
 
-以下是一种使用RAII风格机制打开和关闭文件的方法。
+以下是一种使用 RAII 风格机制打开和关闭文件的方法。
 
 #### 注意
 
@@ -552,25 +836,50 @@ C++像许多语言一样，将输入/输出操作表示为流，其中数据可�
 
 类的构造函数将文件打开到提供的流中，而析构函数将关闭它：
 
-[PRE45]
+```cpp
+class file_handle {
+  public:
+    file_handle(ofstream& stream, const char* filepath) : _stream(stream) {
+      _stream.open(filepath);
+    }
+    ~file_handle {
+      _stream.close();
+    }
+  private:
+    ofstream& _stream;
+};
+```
 
 要打开文件，只需向`file_handle`类提供文件路径。然后，在整个`file_handle`对象的生命周期内，文件将不会关闭。一旦对象达到作用域的末尾，文件将被关闭：
 
-[PRE46]
+```cpp
+ofstream stream;
+{
+  file_handle myfile(stream, "Some path"); // file is opened
+  do_something_with_file(stream);
+}                                          // file is closed here 
+```
 
 这代替了以下代码：
 
-[PRE47]
+```cpp
+ofstream stream;
+{
+  stream.open("Some path");    // file is opened
+  do_something_with_file(stream);
+  stream.close();              // file is closed here
+}
+```
 
-尽管应用RAII惯用语提供的优势似乎只是减少代码，但真正的改进是拥有更安全的代码。程序员编写一个正确打开文件但从未关闭它或分配永远不会被销毁的内存的函数是很常见的情况。
+尽管应用 RAII 惯用语提供的优势似乎只是减少代码，但真正的改进是拥有更安全的代码。程序员编写一个正确打开文件但从未关闭它或分配永远不会被销毁的内存的函数是很常见的情况。
 
-RAII确保这些操作不会被遗忘，因为它会自动处理它们。
+RAII 确保这些操作不会被遗忘，因为它会自动处理它们。
 
-### 活动9：在地图上存储不同位置的多组坐标
+### 活动 9：在地图上存储不同位置的多组坐标
 
-在2D地图程序中，用户可以在地图上保存多个位置。我们需要能够存储多个坐标以跟踪用户保存的位置。为此，我们需要一种创建可以存储它们的数组的方法：
+在 2D 地图程序中，用户可以在地图上保存多个位置。我们需要能够存储多个坐标以跟踪用户保存的位置。为此，我们需要一种创建可以存储它们的数组的方法：
 
-1.  使用RAII编程惯用语，编写一个管理内存分配和删除值数组的类。该类有一个整数数组作为成员数据，它将用于存储值。
+1.  使用 RAII 编程惯用语，编写一个管理内存分配和删除值数组的类。该类有一个整数数组作为成员数据，它将用于存储值。
 
 1.  构造函数接受数组的大小作为参数。
 
@@ -582,7 +891,7 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
     #### 注意
 
-    本活动的解决方案可以在第290页找到。
+    本活动的解决方案可以在第 290 页找到。
 
 ## 嵌套类声明
 
@@ -594,7 +903,21 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 要访问嵌套类，我们可以使用双冒号（`::`），类似于访问外部类的静态成员。让我们看看以下示例：
 
-[PRE48]
+```cpp
+// Declaration
+class Coordinate {
+...
+  struct CoordinateDistance {
+    float x = 0;
+    float y = 0;
+    static float walkingDistance(CoordinateDistance distance);
+  }
+};
+// Create an instance of the nested class CoordinateDistance
+Coordinate::CoordinateDistance distance;
+/* Invoke the static method walkingDistance declared inside the nested class CoordinateDistance */
+Coordinate::CoordinateDistance::walkingDistance(distance);
+```
 
 嵌套类有两个主要用途：
 
@@ -604,7 +927,7 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 想象一个列表——对象序列。我们希望用户能够遍历列表中的项目。为此，我们需要跟踪用户已经遍历过的项目和剩余的项目。这通常是通过一个`List`类来完成的。
 
-我们将在*第5课*，*标准库容器和算法*中更详细地了解迭代器。
+我们将在*第 5 课*，*标准库容器和算法*中更详细地了解迭代器。
 
 ## 友元指定符
 
@@ -616,7 +939,17 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 友元函数是非成员函数，有权访问类的私有和保护成员。将函数声明为`friend`函数的方法是在类内部添加其声明，并在其前面加上`friend`关键字。让我们看看以下代码：
 
-[PRE49]
+```cpp
+class class_name {
+  type_1 member_1;
+  type_2 member_2;
+  public:
+    friend void print(const class_name &obj);
+};
+friend void print(const class_name &obj){
+  std::cout << obj.member_1 << " " << member_2 << std::endl;
+}
+```
 
 在前面的例子中，声明在类作用域之外的功能有权访问类数据成员，因为它被声明为`friend`函数。
 
@@ -632,7 +965,23 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 以下代码演示了友情不是相互的概念：
 
-[PRE50]
+```cpp
+class A {
+  friend class B;
+  int a = 0;
+};
+class B {
+  friend class C;
+  int b = 0;
+};
+class C {
+  int c = 0;
+  void access_a(const A& object) {
+    object.a;
+    // Error! A.a is private, and C is not a friend of A.
+  }
+};
+```
 
 友情不是传递的；因此，在前面的例子中，类`C`不是类`A`的友元，类`C`的方法不能访问类`A`的保护或私有成员。此外，`A`不能访问`B`的私有成员，因为`B`是`A`的友元，但友情不是相互的。
 
@@ -644,21 +993,41 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 1.  现在，创建一个名为`Height`的类，包含一个`public`方法，如下所示：
 
-    [PRE51]
+    ```cpp
+    class Height {
+        double inches;
+        public:
+            Height(double value): inches(value) { }
+            friend void print_feet(Height);
+    };
+    ```
 
 1.  如您所见，在之前的代码中，我们使用了一个名为`print_feet`的友元函数。现在，让我们声明它：
 
-    [PRE52]
+    ```cpp
+    void print_feet(Height h){
+        std::cout << "Your height in inches is: " << h.inches<< std::endl;
+        std::cout << "Your height in feet is: " << h.inches * 0.083 << std::endl;
+    }
+    ```
 
 1.  在`main`函数中调用类，如下所示：
 
-    [PRE53]
+    ```cpp
+    int main(){
+        IHeight h(83);
+        print_feet(h);
+    }
+    ```
 
     输出如下：
 
-    [PRE54]
+    ```cpp
+    Your height in inches is: 83
+    Your height in feet is: 6.889
+    ```
 
-### 活动10：创建苹果实例的`AppleTree`类
+### 活动 10：创建苹果实例的`AppleTree`类
 
 有时，我们可能只想在有限数量的类中创建特定类型的对象，以防止创建该类型的对象。这通常发生在类之间有严格关系时。
 
@@ -668,23 +1037,50 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 1.  首先，我们需要创建一个具有`private`构造函数的类。这样，对象就不能被构造，因为构造函数不是公开可访问的：
 
-    [PRE55]
+    ```cpp
+    class Apple 
+    {
+      private:
+        Apple() {}
+        // do nothing
+    };
+    ```
 
 1.  `AppleTree`类被定义，并包含一个名为`createFruit`的方法，负责创建一个`Apple`并返回它：
 
-    [PRE56]
+    ```cpp
+    class AppleTree
+    {
+      public:
+        Apple createApple(){
+          Apple apple;
+          return apple;
+        }
+    };
+    ```
 
 1.  如果我们编译此代码，我们将得到一个错误。此时，`Apple`构造函数是`private`的，因此`AppleTree`类无法访问它。我们需要将`AppleTree`类声明为`Apple`的`friend`，以允许`AppleTree`访问`Apple`的私有方法：
 
-    [PRE57]
+    ```cpp
+    class Apple
+    {
+      friend class AppleTree;
+      private:
+        Apple() {}
+        // do nothing
+    }
+    ```
 
 1.  现在可以使用以下代码构造`Apple`对象：
 
-    [PRE58]
+    ```cpp
+    AppleTree tree;
+    Apple apple = tree.createFruit();
+    ```
 
     #### 注意
 
-    本活动的解决方案可以在第291页找到。
+    本活动的解决方案可以在第 291 页找到。
 
 ## 复制构造函数和赋值运算符
 
@@ -692,13 +1088,43 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 以下代码引用了一个具有用户定义的复制构造函数的类，它将另一个对象的数据成员复制到当前对象中：
 
-[PRE59]
+```cpp
+class class_name {
+  public:
+    class_name(const class_name& other) : member(other.member){}
+  private:
+    type member;
+};
+```
 
 当类定义没有显式声明复制构造函数且所有数据成员都具有复制构造函数时，编译器会**隐式地**声明一个复制构造函数。这个隐式复制构造函数会按照初始化的**相同顺序**复制类的成员。
 
 让我们看看一个例子：
 
-[PRE60]
+```cpp
+struct A {
+  A() {}
+  A(const A& a) {
+    std::cout << "Copy construct A" << std::endl;
+  }
+};
+struct B {
+  B() {}
+  B(const B& a) {
+    std::cout << "Copy construct B" << std::endl;
+  }
+};
+class C {
+  A a;
+  B b;
+  // The copy constructor is implicitly generated
+};
+int main() {
+  C first;
+  C second(first);
+  // Prints: "Copy construct A", "Copy construct B"
+}
+```
 
 当`C`被复制构造时，成员按顺序复制：首先复制`a`，然后复制`b`。要复制`A`和`B`，编译器会调用这些类中定义的复制构造函数。
 
@@ -716,17 +1142,45 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 这里是使用复制赋值运算符的一个示例：
 
-[PRE61]
+```cpp
+class class_name {
+  public:
+    class_name& operator= (const class_name & other) {
+      member = other.member;
+    }
+  private:
+    type member;
+};
+```
 
 此外，对于复制赋值运算符，当它没有显式声明时，编译器生成一个 *隐式* 的。至于复制构造函数，成员的复制顺序与初始化顺序相同。
 
 在以下示例中，当复制构造函数和复制赋值运算符被调用时，它们将输出一句话：
 
-[PRE62]
+```cpp
+class class_name {
+  public:
+    class_name(const class_name& other) : member(other.member){
+      std::cout << "Copy constructor called!" << std::endl;
+    }
+    class_name& operator= (const class_name & other) {
+      member = other.member;
+      std::cout << "Copy assignment operator called!" << std::endl;
+    }
+  private:
+    type member;
+};
+```
 
 以下代码展示了两种复制对象的方法。前者使用复制构造函数，而后者使用复制赋值运算符。当它们被调用时，两种实现将打印一句话：
 
-[PRE63]
+```cpp
+class_name obj;
+class_name other_obj1(obj);
+\\ prints "Copy constructor called!"
+class_name other_obj2 = obj;
+\\ prints "Copy assignment operator called!"
+```
 
 ### 移动构造函数和移动赋值运算符
 
@@ -734,7 +1188,12 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 移动构造函数和移动赋值操作符是接受对 `class` 本身 `rvalue` 引用参数的成员：
 
-[PRE64]
+```cpp
+class_name (class_name && other);
+// move-constructor
+class_name& operator= (class_name && other);
+// move-assignment
+```
 
 #### 注意
 
@@ -748,19 +1207,67 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 这里是 `WrongMove` 构造函数的一个示例：
 
-[PRE65]
+```cpp
+class WrongMove {
+  public:
+    WrongMove() : _resource(acquire_resource()) {}
+    WrongMove(WrongMove&& other) {
+      _resource = other._resource;
+      // Wrong: we never reset other._resource
+    }
+    ~WrongMove() {
+      if (not is_reset_resource(_resource)) {
+        release_resource(_resource);
+      }
+    }
+  private:
+    Resource _resource;
+}
+```
 
 `WrongMove` 类的移动构造函数会释放资源两次：
 
-[PRE66]
+```cpp
+{
+  WrongMove first;
+  // Acquires the resource
+  {
+  /* Call the move constructor: we copy the resource to second, but we are not resetting it in first */
+    WrongMove second(std::move(first)); 
+  }
+  /* Second is destroyed: second._resource is released here. Since we copied the resource, now first._resource has been released as well. */
+}
+// First is destroyed: the same resource is released again! Error!
+```
 
 相反，移动构造函数应该重置其他对象的 `_resource` 成员，这样析构函数就不会再次调用 `release_resource`：
 
-[PRE67]
+```cpp
+WrongMove(WrongMove&& other) {
+  _resource = other._resource;
+  other._resource = resetted_resource();
+}
+```
 
 如果没有提供用户定义的构造函数、析构函数、复制构造函数或复制或移动赋值运算符，编译器可以隐式生成移动构造函数和移动赋值运算符：
 
-[PRE68]
+```cpp
+struct MovableClass {
+  MovableClass(MovableClass&& other) {
+    std::cout << "Move construct" << std::endl;
+  }
+  MovableClass& operator=(MovableClass&& other) {
+    std::cout << "Move assign" << std::endl;
+  }
+};
+MovableClass first;
+// Move construct
+MovableClass second = std::move(first);
+// Or: MovableClass second(std::move(first));
+MovableClass third;
+// Move assignment
+second = std::move(third);
+```
 
 ### 防止隐式构造函数和赋值运算符
 
@@ -772,7 +1279,16 @@ RAII确保这些操作不会被遗忘，因为它会自动处理它们。
 
 让我们考察以下示例：
 
-[PRE69]
+```cpp
+class Rectangle {
+  int length;
+  int width;
+  // Prevent generating the implicit move constructor
+  Rectangle(Rectangle&& other) = delete;
+  // Prevent generating the implicit move assignment
+  Rectangle& operator=(Rectangle&& other) = delete;
+};
+```
 
 ## 运算符重载
 
@@ -784,21 +1300,35 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 下面是一个`+`运算符的例子，它被定义为`Point`类：
 
-[PRE70]
+```cpp
+class Point
+{
+  Point operator+(const Point &other) 
+  {
+    Point new_point;
+    new_point.x = x + other.x; 
+    new_point.y = y + other.y;
+    return new_point;
+  }
+  private:
+    int x;
+    int y;
+}
+```
 
 以下是可以重载和不能重载的所有运算符的列表：
 
 +   以下是可以重载的运算符：
 
-![图3.4：可以重载的运算符](img/C11557_03_04.jpg)
+![图 3.4：可以重载的运算符](img/C11557_03_04.jpg)
 
-###### 图3.4：可以重载的运算符
+###### 图 3.4：可以重载的运算符
 
 +   以下是不能重载的运算符：
 
-![图3.5：不能重载的运算符](img/C11557_03_05.jpg)
+![图 3.5：不能重载的运算符](img/C11557_03_05.jpg)
 
-###### 图3.5：不能重载的运算符
+###### 图 3.5：不能重载的运算符
 
 需要两个操作数的运算符被称为`+`、`-`、`*`和`/`。
 
@@ -806,11 +1336,17 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 在前面的示例中，我们看到`Point`定义了`+`运算符，它接受一个参数。当在`Point`上使用加法操作时，代码将如下所示：
 
-[PRE71]
+```cpp
+Point first;
+Point second;
+Point sum = first + second;
+```
 
 代码示例的最后一行等价于编写以下内容：
 
-[PRE72]
+```cpp
+Point sum = first.operator+(second);
+```
 
 编译器自动将第一个表达式重写为第二个表达式。
 
@@ -820,21 +1356,36 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 例如，假设我们有一个如下定义的对象：
 
-[PRE73]
+```cpp
+class ClassOverloadingNotOperator {
+  public:
+    bool condition = false;
+
+    ClassOverloadingNotOperator& operator!() {
+      condition = !condition;
+    }
+};
+```
 
 我们将编写以下内容：
 
-[PRE74]
+```cpp
+ClassOverloadingNotOperator object;
+!object;
+```
 
 因此，代码被重写如下：
 
-[PRE75]
+```cpp
+ClassOverloadingNotOperator object;
+object.operator!();
+```
 
 #### 注意
 
 运算符重载可以通过两种方式实现：要么作为成员函数，要么作为非成员函数。这两种方式最终会产生相同的效果。
 
-### 活动11：对点对象进行排序
+### 活动 11：对点对象进行排序
 
 在 2D 地图应用中，我们希望能够按照从西南到东北的顺序显示用户保存的位置：为了能够按顺序显示位置，我们需要能够按照这种顺序对表示位置的点进行排序。
 
@@ -862,17 +1413,37 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 定义 `functor` 所使用的语法如下：
 
-[PRE76]
+```cpp
+class class_name {
+  public:
+    type operator()(type arg) {} 
+};
+```
 
 函数调用操作符有一个返回类型，并可以接受任何类型和数量的参数。要调用对象的函数调用操作符，我们可以写出对象的名字，然后是包含传递给操作符的参数的括号。你可以想象，提供了一个调用操作符的对象可以像使用函数一样使用。以下是一个 `functor` 的例子：
 
-[PRE77]
+```cpp
+class_name obj;
+type t;
+/* obj is an instance of a class with the call operator: it can be used as if it was a function */
+obj(t);
+```
 
-它们在可以传递一个具有 `operator()` 定义的对象到接受该对象的算法模板的地方特别有用。这利用了代码的可重用性和可测试性。我们将在第 5 章讨论 **lambda** 时了解更多。
+它们在可以传递一个具有 `operator()` 定义的对象到接受该对象的算法模板的地方特别有用。这利用了代码的可重用性和可测试性。我们将在第五章讨论 **lambda** 时了解更多。
 
 以下是一个简单的 `functor` 示例，它在字符串末尾添加一个新行之前打印一个字符串：
 
-[PRE78]
+```cpp
+class logger{
+  public:
+    void operator()(const std::string &s) {
+       std::cout << s << std::endl;
+    }
+};
+logger log;
+log ("Hello world!");
+log("Keep learning C++");
+```
 
 ### 活动 12：实现 Functors
 
@@ -886,15 +1457,27 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 1.  实例化我们刚刚定义的类的对象并调用调用操作符：
 
-    [PRE79]
+    ```cpp
+    class AddX {
+       public:
+          explicit AddX(int v) : value(v) {}
+          int operator()(int other_value) {
+       Indent it to the right, same as above
+    }
+       private:
+         int value;
+    };
+    AddX add_five(5);
+    std::cout << add_five(4) << std::endl; // prints 9
+    ```
 
     #### 注意
 
-    该活动的解决方案可以在第294页找到。
+    该活动的解决方案可以在第 294 页找到。
 
 ## 摘要
 
-在本章中，我们看到了如何在C++中使用类概念。我们首先阐述了使用类的优点，描述了它们如何帮助我们创建强大的抽象。
+在本章中，我们看到了如何在 C++中使用类概念。我们首先阐述了使用类的优点，描述了它们如何帮助我们创建强大的抽象。
 
 我们概述了类可以使用哪些访问修饰符来控制谁可以访问类的字段和方法。
 
@@ -902,7 +1485,7 @@ C++类代表用户定义类型。因此，需要能够以不同的方式操作�
 
 我们看到了构造函数是如何用于初始化类及其成员的，而析构函数则是用于清理由类管理的资源。
 
-我们随后探讨了如何结合构造函数和析构函数来实现C++著名的RAII（资源获取即初始化）范式。我们展示了RAII如何使创建处理资源并使程序更安全、更易于工作的类变得简单。
+我们随后探讨了如何结合构造函数和析构函数来实现 C++著名的 RAII（资源获取即初始化）范式。我们展示了 RAII 如何使创建处理资源并使程序更安全、更易于工作的类变得简单。
 
 最后，我们介绍了操作符重载的概念以及如何使用它来创建与内置类型一样易于使用的类。
 

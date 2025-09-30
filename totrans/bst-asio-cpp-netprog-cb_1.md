@@ -1,4 +1,4 @@
-# 第1章. 基础
+# 第一章. 基础
 
 在本章中，我们将涵盖以下内容：
 
@@ -8,7 +8,7 @@
 
 +   创建被动套接字
 
-+   解析DNS名称
++   解析 DNS 名称
 
 +   将套接字绑定到端点
 
@@ -30,25 +30,25 @@
 
 +   能够在网络中有效地存储和共享数据。在计算机网络中，单个设备可以用作数据存储来存储大量数据，而其他设备可以在必要时轻松请求该数据的一部分，而无需在每个设备上保留所有数据的副本。例如，考虑拥有数亿个网站的大型数据中心。最终用户可以通过将请求发送到服务器（通常是互联网）来随时请求所需的网页。无需在用户的设备上保留网站的副本。有一个单一的数据存储（一个网站），数百万用户可以在需要时从这个存储中请求数据。
 
-对于运行在不同计算设备上的两个应用程序要相互通信，它们需要就通信协议达成一致。当然，分布式应用程序的开发者可以自由实现自己的协议。然而，至少有两个原因使得这种情况很少发生。首先，开发这样的协议是一项极其复杂且耗时的任务。其次，这样的协议已经定义、标准化，并且甚至已经在包括Windows、Mac OS X和大多数Linux发行版在内的所有流行操作系统中实现。
+对于运行在不同计算设备上的两个应用程序要相互通信，它们需要就通信协议达成一致。当然，分布式应用程序的开发者可以自由实现自己的协议。然而，至少有两个原因使得这种情况很少发生。首先，开发这样的协议是一项极其复杂且耗时的任务。其次，这样的协议已经定义、标准化，并且甚至已经在包括 Windows、Mac OS X 和大多数 Linux 发行版在内的所有流行操作系统中实现。
 
-这些协议由TCP/IP标准定义。不要被标准的名称所迷惑；它不仅定义了TCP和IP，还定义了许多其他协议，包括一个TCP/IP协议栈，其中每个层级都包含一个或多个协议。分布式软件开发者通常处理传输层协议，如TCP或UDP。底层协议通常对开发者隐藏，并由操作系统和网络设备处理。
+这些协议由 TCP/IP 标准定义。不要被标准的名称所迷惑；它不仅定义了 TCP 和 IP，还定义了许多其他协议，包括一个 TCP/IP 协议栈，其中每个层级都包含一个或多个协议。分布式软件开发者通常处理传输层协议，如 TCP 或 UDP。底层协议通常对开发者隐藏，并由操作系统和网络设备处理。
 
-在这本书中，我们仅涉及满足大多数分布式软件开发者需求的TCP和UDP协议。如果读者对TCP/IP协议栈、OSI模型或TCP和UDP协议不熟悉，强烈建议阅读这些主题的相关理论。尽管本书提供了关于这些主题的一些简要信息，但它主要关注在分布式软件开发中使用TCP和UDP协议的实践方面。
+在这本书中，我们仅涉及满足大多数分布式软件开发者需求的 TCP 和 UDP 协议。如果读者对 TCP/IP 协议栈、OSI 模型或 TCP 和 UDP 协议不熟悉，强烈建议阅读这些主题的相关理论。尽管本书提供了关于这些主题的一些简要信息，但它主要关注在分布式软件开发中使用 TCP 和 UDP 协议的实践方面。
 
-TCP协议是一种传输层协议，具有以下特点：
+TCP 协议是一种传输层协议，具有以下特点：
 
 +   它是可靠的，这意味着该协议保证消息按正确顺序交付或通知消息未交付。该协议包括错误处理机制，从而免去了开发者需要在应用程序中实现这些机制的需求。
 
-+   它假设建立逻辑连接。在应用程序可以通过TCP协议相互通信之前，它必须通过按照标准交换服务消息来建立逻辑连接。
++   它假设建立逻辑连接。在应用程序可以通过 TCP 协议相互通信之前，它必须通过按照标准交换服务消息来建立逻辑连接。
 
 +   它假设点对点通信模型。也就是说，只有两个应用程序可以通过单个连接进行通信。不支持多播消息。
 
 +   它是面向流的。这意味着一个应用程序向另一个应用程序发送的数据被协议解释为字节流。在实践中，这意味着如果一个发送应用程序发送特定块的数据，不能保证它将以相同的块数据在单次传输中送达接收应用程序，也就是说，发送的消息可能会被分割成协议*想要*的那么多部分，并且每一部分都将单独发送，尽管它们是按正确顺序发送的。
 
-UDP协议是一种传输层协议，其特性与TCP协议的特性（在某种程度上是相反的）。以下是其特性：
+UDP 协议是一种传输层协议，其特性与 TCP 协议的特性（在某种程度上是相反的）。以下是其特性：
 
-+   它是不可靠的，这意味着如果发送者通过UDP协议发送消息，不能保证消息会被送达。该协议不会尝试检测或修复任何错误。错误处理的责任完全在开发者。
++   它是不可靠的，这意味着如果发送者通过 UDP 协议发送消息，不能保证消息会被送达。该协议不会尝试检测或修复任何错误。错误处理的责任完全在开发者。
 
 +   它是无连接的，这意味着在应用程序可以通信之前不需要建立连接。
 
@@ -56,123 +56,192 @@ UDP协议是一种传输层协议，其特性与TCP协议的特性（在某种�
 
 +   它是面向数据报的。这意味着协议将数据解释为特定大小的消息，并尝试将它们作为一个整体交付。消息（数据报）要么作为一个整体交付，要么如果协议未能做到这一点，则根本不会交付。
 
-由于UDP协议是不可靠的，它通常用于可靠的本地网络。要在互联网（一个不可靠的网络）上进行通信，开发者必须在应用程序中实现错误处理机制。
+由于 UDP 协议是不可靠的，它通常用于可靠的本地网络。要在互联网（一个不可靠的网络）上进行通信，开发者必须在应用程序中实现错误处理机制。
 
 ### 注意
 
-当需要通过互联网进行通信时，由于可靠性，TCP协议通常是最佳选择。
+当需要通过互联网进行通信时，由于可靠性，TCP 协议通常是最佳选择。
 
-正如已经提到的，TCP和UDP协议以及它们所需的底层协议由大多数流行的操作系统实现。分布式应用程序的开发者通过API可以使用协议实现。TCP/IP标准没有标准化协议API实现；因此，存在几个API实现。然而，基于**伯克利套接字API**的实现是最广泛使用的。
+正如已经提到的，TCP 和 UDP 协议以及它们所需的底层协议由大多数流行的操作系统实现。分布式应用程序的开发者通过 API 可以使用协议实现。TCP/IP 标准没有标准化协议 API 实现；因此，存在几个 API 实现。然而，基于**伯克利套接字 API**的实现是最广泛使用的。
 
-伯克利套接字API是TCP和UDP协议API的许多可能实现之一。这个API是在美国加利福尼亚大学伯克利分校（因此得名）的20世纪80年代初开发的。它围绕一个称为**套接字**的抽象对象的概念构建。这个名称是为了将这个对象与常见的电气插座类比。然而，由于伯克利套接字最终证明是一个显著更复杂的概念，这个想法似乎有些失败。
+伯克利套接字 API 是 TCP 和 UDP 协议 API 的许多可能实现之一。这个 API 是在美国加利福尼亚大学伯克利分校（因此得名）的 20 世纪 80 年代初开发的。它围绕一个称为**套接字**的抽象对象的概念构建。这个名称是为了将这个对象与常见的电气插座类比。然而，由于伯克利套接字最终证明是一个显著更复杂的概念，这个想法似乎有些失败。
 
-现在，Windows、Mac OS X和Linux操作系统都实现了这个API（尽管有一些细微的差异），软件开发者可以使用它来在开发分布式应用程序时使用TCP和UDP协议的功能。
+现在，Windows、Mac OS X 和 Linux 操作系统都实现了这个 API（尽管有一些细微的差异），软件开发者可以使用它来在开发分布式应用程序时使用 TCP 和 UDP 协议的功能。
 
 ![简介](img/B00298_01_01.jpg)
 
-尽管非常流行且广泛使用，但套接字API有几个缺陷。首先，因为它被设计为一个非常通用的API，应该支持许多不同的协议，所以它相当复杂，并且有些难以使用。第二个缺陷是，这是一个C风格的函数式API，类型系统较差，这使得它容易出错，并且更加难以使用。例如，套接字API没有提供表示套接字的单独类型。相反，使用内置类型`int`，这意味着任何`int`类型的值都可能错误地传递给期望套接字的函数，而编译器不会检测到这个错误。这可能导致运行时崩溃，其根本原因很难找到。
+尽管非常流行且广泛使用，但套接字 API 有几个缺陷。首先，因为它被设计为一个非常通用的 API，应该支持许多不同的协议，所以它相当复杂，并且有些难以使用。第二个缺陷是，这是一个 C 风格的函数式 API，类型系统较差，这使得它容易出错，并且更加难以使用。例如，套接字 API 没有提供表示套接字的单独类型。相反，使用内置类型`int`，这意味着任何`int`类型的值都可能错误地传递给期望套接字的函数，而编译器不会检测到这个错误。这可能导致运行时崩溃，其根本原因很难找到。
 
-网络编程本身就很复杂，而使用低级的C风格套接字API则使其更加复杂且容易出错。Boost.Asio是一个面向对象的C++库，就像原始的套接字API一样，它围绕套接字的概念构建。简而言之，Boost.Asio封装了原始套接字API，并为开发者提供了面向对象的接口。它旨在以下几种方式中简化网络编程：
+网络编程本身就很复杂，而使用低级的 C 风格套接字 API 则使其更加复杂且容易出错。Boost.Asio 是一个面向对象的 C++库，就像原始的套接字 API 一样，它围绕套接字的概念构建。简而言之，Boost.Asio 封装了原始套接字 API，并为开发者提供了面向对象的接口。它旨在以下几种方式中简化网络编程：
 
-+   它隐藏了原始的C风格API，并为用户提供了一个面向对象的API
++   它隐藏了原始的 C 风格 API，并为用户提供了一个面向对象的 API
 
 +   它提供了一个丰富的类型系统，这使得代码更易于阅读，并允许在编译时捕获许多错误
 
-+   由于Boost.Asio是一个跨平台库，它简化了跨平台分布式应用程序的开发
++   由于 Boost.Asio 是一个跨平台库，它简化了跨平台分布式应用程序的开发
 
-+   它提供了辅助功能，例如散列-聚集I/O操作、基于流的I/O、基于异常的错误处理以及其他功能
++   它提供了辅助功能，例如散列-聚集 I/O 操作、基于流的 I/O、基于异常的错误处理以及其他功能
 
 +   该库的设计使其可以相对容易地扩展以添加新的自定义功能
 
-本章介绍了Boost.Asio的基本类，并演示了如何使用它们执行基本操作。
+本章介绍了 Boost.Asio 的基本类，并演示了如何使用它们执行基本操作。
 
 # 创建端点
 
-一个典型的客户端应用程序，在它能够与服务器应用程序通信以使用其服务之前，必须获取服务器应用程序运行的主机的IP地址以及与其关联的协议端口号。由一个IP地址和一个协议端口号组成的值对，该值对唯一标识了计算机网络上特定主机上运行的特定应用程序，被称为**端点**。
+一个典型的客户端应用程序，在它能够与服务器应用程序通信以使用其服务之前，必须获取服务器应用程序运行的主机的 IP 地址以及与其关联的协议端口号。由一个 IP 地址和一个协议端口号组成的值对，该值对唯一标识了计算机网络上特定主机上运行的特定应用程序，被称为**端点**。
 
-客户端应用程序通常会从用户直接通过应用程序UI或作为命令行参数获取服务器应用程序的IP地址和端口号，或者从应用程序的配置文件中读取。
+客户端应用程序通常会从用户直接通过应用程序 UI 或作为命令行参数获取服务器应用程序的 IP 地址和端口号，或者从应用程序的配置文件中读取。
 
-IP地址可以表示为一个包含点十进制表示法的地址的字符串，如果它是IPv4地址（例如，`192.168.10.112`），或者如果它是IPv6地址（例如，`FE36::0404:C3FA:EF1E:3829`），则使用十六进制表示法。此外，服务器IP地址可以以间接形式提供给客户端应用程序，即包含DNS名称的字符串（例如，`localhost`或[www.google.com](http://www.google.com)）。另一种表示IP地址的方法是整数值。IPv4地址表示为32位整数，IPv6表示为64位整数。然而，由于可读性和可记忆性较差，这种表示法使用得非常少。
+IP 地址可以表示为一个包含点十进制表示法的地址的字符串，如果它是 IPv4 地址（例如，`192.168.10.112`），或者如果它是 IPv6 地址（例如，`FE36::0404:C3FA:EF1E:3829`），则使用十六进制表示法。此外，服务器 IP 地址可以以间接形式提供给客户端应用程序，即包含 DNS 名称的字符串（例如，`localhost`或[www.google.com](http://www.google.com)）。另一种表示 IP 地址的方法是整数值。IPv4 地址表示为 32 位整数，IPv6 表示为 64 位整数。然而，由于可读性和可记忆性较差，这种表示法使用得非常少。
 
-如果在客户端应用程序能够与服务器应用程序通信之前提供了DNS名称，它必须解析该DNS名称以获取运行服务器应用程序的主机的实际IP地址。有时，DNS名称可能映射到多个IP地址，在这种情况下，客户端可能需要逐个尝试地址，直到找到可以工作的地址。我们将在本章后面考虑一个描述如何使用Boost.Asio解析DNS名称的配方。
+如果在客户端应用程序能够与服务器应用程序通信之前提供了 DNS 名称，它必须解析该 DNS 名称以获取运行服务器应用程序的主机的实际 IP 地址。有时，DNS 名称可能映射到多个 IP 地址，在这种情况下，客户端可能需要逐个尝试地址，直到找到可以工作的地址。我们将在本章后面考虑一个描述如何使用 Boost.Asio 解析 DNS 名称的配方。
 
-服务器应用程序还需要处理端点。它使用端点来指定操作系统，它希望监听来自客户端的IP地址和协议端口号。如果运行服务器应用程序的主机只有一个网络接口并且分配给它一个IP地址，那么服务器应用程序在哪个地址上监听只有一个选择。然而，有时主机可能有多个网络接口和相应的多个IP地址。在这种情况下，服务器应用程序面临着一个难题，即选择一个合适的IP地址来监听传入的消息。问题是应用程序对诸如底层IP协议设置、数据包路由规则、映射到相应IP地址的DNS名称等细节一无所知。因此，对于服务器应用程序来说，预见客户端发送的消息将通过哪个IP地址发送到主机是一个相当复杂（有时甚至无法解决）的任务。
+服务器应用程序还需要处理端点。它使用端点来指定操作系统，它希望监听来自客户端的 IP 地址和协议端口号。如果运行服务器应用程序的主机只有一个网络接口并且分配给它一个 IP 地址，那么服务器应用程序在哪个地址上监听只有一个选择。然而，有时主机可能有多个网络接口和相应的多个 IP 地址。在这种情况下，服务器应用程序面临着一个难题，即选择一个合适的 IP 地址来监听传入的消息。问题是应用程序对诸如底层 IP 协议设置、数据包路由规则、映射到相应 IP 地址的 DNS 名称等细节一无所知。因此，对于服务器应用程序来说，预见客户端发送的消息将通过哪个 IP 地址发送到主机是一个相当复杂（有时甚至无法解决）的任务。
 
-如果服务器应用程序只选择一个IP地址来监听传入的消息，它可能会错过路由到主机其他IP地址的消息。因此，服务器应用程序通常希望监听主机上可用的所有IP地址。这保证了服务器应用程序将接收到达任何IP地址和特定协议端口号的所有消息。
+如果服务器应用程序只选择一个 IP 地址来监听传入的消息，它可能会错过路由到主机其他 IP 地址的消息。因此，服务器应用程序通常希望监听主机上可用的所有 IP 地址。这保证了服务器应用程序将接收到达任何 IP 地址和特定协议端口号的所有消息。
 
 总结来说，端点有两个目标：
 
 +   客户端应用程序使用端点来指定它想要与之通信的特定服务器应用程序。
 
-+   服务器应用程序使用端点来指定它希望接收来自客户端的传入消息的本地IP地址和端口号。如果主机上有多个IP地址，服务器应用程序将希望创建一个特殊的端点，以一次表示所有IP地址。
++   服务器应用程序使用端点来指定它希望接收来自客户端的传入消息的本地 IP 地址和端口号。如果主机上有多个 IP 地址，服务器应用程序将希望创建一个特殊的端点，以一次表示所有 IP 地址。
 
 本菜谱解释了如何在客户端和服务器应用程序中创建端点。
 
 ## 准备工作
 
-在创建端点之前，客户端应用程序必须获取表示它将与之通信的服务器的原始IP地址和协议端口号。另一方面，由于服务器应用程序通常在所有IP地址上监听传入消息，因此它只需要获取一个监听端口号。
+在创建端点之前，客户端应用程序必须获取表示它将与之通信的服务器的原始 IP 地址和协议端口号。另一方面，由于服务器应用程序通常在所有 IP 地址上监听传入消息，因此它只需要获取一个监听端口号。
 
-在这里，我们不考虑应用程序如何获取原始IP地址或端口号。在下面的菜谱中，我们假设IP地址和端口号已经被应用程序获取，并在相应算法的开始时可用。
+在这里，我们不考虑应用程序如何获取原始 IP 地址或端口号。在下面的菜谱中，我们假设 IP 地址和端口号已经被应用程序获取，并在相应算法的开始时可用。
 
 ## 如何做到这一点...
 
-以下算法和相应的代码示例演示了创建端点的两种常见场景。第一个示例演示了客户端应用程序如何创建端点以指定它想要与之通信的服务器。第二个示例演示了服务器应用程序如何创建端点以指定它希望在哪些IP地址和端口号上监听来自客户端的传入消息。
+以下算法和相应的代码示例演示了创建端点的两种常见场景。第一个示例演示了客户端应用程序如何创建端点以指定它想要与之通信的服务器。第二个示例演示了服务器应用程序如何创建端点以指定它希望在哪些 IP 地址和端口号上监听来自客户端的传入消息。
 
 ### 在客户端创建端点以指定服务器
 
-以下算法描述了在客户端应用程序中执行以创建指定客户端想要通信的服务器应用程序的端点的步骤。最初，如果这是一个IPv4地址，则IP地址以点分十进制表示法表示为字符串；如果这是一个IPv6地址，则表示为十六进制表示法：
+以下算法描述了在客户端应用程序中执行以创建指定客户端想要通信的服务器应用程序的端点的步骤。最初，如果这是一个 IPv4 地址，则 IP 地址以点分十进制表示法表示为字符串；如果这是一个 IPv6 地址，则表示为十六进制表示法：
 
-1.  获取服务器应用程序的IP地址和端口号。IP地址应指定为点分十进制（IPv4）或十六进制（IPv6）表示法的字符串。
+1.  获取服务器应用程序的 IP 地址和端口号。IP 地址应指定为点分十进制（IPv4）或十六进制（IPv6）表示法的字符串。
 
-1.  将原始IP地址表示为`asio::ip::address`类的对象。
+1.  将原始 IP 地址表示为`asio::ip::address`类的对象。
 
-1.  从步骤2中创建的地址对象和端口号实例化`asio::ip::tcp::endpoint`类对象。
+1.  从步骤 2 中创建的地址对象和端口号实例化`asio::ip::tcp::endpoint`类对象。
 
-1.  端点已准备好用于在Boost.Asio通信相关方法中指定服务器应用程序。
+1.  端点已准备好用于在 Boost.Asio 通信相关方法中指定服务器应用程序。
 
 以下代码示例演示了算法的可能实现：
 
-[PRE0]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Assume that the client application has already 
+  // obtained the IP-address and the protocol port number.
+  std::string raw_ip_address = "127.0.0.1";
+  unsigned short port_num = 3333;
+
+  // Used to store information about error that happens
+  // while parsing the raw IP-address.
+  boost::system::error_code ec;
+  // Step 2\. Using IP protocol version independent address
+  // representation.
+  asio::ip::address ip_address =
+    asio::ip::address::from_string(raw_ip_address, ec);
+
+  if (ec.value() != 0) {
+    // Provided IP address is invalid. Breaking execution.
+    std::cout 
+      << "Failed to parse the IP address. Error code = "
+      << ec.value() << ". Message: " << ec.message();
+      return ec.value();
+  }
+
+  // Step 3.
+  asio::ip::tcp::endpoint ep(ip_address, port_num);
+
+  // Step 4\. The endpoint is ready and can be used to specify a 
+  // particular server in the network the client wants to 
+  // communicate with.
+
+  return 0;
+}
+```
 
 ### 创建服务器端点
 
-以下算法描述了在服务器应用程序中执行以创建端点的步骤，该端点指定主机上可用的所有IP地址以及服务器应用程序希望监听来自客户端的传入消息的端口号：
+以下算法描述了在服务器应用程序中执行以创建端点的步骤，该端点指定主机上可用的所有 IP 地址以及服务器应用程序希望监听来自客户端的传入消息的端口号：
 
 1.  获取服务器将监听传入请求的协议端口号。
 
-1.  创建一个表示服务器运行的主机上所有可用IP地址的`asio::ip::address`对象的特殊实例。
+1.  创建一个表示服务器运行的主机上所有可用 IP 地址的`asio::ip::address`对象的特殊实例。
 
 1.  从第二步中创建的地址对象和一个端口号中实例化一个`asio::ip::tcp::endpoint`类的对象。
 
-1.  端点已准备好用于指定给操作系统，服务器希望监听所有IP地址和特定协议端口号上的传入消息。
+1.  端点已准备好用于指定给操作系统，服务器希望监听所有 IP 地址和特定协议端口号上的传入消息。
 
-以下代码示例演示了算法的可能实现。请注意，假设服务器应用程序将通过IPv6协议进行通信：
+以下代码示例演示了算法的可能实现。请注意，假设服务器应用程序将通过 IPv6 协议进行通信：
 
-[PRE1]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Here we assume that the server application has
+  //already obtained the protocol port number.
+  unsigned short port_num = 3333;
+
+  // Step 2\. Create special object of asio::ip::address class
+  // that specifies all IP-addresses available on the host. Note
+  // that here we assume that server works over IPv6 protocol.
+  asio::ip::address ip_address = asio::ip::address_v6::any();
+
+  // Step 3.
+  asio::ip::tcp::endpoint ep(ip_address, port_num);
+
+  // Step 4\. The endpoint is created and can be used to 
+  // specify the IP addresses and a port number on which 
+  // the server application wants to listen for incoming 
+  // connections.
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
-让我们考虑第一个代码示例。它实现的算法适用于充当客户端的应用程序，这是一个主动与服务器建立通信会话的应用程序。客户端应用程序需要提供服务器的一个IP地址和协议端口号。这里我们假设这些值已经获得，并在算法开始时可用，这使得第一步的细节是已知的。
+让我们考虑第一个代码示例。它实现的算法适用于充当客户端的应用程序，这是一个主动与服务器建立通信会话的应用程序。客户端应用程序需要提供服务器的一个 IP 地址和协议端口号。这里我们假设这些值已经获得，并在算法开始时可用，这使得第一步的细节是已知的。
 
-获得原始IP地址后，客户端应用程序必须以Boost.Asio类型系统的术语表示它。Boost.Asio提供了三个用于表示IP地址的类：
+获得原始 IP 地址后，客户端应用程序必须以 Boost.Asio 类型系统的术语表示它。Boost.Asio 提供了三个用于表示 IP 地址的类：
 
-+   `asio::ip::address_v4`: 这代表一个IPv4地址
++   `asio::ip::address_v4`: 这代表一个 IPv4 地址
 
-+   `asio::ip::address_v6`: 这代表一个IPv6地址
++   `asio::ip::address_v6`: 这代表一个 IPv6 地址
 
-+   `asio::ip::address`: 这个与IP协议版本无关的类可以表示IPv4和IPv6地址
++   `asio::ip::address`: 这个与 IP 协议版本无关的类可以表示 IPv4 和 IPv6 地址
 
-在我们的示例中，我们使用`asio::ip::address`类，这使得客户端应用程序与IP协议版本无关。这意味着它可以透明地与IPv4和IPv6服务器一起工作。
+在我们的示例中，我们使用`asio::ip::address`类，这使得客户端应用程序与 IP 协议版本无关。这意味着它可以透明地与 IPv4 和 IPv6 服务器一起工作。
 
-在第二步中，我们使用`asio::ip::address`类的静态方法`from_string()`。此方法接受一个以字符串形式表示的原始IP地址，解析并验证该字符串，实例化一个`asio::ip::address`类的对象，并将其返回给调用者。此方法有四个重载。在我们的示例中，我们使用这个方法：
+在第二步中，我们使用`asio::ip::address`类的静态方法`from_string()`。此方法接受一个以字符串形式表示的原始 IP 地址，解析并验证该字符串，实例化一个`asio::ip::address`类的对象，并将其返回给调用者。此方法有四个重载。在我们的示例中，我们使用这个方法：
 
-[PRE2]
+```cpp
+static asio::ip::address from_string(
+    const std::string & str,
+    boost::system::error_code & ec);
+```
 
-此方法非常有用，因为它检查传递给它的字符串参数是否包含有效的IPv4或IPv6地址，如果是，则实例化相应的对象。如果地址无效，该方法将通过第二个参数指定一个错误。这意味着此函数可以用于验证原始用户输入。
+此方法非常有用，因为它检查传递给它的字符串参数是否包含有效的 IPv4 或 IPv6 地址，如果是，则实例化相应的对象。如果地址无效，该方法将通过第二个参数指定一个错误。这意味着此函数可以用于验证原始用户输入。
 
-在第三步中，我们实例化一个`boost::asio::ip::tcp::endpoint`类的对象，将其构造函数传递IP地址和协议端口号。现在，`ep`对象可以用于在Boost.Asio通信相关函数中指定服务器应用程序。
+在第三步中，我们实例化一个`boost::asio::ip::tcp::endpoint`类的对象，将其构造函数传递 IP 地址和协议端口号。现在，`ep`对象可以用于在 Boost.Asio 通信相关函数中指定服务器应用程序。
 
-第二个示例有类似的想法，尽管它与第一个示例略有不同。服务器应用程序通常只提供它应该监听传入消息的协议端口号。不提供IP地址，因为服务器应用程序通常希望监听主机上所有可用的IP地址上的传入消息，而不仅仅是特定的一个。
+第二个示例有类似的想法，尽管它与第一个示例略有不同。服务器应用程序通常只提供它应该监听传入消息的协议端口号。不提供 IP 地址，因为服务器应用程序通常希望监听主机上所有可用的 IP 地址上的传入消息，而不仅仅是特定的一个。
 
 为了表示 *主机上所有可用的 IP 地址* 的概念，`asio::ip::address_v4` 和 `asio::ip::address_v6` 类提供了一个静态方法 `any()`，它实例化了一个代表该概念的相应类的特殊对象。在第 2 步中，我们使用了 `asio::ip::address_v6` 类的 `any()` 方法来实例化这样一个特殊对象。
 
@@ -184,17 +253,38 @@ IP地址可以表示为一个包含点十进制表示法的地址的字符串，
 
 在我们之前的两个示例中，我们使用了在 `asio::ip::tcp` 类作用域中声明的 `endpoint` 类。如果我们查看 `asio::ip::tcp` 类的声明，我们会看到如下内容：
 
-[PRE3]
+```cpp
+class tcp
+{
+public:
+  /// The type of a TCP endpoint.
+ typedef basic_endpoint<tcp> endpoint;
+
+  //...
+}
+```
 
 这意味着这个 `endpoint` 类是 `basic_endpoint<>` 模板类的特化，旨在用于通过 TCP 协议进行通信的客户端和服务器。
 
 然而，创建可用于通过 UDP 协议进行通信的客户端和服务器端点的过程同样简单。为了表示这样的端点，我们需要使用在 `asio::ip::udp` 类作用域中声明的 `endpoint` 类。以下代码片段演示了如何声明这个 `endpoint` 类：
 
-[PRE4]
+```cpp
+class udp
+{
+public:
+  /// The type of a UDP endpoint.
+ typedef basic_endpoint<udp> endpoint;
+
+  //...
+}
+```
 
 例如，如果我们想在客户端应用程序中创建一个端点，指定我们想要通过 UDP 协议与之通信的服务器，我们只需稍微更改我们示例中步骤 3 的实现。以下是更改后的步骤，其中更改部分已突出显示：
 
-[PRE5]
+```cpp
+// Step 3.
+asio::ip::udp::endpoint ep(ip_address, port_num);
+```
 
 其他所有代码都不需要更改，因为它们与传输协议无关。
 
@@ -210,13 +300,13 @@ IP地址可以表示为一个包含点十进制表示法的地址的字符串，
 
 TCP/IP 标准对我们关于套接字的内容没有说明。此外，它几乎没有告诉我们如何实现 TCP 或 UDP 协议软件 API，通过这个 API，应用程序可以消费这些软件功能。
 
-如果我们查看RFC文档*#793*的第3.8节*接口*，该文档描述了TCP协议，我们会发现它只包含TCP协议软件API必须提供的最小功能集的功能要求。协议软件的开发者对API的所有其他方面拥有完全控制权，例如API的结构、组成API的函数的名称、对象模型、涉及的抽象、附加辅助函数等。每个TCP协议软件的开发者都可以自由选择实现其协议接口的方式。
+如果我们查看 RFC 文档*#793*的第 3.8 节*接口*，该文档描述了 TCP 协议，我们会发现它只包含 TCP 协议软件 API 必须提供的最小功能集的功能要求。协议软件的开发者对 API 的所有其他方面拥有完全控制权，例如 API 的结构、组成 API 的函数的名称、对象模型、涉及的抽象、附加辅助函数等。每个 TCP 协议软件的开发者都可以自由选择实现其协议接口的方式。
 
-对于UDP协议，情况也是一样的：RFC文档*#768*中只描述了它的一小部分功能要求，该文档专门针对它。UDP协议软件API的所有其他方面的控制权都保留给了该API的开发者。
+对于 UDP 协议，情况也是一样的：RFC 文档*#768*中只描述了它的一小部分功能要求，该文档专门针对它。UDP 协议软件 API 的所有其他方面的控制权都保留给了该 API 的开发者。
 
-如本章引言中已提到的，伯克利套接字API是最流行的TCP和UDP协议的API。它是围绕套接字的概念设计的——一个表示通信会话上下文的抽象对象。在我们能够执行任何网络I/O操作之前，我们必须首先分配一个套接字对象，然后将每个I/O操作与之关联。
+如本章引言中已提到的，伯克利套接字 API 是最流行的 TCP 和 UDP 协议的 API。它是围绕套接字的概念设计的——一个表示通信会话上下文的抽象对象。在我们能够执行任何网络 I/O 操作之前，我们必须首先分配一个套接字对象，然后将每个 I/O 操作与之关联。
 
-Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相似，我们可以称之为“面向对象的伯克利套接字API”。Boost.Asio库包括一个代表套接字概念的类，它提供了与伯克利套接字API中找到的类似接口方法。
+Boost.Asio 借鉴了许多伯克利套接字 API 的概念，并且与之非常相似，我们可以称之为“面向对象的伯克利套接字 API”。Boost.Asio 库包括一个代表套接字概念的类，它提供了与伯克利套接字 API 中找到的类似接口方法。
 
 基本上，有两种类型的套接字。一种是为了发送和接收数据到远程应用程序或与之建立连接建立过程的套接字被称为**活动套接字**，而**被动套接字**是用来被动等待来自远程应用程序的连接请求的。被动套接字不参与用户数据传输。我们将在本章后面讨论被动套接字。
 
@@ -228,15 +318,51 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 1.  创建`asio::io_service`类的实例或使用之前创建的实例。
 
-1.  创建一个代表传输层协议（TCP或UDP）以及套接字打算通信的底层IP协议（IPv4或IPv6）版本的类的对象。
+1.  创建一个代表传输层协议（TCP 或 UDP）以及套接字打算通信的底层 IP 协议（IPv4 或 IPv6）版本的类的对象。
 
 1.  创建一个代表所需协议类型的套接字的实例。将`asio::io_service`类的对象传递给套接字构造函数。
 
-1.  调用套接字的`open()`方法，传递代表步骤2中创建的协议的对象作为参数。
+1.  调用套接字的`open()`方法，传递代表步骤 2 中创建的协议的对象作为参数。
 
 以下代码示例演示了算法的可能实现。假设套接字打算用于通过 TCP 协议和 IPv4 作为底层协议进行通信：
 
-[PRE6]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. An instance of 'io_service' class is required by
+  // socket constructor. 
+  asio::io_service ios;
+
+  // Step 2\. Creating an object of 'tcp' class representing
+  // a TCP protocol with IPv4 as underlying protocol.
+  asio::ip::tcp protocol = asio::ip::tcp::v4();
+
+  // Step 3\. Instantiating an active TCP socket object.
+  asio::ip::tcp::socket sock(ios);
+
+  // Used to store information about error that happens
+  // while opening the socket.
+  boost::system::error_code ec;
+
+  // Step 4\. Opening the socket.
+  sock.open(protocol, ec);
+
+  if (ec.value() != 0) {
+    // Failed to open the socket.
+    std::cout
+      << "Failed to open the socket! Error code = "
+      << ec.value() << ". Message: " << ec.message();
+      return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
@@ -248,7 +374,28 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 此外，`asio::ip::tcp` 类包含了一些基本类型的声明，这些类型旨在与 TCP 协议一起使用。其中包含 `asio::tcp::endpoint`、`asio::tcp::socket`、`asio::tcp::acceptor` 以及其他类型。让我们看看在 `boost/asio/ip/tcp.hpp` 文件中找到的这些声明：
 
-[PRE7]
+```cpp
+namespace boost {
+namespace asio {
+namespace ip {
+
+  // ...
+  class tcp
+  {
+  public:
+    /// The type of a TCP endpoint.
+    typedef basic_endpoint<tcp> endpoint;
+
+    // ...
+
+    /// The TCP socket type.
+    typedef basic_stream_socket<tcp> socket;
+
+    /// The TCP acceptor type.
+    typedef basic_socket_acceptor<tcp> acceptor;
+
+    // ...
+```
 
 在步骤 3 中，我们创建 `asio::ip::tcp::socket` 类的一个实例，将 `asio::io_service` 类的对象作为参数传递给其构造函数。注意，这个构造函数不会分配底层操作系统的套接字对象。真正的操作系统套接字是在步骤 4 中分配的，当我们调用 `open()` 方法并将指定协议的对象作为参数传递给它时。
 
@@ -256,7 +403,15 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 `asio::ip::tcp::socket` 类提供了一个接受协议对象作为参数的构造函数。这个构造函数构建一个套接字对象并打开它。注意，如果这个构造函数失败，它会抛出一个类型为 `boost::system::system_error` 的异常。以下是一个示例，展示了我们如何将上一个示例中的步骤 3 和 4 结合起来：
 
-[PRE8]
+```cpp
+try {
+  // Step 3 + 4 in single call. May throw.
+  asio::ip::tcp::socket sock(ios, protocol);
+} catch (boost::system::system_error & e) {
+  std::cout << "Error occured! Error code = " << e.code()
+    << ". Message: "<< e.what();
+}
+```
 
 ## 更多内容...
 
@@ -264,7 +419,43 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 以下示例演示了如何创建一个活动 UDP 套接字。假设该套接字将用于通过 UDP 协议与 IPv6 作为底层协议进行通信。由于示例与上一个示例非常相似，因此不需要提供解释，应该不难理解：
 
-[PRE9]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. An instance of 'io_service' class is required by
+  // socket constructor. 
+  asio::io_service ios;
+
+  // Step 2\. Creating an object of 'udp' class representing
+  // a UDP protocol with IPv6 as underlying protocol.
+  asio::ip::udp protocol = asio::ip::udp::v6();
+
+  // Step 3\. Instantiating an active UDP socket object.
+  asio::ip::udp::socket sock(ios);
+
+  // Used to store information about error that happens
+  // while opening the socket.
+  boost::system::error_code ec;
+
+  // Step 4\. Opening the socket.
+  sock.open(protocol, ec);
+
+  if (ec.value() != 0) {
+    // Failed to open the socket.
+    std::cout
+      << "Failed to open the socket! Error code = "
+      << ec.value() << ". Message: " << ec.message();
+    return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 参见
 
@@ -298,7 +489,44 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 以下代码示例演示了算法的可能实现。假设接受器套接字打算在 TCP 协议和 IPv6 作为底层协议的情况下使用：
 
-[PRE10]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. An instance of 'io_service' class is required by
+  // socket constructor. 
+  asio::io_service ios;
+
+  // Step 2\. Creating an object of 'tcp' class representing
+  // a TCP protocol with IPv6 as underlying protocol.
+  asio::ip::tcp protocol = asio::ip::tcp::v6();
+
+  // Step 3\. Instantiating an acceptor socket object.
+  asio::ip::tcp::acceptor acceptor(ios);
+
+  // Used to store information about error that happens
+  // while opening the acceptor socket.
+  boost::system::error_code ec;
+
+  // Step 4\. Opening the acceptor socket.
+  acceptor.open(protocol, ec);
+
+  if (ec.value() != 0) {
+    // Failed to open the socket.
+    std::cout
+      << "Failed to open the acceptor socket!"
+      << "Error code = "
+      << ec.value() << ". Message: " << ec.message();
+    return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
@@ -308,95 +536,200 @@ Boost.Asio借鉴了许多伯克利套接字API的概念，并且与之非常相�
 
 在步骤 2 中，我们创建了一个代表具有 IPv6 作为底层协议的 TCP 协议的对象。
 
-然后在步骤3中，我们创建`asio::ip::tcp::acceptor`类的实例，将其构造函数的参数传递给`asio::io_service`类的对象。正如在活动套接字的情况下，这个构造函数实例化了Boost.Asio的`asio::ip::tcp::acceptor`类对象，但并没有分配底层操作系统的实际套接字对象。
+然后在步骤 3 中，我们创建`asio::ip::tcp::acceptor`类的实例，将其构造函数的参数传递给`asio::io_service`类的对象。正如在活动套接字的情况下，这个构造函数实例化了 Boost.Asio 的`asio::ip::tcp::acceptor`类对象，但并没有分配底层操作系统的实际套接字对象。
 
-操作系统套接字对象在步骤4中分配，在那里我们打开接受器套接字对象，调用其`open()`方法并将协议对象作为参数传递给它。如果调用成功，接受器套接字对象将被打开并可用于开始监听传入的连接请求。否则，`boost::system::error_code`类的`ec`对象将包含错误信息。
+操作系统套接字对象在步骤 4 中分配，在那里我们打开接受器套接字对象，调用其`open()`方法并将协议对象作为参数传递给它。如果调用成功，接受器套接字对象将被打开并可用于开始监听传入的连接请求。否则，`boost::system::error_code`类的`ec`对象将包含错误信息。
 
 ## 参见
 
 +   “创建一个活动套接字”配方提供了更多关于`asio::io_service`和`asio::ip::tcp`类的详细信息。
 
-# 解析DNS名称
+# 解析 DNS 名称
 
-原始IP地址对人类来说非常不便感知和记忆，尤其是如果它们是IPv6地址。看看`192.168.10.123`（IPv4）或`8fee:9930:4545:a:105:f8ff:fe21:67cf`（IPv6）。记住这些数字和字母的序列可能对任何人都是一个挑战。
+原始 IP 地址对人类来说非常不便感知和记忆，尤其是如果它们是 IPv6 地址。看看`192.168.10.123`（IPv4）或`8fee:9930:4545:a:105:f8ff:fe21:67cf`（IPv6）。记住这些数字和字母的序列可能对任何人都是一个挑战。
 
-为了使网络中的设备能够用人类友好的名称进行标记，引入了**域名系统**（**DNS**）。简而言之，DNS是一个分布式命名系统，允许将人类友好的名称与计算机网络中的设备关联起来。**DNS名称**或**域名**是一个表示计算机网络中设备名称的字符串。
+为了使网络中的设备能够用人类友好的名称进行标记，引入了**域名系统**（**DNS**）。简而言之，DNS 是一个分布式命名系统，允许将人类友好的名称与计算机网络中的设备关联起来。**DNS 名称**或**域名**是一个表示计算机网络中设备名称的字符串。
 
-要精确地说，DNS名称是一个或多个IP地址的别名，而不是设备。它并不指代特定的物理设备，而是指可以分配给设备的IP地址。因此，DNS在指定网络中特定服务器应用时引入了间接层次。
+要精确地说，DNS 名称是一个或多个 IP 地址的别名，而不是设备。它并不指代特定的物理设备，而是指可以分配给设备的 IP 地址。因此，DNS 在指定网络中特定服务器应用时引入了间接层次。
 
-DNS充当一个分布式数据库，存储DNS名称到相应IP地址的映射，并提供一个接口，允许查询映射到特定DNS名称的IP地址。将DNS名称转换为相应IP地址的过程称为**DNS名称解析**。现代网络操作系统包含可以查询DNS以解析DNS名称并提供应用程序用于执行DNS名称解析的接口的功能。
+DNS 充当一个分布式数据库，存储 DNS 名称到相应 IP 地址的映射，并提供一个接口，允许查询映射到特定 DNS 名称的 IP 地址。将 DNS 名称转换为相应 IP 地址的过程称为**DNS 名称解析**。现代网络操作系统包含可以查询 DNS 以解析 DNS 名称并提供应用程序用于执行 DNS 名称解析的接口的功能。
 
-当给定一个DNS名称时，在客户端能够与相应的服务器应用通信之前，它必须首先解析该名称以获取与该名称关联的IP地址。
+当给定一个 DNS 名称时，在客户端能够与相应的服务器应用通信之前，它必须首先解析该名称以获取与该名称关联的 IP 地址。
 
-该配方解释了如何使用Boost.Asio执行DNS名称解析。
+该配方解释了如何使用 Boost.Asio 执行 DNS 名称解析。
 
 ## 如何做到这一点...
 
-以下算法描述了在客户端应用中执行以解析DNS名称以获取主机（零个或多个）运行的服务器应用（零个或多个）的IP地址（零个或多个）所需的步骤：
+以下算法描述了在客户端应用中执行以解析 DNS 名称以获取主机（零个或多个）运行的服务器应用（零个或多个）的 IP 地址（零个或多个）所需的步骤：
 
-1.  获取指定服务器应用程序的DNS名称和协议端口号，并将它们表示为字符串。
+1.  获取指定服务器应用程序的 DNS 名称和协议端口号，并将它们表示为字符串。
 
 1.  创建一个`asio::io_service`类的实例或使用之前创建的实例。
 
-1.  创建一个表示DNS名称解析查询的`resolver::query`类的对象。
+1.  创建一个表示 DNS 名称解析查询的`resolver::query`类的对象。
 
-1.  创建一个适合所需协议的DNS名称解析器类的实例。
+1.  创建一个适合所需协议的 DNS 名称解析器类的实例。
 
-1.  调用解析器的`resolve()`方法，将第3步中创建的查询对象作为参数传递给它。
+1.  调用解析器的`resolve()`方法，将第 3 步中创建的查询对象作为参数传递给它。
 
-以下代码示例演示了算法的可能实现。假设客户端应用程序旨在通过TCP协议和IPv6作为底层协议与服务器应用程序通信。此外，假设服务器DNS名称和端口号已经由客户端应用程序获取，并以字符串的形式表示：
+以下代码示例演示了算法的可能实现。假设客户端应用程序旨在通过 TCP 协议和 IPv6 作为底层协议与服务器应用程序通信。此外，假设服务器 DNS 名称和端口号已经由客户端应用程序获取，并以字符串的形式表示：
 
-[PRE11]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Assume that the client application has already
+  // obtained the DNS name and protocol port number and 
+  // represented them as strings.
+  std::string host = "samplehost.com";
+  std::string port_num = "3333";
+
+  // Step 2.
+  asio::io_service ios;
+
+  // Step 3\. Creating a query.
+  asio::ip::tcp::resolver::query resolver_query(host,
+    port_num, asio::ip::tcp::resolver::query::numeric_service);
+
+  // Step 4\. Creating a resolver.
+  asio::ip::tcp::resolver resolver(ios);
+
+  // Used to store information about error that happens
+  // during the resolution process.
+  boost::system::error_code ec;
+
+  // Step 5.
+  asio::ip::tcp::resolver::iterator it =
+    resolver.resolve(resolver_query, ec);
+
+  // Handling errors if any.
+  if (ec != 0) {
+    // Failed to resolve the DNS name. Breaking execution.
+    std::cout << "Failed to resolve a DNS name."
+      << "Error code = " << ec.value() 
+      << ". Message = " << ec.message();
+
+    return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
-在第1步中，我们首先获取一个DNS名称和一个协议端口号，并将它们表示为字符串。通常，这些参数是由用户通过客户端应用程序的UI或作为命令行参数提供的。获取和验证这些参数的过程超出了本食谱的范围；因此，在这里我们假设它们在样本开始时是可用的。
+在第 1 步中，我们首先获取一个 DNS 名称和一个协议端口号，并将它们表示为字符串。通常，这些参数是由用户通过客户端应用程序的 UI 或作为命令行参数提供的。获取和验证这些参数的过程超出了本食谱的范围；因此，在这里我们假设它们在样本开始时是可用的。
 
-然后，在第2步中，我们创建了一个`asio::io_service`类的实例，该实例由解析器在DNS名称解析过程中用于访问底层操作系统的服务。
+然后，在第 2 步中，我们创建了一个`asio::io_service`类的实例，该实例由解析器在 DNS 名称解析过程中用于访问底层操作系统的服务。
 
-在第3步中，我们创建了一个`asio::ip::tcp::resolver::query`类的对象。这个对象代表了对DNS的查询。它包含一个要解析的DNS名称，一个在DNS名称解析后用于构建端点对象的端口号，以及一组控制解析过程某些特定方面的标志，这些标志以位图的形式表示。所有这些值都传递给了查询类构造函数。因为服务被指定为协议端口号（在我们的例子中，是`3333`），而不是服务名称（例如，HTTP、FTP等），所以我们传递了`asio::ip::tcp::resolver::query::numeric_service`标志，以明确告知查询对象这一点，使其能够正确解析端口号值。
+在第 3 步中，我们创建了一个`asio::ip::tcp::resolver::query`类的对象。这个对象代表了对 DNS 的查询。它包含一个要解析的 DNS 名称，一个在 DNS 名称解析后用于构建端点对象的端口号，以及一组控制解析过程某些特定方面的标志，这些标志以位图的形式表示。所有这些值都传递给了查询类构造函数。因为服务被指定为协议端口号（在我们的例子中，是`3333`），而不是服务名称（例如，HTTP、FTP 等），所以我们传递了`asio::ip::tcp::resolver::query::numeric_service`标志，以明确告知查询对象这一点，使其能够正确解析端口号值。
 
-在第4步中，我们创建了一个`asio::ip::tcp::resolver`类的实例。这个类提供了DNS名称解析功能。为了执行解析，它需要底层操作系统的服务，并且它通过传递给其构造函数的`asio::io_services`类对象来访问这些服务。
+在第 4 步中，我们创建了一个`asio::ip::tcp::resolver`类的实例。这个类提供了 DNS 名称解析功能。为了执行解析，它需要底层操作系统的服务，并且它通过传递给其构造函数的`asio::io_services`类对象来访问这些服务。
 
-DNS名称解析在第5步中通过解析器对象的`resolve()`方法执行。我们在样本中使用的重载方法接受`asio::ip::tcp::resolver::query`和`system::error_code`类的对象。后者将包含描述错误的信息，如果方法失败。
+DNS 名称解析在第 5 步中通过解析器对象的`resolve()`方法执行。我们在样本中使用的重载方法接受`asio::ip::tcp::resolver::query`和`system::error_code`类的对象。后者将包含描述错误的信息，如果方法失败。
 
-如果成功，该方法返回一个 `asio::ip::tcp::resolver::iterator` 类型的对象，该迭代器指向表示解析结果的集合的第一个元素。该集合包含 `asio::ip::basic_resolver_entry<tcp>` 类型的对象。集合中的对象数量与解析产生的总IP地址数量相同。每个集合元素包含一个由解析过程生成的IP地址实例化的 `asio::ip::tcp::endpoint` 类对象和一个与相应 `query` 对象提供的端口号。可以通过 `asio::ip::basic_resolver_entry<tcp>::endpoint()` 获取器方法访问 `endpoint` 对象。
+如果成功，该方法返回一个 `asio::ip::tcp::resolver::iterator` 类型的对象，该迭代器指向表示解析结果的集合的第一个元素。该集合包含 `asio::ip::basic_resolver_entry<tcp>` 类型的对象。集合中的对象数量与解析产生的总 IP 地址数量相同。每个集合元素包含一个由解析过程生成的 IP 地址实例化的 `asio::ip::tcp::endpoint` 类对象和一个与相应 `query` 对象提供的端口号。可以通过 `asio::ip::basic_resolver_entry<tcp>::endpoint()` 获取器方法访问 `endpoint` 对象。
 
-`asio::ip::tcp::resolver::iterator` 类型的默认构造对象表示一个结束迭代器。以下示例演示了如何遍历表示DNS名称解析过程结果的集合元素，以及如何访问结果端点对象：
+`asio::ip::tcp::resolver::iterator` 类型的默认构造对象表示一个结束迭代器。以下示例演示了如何遍历表示 DNS 名称解析过程结果的集合元素，以及如何访问结果端点对象：
 
-[PRE12]
+```cpp
+asio::ip::tcp::resolver::iterator it = 
+    resolver.resolve(resolver_query, ec);
 
-通常情况下，当运行服务器应用程序的主机DNS名称解析为多个IP地址，并相应地解析为多个端点时，客户端应用程序不知道应该选择多个端点中的哪一个。在这种情况下，常见的做法是逐个尝试与每个端点通信，直到收到期望的响应。
+asio::ip::tcp::resolver::iterator it_end;
 
-注意，当DNS名称映射到多个IP地址，其中一些是IPv4地址，而另一些是IPv6地址时，DNS名称可能解析为IPv4地址、IPv6地址或两者。因此，结果集合可能包含表示IPv4和IPv6地址的端点。
+for (; it != it_end; ++it) {
+  // Here we can access the endpoint like this.
+  asio::ip::tcp::endpoint ep = it->endpoint();
+}
+```
+
+通常情况下，当运行服务器应用程序的主机 DNS 名称解析为多个 IP 地址，并相应地解析为多个端点时，客户端应用程序不知道应该选择多个端点中的哪一个。在这种情况下，常见的做法是逐个尝试与每个端点通信，直到收到期望的响应。
+
+注意，当 DNS 名称映射到多个 IP 地址，其中一些是 IPv4 地址，而另一些是 IPv6 地址时，DNS 名称可能解析为 IPv4 地址、IPv6 地址或两者。因此，结果集合可能包含表示 IPv4 和 IPv6 地址的端点。
 
 ## 还有更多…
 
-要解析DNS名称并获取可用于通过UDP协议通信的客户端的端点集合，代码非常相似。以下给出了示例，其中突出显示了差异，但没有解释：
+要解析 DNS 名称并获取可用于通过 UDP 协议通信的客户端的端点集合，代码非常相似。以下给出了示例，其中突出显示了差异，但没有解释：
 
-[PRE13]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Assume that the client application has already
+// obtained the DNS name and protocol port number and 
+// represented them as strings.
+std::string host = "samplehost.book";
+  std::string port_num = "3333";
+
+  // Step 2.
+  asio::io_service ios;
+
+  // Step 3\. Creating a query.
+  asio::ip::udp::resolver::query resolver_query(host,
+port_num, asio::ip::udp::resolver::query::numeric_service);
+
+  // Step 4\. Creating a resolver.
+  asio::ip::udp::resolver resolver(ios);
+
+  // Used to store information about error that happens
+  // during the resolution process.
+  boost::system::error_code ec;
+
+  // Step 5.
+  asio::ip::udp::resolver::iterator it =
+    resolver.resolve(resolver_query, ec);
+
+  // Handling errors if any.
+  if (ec != 0) {
+    // Failed to resolve the DNS name. Breaking execution.
+    std::cout << "Failed to resolve a DNS name."
+<< "Error code = " << ec.value() 
+<< ". Message = " << ec.message();
+
+    return ec.value();
+  }
+
+asio::ip::udp::resolver::iterator it_end;
+
+for (; it != it_end; ++it) {
+    // Here we can access the endpoint like this.
+    asio::ip::udp::endpoint ep = it->endpoint();
+}
+
+  return 0;
+}
+```
 
 ## 参见
 
 +   *创建端点* 菜单提供了更多关于端点的信息
 
-+   有关DNS和域名的更多信息，请参阅RFC *#1034* 和RFC *#1035* 文档中可找到的系统规范
++   有关 DNS 和域名的更多信息，请参阅 RFC *#1034* 和 RFC *#1035* 文档中可找到的系统规范
 
 # 将套接字绑定到端点
 
-在一个活跃的套接字能够与远程应用程序通信或一个被动套接字能够接受传入的连接请求之前，它们必须与特定的本地IP地址（或多个地址）和一个协议端口号关联，即端点。将套接字与特定端点关联的过程称为**绑定**。当一个套接字绑定到端点时，所有以该端点为目标地址的网络数据包将由操作系统重定向到该特定套接字。同样，从绑定到特定端点的套接字输出的所有数据将通过与该端点中指定的IP地址关联的网络接口从主机发送到网络。
+在一个活跃的套接字能够与远程应用程序通信或一个被动套接字能够接受传入的连接请求之前，它们必须与特定的本地 IP 地址（或多个地址）和一个协议端口号关联，即端点。将套接字与特定端点关联的过程称为**绑定**。当一个套接字绑定到端点时，所有以该端点为目标地址的网络数据包将由操作系统重定向到该特定套接字。同样，从绑定到特定端点的套接字输出的所有数据将通过与该端点中指定的 IP 地址关联的网络接口从主机发送到网络。
 
-一些操作会隐式地绑定未绑定的套接字。例如，将未绑定的活跃套接字连接到远程应用程序的操作，会隐式地将它绑定到由底层操作系统选择的IP地址和协议端口号。通常，客户端应用程序不需要显式地将活跃套接字绑定到特定的端点，因为它不需要特定的端点与服务器通信；它只需要*任何*端点即可。因此，它通常将选择套接字应绑定的IP地址和端口号的权利委托给操作系统。然而，在某些特殊情况下，客户端应用程序可能需要使用特定的IP地址和协议端口号与远程应用程序通信，因此将显式地将其套接字绑定到该特定端点。我们不会在我们的书中考虑这些情况。
+一些操作会隐式地绑定未绑定的套接字。例如，将未绑定的活跃套接字连接到远程应用程序的操作，会隐式地将它绑定到由底层操作系统选择的 IP 地址和协议端口号。通常，客户端应用程序不需要显式地将活跃套接字绑定到特定的端点，因为它不需要特定的端点与服务器通信；它只需要*任何*端点即可。因此，它通常将选择套接字应绑定的 IP 地址和端口号的权利委托给操作系统。然而，在某些特殊情况下，客户端应用程序可能需要使用特定的 IP 地址和协议端口号与远程应用程序通信，因此将显式地将其套接字绑定到该特定端点。我们不会在我们的书中考虑这些情况。
 
-当套接字绑定委托给操作系统时，无法保证每次都会绑定到相同的端点。即使主机上只有一个网络接口和一个IP地址，套接字在每次进行隐式绑定时也可能绑定到不同的协议端口号。
+当套接字绑定委托给操作系统时，无法保证每次都会绑定到相同的端点。即使主机上只有一个网络接口和一个 IP 地址，套接字在每次进行隐式绑定时也可能绑定到不同的协议端口号。
 
-与通常不关心其活跃套接字将通过哪个IP地址和协议端口号与远程应用程序通信的客户端应用程序不同，服务器应用程序通常需要显式地将其接受器套接字绑定到特定的端点。这一点可以通过服务器端点必须为所有希望与其通信的客户端所知，并且在服务器应用程序重启后应保持不变的事实来解释。
+与通常不关心其活跃套接字将通过哪个 IP 地址和协议端口号与远程应用程序通信的客户端应用程序不同，服务器应用程序通常需要显式地将其接受器套接字绑定到特定的端点。这一点可以通过服务器端点必须为所有希望与其通信的客户端所知，并且在服务器应用程序重启后应保持不变的事实来解释。
 
-本食谱解释了如何使用Boost.Asio将套接字绑定到特定的端点。
+本食谱解释了如何使用 Boost.Asio 将套接字绑定到特定的端点。
 
 ## 如何操作...
 
-以下算法描述了在IPv4 TCP服务器应用程序中创建接受器套接字并将其绑定到指定主机上所有可用IP地址和特定协议端口号的端点的步骤：
+以下算法描述了在 IPv4 TCP 服务器应用程序中创建接受器套接字并将其绑定到指定主机上所有可用 IP 地址和特定协议端口号的端点的步骤：
 
 1.  获取服务器应监听传入连接请求的协议端口号。
 
@@ -408,7 +741,47 @@ DNS名称解析在第5步中通过解析器对象的`resolve()`方法执行。�
 
 以下代码示例演示了算法的可能实现。假设协议端口号已经由应用程序获取：
 
-[PRE14]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Here we assume that the server application has
+  // already obtained the protocol port number.
+  unsigned short port_num = 3333;
+
+  // Step 2\. Creating an endpoint.
+  asio::ip::tcp::endpoint ep(asio::ip::address_v4::any(),
+    port_num);
+
+  // Used by 'acceptor' class constructor.
+  asio::io_service ios;
+
+  // Step 3\. Creating and opening an acceptor socket.
+  asio::ip::tcp::acceptor acceptor(ios, ep.protocol());
+
+  boost::system::error_code ec;
+
+  // Step 4\. Binding the acceptor socket.
+  acceptor.bind(ep, ec);
+
+  // Handling errors if any.
+  if (ec != 0) {
+    // Failed to bind the acceptor socket. Breaking
+    // execution.
+    std::cout << "Failed to bind the acceptor socket."
+      << "Error code = " << ec.value() << ". Message: "
+      << ec.message();
+
+    return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 工作原理...
 
@@ -424,13 +797,52 @@ DNS名称解析在第5步中通过解析器对象的`resolve()`方法执行。�
 
 **下载示例代码**
 
-您可以从 [http://www.packtpub.com](http://www.packtpub.com) 下载您购买的所有 Packt 出版物的示例代码文件。如果您在其他地方购买了此书，您可以访问 [http://www.packtpub.com/support](http://www.packtpub.com/support) 并注册以将文件直接通过电子邮件发送给您。
+您可以从 [`www.packtpub.com`](http://www.packtpub.com) 下载您购买的所有 Packt 出版物的示例代码文件。如果您在其他地方购买了此书，您可以访问 [`www.packtpub.com/support`](http://www.packtpub.com/support) 并注册以将文件直接通过电子邮件发送给您。
 
 ## 更多内容...
 
 UDP 服务器不建立连接，并使用活动套接字等待传入请求。绑定活动套接字的过程与绑定接受者套接字的过程非常相似。在此，我们提供了一个示例代码，展示了如何将 UDP 活动套接字绑定到指定主机上所有可用 IP 地址和特定协议端口号的端点。代码提供时未加解释：
 
-[PRE15]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Here we assume that the server application has
+  // already obtained the protocol port number.
+  unsigned short port_num = 3333;
+
+  // Step 2\. Creating an endpoint.
+  asio::ip::udp::endpoint ep(asio::ip::address_v4::any(),
+    port_num);
+
+  // Used by 'socket' class constructor.
+  asio::io_service ios;
+
+  // Step 3\. Creating and opening a socket.
+  asio::ip::udp::socket sock(ios, ep.protocol());
+
+  boost::system::error_code ec;
+
+  // Step 4\. Binding the socket to an endpoint.
+  sock.bind(ep, ec);
+
+  // Handling errors if any.
+  if (ec != 0) {
+    // Failed to bind the socket. Breaking execution.
+    std::cout << "Failed to bind the socket."
+      << "Error code = " << ec.value() << ". Message: "
+      << ec.message();
+
+    return ec.value();
+  }
+
+  return 0;
+}
+```
 
 ## 相关链接
 
@@ -442,69 +854,169 @@ UDP 服务器不建立连接，并使用活动套接字等待传入请求。绑�
 
 # 连接套接字
 
-在一个TCP套接字可以使用来与远程应用程序通信之前，它必须与它建立一个*逻辑连接*。根据TCP协议，*连接建立过程*在于两个应用程序之间交换服务消息，如果成功，则导致两个应用程序*逻辑连接*并准备好相互通信。
+在一个 TCP 套接字可以使用来与远程应用程序通信之前，它必须与它建立一个*逻辑连接*。根据 TCP 协议，*连接建立过程*在于两个应用程序之间交换服务消息，如果成功，则导致两个应用程序*逻辑连接*并准备好相互通信。
 
 大概来说，连接建立过程看起来是这样的。当客户端应用程序想要与服务器应用程序通信时，它会创建并打开一个活跃的套接字，并在其上发出一个`connect()`命令，指定一个带有端点对象的目标服务器应用程序。这导致一个连接建立请求消息通过网络发送到服务器应用程序。服务器应用程序接收请求并在其端创建一个活跃的套接字，将其标记为连接到特定的客户端，并回复客户端，确认服务器端已成功建立连接。接下来，客户端收到服务器的确认后，将其套接字标记为连接到服务器，并向它发送一条确认消息，确认客户端端已成功建立连接。当服务器收到客户端的确认消息时，两个应用程序之间的逻辑连接被认为是建立的。
 
-假设两个连接的套接字之间是点对点通信模型。这意味着如果套接字A连接到套接字B，那么它们只能相互通信，不能与任何其他套接字C通信。在套接字A能够与套接字C通信之前，它必须关闭与套接字B的连接，并与套接字C建立一个新的连接。
+假设两个连接的套接字之间是点对点通信模型。这意味着如果套接字 A 连接到套接字 B，那么它们只能相互通信，不能与任何其他套接字 C 通信。在套接字 A 能够与套接字 C 通信之前，它必须关闭与套接字 B 的连接，并与套接字 C 建立一个新的连接。
 
-本食谱解释了如何使用Boost.Asio同步地将套接字连接到远程应用程序。
+本食谱解释了如何使用 Boost.Asio 同步地将套接字连接到远程应用程序。
 
 ## 如何操作…
 
-以下算法描述了在TCP客户端应用程序中执行连接活跃套接字到服务器应用程序所需的步骤：
+以下算法描述了在 TCP 客户端应用程序中执行连接活跃套接字到服务器应用程序所需的步骤：
 
-1.  获取目标服务器应用程序的IP地址和协议端口号。
+1.  获取目标服务器应用程序的 IP 地址和协议端口号。
 
-1.  从步骤1中获取的IP地址和协议端口号创建一个`asio::ip::tcp::endpoint`类的对象。
+1.  从步骤 1 中获取的 IP 地址和协议端口号创建一个`asio::ip::tcp::endpoint`类的对象。
 
 1.  创建并打开一个活跃的套接字。
 
-1.  调用套接字的`connect()`方法，将步骤2中创建的端点对象作为参数。
+1.  调用套接字的`connect()`方法，将步骤 2 中创建的端点对象作为参数。
 
 1.  如果该方法成功，套接字被认为是连接的，并且可以用来向服务器发送和接收数据。
 
 以下代码示例演示了算法的可能实现：
 
-[PRE16]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // Step 1\. Assume that the client application has already
+  // obtained the IP address and protocol port number of the
+  // target server.
+  std::string raw_ip_address = "127.0.0.1";
+  unsigned short port_num = 3333;
+
+  try {
+    // Step 2\. Creating an endpoint designating 
+    // a target server application.
+    asio::ip::tcp::endpoint
+      ep(asio::ip::address::from_string(raw_ip_address),
+      port_num);
+
+    asio::io_service ios;
+
+    // Step 3\. Creating and opening a socket.
+    asio::ip::tcp::socket sock(ios, ep.protocol());
+
+    // Step 4\. Connecting a socket.
+    sock.connect(ep);
+
+    // At this point socket 'sock' is connected to 
+    // the server application and can be used
+    // to send data to or receive data from it.
+  }
+  // Overloads of asio::ip::address::from_string() and 
+  // asio::ip::tcp::socket::connect() used here throw
+  // exceptions in case of error condition.
+  catch (system::system_error &e) {
+    std::cout << "Error occured! Error code = " << e.code()
+      << ". Message: " << e.what();
+
+    return e.code().value();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的…
 
-在步骤1中，我们从目标服务器获取IP地址和协议端口号。获取这些参数的过程超出了本食谱的范围；因此，在此我们假设它们已经获取并且在我们样本的开始时可用。
+在步骤 1 中，我们从目标服务器获取 IP 地址和协议端口号。获取这些参数的过程超出了本食谱的范围；因此，在此我们假设它们已经获取并且在我们样本的开始时可用。
 
-在第2步中，我们创建一个`asio::ip::tcp::endpoint`类的对象，指定我们打算连接的目标服务器应用程序。
+在第 2 步中，我们创建一个`asio::ip::tcp::endpoint`类的对象，指定我们打算连接的目标服务器应用程序。
 
-然后，在第3步中，实例化并打开一个活动套接字。
+然后，在第 3 步中，实例化并打开一个活动套接字。
 
-在第4步中，我们调用套接字的`connect()`方法，将一个指定目标服务器的端点对象作为参数传递给它。这个函数将套接字连接到服务器。连接是同步进行的，这意味着该方法会阻塞调用线程，直到连接操作建立或发生错误。
+在第 4 步中，我们调用套接字的`connect()`方法，将一个指定目标服务器的端点对象作为参数传递给它。这个函数将套接字连接到服务器。连接是同步进行的，这意味着该方法会阻塞调用线程，直到连接操作建立或发生错误。
 
-注意，在连接之前，我们没有将套接字绑定到任何本地端点。这并不意味着套接字保持未绑定状态。在执行连接建立过程之前，套接字的`connect()`方法会将套接字绑定到操作系统选择的由IP地址和协议端口号组成的端点。
+注意，在连接之前，我们没有将套接字绑定到任何本地端点。这并不意味着套接字保持未绑定状态。在执行连接建立过程之前，套接字的`connect()`方法会将套接字绑定到操作系统选择的由 IP 地址和协议端口号组成的端点。
 
-在这个示例中，还有一点需要注意，我们使用了一个`connect()`方法的重载版本，如果操作失败，它会抛出一个`boost::system::system_error`类型的异常，同样，我们在第2步中使用的`asio::ip::address::from_string()`静态方法的重载版本也是如此。因此，这两个调用都被包含在一个`try`块中。这两个方法都有不抛出异常的重载版本，并接受一个`boost::system::error_code`类的对象，该对象用于在操作失败时将错误信息传递给调用者。然而，在这种情况下，使用异常来处理错误可以使代码结构更清晰。
+在这个示例中，还有一点需要注意，我们使用了一个`connect()`方法的重载版本，如果操作失败，它会抛出一个`boost::system::system_error`类型的异常，同样，我们在第 2 步中使用的`asio::ip::address::from_string()`静态方法的重载版本也是如此。因此，这两个调用都被包含在一个`try`块中。这两个方法都有不抛出异常的重载版本，并接受一个`boost::system::error_code`类的对象，该对象用于在操作失败时将错误信息传递给调用者。然而，在这种情况下，使用异常来处理错误可以使代码结构更清晰。
 
 ## 还有更多...
 
-之前的代码示例展示了当客户端应用程序明确提供了IP地址和协议端口号时，如何将套接字连接到由端点指定的特定服务器应用程序。然而，有时客户端应用程序会提供一个DNS名称，该名称可能映射到一个或多个IP地址。在这种情况下，我们首先需要使用`asio::ip::tcp::resolver`类提供的`resolve()`方法解析DNS名称。此方法解析DNS名称，从解析结果中的每个IP地址创建一个`asio::ip::tcp::endpoint`类的对象，将所有端点对象放入一个集合中，并返回一个`asio::ip::tcp::resolver::iterator`类的对象，该迭代器指向集合中的第一个元素。
+之前的代码示例展示了当客户端应用程序明确提供了 IP 地址和协议端口号时，如何将套接字连接到由端点指定的特定服务器应用程序。然而，有时客户端应用程序会提供一个 DNS 名称，该名称可能映射到一个或多个 IP 地址。在这种情况下，我们首先需要使用`asio::ip::tcp::resolver`类提供的`resolve()`方法解析 DNS 名称。此方法解析 DNS 名称，从解析结果中的每个 IP 地址创建一个`asio::ip::tcp::endpoint`类的对象，将所有端点对象放入一个集合中，并返回一个`asio::ip::tcp::resolver::iterator`类的对象，该迭代器指向集合中的第一个元素。
 
-当DNS名称解析为多个IP地址时，客户端应用程序在决定连接到哪一个时，通常没有理由偏好任何一个IP地址。在这种情况下，常见的做法是遍历集合中的端点，并尝试逐个连接到它们，直到连接成功。Boost.Asio提供了实现此方法的辅助功能。
+当 DNS 名称解析为多个 IP 地址时，客户端应用程序在决定连接到哪一个时，通常没有理由偏好任何一个 IP 地址。在这种情况下，常见的做法是遍历集合中的端点，并尝试逐个连接到它们，直到连接成功。Boost.Asio 提供了实现此方法的辅助功能。
 
 自由函数`asio::connect()`接受一个活动套接字对象和一个`asio::ip::tcp::resolver::iterator`类对象作为输入参数，遍历一组端点，并尝试将套接字连接到每个端点。该函数在成功将套接字连接到其中一个端点或尝试了所有端点但未能将套接字连接到所有端点时停止迭代，并返回。
 
-以下算法演示了连接套接字到由DNS名称和协议端口号表示的服务器应用程序所需的步骤：
+以下算法演示了连接套接字到由 DNS 名称和协议端口号表示的服务器应用程序所需的步骤：
 
-1.  获取运行服务器应用程序的主机的DNS名称和服务器端口号，并将它们表示为字符串。
+1.  获取运行服务器应用程序的主机的 DNS 名称和服务器端口号，并将它们表示为字符串。
 
-1.  使用`asio::ip::tcp::resolver`类解析DNS名称。
+1.  使用`asio::ip::tcp::resolver`类解析 DNS 名称。
 
 1.  创建一个未打开的活动套接字。
 
-1.  将套接字对象和在第2步中获得的迭代器对象作为参数传递给`asio::connect()`函数。
+1.  将套接字对象和在第 2 步中获得的迭代器对象作为参数传递给`asio::connect()`函数。
 
 以下代码示例演示了算法的可能实现：
 
-[PRE17]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
 
-注意，在第3步中，我们创建套接字时不会打开它。这是因为我们不知道提供的DNS名称将解析到的IP地址版本。`asio::connect()`函数在将套接字连接到每个指定了正确协议对象的端点之前打开套接字，如果连接失败则关闭它。
+using namespace boost;
+
+int main()
+{
+  // Step1\. Assume that the client application has already
+  // obtained the DNS name and protocol port number and
+  // represented them as strings.
+  std::string host = "samplehost.book";
+  std::string port_num = "3333";
+
+  // Used by a 'resolver' and a 'socket'.
+  asio::io_service ios;
+
+  // Creating a resolver's query.
+  asio::ip::tcp::resolver::query resolver_query(host, port_num,
+    asio::ip::tcp::resolver::query::numeric_service);
+
+  // Creating a resolver.
+  asio::ip::tcp::resolver resolver(ios);
+
+  try {
+    // Step 2\. Resolving a DNS name.
+    asio::ip::tcp::resolver::iterator it =
+      resolver.resolve(resolver_query);
+
+    // Step 3\. Creating a socket.
+    asio::ip::tcp::socket sock(ios);
+
+    // Step 4\. asio::connect() method iterates over
+    // each endpoint until successfully connects to one
+    // of them. It will throw an exception if it fails
+    // to connect to all the endpoints or if other
+    // error occurs.
+    asio::connect(sock, it);
+
+    // At this point socket 'sock' is connected to 
+    // the server application and can be used
+    // to send data to or receive data from it.
+  }
+  // Overloads of asio::ip::tcp::resolver::resolve and 
+  // asio::connect() used here throw
+  // exceptions in case of error condition.
+  catch (system::system_error &e) {
+    std::cout << "Error occured! Error code = " << e.code()
+      << ". Message: " << e.what();
+
+    return e.code().value();
+  }
+
+  return 0;
+}
+```
+
+注意，在第 3 步中，我们创建套接字时不会打开它。这是因为我们不知道提供的 DNS 名称将解析到的 IP 地址版本。`asio::connect()`函数在将套接字连接到每个指定了正确协议对象的端点之前打开套接字，如果连接失败则关闭它。
 
 代码示例中的所有其他步骤都不难理解，因此没有提供解释。
 
@@ -514,13 +1026,13 @@ UDP 服务器不建立连接，并使用活动套接字等待传入请求。绑�
 
 +   *创建活动套接字*菜谱解释了如何创建和打开套接字，并提供了关于`asio::io_service`类的更多详细信息。
 
-+   *解析DNS名称*菜谱解释了如何使用解析器类解析DNS名称。
++   *解析 DNS 名称*菜谱解释了如何使用解析器类解析 DNS 名称。
 
 +   *绑定套接字*菜谱提供了更多关于套接字绑定的信息。
 
 # 接受连接
 
-当客户端应用程序想要通过TCP协议与服务器应用程序通信时，它首先需要与该服务器建立一个逻辑连接。为了做到这一点，客户端分配一个活动套接字并在其上发出连接命令（例如通过在套接字对象上调用`connect()`方法），这将导致连接建立请求消息被发送到服务器。
+当客户端应用程序想要通过 TCP 协议与服务器应用程序通信时，它首先需要与该服务器建立一个逻辑连接。为了做到这一点，客户端分配一个活动套接字并在其上发出连接命令（例如通过在套接字对象上调用`connect()`方法），这将导致连接建立请求消息被发送到服务器。
 
 在服务器端，在服务器应用程序能够接受和处理来自客户端的连接请求之前，必须进行一些安排。在此之前，所有针对此服务器应用程序的连接请求都被操作系统拒绝。
 
@@ -530,7 +1042,7 @@ UDP 服务器不建立连接，并使用活动套接字等待传入请求。绑�
 
 注意，接受器套接字仅用于与客户端应用程序建立连接，并在后续的通信过程中不被使用。在处理挂起的连接请求时，接受器套接字分配一个新的活动套接字，将其绑定到操作系统选择的端点，并将其连接到已发出该连接请求的相应客户端应用程序。然后，这个新的活动套接字就准备好用于与客户端进行通信。接受器套接字可用于处理下一个挂起的连接请求。
 
-本食谱描述了如何在TCP服务器应用程序中使用Boost.Asio将接受器套接字切换到监听模式并接受传入的连接请求。
+本食谱描述了如何在 TCP 服务器应用程序中使用 Boost.Asio 将接受器套接字切换到监听模式并接受传入的连接请求。
 
 ## 如何做到这一点…
 
@@ -542,35 +1054,89 @@ UDP 服务器不建立连接，并使用活动套接字等待传入请求。绑�
 
 1.  实例化和打开一个接受器套接字。
 
-1.  将接受器套接字绑定到步骤2中创建的服务器端点。
+1.  将接受器套接字绑定到步骤 2 中创建的服务器端点。
 
 1.  调用接受器套接字的`listen()`方法，使其开始监听端点上的传入连接请求。
 
 1.  实例化一个活动套接字对象。
 
-1.  当准备好处理连接请求时，调用接受器套接字的`accept()`方法，并将步骤6中创建的活动套接字对象作为参数传递。
+1.  当准备好处理连接请求时，调用接受器套接字的`accept()`方法，并将步骤 6 中创建的活动套接字对象作为参数传递。
 
 1.  如果调用成功，活动套接字将连接到客户端应用程序，并准备好与其进行通信。
 
-以下代码示例演示了遵循该算法的服务器应用程序的可能实现。在此，我们假设服务器旨在通过TCP协议与IPv4作为底层协议进行通信：
+以下代码示例演示了遵循该算法的服务器应用程序的可能实现。在此，我们假设服务器旨在通过 TCP 协议与 IPv4 作为底层协议进行通信：
 
-[PRE18]
+```cpp
+#include <boost/asio.hpp>
+#include <iostream>
+
+using namespace boost;
+
+int main()
+{
+  // The size of the queue containing the pending connection
+  // requests.
+  const int BACKLOG_SIZE = 30;
+
+  // Step 1\. Here we assume that the server application has
+  // already obtained the protocol port number.
+  unsigned short port_num = 3333;
+
+  // Step 2\. Creating a server endpoint.
+  asio::ip::tcp::endpoint ep(asio::ip::address_v4::any(),
+    port_num);
+
+  asio::io_service ios;
+
+  try {
+    // Step 3\. Instantiating and opening an acceptor socket.
+    asio::ip::tcp::acceptor acceptor(ios, ep.protocol());
+
+    // Step 4\. Binding the acceptor socket to the 
+    // server endpint.
+    acceptor.bind(ep);
+
+    // Step 5\. Starting to listen for incoming connection
+    // requests.
+    acceptor.listen(BACKLOG_SIZE);
+
+    // Step 6\. Creating an active socket.
+    asio::ip::tcp::socket sock(ios);
+
+    // Step 7\. Processing the next connection request and 
+    // connecting the active socket to the client.
+    acceptor.accept(sock);
+
+    // At this point 'sock' socket is connected to 
+    //the client application and can be used to send data to
+    // or receive data from it.
+  }
+  catch (system::system_error &e) {
+    std::cout << "Error occured! Error code = " << e.code()
+      << ". Message: " << e.what();
+
+    return e.code().value();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
-在步骤1中，我们获取服务器应用程序绑定其接受者套接字的协议端口号。在这里，我们假设端口号已经获取并且可以在示例开始时使用。
+在步骤 1 中，我们获取服务器应用程序绑定其接受者套接字的协议端口号。在这里，我们假设端口号已经获取并且可以在示例开始时使用。
 
-在步骤2中，我们创建一个服务器端点，指定运行服务器应用程序的主机上可用的所有IP地址和特定的协议端口号。
+在步骤 2 中，我们创建一个服务器端点，指定运行服务器应用程序的主机上可用的所有 IP 地址和特定的协议端口号。
 
-在步骤3中，我们实例化并打开一个接受者套接字，并在步骤4中将它绑定到服务器端点。
+在步骤 3 中，我们实例化并打开一个接受者套接字，并在步骤 4 中将它绑定到服务器端点。
 
-在步骤5中，我们调用接受者的`listen()`方法，将BACKLOG_SIZE常量值作为参数传递。此调用将接受者套接字切换到监听传入连接请求的状态。除非我们在接受者对象上调用`listen()`方法，否则所有到达相应端点的连接请求都将被操作系统网络软件拒绝。应用程序必须通过此调用显式通知操作系统，它希望开始在特定端点上监听传入的连接请求。
+在步骤 5 中，我们调用接受者的`listen()`方法，将 BACKLOG_SIZE 常量值作为参数传递。此调用将接受者套接字切换到监听传入连接请求的状态。除非我们在接受者对象上调用`listen()`方法，否则所有到达相应端点的连接请求都将被操作系统网络软件拒绝。应用程序必须通过此调用显式通知操作系统，它希望开始在特定端点上监听传入的连接请求。
 
 `listen()`方法接受的参数指定了操作系统维护的队列的大小，该队列用于存放来自客户端的连接请求。请求保持在队列中，等待服务器应用程序将其出队并处理。当队列满时，操作系统将拒绝新的连接请求。
 
-在步骤6中，我们创建一个活动套接字对象，但不打开它。我们将在步骤7中使用它。
+在步骤 6 中，我们创建一个活动套接字对象，但不打开它。我们将在步骤 7 中使用它。
 
-在步骤7中，我们调用接受者套接字的`accept()`方法。此方法接受一个活动套接字作为参数并执行几个操作。首先，它检查与接受者套接字关联的包含挂起连接请求的队列。如果队列为空，则方法会阻塞执行，直到新的连接请求到达接受者套接字绑定的端点，并且操作系统将其放入队列。
+在步骤 7 中，我们调用接受者套接字的`accept()`方法。此方法接受一个活动套接字作为参数并执行几个操作。首先，它检查与接受者套接字关联的包含挂起连接请求的队列。如果队列为空，则方法会阻塞执行，直到新的连接请求到达接受者套接字绑定的端点，并且操作系统将其放入队列。
 
 如果队列中至少有一个连接请求可用，则队列顶部的请求将被提取出来并处理。传递给`accept()`方法作为参数的活动套接字将连接到发出连接请求的相应客户端应用程序。
 

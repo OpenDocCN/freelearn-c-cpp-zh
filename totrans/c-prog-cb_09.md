@@ -50,7 +50,7 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 **信号量**是一个用于避免在并发系统中两个或多个进程访问公共资源的概念。它基本上是一个变量，通过操作它只允许一个进程访问公共资源并实现进程同步。信号量使用信号机制，即分别调用`wait`和`signal`函数来通知公共资源已被获取或释放。另一方面，`互斥锁`使用锁定机制——进程在操作公共资源之前必须获取`互斥锁`对象的锁。
 
-虽然`互斥锁`有助于管理线程之间的共享资源，但存在一个问题。`互斥锁`的错误顺序应用可能导致死锁。死锁发生在这样一个情况下：一个持有`锁X`的线程试图获取`锁Y`以完成其处理，而另一个持有`锁Y`的线程试图获取`锁X`以完成其执行。在这种情况下，将发生死锁，因为两个线程都将无限期地等待对方释放其锁。由于没有线程能够完成其执行，因此没有线程能够释放其锁。避免死锁的一种解决方案是让线程以特定的顺序获取锁。
+虽然`互斥锁`有助于管理线程之间的共享资源，但存在一个问题。`互斥锁`的错误顺序应用可能导致死锁。死锁发生在这样一个情况下：一个持有`锁 X`的线程试图获取`锁 Y`以完成其处理，而另一个持有`锁 Y`的线程试图获取`锁 X`以完成其执行。在这种情况下，将发生死锁，因为两个线程都将无限期地等待对方释放其锁。由于没有线程能够完成其执行，因此没有线程能够释放其锁。避免死锁的一种解决方案是让线程以特定的顺序获取锁。
 
 以下函数用于创建和管理线程：
 
@@ -76,27 +76,59 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 1.  定义一个`pthread_t`类型的变量来存储线程标识符：
 
-[PRE0]
+```cpp
+pthread_t tid;
+```
 
 1.  创建一个线程并将前一步创建的标识符传递给`pthread_create`函数。线程使用默认属性创建。还要指定一个需要执行以创建线程的函数：
 
-[PRE1]
+```cpp
+pthread_create(&tid, NULL, runThread, NULL);
+```
 
 1.  在该函数中，你将显示一条文本消息以指示线程已创建并正在运行：
 
-[PRE2]
+```cpp
+printf("Running Thread \n");
+```
 
 1.  通过运行线程调用一个`for`循环来显示从`1`到`5`的序列号：
 
-[PRE3]
+```cpp
+for(i=1;i<=5;i++) printf("%d\n",i);
+```
 
 1.  在主函数中调用 `pthread_join` 方法，使 `main` 方法等待直到线程完成任务：
 
-[PRE4]
+```cpp
+pthread_join(tid, NULL);
+```
 
 创建线程并使其执行任务的 `createthread.c` 程序如下：
 
-[PRE5]
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+void *runThread(void *arg)
+{
+    int i;
+    printf("Running Thread \n");
+    for(i=1;i<=5;i++) printf("%d\n",i);
+    return NULL;
+}
+
+int main()
+{
+    pthread_t tid;
+    printf("In main function\n");
+    pthread_create(&tid, NULL, runThread, NULL);
+    pthread_join(tid, NULL);
+    printf("Thread over\n");
+    return 0;
+}
+```
 
 现在，让我们看看幕后。
 
@@ -108,7 +140,9 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 让我们使用 GCC 编译 `createthread.c` 程序，如下所示：
 
-[PRE6]
+```cpp
+D:\CBook>gcc createthread.c -o createthread
+```
 
 如果你没有收到任何错误或警告，这意味着 `createthread.c` 程序已经被编译成了一个可执行文件，`createthread.exe`。让我们运行这个可执行文件：
 
@@ -124,39 +158,86 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 1.  定义两个类型为 `pthread_t` 的变量以存储两个线程标识符：
 
-[PRE7]
+```cpp
+pthread_t tid1, tid2;
+```
 
 1.  调用 `pthread_create` 函数两次以创建两个线程，并分配我们在上一步中创建的标识符。这两个线程使用默认属性创建。指定两个线程各自需要执行的功能：
 
-[PRE8]
+```cpp
+pthread_create(&tid1,NULL,runThread1,NULL);
+pthread_create(&tid2,NULL,runThread2,NULL);
+```
 
 1.  在第一个线程的功能中，显示一条文本消息以指示第一个线程已被创建并正在运行：
 
-[PRE9]
+```cpp
+printf("Running Thread 1\n");
+```
 
 1.  为了指示第一个线程的执行，在第一个函数中执行一个 `for` 循环以显示从 `1` 到 `5` 的数字序列。为了与第二个线程区分开来，第一个线程生成的数字序列前面加上 `Thread 1`：
 
-[PRE10]
+```cpp
+for(i=1;i<=5;i++)
+    printf("Thread 1 - %d\n",i);
+```
 
 1.  类似地，在第二个线程中，显示一条文本消息以告知第二个线程也已创建并正在运行：
 
-[PRE11]
+```cpp
+  printf("Running Thread 2\n");
+```
 
 1.  再次，在第二个函数中，执行一个 `for` 循环以显示从 `1` 到 `5` 的数字序列。为了区分这些数字与 `thread1` 生成的数字，这个数字序列将以前缀 `Thread 2` 开头：
 
-[PRE12]
+```cpp
+for(i=1;i<=5;i++)
+    printf("Thread 2 - %d\n",i);
+```
 
 1.  调用 `pthread_join` 两次，并将我们在第一步中创建的线程标识符传递给它。`pthread_join` 将使两个线程，并且 `main` 方法将等待直到两个线程都完成任务：
 
-[PRE13]
+```cpp
+pthread_join(tid1,NULL);
+pthread_join(tid2,NULL);
+```
 
 1.  当两个线程都完成后，将显示一条文本消息以确认这一点：
 
-[PRE14]
+```cpp
+printf("Both threads are over\n");
+```
 
 创建两个线程并在独立资源上使它们工作的 `twothreads.c` 程序如下：
 
-[PRE15]
+```cpp
+#include<pthread.h>
+#include<stdio.h>
+
+void *runThread1(void *arg){
+    int i;
+    printf("Running Thread 1\n");
+    for(i=1;i<=5;i++)
+        printf("Thread 1 - %d\n",i);
+}
+
+void *runThread2(void *arg){
+    int i;
+    printf("Running Thread 2\n");
+    for(i=1;i<=5;i++)
+        printf("Thread 2 - %d\n",i);
+}
+
+int main(){
+    pthread_t tid1, tid2;
+    pthread_create(&tid1,NULL,runThread1,NULL);
+    pthread_create(&tid2,NULL,runThread2,NULL);
+    pthread_join(tid1,NULL);
+    pthread_join(tid2,NULL);
+    printf("Both threads are over\n");
+    return 0;
+}
+```
 
 现在，让我们看看幕后。
 
@@ -174,7 +255,9 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 让我们使用 GCC 编译 `twothreads.c` 程序，如下所示：
 
-[PRE16]
+```cpp
+D:\CBook>gcc twothreads.c -o twothreads
+```
 
 如果没有错误或警告，这意味着 `twothreads.c` 程序已被编译成可执行文件，名为 `twothreads.exe`。让我们运行这个可执行文件：
 
@@ -192,71 +275,146 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 1.  定义两个 `pthread_t` 类型的变量来存储两个线程标识符。同时，定义一个 `mutex` 对象：
 
-[PRE17]
+```cpp
+pthread_t tid1,tid2;
+pthread_mutex_t lock;
+```
 
 1.  调用 `pthread_mutex_init` 方法以默认 `mutex` 属性初始化 `mutex` 对象：
 
-[PRE18]
+```cpp
+pthread_mutex_init(&lock, NULL)
+```
 
 1.  调用两次 `pthread_create` 函数来创建两个线程，并分配我们在第一步中创建的标识符。执行一个用于创建两个线程的函数：
 
-[PRE19]
+```cpp
+pthread_create(&tid1, NULL, &runThread, NULL);
+pthread_create(&tid2, NULL, &runThread, NULL);
+```
 
 1.  在函数中，调用 `pthread_mutex_lock` 方法并将 `mutex` 对象传递给它以锁定它：
 
-[PRE20]
+```cpp
+pthread_mutex_lock(&lock);
+```
 
 1.  调用 `pthread_self` 方法并将调用线程的 ID 赋值给一个 `pthread_t` 类型的变量。调用 `pthread_equal` 方法并将其与变量进行比较，以找出当前正在执行的线程。如果第一个线程正在执行，则在屏幕上显示消息 `First thread is running`：
 
-[PRE21]
+```cpp
+pthread_t id = pthread_self();
+if(pthread_equal(id,tid1))                                
+    printf("First thread is running\n");
+```
 
 1.  为了表示线程正在执行公共资源，在屏幕上显示文本消息 `Processing the common resource`：
 
-[PRE22]
+```cpp
+printf("Processing the common resource\n");
+```
 
 1.  调用 `sleep` 方法使第一个线程休眠 `5` 秒：
 
-[PRE23]
+```cpp
+sleep(5);
+```
 
 1.  经过 `5` 秒的持续时间后，在屏幕上显示消息 `First thread is over`：
 
-[PRE24]
+```cpp
+printf("First thread is over\n\n");
+```
 
 1.  将调用 `pthread_mutex_unlock` 函数，并将我们在第一步中创建的 `mutex` 对象传递给它以解锁它：
 
-[PRE25]
+```cpp
+pthread_mutex_unlock(&lock);  
+```
 
 1.  第二个线程将调用 `thread` 函数。再次锁定 `mutex` 对象：
 
-[PRE26]
+```cpp
+pthread_mutex_lock(&lock);
+
+```
 
 1.  为了表示此时第二个线程正在运行，在屏幕上显示消息 `Second thread is running`：
 
-[PRE27]
+```cpp
+printf("Second thread is running\n");
+```
 
 1.  再次，为了表示线程正在访问公共资源，在屏幕上显示消息 `Processing the common resource`：
 
-[PRE28]
+```cpp
+printf("Processing the common resource\n");
+```
 
 1.  引入 `5` 秒的延迟。然后，在屏幕上显示消息 `second thread is over`：
 
-[PRE29]
+```cpp
+sleep(5);
+printf("Second thread is over\n\n"); 
+```
 
 1.  解锁 `mutex` 对象：
 
-[PRE30]
+```cpp
+pthread_mutex_unlock(&lock);  
+```
 
 1.  调用 `pthread_join` 方法两次并将线程标识符传递给它：
 
-[PRE31]
+```cpp
+pthread_join(tid1, NULL);
+pthread_join(tid2, NULL);
+```
 
 1.  调用 `pthread_mutex_destroy` 方法来销毁 `mutex` 对象：
 
-[PRE32]
+```cpp
+pthread_mutex_destroy(&lock);
+```
 
 创建两个线程共享公共资源的 `twothreadsmutex.c` 程序如下：
 
-[PRE33]
+```cpp
+#include<stdio.h>
+#include<pthread.h>
+#include<unistd.h>
+pthread_t tid1,tid2;
+pthread_mutex_t lock;
+
+void* runThread(void *arg)
+{
+    pthread_mutex_lock(&lock);
+    pthread_t id = pthread_self();
+    if(pthread_equal(id,tid1))
+        printf("First thread is running\n");
+    else
+        printf("Second thread is running\n");
+    printf("Processing the common resource\n");
+    sleep(5);
+    if(pthread_equal(id,tid1))
+        printf("First thread is over\n\n");
+    else
+        printf("Second thread is over\n\n"); 
+    pthread_mutex_unlock(&lock);  
+    return NULL;
+}
+
+int main(void)
+{ 
+    if (pthread_mutex_init(&lock, NULL) != 0)
+        printf("\n mutex init has failed\n");
+    pthread_create(&tid1, NULL, &runThread, NULL);
+    pthread_create(&tid2, NULL, &runThread, NULL);
+    pthread_join(tid1, NULL);
+    pthread_join(tid2, NULL);
+    pthread_mutex_destroy(&lock);
+    return 0;
+}
+```
 
 现在，让我们看看幕后。
 
@@ -266,7 +424,7 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 我们将调用初始化`lock`对象的`pthread_mutex_init`方法，该对象具有默认的`mutex`属性。初始化后，`lock`对象处于未锁定状态。然后，我们两次调用`pthread_create`函数来创建两个线程并将它们的标识符分配给两个变量`tid1`和`tid2`，这些变量的地址被传递给`pthread_create`函数。这两个线程是以默认属性创建的。
 
-接下来，我们将执行`runThread`函数以创建两个线程。在`runThread`函数中，我们将调用`pthread_mutex_lock`方法并将`mutex`对象`lock`传递给它以锁定它。现在，其余的线程（如果有）将被要求等待，直到`mutex`对象`lock`被解锁。我们将调用`pthread_self`方法并将调用线程的ID赋值给`pthread_t`类型的变量`id`。然后，我们将调用`pthread_equal`方法以确保如果调用线程是分配给`tid1`变量的标识符的线程，则屏幕上会显示消息`First thread is running`。
+接下来，我们将执行`runThread`函数以创建两个线程。在`runThread`函数中，我们将调用`pthread_mutex_lock`方法并将`mutex`对象`lock`传递给它以锁定它。现在，其余的线程（如果有）将被要求等待，直到`mutex`对象`lock`被解锁。我们将调用`pthread_self`方法并将调用线程的 ID 赋值给`pthread_t`类型的变量`id`。然后，我们将调用`pthread_equal`方法以确保如果调用线程是分配给`tid1`变量的标识符的线程，则屏幕上会显示消息`First thread is running`。
 
 接下来，屏幕上显示消息`Processing the common resource`。我们将调用`sleep`方法使第一个线程休眠`5`秒。经过`5`秒的持续时间后，屏幕上会显示消息`First thread is over`，以指示第一个线程已完成。然后，我们将调用`pthread_mutex_unlock`并将`mutex`对象`lock`传递给它以解锁。解锁`mutex`对象是向其他线程发出信号，表明其他线程也可以使用共享资源。
 
@@ -276,9 +434,11 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 当两个线程都完成后，我们将调用`pthread_mutex_destroy`方法来销毁`mutex`对象`lock`并释放为其分配的资源。
 
-让我们使用GCC编译`twothreadsmutex.c`程序，如下所示：
+让我们使用 GCC 编译`twothreadsmutex.c`程序，如下所示：
 
-[PRE34]
+```cpp
+D:\CBook>gcc twothreadsmutex.c -o twothreadsmutex
+```
 
 如果没有错误或警告，则表示`twothreadsmutex.c`程序已编译成可执行文件，`twothreadsmutex.exe`。让我们运行这个可执行文件：
 
@@ -298,79 +458,167 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 1.  定义一个值为`10`的宏，并定义一个大小相等的数组：
 
-[PRE35]
+```cpp
+#define max 10
+int stack[max];
+```
 
 1.  定义两个`mutex`对象；一个将在从栈中弹出时使用（`pop_mutex`），另一个将在将值推入栈时使用（`push_mutex`）：
 
-[PRE36]
+```cpp
+pthread_mutex_t pop_mutex;
+pthread_mutex_t push_mutex;
+```
 
 1.  要使用`stack`，将`top`的值初始化为`-1`：
 
-[PRE37]
+```cpp
+int top=-1;
+```
 
 1.  定义两个类型为`pthread_t`的变量以存储两个线程标识符：
 
-[PRE38]
+```cpp
+pthread_t tid1,tid2;
+```
 
 1.  调用`pthread_create`函数以创建第一个线程；线程将使用默认属性创建。执行`push`函数以创建此线程：
 
-[PRE39]
+```cpp
+pthread_create(&tid1,NULL,&push,NULL);
+```
 
 1.  再次调用`pthread_create`函数以创建第二个线程；此线程也将使用默认属性创建。执行`pop`函数以创建此线程：
 
-[PRE40]
+```cpp
+pthread_create(&tid2,NULL,&pop,NULL);
+```
 
 1.  在`push`函数中，调用`pthread_mutex_lock`方法并将`push`操作的`mutex`对象（`push_mutex`）传递给它以锁定它：
 
-[PRE41]
+```cpp
+pthread_mutex_lock(&push_mutex);
+```
 
 1.  然后，`pop`操作的`mutex`对象（`pop_mutex`）将被第一个线程锁定：
 
-[PRE42]
+```cpp
+pthread_mutex_lock(&pop_mutex);
+```
 
 1.  用户被要求输入要推入`stack`的值：
 
-[PRE43]
+```cpp
+printf("Enter the value to push: ");
+scanf("%d",&n);
+```
 
 1.  `top`的值增加至`0`。在之前步骤中输入的值被推入位置`stack[0]`：
 
-[PRE44]
+```cpp
+top++;
+stack[top]=n;
+```
 
 1.  调用`pthread_mutex_unlock`并解锁用于`pop`（`pop_mutex`）和`push`操作的`mutex`对象（`push_mutex`）：
 
-[PRE45]
+```cpp
+pthread_mutex_unlock(&pop_mutex);                                                       pthread_mutex_unlock(&push_mutex);  
+```
 
 1.  在`push`函数的底部，显示一条文本消息，表明值已推入栈中：
 
-[PRE46]
+```cpp
+printf("Value is pushed to stack \n");
+```
 
 1.  在`pop`函数中，调用`pthread_mutex_lock`函数以锁定`mutex`对象`pop_mutex`。它将导致死锁：
 
-[PRE47]
+```cpp
+pthread_mutex_lock(&pop_mutex);
+```
 
 1.  再次尝试锁定`push_mutex`对象，尽管这是不可能的，因为它总是被第一个线程获取：
 
-[PRE48]
+```cpp
+sleep(5);
+pthread_mutex_lock(&push_mutex);
+```
 
 1.  栈中的值，即由`top`指针指向的值将被弹出：
 
-[PRE49]
+```cpp
+k=stack[top];
+```
 
 1.  此后，`top`的值将减去`1`再次变为`-1`。从栈中弹出的值将在屏幕上显示：
 
-[PRE50]
+```cpp
+top--;
+printf("Value popped is %d \n",k);
+```
 
 1.  然后，解锁`mutex`对象`push_mutex`和`pop_mutex`对象：
 
-[PRE51]
+```cpp
+pthread_mutex_unlock(&push_mutex);     
+pthread_mutex_unlock(&pop_mutex);
+```
 
-1.  在`main`函数中，调用`pthread_join`方法并将步骤1中创建的线程标识符传递给它：
+1.  在`main`函数中，调用`pthread_join`方法并将步骤 1 中创建的线程标识符传递给它：
 
-[PRE52]
+```cpp
+pthread_join(tid1,NULL);
+pthread_join(tid2,NULL);
+```
 
 创建两个线程并理解在获取锁的过程中如何发生死锁的`deadlockstate.c`程序如下：
 
-[PRE53]
+```cpp
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+#define max 10
+pthread_mutex_t pop_mutex;
+pthread_mutex_t push_mutex;
+int stack[max];
+int top=-1;
+
+void * push(void *arg) {
+    int n;
+    pthread_mutex_lock(&push_mutex);
+    pthread_mutex_lock(&pop_mutex);
+    printf("Enter the value to push: ");
+    scanf("%d",&n);
+    top++;
+    stack[top]=n;
+    pthread_mutex_unlock(&pop_mutex);
+    pthread_mutex_unlock(&push_mutex);
+    printf("Value is pushed to stack \n");
+}
+void * pop(void *arg) {
+    int k;
+    pthread_mutex_lock(&pop_mutex);
+    pthread_mutex_lock(&push_mutex);
+    k=stack[top];
+    top--;
+    printf("Value popped is %d \n",k);
+    pthread_mutex_unlock(&push_mutex);
+    pthread_mutex_unlock(&pop_mutex);
+}
+
+int main() {
+    pthread_t tid1,tid2;
+    pthread_create(&tid1,NULL,&push,NULL);
+    pthread_create(&tid2,NULL,&pop,NULL);
+    printf("Both threads are created\n");
+    pthread_join(tid1,NULL);
+    pthread_join(tid2,NULL);
+    return 0;
+}
+```
 
 现在，让我们深入了解。
 
@@ -394,9 +642,11 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 在这个程序中，由于在`push`函数中，第一个线程锁定了`push_mutex`对象并试图获取`pop_mutex`对象的锁，而该锁已经被第二个线程在`pop`函数中锁定，因此发生了死锁。在`pop`函数中，线程锁定了`mutex`对象`pop_mutex`并试图锁定已经被第一个线程锁定的`push_mutex`对象。因此，两个线程都无法完成，它们将无限期地等待另一个线程释放其`mutex`对象。
 
-让我们使用GCC编译`deadlockstate.c`程序，如下所示：
+让我们使用 GCC 编译`deadlockstate.c`程序，如下所示：
 
-[PRE54]
+```cpp
+D:\CBook>gcc deadlockstate.c -o deadlockstate
+```
 
 如果没有错误或警告，则表示`deadlockstate.c`程序已编译成可执行文件`deadlockstate.exe`。让我们运行这个可执行文件：
 
@@ -414,83 +664,177 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 1.  定义一个包含`10`个元素的数组：
 
-[PRE55]
+```cpp
+#define max 10
+int stack[max];
+```
 
 1.  定义两个`mutex`对象——一个用于表示栈的`pop`操作（`pop_mutex`），另一个用于表示栈的`push`操作（`push_mutex`）：
 
-[PRE56]
+```cpp
+pthread_mutex_t pop_mutex;
+pthread_mutex_t push_mutex;
+```
 
 1.  要使用栈，`top`的值被初始化为`-1`：
 
-[PRE57]
+```cpp
+int top=-1;
+```
 
 1.  定义两个类型为 `pthread_t` 的变量，用于存储两个线程标识符：
 
-[PRE58]
+```cpp
+pthread_t tid1,tid2;
+```
 
 1.  调用 `pthread_create` 函数来创建第一个线程。线程以默认属性创建，并执行 `push` 函数以创建线程：
 
-[PRE59]
+```cpp
+pthread_create(&tid1,NULL,&push,NULL);
+```
 
 1.  再次调用 `pthread_create` 函数以创建第二个线程。线程以默认属性创建，并执行 `pop` 函数以创建此线程：
 
-[PRE60]
+```cpp
+pthread_create(&tid2,NULL,&pop,NULL);
+```
 
 1.  要表示已创建了两个线程，显示消息 `Both threads are created`：
 
-[PRE61]
+```cpp
+printf("Both threads are created\n");
+```
 
 1.  在 `push` 函数中，调用 `pthread_mutex_lock` 方法并将与 `push` 操作相关的 `mutex` 对象 `push_mutex` 传递给它，以锁定它：
 
-[PRE62]
+```cpp
+pthread_mutex_lock(&push_mutex);
+```
 
 1.  睡眠 `2` 秒后，`mutex` 对象，即打算调用 `pop` 操作 `pop_mutex` 的对象，将被第一个线程锁定：
 
-[PRE63]
+```cpp
+sleep(2);
+pthread_mutex_lock(&pop_mutex);
+```
 
 1.  输入要推入栈中的值：
 
-[PRE64]
+```cpp
+printf("Enter the value to push: ");
+scanf("%d",&n);
+```
 
 1.  `top` 的值增加至 `0`。将用户输入的值推入 `stack[0]` 位置：
 
-[PRE65]
+```cpp
+top++;
+stack[top]=n;
+```
 
 1.  调用 `pthread_mutex_unlock` 并将 `mutex` 对象 `pop_mutex` 传递给它以解锁它。同时，`mutex` 对象 `push_mutex` 也将被解锁：
 
-[PRE66]
+```cpp
+pthread_mutex_unlock(&pop_mutex);                                                   pthread_mutex_unlock(&push_mutex);
+```
 
 1.  在 `push` 函数的底部，显示消息 `Value is pushed to stack`：
 
-[PRE67]
+```cpp
+printf("Value is pushed to stack \n");
+```
 
 1.  在 `pop` 函数中，调用 `pthread_mutex_lock` 函数来锁定 `mutex` 对象 `push_mutex`：
 
-[PRE68]
+```cpp
+pthread_mutex_lock(&push_mutex);
+```
 
 1.  在睡眠（或延迟）`5` 秒后，`pop` 函数将尝试锁定 `pop_mutex` 对象。然而，由于线程正在等待 `push_mutex` 对象解锁，`pthread_mutex_lock` 函数将不会被调用：
 
-[PRE69]
+```cpp
+sleep(5);
+pthread_mutex_lock(&pop_mutex);
+```
 
 1.  通过指针 `top` 指向的栈中的值被弹出。因为 `top` 的值为 `0`，所以从 `stack[0]` 位置取出的值被选中：
 
-[PRE70]
+```cpp
+k=stack[top];
+```
 
 1.  此后，`top` 的值将减 `1` 以再次使其为 `-1`。从栈中弹出的值将在屏幕上显示：
 
-[PRE71]
+```cpp
+top--;
+printf("Value popped is %d \n",k);
+```
 
 1.  然后，`mutex` 对象 `pop_mutex` 将被解锁，接着是 `push_mutex` 对象：
 
-[PRE72]
+```cpp
+pthread_mutex_unlock(&pop_mutex);
+pthread_mutex_unlock(&push_mutex);
+```
 
 1.  在 `main` 函数中，调用 `pthread_join` 方法两次，并将步骤 1 中创建的线程标识符传递给它：
 
-[PRE73]
+```cpp
+pthread_join(tid1,NULL);
+pthread_join(tid2,NULL);
+```
 
 用于创建两个线程并理解如何在获取锁时避免死锁的 `avoiddeadlockst.c` 程序如下：
 
-[PRE74]
+```cpp
+#include <stdio.h>
+#include <pthread.h>
+#include<unistd.h>
+#include <stdlib.h>
+
+#define max 10
+pthread_mutex_t pop_mutex;
+pthread_mutex_t push_mutex;
+int stack[max];
+int top=-1;
+
+void * push(void *arg) {
+    int n;
+    pthread_mutex_lock(&push_mutex);
+    sleep(2);
+    pthread_mutex_lock(&pop_mutex);
+    printf("Enter the value to push: ");
+    scanf("%d",&n);
+    top++;
+    stack[top]=n;
+    pthread_mutex_unlock(&pop_mutex);
+    pthread_mutex_unlock(&push_mutex);
+    printf("Value is pushed to stack \n");
+}
+
+void * pop(void *arg) {
+    int k;
+    pthread_mutex_lock(&push_mutex);
+    sleep(5);
+    pthread_mutex_lock(&pop_mutex);
+    k=stack[top];
+    top--;
+    printf("Value popped from stack is %d \n",k);
+    pthread_mutex_unlock(&pop_mutex);
+    pthread_mutex_unlock(&push_mutex);
+}
+
+int main() {
+    pthread_t tid1,tid2;
+    pthread_create(&tid1,NULL,&push,NULL);
+    pthread_create(&tid2,NULL,&pop,NULL);
+    printf("Both threads are created\n");
+    pthread_join(tid1,NULL);
+    pthread_join(tid2,NULL);
+    return 0;
+}
+```
 
 现在，让我们看看幕后。
 
@@ -514,9 +858,11 @@ C 语言不支持多线程，因此为了实现它，使用 POSIX 线程（`Pthr
 
 在这里，我们避免了死锁，因为`mutex`对象的加锁和解锁是按照顺序进行的。在`push`函数中，第一个线程锁定了`push_mutex`对象，并尝试锁定`pop_mutex`对象。由于`pop_mutex`保持空闲状态，因为`pop`函数中的第二个线程首先尝试锁定`push_mutex`对象，然后是`pop_mutex`对象。由于第一个线程已经锁定了`push_mutex`对象，第二个线程被要求等待。因此，两个`mutex`对象，`push_mutex`和`pop_mutex`，都处于未锁定状态，第一个线程能够轻松地锁定这两个`mutex`对象并使用公共资源。完成其任务后，第一个线程将解锁这两个`mutex`对象，使得第二个线程能够锁定这两个`mutex`对象并访问公共资源线程。
 
-让我们使用GCC编译`avoiddeadlockst.c`程序，如下所示：
+让我们使用 GCC 编译`avoiddeadlockst.c`程序，如下所示：
 
-[PRE75]
+```cpp
+D:\CBook>gcc avoiddeadlockst.c -o avoiddeadlockst
+```
 
 如果你没有收到任何错误或警告，这意味着`avoiddeadlockst.c`程序已经被编译成了一个可执行文件，名为`avoiddeadlockst.exe`。现在我们来运行这个可执行文件：
 

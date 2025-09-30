@@ -6,9 +6,9 @@
 
 请注意，本章仅是对模式的一个简单介绍。读者需要参考其他在线和离线的材料（参考文献部分）。
 
-# 大数据的四个V
+# 大数据的四个 V
 
-大数据在各个行业中有许多定义和不同的实现方式。然而，任何大数据定义都有四个共同要素，通常被称为大数据的V。它们如下：
+大数据在各个行业中有许多定义和不同的实现方式。然而，任何大数据定义都有四个共同要素，通常被称为大数据的 V。它们如下：
 
 +   **速度**：这指的是数据积累的速度
 
@@ -18,7 +18,7 @@
 
 +   **真实性**：这指的是收集到的数据的准确性及其对事实的反映
 
-V群组的最新成员是**价值**。这指的是我们将积累的数据转化为有价值事物的能力和需求。这不仅仅是商业价值，还可以是任何对社交、医疗和公共事业具有显著附加价值的事物。
+V 群组的最新成员是**价值**。这指的是我们将积累的数据转化为有价值事物的能力和需求。这不仅仅是商业价值，还可以是任何对社交、医疗和公共事业具有显著附加价值的事物。
 
 # 大数据分析和技术概念
 
@@ -118,7 +118,7 @@ V群组的最新成员是**价值**。这指的是我们将积累的数据转化
 
 +   数据结构、延迟、吞吐量、访问模式
 
-+   Lambda架构
++   Lambda 架构
 
 +   不可变日志、批量/速度/服务层
 
@@ -188,7 +188,7 @@ Lambda 架构的一些基本特征如下：
 
 数据湖提供了一种机制，可以捕获和探索可能有用的数据，而无需承担额外的交易系统存储成本，或任何将数据源带入这些交易系统的条件处理工作。
 
-数据湖实现包括HDFS、AWS S3、分布式文件系统等。微软、亚马逊、EMC、Teradata和Hortonworks是数据湖实现方面的主要供应商，它们在其产品中提供这些技术，并销售这些技术。数据湖也可以是云**基础设施即服务（IaaS**）。
+数据湖实现包括 HDFS、AWS S3、分布式文件系统等。微软、亚马逊、EMC、Teradata 和 Hortonworks 是数据湖实现方面的主要供应商，它们在其产品中提供这些技术，并销售这些技术。数据湖也可以是云**基础设施即服务（IaaS**）。
 
 # 大数据设计模式
 
@@ -258,7 +258,7 @@ Lambda 架构的一些基本特征如下：
 
 # 多目标模式
 
-在多源中，我们看到了原始数据被摄入到HDFS，但在大多数常见情况下，企业需要将原始数据摄入到新的HDFS系统，同时也需要摄入到他们现有的传统数据存储，例如Informatica或其他分析平台。在这种情况下，额外的数据流数量导致了许多挑战，例如存储溢出、数据错误（也称为数据遗憾）、数据传输和处理时间的增加等等。
+在多源中，我们看到了原始数据被摄入到 HDFS，但在大多数常见情况下，企业需要将原始数据摄入到新的 HDFS 系统，同时也需要摄入到他们现有的传统数据存储，例如 Informatica 或其他分析平台。在这种情况下，额外的数据流数量导致了许多挑战，例如存储溢出、数据错误（也称为数据遗憾）、数据传输和处理时间的增加等等。
 
 多目标模式被认为是克服先前提到的所有挑战的更好方法。这种模式与多源非常相似，直到它准备好与多个目标集成（参考以下图表）。路由器发布改进后的数据，然后将其广播到订阅目标（已在路由器上的发布代理中注册）。丰富器可以充当发布者以及订阅者：
 
@@ -270,15 +270,15 @@ Lambda 架构的一些基本特征如下：
 
 +   高度可扩展、灵活、快速、对数据故障有弹性且成本效益高
 
-+   组织可以开始将数据摄入到多个数据存储中，包括其现有的RDBMS以及NoSQL数据存储
++   组织可以开始将数据摄入到多个数据存储中，包括其现有的 RDBMS 以及 NoSQL 数据存储
 
-+   允许您使用简单的查询语言，如Hive和Pig，以及传统的分析
++   允许您使用简单的查询语言，如 Hive 和 Pig，以及传统的分析
 
 +   提供了数据分区的能力，以实现灵活访问和去中心化处理
 
 +   数据节点中实现去中心化计算的可能性
 
-+   由于HDFS节点上的复制，没有数据丢失
++   由于 HDFS 节点上的复制，没有数据丢失
 
 +   自给自足的数据节点可以无延迟地添加更多节点
 
@@ -294,7 +294,7 @@ Lambda 架构的一些基本特征如下：
 
 这是一种中介方法，为来自各种系统的传入数据提供抽象。协议转换器模式提供了一种有效的方法，从多个数据源和不同协议中摄取各种非结构化数据。
 
-消息交换器处理来自各种协议和处理器的同步和异步消息，如下所示图所示。它执行各种中介功能，如文件处理、Web服务消息处理、流处理、序列化等：
+消息交换器处理来自各种协议和处理器的同步和异步消息，如下所示图所示。它执行各种中介功能，如文件处理、Web 服务消息处理、流处理、序列化等：
 
 ![图片](img/f546fb4c-3683-48df-9e61-9319ceb237a7.png)
 
@@ -302,11 +302,11 @@ Lambda 架构的一些基本特征如下：
 
 # 实时（JIT）转换模式
 
-JIT转换模式在需要将原始数据在转换和处理之前预先加载到数据存储中的情况下是最合适的。在这种业务案例中，此模式运行独立的预处理批处理作业，进行清理、验证、关联和转换，然后将转换后的信息存储到相同的数据存储（HDFS/NoSQL）中；也就是说，它可以与原始数据共存：
+JIT 转换模式在需要将原始数据在转换和处理之前预先加载到数据存储中的情况下是最合适的。在这种业务案例中，此模式运行独立的预处理批处理作业，进行清理、验证、关联和转换，然后将转换后的信息存储到相同的数据存储（HDFS/NoSQL）中；也就是说，它可以与原始数据共存：
 
 ![图片](img/a73c69f8-f253-4aaf-a429-6cacab8bc841.png)
 
-上述图示展示了包含原始数据存储以及转换数据集的数据存储。请注意，在多数据源模式中缺失的数据增强器在此模式中不存在，并且可以并行运行多个批处理作业以在大数据存储（如HDFS、Mongo DB等）中按需转换数据。
+上述图示展示了包含原始数据存储以及转换数据集的数据存储。请注意，在多数据源模式中缺失的数据增强器在此模式中不存在，并且可以并行运行多个批处理作业以在大数据存储（如 HDFS、Mongo DB 等）中按需转换数据。
 
 # 实时流模式
 
@@ -318,7 +318,7 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 +   事件处理器是原子性的，并且相互独立，因此易于扩展
 
-+   提供解析实时信息的API
++   提供解析实时信息的 API
 
 +   任何节点都可以独立部署的脚本，没有集中式主节点实现
 
@@ -344,9 +344,9 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 # ACID 与 BASE 与 CAP
 
-传统的关系型数据库管理系统（RDBMS）遵循**原子性**、**一致性**、**隔离性**、**持久性**（**ACID**）来为数据库的任何用户提供可靠性。然而，如果存储强制执行ACID规则，则搜索大量大数据并从这些数据量中检索数据将消耗大量时间。因此，大数据遵循**基本可用性**、**软状态**、**最终一致性**（**BASE**），这是在大数据空间中进行任何搜索的现象。
+传统的关系型数据库管理系统（RDBMS）遵循**原子性**、**一致性**、**隔离性**、**持久性**（**ACID**）来为数据库的任何用户提供可靠性。然而，如果存储强制执行 ACID 规则，则搜索大量大数据并从这些数据量中检索数据将消耗大量时间。因此，大数据遵循**基本可用性**、**软状态**、**最终一致性**（**BASE**），这是在大数据空间中进行任何搜索的现象。
 
-数据库理论表明，NoSQL大型数据库可能主要满足两个属性，并在第三个属性上放宽标准，这些属性是**一致性**、**可用性**、**分区容错性**（**CAP**）。
+数据库理论表明，NoSQL 大型数据库可能主要满足两个属性，并在第三个属性上放宽标准，这些属性是**一致性**、**可用性**、**分区容错性**（**CAP**）。
 
 在 ACID、BASE 和 CAP 范式下，大数据存储设计模式获得了动力和目的。在本节中，我们将详细探讨这些模式。这些模式包括：
 
@@ -386,9 +386,9 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 ![图片](img/00750a0b-f843-45f4-942e-7faa2c83fb8b.png)
 
-下表总结了可能需要考虑NoSQL模式的某些NoSQL用例、提供商、工具和场景。大多数这种模式实现已经是各种供应商实现的一部分，它们作为开箱即用的实现和即插即用，以便任何企业都可以快速利用。
+下表总结了可能需要考虑 NoSQL 模式的某些 NoSQL 用例、提供商、工具和场景。大多数这种模式实现已经是各种供应商实现的一部分，它们作为开箱即用的实现和即插即用，以便任何企业都可以快速利用。
 
-| **要使用的NoSQL数据库** | **场景** | **供应商/应用程序/工具** |
+| **要使用的 NoSQL 数据库** | **场景** | **供应商/应用程序/工具** |
 | --- | --- | --- |
 | 列数据库 | 需要根据给定的字符串获取整个相关列族的应用程序：例如，搜索引擎 | SAP HANA / IBM DB2 BLU / ExtremeDB / EXASOL / IBM Informix / MS SQL Server / MonetDB |
 | 关键值对数据库 | 棋盘针应用（参考本节中给出的*大数据工作负载模式*） | Redis / Oracle NoSQL DB / Linux DBM / Dynamo / Cassandra |
@@ -397,25 +397,25 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 # 多语言模式
 
-传统（RDBMS）和多种存储类型（文件、CMS等）与大数据类型（NoSQL/HDFS）共存，以解决商业问题。
+传统（RDBMS）和多种存储类型（文件、CMS 等）与大数据类型（NoSQL/HDFS）共存，以解决商业问题。
 
-大多数现代商业案例都需要传统数据库与大数据技术的共存。同时，他们还需要采用最新的大数据技术。替换整个系统不可行，也不切实际。多语言模式提供了一种有效的方法来组合和使用多种存储机制，例如Hadoop和RDBMS。大数据设备在存储解决方案中共存：
+大多数现代商业案例都需要传统数据库与大数据技术的共存。同时，他们还需要采用最新的大数据技术。替换整个系统不可行，也不切实际。多语言模式提供了一种有效的方法来组合和使用多种存储机制，例如 Hadoop 和 RDBMS。大数据设备在存储解决方案中共存：
 
 ![图片](img/1319b88d-5143-4afa-b94a-c25853e98785.png)
 
-上述图表展示了多语言模式在不同存储类型中存储数据的方式，例如关系型数据库管理系统（RDBMS）、键值存储、NoSQL数据库、内容管理系统（CMS）等。与将所有信息存储在单一数据源的传统方式不同，多语言模式使得来自多个来源（RDBMS、CMS、Hadoop等）的所有应用程序的数据都能进入不同的存储机制，如内存、RDBMS、HDFS、CMS等。
+上述图表展示了多语言模式在不同存储类型中存储数据的方式，例如关系型数据库管理系统（RDBMS）、键值存储、NoSQL 数据库、内容管理系统（CMS）等。与将所有信息存储在单一数据源的传统方式不同，多语言模式使得来自多个来源（RDBMS、CMS、Hadoop 等）的所有应用程序的数据都能进入不同的存储机制，如内存、RDBMS、HDFS、CMS 等。
 
 # 数据访问层
 
-在传统数据库中，数据访问涉及JDBC连接和文档的HTTP访问。然而，在大数据中，即使有缓存实现，使用传统方法进行数据访问也需要花费太多时间来获取数据，因为数据量非常大。
+在传统数据库中，数据访问涉及 JDBC 连接和文档的 HTTP 访问。然而，在大数据中，即使有缓存实现，使用传统方法进行数据访问也需要花费太多时间来获取数据，因为数据量非常大。
 
 因此，我们需要一种机制来高效快速地获取数据，同时减少开发周期，降低维护成本等。
 
 数据访问模式主要关注访问两种主要类型的大数据资源：
 
-+   端到端用户驱动API（通过简单查询访问）
++   端到端用户驱动 API（通过简单查询访问）
 
-+   开发者API（通过API方法提供访问）
++   开发者 API（通过 API 方法提供访问）
 
 在本节中，我们将讨论以下数据访问模式，这些模式在更广泛的数据访问中实现了高效的数据访问、提高了性能、减少了开发周期和降低了维护成本：
 
@@ -435,25 +435,25 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 # 连接器模式
 
-开发者API方法涉及通过API快速传输和访问数据服务。它创建了优化后的数据集，以实现高效加载和分析。尽管底层数据存储在HDFS或自定义文件系统实现中，一些大数据设备甚至抽象化NoSQL数据库中的数据，以便数据访问非常高效和快速。
+开发者 API 方法涉及通过 API 快速传输和访问数据服务。它创建了优化后的数据集，以实现高效加载和分析。尽管底层数据存储在 HDFS 或自定义文件系统实现中，一些大数据设备甚至抽象化 NoSQL 数据库中的数据，以便数据访问非常高效和快速。
 
-连接器模式包括提供开发者API和类似SQL的查询语言来访问数据，从而显著减少开发时间。正如我们在早期图表中看到的，大数据设备自带连接器模式实现。大数据设备本身是一个完整的大数据生态系统，支持虚拟化、冗余、**使用协议进行复制**（**RAID**），并且一些设备还托管NoSQL数据库。
+连接器模式包括提供开发者 API 和类似 SQL 的查询语言来访问数据，从而显著减少开发时间。正如我们在早期图表中看到的，大数据设备自带连接器模式实现。大数据设备本身是一个完整的大数据生态系统，支持虚拟化、冗余、**使用协议进行复制**（**RAID**），并且一些设备还托管 NoSQL 数据库。
 
 ![图片](img/d2b3223c-4262-4a25-beac-edf8ff85b1b7.png)
 
-上述图表显示了Oracle大数据设备的示例连接器实现。数据连接器可以连接到Hadoop和大数据设备。这是我们之前描述的定制实现的一个例子，旨在通过减少开发时间来促进更快的数据访问。
+上述图表显示了 Oracle 大数据设备的示例连接器实现。数据连接器可以连接到 Hadoop 和大数据设备。这是我们之前描述的定制实现的一个例子，旨在通过减少开发时间来促进更快的数据访问。
 
 # 轻量级无状态模式
 
-此模式涉及通过Web服务提供数据访问，因此它独立于平台或语言实现。数据通过RESTful HTTP调用获取，这使得该模式在云部署中最为受欢迎。WebHDFS和HttpFS是HDFS HTTP访问的轻量级无状态模式实现示例。它使用HTTP REST协议。HDFS系统向分析大数据的消费者公开REST API（Web服务）。此模式降低了企业的拥有成本（按使用付费），因为实现可以是**集成平台即服务**（**iPaaS**）的一部分：
+此模式涉及通过 Web 服务提供数据访问，因此它独立于平台或语言实现。数据通过 RESTful HTTP 调用获取，这使得该模式在云部署中最为受欢迎。WebHDFS 和 HttpFS 是 HDFS HTTP 访问的轻量级无状态模式实现示例。它使用 HTTP REST 协议。HDFS 系统向分析大数据的消费者公开 REST API（Web 服务）。此模式降低了企业的拥有成本（按使用付费），因为实现可以是**集成平台即服务**（**iPaaS**）的一部分：
 
 ![图片](img/5b23b296-cfd1-4802-92bd-cec481f41d73.png)
 
-前面的图示展示了HDFS存储的一个示例实现，该实现通过HTTP网络界面公开HTTP访问。
+前面的图示展示了 HDFS 存储的一个示例实现，该实现通过 HTTP 网络界面公开 HTTP 访问。
 
 # 服务定位器模式
 
-在大数据存储环境中，存在不同类型的数据格式（多语言持久性），如果需要从存储数据的列表中选择并分析特定的存储类型，那么服务定位器模式就派上用场。当存储访问采用SaaS模型时，它提供了操作、过滤、选择和关联服务目录中服务的灵活性：
+在大数据存储环境中，存在不同类型的数据格式（多语言持久性），如果需要从存储数据的列表中选择并分析特定的存储类型，那么服务定位器模式就派上用场。当存储访问采用 SaaS 模型时，它提供了操作、过滤、选择和关联服务目录中服务的灵活性：
 
 ![图片](img/7f6b5f03-ee8f-4dee-9d2c-702a2657415f.png)
 
@@ -479,23 +479,23 @@ JIT转换模式在需要将原始数据在转换和处理之前预先加载到�
 
 +   入侵检测系统
 
-Storm和内存中的应用，如Oracle Coherence、Hazelcast IMDG、SAP HANA、TIBCO、Software AG（Terracotta）、VMware和Pivotal GemFire XD是一些可以实施近实时数据访问模式应用的内存计算供应商/技术平台：
+Storm 和内存中的应用，如 Oracle Coherence、Hazelcast IMDG、SAP HANA、TIBCO、Software AG（Terracotta）、VMware 和 Pivotal GemFire XD 是一些可以实施近实时数据访问模式应用的内存计算供应商/技术平台：
 
 ![图片](img/7ce82b71-635a-4f3a-9898-c544a26e3b26.png)
 
-如前图所示，在摄取阶段实现多级缓存，并在多个存储目的地（此处其中一个目的地是缓存）中过滤和排序数据，可以实现近乎实时的访问。缓存可以是NoSQL数据库，也可以是前面提到的任何内存实现工具。前图描述了使用SOLR作为搜索引擎的典型日志搜索实现。
+如前图所示，在摄取阶段实现多级缓存，并在多个存储目的地（此处其中一个目的地是缓存）中过滤和排序数据，可以实现近乎实时的访问。缓存可以是 NoSQL 数据库，也可以是前面提到的任何内存实现工具。前图描述了使用 SOLR 作为搜索引擎的典型日志搜索实现。
 
 # 阶段转换模式
 
 在大数据世界中，大量数据可以进入数据存储。然而，并非所有数据在每个业务案例中都是必需的或具有意义的。阶段转换模式提供了一种减少扫描数据量的机制，并只检索相关数据。
 
-HDFS在NoSQL数据库中包含原始数据和特定业务数据，该数据库可以提供面向应用的结构，并且只以所需格式检索相关数据：
+HDFS 在 NoSQL 数据库中包含原始数据和特定业务数据，该数据库可以提供面向应用的结构，并且只以所需格式检索相关数据：
 
 ![图片](img/b15c6261-0f0d-46bc-87f9-257807dd1945.png)
 
-在需要减少数据扫描的情况下，结合阶段转换模式和NoSQL模式是推荐的方法。前图描述了一个这样的案例，即推荐引擎，我们需要显著减少扫描的数据量以改善客户体验。
+在需要减少数据扫描的情况下，结合阶段转换模式和 NoSQL 模式是推荐的方法。前图描述了一个这样的案例，即推荐引擎，我们需要显著减少扫描的数据量以改善客户体验。
 
-将HDFS中的数据虚拟化到NoSQL数据库中，并与大数据设备集成，是一种高度推荐的数据快速或加速检索机制。我们已经在前面本节中展示的近实时实现中看到了这一点。
+将 HDFS 中的数据虚拟化到 NoSQL 数据库中，并与大数据设备集成，是一种高度推荐的数据快速或加速检索机制。我们已经在前面本节中展示的近实时实现中看到了这一点。
 
 # 快速数据分析模式
 
@@ -517,7 +517,7 @@ HDFS在NoSQL数据库中包含原始数据和特定业务数据，该数据库�
 
 # 数据发现和分析层
 
-大数据中的数据发现和分析不同于从有限集合中分析结构化RDBMS数据的传统分析。大数据分析需要更复杂的机制，因为它涉及自然语言处理、非结构化文本、视频和图像、RFID数据等。本节涉及一些数据发现和分析模式，并提到了支持这些模式的工具。鼓励读者阅读其他参考资料以获得对每个模式更深入的理解：
+大数据中的数据发现和分析不同于从有限集合中分析结构化 RDBMS 数据的传统分析。大数据分析需要更复杂的机制，因为它涉及自然语言处理、非结构化文本、视频和图像、RFID 数据等。本节涉及一些数据发现和分析模式，并提到了支持这些模式的工具。鼓励读者阅读其他参考资料以获得对每个模式更深入的理解：
 
 ![图片](img/ece67b31-700a-4344-bf5f-73ad7dc1b3ba.png)
 
@@ -529,25 +529,25 @@ HDFS在NoSQL数据库中包含原始数据和特定业务数据，该数据库�
 
 上述图示描述了数据队列和用于额外工作流程和路由到可用节点（多个节点）的处理器的一个示例实现。
 
-使用云IaaS是处理动态峰值并实现更好成本节约的最佳选择。根据需要启动额外的虚拟机，峰值时更多，流量慢或平均时更少）。
+使用云 IaaS 是处理动态峰值并实现更好成本节约的最佳选择。根据需要启动额外的虚拟机，峰值时更多，流量慢或平均时更少）。
 
 # 基于索引的洞察模式
 
-此模式根据与客户互动的用户输入定义索引（键）。迭代地，找到一系列索引是索引洞察模式建议的机制。它将分析机制或模式设置为索引变量，并提供对常见行为（如父母购买玩具，以及一个社区中所有13岁以上的儿童）的洞察。此模式有助于找到关键高效的查找，但保持相关列在一起。
+此模式根据与客户互动的用户输入定义索引（键）。迭代地，找到一系列索引是索引洞察模式建议的机制。它将分析机制或模式设置为索引变量，并提供对常见行为（如父母购买玩具，以及一个社区中所有 13 岁以上的儿童）的洞察。此模式有助于找到关键高效的查找，但保持相关列在一起。
 
 # 机器学习模式
 
-此模式有助于找到来自异构设备（如RFID设备、能源计量器、信号设备、与天气相关的设备等）生成数据输入的模式。
+此模式有助于找到来自异构设备（如 RFID 设备、能源计量器、信号设备、与天气相关的设备等）生成数据输入的模式。
 
 理解由自动化系统或无需人工干预的设备生成数据是一项具有挑战性的任务，需要依赖算法和统计方法。幸运的是，有一些出色的算法有助于分析这些数据，以下是一些传统算法：
 
 +   简单贝叶斯分类器算法
 
-+   K均值聚类算法
++   K 均值聚类算法
 
 +   支持向量机算法
 
-+   Apriori算法
++   Apriori 算法
 
 +   线性回归
 
@@ -633,9 +633,9 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 # 混合视图模式
 
-混合视图从异构数据存储（如Hadoop、缓存和RDBMS）创建聚合的混合视图，从而通过聚合查询结果来减少分析时间。
+混合视图从异构数据存储（如 Hadoop、缓存和 RDBMS）创建聚合的混合视图，从而通过聚合查询结果来减少分析时间。
 
-通过在HIVE层存储聚合的混合视图，它有助于提高查询性能，类似于传统的数据仓库。数据仓库的更新作为离线批处理作业进行：
+通过在 HIVE 层存储聚合的混合视图，它有助于提高查询性能，类似于传统的数据仓库。数据仓库的更新作为离线批处理作业进行：
 
 | **支持的一些混合视图工具（供应商）** | **一些数据集成混合工具** |
 | --- | --- |
@@ -668,7 +668,7 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 |
 
-表12.2：支持的混合视图工具和数据集成工具
+表 12.2：支持的混合视图工具和数据集成工具
 
 你可能需要注意的一些混合视图的缺点包括文本/数据不匹配、对象标识符、模式不匹配、抽象级别不匹配以及较低的数据质量或准确性（由于从独立来源的数据集成）。
 
@@ -678,7 +678,7 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 压缩模式在需要访问数据而不进行聚合或混合的情况下提供了一个机制。通过拥有标准化的格式（无论数据来源如何都需要转换到标准化格式），压缩模式可以帮助从数据存储中更快地访问数据。拥有格式的优势是确保数据正确性和一致性。
 
-最受欢迎的压缩数据分析平台是R，也可以使用ReRams探索内存压缩。
+最受欢迎的压缩数据分析平台是 R，也可以使用 ReRams 探索内存压缩。
 
 # 爆炸模式
 
@@ -690,11 +690,11 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 尽管数据分析的开发领域并不新鲜，但随着企业、传感器、应用程序等产生的数据量巨大，它比以往任何时候都更加关键。一旦生成数据被存储，它可以提供非凡的洞察力，不仅帮助商业企业，也帮助政府和非政府企业、社会社区、经济等方面。
 
-在当前的技术趋势中，大数据已经涉及到许多演变，从仅仅是 buzzwords 到从机器学习算法中处理数据。随着高速、高容量、高多样性以及数据源和流的真实性（四个V）的指数级爆炸，大数据已经成为处理企业日益增长需求的架构、工具和技术的必然代表。
+在当前的技术趋势中，大数据已经涉及到许多演变，从仅仅是 buzzwords 到从机器学习算法中处理数据。随着高速、高容量、高多样性以及数据源和流的真实性（四个 V）的指数级爆炸，大数据已经成为处理企业日益增长需求的架构、工具和技术的必然代表。
 
 在本章中，我们简要介绍了大数据的四个“V”（Volume、Velocity、Variety、Veracity），数据分析技术和概念。我们还讨论了大数据生命周期以及它是如何帮助不同利益相关者实现和实现他们的数据洞察的。一个简短的章节涵盖了大数据景观、数据层以及与大数据相关的多数架构模式，包括数据管道：即数据采集、集成、摄取、快速处理、存储、快速访问和分析阶段的有序组合。
 
-本书最关键的主题是架构模式，本章在其大数据架构和设计模式部分反映了这一点，包括一系列架构模式，如MapReduce、Lambda和数据湖。然后我们按层覆盖了最常见的（应用）大数据设计模式：即在各种大数据架构层中的模式，如数据源和摄取层、数据存储层、数据访问层、数据发现和分析层以及数据可视化层。
+本书最关键的主题是架构模式，本章在其大数据架构和设计模式部分反映了这一点，包括一系列架构模式，如 MapReduce、Lambda 和数据湖。然后我们按层覆盖了最常见的（应用）大数据设计模式：即在各种大数据架构层中的模式，如数据源和摄取层、数据存储层、数据访问层、数据发现和分析层以及数据可视化层。
 
 在一个章节中涵盖大数据架构模式对我们来说是一项非常大的挑战，我们通过提供大数据概念和最常见模式的样本，尽力帮助数据架构师和其他数据技术利益相关者。我们希望这一章能为他们的大数据之旅提供一个良好的开端。正如本章许多地方所提到的，我们强烈建议读者在需要获取独家模式和实现细节时参考引用部分。
 
@@ -702,63 +702,63 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 引用和参考资料：
 
-+   **大数据**：Nitin Sawant和Himanshu Shah著，《应用架构问答，问题-解决方案方法》（Apress 2013）
++   **大数据**：Nitin Sawant 和 Himanshu Shah 著，《应用架构问答，问题-解决方案方法》（Apress 2013）
 
-+   **大数据治理**：Sunil Soares著，《一个新兴的必要性》（MC Press，2012年10月）
++   **大数据治理**：Sunil Soares 著，《一个新兴的必要性》（MC Press，2012 年 10 月）
 
 其他来源：
 
-+   [http://assured-cloud-computing.illinois.edu/files/2015/02/Cristina_Abad.pdf](http://assured-cloud-computing.illinois.edu/files/2015/02/Cristina_Abad.pdf)
++   [`assured-cloud-computing.illinois.edu/files/2015/02/Cristina_Abad.pdf`](http://assured-cloud-computing.illinois.edu/files/2015/02/Cristina_Abad.pdf)
 
-+   [http://bigr.io/architecture/](http://bigr.io/architecture/)
++   [`bigr.io/architecture/`](http://bigr.io/architecture/)
 
-+   [http://blog.flutura.com//2012/08/11-core-big-data-workload-design.html](http://blog.flutura.com//2012/08/11-core-big-data-workload-design.html)
++   [`blog.flutura.com//2012/08/11-core-big-data-workload-design.html`](http://blog.flutura.com//2012/08/11-core-big-data-workload-design.html)
 
-+   [http://ercoppa.github.io/HadoopInternals/HadoopArchitectureOverview.html](http://ercoppa.github.io/HadoopInternals/HadoopArchitectureOverview.html)
++   [`ercoppa.github.io/HadoopInternals/HadoopArchitectureOverview.html`](http://ercoppa.github.io/HadoopInternals/HadoopArchitectureOverview.html)
 
-+   [http://insightdatascience.com](http://insightdatascience.com)
++   [`insightdatascience.com`](http://insightdatascience.com)
 
-+   [http://www.bcs.org/upload/pdf/enterprise-architecture-patterns-201016.pdf](http://www.bcs.org/upload/pdf/enterprise-architecture-patterns-201016.pdf)
++   [`www.bcs.org/upload/pdf/enterprise-architecture-patterns-201016.pdf`](http://www.bcs.org/upload/pdf/enterprise-architecture-patterns-201016.pdf)
 
-+   [http://www.bigdatapatterns.org/design_patterns/automated_dataset_execution](http://www.bigdatapatterns.org/design_patterns/automated_dataset_execution)
++   [`www.bigdatapatterns.org/design_patterns/automated_dataset_execution`](http://www.bigdatapatterns.org/design_patterns/automated_dataset_execution)
 
-+   [http://www.bigdatapatterns.org/overview](http://www.bigdatapatterns.org/overview)
++   [`www.bigdatapatterns.org/overview`](http://www.bigdatapatterns.org/overview)
 
-+   [http://www.bigdatascienceschool.com/selfstudy](http://www.bigdatascienceschool.com/selfstudy)
++   [`www.bigdatascienceschool.com/selfstudy`](http://www.bigdatascienceschool.com/selfstudy)
 
-+   [http://www.infoworld.com/article/2616959/big-data/7-top-tools-for-taming-big-data.html](http://www.infoworld.com/article/2616959/big-data/7-top-tools-for-taming-big-data.html)
++   [`www.infoworld.com/article/2616959/big-data/7-top-tools-for-taming-big-data.html`](http://www.infoworld.com/article/2616959/big-data/7-top-tools-for-taming-big-data.html)
 
-+   [http://www.pentaho.com/sites/default/files/uploads/resources/forrester_patterns_in_big_data.pdf](http://www.pentaho.com/sites/default/files/uploads/resources/forrester_patterns_in_big_data.pdf)
++   [`www.pentaho.com/sites/default/files/uploads/resources/forrester_patterns_in_big_data.pdf`](http://www.pentaho.com/sites/default/files/uploads/resources/forrester_patterns_in_big_data.pdf)
 
-+   [http://www.refcodes.org/resources/Big%20data%20processing%20the%20lean%20way%20-%20a%20case%20study%20-%20v1.7.pdf](http://www.refcodes.org/resources/Big%20data%20processing%20the%20lean%20way%20-%20a%20case%20study%20-%20v1.7.pdf)
++   [`www.refcodes.org/resources/Big%20data%20processing%20the%20lean%20way%20-%20a%20case%20study%20-%20v1.7.pdf`](http://www.refcodes.org/resources/Big%20data%20processing%20the%20lean%20way%20-%20a%20case%20study%20-%20v1.7.pdf)
 
-+   [http://www.yottastor.com/design-principles-big-data](http://www.yottastor.com/design-principles-big-data)
++   [`www.yottastor.com/design-principles-big-data`](http://www.yottastor.com/design-principles-big-data)
 
-+   [https://arxiv.org/ftp/arxiv/papers/1201/1201.4479.pdf](https://arxiv.org/ftp/arxiv/papers/1201/1201.4479.pdf)
++   [`arxiv.org/ftp/arxiv/papers/1201/1201.4479.pdf`](https://arxiv.org/ftp/arxiv/papers/1201/1201.4479.pdf)
 
-+   [https://bigdatawg.nist.gov/_uploadfiles/M0060_v1_8912129783.pdf](https://bigdatawg.nist.gov/_uploadfiles/M0060_v1_8912129783.pdf)
++   [`bigdatawg.nist.gov/_uploadfiles/M0060_v1_8912129783.pdf`](https://bigdatawg.nist.gov/_uploadfiles/M0060_v1_8912129783.pdf)
 
-+   [https://blogs.msmvps.com/abu/2010/10/16/data-architecture-patterns-design-patterns-and-solution-patterns/](https://blogs.msmvps.com/abu/2010/10/16/data-architecture-patterns-design-patterns-and-solution-patterns/)
++   [`blogs.msmvps.com/abu/2010/10/16/data-architecture-patterns-design-patterns-and-solution-patterns/`](https://blogs.msmvps.com/abu/2010/10/16/data-architecture-patterns-design-patterns-and-solution-patterns/)
 
-+   [https://conferences.oreilly.com/strata/big-data-conference-ca-2015/public/schedule/detail/38774](https://conferences.oreilly.com/strata/big-data-conference-ca-2015/public/schedule/detail/38774)
++   [`conferences.oreilly.com/strata/big-data-conference-ca-2015/public/schedule/detail/38774`](https://conferences.oreilly.com/strata/big-data-conference-ca-2015/public/schedule/detail/38774)
 
-+   [https://conferences.oreilly.com/strata/strataeu2014/public/schedule/detail/37305](https://conferences.oreilly.com/strata/strataeu2014/public/schedule/detail/37305)
++   [`conferences.oreilly.com/strata/strataeu2014/public/schedule/detail/37305`](https://conferences.oreilly.com/strata/strataeu2014/public/schedule/detail/37305)
 
-+   [https://hackernoon.com/ingestion-and-processing-of-data-for-big-data-and-iot-solutions-659431e37b52](https://hackernoon.com/ingestion-and-processing-of-data-for-big-data-and-iot-solutions-659431e37b52)
++   [`hackernoon.com/ingestion-and-processing-of-data-for-big-data-and-iot-solutions-659431e37b52`](https://hackernoon.com/ingestion-and-processing-of-data-for-big-data-and-iot-solutions-659431e37b52)
 
-+   [https://iwringer.wordpress.com/2015/08/03/patterns-for-streaming-realtime-analytics/](https://iwringer.wordpress.com/2015/08/03/patterns-for-streaming-realtime-analytics/)
++   [`iwringer.wordpress.com/2015/08/03/patterns-for-streaming-realtime-analytics/`](https://iwringer.wordpress.com/2015/08/03/patterns-for-streaming-realtime-analytics/)
 
-+   [https://link.springer.com/book/10.1007%2F978-1-4302-6293-0](https://link.springer.com/book/10.1007%2F978-1-4302-6293-0)
++   [`link.springer.com/book/10.1007%2F978-1-4302-6293-0`](https://link.springer.com/book/10.1007%2F978-1-4302-6293-0)
 
-+   [https://static1.squarespace.com/static/55007c24e4b001deff386756/t/564a2b7de4b0c1a8406915fb/1447701373291/Maniyam%2C+Sujee.pdf](https://static1.squarespace.com/static/55007c24e4b001deff386756/t/564a2b7de4b0c1a8406915fb/1447701373291/Maniyam%2C+Sujee.pdf)
++   [`static1.squarespace.com/static/55007c24e4b001deff386756/t/564a2b7de4b0c1a8406915fb/1447701373291/Maniyam%2C+Sujee.pdf`](https://static1.squarespace.com/static/55007c24e4b001deff386756/t/564a2b7de4b0c1a8406915fb/1447701373291/Maniyam%2C+Sujee.pdf)
 
-+   [https://vision.cloudera.com/the-six-principles-of-modern-data-architecture/](https://vision.cloudera.com/the-six-principles-of-modern-data-architecture/)
++   [`vision.cloudera.com/the-six-principles-of-modern-data-architecture/`](https://vision.cloudera.com/the-six-principles-of-modern-data-architecture/)
 
-+   [https://www.datameer.com/wp-content/uploads/pdf/white_paper/Data-Preparation-Modern-BI-Common-Design-Patterns.pdf](https://www.datameer.com/wp-content/uploads/pdf/white_paper/Data-Preparation-Modern-BI-Common-Design-Patterns.pdf)
++   [`www.datameer.com/wp-content/uploads/pdf/white_paper/Data-Preparation-Modern-BI-Common-Design-Patterns.pdf`](https://www.datameer.com/wp-content/uploads/pdf/white_paper/Data-Preparation-Modern-BI-Common-Design-Patterns.pdf)
 
-+   [https://www.dezyre.com/article/types-of-analytics-descriptive-predictive-prescriptive-analytics/209](https://www.dezyre.com/article/types-of-analytics-descriptive-predictive-prescriptive-analytics/209)
++   [`www.dezyre.com/article/types-of-analytics-descriptive-predictive-prescriptive-analytics/209`](https://www.dezyre.com/article/types-of-analytics-descriptive-predictive-prescriptive-analytics/209)
 
-+   [IBM开发者工作区：大数据架构模式](https://www.ibm.com/developerworks/library/bd-archpatterns1/index.html)
++   [IBM 开发者工作区：大数据架构模式](https://www.ibm.com/developerworks/library/bd-archpatterns1/index.html)
 
 +   [最佳大数据工具使用指南](https://www.import.io/post/best-big-data-tools-use/)
 
@@ -768,8 +768,8 @@ DrivenData、天池、众包分析、InfoChimps、Kaggle 和 TopCoder 等工具�
 
 +   [大数据架构模式和最佳实践](https://www.slideshare.net/AmazonWebServices/big-data-architectural-patterns-and-best-practices)
 
-+   [SAS纽约大数据会议](https://www.slideshare.net/AsterData/sas-ny-big-analytics-conference)
++   [SAS 纽约大数据会议](https://www.slideshare.net/AsterData/sas-ny-big-analytics-conference)
 
 +   [大数据平台概述](https://www.slideshare.net/cscyphers/big-data-platforms-an-overview)
 
-+   [7个设计原则](https://www.slideshare.net/ZachGemignani/7-design-principles-44395597)
++   [7 个设计原则](https://www.slideshare.net/ZachGemignani/7-design-principles-44395597)

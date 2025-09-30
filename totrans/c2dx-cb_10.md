@@ -1,10 +1,10 @@
-# 第10章. 使用额外功能改进游戏
+# 第十章. 使用额外功能改进游戏
 
 本章将涵盖以下主题：
 
-+   使用Texture Packer
++   使用 Texture Packer
 
-+   使用Tiled地图编辑器
++   使用 Tiled 地图编辑器
 
 +   获取瓦片图中对象的属性
 
@@ -14,23 +14,23 @@
 
 # 简介
 
-很长时间以来，有很多工具可供您使用，这些工具可以帮助您进行游戏开发。其中一些工具可以在Cocos2d-x中使用。使用这些工具，您可以快速高效地开发您的游戏。例如，您可以使用原始字体创建精灵表，创建像角色扮演游戏一样的地图，复杂的物理对象等等。在本章中，您将学习如何在您的游戏开发中使用这些额外工具。
+很长时间以来，有很多工具可供您使用，这些工具可以帮助您进行游戏开发。其中一些工具可以在 Cocos2d-x 中使用。使用这些工具，您可以快速高效地开发您的游戏。例如，您可以使用原始字体创建精灵表，创建像角色扮演游戏一样的地图，复杂的物理对象等等。在本章中，您将学习如何在您的游戏开发中使用这些额外工具。
 
-# 使用Texture Packer
+# 使用 Texture Packer
 
-**Texture Packer**是一个可以拖放图像并发布的工具。使用这个工具，我们不仅可以创建精灵表，还可以导出多精灵表。如果有很多精灵，那么在创建精灵表时，我们需要使用命令行工具，加密它们等等。在本食谱中，您可以使用Texture Packer。
+**Texture Packer**是一个可以拖放图像并发布的工具。使用这个工具，我们不仅可以创建精灵表，还可以导出多精灵表。如果有很多精灵，那么在创建精灵表时，我们需要使用命令行工具，加密它们等等。在本食谱中，您可以使用 Texture Packer。
 
 ## 准备工作
 
-Texture Packer是一个付费应用程序。然而，您可以使用免费试用版。如果您没有，您可以通过访问[https://www.codeandweb.com/texturepacker](https://www.codeandweb.com/texturepacker)来下载它。
+Texture Packer 是一个付费应用程序。然而，您可以使用免费试用版。如果您没有，您可以通过访问[`www.codeandweb.com/texturepacker`](https://www.codeandweb.com/texturepacker)来下载它。
 
 ## 如何操作...
 
-1.  您需要启动Texture Packer，之后您将看到一个空白窗口出现。![如何操作...](img/B0561_10_01.jpg)
+1.  您需要启动 Texture Packer，之后您将看到一个空白窗口出现。![如何操作...](img/B0561_10_01.jpg)
 
 1.  在本食谱中，我们将使用以下截图所示的精灵：![如何操作...](img/B0561_10_02.jpg)
 
-1.  您只需将图像拖入Texture Packer窗口，它将自动读取所有文件并将它们排列好。![如何操作...](img/B0561_10_03.jpg)
+1.  您只需将图像拖入 Texture Packer 窗口，它将自动读取所有文件并将它们排列好。![如何操作...](img/B0561_10_03.jpg)
 
 1.  就这样。那么，让我们发布精灵表图像和`plist`，点击**发布**按钮。这就是您如何获取精灵表图像和`plist`。
 
@@ -46,13 +46,15 @@ Texture Packer是一个付费应用程序。然而，您可以使用免费试用
 
 1.  最后，您将自动获得三个尺寸的精灵表，如图所示：![它是如何工作的...](img/B0561_10_07.jpg)
 
-`HDR`文件夹中的精灵表是最大尺寸的。被拖放进来的图像是HDR图像。这些图像适合调整成高清或标清图像。
+`HDR`文件夹中的精灵表是最大尺寸的。被拖放进来的图像是 HDR 图像。这些图像适合调整成高清或标清图像。
 
 ## 还有更多…
 
 您可以使用如下命令使用 Texture Packer：
 
-[PRE0]
+```cpp
+texturepacker foo_*.png --format cocos2d --data hoge.plist --sheet hoge.png
+```
 
 前面的命令是使用名为 `foo_*.png` 的图像创建名为 `hoge.plist` 和 `hoge.png` 的精灵图集。例如，如果文件夹中有 `foo_1.png` 到 `foo_10.png`，则精灵图集将从这 10 张图像创建。
 
@@ -69,7 +71,9 @@ Texture Packer是一个付费应用程序。然而，您可以使用免费试用
 
 除了这些选项之外，您还可以通过以下命令查看其他选项：
 
-[PRE1]
+```cpp
+texturepacker --help
+```
 
 # 使用 Tiled 地图编辑器
 
@@ -77,7 +81,7 @@ Texture Packer是一个付费应用程序。然而，您可以使用免费试用
 
 ## 准备工作
 
-如果您没有 Tiled 地图编辑器，您可以从 [https://www.mapeditor.org/](https://www.mapeditor.org/) 下载它。
+如果您没有 Tiled 地图编辑器，您可以从 [`www.mapeditor.org/`](https://www.mapeditor.org/) 下载它。
 
 然后，下载后，您将安装应用程序并将 `dmg` 文件中的 `example` 文件夹复制到您的计算机的工作空间中。
 
@@ -103,7 +107,21 @@ Tiled 地图编辑器是一个免费的应用程序。然而，如果您喜欢�
 
 1.  从现在开始，您必须在 Xcode 中工作。按照以下代码编辑 `HelloWorld::init` 方法：
 
-    [PRE2]
+    ```cpp
+    bool HelloWorld::init()
+    {
+        if ( !Layer::init() )
+        {
+            return false;
+        }
+        Vec2 origin = Director::getInstance()- >getVisibleOrigin();
+        _map = TMXTiledMap::create("res/desert.tmx");
+        _map->setPosition(Vec2()+origin);
+        this->addChild(_map);
+
+        return true;
+    }
+    ```
 
 1.  构建并运行后，您可以在模拟器或设备上看到以下图像：
 
@@ -113,7 +131,11 @@ Tiled 地图编辑器是一个免费的应用程序。然而，如果您喜欢�
 
 Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为什么您必须将这些文件添加到您的项目中。您可以使用 `TMXTiledMap` 类查看 Tiled 地图对象。您必须将 `tmx` 文件路径指定给 `TMXTiledMap::create` 方法。`TMXTiledMap` 对象是节点。只有当您使用 `addChild` 方法添加 `TMXTiledMap` 对象时，您才能看到瓦片地图。
 
-[PRE3]
+```cpp
+_map = TMXTiledMap::create("res/desert.tmx");
+_map->setPosition(Vec2()+origin);
+this->addChild(_map);
+```
 
 ### 小贴士
 
@@ -125,19 +147,82 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 1.  在 `HelloWorld::init` 方法中添加以下代码：
 
-    [PRE4]
+    ```cpp
+    auto touchListener = EventListenerTouchOneByOne::create();
+    touchListener->onTouchBegan = CC_CALLBACK_2(HelloWorld::onTouchBegan, this);
+    touchListener->onTouchEnded = CC_CALLBACK_2(HelloWorld::onTouchEnded, this);
+    _eventDispatcher- >addEventListenerWithSceneGraphPriority(touchListener, this);
+    ```
 
 1.  在 `HelloWorldScene.h` 中定义 `touch` 方法和一些属性，如下面的代码所示：
 
-    [PRE5]
+    ```cpp
+    bool onTouchBegan(cocos2d::Touch* touch, cocos2d::Event* event);
+    void onTouchEnded(cocos2d::Touch* touch, cocos2d::Event* event);
+    void update(float dt);
+    cocos2d::Vec2 _location;
+    cocos2d::TMXTiledMap* _map;
+    ```
 
 1.  在 `HelloWorldScene.cpp` 中添加 `touch` 方法，如下面的代码所示：
 
-    [PRE6]
+    ```cpp
+    bool HelloWorld::onTouchBegan(Touch* touch, Event* event)
+    {
+        return true;
+    }
+
+    void HelloWorld::onTouchEnded(Touch* touch, Event* event)
+    {
+        auto size = Director::getInstance()->getVisibleSize();
+        auto origin = Director::getInstance()- >getVisibleOrigin();
+        auto center = Vec2(size/2)+origin;
+        _location = touch->getLocation() - center;
+        _location.x = floorf(_location.x);
+        _location.y = floorf(_location.y);
+        this->scheduleUpdate();
+    }
+    ```
 
 1.  最后，在 `HelloWorldScene.cpp` 中添加 `update` 方法，如下面的代码所示：
 
-    [PRE7]
+    ```cpp
+    void HelloWorld::update(float dt)
+    {
+        auto mapSize = _map->getContentSize();
+        auto winSize = Director::getInstance()- >getVisibleSize();
+        auto origin = Director::getInstance()- >getVisibleOrigin();
+
+        auto currentLocation = _map->getPosition();
+        if (_location.x > 0) {
+            currentLocation.x--;
+            _location.x--;
+        } else if (_location.x < 0) {
+            currentLocation.x++;
+            _location.x++;
+        }
+        if (_location.y > 0) {
+            currentLocation.y--;
+            _location.y--;
+        } else if (_location.y < 0) {
+            currentLocation.y++;
+            _location.y++;
+        }
+
+        if (currentLocation.x > origin.x) {
+            currentLocation.x = origin.x;
+        } else if (currentLocation.x < winSize.width + origin.x - mapSize.width) {
+            currentLocation.x = winSize.width + origin.x - mapSize.width;}
+        if (currentLocation.y > origin.y) {
+            currentLocation.y = origin.y;
+        } else if (currentLocation.y < winSize.height + origin.y - mapSize.height) {currentLocation.y = winSize.height + origin.y - mapSize.height;}
+
+        _map->setPosition(currentLocation);
+        if (fabsf(_location.x)<1.0f && fabsf(_location.y)<1.0f) {
+            this->unscheduleUpdate();
+        }
+    }
+    ```
 
 之后，运行此项目并触摸屏幕。这样您就可以在您滑动方向上移动地图。
 
@@ -165,15 +250,62 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 1.  编辑 `HelloWorld::init` 方法以显示瓦片图并添加触摸事件监听器。
 
-    [PRE8]
+    ```cpp
+    bool HelloWorld::init()
+    {
+        if ( !Layer::init() )
+        {
+            return false;
+        }
+        Vec2 origin = Director::getInstance()->getVisibleOrigin();
+        _map = TMXTiledMap::create("res/desert.tmx");
+        _map->setPosition(Vec2()+origin);
+        this->addChild(_map);
+
+        auto touchListener = EventListenerTouchOneByOne::create();
+        touchListener->onTouchBegan = CC_CALLBACK_2(HelloWorld::onTouchBegan, this);
+        _eventDispatcher- >addEventListenerWithSceneGraphPriority(touchListener, this);
+
+        return true;
+    }
+    ```
 
 1.  添加 `HelloWorld::getTilePosition` 方法。如果你通过指定触摸位置调用此方法，你可以获取瓦片的网格行/列位置。
 
-    [PRE9]
+    ```cpp
+    Vec2 HelloWorld::getTilePosition(Vec2 point)
+    {
+        auto mapContentSize = _map->getContentSize();
+        auto tilePoint = point - _map->getPosition();
+        auto tileSize = _map->getTileSize();
+        auto mapRowCol = _map->getMapSize();
+        auto scale = mapContentSize.width / (mapRowCol.width * tileSize.width);
+        tilePoint.x = floorf(tilePoint.x / (tileSize.width * scale));
+        tilePoint.y = floorf((mapContentSize.height - tilePoint.y)/(tileSize.height*scale));
+        return tilePoint;
+    }
+    ```
 
 1.  最后，你可以获取你触摸的对象的属性。添加如下所示的 `HelloWorld::onTouchBegan` 方法：
 
-    [PRE10]
+    ```cpp
+    bool HelloWorld::onTouchBegan(Touch* touch, Event* event)
+    {
+        auto touchPoint = touch->getLocation();
+        auto tilePoint = this->getTilePosition(touchPoint);
+        TMXLayer* groundLayer = _map->getLayer("Ground");
+        int gid = groundLayer->getTileGIDAt(tilePoint);
+        if (gid!=0) {
+            auto properties = _map- >getPropertiesForGID(gid).asValueMap();
+            if (properties.find("isTree")!=properties.end()) {
+                if(properties.at("isTree").asBool()) {
+                    CCLOG("it's tree!");
+                }
+            }
+        }
+        return true;
+    }
+    ```
 
 让我们构建并运行这个项目。如果你触摸了设置了新 `isTree` 属性的树，你可以在日志中看到 *它是树!*。
 
@@ -185,27 +317,40 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 1.  使用 `TMXTiledMap::getContentSize` 方法获取地图大小。
 
-    [PRE11]
+    ```cpp
+    auto mapContentSize = _map->getContentSize();
+    ```
 
 1.  从触摸点和地图位置计算地图上的 `point`。
 
-    [PRE12]
+    ```cpp
+    auto tilePoint = point - _map->getPosition();
+    ```
 
 1.  使用 `TMXTiledMap::getTileSize` 方法获取瓦片大小。
 
-    [PRE13]
+    ```cpp
+    auto tileSize = _map->getTileSize();
+    ```
 
 1.  使用 `TMXTiledMap::getMapSize` 方法在地图中获取瓦片的行/列。
 
-    [PRE14]
+    ```cpp
+    auto mapRowCol = _map->getMapSize();
+    ```
 
 1.  使用原始大小 `mapContentSize` 和通过列宽和瓦片宽计算出的实际大小来获取放大显示。
 
-    [PRE15]
+    ```cpp
+    auto scale = mapContentSize.width / (mapRowCol.width * tileSize.width);
+    ```
 
 1.  瓦片坐标的原点位于左上角。这就是为什么你触摸的瓦片的行/列位置是使用瓦片的大小、行和放大显示来计算的，如下面的代码所示：
 
-    [PRE16]
+    ```cpp
+    tilePoint.x = floorf(tilePoint.x / (tileSize.width * scale));
+    tilePoint.y = floorf((mapContentSize.height - tilePoint.y)/(tileSize.height*scale));
+    ```
 
     `tilePoint.x` 是列位置，`tilePoint.y` 是行位置。
 
@@ -213,29 +358,43 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 1.  使用触摸点获取你触摸的瓦片的行/列位置。
 
-    [PRE17]
+    ```cpp
+    auto touchPoint = touch->getLocation();
+    auto tilePoint = this->getTilePosition(touchPoint);
+    ```
 
 1.  从瓦片图中获取名为 `"Ground"` 的层。
 
-    [PRE18]
+    ```cpp
+    TMXLayer* groundLayer = _map->getLayer("Ground");
+    ```
 
 1.  在这个层上有一个名为 `Ground` 的对象。使用瓦片的行/列从该层获取 `TileGID`。
 
-    [PRE19]
+    ```cpp
+    int gid = groundLayer->getTileGIDAt(tilePoint);
+    ```
 
 1.  最后，使用 `TMXTiledMap::getPropertiesForGID` 方法从地图中获取属性作为 `ValueMap`。然后，从其中获取 `isTree` 属性的值，如下面的代码所示：
 
-    [PRE20]
+    ```cpp
+    auto properties = _map->getPropertiesForGID(gid).asValueMap();
+    if (properties.find("isTree")!=properties.end()) {
+        if(properties.at("isTree").asBool()) {
+            CCLOG("it's tree!");
+        }
+    }
+    ```
 
 在这个菜谱中，我们只展示了日志。然而，在你的实际游戏中，你将需要将分数添加到对象、爆炸等。
 
 # 使用物理编辑器
 
-在[第9章](ch09.html "第9章。控制物理")中，*控制物理*，你学习了关于**物理引擎**的内容。我们可以创建物理体来使用Cocos2d-x API。然而，我们只能创建圆形或方形形状。实际上，在真实游戏中，你必须使用复杂形状。在这个菜谱中，你将学习如何使用**物理编辑器**创建许多形状。
+在第九章中，*控制物理*，你学习了关于**物理引擎**的内容。我们可以创建物理体来使用 Cocos2d-x API。然而，我们只能创建圆形或方形形状。实际上，在真实游戏中，你必须使用复杂形状。在这个菜谱中，你将学习如何使用**物理编辑器**创建许多形状。
 
 ## 准备工作
 
-物理编辑器是由创建纹理打包器的同一家公司开发的。物理编辑器是一个付费应用程序。但你可以使用免费试用版。如果你还没有，你可以通过访问[https://www.codeandweb.com/physicseditor](https://www.codeandweb.com/physicseditor)来下载它。
+物理编辑器是由创建纹理打包器的同一家公司开发的。物理编辑器是一个付费应用程序。但你可以使用免费试用版。如果你还没有，你可以通过访问[`www.codeandweb.com/physicseditor`](https://www.codeandweb.com/physicseditor)来下载它。
 
 在这里，你准备使用此工具的图像。这里，我们将使用以下类似齿轮的图像。此图像的名称是`gear.png`。
 
@@ -255,31 +414,80 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
     ![如何操作...](img/B0561_10_20.jpg)
 
-1.  在**导出器**中选择`Cocos2d-x`。在这个工具中，锚点的默认值是`Vec2(0,0)`。在Cocos2d-x中，锚点的默认值是`Vec2(0.5f, 0.5f)`。因此，你应该将锚点更改为中心，如下面的截图所示：![如何操作...](img/B0561_10_21.jpg)
+1.  在**导出器**中选择`Cocos2d-x`。在这个工具中，锚点的默认值是`Vec2(0,0)`。在 Cocos2d-x 中，锚点的默认值是`Vec2(0.5f, 0.5f)`。因此，你应该将锚点更改为中心，如下面的截图所示：![如何操作...](img/B0561_10_21.jpg)
 
 1.  选择**类别**、**碰撞**和**接触**的复选框。你需要向下滚动才能在右侧面板中看到此窗口。你可以勾选所有复选框并点击右侧面板底部的所有按钮。
 
-1.  将`plist`文件发布到Cocos2d-x中使用此形状。点击**发布**按钮并保存为之前的名称。
+1.  将`plist`文件发布到 Cocos2d-x 中使用此形状。点击**发布**按钮并保存为之前的名称。
 
-1.  你可以在**导出器**选择器下看到**下载加载器代码**链接。点击链接。之后，打开浏览器并浏览到github页面。Cocos2d-x无法加载物理编辑器的`plist`。然而，加载器代码在github上提供。因此，你必须克隆此项目并将代码添加到项目中的`Cocos2d-x`文件夹。![如何操作...](img/B0561_10_22.jpg)
+1.  你可以在**导出器**选择器下看到**下载加载器代码**链接。点击链接。之后，打开浏览器并浏览到 github 页面。Cocos2d-x 无法加载物理编辑器的`plist`。然而，加载器代码在 github 上提供。因此，你必须克隆此项目并将代码添加到项目中的`Cocos2d-x`文件夹。![如何操作...](img/B0561_10_22.jpg)
 
 接下来，你将编写代码，通过使用物理编辑器数据来创建物理体。在这种情况下，齿轮对象将出现在接触点。
 
 1.  包含文件`PhysicsShapeCache.h`。
 
-    [PRE21]
+    ```cpp
+    #include "PhysicsShapeCache.h"
+    ```
 
 1.  创建一个具有如下代码所示物理世界的场景：
 
-    [PRE22]
+    ```cpp
+    Scene* HelloWorld::createScene()
+    {
+        auto scene = Scene::createWithPhysics();
+        auto layer = HelloWorld::create();
+        PhysicsWorld* world = scene->getPhysicsWorld();
+        world->setDebugDrawMask(PhysicsWorld::DEBUGDRAW_ALL);
+        scene->addChild(layer);
+        return scene;
+    }
+    ```
 
 1.  在场景中创建一个与屏幕大小相同的墙壁，并添加触摸事件监听器。然后，按照以下代码加载 Physics Editor 的数据：
 
-    [PRE23]
+    ```cpp
+    bool HelloWorld::init()
+    {
+        if ( !Layer::init() )
+        {
+            return false;
+        }
+
+        Size visibleSize = Director::getInstance()->getVisibleSize();
+        Vec2 origin = Director::getInstance()->getVisibleOrigin();
+
+        auto wall = Node::create();
+        auto wallBody = PhysicsBody::createEdgeBox(visibleSize, PhysicsMaterial(0.1f, 1.0f, 0.0f));
+        wallBody->setContactTestBitmask(true);
+        wall->setPhysicsBody(wallBody);
+        wall->setPosition(Vec2(visibleSize/2)+origin);
+        this->addChild(wall);
+
+        auto touchListener = EventListenerTouchOneByOne::create();
+        touchListener->onTouchBegan = CC_CALLBACK_2(HelloWorld::onTouchBegan, this);
+        _eventDispatcher- >addEventListenerWithSceneGraphPriority(touchListener, this);
+
+        PhysicsShapeCache::getInstance()- >addShapesWithFile("res/gear.plist");
+
+        return true;
+    }
+    ```
 
 1.  使齿轮对象在触摸屏幕时执行以下代码所示的操作：
 
-    [PRE24]
+    ```cpp
+    bool HelloWorld::onTouchBegan(Touch* touch, Event* event)
+    {
+        auto touchPoint = touch->getLocation();
+        auto body = PhysicsShapeCache::getInstance()- >createBodyWithName("gear");
+        auto sprite = Sprite::create("res/gear.png");
+        sprite->setPhysicsBody(body);
+        sprite->setPosition(touchPoint);
+        this->addChild(sprite);
+        return true;
+    }
+    ```
 
 1.  然后，构建并运行此项目。触摸屏幕后，齿轮对象将出现在触摸点。![如何操作...](img/B0561_10_23.jpg)
 
@@ -291,19 +499,35 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 1.  要使用物理引擎，您必须创建一个带有物理世界的场景，并且应该将调试绘制模式设置为简单，以便更好地理解物理体。
 
-    [PRE25]
+    ```cpp
+    auto scene = Scene::createWithPhysics();
+    auto layer = HelloWorld::create();
+    PhysicsWorld* world = scene->getPhysicsWorld();
+    world->setDebugDrawMask(PhysicsWorld::DEBUGDRAW_ALL);
+    ```
 
 1.  没有边框或墙壁，物理对象会从屏幕上掉落。因此，您必须设置一个与屏幕大小相同的墙壁。
 
-    [PRE26]
+    ```cpp
+    auto wall = Node::create();
+    auto wallBody = PhysicsBody::createEdgeBox(visibleSize, PhysicsMaterial(0.1f, 1.0f, 0.0f));
+    wallBody->setContactTestBitmask(true);
+    wall->setPhysicsBody(wallBody);
+    wall->setPosition(Vec2(visibleSize/2)+origin);
+    this->addChild(wall);
+    ```
 
 1.  加载由 Physics Editor 创建的物理数据的 `plist`。`PhysicsShapeCache` 将一次性加载 `plist`。之后，物理数据将缓存在 `PhysicsShapeCache` 类中。
 
-    [PRE27]
+    ```cpp
+    PhysicsShapeCache::getInstance()- >addShapesWithFile("res/gear.plist");
+    ```
 
 1.  在 `HelloWorld::onTouchBegan` 方法中，在触摸点创建齿轮对象。您可以使用 `PhysicsShapeCache::createBodyWithName` 方法以及物理对象数据来创建物理体。
 
-    [PRE28]
+    ```cpp
+    auto body = PhysicsShapeCache::getInstance()- >createBodyWithName("gear");
+    ```
 
 # 使用 Glyph Designer
 
@@ -313,9 +537,9 @@ Tiled 地图所需文件是 `tmx` 文件和瓦片集图像文件。这就是为�
 
 Glyph Designer 是一款付费应用程序。但您可以使用免费试用版。如果您没有它，您可以通过访问以下网址下载它：
 
-[https://71squared.com/glyphdesigner](https://71squared.com/glyphdesigner)
+[`71squared.com/glyphdesigner`](https://71squared.com/glyphdesigner)
 
-接下来，我们将找到一个适合您游戏氛围的免费字体。在这种情况下，我们将使用 dafont 网站上的 `Arcade` 字体（[http://www.dafont.com/arcade-ya.font](http://www.dafont.com/arcade-ya.font)）。下载后，您需要将其安装到您的计算机上。
+接下来，我们将找到一个适合您游戏氛围的免费字体。在这种情况下，我们将使用 dafont 网站上的 `Arcade` 字体（[`www.dafont.com/arcade-ya.font`](http://www.dafont.com/arcade-ya.font)）。下载后，您需要将其安装到您的计算机上。
 
 在 dafont 网站上有很多字体。但是，每个字体的许可协议都不同。如果您使用了该字体，您需要检查其许可协议。
 
@@ -341,7 +565,11 @@ Glyph Designer 是一款付费应用程序。但您可以使用免费试用版�
 
 1.  将以下代码添加到你的游戏中以显示"`Cocos2d-x`"。
 
-    [PRE29]
+    ```cpp
+    auto label = Label::createWithBMFont("fonts/arcade.fnt", "Cocos2d-x");
+    label->setPosition(Vec2(visibleSize/2)+origin);
+    this->addChild(label);
+    ```
 
 1.  构建并运行你的项目后，你将看到以下内容：![工作原理...](img/B0561_10_26.jpg)
 

@@ -1,6 +1,6 @@
-# 第6章. 播放声音
+# 第六章. 播放声音
 
-没有声音的游戏将会无聊且缺乏活力。适合视觉的背景音乐和音效可以使游戏更加生动。最初，我们使用了一个非常著名的音频引擎，名为`SimpleAudioEngine`，但现在Cocos2d-x 3.3版本已经推出了全新的`AudioEngine`。在本章中，我们将讨论`SimpleAudioEngine`和`AudioEngine`。本章将涵盖以下主题：
+没有声音的游戏将会无聊且缺乏活力。适合视觉的背景音乐和音效可以使游戏更加生动。最初，我们使用了一个非常著名的音频引擎，名为`SimpleAudioEngine`，但现在 Cocos2d-x 3.3 版本已经推出了全新的`AudioEngine`。在本章中，我们将讨论`SimpleAudioEngine`和`AudioEngine`。本章将涵盖以下主题：
 
 +   播放背景音乐
 
@@ -12,7 +12,7 @@
 
 +   暂停和恢复音效
 
-+   使用AudioEngine播放背景音乐和音效
++   使用 AudioEngine 播放背景音乐和音效
 
 +   播放电影
 
@@ -24,21 +24,29 @@
 
 我们必须包含`SimpleAudioEngine`的头文件才能使用它。因此，您需要添加以下代码：
 
-[PRE0]
+```cpp
+#include "SimpleAudioEngine.h"
+```
 
 ## 如何操作...
 
 以下代码用于播放名为`background.mp3`的背景音乐。
 
-[PRE1]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+audio->preloadBackgroundMusic("background.mp3");
+
+// play the background music and continuously play it.
+audio->playBackgroundMusic("background.mp3", true);
+```
 
 ## 它是如何工作的...
 
-`SimpleAudioEngine`有一个名为`CocosDenshion`的命名空间。对于`SimpleAudioEngine`，您只需使用`getInstance`方法获取一个实例。您可以在不预加载的情况下播放背景音乐，但这可能会导致播放延迟。这就是为什么您应该在播放之前预加载音乐。如果您希望播放连续，则需要将true值作为第二个参数设置。
+`SimpleAudioEngine`有一个名为`CocosDenshion`的命名空间。对于`SimpleAudioEngine`，您只需使用`getInstance`方法获取一个实例。您可以在不预加载的情况下播放背景音乐，但这可能会导致播放延迟。这就是为什么您应该在播放之前预加载音乐。如果您希望播放连续，则需要将 true 值作为第二个参数设置。
 
 ## 更多内容...
 
-`SimpleAudioEngine`支持多种格式，包括MP3和Core Audio格式。它可以播放以下格式：
+`SimpleAudioEngine`支持多种格式，包括 MP3 和 Core Audio 格式。它可以播放以下格式：
 
 | 格式 | iOS (BGM) | iOS (SE) | Android (BGM) | Android (SE) |
 | --- | --- | --- | --- | --- |
@@ -47,11 +55,19 @@
 | MP3 (.mp3) | ○ | ○ | ○ | ○ |
 | WAVE (.wav) | ○ | ○ | △ | △ |
 
-如果您想在iOS和Android上播放不同格式的声音，您可以使用以下宏代码来播放：
+如果您想在 iOS 和 Android 上播放不同格式的声音，您可以使用以下宏代码来播放：
 
-[PRE2]
+```cpp
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) 
+#defie MUSIC_FILE        "background.ogg" 
+#else
+#define MUSIC_FILE        "background.caf" 
+#endif
 
-在此代码中，如果设备是Android，它将播放`.ogg`文件。如果设备是iOS，它将播放`.caf`文件。
+audio->playBackgroundMusic(MUSIC_FILE, true);
+```
+
+在此代码中，如果设备是 Android，它将播放`.ogg`文件。如果设备是 iOS，它将播放`.caf`文件。
 
 # 播放一个音效
 
@@ -61,13 +77,25 @@
 
 就像播放背景音乐一样，你必须包含`SimpleAudioEngine`的头文件。
 
-[PRE3]
+```cpp
+#include "SimpleAudioEngine.h"
+```
 
 ## 如何操作...
 
 让我们立即尝试播放一个音效。音频格式根据操作系统通过在播放背景音乐时引入的宏来改变。播放音效的代码如下：
 
-[PRE4]
+```cpp
+#if (CC_TARGET_PLATFORM == CC_PLATFORM_ANDROID) 
+#define EFFECT_FILE        "effect.ogg" 
+#else 
+#define EFFECT_FILE        "effect.caf" 
+#endif
+
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+audio->preloadEffect( EFFECT_FILE ); 
+audio->playEffect(EFFECT_FILE); 
+```
 
 ## 它是如何工作的...
 
@@ -79,7 +107,9 @@
 
 `Cocos2dxSound.java` 的路径是 `cocos2d/cocos/platform/android/java/src/org/cocos2dx/lib`。然后，在第 66 行，定义了最大同时播放次数。
 
-[PRE5]
+```cpp
+private static final int MAX_SIMULTANEOUS_STREAMS_DEFAULT = 5;
+```
 
 如果我们将这个值改为 10，我们就可以同时播放 10 个音效。
 
@@ -91,7 +121,17 @@
 
 让我们尝试通过控制音量、音调和平衡立即播放一个音效。以下是一个代码片段来完成此操作：
 
-[PRE6]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance(); 
+// set volume 
+audio->setEffectsVolume(0.5); 
+
+// set pitch, pan, gain with playing a sound effect.
+float pitch = 1.0f;
+float pan = 1.0f;
+float gain = 1.0f;
+audio->playEffect(EFFECT_FILE, true, pitch, pan, gain);
+```
 
 ## 它是如何工作的...
 
@@ -109,9 +149,9 @@
 
 `pitch` 是一个允许我们将声音分类为相对高音或低音的品质。通过使用这个 `pitch`，我们可以控制第三个参数中的播放速度。如果您将 `pitch` 设置为小于 1.0，音效将缓慢播放。如果设置为大于 1.0，音效将快速播放。如果设置为 1.0，音效将以原始速度播放。`pitch` 的最大值是 2.0。然而，在 iOS 中，您可以设置 `pitch` 大于 2.0。另一方面，Android 中 `pitch` 的最大值是 2.0。因此，我们采用了最大值作为下限。
 
-你可以通过更改第四个参数中的`pan`来改变左右扬声器的平衡。如果你将其设置为-1.0，你只能从左扬声器听到声音。如果你将其设置为1.0，你只能从右扬声器听到声音。默认值为0.0；你可以从左右扬声器以相同的音量听到声音。不幸的是，你将无法在设备的扬声器中听到太多差异。如果你使用耳机，你可以听到这种差异。
+你可以通过更改第四个参数中的`pan`来改变左右扬声器的平衡。如果你将其设置为-1.0，你只能从左扬声器听到声音。如果你将其设置为 1.0，你只能从右扬声器听到声音。默认值为 0.0；你可以从左右扬声器以相同的音量听到声音。不幸的是，你将无法在设备的扬声器中听到太多差异。如果你使用耳机，你可以听到这种差异。
 
-你可以通过更改第五个参数中的`gain`来改变每个音效的音量。你可以使用`setEffectVolume`方法设置主音量，通过改变增益值来设置每个音效的音量。如果你将其设置为0.0，则音量为静音。如果设置为1.0，则音量为最大。音效的最终音量将是增益值和`setEffectsVolume`方法中指定的值的组合。
+你可以通过更改第五个参数中的`gain`来改变每个音效的音量。你可以使用`setEffectVolume`方法设置主音量，通过改变增益值来设置每个音效的音量。如果你将其设置为 0.0，则音量为静音。如果设置为 1.0，则音量为最大。音效的最终音量将是增益值和`setEffectsVolume`方法中指定的值的组合。
 
 # 暂停和恢复背景音乐
 
@@ -121,15 +161,25 @@
 
 停止或暂停背景音乐非常简单。使用这些方法时，你不需要指定参数。停止背景音乐的代码如下：
 
-[PRE7]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+// stop the background music
+audio->stopBackgroundMusic();
+```
 
 暂停代码：
 
-[PRE8]
+```cpp
+// pause the background music 
+audio->pauseBackgroundMusic();
+```
 
 恢复暂停的背景音乐代码：
 
-[PRE9]
+```cpp
+// resume the background music 
+audio->resumeBackgroundMusic();
+```
 
 ## 它是如何工作的...
 
@@ -139,11 +189,17 @@
 
 你可以使用`isBackgroundMusicPlaying`方法来确定背景音乐是否正在播放。以下代码可以用来实现这一点：
 
-[PRE10]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+if (audio->isBackgroundMusicPlaying()) { 
+    // background music is playing 
+} else { // background music is not playing 
+}
+```
 
 ### 小贴士
 
-然而，在使用此方法时，你需要小心。此方法总是返回一个表示iOS模拟器中播放状态的true值。在Cocos2d-x中的`audio/ios/CDAudioManager.m`的第201行，如果设备是iOS模拟器，`SimpleAudioEngine`将音量设置为零并连续播放。这就是为什么在iOS模拟器中存在问题。然而，我们在注释掉此过程之前测试了最新的iOS模拟器，发现没有问题。如果你想使用此方法，你应该注释掉此过程。
+然而，在使用此方法时，你需要小心。此方法总是返回一个表示 iOS 模拟器中播放状态的 true 值。在 Cocos2d-x 中的`audio/ios/CDAudioManager.m`的第 201 行，如果设备是 iOS 模拟器，`SimpleAudioEngine`将音量设置为零并连续播放。这就是为什么在 iOS 模拟器中存在问题。然而，我们在注释掉此过程之前测试了最新的 iOS 模拟器，发现没有问题。如果你想使用此方法，你应该注释掉此过程。
 
 # 暂停和恢复音效
 
@@ -153,15 +209,28 @@
 
 停止或暂停音效非常简单。以下是将它停止的代码：
 
-[PRE11]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+unsigned int _soundId; 
+// get the sound id as playing the sound effect
+_soundId = audio->playEffect(EFFECT_FILE); 
+// stop the sound effect by specifying the sound id
+audio->stopEffect(_soundId);
+```
 
 以下是将它暂停的代码：
 
-[PRE12]
+```cpp
+// pause the sound effect
+audio->pauseEffect(_soundId);
+```
 
 你可以这样恢复暂停的代码：
 
-[PRE13]
+```cpp
+// resume the sound effect
+audio->resumeEffect(_soundId);
+```
 
 ## 它是如何工作的...
 
@@ -171,7 +240,14 @@
 
 你可以停止、暂停或恢复所有正在播放的音效。执行此操作的代码如下：
 
-[PRE14]
+```cpp
+auto audio = CocosDenshion::SimpleAudioEngine::getInstance();
+// stop all sound effects audio->stopAllEffects();
+// pause all sound effects
+audio->pauseAllEffects();
+// resume all sound effects
+audio->resumeAllEffects();
+```
 
 # 使用 AudioEngine 播放背景音乐和音效
 
@@ -181,13 +257,35 @@
 
 我们必须包含 `AudioEngine` 的头文件才能使用它。此外，`AudioEngine` 有一个名为 `experimental` 的命名空间。为了包含头文件，你需要添加以下代码：
 
-[PRE15]
+```cpp
+#include "audio/include/AudioEngine.h" USING_NS_CC; 
+using namespace experimental;
+```
 
 ## 如何操作...
 
 `AudioEngine` 比起 `SimpleAudioEngine` 来说更容易使用。它的 API 非常简单。以下代码可以用来播放、停止、暂停和恢复背景音乐。
 
-[PRE16]
+```cpp
+// play the background music 
+int id = AudioEngine::play2d("sample_bgm.mp3"); 
+// set continuously play
+AudioEngine::setLoop(id, true); 
+// change the volume, the value is from 0.0 to 1.0 
+AudioEngine::setVolume(id, 0.5f); 
+// pause it
+AudioEngine::pause(id); 
+// resume it that was pausing 
+AudioEngine::resume(id); 
+// stop it
+AudioEngine::stop(id); 
+// seek it by specifying the time 
+AudioEngine::setCurrentTime(int id, 12.3f); 
+// set the callback when it finished playing it
+AudioEngine::setFinishCallback(int id, [](int audioId, std::string filePath){ 
+    // this is the process when the background music was finished.
+});
+```
 
 ## 它是如何工作的...
 
@@ -209,11 +307,18 @@
 
 1.  接下来，你必须包含一个头文件。执行此操作的代码如下：
 
-    [PRE17]
+    ```cpp
+    #include "ui/CocosGUI.h"
+    USING_NS_CC;
+    using namespace experimental::ui;
+    ```
 
 1.  然后，你必须向 `proj.android/jni/Android.mk` 文件添加以下代码以构建 Android 应用程序。
 
-    [PRE18]
+    ```cpp
+    LOCAL_WHOLE_STATIC_LIBRARIES += cocos_ui_static
+    $(call import-module,ui)
+    ```
 
 1.  在 Xcode 中，你必须为 iOS 添加 `MediaPlayer.framework`，如下面的图片所示：
 
@@ -223,7 +328,37 @@
 
 让我们尝试在你的游戏中播放视频。这里就是：
 
-[PRE19]
+```cpp
+auto visibleSize = Director::getInstance()->getVisibleSize(); auto videoPlayer = VideoPlayer::create(); 
+
+videoPlayer->setContentSize(visibleSize); 
+videoPlayer->setPosition(visibleSize/2); 
+videoPlayer->setKeepAspectRatioEnabled(true); 
+this->addChild(videoPlayer);
+
+videoPlayer->addEventListener([](Ref *sender, 
+VideoPlayer::EventType eventType) { 
+    switch (eventType) { 
+        case VideoPlayer::EventType::PLAYING: 
+            CCLOG("PLAYING");
+            break;
+        case VideoPlayer::EventType::PAUSED: 
+            CCLOG("PAUSED"); 
+            break;
+        case VideoPlayer::EventType::STOPPED: 
+            CCLOG("STOPPED"); 
+            break;
+        case VideoPlayer::EventType::COMPLETED: 
+            CCLOG("COMPLETED"); 
+            break; 
+        default:
+            break; 
+    }
+});
+
+videoPlayer->setFileName("res/splash.mp4"); 
+videoPlayer->play();
+```
 
 ## 它是如何工作的...
 

@@ -1,4 +1,4 @@
-# 附录A. 有理数和复数
+# 附录 A. 有理数和复数
 
 本附录定义了来自前一章*转换器*部分的`Rational`和`Complex`类。
 
@@ -8,101 +8,307 @@
 
 **Rational.h**
 
-[PRE0]
+```cpp
+namespace SmallWindows { 
+  class NotaRationalNumber : public exception { 
+    public: 
+      NotaRationalNumber() {/* Empty. */} 
+  }; 
 
-默认构造函数将分子和分母分别初始化为0和1。第二个构造函数接受一个字符串，如果字符串不包含有效的有理数则抛出`NotaRationalNumber`异常。复制构造函数和赋值运算符接受另一个有理数。`String`转换运算符将有理数作为字符串返回：
+```
 
-[PRE1]
+默认构造函数将分子和分母分别初始化为 0 和 1。第二个构造函数接受一个字符串，如果字符串不包含有效的有理数则抛出`NotaRationalNumber`异常。复制构造函数和赋值运算符接受另一个有理数。`String`转换运算符将有理数作为字符串返回：
+
+```cpp
+  class Rational { 
+    public: 
+      Rational(int numerator = 0, int denominator = 1); 
+      Rational(const String& text); 
+      Rational(const Rational &rational); 
+      Rational operator=(const Rational &complex); 
+      operator String() const; 
+      bool operator==(const Rational &rational) const; 
+      bool operator!=(const Rational &rational) const; 
+      bool operator< (const Rational &rational) const; 
+      bool operator<=(const Rational &rational) const; 
+      bool operator> (const Rational &rational) const; 
+      bool operator>=(const Rational &rational) const; 
+      Rational operator+(const Rational &rational) const; 
+      Rational operator-(const Rational &rational) const; 
+      Rational operator*(const Rational &rational) const; 
+      Rational operator/(const Rational &rational) const; 
+
+```
 
 当有理数是通过构造函数或任何算术运算符创建时，它总是被规范化：分子和分母被它们的**最大公约数**（**GCD**）除以：
 
-[PRE2]
+```cpp
+    private: 
+      void Normalize(); 
+      int GCD(int iNum1, int iNum2); 
+      int numerator, denominator; 
+  }; 
+}; 
+
+```
 
 **Rational.cpp**
 
-[PRE3]
+```cpp
+#include "SmallWindows.h" 
+
+```
 
 默认构造函数初始化分子和分母，如果分母为零则抛出异常。实际上，这个构造函数以及下一个接受字符串的构造函数是唯一可能分母为零的地方。以下构造函数和算术运算符总是产生分母非零的有理数：
 
-[PRE4]
+```cpp
+namespace SmallWindows { 
+  Rational::Rational(int numerator /* = 0 */, 
+                     int denominator /* = 1 */) 
+   :numerator(numerator), 
+    denominator(denominator) { 
+    if (denominator == 0) { 
+      throw NotaRationalNumber(); 
+    } 
+    Normalize(); 
+  } 
 
-文本可以以两种格式存储有理数：作为整数后跟一个斜杠（**/**）和另一个整数，或者作为一个单独的整数。我们首先将分子和分母初始化为0和1：
+```
 
-[PRE5]
+文本可以以两种格式存储有理数：作为整数后跟一个斜杠（**/**）和另一个整数，或者作为一个单独的整数。我们首先将分子和分母初始化为 0 和 1：
 
-首先，我们尝试两个整数和一个斜杠；我们读取分子、斜杠和分母。在斜杠之前设置`skipws`标志，这将导致流在斜杠之前跳过任何潜在的空白字符。如果我们到达行的末尾，分母不是0，读取到`slash`变量的字符确实是斜杠，文本包含一个有理数，并且我们已经读取了分子和分母，那么我们就完成了，并返回：
+```cpp
+  Rational::Rational(const String& text) 
+   :numerator(0), 
+    denominator(1) { 
+    String trimText(Trim(text)); 
 
-[PRE6]
+```
 
-如果使用两个整数和一个斜杠不起作用，我们尝试单个整数的情形。我们创建一个新的流并读取分子。如果我们读取之后到达流的末尾，该字符串包含一个有效的整数。我们让分子保持其初始化的值，即1，并返回。
+首先，我们尝试两个整数和一个斜杠；我们读取分子、斜杠和分母。在斜杠之前设置`skipws`标志，这将导致流在斜杠之前跳过任何潜在的空白字符。如果我们到达行的末尾，分母不是 0，读取到`slash`变量的字符确实是斜杠，文本包含一个有理数，并且我们已经读取了分子和分母，那么我们就完成了，并返回：
 
-[PRE7]
+```cpp
+    { IStringStream totalStream(trimText); 
+      TCHAR slash; 
+      totalStream >> numerator >> setiosflags(ios::skipws) 
+                  >> slash >> denominator; 
+      if (totalStream.eof() && (denominator != 0) && 
+          (slash == TEXT('/'))) { 
+        Normalize(); 
+        return; 
+      } 
+    } 
+
+```
+
+如果使用两个整数和一个斜杠不起作用，我们尝试单个整数的情形。我们创建一个新的流并读取分子。如果我们读取之后到达流的末尾，该字符串包含一个有效的整数。我们让分子保持其初始化的值，即 1，并返回。
+
+```cpp
+    { IStringStream numeratorStream(trimText); 
+      numeratorStream >> numerator; 
+      if (numeratorStream.eof()) { 
+        return; 
+      } 
+    } 
+
+```
 
 如果两个整数以及一个斜杠和一个单独的整数都失败了，我们必须得出结论，该字符串不包含有效的有理数，并且我们抛出`NotaRationalNumber`异常：
 
-[PRE8]
+```cpp
+    throw NotaRationalNumber(); 
+  } 
+
+```
 
 复制构造函数只是复制有理数的分子和分母：
 
-[PRE9]
+```cpp
+  Rational::Rational(const Rational &rational) 
+   :numerator(rational.numerator), 
+    denominator(rational.denominator) { 
+    // Empty. 
+  } 
+
+```
 
 赋值运算符也会复制有理数的分子和分母，并返回其自己的`Rational`对象（`*this`）：
 
-[PRE10]
+```cpp
+  Rational Rational::operator=(const Rational &rational) { 
+    numerator = rational.numerator; 
+    denominator = rational.denominator; 
+    return *this; 
+  } 
 
-`String`转换运算符创建一个`OStringStream`对象并查看分母。如果它是1，有理数可以表示为一个单独的整数；否则，它需要表示为分子和分母的分数。最后，流被转换为返回的字符串：
+```
 
-[PRE11]
+`String`转换运算符创建一个`OStringStream`对象并查看分母。如果它是 1，有理数可以表示为一个单独的整数；否则，它需要表示为分子和分母的分数。最后，流被转换为返回的字符串：
+
+```cpp
+  Rational::operator String() const { 
+    OStringStream outStream; 
+
+    if (denominator == 1) { 
+      outStream << numerator; 
+    } 
+    else { 
+      outStream << numerator << TEXT("/") << denominator; 
+    } 
+
+    return outStream.str(); 
+  } 
+
+```
 
 由于有理数总是规范化，我们可以得出结论，如果两个有理数的分子和分母相同，则它们相等：
 
-[PRE12]
+```cpp
+  bool Rational::operator==(const Rational &rational) const { 
+    return (numerator == rational.numerator) && 
+           (denominator == rational.denominator); 
+  } 
+
+  bool Rational::operator!=(const Rational &rational) const { 
+    return !(*this == rational); 
+  } 
+
+```
 
 当决定一个有理数是否小于另一个有理数时，为了避免涉及浮点值，我们将两边都乘以分母并比较乘积：
 
 ![有理数](img/B05475_Appendix_01.jpg)
 
-[PRE13]
+```cpp
+  bool Rational::operator<(const Rational &rational) const { 
+    return ((numerator * rational.denominator) < 
+            (rational.numerator * denominator)); 
+  } 
+
+  bool Rational::operator<=(const Rational &rational) const { 
+    return ((*this < rational) || (*this == rational)); 
+  } 
+
+  bool Rational::operator>(const Rational &rational) const { 
+    return !(*this <= rational); 
+  } 
+
+  bool Rational::operator>=(const Rational &rational) const { 
+    return !(*this < rational); 
+  } 
+
+```
 
 当两个有理数相加时，我们也在每个项中乘以相反的分母：
 
 ![有理数](img/B05475_Appendix_02.jpg)
 
-[PRE14]
+```cpp
+
+  Rational Rational::operator+(const Rational &rational) const { 
+    Rational result((numerator * rational.denominator) + 
+                    (rational.numerator * denominator), 
+                    denominator * rational.denominator); 
+    result.Normalize(); 
+    return result; 
+  } 
+
+```
 
 当减去两个有理数时，我们也在每个项中乘以相反的分母：
 
 ![有理数](img/B05475_Appendix_03.jpg)
 
-[PRE15]
+```cpp
+
+  Rational Rational::operator-(const Rational &rational) const { 
+    Rational result((numerator * rational.denominator) - 
+                    (rational.numerator * denominator), 
+                    denominator * rational.denominator); 
+
+    result.Normalize(); 
+    return result; 
+  } 
+
+```
 
 当两个有理数相乘时，我们简单地乘以分子和分母：
 
 ![有理数](img/B05475_Appendix_04.jpg)
 
-[PRE16]
+```cpp
+  Rational Rational::operator*(const Rational &rational) const { 
+    Rational result(numerator * rational.numerator, 
+                    denominator * rational.denominator); 
+    result.Normalize(); 
+    return result; 
+  } 
+
+```
 
 当除以两个有理数时，我们首先取第二个操作数的倒数，然后乘以分子和分母：
 
 ![有理数](img/B05475_Appendix_05.jpg)
 
-[PRE17]
+```cpp
+  Rational Rational::operator/(const Rational &rational) const { 
+    assert(rational.numerator != 0); 
+    Rational result(numerator * rational.denominator, 
+                    denominator * rational.numerator); 
+    result.Normalize(); 
+    return result; 
+  } 
+
+```
 
 当规范化有理数时，我们首先查看分子。如果它是 0，则无论其之前的值如何，我们都将其分母设置为 1 并返回：
 
-[PRE18]
+```cpp
+  void Rational::Normalize() { 
+    if (numerator == 0) { 
+      denominator = 1; 
+      return; 
+    } 
+
+```
 
 然而，如果分子不是 0，我们查看分母。如果它小于 0，则我们交换分子和分母的符号，使分母始终大于 0：
 
-[PRE19]
+```cpp
+    if (denominator < 0) { 
+      numerator = -numerator; 
+      denominator = -denominator; 
+    } 
+
+```
 
 然后我们通过调用 `GCD` 来计算最大公约数，然后将分子和分母都除以最大公约数：
 
-[PRE20]
+```cpp
+    int gcd = GCD(abs(numerator), denominator); 
+    numerator /= gcd; 
+    denominator /= gcd; 
+  } 
+
+```
 
 `GCD` 方法通过比较数字并从较大的数字中减去较小的数字来递归调用自身。当它们相等时，我们返回该数字。GCD 算法被认为是世界上最早的非平凡算法。
 
-[PRE21]
+```cpp
+  int Rational::GCD(int number1, int number2) { 
+    if (number1 > number2) { 
+      return GCD(number1 - number2, number2); 
+    } 
+    else if (number1 < number2) { 
+      return GCD(number1, number2 - number1); 
+    } 
+    else { 
+      return number1; 
+    } 
+  } 
+}; 
+
+```
 
 # 复数
 
@@ -110,51 +316,223 @@
 
 **Complex.h**
 
-[PRE22]
+```cpp
+namespace SmallWindows { 
+  class NotaComplexNumber : public exception { 
+    public: 
+      NotaComplexNumber() {/* Empty. */} 
+  }; 
+
+  extern double Square(double value); 
+
+```
 
 构造函数、赋值运算符和 `String` 转换运算符与 `Rational` 中的对应项类似：
 
-[PRE23]
+```cpp
+  class Complex { 
+    public: 
+      Complex(double x = 0, double y = 0); 
+      Complex(const Complex &complex); 
+      Complex operator=(const Complex &complex); 
+      bool ReadStream(const String& text); 
+      Complex(const String& text); 
+      operator String() const; 
+
+```
 
 当比较两个复数时，比较它们的绝对值（参考 `Abs`）。
 
-[PRE24]
+```cpp
+      bool operator==(const Complex &complex) const; 
+      bool operator!=(const Complex &complex) const; 
+      bool operator<(const Complex &complex) const; 
+      bool operator<=(const Complex &complex) const; 
+      bool operator>(const Complex &complex) const; 
+      bool operator>=(const Complex &complex) const; 
+
+```
 
 算术运算符适用于复数和双精度值：
 
-[PRE25]
+```cpp
+      Complex operator+=(double x); 
+      Complex operator+=(Complex &complex); 
+      friend Complex operator+(double x, const Complex &complex); 
+      friend Complex operator+(const Complex &complex, double x); 
+      friend Complex operator+(const Complex &complex1, 
+                               const Complex &complex2); 
+
+      Complex operator-=(double x); 
+      Complex operator-=(Complex &complex); 
+      friend Complex operator-(double x, const Complex &complex); 
+      friend Complex operator-(const Complex &complex, double x); 
+      friend Complex operator-(const Complex &complex1, 
+                               const Complex &complex2); 
+
+      Complex operator*=(double x); 
+      Complex operator*=(Complex &complex); 
+      friend Complex operator*(double x, const Complex &complex); 
+      friend Complex operator*(const Complex &complex, double x); 
+      friend Complex operator*(const Complex &complex1, 
+                               const Complex &complex2); 
+
+      Complex operator/=(double x); 
+      Complex operator/=(Complex &complex); 
+      friend Complex operator/(double x, const Complex &complex); 
+      friend Complex operator/(const Complex &complex, double x); 
+      friend Complex operator/(const Complex &complex1, 
+                               const Complex &complex2); 
+
+```
 
 复数的绝对值（及其转换为 `double` 的值）是实部和虚部的毕达哥拉斯定理，即各部分平方和的平方根：
 
-[PRE26]
+```cpp
+      double Abs() const {return sqrt(Square(x) + Square(y));} 
+      operator double() const {return Abs();} 
+
+    private: 
+      double x, y; 
+  }; 
+}; 
+
+```
 
 **Complex.cpp**
 
-[PRE27]
+```cpp
+#include "SmallWindows.h" 
+
+namespace SmallWindows { 
+  double Square(double value) { 
+    return value * value; 
+  } 
+
+  Complex::Complex(double x, double y) 
+   :x(x), y(y) { 
+    // Empty. 
+  } 
+
+  Complex::Complex(const Complex &complex) 
+   :x(complex.x), 
+    y(complex.y) { 
+    // Empty. 
+  } 
+
+  Complex Complex::operator=(const Complex &complex) { 
+    x = complex.x; 
+    y = complex.y; 
+    return *this; 
+  } 
+
+```
 
 当解释包含有理数的文本时，我们从流中读取文本，并且我们需要一些辅助函数来开始。`ReadWhiteSpaces` 方法读取（并处理）流开头的所有空白：
 
-[PRE28]
+```cpp
+  void ReadWhiteSpaces(IStringStream& inStream) { 
+    while (true) { 
+      TCHAR tChar = inStream.peek(); 
+
+      if ((tChar >= 0) && (tChar <= 255) && isspace(tChar)) { 
+        inStream.get(); 
+      } 
+      else { 
+        break; 
+      } 
+    } 
+  } 
+
+```
 
 `Peek` 方法读取空白字符并在达到流末尾时返回零字符 (\0)。如果没有，我们通过调用 `peek` 来查看流中的下一个内容，并返回其结果值。请注意，`peek` 不会消耗流中的字符；它只是检查下一个字符：
 
-[PRE29]
+```cpp
+  TCHAR Peek(IStringStream& inStream) { 
+    ReadWhiteSpaces(inStream); 
+
+    if (inStream.eof()) { 
+      return TEXT('\0'); 
+    } 
+    else { 
+      return (TCHAR) inStream.peek(); 
+    } 
+  } 
+
+```
 
 `ReadI` 方法验证流中的下一个字符是否为 **i** 或 **I**。如果是，它从流中读取字符并返回 `true`：
 
-[PRE30]
+```cpp
+bool ReadI(IStringStream& inStream) { 
+    if (tolower(Peek(inStream)) == TEXT('i')) { 
+      inStream.get(); 
+      return true; 
+    }  
+    return false; 
+  } 
+
+```
 
 `ReadSign` 方法验证流中的下一个字符是加号或减号。如果是，它从流中读取字符，将符号参数设置为 **+** 或 **-**，并返回 `true`：
 
-[PRE31]
+```cpp
+  bool ReadSign(IStringStream& inStream, TCHAR& sign) { 
+    TCHAR tChar = Peek(inStream); 
+
+    switch (tChar) { 
+      case TEXT('+'): 
+        inStream.get(); 
+        sign = TEXT('+'); 
+        return true; 
+
+      case TEXT('-'): 
+        inStream.get(); 
+        sign = TEXT('-'); 
+        return true; 
+
+      default: 
+        return false; 
+    } 
+  } 
+
+```
 
 `ReadValue` 方法验证流中的下一个两个字符是加号或减号后跟数字或点，或者第一个字符是数字或点。如果是后者，它从流的开始读取 `value` 参数并返回 `true`：
 
-[PRE32]
+```cpp
+  bool ReadValue(IStringStream& inStream, double& value) { 
+    TCHAR tChar = Peek(inStream); 
+
+    if ((tChar == TEXT('+')) || (tChar == TEXT('-'))) {       
+      inStream.get(); 
+      tChar = Peek(inStream); 
+      inStream.unget(); 
+
+      if (isdigit(tChar) || (tChar == TEXT('.'))) {         
+        inStream >> value; 
+        return true; 
+      } 
+    } 
+    else if (isdigit(tChar) || (tChar == TEXT('.'))) { 
+      inStream >> value; 
+      return true; 
+    } 
+
+    return false; 
+  } 
+
+```
 
 `EndOfLine` 方法简单地返回 `true`，如果流中的下一个字符是零字符 (\0)，在这种情况下，我们已经到达了字符串的末尾：
 
-[PRE33]
+```cpp
+  bool EndOfLine(IStringStream& inStream) { 
+    return Peek(inStream) == TEXT('\0'); 
+  } 
+
+```
 
 现在我们已经准备好将字符串解释为有理数。我们有以下十种情况，其中 *x* 和 *y* 是实数，*i* 是虚数单位，± 是加号或减号。所有十种情况都代表有效的复数：
 
@@ -180,55 +558,164 @@
 
 `ReadStream` 方法从文本创建一个输入流并尝试将其解释为前面提到的十种情况之一。想法是读取流并一次尝试潜在复数的一部分：
 
-[PRE34]
+```cpp
+  bool Complex::ReadStream(const String& text) { 
+    IStringStream inStream(Trim(text)); 
+    double value1, value2; 
+    TCHAR sign1, sign2; 
 
-如果流由一个值、一个符号、另一个值和 i 或 I 组成，我们根据情况1 (*x* ± *yi*) 设置 *x* 和 *y* 并返回 `true`。如果符号是负号，则 *y* 字段为负。然而，第二个值也可能是负的，在这种情况下 *y* 为正：
+```
 
-[PRE35]
+如果流由一个值、一个符号、另一个值和 i 或 I 组成，我们根据情况 1 (*x* ± *yi*) 设置 *x* 和 *y* 并返回 `true`。如果符号是负号，则 *y* 字段为负。然而，第二个值也可能是负的，在这种情况下 *y* 为正：
 
-如果符号后面不是值，而是另一个符号和 i 或 I，则适用情况2 (*x* ± ±*i*)，我们返回 `true`。在这种情况下，我们必须根据两个符号调整 *y* 的值两次：
+```cpp
+    if (ReadValue(inStream, value1)) { 
+      if (ReadSign(inStream, sign1)) { 
+        if (ReadValue(inStream, value2) && ReadI(inStream) && 
+            EndOfLine(inStream)) { 
+          x = value1; 
+          y = (sign1 == TEXT('-')) ? -value2 : value2; 
+          return true; 
+        } 
 
-[PRE36]
+```
 
-如果符号后面不是值或另一个符号，而是 i 或 I，则适用情况3 (*x* ± *i*)，我们返回 `true`：
+如果符号后面不是值，而是另一个符号和 i 或 I，则适用情况 2 (*x* ± ±*i*)，我们返回 `true`。在这种情况下，我们必须根据两个符号调整 *y* 的值两次：
 
-[PRE37]
+```cpp
+        else if (ReadSign(inStream, sign2)) { 
+          if (ReadI(inStream) && EndOfLine(inStream)) { 
+            x = value1; 
+            y = (sign1 == TEXT('-')) ? -1 : 1; 
+            y = (sign2 == TEXT('-')) ? -y : y; 
+            return true; 
+          } 
+        } 
 
-如果值后面不是符号，而是 i 或 I，然后是另一个符号和另一个值，则适用情况4 (*yi* ± *x*)，我们返回 `true`：
+```
 
-[PRE38]
+如果符号后面不是值或另一个符号，而是 i 或 I，则适用情况 3 (*x* ± *i*)，我们返回 `true`：
 
-如果值后面跟着 i 或 I 而没有其他内容，则适用情况7 (*yi*)，我们返回 `true`：
+```cpp
+        else if (ReadI(inStream) && EndOfLine(inStream)) { 
+          x = value1; 
+          y = (sign1 == TEXT('-')) ? -1 : 1; 
+          return true; 
+        } 
+      } 
 
-[PRE39]
+```
 
-如果值后面没有其他内容，则适用情况10 (*x*)，我们返回 `true`：
+如果值后面不是符号，而是 i 或 I，然后是另一个符号和另一个值，则适用情况 4 (*yi* ± *x*)，我们返回 `true`：
 
-[PRE40]
+```cpp
+      else if (ReadI(inStream)) { 
+        if (ReadSign(inStream, sign1)) { 
+          if (ReadValue(inStream, value2) && EndOfLine(inStream)){ 
+            y = value1; 
+            x = (sign1 == TEXT('-')) ? -value2 : value2; 
+            return true; 
+          } 
+        } 
 
-如果流不以值开头，而是以符号后跟 i 或 I 开头，然后是另一个符号和另一个值，则适用情况5 (±*i* ± *x*)，我们返回 `true`：
+```
 
-[PRE41]
+如果值后面跟着 i 或 I 而没有其他内容，则适用情况 7 (*yi*)，我们返回 `true`：
 
-如果流以符号开头后跟 i 或 I 而没有其他内容，则适用情况8 (±*i*)，我们返回 `true`：
+```cpp
+        else if(EndOfLine(inStream)) { 
+          y = value1; 
+          x = 0; 
+          return true; 
+        } 
+      } 
 
-[PRE42]
+```
+
+如果值后面没有其他内容，则适用情况 10 (*x*)，我们返回 `true`：
+
+```cpp
+      else if (EndOfLine(inStream)) { 
+        x = value1; 
+        y = 0; 
+        return true; 
+      } 
+    } 
+
+```
+
+如果流不以值开头，而是以符号后跟 i 或 I 开头，然后是另一个符号和另一个值，则适用情况 5 (±*i* ± *x*)，我们返回 `true`：
+
+```cpp
+    else if (ReadSign(inStream, sign1)) { 
+      if (ReadI(inStream)) { 
+        if (ReadSign(inStream, sign2)) { 
+          if (ReadValue(inStream, value2) && EndOfLine(inStream)){ 
+            y = (sign1 == TEXT('-')) ? -1 : 1; 
+            x = (sign2 == TEXT('-')) ? -value2 : value2; 
+            return true; 
+          } 
+        } 
+
+```
+
+如果流以符号开头后跟 i 或 I 而没有其他内容，则适用情况 8 (±*i*)，我们返回 `true`：
+
+```cpp
+        else if (EndOfLine(inStream)) { 
+          y = (sign1 == TEXT('-')) ? -1 : 1; 
+          x = 0; 
+          return true; 
+        } 
+      } 
+    } 
+
+```
 
 如果流不以值或符号开头，而是以 i 或 I 开头，后面跟着符号和值，则适用情况 6 (*i* ± *x*)，我们返回 `true`：
 
-[PRE43]
+```cpp
+    else if (ReadI(inStream)) { 
+      if (ReadSign(inStream, sign2)) { 
+        if (ReadValue(inStream, value2) && EndOfLine(inStream)) { 
+          y = 1; 
+          x = (sign2 == TEXT('-')) ? -value2 : value2; 
+          return true; 
+        } 
+      } 
+
+```
 
 如果流由 i 或 I 和其他内容组成，则适用情况 9 (*i*)，我们返回 `true`：
 
-[PRE44]
+```cpp
+      else if (EndOfLine(inStream)) { 
+        y = 1; 
+        x = 0; 
+        return true; 
+      } 
+    } 
+
+```
 
 最后，如果上述任何情况都不适用，文本不包含复数，我们返回 `false`：
 
-[PRE45]
+```cpp
+    return false; 
+  } 
+
+```
 
 接收文本的构造函数简单地调用 `ReadStream`，如果 `ReadStream` 返回 `false`，则抛出 `NotaComplexNumber` 异常。然而，如果 `ReadStream` 返回 `true`，则 *x* 和 *y* 被设置为适当的值：
 
-[PRE46]
+```cpp
+  Complex::Complex(const String& text) { 
+    if (!ReadStream(text)) { 
+      throw NotaComplexNumber(); 
+    } 
+  } 
+
+```
 
 在 `String` 转换运算符中，我们考虑几个不同的案例：
 
@@ -250,37 +737,195 @@
 
 如果实部 *x* 不为 0，我们在流上写下它的值，并考虑虚部 *y* 的前四种情况。如果 *y* 是正或负 1，我们简单地写下 `+i` 或 `-i`。如果不是正或负 1，并且不是 0，我们使用 `showpos` 标志写下它的值，这强制在正值的情况下出现加号。最后，如果 *y* 是 0，我们根本不写它：
 
-[PRE47]
+```cpp
+  Complex::operator String() const { 
+    OStringStream outStream; 
+
+    if (x != 0) { 
+      if (y == 1) { 
+        outStream << x << TEXT("+i"); 
+      } 
+      else if (y == -1) { 
+        outStream << x << TEXT("-i"); 
+      } 
+      else if (y != 0) { 
+        outStream << x << setiosflags(ios::showpos) 
+                  << y << TEXT("i"); 
+      } 
+      else { 
+        outStream << x; 
+      } 
+    } 
+
+```
 
 如果 *x* 是零，我们省略它，并以我们之前的方式写下 *y* 的值。然而，如果 *y* 是零，我们写 0；如果 *x* 和 *y* 都为零，则什么也不写。此外，我们省略 `showpos` 标志，因为在正值的情况下不需要写加号： 
 
-[PRE48]
+```cpp
+    else { 
+      if (y == 1) { 
+        outStream << TEXT("i"); 
+      } 
+      else if (y == -1) { 
+        outStream << TEXT("-i"); 
+      } 
+      else if (y != 0) { 
+        outStream << y << TEXT("i"); 
+      } 
+      else { 
+        outStream << TEXT("0"); 
+      } 
+    }  
+    return outStream.str(); 
+  } 
+
+```
 
 如果两个复数的实部和虚部相等，则这两个复数相等：
 
-[PRE49]
+```cpp
+  bool Complex::operator==(const Complex &complex) const { 
+    return ((x == complex.x) && (y == complex.y)); 
+  } 
+
+  bool Complex::operator!=(const Complex &complex) const { 
+    return !(*this == complex); 
+  } 
+
+```
 
 当决定一个复数是否小于另一个复数时，我们选择比较它们的绝对值，这由`Abs`方法给出：
 
-[PRE50]
+```cpp
+  bool Complex::operator<(const Complex &complex) const { 
+    return (Abs() < complex.Abs()); 
+  } 
+
+  bool Complex::operator<=(const Complex &complex) const { 
+    return ((*this < complex) || (*this == complex)); 
+  } 
+
+  bool Complex::operator>(const Complex &complex) const { 
+    return !(*this <= complex); 
+  } 
+
+  bool Complex::operator>=(const Complex &complex) const { 
+    return !(*this < complex); 
+  } 
+
+```
 
 加法运算符都调用以下最终运算符，该运算符适用于所有四个算术运算符：
 
-[PRE51]
+```cpp
+  Complex Complex::operator+=(double x) { 
+    *this = (*this + Complex(x)); 
+    return *this; 
+  } 
+
+  Complex Complex::operator+=(Complex &complex) { 
+    *this = (*this + complex); 
+    return *this; 
+  } 
+
+  Complex operator+(double x, const Complex &complex) { 
+    return (Complex(x) + complex); 
+  } 
+
+  Complex operator+(const Complex &complex, double x) { 
+    return (complex + Complex(x)); 
+  } 
+
+```
 
 当加两个复数时，我们分别相加它们的实部和虚部：
 
-[PRE52]
+```cpp
+  Complex operator+(const Complex &complex1, 
+                    const Complex &complex2) { 
+    return Complex(complex1.x + complex2.x, 
+                   complex1.y + complex2.y); 
+  } 
+
+  Complex Complex::operator-=(double x) { 
+    return (*this - Complex(x)); 
+  } 
+
+  Complex Complex::operator-=(Complex &complex) { 
+    return (*this - complex); 
+  } 
+
+  Complex operator-(double x, const Complex &complex) { 
+    return (Complex(x) - complex); 
+  } 
+
+  Complex operator-(const Complex &complex, double x) { 
+    return (complex - Complex(x)); 
+  } 
+
+```
 
 当减去两个复数时，我们分别减去它们的实部和虚部：
 
-[PRE53]
+```cpp
+  Complex operator-(const Complex &complex1, 
+                    const Complex &complex2) { 
+    return Complex(complex1.x - complex2.x, 
+                   complex1.y - complex2.y); 
+  } 
+
+  Complex Complex::operator*=(double x) { 
+    *this = (*this * Complex(x)); 
+    return *this; 
+  } 
+
+  Complex Complex::operator*=(Complex &complex) { 
+    *this = (*this * complex); 
+    return *this; 
+  } 
+
+  Complex operator*(double x, const Complex &complex) { 
+    return (Complex(x) * complex); 
+  } 
+
+  Complex operator*(const Complex &complex, double x) { 
+    return (complex * Complex(x)); 
+  } 
+
+```
 
 两个复数的乘积可以通过一些代数方法建立：
 
 (*x* [1] + *y* [1]*i*)(*x* [2] + *y[2]i*) = *x* [1]*x* [2] + *x* [1]*y* [2]*i* + *y* [1]*ix* [2] + *y* [1]*y* [2]*i* ² = *x* [1]*x* [2] + *x* [1]*y* [2]*i* + *x* [2]*y* [1]*i* - *y* [1]*y* [2] = (*x* [1]*x* [2] - *y* [1]*y* [2]) + (*x* [1]*y* [2] + *x* [2]*y* [1])*i*
 
-[PRE54]
+```cpp
+  Complex operator*(const Complex &complex1, 
+                    const Complex &complex2) { 
+    return Complex((complex1.x * complex2.x) - 
+                   (complex1.y * complex2.y), 
+                   (complex1.x * complex2.y) + 
+                   (complex2.x * complex1.y)); 
+  } 
+
+  Complex Complex::operator/=(double x) { 
+    *this = (*this / Complex(x)); 
+    return *this; 
+  } 
+
+  Complex Complex::operator/=(Complex &complex) { 
+    *this = (*this / complex); 
+    return *this; 
+  } 
+
+  Complex operator/(double x, const Complex &complex) { 
+    return (Complex(x) / complex); 
+  } 
+
+  Complex operator/(const Complex &complex, double x) { 
+    return (complex / Complex(x)); 
+  } 
+
+```
 
 两个复数的商也可以通过一些代数方法建立。复数 *x* [2] + *y* [2]*i* 的共轭是 *x* [2] - *y* [2]*i*，我们可以用它来应用共轭规则：
 
@@ -290,8 +935,20 @@
 
 ![复数](img/B05475_Appendix_08.jpg)
 
-[PRE55]
+```cpp
+  Complex operator/(const Complex &complex1, 
+                    const Complex &complex2) { 
+    double sum = Square(complex2.x) + Square(complex2.y); 
+    double x = ((complex1.x * complex2.x) + 
+                (complex1.y * complex2.y)) / sum,    
+           y = ((complex2.x * complex1.y) + 
+                (complex1.x * complex2.y)) / sum; 
+    return Complex(x, y); 
+  } 
+}; 
+
+```
 
 # 概述
 
-通过阅读这本书，你已经学会了如何在Windows中使用Small Windows开发应用程序，Small Windows是一个用于Windows图形应用程序的C++面向对象类库。我希望你喜欢这本书！
+通过阅读这本书，你已经学会了如何在 Windows 中使用 Small Windows 开发应用程序，Small Windows 是一个用于 Windows 图形应用程序的 C++面向对象类库。我希望你喜欢这本书！

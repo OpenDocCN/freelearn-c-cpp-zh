@@ -34,7 +34,10 @@
 
 创建此项目涉及的步骤与我们之前游戏中的类似。我使用的命令行是：
 
-[PRE0]
+```cpp
+cocos new SkyDefense -p com.rengelbert.SkyDefense -l cpp -d /Users/rengelbert/Desktop/SkyDefense
+
+```
 
 在 Xcode 中，你必须将 **Deployment Info** 中的 **Devices** 字段设置为 **Universal**，并将 **Device Family** 字段设置为 **Universal**。在 `RootViewController.mm` 中，支持的界面方向设置为 **Landscape**。
 
@@ -48,23 +51,47 @@
 
 因此，打开`AppDelegate.cpp`文件。在`applicationDidFinishLaunching`方法内部，我们现在有以下代码：
 
-[PRE1]
+```cpp
+auto screenSize = glview->getFrameSize();
+auto designSize = Size(2048, 1536);
+glview->setDesignResolutionSize(designSize.width, designSize.height,  ResolutionPolicy::EXACT_FIT);
+std::vector<std::string> searchPaths;
+if (screenSize.height > 768) {
+   searchPaths.push_back("ipadhd");
+   director->setContentScaleFactor(1536/designSize.height);
+} else if (screenSize.height > 320) {
+   searchPaths.push_back("ipad");
+   director->setContentScaleFactor(768/designSize.height);
+} else {
+   searchPaths.push_back("iphone");
+   director->setContentScaleFactor(380/designSize.height);
+}
+auto fileUtils = FileUtils::getInstance();
+fileUtils->setSearchPaths(searchPaths);
+```
 
-再次提醒，我们告诉我们的`GLView`对象（我们的OpenGL视图）我们为某个屏幕尺寸（iPad视网膜屏）设计了游戏，并且我们再次希望我们的游戏屏幕调整大小以匹配设备上的屏幕（`ResolutionPolicy::EXACT_FIT`）。
+再次提醒，我们告诉我们的`GLView`对象（我们的 OpenGL 视图）我们为某个屏幕尺寸（iPad 视网膜屏）设计了游戏，并且我们再次希望我们的游戏屏幕调整大小以匹配设备上的屏幕（`ResolutionPolicy::EXACT_FIT`）。
 
-然后我们根据设备的屏幕尺寸确定从哪里加载我们的图像。我们有iPad视网膜屏的美术资源，然后是普通iPad，它由iPhone视网膜屏共享，以及普通iPhone的美术资源。
+然后我们根据设备的屏幕尺寸确定从哪里加载我们的图像。我们有 iPad 视网膜屏的美术资源，然后是普通 iPad，它由 iPhone 视网膜屏共享，以及普通 iPhone 的美术资源。
 
 我们最后根据设计的目标设置缩放因子。
 
 ## 添加背景音乐
 
-仍然在`AppDelegate.cpp`中，我们加载游戏中将使用的声音文件，包括一个`background.mp3`（由Kevin MacLeod从[incompetech.com](http://incompetech.com)提供），我们通过以下命令加载它：
+仍然在`AppDelegate.cpp`中，我们加载游戏中将使用的声音文件，包括一个`background.mp3`（由 Kevin MacLeod 从[incompetech.com](http://incompetech.com)提供），我们通过以下命令加载它：
 
-[PRE2]
+```cpp
+auto audioEngine = SimpleAudioEngine::getInstance();
+audioEngine->preloadBackgroundMusic(fileUtils->fullPathForFilename("background.mp3").c_str());
+
+```
 
 我们最后将音效的音量稍微调低：
 
-[PRE3]
+```cpp
+//lower playback volume for effects
+audioEngine->setEffectsVolume(0.4f);
+```
 
 对于背景音乐的音量，您必须使用`setBackgroundMusicVolume`。如果您在游戏中创建某种音量控制，这些就是您根据用户的偏好调整音量的调用。
 
@@ -76,7 +103,9 @@
 
 游戏初始化完成后，我们开始播放背景音乐，并将其`should loop`参数设置为`true`：
 
-[PRE4]
+```cpp
+SimpleAudioEngine::getInstance()-  >playBackgroundMusic("background.mp3", true);
+```
 
 我们再次存储屏幕尺寸以供将来参考，并使用一个`_running`布尔值来表示游戏状态。
 
@@ -84,7 +113,7 @@
 
 ![初始化游戏](img/00011.jpeg)
 
-# 在Cocos2d-x中使用精灵图集
+# 在 Cocos2d-x 中使用精灵图集
 
 精灵图集是将多个图像组合到一个图像文件中的方法。为了用这些图像之一纹理化精灵，您必须知道该图像在精灵图集中的位置信息（其矩形）。
 
@@ -94,7 +123,7 @@
 
 这就是`sprite_sheet.png`文件的外观：
 
-![在Cocos2d-x中使用精灵图集](img/00012.jpeg)
+![在 Cocos2d-x 中使用精灵图集](img/00012.jpeg)
 
 ## 批量绘制精灵
 
@@ -108,7 +137,19 @@
 
 让我们开始实现 `GameLayer.cpp` 中的 `createGameScreen` 方法。在添加 `bg` 精灵的行下面，我们实例化我们的批处理节点：
 
-[PRE5]
+```cpp
+void GameLayer::createGameScreen() {
+
+  //add bg
+  auto bg = Sprite::create("bg.png");
+  ...
+
+  SpriteFrameCache::getInstance()->
+  addSpriteFramesWithFile("sprite_sheet.plist");
+
+  _gameBatchNode = SpriteBatchNode::create("sprite_sheet.png");
+  this->addChild(_gameBatchNode);
+```
 
 为了从精灵图中创建批处理节点，我们首先将 `sprite_sheet.plist` 文件中描述的所有帧信息加载到 `SpriteFrameCache` 中。然后我们使用 `sprite_sheet.png` 文件创建批处理节点，这是所有添加到该批处理节点的精灵共享的源纹理。（背景图像不是精灵图的一部分，所以我们将其单独添加，在我们将 `_gameBatchNode` 添加到 GameLayer 之前。）
 
@@ -116,17 +157,45 @@
 
 1.  首先，是城市：
 
-    [PRE6]
+    ```cpp
+    for (int i = 0; i < 2; i++) {
+      auto sprite = Sprite::createWithSpriteFrameName ("city_dark.png");
+        sprite->setAnchorPoint(Vec2(0.5,0));
+      sprite->setPosition(_screenSize.width * (0.25f + i *  0.5f),0));
+      _gameBatchNode->addChild(sprite, kMiddleground);
+
+      sprite = Sprite::createWithSpriteFrameName("city_light.png");
+      sprite->setAnchorPoint(Vec2(0.5,0));
+      sprite->setPosition(Vec2(_screenSize.width * (0.25f + i *  0.5f),
+      _screenSize.height * 0.1f));
+      _gameBatchNode->addChild(sprite, kBackground);
+    }
+    ```
 
 1.  然后是树木：
 
-    [PRE7]
+    ```cpp
+    //add trees
+    for (int i = 0; i < 3; i++) {
+      auto sprite = Sprite::createWithSpriteFrameName("trees.png");
+      sprite->setAnchorPoint(Vec2(0.5f, 0.0f));
+      sprite->setPosition(Vec2(_screenSize.width * (0.2f + i * 0.3f),0));
+      _gameBatchNode->addChild(sprite, kForeground);
+
+    }
+    ```
 
     注意，在这里我们通过传递精灵帧名称来创建精灵。这些帧名称的 ID 是通过我们的 `sprite_sheet.plist` 文件加载到 `SpriteFrameCache` 中的。
 
 1.  到目前为止的屏幕由两个实例的 `city_dark.png` 在屏幕底部拼接而成，以及两个实例的 `city_light.png` 也进行拼接。一个需要出现在另一个之上，为此我们使用在 `GameLayer.h` 中声明的枚举值：
 
-    [PRE8]
+    ```cpp
+    enum {
+      kBackground,
+      kMiddleground,
+      kForeground
+    };
+    ```
 
 1.  我们使用 `addChild(Node, zOrder)` 方法通过不同的 `z` 值将精灵层叠在一起。
 
@@ -154,11 +223,15 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 我们在游戏中使用的 `Label` 对象是用数据文件名和它们的初始字符串值实例化的：
 
-[PRE9]
+```cpp
+_scoreDisplay = Label::createWithBMFont("font.fnt", "0");
+```
 
 标签的值通过 `setString` 方法更改：
 
-[PRE10]
+```cpp
+_scoreDisplay->setString("1000");
+```
 
 ### 注意事项
 
@@ -172,15 +245,28 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 1.  继续使用 `createGameScreen` 方法，向 `score` 标签添加以下行：
 
-    [PRE11]
+    ```cpp
+    _scoreDisplay = Label::createWithBMFont("font.fnt", "0");
+    _scoreDisplay->setAnchorPoint(Vec2(1,0.5));
+    _scoreDisplay->setPosition(Vec2 (_screenSize.width * 0.8f, _screenSize.height * 0.94f));
+    this->addChild(_scoreDisplay);
+    ```
 
     然后添加一个标签来显示能量等级，并将其水平对齐设置为 `Right`：
 
-    [PRE12]
+    ```cpp
+    _energyDisplay = Label::createWithBMFont("font.fnt", "100%", TextHAlignment::RIGHT);
+    _energyDisplay->setPosition(Vec2 (_screenSize.width * 0.3f, _screenSize.height * 0.94f));
+    this->addChild(_energyDisplay);
+    ```
 
 1.  为 `_energyDisplay` 标签旁边出现的图标添加以下行：
 
-    [PRE13]
+    ```cpp
+    auto icon = Sprite::createWithSpriteFrameName("health_icon.png");
+    icon->setPosition( Vec2(_screenSize. width * 0.15f,  _screenSize.height * 0.94f) );
+    _gameBatchNode->addChild(icon, kBackground);
+    ```
 
 ## *刚才发生了什么？*
 
@@ -192,19 +278,59 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 1.  回到 `createGameScreen` 方法，将云添加到屏幕上：
 
-    [PRE14]
+    ```cpp
+    for (int i = 0; i < 4; i++) {
+      float cloud_y = i % 2 == 0 ? _screenSize.height * 0.4f : _screenSize.height * 0.5f;
+      auto cloud = Sprite::createWithSpriteFrameName("cloud.png");
+      cloud->setPosition(Vec2 (_screenSize.width * 0.1f + i * _screenSize.width * 0.3f,  cloud_y));
+      _gameBatchNode->addChild(cloud, kBackground);
+      _clouds.pushBack(cloud);
+    }
+    ```
 
 1.  创建 `_bomb` 精灵；玩家在触摸屏幕时会*增长*：
 
-    [PRE15]
+    ```cpp
+    _bomb = Sprite::createWithSpriteFrameName("bomb.png");
+    _bomb->getTexture()->generateMipmap();
+    _bomb->setVisible(false);
+
+    auto size = _bomb->getContentSize();
+
+    //add sparkle inside bomb sprite
+    auto sparkle = Sprite::createWithSpriteFrameName("sparkle.png");
+    sparkle->setPosition(Vec2(size.width * 0.72f, size.height *  0.72f));
+    _bomb->addChild(sparkle, kMiddleground, kSpriteSparkle);
+
+    //add halo inside bomb sprite
+    auto halo = Sprite::createWithSpriteFrameName ("halo.png");
+    halo->setPosition(Vec2(size.width * 0.4f, size.height *  0.4f));
+    _bomb->addChild(halo, kMiddleground, kSpriteHalo);
+    _gameBatchNode->addChild(_bomb, kForeground);
+    ```
 
 1.  然后创建 `_shockwave` 精灵，它在 `_bomb` 爆炸后出现：
 
-    [PRE16]
+    ```cpp
+    _shockWave = Sprite::createWithSpriteFrameName("shockwave.png");
+    _shockWave->getTexture()->generateMipmap();
+    _shockWave->setVisible(false);
+    _gameBatchNode->addChild(_shockWave);
+    ```
 
 1.  最后，添加屏幕上出现的两条消息，一条用于我们的 `intro` 状态，另一条用于 `gameover` 状态：
 
-    [PRE17]
+    ```cpp
+    _introMessage = Sprite::createWithSpriteFrameName("logo.png");
+    _introMessage->setPosition(Vec2 (_screenSize.width * 0.5f, _screenSize.height * 0.6f));
+    _introMessage->setVisible(true);
+    this->addChild(_introMessage, kForeground);
+
+    _gameOverMessage = Sprite::createWithSpriteFrameName ("gameover.png");
+    _gameOverMessage->setPosition(Vec2 (_screenSize.width * 0.5f, _screenSize.height * 0.65f));
+    _gameOverMessage->setVisible(false);
+    this->addChild(_gameOverMessage, kForeground);
+    ```
 
 ## *刚才发生了什么？*
 
@@ -214,23 +340,29 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 +   接下来是炸弹精灵和我们的第一个新调用：
 
-    [PRE18]
+    ```cpp
+    _bomb->getTexture()->generateMipmap();
+    ```
 
-+   使用这种方法，我们告诉框架创建该纹理的逐级细节（mipmaps）的逐级减小尺寸的抗锯齿副本，因为我们稍后将要将其缩小。当然，这是可选的；精灵可以在不首先生成mipmaps的情况下调整大小，但如果您注意到缩放精灵时质量下降，您可以通过为它们的纹理创建mipmaps来修复这个问题。
++   使用这种方法，我们告诉框架创建该纹理的逐级细节（mipmaps）的逐级减小尺寸的抗锯齿副本，因为我们稍后将要将其缩小。当然，这是可选的；精灵可以在不首先生成 mipmaps 的情况下调整大小，但如果您注意到缩放精灵时质量下降，您可以通过为它们的纹理创建 mipmaps 来修复这个问题。
 
     ### 注意
 
-    纹理必须具有所谓的POT（2的幂：2、4、8、16、32、64、128、256、512、1024、2048等等）的大小值。OpenGL中的纹理必须始终以这种方式进行尺寸设置；如果不是这样，Cocos2d-x将执行以下两种操作之一：它将在内存中调整纹理的大小，添加透明像素，直到图像达到POT大小，或者停止执行并抛出断言。对于用于mipmaps的纹理，框架将停止执行非POT纹理。
+    纹理必须具有所谓的 POT（2 的幂：2、4、8、16、32、64、128、256、512、1024、2048 等等）的大小值。OpenGL 中的纹理必须始终以这种方式进行尺寸设置；如果不是这样，Cocos2d-x 将执行以下两种操作之一：它将在内存中调整纹理的大小，添加透明像素，直到图像达到 POT 大小，或者停止执行并抛出断言。对于用于 mipmaps 的纹理，框架将停止执行非 POT 纹理。
 
 +   我将`sparkle`和`halo`精灵作为子节点添加到`_bomb`精灵中。这将利用节点的容器特性为我们带来优势。当我放大炸弹时，所有子节点也会随之放大。
 
 +   注意，我还为`halo`和`sparkle`的`addChild`方法使用了第三个参数：
 
-    [PRE19]
+    ```cpp
+    bomb->addChild(halo, kMiddleground, kSpriteHalo);
+    ```
 
 +   这个第三个参数是从`GameLayer.h`中声明的另一个枚举列表中的整数标签。我可以使用这个标签来检索从精灵中特定的子节点，如下所示：
 
-    [PRE20]
+    ```cpp
+    auto halo = (Sprite *)  bomb->getChildByTag(kSpriteHalo);
+    ```
 
 我们现在已经设置了游戏屏幕：
 
@@ -244,11 +376,30 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 1.  在`createPools`方法内部，我们首先为流星创建一个池：
 
-    [PRE21]
+    ```cpp
+    void GameLayer::createPools() {
+      int i;
+      _meteorPoolIndex = 0;
+      for (i = 0; i < 50; i++) {
+      auto sprite = Sprite::createWithSpriteFrameName("meteor.png");
+      sprite->setVisible(false);
+      _gameBatchNode->addChild(sprite, kMiddleground, kSpriteMeteor);
+      _meteorPool.pushBack(sprite);
+    }
+    ```
 
 1.  然后我们为健康包创建一个对象池：
 
-    [PRE22]
+    ```cpp
+    _healthPoolIndex = 0;
+    for (i = 0; i < 20; i++) {
+      auto sprite = Sprite::createWithSpriteFrameName("health.png");
+      sprite->setVisible(false);
+      sprite->setAnchorPoint(Vec2(0.5f, 0.8f));
+      _gameBatchNode->addChild(sprite, kMiddleground, kSpriteHealth);
+      _healthPool.pushBack(sprite);
+    }
+    ```
 
 1.  随着游戏的进行，我们将使用相应的池索引从向量中检索对象。
 
@@ -262,15 +413,19 @@ Cocos2d-x 的 `Label` 类有一个静态的 `create` 方法，它使用位图图
 
 # 动作概述
 
-如果您还记得，节点将存储有关位置、缩放、旋转、可见性和不透明度的信息。在Cocos2d-x中，有一个`Action`类可以随时间改变这些值中的每一个，从而实现这些转换的动画。
+如果您还记得，节点将存储有关位置、缩放、旋转、可见性和不透明度的信息。在 Cocos2d-x 中，有一个`Action`类可以随时间改变这些值中的每一个，从而实现这些转换的动画。
 
 动作通常使用静态方法`create`创建。这些动作中的大多数都是基于时间的，所以通常您需要传递给动作的第一个参数是动作的时间长度。例如：
 
-[PRE23]
+```cpp
+auto fadeout = FadeOut::create(1.0f);
+```
 
 这将创建一个`渐隐`动作，它将在一秒钟内完成。您可以在精灵或节点上运行它，如下所示：
 
-[PRE24]
+```cpp
+mySprite->runAction(fadeout);
+```
 
 Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动作和变换，以实现我们想要的任何效果。
 
@@ -282,11 +437,35 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  在我们的 `createActions` 方法中，我们将实例化我们可以在游戏中重复使用的动作。让我们创建我们的第一个动作：
 
-    [PRE25]
+    ```cpp
+    void GameLayer::createActions() {
+     //swing action for health drops
+     auto easeSwing = Sequence::create(
+     EaseInOut::create(RotateTo::create(1.2f, -10), 2),
+     EaseInOut::create(RotateTo::create(1.2f, 10), 2),
+     nullptr);//mark the end of a sequence with a nullptr
+     _swingHealth = RepeatForever::create( (ActionInterval *) easeSwing );
+     _swingHealth->retain();
+    ```
 
 1.  动作可以以许多不同的形式组合。在这里，保留的 `_swingHealth` 动作是一个 `Sequence` 的 `RepeatForever` 动作，它将首先以一个方向旋转健康精灵，然后以另一个方向旋转，`EaseInOut` 包裹着 `RotateTo` 动作。`RotateTo` 需要 `1.2` 秒来首先将精灵旋转到 `-10` 度，然后旋转到 `10` 度。缓动函数的值为 `2`，我建议你尝试一下，以了解它在视觉上的意义。接下来我们再添加三个动作：
 
-    [PRE26]
+    ```cpp
+    //action sequence for shockwave: fade out, callback when  //done
+    _shockwaveSequence = Sequence::create(
+      FadeOut::create(1.0f),
+      CallFunc::create(std::bind(&GameLayer::shockwaveDone, this)), nullptr);
+    _shockwaveSequence->retain();
+
+    //action to grow bomb
+    _growBomb = ScaleTo::create(6.0f, 1.0);
+    _growBomb->retain();
+
+    //action to rotate sprites
+    auto rotate = RotateBy::create(0.5f ,  -90);
+    _rotateSprite = RepeatForever::create( rotate );
+    _rotateSprite->retain();
+    ```
 
 1.  首先，另一个 `Sequence`。这将使精灵淡出并调用 `shockwaveDone` 函数，该函数已经在类中实现，并在调用时将 `_shockwave` 精灵变为不可见。
 
@@ -314,15 +493,46 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  在同一个 `createActions` 方法中，添加游戏中的两个动画的代码行。首先，我们从当流星到达城市时显示爆炸动画的动画开始。我们首先将帧加载到 `Animation` 对象中：
 
-    [PRE27]
+    ```cpp
+    auto animation = Animation::create();
+    int i;
+    for(i = 1; i <= 10; i++) {
+      auto name = String::createWithFormat("boom%i.png", i);
+      auto frame = SpriteFrameCache::getInstance()->getSpriteFrameByName(name->getCString());
+      animation->addSpriteFrame(frame);
+    }
+    ```
 
 1.  然后，我们在 `Animate` 动作中使用 `Animation` 对象：
 
-    [PRE28]
+    ```cpp
+    animation->setDelayPerUnit(1 / 10.0f);
+    animation->setRestoreOriginalFrame(true);
+    _groundHit = 
+      Sequence::create(
+        MoveBy::create(0, Vec2(0,_screenSize.height * 0.12f)),
+        Animate::create(animation),
+       CallFuncN::create(CC_CALLBACK_1(GameLayer::animationDone, this)), nullptr);
+    _groundHit->retain();
+    ```
 
 1.  相同的步骤被重复使用以创建其他爆炸动画，当玩家击中流星或健康包时使用。
 
-    [PRE29]
+    ```cpp
+    animation = Animation::create();
+    for(int i = 1; i <= 7; i++) {
+     auto name = String::createWithFormat("explosion_small%i.png", i);
+     auto frame = SpriteFrameCache::getInstance()->getSpriteFrameByName(name->getCString());
+     animation->addSpriteFrame(frame);
+    }
+
+    animation->setDelayPerUnit(0.5 / 7.0f);
+    animation->setRestoreOriginalFrame(true);
+    _explosion = Sequence::create(
+         Animate::create(animation),
+       CallFuncN::create(CC_CALLBACK_1(GameLayer::animationDone, this)), nullptr);
+    _explosion->retain();
+    ```
 
 ## *发生了什么？*
 
@@ -340,7 +550,11 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 +   在这两种情况下，我调用了类中已经实现的一个 `animationDone` 回调。这使得调用精灵变得不可见：
 
-    [PRE30]
+    ```cpp
+    void GameLayer::animationDone (Node* pSender) {
+      pSender->setVisible(false);
+    }
+    ```
 
     ### 注意
 
@@ -364,17 +578,87 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  是时候实现我们的`onTouchBegan`方法了。我们首先处理两个游戏状态，`intro`和`game over`：
 
-    [PRE31]
+    ```cpp
+    bool GameLayer::onTouchBegan (Touch * touch, Event * event){
+
+      //if game not running, we are seeing either intro or  //gameover
+      if (!_running) {
+        //if intro, hide intro message
+        if (_introMessage->isVisible()) {
+          _introMessage->setVisible(false);
+
+          //if game over, hide game over message 
+        } else if (_gameOverMessage->isVisible()) {
+          SimpleAudioEngine::getInstance()->stopAllEffects();
+          _gameOverMessage->setVisible(false);
+
+        }
+
+        this->resetGame();
+        return true;
+      }
+    ```
 
 1.  在这里，我们检查游戏是否没有运行。如果没有运行，我们检查我们的消息是否可见。如果`_introMessage`是可见的，我们就隐藏它。如果`_gameOverMessage`是可见的，我们就停止所有当前音效并隐藏该消息。然后我们调用一个名为`resetGame`的方法，它将所有游戏数据（能量、得分和倒计时）重置为其初始值，并将`_running`设置为`true`。
 
 1.  接下来我们处理触摸。但我们每次只需要处理一个，所以我们使用`Set`上的`->anyObject()`：
 
-    [PRE32]
+    ```cpp
+    auto touch = (Touch *)pTouches->anyObject();
+
+    if (touch) {
+
+      //if bomb already growing...
+      if (_bomb->isVisible()) {
+        //stop all actions on bomb, halo and sparkle
+        _bomb->stopAllActions();
+        auto child = (Sprite *) _bomb->getChildByTag(kSpriteHalo);
+        child->stopAllActions();
+        child = (Sprite *) _bomb->getChildByTag(kSpriteSparkle);
+        child->stopAllActions();
+
+        //if bomb is the right size, then create shockwave
+        if (_bomb->getScale() > 0.3f) {
+          _shockWave->setScale(0.1f);
+          _shockWave->setPosition(_bomb->getPosition());
+          _shockWave->setVisible(true);
+          _shockWave->runAction(ScaleTo::create(0.5f, _bomb->getScale() * 2.0f));
+          _shockWave->runAction(_shockwaveSequence->clone());
+          SimpleAudioEngine::getInstance()->playEffect("bombRelease.wav");
+
+        } else {
+          SimpleAudioEngine::getInstance()->playEffect("bombFail.wav");
+        }
+        _bomb->setVisible(false);
+        //reset hits with shockwave, so we can count combo hits
+        _shockwaveHits = 0;
+
+     //if no bomb currently on screen, create one
+     } else {
+        Point tap = touch->getLocation();
+        _bomb->stopAllActions();
+        _bomb->setScale(0.1f);
+        _bomb->setPosition(tap);
+        _bomb->setVisible(true);
+        _bomb->setOpacity(50);
+        _bomb->runAction(_growBomb->clone());
+
+         auto child = (Sprite *) _bomb->getChildByTag(kSpriteHalo);
+         child->runAction(_rotateSprite->clone());
+         child = (Sprite *) _bomb->getChildByTag(kSpriteSparkle);
+         child->runAction(_rotateSprite->clone());
+      }
+    }
+    ```
 
 1.  如果`_bomb`是可见的，这意味着它已经在屏幕上生长了。所以当触摸时，我们在炸弹上使用`stopAllActions()`方法，并且使用`stopAllActions()`方法在其子项上，这些子项是通过我们的标签检索到的：
 
-    [PRE33]
+    ```cpp
+    child = (Sprite *) _bomb->getChildByTag(kSpriteHalo);
+    child->stopAllActions();
+    child = (Sprite *) _bomb->getChildByTag(kSpriteSparkle);
+    child->stopAllActions();
+    ```
 
 1.  如果`_bomb`的大小正确，我们就开始我们的`_shockwave`。如果它不正确，我们就播放一个炸弹故障音效；没有爆炸，并且`_shockwave`不会被显示出来。
 
@@ -392,11 +676,68 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  让我们来编写`resetGame`函数的实现：
 
-    [PRE34]
+    ```cpp
+    void GameLayer::resetGame(void) {
+        _score = 0;
+        _energy = 100;
+
+        //reset timers and "speeds"
+        _meteorInterval = 2.5;
+        _meteorTimer = _meteorInterval * 0.99f;
+        _meteorSpeed = 10;//in seconds to reach ground
+        _healthInterval = 20;
+        _healthTimer = 0;
+        _healthSpeed = 15;//in seconds to reach ground
+
+        _difficultyInterval = 60;
+        _difficultyTimer = 0;
+
+        _running = true;
+
+        //reset labels
+        _energyDisplay->setString(std::to_string((int) _energy) + "%");
+        _scoreDisplay->setString(std::to_string((int) _score));
+    }
+    ```
 
 1.  接下来，添加`stopGame`的实现：
 
-    [PRE35]
+    ```cpp
+    void GameLayer::stopGame() {
+
+        _running = false;
+
+        //stop all actions currently running
+        int i;
+        int count = (int) _fallingObjects.size();
+
+        for (i = count-1; i >= 0; i--) {
+            auto sprite = _fallingObjects.at(i);
+            sprite->stopAllActions();
+            sprite->setVisible(false);
+            _fallingObjects.erase(i);
+        }
+        if (_bomb->isVisible()) {
+            _bomb->stopAllActions();
+            _bomb->setVisible(false);
+            auto child = _bomb->getChildByTag(kSpriteHalo);
+            child->stopAllActions();
+            child = _bomb->getChildByTag(kSpriteSparkle);
+            child->stopAllActions();
+        }
+        if (_shockWave->isVisible()) {
+            _shockWave->stopAllActions();
+            _shockWave->setVisible(false);
+        }
+        if (_ufo->isVisible()) {
+            _ufo->stopAllActions();
+            _ufo->setVisible(false);
+            auto ray = _ufo->getChildByTag(kSpriteRay);
+            ray->stopAllActions();
+            ray->setVisible(false);
+        }
+    }
+    ```
 
 ## *刚才发生了什么？*
 
@@ -418,17 +759,52 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  我们需要做的是检查碰撞。所以添加以下代码：
 
-    [PRE36]
+    ```cpp
+    if (_shockWave->isVisible()) {
+     count = (int) _fallingObjects.size();
+     for (i = count-1; i >= 0; i--) {
+       auto sprite =  _fallingObjects.at(i);
+       diffx = _shockWave->getPositionX() - sprite->getPositionX();
+       diffy = _shockWave->getPositionY() - sprite->getPositionY();
+       if (pow(diffx, 2) + pow(diffy, 2) <= pow(_shockWave->getBoundingBox().size.width * 0.5f, 2)) {
+        sprite->stopAllActions();
+        sprite->runAction( _explosion->clone());
+        SimpleAudioEngine::getInstance()->playEffect("boom.wav");
+        if (sprite->getTag() == kSpriteMeteor) {
+          _shockwaveHits++;
+          _score += _shockwaveHits * 13 + _shockwaveHits * 2;
+        }
+        //play sound
+        _fallingObjects.erase(i);
+      }
+     }
+     _scoreDisplay->setString(std::to_string(_score));
+    }
+    ```
 
 1.  如果 `_shockwave` 是可见的，我们检查它和 `_fallingObjects` 向量中每个精灵之间的距离。如果我们击中任何流星，我们就增加 `_shockwaveHits` 属性的值，这样我们就可以奖励玩家多次击中。接下来我们移动云朵：
 
-    [PRE37]
+    ```cpp
+    //move clouds
+    for (auto sprite : _clouds) {
+      sprite->setPositionX(sprite->getPositionX() + dt * 20);
+      if (sprite->getPositionX() > _screenSize.width + sprite->getBoundingBox().size.width * 0.5f)
+        sprite->setPositionX(-sprite->getBoundingBox().size.width * 0.5f);
+    }
+    ```
 
 1.  我选择不使用 `MoveTo` 动作来展示云朵，以显示可以由简单动作替换的代码量。如果不是因为 Cocos2d-x 动作，我们就必须实现移动、旋转、摆动、缩放和爆炸所有精灵的逻辑！
 
 1.  最后：
 
-    [PRE38]
+    ```cpp
+    if (_bomb->isVisible()) {
+       if (_bomb->getScale() > 0.3f) {
+          if (_bomb->getOpacity() != 255)
+             _bomb->setOpacity(255);
+       }
+    }
+    ```
 
 1.  我们通过改变炸弹准备爆炸时的不透明度，给玩家一个额外的视觉提示。
 
@@ -444,7 +820,33 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 1.  要检索流星精灵，我们将使用 `resetMeteor` 方法：
 
-    [PRE39]
+    ```cpp
+    void GameLayer::resetMeteor(void) {
+       //if too many objects on screen, return
+        if (_fallingObjects.size() > 30) return;
+
+        auto meteor = _meteorPool.at(_meteorPoolIndex);
+          _meteorPoolIndex++;
+        if (_meteorPoolIndex == _meteorPool.size()) 
+          _meteorPoolIndex = 0;
+          int meteor_x = rand() % (int) (_screenSize.width * 0.8f) + _screenSize.width * 0.1f;
+       int meteor_target_x = rand() % (int) (_screenSize.width * 0.8f) + _screenSize.width * 0.1f;
+
+        meteor->stopAllActions();
+        meteor->setPosition(Vec2(meteor_x, _screenSize.height + meteor->getBoundingBox().size.height * 0.5));
+
+        //create action
+        auto  rotate = RotateBy::create(0.5f ,  -90);
+        auto  repeatRotate = RepeatForever::create( rotate );
+        auto  sequence = Sequence::create (
+                   MoveTo::create(_meteorSpeed, Vec2(meteor_target_x, _screenSize.height * 0.15f)),
+                   CallFunc::create(std::bind(&GameLayer::fallingObjectDone, this, meteor) ), nullptr);    
+      meteor->setVisible ( true );
+      meteor->runAction(repeatRotate);
+      meteor->runAction(sequence);
+     _fallingObjects.pushBack(meteor);
+    }
+    ```
 
 1.  我们从对象池中获取下一个可用的流星，然后为它的 `MoveTo` 动作随机选择一个起始和结束的 `x` 值。流星从屏幕顶部开始，将移动到底部向城市方向，但每次随机选择 `x` 值。
 
@@ -458,7 +860,9 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 注意，在 `resetMeteor` 和 `resetHealth` 中，如果屏幕上已经有很多精灵，我们不会添加新的精灵：
 
-[PRE40]
+```cpp
+if (_fallingObjects->size() > 30) return;
+```
 
 这样游戏就不会变得荒谬地困难，我们也不会在我们的对象池中耗尽未使用的对象。
 
@@ -466,9 +870,11 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 当你查看`GameLayer.cpp`中的那个方法时，你会注意到我们如何使用`->getTag()`来快速确定我们正在处理哪种类型的精灵（调用该方法的那个）：
 
-[PRE41]
+```cpp
+if (pSender->getTag() == kSpriteMeteor) {
+```
 
-如果它是一颗流星，我们就减少玩家的能量，播放音效，并运行爆炸动画；我们保留的`_groundHit`动作的一个autorelease副本，这样我们就不需要在每次需要运行这个动作时重复所有逻辑。
+如果它是一颗流星，我们就减少玩家的能量，播放音效，并运行爆炸动画；我们保留的`_groundHit`动作的一个 autorelease 副本，这样我们就不需要在每次需要运行这个动作时重复所有逻辑。
 
 如果项目是健康包，我们就增加能量或给玩家一些分数，播放一个好听的声音效果，并隐藏精灵。
 
@@ -476,7 +882,25 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 我们疯狂地编码，现在终于到了运行游戏的时候。但首先，别忘了释放我们保留的所有项目。在`GameLayer.cpp`中，添加我们的析构函数方法：
 
-[PRE42]
+```cpp
+GameLayer::~GameLayer () {
+
+    //release all retained actions
+    CC_SAFE_RELEASE(_growBomb);
+    CC_SAFE_RELEASE(_rotateSprite);
+    CC_SAFE_RELEASE(_shockwaveSequence);
+    CC_SAFE_RELEASE(_swingHealth);
+    CC_SAFE_RELEASE(_groundHit);
+    CC_SAFE_RELEASE(_explosion);
+    CC_SAFE_RELEASE(_ufoAnimation);
+    CC_SAFE_RELEASE(_blinkRay);
+
+    _clouds.clear();
+    _meteorPool.clear();
+    _healthPool.clear();
+    _fallingObjects.clear();
+}
+```
 
 实际的游戏屏幕现在看起来可能像这样：
 
@@ -484,27 +908,31 @@ Cocos2d-x 有一个非常灵活的系统，允许我们创建任何组合的动�
 
 再次提醒，如果你在运行代码时遇到任何问题，可以参考`4198_04_FINAL_PROJECT.zip`。
 
-现在，让我们将其带到Android上。
+现在，让我们将其带到 Android 上。
 
-# 是时候在Android上运行游戏了。
+# 是时候在 Android 上运行游戏了。
 
-按照以下步骤将游戏部署到Android：
+按照以下步骤将游戏部署到 Android：
 
 1.  这次，没有必要修改清单文件，因为默认设置就是我们想要的。所以，导航到`proj.android`，然后到`jni`文件夹，在文本编辑器中打开`Android.mk`文件。
 
 1.  编辑`LOCAL_SRC_FILES`中的行，使其如下所示：
 
-    [PRE43]
+    ```cpp
+    LOCAL_SRC_FILES := hellocpp/main.cpp \
+                       ../../Classes/AppDelegate.cpp \
+                       ../../Classes/GameLayer.cpp 
+    ```
 
-1.  按照从`HelloWorld`和`AirHockey`示例中的说明，将游戏导入Eclipse。
+1.  按照从`HelloWorld`和`AirHockey`示例中的说明，将游戏导入 Eclipse。
 
 1.  保存并运行你的应用程序。这次，如果你有设备，你可以尝试不同的屏幕尺寸。
 
 ## *发生了什么？*
 
-你刚刚在Android上运行了一个通用应用。这再简单不过了。
+你刚刚在 Android 上运行了一个通用应用。这再简单不过了。
 
-作为奖励，我添加了游戏的另一个版本，增加了额外的敌人类型来处理：一个一心想要电击城市的UFO！你可以在`4198_04_BONUS_PROJECT.zip`中找到它。
+作为奖励，我添加了游戏的另一个版本，增加了额外的敌人类型来处理：一个一心想要电击城市的 UFO！你可以在`4198_04_BONUS_PROJECT.zip`中找到它。
 
 ## 突击测验 - 精灵和动作
 

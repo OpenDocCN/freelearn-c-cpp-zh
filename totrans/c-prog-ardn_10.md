@@ -1,18 +1,18 @@
-# 第10章。一些高级技术
+# 第十章。一些高级技术
 
-在本章中，我们将学习可以一起使用或独立使用的技术。在这里开发的每个技术都是你未来或当前项目的新工具。我们将使用EEPROM为Arduino板提供一个可读可写的内存系统。
+在本章中，我们将学习可以一起使用或独立使用的技术。在这里开发的每个技术都是你未来或当前项目的新工具。我们将使用 EEPROM 为 Arduino 板提供一个可读可写的内存系统。
 
-我们还将测试Arduino板之间的通信，使用GPS模块，使我们的板子实现自主化，以及更多。
+我们还将测试 Arduino 板之间的通信，使用 GPS 模块，使我们的板子实现自主化，以及更多。
 
-# 使用EEPROM进行数据存储
+# 使用 EEPROM 进行数据存储
 
-到目前为止，我们学习和使用Arduino板作为完全依赖电力的设备。确实，它们需要电流来执行我们固件中编译的任务。
+到目前为止，我们学习和使用 Arduino 板作为完全依赖电力的设备。确实，它们需要电流来执行我们固件中编译的任务。
 
 正如我们所注意到的，当我们关闭它们时，每个活着的变量和数据都会丢失。幸运的是，固件不会。
 
-## Arduino板上的三个原生内存池
+## Arduino 板上的三个原生内存池
 
-基于ATmega168芯片组的Arduino板拥有三个不同的内存池：
+基于 ATmega168 芯片组的 Arduino 板拥有三个不同的内存池：
 
 +   闪存内存
 
@@ -24,83 +24,160 @@
 
 **SRAM**代表**静态随机存取存储器**，是运行中的固件存储、读取和操作变量的地方。
 
-**EEPROM**代表**电擦除可编程只读存储器**。这是程序员可以存储长期数据的地方。这是我们的固件所在的地方，如果板子关闭，EEPROM中的任何内容都不会被擦除。
+**EEPROM**代表**电擦除可编程只读存储器**。这是程序员可以存储长期数据的地方。这是我们的固件所在的地方，如果板子关闭，EEPROM 中的任何内容都不会被擦除。
 
-ATmega168具有：
+ATmega168 具有：
 
-+   16000字节的闪存（其中2000字节用于引导加载程序）
++   16000 字节的闪存（其中 2000 字节用于引导加载程序）
 
-+   1024字节的SRAM
++   1024 字节的 SRAM
 
-+   512字节的EEPROM
++   512 字节的 EEPROM
 
-在这里，我们不会讨论在编程时必须注意内存的事实；我们将在本书的最后一章[第13章](ch13.html "第13章. 提高你的C编程和创建库")中这样做，*提高你的C编程和创建库*。
+在这里，我们不会讨论在编程时必须注意内存的事实；我们将在本书的最后一章第十三章中这样做，*提高你的 C 编程和创建库*。
 
-这里有趣的部分是EEPROM空间。它允许我们在Arduino上存储数据，而我们直到现在甚至都不知道这一点。让我们测试EEPROM原生库。
+这里有趣的部分是 EEPROM 空间。它允许我们在 Arduino 上存储数据，而我们直到现在甚至都不知道这一点。让我们测试 EEPROM 原生库。
 
-### 使用EEPROM核心库进行读写
+### 使用 EEPROM 核心库进行读写
 
-基本上，这个示例不需要任何接线。我们将使用512字节的内部EEPROM。以下是一些读取EEPROM所有字节并将其打印到计算机串行监视器的代码：
+基本上，这个示例不需要任何接线。我们将使用 512 字节的内部 EEPROM。以下是一些读取 EEPROM 所有字节并将其打印到计算机串行监视器的代码：
 
-[PRE0]
+```cpp
+#include <EEPROM.h>
 
-这段代码属于公共领域，并作为EEPROM库的示例提供。你可以在Arduino IDE的**文件**菜单下的**示例**文件夹中找到它，在**示例** | **EEPROM**文件夹中。
+// start reading from the first byte (address 0) of the EEPROM
+int address = 0;
+byte value;
 
-首先，我们包含库本身。然后我们定义一个用于存储当前读取地址的变量。我们将其初始化为0，即内存寄存器的开始。我们还定义了一个字节类型的变量。
+void setup()
+{
+  // initialize serial and wait for port to open:
+  Serial.begin(9600);
+}
+
+void loop()
+{
+  // read a byte from the current address of the EEPROM
+  value = EEPROM.read(address);
+
+  Serial.print(address);
+  Serial.print("\t");
+  Serial.print(value, DEC);
+  Serial.println();
+
+  // advance to the next address of the EEPROM
+  address = address + 1;
+
+  // there are only 512 bytes of EEPROM, from 0 to 511, so if we're
+  // on address 512, wrap around to address 0
+  if (address == 512)
+    address = 0;
+
+  delay(500);
+}
+```
+
+这段代码属于公共领域，并作为 EEPROM 库的示例提供。你可以在 Arduino IDE 的**文件**菜单下的**示例**文件夹中找到它，在**示例** | **EEPROM**文件夹中。
+
+首先，我们包含库本身。然后我们定义一个用于存储当前读取地址的变量。我们将其初始化为 0，即内存寄存器的开始。我们还定义了一个字节类型的变量。
 
 在`setup()`函数中，我们初始化串行通信。在`loop()`中，我们读取当前地址的字节并将其存储在变量`value`中。然后我们将结果打印到串行端口。注意第二个`Serial.print()`语句中的`\t`值。这代表制表符（就像电脑键盘上的*Tab*键）。这将在打印的当前地址和值本身之间写入制表符，以便使内容更易读。
 
-我们前进到下一个地址。我们检查地址是否等于512，如果是，我们将地址计数器重置为0，依此类推。
+我们前进到下一个地址。我们检查地址是否等于 512，如果是，我们将地址计数器重置为 0，依此类推。
 
 我们添加了一个小的延迟。我们可以使用`EEPROM.write(addr, val);`以相同的方式写入字节，其中`addr`是你想写入值`val`的地址。
 
-小心，这些都是字节（8比特=256个可能值）。在内部EEPROM上读写操作相当简单，所以让我们看看通过I2C连接的外部EEPROM会怎样。
+小心，这些都是字节（8 比特=256 个可能值）。在内部 EEPROM 上读写操作相当简单，所以让我们看看通过 I2C 连接的外部 EEPROM 会怎样。
 
-## 外部EEPROM布线
+## 外部 EEPROM 布线
 
-电子市场上有很多廉价的EEPROM组件。我们将使用经典的24LC256，这是一个实现I2C读写操作并提供256千比特（32千字节）内存空间的EEPROM。
+电子市场上有很多廉价的 EEPROM 组件。我们将使用经典的 24LC256，这是一个实现 I2C 读写操作并提供 256 千比特（32 千字节）内存空间的 EEPROM。
 
-你可以在Sparkfun找到它：[https://www.sparkfun.com/products/525](https://www.sparkfun.com/products/525)。以下是使用I2C布线其更大的兄弟24LC1025（1024k字节）的方法：
+你可以在 Sparkfun 找到它：[`www.sparkfun.com/products/525`](https://www.sparkfun.com/products/525)。以下是使用 I2C 布线其更大的兄弟 24LC1025（1024k 字节）的方法：
 
-![外部EEPROM布线](img/7584_10_001.jpg)
+![外部 EEPROM 布线](img/7584_10_001.jpg)
 
-通过I2C通信连接到Arduino的24LC256 EEPROM
+通过 I2C 通信连接到 Arduino 的 24LC256 EEPROM
 
 对应的图如下所示：
 
-![外部EEPROM布线](img/7584_10_002.jpg)
+![外部 EEPROM 布线](img/7584_10_002.jpg)
 
-通过I2C通信连接到Arduino的24LC256 EEPROM
+通过 I2C 通信连接到 Arduino 的 24LC256 EEPROM
 
-让我们描述一下EEPROM。
+让我们描述一下 EEPROM。
 
-**A0**、**A1**和**A2**是芯片地址输入。**+V**和**0V**是**5V**和地。WP是写保护引脚。如果它连接到地，我们可以写入EEPROM。如果它连接到5V，则不能。
+**A0**、**A1**和**A2**是芯片地址输入。**+V**和**0V**是**5V**和地。WP 是写保护引脚。如果它连接到地，我们可以写入 EEPROM。如果它连接到 5V，则不能。
 
-SCL和SDA是参与I2C通信的两个引脚，并连接到**SDA** / **SCL**。**SDA**代表**串行** **数据** **线**，**SCL**代表**串行** **时钟** **线**。注意SDA/SCL引脚。以下取决于你的板：
+SCL 和 SDA 是参与 I2C 通信的两个引脚，并连接到**SDA** / **SCL**。**SDA**代表**串行** **数据** **线**，**SCL**代表**串行** **时钟** **线**。注意 SDA/SCL 引脚。以下取决于你的板：
 
-+   Arduino UNO R3之前的I2C引脚是A4（SDA）和A5（SCL）
++   Arduino UNO R3 之前的 I2C 引脚是 A4（SDA）和 A5（SCL）
 
-+   Mega2560，20号引脚（SDA）和21号引脚（SCL）
++   Mega2560，20 号引脚（SDA）和 21 号引脚（SCL）
 
-+   Leonardo，2号引脚（SDA）和3号引脚（SCL）
++   Leonardo，2 号引脚（SDA）和 3 号引脚（SCL）
 
-+   Due引脚，20号引脚（SDA）和21号引脚（SCL），还有一个SDA1和SCL1
++   Due 引脚，20 号引脚（SDA）和 21 号引脚（SCL），还有一个 SDA1 和 SCL1
 
-## 读写EEPROM
+## 读写 EEPROM
 
-我们可以用于I2C目的的底层库是`Wire`。你可以在Arduino核心库中直接找到它。这个库负责处理原始比特，但我们需要更仔细地查看它。
+我们可以用于 I2C 目的的底层库是`Wire`。你可以在 Arduino 核心库中直接找到它。这个库负责处理原始比特，但我们需要更仔细地查看它。
 
 `Wire`库为我们处理了很多事情。让我们检查文件夹`Chapter10/readWriteI2C`中的代码：
 
-[PRE1]
+```cpp
+#include <Wire.h>
 
-我们首先包含`Wire`库。然后我们定义2个函数：
+void eepromWrite(byte address, byte source_addr, byte data) {
+  Wire.beginTransmission(address);
+  Wire.write(source_addr);
+  Wire.write(data);
+  Wire.endTransmission();
+}
+
+byte eepromRead(int address, int source_addr) {
+  Wire.beginTransmission(address);
+  Wire.write(source_addr);
+  Wire.endTransmission();
+
+  Wire.requestFrom(address, 1);
+  if(Wire.available())
+    return Wire.read();
+  else
+    return 0xFF;
+}
+
+void setup() {
+  Wire.begin();
+  Serial.begin(9600);
+
+  for(int i = 0; i < 10; i++) {
+    eepromWrite(B01010000, i, 'a'+i);
+    delay(100);
+  }
+
+  Serial.println("Bytes written to external EEPROM !");
+}
+
+void loop() {
+  for(int i = 0; i < 10; i++) {
+    byte val = eepromRead(B01010000, i);
+    Serial.print(i);
+    Serial.print("\t");
+    Serial.print(val);
+    Serial.print("\n");
+    delay(1000);
+  }
+}
+```
+
+我们首先包含`Wire`库。然后我们定义 2 个函数：
 
 +   `eepromWrite()`
 
 +   `eepromRead()`
 
-这些函数使用`Wire`库将字节写入和读取到外部EEPROM。
+这些函数使用`Wire`库将字节写入和读取到外部 EEPROM。
 
 `Setup()` 函数实例化了 `Wire` 和 `Serial` 通信。然后使用 `for` 循环，我们将数据写入特定的地址。这些数据基本上是一个字符 'a' 加上一个数字。这种结构从 'a' 写到 'a' + 9，即 'j'。这是一个展示我们如何快速存储东西的例子，但当然我们可以写入更有意义的数据。
 
@@ -128,7 +205,7 @@ SCL和SDA是参与I2C通信的两个引脚，并连接到**SDA** / **SCL**。**S
 
 基本上，一个至少接收来自 4 颗嵌入特殊原子钟的卫星的接收器，通过计算这些信号之间的传播时间以及与自身的传播时间，可以精确地计算出其三维位置。这听起来很神奇；其实只是三角学的应用。
 
-我们不会深入探讨这个过程的细节；相反，我们关注来自 GPS 模块的数据解析。你可以在维基百科上获取更多信息：[http://en.wikipedia.org/wiki/Global_Positioning_System](http://en.wikipedia.org/wiki/Global_Positioning_System)。
+我们不会深入探讨这个过程的细节；相反，我们关注来自 GPS 模块的数据解析。你可以在维基百科上获取更多信息：[`en.wikipedia.org/wiki/Global_Positioning_System`](http://en.wikipedia.org/wiki/Global_Positioning_System)。
 
 ## 连接 Parallax GPS 接收器模块
 
@@ -140,7 +217,7 @@ Parallax GPS 接收器：小巧尺寸和精确
 
 它提供标准的原始 NMEA01823 字符串，甚至可以通过串行命令接口提供特定用户请求的数据。它可以跟踪 12 颗卫星，甚至 WAAS（仅在 USA 和 Hawaii 可用的系统，用于帮助 GPS 信号计算）。
 
-NMEA0183 是一种结合了硬件和逻辑规范，用于海洋电子设备（如声纳、风速计等）之间的通信，包括 GPS。关于此协议的详细描述可以在这里找到：[http://aprs.gids.nl/nmea/](http://aprs.gids.nl/nmea/)。
+NMEA0183 是一种结合了硬件和逻辑规范，用于海洋电子设备（如声纳、风速计等）之间的通信，包括 GPS。关于此协议的详细描述可以在这里找到：[`aprs.gids.nl/nmea/`](http://aprs.gids.nl/nmea/)。
 
 该模块提供当前时间、日期、纬度、经度、海拔、速度以及航向/航向，以及其他数据。
 
@@ -178,7 +255,7 @@ NMEA0183 是一种结合了硬件和逻辑规范，用于海洋电子设备（�
 
 在构建任何能够使用 GPS 数据的固件之前，我们必须更多地了解设备能够传输的内容。
 
-我们可以在以下位置查看 GPS 设备的数据表：[http://www.rcc.ryerson.ca/media/2008HCLParallaxGPSReceiverModuledatasheet.pdf](http://www.rcc.ryerson.ca/media/2008HCLParallaxGPSReceiverModuledatasheet.pdf)。
+我们可以在以下位置查看 GPS 设备的数据表：[`www.rcc.ryerson.ca/media/2008HCLParallaxGPSReceiverModuledatasheet.pdf`](http://www.rcc.ryerson.ca/media/2008HCLParallaxGPSReceiverModuledatasheet.pdf)。
 
 这里是可传输数据的一个示例：
 
@@ -214,7 +291,140 @@ NMEA0183 是一种结合了硬件和逻辑规范，用于海洋电子设备（�
 
 一旦我们知道发送了什么数据，我们就可以在我们的固件中编写一个解析器。以下是一个可能的固件示例。您可以在文件夹 `Chapter10/locateMe` 中找到它：
 
-[PRE2]
+```cpp
+int rxPin = 0;                    // RX PIN
+int byteGPS = -1;                 // Current read byte
+char line[300] = "";              // Buffer
+char commandGPR[7] = "$GPRMC";    // String related to messages
+
+int counter=0;
+int correctness=0;
+int lineCounter=0;
+int index[13];
+
+void setup() {
+
+  pinMode(rxPin, INPUT);
+  Serial.begin(4800);
+
+  // Clear buffer
+  for (int i=0;i<300;i++){       
+    line[i]=' ';
+  }   
+}
+
+void loop() {
+
+  byteGPS = Serial.read();         // Read a byte from the serial port
+
+  // Test if the port is empty
+  if (byteGPS == -1) {           
+    delay(100);
+  }
+
+  else {  // if it isn't empty
+
+    line[lineCounter] = byteGPS;   // put data read in the buffer
+    lineCounter++;
+
+    Serial.print(byteGPS);   // print data read to the serial monitor
+
+    // Test if the transmission is finished
+    // if it is finished, we begin to parse !
+    if (byteGPS==13){                    
+
+      counter=0;
+      correctness=0;
+
+      // Test if the received command starts by $GPR
+      // If it does, increase correctness counter
+      for (int i=1;i<7;i++){
+        if (line[i]==commandGPR[i-1]){
+          correctness++;
+        }
+      }
+
+      if(correctness==6){
+        // We are sure command is okay here.
+
+        //
+        for (int i=0;i<300;i++){
+
+          // store position of "," separators
+          if (line[i]==','){    
+            index[counter]=i;
+            counter++;
+          }
+
+          // store position of "*" separator meaning the last byte
+          if (line[i]=='*'){    // ... and the "*"
+            index[12]=i;
+            counter++;
+          }
+        }
+
+        // Write data to serial monitor on the computer
+        Serial.println("");
+        Serial.println("");
+        Serial.println("---------------");
+        for (int i=0;i<12;i++){
+          switch(i){
+          case 0 :
+            Serial.print("Time in UTC (HhMmSs): ");
+            break;
+          case 1 :
+            Serial.print("Status (A=OK,V=KO): ");
+            break;
+          case 2 :
+            Serial.print("Latitude: ");
+            break;
+          case 3 :
+            Serial.print("Direction (N/S): ");
+            break;
+          case 4 :
+            Serial.print("Longitude: ");
+            break;
+          case 5 :
+            Serial.print("Direction (E/W): ");
+            break;
+          case 6 :
+            Serial.print("Velocity in knots: ");
+            break;
+          case 7 :
+            Serial.print("Heading in degrees: ");
+            break;
+          case 8 :
+            Serial.print("Date UTC (DdMmAa): ");
+            break;
+          case 9 :
+            Serial.print("Magnetic degrees: ");
+            break;
+          case 10 :
+            Serial.print("(E/W): ");
+            break;
+          case 11 :
+            Serial.print("Mode: ");
+            break;
+          case 12 :
+            Serial.print("Checksum: ");
+            break;
+          }
+          for (int j=index[i];j<(index[i+1]-1);j++){
+            Serial.print(line[j+1]);
+          }
+          Serial.println("");
+        }
+        Serial.println("---------------");
+      }
+
+      // Reset the buffer
+      lineCounter=0;                    
+      for (int i=0;i<300;i++){
+        line[i]=' ';             
+      }                 
+    }   }
+}
+```
 
 让我们解释一下代码。首先，我定义了几个变量：
 
@@ -232,81 +442,81 @@ NMEA0183 是一种结合了硬件和逻辑规范，用于海洋电子设备（�
 
 +   `lineCounter` 是跟踪数据缓冲区位置的计数器
 
-+   `index` 存储GPS数据字符串中每个分隔符的位置（","）
++   `index` 存储 GPS 数据字符串中每个分隔符的位置（","）
 
-在 `setup()` 函数中，我们首先将数字引脚0定义为输入，然后以串行接口所需的4800波特率开始串行通信（请记住始终检查您的数据表）。然后，我们通过填充空格字符来清除我们的 `line` 数组缓冲区。
+在 `setup()` 函数中，我们首先将数字引脚 0 定义为输入，然后以串行接口所需的 4800 波特率开始串行通信（请记住始终检查您的数据表）。然后，我们通过填充空格字符来清除我们的 `line` 数组缓冲区。
 
-在 `loop()` 函数中，我们首先从串行输入读取字节，数字引脚为0。如果端口不为空，我们进入由 `else` 块定义的 `if` 条件测试的第二部分。如果它是空的，我们只需等待100毫秒然后再次尝试读取。
+在 `loop()` 函数中，我们首先从串行输入读取字节，数字引脚为 0。如果端口不为空，我们进入由 `else` 块定义的 `if` 条件测试的第二部分。如果它是空的，我们只需等待 100 毫秒然后再次尝试读取。
 
 首先，解析开始于将读取的数据放入行缓冲区中数组的特定索引：`lineCounter`。然后，我们增加后者以便存储接收到的数据。
 
-我们然后将读取的数据作为原始行打印到USB端口。就在这个时候，串行监视器可以接收并显示我们之前引用的示例中的原始数据行。
+我们然后将读取的数据作为原始行打印到 USB 端口。就在这个时候，串行监视器可以接收并显示我们之前引用的示例中的原始数据行。
 
 然后，我们测试数据本身，将其与 13 进行比较。如果它等于 13，这意味着数据通信已完成，我们可以开始解析。
 
-我们重置 `counter` 和 `correctness` 变量，并检查缓冲区中的前6个字符是否等于 `$GPRMC`。对于每个匹配项，我们增加 `correctness` 变量。
+我们重置 `counter` 和 `correctness` 变量，并检查缓冲区中的前 6 个字符是否等于 `$GPRMC`。对于每个匹配项，我们增加 `correctness` 变量。
 
-这是一个经典的模式。实际上，如果所有测试都为真，那么最终 `correctness` 等于 `6`。然后我们只需检查 `correctness` 是否等于 `6`，以查看是否所有测试都为真，以及前6个字符是否等于 `$GPRMC`。
+这是一个经典的模式。实际上，如果所有测试都为真，那么最终 `correctness` 等于 `6`。然后我们只需检查 `correctness` 是否等于 `6`，以查看是否所有测试都为真，以及前 6 个字符是否等于 `$GPRMC`。
 
 如果是这样，我们可以确信我们有一个正确的 NMEA 原始序列类型 `$GPRMC`，然后我们可以开始实际解析数据的负载部分。
 
 首先，我们通过存储字符串中每个逗号分隔符的位置来分割我们的原始字符串。然后，我们用最后一个部分分隔符，即"*"字符，做同样的事情。在这个时候，我们能够区分哪个字符属于字符串的哪个部分，我的意思是，哪个部分属于原始消息。
 
-这是一个在原始消息的每个值之间的循环，我们使用switch/case结构测试每个值，以便显示介绍GPS数据消息每个值的正确句子。
+这是一个在原始消息的每个值之间的循环，我们使用 switch/case 结构测试每个值，以便显示介绍 GPS 数据消息每个值的正确句子。
 
 最后，最棘手的部分是最后的`for()`循环。我们并不像通常那样开始。实际上，我们在循环中使用数组`index`在特定位置`i`来开始`j`索引。
 
 这里是一个显示原始消息周围索引的小型电路图：
 
-![解析GPS位置数据](img/7584_10_006.jpg)
+![解析 GPS 位置数据](img/7584_10_006.jpg)
 
 根据每个分隔符逐步解析消息的每一部分
 
-我们根据每个分隔符的位置逐步增加，并显示每个值。这是使用GPS模块解析和使用位置数据的一种方法。这些数据可以根据你的目的以多种方式使用。我喜欢数据可视化，我为学生制作了小项目，使用GPS模块每隔30秒在街上抓取位置并写入EEPROM。然后，我使用这些数据制作了一些图表。我最喜欢的一个是以下这个：
+我们根据每个分隔符的位置逐步增加，并显示每个值。这是使用 GPS 模块解析和使用位置数据的一种方法。这些数据可以根据你的目的以多种方式使用。我喜欢数据可视化，我为学生制作了小项目，使用 GPS 模块每隔 30 秒在街上抓取位置并写入 EEPROM。然后，我使用这些数据制作了一些图表。我最喜欢的一个是以下这个：
 
-![解析GPS位置数据](img/7584_10_007.jpg)
+![解析 GPS 位置数据](img/7584_10_007.jpg)
 
-使用由GPS Arduino模块提供的数据集设计的Processing数据可视化
+使用由 GPS Arduino 模块提供的数据集设计的 Processing 数据可视化
 
-每一行都是一个时间戳。行的长度代表我在Arduino GPS模块两次测量之间花费的时间。行越长，我在这个旅行步骤上花费的时间就越长。
+每一行都是一个时间戳。行的长度代表我在 Arduino GPS 模块两次测量之间花费的时间。行越长，我在这个旅行步骤上花费的时间就越长。
 
-你的问题可能是：你在街上行走时是如何给你的Arduino + GPS模块供电的？
+你的问题可能是：你在街上行走时是如何给你的 Arduino + GPS 模块供电的？
 
-现在，让我们看看如何使用电池使Arduino实现自主性。
+现在，让我们看看如何使用电池使 Arduino 实现自主性。
 
 # Arduino、电池和自主性
 
-Arduino板可以通过两种方式供电：
+Arduino 板可以通过两种方式供电：
 
-+   来自电脑的USB线
++   来自电脑的 USB 线
 
 +   外部电源
 
-从本节开始，我们就已经使用USB为Arduino供电。这是一种相当好的开始方式（甚至可以做出一个很棒的项目）。这很简单，适用于许多用途。
+从本节开始，我们就已经使用 USB 为 Arduino 供电。这是一种相当好的开始方式（甚至可以做出一个很棒的项目）。这很简单，适用于许多用途。
 
-当我们需要更多的自主性和移动性时，我们也可以使用外部电源为Arduino设备供电。
+当我们需要更多的自主性和移动性时，我们也可以使用外部电源为 Arduino 设备供电。
 
-在任何情况下，我们都要记住，我们的Arduino及其连接的电路都需要供电。通常，Arduino的功耗不超过50mA。添加一些LED，你会发现功耗增加。
+在任何情况下，我们都要记住，我们的 Arduino 及其连接的电路都需要供电。通常，Arduino 的功耗不超过 50mA。添加一些 LED，你会发现功耗增加。
 
 让我们检查一些实际应用的案例。
 
-## 经典的USB供电案例
+## 经典的 USB 供电案例
 
-我们为什么和什么时候会使用USB电源？
+我们为什么和什么时候会使用 USB 电源？
 
-显然，如果我们需要我们的电脑连接到Arduino进行数据通信，我们可以自然地通过USB为Arduino供电。
+显然，如果我们需要我们的电脑连接到 Arduino 进行数据通信，我们可以自然地通过 USB 为 Arduino 供电。
 
-这就是使用USB电源的主要原因。
+这就是使用 USB 电源的主要原因。
 
-也有一些情况，我们无法拥有很多电源插座。有时，在安装设计项目中存在许多限制，我们没有很多电源插座。这也是使用USB供电的一个例子。
+也有一些情况，我们无法拥有很多电源插座。有时，在安装设计项目中存在许多限制，我们没有很多电源插座。这也是使用 USB 供电的一个例子。
 
-基本上，在使用USB端口供电之前，首先要考虑的是我们电路的全球功耗。
+基本上，在使用 USB 端口供电之前，首先要考虑的是我们电路的全球功耗。
 
-的确，正如我们已经学到的，USB端口可以提供的最大电流大约是500mA。确保不要超过这个值。超过这个功耗限制，事情变得完全不可预测，有些电脑甚至可能重新启动，而有些电脑可能禁用所有USB端口。我们必须记住这一点。
+的确，正如我们已经学到的，USB 端口可以提供的最大电流大约是 500mA。确保不要超过这个值。超过这个功耗限制，事情变得完全不可预测，有些电脑甚至可能重新启动，而有些电脑可能禁用所有 USB 端口。我们必须记住这一点。
 
 ## 外部电源供电
 
-有两种不同的方式为基于Arduino的系统供电。我们可以将两种主要的电源供应方式表述为：
+有两种不同的方式为基于 Arduino 的系统供电。我们可以将两种主要的电源供应方式表述为：
 
 +   电池
 
@@ -314,21 +524,21 @@ Arduino板可以通过两种方式供电：
 
 ### 使用电池供电
 
-如果我们记得正确的话，Arduino Uno和Mega等实例可以在6 V到20 V的外部电源下运行。为了稳定使用，建议的范围是7 V到12 V。9 V是一个理想的电压。
+如果我们记得正确的话，Arduino Uno 和 Mega 等实例可以在 6 V 到 20 V 的外部电源下运行。为了稳定使用，建议的范围是 7 V 到 12 V。9 V 是一个理想的电压。
 
-为了将板设置为外部电源供电，你必须注意电源跳线。我们必须将其放在外部电源侧，称为EXT。这种设置适用于Arduino Diecimilla和较老的Arduino板：
+为了将板设置为外部电源供电，你必须注意电源跳线。我们必须将其放在外部电源侧，称为 EXT。这种设置适用于 Arduino Diecimilla 和较老的 Arduino 板：
 
 ![使用电池供电](img/7584_10_008.jpg)
 
-将电源跳线放在EXT侧，意味着设置为外部电源
+将电源跳线放在 EXT 侧，意味着设置为外部电源
 
-让我们用9 V电池检查基本接线：
+让我们用 9 V 电池检查基本接线：
 
 ![使用电池供电](img/7584_10_009.jpg)
 
-一个连接到Arduino板UNO R3的9V电池
+一个连接到 Arduino 板 UNO R3 的 9V 电池
 
-这种简单的接线提供了一种为Arduino板供电的方法。如果你将其他电路连接到Arduino上，通过Arduino的电池将为它们供电。
+这种简单的接线提供了一种为 Arduino 板供电的方法。如果你将其他电路连接到 Arduino 上，通过 Arduino 的电池将为它们供电。
 
 我们还可以使用其他类型的电池。纽扣电池是一种在外部供电时节省空间的好方法：
 
@@ -336,55 +546,55 @@ Arduino板可以通过两种方式供电：
 
 一个经典的纽扣电池
 
-有许多类型的纽扣电池座，可以在我们的电路中使用这种电池。通常，纽扣电池提供3.6 V，110 mAh。如果这不能为Arduino Uno供电，它可以轻松地为工作在3.3 V电压下的Arduino Pro Mini供电：
+有许多类型的纽扣电池座，可以在我们的电路中使用这种电池。通常，纽扣电池提供 3.6 V，110 mAh。如果这不能为 Arduino Uno 供电，它可以轻松地为工作在 3.3 V 电压下的 Arduino Pro Mini 供电：
 
 ![使用电池供电](img/7584_10_011.jpg)
 
 Arduino Pro Mono
 
-Arduino Pro Mini板非常有趣，因为它可以嵌入许多需要离散和有时隐藏在墙内的电路中，用于数字艺术安装，或者当它们作为移动工具使用时，可以放入可以放入口袋的小塑料盒中。
+Arduino Pro Mini 板非常有趣，因为它可以嵌入许多需要离散和有时隐藏在墙内的电路中，用于数字艺术安装，或者当它们作为移动工具使用时，可以放入可以放入口袋的小塑料盒中。
 
 我们还可以使用聚合物锂离子电池。我曾在几个自主设备项目中使用过它们。
 
 然而，我们可能会有一些需要更多电力的项目。
 
-## Arduino电源适配器
+## Arduino 电源适配器
 
-对于需要更多电力的项目，我们必须使用外部电源。Arduino的设置与使用电池时相同。现成的Arduino适配器必须满足一些要求：
+对于需要更多电力的项目，我们必须使用外部电源。Arduino 的设置与使用电池时相同。现成的 Arduino 适配器必须满足一些要求：
 
 +   直流适配器（这里没有交流适配器！）
 
-+   输出电压为9V至12V直流电
++   输出电压为 9V 至 12V 直流电
 
-+   至少能输出250mA的最低电流，但目标是500mA或更佳，最好是1A
++   至少能输出 250mA 的最低电流，但目标是 500mA 或更佳，最好是 1A
 
-+   必须有一个中心正极2.1mm电源插头
++   必须有一个中心正极 2.1mm 电源插头
 
-在插入Arduino之前，你必须在适配器上寻找以下图案。
+在插入 Arduino 之前，你必须在适配器上寻找以下图案。
 
-首先，连接器的中心必须是正极部分；查看以下图解。你应该能看到在Arduino兼容适配器上：
+首先，连接器的中心必须是正极部分；查看以下图解。你应该能看到在 Arduino 兼容适配器上：
 
-![Arduino电源适配器](img/7584_10_012.jpg)
+![Arduino 电源适配器](img/7584_10_012.jpg)
 
 表示中心正极插头的符号
 
-然后，电压和电流特性。这必须显示类似以下内容：输出：12 VDC 1 A。这是一个例子；12 VDC和5 A也是可以的。别忘了电流只由电路中的内容驱动。输出更高电流的电源适配器不会损害你的电路，因为电路只会吸取它需要的。
+然后，电压和电流特性。这必须显示类似以下内容：输出：12 VDC 1 A。这是一个例子；12 VDC 和 5 A 也是可以的。别忘了电流只由电路中的内容驱动。输出更高电流的电源适配器不会损害你的电路，因为电路只会吸取它需要的。
 
-市面上有很多适配器可供使用，并且可以与我们的Arduino板一起使用。
+市面上有很多适配器可供使用，并且可以与我们的 Arduino 板一起使用。
 
 ## 如何计算电流消耗
 
 为了计算电路中的电流，你必须使用本书第一章中描述的欧姆定律。
 
-当你检查一个组件的数据表，比如LED，你可以看到通过它的电流。
+当你检查一个组件的数据表，比如 LED，你可以看到通过它的电流。
 
-让我们用这份数据表检查RGB共阴极LED：[https://www.sparkfun.com/datasheets/Components/YSL-R596CR3G4B5C-C10.pdf](https://www.sparkfun.com/datasheets/Components/YSL-R596CR3G4B5C-C10.pdf)
+让我们用这份数据表检查 RGB 共阴极 LED：[`www.sparkfun.com/datasheets/Components/YSL-R596CR3G4B5C-C10.pdf`](https://www.sparkfun.com/datasheets/Components/YSL-R596CR3G4B5C-C10.pdf)
 
-我们可以看到正向电流为20 mA，峰值正向电流为30 mA。如果我们有五个这样的LED以最大亮度开启（即红色、蓝色和绿色点亮），我们就有：5 x (20 + 20 + 20) = 300 mA的正常使用电流，甚至峰值也会消耗5 x (30 + 30 + 30) = 450 mA。
+我们可以看到正向电流为 20 mA，峰值正向电流为 30 mA。如果我们有五个这样的 LED 以最大亮度开启（即红色、蓝色和绿色点亮），我们就有：5 x (20 + 20 + 20) = 300 mA 的正常使用电流，甚至峰值也会消耗 5 x (30 + 30 + 30) = 450 mA。
 
-在这种情况下，所有LED都同时完全开启。
+在这种情况下，所有 LED 都同时完全开启。
 
-你必须已经理解了我们已经在电源循环中使用的策略，即依次快速开启每个LED。这提供了一种减少功耗的方法，同时也允许一些项目使用大量LED而不需要外部电源适配器。
+你必须已经理解了我们已经在电源循环中使用的策略，即依次快速开启每个 LED。这提供了一种减少功耗的方法，同时也允许一些项目使用大量 LED 而不需要外部电源适配器。
 
 我不会在这里描述每种情况的计算，但你必须参考电学规则来精确计算消耗。
 
@@ -392,59 +602,59 @@ Arduino Pro Mini板非常有趣，因为它可以嵌入许多需要离散和有�
 
 我建议你做一些计算以确保：
 
-+   不要超过Arduino每引脚的容量
++   不要超过 Arduino 每引脚的容量
 
-+   不要超过USB 450mA的限制，以防你使用USB电源
++   不要超过 USB 450mA 的限制，以防你使用 USB 电源
 
 然后，之后，同时使用电压表和安培表进行布线和测量。
 
-最后，大多数Arduino板的一个经典参考可以在本页找到：[http://playground.arduino.cc/Main/ArduinoPinCurrentLimitations](http://playground.arduino.cc/Main/ArduinoPinCurrentLimitations)。
+最后，大多数 Arduino 板的一个经典参考可以在本页找到：[`playground.arduino.cc/Main/ArduinoPinCurrentLimitations`](http://playground.arduino.cc/Main/ArduinoPinCurrentLimitations)。
 
-我们可以找到Arduino每个部分的电流消耗限制。
+我们可以找到 Arduino 每个部分的电流消耗限制。
 
-# 在gLCD上绘图
+# 在 gLCD 上绘图
 
-绘图总是很有趣。与LED矩阵相比，绘制和处理LCD显示也很有趣，因为我们有可以轻松开关的高密度点设备。
+绘图总是很有趣。与 LED 矩阵相比，绘制和处理 LCD 显示也很有趣，因为我们有可以轻松开关的高密度点设备。
 
-LCD存在许多类型。两种主要类型是字符和图形类型。
+LCD 存在许多类型。两种主要类型是字符和图形类型。
 
-我们在这里讨论的是图形类型，特别是基于在许多常规gLCD设备中使用的KS0108图形控制器。
+我们在这里讨论的是图形类型，特别是基于在许多常规 gLCD 设备中使用的 KS0108 图形控制器。
 
-我们将使用一个在Google上可用的优秀库。它包含Michael Margolis和Bill Perry的代码，命名为`glcd-arduino`。此库根据GNU Lesser GPL许可。
+我们将使用一个在 Google 上可用的优秀库。它包含 Michael Margolis 和 Bill Perry 的代码，命名为`glcd-arduino`。此库根据 GNU Lesser GPL 许可。
 
-让我们在这里下载它：[http://code.google.com/p/glcd-arduino/downloads/list](http://code.google.com/p/glcd-arduino/downloads/list)。下载最新版本。
+让我们在这里下载它：[`code.google.com/p/glcd-arduino/downloads/list`](http://code.google.com/p/glcd-arduino/downloads/list)。下载最新版本。
 
-解压它，将其放在所有库所在的目录中，然后重新启动或启动你的Arduino IDE。
+解压它，将其放在所有库所在的目录中，然后重新启动或启动你的 Arduino IDE。
 
-你现在应该看到很多与gLCD库相关的示例。
+你现在应该看到很多与 gLCD 库相关的示例。
 
-我们不会检查这个库提供的所有优秀功能和功能，但您可以在Arduino网站上查看这个页面：[http://playground.arduino.cc/Code/GLCDks0108](http://playground.arduino.cc/Code/GLCDks0108)。
+我们不会检查这个库提供的所有优秀功能和功能，但您可以在 Arduino 网站上查看这个页面：[`playground.arduino.cc/Code/GLCDks0108`](http://playground.arduino.cc/Code/GLCDks0108)。
 
 ## 连接设备
 
-我们将检查基于KS0108的gLCD类型面板B的连接：
+我们将检查基于 KS0108 的 gLCD 类型面板 B 的连接：
 
 ![连接设备](img/7584_10_013.jpg)
 
-将许多线连接到Arduino和电位器以调整LCD对比度
+将许多线连接到 Arduino 和电位器以调整 LCD 对比度
 
 对应的电气图如下：
 
 ![连接设备](img/7584_10_014.jpg)
 
-基于KS0108的gLCD类型面板B连接到Arduino Uno R3
+基于 KS0108 的 gLCD 类型面板 B 连接到 Arduino Uno R3
 
-这有很多线。当然，我们可以乘以东西。我们还可以使用Arduino MEGA并继续使用其他数字引脚用于其他目的，但这不是重点。让我们检查这个强大库的一些功能。
+这有很多线。当然，我们可以乘以东西。我们还可以使用 Arduino MEGA 并继续使用其他数字引脚用于其他目的，但这不是重点。让我们检查这个强大库的一些功能。
 
 ## 演示库
 
 查看名为`GLCDdemo`的示例。它展示了库中几乎所有的功能。
 
-库中提供了非常好的PDF文档。它解释了每个可用的方法。您可以在`library`文件夹中的`doc`子文件夹中找到它：
+库中提供了非常好的 PDF 文档。它解释了每个可用的方法。您可以在`library`文件夹中的`doc`子文件夹中找到它：
 
 ![演示库](img/7584_10_015.jpg)
 
-gLCD-Arduino文档显示屏幕坐标系系统
+gLCD-Arduino 文档显示屏幕坐标系系统
 
 首先，我们必须包含`glcd.h`以使用库。然后，我们必须包含一些其他头文件，在这个例子中，字体和位图，以便使用字体排版方法和位图对象。
 
@@ -452,17 +662,17 @@ gLCD-Arduino文档显示屏幕坐标系系统
 
 我建议将学习方法分为三个部分：
 
-+   全局GLCD方法
++   全局 GLCD 方法
 
 +   绘图方法
 
 +   文本方法
 
-### 全局GLCD方法
+### 全局 GLCD 方法
 
-第一项是`init()`函数。这个函数初始化库，必须在调用任何其他gLCD方法之前调用。
+第一项是`init()`函数。这个函数初始化库，必须在调用任何其他 gLCD 方法之前调用。
 
-`SetDisplayMode()` 函数很有用，因为它设置LCD的使用为正常（在白色背景上用黑色书写）或反转。白色只是意味着不是黑色。真正的颜色当然取决于背光颜色。
+`SetDisplayMode()` 函数很有用，因为它设置 LCD 的使用为正常（在白色背景上用黑色书写）或反转。白色只是意味着不是黑色。真正的颜色当然取决于背光颜色。
 
 `ClearScreen()` 函数擦除屏幕，在正常模式下填充白色背景，或在反转模式下填充黑色。
 
@@ -517,7 +727,7 @@ gLCD-Arduino文档显示屏幕坐标系系统
 | `CursorTo()` | 将光标移动到特定的列和行。列的计算使用最宽字符的宽度。 |
 | `CursorToXY()` | 将光标移动到特定的像素坐标。 |
 
-有一个重要的特性需要了解，那就是Arduino的打印函数可以与gLCD库一起使用；例如，`GLCD.print()` 可以正常工作。官方网站上还有其他一些函数可供使用。
+有一个重要的特性需要了解，那就是 Arduino 的打印函数可以与 gLCD 库一起使用；例如，`GLCD.print()` 可以正常工作。官方网站上还有其他一些函数可供使用。
 
 最后，我建议您测试名为 `life` 的示例。这是基于约翰·康威的生命游戏。这是一个很好的例子，展示了您可以做什么，并实现一些不错且有用的逻辑。
 
@@ -565,16 +775,16 @@ Gameduino 插入 Arduino 板
 
 基本概念是将它插入 Arduino，并使用我们的 Arduino 固件来控制它，库负责处理 Arduino 和 Gameduino 之间的所有 SPI 通信。
 
-我们不能在这里描述所有示例，但我希望您能找到正确的方向。首先，官方网站：[http://excamera.com/sphinx/gameduino/](http://excamera.com/sphinx/gameduino/)。
+我们不能在这里描述所有示例，但我希望您能找到正确的方向。首先，官方网站：[`excamera.com/sphinx/gameduino/`](http://excamera.com/sphinx/gameduino/)。
 
-您可以在以下位置找到库：[http://excamera.com/files/gameduino/synth/sketches/Gameduino.zip](http://excamera.com/files/gameduino/synth/sketches/Gameduino.zip)。
+您可以在以下位置找到库：[`excamera.com/files/gameduino/synth/sketches/Gameduino.zip`](http://excamera.com/files/gameduino/synth/sketches/Gameduino.zip)。
 
-您还可以在此处查看和使用快速参考海报：[http://excamera.com/files/gameduino/synth/doc/gen/poster.pdf](http://excamera.com/files/gameduino/synth/doc/gen/poster.pdf)。
+您还可以在此处查看和使用快速参考海报：[`excamera.com/files/gameduino/synth/doc/gen/poster.pdf`](http://excamera.com/files/gameduino/synth/doc/gen/poster.pdf)。
 
-为了您的信息，我目前正在设计一个基于这个扩展板的数字艺术装置。我打算在我的个人网站上[http://julienbayle.net](http://julienbayle.net)描述它，并且还会提供整个电路图。
+为了您的信息，我目前正在设计一个基于这个扩展板的数字艺术装置。我打算在我的个人网站上[`julienbayle.net`](http://julienbayle.net)描述它，并且还会提供整个电路图。
 
 # 摘要
 
-在本章的第一个、高级章节中，我们了解了一些关于如何处理新具体概念的方法，例如在非易失性存储器（内部和外部EEPROM）上存储数据，使用GPS模块接收器，在图形LCD上绘图，以及使用一个名为Gameduino的Arduino Shield来添加新功能和增强我们的Arduino。这使得它能够显示VGA信号，并且还能产生音频。我们还学习了Arduino作为一个非常便携和移动设备的用途，从电源供应的角度来看是自给自足的。
+在本章的第一个、高级章节中，我们了解了一些关于如何处理新具体概念的方法，例如在非易失性存储器（内部和外部 EEPROM）上存储数据，使用 GPS 模块接收器，在图形 LCD 上绘图，以及使用一个名为 Gameduino 的 Arduino Shield 来添加新功能和增强我们的 Arduino。这使得它能够显示 VGA 信号，并且还能产生音频。我们还学习了 Arduino 作为一个非常便携和移动设备的用途，从电源供应的角度来看是自给自足的。
 
-在下一章中，我们将讨论网络概念。创建和使用网络是当今常见的通信方式。在下一章中，我们将描述使用Arduino项目进行有线和无线网络的使用。
+在下一章中，我们将讨论网络概念。创建和使用网络是当今常见的通信方式。在下一章中，我们将描述使用 Arduino 项目进行有线和无线网络的使用。

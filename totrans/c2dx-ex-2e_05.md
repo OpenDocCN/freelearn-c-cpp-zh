@@ -1,6 +1,6 @@
-# 第5章. 在线上 – 火箭穿越
+# 第五章. 在线上 – 火箭穿越
 
-*在我们的第三个游戏，火箭穿越中，我们将使用粒子效果来增加一些趣味性，并且我们将使用DrawNode在屏幕上绘制自己的OpenGL图形。并且请注意，这个游戏使用了相当多的向量数学，但幸运的是，Cocos2d-x附带了一套甜美的辅助方法来处理这些问题。*
+*在我们的第三个游戏，火箭穿越中，我们将使用粒子效果来增加一些趣味性，并且我们将使用 DrawNode 在屏幕上绘制自己的 OpenGL 图形。并且请注意，这个游戏使用了相当多的向量数学，但幸运的是，Cocos2d-x 附带了一套甜美的辅助方法来处理这些问题。*
 
 你将学习：
 
@@ -8,7 +8,7 @@
 
 +   如何使用`DrawNode`绘制原语（线条、圆圈等）
 
-+   如何使用Cocos2d-x中包含的向量数学辅助方法
++   如何使用 Cocos2d-x 中包含的向量数学辅助方法
 
 # 游戏 – 火箭穿越
 
@@ -16,7 +16,7 @@
 
 ## 游戏设置
 
-这是一个通用游戏，专为普通iPad设计，然后放大和缩小以匹配其他设备的屏幕分辨率。它设置为在纵向模式下播放，并且不支持多点触控。
+这是一个通用游戏，专为普通 iPad 设计，然后放大和缩小以匹配其他设备的屏幕分辨率。它设置为在纵向模式下播放，并且不支持多点触控。
 
 ## 先玩，后工作
 
@@ -40,7 +40,25 @@
 
 所以如果你在 Xcode 中打开了 **Start Project** 选项，让我们回顾一下 `AppDelegate.cpp` 中这个游戏的屏幕设置。在 `applicationDidFinishLaunching` 方法内部，你应该看到以下内容：
 
-[PRE0]
+```cpp
+auto designSize = Size(1536, 2048);
+
+glview->setDesignResolutionSize(designSize.width, designSize.height, ResolutionPolicy::EXACT_FIT);
+
+std::vector<std::string> searchPaths;
+if (screenSize.width > 768) {
+  searchPaths.push_back("ipadhd");
+  director->setContentScaleFactor(1536/designSize.width);
+} else if (screenSize.width > 320) {
+  searchPaths.push_back("ipad");
+  director->setContentScaleFactor(768/designSize.width);
+} else {
+  searchPaths.push_back("iphone");
+  director->setContentScaleFactor(380/designSize.width);
+}
+auto fileUtils = FileUtils::getInstance();
+fileUtils->setSearchPaths(searchPaths);
+```
 
 因此，我们基本上是以与上一款游戏相同的方式开始的。这款游戏中的大多数精灵都是圆形的，你可能会在不同的屏幕上注意到一些扭曲；你应该测试相同的配置，但使用不同的 `ResolutionPolicies`，例如 `SHOW_ALL`。
 
@@ -48,7 +66,7 @@
 
 粒子或粒子系统是向你的应用程序添加特殊效果的一种方式。一般来说，这是通过使用大量的小纹理精灵（粒子）来实现的，这些粒子被动画化并通过一系列变换运行。你可以使用这些系统来创建烟雾、爆炸、火花、闪电、雨、雪以及其他类似效果。
 
-正如我在 [第 1 章](part0016_split_000.html#page "第 1 章。安装 Cocos2d-x") 中提到的，*安装 Cocos2d-x*，你应该认真考虑为自己获取一个程序来帮助你设计粒子系统。在这款游戏中，粒子是在 ParticleDesigner 中创建的。
+正如我在 第一章 中提到的，*安装 Cocos2d-x*，你应该认真考虑为自己获取一个程序来帮助你设计粒子系统。在这款游戏中，粒子是在 ParticleDesigner 中创建的。
 
 是时候将它们添加到我们的游戏中了！
 
@@ -62,7 +80,36 @@
 
 1.  前往 `GameLayer.cpp` 中的那个方法，并添加以下代码：
 
-    [PRE1]
+    ```cpp
+    _jet = ParticleSystemQuad::create("jet.plist");
+    _jet->setSourcePosition(Vec2(-_rocket->getRadius() * 0.8f,0));
+    _jet->setAngle(180);
+    _jet->stopSystem();
+    this->addChild(_jet, kBackground);
+
+    _boom = ParticleSystemQuad::create("boom.plist");
+    _boom->stopSystem();
+    this->addChild(_boom, kForeground);
+
+    _comet = ParticleSystemQuad::create("comet.plist");
+    _comet->stopSystem();
+    _comet->setPosition(Vec2(0, _screenSize.height * 0.6f));
+    _comet->setVisible(false);
+    this->addChild(_comet, kForeground);
+
+    _pickup = ParticleSystemQuad::create("plink.plist");
+    _pickup->stopSystem();
+    this->addChild(_pickup, kMiddleground);
+
+    _warp = ParticleSystemQuad::create("warp.plist");
+    _warp->setPosition(_rocket->getPosition());
+    this->addChild(_warp, kBackground);
+
+    _star = ParticleSystemQuad::create("star.plist");
+    _star->stopSystem();
+    _star->setVisible(false);
+    this->addChild(_star, kBackground, kSpriteStar);
+    ```
 
 ## *刚才发生了什么？*
 
@@ -92,17 +139,19 @@
 
 ### 注意
 
-Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。如果你去`test`文件夹中的`tests/cpp-tests/Classes/ParticleTest`，你会看到这些系统被使用的示例。实际的粒子数据文件位于：`tests/cpp-tests/Resources/Particles`。
+Cocos2d-x 附带了一些常见的粒子系统，你可以根据需要修改。如果你去`test`文件夹中的`tests/cpp-tests/Classes/ParticleTest`，你会看到这些系统被使用的示例。实际的粒子数据文件位于：`tests/cpp-tests/Resources/Particles`。
 
 # 创建网格
 
 现在我们花些时间来回顾一下游戏中的网格逻辑。这个网格是在`GameLayer.cpp`中的`createStarGrid`方法中创建的。这个方法所做的就是确定屏幕上所有可以放置`_star`粒子系统的可能位置。
 
-我们使用一个名为`_grid`的C++向量列表来存储可用的位置：
+我们使用一个名为`_grid`的 C++向量列表来存储可用的位置：
 
-[PRE2]
+```cpp
+std::vector<Point> _grid;
+```
 
-`createStarGrid`方法将屏幕划分为多个32 x 32像素的单元格，忽略离屏幕边缘太近的区域（`gridFrame`）。然后我们检查每个单元格与存储在向量`_planets`中的星球精灵之间的距离。如果单元格离星球足够远，我们就将其作为`Point`存储在`_grid`向量中。
+`createStarGrid`方法将屏幕划分为多个 32 x 32 像素的单元格，忽略离屏幕边缘太近的区域（`gridFrame`）。然后我们检查每个单元格与存储在向量`_planets`中的星球精灵之间的距离。如果单元格离星球足够远，我们就将其作为`Point`存储在`_grid`向量中。
 
 在以下图中，你可以了解我们想要达到的结果。我们想要所有不与任何星球重叠的白色单元格。
 
@@ -110,15 +159,19 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 我们使用`Log`向控制台输出一条消息，说明我们最终有多少个单元格：
 
-[PRE3]
+```cpp
+CCLOG("POSSIBLE STARS: %i", _grid.size());
+```
 
 这个`vector`列表将在每次新游戏中进行洗牌，所以我们最终得到一个可能的星星位置随机序列：
 
-[PRE4]
+```cpp
+std::random_shuffle(_grid.begin(), _grid.end());
+```
 
 这样我们就不会在星球上方或离它如此近的地方放置星星，以至于火箭无法到达它而不与星球相撞。
 
-# 在Cocos2d-x中绘制原语
+# 在 Cocos2d-x 中绘制原语
 
 游戏中的主要元素之一是`LineContainer.cpp`类。它是一个从`DrawNode`派生出来的类，允许我们在屏幕上绘制线条和圆圈。
 
@@ -132,11 +185,42 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  我们需要在这里更改的是`update`方法。所以这就是你需要在那个方法中输入的内容：
 
-    [PRE5]
+    ```cpp
+    _energy -= dt * _energyDecrement;
+    if (_energy < 0) _energy = 0;
+    clear();
+
+    switch (_lineType) {
+      case LINE_NONE:
+       break;
+      case LINE_TEMP:
+       drawLine(_tip, _pivot, Color4F(1.0, 1.0, 1.0, 1.0));
+       drawDot(_pivot, 5, Color4F(Color3B::WHITE));
+       break;
+
+      case LINE_DASHED:
+       drawDot(_pivot, 5, Color4F(Color3B::WHITE));
+       int segments = _lineLength / (_dash + _dashSpace);
+       float t = 0.0f;
+       float x_;
+       float y_;
+
+       for (int i = 0; i < segments + 1; i++) {
+          x_ = _pivot.x + t * (_tip.x - _pivot.x);
+          y_ = _pivot.y + t * (_tip.y - _pivot.y);
+          drawDot(Vec2(x_, y_), 5, Color4F(Color3B::WHITE));
+          t += (float) 1 / segments;
+       }
+       break;
+    }
+    ```
 
 1.  我们通过在同一个`LineContainer`节点上绘制能量条来结束我们的绘制调用：
 
-    [PRE6]
+    ```cpp
+    drawLine(Vec2(_energyLineX, _screenSize.height * 0.1f),  Vec2(_energyLineX, _screenSize.height * 0.9f), Color4F(0.0, 0.0, 0.0, 1.0)); 
+    drawLine(Vec2(_energyLineX, _screenSize.height * 0.1f),  Vec2(_energyLineX, _screenSize.height * 0.1f + _energy *  _energyHeight ), Color4F(1.0, 0.5, 0.0, 1.0));
+    ```
 
 ## *刚才发生了什么？*
 
@@ -148,11 +232,23 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 我们还在`pivot`点上画了一个点。
 
-[PRE7]
+```cpp
+drawLine(_tip, _pivot, Color4F(1.0, 1.0, 1.0, 1.0));
+drawDot(_pivot, 5, Color4F(Color3B::WHITE));
+```
 
 如果`_lineType`是`LINE_DASHED`，这意味着玩家已经从屏幕上移除了手指，并为`_rocket`设置了一个新的旋转支点。我们用所谓的贝塞尔线性公式画一条白点线，从`_rocket`当前位置和`pivot`点画一系列小圆：
 
-[PRE8]
+```cpp
+for (int i = 0; i < segments + 1; i++) {
+
+    x_ = _pivot.x + t * (_tip.x - _pivot.x);
+    y_ = _pivot.y + t * (_tip.y - _pivot.y);
+
+    drawDot(Vec2(x_, y_), 5, Color4F(Color3B::WHITE));
+    t += (float) 1 / segments;
+}
+```
 
 最后，对于能量条，我们在橙色条下方画一条黑色线。当`LineContainer`中的`_energy`值减少时，橙色条会调整大小。黑色线保持不变，它在这里是为了显示对比。你通过`draw`调用的顺序来叠加你的绘图；所以先画的东西会出现在后画的东西下面。
 
@@ -162,7 +258,13 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 再次强调，我已经放好了对你来说已经是老生常谈的逻辑部分。但请审查已经放在`Rocket.cpp`中的代码。我们有一个方法，每次新游戏开始时重置火箭（`reset`），还有一个方法通过改变其显示纹理来显示火箭的选中状态（`select(bool flag)`）：
 
-[PRE9]
+```cpp
+if (flag) {
+    this->setDisplayFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName("rocket_on.png"));
+} else {
+    this->setDisplayFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName("rocket.png"));
+}
+```
 
 这将显示火箭周围有光晕，或者不显示。
 
@@ -176,17 +278,65 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  在`Rocket.cpp`中的空`update`方法内，添加以下行：
 
-    [PRE10]
+    ```cpp
+    Point position = this->getPosition();
+    if (_rotationOrientation == ROTATE_NONE) {
+      position.x += _vector.x * dt;
+      position.y += _vector.y * dt;
+    } else {
+      float angle = _angularSpeed * dt;
+      Point rotatedPoint = position.rotateByAngle(_pivot, angle);
+      position.x = rotatedPoint.x;
+      position.y = rotatedPoint.y;
+      float rotatedAngle;
 
-1.  这里我们说的是，如果火箭没有旋转（`_rotationOrientation == ROTATE_NONE`），就根据其当前`_vector`移动它。如果它在旋转，则使用Cocos2d-x辅助函数`rotateByAngle`方法找到其绕支点旋转的下一个位置：![更新我们的火箭精灵的行动时间 – 更新我们的火箭精灵](img/00019.jpeg)
+      Point diff = position;
+      diff.subtract(_pivot);
+      Point clockwise = diff.getRPerp();
+
+      if (_rotationOrientation == ROTATE_COUNTER) {
+        rotatedAngle = atan2 (-1 * clockwise.y, -1 * clockwise.x);
+      } else {
+        rotatedAngle = atan2 (clockwise.y, clockwise.x);
+      }
+
+      _vector.x = _speed * cos (rotatedAngle);
+      _vector.y = _speed * sin (rotatedAngle);
+      this->setRotationFromVector();
+
+      if (this->getRotation() > 0) {
+        this->setRotation( fmodf(this->getRotation(), 360.0f) );
+      } else {
+        this->setRotation( fmodf(this->getRotation(), -360.0f) );
+      }
+    }
+    ```
+
+1.  这里我们说的是，如果火箭没有旋转（`_rotationOrientation == ROTATE_NONE`），就根据其当前`_vector`移动它。如果它在旋转，则使用 Cocos2d-x 辅助函数`rotateByAngle`方法找到其绕支点旋转的下一个位置：![更新我们的火箭精灵的行动时间 – 更新我们的火箭精灵](img/00019.jpeg)
 
 1.  该方法将围绕一个支点旋转任意点一定角度。因此，我们使用`Rocket`类的一个属性`_angularSpeed`来旋转火箭的更新位置（由玩家确定），我们稍后会看到它是如何计算的。
 
-1.  根据火箭是顺时针旋转还是逆时针旋转，我们调整其旋转，使火箭与火箭和其支点之间绘制的线条成90度角。然后我们根据这个旋转角度改变火箭的运动矢量，并将该角度的值包裹在0到360度之间。
+1.  根据火箭是顺时针旋转还是逆时针旋转，我们调整其旋转，使火箭与火箭和其支点之间绘制的线条成 90 度角。然后我们根据这个旋转角度改变火箭的运动矢量，并将该角度的值包裹在 0 到 360 度之间。
 
 1.  使用以下行完成 `update` 方法的编写：
 
-    [PRE11]
+    ```cpp
+    if (_targetRotation > this->getRotation() + 180) {
+      _targetRotation -= 360;
+    }
+    if (_targetRotation < this->getRotation() - 180) {
+      _targetRotation += 360;
+    }
+
+    this->setPosition(position);
+    _dr = _targetRotation - this->getRotation() ;
+    _ar = _dr * _rotationSpring;
+    _vr += _ar ;
+    _vr *= _rotationDamping;
+    float rotationNow = this->getRotation();
+    rotationNow += _vr;
+    this->setRotation(rotationNow);
+    ```
 
 1.  通过这些行我们确定精灵的新目标旋转，并运行一个动画将火箭旋转到目标旋转（带有一点弹性）。
 
@@ -208,7 +358,19 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  现在，在 `GameLayer.cpp` 中，在 `onTouchBegan` 中添加以下行：
 
-    [PRE12]
+    ```cpp
+    if (!_running) return true;
+    Point tap = touch->getLocation();
+    float dx = _rocket->getPositionX() - tap.x;
+    float dy = _rocket->getPositionY() - tap.y;
+    if (dx * dx + dy * dy <= pow(_rocket->getRadius(), 2) ) {
+     _lineContainer->setLineType ( LINE_NONE );
+     _rocket->setRotationOrientation ( ROTATE_NONE );
+     _drawing = true;
+    }
+
+    return true;
+    ```
 
     当触摸开始时，我们只需要确定它是否触摸了飞船。如果是，我们将我们的 `_drawing` 属性设置为 `true`。这将表明我们有一个有效的点（一个从触摸 `_rocket` 精灵开始的点）。
 
@@ -216,7 +378,22 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  从这里开始，我们使用下一个 `onTouchMoved` 方法绘制新的线条。在该方法内部，我们添加以下行：
 
-    [PRE13]
+    ```cpp
+    if (!_running) return;
+      if (_drawing) {
+         Point tap = touch->getLocation();
+         float dx = _rocket->getPositionX() - tap.x;
+         float dy = _rocket->getPositionY() - tap.y;
+         if (dx * dx + dy * dy > pow (_minLineLength, 2)) {
+           _rocket->select(true);
+           _lineContainer->setPivot ( tap );
+           _lineContainer->setLineType ( LINE_TEMP );
+         } else {
+           _rocket->select(false);
+           _lineContainer->setLineType ( LINE_NONE );
+        }
+     }
+    ```
 
 1.  我们只处理触摸移动，如果我们正在使用 `_drawing`，这意味着玩家已经按下了飞船，现在正在将手指拖过屏幕。
 
@@ -224,35 +401,80 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  接下来是 `onTouchEnded`。在我们的 `onTouchEnded` 方法中已经存在处理游戏状态的逻辑。你应该取消注释对 `resetGame` 的调用，并在方法内添加一个新的 `else if` 语句：
 
-    [PRE14]
+    ```cpp
+    } else if (_state == kGamePaused) {
+      _pauseBtn->setDisplayFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName ("btn_pause_off.png"));
+      _paused->setVisible(false);
+      _state = kGamePlay;
+      _running = true;
+      return;
+    } 
+    ```
 
 1.  如果游戏处于暂停状态，我们通过 `Sprite->setDisplayFrame` 在 `_pauseBtn` 精灵中更改纹理，并重新开始运行游戏。
 
 1.  现在我们开始处理触摸。首先，我们确定它是否落在 `Pause` 按钮上：
 
-    [PRE15]
+    ```cpp
+    if (!_running) return;
+    if(touch != nullptr) {
+      Point tap = touch->getLocation();
+      if (_pauseBtn->getBoundingBox().containsPoint(tap)) {
+        _paused->setVisible(true);
+        _state = kGamePaused;
+        _pauseBtn->setDisplayFrame(SpriteFrameCache::getInstance()->getSpriteFrameByName ("btn_pause_on.png"));
+        _running = false;
+        return;
+      }
+    }
+    ```
 
 1.  如果是这样，我们将游戏状态更改为 `kGamePaused`，在 `_pauseBtn` 精灵上更改纹理（通过从 `SpriteFrameCache` 中检索另一个精灵帧），停止运行游戏（暂停游戏），并从函数中返回。
 
 1.  我们终于可以对火箭飞船做些事情了。所以，继续在之前看到的 `if(touch != nullptr) {` 条件语句中，添加以下行：
 
-    [PRE16]
+    ```cpp
+        _drawing = false;
+       _rocket->select(false);
+       if (_lineContainer->getLineType() == LINE_TEMP) {
+          _lineContainer->setPivot (tap);
+          _lineContainer->setLineLength ( _rocket->getPosition().distance( tap ) );
+          _rocket->setPivot (tap);
+    ```
 
 1.  我们首先取消选择 `_rocket` 精灵，然后检查我们是否正在 `_lineContainer` 中显示临时线条。如果我们正在显示，这意味着我们可以继续使用玩家的释放触摸来创建新的支点。我们通过 `setPivot` 方法将此信息传递给 `_lineContainer`，同时传递线条长度。`_rocket` 精灵也会接收到支点信息。
 
     然后，事情变得复杂！`_rocket` 精灵以像素为基础的速度移动。一旦 `_rocket` 开始旋转，它将通过 `Point.rotateByAngle` 以基于角的速度移动。因此，以下行被添加以将 `_rocket` 当前像素速度转换为角速度：
 
-    [PRE17]
+    ```cpp
+    float circle_length = _lineContainer->getLineLength() * 2 * M_PI;
+    int iterations = floor(circle_length / _rocket->getSpeed());
+    _rocket->setAngularSpeed ( 2 * M_PI / iterations);
+    ```
 
-1.  它获取将要被 `_rocket` 描述的圆周长度（`_rocket (line length * 2 * PI)`），然后除以火箭的速度，得到火箭完成该长度所需的迭代次数。然后，将圆的360度除以相同的迭代次数（但我们用弧度来计算）以得到火箭在每次迭代中必须旋转的圆周分数：它的角速度。
+1.  它获取将要被 `_rocket` 描述的圆周长度（`_rocket (line length * 2 * PI)`），然后除以火箭的速度，得到火箭完成该长度所需的迭代次数。然后，将圆的 360 度除以相同的迭代次数（但我们用弧度来计算）以得到火箭在每次迭代中必须旋转的圆周分数：它的角速度。
 
 1.  接下来的是更多的数学计算，使用 Cocos2d-x 中与向量数学相关的非常有帮助的方法（例如 `Point.getRPerp`、`Point.dot`、`Point.subtract` 等），其中一些我们在 `Rocket` 类中已经见过：
 
-    [PRE18]
+    ```cpp
+    Vec2 diff = _rocket->getPosition();
+    diff.subtract(_rocket->getPivot());
+    Point clockwise = diff.getRPerp();
+    float dot =clockwise.dot(_rocket->getVector());
+    if (dot > 0) {
+       _rocket->setAngularSpeed ( _rocket->getAngularSpeed() * -1 );
+       _rocket->setRotationOrientation ( ROTATE_CLOCKWISE );
+       _rocket->setTargetRotation  ( CC_RADIANS_TO_DEGREES( atan2(clockwise.y, clockwise.x) ) );
+    } else {
+       _rocket->setRotationOrientation ( ROTATE_COUNTER );
+       _rocket->setTargetRotation ( CC_RADIANS_TO_DEGREES  (atan2(-1 * clockwise.y, -1 * clockwise.x) ) );
+    }
+    _lineContainer->setLineType ( LINE_DASHED );
+    ```
 
 1.  他们在这里做的是确定火箭应该旋转的方向：顺时针还是逆时针，基于其当前的运动向量。
 
-1.  玩家刚刚在 `_rocket` 和支点之间绘制的线条，通过减去这两个点（`Point.subtract`）得到，有两个垂直向量：一个向右（顺时针）的向量，通过 `Point.getRPerp` 获取；一个向左（逆时针）的向量，通过 `Point.getPerp` 获取。我们使用其中一个向量的角度作为 `_rocket` 目标旋转，使火箭旋转到与 `LineContainer` 中绘制的线条成90度，并通过 `_rocket` 当前向量与其中一个垂直向量的点积（`Point.dot`）找到正确的垂直向量。
+1.  玩家刚刚在 `_rocket` 和支点之间绘制的线条，通过减去这两个点（`Point.subtract`）得到，有两个垂直向量：一个向右（顺时针）的向量，通过 `Point.getRPerp` 获取；一个向左（逆时针）的向量，通过 `Point.getPerp` 获取。我们使用其中一个向量的角度作为 `_rocket` 目标旋转，使火箭旋转到与 `LineContainer` 中绘制的线条成 90 度，并通过 `_rocket` 当前向量与其中一个垂直向量的点积（`Point.dot`）找到正确的垂直向量。
 
 ## *发生了什么？*
 
@@ -274,7 +496,22 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  在`GameLayer.cpp`中，在`update`方法内部，添加以下行：
 
-    [PRE19]
+    ```cpp
+    if (!_running || _state != kGamePlay) return;
+    if (_lineContainer->getLineType() != LINE_NONE) {
+      _lineContainer->setTip (_rocket->getPosition() );
+    }
+
+    if (_rocket->collidedWithSides()) {
+      _lineContainer->setLineType ( LINE_NONE );
+    }
+    _rocket->update(dt);
+
+    //update jet particle so it follows rocket
+    if (!_jet->isActive()) _jet->resetSystem();
+    _jet->setRotation(_rocket->getRotation());
+    _jet->setPosition(_rocket->getPosition());
+    ```
 
     我们检查我们是否不在暂停状态。然后，如果有我们需要在`_lineContainer`中显示的船的线，我们使用`_rocket`的当前位置更新线的`tip`点。
 
@@ -282,21 +519,87 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  接下来我们更新`_comet`（它的倒计时、初始位置、移动和如果`_comet`可见则与`_rocket`的碰撞）：
 
-    [PRE20]
+    ```cpp
+    _cometTimer += dt;
+    float newY;
+
+    if (_cometTimer > _cometInterval) {
+        _cometTimer = 0;
+        if (_comet->isVisible() == false) {
+            _comet->setPositionX(0);
+            newY = (float)rand()/((float)RAND_MAX/_screenSize.height * 0.6f) + _screenSize.height * 0.2f;
+            if (newY > _screenSize.height * 0.9f) 
+               newY = _screenSize.height * 0.9f;
+               _comet->setPositionY(newY);
+               _comet->setVisible(true);
+               _comet->resetSystem();
+        }
+    }
+
+    if (_comet->isVisible()) {
+        //collision with comet
+        if (pow(_comet->getPositionX() - _rocket->getPositionX(), 2) + pow(_comet->getPositionY() - _rocket->getPositionY(), 2) <= pow (_rocket->getRadius() , 2)) {
+            if (_rocket->isVisible()) killPlayer();
+        }
+        _comet->setPositionX(_comet->getPositionX() + 50 * dt);
+
+        if (_comet->getPositionX() > _screenSize.width * 1.5f) {
+            _comet->stopSystem();
+            _comet->setVisible(false);
+        }
+    }
+    ```
 
 1.  接下来我们更新`_lineContainer`，并逐渐降低`_rocket`精灵的透明度，基于`_lineContainer`中的`_energy`等级：
 
-    [PRE21]
+    ```cpp
+    _lineContainer->update(dt);
+    _rocket->setOpacity(_lineContainer->getEnergy() * 255);
+    ```
 
     这将为玩家添加一个视觉提示，表明时间正在流逝，因为`_rocket`精灵将逐渐变得不可见。
 
 1.  运行星球的碰撞：
 
-    [PRE22]
+    ```cpp
+    for (auto planet : _planets) {
+        if (pow(planet->getPositionX() - _rocket->getPositionX(),  2)
+        + pow(planet->getPositionY() - _rocket->getPositionY(), 2)  <=   pow (_rocket->getRadius() * 0.8f + planet->getRadius()  * 0.65f, 2)) {
+
+            if (_rocket->isVisible()) killPlayer();
+            break;
+        }
+    }
+    ```
 
 1.  并且与星星的碰撞：
 
-    [PRE23]
+    ```cpp
+    if (pow(_star->getPositionX() - _rocket->getPositionX(), 2)
+        + pow(_star->getPositionY() - _rocket->getPositionY(), 2)  <=
+        pow (_rocket->getRadius() * 1.2f, 2)) {
+
+        _pickup->setPosition(_star->getPosition());
+        _pickup->resetSystem();
+        if (_lineContainer->getEnergy() + 0.25f < 1) {
+            _lineContainer->setEnergy(_lineContainer->getEnergy() +  0.25f);
+        } else {
+            _lineContainer->setEnergy(1.0);
+        }
+        _rocket->setSpeed(_rocket->getSpeed() + 2);
+        if (_rocket->getSpeed() > 70) _rocket->setSpeed(70);
+            _lineContainer->setEnergyDecrement(0.0002f);
+            SimpleAudioEngine::getInstance()->playEffect("pickup.wav");
+            resetStar();
+
+            int points = 100 - _timeBetweenPickups;
+            if (points < 0) points = 0;
+
+            _score += points;
+            _scoreDisplay->setString(String::createWithFormat("%i", _score)->getCString());
+            _timeBetweenPickups = 0;
+    }
+    ```
 
     当我们收集到`_star`时，我们在`_star`所在的位置激活`_pickup`粒子系统，填充玩家的能量等级，使游戏稍微困难一些，并立即将`_star`重置到下一个位置以便再次收集。
 
@@ -304,7 +607,12 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  我们在`update`函数的最后几行记录这个时间，同时检查能量等级：
 
-    [PRE24]
+    ```cpp
+    _timeBetweenPickups += dt;
+    if (_lineContainer->getEnergy() == 0) {
+        if (_rocket->isVisible()) killPlayer();
+    }
+    ```
 
 ## *刚刚发生了什么？*
 
@@ -320,25 +628,86 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  在`killPlayer`方法内部，添加以下行：
 
-    [PRE25]
+    ```cpp
+    void GameLayer::killPlayer() {
+
+        SimpleAudioEngine::getInstance()->stopBackgroundMusic();
+        SimpleAudioEngine::getInstance()->stopAllEffects();
+        SimpleAudioEngine::getInstance()->playEffect("shipBoom.wav");
+
+        _boom->setPosition(_rocket->getPosition());
+        _boom->resetSystem();
+        _rocket->setVisible(false);
+        _jet->stopSystem();
+        _lineContainer->setLineType ( LINE_NONE );
+
+        _running = false;
+        _state = kGameOver;
+        _gameOver->setVisible(true);
+        _pauseBtn->setVisible(false);
+    }
+    ```
 
 1.  在`resetStar`内部，添加以下行：
 
-    [PRE26]
+    ```cpp
+    void GameLayer::resetStar() {
+        Point position = _grid[_gridIndex];
+        _gridIndex++;
+        if (_gridIndex == _grid.size()) _gridIndex = 0;
+        //reset star particles
+        _star->setPosition(position);
+        _star->setVisible(true);
+        _star->resetSystem();
+    }
+    ```
 
 1.  最后，我们的`resetGame`方法：
 
-    [PRE27]
+    ```cpp
+    void GameLayer::resetGame () {
+
+        _rocket->setPosition(Vec2(_screenSize.width * 0.5f,  _screenSize.height * 0.1f));
+        _rocket->setOpacity(255);
+        _rocket->setVisible(true);
+        _rocket->reset();
+
+        _cometInterval = 4;
+        _cometTimer = 0;
+        _timeBetweenPickups = 0.0;
+
+        _score = 0;
+        _scoreDisplay->setString(String::createWithFormat("%i", _score)->getCString());
+
+        _lineContainer->reset();
+
+        //shuffle grid cells
+
+        std::random_shuffle(_grid.begin(), _grid.end());
+        _gridIndex = 0;
+
+        resetStar();
+
+        _warp->stopSystem();
+
+        _running = true;
+
+        SimpleAudioEngine::getInstance()->playBackgroundMusic("background.mp3", true);
+        SimpleAudioEngine::getInstance()->stopAllEffects();
+        SimpleAudioEngine::getInstance()->playEffect("rocket.wav", true);
+
+    }
+    ```
 
 ## *刚刚发生了什么？*
 
 就这样。我们完成了。这比大多数人舒服的数学要多。但你能告诉我什么呢，我就是喜欢玩弄向量！
 
-现在，让我们继续学习Android！
+现在，让我们继续学习 Android！
 
-# 是时候行动了——在Android上运行游戏
+# 是时候行动了——在 Android 上运行游戏
 
-按照以下步骤将游戏部署到Android：
+按照以下步骤将游戏部署到 Android：
 
 1.  打开清单文件，并将`app`方向设置为`portrait`。
 
@@ -346,15 +715,22 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 1.  编辑`LOCAL_SRC_FILES`中的行，使其读取：
 
-    [PRE28]
+    ```cpp
+    LOCAL_SRC_FILES := hellocpp/main.cpp \
+                       ../../Classes/AppDelegate.cpp \
+                       ../../Classes/GameSprite.cpp \
+                       ../../Classes/LineContainer.cpp \
+                       ../../Classes/Rocket.cpp \
+                       ../../Classes/GameLayer.cpp  
+    ```
 
-1.  将游戏导入Eclipse并构建它。
+1.  将游戏导入 Eclipse 并构建它。
 
 1.  保存并运行你的应用程序。这次，如果你有设备，你可以尝试不同的屏幕尺寸。
 
 ## *刚才发生了什么？*
 
-现在，你的Rocket Through已经在Android上运行了。
+现在，你的 Rocket Through 已经在 Android 上运行了。
 
 ## 大胆尝试
 
@@ -364,8 +740,8 @@ Cocos2d-x附带了一些常见的粒子系统，你可以根据需要修改。�
 
 # 摘要
 
-恭喜！你现在对Cocos2d-x有了足够的信息来制作出色的2D游戏。首先是精灵，然后是动作，现在是粒子。
+恭喜！你现在对 Cocos2d-x 有了足够的信息来制作出色的 2D 游戏。首先是精灵，然后是动作，现在是粒子。
 
 粒子让一切看起来都很闪亮！它们很容易实现，并且是给游戏添加额外动画的好方法。但是很容易过度使用，所以请小心。你不想让你的玩家出现癫痫发作。此外，一次性运行太多粒子可能会让你的游戏停止运行。
 
-在下一章中，我们将看到如何使用Cocos2d-x快速测试和开发游戏想法。
+在下一章中，我们将看到如何使用 Cocos2d-x 快速测试和开发游戏想法。

@@ -1,4 +1,4 @@
-# *第 6 章*
+# *第六章*
 
 # 面向对象编程
 
@@ -34,13 +34,26 @@
 
 继承允许组合一个或多个类。让我们看看继承的一个例子：
 
-[PRE0]
+```cpp
+class Vehicle {
+  public:
+    TankLevel getTankLevel() const;
+    void turnOn();
+};
+class Car : public Vehicle {
+  public:
+    bool isTrunkOpen();
+};
+```
 
 在这个例子中，`Car` 类继承自 `Vehicle` 类，或者说 `Car` 从 `Vehicle` 继承。在 C++ 术语中，`Vehicle` 是*基*类，而 `Car` 是*派生*类。
 
 当定义一个类时，我们可以通过在后面跟一个冒号 `:`，然后跟一个或多个用逗号分隔的类来指定它继承的类：
 
-[PRE1]
+```cpp
+class Car : public Vehicle, public Transport {
+}
+```
 
 当指定要继承的类列表时，我们还可以指定继承的可见性 – `private`、`protected` 或 `public`。
 
@@ -48,7 +61,10 @@
 
 基类的方法可以根据以下规则作为派生类的方法访问：
 
-[PRE2]
+```cpp
+Car car;
+car.turnOn();
+```
 
 当继承是 `public` 时，类外部的代码知道 `Car` 继承自 `Vehicle`。基类的所有公共方法都可以作为派生类的*公共*方法被程序中的代码访问。基类的受保护方法可以通过派生类的方法作为*受保护*访问。当继承是 `protected` 时，所有公共和受保护成员都可以作为派生类的*受保护*访问。只有派生类及其从它派生的类知道关于继承的信息；外部代码看到这两个类是无关的。
 
@@ -68,7 +84,14 @@
 
 `Orange` 类可以从 `Citrus` 类派生，而 `Citrus` 类又从 `Fruit` 类派生。以下是它的写法：
 
-[PRE3]
+```cpp
+class Fruit {
+};
+class Citrus: public Fruit {
+};
+class Orange: public Citrus {
+};
+```
 
 类 `Citrus` 可以访问类 `Fruit` 的公共和受保护方法，而类 `Orange` 将能够访问 `Citrus` 和 `Fruit` 的公共和受保护方法（`Fruit` 的公共方法可以通过 `Citrus` 访问）。
 
@@ -78,27 +101,69 @@
 
 1.  在程序开始处添加头文件：
 
-    [PRE4]
+    ```cpp
+    #include <iostream>
+    ```
 
 1.  添加第一个基类，命名为 `Vehicle`：
 
-    [PRE5]
+    ```cpp
+    // first base class 
+    class Vehicle { 
+      public: 
+        int getTankCapacity(){
+          const int tankLiters = 10;
+          std::cout << "The current tank capacity for your car is " << tankLiters << " Liters."<<std::endl;
+          return tankLiters;
+        }
+    };
+    ```
 
 1.  现在添加第二个基类，命名为 `CollectorItem`：
 
-    [PRE6]
+    ```cpp
+    // second base class 
+    class CollectorItem { 
+      public: 
+        float getValue() {
+          return 100;
+        }
+    }; 
+    ```
 
 1.  添加名为 `Ferrari250GT` 的派生类，如图所示：
 
-    [PRE7]
+    ```cpp
+    // Subclass derived from two base classes
+    class Ferrari250GT: protected Vehicle, public CollectorItem { 
+      public:
+        Ferrari250GT() {
+          std::cout << "Thank you for buying the Ferrari 250 GT with tank capacity " << getTankCapacity() << std::endl;
+          return 0;
+        }
+    }; 
+    ```
 
 1.  现在，在 `main` 函数中，实例化 `Ferrari250GT` 类并调用 `getValue()` 方法：
 
-    [PRE8]
+    ```cpp
+    int main()
+    {
+      Ferrari250GT ferrari;
+      std::cout << "The value of the Ferrari is " << ferrari.getValue() << std::endl;
+      /* Cannot call ferrari.getTankCapacity() because Ferrari250GT inherits from Vehicle with the protected specifier */
+      return 0;
+    }
+    ```
 
     输出将如下所示：
 
-    [PRE9]
+    ```cpp
+    Output:
+    The current tank capacity for your car is 10 Liters.
+    Thank you for buying the Ferrari 250 GT with tank capacity 10
+    The value of the Ferrari is 100
+    ```
 
 指定符不是强制的。如果省略，则对于结构体默认为 *public*，对于类默认为 *private*。
 
@@ -120,7 +185,20 @@
 
 与编译器在构造派生类时调用基类的构造函数类似，编译器会在派生类的析构函数运行后始终调用基类的析构函数：
 
-[PRE10]
+```cpp
+class A {
+  public:
+    A(const std::string& name);
+};
+class B: public A {
+  public:
+    B(int number) : A("A's name"), d_number(number) {}
+  private:
+    int d_number;
+};
+
+}
+```
 
 当调用`B`类的构造函数时，需要初始化`A`。由于`A`没有默认构造函数，编译器无法为我们初始化它：我们必须显式调用`A`类的构造函数。
 
@@ -144,7 +222,14 @@
 
 到目前为止，我们已经看到了单重继承的例子：派生类有一个基类。C++支持多重继承：一个类可以继承自多个类。让我们看看一个例子：
 
-[PRE11]
+```cpp
+struct A {
+};
+struct B {
+};
+struct C : A, B {
+};
+```
 
 在这个例子中，`C`结构体同时从`A`和`B`继承。
 
@@ -158,35 +243,76 @@
 
 当编译器无法清楚地理解要调用哪个方法时，调用是模糊的。让我们看看以下示例：
 
-[PRE12]
+```cpp
+struct A {
+  void foo() {}
+};
+struct B {
+  void foo() {}
+};
+struct C: A, B {
+  void bar() { foo(); }
+};
+```
 
 在这个例子中，不清楚要调用哪个`foo()`，是`A`类的还是`B`类的。我们可以通过在类名前加上两个冒号来消除歧义：`A::foo()`。
 
-### 练习21：使用多重继承创建“欢迎加入社区”消息应用程序
+### 练习 21：使用多重继承创建“欢迎加入社区”消息应用程序
 
 让我们使用多重继承来创建一个打印“欢迎加入社区”消息的应用程序：
 
 1.  首先，在程序中添加所需的头文件，如图所示：
 
-    [PRE13]
+    ```cpp
+    #include <iostream>
+    ```
 
 1.  现在，添加所需的类`DataScienceDev`和`FutureCppDev`以及所需的打印语句：
 
-    [PRE14]
+    ```cpp
+    class DataScienceDev {
+    public:
+        DataScienceDev(){
+            std::cout << "Welcome to the Data Science Developer Community." << std::endl;
+        }
+    };
+    class FutureCppDev {
+    public:
+        FutureCppDev(){
+            std::cout << "Welcome to the C++ Developer Community." << std::endl;
+          }
+    };
+    ```
 
 1.  现在，添加如上图所示的`Student`类：
 
-    [PRE15]
+    ```cpp
+    class Student : public DataScienceDev, public FutureCppDev {
+        public:
+        Student(){
+            std::cout << "Student is a Data Developer and C++ Developer." << std::endl;
+        }
+    };
+    ```
 
 1.  现在，在`main`函数中调用`Student`类：
 
-    [PRE16]
+    ```cpp
+    int main(){
+        Student S1;
+        return 0;
+    }
+    ```
 
     输出将如下所示：
 
-    [PRE17]
+    ```cpp
+    Welcome to the Data Science Developer Community.
+    Welcome to the C++ Developer Community.
+    Student is a Data Developer and C++ Developer.
+    ```
 
-### 活动23：创建游戏角色
+### 活动 23：创建游戏角色
 
 我们想编写一个新游戏，并在该游戏中创建两种类型的角色——英雄和敌人。敌人可以挥舞剑，而英雄可以施展法术。
 
@@ -196,15 +322,34 @@
 
 1.  创建一个`Position`结构体：
 
-    [PRE18]
+    ```cpp
+    struct Position {
+        std::string positionIdentifier;
+    };
+    ```
 
 1.  创建两个类，`Hero`和`Enemy`，它们从`Character`类派生：
 
-    [PRE19]
+    ```cpp
+    class Hero : public Character {
+    };
+    class Enemy : public Character {
+    };
+    ```
 
 1.  创建一个具有接受法术名称构造函数的`Spell`类：
 
-    [PRE20]
+    ```cpp
+    class Spell {
+    public:
+        Spell(std::string name) : d_name(name) {}
+        std::string name() const {
+            return d_name;
+        }
+    private:
+        std::string d_name;
+    }
+    ```
 
 1.  `Hero`类应该有一个`public`方法来施展法术。使用`Spell`类的值。
 
@@ -212,19 +357,31 @@
 
 1.  实现主方法，该方法在各个类中调用这些方法：
 
-    [PRE21]
+    ```cpp
+    int main()
+    {
+        Position position{"Enemy castle"};
+        Hero hero;
+        Enemy enemy;
+    }
+    ```
 
     输出将如下所示：
 
-    [PRE22]
+    ```cpp
+    Moved to position Enemy castle
+    Moved to position Enemy castle
+    Casting spell fireball
+    Swinging sword
+    ```
 
     #### 注意
 
-    这个活动的解决方案可以在第309页找到。
+    这个活动的解决方案可以在第 309 页找到。
 
 ## 多态性
 
-在前面的章节中，我们提到继承是一种允许你在程序运行时更改代码行为的解决方案。这是因为继承使C++具有多态性。
+在前面的章节中，我们提到继承是一种允许你在程序运行时更改代码行为的解决方案。这是因为继承使 C++具有多态性。
 
 **多态性**意味着*多种形式*，表示对象能够以不同的方式行为。
 
@@ -236,7 +393,25 @@
 
 **动态绑定**是指基类型引用或指针在运行时指向派生类型对象的能力。让我们探索以下示例：
 
-[PRE23]
+```cpp
+struct A {
+};
+struct B: A{
+};
+struct C: A {
+};
+//We can write
+B b;
+C c;
+A& ref1 = b;
+A& ref2 = c;
+A* ptr = nullptr;
+if (runtime_condition()) {
+  ptr = &b;
+} else {
+  ptr = &c;
+}
+```
 
 #### 注意
 
@@ -252,13 +427,19 @@
 
 正如所说，动态类型可以在运行时改变。虽然变量的静态类型始终相同，但其动态类型可以改变：`ptr`有一个静态类型，即指向`A`的指针，但它的动态类型在程序执行过程中可能会改变：
 
-[PRE24]
+```cpp
+A* ptr = &b; // ptr dynamic type is B
+ptr = &c; // ptr dynamic type is now C
+```
 
 重要的是要理解，只有引用和指针可以从派生类安全地赋值。如果我们将对象赋值给值类型，我们会得到一个令人惊讶的结果 - 对象会被切割。
 
 我们之前说过，基类是**嵌入**在派生类中的。比如说，如果我们尝试赋值，就像这样：
 
-[PRE25]
+```cpp
+B b;
+A a = b;
+```
 
 代码将编译，但只有`B`中嵌入的`A`的部分将被复制 - 当我们声明一个类型为`A`的变量时，编译器分配一个足够大的内存区域来容纳类型为`A`的对象，因此没有足够的空间来容纳`B`。当这种情况发生时，我们说我们切割了对象，因为我们赋值或复制时只取了对象的一部分。
 
@@ -266,7 +447,7 @@
 
 切割对象不是预期的行为。请注意这种交互，并尽量避免它。
 
-这种行为发生是因为C++默认使用*静态调度*进行函数和方法调用：当编译器看到方法调用时，它会检查被调用方法变量的静态类型，并且它将执行`A`被调用，并且它只复制`A`中`B`内部的这部分，忽略剩余的字段。
+这种行为发生是因为 C++默认使用*静态调度*进行函数和方法调用：当编译器看到方法调用时，它会检查被调用方法变量的静态类型，并且它将执行`A`被调用，并且它只复制`A`中`B`内部的这部分，忽略剩余的字段。
 
 如前所述，C++支持动态调度。这是通过使用特殊关键字标记方法来完成的：**virtual**。
 
@@ -274,11 +455,22 @@
 
 这两个特性实现了*多态性* - 我们可以编写一个接受基类引用的函数，调用这个基类的方法，并且派生类的方法将被执行：
 
-[PRE26]
+```cpp
+void safeTurnOn(Vehicle& vehicle) {
+  if (vehicle.getFuelInTank() > 0.1 && vehicle.batteryHasEnergy()) {
+    vehicle.turnOn();
+  }
+}
+```
 
 然后，我们可以用许多不同类型的车辆调用该函数，并且将执行适当的方法：
 
-[PRE27]
+```cpp
+Car myCar;
+Truck truck;
+safeTurnOn(myCar);
+safeTurnOn(truck);
+```
 
 一个典型的模式是创建一个接口，它只指定了实现某些功能所需的方法。
 
@@ -286,13 +478,18 @@
 
 ## 虚拟方法
 
-我们已经学习了C++中动态分发的优势以及它是如何使我们能够通过在基类的引用或指针上调用方法来执行派生类的方法。
+我们已经学习了 C++中动态分发的优势以及它是如何使我们能够通过在基类的引用或指针上调用方法来执行派生类的方法。
 
 在本节中，我们将深入了解如何告诉编译器在方法上执行动态分发。指定我们想要为方法使用动态分发的方式是使用`virtual`关键字。
 
 在声明方法时，在方法前使用`virtual`关键字：
 
-[PRE28]
+```cpp
+class Vehicle {
+  public:
+    virtual void turnOn();
+};
+```
 
 我们需要记住，编译器根据调用方法时使用的变量的静态类型来决定如何执行方法分发。
 
@@ -306,19 +503,45 @@
 
 1.  现在，如所示添加`Vehicle`类：
 
-    [PRE29]
+    ```cpp
+    class Vehicle {
+      public:
+        void turnOn() {
+          std::cout << "Vehicle: turn on" << std::endl;
+        }
+    };
+    ```
 
 1.  在`Car`类中，如所示添加`virtual`关键字：
 
-    [PRE30]
+    ```cpp
+    class Car : public Vehicle {
+      public:
+        virtual void turnOn()  {
+          std::cout << "Car: turn on" << std::endl;
+        }
+    };
+    void myTurnOn(Vehicle& vehicle) {
+      std::cout << "Calling turnOn() on the vehicle reference" << std::endl;
+      vehicle.turnOn();
+    }
+    ```
 
 1.  现在，在主函数中，调用`Car`类并在`myTurnOn()`函数中传递`car`对象：
 
-    [PRE31]
+    ```cpp
+    int main() {
+      Car car;
+      myTurnOn(car);
+    }
+    ```
 
     输出将如下所示：
 
-    [PRE32]
+    ```cpp
+    Calling turnOn() on the vehicle reference
+    Vehicle: turn on
+    ```
 
 这里，调用不会进行动态分发，而是会执行`Vehicle::turnOn()`的实现。原因是变量的静态类型是`Vehicle`，我们没有将方法标记为`virtual`，所以编译器使用静态分发。
 
@@ -328,15 +551,50 @@
 
 如果签名不匹配，我们将为函数创建一个重载。重载可以从派生类中调用，但它永远不会从基类进行动态分发，例如：
 
-[PRE33]
+```cpp
+struct Base {
+  virtual void foo(int) = 0;
+};
+struct Derived: Base {
+  /* This is an override: we are redefining a virtual method of the base class, using the same signature. */
+  void foo(int) { }
+  /* This is an overload: we are defining a method with the same name of a method of the base class, but the signature is different. The rules regarding virtual do not apply between Base::foo(int) and Derived:foo(float). */
+  void foo(float) {}
+};
+```
 
 当一个类重写基类的虚拟方法时，当在基类上调用该方法时，将执行*最派生类*的方法。即使该方法是从基类内部调用的，这也是`true`，例如：
 
-[PRE34]
+```cpp
+struct A {
+  virtual void foo() {
+    std::cout << "A's foo" << std::endl;
+  }
+};
+struct B: A {
+  virtual void foo() override {
+    std::cout << "B's foo" << std::endl;
+  }
+};
+struct C: B {
+  virtual void foo() override {
+    std::cout << "C's foo" << std::endl;
+  }
+};
+int main() {
+  B b;
+  C c;
+  A* a = &b;
+  a->foo();  // B::foo() is executed
+  a = &c;
+  a->foo();
+  /* C::foo() is executed, because it's the most derived Class overriding foo(). */
+}
+```
 
 在前面的示例中，我们可以看到一个新关键字：`override`关键字。
 
-C++11引入了这个关键字，使我们能够显式地指定我们正在重写一个方法。这允许编译器在我们使用`override`关键字但签名与基类的任何虚拟方法不匹配时给出错误信息。
+C++11 引入了这个关键字，使我们能够显式地指定我们正在重写一个方法。这允许编译器在我们使用`override`关键字但签名与基类的任何虚拟方法不匹配时给出错误信息。
 
 #### 注意
 
@@ -360,13 +618,13 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 如果一个方法被标记为虚拟，那么析构函数也应该被标记为虚拟。
 
-### 活动24：计算员工工资
+### 活动 24：计算员工工资
 
 我们正在编写一个系统来计算一家公司员工的工资。每位员工都有一个基本工资加上奖金。
 
-对于不是经理的员工，奖金是根据部门的业绩计算的：如果部门达到了目标，他们将获得基本工资的10%。
+对于不是经理的员工，奖金是根据部门的业绩计算的：如果部门达到了目标，他们将获得基本工资的 10%。
 
-该公司还有经理，他们的奖金计算方式不同：如果部门达到了目标，他们将获得基本工资的20%，加上部门实际成果与预期成果之间差异的1%。
+该公司还有经理，他们的奖金计算方式不同：如果部门达到了目标，他们将获得基本工资的 20%，加上部门实际成果与预期成果之间差异的 1%。
 
 我们想要创建一个函数，它接受一个员工并计算他们的总工资，将基本工资和奖金相加，无论他们是否是经理。
 
@@ -374,29 +632,71 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 1.  当构造`Department`类时，它接受预期的收入和实际收入，并将它们存储在两个字段中：
 
-    [PRE35]
+    ```cpp
+    class Department {
+    public:
+        Department(int expectedEarning, int effectiveEarning)
+        : d_expectedEarning(expectedEarning), d_effectiveEarning(effectiveEarning)
+        {}
+        bool hasReachedTarget() const {return d_effectiveEarning >= d_expectedEarning;}
+        int expectedEarning() const {return d_expectedEarning;}
+        int effectiveEarning() const {return d_effectiveEarning;}
+    private:
+        int d_expectedEarning;
+        int d_effectiveEarning;
+    };
+    ```
 
 1.  定义一个具有两个`virtual`函数`getBaseSalary()`和`getBonus()`的`Employee`类。在其中，实现如果部门目标达成，员工奖金计算的逻辑：
 
-    [PRE36]
+    ```cpp
+    class Employee {
+    public:
+        virtual int getBaseSalary() const { return 100; }
+        virtual int getBonus(const Department& dep) const {
+            if (dep.hasReachedTarget()) {
+                return int(0.1 * getBaseSalary());
+            }
+            return 0;
+        }
+    };
+    ```
 
 1.  创建另一个提供总补偿的函数：
 
-    [PRE37]
+    ```cpp
+        int getTotalComp(const Department& dep) {
+                return getBaseSalary() + getBonus(dep);
+        }
+    ```
 
 1.  创建一个从`Employee`派生的`Manager`类。再次，创建相同的虚函数`getBaseSalary()`和`getBonus()`。在其中，实现如果部门目标达成，`Manager`奖金计算的逻辑：
 
-    [PRE38]
+    ```cpp
+    class Manager : public Employee {
+    public:
+        virtual int getBaseSalary() const override { return 150; }
+        virtual int getBonus(const Department& dep) const override {
+            if (dep.hasReachedTarget()) {
+                int additionalDeparmentEarnings = dep.effectiveEarning() - dep.expectedEarning();
+                return int(0.2 * getBaseSalary() + 0.01 * additionalDeparmentEarnings);
+            }
+            return 0;
+        }
+    };
+    ```
 
 1.  实现主程序，并运行程序：
 
     输出将如下所示：
 
-    [PRE39]
+    ```cpp
+    Employee: 110\. Manager: 181
+    ```
 
     #### 注意
 
-    该活动的解决方案可以在第311页找到。
+    该活动的解决方案可以在第 311 页找到。
 
 ## C++中的接口
 
@@ -408,7 +708,7 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 接受参数作为接口的函数和方法是一种说法：为了执行我的操作，我需要这些功能；这取决于你提供它们。
 
-要在C++中指定接口，我们可以使用**抽象基类**（**ABC**）。
+要在 C++中指定接口，我们可以使用**抽象基类**（**ABC**）。
 
 让我们深入探讨一下这个名字；这个类是：
 
@@ -418,7 +718,12 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 任何定义了纯虚方法的类都是`抽象`的。纯虚方法是一个以`= 0`结尾的虚方法，例如：
 
-[PRE40]
+```cpp
+class Vehicle {
+  public:
+    virtual void turnOn() = 0;
+};
+```
 
 纯虚方法是一个不需要定义的方法。在前面的代码中，我们没有任何地方指定`Vehicle::turnOn()`的实现。正因为如此，`Vehicle`类不能被实例化，因为我们没有为其纯虚方法提供任何可调用的代码。
 
@@ -430,7 +735,16 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 让我们继续上一个例子：
 
-[PRE41]
+```cpp
+class GasolineVehicle: public Vehicle {
+  public:
+    virtual void fillTank() = 0;
+};
+class Car : public GasolineVehicle {
+  virtual void turnOn() override {}
+  virtual void fillTank() override {}
+};
+```
 
 在这个例子中，`Vehicle`是一个抽象基类，`GasolineVehicle`也是，因为它没有覆盖`Vehicle`的所有纯虚方法。它还定义了一个额外的虚拟方法，`Car`类与`Vehicle::turnOn()`方法一起覆盖了这个方法。这使得`Car`成为唯一的具体类，一个可以实例化的类。
 
@@ -450,7 +764,7 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 需要某些功能来执行其操作的函数、方法或类应该定义接口。应该与这些实体一起使用的类应该实现该接口。
 
-由于C++没有提供专门的关键字来定义接口，而接口仅仅是抽象基类，因此在C++中设计接口时，有一些最佳实践指南需要遵循：
+由于 C++没有提供专门的关键字来定义接口，而接口仅仅是抽象基类，因此在 C++中设计接口时，有一些最佳实践指南需要遵循：
 
 +   抽象基类**不应**有任何数据成员或字段。
 
@@ -472,7 +786,14 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 考虑禁用接口上的复制构造函数和移动构造函数以及赋值运算符。允许接口被复制可能会导致我们之前描述的切片问题：
 
-[PRE42]
+```cpp
+Car redCar;
+Car blueCar;
+Vehicle& redVehicle = redCar;
+Vehicle& redVehicle = blueCar;
+redVehicle = blueVehicle;
+// Problem: object slicing!
+```
 
 在最后一个赋值操作中，我们只复制了 `Vehicle` 部分，因为已经调用了 `Vehicle` 类的拷贝构造函数。拷贝构造函数不是虚拟的，所以调用的是 `Vehicle` 中的实现，并且因为它只知道 `Vehicle` 类的数据成员（应该是没有的），所以 `Car` 中定义的成员没有被复制！这导致了一些非常难以识别的问题。
 
@@ -490,19 +811,54 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 1.  让我们编写代码，使其可以独立于数据来源，因此我们创建一个抽象的 `UserProfileStorage` 类来从 `UserId` 获取 `CustomerProfile`：
 
-    [PRE43]
+    ```cpp
+    struct UserProfile {};
+    struct UserId {};
+    class UserProfileStorage {
+      public:
+        virtual UserProfile getUserProfile(const UserId& id) const = 0;
+
+        virtual ~UserProfileStorage() = default;
+      protected:
+        UserProfileStorage() = default;
+        UserProfileStorage(const UserProfileStorage&) = default;
+        UserProfileStorage& operator=(const UserProfileStorage&) = default;
+    };
+    ```
 
 1.  现在，编写继承自 `UserProfileStorage` 的 `UserProfileCache` 类：
 
-    [PRE44]
+    ```cpp
+    class UserProfileCache : public UserProfileStorage {
+    public:
+        UserProfile getUserProfile(const UserId& id) const override {
+            std::cout << "Getting the user profile from the cache" << std::endl;
+            return UserProfile();
+        }
+    };
+    void exampleOfUsage(const UserProfileStorage& storage) {
+        UserId user;
+        std::cout << "About to retrieve the user profile from the storage" << std::endl;
+        UserProfile userProfile = storage.getUserProfile(user);
+    }
+    ```
 
 1.  在 `main` 函数中，实例化 `UserProfileCache` 类并调用 `exampleOfUsage` 函数，如图所示：
 
-    [PRE45]
+    ```cpp
+    int main()
+    {
+      UserProfileCache cache;
+      exampleOfUsage (cache);
+    }
+    ```
 
 输出如下：
 
-[PRE46]
+```cpp
+About to retrieve the user profile from the storage
+Getting the user profile from the cache
+```
 
 #### 注意
 
@@ -540,23 +896,30 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 由于类可以有不同的大小，存储不仅需要比函数保持有效的时间更长，还需要是可变的。这就是**动态内存**！
 
-在C++中，有两个关键字用于与动态内存交互——**new**和**free**。
+在 C++中，有两个关键字用于与动态内存交互——**new**和**free**。
 
 `new`表达式用于在动态内存中创建新对象——它由`new`关键字组成，后跟要创建的对象的类型以及传递给构造函数的参数，并返回指向请求类型的指针：
 
-[PRE47]
+```cpp
+Car* myCar = new myCar();
+```
 
 `new`表达式请求足够大的动态内存来容纳创建的对象，并在该内存中实例化一个对象。然后它返回指向该实例的指针。
 
 程序现在可以使用`myCar`指向的对象，直到它决定删除它。要删除指针，我们可以使用`delete`表达式：它由`delete`关键字后跟一个变量组成，该变量是一个指针：
 
-[PRE48]
+```cpp
+delete myCar;
+```
 
 `delete`关键字调用由其提供的指针指向的对象的析构函数，然后将其最初请求的内存返回给操作系统。
 
 删除指向自动变量的指针会导致以下错误：
 
-[PRE49]
+```cpp
+Car myCar; // automatic variable
+delete &myCar; // This is an error and will likely crash the program
+```
 
 对于每个`new`表达式，绝对重要的是，我们只调用一次`delete`表达式，并且使用相同的返回指针。
 
@@ -586,7 +949,11 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 就像单个对象一样，我们也可以使用动态内存来创建对象的数组。对于此类用例，我们可以使用 `new[]` 和 `delete[]` 表达式：
 
-[PRE50]
+```cpp
+int n = 15;
+Car* cars = new Car[n];
+delete[] cars;
+```
 
 `new[]` 表达式将为 `n Car` 实例创建足够的空间并将它们初始化，返回指向创建的第一个元素的指针。在这里，我们没有提供构造函数的参数，因此类必须有一个默认构造函数。
 
@@ -604,7 +971,17 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 函数将在其主体中调用 `new` 表达式来创建正确类的实例，然后返回基类指针，这样调用它的代码就不需要知道创建的 logger 类型：
 
-[PRE51]
+```cpp
+Logger* createLogger() {
+  if (are_tests_running()) {
+    TestLogger* logger = new TestLogger();
+    return logger;
+  } else {
+    ReleaseLogger logger = new ReleaseLogger("Release logger");
+    return logger;
+  }
+}
+```
 
 在这个函数中有两点需要注意：
 
@@ -618,7 +995,11 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 让我们看看如何正确调用函数的例子：
 
-[PRE52]
+```cpp
+Logger* logger = createLogger();
+myOperation(logger, argument1, argument2);
+delete logger;
+```
 
 如果 `myOperation` 没有在 logger 上调用 `delete`，这是动态内存的**正确**使用。动态内存是一个强大的工具，但手动操作是危险的，容易出错，并且容易出错。
 
@@ -640,13 +1021,22 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 通常，所有权与函数或方法的作用域相关联，因为自动变量的生存期由它控制：
 
-[PRE53]
+```cpp
+void foo() {
+  int number;
+  do_action(number);
+}
+```
 
 在这种情况下，`foo()` 函数的作用域拥有 `number` 对象，并且它将确保在作用域退出时销毁它。
 
 或者，当类被声明为值类型，位于类的数据成员之间时，类可能拥有对象。在这种情况下，对象的生存期将与类的生存期相同：
 
-[PRE54]
+```cpp
+class A {
+  int number;
+};
+```
 
 `number` 将在 `A` 类构造时构造，并在 `A` 类销毁时销毁。这是自动完成的，因为字段 `number` 嵌入在类中，类的构造函数和析构函数将自动初始化 `number`。
 
@@ -654,11 +1044,26 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 当对象在函数内部使用`new`调用分配时，函数可以是对象的所有者，如下面的示例所示：
 
-[PRE55]
+```cpp
+void foo() {
+  int* number = new number();
+  do_action(number);
+  delete number;
+}
+```
 
 或者，一个类可能通过在构造函数中调用`new`并将指针存储在其字段中，并在析构函数中调用`delete`来拥有它：
 
-[PRE56]
+```cpp
+class A {
+    A() : number(new int(0)) {
+    }
+    ~A() {
+        delete number;
+    }
+    int* number;
+};
+```
 
 但动态对象的所有权也可以传递。
 
@@ -672,7 +1077,7 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 在代码库中，智能指针应该是控制对象生命周期的指针，而原始指针或常规指针仅用于引用对象。
 
-### 使用std::unique_ptr的单个所有者
+### 使用 std::unique_ptr 的单个所有者
 
 `unique_ptr`是默认使用的指针类型。唯一指针指向一个只有一个所有者的对象；程序中只有一个地方决定何时删除该对象。
 
@@ -686,19 +1091,33 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 我们可以将前面的示例重写如下：
 
-[PRE57]
+```cpp
+std::unique_ptr<Logger> logger = createLogger();
+```
 
 虽然这段代码可以编译，但我们不会遵守之前提到的始终使用智能指针进行所有权的指南：`createLogger`返回一个原始指针，但它将所有权传递给父作用域。
 
 我们可以将`createLogger`函数的签名更新为返回智能指针：
 
-[PRE58]
+```cpp
+std::unique_ptr<Logger>createLogger();
+```
 
 现在，签名表达了我们的意图，我们可以更新实现以使用智能指针。
 
-正如我们之前提到的，随着智能指针的使用，代码库不应在任何地方使用`new`和`delete`。这是可能的，因为自C++14以来，标准库提供了一个方便的函数：`std::make_unique`。`make_unique`是一个模板函数，它接受要创建的对象的类型，并在动态内存中创建它，将参数传递给对象的构造函数，并返回一个指向它的唯一指针：
+正如我们之前提到的，随着智能指针的使用，代码库不应在任何地方使用`new`和`delete`。这是可能的，因为自 C++14 以来，标准库提供了一个方便的函数：`std::make_unique`。`make_unique`是一个模板函数，它接受要创建的对象的类型，并在动态内存中创建它，将参数传递给对象的构造函数，并返回一个指向它的唯一指针：
 
-[PRE59]
+```cpp
+std::unique_ptr<Logger>createLogger() {
+  if (are_tests_running()) {
+    std::unique_ptr<TestLogger> logger = std::make_unique<TestLogger>();
+     return logger; // logger is implicitly moved
+  } else {
+    std::unique_ptr<ReleaseLogger> logger = std::make_unique<ReleaseLogger>("Release logger");
+    return logger; // logger is implicitly moved
+  }
+}
+```
 
 关于此功能有三个重要点：
 
@@ -714,7 +1133,12 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 让我们现在看看我们如何重写之前展示的拥有数字的类：
 
-[PRE60]
+```cpp
+class A {
+  A(): number(std::make_unique<int>()) {}
+  std::unique_ptr<int> number;
+};
+```
 
 由于`unique_ptr`在销毁时自动删除对象，我们不必为类编写析构函数，这使得我们的代码更加简单。
 
@@ -726,9 +1150,9 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 `shared_ptr`表示一个有多个所有者的对象：几个对象中的一个将删除拥有的对象。
 
-一个例子可以建立一个TCP连接，该连接由多个线程建立以发送数据。每个线程使用TCP连接发送数据然后终止。
+一个例子可以建立一个 TCP 连接，该连接由多个线程建立以发送数据。每个线程使用 TCP 连接发送数据然后终止。
 
-我们希望在最后一个线程执行完毕时删除TCP连接，但最后一个终止的线程不一定是同一个；它可能是任何线程。
+我们希望在最后一个线程执行完毕时删除 TCP 连接，但最后一个终止的线程不一定是同一个；它可能是任何线程。
 
 或者，如果我们正在模拟一个连接节点的图，我们可能希望在从图中删除所有连接后删除一个节点。`unique_ptr`不能解决这些情况，因为对象没有单一的所有者。
 
@@ -736,7 +1160,15 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 让我们看看一个利用它的例子：
 
-[PRE61]
+```cpp
+class Node {
+  public:
+    void addConnectedNode(std::shared_ptr<Node> node);
+    void removeConnectedNode(std::shared_ptr<Node> node);
+  private:
+    std::vector<std::shared_ptr<Node>>d_connections;
+};
+```
 
 在这里，我们可以看到我们持有许多指向节点的`shared_ptr`实例。如果我们有一个指向节点的`shared_ptr`实例，我们想要确保节点存在，但当我们移除共享指针时，我们不再关心节点：它可能被删除，或者如果另一个节点与之连接，它可能仍然保持活跃。
 
@@ -752,27 +1184,37 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 通常情况下，`shared_ptr`足以模拟大多数`unique_ptr`无法处理的情况，并且它们共同覆盖了代码库中动态内存的大部分使用。
 
-最后，如果我们想在运行时才知道大小的数组中使用动态内存，我们并不无助。`unique_ptr`可以与数组类型一起使用，从C++17开始，`shared_ptr`也可以与数组类型一起使用：
+最后，如果我们想在运行时才知道大小的数组中使用动态内存，我们并不无助。`unique_ptr`可以与数组类型一起使用，从 C++17 开始，`shared_ptr`也可以与数组类型一起使用：
 
-[PRE62]
+```cpp
+std::unique_ptr<int[]>ints = std::make_unique<int[]>();
+std::shared_ptr<float[]>floats = std::make_shared<float[]>();
+```
 
-### 活动26：为UserProfileStorage创建工厂
+### 活动 26：为 UserProfileStorage 创建工厂
 
-我们的代码需要创建我们在*活动25：检索用户信息*期间编写的`UserProfileStorage`接口的新实例：
+我们的代码需要创建我们在*活动 25：检索用户信息*期间编写的`UserProfileStorage`接口的新实例：
 
 1.  编写一个新的`UserProfileStorageFactory`类。现在创建一个新的`create`方法，它返回一个`UserProfileStorage`：
 
 1.  在`UserProfileStorageFactory`类中，返回`unique_ptr`以便它管理接口的生存期：
 
-    [PRE63]
+    ```cpp
+    class UserProfileStorageFactory {
+    public:
+        std::unique_ptr<UserProfileStorage> create() const {
+            // Create the storage and return it
+        }
+    };
+    ```
 
 1.  现在，在`main`函数中，调用`UserProfileStorageFactory`类。
 
     #### 注意
 
-    解决这个活动的方案可以在第313页找到。
+    解决这个活动的方案可以在第 313 页找到。
 
-### 活动27：使用数据库连接进行多项操作
+### 活动 27：使用数据库连接进行多项操作
 
 在我们的在线商店中，用户支付购买后，我们想要更新他们的订单列表，以便在他们的个人资料中显示。同时，我们还需要安排订单的处理。
 
@@ -784,32 +1226,50 @@ C++11引入了这个关键字，使我们能够显式地指定我们正在重写
 
 1.  假设有两个函数，`updateOrderList(DatabaseConnection&)`和`scheduleOrderProcessing(DatabaseConnection&)`，编写两个函数`updateWithConnection()`和`scheduleWithConnection()`，它们接受指向`DatabaseConnection`的共享指针并调用上面定义的相应函数：
 
-    [PRE64]
+    ```cpp
+    void updateWithConnection(std::shared_ptr<DatabaseConnection> connection) {
+        updateOrderList(*connection);
+    }
+    void scheduleWithConnection(std::shared_ptr<DatabaseConnection> connection) {
+        scheduleOrderProcessing(*connection);
+    }
+    ```
 
 1.  使用`shared_ptr`并保留`shared_ptr`的副本，以确保连接保持有效。
 
 1.  现在让我们编写`main`函数，其中我们创建一个指向连接的共享指针，然后我们调用上面定义的两个函数`std::async`，如下所示：
 
-    [PRE65]
+    ```cpp
+    int main()
+    {
+        std::shared_ptr<DatabaseConnection> connection = std::make_shared<DatabaseConnection>();
+        std::async(std::launch::async, updateWithConnection, connection);
+        std::async(std::launch::async, scheduleWithConnection, connection);
+    }
+    ```
 
     输出如下：
 
-    [PRE66]
+    ```cpp
+    Updating order and scheduling order processing in parallel
+    Schedule order processing
+    Updating order list
+    ```
 
     #### 注意
 
-    解决这个活动的方案可以在第314页找到。
+    解决这个活动的方案可以在第 314 页找到。
 
 ## 摘要
 
-在本章中，我们看到了如何在C++中使用继承来组合类。我们看到了基类是什么，派生类是什么，如何编写从另一个类派生的类，以及如何控制可见性修饰符。我们讨论了如何在派生类中通过调用基类构造函数来初始化基类。
+在本章中，我们看到了如何在 C++中使用继承来组合类。我们看到了基类是什么，派生类是什么，如何编写从另一个类派生的类，以及如何控制可见性修饰符。我们讨论了如何在派生类中通过调用基类构造函数来初始化基类。
 
-然后，我们解释了多态以及C++动态绑定派生类指针或引用到基类指针或引用的能力。我们解释了函数调用的分派是什么，默认情况下它是如何静态工作的，以及如何使用虚关键字使其动态化。随后，我们探讨了如何正确编写虚函数以及如何覆盖它们，确保用`override`关键字标记这样的覆盖函数。
+然后，我们解释了多态以及 C++动态绑定派生类指针或引用到基类指针或引用的能力。我们解释了函数调用的分派是什么，默认情况下它是如何静态工作的，以及如何使用虚关键字使其动态化。随后，我们探讨了如何正确编写虚函数以及如何覆盖它们，确保用`override`关键字标记这样的覆盖函数。
 
 接下来，我们展示了如何使用抽象基类定义接口以及如何使用纯虚方法。我们还提供了如何正确定义接口的指南。
 
 最后，我们深入探讨了动态内存及其解决的问题，但也看到了如何容易地错误使用它。
 
-我们通过展示现代C++如何通过提供智能指针来简化动态内存的使用，从而结束了本章的内容，这些智能指针为我们处理复杂的细节：`unique_ptr`用于管理单个所有者的对象，`shared_ptr`用于多个所有者的对象。
+我们通过展示现代 C++如何通过提供智能指针来简化动态内存的使用，从而结束了本章的内容，这些智能指针为我们处理复杂的细节：`unique_ptr`用于管理单个所有者的对象，`shared_ptr`用于多个所有者的对象。
 
-所有这些工具都可以有效地编写出既能够有效进化又能够维护的稳固程序，同时保留C++所著名的性能。
+所有这些工具都可以有效地编写出既能够有效进化又能够维护的稳固程序，同时保留 C++所著名的性能。

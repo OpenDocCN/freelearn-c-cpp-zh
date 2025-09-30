@@ -74,9 +74,9 @@ OOD 有三个其他要素。具体如下：
 
 ![图片](img/a2e91c5f-a337-4475-af95-9423ab1932cc.png)
 
-上述类图描述了一个**Person**类有两个职责：一个职责是用用户的姓氏或姓问候用户，另一个职责是验证电子邮件。如果我们需要在**Person**类上应用SRP，我们可以将其分为两个；**Person**有一个问候方法，而**Email**有电子邮件验证。
+上述类图描述了一个**Person**类有两个职责：一个职责是用用户的姓氏或姓问候用户，另一个职责是验证电子邮件。如果我们需要在**Person**类上应用 SRP，我们可以将其分为两个；**Person**有一个问候方法，而**Email**有电子邮件验证。
 
-SRP不仅适用于类级别，也适用于方法、包和模块。
+SRP 不仅适用于类级别，也适用于方法、包和模块。
 
 # 开放和封闭原则 – SOLID
 
@@ -86,7 +86,7 @@ SRP不仅适用于类级别，也适用于方法、包和模块。
 
 ![图片](img/07114d55-b27f-400d-8902-18a99699cc7d.png)
 
-上述类图展示了在**Account**类及其子类上应用开放和封闭原则。账户可以是任何类型，如储蓄或活期。**SavingsAccount**可能被分类为**GeneralAccount**、**KidsAccount**等，因此我们可以强制Account和其他子类对增强是可用的，但对修改是封闭的。
+上述类图展示了在**Account**类及其子类上应用开放和封闭原则。账户可以是任何类型，如储蓄或活期。**SavingsAccount**可能被分类为**GeneralAccount**、**KidsAccount**等，因此我们可以强制 Account 和其他子类对增强是可用的，但对修改是封闭的。
 
 开放和封闭原则带来了代码无需更改、不引入任何新缺陷的好处，但可能存在一个缺点，即现有的缺陷从未得到解决。
 
@@ -94,11 +94,11 @@ SRP不仅适用于类级别，也适用于方法、包和模块。
 
 这个原则指出，任何子类都不应该破坏父类的类型定义，换句话说，派生类应该可以替代其基类。
 
-首先，让我们了解替代性原则的违反，然后我们看看如何通过使用我们之前关于账户类作为LSP是OCP主要启用者的例子来解决这个问题：
+首先，让我们了解替代性原则的违反，然后我们看看如何通过使用我们之前关于账户类作为 LSP 是 OCP 主要启用者的例子来解决这个问题：
 
 ![](img/f201284f-16ac-4eb5-9417-efae901abc89.png)
 
-假设从儿童账户的提款是不允许的，与普通账户不同。正如你在前面的类图中看到的，儿童账户类中的*withdraw*方法违反了LSP，因此通过引入从**SavingsAccount**类继承的其它可提款和非提款类来处理不可提款行为，我们可以消除这种违反，并且子类不会改变基类的行为：
+假设从儿童账户的提款是不允许的，与普通账户不同。正如你在前面的类图中看到的，儿童账户类中的*withdraw*方法违反了 LSP，因此通过引入从**SavingsAccount**类继承的其它可提款和非提款类来处理不可提款行为，我们可以消除这种违反，并且子类不会改变基类的行为：
 
 ![](img/fe87bbb2-9dd8-4bcd-813b-be4e1e66cb87.png)
 
@@ -106,23 +106,23 @@ SRP不仅适用于类级别，也适用于方法、包和模块。
 
 # 接口分离原则（ISP）- SOLID
 
-想象一下，你正在实现一个名为pets的类的接口，编译器抱怨你的**Cat**类中没有包含bark方法；这很奇怪，不是吗？
+想象一下，你正在实现一个名为 pets 的类的接口，编译器抱怨你的**Cat**类中没有包含 bark 方法；这很奇怪，不是吗？
 
-ISP建议“任何类的接口都不应该强迫客户端包含任何对该客户端来说不必要的方 法”；在我们的例子中，**Cat**不需要实现bark方法，这是**Dog**类的专属：
+ISP 建议“任何类的接口都不应该强迫客户端包含任何对该客户端来说不必要的方 法”；在我们的例子中，**Cat**不需要实现 bark 方法，这是**Dog**类的专属：
 
 ![](img/1e387677-582b-4bbc-9178-5c645a43eba0.png)
 
-前面的图描述了ISP的违反以及如何通过将**<<IPets>>**接口拆分来表示**Cat**和**Dog**接口来消除这种违反。
+前面的图描述了 ISP 的违反以及如何通过将**<<IPets>>**接口拆分来表示**Cat**和**Dog**接口来消除这种违反。
 
 # 依赖倒置原则（DIP）- SOLID
 
-DIP强制执行以下两点：
+DIP 强制执行以下两点：
 
 +   任何高级模块都不应该依赖于低级模块，而两者都应该依赖于抽象模块
 
 +   模块的抽象不应依赖于其实施或细节，而实现应依赖于抽象
 
-请参考前面的*接口分离原则（ISP）- SOLID*部分，以及示例类（图3.5）Pets类及其抽象类。**Dog**和**Cat**依赖于抽象（接口），并且任何对底层实现的任何更改都不会影响其他实现。
+请参考前面的*接口分离原则（ISP）- SOLID*部分，以及示例类（图 3.5）Pets 类及其抽象类。**Dog**和**Cat**依赖于抽象（接口），并且任何对底层实现的任何更改都不会影响其他实现。
 
 # 其他常见设计原则
 
@@ -436,7 +436,7 @@ DIP强制执行以下两点：
 
 ![图片](img/5a8b6703-53df-43f2-9199-0702c4359698.png)
 
-上述图展示了支付类代理模式的示例实现，支付可以是支票或汇票。然而，实际的访问将是到**DebitAccount**对象，因此**PayOrderProxy**和**CheckProxy**都是Debit Account的代理。
+上述图展示了支付类代理模式的示例实现，支付可以是支票或汇票。然而，实际的访问将是到**DebitAccount**对象，因此**PayOrderProxy**和**CheckProxy**都是 Debit Account 的代理。
 
 以下是一些好处：
 
@@ -730,11 +730,11 @@ DIP强制执行以下两点：
 
 # 摘要
 
-设计模式自1992年以来已经发展，即使在今天，在解决许多软件设计问题时，设计模式这种经过验证的技术和实践仍然是不可避免的。不难将任何特定的模式视为一种可以分析、实现和重用的解决方案或技术，但很难描述它解决的问题以及它最佳适用的情况。了解模式的目的至关重要，因为它有助于理解任何给定系统的现有设计。
+设计模式自 1992 年以来已经发展，即使在今天，在解决许多软件设计问题时，设计模式这种经过验证的技术和实践仍然是不可避免的。不难将任何特定的模式视为一种可以分析、实现和重用的解决方案或技术，但很难描述它解决的问题以及它最佳适用的情况。了解模式的目的至关重要，因为它有助于理解任何给定系统的现有设计。
 
 通过本章，我们探讨了面向对象设计（OOD）的关键要素，包括抽象、封装、模块化和层次结构，以及一些额外的项目，如类型、并发性和持久性。
 
-此外，我们还讨论了设计原则，希望读者能够对面向对象原则为面向对象软件设计师提供的帮助有一个*SOLID*的理解。我们相信，SOLID原则是任何想要进入软件设计和开发领域的人的基本培训材料，即使在当今世界也是如此。
+此外，我们还讨论了设计原则，希望读者能够对面向对象原则为面向对象软件设计师提供的帮助有一个*SOLID*的理解。我们相信，SOLID 原则是任何想要进入软件设计和开发领域的人的基本培训材料，即使在当今世界也是如此。
 
 我们简要介绍了面向对象设计的三个广泛类别：创建型、结构型和行为型。我们还讨论了每种模式的益处和影响，以便读者能够轻松地描述它解决的问题以及它作为软件解决方案的最佳适用环境。
 
@@ -750,26 +750,26 @@ DIP强制执行以下两点：
 
 +   《设计模式：可复用面向对象软件元素》by Erich Gamma, Richard Helm, Ralph Johnson 和 John Vlissides
 
-+   *《面向对象分析与设计：应用篇》（第2版）* by Grady Booch
++   *《面向对象分析与设计：应用篇》（第 2 版）* by Grady Booch
 
 本章的其他参考资料：
 
-+   [http://www.oodesign.com/](http://www.oodesign.com/)
++   [`www.oodesign.com/`](http://www.oodesign.com/)
 
-+   [https://www.tutorialspoint.com/design_pattern](https://www.tutorialspoint.com/design_pattern)
++   [`www.tutorialspoint.com/design_pattern`](https://www.tutorialspoint.com/design_pattern)
 
-+   [https://sourcemaking.com/design_patterns/](https://sourcemaking.com/design_patterns/)
++   [`sourcemaking.com/design_patterns/`](https://sourcemaking.com/design_patterns/)
 
-+   [http://www.blackwasp.co.uk/GofPatterns.aspx](http://www.blackwasp.co.uk/GofPatterns.aspx)
++   [`www.blackwasp.co.uk/GofPatterns.aspx`](http://www.blackwasp.co.uk/GofPatterns.aspx)
 
-+   [http://www.mif.vu.lt/~plukas/resources/DPBook/](http://www.mif.vu.lt/~plukas/resources/DPBook/)
++   [`www.mif.vu.lt/~plukas/resources/DPBook/`](http://www.mif.vu.lt/~plukas/resources/DPBook/)
 
 +   [www.dzone.com](http://www.dzone.com)
 
-+   [http://www.javaworld.com](http://www.javaworld.com)
++   [`www.javaworld.com`](http://www.javaworld.com)
 
-+   [https://sudo.ch/unizh/concurrencypatterns/ConcurrencyPatterns.pdf](https://sudo.ch/unizh/concurrencypatterns/ConcurrencyPatterns.pdf)
++   [`sudo.ch/unizh/concurrencypatterns/ConcurrencyPatterns.pdf`](https://sudo.ch/unizh/concurrencypatterns/ConcurrencyPatterns.pdf)
 
-+   [http://www.cs.wustl.edu/~schmidt/POSA/POSA2/conc-patterns.html](http://www.cs.wustl.edu/~schmidt/POSA/POSA2/conc-patterns.html)
++   [`www.cs.wustl.edu/~schmidt/POSA/POSA2/conc-patterns.html`](http://www.cs.wustl.edu/~schmidt/POSA/POSA2/conc-patterns.html)
 
-+   [https://en.wikipedia.org/wiki/Concurrency_pattern](https://en.wikipedia.org/wiki/Concurrency_pattern)
++   [`en.wikipedia.org/wiki/Concurrency_pattern`](https://en.wikipedia.org/wiki/Concurrency_pattern)

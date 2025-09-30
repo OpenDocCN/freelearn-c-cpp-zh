@@ -1,130 +1,130 @@
-# *第9章*：物联网温度记录系统
+# *第九章*：物联网温度记录系统
 
-近年来，互联网的使用量有所增加。这种相同的增加使得互联网得以进化。现在我们谈论的是连接到这个网络的**事物**；原本未设计为具有连接性的日常使用设备。这种进化创造了**物联网**（**IoT**）的概念，正如摩根在《福布斯》杂志（2014年）中定义的，“*将常用设备连接到互联网，以自动完成任务*。”
+近年来，互联网的使用量有所增加。这种相同的增加使得互联网得以进化。现在我们谈论的是连接到这个网络的**事物**；原本未设计为具有连接性的日常使用设备。这种进化创造了**物联网**（**IoT**）的概念，正如摩根在《福布斯》杂志（2014 年）中定义的，“*将常用设备连接到互联网，以自动完成任务*。”
 
 物联网几乎存在于日常生活的所有领域，从健康到教育，分别被称为**物联网医疗**（**IoMT**）和**物联网教育**（**IoET**）。
 
-在本章中，您将了解到如何使用**ESP8266 Wi-Fi模块**为STM32 Blue Pill板创建一个温度记录应用，从而进入物联网应用的创造世界。有了这些知识，您将能够构建可以连接到互联网并从传感器等来源远程展示数据的工程项目。
+在本章中，您将了解到如何使用**ESP8266 Wi-Fi 模块**为 STM32 Blue Pill 板创建一个温度记录应用，从而进入物联网应用的创造世界。有了这些知识，您将能够构建可以连接到互联网并从传感器等来源远程展示数据的工程项目。
 
 在本章中，我们将涵盖以下主要主题：
 
-+   将温度传感器连接到Blue Pill板
++   将温度传感器连接到 Blue Pill 板
 
 +   编写温度读取系统代码
 
-+   学习连接ESP8266模块
++   学习连接 ESP8266 模块
 
 +   编写程序将感应到的温度发送到互联网
 
-+   将STM32 Blue Pill板连接到互联网
++   将 STM32 Blue Pill 板连接到互联网
 
-到本章结束时，您将能够理解创建物联网应用中最受欢迎的Wi-Fi模块之一ESP8266的操作，并且熟悉如何将STM32微控制器板连接到互联网并发送从温度传感器获得的数据。
+到本章结束时，您将能够理解创建物联网应用中最受欢迎的 Wi-Fi 模块之一 ESP8266 的操作，并且熟悉如何将 STM32 微控制器板连接到互联网并发送从温度传感器获得的数据。
 
 # 技术要求
 
 开发温度记录系统所需的硬件组件如下：
 
-+   1个无焊面包板。
++   1 个无焊面包板。
 
-+   1块Blue Pill STM32微控制器板。
++   1 块 Blue Pill STM32 微控制器板。
 
-+   1个ST-Link/V2电子接口，用于将编译后的代码上传到Blue Pill板。请注意，ST-Link/V2需要4根公对公跳线。
++   1 个 ST-Link/V2 电子接口，用于将编译后的代码上传到 Blue Pill 板。请注意，ST-Link/V2 需要 4 根公对公跳线。
 
-+   1个DS18B20温度传感器模块。
++   1 个 DS18B20 温度传感器模块。
 
-+   1个ESP8266 Wi-Fi模块。
++   1 个 ESP8266 Wi-Fi 模块。
 
-+   1块FTDI适配器板。
++   1 块 FTDI 适配器板。
 
-+   1个LED。
++   1 个 LED。
 
-+   1个220欧姆电阻。
++   1 个 220 欧姆电阻。
 
-+   7根公对公跳线。
++   7 根公对公跳线。
 
-+   5根公对公跳线。
++   5 根公对公跳线。
 
-+   1个5V电源。
++   1 个 5V 电源。
 
-如往常一样，这些组件非常常见，获取它们不会有任何问题。在软件方面，您将需要Arduino IDE和本章的GitHub仓库：[https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter09](https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter09)
+如往常一样，这些组件非常常见，获取它们不会有任何问题。在软件方面，您将需要 Arduino IDE 和本章的 GitHub 仓库：[`github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter09`](https://github.com/PacktPublishing/DIY-Microcontroller-Projects-for-Hobbyists/tree/master/Chapter09)
 
-本章的“代码在行动”视频可以在这里找到：[https://bit.ly/3vSwPSu](https://bit.ly/3vSwPSu)
+本章的“代码在行动”视频可以在这里找到：[`bit.ly/3vSwPSu`](https://bit.ly/3vSwPSu)
 
 以下部分介绍了温度传感器模块及其主要特性。
 
-# 将温度传感器连接到Blue Pill板
+# 将温度传感器连接到 Blue Pill 板
 
 在本节中，我们将学习构建温度记录传感器所需的硬件组件，使用**STM32 Blue Pill**和温度模块。
 
 要构建一个测量温度的电子设备，你需要一个监控环境并记录温度数据的传感器。还需要一个微控制器卡，以便能够从传感器读取数据，并将信息显示给用户。我们将首先查看温度传感器模块。
 
-## 介绍DS18B20温度传感器模块
+## 介绍 DS18B20 温度传感器模块
 
-让我们了解构建温度记录所需的主要硬件组件的详细信息：**DS18B20传感器**。它是一种数字温度传感器，可以测量空气温度、液体（使用防水版本）和土壤。
+让我们了解构建温度记录所需的主要硬件组件的详细信息：**DS18B20 传感器**。它是一种数字温度传感器，可以测量空气温度、液体（使用防水版本）和土壤。
 
 重要提示
 
-DS18B20温度传感器有一个独特的64位串行代码，允许通过STM32微控制器卡上的一个数字引脚（单线协议）连接多个传感器。
+DS18B20 温度传感器有一个独特的 64 位串行代码，允许通过 STM32 微控制器卡上的一个数字引脚（单线协议）连接多个传感器。
 
-我们将使用一个通用的分线模块，该模块已经包含一个电压LED和所需的4.7 kΩ上拉电阻（如图*图9.1*所示）：
+我们将使用一个通用的分线模块，该模块已经包含一个电压 LED 和所需的 4.7 kΩ上拉电阻（如图*图 9.1*所示）：
 
-![图9.1 – DS18B20数字温度传感器分线板](img/Figure_9.1_B16413.jpg)
+![图 9.1 – DS18B20 数字温度传感器分线板](img/Figure_9.1_B16413.jpg)
 
-图9.1 – DS18B20数字温度传感器分线板
+图 9.1 – DS18B20 数字温度传感器分线板
 
-它是一个单线传感器，这意味着传感器只需要一个引脚端口与控制器进行通信。温度以摄氏度为单位测量，从-55°C到+125°C，精度为±0.5°C（在-10°C和85°C之间）。使用此传感器而不是热敏电阻（热敏电阻）的主要优点是，我们从传感器接收一个数字引脚上的位流，而不是在模拟引脚上接收电压。
+它是一个单线传感器，这意味着传感器只需要一个引脚端口与控制器进行通信。温度以摄氏度为单位测量，从-55°C 到+125°C，精度为±0.5°C（在-10°C 和 85°C 之间）。使用此传感器而不是热敏电阻（热敏电阻）的主要优点是，我们从传感器接收一个数字引脚上的位流，而不是在模拟引脚上接收电压。
 
-现在我们已经了解了温度传感器，让我们继续下一小节，学习如何将其连接到无焊面包板上的STM32 Blue Pill。
+现在我们已经了解了温度传感器，让我们继续下一小节，学习如何将其连接到无焊面包板上的 STM32 Blue Pill。
 
 ## 连接组件
 
-我们将把电子元件连接到无焊面包板上，进行布线，最后将所有东西连接到STM32 Blue Pill。以下是需要执行的步骤：
+我们将把电子元件连接到无焊面包板上，进行布线，最后将所有东西连接到 STM32 Blue Pill。以下是需要执行的步骤：
 
-1.  将温度传感器和STM32 Blue Pill放置在无焊面包板上，留有足够的空间添加布线层，如图*图9.2*所示：![图9.2 – 面包板上的组件](img/Figure_9.2_B16413.jpg)
+1.  将温度传感器和 STM32 Blue Pill 放置在无焊面包板上，留有足够的空间添加布线层，如图*图 9.2*所示：![图 9.2 – 面包板上的组件](img/Figure_9.2_B16413.jpg)
 
-    图9.2 – 面包板上的组件
+    图 9.2 – 面包板上的组件
 
-1.  接下来，我们将使用外部电源为温度记录系统供电。为此，将STM32 Blue Pill的5 V引脚连接到无焊面包板上的红色轨道，并将地线引脚连接到蓝色轨道，如图下照片所示（*图9.3*）：![图9.3 – 与电源的连接](img/Figure_9.3_B16413.jpg)
+1.  接下来，我们将使用外部电源为温度记录系统供电。为此，将 STM32 Blue Pill 的 5 V 引脚连接到无焊面包板上的红色轨道，并将地线引脚连接到蓝色轨道，如图下照片所示（*图 9.3*）：![图 9.3 – 与电源的连接](img/Figure_9.3_B16413.jpg)
 
-    图9.3 – 与电源的连接
+    图 9.3 – 与电源的连接
 
-1.  将传感器的地（GND）引脚连接到无焊面包板的蓝色轨道或STM32 Blue Pill的GND端子。接下来，您需要将电压（VCC）引脚连接到无焊面包板的红色轨道，或STM32 Blue Pill的5V总线，如下面的照片所示。温度传感器产生数字输出，因此必须连接到STM32 Blue Pill卡上的数字输入。将温度传感器的信号引脚（S）连接到Blue Pill的B12引脚，如*图9.4*所示：![图9.4 – 温度传感器连接到Blue Pill](img/Figure_9.4_B16413.jpg)
+1.  将传感器的地（GND）引脚连接到无焊面包板的蓝色轨道或 STM32 Blue Pill 的 GND 端子。接下来，您需要将电压（VCC）引脚连接到无焊面包板的红色轨道，或 STM32 Blue Pill 的 5V 总线，如下面的照片所示。温度传感器产生数字输出，因此必须连接到 STM32 Blue Pill 卡上的数字输入。将温度传感器的信号引脚（S）连接到 Blue Pill 的 B12 引脚，如*图 9.4*所示：![图 9.4 – 温度传感器连接到 Blue Pill](img/Figure_9.4_B16413.jpg)
 
-    图9.4 – 温度传感器连接到Blue Pill
+    图 9.4 – 温度传感器连接到 Blue Pill
 
-1.  最后，您需要使用电池或连接到计算机USB端口的STLink等电源为板子供电。像往常一样，我们将使用STLink将脚本上传到微控制器板。*图9.5*总结了所有硬件连接：
+1.  最后，您需要使用电池或连接到计算机 USB 端口的 STLink 等电源为板子供电。像往常一样，我们将使用 STLink 将脚本上传到微控制器板。*图 9.5*总结了所有硬件连接：
 
-![图9.5 – 温度传感器连接电路](img/Figure_9.5_B16413.jpg)
+![图 9.5 – 温度传感器连接电路](img/Figure_9.5_B16413.jpg)
 
-图9.5 – 温度传感器连接电路
+图 9.5 – 温度传感器连接电路
 
-之前的图示显示了STM32 Blue Pill和电子组件之间的所有连接，并总结了我们刚刚完成的连接步骤。
+之前的图示显示了 STM32 Blue Pill 和电子组件之间的所有连接，并总结了我们刚刚完成的连接步骤。
 
-*图9.6*展示了本项目的原理图：
+*图 9.6*展示了本项目的原理图：
 
-![图9.6 – 温度传感器连接原理图](img/Figure_9.6_B16413.jpg)
+![图 9.6 – 温度传感器连接原理图](img/Figure_9.6_B16413.jpg)
 
-图9.6 – 温度传感器连接原理图
+图 9.6 – 温度传感器连接原理图
 
-原理图显示了整个项目的电路图。*图9.7*展示了我们温度记录系统中所有组件的连接方式：
+原理图显示了整个项目的电路图。*图 9.7*展示了我们温度记录系统中所有组件的连接方式：
 
-![图9.7 – 温度记录系统](img/Figure_9.7_B16413.jpg)
+![图 9.7 – 温度记录系统](img/Figure_9.7_B16413.jpg)
 
-图9.7 – 温度记录系统
+图 9.7 – 温度记录系统
 
-本节向您介绍了DS18B20温度传感器。我们发现了它的规格以及与其他类型温度传感器的优势。然后您学习了如何将其连接到面包板并与STM32 Blue Pill接口相连。
+本节向您介绍了 DS18B20 温度传感器。我们发现了它的规格以及与其他类型温度传感器的优势。然后您学习了如何将其连接到面包板并与 STM32 Blue Pill 接口相连。
 
-现在是时候进入下一节了，该节将展示用于完成物联网温度记录第一功能的C代码。
+现在是时候进入下一节了，该节将展示用于完成物联网温度记录第一功能的 C 代码。
 
 # 编写温度读取系统代码
 
-在本节中，我们将开发程序从传感器读取温度值。如前所述，DS18B20传感器使用1线协议，因此我们将使用Arduino IDE库来编程它。让我们开始吧：
+在本节中，我们将开发程序从传感器读取温度值。如前所述，DS18B20 传感器使用 1 线协议，因此我们将使用 Arduino IDE 库来编程它。让我们开始吧：
 
-1.  作为第一步，我们将安装**OneWire**库。打开Arduino IDE，然后进入**工具**菜单，接着选择**管理库**（见*图9.8*）:![图9.8 – 库管理器](img/Figure_9.8_B16413.jpg)
+1.  作为第一步，我们将安装**OneWire**库。打开 Arduino IDE，然后进入**工具**菜单，接着选择**管理库**（见*图 9.8*）:![图 9.8 – 库管理器](img/Figure_9.8_B16413.jpg)
 
-    图9.8 – 库管理器
+    图 9.8 – 库管理器
 
-1.  接下来，我们将在搜索框中输入单词`OneWire`来搜索库。我们将安装由1线协议开发者创建的库，因此请安装Jim Studt及其同事创建的库（见*图9.9*）：![图9.9 – 安装OneWire库](img/Figure_9.9_B16413.jpg)
+1.  接下来，我们将在搜索框中输入单词`OneWire`来搜索库。我们将安装由 1 线协议开发者创建的库，因此请安装 Jim Studt 及其同事创建的库（见*图 9.9*）：![图 9.9 – 安装 OneWire 库](img/Figure_9.9_B16413.jpg)
 
     图 9.9 – 安装 OneWire 库
 
@@ -134,27 +134,50 @@ DS18B20温度传感器有一个独特的64位串行代码，允许通过STM32微
 
     另一种不使用 Arduino IDE 内置功能安装库的方法是从 GitHub 上的存储库手动下载库。下载后，请将它们放置在 `Arduino/Libraries` 文件夹中。接下来，在以下链接中找到库的存储库。
 
-    OneWire: [https://github.com/PaulStoffregen/OneWire](https://github.com/PaulStoffregen/OneWire)。
+    OneWire: [`github.com/PaulStoffregen/OneWire`](https://github.com/PaulStoffregen/OneWire)。
 
-    Maxim（前身为 Dallas）温度：[https://github.com/milesburton/Arduino-Temperature-Control-Library](https://github.com/milesburton/Arduino-Temperature-Control-Library)。
+    Maxim（前身为 Dallas）温度：[`github.com/milesburton/Arduino-Temperature-Control-Library`](https://github.com/milesburton/Arduino-Temperature-Control-Library)。
 
 1.  让我们编写代码。我们需要包含之前安装的库，并定义 STM32 Blue Pill 卡的哪个引脚将被用于输入：
 
-    [PRE0]
+    ```cpp
+    #include <DallasTemperature.h>
+    #define PIN_1_WIRE PB12 
+    OneWire pinWire(PIN_1_WIRE); 
+    DallasTemperature sensors(&pinWire);
+    ```
 
     如前文片段所示，单总线将使用 PB12（在 Blue Pill 上标记为 P12）。此外，已创建一个实例以执行通信，并将实例的引用传递给温度传感器。
 
 1.  接下来，在 `setup()` 部分中，我们需要启动串行数据传输并分配传输速度（通常，我们将使用 9,600 bps 作为标准值）：
 
-    [PRE1]
+    ```cpp
+    void setup() {
+      Serial.begin(9600);
+    }
+    ```
 
 1.  我们还需要开始读取传感器：
 
-    [PRE2]
+    ```cpp
+    void setup() {
+      Serial.begin(9600);
+      sensors.begin();
+    }
+    ```
 
 1.  现在是草图中的 `loop()` 部分。`requestTemperatures()` 函数在读取控制台显示的值后读取温度传感器的值：
 
-    [PRE3]
+    ```cpp
+    void loop() {
+      sensors.requestTemperatures();
+      int temp = sensors.getTempCByIndex(0);
+      Serial.print("Temperature = ");
+      Serial.print(temp); 
+      Serial.println(" °C");
+      delay(1000);
+    }
+    ```
 
     重要提示
 
@@ -272,7 +295,7 @@ SP-01 的引脚配置如下：
 
 1.  打开 **Arduino** 菜单并选择 **Preferences**。
 
-1.  将 [https://arduino.esp8266.com/stable/package_esp8266com_index.json](https://arduino.esp8266.com/stable/package_esp8266com_index.json) 添加到 **Additional Boards Manager URLs** 字段。您需要用逗号与我们在第一章中安装的 STM32 模块的链接分开文本。
+1.  将 [`arduino.esp8266.com/stable/package_esp8266com_index.json`](https://arduino.esp8266.com/stable/package_esp8266com_index.json) 添加到 **Additional Boards Manager URLs** 字段。您需要用逗号与我们在第一章中安装的 STM32 模块的链接分开文本。
 
 1.  安装 **esp8266** 平台。转到 **Tools** 菜单并选择 **Board**，然后选择 **Boards Manager**（见 *图 9.16*）:![图 9.16 – 安装 esp8266 平台](img/Figure_9.16_B16413.jpg)
 
@@ -280,27 +303,64 @@ SP-01 的引脚配置如下：
 
 1.  在代码中包含库将是第一步：
 
-    [PRE4]
+    ```cpp
+    #include <DallasTemperature.h>
+    #include <ESP8266WiFi.h>
+    #include <ESP8266WebServer.h>
+    ```
 
 1.  `setup()` 将包含所有编程逻辑。我们需要启动串行数据传输并分配传输速度（这次我们将使用 115,200 bps）。同时，我们将初始化传感器读取：
 
-    [PRE5]
+    ```cpp
+    void setup() {
+      Serial.begin(115200);
+        sensors.begin();
+    }
+    ```
 
 1.  接下来，我们将添加 Wi-Fi 凭据并启动一个网络服务器。当服务器接收到读取请求时，这将调用名为 `read_sensor` 的函数：
 
-    [PRE6]
+    ```cpp
+    void setup() {
+      Serial.begin(115200);
+      sensors.begin();
+      WiFi.softAP(ssid, password);
+      Serial.print("Connected, IP address: ");
+      Serial.println(WiFi.localIP());
+    server.on("/", [](){
+        Serial.println("Incomming connection to server");
+        server.send(200, "text/html", strFrm);
+      });
+      server.on("/read", read_sensor);
+      server.begin();;
+    }
+    ```
 
 1.  当网络服务器启动时，将显示一个 HTML 按钮，作为用户读取传感器温度的命令。
 
-    [PRE7]
+    ```cpp
+    String strFrm = "<form action='read'><input type='submit' value='Read sensor'></form>";
+    ```
 
 1.  最后，在用户按下按钮后，服务器将执行 `read_sensor()` 函数。此函数将读取传感器值并通过互联网将其显示给用户：
 
-    [PRE8]
+    ```cpp
+    void read_sensor() {
+      Serial.print("Reading the sensor: ");
+      sensors.requestTemperatures();
+      int temp = sensors.getTempCByIndex(0);
+      Serial.println(temp);
+      server.send(200, "text/plain",     String("Temperature: ") + String(temp));
+    }
+    ```
 
 1.  草图中 `loop()` 部分将保持互联网连接等待用户命令：
 
-    [PRE9]
+    ```cpp
+    void loop(void) {
+      server.handleClient();
+    }
+    ```
 
 现在，您可以将其上传到 ESP8266。为了测试程序，只需打开任何网页浏览器并打开分配给我们的设备的 IP 地址。*图 9.17* 显示了使用 ESP8266 Wi-Fi 模块通过互联网读取温度读数：
 
@@ -324,32 +384,36 @@ SP-01 的引脚配置如下：
 
 图 9.18 – 将 STM32 连接到互联网
 
-*图9.19*显示了STM32和SP-01之间的实际设备连接：
+*图 9.19*显示了 STM32 和 SP-01 之间的实际设备连接：
 
-![图9.19 – STM32和SP-01之间的物理连接](img/B16413_Figure_9.19.jpg)
+![图 9.19 – STM32 和 SP-01 之间的物理连接](img/B16413_Figure_9.19.jpg)
 
-图9.19 – STM32和SP-01之间的物理连接
+图 9.19 – STM32 和 SP-01 之间的物理连接
 
-要完成STM32和SP-01之间的连接，我们需要在`Chapter09/wifi`脚本中添加几行代码：
+要完成 STM32 和 SP-01 之间的连接，我们需要在`Chapter09/wifi`脚本中添加几行代码：
 
-[PRE10]
+```cpp
+const int toInternetPin = 0;
+```
 
-在上一行中，添加一个常量来存储用于接收来自互联网的数据的输入引脚。然后，在`read_sensor()`函数中，添加以下行以在用户请求温度时发送值1（`HIGH`）：
+在上一行中，添加一个常量来存储用于接收来自互联网的数据的输入引脚。然后，在`read_sensor()`函数中，添加以下行以在用户请求温度时发送值 1（`HIGH`）：
 
-[PRE11]
+```cpp
+digitalWrite(toInternetPin, HIGH);
+```
 
-最后，将`Chapter09/internetblink`脚本上传到STM32 Blue Pill微控制器，以便读取数字输入并发送数字输出以闪烁LED。这个脚本在这里不会解释，因为它使用的是读者已经熟悉的指令集。
+最后，将`Chapter09/internetblink`脚本上传到 STM32 Blue Pill 微控制器，以便读取数字输入并发送数字输出以闪烁 LED。这个脚本在这里不会解释，因为它使用的是读者已经熟悉的指令集。
 
-打开网页浏览器并访问我们的服务器IP地址，然后按**读取传感器**按钮。你会看到温度和LED闪烁。
+打开网页浏览器并访问我们的服务器 IP 地址，然后按**读取传感器**按钮。你会看到温度和 LED 闪烁。
 
-恭喜！你已经完成了如何使用ESP8266 Wi-Fi模块ESP-01将温度传感器连接到互联网，以及如何打开STM32 Blue Pill和互联网请求之间连接的学习。
+恭喜！你已经完成了如何使用 ESP8266 Wi-Fi 模块 ESP-01 将温度传感器连接到互联网，以及如何打开 STM32 Blue Pill 和互联网请求之间连接的学习。
 
 # 摘要
 
-在这个项目中我们学到了什么？首先，我们学习了如何将温度传感器连接到STM32 Blue Pill微控制器板。然后，我们编写了读取温度并将其发送到我们的微控制器的代码。随后，我们学习了如何将Wi-Fi模块连接到我们的STM32，并编写一个草图将板子连接到互联网。
+在这个项目中我们学到了什么？首先，我们学习了如何将温度传感器连接到 STM32 Blue Pill 微控制器板。然后，我们编写了读取温度并将其发送到我们的微控制器的代码。随后，我们学习了如何将 Wi-Fi 模块连接到我们的 STM32，并编写一个草图将板子连接到互联网。
 
-这个项目让我们获得了开始创建物联网应用的能力，在这个高度互联的世界里这是一个了不起的技能。在接下来的章节中，你将能够应用你所学的知识，因为它们包括需要互联网连接的项目。在[*第10章*](B16413_10_Final_NM_ePub.xhtml#_idTextAnchor135) *物联网植物花盆湿度传感器*中，你将学习如何通过传感器测量花盆的湿度并将其发送到云端。我们将在网页上可视化传感器数据。
+这个项目让我们获得了开始创建物联网应用的能力，在这个高度互联的世界里这是一个了不起的技能。在接下来的章节中，你将能够应用你所学的知识，因为它们包括需要互联网连接的项目。在*第十章* *物联网植物花盆湿度传感器*中，你将学习如何通过传感器测量花盆的湿度并将其发送到云端。我们将在网页上可视化传感器数据。
 
 # 进一步阅读
 
-+   摩根，J. *“物联网”的简单解释。*《福布斯》。2014: [https://www.forbes.com/sites/jacobmorgan/2014/05/13/simple-explanation-internet-things-that-anyone-can-understand/](https://www.forbes.com/sites/jacobmorgan/2014/05/13/simple-explanation-internet-things-that-anyone-can-understand/)
++   摩根，J. *“物联网”的简单解释。*《福布斯》。2014: [`www.forbes.com/sites/jacobmorgan/2014/05/13/simple-explanation-internet-things-that-anyone-can-understand/`](https://www.forbes.com/sites/jacobmorgan/2014/05/13/simple-explanation-internet-things-that-anyone-can-understand/)

@@ -8,51 +8,69 @@
 
 +   捕获当前参数状态的快照
 
-+   使用MayaCamUI
++   使用 MayaCamUI
 
-+   使用3D空间指南
++   使用 3D 空间指南
 
 +   与其他软件通信
 
-+   为iOS准备您的应用程序
++   为 iOS 准备您的应用程序
 
 # 简介
 
 在本章中，我们将介绍一些在开发过程中非常有用的简单配方。
 
-# 设置用于调整参数的GUI
+# 设置用于调整参数的 GUI
 
-**图形用户界面**（**GUI**）通常用于控制和调整您的Cinder应用程序。在许多情况下，您花费更多的时间调整应用程序参数以实现所需的结果，而不是编写代码。这在您正在处理一些生成图形时尤其如此。
+**图形用户界面**（**GUI**）通常用于控制和调整您的 Cinder 应用程序。在许多情况下，您花费更多的时间调整应用程序参数以实现所需的结果，而不是编写代码。这在您正在处理一些生成图形时尤其如此。
 
-Cinder通过`InterfaceGl`类提供了一个方便且易于使用的GUI。
+Cinder 通过`InterfaceGl`类提供了一个方便且易于使用的 GUI。
 
-![设置用于调整参数的GUI](img/8703OS_02_01.jpg)
+![设置用于调整参数的 GUI](img/8703OS_02_01.jpg)
 
 ## 准备就绪
 
-要使`InterfaceGl`类在您的Cinder应用程序中可用，您只需包含一个头文件即可。
+要使`InterfaceGl`类在您的 Cinder 应用程序中可用，您只需包含一个头文件即可。
 
-[PRE0]
+```cpp
+#include "cinder/params/Params.h"
+```
 
 ## 如何操作…
 
-按照此处给出的步骤将GUI添加到您的Cinder应用程序中。
+按照此处给出的步骤将 GUI 添加到您的 Cinder 应用程序中。
 
-1.  让我们从在我们的主类中准备不同类型的变量开始，我们将使用GUI来操作这些变量。
+1.  让我们从在我们的主类中准备不同类型的变量开始，我们将使用 GUI 来操作这些变量。
 
-    [PRE1]
+    ```cpp
+    float mObjSize;
+    Quatf mObjOrientation;
+    Vec3f mLightDirection;
+    ColorA mColor;
+    ```
 
 1.  接下来，声明`InterfaceGl`类成员如下：
 
-    [PRE2]
+    ```cpp
+    params::InterfaceGl mParams;
+    ```
 
-1.  现在我们转向`setup`方法，并初始化我们的GUI窗口，将`"Parameters"`作为窗口标题传递给`InterfaceGl`构造函数：
+1.  现在我们转向`setup`方法，并初始化我们的 GUI 窗口，将`"Parameters"`作为窗口标题传递给`InterfaceGl`构造函数：
 
-    [PRE3]
+    ```cpp
+    mParams = params::InterfaceGl("Parameters", Vec2i(200,400));
+    ```
 
 1.  现在我们可以添加和配置变量的控件：
 
-    [PRE4]
+    ```cpp
+    mParams.addParam( "Cube Size", &mObjSize, "min=0.1 max=20.5 step=0.5 keyIncr=z keyDecr=Z" );
+    mParams.addParam( "Cube Rotation", &mObjOrientation ); // Quatf type
+    mParams.addParam( "Cube Color", &mColor, "" ); // ColorA
+    mParams.addSeparator(); // add horizontal line separating controls
+    mParams.addParam( "Light Direction", &mLightDirection, "" ); // Vec3f
+    mParams.addParam( "String ", &mString, "" ); // string
+    ```
 
     查看`addParam`方法和其参数。第一个参数只是字段标题。第二个参数是存储值的变量的指针。有许多支持的变量类型，例如`bool`、`float`、`double`、`int`、`Vec3f`、`Quatf`、`Color`、`ColorA`和`std::string`。
 
@@ -79,60 +97,68 @@ Cinder通过`InterfaceGl`类提供了一个方便且易于使用的GUI。
     | `key` | 调用按钮回调的键盘快捷键 |
     | `keyIncr` | 增加值的键盘快捷键 |
     | `keyDecr` | 减少值的键盘快捷键 |
-    | `readonly` | 将值设置为`true`使变量在GUI中为只读 |
+    | `readonly` | 将值设置为`true`使变量在 GUI 中为只读 |
     | `precision` | 定义浮点变量小数点后打印的显著数字的数量 |
 
     ### 提示
 
-    您可以在以下地址的AntTweakBar页面找到可用选项的完整文档：[http://anttweakbar.sourceforge.net/doc/tools:anttweakbar:varparamsyntax](http://anttweakbar.sourceforge.net/doc/tools:anttweakbar:varparamsyntax)。
+    您可以在以下地址的 AntTweakBar 页面找到可用选项的完整文档：[`anttweakbar.sourceforge.net/doc/tools:anttweakbar:varparamsyntax`](http://anttweakbar.sourceforge.net/doc/tools:anttweakbar:varparamsyntax)。
 
 1.  最后一件要做的事情是调用`InterfaceGl::draw()`方法。我们将在主类中的`draw`方法末尾通过输入以下代码行来完成此操作：
 
-    [PRE5]
+    ```cpp
+    params::InterfaceGl::draw();
+    ```
 
 ## 它是如何工作的...
 
-在`setup`方法中，我们将设置GUI窗口并添加控件，在`addParam`方法的第一个参数中设置一个名称。在第二个参数中，我们指向我们想要链接GUI元素的变量。每次我们通过GUI更改值时，链接的变量都会更新。
+在`setup`方法中，我们将设置 GUI 窗口并添加控件，在`addParam`方法的第一个参数中设置一个名称。在第二个参数中，我们指向我们想要链接 GUI 元素的变量。每次我们通过 GUI 更改值时，链接的变量都会更新。
 
 ## 更多...
 
-对于`InterfaceGl`，如果您需要更多控制内置GUI机制，请参阅*AntTweakBar*文档，您可以在本菜谱的*也见*部分提到的项目页面上找到。
+对于`InterfaceGl`，如果您需要更多控制内置 GUI 机制，请参阅*AntTweakBar*文档，您可以在本菜谱的*也见*部分提到的项目页面上找到。
 
 ### 按钮
 
-您还可以向InterfaceGl (CIT)面板添加按钮，并为其分配一些函数的回调。例如：
+您还可以向 InterfaceGl (CIT)面板添加按钮，并为其分配一些函数的回调。例如：
 
-[PRE6]
+```cpp
+mParams.addButton("Start", std::bind(&MainApp::start, this));
+```
 
-在GUI中点击**开始**按钮将触发`MainApp`类的`start`方法。
+在 GUI 中点击**开始**按钮将触发`MainApp`类的`start`方法。
 
 ### 面板位置
 
-控制GUI面板位置的便捷方式是通过使用*AntTweekBar*工具。您必须包含一个额外的头文件：
+控制 GUI 面板位置的便捷方式是通过使用*AntTweekBar*工具。您必须包含一个额外的头文件：
 
-[PRE7]
+```cpp
+#include "AntTweakBar.h"
+```
 
-现在您可以使用以下代码行更改GUI面板的位置：
+现在您可以使用以下代码行更改 GUI 面板的位置：
 
-[PRE8]
+```cpp
+TwDefine("Parameters position='100 200' ");
+```
 
-在这种情况下，`Parameters`是GUI面板名称，`position`选项接受x和y作为值。
+在这种情况下，`Parameters`是 GUI 面板名称，`position`选项接受 x 和 y 作为值。
 
 ## 也见
 
-CinderBlocks中提供了一些看起来不错的GUI库。Cinder有一个名为blocks的扩展系统。CinderBlocks背后的理念是提供与许多第三方库的易于使用的集成。您可以在*与其他软件通信*菜谱中找到如何将CinderBlocks示例添加到您的项目的说明。
+CinderBlocks 中提供了一些看起来不错的 GUI 库。Cinder 有一个名为 blocks 的扩展系统。CinderBlocks 背后的理念是提供与许多第三方库的易于使用的集成。您可以在*与其他软件通信*菜谱中找到如何将 CinderBlocks 示例添加到您的项目的说明。
 
 ### SimpleGUI
 
-您可以在[https://github.com/vorg/MowaLibs/tree/master/SimpleGUI](https://github.com/vorg/MowaLibs/tree/master/SimpleGUI)找到由*Marcin Ignac*开发的作为CinderBlock的替代GUI。
+您可以在[`github.com/vorg/MowaLibs/tree/master/SimpleGUI`](https://github.com/vorg/MowaLibs/tree/master/SimpleGUI)找到由*Marcin Ignac*开发的作为 CinderBlock 的替代 GUI。
 
 ### ciUI
 
-您可以查看由*Reza Ali*开发的作为CinderBlock的替代用户界面，地址为[http://www.syedrezaali.com/blog/?p=2366](http://www.syedrezaali.com/blog/?p=2366)。
+您可以查看由*Reza Ali*开发的作为 CinderBlock 的替代用户界面，地址为[`www.syedrezaali.com/blog/?p=2366`](http://www.syedrezaali.com/blog/?p=2366)。
 
 ### AntTweakBar
 
-Cinder中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[http://www.antisphere.com/Wiki/tools:anttweakbar](http://www.antisphere.com/Wiki/tools:anttweakbar)找到其文档。
+Cinder 中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[`www.antisphere.com/Wiki/tools:anttweakbar`](http://www.antisphere.com/Wiki/tools:anttweakbar)找到其文档。
 
 # 保存和加载配置
 
@@ -142,7 +168,10 @@ Cinder中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[http:
 
 在主类中创建两个可配置的变量：我们正在与之通信的主机的 IP 地址和端口号。
 
-[PRE9]
+```cpp
+string mHostIP;
+int mHostPort;
+```
 
 ## 如何操作...
 
@@ -150,23 +179,67 @@ Cinder中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[http:
 
 1.  包含以下两个额外的头文件：
 
-    [PRE10]
+    ```cpp
+    #include "cinder/Utilities.h"
+    #include "cinder/Xml.h"
+    ```
 
 1.  我们将为加载和保存 XML 配置文件准备两种方法。
 
-    [PRE11]
+    ```cpp
+    void MainApp::loadConfig() 
+    {
+      try {
+        XmlTree doc( loadFile( getAppPath() / fs::path("config.xml") ) );
+        XmlTree &generalNode = doc.getChild( "general" );
+
+        mHostIP = generalNode.getChild("hostIP").getValue();
+        mHostPort = generalNode.getChild("hostPort").getValue<int>();
+
+      } catch(Exception e) {
+        console() << "ERROR: loading/reading configuration file." << endl;
+      }
+    }
+
+    void MainApp::saveConfig() 
+    {
+      std::string beginXmlStr( "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>" );
+      XmlTree doc( beginXmlStr );
+
+      XmlTree generalNode;
+      generalNode.setTag("general");
+      generalNode.push_back( XmlTree("hostIP", mHostIP) );
+      generalNode.push_back( XmlTree("hostPort", toString(mHostPort)) );
+      doc.push_back(generalNode);
+
+      doc.write(writeFile( getAppPath() / fs::path("config.xml")) );
+    }
+    ```
 
 1.  现在，在主类的 `setup` 方法中，我们将放置以下内容：
 
-    [PRE12]
+    ```cpp
+    // setup default values
+    mHostIP = "127.0.0.1";
+    mHostPort = 1234;
+
+    loadConfig();
+    ```
 
 1.  在此之后，我们将按照以下方式实现 `shutdown` 方法：
 
-    [PRE13]
+    ```cpp
+    void MainApp::shutdown()
+    {
+      saveConfig();
+    }
+    ```
 
 1.  并且不要忘记在主类中声明 `shutdown` 方法：
 
-    [PRE14]
+    ```cpp
+    void shutdown();
+    ```
 
 ## 它是如何工作的...
 
@@ -174,7 +247,13 @@ Cinder中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[http:
 
 `shutdown` 方法在 Cinder 应用程序关闭前自动触发，因此当我们退出应用程序时，我们的配置值将被存储在 XML 文件中。最后，我们的配置 XML 文件看起来像这样：
 
-[PRE15]
+```cpp
+<?xml version="1.0" encoding="UTF-8" ?>
+<general>
+<hostIP>127.0.0.1</hostIP>
+<hostPort>1234</hostPort>
+</general>
+```
 
 你可以清楚地看到节点正在引用应用程序变量。
 
@@ -186,7 +265,7 @@ Cinder中的`InterfaceGl`是在*AntTweakBar*之上构建的；您可以在[http:
 
 Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `InterfaceGl`。
 
-[https://github.com/dawidgorny/Cinder-Config](https://github.com/dawidgorny/Cinder-Config)
+[`github.com/dawidgorny/Cinder-Config`](https://github.com/dawidgorny/Cinder-Config)
 
 # 制作当前参数状态的快照
 
@@ -196,7 +275,9 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 假设我们有一个频繁更改的变量。在这种情况下，它将是我们在绘图中更改的某个元素的色彩，主类将具有以下成员变量：
 
-[PRE16]
+```cpp
+ColorA mColor;
+```
 
 ## 如何操作...
 
@@ -204,53 +285,118 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 1.  我们必须包含以下额外的头文件：
 
-    [PRE17]
+    ```cpp
+    #include "cinder/params/Params.h"
+    #include "cinder/ImageIo.h"
+    #include "cinder/Utilities.h"
+    #include "cinder/Xml.h"
+    ```
 
 1.  首先，我们实现两个用于加载和保存参数的方法：
 
-    [PRE18]
+    ```cpp
+    void MainApp::loadParameters(std::string filename)
+    {
+      try {
+        XmlTree doc( loadFile( fs::path(filename) ) );
+        XmlTree &generalNode = doc.getChild( "general" );
+
+            mColor.r = generalNode.getChild("ColorR").getValue<float>();
+            mColor.g = generalNode.getChild("ColorG").getValue<float>();
+            mColor.b = generalNode.getChild("ColorB").getValue<float>();
+
+      } catch(XmlTree::Exception e) {
+        console() << "ERROR: loading/reading configuration file." << e.what() << std::endl;
+      }
+    }
+
+    void MainApp::saveParameters(std::string filename)
+    {
+      std::string beginXmlStr( "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>" );
+      XmlTree doc( beginXmlStr );
+
+      XmlTree generalNode;
+      generalNode.setTag("general");
+      generalNode.push_back(XmlTree("ColorR", toString(mColor.r)));
+      generalNode.push_back(XmlTree("ColorG", toString(mColor.g)));
+      generalNode.push_back(XmlTree("ColorB", toString(mColor.b)));
+
+      doc.push_back(generalNode);
+
+      doc.write( writeFile( getAppPath() / fs::path("..") / fs::path(filename) ) );
+    }
+    ```
 
 1.  现在，我们声明一个类成员。它将是一个触发快照创建的标志：
 
-    [PRE19]
+    ```cpp
+    bool mMakeSnapshot;
+    ```
 
 1.  在 `setup` 方法中为其赋值：
 
-    [PRE20]
+    ```cpp
+    mMakeSnapshot = false;
+    ```
 
 1.  在 `draw` 方法的末尾，我们在 `params::InterfaceGl::draw();` 行之前放置以下代码：
 
-    [PRE21]
+    ```cpp
+    if(mMakeSnapshot) {
+      mMakeSnapshot = false;
+
+      double timestamp = getElapsedSeconds();
+      std::string timestampStr = toString(timestamp);
+
+      writeImage(getAppPath() / fs::path("..") / fs::path("snapshot_" + timestampStr + ".png"), copyWindowSurface());
+      saveParameters("snapshot_" + timestampStr + ".xml");
+    }
+    ```
 
 1.  我们想在 `InterfaceGl` 窗口中创建一个按钮：
 
-    [PRE22]
+    ```cpp
+    mParams.addButton( "Make snapshot", std::bind( &MainApp::makeSnapshotClick, this ) );
+    ```
 
     正如你所见，我们还没有`makeSnapshotClick`方法。实现起来很简单：
 
-    [PRE23]
+    ```cpp
+    void MainApp::makeSnapshotClick()
+    {
+        mMakeSnapshot = true;
+    }
+    ```
 
 1.  最后一步将是添加以下方法以支持*拖放*：
 
-    [PRE24]
+    ```cpp
+    void MainApp::fileDrop( FileDropEvent event )
+    {
+        std::string filepath = event.getFile( event.getNumFiles() - 1 ).generic_string();
+        loadParameters(filepath);
+    }
+    ```
 
 ## 它是如何工作的...
 
-我们有两种方法用于在XML文件中加载和存储`mColor`值。这些方法是`loadParameters`和`saveParameters`。
+我们有两种方法用于在 XML 文件中加载和存储`mColor`值。这些方法是`loadParameters`和`saveParameters`。
 
-我们放在`draw`方法内部的代码需要一些解释。我们正在等待`mMakeSnapshot`方法被设置为`true`，然后我们创建一个时间戳以避免覆盖之前的快照。接下来的两行通过调用`saveParameters`方法存储所选值，并使用`writeImage`函数将当前窗口视图保存为PNG文件。请注意，我们在调用`InterfaceGl::draw`之前放置了这段代码，所以我们保存的窗口视图没有GUI。
+我们放在`draw`方法内部的代码需要一些解释。我们正在等待`mMakeSnapshot`方法被设置为`true`，然后我们创建一个时间戳以避免覆盖之前的快照。接下来的两行通过调用`saveParameters`方法存储所选值，并使用`writeImage`函数将当前窗口视图保存为 PNG 文件。请注意，我们在调用`InterfaceGl::draw`之前放置了这段代码，所以我们保存的窗口视图没有 GUI。
 
-这里有一个很好的功能是加载快照文件的*拖放*功能。它在`fileDrop`方法中实现；每当文件被拖放到你的应用程序窗口时，Cinder都会调用此方法。首先，我们获取被拖放文件的路径；在多个文件的情况下，我们只取一个。然后我们使用被拖放文件的路径作为参数调用`loadParameters`方法。
+这里有一个很好的功能是加载快照文件的*拖放*功能。它在`fileDrop`方法中实现；每当文件被拖放到你的应用程序窗口时，Cinder 都会调用此方法。首先，我们获取被拖放文件的路径；在多个文件的情况下，我们只取一个。然后我们使用被拖放文件的路径作为参数调用`loadParameters`方法。
 
-# 使用MayaCamUI
+# 使用 MayaCamUI
 
-我们将向你的3D场景添加一个导航功能，这是我们自从建模3D软件以来就熟知的。使用`MayaCamUI`，你只需几行代码就能做到这一点。
+我们将向你的 3D 场景添加一个导航功能，这是我们自从建模 3D 软件以来就熟知的。使用`MayaCamUI`，你只需几行代码就能做到这一点。
 
 ## 准备工作
 
-我们需要在场景中有些3D对象。你可以使用Cinder提供的某些原语，例如：
+我们需要在场景中有些 3D 对象。你可以使用 Cinder 提供的某些原语，例如：
 
-[PRE25]
+```cpp
+gl::drawColorCube(Vec3f::zero(), Vec3f(4.f, 4.f, 4.f));
+```
 
 一个彩色立方体是一个每个面都有不同颜色的立方体，因此很容易确定方向。
 
@@ -262,31 +408,58 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 1.  我们需要`MayaCam.h`头文件：
 
-    [PRE26]
+    ```cpp
+    #include "cinder/MayaCamUI.h"
+    ```
 
 1.  我们还需要在主类中添加一些成员声明：
 
-    [PRE27]
+    ```cpp
+    CameraPersp  mCam;
+    MayaCamUI    mMayaCam;
+    ```
 
 1.  在`setup`方法内部，我们将设置相机的初始状态：
 
-    [PRE28]
+    ```cpp
+    mCam.setPerspective(45.0f, getWindowAspectRatio(), 0.1, 10000);
+    mMayaCam.setCurrentCam(mCam);
+    ```
 
 1.  现在我们必须实现三个方法：
 
-    [PRE29]
+    ```cpp
+    void MainApp::resize( ResizeEvent event )
+    {
+        mCam = mMayaCam.getCamera();
+        mCam.setAspectRatio(getWindowAspectRatio());
+        mMayaCam.setCurrentCam(mCam);
+    }
+
+    void MainApp::mouseDown( MouseEvent event )
+    {
+      mMayaCam.mouseDown( event.getPos() );
+    }
+
+    void MainApp::mouseDrag( MouseEvent event )
+    {
+      mMayaCam.mouseDrag( event.getPos(), event.isLeftDown(), event.isMiddleDown(), event.isRightDown() );
+    }
+    ```
 
 1.  在`draw`方法内部应用相机矩阵：
 
-    [PRE30]
+    ```cpp
+    gl::setMatrices(mMayaCam.getCamera());
+    ```
 
 ## 它是如何工作的...
 
-在`setup`方法内部，我们设置初始的相机设置。当窗口调整大小时，我们必须更新相机的纵横比，因此我们将这段代码放在`resize`方法中。每当我们的应用程序窗口调整大小时，Cinder都会自动调用此方法。我们在`mouseDown`和`mouseDrag`方法内部捕获鼠标事件。你可以点击并拖动鼠标进行旋转，右键点击进行缩放，使用中间按钮进行平移。现在你已经在自己的应用程序中拥有了类似于常见3D建模软件的交互功能。
+在`setup`方法内部，我们设置初始的相机设置。当窗口调整大小时，我们必须更新相机的纵横比，因此我们将这段代码放在`resize`方法中。每当我们的应用程序窗口调整大小时，Cinder 都会自动调用此方法。我们在`mouseDown`和`mouseDrag`方法内部捕获鼠标事件。你可以点击并拖动鼠标进行旋转，右键点击进行缩放，使用中间按钮进行平移。现在你已经在自己的应用程序中拥有了类似于常见 3D 建模软件的交互功能。
 
-# 使用3D空间指南
+# 使用 3D 空间指南
 
-我们将尝试使用内置的Cinder方法来可视化我们正在工作的场景的一些基本信息。这应该会使在3D空间中工作更加舒适。
+我们将尝试使用内置的 Cinder 方法来可视化我们正在工作的场景的一些基本信息。这应该会使在 3D 空间中工作更加舒适。
 
 ## 准备工作
 
@@ -298,27 +471,104 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 1.  我们将在 `MayaCamUI` 之外添加另一个相机。让我们先在主类中添加成员声明：
 
-    [PRE31]
+    ```cpp
+    CameraPersp     mSceneCam;
+    int             mCurrentCamera;
+    ```
 
 1.  然后，我们将在 `setup` 方法内部设置初始值：
 
-    [PRE32]
+    ```cpp
+    mCurrentCamera = 0;
+
+    mSceneCam.setEyePoint(Vec3f(0.f, 5.f, 10.f));
+    mSceneCam.setViewDirection(Vec3f(0.f, 0.f, -1.f) );
+    mSceneCam.setPerspective(45.0f, getWindowAspectRatio(), 0.1, 20);
+    ```
 
 1.  我们必须在 `resize` 方法中更新 `mSceneCamera` 的纵横比：
 
-    [PRE33]
+    ```cpp
+    mSceneCam.setAspectRatio(getWindowAspectRatio());
+    ```
 
 1.  现在，我们将实现 `keyDown` 方法，通过按键盘上的 *1* 或 *2* 键在两个相机之间切换：
 
-    [PRE34]
+    ```cpp
+    void MainApp::keyDown( KeyEvent event )
+    {
+        if(event.getChar() == '1') {
+            mCurrentCamera = 0;    
+        } else if(event.getChar() == '2') {
+            mCurrentCamera = 1;         
+        }
+    }
+    ```
 
 1.  我们将要使用的方法是 `drawGrid`，它看起来是这样的：
 
-    [PRE35]
+    ```cpp
+    void MainApp::drawGrid(float size, float step)
+    {
+      gl::color( Color(0.7f, 0.7f, 0.7f) );
+
+        //draw grid
+        for(float i=-size;i<=size;i+=step) {
+        gl::drawLine(Vec3f(i, 0.f, -size), Vec3f(i, 0.f, size));
+        gl::drawLine(Vec3f(-size, 0.f, i), Vec3f(size, 0.f, i));
+      }
+
+        // draw bold center lines
+        glLineWidth(2.f);
+        gl::color(Color::white());
+        gl::drawLine(Vec3f(0.f, 0.f, -size), Vec3f(0.f, 0.f, size));
+        gl::drawLine(Vec3f(-size, 0.f, 0.f), Vec3f(size, 0.f, 0.f));
+
+        glLineWidth(1.f);
+    }
+    ```
 
 1.  之后，我们可以实现我们的主要绘图程序，所以这里是整个 `draw` 方法：
 
-    [PRE36]
+    ```cpp
+    void MainApp::draw()
+    {
+      gl::enable(GL_CULL_FACE);
+      gl::enableDepthRead();
+      gl::enableDepthWrite();
+      gl::clear( Color( 0.1f, 0.1f, 0.1f ) );
+
+      if(mCurrentCamera == 0) {
+            gl::setMatrices(mMayaCam.getCamera());
+
+            // draw grid
+            drawGrid(100.0f, 10.0f);
+
+            // draw coordinate guide
+            gl::pushMatrices();
+            gl::translate(0.f, 0.4f, 0.f);
+            gl::drawCoordinateFrame(5.0f, 1.5f, 0.3f);
+            gl::popMatrices();
+
+            // draw scene camera frustum
+            gl::color(Color::white());
+            gl::drawFrustum(mSceneCam);
+
+            // draw vector guide
+            gl::color(Color(1.f,0.f,0.f));
+            gl::drawVector(Vec3f(-3.f, 7.f, -6.f), 
+            Vec3f(3.f, 10.f, -9.f), 1.5f, 0.3);
+
+        } else {
+            gl::setMatrices(mSceneCam);
+        }
+
+        // draw some 3D object
+        gl::rotate(30);
+        gl::drawColorCube(Vec3f(0.f, 5.f, -5.f), 
+        Vec3f(2.f, 2.f, 2.f));
+    }
+    ```
 
 ## 它是如何工作的...
 
@@ -350,7 +600,9 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 现在，我们必须在项目的构建设置中将 `OSC` 库文件的路径添加为另一个链接器标志的位置：
 
-[PRE37]
+```cpp
+$(CINDER_PATH)/blocks/osc/lib/macosx/osc.a
+```
 
 ### 小贴士
 
@@ -366,27 +618,62 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 1.  我们必须包含一个额外的头文件：
 
-    [PRE38]
+    ```cpp
+    #include "OSCSender.h"
+    ```
 
 1.  之后，我们可以使用 `osc::Sender` 类，因此让我们在主类中声明所需的属性：
 
-    [PRE39]
+    ```cpp
+    osc::Sender mOSCSender;
+    std::string mDestinationHost;
+    int         mDestinationPort;
+
+    Vec2f       mObjPosition;
+    ```
 
 1.  现在，我们必须在 `setup` 方法中设置我们的发送者：
 
-    [PRE40]
+    ```cpp
+    mDestinationHost = "localhost";
+    mDestinationPort = 3000;
+    mOSCSender.setup(mDestinationHost, mDestinationPort);
+    ```
 
 1.  将 `mObjectPosition` 的默认值设置为窗口的中心：
 
-    [PRE41]
+    ```cpp
+    mObjPosition = Vec2f(getWindowWidth()*0.5f,
+                         getWindowHeight()*0.5f);
+    ```
 
 1.  我们现在可以实现 `mouseDrag` 方法，它包括两个主要操作——根据鼠标位置更新对象位置，并通过 OSC 发送位置信息。
 
-    [PRE42]
+    ```cpp
+    void MainApp::mouseDrag(MouseEvent event)
+    {
+        mObjPosition.x = event.getX();
+        mObjPosition.y = event.getY();
+
+      osc::Message msg;
+      msg.setAddress("/obj/position");
+      msg.addFloatArg(mObjPosition.x);
+      msg.addFloatArg(mObjPosition.y);
+      msg.setRemoteEndpoint(mDestinationHost, mDestinationPort);
+      mOSCSender.sendMessage(msg);
+    }
+    ```
 
 1.  我们最后需要做的是绘制一个方法，仅用于可视化对象的位置：
 
-    [PRE43]
+    ```cpp
+    void MainApp::draw()
+    {
+      gl::clear(Color(0.1f, 0.1f, 0.1f));
+        gl::color(Color::white());
+        gl::drawStrokedCircle(mObjPosition, 50.f);
+    }
+    ```
 
 ### 监听者
 
@@ -394,27 +681,61 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 1.  我们必须包含一个额外的头文件：
 
-    [PRE44]
+    ```cpp
+    #include "OSCListener.h"
+    ```
 
 1.  之后，我们可以使用 `osc::Listener` 类，因此让我们在主类中声明所需的属性：
 
-    [PRE45]
+    ```cpp
+    osc::Listener  mOSCListener;
+    Vec2f          mObjPosition;
+    ```
 
 1.  现在，我们必须在 `setup` 方法中设置我们的监听者对象，传递监听端口作为参数：
 
-    [PRE46]
+    ```cpp
+    mOSCListener.setup(3000);
+    ```
 
 1.  并且将 `mObjectPosition` 的默认值设置为窗口的中心：
 
-    [PRE47]
+    ```cpp
+    mObjPosition = Vec2f(getWindowWidth()*0.5f,
+                         getWindowHeight()*0.5f);
+    ```
 
 1.  在 `update` 方法内部，我们将监听传入的 `OSC` 消息：
 
-    [PRE48]
+    ```cpp
+    void MainApp::update()
+    {
+        while (mOSCListener.hasWaitingMessages()) {
+            osc::Message msg;
+            mOSCListener.getNextMessage(&msg);
+
+            if(msg.getAddress() == "/obj/position" &&
+               msg.getNumArgs() == 2 &&
+               msg.getArgType(0) == osc::TYPE_FLOAT &&
+               msg.getArgType(1) == osc::TYPE_FLOAT)
+            {
+                mObjPosition.x = msg.getArgAsFloat(0);
+                mObjPosition.y = msg.getArgAsFloat(1);
+            }
+        }
+    }
+    ```
 
 1.  我们的 `draw` 方法将与发送者版本几乎相同，但我们将绘制一个填充的圆圈而不是描边的圆圈：
 
-    [PRE49]
+    ```cpp
+    void MainApp::draw()
+    {
+      gl::clear( Color( 0.1f, 0.1f, 0.1f ) );
+      gl::color(Color::white());
+      gl::drawSolidCircle(mObjPosition, 50.f);
+    }
+    ```
 
 # 工作原理...
 
@@ -444,19 +765,19 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
 
 ## Flash 中的 OSC
 
-要在您的 ActionScript 3.0 代码中支持接收和发送 OSC 消息，您可以使用以下库：[http://bubblebird.at/tuioflash/](http://bubblebird.at/tuioflash/)
+要在您的 ActionScript 3.0 代码中支持接收和发送 OSC 消息，您可以使用以下库：[`bubblebird.at/tuioflash/`](http://bubblebird.at/tuioflash/)
 
 ## 处理中的 OSC
 
-要在您的 **Processing** 草图中支持 **OSC** 协议，您可以使用以下库：[http://www.sojamo.de/libraries/oscP5/](http://www.sojamo.de/libraries/oscP5/)
+要在您的 **Processing** 草图中支持 **OSC** 协议，您可以使用以下库：[`www.sojamo.de/libraries/oscP5/`](http://www.sojamo.de/libraries/oscP5/)
 
 ## openFrameworks 中的 OSC
 
-要在您的 `openFrameworks` 项目中支持接收和发送 OSC 消息，您可以使用 `ofxOsc` 扩展程序：[http://ofxaddons.com/repos/112](http://ofxaddons.com/repos/112)
+要在您的 `openFrameworks` 项目中支持接收和发送 OSC 消息，您可以使用 `ofxOsc` 扩展程序：[`ofxaddons.com/repos/112`](http://ofxaddons.com/repos/112)
 
 ## OpenSoundControl 协议
 
-您可以在其官方网站上找到有关 OSC 协议和相关工具的更多信息：[http://opensoundcontrol.org/](http://opensoundcontrol.org/)。
+您可以在其官方网站上找到有关 OSC 协议和相关工具的更多信息：[`opensoundcontrol.org/`](http://opensoundcontrol.org/)。
 
 # 为 iOS 准备应用程序
 
@@ -482,12 +803,12 @@ Cinder-Config 是一个小的 CinderBlock，用于创建配置文件以及 `Inte
     | `touchesMoved( TouchEvent event )` | 在多指触摸序列中拖动 |
     | `touchesEnded( TouchEvent event )` | 多指触摸序列的结束 |
     | `getActiveTouches()` | 返回所有活动触摸 |
-    | `accelerated( AccelEvent event )` | 加速度方向的3D向量 |
+    | `accelerated( AccelEvent event )` | 加速度方向的 3D 向量 |
 
 ## 相关内容
 
-我建议你查看Cinder包中包含的示例项目：`MultiTouchBasic` 和 `iPhoneAccelerometer`。
+我建议你查看 Cinder 包中包含的示例项目：`MultiTouchBasic` 和 `iPhoneAccelerometer`。
 
 ### 苹果开发者中心
 
-你可以在这里找到有关iOS开发者计划的更多信息：[https://developer.apple.com/](https://developer.apple.com/)
+你可以在这里找到有关 iOS 开发者计划的更多信息：[`developer.apple.com/`](https://developer.apple.com/)

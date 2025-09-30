@@ -64,17 +64,17 @@ Cocos2d-x 将负责所有必要的 OpenGL 绘制工作，以显示您想要的�
 
 +   **宏、结构和辅助方法**：数百个节省时间的神奇逻辑片段。你不需要知道它们全部，但很可能你会编写一些可以用宏或辅助方法轻松替换的代码，并在后来发现时感到非常愚蠢。
 
-## 你知道C++吗？
+## 你知道 C++吗？
 
-别担心，C部分很简单。第一个加号过得非常快，但那个第二个加号，哎呀！
+别担心，C 部分很简单。第一个加号过得非常快，但那个第二个加号，哎呀！
 
-记住，这是C。如果你使用原始Cocos2d在Objective-C中编码过，即使你大部分时间看到的是在括号中，你也已经熟悉了古老的C语言。
+记住，这是 C。如果你使用原始 Cocos2d 在 Objective-C 中编码过，即使你大部分时间看到的是在括号中，你也已经熟悉了古老的 C 语言。
 
-但C++也有类，就像Objective-C一样，这些类在接口文件中声明，就像在Objective-C中一样。所以，让我们回顾一下C++类的创建。
+但 C++也有类，就像 Objective-C 一样，这些类在接口文件中声明，就像在 Objective-C 中一样。所以，让我们回顾一下 C++类的创建。
 
 # 类接口
 
-这将在`.h`文件中完成。我们将使用文本编辑器来创建这个文件，因为我不想任何代码提示和自动完成功能干扰你学习C++语法的基础知识。所以至少现在，打开你最喜欢的文本编辑器。让我们创建一个类接口！
+这将在`.h`文件中完成。我们将使用文本编辑器来创建这个文件，因为我不想任何代码提示和自动完成功能干扰你学习 C++语法的基础知识。所以至少现在，打开你最喜欢的文本编辑器。让我们创建一个类接口！
 
 # 是时候行动了——创建接口
 
@@ -82,45 +82,75 @@ Cocos2d-x 将负责所有必要的 OpenGL 绘制工作，以显示您想要的�
 
 1.  创建一个新的文本文件，并将其保存为`HelloWorld.h`。然后，在顶部输入以下行：
 
-    [PRE0]
+    ```cpp
+    #ifndef __HELLOWORLD_H__
+    #define __HELLOWORLD_H__
+    #include "cocos2d.h" 
+    ```
 
 1.  接下来，添加命名空间声明：
 
-    [PRE1]
+    ```cpp
+    using namespace cocos2d;
+    ```
 
 1.  然后，声明你的类名和任何继承的类名：
 
-    [PRE2]
+    ```cpp
+    class HelloWorld : public cocos2d::Layer {
+
+    ```
 
 1.  接下来，我们添加属性和方法：
 
-    [PRE3]
+    ```cpp
+    protected:
+    int _score;
+
+    public:
+
+        HelloWorld();
+        virtual ~HelloWorld();
+
+        virtual bool init();
+        static cocos2d::Scene* scene();
+        CREATE_FUNC(HelloWorld);
+        void update(float dt);
+        inline int addTwoIntegers (int one, int two) {
+            return one + two;
+        }
+    };
+    ```
 
 1.  我们通过关闭`#ifndef`语句来完成：
 
-    [PRE4]
+    ```cpp
+    #endif // __HELLOWORLD_H__
+    ```
 
 ## *刚才发生了什么？*
 
-你在C++中创建了一个头文件。让我们回顾一下重要的信息：
+你在 C++中创建了一个头文件。让我们回顾一下重要的信息：
 
-+   在C++中，你包含，而不是导入。Objective-C中的`import`语句检查是否需要包含某些内容；`include`则不检查。但我们通过在顶部使用定义的巧妙方式完成相同的事情。还有其他方法可以运行相同的检查（例如使用`#pragma once`），但这个是在你创建的任何新的Xcode C++文件中添加的。
++   在 C++中，你包含，而不是导入。Objective-C 中的`import`语句检查是否需要包含某些内容；`include`则不检查。但我们通过在顶部使用定义的巧妙方式完成相同的事情。还有其他方法可以运行相同的检查（例如使用`#pragma once`），但这个是在你创建的任何新的 Xcode C++文件中添加的。
 
 +   你可以通过声明在类中使用的命名空间来使你的生活更简单。这些在有些语言中类似于包。你可能已经注意到，由于命名空间声明，代码中所有对`cocos2d::`的使用都是不必要的。但我想要展示的是，通过添加命名空间声明可以去掉的部分。
 
-+   所以接下来，给你的类起一个名字，你可以选择从其他类继承。在C++中，你可以有任意多的超类。你必须声明你的超类是否是公开的。
++   所以接下来，给你的类起一个名字，你可以选择从其他类继承。在 C++中，你可以有任意多的超类。你必须声明你的超类是否是公开的。
 
-+   你在花括号之间声明你的`public`、`protected`和`private`方法和成员。`HelloWorld`是构造函数，`~HelloWorld`是析构函数（它将执行Objective-C中的`dealloc`所做的操作）。
++   你在花括号之间声明你的`public`、`protected`和`private`方法和成员。`HelloWorld`是构造函数，`~HelloWorld`是析构函数（它将执行 Objective-C 中的`dealloc`所做的操作）。
 
 +   `virtual` 关键字与重写有关。当你将一个方法标记为 `virtual` 时，你是在告诉编译器不要将方法的所有权固定下来，而是将其保留在内存中，因为执行将揭示明显的主人。否则，编译器可能会错误地决定一个方法属于超类而不是其继承类。
 
     此外，将所有析构函数设置为 `virtual` 是一种良好的实践。你只需要在超类中使用一次关键字来标记潜在的覆盖，但通常的做法是在所有子类中重复 `virtual` 关键字，这样开发者就知道哪些方法是覆盖（C++11 添加了一个 `override` 标签，这使得这种区分更加清晰，你将在本书的代码中看到它的例子）。在这种情况下，`init` 来自 `Layer`，而 `HelloWorld` 想要覆盖它。
 
-    [PRE5]
+    ```cpp
+        virtual bool init();
+    ```
 
 +   噢，是的，在 C++ 中，你必须在你的接口中声明重写。没有例外！
 
-`inline` 方法对你来说可能是新的。这些方法在它们被调用的地方由编译器添加到代码中。所以每次我调用 `addTwoIntegers`，编译器都会用接口中声明的方法的行来替换它。所以 `inline` 方法就像方法内部的表达式一样工作；它们不需要在栈中占用自己的内存。但是如果你在程序中调用了一个两行的 `inline` 方法50次，这意味着编译器将向你的代码中添加一百行。
+`inline` 方法对你来说可能是新的。这些方法在它们被调用的地方由编译器添加到代码中。所以每次我调用 `addTwoIntegers`，编译器都会用接口中声明的方法的行来替换它。所以 `inline` 方法就像方法内部的表达式一样工作；它们不需要在栈中占用自己的内存。但是如果你在程序中调用了一个两行的 `inline` 方法 50 次，这意味着编译器将向你的代码中添加一百行。
 
 # 类实现
 
@@ -132,19 +162,56 @@ Cocos2d-x 将负责所有必要的 OpenGL 绘制工作，以显示您想要的�
 
 1.  创建一个新的文本文件，并将其保存为 `HelloWorld.cpp`。在顶部，让我们先包含我们的头文件：
 
-    [PRE6]
+    ```cpp
+    #include "HelloWorld.h"
+    ```
 
 1.  接下来，我们实现构造函数和析构函数：
 
-    [PRE7]
+    ```cpp
+    HelloWorld::HelloWorld () {
+        //constructor
+    }
+
+    HelloWorld::~HelloWorld () {
+        //destructor
+    }
+    ```
 
 1.  然后是我们的静态方法：
 
-    [PRE8]
+    ```cpp
+    Scene* HelloWorld::scene() {
+        auto scene = Scene::create();
+
+        auto layer = HelloWorld::create();
+
+        scene->addChild(layer);
+
+        return scene;
+    }
+    ```
 
 1.  然后是我们的两个剩余的公共方法：
 
-    [PRE9]
+    ```cpp
+    bool HelloWorld::init() {
+        // call to super
+        if ( !Layer::init() )
+        {
+            return false;
+        }
+
+        //create main loop 
+        this->scheduleUpdate();
+
+        return true;
+    }
+
+    void HelloWorld::update (float dt) {
+        //the main loop
+    }
+    ```
 
 ## *刚才发生了什么？*
 
@@ -168,57 +235,97 @@ Cocos2d-x 将负责所有必要的 OpenGL 绘制工作，以显示您想要的�
 
 # 实例化对象并管理内存
 
-Cocos2d-x中没有**自动引用计数（ARC**），因此忘记内存管理的Objective-C开发者可能会在这里遇到问题。然而，关于内存管理的规则在C++中非常简单：如果你使用`new`，你必须删除。C++11通过引入特殊的内存管理的指针（这些是`std::unique_ptr`和`std::shared_ptr`）使这一点变得更加容易。
+Cocos2d-x 中没有**自动引用计数（ARC**），因此忘记内存管理的 Objective-C 开发者可能会在这里遇到问题。然而，关于内存管理的规则在 C++中非常简单：如果你使用`new`，你必须删除。C++11 通过引入特殊的内存管理的指针（这些是`std::unique_ptr`和`std::shared_ptr`）使这一点变得更加容易。
 
-然而，Cocos2d-x会添加一些其他选项和命令来帮助进行内存管理，类似于我们在Objective-C（没有ARC）中使用的那些。这是因为Cocos2d-x，与C++不同，与Objective-C非常相似，有一个根类。这个框架不仅仅是Cocos2d的C++端口，它还将Objective-C的一些概念移植到C++中，以重新创建其内存管理系统。
+然而，Cocos2d-x 会添加一些其他选项和命令来帮助进行内存管理，类似于我们在 Objective-C（没有 ARC）中使用的那些。这是因为 Cocos2d-x，与 C++不同，与 Objective-C 非常相似，有一个根类。这个框架不仅仅是 Cocos2d 的 C++端口，它还将 Objective-C 的一些概念移植到 C++中，以重新创建其内存管理系统。
 
-Cocos2d-x有一个`Ref`类，它是框架中每个主要对象的根。它允许框架拥有`autorelease`池和`retain`计数，以及其他Objective-C等效功能。
+Cocos2d-x 有一个`Ref`类，它是框架中每个主要对象的根。它允许框架拥有`autorelease`池和`retain`计数，以及其他 Objective-C 等效功能。
 
-当实例化Cocos2d-x对象时，你基本上有两个选项：
+当实例化 Cocos2d-x 对象时，你基本上有两个选项：
 
 +   使用静态方法
 
-+   C++和Cocos2d-x风格
++   C++和 Cocos2d-x 风格
 
 ## 使用静态方法
 
-使用静态方法是推荐的方式。Objective-C的三阶段实例化过程，包括`alloc`、`init`和`autorelease`/`retain`，在这里被重新创建。例如，一个扩展`Sprite`的`Player`类可能具有以下方法：
+使用静态方法是推荐的方式。Objective-C 的三阶段实例化过程，包括`alloc`、`init`和`autorelease`/`retain`，在这里被重新创建。例如，一个扩展`Sprite`的`Player`类可能具有以下方法：
 
-[PRE10]
+```cpp
+Player::Player () {
+    this->setPosition  ( Vec2(0,0) );
+}
 
-对于实例化，你调用静态的`create`方法。它将创建一个新的`Player`对象，作为`Player`的空壳版本。构造函数内部不应该进行任何主要初始化，以防你可能因为实例化过程中的某些失败而需要删除该对象。Cocos2d-x有一系列用于对象删除和释放的宏，就像之前使用的`CC_SAFE_DELETE`宏一样。
+Player* Player::create () {
 
-然后，通过其可用方法之一初始化超类。在Cocos2d-x中，这些`init`方法返回一个`boolean`值表示成功。现在，你可以开始用一些数据填充`Player`对象。
+    auto player = new Player();
+    if (player && player->initWithSpriteFrameName("player.png")) {
+        player->autorelease();
+        return player;
+    }
+    CC_SAFE_DELETE(player);
+    return nullptr;
+}
+```
+
+对于实例化，你调用静态的`create`方法。它将创建一个新的`Player`对象，作为`Player`的空壳版本。构造函数内部不应该进行任何主要初始化，以防你可能因为实例化过程中的某些失败而需要删除该对象。Cocos2d-x 有一系列用于对象删除和释放的宏，就像之前使用的`CC_SAFE_DELETE`宏一样。
+
+然后，通过其可用方法之一初始化超类。在 Cocos2d-x 中，这些`init`方法返回一个`boolean`值表示成功。现在，你可以开始用一些数据填充`Player`对象。
 
 如果成功，那么在之前的步骤中没有完成的情况下，使用正确的数据初始化你的对象，并以一个`autorelease`对象的形式返回它。
 
 因此，在你的代码中，对象将按照以下方式实例化：
 
-[PRE11]
+```cpp
+auto player = Player::create();
+this->addChild(player);//this will retain the object
+```
 
 即使 `player` 变量是类的一个成员（比如说，`m_player`），你也不必保留它以保持其作用域。通过将对象添加到某个 Cocos2d-x 列表或缓存中，对象会自动保留。因此，你可以继续通过其指针来引用该内存：
 
-[PRE12]
+```cpp
+m_player = Player::create();
+this->addChild(m_player);//this will retain the object
+//m_player still references the memory address 
+//but does not need to be released or deleted by you
+```
 
 ## C++ 和 Cocos2d-x 风格
 
 在这个选项中，你会按照以下方式实例化之前的 `Player` 对象：
 
-[PRE13]
+```cpp
+auto player = new Player();
+player->initWithSpriteFrameName("player.png");
+this->addChild(player);
+player->autorelease();
+```
 
 在这种情况下，`Player` 可以没有静态方法，并且 `player` 指针在将来不会访问相同的内存，因为它被设置为自动释放（所以它不会长时间存在）。然而，在这种情况下，内存不会泄漏。它仍然会被 Cocos2d-x 列表（`addChild` 命令负责这一点）保留。你仍然可以通过遍历添加到 `this` 的子项列表来访问该内存。
 
 如果你需要指针作为成员属性，你可以使用 `retain()` 而不是 `autorelease()`：
 
-[PRE14]
+```cpp
+m_player = new Player();
+m_player->initWithSpriteFrameName("player.png");
+this->addChild(m_player);
+m_player->retain();
+```
 
 然后，在某个时候，你必须释放它；否则，它将会泄漏：
 
-[PRE15]
+```cpp
+m_player->release();
+```
 
 硬核的 C++ 开发者可能会选择忘记所有关于 `autorelease` 池的事情，而仅仅使用 `new` 和 `delete`：
 
-[PRE16]
+```cpp
+Player * player = new Player();
+player->initWithSpriteFrameName("player.png");
+this->addChild(player);
+delete player;//This will crash!
+```
 
 这将不会起作用。你必须使用 `autorelease`、`retain` 或者让之前的代码不带 `delete` 命令，并希望不会出现任何泄漏。
 
@@ -226,7 +333,10 @@ C++ 开发者必须记住，`Ref` 是由框架管理的。这意味着对象正�
 
 非 C++ 开发者应该记住，任何没有从 `Ref` 派生的类都应该以通常的方式管理，也就是说，如果你 *创建* 一个新对象，你必须在某个时候删除它：
 
-[PRE17]
+```cpp
+MyObject* object = new MyObject();
+delete object;
+```
 
 # 使用 Ref 得到的东西
 
@@ -236,16 +346,16 @@ C++ 开发者必须记住，`Ref` 是由框架管理的。这意味着对象正�
 
 再次强调，每个 `Ref` 派生类都可以像在 ARC 之前 Objective-C 中管理事物一样进行管理——使用 `retain` 计数和 `autorelease` 池。
 
-然而，C++自带了许多自己非常棒的动态列表类，类似于你在Java和C#中找到的类。但对于`Ref`派生对象，你可能最好使用Cocos2d-x管理的列表，或者记得在适用的情况下保留和释放每个对象。如果你创建了一个不扩展`Ref`的类，并且需要将这个类的实例存储在列表容器中，那么请选择标准库中的那些。
+然而，C++自带了许多自己非常棒的动态列表类，类似于你在 Java 和 C#中找到的类。但对于`Ref`派生对象，你可能最好使用 Cocos2d-x 管理的列表，或者记得在适用的情况下保留和释放每个对象。如果你创建了一个不扩展`Ref`的类，并且需要将这个类的实例存储在列表容器中，那么请选择标准库中的那些。
 
 在本书接下来的示例中，我将主要在框架内部进行编码，因此你们将有机会看到许多`cocos2d::Vector`的使用示例，例如，但我也将在一些游戏中使用一个或两个`std::vector`实例。
 
 # 总结
 
-希望非C++开发者现在已经了解到这个语言没有什么可怕的地方，而核心C++开发者也没有对根类及其保留和自动释放的概念嘲笑得太多。
+希望非 C++开发者现在已经了解到这个语言没有什么可怕的地方，而核心 C++开发者也没有对根类及其保留和自动释放的概念嘲笑得太多。
 
-所有根类为Java和Objective-C等语言带来的东西将永远是一个无意义的问题。那些在你背后进行的令人毛骨悚然的底层操作无法关闭或控制。它们不是可选的，而根对象这种强制性质自从垃圾收集器等概念首次出现以来就一直困扰着C++开发者。
+所有根类为 Java 和 Objective-C 等语言带来的东西将永远是一个无意义的问题。那些在你背后进行的令人毛骨悚然的底层操作无法关闭或控制。它们不是可选的，而根对象这种强制性质自从垃圾收集器等概念首次出现以来就一直困扰着 C++开发者。
 
 话虽如此，`Ref`对象的内存管理非常有帮助，我希望即使是那些最不信任的开发者也会很快学会对此表示感谢。
 
-此外，Cocos2d-x非常出色。那么，让我们现在就创建一个游戏吧！
+此外，Cocos2d-x 非常出色。那么，让我们现在就创建一个游戏吧！

@@ -1,6 +1,6 @@
 # C++入门
 
-本章介绍了C++中的**面向对象编程**（**OOP**）。我们首先查看一个简单的掷骰子程序。我们编写代码，编译、链接和执行程序。
+本章介绍了 C++中的**面向对象编程**（**OOP**）。我们首先查看一个简单的掷骰子程序。我们编写代码，编译、链接和执行程序。
 
 然后我们继续构建一个简单的面向对象层次结构，包括`Person`基类及其两个子类`Student`和`Employee`。我们还探讨了指针和动态绑定。
 
@@ -16,19 +16,29 @@
 
 # 掷骰子
 
-作为介绍，我们首先编写一个掷骰子的程序。我们使用内置的随机数生成器生成一个介于1到6（包括1和6）之间的整数：
+作为介绍，我们首先编写一个掷骰子的程序。我们使用内置的随机数生成器生成一个介于 1 到 6（包括 1 和 6）之间的整数：
 
 **Main.cpp**
 
-[PRE0]
+```cpp
+#include <CStdLib>
+#include <CTime>
+#include <IOStream>
+using namespace std;
+void main() {
+  srand((int) time(nullptr)); 
+  int dice = (rand() % 6 ) + 1;
+  cout << "Dice: " << dice << endl;
+}
+```
 
 在前面的程序中，初始的`include`指令允许我们包含头文件，这些头文件主要包含标准库的声明。我们需要`CStdLib`头文件来使用随机数生成器，`CTime`头文件用当前时间初始化随机数生成器，以及`IOStream`头文件来写入结果。
 
 标准库存储在一个名为`std`的`namespace`中。`namespace`可以被认为是一个包含代码的容器。我们通过`using namespace`指令来访问标准库。
 
-每个C++程序恰好包含一个`main`函数。程序的执行总是从`main`函数开始。我们使用`srand`和`time`标准函数来初始化随机数生成器，并使用`rand`生成实际的随机值。百分号（`%`）是取模运算符，它将两个整数相除并给出除法的余数。这样，`dice`整数变量的值总是至少为1，最多为6。最后，我们使用`cout`输出`dice`变量的值，`cout`是标准库中用于写入文本和值的对象。
+每个 C++程序恰好包含一个`main`函数。程序的执行总是从`main`函数开始。我们使用`srand`和`time`标准函数来初始化随机数生成器，并使用`rand`生成实际的随机值。百分号（`%`）是取模运算符，它将两个整数相除并给出除法的余数。这样，`dice`整数变量的值总是至少为 1，最多为 6。最后，我们使用`cout`输出`dice`变量的值，`cout`是标准库中用于写入文本和值的对象。
 
-前四章的程序是用Visual Studio编写的，而剩余章节的程序是用Qt Creator编写的。
+前四章的程序是用 Visual Studio 编写的，而剩余章节的程序是用 Qt Creator 编写的。
 
 以下是如何创建项目、编写代码和执行应用程序的说明。当我们启动 Visual Studio 时，我们按照以下步骤创建我们的项目：
 
@@ -70,7 +80,7 @@
 
 # 理解类 - 汽车类
 
-让我们继续看看一个简单的类，它处理汽车的速度和方向。在面向对象的语言中，类是一个非常核心的特性。在 C++ 中，其规范由两部分组成——其定义和实现。定义部分通常放在一个带有 `.h` 后缀的头文件中，而实现部分则放在一个带有 `.cpp` 后缀的文件中，例如 `Car.h` 和 `Car.cpp` 文件。然而，在 [第 3 章](6814bf19-e75b-4083-8447-892dd8416f49.xhtml) 中引入的模板类，即 [构建图书馆管理系统](6814bf19-e75b-4083-8447-892dd8416f49.xhtml)，只存储在一个文件中。
+让我们继续看看一个简单的类，它处理汽车的速度和方向。在面向对象的语言中，类是一个非常核心的特性。在 C++ 中，其规范由两部分组成——其定义和实现。定义部分通常放在一个带有 `.h` 后缀的头文件中，而实现部分则放在一个带有 `.cpp` 后缀的文件中，例如 `Car.h` 和 `Car.cpp` 文件。然而，在 第三章 中引入的模板类，即 构建图书馆管理系统，只存储在一个文件中。
 
 一个类由其成员组成，其中成员是一个字段或方法。**字段**保存特定类型的值。**方法**是一个数学抽象，可能需要输入值并返回一个值。方法输入值被称为参数。然而，在 C++ 中，可以定义没有参数和没有返回类型的函数。
 
@@ -100,77 +110,172 @@
 
 **Car.h**
 
-[PRE1]
+```cpp
+     class Car { 
+       public: 
+       Car(); 
+       Car(int speed, int direction); 
+       ~Car(); 
+```
 
 `getSpeed`和`getDirection`方法都是检查器，返回汽车当前的速度和方向。返回值持有`int`类型，即整数的缩写。由于它们不改变类的字段，因此它们被标记为常量，使用`const`关键字。然而，构造函数或析构函数不能是常量：
 
-[PRE2]
+```cpp
+    int getSpeed() const; 
+    int getDirection() const; 
+```
 
 `accelerate`、`decelerate`、`turnLeft`和`turnRight`方法都是修改器，用于设置汽车当前的速度和方向。由于它们改变类的字段，因此不能标记为常量：
 
-[PRE3]
+```cpp
+    void accelerate(int speed); 
+    void decelerate(int speed); 
+    void turnLeft(int degrees); 
+    void turnRight(int degrees); 
+```
 
 `m_speed`和`m_direction`字段持有汽车当前的速度和方向。`-m`前缀表示它们是类的成员，而不是方法局部字段：
 
-[PRE4]
+```cpp
+    private: 
+      int m_speed, m_direction; 
+    }; 
+```
 
 在实现文件中，我们必须包含`Car.h`头文件。`#include`指令是预处理程序的一部分，它只是简单地将`Car.h`文件的内容包含到文件中。在前面的一节中，我们使用尖括号字符(`<`和`>`)包含了系统文件。在这种情况下，我们使用引号包含本地文件。系统包含文件（带有尖括号）包含语言的一部分系统代码，而本地包含文件（带有引号）包含我们自己的代码，作为项目的一部分。技术上，系统包含文件通常从文件系统中的特殊目录中包含，而本地包含文件通常在文件系统中本地包含：
 
 **Car.cpp**
 
-[PRE5]
+```cpp
+    #include "Car.h" 
+```
 
 默认构造函数初始化`speed`和`direction`并将它们设置为`0`。冒号(`:`)符号用于初始化字段。在两个斜杠(`//`)和行尾之间的文本被称为行注释，会被忽略：
 
-[PRE6]
+```cpp
+Car::Car() 
+ :m_speed(0), 
+  m_direction(0) { 
+  // Empty. 
+} 
+```
 
 第二个构造函数初始化`speed`和`direction`为给定的参数值：
 
-[PRE7]
+```cpp
+Car::Car(int speed, int direction) 
+ :m_speed(speed), 
+  m_direction(direction) { 
+  // Empty. 
+} 
+```
 
-在前面的构造函数中，可以使用赋值运算符(`=`)而不是类初始化符号，就像以下代码所示。然而，这被认为是不高效的，因为代码可以通过前面的初始化符号进行优化。注意，我们使用一个等号(`=`)进行赋值。对于两个值的比较，我们使用两个等号(`==`)，这是一种在[第2章](856debf4-f653-4211-928d-b3296fe56d99.xhtml)中引入的方法，*数据结构和算法*：
+在前面的构造函数中，可以使用赋值运算符(`=`)而不是类初始化符号，就像以下代码所示。然而，这被认为是不高效的，因为代码可以通过前面的初始化符号进行优化。注意，我们使用一个等号(`=`)进行赋值。对于两个值的比较，我们使用两个等号(`==`)，这是一种在第二章中引入的方法，*数据结构和算法*：
 
-[PRE8]
+```cpp
+Car::Car() { 
+  m_speed = 0; 
+  m_direction = 0; 
+} 
+```
 
 在这个类中，析构函数不做任何事情；它只为了完整性而包含：
 
-[PRE9]
+```cpp
+Car::~Car() { 
+  // Empty. 
+} 
+```
 
 `getSpeed`和`getDirection`方法只是简单地返回汽车当前的速度和方向：
 
-[PRE10]
+```cpp
+int Car::getSpeed() const { 
+  return m_speed; 
+} 
+
+int Car::getDirection() const { 
+  return m_direction; 
+} 
+```
 
 一个加号直接跟在等号后面被称为**复合赋值**，它会导致右边的值加到左边的值上。同样，一个减号直接跟在等号后面会导致右边的值从左边的值中减去。
 
 在一个斜杠(`/`)直接跟在一个星号(`*`)之后，以及一个星号直接跟在一个斜杠之后之间的文本被称为**块注释**，会被忽略：
 
-[PRE11]
+```cpp
+void Car::accelerate(int speed) { 
+  m_speed += speed; /* Same effect as: m_speed = m_speed + speed; */ 
+} 
+
+void Car::decelerate(int speed) { 
+  m_speed -= speed; 
+} 
+
+void Car::turnLeft(int degrees) { 
+  m_direction -= degrees; 
+} 
+
+void Car::turnRight(int degrees) { 
+  m_direction += degrees; 
+} 
+```
 
 现在是时候测试我们的类了。为此，我们需要包含`Car.h`文件，就像我们在`Car.cpp`文件中所做的那样。然而，我们还需要包含系统`IOStream`头文件。与前面的章节一样，系统头文件被括在箭头括号(`<`和`>`)中。我们还需要使用`namespace std`来使用其功能。
 
 **Main.cpp**
 
-[PRE12]
+```cpp
+    #include <IOStream> 
+    using namespace std; 
+    #include "Car.h" 
+```
 
-在C++中，一个函数可以是类的一部分，也可以是独立于类的。类的函数通常被称为方法。函数是一个数学抽象。它有输入值，这些值被称为参数，并返回一个值。然而，在C++中，一个函数允许没有参数，并且它可以返回特殊类型void，表示它不返回值。
+在 C++中，一个函数可以是类的一部分，也可以是独立于类的。类的函数通常被称为方法。函数是一个数学抽象。它有输入值，这些值被称为参数，并返回一个值。然而，在 C++中，一个函数允许没有参数，并且它可以返回特殊类型 void，表示它不返回值。
 
 如前节所述，程序的执行总是从名为`main`的函数开始，每个程序必须恰好有一个名为`main`的函数。与某些其他语言不同，没有必要将文件命名为`Main`。
 
 然而，在这本书中，出于方便起见，每个包含`main`函数的文件都命名为`Main.cpp`。`void`关键字表示`main`不返回值。请注意，虽然构造函数和析构函数从不返回值，且不标记为`void`，但其他不返回值的函数和方法必须标记为`void`：
 
-[PRE13]
+```cpp
+    void main() { 
+```
 
 我们创建了一个名为`redVolvo`的`Car`类对象。对象是类的实例；`redVolvo`是众多汽车之一：
 
-[PRE14]
+```cpp
+  Car redVolvo; 
+```
 
 在编写信息时，我们使用`cout`对象（代表控制台输出），它通常写入一个文本窗口。由两个左尖括号(`<<`)组成的操作符被称为输出流操作符。`endl`指令使得下一个输出从下一行的开头开始：
 
-[PRE15]
+```cpp
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+
+  redVolvo.accelerate(30); 
+  redVolvo.turnRight(30); 
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+
+  redVolvo.decelerate(10); 
+  redVolvo.turnLeft(10); 
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+```
 
 `blueFiat`对象是`Car`类的常量对象。这意味着它只能通过其中一个构造函数进行初始化，然后进行检查，但不能修改。更具体地说，只有常量方法可以在常量对象上调用，并且只有不修改对象字段的那些方法可以是常量：
 
-[PRE16]
+```cpp
+  const Car blueFiat(100, 90); 
+  cout << "Blue Fiat Speed: " << blueFiat.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << blueFiat.getDirection() << " degrees" << endl; 
+   } 
+```
 
 当我们执行代码时，输出显示在命令窗口中：
 
@@ -182,65 +287,173 @@
 
 **Car.h**
 
-[PRE17]
+```cpp
+class Car { 
+  public: 
+    // ... 
+
+  private: 
+    int m_speed = 0, m_direction = 0; 
+}; 
+```
 
 虽然`Car`类定义在`Car.h`文件中，但其方法定义在`Car.cpp`文件中。请注意，我们首先包含`Car.h`文件，以便方法的定义符合其在`Car.h`中的声明：
 
 **Car.cpp**
 
-[PRE18]
+```cpp
+#include "Car.h" 
+
+Car::Car() { 
+  // Empty. 
+} 
+
+Car::Car(int speed, int direction) 
+ :m_speed(speed), 
+  m_direction(direction) { 
+  // Empty. 
+} 
+```
 
 此外，前节中的`Car`类有一些局限性：
 
 +   可以无限加速汽车，也可以减速汽车到负速度
 
-+   可以将汽车转向，使其方向为负或超过360度
++   可以将汽车转向，使其方向为负或超过 360 度
 
 首先，我们将汽车的最高速度设置为`200`英里/小时。如果速度超过`200`英里/小时，我们将它设置为`200`英里/小时。我们使用`if`语句，它接受一个条件，如果条件为真，则执行以下语句。在这种情况下，语句`(m_speed = 200;)`被括号包围。这并不是必需的，因为它只包含一个语句。然而，如果有多个语句，则这是必需的。在这本书中，我们总是为了清晰起见使用括号，无论语句的数量多少。
 
 **Car.cpp**
 
-[PRE19]
+```cpp
+void Car::accelerate(int speed) { 
+  m_speed += speed; 
+
+  if (m_speed > 200) { 
+    m_speed = 200; 
+  } 
+} 
+```
 
 如果速度变为负数，我们改变速度的符号使其变为正数。请注意，我们不能写`m_speed -= m_speed`。那样会将速度设置为零，因为它会从自身减去速度。
 
 由于值是负数，当我们改变符号时，它变为正数。我们还通过旋转`180`度来改变汽车的方向。请注意，在这种情况下，我们也必须检查汽车是否超过速度限制。
 
-此外，请注意，我们必须检查方向是否小于180度。如果是，我们加上`180`度；否则，我们减去`180`度以保持方向在`0`到`360`度的区间内。我们使用`if...else`语句来完成这个操作。如果`if`语句的条件不为真，则执行`else`关键字后的语句：
+此外，请注意，我们必须检查方向是否小于 180 度。如果是，我们加上`180`度；否则，我们减去`180`度以保持方向在`0`到`360`度的区间内。我们使用`if...else`语句来完成这个操作。如果`if`语句的条件不为真，则执行`else`关键字后的语句：
 
-[PRE20]
+```cpp
+void Car::decelerate(int speed) { 
+  m_speed -= speed; 
+
+  if (m_speed < 0) { 
+    m_speed = -m_speed; 
+
+    if (m_speed > 200) { 
+      m_speed = 200; 
+    } 
+
+    if (m_direction < 180) { 
+      m_direction += 180; 
+    } 
+    else { 
+      m_direction -= 180; 
+    } 
+  } 
+} 
+```
 
 当转向汽车时，我们使用取模（`%`）运算符。当除以`360`时，取模运算符给出除法的余数。例如，当`370`除以`360`时，余数是`10`：
 
-[PRE21]
+```cpp
+void Car::turnLeft(int degrees) { 
+  m_direction -= degrees; 
+  m_direction %= 360; 
+
+  if (m_direction < 0) { 
+    m_direction += 360; 
+  } 
+} 
+
+void Car::turnRight(int degrees) { 
+  m_direction += degrees; 
+  m_direction %= 360; 
+} 
+```
 
 `main`函数创建了一个`Car`类的对象——`redVolvo`。我们首先写下它的速度和方向，然后加速并向左转，再次写下它的速度和加速度。最后，我们减速并向右转，最后一次写下它的速度和方向：
 
 **Main.cpp**
 
-[PRE22]
+```cpp
+#include <IOStream> 
+using namespace std; 
+#include "Car.h" 
+
+void main() { 
+  Car redVolvo(20, 30); 
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+
+  redVolvo.accelerate(30); 
+  redVolvo.turnLeft(60); 
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+
+  redVolvo.decelerate(60); 
+  redVolvo.turnRight(50); 
+  cout << "Red Volvo Speed: " << redVolvo.getSpeed() 
+       << " miles/hour" << ", Direction: " 
+       << redVolvo.getDirection() << " degrees" << endl; 
+} 
+```
 
 当我们执行代码时，输出将如下显示在命令窗口中：
 
 ![图片](img/c4ae7e52-8fdf-4251-80bd-1de8d8b555ee.png)
 
-# 类层次结构——Person、Student和Employee类
+# 类层次结构——Person、Student 和 Employee 类
 
 让我们继续使用类层次结构，其中`Person`是基类，`Student`和`Employee`是其子类：
 
 ![图片](img/9bedb9c8-d793-4af2-9526-82118247b200.png)
 
-正如人有一个名字一样，我们使用C++标准库中的`string`类来存储名字。`virtual`关键字标记了`print`方法受动态绑定的影响，我们将在本节稍后探讨这一点：
+正如人有一个名字一样，我们使用 C++标准库中的`string`类来存储名字。`virtual`关键字标记了`print`方法受动态绑定的影响，我们将在本节稍后探讨这一点：
 
 **Person.h**
 
-[PRE23]
+```cpp
+class Person { 
+  public: 
+    Person(string name); 
+    virtual void print(); 
+
+  private: 
+    string m_name; 
+}; 
+```
 
 我们包含`String`头文件，这允许我们使用`string`类：
 
 **Person.cpp**
 
-[PRE24]
+```cpp
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Person.h" 
+
+Person::Person(string name) 
+ :m_name(name) { 
+  // Empty. 
+} 
+
+void Person::print() { 
+  cout << "Person " << m_name << endl; 
+} 
+```
 
 `Student`和`Employee`类是`Person`的子类，并且以`public`方式继承`Person`。有时术语扩展代替继承。继承可以是`public`、`protected`或`private`：
 
@@ -254,65 +467,149 @@
 
 **Student.h**
 
-[PRE25]
+```cpp
+class Student : public Person { 
+  public: 
+    Student(string name, string university); 
+    void print(); 
+
+  private: 
+    string m_university; 
+}; 
+```
 
 文件 `Student.cpp` 定义了 `Student` 类的方法：
 
 **Student.cpp**
 
-[PRE26]
+```cpp
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Person.h" 
+#include "Student.h" 
+```
 
 子类可以通过使用冒号表示法 (`:`) 来指定其 `name` 来调用基类的构造函数。`Student` 的构造函数使用参数 `name` 调用 `Person` 的构造函数：
 
-[PRE27]
+```cpp
+Student::Student(string name, string university) 
+ :Person(name), 
+  m_university(university) { 
+  // Empty. 
+} 
+```
 
 我们必须声明，我们通过使用双冒号表示法 (`::`) 在 `Person` 而不是 `Student` 中调用 `print`：
 
-[PRE28]
+```cpp
+void Student::print() { 
+  Person::print(); 
+  cout << "University " << m_university << endl; 
+} 
+```
 
 `Employee` 类与 `Student` 类类似。然而，它持有字段 `c_company` 而不是 `m_university`。
 
 **Employee.h**
 
-[PRE29]
+```cpp
+class Employee : public Person { 
+  public: 
+    Employee(string name, string company); 
+    void print(); 
+
+  private: 
+    string m_company; 
+}; 
+```
 
 文件 `Employee.cpp` 定义了 `Employee` 类的方法。
 
 **Employee.cpp**
 
-[PRE30]
+```cpp
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Person.h" 
+#include "Employee.h" 
+```
 
 构造函数初始化人员的姓名和他们受雇的公司：
 
-[PRE31]
+```cpp
+
+Employee::Employee(string name, string company)
+:Person(name),
+m_company(company) {
+// Empty.
+}
+void Employee::print() {
+Person::print();
+cout << "Company " << m_company << endl;
+}
+```
 
 最后，`main` 函数首先包含系统头文件 `String` 和 `IOStream`，它们包含有关字符串处理和输入输出流的声明。由于所有标准头文件都包含在标准命名空间中，我们可以通过使用 `using` 命令来访问系统声明。
 
 **Main.cpp**
 
-[PRE32]
+```cpp
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Person.h" 
+#include "Student.h" 
+#include "Employee.h" 
+```
 
 我们定义了三个对象，`Monica`、`Demi` 和 `Charles`，并且对它们中的每一个都调用了 `print` 方法。在所有三种情况下，都调用了 `Person`、`Student` 和 `Employee` 类的 `print` 方法：
 
-[PRE33]
+```cpp
+void main() { 
+  Person monica("Monica"); 
+  person.print(); 
+
+  Student demi("Demi", "MIT"); 
+  student.print(); 
+
+  Employee charles("Charles", "Microsoft"); 
+  employee.print(); 
+```
 
 星号 (`*`) 标记 `personPtr` 是指向 `Person` 对象的指针，而不是 `Person` 对象本身。指针持有对象的内存地址，而不是对象本身。然而，目前它并没有持有任何地址。我们很快就会将它分配给一个对象的地址：
 
-[PRE34]
+```cpp
+    Person *personPtr; 
+```
 
 `&` 是一个操作符，它提供对象的地址，该地址被分配给指针 `personPtr`。我们依次将 `personPtr` 分配给 `Person`、`Student` 和 `Employee` 对象的地址，并在每种情况下调用 `print`。由于 `print` 在 `Person` 中被标记为虚拟的，因此调用当前指针指向的对象类的 `print`。由于 `print` 在基类 `Person` 中被标记为虚拟的，因此不需要在子类 `Student` 和 `Employee` 中将 `print` 标记为虚拟。在访问对象指针的成员时，我们使用箭头 (`->`) 操作符而不是点操作符。
 
 当 `personPtr` 指向 `Person` 对象时，调用 `Person` 中的 `print`：
 
-[PRE35]
+```cpp
+    personPtr = &person; 
+    personPtr->print(); 
+```
 
 当 `personPtr` 指向 `Student` 对象时，调用 `Student` 中的 `print`：
 
-[PRE36]
+```cpp
+    personPtr = &student; 
+    personPtr->print(); 
+```
 
 当 `personPtr` 指向 `Employee` 对象时，调用 `Employee` 中的 `print`：
 
-[PRE37]
+```cpp
+    personPtr = &employee; 
+    personPtr->print(); 
+   } 
+```
 
 这个过程称为动态绑定。如果我们省略 `Person` 中的虚拟标记，则会发生静态绑定，并且所有情况下都会调用 `Person` 中的 `print`。
 
@@ -320,87 +617,183 @@
 
 # 一个简单的数据类型——栈
 
-栈是一种简单的数据类型，我们可以在顶部添加值，移除顶部的值，并且只能检查顶部值。在本节中，我们实现了一个整数栈。在下一章中，我们将探讨可以持有任意类型值的模板类。我们使用链表，这是一种结构，其中指针指向链表中的第一个单元格，每个单元格都持有指向链表中下一个单元格的指针。自然地，链表必须最终结束。我们使用`nullptr`来标记链表的结束，它是C++标准指向特殊空地址的指针。
+栈是一种简单的数据类型，我们可以在顶部添加值，移除顶部的值，并且只能检查顶部值。在本节中，我们实现了一个整数栈。在下一章中，我们将探讨可以持有任意类型值的模板类。我们使用链表，这是一种结构，其中指针指向链表中的第一个单元格，每个单元格都持有指向链表中下一个单元格的指针。自然地，链表必须最终结束。我们使用`nullptr`来标记链表的结束，它是 C++标准指向特殊空地址的指针。
 
 首先，我们需要一个类来保存链表中的每个单元格。单元格包含一个整数值和指向列表中下一个单元格的指针，或者如果它是列表的最后一个单元格，则为`nullptr`。在下一节中，我们将探讨同时持有前一个和下一个单元格指针的单元格类。
 
 **Cell.h**
 
-[PRE38]
+```cpp
+class Cell { 
+  public: 
+    Cell(int value, Cell *next); 
+```
 
 可以直接在类定义中实现方法；它们被称为内联方法。然而，这通常只用于短方法。一个经验法则是内联方法不应超过一行：
 
-[PRE39]
+```cpp
+    int value() const { return m_value; } 
+    Cell *next() const { return m_next; } 
+```
 
 每个单元格都持有一个值和链表中下一个单元格的地址：
 
-[PRE40]
+```cpp
+  private: 
+    int m_value; 
+    Cell *m_next; 
+}; 
+```
 
 **Cell.h**
 
-[PRE41]
+```cpp
+#include "Cell.h" 
+```
 
 一个单元格通过一个值和一个指向链表下一个单元格的指针来初始化。注意，如果单元格是链表中的最后一个单元格，则`m_next`的值为`nullptr`：
 
-[PRE42]
+```cpp
+Cell::Cell(int value, Cell *next) 
+ :m_value(value), 
+  m_next(next) { 
+  // Empty. 
+} 
+```
 
 在栈中，我们只对它的顶部值感兴趣。默认构造函数将栈初始化为空。压栈在栈顶添加一个值，顶部返回顶部值，弹出移除顶部值，大小返回栈中的值的数量，如果栈为空，则返回`true`。布尔类型是一种逻辑类型，可以持有`true`或`false`的值。
 
 **Stack.h**
 
-[PRE43]
+```cpp
+class Stack { 
+  public: 
+    Stack(); 
+    void push(int value); 
+    int top(); 
+    void pop(); 
+    int size() const; 
+    bool empty() const; 
+```
 
 `m_firstCellPtr`字段是指向包含栈值的链表第一个单元格的指针。当栈为空时，`m_firstCellPtr`将持有值`nullptr`。`m_size`字段持有栈的当前大小：
 
-[PRE44]
+```cpp
+  private: 
+    Cell *m_firstCellPtr; 
+    int m_size; 
+}; 
+```
 
-包含了`CAssert`头文件，用于assert宏，该宏用于测试某些条件是否为真。宏是预处理器的组成部分，它执行某些文本替换。
+包含了`CAssert`头文件，用于 assert 宏，该宏用于测试某些条件是否为真。宏是预处理器的组成部分，它执行某些文本替换。
 
 **Stack.cpp**
 
-[PRE45]
+```cpp
+#include <CAssert> 
+using namespace std; 
+
+#include "Cell.h" 
+#include "Stack.h" 
+```
 
 默认构造函数通过将指向第一个单元格的指针初始化为`nullptr`并将大小设置为零来将栈设置为空：
 
-[PRE46]
+```cpp
+Stack::Stack() 
+ :m_firstCellPtr(nullptr), 
+  m_size(0) { 
+  // Empty. 
+} 
+```
 
-当在栈顶压入新值时，我们使用新操作符动态分配单元格所需的内存。如果我们耗尽内存，则返回`nullptr`，这通过assert宏进行测试。如果`m_firstCellPtr`等于`nullptr`，则执行会因错误信息而终止。紧跟在等于号(`=`)后面的感叹号(`!`)构成了不等于操作符。两个加号(`++`)构成了增量操作符，意味着值增加一。
+当在栈顶压入新值时，我们使用新操作符动态分配单元格所需的内存。如果我们耗尽内存，则返回`nullptr`，这通过 assert 宏进行测试。如果`m_firstCellPtr`等于`nullptr`，则执行会因错误信息而终止。紧跟在等于号(`=`)后面的感叹号(`!`)构成了不等于操作符。两个加号(`++`)构成了增量操作符，意味着值增加一。
 
 增量操作符实际上有两种版本——前缀(`++m_size`)和后缀(`m_size++`)。在前缀情况下，值首先增加然后返回，而在后缀情况下，值增加但返回原始值。然而，在这种情况下，我们使用哪个版本都无关紧要，因为我们只对结果感兴趣——即`m_size`的值增加一：
 
-[PRE47]
+```cpp
+void Stack::push(int value) { 
+  m_firstCellPtr = new Cell(value, m_firstCellPtr); 
+  ++m_size; 
+} 
+```
 
 当返回栈顶值时，我们必须首先检查栈是否为空，因为返回空栈的顶部值是不合逻辑的。如果栈为空，则执行会因错误信息而终止。单个感叹号(`!`)是逻辑非操作符。我们返回存储在链表第一个单元格中的顶部值：
 
-[PRE48]
+```cpp
+int Stack::top() { 
+  assert(!empty()); 
+  return m_firstCellPtr->getValue(); 
+} 
+```
 
 当弹出栈顶值时，我们也必须检查栈是否为空。我们将指向链表第一个单元格的指针设置为指向下一个单元格。然而，在那之前，我们必须存储第一个指针，`deleteCellPtr`，以便释放它所指向的单元格的内存。
 
 我们使用`delete`操作符释放内存：
 
-[PRE49]
+```cpp
+void Stack::pop() { 
+  assert(!empty()); 
+  Cell *deleteCellPtr = m_firstCellPtr; 
+  m_firstCellPtr = m_firstCellPtr->getNext(); 
+  delete deleteCellPtr; 
+```
 
 与上面提到的增量操作符一样，两个减号(`--`)构成了`减量`操作符，它将值减一：
 
-[PRE50]
+```cpp
+  --m_size; 
+} 
+```
 
 `size`方法简单地返回`m_size`字段的值：
 
-[PRE51]
+```cpp
+int Stack::size() const { 
+  return m_size; 
+} 
+```
 
 如果指向第一个单元格指针的指针等于`nullptr`，则栈为空。非正式地说，如果它等于`nullptr`，则指针为空：
 
-[PRE52]
+```cpp
+bool Stack::empty() const { 
+  return (m_firstCellPtr == nullptr); 
+} 
+```
 
 我们通过压栈、查看顶部和弹出一些值来测试栈。
 
 **Main.cpp**
 
-[PRE53]
+```cpp
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Cell.h" 
+#include "Stack.h" 
+
+void main() { 
+  Stack s; 
+  s.push(1); 
+  s.push(2); 
+  s.push(3); 
+```
 
 当打印布尔值时，`stream`操作符不会打印`true`或`false`，而是为`true`打印一个值，为`false`打印零。为了真正打印`true`或`false`，我们使用条件操作符。它接受三个值，由问号(`?`)和冒号(`:`)分隔。如果第一个值是`true`，则返回第二个值。如果第一个值是`false`，则返回第三个值：
 
-[PRE54]
+```cpp
+  cout << "top " << s.top() << ", size " << s.size() 
+       << ", empty " << (s.empty() ? "true" : "false") << endl; 
+
+  s.pop(); 
+  s.pop(); 
+  s.push(4); 
+  cout << "top " << s.top() << ", size " << s.size() 
+       << ", empty " << (s.empty() ? "true" : "false") << endl; 
+} 
+```
 
 # 更高级的数据类型——队列
 
@@ -410,43 +803,140 @@
 
 **Cell.h**
 
-[PRE55]
+```cpp
+class Cell { 
+  public: 
+    Cell(int value, Cell *next); 
+    int value() const {return m_value;} 
+    Cell *getNext() const { return m_next; } 
+    void setNext(Cell* next) { m_next = next; } 
+
+  private: 
+    int m_value; 
+    Cell *m_next; 
+}; 
+```
 
 我们以类似于栈的方式使用链表实现队列。构造函数初始化一个空队列，`enter` 方法在队列的末尾插入一个值，`remove` 方法从队列的前端删除一个值，`size` 方法返回队列的当前大小，而 `empty` 方法如果队列为空则返回 `true`：
 
 **Queue.h**
 
-[PRE56]
+```cpp
+class Queue { 
+  public: 
+    Queue(); 
+    void enter(int value); 
+    int first(); 
+    void remove(); 
+    int size() const; 
+    bool empty() const; 
+```
 
 在栈的情况下，我们只对它的顶部感兴趣，它存储在链表的开始处。在队列的情况下，我们既对前部也对后部感兴趣，这意味着我们需要访问链表的第一和最后一个单元格。因此，我们有两个指针，`m_firstCellPtr` 和 `m_lastCellPtr`，分别指向链表中的第一个和最后一个单元格：
 
-[PRE57]
+```cpp
+  private: 
+    Cell *m_firstCellPtr, *m_lastCellPtr; 
+    int m_size; 
+}; 
+```
 
 **Queue.cpp**
 
-[PRE58]
+```cpp
+#include <CAssert> 
+using namespace std; 
+
+#include "Cell.h" 
+#include "Queue.h" 
+```
 
 当队列被创建时，它是空的；指针是空的，大小为零。由于链表中没有单元格，两个单元格指针都指向 `nullptr`：
 
-[PRE59]
+```cpp
+Queue::Queue() 
+ :m_firstCellPtr(nullptr), 
+  m_lastCellPtr(nullptr), 
+  m_size(0) { 
+  // Empty. 
+} 
+```
 
 当在队列的末尾输入新值时，我们检查队列是否为空。如果它是空的，两个指针都设置为指向新单元格。如果不为空，最后一个单元格的下一个指针设置为指向新单元格，然后最后一个单元格指针设置为指向新单元格：
 
-[PRE60]
+```cpp
+void Queue::enter(int value) { 
+  Cell *newCellPtr = new Cell(value, nullptr); 
+
+  if (empty()) { 
+    m_firstCellPtr = m_lastCellPtr = newCellPtr; 
+  } 
+  else { 
+    m_lastCellPtr->setNext(newCellPtr); 
+    m_lastCellPtr = newCellPtr; 
+  } 
+
+  ++m_size; 
+} 
+```
 
 第一种方法简单地返回链表中的第一个单元格的值：
 
-[PRE61]
+```cpp
+int Queue::first() { 
+  assert(!empty()); 
+  return m_firstCellPtr->value(); 
+} 
+```
 
 `remove` 方法将第一个单元格设置为指向第二个单元格。然而，首先我们必须存储它的地址，以便使用 C++ 标准的 `delete` 操作符来释放它的内存：
 
-[PRE62]
+```cpp
+void Queue::remove() { 
+  assert(!empty()); 
+  Cell *deleteCellPtr = m_firstCellPtr; 
+  m_firstCellPtr = m_firstCellPtr->getNext(); 
+  delete deleteCellPtr; 
+  --m_size; 
+} 
+
+int Queue::size() const { 
+  return m_size; 
+} 
+
+bool Queue::empty() const { 
+  return (m_firstCellPtr == nullptr); 
+} 
+```
 
 我们通过输入和删除一些值来测试队列。我们输入的值为一、二、三，这些值按照顺序放入队列中。然后我们删除前两个值，并输入值四。此时队列中包含的值为三和四：
 
 **Main.cpp**
 
-[PRE63]
+```cpp
+#include <CMath> 
+#include <String> 
+#include <IOStream> 
+using namespace std; 
+
+#include "Cell.h" 
+#include "Queue.h" 
+
+void main() { 
+  Queue q; 
+  q.enter(1); 
+  q.enter(2); 
+  q.enter(3); 
+  cout << "first " << q.first() << ", size " << q.size() 
+       << ", empty " << (q.empty() ? "true" : "false") << endl; 
+
+  q.remove(); 
+  q.remove(); 
+  q.enter(4); 
+  cout << "first " << q.first() << ", size " << q.size() 
+       << ", empty " << (q.empty() ? "true" : "false") << endl; 
+} 
+```
 
 # 摘要
 

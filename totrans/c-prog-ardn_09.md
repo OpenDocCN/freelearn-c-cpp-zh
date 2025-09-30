@@ -1,6 +1,6 @@
-# 第9章. 使物体移动和创造声音
+# 第九章. 使物体移动和创造声音
 
-如果Arduino板可以通过传感器来监听和感受，它也可以通过使物体移动来做出反应。
+如果 Arduino 板可以通过传感器来监听和感受，它也可以通过使物体移动来做出反应。
 
 通过运动概念，我指的是以下两个方面：
 
@@ -12,7 +12,7 @@
 
 然后，我们将开始谈论声音产生的基础知识。这是尝试产生任何声音，即使是简单的声音之前的一个要求。这是我们将描述模拟和数字概念的部分。
 
-最后，我们将设计一个非常基本的随机合成器，可以通过MIDI进行控制。我们还将介绍一个非常棒的库，称为**PCM**，它提供了一种简单的方法，可以将样本播放功能添加到你的8位微控制器中。
+最后，我们将设计一个非常基本的随机合成器，可以通过 MIDI 进行控制。我们还将介绍一个非常棒的库，称为**PCM**，它提供了一种简单的方法，可以将样本播放功能添加到你的 8 位微控制器中。
 
 # 使物体振动
 
@@ -20,7 +20,7 @@
 
 这是我们在设计中设计的第一个基本可感知的动作。当然，我们之前已经设计了许多视觉反馈，但这是我们第一个真正影响固件的现实世界对象。
 
-这种类型的反馈在非视觉环境中非常有用。我为一个人设计了一个小项目，他想在他的反应式装置中向参观者发送反馈。参观者必须穿上一件包含一些电子组件的T恤，例如LilyPad和一些压电传感器。LED反馈不是我们之前用来向穿戴者发送反馈的解决方案，我们决定发送振动。这些压电传感器分布在T恤的两侧，以产生不同的反馈，以响应不同的交互。
+这种类型的反馈在非视觉环境中非常有用。我为一个人设计了一个小项目，他想在他的反应式装置中向参观者发送反馈。参观者必须穿上一件包含一些电子组件的 T 恤，例如 LilyPad 和一些压电传感器。LED 反馈不是我们之前用来向穿戴者发送反馈的解决方案，我们决定发送振动。这些压电传感器分布在 T 恤的两侧，以产生不同的反馈，以响应不同的交互。
 
 但我不是在谈论传感器振动时犯了一个错误吗？
 
@@ -38,31 +38,47 @@
 
 ## 连接振动电机
 
-压电传感器通常消耗大约10 mA到15 mA的电流，这非常小。
+压电传感器通常消耗大约 10 mA 到 15 mA 的电流，这非常小。
 
-当然，你需要检查你将要使用的设备的正确数据表。我使用**Sparkfun**（[https://www.sparkfun.com/products/10293](https://www.sparkfun.com/products/10293)）的设备取得了很好的效果。布线非常简单——只有两个引脚。以下图像显示了压电传感器/振动器如何通过具有PWM功能的数字引脚连接到Arduino：
+当然，你需要检查你将要使用的设备的正确数据表。我使用**Sparkfun**（[`www.sparkfun.com/products/10293`](https://www.sparkfun.com/products/10293)）的设备取得了很好的效果。布线非常简单——只有两个引脚。以下图像显示了压电传感器/振动器如何通过具有 PWM 功能的数字引脚连接到 Arduino：
 
 ![连接振动电机](img/7584_09_001.jpg)
 
-请注意，我已经将压电器件连接到一个具有PWM功能的数字引脚。我在上一章中解释了PWM。
+请注意，我已经将压电器件连接到一个具有 PWM 功能的数字引脚。我在上一章中解释了 PWM。
 
 这里是电路原理图。这个压电元件显示为一个小的蜂鸣器/扬声器：
 
 ![连接振动电机](img/7584_09_002.jpg)
 
-当然，由于我们将使用PWM，这意味着我们将模拟模拟输出电流。考虑到占空比的概念，我们可以使用`analogWrite()`函数给压电器件供电，然后以不同的电压供电。
+当然，由于我们将使用 PWM，这意味着我们将模拟模拟输出电流。考虑到占空比的概念，我们可以使用`analogWrite()`函数给压电器件供电，然后以不同的电压供电。
 
 ## 生成振动的固件
 
 检查固件。它也位于`Chapter09/vibrations/`文件夹中。
 
-[PRE0]
+```cpp
+int piezoPin = 9; 
+int value = 0;  // stores the current feed value
+int incdec = 1; // stores the direction of the variation
 
-我们在这里再次使用`analogWrite()`函数。这个函数将数字引脚作为参数和值。这个值从0到255是占空比。它基本上模拟了模拟输出。
+void setup() {
+}
+
+void loop() {
+
+  // test current value and change the direction if required
+  if (value == 0 || value == 255) incdec *= -1;
+
+  analogWrite(piezoPin, value + incdec);
+  delay(30);
+}
+```
+
+我们在这里再次使用`analogWrite()`函数。这个函数将数字引脚作为参数和值。这个值从 0 到 255 是占空比。它基本上模拟了模拟输出。
 
 我们使用`incdec`（表示递增-递减）参数的常规方式。我们在每次`loop()`执行时存储我们想要使用的增量值。
 
-当值达到边界，即0或255时，这个增量会改变，并发生反转，提供了一种从0到255，然后到0，然后到255，依此类推的循环的廉价方法。
+当值达到边界，即 0 或 255 时，这个增量会改变，并发生反转，提供了一种从 0 到 255，然后到 0，然后到 255，依此类推的循环的廉价方法。
 
 这个固件使压电器件从低频率到高频率循环振动。
 
@@ -72,7 +88,7 @@
 
 我们在上一章讨论了晶体管。我们将其用作数字开关。它们也可以用作放大器、电压稳定器和许多其他相关应用。
 
-你几乎可以在任何地方找到晶体管，而且它们相当便宜。你可以在[http://www.fairchildsemi.com/ds/BC/BC547.pdf](http://www.fairchildsemi.com/ds/BC/BC547.pdf)找到完整的数据表。
+你几乎可以在任何地方找到晶体管，而且它们相当便宜。你可以在[`www.fairchildsemi.com/ds/BC/BC547.pdf`](http://www.fairchildsemi.com/ds/BC/BC547.pdf)找到完整的数据表。
 
 以下是一个基本图解，解释了晶体管的工作原理：
 
@@ -88,13 +104,13 @@
 
 +   发射极
 
-如果我们通过向其施加5 V电源来饱和基极，那么来自收集器的所有电流都将通过发射极传输。
+如果我们通过向其施加 5 V 电源来饱和基极，那么来自收集器的所有电流都将通过发射极传输。
 
-当这样使用时，NPN晶体管是一种很好的开关高电流的方法，Arduino本身无法驱动。顺便说一句，这个开关可以用Arduino控制，因为它只需要向晶体管的基极提供非常小的电流。
+当这样使用时，NPN 晶体管是一种很好的开关高电流的方法，Arduino 本身无法驱动。顺便说一句，这个开关可以用 Arduino 控制，因为它只需要向晶体管的基极提供非常小的电流。
 
 ### 注意
 
-向晶体管基极发送5 V电压会闭合电路。将晶体管基极接地会打开电路。
+向晶体管基极发送 5 V 电压会闭合电路。将晶体管基极接地会打开电路。
 
 在任何需要外部电源来驱动电机的情况下，我们使用这种设计模式。
 
@@ -104,25 +120,25 @@
 
 **伺服电机**也被定义为一种允许对角位置进行非常精细控制的旋转执行器。
 
-许多伺服电机都很常见且价格低廉。我使用Spring Model Electronics的43 R伺服电机取得了很好的效果。你可以在[http://www.sparkfun.com/datasheets/Robotics/servo-360_e.pdf](http://www.sparkfun.com/datasheets/Robotics/servo-360_e.pdf)找到数据表。
+许多伺服电机都很常见且价格低廉。我使用 Spring Model Electronics 的 43 R 伺服电机取得了很好的效果。你可以在[`www.sparkfun.com/datasheets/Robotics/servo-360_e.pdf`](http://www.sparkfun.com/datasheets/Robotics/servo-360_e.pdf)找到数据表。
 
-伺服电机可以驱动大量的电流。这意味着在没有使用外部电源的情况下，你无法在Arduino板上使用超过一个或两个伺服电机。
+伺服电机可以驱动大量的电流。这意味着在没有使用外部电源的情况下，你无法在 Arduino 板上使用超过一个或两个伺服电机。
 
 ## 我们什么时候需要伺服电机？
 
 每当我们需要一种控制与旋转角度相关的位置的方法时，我们都可以使用伺服电机。
 
-伺服电机不仅可以用来移动小部件和使物体旋转，还可以用来移动包括在内的物体。机器人就是这样工作的，网上有很多有趣的Arduino相关机器人项目。
+伺服电机不仅可以用来移动小部件和使物体旋转，还可以用来移动包括在内的物体。机器人就是这样工作的，网上有很多有趣的 Arduino 相关机器人项目。
 
 在机器人的情况下，伺服电机外壳固定在机械臂的一部分，而机械臂的另一部分则固定在伺服电机的旋转部分。
 
-## 如何使用Arduino控制伺服电机
+## 如何使用 Arduino 控制伺服电机
 
 有一个非常好的库应该首先使用，名为`Servo`。
 
-这个库在大多数Arduino板上支持多达12个电机，在Arduino Mega上支持多达48个。
+这个库在大多数 Arduino 板上支持多达 12 个电机，在 Arduino Mega 上支持多达 48 个。
 
-通过使用Mega以外的其他Arduino板，我们可以找出一些软件限制。例如，引脚9和10不能用于PWM的`analogWrite()`方法([http://arduino.cc/en/Reference/analogWrite](http://arduino.cc/en/Reference/analogWrite))。
+通过使用 Mega 以外的其他 Arduino 板，我们可以找出一些软件限制。例如，引脚 9 和 10 不能用于 PWM 的`analogWrite()`方法([`arduino.cc/en/Reference/analogWrite`](http://arduino.cc/en/Reference/analogWrite))。
 
 伺服电机提供的是三引脚封装：
 
@@ -132,13 +148,13 @@
 
 +   脉冲；即控制引脚
 
-基本上，电源可以很容易地由外部电池提供，而脉冲仍然保持在Arduino板上。
+基本上，电源可以很容易地由外部电池提供，而脉冲仍然保持在 Arduino 板上。
 
 让我们来检查基本的接线。
 
 ## 接线一个伺服电机
 
-以下是一个将伺服电机连接到Arduino板以供电和控制的双向电路图：
+以下是一个将伺服电机连接到 Arduino 板以供电和控制的双向电路图：
 
 ![接线一个伺服电机](img/7584_09_004.jpg)
 
@@ -146,25 +162,50 @@
 
 ![接线一个伺服电机](img/7584_09_005.jpg)
 
-一个伺服电机和Arduino
+一个伺服电机和 Arduino
 
 我们基本上处于一个非常常见的基于数字输出的控制模式。
 
 让我们现在检查代码。
 
-## 使用Servo库控制一个伺服电机的固件
+## 使用 Servo 库控制一个伺服电机的固件
 
-这里是一个提供从0度到180度循环运动的固件。它也位于`Chapter09/OneServo/`文件夹中。
+这里是一个提供从 0 度到 180 度循环运动的固件。它也位于`Chapter09/OneServo/`文件夹中。
 
-[PRE1]
+```cpp
+#include <Servo.h> 
+
+Servo myServo;  // instantiate the Servo object
+int angle = 0;  // store the current angle
+
+void setup() 
+{ 
+  // pin 9 to Servo object myServo
+  myServo.attach(9);  
+} 
+
+void loop() 
+{ 
+  for(angle = 0; angle < 180; angle += 1)   
+  {                                  
+    myServo.write(angle);               
+    delay(20);                       
+  } 
+  for(angle = 180; angle >= 1; angle -=1)     
+  {                                
+    myServo.write(angle);              
+    delay(20);                       
+  } 
+}
+```
 
 我们首先包含`Servo`库头文件。
 
 然后我们实例化一个名为`myServo`的`Servo`对象实例。
 
-在`setup()`块中，我们必须做一些特别的事情。我们将引脚9连接到`myServo`对象。这明确地将引脚定义为`Servo`实例`myServo`的控制引脚。
+在`setup()`块中，我们必须做一些特别的事情。我们将引脚 9 连接到`myServo`对象。这明确地将引脚定义为`Servo`实例`myServo`的控制引脚。
 
-在`loop()`块中，我们有两个`for()`循环，看起来和之前的压电设备示例类似。我们定义一个循环，逐步增加角度变量从0到180，然后从180递减到0，每次我们暂停20毫秒。
+在`loop()`块中，我们有两个`for()`循环，看起来和之前的压电设备示例类似。我们定义一个循环，逐步增加角度变量从 0 到 180，然后从 180 递减到 0，每次我们暂停 20 毫秒。
 
 这里还有一个未使用的函数，我想提一下，`Servo.read()`。
 
@@ -172,9 +213,9 @@
 
 # 使用外部电源的多伺服电机
 
-让我们想象我们需要三个伺服电机。正如之前解释的，伺服电机是电机，电机将电流转换为运动，驱动比LED或传感器等其他设备更多的电流。
+让我们想象我们需要三个伺服电机。正如之前解释的，伺服电机是电机，电机将电流转换为运动，驱动比 LED 或传感器等其他设备更多的电流。
 
-如果你的Arduino项目需要电脑，你可以通过USB为其供电，只要不超过500 mA的限制。超过这个限制，你需要为电路的某些部分或全部使用外部电源。
+如果你的 Arduino 项目需要电脑，你可以通过 USB 为其供电，只要不超过 500 mA 的限制。超过这个限制，你需要为电路的某些部分或全部使用外部电源。
 
 让我们看看用三个伺服电机的情况。
 
@@ -182,43 +223,70 @@
 
 外部电源可以是电池或墙壁适配器电源。
 
-我们将在这里使用基本的AA电池。这也是在没有电脑的情况下为Arduino供电的一种方式，如果你不需要电脑，想让Arduino独立运行。我们将在本书关于更高级概念的第三部分考虑这个选项。
+我们将在这里使用基本的 AA 电池。这也是在没有电脑的情况下为 Arduino 供电的一种方式，如果你不需要电脑，想让 Arduino 独立运行。我们将在本书关于更高级概念的第三部分考虑这个选项。
 
 现在我们先检查一下接线：
 
 ![三个伺服电机和外部电源](img/7584_09_006.jpg)
 
-连接到Arduino的三个伺服电机，并由两节AA电池供电
+连接到 Arduino 的三个伺服电机，并由两节 AA 电池供电
 
-在这种情况下，我们必须将地线连接在一起。当然，伺服电机只有一个电流源供应——两节AA电池。
+在这种情况下，我们必须将地线连接在一起。当然，伺服电机只有一个电流源供应——两节 AA 电池。
 
 让我们检查一下电路图：
 
 ![三个伺服电机和外部电源](img/7584_09_007.jpg)
 
-三个伺服电机，两节AA电池，和一个Arduino
+三个伺服电机，两节 AA 电池，和一个 Arduino
 
 ## 使用固件驱动三个伺服电机
 
 这里是驱动三个伺服电机的固件示例：
 
-[PRE2]
+```cpp
+#include <Servo.h> 
+
+Servo servo01;
+Servo servo02;
+Servo servo03;
+
+int angle;
+
+void setup() 
+{ 
+  servo01.attach(9);
+  servo02.attach(10);
+  servo03.attach(11);
+} 
+
+void loop() 
+{ 
+  for(angle = 0; angle < 180; angle += 1)   
+  {                                  
+    servo01.write(angle);
+    servo02.write(135-angle/2);
+    servo03.write(180-angle);
+
+    delay(15);                       
+  }
+}
+```
 
 这个非常基础的固件也位于`Chapter09/Servos/`文件夹中。
 
 我们首先实例化我们的三个伺服电机，并在`setup()`块中为每个电机连接一个引脚。
 
-在`loop()`函数中，我们玩转角度。作为一种新的生成性创作方法，我只为角度定义了一个变量。这个变量在每个`loop()`循环中循环地从0到180。
+在`loop()`函数中，我们玩转角度。作为一种新的生成性创作方法，我只为角度定义了一个变量。这个变量在每个`loop()`循环中循环地从 0 到 180。
 
-连接到9号引脚的伺服电机使用角度值本身驱动。
+连接到 9 号引脚的伺服电机使用角度值本身驱动。
 
-连接到10号引脚的伺服电机使用[135-（角度/2）]的值驱动，其值从135变化到45。
+连接到 10 号引脚的伺服电机使用[135-（角度/2）]的值驱动，其值从 135 变化到 45。
 
-然后，连接到11号引脚的伺服电机使用[180-角度]的值驱动，这是连接到9号引脚的伺服电机的相反运动。
+然后，连接到 11 号引脚的伺服电机使用[180-角度]的值驱动，这是连接到 9 号引脚的伺服电机的相反运动。
 
 这也是一个示例，展示了我们如何轻松地只控制一个变量，并在每次编程时围绕这个变量进行变化；在这里，我们使角度变化，并将角度变量组合到不同的表达式中。
 
-当然，我们可以通过使用外部参数来控制伺服位置，例如电位器位置或测量的距离。这将结合在这里教授的概念与第5章中教授的概念，*使用数字输入进行感应*，以及第6章中教授的概念，*通过模拟输入感知世界*。
+当然，我们可以通过使用外部参数来控制伺服位置，例如电位器位置或测量的距离。这将结合在这里教授的概念与第五章中教授的概念，*使用数字输入进行感应*，以及第六章中教授的概念，*通过模拟输入感知世界*。
 
 让我们更深入地了解步进电机。
 
@@ -230,41 +298,41 @@
 
 有一系列电磁线圈，可以在特定顺序中充电为正或负。控制顺序提供了对运动，向前或向后以小步的控制。
 
-当然，我们可以使用Arduino板来做这件事。
+当然，我们可以使用 Arduino 板来做这件事。
 
 我们将在这里检查单极步进电机。
 
-## 将单极步进电机连接到Arduino
+## 将单极步进电机连接到 Arduino
 
 单极步进电机通常由一个中心轴部分和四个电磁线圈组成。我们称其为单极，因为电源通过一个极进入。我们可以如下绘制：
 
-![将单极步进电机连接到Arduino的接线图](img/7584_09_010.jpg)
+![将单极步进电机连接到 Arduino 的接线图](img/7584_09_010.jpg)
 
 一个六引脚单极步进电机
 
-让我们看看它如何连接到我们的Arduino。
+让我们看看它如何连接到我们的 Arduino。
 
-我们需要从外部电源为步进电机供电。这里的一个最佳实践是使用电源适配器。引脚5和6必须提供电流源。
+我们需要从外部电源为步进电机供电。这里的一个最佳实践是使用电源适配器。引脚 5 和 6 必须提供电流源。
 
-然后，我们需要使用Arduino控制从1到4的每个引脚。这将通过ULN2004吸收电流系统来完成，它与我们在上一章中用于LED矩阵的ULN2003非常相似。ULN2004适用于6 V至15 V的电压。当ULN2003为5 V时，步进电机数据表显示我们必须使用此系统而不是ULN2003。
+然后，我们需要使用 Arduino 控制从 1 到 4 的每个引脚。这将通过 ULN2004 吸收电流系统来完成，它与我们在上一章中用于 LED 矩阵的 ULN2003 非常相似。ULN2004 适用于 6 V 至 15 V 的电压。当 ULN2003 为 5 V 时，步进电机数据表显示我们必须使用此系统而不是 ULN2003。
 
-![将单极步进电机连接到Arduino的接线图](img/7584_09_008.jpg)
+![将单极步进电机连接到 Arduino 的接线图](img/7584_09_008.jpg)
 
-通过达林顿晶体管阵列ULN2004连接到Arduino的单极步进电机
+通过达林顿晶体管阵列 ULN2004 连接到 Arduino 的单极步进电机
 
 让我们检查相应的电路图：
 
-![将单极步进电机连接到Arduino的接线图](img/7584_09_009.jpg)
+![将单极步进电机连接到 Arduino 的接线图](img/7584_09_009.jpg)
 
-一个电路图，显示了Arduino、ULN2004达林顿晶体管阵列和步进电机
+一个电路图，显示了 Arduino、ULN2004 达林顿晶体管阵列和步进电机
 
 我们在这里再次使用外部电源。所有地线也都连接在一起。
 
-请注意，**COM**引脚（引脚编号9）必须连接到电源源（+V）。
+请注意，**COM**引脚（引脚编号 9）必须连接到电源源（+V）。
 
-如果你能正确回忆起上一章的内容，当我们向ULN200x达林顿晶体管阵列输入时，相应的输出将电流吸收到地。
+如果你能正确回忆起上一章的内容，当我们向 ULN200x 达林顿晶体管阵列输入时，相应的输出将电流吸收到地。
 
-在我们这里，Arduino连接到ULN2004移位寄存器的每个引脚都可以使步进电机的每个引脚通向地。
+在我们这里，Arduino 连接到 ULN2004 移位寄存器的每个引脚都可以使步进电机的每个引脚通向地。
 
 让我们为步进电机控制设计固件。
 
@@ -274,7 +342,7 @@
 
 为了控制精确的运动，我们通常必须处理特定的序列。这些序列通常在数据表中描述。
 
-让我们检查一个可用的 [http://www.sparkfun.com/datasheets/Robotics/StepperMotor.pdf](http://www.sparkfun.com/datasheets/Robotics/StepperMotor.pdf)。
+让我们检查一个可用的 [`www.sparkfun.com/datasheets/Robotics/StepperMotor.pdf`](http://www.sparkfun.com/datasheets/Robotics/StepperMotor.pdf)。
 
 Sparkfun 电子公司为机器人设计的模型提供了它。
 
@@ -293,7 +361,36 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 这里是代码，后面是讨论。它也位于 `Chapter09/StepperMotor/` 文件夹中。
 
-[PRE3]
+```cpp
+#include <Stepper.h>
+#define STEPS 200
+
+// create an instance of stepper class
+Stepper stepper(STEPS, 8, 9, 10, 11);
+
+int counter = 0; // store steps number since last change of direction
+int multiplier = 1; // a basic multiplier
+
+void setup() 
+{ 
+  stepper.setSpeed(30); // set the speed at 30 RPM
+} 
+
+void loop()
+{
+
+  // move randomly from at least 1 step
+  stepper.step(multiplier);
+
+  // counting how many steps already moved
+  // then if we reach a whole turn, reset counter and go backward
+  if (counter < STEPS)  counter++ ;
+  else { 
+    counter = 0; 
+    multiplier *= -1;
+  }
+}
+```
 
 我们首先包含 `Stepper` 库。
 
@@ -303,7 +400,7 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 然后，我们声明两个辅助变量用于跟踪和有时改变旋转方向。
 
-在 `setup()` 块中，我们通常定义当前实例处理步进电机的速度。这里，我设置为 `30`（代表每分钟30圈）。这也可以在 `loop()` 块中根据特定条件或任何其他情况更改。
+在 `setup()` 块中，我们通常定义当前实例处理步进电机的速度。这里，我设置为 `30`（代表每分钟 30 圈）。这也可以在 `loop()` 块中根据特定条件或任何其他情况更改。
 
 最后，在 `loop()` 块中，我们将步进电机移动到乘数值相等的量，这个值最初是 `1`。这意味着在每次 `loop()` 方法的运行中，步进电机从顺时针方向的步 1（即，1.8 度）开始旋转。
 
@@ -319,7 +416,7 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 使空气移动可以产生美妙的声音，我们将在接下来的几节中了解更多关于这方面的内容。
 
-如果你能够用Arduino控制物体移动，你很可能也能让空气移动。
+如果你能够用 Arduino 控制物体移动，你很可能也能让空气移动。
 
 实际上，我们已经这样做了，但我们可能没有移动得足够多以产生声音。
 
@@ -337,7 +434,7 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 当然，所有这些过程都是实时的，假设更高或更低的频率在此时混合。
 
-我真的建议你阅读由Max 6框架的制作者cycling 74提供的令人惊叹且高效的介绍*数字音频是如何工作的？*，你可以在线阅读[http://www.cycling74.com/docs/max6/dynamic/c74_docs.html#mspdigitalaudio](http://www.cycling74.com/docs/max6/dynamic/c74_docs.html#mspdigitalaudio)。
+我真的建议你阅读由 Max 6 框架的制作者 cycling 74 提供的令人惊叹且高效的介绍*数字音频是如何工作的？*，你可以在线阅读[`www.cycling74.com/docs/max6/dynamic/c74_docs.html#mspdigitalaudio`](http://www.cycling74.com/docs/max6/dynamic/c74_docs.html#mspdigitalaudio)。
 
 一个声音可以包含多个频率，通常是由频率内容以及每个频率振幅的总体感知组合，给我们带来我们称之为声音音色的感觉。心理声学研究声音的感知。
 
@@ -351,7 +448,7 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 +   幅度随频率内容的变化。这被称为声音的频域表示。
 
-存在一种数学运算，提供了一种从一种表示转换到另一种表示的简单方法，称为傅里叶变换（[http://en.wikipedia.org/wiki/Fast_Fourier_transform](http://en.wikipedia.org/wiki/Fast_Fourier_transform)）。计算机上有许多这种运算的实现，形式为**快速傅里叶变换**（**FFT**），这是一种高效的方法，可以提供快速的近似计算。
+存在一种数学运算，提供了一种从一种表示转换到另一种表示的简单方法，称为傅里叶变换（[`en.wikipedia.org/wiki/Fast_Fourier_transform`](http://en.wikipedia.org/wiki/Fast_Fourier_transform)）。计算机上有许多这种运算的实现，形式为**快速傅里叶变换**（**FFT**），这是一种高效的方法，可以提供快速的近似计算。
 
 让我们考虑空气压力的正弦变化。这是最简单的声波之一。
 
@@ -409,7 +506,7 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 一提到数字设备，我们就必须考虑到存储和内存的限制。即使现在这些设备很大且足够，它们也不是无限的。
 
-那在这种情况下我们如何描述模拟的东西呢？当我们描述Arduino的模拟和数字输入输出引脚时，我们已经讨论了这种情况。
+那在这种情况下我们如何描述模拟的东西呢？当我们描述 Arduino 的模拟和数字输入输出引脚时，我们已经讨论了这种情况。
 
 ### 如何数字化声音
 
@@ -443,9 +540,9 @@ Sparkfun 电子公司为机器人设计的模型提供了它。
 
 这里有两个常用的质量标准：
 
-+   CD质量为44.1 kHz和16位
++   CD 质量为 44.1 kHz 和 16 位
 
-+   DAT质量为48 kHz和16位
++   DAT 质量为 48 kHz 和 16 位
 
 一些录音和母带工作室使用 96 kHz 和 24 位的音频接口和内部处理。一些热爱复古音效引擎的人仍然使用低保真系统，以 16 kHz 和 8 位产生自己的声音和音乐。
 
@@ -479,7 +576,7 @@ Arduino 可以读取和写入数字信号。它还可以读取模拟信号，并
 
 Arduino 本地能够在小型电脑扬声器上产生 8 kHz 和 8 位音频回放声音。
 
-我们将使用 Arduino 内置的`tone()`函数。正如[http://arduino.cc/en/Reference/Tone](http://arduino.cc/en/Reference/Tone)中所述，在使用此函数时，我们必须注意所使用的引脚，因为它将干扰引脚 3 和 11 上的 PWM 输出（Arduino MEGA 除外）。
+我们将使用 Arduino 内置的`tone()`函数。正如[`arduino.cc/en/Reference/Tone`](http://arduino.cc/en/Reference/Tone)中所述，在使用此函数时，我们必须注意所使用的引脚，因为它将干扰引脚 3 和 11 上的 PWM 输出（Arduino MEGA 除外）。
 
 这种技术也被称为**位打点**。它基于特定频率的 I/O 引脚切换。
 
@@ -501,13 +598,33 @@ Arduino 本地能够在小型电脑扬声器上产生 8 kHz 和 8 位音频回�
 
 ## 播放随机音调
 
-作为一位数字艺术家，尤其是电子音乐家，我喜欢摆脱音符的束缚。我经常使用频率而不是音符；如果你感兴趣，可以阅读有关微音概念的资料[http://en.wikipedia.org/wiki/Microtonal_music](http://en.wikipedia.org/wiki/Microtonal_music)。
+作为一位数字艺术家，尤其是电子音乐家，我喜欢摆脱音符的束缚。我经常使用频率而不是音符；如果你感兴趣，可以阅读有关微音概念的资料[`en.wikipedia.org/wiki/Microtonal_music`](http://en.wikipedia.org/wiki/Microtonal_music)。
 
 在这个例子中，我们不使用音符，而是使用频率来定义和触发我们的电子音乐。
 
 代码也位于`Chapter09/ ToneGenerator/`文件夹中。
 
-[PRE4]
+```cpp
+void setup() {
+  // initiate the pseudo-random number generator
+  randomSeed(analogRead(0));
+}
+
+void loop() {
+  // generate random pitch & duration
+  int pitch = random(30,5000);
+  int duration = 1000 / (random(1000) + 1);
+
+  // play a tone to the digital pin PWM number 8
+  tone(8, pitch, duration);
+
+  // make a pause
+  delay(duration * 1.30);
+
+  // stop the tone playing
+  noTone(8);
+}
+```
 
 我们首先通过读取模拟输入`0`来初始化伪随机数生成器。
 
@@ -521,7 +638,7 @@ Arduino 本地能够在小型电脑扬声器上产生 8 kHz 和 8 位音频回�
 
 然后，我们调用`tone()`。第一个参数是你给扬声器供电的引脚。
 
-`tone()`函数在引脚上生成指定频率的方波，如其在[http://arduino.cc/en/Reference/Tone](http://arduino.cc/en/Reference/Tone)的参考页面中所述。
+`tone()`函数在引脚上生成指定频率的方波，如其在[`arduino.cc/en/Reference/Tone`](http://arduino.cc/en/Reference/Tone)的参考页面中所述。
 
 如果我们不提供持续时间，声音将继续播放，直到调用`noTone()`函数。后者接受一个与引脚相同的参数。
 
@@ -535,45 +652,45 @@ Arduino 本地能够在小型电脑扬声器上产生 8 kHz 和 8 位音频回�
 
 +   **没有幅度控制可用**：每个音符都以相同的音量播放
 
-我们将使用一个名为 Mozzi 的非常棒的库，由 Tim Barrass 编写。官方网站直接托管在 GitHub 上[http://sensorium.github.com/Mozzi/](http://sensorium.github.com/Mozzi/)。它包括`TimerOne`库，一个非常快速的定时器处理器。
+我们将使用一个名为 Mozzi 的非常棒的库，由 Tim Barrass 编写。官方网站直接托管在 GitHub 上[`sensorium.github.com/Mozzi/`](http://sensorium.github.com/Mozzi/)。它包括`TimerOne`库，一个非常快速的定时器处理器。
 
 Mozzi 提供了一个非常棒的 16,384 kHz，8 位音频输出。它还包含一个很好的基本音频工具包，包括振荡器、样本、线条和包络，以及滤波器。
 
-所有的内容都可以在没有外部硬件的情况下，仅使用Arduino的两个引脚获得。
+所有的内容都可以在没有外部硬件的情况下，仅使用 Arduino 的两个引脚获得。
 
 我们将基于它设计一个小型声音引擎。
 
-## 设置电路和Mozzi库
+## 设置电路和 Mozzi 库
 
-设置电路很简单；它与最新的电路相同，只是需要使用引脚9。
+设置电路很简单；它与最新的电路相同，只是需要使用引脚 9。
 
-Mozzi的文档说明如下：
+Mozzi 的文档说明如下：
 
-> 要听Mozzi，将3.5毫米音频插头的中线连接到Arduino数字引脚9*上的PWM输出，将黑色地线连接到Arduino的地线。将其用作线路输出，您可以将其插入电脑并使用Audacity等声音程序进行收听。
+> 要听 Mozzi，将 3.5 毫米音频插头的中线连接到 Arduino 数字引脚 9*上的 PWM 输出，将黑色地线连接到 Arduino 的地线。将其用作线路输出，您可以将其插入电脑并使用 Audacity 等声音程序进行收听。
 > 
-> 硬件设置非常简单。您可以在互联网上找到许多类似的3.5毫米音频插头连接器。在下面的电路图中，我使用了一个扬声器而不是插头连接器，但使用插头连接器时效果完全相同，后者有2个引脚，一个地线和与信号相关的引脚。地线必须连接到Arduino的地线，另一个引脚连接到Arduino的数字引脚9。
+> 硬件设置非常简单。您可以在互联网上找到许多类似的 3.5 毫米音频插头连接器。在下面的电路图中，我使用了一个扬声器而不是插头连接器，但使用插头连接器时效果完全相同，后者有 2 个引脚，一个地线和与信号相关的引脚。地线必须连接到 Arduino 的地线，另一个引脚连接到 Arduino 的数字引脚 9。
 > 
 > 然后我们必须安装库本身。
 > 
-> 从他们的网站下载它：[http://sensorium.github.com/Mozzi](http://sensorium.github.com/Mozzi)
+> 从他们的网站下载它：[`sensorium.github.com/Mozzi`](http://sensorium.github.com/Mozzi)
 > 
-> 解压它并将文件夹重命名为Mozzi。
+> 解压它并将文件夹重命名为 Mozzi。
 > 
 > 然后将它放在通常放置库的位置；在我的情况下是：
 > 
 > /Users/julien/Documents/Arduino/libraries/
 > 
-> 重新启动或仅启动Arduino IDE，您将能够在IDE中看到库。
+> 重新启动或仅启动 Arduino IDE，您将能够在 IDE 中看到库。
 > 
 > 它提供了一系列示例。
 > 
 > 我们将使用正弦波相关的示例。
 
-这就是Mozzi库的外观：
+这就是 Mozzi 库的外观：
 
-![设置电路和Mozzi库](img/7584_09_015.jpg)
+![设置电路和 Mozzi 库](img/7584_09_015.jpg)
 
-展示大量示例的Mozzi安装
+展示大量示例的 Mozzi 安装
 
 ## 一个正弦波示例
 
@@ -583,7 +700,34 @@ Mozzi的文档说明如下：
 
 让我们检查一下正弦波示例。它也位于`Chapter09/MozziSoundGenerator/`文件夹中。
 
-[PRE5]
+```cpp
+#include <MozziGuts.h>
+#include <Oscil.h> // oscillator template
+#include <tables/sin2048_int8.h> // sine table for oscillator
+
+// use: Oscil <table_size, update_rate> oscilName (wavetable)
+Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
+
+// use #define for CONTROL_RATE, not a constant
+#define CONTROL_RATE 64 // powers of 2 please
+
+void setup(){
+  startMozzi(CONTROL_RATE); // set a control rate of 64 (powers of 2 please)
+  aSin.setFreq(440u); // set the frequency with an unsigned int or a float
+}
+
+void updateControl(){
+  // put changing controls in here
+}
+
+int updateAudio(){
+  return aSin.next(); // return an int signal centered around 0
+}
+
+void loop(){
+  audioHook(); // required here
+}
+```
 
 首先，进行一些包含操作。
 
@@ -595,7 +739,7 @@ Mozzi的文档说明如下：
 
 ### 振荡器
 
-在声音合成领域，**振荡器**是一个能够产生振荡的基本单元。它不仅常用于直接生成频率从20 Hz到20 kHz（可听频谱）的声音，而且还作为调制器（通常频率低于50 Hz）。在本例中，它被用作后者。振荡器通常被称为**低频振荡器**（**LFO**）。
+在声音合成领域，**振荡器**是一个能够产生振荡的基本单元。它不仅常用于直接生成频率从 20 Hz 到 20 kHz（可听频谱）的声音，而且还作为调制器（通常频率低于 50 Hz）。在本例中，它被用作后者。振荡器通常被称为**低频振荡器**（**LFO**）。
 
 ### 波表
 
@@ -605,7 +749,7 @@ Mozzi的文档说明如下：
 
 我们不是在实时中计算正弦值，而是基本上预先计算整个周期的每个值，然后将结果添加到表中；每次需要时，我们只需从表头扫描到表尾以检索每个值。
 
-当然，这确实是一个近似值。但它节省了很多CPU工作。
+当然，这确实是一个近似值。但它节省了很多 CPU 工作。
 
 波表由其大小、相关的采样率和当然整个值定义。
 
@@ -613,17 +757,17 @@ Mozzi的文档说明如下：
 
 ![波表](img/7584_09_016revised.jpg)
 
-我们确实可以找到单元格的数量：2048（即表中包含2048个值）。然后，采样率被定义为2048。
+我们确实可以找到单元格的数量：2048（即表中包含 2048 个值）。然后，采样率被定义为 2048。
 
 让我们回到例子。
 
-然后我们定义Oscil对象，它创建一个振荡器。
+然后我们定义 Oscil 对象，它创建一个振荡器。
 
 在与变量更新频率相关的第二个`define`关键字之后，我们有`setup()`和`loop()`的常规结构。
 
-我们还有`updateControl()`和`updateAudio()`，这些在代码中未定义。实际上，它们与Mozzi相关，并在库文件中定义。
+我们还有`updateControl()`和`updateAudio()`，这些在代码中未定义。实际上，它们与 Mozzi 相关，并在库文件中定义。
 
-`setup()`块在之前定义的特定控制率下启动Mozzi库。然后，我们将之前定义的振荡器设置为440 Hz的频率。440 Hz是通用A音符的频率。在这个上下文中，它可以被认为是音频的Hello World示例。
+`setup()`块在之前定义的特定控制率下启动 Mozzi 库。然后，我们将之前定义的振荡器设置为 440 Hz 的频率。440 Hz 是通用 A 音符的频率。在这个上下文中，它可以被认为是音频的 Hello World 示例。
 
 关于`updateControl()`这里没有更多内容。
 
@@ -631,7 +775,7 @@ Mozzi的文档说明如下：
 
 在`loop()`中，我们调用`audioHook()`函数。
 
-全局模式是常规的。即使你使用与声音相关的另一个库，无论是Arduino世界内部还是外部，你也必须以四个步骤（通常如此，但可能有所不同）来处理这种模式：
+全局模式是常规的。即使你使用与声音相关的另一个库，无论是 Arduino 世界内部还是外部，你也必须以四个步骤（通常如此，但可能有所不同）来处理这种模式：
 
 +   在标题中定义的带有一些包含的定义
 
@@ -641,7 +785,7 @@ Mozzi的文档说明如下：
 
 +   在提交前更新渲染事物的函数，然后在钩子中
 
-如果你上传这个，你会听到一个很棒的A440音符，这可能会让你哼唱起来。
+如果你上传这个，你会听到一个很棒的 A440 音符，这可能会让你哼唱起来。
 
 ## 正弦波的频率调制
 
@@ -669,7 +813,40 @@ Mozzi的文档说明如下：
 
 此代码也位于`Chapter09/MozziFMOnePot/`文件夹中。
 
-[PRE6]
+```cpp
+#include <MozziGuts.h>
+#include <Oscil.h>
+#include <tables/cos8192_int8.h> // table for Oscils to play
+#include <utils.h> // for mtof
+
+#define CONTROL_RATE 64 // powers of 2 please
+
+Oscil<COS8192_NUM_CELLS, AUDIO_RATE> aCos(COS8192_DATA);
+Oscil<COS8192_NUM_CELLS, AUDIO_RATE> aVibrato(COS8192_DATA);
+
+const long intensityMax = 500;
+
+int potPin = A0;
+int potValue = 0;
+void setup(){
+  startMozzi(CONTROL_RATE);
+  aCos.setFreq(mtof(random(21,80)));
+  aVibrato.setFreq((float) map(potValue, 0, 1024, 0, intensityMax));
+}
+
+void loop(){
+  audioHook();
+}
+
+void updateControl(){
+  potValue = analogRead(potPin);
+}
+
+int updateAudio(){
+  long vibrato = map(potValue, 0, 1024, 0, intensityMax) * aVibrato.next();
+  return (int)aCos.phMod(vibrato);
+}
+```
 
 在这个例子中，我们使用两个振荡器，它们都基于余弦波表：
 
@@ -679,33 +856,33 @@ Mozzi的文档说明如下：
 
 由于我们这里有一个电位器，我们需要稍微调整一下。
 
-`intensityMax`是调制效果的强度最大值。我在测试后选择了500。
+`intensityMax`是调制效果的强度最大值。我在测试后选择了 500。
 
-我们经常使用以下技术来缩放事物：使用一个常数（甚至是一个“真实”变量），然后乘以你可以改变的价值。这可以通过使用`map()`函数在一遍中完成。我们已经在[第6章](ch06.html "第6章. 感知世界 – 使用模拟输入感受")，*感知世界 – 使用模拟输入感受*中为了同样的目的使用过它——缩放模拟输入值。
+我们经常使用以下技术来缩放事物：使用一个常数（甚至是一个“真实”变量），然后乘以你可以改变的价值。这可以通过使用`map()`函数在一遍中完成。我们已经在第六章，*感知世界 – 使用模拟输入感受*中为了同样的目的使用过它——缩放模拟输入值。
 
 在那种情况下，在最大值时，你的电位器（更普遍地说，你的输入）将你想要改变的参数改变到最大值。
 
 让我们继续审查代码。
 
-我们定义了电位器引脚n和变量`potPin`。我们还定义了`potValue`为`0`。
+我们定义了电位器引脚 n 和变量`potPin`。我们还定义了`potValue`为`0`。
 
-在`setup()`块中，我们启动Mozzi。我们将振荡器的频率定义为`aCos`。频率本身是`mtof()`函数的结果。`mtof`代表**MIDI to Frequency**。
+在`setup()`块中，我们启动 Mozzi。我们将振荡器的频率定义为`aCos`。频率本身是`mtof()`函数的结果。`mtof`代表**MIDI to Frequency**。
 
-正如我们稍后将要描述的，MIDI协议编码了许多字节的值，包括它用于从序列器传输到乐器所使用的音符音高。每个MIDI音符与真实世界中的实际音符值相对应，每个音符对应一个特定的频率。有一些表格显示了每个MIDI音符的频率，Mozzi为我们提供了这些信息。
+正如我们稍后将要描述的，MIDI 协议编码了许多字节的值，包括它用于从序列器传输到乐器所使用的音符音高。每个 MIDI 音符与真实世界中的实际音符值相对应，每个音符对应一个特定的频率。有一些表格显示了每个 MIDI 音符的频率，Mozzi 为我们提供了这些信息。
 
-我们可以将MIDI音符的音高作为`mtof()`函数的参数传递，它将返回正确的频率。在这里，我们使用`random(21,80)`函数生成一个从21到79的MIDI音符音高，这意味着从A0到A5。
+我们可以将 MIDI 音符的音高作为`mtof()`函数的参数传递，它将返回正确的频率。在这里，我们使用`random(21,80)`函数生成一个从 21 到 79 的 MIDI 音符音高，这意味着从 A0 到 A5。
 
-当然，这个用例是开始介绍MIDI的一个前奏。我们本可以直接使用`random()`函数来生成频率。
+当然，这个用例是开始介绍 MIDI 的一个前奏。我们本可以直接使用`random()`函数来生成频率。
 
-然后，我们读取模拟输入A0的当前值，并使用它来计算调制振荡器频率的缩放值，即`aVibrato`。这只是为了提供更多的随机性和奇特感。实际上，如果你每次重启Arduino时电位器不在相同的位置，你将会有不同的调制频率。
+然后，我们读取模拟输入 A0 的当前值，并使用它来计算调制振荡器频率的缩放值，即`aVibrato`。这只是为了提供更多的随机性和奇特感。实际上，如果你每次重启 Arduino 时电位器不在相同的位置，你将会有不同的调制频率。
 
 然后，`loop()`块会持续执行`audioHook()`方法以产生音频。
 
-而这里聪明的地方在于`updateControl()`方法。我们添加了`analogRead()`函数来读取模拟输入的值。考虑到这个函数的目的，这样做更好。实际上，Mozzi框架将音频渲染时间关键任务与控制（特别是人类控制）代码部分分开。
+而这里聪明的地方在于`updateControl()`方法。我们添加了`analogRead()`函数来读取模拟输入的值。考虑到这个函数的目的，这样做更好。实际上，Mozzi 框架将音频渲染时间关键任务与控制（特别是人类控制）代码部分分开。
 
-在许多框架中，你经常会遇到这种情况，第一次可能会让你感到困惑。这全部关乎任务及其调度。在这里不逆向工程Mozzi的概念，我想说的是，时间关键事件必须比人类行为更加小心地处理。
+在许多框架中，你经常会遇到这种情况，第一次可能会让你感到困惑。这全部关乎任务及其调度。在这里不逆向工程 Mozzi 的概念，我想说的是，时间关键事件必须比人类行为更加小心地处理。
 
-事实上，即使我们看起来可以非常快地转动旋钮，与Mozzi的采样率（16,384 kHz）相比，这实际上是非常慢的。这意味着我们不能只为测试和检查而停止整个过程，如果不断改变这个电位计的值。事情是分开的；请记住这一点并小心使用框架。
+事实上，即使我们看起来可以非常快地转动旋钮，与 Mozzi 的采样率（16,384 kHz）相比，这实际上是非常慢的。这意味着我们不能只为测试和检查而停止整个过程，如果不断改变这个电位计的值。事情是分开的；请记住这一点并小心使用框架。
 
 在这里，我们在`updateControl()`中读取值并将其存储在`potValue`变量中。
 
@@ -715,19 +892,19 @@ Mozzi的文档说明如下：
 
 现在，上传固件，添加耳机，转动电位计。你应该能够听到效果并用电位计控制它。
 
-# 使用包络和MIDI控制声音
+# 使用包络和 MIDI 控制声音
 
-我们现在可以设计使用Mozzi的小部分声音引擎。还有其他库，我们学到的知识将用于这两个库。确实，这些是模式。
+我们现在可以设计使用 Mozzi 的小部分声音引擎。还有其他库，我们学到的知识将用于这两个库。确实，这些是模式。
 
-让我们来检查如何使用来自计算机或其他设备的标准协议来控制基于Arduino的声音引擎。确实，能够使用计算机触发音符以改变声音参数将是非常有趣的，例如。
+让我们来检查如何使用来自计算机或其他设备的标准协议来控制基于 Arduino 的声音引擎。确实，能够使用计算机触发音符以改变声音参数将是非常有趣的，例如。
 
 这两个都是用于音乐和新媒体相关项目和作品中的协议。
 
-## MIDI概述
+## MIDI 概述
 
-**MIDI**代表**Musical Instrument Digital Interface**。这是一个规范标准，它使数字音乐乐器、计算机和所有必需的设备能够相互连接和通信。它在1983年推出，在撰写本文时刚刚庆祝了它的30周年。参考网站是[http://www.midi.org](http://www.midi.org)。
+**MIDI**代表**Musical Instrument Digital Interface**。这是一个规范标准，它使数字音乐乐器、计算机和所有必需的设备能够相互连接和通信。它在 1983 年推出，在撰写本文时刚刚庆祝了它的 30 周年。参考网站是[`www.midi.org`](http://www.midi.org)。
 
-MIDI可以通过基本串行链路传输以下数据：
+MIDI 可以通过基本串行链路传输以下数据：
 
 +   音符（开启/关闭、后触）
 
@@ -739,21 +916,21 @@ MIDI可以通过基本串行链路传输以下数据：
 
 一个新的协议出现了，并且现在被广泛使用：OSC。顺便说一下，它不是一个真正的协议。
 
-**OSC**代表**Open Sound Control**，是由加州伯克利大学**新音乐与音频技术中心**（**CNMAT**）的两个人开发的内容格式。它最初是为了在音乐表演期间共享手势、参数和音符序列而设计的。它现在非常广泛地用作MIDI的替代品，提供更高的分辨率和更快的传输。其主要特点是本地的网络传输能力。OSC可以在IP环境中通过UDP或TCP传输，这使得它很容易在Wi-Fi网络上甚至通过互联网使用。
+**OSC**代表**Open Sound Control**，是由加州伯克利大学**新音乐与音频技术中心**（**CNMAT**）的两个人开发的内容格式。它最初是为了在音乐表演期间共享手势、参数和音符序列而设计的。它现在非常广泛地用作 MIDI 的替代品，提供更高的分辨率和更快的传输。其主要特点是本地的网络传输能力。OSC 可以在 IP 环境中通过 UDP 或 TCP 传输，这使得它很容易在 Wi-Fi 网络上甚至通过互联网使用。
 
-## MIDI和OSC库用于Arduino
+## MIDI 和 OSC 库用于 Arduino
 
-我建议在这里使用两个库。我自己测试过它们，它们是稳定且高效的。您可以在[http://sourceforge.net/projects/arduinomidilib](http://sourceforge.net/projects/arduinomidilib)上查看关于MIDI的库。您可以在[https://github.com/recotana/ArdOSC](https://github.com/recotana/ArdOSC)上查看关于OSC的库。现在安装它们应该不会太难。让我们至少安装MIDI，并重新启动IDE。
+我建议在这里使用两个库。我自己测试过它们，它们是稳定且高效的。您可以在[`sourceforge.net/projects/arduinomidilib`](http://sourceforge.net/projects/arduinomidilib)上查看关于 MIDI 的库。您可以在[`github.com/recotana/ArdOSC`](https://github.com/recotana/ArdOSC)上查看关于 OSC 的库。现在安装它们应该不会太难。让我们至少安装 MIDI，并重新启动 IDE。
 
 ## 生成包络
 
 在音频领域，**包络**是用来修改某物形状的一种。例如，想象一个振幅包络塑造波形。
 
-您首先有一个波形。我在Ableton Live的Operator合成器中生成这个正弦波（[https://www.ableton.com](https://www.ableton.com)），这是著名的数字音频工作站。以下是截图：
+您首先有一个波形。我在 Ableton Live 的 Operator 合成器中生成这个正弦波（[`www.ableton.com`](https://www.ableton.com)），这是著名的数字音频工作站。以下是截图：
 
 ![生成包络](img/7584_09_019.jpg)
 
-由Ableton Live的Operator FM合成器中的运算符生成的基本正弦波
+由 Ableton Live 的 Operator FM 合成器中的运算符生成的基本正弦波
 
 由于混叠，正弦波显示得不是很好；这里还有另一个截图，这是相同的波形但放大了：
 
@@ -791,113 +968,195 @@ MIDI可以通过基本串行链路传输以下数据：
 
 调制声音音高的包络
 
-## 实现包络和MIDI
+## 实现包络和 MIDI
 
-我们将要设计一个非常便宜的声音合成器，当它接收到MIDI音符消息时能够触发音符，并在接收到特定的MIDI控制更改消息时改变声音。
+我们将要设计一个非常便宜的声音合成器，当它接收到 MIDI 音符消息时能够触发音符，并在接收到特定的 MIDI 控制更改消息时改变声音。
 
-MIDI部分将由库处理，包络将被详细说明并编码。
+MIDI 部分将由库处理，包络将被详细说明并编码。
 
 你可以检查以下代码。此代码也位于 `Chapter09/MozziMIDI/` 文件夹中。
 
-[PRE7]
+```cpp
+#include <MIDI.h>
+#include <MozziGuts.h>
+#include <Oscil.h> // oscillator template
+#include <Line.h> // for envelope
+#include <utils.h> // for mtof
+#include <tables/sin2048_int8.h> // sine table for oscillator
 
-首先，我们包含MIDI库。然后我们包含Mozzi库。
+// use #define for CONTROL_RATE, not a constant
+#define CONTROL_RATE 128 // powers of 2 please
 
-当然，每个项目中需要包含的Mozzi的正确位略有不同。研究示例有助于理解它们的位置。在这里，我们不仅需要Oscil来提供振荡器的基本功能，还需要Line。Line与Mozzi中的插值函数相关。生成包络处理这个问题。基本上，我们选择两个值和一个时间持续时间，然后从第一个值开始，在所选的时间内达到第二个值。
+// declare an oscillator using a sine tone wavetable
+// use: Oscil <table_size, update_rate> oscilName (wavetable)
+Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
 
-我们还包含了与正弦波相关的wavetable。
+// for envelope
+Line <unsigned int> aGain;
+unsigned int release_control_steps = CONTROL_RATE; // 1 second of control
+unsigned int release_audio_steps = 16384; // 1 second of audio
+int fade_counter;
 
-我们定义一个比之前更高的控制速率，为128。这意味着 `updateControl()` 函数每秒被调用128次。
+float vol= 1\. ; // store the master output volume
+
+unsigned int freq; // to convey control info from MIDI handler to updateControl()
+
+void HandleControlChange(byte channel, byte CCnumber, byte value) { 
+  switch(CCnumber){
+    case 100:
+      vol = map(value,0, 127, 0., 1.);
+    break;
+  }
+}
+
+void HandleNoteOn(byte channel, byte pitch, byte velocity) { 
+  // scale velocity for high resolution linear fade on Note-off later
+  freq = mtof(pitch);
+  aGain.set(velocity<<8); // might need a fade-in to avoid clicks
+
+}
+
+void HandleNoteOff(byte channel, byte pitch, byte velocity) { 
+
+  // scale velocity for high resolution linear fade on Note-off later
+  aGain.set(0,release_audio_steps);
+  fade_counter = release_control_steps;
+}
+
+void setup() {
+
+  // Initiate MIDI communications, listen to all channels
+  MIDI.begin(MIDI_CHANNEL_OMNI);    
+
+  // Connect the HandleControlChange function to the library, so it is called upon reception of a NoteOn.
+  MIDI.setHandleControlChange(HandleControlChange); // Put only the name of the function
+
+    // Connect the HandleNoteOn function to the library, so it is called upon reception of a NoteOn.
+  MIDI.setHandleNoteOn(HandleNoteOn);  // Put only the name of the function
+
+   // Connect the HandleNoteOn function to the library, so it is called upon reception of a NoteOn.
+  MIDI.setHandleNoteOff(HandleNoteOff);  // Put only the name of the function
+
+  aSin.setFreq(440u); // default frequency
+  startMozzi(CONTROL_RATE); 
+}
+
+void updateControl(){
+  // Ideally, call MIDI.read the fastest you can for real-time performance.
+  // In practice, there is a balance required between real-time 
+  // audio generation and a responsive midi control rate.
+  MIDI.read();
+
+  if (fade_counter-- <=0) aGain.set(0,0,2); // a line along 0
+}
+
+int updateAudio(){
+  // aGain is scaled down to usable range
+  return (int) ((aGain.next()>>8) * aSin.next() * vol )>>8; // >>8 shifts the multiplied result back to usable output range
+}
+
+void loop() {
+    audioHook(); // required here
+}
+```
+
+首先，我们包含 MIDI 库。然后我们包含 Mozzi 库。
+
+当然，每个项目中需要包含的 Mozzi 的正确位略有不同。研究示例有助于理解它们的位置。在这里，我们不仅需要 Oscil 来提供振荡器的基本功能，还需要 Line。Line 与 Mozzi 中的插值函数相关。生成包络处理这个问题。基本上，我们选择两个值和一个时间持续时间，然后从第一个值开始，在所选的时间内达到第二个值。
+
+我们还包含了与正弦波相关的 wavetable。
+
+我们定义一个比之前更高的控制速率，为 128。这意味着 `updateControl()` 函数每秒被调用 128 次。
 
 然后我们将振荡器定义为 `aSin`。
 
-在这些位之后，我们通过声明Line对象的实例来定义一个包络。
+在这些位之后，我们通过声明 Line 对象的实例来定义一个包络。
 
-我们定义了两个变量来存储包络持续时间的释放部分，一个用于一秒内的控制部分（即步骤数将是 `CONTROL_RATE` 的值），另一个用于一秒内的音频部分（即16,384步）。最后，定义了一个名为 `fade_counter` 的变量。
+我们定义了两个变量来存储包络持续时间的释放部分，一个用于一秒内的控制部分（即步骤数将是 `CONTROL_RATE` 的值），另一个用于一秒内的音频部分（即 16,384 步）。最后，定义了一个名为 `fade_counter` 的变量。
 
-`HandleControlChange()` 是一个在向Arduino发送MIDI控制更改消息时被调用的函数。消息包含以下字节：
+`HandleControlChange()` 是一个在向 Arduino 发送 MIDI 控制更改消息时被调用的函数。消息包含以下字节：
 
-+   MIDI通道
++   MIDI 通道
 
-+   CC编号
++   CC 编号
 
 +   值
 
 这些参数传递给 `HandleControlChange()` 函数，你可以在你的代码中直接访问它们。
 
-这是一种非常常见的使用事件处理程序的方式。几乎所有的事件监听器框架都是这样构建的。你有一些函数，你可以使用它们，并在其中放入你想要的任何内容。框架本身处理必须调用的函数，以尽可能节省CPU时间。
+这是一种非常常见的使用事件处理程序的方式。几乎所有的事件监听器框架都是这样构建的。你有一些函数，你可以使用它们，并在其中放入你想要的任何内容。框架本身处理必须调用的函数，以尽可能节省 CPU 时间。
 
 在这里，我们在 `CCNumber` 变量上添加一个只有一个情况的 `switch` 语句。
 
-这意味着如果你发送一个MIDI控制更改100消息，这个情况匹配，`CC` 的值将被处理，`vol` 变量将被更改和修改。这个控制更改将控制合成器的主输出音量。
+这意味着如果你发送一个 MIDI 控制更改 100 消息，这个情况匹配，`CC` 的值将被处理，`vol` 变量将被更改和修改。这个控制更改将控制合成器的主输出音量。
 
-同样地，`HandleNoteOn()` 和 `HandleNoteOff()` 处理MIDI音符消息。
+同样地，`HandleNoteOn()` 和 `HandleNoteOff()` 处理 MIDI 音符消息。
 
-基本上，当你按下MIDI键盘上的键时，会发送一个MIDI音符开启消息。当你释放那个键时，就会弹出一个MIDI音符关闭消息。
+基本上，当你按下 MIDI 键盘上的键时，会发送一个 MIDI 音符开启消息。当你释放那个键时，就会弹出一个 MIDI 音符关闭消息。
 
 在这里，我们有两个函数处理这些消息。
 
-`HandleNoteOn()` 解析消息，获取速度部分，将其左移8位，并通过 `set()` 方法传递给 `aGain`。当接收到MIDI音符开启消息时，包络 `aGain` 被触发到最大值。当接收到MIDI音符关闭消息时，包络被触发在之前讨论的音频步骤数内达到0，耗时一秒。当键释放时，`fade` 计数器也会重置到最大值。
+`HandleNoteOn()` 解析消息，获取速度部分，将其左移 8 位，并通过 `set()` 方法传递给 `aGain`。当接收到 MIDI 音符开启消息时，包络 `aGain` 被触发到最大值。当接收到 MIDI 音符关闭消息时，包络被触发在之前讨论的音频步骤数内达到 0，耗时一秒。当键释放时，`fade` 计数器也会重置到最大值。
 
-这样，我们就有一个响应MIDI Note On和MIDI Note Off消息的系统。当我们按下键时，会产生声音，直到我们释放键。当我们释放它时，声音会线性衰减到0，耗时一秒。
+这样，我们就有一个响应 MIDI Note On 和 MIDI Note Off 消息的系统。当我们按下键时，会产生声音，直到我们释放键。当我们释放它时，声音会线性衰减到 0，耗时一秒。
 
-`setup()`方法包括MIDI库的设置：
+`setup()`方法包括 MIDI 库的设置：
 
 +   `MIDI.begin()`实例化通信
 
 +   `MIDI.setHandleControlChange()`允许您定义当控制变化消息到来时调用的函数名称
 
-+   `MIDI.setHandleNoteOn()`允许您定义当Note On消息到来时调用的函数名称
++   `MIDI.setHandleNoteOn()`允许您定义当 Note On 消息到来时调用的函数名称
 
-+   `MIDI.setHandleNoteOff()`允许您定义当Note Off消息到来时调用的函数名称
++   `MIDI.setHandleNoteOff()`允许您定义当 Note Off 消息到来时调用的函数名称
 
-它还包括Mozzi的设置。
+它还包括 Mozzi 的设置。
 
 `loop()`函数现在相当熟悉了。
 
-`updateControl()`函数不包含声音生成器的关键部分。这并不意味着这个函数很少被调用；它调用次数少于`updateAudio()`——每秒控制128次，音频每秒16,384次，正如我们之前看到的。
+`updateControl()`函数不包含声音生成器的关键部分。这并不意味着这个函数很少被调用；它调用次数少于`updateAudio()`——每秒控制 128 次，音频每秒 16,384 次，正如我们之前看到的。
 
-这是阅读我们的MIDI流程的完美地方，使用`MIDI.read()`函数。
+这是阅读我们的 MIDI 流程的完美地方，使用`MIDI.read()`函数。
 
-这是我们可以在`fade`计数器达到0时立即触发我们的衰减包络到0的地方，而不是在此之前，这样声音在一秒内就会像我们之前检查的那样。
+这是我们可以在`fade`计数器达到 0 时立即触发我们的衰减包络到 0 的地方，而不是在此之前，这样声音在一秒内就会像我们之前检查的那样。
 
 最后，`updateAudio()`函数返回振荡器乘以包络值的值。这就是包络的目的。然后，`vol`乘以第一个结果，以便添加一个键来控制主输出音量。
 
-这里的`<<8`和`>>8`表达式用于在Note Off时设置高分辨率线性淡入，这是Tim Barrass自己提供的一个好技巧。
+这里的`<<8`和`>>8`表达式用于在 Note Off 时设置高分辨率线性淡入，这是 Tim Barrass 自己提供的一个好技巧。
 
-## 将MIDI连接器连接到Arduino
+## 将 MIDI 连接器连接到 Arduino
 
-这个原理图基于[MIDI电气规范图](http://www.midi.org/techspecs/electrispec.php)。
+这个原理图基于[MIDI 电气规范图](http://www.midi.org/techspecs/electrispec.php)。
 
-![将MIDI连接器连接到Arduino](img/7584_09_024.jpg)
+![将 MIDI 连接器连接到 Arduino](img/7584_09_024.jpg)
 
-基于Arduino的具有MIDI功能的音效生成器
+基于 Arduino 的具有 MIDI 功能的音效生成器
 
 对应的电路图如下：
 
-![将MIDI连接器连接到Arduino](img/7584_09_025.jpg)
+![将 MIDI 连接器连接到 Arduino](img/7584_09_025.jpg)
 
-连接到基于Arduino的音效生成器的MIDI连接器
+连接到基于 Arduino 的音效生成器的 MIDI 连接器
 
-如您所见，数字引脚0（串行输入）被涉及。这意味着我们无法使用USB上的串行通信。实际上，我们想使用我们的MIDI接口。
+如您所见，数字引脚 0（串行输入）被涉及。这意味着我们无法使用 USB 上的串行通信。实际上，我们想使用我们的 MIDI 接口。
 
-让我们上传代码，并在Max 6中启动这个小序列发生器。
+让我们上传代码，并在 Max 6 中启动这个小序列发生器。
 
-![将MIDI连接器连接到Arduino](img/7584_09_026.jpg)
+![将 MIDI 连接器连接到 Arduino](img/7584_09_026.jpg)
 
-*芯片上的廉价序列发生器*可以触发MIDI音符和MIDI控制变化
+*芯片上的廉价序列发生器*可以触发 MIDI 音符和 MIDI 控制变化
 
-序列发生器相当直观。在左上角切换开切换按钮，它就会启动序列发生器，读取multislider对象中的每个步骤。滑块越高，这个音符进入该步骤的音高就越高。
+序列发生器相当直观。在左上角切换开切换按钮，它就会启动序列发生器，读取 multislider 对象中的每个步骤。滑块越高，这个音符进入该步骤的音高就越高。
 
-您可以点击左侧multislider下的按钮，它将生成一个包含16个元素的随机序列。
+您可以点击左侧 multislider 下的按钮，它将生成一个包含 16 个元素的随机序列。
 
-从右上角列表菜单中选择正确的MIDI输出总线。
+从右上角列表菜单中选择正确的 MIDI 输出总线。
 
-使用MIDI线将您的Arduino电路和MIDI接口连接起来，并聆听音乐。更改multislider内容以及播放的序列。如果您转动旋钮，音量将改变。
+使用 MIDI 线将您的 Arduino 电路和 MIDI 接口连接起来，并聆听音乐。更改 multislider 内容以及播放的序列。如果您转动旋钮，音量将改变。
 
-这里的一切都是通过MIDI传输的。计算机是序列器和远程控制器，Arduino是合成器。
+这里的一切都是通过 MIDI 传输的。计算机是序列器和远程控制器，Arduino 是合成器。
 
-# 使用PCM库播放音频文件
+# 使用 PCM 库播放音频文件
 
 另一种播放声音的方法是读取已经数字化的声音。
 
@@ -905,39 +1164,39 @@ MIDI部分将由库处理，包络将被详细说明并编码。
 
 从内存大小来看，样本可能非常庞大。
 
-我们将使用由麻省理工学院的大卫·A·梅利斯（David A. Mellis）设置的PCM库。像其他合作者一样，他很高兴成为本书的一部分。
+我们将使用由麻省理工学院的大卫·A·梅利斯（David A. Mellis）设置的 PCM 库。像其他合作者一样，他很高兴成为本书的一部分。
 
-参考页面是[http://hlt.media.mit.edu/?p=1963](http://hlt.media.mit.edu/?p=1963)。
+参考页面是[`hlt.media.mit.edu/?p=1963`](http://hlt.media.mit.edu/?p=1963)。
 
 下载库并安装它。
 
-假设我们在Arduino内存空间中有足够的空间。如果我们想在磁盘上以C兼容的结构转换样本，我们应该如何进行安装？
+假设我们在 Arduino 内存空间中有足够的空间。如果我们想在磁盘上以 C 兼容的结构转换样本，我们应该如何进行安装？
 
-## PCM库
+## PCM 库
 
 检查以下代码。它也位于`Chapter09/PCMreader/`文件夹中。
 
-![PCM库](img/7584_09_027.jpg)
+![PCM 库](img/7584_09_027.jpg)
 
-我们的PCM读取器
+我们的 PCM 读取器
 
 声明了一个`unsigned char`数据类型的数组，被命名为`const`，特别是带有`PROGMEM`关键字的`sample`。
 
-`PROGMEM`强制将此常量放入程序空间而不是RAM中，因为后者要小得多。基本上，这就是样本。`startPlayback()`函数能够从数组中播放样本。`sizeof()`方法计算数组内存的大小。
+`PROGMEM`强制将此常量放入程序空间而不是 RAM 中，因为后者要小得多。基本上，这就是样本。`startPlayback()`函数能够从数组中播放样本。`sizeof()`方法计算数组内存的大小。
 
 ## WAV2C – 转换您的样本
 
-由于我们已经玩过wavetable，并且这是我们接下来要做的，我们可以直接在Arduino代码中存储我们的样本波形。
+由于我们已经玩过 wavetable，并且这是我们接下来要做的，我们可以直接在 Arduino 代码中存储我们的样本波形。
 
-即使从SD卡动态读取音频文件看起来更智能，PCM提供了一种更简单的方法来处理——直接读取数组的模拟转换，并将波形存储到声音中。
+即使从 SD 卡动态读取音频文件看起来更智能，PCM 提供了一种更简单的方法来处理——直接读取数组的模拟转换，并将波形存储到声音中。
 
-我们首先必须将样本转换为C数据。
+我们首先必须将样本转换为 C 数据。
 
-大卫·埃利斯（David Ellis）开发了一个开源的小型基于Processing的程序，提供了一种实现此功能的方法；它可以在[https://github.com/damellis/EncodeAudio](https://github.com/damellis/EncodeAudio)找到。
+大卫·埃利斯（David Ellis）开发了一个开源的小型基于 Processing 的程序，提供了一种实现此功能的方法；它可以在[`github.com/damellis/EncodeAudio`](https://github.com/damellis/EncodeAudio)找到。
 
 您可以直接从针对您的操作系统编译的参考项目页面下载它。
 
-启动它，选择一个WAV文件（基于PCM编码的样本），然后它将在您的剪贴板中复制大量内容。
+启动它，选择一个 WAV 文件（基于 PCM 编码的样本），然后它将在您的剪贴板中复制大量内容。
 
 然后，您只需将此内容复制粘贴到之前定义的数组中。
 
@@ -947,43 +1206,43 @@ MIDI部分将由库处理，包络将被详细说明并编码。
 
 ![WAV2C – 转换您的样本](img/7584_09_028.jpg)
 
-要粘贴到C数组中的大量数据
+要粘贴到 C 数组中的大量数据
 
-在同一文件夹中，我放置了一个我设计的`.wav`文件。它是一个16位记录的简短节奏。
+在同一文件夹中，我放置了一个我设计的`.wav`文件。它是一个 16 位记录的简短节奏。
 
 ## 布线电路
 
-电路与“播放基本声音片段”部分中的电路类似，但在这里我们必须使用数字引脚11。而且我们不能在引脚3、9和10上使用PWM，因为库中涉及的定时器消耗了这些引脚。
+电路与“播放基本声音片段”部分中的电路类似，但在这里我们必须使用数字引脚 11。而且我们不能在引脚 3、9 和 10 上使用 PWM，因为库中涉及的定时器消耗了这些引脚。
 
 ![连接电路](img/7584_09_029.jpg)
 
-连接我们的PCM读取器
+连接我们的 PCM 读取器
 
 电路图也很简单。
 
 ![连接电路](img/7584_09_030.jpg)
 
-不要忘记使用PCM库中的引脚11
+不要忘记使用 PCM 库中的引脚 11
 
 现在，让我们播放音乐。
 
 ## 其他读取库
 
-还有其他库提供了读取和解码MP3格式或其他格式的途径。
+还有其他库提供了读取和解码 MP3 格式或其他格式的途径。
 
-你可以在互联网上找到很多；但请注意，其中一些需要一些保护罩，比如Sparkfun网站上的[https://www.sparkfun.com/products/10628](https://www.sparkfun.com/products/10628)。
+你可以在互联网上找到很多；但请注意，其中一些需要一些保护罩，比如 Sparkfun 网站上的[`www.sparkfun.com/products/10628`](https://www.sparkfun.com/products/10628)。
 
-这提供了一个带有SD卡读取器、3.5毫米立体声耳机插孔、VS1053移位寄存器和非常通用的解码器芯片（用于MP3、WMA、AAC和其他格式）的保护罩。
+这提供了一个带有 SD 卡读取器、3.5 毫米立体声耳机插孔、VS1053 移位寄存器和非常通用的解码器芯片（用于 MP3、WMA、AAC 和其他格式）的保护罩。
 
-这是一个非常专业的解决方案，我们只需要将保护罩与Arduino连接即可。
+这是一个非常专业的解决方案，我们只需要将保护罩与 Arduino 连接即可。
 
-Arduino只从保护罩发送和接收位，保护罩负责解码编码文件、转换为模拟信号等。
+Arduino 只从保护罩发送和接收位，保护罩负责解码编码文件、转换为模拟信号等。
 
-我真的建议你测试一下。Sparkfun网站上有很多示例。
+我真的建议你测试一下。Sparkfun 网站上有很多示例。
 
 # 摘要
 
-我们在这里学习了如何使用Arduino让物体移动。特别是，我们学习了以下内容：
+我们在这里学习了如何使用 Arduino 让物体移动。特别是，我们学习了以下内容：
 
 +   使用电机移动固体物体
 
@@ -991,10 +1250,10 @@ Arduino只从保护罩发送和接收位，保护罩负责解码编码文件、�
 
 当然，遗憾的是，我无法更多地描述如何让物体移动。
 
-如果你需要关于声音的帮助，请通过电子邮件[book@cprogrammingforarduino.com](mailto:book@cprogrammingforarduino.com)联系我。我很乐意帮助你处理声音输入，例如。
+如果你需要关于声音的帮助，请通过电子邮件 book@cprogrammingforarduino.com 联系我。我很乐意帮助你处理声音输入，例如。
 
 这是本书第二部分的结束。我们一起发现了许多概念。现在我们将深入研究一些更高级的主题。
 
 我们能够理解固件设计和输入输出，所以让我们继续前进。
 
-我们将更深入地探讨使用I2C/SPI通信的精确示例，以使用GPS模块、7段LED系统等。我们还将深入研究Max 6，特别是如何使用Arduino控制计算机上的某些OpenGL视觉。我们将发现网络协议，以及如何使用Wi-Fi在没有网络线的情况下使用Arduino。最后，我们将一起设计一个小型库，并检查一些不错的技巧和窍门来改进我们的C代码。
+我们将更深入地探讨使用 I2C/SPI 通信的精确示例，以使用 GPS 模块、7 段 LED 系统等。我们还将深入研究 Max 6，特别是如何使用 Arduino 控制计算机上的某些 OpenGL 视觉。我们将发现网络协议，以及如何使用 Wi-Fi 在没有网络线的情况下使用 Arduino。最后，我们将一起设计一个小型库，并检查一些不错的技巧和窍门来改进我们的 C 代码。

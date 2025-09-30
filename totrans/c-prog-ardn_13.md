@@ -1,20 +1,20 @@
-# 第13章。提高你的C编程技能和创建库
+# 第十三章。提高你的 C 编程技能和创建库
 
-这是本书的最后一章，也是最先进的，但不是最复杂的。你将通过几个典型的示例学习C代码优化，这些示例将使你更进一步，并使你在使用Arduino的未来项目中更有能力。我将讨论库以及它们如何提高你代码的可重用性，以节省未来的时间。我将描述一些使用位操作而不是常规操作符以及使用一些内存管理技术来提高代码性能的技巧。然后，我将讨论重新编程Arduino芯片本身以及使用外部硬件编程器调试我们的代码。
+这是本书的最后一章，也是最先进的，但不是最复杂的。你将通过几个典型的示例学习 C 代码优化，这些示例将使你更进一步，并使你在使用 Arduino 的未来项目中更有能力。我将讨论库以及它们如何提高你代码的可重用性，以节省未来的时间。我将描述一些使用位操作而不是常规操作符以及使用一些内存管理技术来提高代码性能的技巧。然后，我将讨论重新编程 Arduino 芯片本身以及使用外部硬件编程器调试我们的代码。
 
 让我们开始吧。
 
 # 编程库
 
-我已经在[第2章](ch02.html "第2章。与C语言的初次接触")中提到了库，*与C语言的初次接触*。我们可以将其定义为一组使用特定语言编写的已实现的行为，该语言通过一些接口提供了一些方法，可以通过这些方法调用所有可用的行为。
+我已经在第二章中提到了库，*与 C 语言的初次接触*。我们可以将其定义为一组使用特定语言编写的已实现的行为，该语言通过一些接口提供了一些方法，可以通过这些方法调用所有可用的行为。
 
-基本上，库是一些已经编写好并且可以重复使用的代码，我们可以在自己的代码中通过遵循一些规范来使用它们。例如，我们可以引用Arduino核心中包含的一些库。从历史上看，其中一些库是独立编写的，随着时间的推移，Arduino团队以及整个Arduino社区将它们纳入不断增长的核心库中，作为原生可用的库。
+基本上，库是一些已经编写好并且可以重复使用的代码，我们可以在自己的代码中通过遵循一些规范来使用它们。例如，我们可以引用 Arduino 核心中包含的一些库。从历史上看，其中一些库是独立编写的，随着时间的推移，Arduino 团队以及整个 Arduino 社区将它们纳入不断增长的核心库中，作为原生可用的库。
 
-让我们以EEPROM库为例。为了检查与之相关的文件，我们必须在我们的计算机上找到正确的文件夹。例如，在OS X上，我们可以浏览`Arduino.app`文件本身的内容。我们可以进入`Contents`/`Resources`/`Java`/`libraries`/中的`EEPROM`文件夹。在这个文件夹中，我们有三个文件和一个名为`examples`的文件夹，它包含所有与EEPROM库相关的示例：
+让我们以 EEPROM 库为例。为了检查与之相关的文件，我们必须在我们的计算机上找到正确的文件夹。例如，在 OS X 上，我们可以浏览`Arduino.app`文件本身的内容。我们可以进入`Contents`/`Resources`/`Java`/`libraries`/中的`EEPROM`文件夹。在这个文件夹中，我们有三个文件和一个名为`examples`的文件夹，它包含所有与 EEPROM 库相关的示例：
 
 ![编程库](img/7584_13_001.jpg)
 
-我们计算机上的EEPROM库（一个OS X系统）
+我们计算机上的 EEPROM 库（一个 OS X 系统）
 
 我们有以下文件：
 
@@ -24,7 +24,7 @@
 
 +   `keywords.txt`，包含一些参数来着色库的关键字
 
-由于这些文件在文件夹层次结构中的位置，它们可以作为核心EEPROM库的一部分使用。这意味着我们一旦在我们的计算机上安装了Arduino环境，就可以包含这个库，而无需下载其他任何东西。
+由于这些文件在文件夹层次结构中的位置，它们可以作为核心 EEPROM 库的一部分使用。这意味着我们一旦在我们的计算机上安装了 Arduino 环境，就可以包含这个库，而无需下载其他任何东西。
 
 简单的语句`include <EEPROM.h>`将库包含到我们的代码中，并使这个库的所有功能都可以进一步使用。
 
@@ -36,23 +36,23 @@
 
 ![头文件](img/7584_13_002.jpg)
 
-在Xcode IDE中显示的EEPROM.h
+在 Xcode IDE 中显示的 EEPROM.h
 
-在这个文件中，我们可以看到一些以`#`字符开头的预处理器指令。这是我们用来在Arduino代码中包含库的同一个指令。在这里，这是一种很好的方法，可以避免重复包含相同的头文件。有时，在编码过程中，我们会包含很多库，在编译时，我们必须检查我们没有重复包含相同的代码。这些指令，尤其是`ifndef`指令意味着：“如果`EEPROM_h`常量尚未定义，则执行以下语句”。
+在这个文件中，我们可以看到一些以`#`字符开头的预处理器指令。这是我们用来在 Arduino 代码中包含库的同一个指令。在这里，这是一种很好的方法，可以避免重复包含相同的头文件。有时，在编码过程中，我们会包含很多库，在编译时，我们必须检查我们没有重复包含相同的代码。这些指令，尤其是`ifndef`指令意味着：“如果`EEPROM_h`常量尚未定义，则执行以下语句”。
 
-这是一个众所周知的技术，称为**包含保护**。在这项测试之后，我们首先定义`EEPROM_h`常量。如果在我们的代码中我们或某些其他库包含了EEPROM库，预处理器就不会在第二次看到这个指令时重新处理以下语句。
+这是一个众所周知的技术，称为**包含保护**。在这项测试之后，我们首先定义`EEPROM_h`常量。如果在我们的代码中我们或某些其他库包含了 EEPROM 库，预处理器就不会在第二次看到这个指令时重新处理以下语句。
 
-我们必须使用`#endif`指令完成`#ifndef`指令。这是头文件中的一个常见块，如果您打开其他库头文件，您会看到它很多次。这个块里包含什么？我们还有一个与C整数类型相关的包含：`#include <inttypes.h>`。
+我们必须使用`#endif`指令完成`#ifndef`指令。这是头文件中的一个常见块，如果您打开其他库头文件，您会看到它很多次。这个块里包含什么？我们还有一个与 C 整数类型相关的包含：`#include <inttypes.h>`。
 
-Arduino IDE包含库中所有必需的C头文件。正如我们之前提到的，我们可以在固件中使用纯C和C++代码。我们之前没有这样做，因为我们一直在使用的函数和类型已经编码到Arduino核心中。但请记住，您可以选择在固件中包含其他纯C代码，在本章的最后，我们还将讨论您也可以遵循纯AVR处理器类型代码的事实。
+Arduino IDE 包含库中所有必需的 C 头文件。正如我们之前提到的，我们可以在固件中使用纯 C 和 C++代码。我们之前没有这样做，因为我们一直在使用的函数和类型已经编码到 Arduino 核心中。但请记住，您可以选择在固件中包含其他纯 C 代码，在本章的最后，我们还将讨论您也可以遵循纯 AVR 处理器类型代码的事实。
 
-现在我们有一个类定义。这是一个C++特性。在这个类内部，我们声明了两个函数原型：
+现在我们有一个类定义。这是一个 C++特性。在这个类内部，我们声明了两个函数原型：
 
 +   `uint8_t read(int)`
 
 +   `void write(int, uint8_t)`
 
-有一个函数用于读取，它接受一个整数作为参数，并返回一个8位无符号整数（即字节）。然后，还有一个函数用于写入，它接受一个整数和一个字节，并返回空值。这些原型指的是在其他`EEPROM.cpp`文件中这些函数的定义。
+有一个函数用于读取，它接受一个整数作为参数，并返回一个 8 位无符号整数（即字节）。然后，还有一个函数用于写入，它接受一个整数和一个字节，并返回空值。这些原型指的是在其他`EEPROM.cpp`文件中这些函数的定义。
 
 ## 源文件
 
@@ -60,11 +60,11 @@ Arduino IDE包含库中所有必需的C头文件。正如我们之前提到的�
 
 ![源文件](img/7584_13_003.jpg)
 
-EEPROM库的源文件在Xcode IDE中显示
+EEPROM 库的源文件在 Xcode IDE 中显示
 
-文件开始时包含了一些头文件。`avr/eeprom.h`指的是AVR类型处理器的EEPROM库本身。在这个库示例中，我们只是有一个库，它引用并为我们提供了比原始纯AVR代码更好的Arduino编程风格接口。这就是为什么我选择了这个库示例。这是最短但最明确的示例，它教会了我们很多。
+文件开始时包含了一些头文件。`avr/eeprom.h`指的是 AVR 类型处理器的 EEPROM 库本身。在这个库示例中，我们只是有一个库，它引用并为我们提供了比原始纯 AVR 代码更好的 Arduino 编程风格接口。这就是为什么我选择了这个库示例。这是最短但最明确的示例，它教会了我们很多。
 
-然后我们包含`Arduino.h`头文件，以便访问Arduino语言本身的标凈类型和常量。最后，当然，我们还要包含EEPROM库本身的头文件。
+然后我们包含`Arduino.h`头文件，以便访问 Arduino 语言本身的标凈类型和常量。最后，当然，我们还要包含 EEPROM 库本身的头文件。
 
 在以下语句中，我们定义了这两个函数。它们在其块定义中调用其他函数：
 
@@ -72,67 +72,217 @@ EEPROM库的源文件在Xcode IDE中显示
 
 +   `eeprom_write_byte()`
 
-这些函数直接来自AVR EEPROM库本身。EEPROM Arduino库只是AVR EEPROM库的一个接口。我们为什么不尝试自己创建一个库呢？
+这些函数直接来自 AVR EEPROM 库本身。EEPROM Arduino 库只是 AVR EEPROM 库的一个接口。我们为什么不尝试自己创建一个库呢？
 
-# 创建自己的LED数组库
+# 创建自己的 LED 数组库
 
-我们将创建一个非常小的库，并用一个包括六个非复用LED的基本电路来测试它。
+我们将创建一个非常小的库，并用一个包括六个非复用 LED 的基本电路来测试它。
 
-## 将六个LED连接到板子上
+## 将六个 LED 连接到板子上
 
-下面是电路图。它基本上包含六个连接到Arduino的LED：
+下面是电路图。它基本上包含六个连接到 Arduino 的 LED：
 
-![将六个LED连接到板子上](img/7584_13_005.jpg)
+![将六个 LED 连接到板子上](img/7584_13_005.jpg)
 
-六个LED连接到板子上
+六个 LED 连接到板子上
 
 电路图如下所示：
 
-![将六个LED连接到板子上](img/7584_13_006.jpg)
+![将六个 LED 连接到板子上](img/7584_13_006.jpg)
 
-另一个将六个LED直接连接到Arduino的电路图
+另一个将六个 LED 直接连接到 Arduino 的电路图
 
-我不会讨论电路本身，只是提一下我放入了一个1 kΩ的电阻。我考虑了最坏的情况，即所有LED同时点亮。这将驱动大量的电流，因此这为我们的Arduino提供了安全保障。一些作者可能不会使用它。我更愿意让一些LED稍微暗一些，以保护我的Arduino。
+我不会讨论电路本身，只是提一下我放入了一个 1 kΩ的电阻。我考虑了最坏的情况，即所有 LED 同时点亮。这将驱动大量的电流，因此这为我们的 Arduino 提供了安全保障。一些作者可能不会使用它。我更愿意让一些 LED 稍微暗一些，以保护我的 Arduino。
 
 ## 创建一些漂亮的灯光图案
 
-下面是按照某些模式点亮LED的代码，所有这些都是硬编码的。每个图案显示之间都有一个暂停：
+下面是按照某些模式点亮 LED 的代码，所有这些都是硬编码的。每个图案显示之间都有一个暂停：
 
-[PRE0]
+```cpp
+void setup() {
+
+  for (int i = 2 ; i <= 7 ; i++)
+  {
+    pinMode(i, OUTPUT);
+  }
+}
+
+void loop(){
+
+  // switch on everything progressively
+  for (int i = 2 ; i <= 7 ; i++)
+  {
+    digitalWrite(i, HIGH);
+    delay(100);
+  }
+
+  delay(3000);
+
+  // switch off everything progressively
+  for (int i = 7 ; i >=2 ; i--)
+  {
+    digitalWrite(i, LOW);
+    delay(100);
+  }
+
+  delay(3000);
+
+  // switch on even LEDS
+  for (int i = 2 ; i <= 7 ; i++)
+  {
+    if ( i % 2 == 0 ) digitalWrite(i, HIGH);
+    else digitalWrite(i, LOW);
+  }
+
+  delay(3000);
+
+  // switch on odd LEDS
+  for (int i = 2 ; i <= 7 ; i++)
+  {
+    if ( i % 2 != 0 ) digitalWrite(i, HIGH);
+    else digitalWrite(i, LOW);
+  }
+
+  delay(3000);
+}
+```
 
 这段代码运行正确。但我们如何让它更优雅，尤其是更易于重用呢？我们可以将`for()`循环块嵌入到函数中。但它们只在这个代码中可用。我们必须通过记住我们设计它们的那个项目来复制和粘贴它们，以便在另一个项目中重用它们。
 
 通过创建一个我们可以反复使用的库，我们可以在未来的编码和数据处理中节省时间。通过一些定期的修改，我们可以达到为特定任务设计的完美模块，它将越来越好，直到不需要再触碰它，因为它比其他任何东西都表现得更好。至少这是我们希望看到的。
 
-## 设计一个小型的LED图案库
+## 设计一个小型的 LED 图案库
 
 首先，我们可以在头文件中设计我们函数的原型。让我们把这个库叫做`LEDpatterns`。
 
-### 编写LEDpatterns.h头文件
+### 编写 LEDpatterns.h 头文件
 
 下面是一个可能的头文件示例：
 
-[PRE1]
+```cpp
+/*
+  LEDpatterns - Library for making cute LEDs Pattern.
+  Created by Julien Bayle, February 10, 2013.
+*/
+#ifndef LEDpatterns_h
+#define LEDpatterns_h
 
-我们首先编写我们的include guards。然后包含Arduino库。然后，我们定义一个名为`LEDpatterns`的类，其中包含与类本身同名的构造函数等`public`函数。
+#include "Arduino.h"
 
-我们还有两个与第一个连接LED的引脚和与连接LED总数相关的内部（`private`）变量。在示例中，LED必须连续连接。
+class LEDpatterns
+{
+  public:
+    LEDpatterns(int firstPin, int ledsNumber);
+    void switchOnAll();
+    void switchOffAll();
+    void switchEven();
+    void switchOdd();
+  private:
+    int _firstPin;
+    int _ledsNumber;
+};
+#endif
+```
 
-### 编写LEDpatterns.cpp源文件
+我们首先编写我们的 include guards。然后包含 Arduino 库。然后，我们定义一个名为`LEDpatterns`的类，其中包含与类本身同名的构造函数等`public`函数。
 
-这是C++库的源代码：
+我们还有两个与第一个连接 LED 的引脚和与连接 LED 总数相关的内部（`private`）变量。在示例中，LED 必须连续连接。
 
-[PRE2]
+### 编写 LEDpatterns.cpp 源文件
 
-在开始时，我们检索所有`include`库。然后我们有构造函数，这是一个与库同名的特殊方法。这是这里的重要点。它接受两个参数。在其主体内部，我们将从第一个到最后的所有引脚（将LED视为数字输出）放入其中。然后，我们将构造函数的参数存储在之前在头文件`LEDpatterns.h`中定义的`private`变量中。
+这是 C++库的源代码：
+
+```cpp
+/*
+  LEDpatterns.cpp - Library for making cute LEDs Pattern.
+ Created by Julien Bayle, February 10, 2013.
+ */
+#include "Arduino.h"
+#include "LEDpatterns.h"
+
+LEDpatterns::LEDpatterns(int firstPin, int ledsNumber)
+{
+  for (int i = firstPin ; i < ledsNumber + firstPin ; i++)
+  {
+    pinMode(i, OUTPUT);
+  }
+
+  _ledsNumber = ledsNumber;
+  _firstPin = firstPin;
+}
+
+void LEDpatterns::switchOnAll()
+{
+  for (int i = _firstPin ; i < _ledsNumber + _firstPin ; i++)
+  {
+    digitalWrite(i, HIGH);
+    delay(100);
+  }
+}
+
+void LEDpatterns::switchOffAll()
+{
+  for (int i = _ledsNumber + _firstPin -1 ; i >= _firstPin   ; i--)
+  {
+    digitalWrite(i, LOW);
+    delay(100);
+  }
+}
+
+void LEDpatterns::switchEven()
+{
+  for (int i = _firstPin ; i < _ledsNumber + _firstPin ; i++)
+  {
+    if ( i % 2 == 0 ) digitalWrite(i, HIGH);
+    else digitalWrite(i, LOW);
+  }
+}
+
+void LEDpatterns::switchOdd()
+{
+  for (int i = _firstPin ; i < _ledsNumber + _firstPin ; i++)
+  {
+    if ( i % 2 != 0 ) digitalWrite(i, HIGH);
+    else digitalWrite(i, LOW);
+  }
+}
+```
+
+在开始时，我们检索所有`include`库。然后我们有构造函数，这是一个与库同名的特殊方法。这是这里的重要点。它接受两个参数。在其主体内部，我们将从第一个到最后的所有引脚（将 LED 视为数字输出）放入其中。然后，我们将构造函数的参数存储在之前在头文件`LEDpatterns.h`中定义的`private`变量中。
 
 我们可以声明所有与第一个示例中创建的函数相关的函数，而不需要库。注意每个函数的`LEDpatterns::`前缀。我不会在这里讨论这种纯类相关语法，但请记住结构。
 
-### 编写keyword.txt文件
+### 编写 keyword.txt 文件
 
 当我们查看我们的源代码时，如果某些内容能够跳出来而不是融入背景，那就非常有帮助。为了正确地着色与我们新创建的库相关的不同关键字，我们必须使用`keyword.txt`文件。让我们检查一下这个文件：
 
-[PRE3]
+```cpp
+#######################################
+# Syntax Coloring Map For Messenger
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+LEDpatterns	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+switchOnAll	KEYWORD2
+switchOffAll	KEYWORD2
+switchEven	KEYWORD2
+switchOdd	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+```
 
 在前面的代码中，我们可以看到以下内容：
 
@@ -144,23 +294,44 @@ EEPROM库的源文件在Xcode IDE中显示
 
 使用这些来着色你的代码并使其更易于阅读是非常有用的。
 
-## 使用LEDpatterns库
+## 使用 LEDpatterns 库
 
-该库位于`Chapter13`的`LEDpatterns`文件夹中，你必须将它放在与其他库相同的正确文件夹中，我们已经这样做了。我们必须重新启动Arduino IDE以使库可用。完成之后，你应该能够在菜单**Sketch** | **Import Library**中检查它。现在`LEDpatterns`已经出现在列表中：
+该库位于`Chapter13`的`LEDpatterns`文件夹中，你必须将它放在与其他库相同的正确文件夹中，我们已经这样做了。我们必须重新启动 Arduino IDE 以使库可用。完成之后，你应该能够在菜单**Sketch** | **Import Library**中检查它。现在`LEDpatterns`已经出现在列表中：
 
-![使用LEDpatterns库](img/7584_13_007.jpg)
+![使用 LEDpatterns 库](img/7584_13_007.jpg)
 
-该库是一个贡献的库，因为它不是Arduino核心的一部分
+该库是一个贡献的库，因为它不是 Arduino 核心的一部分
 
 现在我们使用这个库来检查新的代码。你可以在`Chapter13`/`LEDLib`文件夹中找到它：
 
-[PRE4]
+```cpp
+#include <LEDpatterns.h>
+LEDpatterns ledpattern(2,6);
+
+void setup() {
+}
+
+void loop(){
+
+  ledpattern.switchOnAll();
+  delay(3000);
+
+  ledpattern.switchOffAll();
+  delay(3000);
+
+  ledpattern.switchEven();
+  delay(3000);
+
+  ledpattern.switchOdd();
+  delay(3000);
+}
+```
 
 在第一步中，我们包含`LEDpatterns`库。然后，我们创建名为`ledpattern`的`LEDpatterns`实例。我们使用之前设计的带有两个参数的构造函数：
 
-+   第一个LED的第一个引脚
++   第一个 LED 的第一个引脚
 
-+   LED的总数
++   LED 的总数
 
 `ledpattern`是`LEDpatterns`类的一个实例。它在我们的代码中被引用，如果没有`#include`，它将无法工作。我们已调用这个实例的每个方法。
 
@@ -168,7 +339,7 @@ EEPROM库的源文件在Xcode IDE中显示
 
 # 内存管理
 
-这个部分非常短，但绝对不是不重要。我们必须记住，我们在Arduino上有以下三个内存池：
+这个部分非常短，但绝对不是不重要。我们必须记住，我们在 Arduino 上有以下三个内存池：
 
 +   闪存（程序空间），其中存储固件
 
@@ -196,7 +367,9 @@ EEPROM库的源文件在Xcode IDE中显示
 
 一个经典的例子是引用一个字符串的基本声明：
 
-[PRE5]
+```cpp
+char text[] = "I love Arduino because it rocks.";
+```
 
 这将占用 32 字节到 SRAM 中。这似乎并不多，但 UNO 只提供了 2048 字节。想象一下，如果你使用了一个大的查找表或大量的文本。以下是一些节省内存的技巧：
 
@@ -206,7 +379,7 @@ EEPROM库的源文件在Xcode IDE中显示
 
 +   如果你使用了一些不会更改的查找表或数据，你可以将它们存储在 Flash 内存中而不是 SRAM 中。你必须使用 `PROGMEM` 关键字来完成此操作。
 
-+   你可以使用 Arduino 板的原生 EEPROM，这将需要编写两个小程序：第一个用于将信息存储在 EEPROM 中，第二个用于使用它。我们在第 9 章 [Making Things Move and Creating Sounds](ch09.html "第 9 章。使事物移动和创造声音") 中使用 PCM 库做到了这一点，*使事物移动和创造声音*。
++   你可以使用 Arduino 板的原生 EEPROM，这将需要编写两个小程序：第一个用于将信息存储在 EEPROM 中，第二个用于使用它。我们在第九章 Making Things Move and Creating Sounds 中使用 PCM 库做到了这一点，*使事物移动和创造声音*。
 
 # 掌握位移操作
 
@@ -224,11 +397,17 @@ C++ 中有两个位移操作符：
 
 让我们使用位移来乘以一个变量。
 
-[PRE6]
+```cpp
+int a = 4;
+int b = a << 3;
+```
 
 第二行将变量 `a` 乘以 `2` 的三次方，因此 `b` 现在包含 `32`。同样，除法可以按以下方式进行：
 
-[PRE7]
+```cpp
+int a = 12 ;
+int b = a >> 2;
+```
 
 `b` 包含 `3`，因为 `>> 2` 等于除以 4。使用这些操作符可以使代码更快，因为它们是直接访问二进制操作，而不需要使用 Arduino 核心的任何函数，如 `pow()` 或其他操作符。
 
@@ -236,11 +415,27 @@ C++ 中有两个位移操作符：
 
 例如，而不是使用一个大型的二维表来存储，比如以下显示的位图：
 
-[PRE8]
+```cpp
+const prog_uint8_t BitMap[5][7] = {   
+// store in program memory to save RAM         
+{1,1,0,0,0,1,1},         
+{0,0,1,0,1,0,0},         
+{0,0,0,1,0,0,0},         
+{0,0,1,0,1,0,0},         
+{1,1,0,0,0,1,1}     }; 
+```
 
 我们可以使用以下代码：
 
-[PRE9]
+```cpp
+const prog_uint8_t BitMap[5] = {   
+// store in program memory to save RAM         
+B1100011,         
+B0010100,         
+B0001000,         
+B0010100,         
+B1100011     }; 
+```
 
 在第一种情况下，每个位图需要 7 x 5 = 35 字节。在第二种情况下，只需要 5 字节。我想你已经刚刚发现了一些重大的事情，不是吗？
 
@@ -248,11 +443,23 @@ C++ 中有两个位移操作符：
 
 以下是前一条技巧的直接后果。如果我们想将引脚 8 到 13 设置为输出，我们可以这样做：
 
-[PRE10]
+```cpp
+void setup()     {         
+  int pin;         
+
+  for (pin=8; pin <= 13; ++pin) {             
+    pinMode (pin, LOW);         
+  } 
+}
+```
 
 但这样做会更好：
 
-[PRE11]
+```cpp
+void setup()     {         
+ DDRB = B00111111 ; // DDRB are pins from 8 to 15
+}
+```
 
 在一次遍历中，我们直接在内存中将整个包配置到一个变量中，并且不需要编译 `pinMode` 函数、结构或变量名。
 
@@ -260,7 +467,7 @@ C++ 中有两个位移操作符：
 
 Arduino 本地使用著名的引导加载程序。这为我们通过 USB 上的虚拟串行端口上传固件提供了一种很好的方式。但我们也可能对在没有引导加载程序的情况下继续前进感兴趣。如何以及为什么？首先，这将节省一些闪存内存。它还提供了一种避免在我们打开或重置板子并使其活跃并开始运行之前的小延迟的方法。这需要一个外部编程器。
 
-我可以引用 AVR-ISP、STK500，甚至并行编程器（并行编程器在 [http://arduino.cc/en/Hacking/ParallelProgrammer](http://arduino.cc/en/Hacking/ParallelProgrammer) 中有描述）。你可以在 Sparkfun 电子找到 AVR-ISP。
+我可以引用 AVR-ISP、STK500，甚至并行编程器（并行编程器在 [`arduino.cc/en/Hacking/ParallelProgrammer`](http://arduino.cc/en/Hacking/ParallelProgrammer) 中有描述）。你可以在 Sparkfun 电子找到 AVR-ISP。
 
 我在 2013 年的一个名为 The Village 的连接城市的项目中，用这个编程器编程了 Arduino FIO 型板，用于特定的无线应用。
 

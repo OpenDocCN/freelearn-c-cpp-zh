@@ -1,4 +1,4 @@
-# 第1章。简介
+# 第一章。简介
 
 本书的目的在于学习如何在 Windows 中开发应用程序。为了做到这一点，我开发了 Small Windows，这是一个用于 Windows 图形应用程序的 C++ 面向对象类库。
 
@@ -18,7 +18,10 @@
 
 在本书中，我们讨论了 **定义** 和 **声明**。声明只是对编译器的通知，而定义则是定义特性的内容。下面是 `MainWindow` 函数的声明。其定义留给 Small Windows 的用户。
 
-[PRE0]
+```cpp
+void MainWindow(vector<String>argumentList,
+                SmallWindows::WindowShow windowShow);
+```
 
 简而言之，在 Windows 中，应用程序不会采取任何主动行动；相反，它等待消息，并在收到它们时做出反应。非正式地说，*你不是调用 Windows，而是 Windows 调用你*。
 
@@ -26,59 +29,147 @@
 
 创建窗口分为两个步骤。在第一步中，`RegisterWindowClasses` 方法设置诸如样式、颜色和外观等特性。请注意，Windows 类不是 C++ 类：
 
-[PRE1]
+```cpp
+class Application { 
+  public: 
+    static int RunMessageLoop(); 
+    static void RegisterWindowClasses(HINSTANCE instanceHandle); 
+}; 
+
+```
 
 下一步是创建一个单独的窗口，这是通过 `Window` 类完成的。所有 `virtual` 方法都是空的，并旨在由以下子类覆盖：
 
-[PRE2]
+```cpp
+  class Window { 
+    public: 
+
+```
 
 窗口可以是可见的或不可见的，可以是启用的或禁用的。当窗口被启用时，它接受鼠标、触摸和键盘输入：
 
-[PRE3]
+```cpp
+      void ShowWindow(bool visible); 
+      void EnableWindow(bool enable); 
+
+```
 
 当窗口移动或调整大小时，会调用 `OnMove` 和 `OnSize` 方法。当用户按下 *F1* 键或消息框中的 **帮助** 按钮时，会调用 `OnHelp` 方法：
 
-[PRE4]
+```cpp
+      virtual void OnMove(Point topLeft); 
+      virtual void OnSize(Size windowSize); 
+      virtual void OnHelp(); 
+
+```
 
 **客户端区域**是窗口中可以绘制的部分。非正式地说，客户端区域是窗口减去其框架。客户端区域的内容可以缩放。默认缩放因子是 1.0：
 
-[PRE5]
+```cpp
+      double GetZoom() const; 
+      void SetZoom(double zoom); 
+
+```
 
 **计时器**可以设置为毫秒间隔。每隔一段时间就会调用 `OnTimer` 方法。只要它们有不同的身份号码，就可以设置多个计时器：
 
-[PRE6]
+```cpp
+      void SetTimer(int timerId, unsigned int interval); 
+      void DropTimer(int timerId); 
+      virtual void OnTimer(int timerId); 
+
+```
 
 当用户按下、释放或双击鼠标按钮时，会调用 `OnMouseDown`、`OnMouseUp` 和 `OnDoubleClick` 方法。当用户至少按下鼠标按钮移动鼠标时，会调用 `OnMouseMove` 方法。当用户滚动鼠标滚轮时，会调用 `OnMouseWheel` 方法：
 
-[PRE7]
+```cpp
+      virtual void OnMouseDown(MouseButton mouseButtons, 
+                           Point mousePoint, bool shiftPressed, 
+                           bool controlPressed); 
+
+      virtual void OnMouseUp(MouseButton mouseButtons, 
+                           Point mousePoint, bool shiftPressed, 
+                           bool controlPressed); 
+      virtual void OnDoubleClick(MouseButton mouseButtons, 
+                           Point mousePoint, bool shiftPressed, 
+                           bool controlPressed); 
+      virtual void OnMouseMove(MouseButton mouseButtons, 
+                           Point mousePoint, bool shiftPressed, 
+                           bool controlPressed); 
+      virtual void OnMouseWheel(WheelDirection direction, 
+                           bool shiftPressed, bool controlPressed); 
+
+```
 
 `OnTouchDown`、`OnTouchMove` 和 `OnTouchDown` 方法的工作方式与鼠标方法相同。然而，由于用户可以同时触摸多个点，因此方法接受点的列表而不是单个点：
 
-[PRE8]
+```cpp
+    virtual void OnTouchDown(vector<Point> pointList); 
+    virtual void OnTouchMove(vector<Point> pointList); 
+    virtual void OnTouchUp(vector<Point> pointList); 
+
+```
 
 当用户按下或释放一个键时，会调用 `OnKeyDown` 和 `OnKeyUp` 方法。如果用户按下图形键（ASCII 值在 32 到 127 之间的键），则在之间调用 `OnChar` 方法：
 
-[PRE9]
+```cpp
+      virtual bool OnKeyDown(WORD key, bool shiftPressed, 
+                             bool controlPressed); 
+      virtual void OnChar(TCHAR tChar); 
+      virtual bool OnKeyUp(WORD key, bool shiftPressed, 
+                           bool controlPressed); 
+
+```
 
 `Invalidate` 方法标记客户端区域的一部分（或整个客户端区域）需要重绘；该区域变为**无效**。如果 `clear` 为 `true`，则在绘制之前清除该区域。`UpdateWindow` 方法强制重绘无效区域。它最终会调用 `OnPaint` 方法：
 
-[PRE10]
+```cpp
+      void Invalidate(Rect areaRect, bool clear = true) const; 
+      void Invalidate(bool clear = true) const; 
+      void UpdateWindow(); 
+
+```
 
 当客户端区域需要重新绘制时，会调用`OnPaint`方法，当它被发送到打印机时，会调用`OnPrint`方法。它们的默认行为是调用`OnDraw`方法，其中`drawMode`参数的值为`Paint`或`Print`：
 
-[PRE11]
+```cpp
+      virtual void OnPaint(Graphics& graphics) const;
+      virtual void OnPrint(Graphics& graphics, int page, 
+                           int copy, int totalPages) const;
+      virtual void OnDraw(Graphics& graphics, DrawMode drawMode)
+                          const;
+
+```
 
 如果`TryClose`返回`true`，则`OnClose`方法会关闭窗口。当窗口正在关闭时，会调用`OnDestroy`方法：
 
-[PRE12]
+```cpp
+      virtual void OnClose(); 
+      virtual bool TryClose(); 
+      virtual void OnDestroy(); 
+
+```
 
 以下方法检查并修改窗口的大小和位置。请注意，我们无法直接设置客户端区域的大小；它只能通过调整窗口大小间接设置：
 
-[PRE13]
+```cpp
+      Size GetWindowSize() const; 
+      void SetWindowSize(Size windowSize); 
+      Point GetWindowPosition() const; 
+      void SetWindowPosition(Point topLeft); 
+      Size GetClientSize() const; 
+
+```
 
 在本书中的文字处理程序和电子表格程序中，我们处理文本并需要计算单个字符的大小。以下方法使用给定的字体计算字符的宽度。它们还计算字体的行高、上升和平均字符宽度：
 
-[PRE14]
+```cpp
+      int GetCharacterWidth(Font font, TCHAR tChar) const; 
+      int GetCharacterHeight(Font font) const; 
+      int GetCharacterAscent(Font font) const; 
+      int GetCharacterAverageWidth(Font font) const; 
+
+```
 
 上升线分隔字母的上部和下部，如下所示：
 
@@ -86,79 +177,211 @@
 
 最后，`MessageBox`方法在窗口中显示一个简单的消息框：
 
-[PRE15]
+```cpp
+      Answer MessageBox(String message,
+                    String caption = TEXT("Error"),
+                    ButtonGroup buttonGroup = Ok,
+                    Icon icon = NoIcon, bool help = false) const;
+};
+```
 
 `Window`类还使用负责在窗口中绘制文本和几何对象的`Graphics`类。`Graphics`对象的引用被发送到`Window`类中的`OnPaint`、`OnPrint`和`OnDraw`方法。它可以用来绘制线条、矩形和椭圆以及写入文本：
 
-[PRE16]
+```cpp
+  class Graphics { 
+    public: 
+      void DrawLine(Point startPoint, Point endPoint, 
+                    Color penColor, PenStyle penStyle = Solid); 
+      void DrawRectangle(Rect rect, Color penColor, 
+                         PenStyle = Solid); 
+      void FillRectangle(Rect rect, Color penColor, 
+                       Color brushColor, PenStyle penStyle=Solid); 
+      void DrawEllipse(Rect rect, Color penColor, 
+                       PenStyle = Solid); 
+      void FillEllipse(Rect rect, Color penColor, 
+                       Color brushColor, PenStyle penStyle=Solid); 
+      void DrawText(Rect areaRect, String text, Font font, 
+                    Color textColor, Color backColor, 
+                    bool pointsToMeters = true); 
+  }; 
+
+```
 
 `Document`类通过一些功能扩展了`Window`类，这些功能对基于文档的应用程序来说是通用的。滚动滑块会自动设置为反映文档的可视部分。鼠标滚轮每次点击都会移动垂直滚动条一行的高度。行高由构造函数设置。它的代码片段如下所示：
 
-[PRE17]
+```cpp
+  class Document : public Window { 
+    public: 
+
+```
 
 当用户在文档中进行了更改且需要保存时，**脏标志**会被设置为`true`。在`Document`中，脏标志是手动设置的，但在下面的`StandardDocument`子类中，它是由框架处理的：
 
-[PRE18]
+```cpp
+      bool IsDirty() const; 
+      void SetDirty(bool dirty); 
+
+```
 
 **光标**是闪烁的标记，指示用户应在何处输入下一个字符。键盘可以通过（使用插入键）设置为插入或覆盖模式。在插入模式下，光标通常是一个细长的垂直条，在覆盖模式下是一个宽度为平均字符宽度的块。
 
 光标可以被设置或清除。例如，在文字处理程序中，当用户写入文本时，光标是可见的，当用户标记文本时，光标是不可见的。当窗口获得焦点时，如果之前已经设置了光标，则光标变为可见。当窗口失去焦点时，无论之前是否已设置，光标都变为不可见：
 
-[PRE19]
+```cpp
+      void SetCaret(Rect caretRect); 
+      void ClearCaret(); 
+      void OnGainFocus(); 
+      void OnLoseFocus(); 
+
+```
 
 文档可能包含一个菜单栏，该菜单栏是通过`SetMenuBar`方法设置的：
 
-[PRE20]
+```cpp
+      void SetMenuBar(Menu& menuBar); 
+
+```
 
 当用户在窗口中拖放一个或多个文件时，会调用`OnDropFiles`方法。它们的路径存储在路径列表中：
 
-[PRE21]
+```cpp
+      virtual void OnDropFile(vector<String> pathList); 
+
+```
 
 可以将文档的键盘模式设置为**插入**或**覆盖**，如下所示：
 
-[PRE22]
+```cpp
+      KeyboardMode GetKeyboardMode() const; 
+      void SetKeyboardMode(KeyboardMode mode); 
+
+```
 
 当用户通过点击滚动条箭头或滚动条字段，或拖动滚动滑块来滚动条时，会调用`OnHorizontalScroll`和`OnVerticalScroll`方法。相应的代码片段如下所示：
 
-[PRE23]
+```cpp
+      virtual void OnHorizontalScroll(WORD flags,WORD thumbPos=0); 
+      virtual void OnVerticalScroll(WORD flags, WORD thumbPos =0); 
+
+```
 
 存在大量用于检查或更改滚动条设置的方法。行或页的大小由构造函数设置：
 
-[PRE24]
+```cpp
+      void SetHorizontalScrollPosition(int scrollPos); 
+      int GetHorizontalScrollPosition() const; 
+      void SetVerticalScrollPosition(int scrollPos); 
+      int GetVerticalScrollPosition() const; 
 
-`Menu`类处理文档中的菜单栏、菜单、菜单项或菜单项分隔符（水平条）。当用户选择菜单项时，会调用`selection`监听器。当项目即将可见时，会调用（除非它们为null）`enable`、`check`和`radio`监听器。如果它们返回`true`，则项目被启用或带有复选框或单选按钮的标注：
+      void SetHorizontalScrollLineWidth(int lineWidth); 
+      int GetHorizontalScrollLineHeight() const; 
+      void SetVerticalScrollLineHeight(int lineHeight); 
+      int GetVerticalScrollLineHeight() const; 
 
-[PRE25]
+      void SetHorizontalScrollPageWidth(int pageWidth); 
+      int GetHorizontalScrollPageWidth() const; 
+      void SetVerticalScrollPageHeight(int pageHeight); 
+      int GetVerticalScrollPageHeight() const; 
+
+      void SetHorizontalScrollTotalWidth(int scrollWidth); 
+      int GetHorizontalScrollTotalWidth() const; 
+      void SetVerticalScrollTotalHeight(int scrollHeight); 
+      int GetVerticalScrollTotalHeight() const; 
+  }; 
+
+```
+
+`Menu`类处理文档中的菜单栏、菜单、菜单项或菜单项分隔符（水平条）。当用户选择菜单项时，会调用`selection`监听器。当项目即将可见时，会调用（除非它们为 null）`enable`、`check`和`radio`监听器。如果它们返回`true`，则项目被启用或带有复选框或单选按钮的标注：
+
+```cpp
+  class Menu { 
+    public: 
+      void AddMenu(Menu& menu); 
+      void AddSeparator(); 
+      void AddItem(String text, VoidListener selection, 
+                   BoolListener enable = nullptr, 
+                   BoolListener check = nullptr, 
+                   BoolListener radio = nullptr); 
+  }; 
+
+```
 
 **加速器**是一个快捷命令。例如，通常**文件**菜单中的**打开**项被标注为文本**Ctrl+O**。这意味着您可以同时按下**Ctrl**键和**O**键来获得相同的结果，就像选择了**打开**菜单项一样。在这两种情况下，都会显示打开对话框。
 
 `Accelerator`类只包含`TextToAccelerator`方法。它解释菜单项文本，并将如果存在则添加加速器到加速器集合中：
 
-[PRE26]
+```cpp
+class Accelerator { 
+    public: 
+      static void TextToAccelerator(String& text, int idemId, 
+                                    list<ACCEL>& acceleratorSet); 
+  }; 
+
+```
 
 `StandardDocument`类扩展了`Document`类，并设置了一个框架，该框架负责处理所有传统任务，例如加载和保存，以及剪切、复制和粘贴，在基于文档的应用程序中：
 
-[PRE27]
+```cpp
+  class StandardDocument : public Document { 
+    public: 
+
+```
 
 `StandardDocument`类配备了常见的**文件**、**编辑**和**帮助**菜单。**文件**菜单可以可选地（如果`print`参数为`true`）配备打印和打印预览的菜单项：
 
-[PRE28]
+```cpp
+      Menu StandardFileMenu(bool print); 
+      Menu StandardEditMenu(); 
+      Menu StandardHelpMenu(); 
+
+```
 
 当用户选择**新建**菜单项时，会调用`ClearDocument`方法；其任务是清除文档。当用户选择**保存**或**另存为**菜单项时，会调用`WriteDocumentToStream`方法；当用户选择**打开**菜单项时，会调用`ReadDocumentFromStream`方法：
 
-[PRE29]
+```cpp
+      virtual void ClearDocument(); 
+      virtual bool WriteDocumentToStream(String name, 
+                                         ostream& outStream)const; 
+      virtual bool ReadDocumentFromStream(String name, 
+                                          istream& inStream); 
+
+```
 
 当用户选择**剪切**或**复制**菜单项并且相应的`ready`方法返回`true`时，会调用`CopyAscii`、`CopyUnicode`和`CopyGeneric`方法。相应的代码片段如下所示：
 
-[PRE30]
+```cpp
+      virtual void CopyAscii(vector<String>& textList) const; 
+      virtual bool IsCopyAsciiReady() const; 
+      virtual void CopyUnicode(vector<String>& textList) const; 
+      virtual bool IsCopyUnicodeReady() const; 
+      virtual void CopyGeneric(int format, InfoList& infoList)  
+                               const; 
+      virtual bool IsCopyGenericReady(int format) const; 
+
+```
 
 同样，当用户选择**粘贴**菜单项并且相应的`ready`方法返回`true`时，会调用`PasteAscii`、`PasteUnicode`和`PasteGeneric`方法：
 
-[PRE31]
+```cpp
+      virtual void PasteAscii(const vector<String>& textList); 
+      virtual bool IsPasteAsciiReady 
+                   (const vector<String>& textList) const; 
+      virtual void PasteUnicode(const vector<String>& textList); 
+      virtual bool IsPasteUnicodeReady 
+                   (const vector<String>& textList) const; 
+      virtual void PasteGeneric(int format, InfoList& infoList); 
+      virtual bool IsPasteGenericReady(int format, 
+                                       InfoList& infoList) const; 
+
+```
 
 `OnDropFile` 方法检查路径列表，如果恰好有一个文件具有应用程序（由构造函数设置）的文档类型后缀，则接受拖放操作：
 
-[PRE32]
+```cpp
+      void OnDropFile(vector<String> pathList); 
+  }; 
+
+```
 
 在小窗口中，我们不关心像素大小。相反，我们使用**逻辑单位**，这些单位保持不变，无论屏幕的物理分辨率如何。我们可以从以下三个坐标系中选择：
 
@@ -170,11 +393,22 @@
 
 除了`StandardDocument`类之外，还有一个`PrintPreviewDocument`类，它也扩展了`Document`类。它显示标准文档的一页。用户可以通过使用箭头键和***向上翻页***和***向下翻页***键或使用垂直滚动条来更改页面：
 
-[PRE33]
+```cpp
+  class PrintPreviewDocument : Document { 
+    public: 
+      PrintPreviewDocument(StandardDocument* parentDocument, 
+                  int page = 1, Size pageSize = USLetterPortrait); 
+      bool OnKeyDown(WORD key, bool shiftPressed, 
+                     bool controlPressed); 
+      void OnVerticalScroll(WORD flags, WORD thumbPos = 0); 
+      void OnPaint(Graphics& graphics) const; 
+  }; 
+
+```
 
 此外，还有一些简单的辅助类：
 
-+   `Point`：它包含一个二维点（x和y）
++   `Point`：它包含一个二维点（x 和 y）
 
 +   `Size`：它包含二维的宽度和高度
 
@@ -186,10 +420,10 @@
 
 +   `InfoList`：它包含一个可以转换成内存块的通用信息列表
 
-`Registry`类包含对**Windows注册表**的接口，这是Windows系统中我们可以用来在应用程序执行之间存储值的数据库。`Clipboard`类包含对**Windows剪贴板**的接口，这是Windows中用于短期数据存储的区域，我们可以用它来在应用程序之间存储剪切、复制和粘贴的信息。
+`Registry`类包含对**Windows 注册表**的接口，这是 Windows 系统中我们可以用来在应用程序执行之间存储值的数据库。`Clipboard`类包含对**Windows 剪贴板**的接口，这是 Windows 中用于短期数据存储的区域，我们可以用它来在应用程序之间存储剪切、复制和粘贴的信息。
 
 `Dialog`类是为自定义对话框设计的。`Control`类是对话框控制的根类。`CheckBox`、`RadioButton`、`PushButton`、`ListBox`和`ComboBox`类是特定控制的类。`TextField`类包含一个可以被`Converter`类转换成不同类型的文本字段。最后，`PageSetupDialog`类扩展了`Dialog`类，并实现了一个带有控制和转换器的对话框。
 
 # 摘要
 
-本章介绍了小型窗口。在[第2章](ch02.html "第2章。你好，小型世界！")“你好，小型世界”中，我们将开始使用小型窗口开发应用程序。
+本章介绍了小型窗口。在第二章“你好，小型世界”中，我们将开始使用小型窗口开发应用程序。

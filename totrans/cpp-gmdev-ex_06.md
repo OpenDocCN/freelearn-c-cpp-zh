@@ -24,7 +24,83 @@
 
 从 `main.cpp` 文件中删除所有与玩家相关的代码。完成此操作后，文件应如下所示：
 
-[PRE0]
+```cpp
+#include "SFML-2.5.1\include\SFML\Graphics.hpp" 
+
+sf::Vector2f viewSize(1024, 768); 
+sf::VideoMode vm(viewSize.x, viewSize.y); 
+sf::RenderWindow window(vm, "Hello SFML Game !!!", sf::Style::Default); 
+
+sf::Vector2f playerPosition; 
+bool playerMoving = false; 
+
+sf::Texture skyTexture; 
+sf::Sprite skySprite; 
+
+sf::Texture bgTexture; 
+sf::Sprite bgSprite; 
+
+void init() { 
+
+   skyTexture.loadFromFile("Assets/graphics/sky.png"); 
+   skySprite.setTexture(skyTexture); 
+
+   bgTexture.loadFromFile("Assets/graphics/bg.png"); 
+   bgSprite.setTexture(bgTexture); 
+
+} 
+
+void updateInput() { 
+
+   sf::Event event; 
+
+   // while there are pending events... 
+   while (window.pollEvent(event)) { 
+
+      if (event.key.code == sf::Keyboard::Escape || event.type == 
+          sf::Event::Closed) 
+         window.close(); 
+
+   } 
+
+} 
+
+void update(float dt) { 
+
+} 
+
+void draw() { 
+
+   window.draw(skySprite); 
+   window.draw(bgSprite); 
+
+} 
+
+int main() { 
+
+   sf::Clock clock; 
+   window.setFramerateLimit(60); 
+
+   init(); 
+
+   while (window.isOpen()) { 
+
+      updateInput(); 
+
+      sf::Time dt = clock.restart(); 
+      update(dt.asSeconds()); 
+
+      window.clear(sf::Color::Red); 
+
+      draw(); 
+
+      window.display(); 
+
+   } 
+
+   return 0; 
+} 
+```
 
 # 创建 `Hero` 类
 
@@ -34,11 +110,28 @@
 
 1.  在 `Hero.h` 文件中，添加 SFML 图形头文件并创建 `Hero` 类：
 
-[PRE1]
+```cpp
+#include "SFML-2.5.0\include\SFML\Graphics.hpp" 
+
+class Hero{ 
+
+}; 
+```
 
 1.  在 `Hero` 类中，我们将创建类所需的函数和变量。我们还将创建一些公共属性，这些属性可以在类外部访问，如下所示：
 
-[PRE2]
+```cpp
+public: 
+   Hero(); 
+   ~Hero(); 
+
+   void init(std::string textureName, sf::Vector2f position, float 
+   mass); 
+   void update(float dt); 
+   void jump(float velocity); 
+   sf::Sprite getSprite(); 
+
+```
 
 这里，我们有构造函数和析构函数，它们将在对象创建和销毁时分别被调用。我们添加了一个 `init` 函数，用于传递纹理名称、生成玩家并指定质量。我们在这里指定质量是因为我们将创建一些非常基础的物理效果，这样当按下跳跃按钮时，玩家将跳起来并安全着地。
 
@@ -46,7 +139,20 @@
 
 1.  除了这些 `public` 变量之外，我们还需要一些只能在类内部访问的 `private` 变量。在 `Hero` 类中添加这些变量，如下所示：
 
-[PRE3]
+```cpp
+private: 
+
+   sf::Texture m_texture; 
+   sf::Sprite m_sprite; 
+   sf::Vector2f m_position; 
+
+int jumpCount = 0;    
+float m_mass; 
+   float m_velocity; 
+   const float m_gravity = 9.80f; 
+      bool m_grounded; 
+
+```
 
 在 `private` 部分中，我们为 `texture`、`sprite` 和 `position` 创建变量，以便我们可以本地设置这些值。我们有一个名为 `jumpCount` 的 `int` 变量，这样我们就可以检查玩家角色跳跃的次数。这需要因为玩家有时可以双跳，这是我们不想看到的。
 
@@ -56,23 +162,69 @@
 
 1.  接下来，在`Hero.cpp`文件中，我们将实现`.h`文件中添加的函数。在`.cpp`文件的顶部，包含`Hero.h`文件，然后添加构造函数和析构函数：
 
-[PRE4]
+```cpp
+#include "Hero.h" 
+
+Hero::Hero(){ 
+
+} 
+```
 
 `::`符号代表作用域解析运算符。具有相同名称的函数可以在两个不同的类中定义。为了访问特定类的成员，使用作用域解析运算符。
 
 1.  这里，`Hero`函数的作用域限定在`Hero`类中：
 
-[PRE5]
+```cpp
+ Hero::~Hero(){ 
+
+}
+```
 
 1.  接下来，我们将设置`init`函数，如下所示：
 
-[PRE6]
+```cpp
+void Hero::init(std::string textureName, sf::Vector2f position, float mass){ 
 
-我们将位置和质量设置为局部变量，并将接地状态设置为`false`。然后，通过调用`loadFromFile`并传入纹理名称的字符串来设置纹理。`c_str()`短语返回一个指向包含空终止序列的字符数组的指针（即`C`字符串），表示当前`string`对象的价值（[http://www.cplusplus.com/reference/string/string/c_str/](http://www.cplusplus.com/reference/string/string/c_str/))。然后，我们设置精灵纹理、位置和精灵本身的原始位置。
+   m_position = position; 
+   m_mass = mass; 
+
+   m_grounded = false; 
+
+   // Load a Texture 
+   m_texture.loadFromFile(textureName.c_str()); 
+
+   // Create Sprite and Attach a Texture 
+   m_sprite.setTexture(m_texture); 
+   m_sprite.setPosition(m_position); 
+   m_sprite.setOrigin(m_texture.getSize().x / 2, 
+   m_texture.getSize().y / 2); 
+
+} 
+```
+
+我们将位置和质量设置为局部变量，并将接地状态设置为`false`。然后，通过调用`loadFromFile`并传入纹理名称的字符串来设置纹理。`c_str()`短语返回一个指向包含空终止序列的字符数组的指针（即`C`字符串），表示当前`string`对象的价值（[`www.cplusplus.com/reference/string/string/c_str/`](http://www.cplusplus.com/reference/string/string/c_str/))。然后，我们设置精灵纹理、位置和精灵本身的原始位置。
 
 1.  现在，我们添加了`update`函数，在其中我们实现了更新玩家位置的逻辑。玩家的角色不能左右移动；相反，它只能向上移动，即*y*方向。当施加初始速度时，玩家会向上跳起，然后由于重力开始下落。将`update`函数添加到更新英雄位置如下：
 
-[PRE7]
+```cpp
+void Hero::update(float dt){ 
+
+   m_force -= m_mass * m_gravity * dt; 
+
+   m_position.y -= m_force * dt; 
+
+   m_sprite.setPosition(m_position); 
+
+   if (m_position.y >= 768 * 0.75f) { 
+
+      m_position.y = 768 * 0.75f; 
+      m_force = 0; 
+      m_grounded = true; 
+      jumpCount = 0; 
+   } 
+
+}  
+```
 
 当速度施加到角色上时，玩家最初会因为力量而向上移动，但随后会开始下落，因为重力。结果速度向下作用，其计算公式如下：
 
@@ -88,43 +240,104 @@
 
 1.  当我们想要让玩家跳跃时，我们调用`jump`函数，该函数需要一个初始速度。我们现在将添加`jump`函数，如下所示：
 
-[PRE8]
+```cpp
+void Hero::jump(float velocity){ 
+
+   if (jumpCount < 2) { 
+      jumpCount++; 
+
+      m_velocity = VELOCITY; 
+      m_grounded = false; 
+   } 
+
+}
+```
 
 在这里，我们首先检查`jumpCount`是否小于`2`，因为我们只想让玩家跳跃两次。如果`jumpCount`小于`2`，则将`jumpCount`值增加`1`，设置初始速度，并将地面布尔值设置为`false`。
 
 1.  最后，我们添加了`getSprite`函数，该函数简单地获取当前精灵，如下所示：
 
-[PRE9]
+```cpp
+ sf::Sprite Hero::getSprite(){ 
+
+   return m_sprite; 
+}  
+```
 
 恭喜！我们现在有了我们的`Hero`类。让我们通过以下步骤在`source.cpp`文件中使用它：
 
 1.  在`main.cpp`文件的顶部包含`Hero.h`：
 
-[PRE10]
+```cpp
+#include "SFML-2.5.1\include\SFML\Graphics.hpp" 
+#include "Hero.h"
+```
 
 1.  接下来，添加`Hero`类的一个实例，如下所示：
 
-[PRE11]
+```cpp
+sf::Texture skyTexture; 
+sf::Sprite skySprite; 
+
+sf::Texture bgTexture; 
+sf::Sprite bgSprite; 
+Hero hero;
+```
 
 1.  在`init`函数中，初始化`Hero`类：
 
-[PRE12]
+```cpp
+   // Load bg Texture 
 
-在这里，我们设置纹理图片；为此，将位置设置为屏幕左侧的`.25`（或25%）处，并在`y`轴上居中。我们还设置了质量为`200`，因为我们的角色相当胖。
+   bgTexture.loadFromFile("Assets/graphics/bg.png"); 
+
+   // Create Sprite and Attach a Texture 
+   bgSprite.setTexture(bgTexture); 
+
+   hero.init("Assets/graphics/hero.png", sf::Vector2f(viewSize.x *
+ 0.25f, viewSize.y * 0.5f), 200); 
+```
+
+在这里，我们设置纹理图片；为此，将位置设置为屏幕左侧的`.25`（或 25%）处，并在`y`轴上居中。我们还设置了质量为`200`，因为我们的角色相当胖。
 
 1.  接下来，我们想要在按下上箭头键时让玩家跳跃。因此，在`updateInput`函数中，在轮询窗口事件时，我们添加以下代码：
 
-[PRE13]
+```cpp
+while (window.pollEvent(event)) {  
+    if (event.type == sf::Event::KeyPressed) {
+ if (event.key.code == sf::Keyboard::Up) {
+ hero.jump(750.0f);
+ }
+ }
+      if (event.key.code == sf::Keyboard::Escape || event.type == 
+       sf::Event::Closed) 
+         window.close(); 
+
+   }  
+```
 
 在这里，我们检查玩家是否按下了按键。如果按键被按下，并且按钮是键盘上的上箭头，那么我们调用`hero.jump`函数，并传入初始速度值`750`。
 
 1.  接下来，在`update`函数中，我们调用`hero.update`函数，如下所示：
 
-[PRE14]
+```cpp
+void update(float dt) { 
+ hero.update(dt); 
+} 
+
+```
 
 1.  最后，在`draw`函数中，我们绘制英雄精灵：
 
-[PRE15]
+```cpp
+void draw() { 
+
+   window.draw(skySprite); 
+   window.draw(bgSprite); 
+ window.draw(hero.getSprite());
+
+}
+```
 
 1.  你现在可以运行游戏了。当玩家在地面时，按下键盘上的上箭头按钮，可以看到玩家跳跃。当玩家在空中时，再次按下跳跃按钮，你将看到玩家在空中再次跳跃：
 
@@ -138,19 +351,76 @@
 
 1.  就像`Hero`类一样，`Enemy`类也将有一个`.h`文件和一个`.cpp`文件。在`Enemy.h`文件中，添加以下代码：
 
-[PRE16]
+```cpp
+#pragma once 
+#include "SFML-2.5.1\include\SFML\Graphics.hpp" 
+
+class Enemy 
+{ 
+public: 
+   Enemy(); 
+   ~Enemy(); 
+
+   void init(std::string textureName, sf::Vector2f position, 
+     float_speed); 
+   void update(float dt); 
+   sf::Sprite getSprite(); 
+
+private: 
+
+   sf::Texture m_texture; 
+   sf::Sprite m_sprite; 
+   sf::Vector2f m_position; 
+   float m_speed; 
+
+}; 
+```
 
 这里，`Enemy`类，就像`Hero`类一样，也有构造函数和析构函数。此外，它有一个`init`函数，该函数接受纹理和位置；然而，它不是质量，而是一个用于设置敌人初始速度的浮点变量。敌人不会受到重力的影响，并且只会从屏幕右侧生成并向屏幕左侧移动。还有`update`和`getSprite`函数；由于敌人不会跳跃，所以没有`jump`函数。最后，在私有部分，我们创建了纹理、精灵、位置和速度的局部变量。
 
 1.  在`Enemy.cpp`文件中，我们添加了构造函数、析构函数、`init`、`update`和`getSprite`函数：
 
-[PRE17]
+```cpp
+#include "Enemy.h" 
+
+Enemy::Enemy(){} 
+
+Enemy::~Enemy(){} 
+
+void Enemy::init(std::string textureName, sf::Vector2f position, 
+    float _speed) { 
+
+   m_speed = _speed; 
+   m_position = position; 
+
+   // Load a Texture 
+   m_texture.loadFromFile(textureName.c_str()); 
+
+   // Create Sprite and Attach a Texture 
+   m_sprite.setTexture(m_texture); 
+   m_sprite.setPosition(m_position); 
+   m_sprite.setOrigin(m_texture.getSize().x / 2,    
+   m_texture.getSize().y / 2); 
+
+} 
+```
 
 不要忘记在主函数顶部包含`Enemy.h`。然后我们添加构造函数和析构函数。在`init`函数中，我们设置局部速度和位置值。接下来，我们从文件中加载`Texture`并设置敌人的纹理、位置和原点。
 
 1.  在`update`和`getSprite`函数中，我们更新位置并获取敌人精灵：
 
-[PRE18]
+```cpp
+ void Enemy::update(float dt) { 
+
+   m_sprite.move(m_speed * dt, 0); 
+
+} 
+
+sf::Sprite Enemy::getSprite() { 
+
+   return m_sprite; 
+}
+```
 
 1.  我们已经准备好了`Enemy`类。现在让我们看看如何在游戏中使用它。
 
@@ -162,23 +432,47 @@
 
 1.  我们需要在`main.cpp`文件中包含`<vector>`，如下所示：
 
-[PRE19]
+```cpp
+#include "SFML-2.5.1\include\SFML\Graphics.hpp" 
+#include <vector> 
+
+#include "Hero.h" 
+#include "Enemy.h" 
+```
 
 1.  接下来，添加一个名为`enemies`的新变量，其类型为`vector`，它将存储`Enemy`数据类型：
 
-[PRE20]
+```cpp
+sf::Texture bgTexture; 
+sf::Sprite bgSprite; 
+
+Hero hero; 
+
+std::vector<Enemy*> enemies;  
+```
 
 1.  为了创建一个特定对象类型的向量，你使用`vector`关键字，并在箭头括号内指定向量将持有的数据类型，然后指定你创建的向量的名称。这样，我们可以创建一个名为`spawnEnemy()`的新函数，并在主函数顶部添加其原型。
 
 当任何函数在主函数下方编写时，主函数将不知道该函数的存在。因此，将创建一个原型并将其放置在主函数上方。这意味着函数现在可以在主函数下方实现——本质上，原型告诉主函数下面将有一个函数将被实现，因此要留意它。
 
-[PRE21]
+```cpp
+sf::Vector2f viewSize(1024, 768);
+sf::VideoMode vm(viewSize.x, viewSize.y); 
+sf::RenderWindow window(vm, "Hello SFML Game !!!", sf::Style::Default); 
+
+void spawnEnemy(); 
+```
 
 现在，我们希望敌人从屏幕的右侧生成，但我们还希望敌人以与玩家相同的高度、略高于玩家的高度或远高于玩家的高度生成，这样玩家就必须使用单跳或双跳来攻击敌人。
 
 1.  为了做到这一点，我们在`init`函数下方添加一些随机性，使游戏不那么可预测。为此，我们添加以下代码行：
 
-[PRE22]
+```cpp
+hero.init("Assets/graphics/hero.png", sf::Vector2f(viewSize.x * 
+0.25f, viewSize.y * 0.5f), 200); 
+
+srand((int)time(0)); 
+```
 
 `srand`短语是一个伪随机数，通过传递种子值进行初始化。在这种情况下，我们传递当前时间作为种子值。
 
@@ -186,7 +480,36 @@
 
 1.  接下来，我们添加`spawnEnemy`函数，如下所示：
 
-[PRE23]
+```cpp
+void spawnEnemy() { 
+
+   int randLoc = rand() % 3; 
+
+   sf::Vector2f enemyPos; 
+
+   float speed; 
+
+   switch (randLoc) { 
+
+   case 0: enemyPos = sf::Vector2f(viewSize.x, viewSize.y * 0.75f);
+   speed = -400; break; 
+
+   case 1: enemyPos = sf::Vector2f(viewSize.x, viewSize.y * 0.60f); 
+   speed = -550; break; 
+
+   case 2: enemyPos = sf::Vector2f(viewSize.x, viewSize.y * 0.40f); 
+   speed = -650; break; 
+
+   default: printf("incorrect y value \n"); return; 
+
+   } 
+
+   Enemy* enemy = new Enemy(); 
+   enemy->init("Assets/graphics/enemy.png", enemyPos, speed); 
+
+   enemies.push_back(enemy); 
+} 
+```
 
 在这里，我们首先获取一个随机数——这将由于获取随机位置时的模运算符而创建一个新的从`0`到`2`的随机数。因此，每次函数被调用时，`randLoc`的值将是`0`、`1`或`2`。
 
@@ -212,23 +535,63 @@
 
 1.  接下来，创建两个新的`float`类型变量，分别称为`currentTime`和`prevTime`：
 
-[PRE24]
+```cpp
+Hero hero; 
+
+std::vector<Enemy*> enemies; 
+
+float currentTime; 
+float prevTime = 0.0f;  
+```
 
 1.  然后，在`update`函数中，在更新`hero`函数之后，添加以下代码行以创建一个新敌人：
 
-[PRE25]
+```cpp
+ hero.update(dt); 
+ currentTime += dt;
+ // Spawn Enemies
+ if (currentTime >= prevTime + 1.125f)))) {
+ spawnEnemy();
+ prevTime = currentTime;
+}
+```
 
 首先，我们增加`currentTime`变量。这个变量将在游戏开始后立即开始增加，以便我们可以跟踪自我们开始游戏以来已经过去了多长时间。接下来，我们检查当前时间是否大于或等于上一个时间加上`1.125`秒，因为这是我们希望新敌人出生的时间。如果是`true`，那么我们调用`spawnEnemy`函数，这将创建一个新的敌人。我们还设置上一个时间等于当前时间，这样我们就可以知道最后一个敌人是在什么时候出生的。好！所以，现在我们已经让游戏中的敌人开始出生了，我们可以`update`敌人并`draw`它们。
 
 1.  在`update`函数中，我们同样创建一个`for`循环来更新敌人并删除一旦它们超出屏幕左侧的敌人。为此，我们在`update`函数中添加以下代码：
 
-[PRE26]
+```cpp
+   // Update Enemies 
+
+   for (int i = 0; i < enemies.size(); i++) { 
+
+      Enemy *enemy = enemies[i]; 
+
+      enemy->update(dt); 
+
+      if (enemy->getSprite().getPosition().x < 0) { 
+
+         enemies.erase(enemies.begin() + i); 
+         delete(enemy); 
+
+      } 
+   } 
+```
 
 这正是向量使用非常有帮助的地方。使用向量，我们能够向向量中添加、删除和插入元素。在这个例子中，我们获取向量中位置索引为`i`的敌人的引用。如果那个敌人超出屏幕并需要被删除，那么我们只需使用`erase`函数并传递从向量开始的位置索引来删除该索引处的敌人。当我们重置游戏时，我们也删除了我们创建的敌人的局部引用。这也会释放我们创建新敌人时分配的内存空间。
 
 1.  在`draw`函数中，我们通过一个`for...each`循环遍历每个敌人并绘制它们：
 
-[PRE27]
+```cpp
+window.draw(skySprite); 
+window.draw(bgSprite); 
+
+window.draw(hero.getSprite()); 
+
+for (Enemy *enemy : enemies) { 
+  window.draw(enemy->getSprite()); 
+}
+```
 
 我们使用`for...each`循环遍历所有敌人，因为`getSprite`函数需要在它们所有身上调用。有趣的是，当我们需要更新敌人时我们没有使用`for...each`，因为使用`for`循环，如果我们需要删除它，我们可以简单地使用敌人的索引。
 
@@ -242,27 +605,86 @@
 
 1.  在项目中，创建一个名为`Rocket`的新类。如以下代码块所示，`Rocket.h`类与`Enemy.h`类非常相似：
 
-[PRE28]
+```cpp
+#pragma once 
+
+#include "SFML-2.5.1\include\SFML\Graphics.hpp" 
+
+class Rocket 
+{ 
+public: 
+   Rocket(); 
+   ~Rocket(); 
+
+   void init(std::string textureName, sf::Vector2f position, 
+      float_speed); 
+   void update(float dt); 
+   sf::Sprite getSprite(); 
+
+private: 
+
+   sf::Texture m_texture; 
+   sf::Sprite m_sprite; 
+   sf::Vector2f m_position; 
+   float m_speed; 
+
+}; 
+```
 
 `public`部分包含`init`、`update`和`getSprite`函数。`init`函数接受要加载的纹理名称、设置的位置以及初始化对象的速度。`private`部分有`texture`、`sprite`、`position`和`speed`的局部变量。
 
 1.  在`Rocket.cpp`文件中，我们添加构造函数和析构函数，如下所示：
 
-[PRE29]
+```cpp
+#include "Rocket.h" 
+
+Rocket::Rocket(){ 
+} 
+
+Rocket::~Rocket(){ 
+} 
+```
 
 在`init`函数中，我们设置`speed`和`position`变量。然后我们设置`texture`变量，并用`texture`变量初始化精灵。
 
 1.  接下来，我们设置精灵的`position`变量和原点，如下所示：
 
-[PRE30]
+```cpp
+void Rocket::init(std::string textureName, sf::Vector2f position, float _speed){ 
+
+   m_speed = _speed; 
+   m_position = position; 
+
+   // Load a Texture 
+   m_texture.loadFromFile(textureName.c_str()); 
+
+   // Create Sprite and Attach a Texture 
+   m_sprite.setTexture(m_texture); 
+   m_sprite.setPosition(m_position); 
+   m_sprite.setOrigin(m_texture.getSize().x / 2, 
+     m_texture.getSize().y / 2); 
+
+} 
+```
 
 1.  在`update`函数中，对象根据`speed`变量移动：
 
-[PRE31]
+```cpp
+void Rocket::update(float dt){ 
+   \ 
+   m_sprite.move(m_speed * dt, 0); 
+
+} 
+```
 
 1.  `getSprite`函数返回当前精灵，如下所示：
 
-[PRE32]
+```cpp
+sf::Sprite Rocket::getSprite() { 
+
+   return m_sprite; 
+} 
+```
 
 # 添加火箭
 
@@ -270,33 +692,106 @@
 
 1.  在`main.cpp`文件中，我们按照如下方式包含`Rocket.h`类：
 
-[PRE33]
+```cpp
+#include "Hero.h" 
+#include "Enemy.h" 
+#include "Rocket.h" 
+```
 
 1.  然后我们创建一个新的`Rocket`向量，称为`rockets`，它接受`Rocket`：
 
-[PRE34]
+```cpp
+std::vector<Enemy*> enemies; 
+std::vector<Rocket*> rockets;  
+```
 
 1.  在`update`函数中，在我们更新了所有敌人之后，我们更新所有火箭。我们还会删除超出屏幕右边的火箭：
 
-[PRE35]
+```cpp
+   // Update Enemies 
+
+   for (int i = 0; i < enemies.size(); i++) { 
+
+      Enemy* enemy = enemies[i]; 
+
+      enemy->update(dt); 
+
+      if (enemy->getSprite().getPosition().x < 0) { 
+
+         enemies.erase(enemies.begin() + i); 
+         delete(enemy); 
+
+      } 
+   } 
+ // Update rockets
+
+ for (int i = 0; i < rockets.size(); i++) {
+
+ Rocket* rocket = rockets[i];
+
+ rocket->update(dt);
+
+ if (rocket->getSprite().getPosition().x > viewSize.x) {
+ rockets.erase(rockets.begin() + i);
+ delete(rocket);
+ }
+}
+```
 
 1.  最后，我们通过遍历场景中的每个火箭，使用`draw`函数绘制所有火箭：
 
-[PRE36]
+```cpp
+    for (Enemy *enemy : enemies) { 
+
+      window.draw(enemy->getSprite()); 
+   } 
+
+for (Rocket *rocket : rockets) {
+ window.draw(rocket->getSprite());
+}
+```
 
 1.  现在，我们实际上可以发射火箭了。在`main.cpp`文件中，在类中创建一个名为`shoot()`的新函数，并在主函数的顶部添加它的原型：
 
-[PRE37]
+```cpp
+void spawnEnemy(); 
+void shoot(); 
+```
 
 1.  在`shoot`函数中，我们将添加发射火箭的功能。我们将生成新的火箭并将它们推回到`rockets`向量中。你可以按照以下方式添加`shoot`函数：
 
-[PRE38]
+```cpp
+void shoot() { 
+
+   Rocket* rocket = new Rocket(); 
+
+rocket->init("Assets/graphics/rocket.png",  
+            hero.getSprite().getPosition(),  
+    400.0f); 
+
+   rockets.push_back(rocket); 
+
+} 
+```
 
 当这个函数被调用时，它创建一个新的`Rocket`，并用`Rocket.png`文件初始化它，将其位置设置为与英雄精灵的位置相同，然后将速度设置为`400.0f`。然后火箭被添加到`rockets`向量中。
 
 1.  现在，在`updateInput`函数中，添加以下代码，以便当按下向下箭头键时，调用`shoot`函数：
 
-[PRE39]
+```cpp
+   if (event.type == sf::Event::KeyPressed) { 
+
+      if (event.key.code == sf::Keyboard::Up) { 
+
+         hero.jump(750.0f); 
+      } 
+
+      if (event.key.code == sf::Keyboard::Down) { 
+
+         shoot(); 
+      } 
+   }  
+```
 
 1.  不要忘记将`rocket.png`文件放置在`assets`文件夹中。现在，当你运行游戏并按下向下箭头键时，会发射一枚火箭：
 
@@ -308,11 +803,45 @@
 
 1.  创建一个名为`checkCollision`的新函数，并在主函数的顶部创建它的原型：
 
-[PRE40]
+```cpp
+void spawnEnemy(); 
+void shoot(); 
+
+bool checkCollision(sf::Sprite sprite1, sf::Sprite sprite2); 
+```
 
 1.  这个函数接受两个精灵，以便我们可以检查它们之间的交集。在添加`shoot`函数的同一位置添加以下代码来实现该函数：
 
-[PRE41]
+```cpp
+void shoot() { 
+
+   Rocket* rocket = new Rocket(); 
+
+   rocket->init("Assets/graphics/rocket.png", 
+     hero.getSprite().getPosition(), 400.0f); 
+
+   rockets.push_back(rocket); 
+
+} 
+
+bool checkCollision(sf::Sprite sprite1, sf::Sprite sprite2) { 
+
+   sf::FloatRect shape1 = sprite1.getGlobalBounds(); 
+   sf::FloatRect shape2 = sprite2.getGlobalBounds(); 
+
+   if (shape1.intersects(shape2)) { 
+
+      return true; 
+
+   } 
+   else { 
+
+      return false; 
+
+   } 
+
+}
+```
 
 在 `checkCollision` 函数内部，我们创建了两个 `FloatRect` 类型的局部变量。然后，我们将精灵的 `GlobalBounds` 分配给每个名为 `shape1` 和 `shape2` 的 `FloatRect` 变量。`GlobalBounds` 获取精灵的矩形区域，该区域从当前对象所在的位置开始。
 
@@ -320,7 +849,47 @@
 
 1.  在 `update` 函数中，在更新 `enemy` 和 `rocket` 类之后，我们使用嵌套 `for` 循环检查每个火箭和每个敌人之间的碰撞。你可以如下添加碰撞检查：
 
-[PRE42]
+```cpp
+   // Update rockets 
+
+   for (int i = 0; i < rockets.size(); i++) { 
+
+      Rocket* rocket = rockets[i]; 
+
+      rocket->update(dt); 
+
+      if (rocket->getSprite().getPosition().x > viewSize.x) { 
+
+         rockets.erase(rockets.begin() + i); 
+         delete(rocket); 
+
+      } 
+
+   } 
+
+    // Check collision between Rocket and Enemies 
+
+   for (int i = 0; i < rockets.size(); i++) { 
+      for (int j = 0; j < enemies.size(); j++) { 
+
+         Rocket* rocket = rockets[i]; 
+         Enemy* enemy = enemies[j]; 
+
+         if (checkCollision(rocket->getSprite(), 
+            enemy->getSprite())) { 
+
+            rockets.erase(rockets.begin() + i); 
+            enemies.erase(enemies.begin() + j); 
+
+            delete(rocket); 
+            delete(enemy); 
+
+            printf(" rocket intersects enemy \n"); 
+         } 
+
+      } 
+   }   
+```
 
 在这里，我们创建了一个双重 `for` 循环，调用 `checkCollision` 函数，然后将每个火箭和敌人传递给它以检查它们之间的交集。
 

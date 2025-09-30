@@ -1,4 +1,4 @@
-# 第 3 章。管理资源
+# 第三章。管理资源
 
 本章我们将涵盖：
 
@@ -30,11 +30,43 @@
 
 有时候我们需要在内存中动态分配内存并构造一个类，麻烦就从这里开始了。看看下面的代码：
 
-[PRE0]
+```cpp
+void foo1() {
+    foo_class* p = new foo_class("Some initialization data");
+    bool something_else_happened = some_function1(p);
+
+    if (something_else_happened) {
+        delete p;
+        return false;
+    }
+
+    some_function2(p);
+
+    delete p;
+    return true;
+}
+```
 
 这段代码乍一看似乎是正确的。但是，如果 `some_function1()` 或 `some_function2()` 抛出异常怎么办？在这种情况下，`p` 不会被删除。让我们以下面的方式修复它：
 
-[PRE1]
+```cpp
+void foo2() {
+    foo_class* p = new foo_class("Some initialization data");
+    try {
+        bool something_else_happened = some_function1(p);
+        if (something_else_happened) {
+            delete p;
+            return false;
+        }
+        some_function2(p);
+    } catch (...) {
+        delete p;
+        throw;
+    }
+    delete p;
+    return true;
+}
+```
 
 现在代码看起来很丑陋且难以阅读，但却是正确的。也许我们可以做得更好。
 
@@ -46,7 +78,20 @@
 
 让我们看看 `Boost.SmartPtr` 库。这里有一个 `boost::scoped_ptr` 类，可能对你有所帮助：
 
-[PRE2]
+```cpp
+#include <boost/scoped_ptr.hpp>
+
+bool foo3() {
+    boost::scoped_ptr<foo_class> p(new foo_class(
+        "Some initialization data"));
+    bool something_else_happened = some_function1(p.get());
+    if (something_else_happened) {
+       return false;
+    }
+    some_function2(p.get());
+    return true;
+}
+```
 
 现在，资源泄漏的可能性已经不存在了，源代码也变得更加清晰。
 
@@ -68,13 +113,36 @@
 
 ## 参见
 
-+   `Boost.SmartPtr` 库的文档包含了许多示例以及关于所有智能指针类的其他有用信息。您可以在[http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
++   `Boost.SmartPtr` 库的文档包含了许多示例以及关于所有智能指针类的其他有用信息。您可以在[`www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm`](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
 
 # 在方法间使用类指针的引用计数
 
 想象一下，你有一些包含数据的动态分配的结构，你想要在不同的执行线程中处理它。执行此操作的代码如下：
 
-[PRE3]
+```cpp
+#include <boost/thread.hpp>
+#include <boost/bind.hpp>
+
+void process1(const foo_class* p);
+void process2(const foo_class* p);
+void process3(const foo_class* p);
+
+void foo1() {
+    while (foo_class* p = get_data()) // C way
+    {
+        // There will be too many threads soon, see
+        // recipe 'Executing different tasks in parallel'
+        // for a good way to avoid uncontrolled growth of threads
+        boost::thread(boost::bind(&process1, p))
+            .detach();
+        boost::thread(boost::bind(&process2, p))
+            .detach();
+        boost::thread(boost::bind(&process3, p))
+            .detach();
+        // delete p; Oops!!!!
+    }
+}
+```
 
 我们不能在 `while` 循环的末尾释放 `p`，因为它可能仍然被运行进程函数的线程使用。进程函数不能删除 `p`，因为它们不知道其他线程已经不再使用它了。
 
@@ -88,11 +156,50 @@
 
 如你所猜，在 Boost（和 C++11）中有一个类可以帮助你处理这个问题。它被称为 `boost::shared_ptr`，它可以被用作：
 
-[PRE4]
+```cpp
+#include <boost/shared_ptr.hpp>
+
+void process_sp1(const boost::shared_ptr<foo_class>& p);
+void process_sp2(const boost::shared_ptr<foo_class>& p);
+void process_sp3(const boost::shared_ptr<foo_class>& p);
+
+void foo2() {
+    typedef boost::shared_ptr<foo_class> ptr_t;
+    ptr_t p;
+    while (p = ptr_t(get_data())) // C way
+    {
+        boost::thread(boost::bind(&process_sp1, p))
+            .detach();
+        boost::thread(boost::bind(&process_sp2, p))
+            .detach();
+        boost::thread(boost::bind(&process_sp3, p))
+            .detach();
+        // no need to anything
+    }
+}
+```
 
 这方面的另一个例子如下：
 
-[PRE5]
+```cpp
+#include <string>
+#include <boost/smart_ptr/make_shared.hpp>
+
+void process_str1(boost::shared_ptr<std::string> p);
+void process_str2(const boost::shared_ptr<std::string>& p);
+
+void foo3() {
+    boost::shared_ptr<std::string> ps = boost::make_shared<std::string>(
+        "Guess why make_shared<std::string> "
+        "is faster than shared_ptr<std::string> "
+        "ps(new std::string('this string'))"
+    );
+    boost::thread(boost::bind(&process_str1, ps))
+            .detach();
+    boost::thread(boost::bind(&process_str2, ps))
+            .detach();
+}
+```
 
 ## 它是如何工作的...
 
@@ -104,35 +211,62 @@
 
 ## 还有更多...
 
-原子引用计数器保证了`shared_ptr`在多线程中的正确行为，但您必须记住，原子操作并不像非原子操作那样快。在C++11兼容的编译器上，您可以使用`std::move`（以这种方式移动共享指针的构造函数，使得原子计数器既不增加也不减少）来减少原子操作的次数。
+原子引用计数器保证了`shared_ptr`在多线程中的正确行为，但您必须记住，原子操作并不像非原子操作那样快。在 C++11 兼容的编译器上，您可以使用`std::move`（以这种方式移动共享指针的构造函数，使得原子计数器既不增加也不减少）来减少原子操作的次数。
 
-`shared_ptr`和`make_shared`类是C++11的一部分，并在`std::`命名空间中的头文件`<memory>`中声明。
+`shared_ptr`和`make_shared`类是 C++11 的一部分，并在`std::`命名空间中的头文件`<memory>`中声明。
 
 ## 参考以下内容
 
-+   请参考[第5章](ch05.html "第5章。多线程")，*多线程*，以获取有关`Boost.Thread`和原子操作更多信息。
++   请参考第五章，*多线程*，以获取有关`Boost.Thread`和原子操作更多信息。
 
-+   请参考[第1章](ch01.html "第1章。开始编写您的应用程序")中的*重新排序函数参数*配方，*开始编写您的应用程序*，以获取有关`Boost.Bind`更多信息。
++   请参考第一章中的*重新排序函数参数*配方，*开始编写您的应用程序*，以获取有关`Boost.Bind`更多信息。
 
-+   请参考[第1章](ch01.html "第1章。开始编写您的应用程序")中的*将值绑定为函数参数*配方，*开始编写您的应用程序*，以获取有关`Boost.Bind`更多信息。
++   请参考第一章中的*将值绑定为函数参数*配方，*开始编写您的应用程序*，以获取有关`Boost.Bind`更多信息。
 
-+   `Boost.SmartPtr`库的文档包含了许多关于所有智能指针类的示例和其他有用信息。您可以在[http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
++   `Boost.SmartPtr`库的文档包含了许多关于所有智能指针类的示例和其他有用信息。您可以在[`www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm`](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
 
 # 管理未离开作用域的数组指针
 
 我们已经在*管理未离开作用域的类的指针*配方中看到了如何管理资源指针。但是，当我们处理数组时，我们需要调用`delete[]`而不是简单的`delete`，否则将会有内存泄漏。请看以下代码：
 
-[PRE6]
+```cpp
+void may_throw1(const char* buffer);
+void may_throw2(const char* buffer);
+
+void foo() {
+    // we cannot allocate 10MB of memory on stack,
+    // so we allocate it on heap
+    char* buffer = new char[1024 * 1024 * 10];
+    // Here comes some code, that may throw
+    may_throw1(buffer);
+    may_throw2(buffer);
+    delete[] buffer;
+}
+```
 
 ## 准备工作
 
-对于这个配方，需要了解C++异常和模板。
+对于这个配方，需要了解 C++异常和模板。
 
 ## 如何做...
 
 `Boost.SmartPointer`库不仅包含`scoped_ptr<>`类，还包含`scoped_array<>`类。
 
-[PRE7]
+```cpp
+#include <boost/scoped_array.hpp>
+
+void foo_fixed() {
+    // so we allocate it on heap
+    boost::scoped_array<char> buffer(new char[1024 * 1024 * 10]);
+
+    // Here comes some code, that may throw,
+    // but now exception won't cause a memory leak
+    may_throw1(buffer.get());
+    may_throw2(buffer.get());
+
+    // destructor of 'buffer' variable will call delete[]
+}
+```
 
 ## 它是如何工作的...
 
@@ -140,17 +274,37 @@
 
 ## 还有更多...
 
-`scoped_array<>`类具有与`scoped_ptr<>`相同的安全性和设计。它没有额外的内存分配，也没有虚拟函数调用。它不能被复制，也不是C++11的一部分。
+`scoped_array<>`类具有与`scoped_ptr<>`相同的安全性和设计。它没有额外的内存分配，也没有虚拟函数调用。它不能被复制，也不是 C++11 的一部分。
 
 ## 参考以下内容
 
-+   `Boost.SmartPtr`库的文档包含了许多关于所有智能指针类的示例和其他有用信息。您可以在[http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
++   `Boost.SmartPtr`库的文档包含了许多关于所有智能指针类的示例和其他有用信息。您可以在[`www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm`](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm)上阅读它。
 
 # 在方法间使用数组指针的引用计数
 
 我们继续处理指针，我们的下一个任务是引用计数一个数组。让我们看看一个从流中获取一些数据并在不同线程中处理它的程序。执行此操作的代码如下：
 
-[PRE8]
+```cpp
+#include <cstring>
+#include <boost/thread.hpp>
+#include <boost/bind.hpp>
+
+void do_process(const char* data, std::size_t size);
+
+void do_process_in_background(const char* data, std::size_t size) {
+    // We need to copy data, because we do not know,
+    // when it will be deallocated by the caller
+    char* data_cpy = new char[size];
+    std::memcpy(data_cpy, data, size);
+
+    // Starting thread of execution to process data
+    boost::thread(boost::bind(&do_process, data_cpy, size))
+            .detach();
+
+    // We cannot delete[] data_cpy, because
+    // do_process1 or do_process2 may still work with it
+}
+```
 
 与*在方法间使用指针的引用计数*配方中出现的相同问题。
 
@@ -166,17 +320,85 @@
 
 +   第一种解决方案：
 
-    [PRE9]
+    ```cpp
+    #include <boost/shared_array.hpp>
+
+    void do_process(const boost::shared_array<char>& data, std::size_t size) {
+        do_process(data.get(), size);
+    }
+
+    void do_process_in_background_v1(const char* data, std::size_t size) {
+        // We need to copy data, because we do not know, when 
+        // it will be deallocated by the caller
+        boost::shared_array<char> data_cpy(new char[size]);
+        std::memcpy(data_cpy.get(), data, size);
+
+        // Starting threads of execution to process data
+        boost::thread(boost::bind(&do_process1, data_cpy))
+            .detach();
+
+        // no need to call delete[] for data_cpy, because
+        // data_cpy destructor will deallocate data when
+        // reference count will be zero
+    }
+    ```
 
 +   第二种解决方案：
 
     自从 Boost 1.53 以来，`shared_ptr` 本身就可以处理数组：
 
-    [PRE10]
+    ```cpp
+    #include <boost/shared_ptr.hpp>
+    #include <boost/make_shared.hpp>
+
+    void do_process_shared_ptr(
+            const boost::shared_ptr<char[]>& data,
+            std::size_t size)
+    {
+        do_process(data.get(), size);
+    }
+
+    void do_process_in_background_v2(const char* data, std::size_t size) {
+        // Faster than 'First solution'
+        boost::shared_ptr<char[]> data_cpy = boost::make_shared<char[]>(size);
+        std::memcpy(data_cpy.get(), data, size);
+
+        // Starting thread of execution to process data
+        boost::thread(boost::bind(
+           &do_process_shared_ptr, data_cpy, size
+        )).detach();
+
+        // data_cpy destructor will deallocate data when
+        // reference count will be zero
+    }
+    ```
 
 +   第三种解决方案：
 
-    [PRE11]
+    ```cpp
+    void do_process_shared_ptr2(
+            const boost::shared_ptr<char>& data,
+            std::size_t size)
+    {
+        do_process(data.get(), size);
+    }
+    void do_process_in_background_v3(const char* data, std::size_t size) {
+        // Same speed as in First solution
+        boost::shared_ptr<char> data_cpy(
+                    new char[size],
+                    boost::checked_array_deleter<char>()
+        );
+        std::memcpy(data_cpy.get(), data, size);
+
+        // Starting threads of execution to process data
+        boost::thread(boost::bind(
+           &do_process_shared_ptr2, data_cpy, size
+        )).detach();
+
+        // data_cpy destructor will deallocate data when
+        // reference count will be zero
+    }
+    ```
 
 ## 它是如何工作的...
 
@@ -192,17 +414,49 @@
 
 ## 另请参阅
 
-+   `Boost.SmartPtr` 库的文档包含了许多示例和其他关于所有智能指针类的有用信息。您可以在 [http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm) 中了解它。
++   `Boost.SmartPtr` 库的文档包含了许多示例和其他关于所有智能指针类的有用信息。您可以在 [`www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm`](http://www.boost.org/doc/libs/1_53_0/libs/smart_ptr/smart_ptr.htm) 中了解它。
 
 # 在变量中存储任何功能对象
 
 C++ 有一种语法可以处理函数指针和成员函数指针。而且，这很好！然而，这个机制很难与功能对象一起使用。考虑当你正在开发一个库，其 API 在头文件中声明，实现则在源文件中。这个库应该有一个接受任何功能对象的函数。你将如何传递一个功能对象给它？看看下面的代码：
 
-[PRE12]
+```cpp
+// Required for std::unary_function<> template
+#include <functional>
+
+// making a typedef for function pointer accepting int
+// and returning nothing
+typedef void (*func_t)(int);
+
+// Function that accepts pointer to function and
+// calls accepted function for each integer that it has
+// It cannot work with functional objects :(
+void process_integers(func_t f);
+
+// Functional object
+class int_processor: public std::unary_function<int, void> {
+   const int min_;
+   const int max_;
+   bool& triggered_;
+
+public:
+    int_processor(int min, int max, bool& triggered)
+        : min_(min)
+        , max_(max)
+        , triggered_(triggered)
+    {}
+
+    void operator()(int i) const {
+        if (i < min_ || i > max_) {
+            triggered_ = true;
+        }
+    }
+};
+```
 
 ## 准备工作
 
-在开始此配方之前，建议阅读 [第 1 章](ch01.html "第 1 章。开始编写您的应用程序") 中关于 *在容器/变量中存储任何值* 的配方。
+在开始此配方之前，建议阅读 第一章 中关于 *在容器/变量中存储任何值* 的配方。
 
 您还需要了解一些关于 `boost::bind` 或 `std::bind` 的基础知识，它们几乎相同。
 
@@ -212,19 +466,52 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 1.  有一个解决方案，它被称为 `Boost.Function` 库。它允许你存储任何函数、成员函数或功能对象，如果其签名与模板参数中描述的匹配：
 
-    [PRE13]
+    ```cpp
+    #include <boost/function.hpp>
+
+    typedef boost::function<void(int)> fobject_t;
+
+    // Now this function may accept functional objects
+    void process_integers(const fobject_t& f);
+
+    int main() {
+        bool is_triggered = false;
+        int_processor fo(0, 200, is_triggered);
+        process_integers(fo);
+        assert(is_triggered);
+    }
+    ```
 
     `boost::function` 类有一个默认构造函数，并且处于空状态。
 
 1.  检查空/默认构造状态可以这样做：
 
-    [PRE14]
+    ```cpp
+    void foo(const fobject_t& f) {
+        // boost::function is convertible to bool
+        if (f) {
+            // we have value in 'f'
+            // ...
+        } else {
+            // 'f' is empty
+            // ...
+        }
+    }
+    ```
 
 ## 它是如何工作的...
 
 `fobject_t` 方法在其自身中存储功能对象的 数据并擦除它们的精确类型。使用以下代码中的 `boost::function` 对象是安全的：
 
-[PRE15]
+```cpp
+bool g_is_triggered = false;
+void set_functional_object(fobject_t& f) {
+    int_processor fo( 100, 200, g_is_triggered);
+    f = fo;
+    // fo leavs scope and will be destroyed,
+    // but 'f' will be usable eve inouter scope
+}
+```
 
 这让你想起了 `boost::any` 类吗？它使用相同的技巧——类型擦除来存储任何函数对象。
 
@@ -234,19 +521,28 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 但是，记住 `boost::function` 对编译器意味着一个优化障碍。这意味着：
 
-[PRE16]
+```cpp
+std::for_each(v.begin(), v.end(),
+   boost::bind(std::plus<int>(), 10, _1));
+```
 
 将被编译器优化得更好
 
-[PRE17]
+```cpp
+fobject_t f(boost::bind(std::plus<int>(), 10, _1));
+std::for_each(v.begin(), v.end(), f);
+```
 
 这就是为什么你应该尽量避免在实际上不需要时使用 `Boost.Function`。在某些情况下，C++11 的 `auto` 关键字可能更方便：
 
-[PRE18]
+```cpp
+auto f = boost::bind(std::plus<int>(), 10, _1);
+std::for_each(v.begin(), v.end(), f);
+```
 
 ## 参见
 
-+   `Boost.Function` 的官方文档包含更多示例、性能指标和类参考文档。你可以在 [http://www.boost.org/doc/libs/1_53_0/doc/html/function.html](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html) 了解相关信息。
++   `Boost.Function` 的官方文档包含更多示例、性能指标和类参考文档。你可以在 [`www.boost.org/doc/libs/1_53_0/doc/html/function.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html) 了解相关信息。
 
 +   *在变量中传递函数指针* 的配方。
 
@@ -264,7 +560,13 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 由于 `boost::function<>` 也可以从函数指针构造，因此无需进行任何操作：
 
-[PRE19]
+```cpp
+void my_ints_function(int i);
+
+int main() {
+    process_integeres(&my_ints_function);
+}
+```
 
 ## 它是如何工作的...
 
@@ -276,7 +578,7 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 ## 参见
 
-+   `Boost.Function` 的官方文档包含更多示例、性能指标和类参考文档。你可以在 [http://www.boost.org/doc/libs/1_53_0/doc/html/function.html](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html) 了解相关信息。
++   `Boost.Function` 的官方文档包含更多示例、性能指标和类参考文档。你可以在 [`www.boost.org/doc/libs/1_53_0/doc/html/function.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html) 了解相关信息。
 
 +   `*在变量中传递 C++11 lambda 函数*` 配方。
 
@@ -292,7 +594,25 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 由于 `boost::function<>` 也可以与任何难度的 lambda 函数一起使用，因此无需进行任何操作：
 
-[PRE20]
+```cpp
+    // lambda function with no parameters that does nothing
+    process_integeres([](int /*i*/){});
+
+    // lambda function that stores a reference
+    std::deque<int> ints;
+    process_integeres(&ints{
+        ints.push_back(i);
+    });
+
+    // lambda function that modifies its content
+    std::size_t match_count = 0;
+    process_integeres(ints, &match_count mutable {
+        if (ints.front() == i) {
+           ++ match_count;
+        }
+        ints.pop_front();
+    });
+```
 
 ## 还有更多...
 
@@ -300,7 +620,7 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 ## 参考信息
 
-+   关于性能和 `Boost.Function` 的更多信息可以在官方文档页面上找到：[http://www.boost.org/doc/libs/1_53_0/doc/html/function.html](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html)
++   关于性能和 `Boost.Function` 的更多信息可以在官方文档页面上找到：[`www.boost.org/doc/libs/1_53_0/doc/html/function.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/function.html)
 
 # 指针容器
 
@@ -308,7 +628,38 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 +   在容器中存储指针并使用运算符 `delete` 处理它们的销毁：
 
-    [PRE21]
+    ```cpp
+    #include <set>
+    #include <algorithm>
+    #include <boost/bind.hpp>
+    #include <boost/type_traits/remove_pointer.hpp>
+    #include <cassert>
+
+    template <class T>
+    struct ptr_cmp: public std::binary_function<T, T, bool> {
+        template <class T1>
+        bool operator()(const T1& v1, const T1& v2) const {
+            return operator ()(*v1, *v2);
+        }
+
+        bool operator()(const T& v1, const T& v2) const {
+            return std::less<T>()(v1, v2);
+        }
+    };
+
+    void example1() {
+        std::set<int*, ptr_cmp<int> > s;
+        s.insert(new int(1));
+        s.insert(new int(0));
+        // ...
+        assert(**s.begin() == 0);
+        // ...
+        // Deallocating resources
+        // Any exception in this code will lead to
+        // memory leak
+        std::for_each(s.begin(), s.end(), boost::bind(::operator delete, _1));
+    }
+    ```
 
     这种方法容易出错，并且需要大量编写
 
@@ -316,19 +667,53 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
     对于 C++03 版本：
 
-    [PRE22]
+    ```cpp
+        void example2_a() {
+        typedef std::auto_ptr<int> int_aptr_t;
+        std::set<int_aptr_t, ptr_cmp<int> > s;
+        s.insert(int_aptr_t(new int(1)));
+        s.insert(int_aptr_t(new int(0)));
+        // ...
+        assert(**s.begin() == 0);
+        // ...
+        // resources will be deallocated by auto_ptr<>
+    }
+    ```
 
     `std::auto_ptr` 方法已被弃用，不建议在容器中使用。此外，此示例在 C++11 中无法编译。
 
     对于 C++11 版本：
 
-    [PRE23]
+    ```cpp
+    void example2_b() {
+        typedef std::unique_ptr<int> int_uptr_t;
+        std::set<int_uptr_t, ptr_cmp<int> > s;
+        s.insert(int_uptr_t(new int(1)));
+        s.insert(int_uptr_t(new int(0)));
+        // ...
+        assert(**s.begin() == 0);
+        // ...
+        // resources will be deallocated by unique_ptr<>
+    }
+    ```
 
     这种解决方案是一个好方案，但不能用于 C++03，并且您仍然需要编写一个比较器功能对象
 
 +   在容器中使用 `Boost.SmartPtr`：
 
-    [PRE24]
+    ```cpp
+    #include <boost/shared_ptr.hpp>
+    void example3() {
+        typedef boost::shared_ptr<int> int_sptr_t;
+        std::set<int_sptr_t, ptr_cmp<int> > s;
+        s.insert(int_sptr_t(new int(1)));
+        s.insert(int_sptr_t(new int(0)));
+        // ...
+        assert(**s.begin() == 0);
+        // ...
+        // resources will be deallocated by shared_ptr<>
+    }
+    ```
 
     这种解决方案是可移植的，但您仍然需要编写比较器，并且它增加了性能惩罚（原子计数器需要额外的内存，其增加/减少操作不如非原子操作快）
 
@@ -340,7 +725,18 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 `Boost.PointerContainer` 库提供了一个良好且可移植的解决方案：
 
-[PRE25]
+```cpp
+#include <boost/ptr_container/ptr_set.hpp>
+void correct_impl() {
+    boost::ptr_set<int> s;
+    s.insert(new int(1));
+    s.insert(new int(0));
+    // ...
+    assert(*s.begin() == 0);
+    // ...
+    // resources will be deallocated by container itself
+}
+```
 
 ## 它是如何工作的...
 
@@ -350,11 +746,20 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 之前的示例并没有克隆指针数据，但当我们想要克隆一些数据时，我们只需要在要克隆的对象的命名空间中定义一个独立的函数，例如 `new_clone()`。此外，如果你包含了 `<boost/ptr_container/clone_allocator.hpp>` 头文件，你可以使用默认的 `T* new_clone( const T& r )` 实现，如下面的代码所示：
 
-[PRE26]
+```cpp
+#include <boost/ptr_container/clone_allocator.hpp>
+#include <boost/ptr_container/ptr_vector.hpp>
+
+    // Creating vector of 10 elements with values 100
+    boost::ptr_vector<int> v;
+    v.resize(10, new int(100));
+    assert(v.size() == 10);
+    assert(v.back() == 100);
+```
 
 ## 参见
 
-+   官方文档包含了每个类的详细参考，你可以在 [http://www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html](http://www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html) 上阅读相关信息。
++   官方文档包含了每个类的详细参考，你可以在 [`www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html`](http://www.boost.org/doc/libs/1_53_0/libs/ptr_container/doc/ptr_container.html) 上阅读相关信息。
 
 +   本章的前四个示例将为你提供一些智能指针使用的例子
 
@@ -364,7 +769,20 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 当程序通过返回或异常离开当前作用域时，`finally` 或 `scope(exit)` 块中的代码将被执行。这种机制非常适合实现如以下代码片段所示的 **RAII** 模式：
 
-[PRE27]
+```cpp
+// Some pseudo code (suspiciously similar to Java code)
+try {
+    FileWriter f = new FileWriter("example_file.txt");
+    // Some code that may trow or return
+    // …
+} finally {
+    // Whatever happened in scope, this code will be executed
+    // and file will be correctly closed
+    if (f != null) {
+        f.close()
+    }
+}
+```
 
 在 C++ 中有办法做这样的事情吗？
 
@@ -376,7 +794,23 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 `Boost.ScopeExit` 库被设计用来解决这类问题：
 
-[PRE28]
+```cpp
+#include <boost/scope_exit.hpp>
+#include <cstdlib>
+#include <cstdio>
+#include <cassert>
+int main() {
+    std::FILE* f = std::fopen("example_file.txt", "w");
+    assert(f);
+    BOOST_SCOPE_EXIT(f) {
+      // Whatever happened in scope, this code will be
+      // executed and file will be correctly closed.
+        std::fclose(f);
+    } BOOST_SCOPE_EXIT_END
+    // Some code that may throw or return.
+    // ...
+}
+```
 
 ## 它是如何工作的...
 
@@ -390,27 +824,79 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 要在成员函数内部捕获它，我们使用一个特殊的符号 `this_`：
 
-[PRE29]
+```cpp
+class theres_more_example {
+public:
+    void close(std::FILE*);
+    void theres_more_example_func() {
+        std::FILE* f = 0;
+        BOOST_SCOPE_EXIT(f, this_) { // Capture object `this_`.
+            this_->close(f);
+        } BOOST_SCOPE_EXIT_END
+    }
+};
+```
 
 `Boost.ScopeExit` 库在堆上不分配额外的内存，也不使用虚函数。使用默认语法，不要定义 `BOOST_SCOPE_EXIT_CONFIG_USE_LAMBDAS`，因为否则作用域退出将使用 `boost::function` 实现，这可能会分配额外的内存并引入优化屏障。
 
 ## 参见
 
-+   官方文档包含了更多示例和用例。你可以在 [http://www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html](http://www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html) 了解相关信息。
++   官方文档包含了更多示例和用例。你可以在 [`www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html`](http://www.boost.org/doc/libs/1_53_0/libs/scope_exit/doc/html/index.html) 了解相关信息。
 
 # 通过派生类的成员初始化基类
 
 让我们看看以下示例。我们有一个具有虚函数并且必须使用对 `std::ostream` 对象的引用进行初始化的基类：
 
-[PRE30]
+```cpp
+#include <boost/noncopyable.hpp>
+#include <sstream>
+
+class tasks_processor: boost::noncopyable {
+    std::ostream& log_;
+
+protected:
+    virtual void do_process() = 0;
+
+public:
+    explicit tasks_processor(std::ostream& log)
+        : log_(log)
+    {}
+
+    void process() {
+        log_ << "Starting data processing";
+        do_process();
+    }
+};
+```
 
 我们还有一个具有 `std::ostream` 对象并实现 `do_process()` 函数的派生类：
 
-[PRE31]
+```cpp
+class fake_tasks_processor: public tasks_processor {
+    std::ostringstream logger_;
+
+    virtual void do_process() {
+        logger_ << "Fake processor processed!";
+    }
+
+public:
+    fake_tasks_processor()
+       : tasks_processor(logger_) // Oops! logger_ does 
+                                  // not exist here
+       , logger_()
+   {}
+};
+```
 
 在编程中，这种情况并不常见，但当这种错误发生时，并不总是简单就能想到绕过它的方法。有些人试图通过改变 `logger_` 和基类初始化的顺序来绕过它：
 
-[PRE32]
+```cpp
+    fake_tasks_processor()
+          : logger_() // Oops! logger_ still will be constructed 
+                      // AFTER tasks_processor
+          , tasks_processor(logger_)
+   {}
+```
 
 它不会像他们预期的那样工作，因为直接基类在非静态数据成员之前初始化，无论成员初始化器的顺序如何。
 
@@ -424,34 +910,73 @@ C++ 有一种语法可以处理函数指针和成员函数指针。而且，这�
 
 1.  包含 `base_from_member.hpp` 头文件：
 
-    [PRE33]
+    ```cpp
+    #include <boost/utility/base_from_member.hpp>
+    ```
 
 1.  从 `boost::base_from_member<T>` 派生你的类，其中 `T` 是必须在基类之前初始化的类型（注意基类的顺序；`boost::base_from_member<T>` 必须放在使用 `T` 的类之前）：
 
-    [PRE34]
+    ```cpp
+    class fake_tasks_processor_fixed
+        : boost::base_from_member<std::ostringstream>
+        , public tasks_processor
+    ```
 
 1.  正确编写构造函数如下：
 
-    [PRE35]
+    ```cpp
+    {
+        typedef boost::base_from_member<std::ostringstream> 
+          logger_t;
+        // ...
+    public:
+        fake_tasks_processor_fixed()
+            : logger_t()
+            , tasks_processor(logger_t::member)
+        {}
+    };
+    ```
 
 ## 它是如何工作的...
 
 如果直接基类在非静态数据成员之前初始化，并且如果直接基类会按照它们在基类指定列表中出现的声明顺序初始化，我们需要以某种方式使基类成为我们的非静态数据成员。或者创建一个具有所需成员的成员字段的基类：
 
-[PRE36]
+```cpp
+template < typename MemberType, int UniqueID = 0 >class base_from_member{protected:    MemberType  member;    // Constructors go there...};
+```
 
 ## 还有更多...
 
 正如你所见，`base_from_member` 有一个整数作为第二个模板参数。这是为了处理我们需要多个相同类型的 `base_from_member` 类的情况：
 
-[PRE37]
+```cpp
+class fake_tasks_processor2
+    : boost::base_from_member<std::ostringstream, 0>
+    , boost::base_from_member<std::ostringstream, 1>
+    , public tasks_processor
+{
+    typedef boost::base_from_member<std::ostringstream, 0> logger0_t;
+    typedef boost::base_from_member<std::ostringstream, 1> logger1_t;
+
+    virtual void do_process() {
+        logger0_t::member << "0: Fake processor2 processed!";
+        logger1_t::member << "1: Fake processor2 processed!";
+    }
+public:
+    fake_tasks_processor2()
+        : logger0_t()
+        , logger1_t()
+        , tasks_processor(logger0_t::member)
+    {}
+};
+```
 
 `boost::base_from_member` 类既不应用额外的动态内存分配，也没有虚函数。当前的实现不支持 C++11 特性（如完美转发和变长模板），但在 Boost 的 trunk 分支中，有一个可以充分利用 C++11 优势的实现。它可能将在最近的未来合并到发布分支中。
 
 ## 参见
 
-+   `Boost.Utility` 库包含了许多有用的类和方法；有关获取更多信息，请参阅 [http://www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm](http://www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm)。
++   `Boost.Utility` 库包含了许多有用的类和方法；有关获取更多信息，请参阅 [`www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm`](http://www.boost.org/doc/libs/1_53_0/libs/utility/utility.htm)。
 
-+   在 [第 1 章](ch01.html "第 1 章。开始编写您的应用程序") 的 *Making a noncopyable class* 配方中，*Starting to Write Your Application*，包含了 `Boost.Utility` 中类的更多示例。
++   在 第一章 的 *Making a noncopyable class* 配方中，*Starting to Write Your Application*，包含了 `Boost.Utility` 中类的更多示例。
 
-+   此外，[第1章](ch01.html "第1章。开始编写您的应用程序")中的*使用C++11移动模拟*配方包含来自`Boost.Utility`类的更多示例。
++   此外，第一章中的*使用 C++11 移动模拟*配方包含来自`Boost.Utility`类的更多示例。

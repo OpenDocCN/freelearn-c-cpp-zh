@@ -1,4 +1,4 @@
-# 第9章 公式解释
+# 第九章 公式解释
 
 电子表格程序能够处理文本、数值和由四个算术运算符组成的公式。为了做到这一点，我们需要解释公式。我们还需要找到公式的来源（公式中引用的单元格）和单元格的目标（受单元格变化影响的单元格）。
 
@@ -36,7 +36,11 @@
 
 **Token.h**
 
-[PRE0]
+```cpp
+enum TokenId {Plus, Minus, Star, Slash, LeftParenthesis, 
+              RightParenthesis, RefToken, Number, EndOfLine}; 
+
+```
 
 | **Token** | **描述** |
 | --- | --- |
@@ -63,39 +67,163 @@
 
 **Token.h**
 
-[PRE1]
+```cpp
+class Token { 
+  public: 
+    Token(TokenId tokenId); 
+    Token(double value); 
+    Token(Reference reference); 
+
+    TokenId Id() const {return tokenId;} 
+    double Value() const {return value;} 
+    Reference ReferenceField() const {return reference;} 
+
+  private: 
+    TokenId tokenId; 
+    double value; 
+    Reference reference; 
+}; 
+
+```
 
 **Token.cpp**
 
-[PRE2]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h" 
+#include "Token.h" 
+
+Token::Token(TokenId tokenId) 
+ :tokenId(tokenId) { 
+  // Empty. 
+} 
+
+Token::Token(double value) 
+ :tokenId(Number), 
+  value(value) { 
+  // Empty. 
+} 
+
+Token::Token(Reference reference) 
+ :tokenId(RefToken), 
+  reference(reference) { 
+  // Empty. 
+} 
+
+```
 
 ## 树节点
 
-如前所述，解析器生成一个语法树。更具体地说，它生成一个`Tree`类的对象（在第12章[辅助类](ch12.html "第12章。辅助类")中描述），这是一个具有节点类型的模板类：`TreeNode`。节点有10个标识符，类似于`Token`，值节点有一个双精度值作为其属性，引用节点有一个引用对象作为属性。
+如前所述，解析器生成一个语法树。更具体地说，它生成一个`Tree`类的对象（在第十二章辅助类中描述），这是一个具有节点类型的模板类：`TreeNode`。节点有 10 个标识符，类似于`Token`，值节点有一个双精度值作为其属性，引用节点有一个引用对象作为属性。
 
 **TreeNode.h**
 
-[PRE3]
+```cpp
+enum TreeId {EmptyTree, UnaryAdd, UnarySubtract, BinaryAdd, BinarySubtract, 
+             Multiply, Divide, Parenthesis, RefId, ValueId}; 
+
+```
 
 当从文件或剪贴板缓冲区读取值时，使用默认构造函数。
 
-[PRE4]
+```cpp
+class TreeNode { 
+  public: 
+    TreeNode(); 
+    TreeNode(TreeId id); 
+    TreeNode(Reference reference); 
+    TreeNode(double value); 
+
+```
 
 电子表格的一个单元格可以保存到文件中，也可以剪切、复制和粘贴，因此我们包含了以下方法：
 
-[PRE5]
+```cpp
+    bool WriteTreeNodeToStream(ostream& outStream) const; 
+    bool ReadTreeNodeFromStream(istream& inStream); 
+    void WriteTreeNodeToClipboard(InfoList& infoList) const; 
+    void ReadTreeNodeFromClipboard(InfoList& infoList); 
+
+```
 
 节点的标识符和值只能被检查，不能被修改。然而，引用可以被修改，因为它在用户复制单元格并将其粘贴到另一个位置时会被更新：
 
-[PRE6]
+```cpp
+    TreeId Id() const {return id;} 
+    double Value() const {return value;} 
+    Reference ReferenceField() const {return reference;} 
+    Reference& ReferenceField() {return reference;} 
+
+  private: 
+    TreeId id; 
+    Reference reference; 
+    double value; 
+}; 
+
+```
 
 **TreeNode.cpp**
 
-[PRE7]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h" 
+#include "TreeNode.h" 
+
+TreeNode::TreeNode() 
+ :id(EmptyTree), 
+  value(0) { 
+  // Empty. 
+} 
+
+TreeNode::TreeNode(TreeId id) 
+ :id(id), 
+  value(0) { 
+    // Empty. 
+} 
+
+TreeNode::TreeNode(Reference reference) 
+: id(RefId), 
+  value(0), 
+  reference(reference) { 
+  // Empty. 
+} 
+
+TreeNode::TreeNode(double value) 
+ :id(ValueId), 
+  value(value) { 
+  // Empty. 
+} 
+
+```
 
 节点标识符、值和引用被写入和读取，如下所示：
 
-[PRE8]
+```cpp
+bool TreeNode::WriteTreeNodeToStream(ostream& outStream) const { 
+  outStream.write((char*) &id, sizeof id); 
+  outStream.write((char*) &value, sizeof value); 
+  reference.WriteReferenceToStream(outStream); 
+  return ((bool) outStream); 
+} 
+
+bool TreeNode::ReadTreeNodeFromStream(istream& inStream) { 
+  inStream.read((char*) &id, sizeof id); 
+  inStream.read((char*) &value, sizeof value); 
+  reference.ReadReferenceFromStream(inStream); 
+  return ((bool) inStream); 
+} 
+
+void TreeNode::WriteTreeNodeToClipboard(InfoList& infoList) const  { 
+  infoList.AddValue<TreeId>(id); 
+  infoList.AddValue<double>(value); 
+  reference.WriteReferenceToClipboard(infoList); 
+} 
+
+void TreeNode::ReadTreeNodeFromClipboard(InfoList& infoList) { 
+  infoList.GetValue<TreeId>(id); 
+  infoList.GetValue<double>(value); 
+  reference.ReadReferenceFromClipboard(infoList); 
+} 
+
+```
 
 ## `Scanner` – 生成令牌列表
 
@@ -103,51 +231,182 @@
 
 **Scanner.h**
 
-[PRE9]
+```cpp
+class Scanner { 
+  public: 
+    Scanner(String buffer); 
+    list<Token> Scan(); 
+
+```
 
 当`NextToken`方法遇到字符串的末尾时，它返回`EndOfLine`。如果`ScanValue`和`ScanReference`方法遇到值或引用，则返回`true`：
 
-[PRE10]
+```cpp
+    Token NextToken(); 
+    bool ScanValue(double& value); 
+    bool ScanReference(Reference& reference); 
+
+```
 
 下一个令牌会不断地从缓冲区中读取，直到它为空：
 
-[PRE11]
+```cpp
+  private: 
+    String buffer; 
+}; 
+
+```
 
 **Scanner.cpp**
 
-[PRE12]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h" 
+#include "Token.h" 
+#include "Error.h" 
+#include "Scanner.h" 
+
+```
 
 为了简单起见，向字符串中添加了`TEXT('\0')`；而不是检查剩余的文本是否为空，我们寻找`null`字符：
 
-[PRE13]
+```cpp
+Scanner::Scanner(String buffer) 
+ :buffer(buffer + TEXT('\0')) { 
+  // Empty. 
+} 
+
+```
 
 `Scan`方法将缓冲区中的令牌添加到`tokenList`中，直到遇到`EndOfLine`。最后，返回列表：
 
-[PRE14]
+```cpp
+list<Token> Scanner::Scan() { 
+  list<Token> tokenList; 
+
+  while (true) { 
+    Token token = NextToken(); 
+    tokenList.push_back(token); 
+
+    if (token.Id() == EndOfLine) { 
+      break; 
+    } 
+  } 
+
+  return tokenList; 
+} 
+
+```
 
 `NextToken`方法通过在缓冲区中找到下一个令牌来完成扫描器的实际工作。首先，我们跳过空白字符。当涉及到算术符号和括号时，提取令牌相当简单。我们只需检查缓冲区的下一个字符。当涉及到数值或引用时，这会变得稍微困难一些。为此，我们有两个辅助方法：`ScanValue`和`ScanReference`。看看以下代码：
 
-[PRE15]
+```cpp
+Token Scanner::NextToken() { 
+  while (buffer[0] == TEXT(' ')) { 
+    buffer.erase(0, 1); 
+  } 
+
+   switch (buffer[0]) { 
+    case TEXT('\0'): 
+      return Token(EndOfLine); 
+
+    case TEXT('+'): 
+      buffer.erase(0, 1); 
+      return Token(Plus); 
+
+    case TEXT('-'): 
+      buffer.erase(0, 1); 
+      return Token(Minus); 
+
+    case TEXT('*'): 
+      buffer.erase(0, 1); 
+      return Token(Star); 
+
+    case TEXT('/'): 
+      buffer.erase(0, 1); 
+      return Token(Slash); 
+
+    case TEXT('('): 
+      buffer.erase(0, 1); 
+      return Token(LeftParenthesis); 
+
+    case TEXT(')'): 
+      buffer.erase(0, 1); 
+      return Token(RightParenthesis); 
+
+```
 
 如果没有适用任何简单情况，标记可能是一个值或一个引用。`ScanValue` 和 `ScanReference` 方法会找出是否是这样。如果不是，扫描器遇到了未知字符，并抛出语法错误异常：
 
-[PRE16]
+```cpp
+    default: { 
+      double value; 
+      Reference reference; 
+      if (ScanValue(value)) { 
+        return Token(value); 
+      } 
+
+      else if (ScanReference(reference)) { 
+        return Token(reference); 
+      } 
+      else { 
+        throw Error(SyntaxError); 
+      } 
+    } 
+    break; 
+  } 
+} 
+
+```
 
 `ScanValue` 使用 `_stscanf_s` 标准函数，这是 `sscanf` 的安全通用版本。返回值存储在 `fieldCount` 中，如果成功读取双精度值，则将其设置为 `1`。我们还需要读取的字符数，它存储在 `charCount` 中，以便从缓冲区中删除正确的字符数：
 
-[PRE17]
+```cpp
+bool Scanner::ScanValue(double& value) { 
+  int charCount; 
+  int fieldCount = _stscanf_s(buffer.c_str(), TEXT("%lf%n"), 
+                              &value, &charCount); 
+
+  if (fieldCount > 0) { 
+    buffer.erase(0, charCount); 
+    return true; 
+  } 
+
+  return false; 
+} 
+
+```
 
 `ScanReference` 检查前两个字符是否为字母和数字。如果是，它将提取引用的列和行：
 
-[PRE18]
+```cpp
+bool Scanner::ScanReference(Reference& reference) { 
+  if (isalpha(buffer[0]) && (isdigit(buffer[1]))) { 
+
+```
 
 我们通过从 *a* 减去小写字母来提取列，这给出第一列的索引为零，并从缓冲区中删除字母。
 
-[PRE19]
+```cpp
+    reference.Col() = tolower(buffer[0]) - TEXT('a'); 
+    buffer.erase(0, 1); 
+
+```
 
 与 `ScanValue` 类似，我们通过调用 `_stscanf_s` 来提取行，它读取行整数值和字符数，我们使用这些信息来从缓冲区中删除读取的字符：
 
-[PRE20]
+```cpp
+    int row; 
+    int charCount; 
+    _stscanf_s(buffer.c_str(), TEXT("%d%n"), &row, &charCount); 
+    reference.Row() = row - 1; 
+    buffer.erase(0, charCount); 
+    return true; 
+  } 
+
+  return false; 
+} 
+
+```
 
 ## 解析器 – 生成语法树
 
@@ -193,13 +452,25 @@
 
 实现一个前瞻解析器的第一次尝试可能是为语法中的每个规则编写一个函数。不幸的是，我们目前还不能这样做，因为这会导致一个像`Expression`这样的函数：
 
-[PRE21]
+```cpp
+Tree<TreeNode>* Parser::Expression() { 
+  Token token = tokenList.front(); 
+
+  switch (token.Id()) { 
+    case Plus: 
+      Tree<TreeNode>* plusTree = Expression(); 
+      // ... 
+      break; 
+  } 
+} 
+
+```
 
 你看到问题了吗？该方法在未改变输入流的情况下调用自身，这将导致无限次的递归调用。这被称为**左递归**。然而，我们可以通过简单的转换来解决该问题。
 
 ![解析器 – 生成语法树](img/B05475_09_14.jpg)
 
-前面的规则可以转换为等价的规则集（其中epsilon ε表示空字符串）：
+前面的规则可以转换为等价的规则集（其中 epsilon ε表示空字符串）：
 
 ![解析器 – 生成语法树](img/B05475_09_15.jpg)
 
@@ -223,7 +494,7 @@
 
 下面的代码是`Parser`类。其思路是，我们为每个具有相同左侧符号的规则集编写一个方法。每个这样的方法生成结果语法树的一部分。构造函数接受要解析的文本，并让扫描器生成一个标记列表。然后，`Parse`开始解析过程，并返回生成的语法树。如果在解析过程中发生错误，将抛出语法错误异常。当标记列表被解析后，我们应该确保列表中没有除`EndOfLine`之外的额外标记。此外，如果输入缓冲区完全为空（用户只输入了一个等号），列表中仍然有`EndOfLine`标记。
 
-解析的结果是一个表示公式的语法树。例如，公式*a1 * c3 / 3.6 + 2.4 * (b2 - 2.4)*生成了以下语法树，我们利用了[第12章](ch12.html "第12章。辅助类")中的`Tree`类，*辅助类*。
+解析的结果是一个表示公式的语法树。例如，公式*a1 * c3 / 3.6 + 2.4 * (b2 - 2.4)*生成了以下语法树，我们利用了第十二章中的`Tree`类，*辅助类*。
 
 ![解析器 – 生成语法树](img/B05475_09_20.jpg)
 
@@ -231,45 +502,222 @@
 
 **Parser.h**
 
-[PRE22]
+```cpp
+class Parser { 
+  public: 
+    Parser(String buffer); 
+    Tree<TreeNode>* Parse(); 
+    void Match(int tokenId); 
+    Tree<TreeNode>* Expression(); 
+    Tree<TreeNode>* NextExpression(Tree<TreeNode>* leftTermPtr); 
+    Tree<TreeNode>* Term(); 
+    Tree<TreeNode>* NextTerm(Tree<TreeNode>* leftFactorPtr); 
+    Tree<TreeNode>* Factor(); 
+
+  private: 
+    list<Token> tokenList; 
+}; 
+
+```
 
 `Parse` 方法被调用以解释用户输入的文本。它接收来自扫描器的标记列表，其中至少包含 `EndOfLine` 标记，并解析标记列表并接收指向语法树的指针。当标记列表被解析后，它会检查下一个标记是否为 `EndOfLine` 以确保缓冲区中没有多余的字符（除了空格）：
 
 **Parser.cpp**
 
-[PRE23]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h" 
+#include "Token.h" 
+#include "Error.h" 
+#include "Scanner.h" 
+#include "TreeNode.h" 
+#include "Parser.h" 
+
+Parser::Parser(String buffer) { 
+  Scanner scanner(buffer); 
+  tokenList = scanner.Scan(); 
+} 
+
+Tree<TreeNode>* Parser::Parse() { 
+  Tree<TreeNode>* resultTreePtr = Expression(); 
+  Match(EndOfLine); 
+  return resultTreePtr; 
+} 
+
+```
 
 `Match` 方法用于匹配列表中的下一个标记与期望的标记。如果它们不匹配或如果标记列表为空，则抛出一个语法错误异常。否则，下一个标记将从列表中移除：
 
-[PRE24]
+```cpp
+void Parser::Match(int tokenId) { 
+  if (tokenList.empty() || (tokenList.front().Id() != tokenId)) { 
+    throw Error(SyntaxError); 
+  } 
+
+  tokenList.pop_front(); 
+} 
+
+```
 
 其余的方法实现了我们之前讨论的语法。对于 `Expression`、`NextExpression`、`Term`、`NextTerm` 和 `Factor` 符号，每个都有一个方法：
 
-[PRE25]
+```cpp
+Tree<TreeNode>* Parser::Expression() { 
+  Tree<TreeNode>* termTreePtr = Term(); 
+  return NextExpression(termTreePtr); 
+} 
+
+```
 
 `NextExpression` 方法负责处理加法和减法。如果下一个标记是 `Plus` 或 `Minus`，我们将其匹配并解析其右操作数。然后，我们创建并返回一个新的包含运算符的语法树。如果下一个标记既不是 `Plus` 也不是 `Minus`，我们假设适用另一条规则，并返回给定的左语法树：
 
-[PRE26]
+```cpp
+Tree<TreeNode>* Parser::NextExpression(Tree<TreeNode>* 
+                                       leftTermTreePtr) { 
+  Token token = tokenList.front();  
+  switch (token.Id()) { 
+    case Plus: { 
+      Match(Plus); 
+      Tree<TreeNode>* rightTermTreePtr = Term(); 
+      Tree<TreeNode>* sumTreePtr = 
+        new Tree<TreeNode>(TreeNode(BinaryAdd), 
+                           {leftTermTreePtr, rightTermTreePtr}); 
+      assert(sumTreePtr != nullptr); 
+      return NextExpression(sumTreePtr); 
+    } 
+
+    case Minus: { 
+      Match(Minus); 
+      Tree<TreeNode>* rightTermTreePtr = Term(); 
+         Tree<TreeNode>* diffTreePtr = 
+             new Tree<TreeNode>(TreeNode(BinarySubtract),
+                                {leftTermTreePtr, rightTermTreePtr});
+      assert(diffTreePtr != nullptr); 
+      return NextExpression(diffTreePtr); 
+    } 
+
+    default: 
+      return leftTermTreePtr; 
+  } 
+}  
+
+Tree<TreeNode>* Parser::Term() { 
+  Tree<TreeNode>* pFactorTree = Factor(); 
+  return NextTerm(pFactorTree); 
+} 
+
+```
 
 `NextTerm` 方法以类似于 `NextExpression` 的方式处理乘法和除法。记住，我们需要为语法中的每个优先级级别的方法集。
 
-[PRE27]
+```cpp
+Tree<TreeNode>* Parser::NextTerm(Tree<TreeNode>*leftFactorTreePtr) { 
+  Token token = tokenList.front(); 
+
+  switch (token.Id()) { 
+    case Star: { 
+      Match(Star); 
+      Tree<TreeNode>* rightFactorTreePtr = Factor(); 
+      Tree<TreeNode>* productTreePtr = 
+        new Tree<TreeNode>(TreeNode(Multiply), 
+      Tree<TreeNode>* productTreePtr = 
+        new Tree<TreeNode>(TreeNode(Multiply), 
+                       {leftFactorTreePtr, rightFactorTreePtr}); 
+      assert(productTreePtr != nullptr); 
+      return NextExpression(productTreePtr); 
+    } 
+
+    case Slash: { 
+      Match(Slash); 
+      Tree<TreeNode>* rightFactorTreePtr = Factor(); 
+      Tree<TreeNode>* quotientTreePtr = 
+        new Tree<TreeNode>(TreeNode(Divide), 
+                       {leftFactorTreePtr, rightFactorTreePtr}); 
+      assert(quotientTreePtr != nullptr); 
+      return NextExpression(quotientTreePtr); 
+    } 
+
+    default: 
+      return leftFactorTreePtr; 
+  } 
+} 
+
+```
 
 `Factor` 方法解析括号内的值、引用和表达式。如果下一个标记是一元运算符（加号或减号），我们解析其表达式并创建一个包含表达式的语法树：
 
-[PRE28]
+```cpp
+Tree<TreeNode>* Parser::Factor() { 
+  Token token = tokenList.front(); 
+
+  switch (token.Id()) { 
+    case Plus: { 
+      Match(Plus); 
+      Tree<TreeNode>* nextExprTreePtr = Expression(); 
+      Tree<TreeNode>* plusTreePtr = 
+        new Tree<TreeNode>(TreeNode(UnaryAdd), 
+                           {nextExprTreePtr}); 
+      assert(plusTreePtr!= nullptr); 
+      return plusTreePtr; 
+    } 
+
+    case Minus: { 
+      Match(Minus); 
+      Tree<TreeNode>* nextExprTreePtr = Expression(); 
+      Tree<TreeNode>* minusTreePtr = 
+        new Tree<TreeNode>(TreeNode(UnaryAdd), 
+                           {nextExprTreePtr}); 
+      assert(minusTreePtr!= nullptr); 
+      return minusTreePtr; 
+    } 
+
+```
 
 如果下一个标记是左括号，我们将其匹配，解析随后的表达式，并匹配关闭的右括号：
 
-[PRE29]
+```cpp
+    case LeftParenthesis: { 
+      Match(LeftParenthesis); 
+      Tree<TreeNode>* innerExprTreePtr = Expression(); 
+      Match(RightParenthesis); 
+      Tree<TreeNode>* resultTreePtr =  
+        new Tree<TreeNode>(TreeNode(Parenthesis), 
+                           {innerExprTreePtr}); 
+      assert(resultTreePtr != nullptr); 
+      return resultTreePtr; 
+    } 
+
+```
 
 如果下一个标记是引用，我们接收带有其行和列的引用属性并匹配引用标记。我们创建一个新的包含引用的语法树。请注意，解析器不会检查引用是否有效（是否指向电子表格内的单元格）；这是公式值评估的任务：
 
-[PRE30]
+```cpp
+    case RefToken: { 
+      Match(RefToken); 
+      Tree<TreeNode>* resultTreePtr = 
+        new Tree<TreeNode>(TreeNode(token.ReferenceField())); 
+      assert(resultTreePtr != nullptr); 
+      return resultTreePtr; 
+    }  
+
+    case Number: { 
+      Match(Number); 
+      Tree<TreeNode>* resultTreePtr = 
+        new Tree<TreeNode>(TreeNode(token.Value())); 
+      assert(resultTreePtr != nullptr); 
+      return resultTreePtr; 
+    } 
+
+```
 
 如果前面的任何标记都不适用，则用户输入了一个无效的表达式，并抛出一个语法错误异常：
 
-[PRE31]
+```cpp
+    default: 
+      throw Error(SyntaxError); 
+  } 
+} 
+
+```
 
 # 矩阵和引用
 
@@ -281,51 +729,263 @@
 
 **Reference.h**
 
-[PRE32]
+```cpp
+namespace SmallWindows { 
+  class Reference; 
+  extern const Reference ZeroReference;  
+
+  class Reference { 
+    public: 
+
+```
 
 默认构造函数将行和列初始化为零。引用可以通过 `new` 关键字初始化，并赋值给另一个引用：
 
-[PRE33]
+```cpp
+      Reference(); 
+      Reference(int row, int col); 
+      Reference(const Reference& ref); 
+      Reference& operator=(const Reference& ref); 
+
+```
 
 比较运算符首先比较行。如果它们相等，则比较列：
 
-[PRE34]
+```cpp
+      friend bool operator==(const Reference& ref1, 
+                             const Reference& ref2); 
+      friend bool operator!=(const Reference& ref1, 
+                             const Reference& ref2); 
+      friend bool operator<(const Reference& ref1, 
+                            const Reference& ref2); 
+      friend bool operator<=(const Reference& ref1, 
+                             const Reference& ref2); 
+
+      friend bool operator>(const Reference& ref1, 
+                            const Reference& ref2); 
+      friend bool operator>=(const Reference& ref1, 
+                             const Reference& ref2); 
+
+```
 
 加法运算符分别对行和列进行加法和减法操作：
 
-[PRE35]
+```cpp
+      Reference& operator+=(const Reference& ref); 
+      Reference& operator-=(const Reference& ref); 
+      friend Reference operator+(const Reference& ref1, 
+                                 const Reference& ref2); 
+      friend Reference operator-(const Reference& ref1, 
+                                 const Reference& ref2); 
+
+```
 
 `Clear` 方法将行和列都设置为零，如果行和列为零，则 `IsEmpty` 返回 `true`：
 
-[PRE36]
+```cpp
+      void Clear() {row = 0; col = 0;} 
+      bool IsEmpty() const {return ((row == 0) && (col == 0));} 
+
+```
 
 `ToString` 方法返回表示引用的字符串：
 
-[PRE37]
+```cpp
+      String ToString() const; 
+
+```
 
 如果一个引用大于或等于最小引用且小于或等于最大引用，则它位于由最小和最大引用定义的引用块内：
 
-[PRE38]
+```cpp
+      bool Inside(Reference minRef, Reference maxRef); 
+
+```
 
 引用可以写入和读取到文件流、剪贴板和注册表中：
 
-[PRE39]
+```cpp
+      bool WriteReferenceToStream(ostream& outStream) const; 
+      bool ReadReferenceFromStream(istream& inStream); 
+      void WriteReferenceToClipboard(InfoList& infoList) const; 
+      void ReadReferenceFromClipboard(InfoList& infoList); 
+      void WriteReferenceToRegistry(String key) const; 
+      void ReadReferenceFromRegistry(String key, 
+                            Reference defaultRef = ZeroReference); 
+
+```
 
 行和列通过常量方法进行检查，通过非常量方法进行修改：
 
-[PRE40]
+```cpp
+      int Row() const {return row;} 
+      int Col() const {return col;} 
+      int& Row() {return row;} 
+      int& Col() {return col;} 
+
+    private: 
+      int row, col; 
+  }; 
+}; 
+
+```
 
 **Reference.cpp**
 
-[PRE41]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h"  
+namespace SmallWindows { 
+  const Reference ZeroReference(0, 0);  
+  Reference::Reference() 
+   :row(0), 
+    col(0) { 
+    // Empty. 
+  }  
+
+  Reference::Reference(int row, int col) 
+   :row(row), 
+    col(col) { 
+    // Empty. 
+  }  
+
+  Reference::Reference(const Reference& ref) 
+   :row(ref.row), 
+    col(ref.col) { 
+    // Empty. 
+  }  
+
+  Reference& Reference::operator=(const Reference& ref) { 
+    if (this != &ref) { 
+      row = ref.row; 
+      col = ref.col; 
+    } 
+    return *this; 
+  } 
+
+  bool operator==(const Reference& ref1, const Reference& ref2) { 
+    return (ref1.row == ref2.row) && (ref1.col == ref2.col); 
+  } 
+
+  bool operator!=(const Reference& ref1, const Reference& ref2) { 
+    return !(ref1 == ref2); 
+  } 
+
+  bool operator<(const Reference& ref1, const Reference& ref2) { 
+    return (ref1.row < ref2.row) || 
+           ((ref1.row == ref2.row) && (ref1.col < ref2.col)); 
+  } 
+
+  bool operator<=(const Reference& ref1, const Reference& ref2) { 
+    return (ref1 < ref2) || (ref1 == ref2); 
+  } 
+
+  bool operator>(const Reference& ref1, const Reference& ref2) { 
+    return !(ref1 <= ref2); 
+  } 
+
+  bool operator>=(const Reference& ref1, const Reference& ref2) { 
+    return !(ref1 < ref2); 
+  }  
+
+  Reference& Reference::operator+=(const Reference& ref) { 
+    row += ref.row; 
+    col += ref.col; 
+    return *this; 
+  }  
+
+  Reference& Reference::operator-=(const Reference& ref) { 
+    row -= ref.row; 
+    col -= ref.col; 
+    return *this; 
+  }  
+
+  Reference operator+(const Reference& ref1, 
+                      const Reference& ref2) { 
+    return Reference(ref1.row + ref2.row, ref1.col + ref2.col); 
+  }  
+
+  Reference operator-(const Reference& ref1, 
+                      const Reference& ref2) { 
+    return Reference(ref1.row - ref2.row, ref1.col - ref2.col); 
+  } 
+
+```
 
 `ToString` 方法返回引用作为字符串。我们增加行数，意味着行零对应于 *1*。列被转换为字符，意味着列零对应于 *a*。如果行数或列数小于零，则返回 `?`：
 
-[PRE42]
+```cpp
+  String Reference::ToString() const {
+    String result;
+
+    if (row >= 0) {
+      result.push_back((TCHAR) (col + TEXT('a')));
+    }
+    else {
+      result.push_back(TEXT('?'));
+    }
+
+    if (col >= 0) {
+      result.append(to_String(row + 1));
+    }
+    else {
+      result.push_back(TEXT('?'));
+    }
+
+    return result;
+  } 
+
+  bool Reference::Inside(Reference minRef, Reference maxRef) { 
+    return ((minRef.row <= row) && (row <= maxRef.row) &&
+            (minRef.col <= col) && (col <= maxRef.col));
+  } 
+
+  bool Reference::WriteReferenceToStream(ostream& outStream)const { 
+    outStream.write((char*) &row, sizeof row); 
+    outStream.write((char*) &col, sizeof col); 
+    return ((bool) outStream); 
+  } 
+
+  bool Reference::ReadReferenceFromStream(istream& inStream) { 
+    inStream.read((char*) &row, sizeof row); 
+    inStream.read((char*) &col, sizeof col); 
+    return ((bool) inStream); 
+  } 
+
+  void Reference::WriteReferenceToClipboard(InfoList& infoList) const { 
+    infoList.AddValue<int>(row); 
+    infoList.AddValue<int>(col); 
+  } 
+
+  void Reference::ReadReferenceFromClipboard(InfoList& infoList) { 
+    infoList.GetValue<int>(row); 
+    infoList.GetValue<int>(col); 
+  } 
+
+```
 
 当与注册表通信时，我们使用 `WriteBuffer` 和 `ReadBuffer` 静态方法。为了使其工作，我们将行和列值放入 `ReferenceStruct` 结构体中：
 
-[PRE43]
+```cpp
+  struct ReferenceStruct {int row, col;}; 
+
+  void Reference::WriteReferenceToRegistry(String key) const { 
+    ReferenceStruct writeStruct = {row, col}; 
+    Registry::WriteBuffer(key, &writeStruct, sizeof writeStruct); 
+  } 
+
+  void Reference::ReadReferenceFromRegistry(String key,
+                      Reference defaultRef /* = ZeroReference */){
+    ReferenceStruct readStruct; 
+    ReferenceStruct defaultStruct = 
+      {defaultRef.row, defaultRef.col}; 
+    Registry::ReadBuffer(key, &readStruct, sizeof readStruct, 
+                         &defaultStruct); 
+    row = readStruct.row; 
+    col = readStruct.col; 
+  } 
+} 
+
+```
 
 ## `Matrix` 类
 
@@ -333,23 +993,87 @@
 
 **Matrix.h**
 
-[PRE44]
+```cpp
+namespace SmallWindows { 
+  template <int Rows, int Cols, class Type> 
+
+  class Matrix { 
+    public: 
+
+```
 
 矩阵可以通过 `new` 关键字初始化或赋值给另一个矩阵；在这两种情况下，它们都调用 `Init` 来执行实际的初始化：
 
-[PRE45]
+```cpp
+    public: 
+      Matrix(); 
+      Matrix(const Matrix& matrix); 
+      Matrix& operator=(const Matrix& matrix); 
+
+    private: 
+      void Init(const Matrix<Rows,Cols,Type>& matrix); 
+
+```
 
 索引运算符接受一个行或 `Reference` 对象。在行的情况下，返回一个列数组（技术上，返回其第一个值的地址），可以通过常规索引运算符进一步索引以获取缓冲区中的值。在引用的情况下，通过索引缓冲区的行和列直接访问值。请注意，在这个类中，垂直行坐标持有第一个索引，水平列坐标持有第二个索引：
 
-[PRE46]
+```cpp
+    public: 
+      const Type* operator[](int row) const 
+                          {return ((const Type*) buffer[row]);} 
+
+      Type& operator[](const Reference& ref) 
+                      {return buffer[ref.Row()][ref.Col()];} 
+      Type operator[](const Reference& ref) const 
+                     {return buffer[ref.Row()][ref.Col()];} 
+
+    private: 
+      Type buffer[Rows][Cols]; 
+  }; 
+
+```
 
 由于 `Matrix` 是一个模板类，我们将其方法的定义放在 `header` 文件中。默认构造函数允许默认单元格构造函数初始化单元格：
 
-[PRE47]
+```cpp
+  template <int Rows, int Cols, class Type> 
+  Matrix<Rows,Cols,Type>::Matrix() { 
+    // Empty. 
+  } 
+
+```
 
 复制构造函数和赋值运算符通过调用 `Init` 来复制单元格：
 
-[PRE48]
+```cpp
+  template <int Rows, int Cols, class Type> 
+  Matrix<Rows,Cols,Type>::Matrix(const Matrix<Rows,Cols,Type>& 
+                                 matrix) { 
+    Init(matrix); 
+  } 
+
+  template<int Rows, int Cols, class Type> 
+  Matrix<Rows,Cols,Type>& Matrix<Rows,Cols,Type>::operator= 
+                          (const Matrix<Rows,Cols,Type>& matrix) { 
+    if (this != &matrix) { 
+      Init(matrix); 
+    } 
+
+    return *this; 
+  } 
+
+  template <int Rows, int Cols, class Type> 
+  void Matrix<Rows,Cols,Type>::Init 
+                        (const Matrix<Rows,Cols,Type>& matrix) { 
+    for (int row = 0; row < Rows; ++row) { 
+      for (int col = 0; col < Cols; ++col) { 
+        buffer[row][col] = matrix.buffer[row][col]; 
+      } 
+    } 
+  } 
+} 
+
+```
 
 # 单元格
 
@@ -359,111 +1083,306 @@
 
 **Cell.h**
 
-[PRE49]
+```cpp
+extern const int HeaderWidth, HeaderHeight, 
+                 ColWidth, RowHeight, CellMargin; 
+
+#define Rows 10 
+#define Cols 4 
+
+```
 
 单元格可以在水平方向上左对齐、居中对齐、右对齐或两端对齐，并且在垂直方向上可以顶部对齐、居中对齐或底部对齐：
 
-[PRE50]
+```cpp
+enum Alignment {Left, Center, Right, Justified, Top, Bottom};  
+
+class Cell { 
+  public: 
+    Cell(); 
+    ~Cell(); 
+
+    Cell(const Cell& cell); 
+    Cell& operator=(const Cell& cell); 
+
+```
 
 当用户选择新菜单项时，会调用 `Clear` 方法，并在调用 `Reset` 之前清除单元格的字体和背景颜色，`Reset` 清除文本并将单元格设置为文本模式。`Reset` 也会在用户删除单元格时被调用，在这种情况下，文本会被清除，但字体或颜色不会被清除：
 
-[PRE51]
+```cpp
+    void Clear(); 
+    void Reset(); 
+
+```
 
 当用户输入一个字符，该字符插入到当前字符之前或根据 `keyboardMode` 参数的值覆盖它时，会调用 `CharDown` 方法。当用户在单元格中的文本上双击时，`MouseToIndex` 计算被点击字符的索引：
 
-[PRE52]
+```cpp
+    void CharDown(int editIndex, TCHAR tChar, 
+                  KeyboardMode keyboardMode); 
+    int MouseToIndex(int x) const; 
+
+```
 
 `Text` 和 `CaretList` 方法返回单元格的文本和光标矩形列表。
 
-[PRE53]
+```cpp
+    vector<Rect> CaretList() const {return caretList;} 
+
+    String GetText() const {return text;} 
+    void SetText(String& t) {text = t;} 
+
+    bool IsFormula() const {return (cellMode == FormulaMode);} 
+
+```
 
 单元格的字体和背景颜色都可以修改和检查，同样也可以修改水平和垂直对齐方式：
 
-[PRE54]
+```cpp
+    Font CellFont() const {return font;} 
+    Font& CellFont() {return font;} 
+    Color BackgroundColor() const {return backgroundColor;} 
+    Color& BackgroundColor() {return backgroundColor;} 
+
+    Alignment HorizontalAlignment() const 
+                        {return horizontalAlignignment;} 
+    Alignment& HorizontalAlignment() 
+                         {return horizontalAlignignment;} 
+    Alignment VerticalAlignment() const 
+                      {return verticalAlignignment;} 
+    Alignment& VerticalAlignment() {return verticalAlignignment;} 
+
+```
 
 `DrawCell` 方法用黑色绘制单元格的边框，用背景色填充单元格，并绘制文本。如果反转参数为 `true`，则所有颜色都会反转，这发生在单元格正在编辑或被标记的情况下：
 
-[PRE55]
+```cpp
+    void DrawCell(Graphics& graphics, Reference cellRef, 
+                  bool inverse) const; 
+    void GenerateCaretList(Window* windowPtr); 
+
+```
 
 当用户开始编辑单元格时，会调用 `DisplayFormula` 方法。带有公式的单元格可以显示其值或其公式。当用户编辑单元格时，显示公式。当用户标记它时，显示其值。`DisplayFormula` 方法将值替换为公式（或错误信息，如果公式不正确）：
 
-[PRE56]
+```cpp
+    void DisplayFormula (); 
+
+```
 
 `InterpretCell` 方法解释单元格的文本，该文本被解释为文本、数值或公式。如果公式包含语法错误，则抛出异常：
 
-[PRE57]
+```cpp
+    void InterpretCell(set<Reference>& sourceSet); 
+
+```
 
 在 `formula` 模式下，`GenerateSourceSet` 分析公式并返回所有引用的（可能为空）集合。在 `text` 或 `value` 模式下，返回一个空集合：
 
-[PRE58]
+```cpp
+    void GenerateSourceSet(set<Reference>& sourceSet) const; 
+    void GenerateSourceSet(Tree<TreeNode>* syntaxNodePtr, 
+                           set<Reference>& sourceSet) const; 
+
+```
 
 在 `formula` 模式下，`TreeToString` 返回从语法树转换成字符串的公式，该字符串在编辑单元格时显示在单元格中：
 
-[PRE59]
+```cpp
+    String TreeToString() const; 
+    String TreeToString(Tree<TreeNode>* syntaxNodePtr) const; 
+
+```
 
 当用户剪切、复制和粘贴单元格时，它们的引用会更新。`UpdateTree` 更新公式模式下的所有引用：
 
-[PRE60]
+```cpp
+    void UpdateTree(Reference diffRef, set<Reference>& sourceSet); 
+    void UpdateTree(Tree<TreeNode>* syntaxNodePtr, 
+                    Reference diffRef, set<Reference>& sourceSet); 
+
+```
 
 `HasValue` 方法返回 `true` 如果单元格包含一个值：在 `value` 模式下为 `true`，在 `text` 模式下为 `false`，在 `formula` 模式下如果已评估为值则为 `true`，如果发生评估错误（缺少值、引用超出范围、循环引用或除以零）则为 `false`：
 
-[PRE61]
+```cpp
+    bool HasValue() const; 
+    double GetValue() const {return value;} 
+
+```
 
 `Evaluate` 方法评估公式的语法树；`valueMap` 保存源集合中单元格的值：
 
-[PRE62]
+```cpp
+    void Evaluate(map<Reference,double>& valueMap); 
+    double Evaluate(Tree<TreeNode>* syntaxNodePtr, 
+                    map<Reference,double>& valueMap); 
+
+```
 
 单元格可以保存到文件或剪切、复制和粘贴：
 
-[PRE63]
+```cpp
+    bool WriteCellToStream(ostream& outStream) const; 
+    bool ReadCellFromStream(istream& inStream); 
+
+    void WriteCellToClipboard(InfoList& infoList) const; 
+    void ReadCellFromClipboard(InfoList& infoList); 
+
+```
 
 如本节开头所述，单元格可以保存（可能为空）文本、数值或公式，由`cellMode`的值指示：
 
-[PRE64]
+```cpp
+  private: 
+    enum CellMode {TextMode, ValueMode, FormulaMode} cellMode; 
+
+```
 
 单元格中的所有字符都持有相同的字体和背景颜色。单元格可以水平对齐在左、中、右或两端对齐，并且可以垂直对齐在顶部、居中或底部：
 
-[PRE65]
+```cpp
+    Font font; 
+    Color backgroundColor; 
+    Alignment horizontalAlignignment, verticalAlignignment; 
+
+```
 
 `text`字段保存单元格中显示的文本。在`edit`模式下，它是用户当前输入的文本。在`mark`模式下，它是用户输入的文本（在文本模式下），用户输入的数值转换为文本，公式的计算值或错误消息（缺失值、引用超出范围、循环引用或除以零）：
 
-[PRE66]
+```cpp
+    String text; 
+
+```
 
 光标列表保存了`text`中每个字符的光标矩形。它还保存了最后一个字符之后的索引的矩形，这意味着光标列表的大小总是比文本多一个：
 
-[PRE67]
+```cpp
+    vector<Rect> caretList; 
+
+```
 
 当计算公式的值时，它可能得到一个值或我们之前讨论过的任何错误。如果单元格包含一个值，则`hasValue`为`true`，`value`包含实际值：
 
-[PRE68]
+```cpp
+    bool hasValue; 
+    double value; 
+
+```
 
 当用户以`=*`开头输入公式时，它被`Scanner`和`Parser`类解释为语法树，并存储在`syntaxTreePtr`中：
 
-[PRE69]
+```cpp
+    Tree<TreeNode>* syntaxTreePtr; 
+}; 
+
+```
 
 **Cell.cpp**
 
-[PRE70]
+```cpp
+#include "..\\SmallWindows\\SmallWindows.h" 
+#include "Token.h" 
+#include "Error.h" 
+#include "Scanner.h" 
+#include "TreeNode.h" 
+#include "Parser.h" 
+#include "Cell.h" 
+
+const int CellMargin = 100, 
+          ColWidth = 4000, RowHeight = 1000, 
+          HeaderWidth = 1000, HeaderHeight = 700; 
+
+```
 
 单元格的宽度是列宽减去边距，其高度是行高减去边距：
 
-[PRE71]
+```cpp
+const int CellWidth = ColWidth - (2 * CellMargin), 
+          CellHeight = RowHeight - (2 * CellMargin); 
+
+```
 
 当创建单元格时，它是空的，它持有文本模式，它在水平和垂直方向上居中对齐，并且它持有系统字体，文本为黑色，背景为白色：
 
-[PRE72]
+```cpp
+Cell::Cell() 
+ :cellMode(TextMode), 
+  font(SystemFont), 
+  backgroundColor(White), 
+  horizontalAlignignment(Center), 
+  verticalAlignignment(Center), 
+  hasValue(false), 
+  value(0), 
+  syntaxTreePtr(nullptr) { 
+  // Empty. 
+} 
+
+```
 
 复制构造函数和赋值运算符检查`syntaxTreePtr`是否为`null`，如果不是`null`，则动态复制，其构造函数继续递归地复制其子节点。仅仅复制指针是不够的，因为原始单元格或复制单元格的公式中可能有一个被更改，而另一个没有：
 
-[PRE73]
+```cpp
+Cell::Cell(const Cell& cell) 
+ :cellMode(cell.cellMode), 
+  font(cell.font), 
+  backgroundColor(cell.backgroundColor), 
+  horizontalAlignignment(cell.horizontalAlignignment), 
+  verticalAlignignment(cell.verticalAlignignment), 
+  text(cell.text), 
+  caretList(cell.caretList), 
+  hasValue(cell.hasValue), 
+  value(cell.value) { 
+  if (cell.syntaxTreePtr != nullptr) { 
+    syntaxTreePtr = new Tree<TreeNode>(*cell.syntaxTreePtr); 
+    assert(syntaxTreePtr != nullptr); 
+  } 
+  else { 
+    syntaxTreePtr = nullptr; 
+  } 
+} 
+
+```
 
 复制构造函数和赋值运算符之间的一个区别是，在赋值运算符中我们删除了语法树指针，因为它可能指向动态分配的内存，而在复制构造函数中不是这样。如果它指向`null`，则`delete`运算符不执行任何操作：
 
-[PRE74]
+```cpp
+Cell& Cell::operator=(const Cell& cell) { 
+  if (this != &cell) { 
+    cellMode = cell.cellMode; 
+    font = cell.font; 
+    backgroundColor = cell.backgroundColor; 
+    horizontalAlignignment = cell.horizontalAlignignment; 
+    verticalAlignignment = cell.verticalAlignignment; 
+    text = cell.text; 
+    caretList = cell.caretList; 
+    hasValue = cell.hasValue; 
+    value = cell.value; 
+    delete syntaxTreePtr; 
+
+    if (cell.syntaxTreePtr != nullptr) { 
+      syntaxTreePtr = new Tree<TreeNode>(*cell.syntaxTreePtr); 
+      assert(syntaxTreePtr != nullptr); 
+    } 
+
+    else { 
+      syntaxTreePtr = nullptr; 
+    } 
+  } 
+
+  return *this; 
+} 
+
+```
 
 语法树是单元格中唯一的动态分配的内存。再次强调，如果指针为`null`，则`delete`不执行任何操作：
 
-[PRE75]
+```cpp
+Cell::~Cell() { 
+  delete syntaxTreePtr; 
+} 
+
+```
 
 `Clear`和`Reset`之间的区别是：
 
@@ -471,25 +1390,109 @@
 
 +   当用户删除单元格及其模式时，会调用`Reset`，此时其模式和文本应重置。
 
-[PRE76]
+```cpp
+void Cell::Clear() { 
+  font = SystemFont; 
+  backgroundColor = White; 
+  horizontalAlignignment = Center; 
+  verticalAlignignment = Center; 
+  Reset(); 
+} 
+
+void Cell::Reset() { 
+  cellMode = TextMode; 
+  text.clear(); 
+  delete syntaxTreePtr; 
+  syntaxTreePtr = nullptr; 
+} 
+
+```
 
 ## 字符输入
 
-`CharDown`方法由`WindowProc`（它反过来由Windows系统调用）在用户按下图形字符时调用。如果输入索引位于文本的末尾（文本右侧一步），我们只需添加末尾的字符。如果不是文本的末尾，我们必须考虑键盘模式，它可以是插入或覆盖。
+`CharDown`方法由`WindowProc`（它反过来由 Windows 系统调用）在用户按下图形字符时调用。如果输入索引位于文本的末尾（文本右侧一步），我们只需添加末尾的字符。如果不是文本的末尾，我们必须考虑键盘模式，它可以是插入或覆盖。
 
 在插入的情况下，我们插入字符，在覆盖的情况下，我们覆盖位于编辑索引处的先前字符。与前几章中的文字处理器不同，我们不需要处理字体，因为单元格中的所有字符都有相同的字体：
 
-[PRE77]
+```cpp
+void Cell::CharDown(int editIndex, TCHAR tChar, 
+                    KeyboardMode keyboardMode) { 
+  if (editIndex == text.length()) { 
+    text.append(1, tChar); 
+  } 
+  else { 
+    switch (keyboardMode) { 
+      case InsertKeyboard: 
+        text.insert(editIndex, 1, tChar); 
+        break; 
+
+      case OverwriteKeyboard: 
+        text[editIndex] = tChar; 
+        break; 
+    } 
+  } 
+} 
+
+```
 
 当用户双击单元格时，会调用`MouseToIndex`方法。首先，我们需要从鼠标位置减去单元格边距，然后遍历光标列表并返回鼠标击中的字符位置。如果用户击中第一个字符的左侧（居中对齐或右对齐），则返回零索引，如果他们击中最后一个字符的右侧（左对齐或居中对齐），则返回文本的大小，这对应于最后一个字符右侧的索引：
 
-[PRE78]
+```cpp
+int Cell::MouseToIndex(int x) const { 
+  x -= CellMargin; 
+
+  if (x < caretList[0].Left()) { 
+    return 0; 
+  } 
+
+  int size = text.length(); 
+  for (int index = 0; index < size; ++index) { 
+    if (x < caretList[index].Right()) { 
+      return index; 
+    } 
+  } 
+
+  return size; 
+} 
+
+```
 
 ## 绘制
 
 当需要绘制单元格内容时，会调用`Draw`方法。文本的绘制相当直接——对于字符列表中的每个字符，我们只需在其光标矩形中绘制该字符。这个特定的单元格可能被标记或正在被编辑，在这种情况下，情况正好相反。在这种情况下，文本、背景和边框颜色被反转。为了不覆盖单元格的边框，我们还要考虑单元格边距：
 
-[PRE79]
+```cpp
+void Cell::DrawCell(Graphics& graphics, Reference cellRef, 
+                    bool inverse) const { 
+  Point topLeft(HeaderWidth + cellRef.Col() * ColWidth, 
+                HeaderHeight + cellRef.Row() * RowHeight); 
+  Size cellSize(ColWidth, RowHeight); 
+  Rect cellRect(topLeft, cellSize); 
+
+  Color textColor = font.FontColor(), 
+        backColor = backgroundColor, borderColor = Black; 
+
+  if (inverse) { 
+    textColor = textColor.Inverse(); 
+    backColor = backColor.Inverse(); 
+    borderColor = borderColor.Inverse(); 
+  } 
+
+  graphics.FillRectangle(cellRect, borderColor, backColor); 
+  Size marginSize(CellMargin, CellMargin); 
+  int size = text.length(); 
+
+  for (int index = 0; index < size; ++index) { 
+    TCHAR tChar = text[index]; 
+    Rect caretRect = caretList[index]; 
+
+    Rect charRect = (topLeft + marginSize) + caretRect; 
+    TCHAR text[] = {tChar, TEXT('\0')}; 
+    graphics.DrawText(charRect, text, font, textColor, backColor); 
+  } 
+} 
+
+```
 
 ## 光标矩形列表生成
 
@@ -497,136 +1500,618 @@
 
 首先，我们需要计算每个字符的宽度以及文本的宽度，以便设置其水平起始位置。在两端对齐的情况下，我们计算不带空格的文本宽度并计算空格的数量：
 
-[PRE80]
+```cpp
+void Cell::GenerateCaretList(Window* windowPtr) { 
+  vector<int> widthList; 
+  int textWidth = 0, spaceCount = 0, noSpaceWidth = 0; 
+
+  for (const TCHAR tChar : text) { 
+    int charWidth = windowPtr->GetCharacterWidth(font, tChar); 
+    widthList.push_back(charWidth); 
+    textWidth += charWidth; 
+
+    if (horizontalAlignignment == Justified) { 
+      if (tChar == TEXT(' ')) { 
+        ++spaceCount; 
+      } 
+      else { 
+        noSpaceWidth += charWidth; 
+      } 
+    } 
+  } 
+
+```
 
 当我们计算出文本宽度时，我们设置水平起始位置。在左对齐或两端对齐的情况下，起始位置设置为单元格边距。在两端对齐的情况下，我们还设置文本中每个空格的宽度。在右对齐的情况下，我们将单元格宽度与文本宽度的差值加到单元格边距上，以便将文本的最右侧部分放置在单元格的右边界上。在居中对齐的情况下，我们添加一半的差值，以便将文本放置在单元格的中间：
 
-[PRE81]
+```cpp
+  int startPos = 0, spaceWidth, cellWidth = ColWidth - (2 * CellMargin); 
+
+  switch (horizontalAlignignment) { 
+    case Left: 
+      startPos = CellMargin; 
+      break; 
+
+    case Justified: { 
+        startPos = CellMargin; 
+        if (spaceCount > 0) { 
+          spaceWidth = max(0,(cellWidth-noSpaceWidth)/spaceCount); 
+        } 
+      } 
+      break; 
+
+    case Right: 
+      startPos = CellMargin + max(0, cellWidth - textWidth); 
+      break; 
+
+    case Center: 
+      startPos = CellMargin + max(0, (cellWidth - textWidth) / 2); 
+      break; 
+  } 
+
+```
 
 垂直顶部位置以类似的方式设置。在顶部对齐的情况下，顶部位置设置为单元格边距。在底部对齐的情况下，我们将单元格高度与文本高度的差值加到单元格边距上，以便将文本的底部部分放置在单元格的底部边界。在居中对齐的情况下，我们添加一半的差值，以便将文本放置在单元格的中间：
 
-[PRE82]
+```cpp
+  int topPos = 0, 
+      textHeight = windowPtr->GetCharacterHeight(font), 
+      cellHeight = RowHeight - (2 * CellMargin); 
+
+  switch (verticalAlignignment) { 
+    case Top: 
+      topPos = CellMargin; 
+      break; 
+
+    case Bottom: 
+      topPos = CellMargin + max(0, cellHeight - textHeight); 
+      break; 
+
+    case Center: 
+      topPos = CellMargin + max(0, (cellHeight - textHeight) / 2); 
+      break; 
+  } 
+
+```
 
 当水平起始位置和顶部垂直位置已设置后，我们遍历字符，并将每个字符的矩形添加到`caretList`中。请注意，在两端对齐的情况下，我们使用`spaceWidth`的值来处理空格：
 
-[PRE83]
+```cpp
+  caretList.clear(); 
+  int size = text.size(); 
+  for (int index = 0; index < size; ++index) { 
+    int charWidth = widthList[index]; 
+
+    if ((horizontalAlignignment == Justified) && 
+        (text[index] == TEXT(' '))) { 
+      charWidth = spaceWidth; 
+    } 
+
+    Point topLeft(startPos, topPos); 
+    Size charSize(charWidth, textHeight); 
+    caretList.push_back(Rect(topLeft, charSize)); 
+    startPos += charWidth; 
+  } 
+
+```
 
 当每个矩形被添加时，我们将文本右侧字符的矩形添加到其中。我们将其宽度设置为单元格字体平均字符的宽度：
 
-[PRE84]
+```cpp
+  Point topLeft(startPos, topPos); 
+  int averageWidth = windowPtr->GetCharacterAverageWidth(font); 
+  Size charSize(averageWidth, textHeight); 
+  caretList.push_back(Rect(topLeft, charSize)); 
+} 
+
+```
 
 ## 公式解释
 
 当用户单击或双击单元格时，其文本在文本或值模式下保持不变，但在公式模式下会发生变化。在公式模式下，公式的计算值以标记模式显示，而在编辑模式下，显示公式本身。`DisplayFormula`在公式模式下调用`TreeToString`，生成公式的文本：
 
-[PRE85]
+```cpp
+void Cell::DisplayFormula() { 
+  switch (cellMode) { 
+    case TextMode: 
+    case ValueMode: 
+      break; 
+
+    case FormulaMode: 
+      text = TEXT("=") + TreeToString(syntaxTreePtr); 
+      break; 
+  } 
+} 
+
+```
 
 当用户通过按***Enter***或***Tab***键或单击鼠标来终止文本输入时，会调用`InterpretCell`方法。如果用户输入了一个公式（以`=*`开头），则对其进行解析。`Parse`返回包含公式的语法树或抛出语法错误时的异常。请注意，`InterpretCell`仅报告语法错误。所有其他错误（缺失值、引用超出范围、循环引用或除以零）都由下面的`Evaluate`处理：
 
-[PRE86]
+```cpp
+void Cell::InterpretCell(set<Reference>& sourceSet) { 
+  String trimText = Trim(text); 
+
+  if (IsNumeric(trimText)) { 
+    cellMode = ValueMode; 
+    value = stod(trimText); 
+  } 
+  else if (!trimText.empty() && (trimText[0] == TEXT('='))) { 
+    cellMode = FormulaMode; 
+    Parser parser(trimText.substr(1)); 
+    syntaxTreePtr = parser.Parse(); 
+    GenerateSourceSet(syntaxTreePtr, sourceSet); 
+  } 
+  else { 
+    cellMode = TextMode; 
+  } 
+} 
+
+```
 
 `GenerateSourceSet`方法遍历语法树，并在公式模式下提取所有引用的（可能为空）集合。在文本或值模式下，集合为空，因为只有公式包含引用：
 
-[PRE87]
+```cpp
+void Cell::GenerateSourceSet(set<Reference>& sourceSet) const{ 
+  if (cellMode == FormulaMode) { 
+    GenerateSourceSet(syntaxTreePtr, sourceSet); 
+  } 
+} 
+
+```
 
 在一元加法或减法或括号内的表达式中，返回其子节点的源集：
 
-[PRE88]
+```cpp
+void Cell::GenerateSourceSet(Tree<TreeNode>* syntaxNodePtr, 
+                             set<Reference>& sourceSet) const{ 
+  DynamicList<Tree<TreeNode>*> childList = 
+    syntaxNodePtr->ChildList();  
+  switch (syntaxNodePtr->NodeValue().Id()) { 
+    case UnaryAdd: 
+    case UnarySubtract: 
+    case Parenthesis: 
+      return GenerateSourceSet(childList[0]); 
+
+```
 
 在二元表达式中，返回两个子集的源集的并集：
 
-[PRE89]
+```cpp
+    case BinaryAdd: 
+    case BinarySubtract: 
+    case Multiply: 
+    case Divide: { 
+        set<Reference> leftSet = GenerateSourceSet(childList[0]), 
+                       rightSet = GenerateSourceSet(childList[1]); 
+        leftSet.insert(rightSet.begin(), rightSet.end()); 
+        return leftSet; 
+      } 
+
+```
 
 在引用的情况下，如果它位于电子表格中，则返回仅包含引用的集合。集合中不包含电子表格外的任何引用：
 
-[PRE90]
+```cpp
+    case RefId: { 
+        set<Reference> singleSet; 
+        Reference sourceRef = 
+          syntaxNodePtr->NodeValue().ReferenceField(); 
+
+        if ((sourceRef.Row() >= 0) && (sourceRef.Row() < Rows) && 
+            (sourceRef.Col() >= 0) && (sourceRef.Col() < Cols)) { 
+          singleSet.insert(sourceRef); 
+        } 
+
+        return singleSet; 
+      } 
+
+```
 
 最后，在值的情况下，返回一个空集：
 
-[PRE91]
+```cpp
+    case ValueId: 
+      return set<Reference>(); 
+  } 
+
+  assert(false); 
+  return set<Reference>(); 
+} 
+
+```
 
 `TreeToString`方法遍历语法树并将其转换为字符串。请注意，可能存在具有超出作用域引用的公式。然而，在这种情况下，`Reference`类返回`?`：
 
-[PRE92]
+```cpp
+String Cell::TreeToString() const { 
+  if (cellMode == FormulaMode) { 
+    return TEXT("=") + TreeToString(syntaxTreePtr); 
+  } 
+
+  else { 
+    return text; 
+  } 
+} 
+
+```
 
 在一元加法或减法的情况下，将`+`或`-`添加到子节点文本中：
 
-[PRE93]
+```cpp
+String Cell::TreeToString(Tree<TreeNode>* syntaxNodePtr) const { 
+  DynamicList<Tree<TreeNode>*> childList = 
+    syntaxNodePtr->ChildList(); 
+
+  switch (syntaxNodePtr->NodeValue().Id()) { 
+    case UnaryAdd: 
+      return TEXT("+") + TreeToString(childList[0]); 
+
+    case UnarySubtract: 
+      return TEXT("-") + TreeToString(childList[0]); 
+      break; 
+
+```
 
 在二元表达式`+`、`-`、`*`或`/`之间插入子节点文本：
 
-[PRE94]
+```cpp
+    case BinaryAdd: 
+      return TreeToString(childList[0]) + TEXT("+") + 
+             TreeToString(childList[1]); 
+
+    case BinarySubtract: 
+      return TreeToString(childList[0]) + TEXT("-") + 
+             TreeToString(childList[1]); 
+
+    case Multiply: 
+      return TreeToString(childList[0]) + TEXT("*") + 
+             TreeToString(childList[1]); 
+
+    case Divide: 
+      return TreeToString(childList[0]) + TEXT("/") + 
+             TreeToString(childList[1]); 
+
+```
 
 在括号内的表达式的情况下，返回括号内子节点的文本：
 
-[PRE95]
+```cpp
+    case Parenthesis: 
+      return TEXT("(") + TreeToString(childList[0]) + TEXT(")"); 
+
+```
 
 在引用的情况下，返回其文本。再次强调，如果引用超出范围，`?`会被返回：
 
-[PRE96]
+```cpp
+    case RefId: 
+      return syntaxNodePtr-> 
+             NodeValue().ReferenceField().ToString(); 
+
+```
 
 在值的情况下，返回其转换后的文本：
 
-[PRE97]
+```cpp
+    case ValueId: 
+      return to_String(syntaxNodePtr->NodeValue().Value()); 
+  } 
+
+  assert(false); 
+  return TEXT(""); 
+} 
+
+```
 
 当用户复制粘贴一组单元格时，每个公式的引用是相对的，并且会更新。`UpdateTree`会在语法树中查找并更新引用。在所有其他情况下，它会遍历子列表，并对每个子项递归调用`UpdateTree`（一元表达式和括号表达式各有一个子项，二元表达式有两个子项，值或引用没有子项）：
 
-[PRE98]
+```cpp
+void Cell::UpdateTree(Reference diffRef,set<Reference>&sourceSet) { 
+  if (cellMode == FormulaMode) { 
+    UpdateTree(syntaxTreePtr, diffRef, sourceSet); 
+  } 
+}  
+
+void Cell::UpdateTree(Tree<TreeNode>* syntaxNodePtr, 
+                 Reference diffRef, set<Reference>& sourceSet) { 
+  if (syntaxNodePtr->NodeValue().Id() == RefId) { 
+    syntaxNodePtr->NodeValue().ReferenceField() += diffRef;
+    sourceSet.insert(syntaxNodePtr->NodeValue().ReferenceField()); 
+  } 
+  else { 
+    for (Tree<TreeNode>* childNodePtr : 
+         syntaxNodePtr->ChildList()) { 
+      UpdateTree(childNodePtr, diffRef, sourceSet); 
+    } 
+  } 
+} 
+
+```
 
 当公式的值被评估时，它可能返回一个有效值，在这种情况下，`hasValue`被设置为`true`。然而，如果在评估过程中发生错误（值缺失、引用超出范围、循环引用或除以零），`hasValue`被设置为`false`。当评估另一个单元格的公式值时，会调用`hasValue`。如果它返回`false`，评估将导致缺失值错误：
 
-[PRE99]
+```cpp
+bool Cell::HasValue() const{ 
+  switch (cellMode) { 
+    case TextMode: 
+      return false;  
+    case ValueMode: 
+      return true; 
+
+    case FormulaMode: 
+      return hasValue; 
+  }  
+
+  assert(false); 
+  return false; 
+} 
+
+```
 
 在公式模式下，公式正在被评估为值。如果发生错误（值缺失、引用超出范围、循环引用或除以零），`Evaluate`会抛出异常，并将单元格文本设置为错误消息文本。请注意，可以输入超出范围的引用，`InterpretCell`可以接受这些引用。然而，`Evaluate`会抛出一个包含错误消息的异常，该错误消息会在单元格中显示。
 
 此外，完全有可能剪切、复制和粘贴一个单元格，使其引用超出范围，然后再次剪切、复制和粘贴，使引用变得有效。然而，如果用户编辑超出范围的引用的公式，`Reference`类的`ToString`方法会返回`?`，因为很难用负列表示引用：
 
-[PRE100]
+```cpp
+void Cell::Evaluate(map<Reference,double>& valueMap) { 
+  if (cellMode == FormulaMode) { 
+    try { 
+      value = Evaluate(syntaxTreePtr, valueMap); 
+      text = to_String(value); 
+      hasValue = true; 
+    } 
+    catch (Error error) { 
+      text = error.ErrorText(); 
+      hasValue = false; 
+    } 
+  } 
+} 
+
+```
 
 `Evaluate`方法通过查找公式引用的单元格的值来找到单元格的当前值：
 
-[PRE101]
+```cpp
+double Cell::Evaluate(Tree<TreeNode>* syntaxNodePtr, 
+                      map<Reference,double>& valueMap) { 
+  DynamicList<Tree<TreeNode>*> childList = 
+    syntaxNodePtr->ChildList(); 
+
+```
 
 在一元或二元表达式的情况下，值会被计算（一元加法只是为了完整性，不会改变值）：
 
-[PRE102]
+```cpp
+  switch (syntaxNodePtr->NodeValue().Id()) { 
+    case UnaryAdd: 
+      return Evaluate(childList[0], valueMap); 
+
+    case UnarySubtract: 
+      return -Evaluate(childList[0], valueMap); 
+
+    case BinaryAdd: 
+      return Evaluate(childList[0], valueMap) + 
+             Evaluate(childList[1], valueMap); 
+
+    case BinarySubtract: 
+      return Evaluate(childList[0], valueMap) - 
+             Evaluate(childList[1], valueMap); 
+
+    case Multiply: 
+      return Evaluate(childList[0], valueMap) * 
+             Evaluate(childList[1], valueMap); 
+
+```
 
 在除以零的情况下，会抛出异常。
 
-[PRE103]
+```cpp
+    case Divide: { 
+        double remainder = Evaluate(childList[1], valueMap); 
+
+        if (remainder != 0) { 
+          return Evaluate(childList[0], valueMap) / remainder; 
+        } 
+        else { 
+          throw Error(DivisionByZero); 
+        } 
+      } 
+      break; 
+
+```
 
 在括号内的表达式的情况下，我们只需返回其评估值：
 
-[PRE104]
+```cpp
+    case Parenthesis: 
+      return Evaluate(childList[0], valueMap); 
+
+```
 
 在引用的情况下，我们在`valueMap`中查找源单元格。在源单元格缺失值（不在`valueMap`中）或引用超出范围（引用工作表外的单元格）的情况下，会抛出异常：
 
-[PRE105]
+```cpp
+    case RefId: { 
+        Reference sourceRef = 
+          syntaxNodePtr->NodeValue().ReferenceField(); 
+
+        if ((sourceRef.Row() >= 0) && (sourceRef.Row() < Rows) && 
+            (sourceRef.Col() >= 0) && (sourceRef.Col() < Cols)) { 
+          if (valueMap.find(sourceRef) != valueMap.end()) { 
+            return valueMap[sourceRef]; 
+          } 
+          else { 
+            throw Error(MissingValue); 
+          } 
+        } 
+        else { 
+          throw Error(ReferenceOutOfRange); 
+        } 
+      } 
+      break; 
+
+```
 
 在值的情况下，我们直接返回该值：
 
-[PRE106]
+```cpp
+    case ValueId: 
+      return syntaxNodePtr->NodeValue().Value(); 
+  } 
+
+  assert(false); 
+  return 0; 
+} 
+
+```
 
 ## 文件管理
 
 每次用户从文件菜单中选择**保存**或**另存为**菜单项时，`CalcDocument`都会调用`WriteDocumentToStream`方法。在公式模式下，我们在语法树上调用`WriteTreeToStream`：
 
-[PRE107]
+```cpp
+bool Cell::WriteCellToStream(ostream& outStream) const { 
+  outStream.write((char*) &cellMode, sizeof cellMode); 
+  outStream.write((char*) &horizontalAlignignment, 
+                  sizeof horizontalAlignignment); 
+  outStream.write((char*) &verticalAlignignment, 
+                  sizeof verticalAlignignment); 
+  outStream.write((char*) &hasValue, sizeof hasValue); 
+  outStream.write((char*) &value, sizeof value); 
+
+  backgroundColor.WriteColorToStream(outStream); 
+  font.WriteFontToStream(outStream); 
+
+  int charListSize = text.size(); 
+  outStream.write((char*) &charListSize, sizeof charListSize); 
+
+  for (const TCHAR tChar : text) { 
+    outStream.write((char*) &tChar, sizeof tChar); 
+  } 
+
+  for (const Rect caretRect : caretList) { 
+    caretRect.WriteRectToStream(outStream); 
+  } 
+
+  if (cellMode == FormulaMode) { 
+    syntaxTreePtr->WriteTreeToStream(outStream); 
+  } 
+
+  return ((bool) outStream); 
+} 
+
+```
 
 在`ReadCellFromStream`中，我们动态地在公式模式下创建和读取语法树：
 
-[PRE108]
+```cpp
+bool Cell::ReadCellFromStream(istream& inStream) { 
+  inStream.read((char*) &cellMode, sizeof cellMode); 
+  inStream.read((char*) &horizontalAlignignment, 
+                sizeof horizontalAlignignment); 
+  inStream.read((char*) &verticalAlignignment, 
+                sizeof verticalAlignignment); 
+  inStream.read((char*) &hasValue, sizeof hasValue); 
+  inStream.read((char*) &value, sizeof value); 
+
+  backgroundColor.ReadColorFromStream(inStream); 
+  font.ReadFontFromStream(inStream); 
+
+  int charListSize; 
+  inStream.read((char*) &charListSize, sizeof charListSize); 
+
+  for (int count = 0; count < charListSize; ++count) { 
+    TCHAR tChar; 
+    inStream.read((char*) &tChar, sizeof tChar); 
+    text.append(1, tChar); 
+  } 
+
+  for (int count = 0; count < (charListSize + 1); ++count) { 
+    Rect caretRect; 
+    caretRect.ReadRectFromStream(inStream); 
+    caretList.push_back(caretRect); 
+  } 
+
+  if (cellMode == FormulaMode) { 
+    syntaxTreePtr = new Tree<TreeNode>(); 
+    assert(syntaxTreePtr != nullptr); 
+    syntaxTreePtr->ReadTreeFromStream(inStream); 
+  } 
+  else { 
+    syntaxTreePtr = nullptr; 
+  } 
+
+  return ((bool) inStream); 
+} 
+
+```
 
 当用户剪切、复制和粘贴单元格时，`CalcDocument`会调用`WriteCellToClipboard`和`ReadCellFromClipboard`方法。它的工作方式与之前我们看到的`WriteDocumentToStream`和`ReadCellFromStream`相同：
 
-[PRE109]
+```cpp
+void Cell::WriteCellToClipboard(InfoList& infoList) const { 
+  infoList.AddValue<CellMode>(cellMode); 
+  infoList.AddValue<Alignment>(horizontalAlignignment); 
+  infoList.AddValue<Alignment>(verticalAlignignment); 
+  infoList.AddValue<double>(value); 
+  infoList.AddValue<bool>(hasValue); 
+
+  font.WriteFontToClipboard(infoList); 
+  backgroundColor.WriteColorToClipboard(infoList); 
+  infoList.AddValue<int>(text.size()); 
+
+  for (const TCHAR tChar : text) { 
+    infoList.AddValue<TCHAR>(tChar); 
+  } 
+
+  if (cellMode == FormulaMode) { 
+    syntaxTreePtr->WriteTreeToClipboard(infoList); 
+  } 
+} 
+
+void Cell::ReadCellFromClipboard(InfoList& infoList) { 
+  infoList.GetValue<CellMode>(cellMode); 
+  infoList.GetValue<Alignment>(horizontalAlignignment); 
+  infoList.GetValue<Alignment>(verticalAlignignment); 
+  infoList.GetValue<double>(value); 
+  infoList.GetValue<bool>(hasValue); 
+
+  font.ReadFontFromClipboard(infoList); 
+  backgroundColor.ReadColorFromClipboard(infoList); 
+
+  int listSize; 
+  infoList.GetValue<int>(listSize); 
+
+  for (int count = 0; count < listSize; ++count) { 
+    TCHAR tChar; 
+    infoList.GetValue<TCHAR>(tChar); 
+    text.push_back(tChar);
+  } 
+
+  for (int count = 0; count < (listSize + 1); ++count) { 
+    Rect caretRect; 
+    caretRect.ReadRectFromClipboard(infoList); 
+    caretList.push_back(caretRect); 
+  } 
+
+  if (cellMode == FormulaMode) { 
+    syntaxTreePtr = new Tree<TreeNode>(); 
+    assert(syntaxTreePtr != nullptr); 
+    syntaxTreePtr->ReadTreeFromClipboard(infoList); 
+  } 
+  else { 
+    syntaxTreePtr = nullptr; 
+  } 
+} 
+
+```
 
 # 进一步阅读
 
-如果本章的扫描器和解析器让你对编译器产生了兴趣，我建议你参考A. V. Aho等人所著的《编译原理、技术和工具》（第二版，Addison Wesley，2007）。这是经典之作《龙书》的第二版。作者从扫描和解析到高级优化，解释了编译器的理论和实践。
+如果本章的扫描器和解析器让你对编译器产生了兴趣，我建议你参考 A. V. Aho 等人所著的《编译原理、技术和工具》（第二版，Addison Wesley，2007）。这是经典之作《龙书》的第二版。作者从扫描和解析到高级优化，解释了编译器的理论和实践。
 
-如果图的概念引起了你的兴趣，我推荐D. B. West所著的《图论导论》（Prentice Hall，2000），它从数学的角度对图进行推理。
+如果图的概念引起了你的兴趣，我推荐 D. B. West 所著的《图论导论》（Prentice Hall，2000），它从数学的角度对图进行推理。
 
 # 摘要
 
-在本章中，我们介绍了电子表格程序的实施。本章结束了本书的第一部分：如何使用小窗口开发应用程序。[第10章](ch10.html "第10章。框架")，《框架》，介绍了第二部分：小窗口的实现。
+在本章中，我们介绍了电子表格程序的实施。本章结束了本书的第一部分：如何使用小窗口开发应用程序。第十章，《框架》，介绍了第二部分：小窗口的实现。

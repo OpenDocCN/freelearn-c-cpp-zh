@@ -1,36 +1,36 @@
-# 第12章. 玩转Max 6框架
+# 第十二章. 玩转 Max 6 框架
 
-本章将教会我们一些可以在Max 6图形编程框架和Arduino板上使用的技巧和技术。
+本章将教会我们一些可以在 Max 6 图形编程框架和 Arduino 板上使用的技巧和技术。
 
-我们在[第6章](ch06.html "第6章. 感知世界 – 使用模拟输入感受")中介绍了这个令人惊叹的框架，当我们学习Arduino模拟输入处理时。阅读上一章是更好地理解和学习本章中开发的技术的要求。我甚至建议你再次阅读Max 6简介部分。
+我们在第六章中介绍了这个令人惊叹的框架，当我们学习 Arduino 模拟输入处理时。阅读上一章是更好地理解和学习本章中开发的技术的要求。我甚至建议你再次阅读 Max 6 简介部分。
 
-在本章中，我们将学习如何从Max 6向Arduino发送数据。我们还将描述如何处理和解析从Arduino接收到的数据。
+在本章中，我们将学习如何从 Max 6 向 Arduino 发送数据。我们还将描述如何处理和解析从 Arduino 接收到的数据。
 
-Arduino为你的Max 6程序添加了许多功能。实际上，它提供了一种将Max 6插入真实物理世界的方法。通过两个示例，我们将了解一种与Arduino、计算机和最先进的编程框架一起工作的好方法。
+Arduino 为你的 Max 6 程序添加了许多功能。实际上，它提供了一种将 Max 6 插入真实物理世界的方法。通过两个示例，我们将了解一种与 Arduino、计算机和最先进的编程框架一起工作的好方法。
 
 让我们开始吧。
 
-# 与Max 6轻松通信 – `[serial]`对象
+# 与 Max 6 轻松通信 – `[serial]`对象
 
-正如我们在[第6章](ch06.html "第6章. 感知世界 – 使用模拟输入感受")中已经讨论过的，*感知世界 – 使用模拟输入感受*，在运行Max 6补丁的计算机和Arduino板之间交换数据的最简单方法是使用串行端口。我们的Arduino板上的USB连接器包括FTDI集成电路EEPROM FT-232，它将RS-232标准串行转换为USB。
+正如我们在第六章中已经讨论过的，*感知世界 – 使用模拟输入感受*，在运行 Max 6 补丁的计算机和 Arduino 板之间交换数据的最简单方法是使用串行端口。我们的 Arduino 板上的 USB 连接器包括 FTDI 集成电路 EEPROM FT-232，它将 RS-232 标准串行转换为 USB。
 
-我们将再次使用Arduino和我们的计算机之间的基本USB连接来在此处交换数据。
+我们将再次使用 Arduino 和我们的计算机之间的基本 USB 连接来在此处交换数据。
 
 ## `[serial]`对象
 
 我们必须记住`[serial]`对象的特点。它提供了一种从串行端口发送和接收数据的方式。为此，有一个包括基本模块的基本补丁。我们将在这个子章节中逐步改进它。
 
-`[serial]`对象就像一个我们需要频繁轮询的缓冲区。如果从Arduino向计算机的串行端口发送消息，我们必须要求`[serial]`对象将它们弹出。我们将在接下来的页面中这样做。
+`[serial]`对象就像一个我们需要频繁轮询的缓冲区。如果从 Arduino 向计算机的串行端口发送消息，我们必须要求`[serial]`对象将它们弹出。我们将在接下来的页面中这样做。
 
 ![The [serial] object](img/7584_12_001.jpg)
 
 你可以在`Chapter12`文件夹中找到它；补丁文件名为`serialObject.maxpat`。
 
-当然，本章也是我向您提供一些我在Max 6本身的一些技巧和窍门的序言。接受并使用它们；它们会让你的补丁生活变得更轻松。
+当然，本章也是我向您提供一些我在 Max 6 本身的一些技巧和窍门的序言。接受并使用它们；它们会让你的补丁生活变得更轻松。
 
 ## 选择正确的串行端口
 
-在[第6章](ch06.html "第6章. 感知世界 – 使用模拟输入感受")中，*感知世界 – 使用模拟输入感受*，我们使用发送到`[serial]`的消息`(print)`来列出计算机上可用的所有串行端口。然后我们检查了Max窗口。这并不是最聪明的解决方案。在这里，我们将设计一个更好的方案。
+在第六章中，*感知世界 – 使用模拟输入感受*，我们使用发送到`[serial]`的消息`(print)`来列出计算机上可用的所有串行端口。然后我们检查了 Max 窗口。这并不是最聪明的解决方案。在这里，我们将设计一个更好的方案。
 
 我们必须记住 `[loadbang]` 对象。它在补丁加载时触发一个撞击，即一个 `(print)` 消息发送到后续对象。这有助于设置和初始化一些值，就像我们在 Arduino 板的固件中的 `setup()` 块内做的那样。
 
@@ -90,7 +90,48 @@ Max 6 中最常使用的对象之一 `[metro]` 用于发送定期的撞击以触
 
 以下代码是固件。您可以在 `Chapter12/ReadAll` 中找到它：
 
-[PRE0]
+```cpp
+int val = 0;
+
+void setup()
+{
+  Serial.begin(9600);
+  pinMode(13,INPUT);
+}
+
+void loop()
+{ 
+  // Check serial buffer for characters incoming
+  if (Serial.available() > 0){         
+
+    // If an 'r' is received then read all the pins
+    if (Serial.read() == 'r') {       
+
+      // Read and send analog pins 0-5 values
+      for (int pin= 0; pin<=5; pin++){      
+        val = analogRead(pin);
+        sendValue (val);
+      }
+
+      // Read and send digital pins 2-13 values
+      for (int pin= 2; pin<=13; pin++){     
+        val = digitalRead(pin);
+        sendValue (val);
+      }
+
+      Serial.println();// Carriage return to mark end of data flow. 
+      delay (5);     // prevent buffer overload
+
+    }
+
+  }
+}
+
+void sendValue (int val){
+  Serial.print(val);
+  Serial.write(32);  // add a space character after each value sent
+}
+```
 
 首先，我们在 `setup()` 块中以 9600 波特率开始串行通信。
 
@@ -132,15 +173,15 @@ Max 6 中最常使用的对象之一 `[metro]` 用于发送定期的撞击以触
 
 在 `[serial]` 对象下，我们可以看到一个以 `[sel 10 13]` 对象开始的新结构。这是 `[select]` 对象的缩写。此对象选择一个传入的消息，并在消息等于对应输出位置的参数时向特定输出发送一个 bang 信号。基本上，这里我们选择了 `10` 或 `13`。最后一个输出如果传入的消息不等于任何参数，就会弹出该消息。
 
-在这里，我们不希望考虑新的换行符（ASCII代码 `10`）。这就是为什么我们将其作为参数，但如果选中的是这个，我们就不做任何事情。这是一个很好的技巧，可以避免这个消息触发任何事情，甚至从 `[select]` 的右侧输出中消除它。
+在这里，我们不希望考虑新的换行符（ASCII 代码 `10`）。这就是为什么我们将其作为参数，但如果选中的是这个，我们就不做任何事情。这是一个很好的技巧，可以避免这个消息触发任何事情，甚至从 `[select]` 的右侧输出中消除它。
 
 在这里，我们将从 Arduino 收到的所有消息（除了 `10` 或 `13`）发送到 `[zl group 78]` 对象。后者是一个强大的列表，用于处理许多功能。`group` 参数使得将接收到的消息分组到列表中变得容易。最后一个参数是为了确保列表中元素的数量不会太多。一旦 `[zl group]` 被一个 bang 信号或列表长度达到长度参数值触发，它就会从其左侧出口弹出整个列表。
 
 在这里，我们“累积”从 Arduino 收到的所有消息，一旦发送了回车符（记住我们在固件 `loop()` 块的最后几行中做这件事），就会发送一个 bang 信号，并将所有数据传递到下一个对象。
 
-我们目前有一个包含所有数据的列表，每个值之间由一个空格字符（我们在固件中添加的著名的ASCII代码 32）分隔。
+我们目前有一个包含所有数据的列表，每个值之间由一个空格字符（我们在固件中添加的著名的 ASCII 代码 32）分隔。
 
-这个列表被传递到 `[itoa]` 对象。**itoa** 代表 *整数到ASCII*。此对象将整数转换为ASCII字符。
+这个列表被传递到 `[itoa]` 对象。**itoa** 代表 *整数到 ASCII*。此对象将整数转换为 ASCII 字符。
 
 `[fromsymbol]` 对象将符号转换为消息列表。
 
@@ -156,7 +197,7 @@ Max 6 中最常使用的对象之一 `[metro]` 用于发送定期的撞击以触
 
 然后，我们使用了 `[change]` 对象。这个对象很棒。当它接收到一个值时，只有当它与之前接收到的值不同时，它才会将其传递到其输出。它提供了一种有效的方法，以避免在不需要时每次都发送相同的值。
 
-在这里，我选择了参数 `-1`，因为这不是Arduino固件发送的值，并且我确信发送的第一个元素将被解析。
+在这里，我选择了参数 `-1`，因为这不是 Arduino 固件发送的值，并且我确信发送的第一个元素将被解析。
 
 因此，我们现在可以访问所有我们的值。我们可以用它们来完成不同的任务。
 
@@ -186,15 +227,15 @@ Max 6 中最常使用的对象之一 `[metro]` 用于发送定期的撞击以触
 
 我经常用它来作为我的主时钟，例如。我有一个且仅有一个主时钟在 `[send masterClock]` 上敲击时钟，无论我需要在哪里有那个时钟，我都使用 `[receive masterClock]`，它为我提供所需的数据。
 
-如果你检查全局补丁，你可以看到我们将数据分发到补丁底部的结构。但这些结构也可以位于其他地方。实际上，任何视觉编程框架（如Max 6）的一个优势是，你可以在补丁器中直观地组织代码的每一部分，就像你想要的那样。请尽可能这样做。这将帮助你支持并维护你的补丁，在整个开发过程中。
+如果你检查全局补丁，你可以看到我们将数据分发到补丁底部的结构。但这些结构也可以位于其他地方。实际上，任何视觉编程框架（如 Max 6）的一个优势是，你可以在补丁器中直观地组织代码的每一部分，就像你想要的那样。请尽可能这样做。这将帮助你支持并维护你的补丁，在整个开发过程中。
 
 ![无线技巧](img/7584_12_004.jpg)
 
-检查前面的截图。我本可以将左上角的 `[r A1]` 对象直接链接到 `[p process03]` 对象。但也许如果我将处理链保持分离，这将更容易阅读。我经常以这种方式使用Max 6。
+检查前面的截图。我本可以将左上角的 `[r A1]` 对象直接链接到 `[p process03]` 对象。但也许如果我将处理链保持分离，这将更容易阅读。我经常以这种方式使用 Max 6。
 
-这是我Max 6课程中教授的多个技巧之一。当然，我也介绍了 `[p]` 对象，它是 `[patcher]` 的缩写。
+这是我 Max 6 课程中教授的多个技巧之一。当然，我也介绍了 `[p]` 对象，它是 `[patcher]` 的缩写。
 
-在我们继续一些涉及Max 6和Arduino的好例子之前，让我们检查一些小贴士。
+在我们继续一些涉及 Max 6 和 Arduino 的好例子之前，让我们检查一些小贴士。
 
 #### 封装和子补丁
 
@@ -284,49 +325,49 @@ Max 6 自身的抽象概念非常强大，因为它提供了 **可重用性**。
 
 当然，如果您完全改变抽象以适应一个专用项目/补丁，您在使用其他补丁时可能会遇到一些问题。您必须小心，即使是非常简短的文档也要保持您的抽象。
 
-让我们继续描述一些与Arduino相关的良好示例。
+让我们继续描述一些与 Arduino 相关的良好示例。
 
-# 使用LED创建声音水平计
+# 使用 LED 创建声音水平计
 
-这个小型项目是Max 6/Arduino硬件和软件协作的典型例子。
+这个小型项目是 Max 6/Arduino 硬件和软件协作的典型例子。
 
-Max可以轻松监听声音并将它们从模拟域转换为数字域。
+Max 可以轻松监听声音并将它们从模拟域转换为数字域。
 
-我们将使用Arduino、一些LED和Max 6构建一个小型声音水平可视化器。
+我们将使用 Arduino、一些 LED 和 Max 6 构建一个小型声音水平可视化器。
 
 ## 电路
 
-我们将使用我们在[第8章](ch08.html "第8章。设计视觉输出反馈")中设计的相同电路，*设计视觉输出反馈*，同时我们使用595类型移位寄存器的菊花链来多路复用LED。
+我们将使用我们在第八章中设计的相同电路，*设计视觉输出反馈*，同时我们使用 595 类型移位寄存器的菊花链来多路复用 LED。
 
 下图显示了电路：
 
 ![电路](img/7584_12_011.jpg)
 
-我们的八LED双串
+我们的八 LED 双串
 
 ![电路](img/7584_12_012.jpg)
 
-我们的八LED双串
+我们的八 LED 双串
 
 基本想法是：
 
-+   使用每个声音通道（左和右）的每串八个LED
++   使用每个声音通道（左和右）的每串八个 LED
 
-+   在LED串中显示声音水平
++   在 LED 串中显示声音水平
 
-对于每个通道，开着的LED数量越多，声音水平就越高。
+对于每个通道，开着的 LED 数量越多，声音水平就越高。
 
-让我们先看看如何在Max 6中处理这个问题。
+让我们先看看如何在 Max 6 中处理这个问题。
 
-## 计算声音水平的Max 6补丁
+## 计算声音水平的 Max 6 补丁
 
 看看下面的图，显示了 `SoundLevelMeters` 补丁：
 
-![计算声音水平的Max 6补丁](img/7584_12_013.jpg)
+![计算声音水平的 Max 6 补丁](img/7584_12_013.jpg)
 
 生成声音和测量声音水平
 
-我们在这里使用Max 6框架的MSP部分，这部分与声音信号相关。在补丁中，我们有两个源（命名为 `source 1` 和 `source 2`）。每个源生成两个信号。我将每个源连接到一个 `[selector~ ]` 对象。
+我们在这里使用 Max 6 框架的 MSP 部分，这部分与声音信号相关。在补丁中，我们有两个源（命名为 `source 1` 和 `source 2`）。每个源生成两个信号。我将每个源连接到一个 `[selector~ ]` 对象。
 
 后者是用于信号的开关。左上角的源选择器提供了一个在 `source 1` 和 `source 2` 之间切换的方法。
 
@@ -338,13 +379,13 @@ Max可以轻松监听声音并将它们从模拟域转换为数字域。
 
 最后，我添加了一个 `[flonum]` 对象来显示每次的级别当前值。
 
-这些是我们将要发送给Arduino的数字。
+这些是我们将要发送给 Arduino 的数字。
 
 让我们添加我们之前描述的串行通信构建块。
 
-![计算声音水平的Max 6补丁](img/7584_12_014.jpg)
+![计算声音水平的 Max 6 补丁](img/7584_12_014.jpg)
 
-向Arduino发送数据
+向 Arduino 发送数据
 
 我们已经准备好了串行通信设置。
 
@@ -352,53 +393,104 @@ Max可以轻松监听声音并将它们从模拟域转换为数字域。
 
 我们使用两个数据总线将每个通道的值发送到 `[pak]` 对象。后者收集传入的消息并创建一个包含它们的列表。`[pak]` 与 `[pack]` 的区别在于 `[pak]` 在其任一输入接收到消息时就会发送数据，而不仅仅是当它接收到其左侧输入的消息时，就像 `[pack]` 一样。
 
-因此，我们有了当电平值改变时，从计算机弹出到Arduino的消息列表。
+因此，我们有了当电平值改变时，从计算机弹出到 Arduino 的消息列表。
 
 ## 用于读取字节的固件
 
-让我们看看如何在Arduino中处理这个问题：
+让我们看看如何在 Arduino 中处理这个问题：
 
-[PRE1]
+```cpp
+#include <ShiftOutX.h>
+#include <ShiftPinNo.h>
 
-这与[第8章](ch08.html "第8章. 设计视觉输出反馈")中的固件相同，*设计视觉输出反馈*，但在这里我们正在读取真实值而不是生成随机值。
+int CLOCK_595 = 4;    // first 595 clock pin connecting to pin 4
+int LATCH_595 = 3;    // first 595 latch pin connecting to pin 3
+int DATA_595 = 2;     // first 595 serial data input pin connecting to pin 2
+
+int SR_Number = 2;    // number of shift registers in the chain
+
+// instantiate and enabling the shiftOutX library with our circuit parameters
+shiftOutX regGroupOne(LATCH_595, DATA_595, CLOCK_595, MSBFIRST, SR_Number);
+
+// random groove machine variables
+int counter = 0;
+byte LeftChannel = B00000000 ;  // store left channel Leds infos
+byte RightChannel = B00000000 ; // store right channel Leds infos
+
+void setup() {
+  // NO MORE setup for each digital pin of the Arduino
+  // EVERYTHING is made by the library :-)
+}
+
+void loop(){ 
+
+  if (Serial.available() > 0) {
+    LeftChannel = (byte)Serial.parseInt();
+    RightChannel = (byte)Serial.parseInt();
+
+    unsigned short int data; // declaring the data container as a very local variable
+    data = ( LeftChannel << 8 ) | RightChannel; // aggregating the 2 read bytes
+    shiftOut_16(DATA_595, CLOCK_595, MSBFIRST, data);  // pushing the whole data to SRs
+
+    // make a short pause before changing LEDs states
+    delay(2);
+  }
+}
+```
+
+这与第八章中的固件相同，*设计视觉输出反馈*，但在这里我们正在读取真实值而不是生成随机值。
 
 我们使用 `Serial.parseInt()` 在 `Serial.available()` 测试中做这件事。
 
-这意味着一旦数据进入Arduino串行缓冲区，我们就会读取它。实际上，我们正在读取两个值，并在字节转换后，将它们存储在`LeftChannel`和`RightChannel`中。
+这意味着一旦数据进入 Arduino 串行缓冲区，我们就会读取它。实际上，我们正在读取两个值，并在字节转换后，将它们存储在`LeftChannel`和`RightChannel`中。
 
-然后，我们将数据处理到移位寄存器中，根据Max 6补丁发送的值点亮LED。
+然后，我们将数据处理到移位寄存器中，根据 Max 6 补丁发送的值点亮 LED。
 
 让我们再举一个与声音文件和距离传感器玩耍的例子。
 
 # 手部控制的音调转换效果
 
-**音调转换**是所有与声音处理相关的领域都熟知的效果。它改变传入声音的音调。在这里，我们将使用Max 6实现一个非常便宜的音调转换器，但我们将关注如何控制这个声音效果。我们将通过在距离传感器上移动我们的手来控制它。
+**音调转换**是所有与声音处理相关的领域都熟知的效果。它改变传入声音的音调。在这里，我们将使用 Max 6 实现一个非常便宜的音调转换器，但我们将关注如何控制这个声音效果。我们将通过在距离传感器上移动我们的手来控制它。
 
-我们将使用与[第6章](ch06.html "第6章. 感知世界 – 使用模拟输入进行感知")中相同的电路，即*感知世界 – 使用模拟输入进行感知*。
+我们将使用与第六章中相同的电路，即*感知世界 – 使用模拟输入进行感知*。
 
 ## 带有传感器和固件的电路
 
-以下电路显示了Arduino板连接到传感器：
+以下电路显示了 Arduino 板连接到传感器：
 
 ![带有传感器和固件的电路](img/7584_12_015.jpg)
 
-连接到Arduino的Sharp距离传感器
+连接到 Arduino 的 Sharp 距离传感器
 
 固件几乎也是相同的。我移除了关于距离计算的部分，因为我们确实不关心距离本身。
 
-Arduino的ADC提供10位的分辨率，这将给出从0到1023的数字。我们将使用这个值来校准我们的系统。
+Arduino 的 ADC 提供 10 位的分辨率，这将给出从 0 到 1023 的数字。我们将使用这个值来校准我们的系统。
 
 以下代码是固件。您可以在`Chapter12/PitchShift`文件夹中找到它：
 
-[PRE2]
+```cpp
+int sensorPin = 0;           // pin number where the SHARP GP2Y0A02YK is connected
+int sensorValue = 0 ;        // storing the value measured from 0 to 1023
 
-一旦Arduino运行此固件，它就会向串行端口发送值。
+void setup() {
+  Serial.begin(9600);
+}
 
-## 用于改变声音和解析Arduino消息的补丁
+void loop(){
+  sensorValue = analogRead(sensorPin); // read/store the value from sensor
+  Serial.println(sensorValue);
+
+  delay(20);    
+}
+```
+
+一旦 Arduino 运行此固件，它就会向串行端口发送值。
+
+## 用于改变声音和解析 Arduino 消息的补丁
 
 我无法描述整个音调转换器本身。顺便说一句，您可以打开相关的子补丁来查看它是如何设计的。一切都是开放的。
 
-![用于改变声音和解析Arduino消息的补丁](img/7584_12_017.jpg)
+![用于改变声音和解析 Arduino 消息的补丁](img/7584_12_017.jpg)
 
 通过距离传感器控制的手部音调转换
 

@@ -1,4 +1,4 @@
-# 第2章。创建精灵
+# 第二章。创建精灵
 
 在本章中，我们将创建精灵、动画和动作。本章将涵盖以下主题：
 
@@ -22,7 +22,7 @@
 
 +   使用批节点
 
-+   使用3D模型
++   使用 3D 模型
 
 +   检测碰撞
 
@@ -30,7 +30,7 @@
 
 # 简介
 
-精灵是2D图像。我们可以通过改变它们的属性来动画化和变换它们。精灵基本上是项目中的项目，没有它们您的游戏就不完整。精灵不仅被显示，还可以被变换或移动。在本章中，您将学习如何使用Cocos2d-x中的3D模型创建精灵，然后我们将探讨精灵的优势。
+精灵是 2D 图像。我们可以通过改变它们的属性来动画化和变换它们。精灵基本上是项目中的项目，没有它们您的游戏就不完整。精灵不仅被显示，还可以被变换或移动。在本章中，您将学习如何使用 Cocos2d-x 中的 3D 模型创建精灵，然后我们将探讨精灵的优势。
 
 # 创建精灵
 
@@ -42,11 +42,11 @@
 
 1.  将图像复制到`Resource`文件夹`MyGame/Resources/res`中。
 
-1.  在Xcode中打开您的项目。
+1.  在 Xcode 中打开您的项目。
 
-1.  从Xcode菜单转到**产品** | **清理**。
+1.  从 Xcode 菜单转到**产品** | **清理**。
 
-当您将新图像添加到`resource`文件夹时，您必须进行清理和构建。如果您在添加新图像后没有进行清理，那么Xcode将无法识别它们。最后，在您将`run_01.png`添加到项目中后，您的项目看起来将如下截图所示：
+当您将新图像添加到`resource`文件夹时，您必须进行清理和构建。如果您在添加新图像后没有进行清理，那么 Xcode 将无法识别它们。最后，在您将`run_01.png`添加到项目中后，您的项目看起来将如下截图所示：
 
 ![准备工作](img/B00561_02_01.jpg)
 
@@ -54,7 +54,20 @@
 
 我们从以下代码中修改`HelloWorld::init`方法开始：
 
-[PRE0]
+```cpp
+bool HelloWorld::init()
+{
+    if ( !Layer::init() )
+    {
+        return false;
+    }
+    Size size = Director::getInstance()->getWinSize();
+    auto sprite = Sprite::create("res/run_01.png");
+   sprite->setPosition(Vec2(size.width/2, size.height/2));
+    this->addChild(sprite);
+    return true;
+}
+```
 
 然后，在我们构建并运行项目之后，我们可以看到以下内容：
 
@@ -66,13 +79,13 @@
 
 ### 小贴士
 
-请注意，您可以使用`getInstance`方法在Cocos2d-x中获取单例类的实例。
+请注意，您可以使用`getInstance`方法在 Cocos2d-x 中获取单例类的实例。
 
 精灵是由图像组成的。您可以通过指定图像来创建精灵。在这种情况下，您通过`res`文件夹中的`run_01.png`创建精灵。
 
 接下来，您需要指定精灵的坐标。在这种情况下，您将精灵设置在屏幕中心。`Size`类具有宽度和高度属性。您可以使用`setPosition`方法指定精灵的位置。`setPosition`方法的参数是`Vec2`。`Vec2`有两个属性，作为浮点向量，`x`轴坐标和`y`轴坐标。
 
-最后一步是将精灵添加到图层上。图层就像屏幕上的透明纸。您将在[第4章](ch04.html "第4章。构建场景和图层")中了解图层，*构建场景和图层*。
+最后一步是将精灵添加到图层上。图层就像屏幕上的透明纸。您将在第四章中了解图层，*构建场景和图层*。
 
 屏幕上显示的所有对象都是**节点**。精灵和层是节点的类型。如果您在其他节点中没有添加它，该节点将不会显示在屏幕上。您可以通过`addChild`方法在其他节点中添加节点。
 
@@ -80,19 +93,28 @@
 
 您可以使用静态坐标设置精灵。在以下情况下，我们看到精灵位置是`(100, 200)`。
 
-[PRE1]
+```cpp
+sprite->setPosition(Vec2(100, 200));
 
-此外，您可以使用C++运算符重载将精灵设置在屏幕中心。
+```
 
-[PRE2]
+此外，您可以使用 C++运算符重载将精灵设置在屏幕中心。
+
+```cpp
+sprite->setPosition(size/2);
+
+```
 
 如果您想从层中移除精灵，可以使用以下代码移除它：
 
-[PRE3]
+```cpp
+sprite->removeFromParent();
+
+```
 
 ## 相关内容
 
-`Sprite`类有很多属性。您可以操作它们并更改精灵的外观。您还将了解更多关于层和场景的内容，这些内容将在[第4章](ch04.html "第4章. 构建场景和层") *构建场景和层* 中解释。
+`Sprite`类有很多属性。您可以操作它们并更改精灵的外观。您还将了解更多关于层和场景的内容，这些内容将在第四章 *构建场景和层* 中解释。
 
 # 获取精灵的位置和大小
 
@@ -102,11 +124,21 @@
 
 要获取精灵位置，请使用以下代码：
 
-[PRE4]
+```cpp
+Vec2 point = sprite->getPosition();
+float x = point.x;
+float y = point.y;
+
+```
 
 要获取精灵大小，请使用以下代码：
 
-[PRE5]
+```cpp
+Size size = sprite->getContentSize();
+float width = size.width;
+float height = size.height;
+
+```
 
 ## 工作原理...
 
@@ -116,27 +148,42 @@
 
 ### 设置锚点
 
-**锚点**是一个您设置的点，用作指定在设置位置时将使用精灵的哪个部分。锚点使用左下角坐标系。默认情况下，所有Node对象的锚点为`(0.5, 0.5)`。这意味着默认锚点是中心。
+**锚点**是一个您设置的点，用作指定在设置位置时将使用精灵的哪个部分。锚点使用左下角坐标系。默认情况下，所有 Node 对象的锚点为`(0.5, 0.5)`。这意味着默认锚点是中心。
 
 要获取精灵中心的锚点，我们使用以下代码：
 
-[PRE6]
+```cpp
+sprite->setAnchorPoint(Vec2(0.5, 0.5));
+
+```
 
 要获取精灵左下角的锚点，我们使用以下代码：
 
-[PRE7]
+```cpp
+sprite->setAnchorPoint(Vec2(0.0, 0.0));
+
+```
 
 要获取精灵左上角的锚点，我们使用以下代码：
 
-[PRE8]
+```cpp
+sprite->setAnchorPoint(Vec2(1.0, 0.0));
+
+```
 
 要获取精灵右下角的锚点，我们使用以下代码：
 
-[PRE9]
+```cpp
+sprite->setAnchorPoint(Vec2(0.0, 1.0));
+
+```
 
 要获取精灵右上角的锚点，我们使用以下代码：
 
-[PRE10]
+```cpp
+sprite->setAnchorPoint(Vec2(1.0, 1.0));
+
+```
 
 以下图像显示了锚点的各种位置：
 
@@ -146,7 +193,12 @@
 
 要获取精灵矩形，请使用以下代码：
 
-[PRE11]
+```cpp
+Rect rect = sprite->getBoundingBox();
+Size size = rect.size;
+Vec2 point = rect.origin;
+
+```
 
 `Rect`是具有`Size`和`Vec2`等属性的精灵矩形。如果缩放不等于一，则`Rect`中的`Size`将不等于`size`，使用`getContentSize`方法。`getContentSize`的`Size`是原始图像大小。另一方面，`Rect`中使用`getBoundingBox`的`Size`是外观的大小。例如，当您将精灵设置为半缩放时，`Rect`中使用`getBoundingBox`的`Size`是大小的一半，而使用`getContentSize`的`Size`是原始大小。精灵的位置和大小在您需要指定屏幕上的精灵时是一个非常重要的点。
 
@@ -156,7 +208,7 @@
 
 # 操作精灵
 
-精灵是一个可以通过改变其属性（包括旋转、位置、缩放、颜色等）进行动画或变换的2D图像。创建精灵后，您可以访问其各种属性，并进行操作。
+精灵是一个可以通过改变其属性（包括旋转、位置、缩放、颜色等）进行动画或变换的 2D 图像。创建精灵后，您可以访问其各种属性，并进行操作。
 
 ## 如何做...
 
@@ -164,13 +216,19 @@
 
 您可以将精灵的旋转更改为正或负度数。
 
-[PRE12]
+```cpp
+sprite->setRotation(30.0f);
+
+```
 
 您可以使用`getRotation`方法获取旋转值。
 
-[PRE13]
+```cpp
+float rotation = sprite->getRotation();
 
-正值将其顺时针旋转，负值将其逆时针旋转。默认值是零。以下代码将精灵旋转30度顺时针，如下截图所示：
+```
+
+正值将其顺时针旋转，负值将其逆时针旋转。默认值是零。以下代码将精灵旋转 30 度顺时针，如下截图所示：
 
 ![旋转](img/B00561_02_04.jpg)
 
@@ -178,19 +236,31 @@
 
 您可以更改精灵的缩放。默认值是`1.0f`，原始大小。以下代码将缩放到一半大小。
 
-[PRE14]
+```cpp
+sprite->setScale(0.5f);
+
+```
 
 您还可以分别更改宽度和高度。以下代码只会将宽度缩放到一半。
 
-[PRE15]
+```cpp
+sprite->setScaleX(0.5f);
+
+```
 
 以下代码只会将高度缩放到一半。
 
-[PRE16]
+```cpp
+sprite->setScaleY(0.5f);
+
+```
 
 以下代码将宽度缩放到两倍，高度缩放到一半。
 
-[PRE17]
+```cpp
+sprite->setScale(2.0f, 0.5f);
+
+```
 
 ![缩放](img/B00561_02_05.jpg)
 
@@ -200,29 +270,41 @@
 
 以下代码将`X`倾斜调整为`20.0`：
 
-[PRE18]
+```cpp
+sprite->setSkewX(20.0f);
+
+```
 
 以下代码将`Y`倾斜调整为`20.0`：
 
-[PRE19]
+```cpp
+sprite->setSkewY(20.0f);
+
+```
 
 ![倾斜](img/B00561_02_06.jpg)
 
 ### 颜色
 
-您可以通过传递`Color3B`对象来更改精灵的颜色。`Color3B`具有RGB值。
+您可以通过传递`Color3B`对象来更改精灵的颜色。`Color3B`具有 RGB 值。
 
-[PRE20]
+```cpp
+sprite->setColor(Color3b(255, 0, 0));
+
+```
 
 ![颜色](img/B00561_02_07.jpg)
 
 ### 透明度
 
-您可以更改精灵的不透明度。不透明度属性设置为0到255之间的值。
+您可以更改精灵的不透明度。不透明度属性设置为 0 到 255 之间的值。
 
-[PRE21]
+```cpp
+sprite->setOpacity(100);
 
-当精灵设置为255时，它是完全不透明的，当设置为零时，它是完全透明的。默认值始终是255。
+```
+
+当精灵设置为 255 时，它是完全不透明的，当设置为零时，它是完全透明的。默认值始终是 255。
 
 ![透明度](img/B00561_02_08.jpg)
 
@@ -230,23 +312,42 @@
 
 您可以通过传递布尔值来更改精灵的可见性。如果它是`false`，则精灵不可见；如果它是`true`，则精灵可见。默认值始终是`true`。
 
-[PRE22]
+```cpp
+sprite->setVisible(false);
+
+```
 
 ### 小贴士
 
 如果您想检查精灵的可见性，请使用`isVisible`方法而不是`getVisible`方法。精灵类没有`getVisible`方法。
 
-[PRE23]
+```cpp
+if (sprite->isVisible()) {
+    // visible
+} else {
+    // invisible
+}
+```
 
 ## 它是如何工作的...
 
 精灵有许多属性。您可以使用`setter`和`getter`方法操作精灵。
 
-RGB颜色是从0到255的3字节值。Cocos2d-x提供了预定义的颜色。
+RGB 颜色是从 0 到 255 的 3 字节值。Cocos2d-x 提供了预定义的颜色。
 
-[PRE24]
+```cpp
+Color3B::WHITE
+Color3B::YELLOW
+Color3B::BLUE
+Color3B::GREEN
+Color3B::RED
+Color3B::MAGENTA
+Color3B::BLACK
+Color3B::ORANGE
+Color3B::GRAY
+```
 
-您可以通过查看Cocos2d-x中的`ccType.h`文件来找到它们。
+您可以通过查看 Cocos2d-x 中的`ccType.h`文件来找到它们。
 
 # 创建动画
 
@@ -268,33 +369,71 @@ RGB颜色是从0到255的3字节值。Cocos2d-x提供了预定义的颜色。
 
 您可以使用一系列图像创建动画。以下代码创建了跑步女孩的动画。
 
-[PRE25]
+```cpp
+auto animation = Animation::create();
+for (int i=1; i<=8; i++) {  // from run_01.png to run_08.png
+    std::string name = StringUtils::format("res/run_%02d.png", i);
+    animation->addSpriteFrameWithFile(name.c_str());
+}
+animation->setDelayPerUnit(0.1f);
+animation->setRestoreOriginalFrame(true);
+animation->setLoops(10);
+auto action = Animate::create(animation);
+sprite->runAction(action);
+```
 
 ## 工作原理...
 
-您可以使用`Animation`类和`Animate`类创建动画。它们以固定的时间间隔更改多个图像。系列图像文件的名称有序列号，我们在for循环中为`Animation`类添加了文件名。我们可以使用Cocos2d-x中的`StringUtils`类创建格式化的字符串。
+您可以使用`Animation`类和`Animate`类创建动画。它们以固定的时间间隔更改多个图像。系列图像文件的名称有序列号，我们在 for 循环中为`Animation`类添加了文件名。我们可以使用 Cocos2d-x 中的`StringUtils`类创建格式化的字符串。
 
 ### 小贴士
 
 `StringUtils`是一个非常有用的类。`StringUtils::toString`方法可以从各种值生成`std::string`值。
 
-[PRE26]
+```cpp
+int i = 100;
+std::string int_string = StringUtils::toString(i);
+CCLOG("%s ", int_string.c_str());
+float j = 123.4f;
+std::string float_string = StringUtils::toString(j);
+CCLOG("%s", float_string.c_str());
+```
 
 `StringUtils::format`方法可以使用`printf`格式生成`std::string`值。
 
-您可以通过使用CCLOG宏来查看日志。CCLOG非常有用。您可以在游戏执行期间检查日志中的变量值。CCLOG具有与`sprintf`函数相同的参数。
+您可以通过使用 CCLOG 宏来查看日志。CCLOG 非常有用。您可以在游戏执行期间检查日志中的变量值。CCLOG 具有与`sprintf`函数相同的参数。
 
 我们将使用`addSpriteFrameWithFile`方法将文件名添加到`Animation`实例中。它使用`setDelayPerunit`方法设置帧所占用的时间单位。使用`setRestoreOriginalFrame`方法设置为动画结束时恢复原始帧。真值是恢复原始帧。它设置为动画将要循环的次数。然后，通过传递您之前创建的`Animation`实例来创建`Animate`实例。最后，通过传递`Animate`实例来运行`runAction`方法。
 
 如果您想永远运行动画，请使用`setLoops`方法设置`-1`。
 
-[PRE27]
+```cpp
+animation->setLoops(-1);
+
+```
 
 ## 还有更多...
 
 在前面的代码中，您无法控制每个动画帧。在这种情况下，您可以使用`AnimationFrame`类。这个类可以控制每个动画帧。您可以使用`AnimationFrame::create`方法的第二个参数设置帧所占用的时间单位。
 
-[PRE28]
+```cpp
+auto rect = Rect::ZERO;
+rect.size = sprite->getContentSize();
+Vector<AnimationFrame*> frames;
+for (int i=1; i<=8; i++) {
+    std::string name = StringUtils::format("res/run_%02d.png", i);
+    auto frame = SpriteFrame::create(name.c_str(), rect);
+    ValueMap info;
+    auto animationFrame = AnimationFrame::create(frame, i, info);
+    frames.pushBack(animationFrame);
+}
+auto animation = Animation::create(frames, 0.1f);
+animation->setDelayPerUnit(0.1f);
+animation->setRestoreOriginalFrame(true);
+animation->setLoops(-1);
+auto action = Animate::create(animation);
+sprite->runAction(action);
+```
 
 ## 相关内容
 
@@ -302,7 +441,7 @@ RGB颜色是从0到255的3字节值。Cocos2d-x提供了预定义的颜色。
 
 # 创建动作
 
-Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏中经常使用这些动作。这类似于动画，当游戏中的角色开始动作时，游戏将变得生动。在这个菜谱中，您将学习如何使用许多动作。
+Cocos2d-x 有很多动作，例如移动、跳跃、旋转等。我们在游戏中经常使用这些动作。这类似于动画，当游戏中的角色开始动作时，游戏将变得生动。在这个菜谱中，您将学习如何使用许多动作。
 
 ## 如何做...
 
@@ -312,85 +451,136 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 要在两秒内通过指定点移动精灵，你可以使用以下命令：
 
-[PRE29]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 100));
+sprite->runAction(move);
+```
 
 要在两秒内将精灵移动到指定点，你可以使用以下命令：
 
-[PRE30]
+```cpp
+auto move = MoveTo::create(2.0f, Vec2(100, 100));
+sprite->runAction(move);
+```
 
 ### 缩放
 
 要在两秒内以 3x 的比例均匀缩放精灵，请使用以下命令：
 
-[PRE31]
+```cpp
+auto scale = ScaleBy::create(2.0f, 3.0f);
+sprite->runAction(scale);
+```
 
 要在两秒内将 `X` 轴缩放 5x 和 `Y` 轴缩放 3x，请使用以下命令：
 
-[PRE32]
+```cpp
+auto scale = ScaleBy::create(2.0f, 5.0f, 3.0f);
+sprite->runAction(scale);
+```
 
 要在两秒内以 3x 的比例均匀缩放精灵，请使用以下命令：
 
-[PRE33]
+```cpp
+auto scale = ScaleTo::create(2.0f, 3.0f);
+sprite->runAction(scale);
+```
 
 要在两秒内将 `X` 轴缩放 5x 和 `Y` 轴缩放 3x，请使用以下命令：
 
-[PRE34]
+```cpp
+auto scale = ScaleTo::create(2.0f, 5.0f, 3.0f);
+sprite->runAction(scale);
+```
 
 ### 跳跃
 
 要使精灵在两秒内跳过指定点三次，请使用以下命令：
 
-[PRE35]
+```cpp
+auto jump = JumpBy::create(2.0f, Vec2(20, 20), 20.0f, 3);
+sprite->runAction(jump);
+```
 
 要使精灵在两秒内跳到指定点三次，请使用以下命令：
 
-[PRE36]
+```cpp
+auto jump = JumpTo::create(2.0f, Vec2(20, 20), 20.0f, 3);
+sprite->runAction(jump);
+```
 
 ### 旋转
 
 要在两秒内顺时针旋转精灵 40 度，请使用以下命令：
 
-[PRE37]
+```cpp
+auto rotate = RotateBy::create(2.0f, 40.0f);
+sprite->runAction(rotate);
+```
 
 要在两秒内逆时针旋转精灵 40 度，请使用以下命令：
 
-[PRE38]
+```cpp
+auto rotate = RotateTo::create(2.0f, -40.0f);
+sprite->runAction(rotate);
+```
 
 ### 闪烁
 
 要使精灵在两秒内闪烁五次，请使用以下命令：
 
-[PRE39]
+```cpp
+auto blink = RotateTo::create(2.0f, -40.0f);
+sprite->runAction(blink);
+```
 
 ### 淡入
 
 要在两秒内淡入精灵，请使用以下命令：
 
-[PRE40]
+```cpp
+auto fadein = FadeIn::create(2.0f);
+sprite->runAction(fadein);
+```
 
 要在两秒内淡出精灵，请使用以下命令：
 
-[PRE41]
+```cpp
+auto fadeout = FadeOut::create(2.0f);
+sprite->runAction(fadeout);
+```
 
 ### 扭曲
 
 以下代码在两秒内将精灵的 `X` 轴扭曲 45 度和 `Y` 轴扭曲 30 度：
 
-[PRE42]
+```cpp
+auto skew = SkewBy::create(2.0f, 45.0f, 30.0f);
+sprite->runAction(skew);
+```
 
 以下代码在两秒内将精灵的 `X` 轴扭曲到 45 度和 `Y` 轴扭曲到 30 度。
 
-[PRE43]
+```cpp
+auto skew = SkewTo::create(2.0f, 45.0f, 30.0f);
+sprite->runAction(skew);
+```
 
 ### 着色
 
 以下代码通过指定的 RGB 值着色精灵：
 
-[PRE44]
+```cpp
+auto tint = TintBy::create(2.0f, 100.0f, 100.0f, 100.0f);
+sprite->runAction(tint);
+```
 
 以下代码将精灵着色到指定的 RGB 值：
 
-[PRE45]
+```cpp
+auto tint = TintTo:: create(2.0f, 100.0f, 100.0f, 100.0f);
+sprite->runAction(tint);
+```
 
 ## 它是如何工作的...
 
@@ -402,7 +592,11 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 当你想执行精灵动作时，你创建一个动作并通过传递 `action` 实例来执行 `runAction` 方法。如果你想在精灵运行动作时停止动作，请执行 `stopAllActions` 方法或通过传递 `runAction` 方法的返回值作为 `action` 实例的 `stopAction`。
 
-[PRE46]
+```cpp
+auto moveTo = MoveTo::create(2.0f, Vec2(100, 100));
+auto action = sprite->runAction(moveTo);
+sprite->stopAction(action);
+```
 
 如果你运行 `stopAllActions`，精灵正在运行的所有动作都将停止。如果你通过传递 `action` 实例来运行 `stopAction`，则将停止该特定动作。
 
@@ -416,13 +610,18 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 `Sequence` 是一系列要按顺序执行的动作。这可以是一系列任意数量的动作。
 
-[PRE47]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto action = Sequence::create(move, rotate, nullptr);
+sprite->runAction(action);
+```
 
 以下命令将按顺序执行以下动作：
 
-+   在两秒内将精灵向右移动100像素
++   在两秒内将精灵向右移动 100 像素
 
-+   在两秒内顺时针旋转精灵360度
++   在两秒内顺时针旋转精灵 360 度
 
 执行这些命令总共需要四秒。
 
@@ -430,13 +629,18 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 `Spawn` 与 `Sequence` 非常相似，不同之处在于所有动作将同时运行。你可以同时指定任意数量的动作。
 
-[PRE48]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto action = Spawn::create(move, rotate, nullptr);
+sprite->runAction(action);
+```
 
 它将同时执行以下动作：
 
-+   在两秒内将精灵向右移动100像素
++   在两秒内将精灵向右移动 100 像素
 
-+   顺时针旋转精灵360度
++   顺时针旋转精灵 360 度
 
 执行它们总共需要两秒。
 
@@ -444,53 +648,77 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 `Repeat` 对象是为了重复指定次数的动作。
 
-[PRE49]
+```cpp
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto action = Repeat::create(rotate, 5);
+sprite->runAction(action);
+```
 
 以下命令将执行一个 `rotate` 动作五次。
 
 如果你想要无限重复，可以使用 `RepeatForever` 动作。
 
-[PRE50]
+```cpp
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto action = RepeatForever::create(rotate);
+sprite->runAction(action);
+```
 
 ### 反转动作
 
 如果你生成一个 `action` 实例，你可以调用一个 `reverse` 方法以相反的动作运行。
 
-[PRE51]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto action = Sequence::create(move, move->reverse(), nullptr);
+sprite->runAction(action);
+```
 
 以下代码将按顺序执行以下动作：
 
-+   在两秒内将精灵向右移动100像素。
++   在两秒内将精灵向右移动 100 像素。
 
-+   在两秒内将精灵向左移动100像素。
++   在两秒内将精灵向左移动 100 像素。
 
 此外，如果你生成一个序列动作，你可以调用一个 `reverse` 方法以相反的顺序运行它。
 
-[PRE52]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto sequence = Sequence::create(move, rotate, nullptr);
+auto action = Sequence::create(sequence, sequence->reverse(), nullptr);
+sprite->runAction(action);
+```
 
 以下代码将按顺序执行以下动作：
 
-+   在两秒内将精灵向右移动100像素。
++   在两秒内将精灵向右移动 100 像素。
 
-+   在两秒内顺时针旋转精灵360度
++   在两秒内顺时针旋转精灵 360 度
 
-+   在两秒内逆时针旋转精灵360度
++   在两秒内逆时针旋转精灵 360 度
 
-+   在两秒内将精灵向左移动100像素。
++   在两秒内将精灵向左移动 100 像素。
 
 ### DelayTime
 
 `DelayTime` 是在指定秒数内延迟的动作。
 
-[PRE53]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto delay = DelayTime::create(2.0f);
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto action = Sequence::create(move, delay, rotate, nullptr);
+sprite->runAction(action);
+```
 
 以下命令将按顺序执行以下动作：
 
-+   在两秒内将精灵向右移动100像素
++   在两秒内将精灵向右移动 100 像素
 
 +   延迟下一个动作两秒
 
-+   在两秒内顺时针旋转精灵360度
++   在两秒内顺时针旋转精灵 360 度
 
 执行它总共需要六秒。
 
@@ -508,7 +736,12 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 大多数动作，包括 `Sequence`、`Spawn` 和 `Repeat`，都有 `reverse` 方法。但像带有后缀 `To` 的 `MoveTo` 方法一样，它没有 `reverse` 方法；这就是为什么它不能运行反向动作。`Reverse` 方法生成其反向动作。以下代码使用了 `MoveBy::reverse` 方法。
 
-[PRE54]
+```cpp
+MoveBy* MoveBy::reverse() const
+{
+    return MoveBy::create(_duration, -_positionDelta);
+}
+```
 
 `DelayTime` 动作可以在此之后延迟一个动作。`DelayTime` 动作的好处是您可以将其放入 `Sequence` 动作中。结合 `DelayTime` 和 `Sequence` 是一个非常强大的功能。
 
@@ -516,11 +749,24 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 `Spawn` 产生的结果与运行多个连续的 `runAction` 语句相同。
 
-[PRE55]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f); 
+sprite->runAction(move);
+sprite->runAction(rotate);
+```
 
 然而，`Spawn` 的好处是您可以将其放入 `Sequence` 动作中。结合 `Spawn` 和 `Sequence` 是一个非常强大的功能。
 
-[PRE56]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f); 
+auto fadeout = FadeOut::create(2.0f);
+auto spawn = Spawn::create(rotate, fadeout, nullptr);
+auto fadein = FadeIn::create(2.0f);
+auto action = Sequence::create(move, spawn, fadein, nullptr);
+sprite->runAction(action);
+```
 
 ![更多内容...](img/B00561_02_12.jpg)
 
@@ -532,7 +778,15 @@ Cocos2d-x有很多动作，例如移动、跳跃、旋转等。我们在游戏�
 
 Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传递到您的 `Sequence` 中运行。这允许您向您的 `Sequence` 动作添加自己的功能。
 
-[PRE57]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0));
+auto rotate = RotateBy::create(2.0f, 360.0f);
+auto func = CallFunc::create([](){
+    CCLOG("finished actions");
+});
+auto action = Sequence::create(move, rotate, func, nullptr);
+sprite->runAction(action);
+```
 
 前面的命令将按顺序执行以下动作：
 
@@ -548,7 +802,12 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 如果您收到带有参数的回调，其代码如下：
 
-[PRE58]
+```cpp
+auto func = CallFuncN::create([](Ref* sender){
+    CCLOG("callback");
+    Sprite* sprite = dynamic_cast<Sprite*>(sender);
+});
+```
 
 此参数的实例是运行动作的精灵。您可以通过将其转换为 `Sprite` 类来获取精灵实例。
 
@@ -556,17 +815,49 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 您可以使用以下代码调用一个方法：
 
-[PRE59]
+```cpp
+bool HelloWorld::init() {
+    …
+    auto func = 
+CallFunc::create(CC_CALLBACK_0(HelloWorld::finishedAction, this));
+    …
+}
+
+void HelloWorld::finishedAction()
+{
+    CCLOG("finished action");
+}
+```
 
 要使用参数调用一个方法，您可以使用以下代码：
 
-[PRE60]
+```cpp
+bool HelloWorld::init() {
+    …
+    auto func = CallFuncN::create(CC_CALLBACK_1(HelloWorld::callback, this));
+    …
+}
+
+void HelloWorld::callback(Ref* sender)
+{
+    CCLOG("callback");
+}
+```
 
 ## 更多内容...
 
 要组合 `CallFuncN` 和 `Reverse` 动作，请使用以下代码：
 
-[PRE61]
+```cpp
+auto move = MoveBy::create(2.0f, Vec2(100, 0)); 
+auto rotate = RotateBy::create(2.0f, 360.0f); 
+auto func = CallFuncN::create(={
+    Sprite* sprite = dynamic_cast<Sprite*>(sender);
+    sprite->runAction(move->reverse());
+});
+auto action = Sequence::create(move, rotate, func, nullptr);
+sprite->runAction(action);
+```
 
 前面的命令将按顺序执行以下动作：
 
@@ -584,11 +875,28 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 让我们使用加速度和减速度将一个`Sprite`对象从`(200,200)`移动到`(500,200)`。
 
-[PRE62]
+```cpp
+auto sprite = Sprite::create("res/run_01.png");
+sprite->setPosition(Vec2(200, 200));
+this->addChild(sprite);
+
+auto move = MoveTo::create(3.0f, Vec2(500, 200));
+auto ease = EaseInOut::create(move, 2.0f);
+sprite->runAction(ease);
+```
 
 接下来，让我们从屏幕顶部掉下一个`Sprite`对象，并使其弹跳。
 
-[PRE63]
+```cpp
+auto sprite = Sprite::create("res/run_01.png");
+sprite->setPosition(Vec2(size.width/2, size.height));
+sprite->setAnchorPoint(Vec2(0.5f, 0.0f));
+this->addChild(sprite);
+
+auto drop = MoveTo::create(3.0f, Vec2(size.width/2, 0));
+auto ease = EaseBounceOut::create(drop);
+sprite->runAction(ease);
+```
 
 ## 工作原理...
 
@@ -627,15 +935,73 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 让我们尝试读取纹理图集文件，并从中创建一个精灵。
 
-[PRE64]
+```cpp
+auto cache = SpriteFrameCache::getInstance();
+cache->addSpriteFramesWithFile("res/running.plist");
+auto sprite = Sprite::createWithSpriteFrameName("run_01.png");
+sprite->setPosition(size/2);
+this->addChild(sprite);
+```
 
 ## 工作原理...
 
 首先，我们加载了纹理图集文件，当`SpritFrameCache`类缓存了其中包含的所有图像。其次，您生成了一个精灵。不要使用`Sprite::create`方法来生成它，而是使用`Sprite::createWithSpriteFrameName`方法。然后，您可以像处理普通精灵一样处理该精灵。
 
-纹理图集是一个包含多个图像的大图像。它由一个 `plist` 文件和一个 `texture` 文件组成。您可以使用工具创建纹理图集。您将在第 10 章 [使用额外功能改进游戏](ch10.html "第 10 章。使用额外功能改进游戏") 中学习如何使用工具创建纹理图集，*使用额外功能改进游戏*。`plist` 文件定义为图像的原始文件名，它位于 `texture` 文件中。它还定义了纹理图集将使用的图像。纹理图集的 `plist` 文件是 xml 格式，如下所示。
+纹理图集是一个包含多个图像的大图像。它由一个 `plist` 文件和一个 `texture` 文件组成。您可以使用工具创建纹理图集。您将在第十章 使用额外功能改进游戏 中学习如何使用工具创建纹理图集，*使用额外功能改进游戏*。`plist` 文件定义为图像的原始文件名，它位于 `texture` 文件中。它还定义了纹理图集将使用的图像。纹理图集的 `plist` 文件是 xml 格式，如下所示。
 
-[PRE65]
+```cpp
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>frames</key>
+        <dict>
+            <key>run_01.png</key>
+            <dict>
+                <key>frame</key>
+                <string>{{2,2},{356,474}}</string>
+                <key>offset</key>
+                <string>{-62,-26}</string>
+                <key>rotated</key>
+                <false/>
+                <key>sourceColorRect</key>
+                <string>{{60,89},{356,474}}</string>
+                <key>sourceSize</key>
+                <string>{600,600}</string>
+            </dict>
+            <key>run_02.png</key>
+            <dict>
+                <key>frame</key>
+                <string>{{360,2},{272,466}}</string>
+                <key>offset</key>
+                <string>{-30,-33}</string>
+                <key>rotated</key>
+                <false/>
+                <key>sourceColorRect</key>
+                <string>{{134,100},{272,466}}</string>
+                <key>sourceSize</key>
+                <string>{600,600}</string>
+            </dict>
+
+      omit
+
+        </dict>
+        <key>metadata</key>
+        <dict>
+            <key>format</key>
+            <integer>2</integer>
+            <key>realTextureFileName</key>
+            <string>running.png</string>
+            <key>size</key>
+            <string>{2048,1024}</string>
+            <key>smartupdate</key>
+            <string>$TexturePacker:SmartUpdate :e4468ff02abe538ce50e3e1448059f78:1/1$</string>
+            <key>textureFileName</key>
+            <string>running.png</string>
+        </dict>
+    </dict>
+</plist>
+```
 
 ![它是如何工作的...](img/B00561_02_14.jpg)
 
@@ -645,7 +1011,12 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 纹理图集的大小在使用中会根据设备而变化。您可以在以下代码中检查设备的最大纹理大小：
 
-[PRE66]
+```cpp
+int max;
+glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max);
+CCLOG("texture size = %d", max);
+
+```
 
 您可以使用纹理图集和 `plist` 文件生成动画。首先，您需要将 `run_animation.plist` 文件添加到您的项目中。该文件如下截图所示：
 
@@ -655,13 +1026,16 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 其次，您需要使用 `plist` 文件生成动画。
 
-[PRE67]
+```cpp
+auto cache = AnimationCache::getInstance(); cache->addAnimationsWithFile("res/run_animation.plist"); auto animation = cache->getAnimation("run"); auto action = Animate::create(animation); sprite->runAction(action);
+
+```
 
 您还需要使用 `AnimationCache::addAnimationWithFile` 方法缓存动画数据，使用动画 `plist`。接下来，您将通过指定在 `plist` 中定义为动画名称的 `run` 来生成一个 `Animation` 实例。然后，您从动画中生成一个动作。之后，您可以使用动作实例通过 `runAction` 方法进行动画处理。
 
 ## 相关内容
 
-手动创建纹理图集非常困难。您最好使用像 `TexturePacker` 这样的工具，您将在第 11 章 [利用优势](ch11.html "第 11 章。利用优势") 中了解它。
+手动创建纹理图集非常困难。您最好使用像 `TexturePacker` 这样的工具，您将在第十一章 利用优势 中了解它。
 
 # 使用批处理节点
 
@@ -671,7 +1045,18 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 让我们尝试使用 `SpriteBatchNode` 显示许多精灵。
 
-[PRE68]
+```cpp
+auto batchNode = SpriteBatchNode::create("res/run_01.png");
+this->addChild(batchNode);
+for (int i=0; i<300; i++) {
+ auto sprite = Sprite::createWithTexture(batchNode->getTexture());
+ float x = CCRANDOM_0_1() * size.width;
+ float y = CCRANDOM_0_1() * size.height;
+ sprite->setPosition(Vec2(x,y));
+ batchNode->addChild(sprite);
+}
+
+```
 
 ## 它是如何工作的...
 
@@ -697,7 +1082,9 @@ Cocos2d-x 有一个 `CallFunc` 对象，允许您创建一个函数并将其传�
 
 如果您想隐藏此调试信息，应将 `Director::setDisplayStats` 方法的值设置为 `false`。您可以在项目的 `AppDelegate.cpp` 中找到它。
 
-[PRE69]
+```cpp
+director->setDisplayStats(false);
+```
 
 自 Cocos2d-x 版本 3 以来，绘制调用的 `auto batch` 功能已被添加，Cocos2d-x 可以通过一个 OpenGL ES 绘制调用绘制许多精灵，无需 `SpriteBatchNode`。然而，它有以下条件：
 
@@ -717,7 +1104,21 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 让我们尝试显示一个 3D 模型并移动它。
 
-[PRE70]
+```cpp
+auto size = Director::getInstance()->getWinSize();
+
+// create 3D modal
+auto sprite3d = Sprite3D::create("res/girl.c3b");
+sprite3d->setPosition(Vec2(size.width/2, 100));
+this->addChild(sprite3d);
+
+// action 3D modal
+auto animation3d = Animation3D::create("res/girl.c3b");
+auto animate3d = Animate3D::create(animation3d);
+auto repeat = RepeatForever::create(animate3d);
+sprite3d->runAction(repeat);
+
+```
 
 ![如何做...](img/B00561_02_17.jpg)
 
@@ -729,7 +1130,16 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 最后，您将尝试将 3D 精灵向左或向右移动。当您运行以下代码时，您会注意到 3D 精灵的外观取决于它们在屏幕上的位置：
 
-[PRE71]
+```cpp
+Sprite3d->setPositionX(size.width);
+// move fro right to left
+auto move1 = MoveBy::create(5.0f, Vec2(-size.width, 0));
+auto move2 = MoveBy::create(5.0f, Vec2(size.width, 0));
+auto seq = Sequence::create(move1, move2, NULL);
+auto loop = RepeatForever::create(seq);
+sprite3d->runAction(loop);
+
+```
 
 ## 参见
 
@@ -743,11 +1153,21 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 有两种检测碰撞的方法。第一种方法检查一个点是否包含在精灵的矩形内。
 
-[PRE72]
+```cpp
+Rect rect = sprite->getBoundingBox();
+if (rect.containsPoint(Vec2())) {
+ CCLOG("the point bumped rectangle");
+}
+
+```
 
 第二种方法检查两个精灵的矩形是否重叠。
 
-[PRE73]
+```cpp
+if (rect.intersectsRect(Rect(0, 0, 100, 100))) {
+ CCLOG("two rectangles bumped");}
+
+```
 
 ## 它是如何工作的...
 
@@ -769,25 +1189,33 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 ## 相关内容
 
-+   如果你使用了物理引擎，你可以以不同的方式检测碰撞。查看[第9章](ch09.html "第9章。控制物理")，*控制物理*。
++   如果你使用了物理引擎，你可以以不同的方式检测碰撞。查看第九章，*控制物理*。
 
-+   如果你想要考虑图像的透明部分来检测碰撞，请查看[第11章](ch11.html "第11章。利用优势")，*利用优势*。
++   如果你想要考虑图像的透明部分来检测碰撞，请查看第十一章，*利用优势*。
 
 # 绘制形状
 
-在Cocos2d-x中，使用`DrawNode`类绘制形状可以变得简单。如果你可以使用`DrawNode`绘制各种形状，你将需要为这些形状准备纹理。在本节中，你将学习如何不使用纹理来绘制形状。
+在 Cocos2d-x 中，使用`DrawNode`类绘制形状可以变得简单。如果你可以使用`DrawNode`绘制各种形状，你将需要为这些形状准备纹理。在本节中，你将学习如何不使用纹理来绘制形状。
 
 ## 如何操作...
 
 首先，你创建了一个`DrawNode`实例，如下面的代码所示。你也得到了窗口大小。
 
-[PRE74]
+```cpp
+auto size = Director::getInstance()->getWinSize();
+auto draw = DrawNode::create();
+this->addChild(draw);
+
+```
 
 ### 绘制点
 
 你可以通过指定点、半径和颜色来绘制点。
 
-[PRE75]
+```cpp
+draw->drawDot(Vec2(size/2), 10.0f, Color4F::WHITE);
+
+```
 
 ![绘制点](img/B00561_02_21.jpg)
 
@@ -795,7 +1223,12 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 你可以通过指定起点、终点和颜色来绘制线条。使用`drawLine`方法时，将绘制一个`1px`粗的线条。如果你想绘制更粗的线条，请使用带有给定半径的`drawSegment`方法。
 
-[PRE76]
+```cpp
+draw->drawLine(Vec2(300, 200), Vec2(600, 200), Color4F::WHITE);
+draw->drawSegment(Vec2(300, 100), Vec2(600, 100), 10.0f,
+Color4F::WHITE);
+
+```
 
 ![绘制线条](img/B00561_02_22.jpg)
 
@@ -813,13 +1246,21 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 +   是否绘制到中心
 
-+   缩放X轴
++   缩放 X 轴
 
-+   缩放Y轴
++   缩放 Y 轴
 
 +   颜色
 
-[PRE77]
+```cpp
+draw->drawCircle(Vec2(300, size.height/2), 50.0f, 1.0f, 10, true,
+1.0f, 1.0f, Color4F::WHITE);
+draw->drawCircle(Vec2(450, size.height/2), 50.0f, 1.0f, 100, false,
+1.0f, 1.0f, Color4F::WHITE);
+draw->drawSolidCircle(Vec2(600, size.height/2), 50.0f, 1.0f, 100,
+1.0f, 1.0f, Color4F::WHITE);
+
+```
 
 ![绘制圆形](img/B00561_02_23.jpg)
 
@@ -829,7 +1270,11 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 你可以使用以下代码，通过三个顶点和颜色绘制一个三角形。
 
-[PRE78]
+```cpp
+draw->drawTriangle(Vec2(380,100), Vec2(480, 200), Vec2(580, 100),
+Color4F::WHITE);
+
+```
 
 ![绘制三角形](img/B00561_02_24.jpg)
 
@@ -837,7 +1282,11 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 你可以使用以下代码，通过左下角点、右上角点和颜色绘制矩形。如果你使用`drawSolidRect`方法，你可以绘制填充颜色。
 
-[PRE79]
+```cpp
+draw->drawRect(Vec2(240, 100), Vec2(340,200), Color4F::WHITE);
+draw->drawSolidRect(Vec2(480, 100), Vec2(580, 200), Color4F::WHITE);
+
+```
 
 ![绘制矩形](img/B00561_02_25.jpg)
 
@@ -845,7 +1294,18 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 你可以使用以下代码，通过给定的顶点、顶点数量、填充颜色、边框宽度和边框颜色绘制一个多边形。
 
-[PRE80]
+```cpp
+std::vector<Vec2>verts;
+verts.push_back(Vec2(380,100));
+verts.push_back(Vec2(380,200));
+verts.push_back(Vec2(480,250));
+verts.push_back(Vec2(580,200));
+verts.push_back(Vec2(580,100));
+verts.push_back(Vec2(480,50));
+draw->drawPolygon(&verts[0], verts.size(), Color4F::RED, 5.0f,
+Color4F::GREEN);
+
+```
 
 ![绘制多边形](img/B00561_02_26.jpg)
 
@@ -853,10 +1313,13 @@ Cocos2d-x 版本 3 支持一个令人兴奋的新功能，称为 **3D 模态**�
 
 你可以使用以下代码绘制一个贝塞尔曲线，如所示。使用`drawQuadBezier`方法，你可以绘制一个二次贝塞尔曲线，使用`drawCubicBezier`方法你可以绘制一个三次贝塞尔曲线。`drawQuadBezier`方法的第三个参数和`drawCubicBezier`方法的第四个参数与圆一样，表示顶点数量。
 
-[PRE81]
+```cpp
+draw->drawQuadBezier(Vec2(240, 200), Vec2(480, 320), Vec2(720, 200), 24, Color4F::WHITE); draw->drawCubicBezier(Vec2(240, 100), Vec2(240, 200), Vec2(720, 200), Vec2(720, 100), 24, Color4F::WHITE);
+
+```
 
 ![绘制贝塞尔曲线](img/B00561_02_27.jpg)
 
 ## 它是如何工作的...
 
-`DrawNode`就像一个机制，使得Cocos2d-x能够以高速处理，通过一次性绘制所有形状而不是分别或逐个绘制。当你绘制多个形状时，你应该使用一个`DrawNode`实例，而不是多个`DrawNode`实例并在其中添加多个形状。此外，`DrawNode`没有深度概念。Cocos2d-x将按照添加到`DrawNode`中的形状顺序进行绘制。
+`DrawNode`就像一个机制，使得 Cocos2d-x 能够以高速处理，通过一次性绘制所有形状而不是分别或逐个绘制。当你绘制多个形状时，你应该使用一个`DrawNode`实例，而不是多个`DrawNode`实例并在其中添加多个形状。此外，`DrawNode`没有深度概念。Cocos2d-x 将按照添加到`DrawNode`中的形状顺序进行绘制。

@@ -8,17 +8,17 @@
 
 +   **远程过程调用**（**RPC**）：这是一个使用客户端服务技术进行通信的协议，其中客户端无法执行任何操作，也就是说，它被挂起，直到从服务器收到响应
 
-这些通信可以是单向的或双向的。为了在进程之间启用任何形式的通信，以下常用的**进程间通信**（**IPC**）机制被使用：管道、FIFOs（命名管道）、套接字、消息队列和共享内存。管道和FIFOs允许单向通信，而套接字、消息队列和共享内存则允许双向通信。
+这些通信可以是单向的或双向的。为了在进程之间启用任何形式的通信，以下常用的**进程间通信**（**IPC**）机制被使用：管道、FIFOs（命名管道）、套接字、消息队列和共享内存。管道和 FIFOs 允许单向通信，而套接字、消息队列和共享内存则允许双向通信。
 
 在本章中，我们将学习如何制作以下食谱，以便我们可以在进程之间建立通信：
 
 +   使用管道在进程间通信
 
-+   使用FIFO在进程间通信
++   使用 FIFO 在进程间通信
 
 +   使用套接字编程在客户端和服务器之间通信
 
-+   使用UDP套接字在进程间通信
++   使用 UDP 套接字在进程间通信
 
 +   使用消息队列从一个进程向另一个进程传递消息
 
@@ -48,7 +48,9 @@
 
 这里是其语法：
 
-[PRE0]
+```cpp
+int pipe(int arr[2]);
+```
 
 这里，`arr[0]` 是管道读取端的文件描述符，而 `arr[1]` 是管道写入端的文件描述符。
 
@@ -58,7 +60,9 @@
 
 此函数创建一个新的 FIFO 特殊文件。以下是其语法：
 
-[PRE1]
+```cpp
+int mkfifo(const char *filename, mode_t permission);
+```
 
 这里，`filename` 代表文件名及其完整路径，而 `permission` 代表新 FIFO 文件的权限位。默认权限是所有者、组和其他人的读写权限，即 (0666)。
 
@@ -68,7 +72,9 @@
 
 此函数用于将数据写入指定的文件或管道（其描述符在方法中提供）。以下是其语法：
 
-[PRE2]
+```cpp
+write(int fp, const void *buf, size_t n);
+```
 
 它将 *n* 个字节写入由文件指针 `fp` 指向的文件，来自缓冲区 `buf`。
 
@@ -76,7 +82,9 @@
 
 此函数从指定的文件或管道（其描述符在方法中提供）读取。以下是其语法：
 
-[PRE3]
+```cpp
+read(int fp, void *buf, size_t n);
+```
 
 它尝试从由描述符 `fp` 指向的文件读取最多 *n* 个字节。读取的字节随后分配给缓冲区 `buf`。
 
@@ -86,7 +94,9 @@
 
 这里是其语法：
 
-[PRE4]
+```cpp
+void perror ( const char * str );
+```
 
 显示的错误消息可以由代表 `str` 的消息先行。
 
@@ -110,7 +120,34 @@
 
 `readwritepipe.c` 程序用于写入管道并随后从管道读取，如下所示：
 
-[PRE5]
+```cpp
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+#define max 50
+
+int main()
+{
+    char str[max];
+    int pp[2];
+
+    if (pipe(pp) < 0)
+        exit(1);
+    printf("Enter first message to write into pipe: ");
+    gets(str);
+    write(pp[1], str, max);
+    printf("Enter second message to write into pipe: ");
+    gets(str);
+    write(pp[1], str, max);
+    printf("Messages read from the pipe are as follows:\n");
+    read(pp[0], str, max);
+    printf("%s\n", str);
+    read(pp[0], str, max);
+    printf("%s\n", str);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
@@ -124,11 +161,20 @@
 
 让我们使用 GCC 编译 `readwritepipe.c` 程序，如下所示：
 
-[PRE6]
+```cpp
+$ gcc readwritepipe.c -o readwritepipe
+```
 
 如果你没有错误或警告，这意味着 `readwritepipe.c` 程序已被编译成可执行文件 `readwritepipe.exe`。让我们运行这个可执行文件：
 
-[PRE7]
+```cpp
+$ ./readwritepipe
+Enter the first message to write into pipe: This is the first message for the pipe
+Enter the second message to write into pipe: Second message for the pipe
+Messages read from the pipe are as follows:
+This is the first message for the pipe
+Second message for the pipe
+```
 
 在前面的程序中，主线程负责从管道写入和读取。但如果我们想一个进程向管道写入，另一个进程从管道读取怎么办？让我们看看如何实现这一点。
 
@@ -150,7 +196,49 @@
 
 通过子进程向管道写入并通过父进程从管道读取的 `pipedemo.c` 程序如下：
 
-[PRE8]
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define max  50
+
+int main()
+{
+    char wstr[max];
+    char rstr[max];
+    int pp[2];
+    pid_t p;
+    if(pipe(pp) < 0)
+    {
+        perror("pipe");
+    } 
+    p = fork();
+    if(p >= 0)
+    {
+        if(p == 0)
+        {
+            printf ("Enter the string : ");
+            gets(wstr);
+            write (pp[1] , wstr , strlen(wstr));
+            exit(0);
+        }
+        else
+        {
+            read (pp[0] , rstr , sizeof(rstr));
+            printf("Entered message : %s\n " , rstr);
+            exit(0);
+        }
+    }
+    else
+    {
+        perror("fork");
+        exit(2);
+    }        
+    return 0;
+}
+```
 
 让我们看看幕后。
 
@@ -164,11 +252,17 @@
 
 让我们使用 GCC 编译 `pipedemo.c` 程序，如下所示：
 
-[PRE9]
+```cpp
+$ gcc pipedemo.c -o pipedemo
+```
 
 如果你没有错误或警告，这意味着 `pipedemo.c` 程序已经被编译成一个可执行文件，名为 `pipedemo.exe`。让我们运行这个可执行文件：
 
-[PRE10]
+```cpp
+$ ./pipedemo
+Enter the string : This is a message from the pipe
+Entered message : This is a message from the pipe
+```
 
 哇！我们已经成功使用管道在进程之间进行了通信。现在，让我们继续下一个菜谱！
 
@@ -198,7 +292,25 @@
 
 用于向 FIFO 写入数据的 `writefifo.c` 程序如下：
 
-[PRE11]
+```cpp
+#include <stdio.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main()
+{
+    int fw;
+    char str[255];
+    mkfifo("FIFOPipe", 0666);
+    fw = open("FIFOPipe", O_WRONLY);
+    printf("Enter text: ");
+    gets(str);
+    write(fw,str, sizeof(str));
+    close(fw);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
@@ -206,55 +318,83 @@
 
 假设我们已经定义了一个大小为 `255` 的字符串 `str`。我们将调用 `mkfifo` 函数来创建一个新的 FIFO 特殊文件。我们将使用名为 `FIFOPipe` 的名称创建 FIFO 特殊文件，并为所有者、组和其他用户设置读写权限。
 
-我们将通过调用`open`函数以只写模式打开这个FIFO特殊文件。然后，我们将打开的FIFO特殊文件的文件描述符分配给`fw`变量。你将被提示输入要写入文件的文本。你输入的文本将被分配给`str`变量，然后当调用`write`函数时，它将被写入特殊的FIFO文件。最后，关闭FIFO特殊文件。
+我们将通过调用`open`函数以只写模式打开这个 FIFO 特殊文件。然后，我们将打开的 FIFO 特殊文件的文件描述符分配给`fw`变量。你将被提示输入要写入文件的文本。你输入的文本将被分配给`str`变量，然后当调用`write`函数时，它将被写入特殊的 FIFO 文件。最后，关闭 FIFO 特殊文件。
 
-让我们使用GCC编译`writefifo.c`程序，如下所示：
+让我们使用 GCC 编译`writefifo.c`程序，如下所示：
 
-[PRE12]
+```cpp
+$ gcc writefifo.c -o writefifo
+```
 
 如果你没有错误或警告，这意味着`writefifo.c`程序已编译成可执行文件`writefifo.exe`。让我们运行这个可执行文件：
 
-[PRE13]
+```cpp
+$ ./writefifo
+Enter text: This is a named pipe demo example called FIFO
+```
 
-如果你的程序没有提示输入字符串，这意味着它正在等待FIFO的另一端打开。也就是说，你需要在第二个终端屏幕上运行下一个菜谱，*从FIFO读取数据*。请在Cygwin上按*Alt+F2*打开下一个终端屏幕。
+如果你的程序没有提示输入字符串，这意味着它正在等待 FIFO 的另一端打开。也就是说，你需要在第二个终端屏幕上运行下一个菜谱，*从 FIFO 读取数据*。请在 Cygwin 上按*Alt+F2*打开下一个终端屏幕。
 
 现在，让我们检查这个菜谱的另一个部分。
 
-# 从FIFO读取数据
+# 从 FIFO 读取数据
 
-在这个菜谱中，我们将看到如何从FIFO读取数据。
+在这个菜谱中，我们将看到如何从 FIFO 读取数据。
 
 # 如何做到这一点…
 
-1.  通过调用`open`函数以只读模式打开FIFO特殊文件。
+1.  通过调用`open`函数以只读模式打开 FIFO 特殊文件。
 
-1.  使用`read`函数从FIFO特殊文件中读取文本。
+1.  使用`read`函数从 FIFO 特殊文件中读取文本。
 
-1.  关闭FIFO特殊文件。
+1.  关闭 FIFO 特殊文件。
 
 用于从命名管道（FIFO）读取的`readfifo.c`程序如下：
 
-[PRE14]
+```cpp
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define BUFFSIZE 255
+
+int main()
+{
+    int fr;
+    char str[BUFFSIZE];
+    fr = open("FIFOPipe", O_RDONLY);
+    read(fr, str, BUFFSIZE);
+    printf("Read from the FIFO Pipe: %s\n", str);
+    close(fr);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
 # 它是如何工作的...
 
-我们首先定义一个名为`BUFFSIZE`的宏，其大小为`255`，以及一个名为`str`的字符串，其大小也是`BUFFSIZE`，即255个字符。我们将通过调用`open`函数以只读模式打开名为`FIFOPipe`的FIFO特殊文件。打开的FIFO特殊文件的文件描述符将被分配给`fr`变量。
+我们首先定义一个名为`BUFFSIZE`的宏，其大小为`255`，以及一个名为`str`的字符串，其大小也是`BUFFSIZE`，即 255 个字符。我们将通过调用`open`函数以只读模式打开名为`FIFOPipe`的 FIFO 特殊文件。打开的 FIFO 特殊文件的文件描述符将被分配给`fr`变量。
 
-使用`read`函数，从FIFO特殊文件中读取的文本将被分配到`str`字符串变量。从FIFO特殊文件中读取的文本将被显示在屏幕上。最后，关闭FIFO特殊文件。
+使用`read`函数，从 FIFO 特殊文件中读取的文本将被分配到`str`字符串变量。从 FIFO 特殊文件中读取的文本将被显示在屏幕上。最后，关闭 FIFO 特殊文件。
 
-现在，按*Alt + F2*打开第二个终端窗口。在第二个终端窗口中，让我们使用GCC编译`readfifo.c`程序，如下所示：
+现在，按*Alt + F2*打开第二个终端窗口。在第二个终端窗口中，让我们使用 GCC 编译`readfifo.c`程序，如下所示：
 
-[PRE15]
+```cpp
+$ gcc readfifo.c -o readfifo
+```
 
 如果你没有错误或警告，这意味着`readfifo.c`程序已编译成可执行文件`readfifo.exe`。让我们运行这个可执行文件：
 
-[PRE16]
+```cpp
+$ ./readfifo
+Read from the FIFO Pipe: This is a named pipe demo example called FIFO
+```
 
 当你运行`readfifo.exe`文件时，你会在之前运行`writefifo.c`程序的终端屏幕上发现，会提示你输入一个字符串。当你在这个终端上输入一个字符串并按*Enter*键时，你会得到`readfifo.c`程序的输出。
 
-哇！我们已经成功使用FIFO在进程之间进行了通信。现在，让我们继续下一个菜谱！
+哇！我们已经成功使用 FIFO 在进程之间进行了通信。现在，让我们继续下一个菜谱！
 
 # 使用套接字编程在客户端和服务器之间进行通信
 
@@ -268,7 +408,7 @@
 
 # 客户端-服务器模型
 
-对于IPC，使用不同的模型，但最流行的是客户端-服务器模型。在这个模型中，每当客户端需要某些信息时，它会连接到另一个称为服务器的进程。但在建立连接之前，客户端需要知道服务器是否已经存在，并且它应该知道服务器的地址。
+对于 IPC，使用不同的模型，但最流行的是客户端-服务器模型。在这个模型中，每当客户端需要某些信息时，它会连接到另一个称为服务器的进程。但在建立连接之前，客户端需要知道服务器是否已经存在，并且它应该知道服务器的地址。
 
 另一方面，服务器旨在满足客户端的需求，在建立连接之前不需要知道客户端的地址。为了建立连接，需要一个基本构造，称为套接字，并且连接的进程必须各自建立自己的套接字。客户端和服务器需要遵循某些程序来建立它们的套接字。
 
@@ -280,21 +420,33 @@
 
 此结构引用了用于保持地址的套接字元素。以下是该结构的内置成员：
 
-[PRE17]
+```cpp
+struct sockaddr_in {
+ short int sin_family;
+ unsigned short int sin_port;
+ struct in_addr sin_addr;
+ unsigned char sin_zero[8];
+};
+```
 
 这里，我们有以下内容：
 
 +   `sin_family`：表示一个地址族。有效的选项有`AF_INET`、`AF_UNIX`、`AF_NS`和`AF_IMPLINK`。在大多数应用程序中，使用的地址族是`AF_INET`。
 
-+   `sin_port`：表示16位服务端口号。
++   `sin_port`：表示 16 位服务端口号。
 
-+   `sin_addr`：表示32位IP地址。
++   `sin_addr`：表示 32 位 IP 地址。
 
 +   `sin_zero`：这个成员不使用，通常设置为`NULL`。
 
 `struct in_addr`包含一个成员，如下所示：
 
-[PRE18]
+```cpp
+
+struct in_addr {
+     unsigned long s_addr; 
+};
+```
 
 这里，`s_addr`用于表示网络字节序中的地址。
 
@@ -302,7 +454,9 @@
 
 此函数创建了一个通信端点。为了建立通信，每个进程需要在通信线的末端有一个套接字。此外，两个通信进程必须具有相同的套接字类型，并且它们都应该在同一个域中。以下是创建套接字的语法：
 
-[PRE19]
+```cpp
+int socket(int domain, int type, int protocol);
+```
 
 这里，`domain`表示要创建套接字的通信域。基本上，指定了`地址族`或`协议族`，这将用于通信。
 
@@ -310,9 +464,9 @@
 
 +   `AF_LOCAL`：这用于本地通信。
 
-+   `AF_INET`：这用于IPv4互联网协议。
++   `AF_INET`：这用于 IPv4 互联网协议。
 
-+   `AF_INET6`：这用于IPv6互联网协议。
++   `AF_INET6`：这用于 IPv6 互联网协议。
 
 +   `AF_IPX`: 这用于使用标准**IPX**（即**Internetwork Packet Exchange**）套接字地址的协议。
 
@@ -320,9 +474,9 @@
 
 +   `type`: 表示要创建的套接字类型。以下是一些流行的套接字类型：
 
-+   `SOCK_STREAM`: 流套接字使用**传输控制协议 (TCP**)作为字符的连续流进行通信。TCP是一种可靠的面向流的协议。因此，`SOCK_STREAM`类型提供了可靠、双向和基于连接的字节流。
++   `SOCK_STREAM`: 流套接字使用**传输控制协议 (TCP**)作为字符的连续流进行通信。TCP 是一种可靠的面向流的协议。因此，`SOCK_STREAM`类型提供了可靠、双向和基于连接的字节流。
 
-+   `SOCK_DGRAM`: 数据报套接字使用**用户数据报协议 (UDP**)一次性读取整个消息。UDP是一种不可靠的、无连接的、面向消息的协议。这些消息具有固定的最大长度。
++   `SOCK_DGRAM`: 数据报套接字使用**用户数据报协议 (UDP**)一次性读取整个消息。UDP 是一种不可靠的、无连接的、面向消息的协议。这些消息具有固定的最大长度。
 
 +   `SOCK_SEQPACKET`: 为数据报提供可靠、双向和基于连接的传输路径。
 
@@ -336,7 +490,9 @@
 
 这用于使用指定的值填充内存块。以下是它的语法：
 
-[PRE20]
+```cpp
+void *memset(void *ptr, int v, size_t n);
+```
 
 在这里，`ptr`指向要填充的内存地址，`v`是要填充到内存块中的值，而`n`是要填充的字节数，从指针的位置开始。
 
@@ -348,7 +504,9 @@
 
 使用`socket`函数创建的套接字保持在分配的地址族中。为了使套接字能够接收连接，需要为其分配一个地址。`bind`函数将地址分配给指定的套接字。以下是它的语法：
 
-[PRE21]
+```cpp
+   int bind(int fdsock, const struct sockaddr *structaddr, socklen_t lenaddr);
+```
 
 在这里，`fdsock`代表套接字的文件描述符，`structaddr`代表包含要分配给套接字的地址的`sockaddr`结构，而`lenaddr`代表由`structaddr`指向的地址结构的大小。
 
@@ -356,7 +514,9 @@
 
 它在套接字上监听连接，以便接受传入的连接请求。以下是它的语法：
 
-[PRE22]
+```cpp
+int listen(int sockfd, int lenque);
+```
 
 在这里，`sockfd`代表套接字的文件描述符，而`lenque`代表给定套接字的挂起连接队列的最大长度。如果队列已满，将生成错误。
 
@@ -366,7 +526,9 @@
 
 它接受监听套接字上的新连接，即从挂起的连接队列中选取的第一个连接。实际上，会创建一个新的套接字，其套接字类型协议和地址族与指定的套接字相同，并为该套接字分配一个新的文件描述符。以下是它的语法：
 
-[PRE23]
+```cpp
+int accept(int socket, struct sockaddr *address, socklen_t *len);
+```
 
 在这里，我们需要解决以下问题：
 
@@ -380,7 +542,9 @@
 
 这用于将指定的消息发送到另一个套接字。在调用此函数之前，套接字需要处于连接状态。以下是其语法：
 
-[PRE24]
+```cpp
+       ssize_t send(int fdsock, const void *buf, size_t length, int flags);
+```
 
 在这里，`fdsock` 代表要发送消息的套接字的文件描述符，`buf` 指向包含要发送消息的缓冲区，`length` 代表以字节为单位要发送的消息长度，而 `flags` 指定要发送的消息类型。通常，其值保持为 `0`。
 
@@ -388,7 +552,9 @@
 
 这在套接字上初始化一个连接。以下是其语法：
 
-[PRE25]
+```cpp
+int connect(int fdsock, const struct sockaddr *addr,  socklen_t len);
+```
 
 在这里，`fdsock` 代表要建立连接的套接字的文件描述符，`addr` 代表包含套接字地址的结构，而 `len` 代表包含地址的结构 `addr` 的大小。
 
@@ -396,7 +562,9 @@
 
 这用于从已连接的套接字接收消息。套接字可以是连接模式或无连接模式。以下是其语法：
 
-[PRE26]
+```cpp
+ssize_t recv(int fdsock, void *buf, size_t len, int flags);
+```
 
 在这里，`fdsock` 代表必须从中获取消息的套接字的文件描述符，`buf` 代表存储接收到的消息的缓冲区，`len` 指定由 `buf` 参数指向的缓冲区的长度，而 `flags` 指定正在接收的消息类型。通常，其值保持为 `0`。
 
@@ -424,7 +592,37 @@
 
 发送消息到客户端的服务器程序 `serverprog.c` 如下所示：
 
-[PRE27]
+```cpp
+#include <stdio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+int main(){
+    int serverSocket, toSend;
+    char str[255];
+    struct sockaddr_in server_Address;
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    server_Address.sin_family = AF_INET;
+    server_Address.sin_port = htons(2000);
+    server_Address.sin_addr.s_addr = inet_addr("127.0.0.1");
+    memset(server_Address.sin_zero, '\0', sizeof 
+    server_Address.sin_zero); 
+    bind(serverSocket, (struct sockaddr *) &server_Address, 
+    sizeof(server_Address));
+    if(listen(serverSocket,5)==-1)
+    {
+        printf("Not able to listen\n");
+        return -1;
+    }
+    printf("Enter text to send to the client: ");
+    gets(str);
+    toSend = accept(serverSocket, (struct sockaddr *) NULL, NULL);
+    send(toSend,str, strlen(str),0);
+    return 0;
+}
+```
 
 让我们看看幕后发生了什么。
 
@@ -442,11 +640,16 @@
 
 让我们使用 GCC 编译 `serverprog.c` 程序，如下所示：
 
-[PRE28]
+```cpp
+$ gcc serverprog.c -o serverprog
+```
 
 如果你没有收到错误或警告，这意味着 `serverprog.c` 程序已编译成可执行文件，名为 `serverprog.exe`。让我们运行这个可执行文件：
 
-[PRE29]
+```cpp
+$ ./serverprog
+Enter text to send to the client: thanks and good bye
+```
 
 现在，让我们看看这个说明的另一个部分。
 
@@ -468,7 +671,30 @@
 
 客户端程序 `clientprog.c` 用于读取从服务器发送的消息如下：
 
-[PRE30]
+```cpp
+#include <stdio.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+int main(){
+    int clientSocket;
+    char str[255];
+    struct sockaddr_in client_Address;
+    socklen_t address_size;
+    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    client _Address.sin_family = AF_INET;
+    client _Address.sin_port = htons(2000);
+    client _Address.sin_addr.s_addr = inet_addr("127.0.0.1");
+    memset(client _Address.sin_zero, '\0', sizeof client_Address.sin_zero); 
+    address_size = sizeof server_Address;
+    connect(clientSocket, (struct sockaddr *) &client_Address, address_size);
+    recv(clientSocket, str, 255, 0);
+    printf("Data received from server: %s", str);  
+    return 0;
+}
+```
 
 让我们幕后看看。
 
@@ -482,11 +708,16 @@
 
 现在，按 *Alt + F2* 打开第二个终端窗口。在这里，我们将使用 GCC 编译 `clientprog.c` 程序，如下所示：
 
-[PRE31]
+```cpp
+$ gcc clientprog.c -o clientprog
+```
 
 如果没有错误或警告，这意味着 `clientprog.c` 程序已编译成可执行文件，名为 `clientprog.exe`。让我们运行这个可执行文件：
 
-[PRE32]
+```cpp
+$ ./clientprog
+Data received from server: thanks and good bye
+```
 
 哇！我们已经成功使用套接字编程在客户端和服务器之间进行了通信。现在，让我们继续下一个菜谱！
 
@@ -504,27 +735,31 @@
 
 在使用 UDP 进行通信的情况下，客户端不需要与服务器建立连接，而是简单地发送一个数据报。服务器不需要接受连接；它只需等待客户端发送数据报。每个数据报都包含发送者的地址，使服务器能够根据数据报是从哪里发送的来识别客户端。
 
-对于通信，UDP服务器首先创建一个UDP套接字并将其绑定到服务器地址。然后，服务器等待来自客户端的数据报文到达。一旦到达，服务器处理数据报文并向客户端发送回复。这个过程会不断重复。
+对于通信，UDP 服务器首先创建一个 UDP 套接字并将其绑定到服务器地址。然后，服务器等待来自客户端的数据报文到达。一旦到达，服务器处理数据报文并向客户端发送回复。这个过程会不断重复。
 
-另一方面，UDP客户端为了通信，创建一个UDP套接字，向服务器发送消息，并等待服务器的响应。如果客户端想要向服务器发送更多消息，则会不断重复此过程，否则套接字描述符将关闭。
+另一方面，UDP 客户端为了通信，创建一个 UDP 套接字，向服务器发送消息，并等待服务器的响应。如果客户端想要向服务器发送更多消息，则会不断重复此过程，否则套接字描述符将关闭。
 
 # `bzero()`
 
 这将在指定的区域放置*n*个零值字节。其语法如下：
 
-[PRE33]
+```cpp
+void bzero(void *r, size_t n);
+```
 
 在这里，`r`是指向`r`的区域，`n`是要放置在由`r`指向的区域中的零值字节的数量。
 
 # `INADDR_ANY`
 
-这是一个在不想将套接字绑定到任何特定IP时使用的IP地址。基本上，在实现通信时，我们需要将我们的套接字绑定到IP地址。当我们不知道我们机器的IP地址时，我们可以使用特殊的IP地址`INADDR_ANY`。它允许我们的服务器接收被任何接口针对的数据包。
+这是一个在不想将套接字绑定到任何特定 IP 时使用的 IP 地址。基本上，在实现通信时，我们需要将我们的套接字绑定到 IP 地址。当我们不知道我们机器的 IP 地址时，我们可以使用特殊的 IP 地址`INADDR_ANY`。它允许我们的服务器接收被任何接口针对的数据包。
 
 # `sendto()`
 
 这用于在指定的套接字上发送消息。消息可以在连接模式以及无连接模式下发送。在无连接模式下，消息发送到指定的地址。其语法如下：
 
-[PRE34]
+```cpp
+ssize_t sendto(int fdsock, const void *buff, size_t len, int flags, const struct sockaddr *recv_addr, socklen_t recv_len);
+```
 
 在这里，我们需要处理以下内容：
 
@@ -534,7 +769,7 @@
 
 +   `len`：指定消息的字节数。
 
-+   `flags`：指定正在传输的消息类型。通常，其值保持为0。
++   `flags`：指定正在传输的消息类型。通常，其值保持为 0。
 
 +   `recv_addr`：指向包含接收者地址的`sockaddr`结构。地址的长度和格式取决于分配给套接字的地址族。
 
@@ -546,7 +781,9 @@
 
 这用于从连接模式或无连接模式的套接字接收消息。其语法如下：
 
-[PRE35]
+```cpp
+ssize_t recvfrom(int fdsock, void *buffer, size_t length, int flags, struct sockaddr *address, socklen_t *address_len);
+```
 
 在这里，我们需要处理以下内容：
 
@@ -564,9 +801,9 @@
 
 函数返回写入缓冲区的消息长度，该缓冲区由缓冲区参数指向。
 
-现在，我们可以开始这个配方的第一部分：使用UDP套接字准备服务器等待并回复客户端的消息。
+现在，我们可以开始这个配方的第一部分：使用 UDP 套接字准备服务器等待并回复客户端的消息。
 
-# 使用UDP套接字等待客户端消息并发送回复
+# 使用 UDP 套接字等待客户端消息并发送回复
 
 在本部分的配方中，我们将学习服务器如何等待客户端的消息，以及当收到客户端的消息时，它如何回复客户端。
 
@@ -576,17 +813,59 @@
 
 1.  调用`socket`函数创建套接字。为套接字提供的地址族是`AF_INET`，选择的套接字类型是数据报类型。
 
-1.  初始化`sockaddr_in`结构体的成员以配置套接字。为套接字指定的端口号是`2000`。使用特殊IP地址`INADDR_ANY`为套接字分配IP地址。
+1.  初始化`sockaddr_in`结构体的成员以配置套接字。为套接字指定的端口号是`2000`。使用特殊 IP 地址`INADDR_ANY`为套接字分配 IP 地址。
 
 1.  调用`bind`函数将地址分配给它。
 
-1.  调用`recvfrom`函数从UDP套接字接收消息，即从客户端机器接收。在从客户端机器读取的消息中添加一个空字符`\0`，并在屏幕上显示。输入要发送给客户端的回复。
+1.  调用`recvfrom`函数从 UDP 套接字接收消息，即从客户端机器接收。在从客户端机器读取的消息中添加一个空字符`\0`，并在屏幕上显示。输入要发送给客户端的回复。
 
 1.  调用`sendto`函数将回复发送给客户端。
 
-等待客户端消息并发送回复的UDP套接字服务器程序`udps.c`如下所示：
+等待客户端消息并发送回复的 UDP 套接字服务器程序`udps.c`如下所示：
 
-[PRE36]
+```cpp
+#include <stdio.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include<netinet/in.h>
+#include <stdlib.h> 
+
+int main()
+{   
+    char msgReceived[255];
+    char msgforclient[255];
+    int UDPSocket, len;
+    struct sockaddr_in server_Address, client_Address;
+    bzero(&server_Address, sizeof(server_Address));
+    printf("Waiting for the message from the client\n");
+    if ( (UDPSocket = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+        perror("Socket could not be created"); 
+        exit(1); 
+    }      
+    server_Address.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_Address.sin_port = htons(2000);
+    server_Address.sin_family = AF_INET; 
+    if ( bind(UDPSocket, (const struct sockaddr *)&server_Address, 
+    sizeof(server_Address)) < 0 ) 
+    { 
+        perror("Binding could not be done"); 
+        exit(1); 
+    } 
+    len = sizeof(client_Address);
+    int n = recvfrom(UDPSocket, msgReceived, sizeof(msgReceived),  0, 
+    (struct sockaddr*)&client_Address,&len);
+    msgReceived[n] = '\0';
+    printf("Message received from the client: ");
+    puts(msgReceived);
+    printf("Enter the reply to be sent to the client: ");
+    gets(msgforclient);
+    sendto(UDPSocket, msgforclient, 255, 0, (struct 
+    sockaddr*)&client_Address, sizeof(client_Address));
+    printf("Reply to the client sent \n");
+}
+```
 
 让我们看看背后的情况。
 
@@ -596,19 +875,19 @@
 
 服务器如预期的那样等待来自客户端的数据报。因此，屏幕上显示以下文本消息：“等待来自客户端的消息”。我们通过调用名为`UDPSocket`的`socket`函数创建套接字。为套接字提供的地址族是`AF_INET`，选择的套接字类型是数据报。`server_Address`结构体的成员被初始化以配置套接字。
 
-使用`sin_family`成员，指定给套接字的地址族是`AF_INET`，它用于IPv4互联网协议。指定给套接字的端口号是`2000`。使用`htons`函数，将短整数`2000`转换为网络字节序，然后作为端口号应用。然后，我们使用一个特殊的IP地址`INADDR_ANY`来为套接字分配IP地址。使用`htonl`函数，将`INADDR_ANY`转换为网络字节序，然后作为套接字的地址应用。
+使用`sin_family`成员，指定给套接字的地址族是`AF_INET`，它用于 IPv4 互联网协议。指定给套接字的端口号是`2000`。使用`htons`函数，将短整数`2000`转换为网络字节序，然后作为端口号应用。然后，我们使用一个特殊的 IP 地址`INADDR_ANY`来为套接字分配 IP 地址。使用`htonl`函数，将`INADDR_ANY`转换为网络字节序，然后作为套接字的地址应用。
 
-为了使创建的套接字`UDPSocket`能够接收连接，我们将调用`bind`函数将地址分配给它。我们将调用`recvfrom`函数从UDP套接字接收消息，即从客户端机器接收。从客户端机器读取的消息被分配给`msgReceived`字符串，该字符串在`recvfrom`函数中提供。在`msgReceived`字符串中添加一个空字符`\0`，并在屏幕上显示。之后，您将被提示输入要发送给客户端的回复。输入的回复被分配给`msgforclient`。通过调用`sendto`函数，将回复发送给客户端。发送消息后，屏幕上显示以下消息：`Reply to the client sent`。
+为了使创建的套接字`UDPSocket`能够接收连接，我们将调用`bind`函数将地址分配给它。我们将调用`recvfrom`函数从 UDP 套接字接收消息，即从客户端机器接收。从客户端机器读取的消息被分配给`msgReceived`字符串，该字符串在`recvfrom`函数中提供。在`msgReceived`字符串中添加一个空字符`\0`，并在屏幕上显示。之后，您将被提示输入要发送给客户端的回复。输入的回复被分配给`msgforclient`。通过调用`sendto`函数，将回复发送给客户端。发送消息后，屏幕上显示以下消息：`Reply to the client sent`。
 
 现在，让我们看看本食谱的另一个部分。
 
-# 使用UDP套接字向服务器发送消息并从服务器接收回复
+# 使用 UDP 套接字向服务器发送消息并从服务器接收回复
 
-正如名称所暗示的，在本食谱中，我们将向您展示客户端如何通过UDP套接字向服务器发送消息，然后从服务器接收回复。
+正如名称所暗示的，在本食谱中，我们将向您展示客户端如何通过 UDP 套接字向服务器发送消息，然后从服务器接收回复。
 
 # 如何做到这一点…
 
-1.  执行本食谱前一部分的前三个步骤。将本地主机IP地址`127.0.0.1`分配给套接字地址。
+1.  执行本食谱前一部分的前三个步骤。将本地主机 IP 地址`127.0.0.1`分配给套接字地址。
 
 1.  输入要发送给服务器的消息。调用`sendto`函数将消息发送到服务器。
 
@@ -616,9 +895,50 @@
 
 1.  关闭套接字的描述符。
 
-客户端程序`udpc.c`用于通过UDP套接字向服务器发送消息并接收回复，如下所示：
+客户端程序`udpc.c`用于通过 UDP 套接字向服务器发送消息并接收回复，如下所示：
 
-[PRE37]
+```cpp
+#include <stdio.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include<netinet/in.h>
+#include<unistd.h>
+#include<stdlib.h>
+
+int main()
+{   
+    char msgReceived[255];
+    char msgforserver[255];
+    int UDPSocket, n;
+    struct sockaddr_in client_Address;    
+    printf("Enter the message to send to the server: ");
+    gets(msgforserver);
+    bzero(&client_Address, sizeof(client_Address));
+    client_Address.sin_addr.s_addr = inet_addr("127.0.0.1");
+    client_Address.sin_port = htons(2000);
+    client_Address.sin_family = AF_INET;     
+    if ( (UDPSocket = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+        perror("Socket could not be created"); 
+        exit(1); 
+    } 
+    if(connect(UDPSocket, (struct sockaddr *)&client_Address, 
+    sizeof(client_Address)) < 0)
+    {
+        printf("\n Error : Connect Failed \n");
+        exit(0);
+    } 
+    sendto(UDPSocket, msgforserver, 255, 0, (struct sockaddr*)NULL, 
+    sizeof(client_Address));
+    printf("Message to the server sent. \n");
+    recvfrom(UDPSocket, msgReceived, sizeof(msgReceived), 0, (struct 
+    sockaddr*)NULL, NULL);
+    printf("Received from the server: ");
+    puts(msgReceived);
+    close(UDPSocket);
+}
+```
 
 现在，让我们看看幕后。
 
@@ -628,49 +948,84 @@
 
 现在，您将被提示输入要发送给服务器的消息。您输入的消息将被分配给`msgforserver`字符串。然后，我们将调用`bzero`函数初始化`client_Address`结构，即`client_Address`结构的所有成员都将填充零。
 
-接下来，我们将初始化`client_Address`结构的成员以配置套接字。使用`sin_family `成员，为套接字指定的地址族是`AF_INET`，用于IPv4互联网协议。为套接字指定的端口号是`2000`。通过使用`htons`函数，将短整数`2000`转换为网络字节顺序，然后将其作为端口号应用。然后，我们将本地主机IP地址`127.0.0.1`分配给套接字。我们将对本地主机地址调用`inet_addr`函数，将包含地址的标准IPv4点分十进制表示法字符串转换为整数值（适合用作互联网地址），然后再将其应用于`client_Address`结构的`sin_addr`成员。
+接下来，我们将初始化`client_Address`结构的成员以配置套接字。使用`sin_family `成员，为套接字指定的地址族是`AF_INET`，用于 IPv4 互联网协议。为套接字指定的端口号是`2000`。通过使用`htons`函数，将短整数`2000`转换为网络字节顺序，然后将其作为端口号应用。然后，我们将本地主机 IP 地址`127.0.0.1`分配给套接字。我们将对本地主机地址调用`inet_addr`函数，将包含地址的标准 IPv4 点分十进制表示法字符串转换为整数值（适合用作互联网地址），然后再将其应用于`client_Address`结构的`sin_addr`成员。
 
 我们将调用`socket`函数以`UDPSocket`为名称创建一个套接字。为套接字提供的地址族是`AF_INET`，选择的套接字类型是数据报。
 
 接下来，我们将调用`sendto`函数将分配给`msgforserver`字符串的消息发送到服务器。同样，我们将调用`recvfrom`函数从服务器获取消息。从服务器接收到的消息分配给`msgReceived`字符串，然后显示在屏幕上。最后，关闭套接字描述符。
 
-让我们使用GCC来编译`udps.c`程序，如下所示：
+让我们使用 GCC 来编译`udps.c`程序，如下所示：
 
-[PRE38]
+```cpp
+$ gcc udps.c -o udps
+```
 
 如果没有错误或警告，这意味着`udps.c`程序已编译成可执行文件，`udps.exe`。让我们运行这个可执行文件：
 
-[PRE39]
+```cpp
+$ ./udps
+Waiting for the message from the client
+```
 
-现在，按*Alt + F2* 打开第二个终端窗口。在这里，让我们再次使用GCC来编译`udpc.c`程序，如下所示：
+现在，按*Alt + F2* 打开第二个终端窗口。在这里，让我们再次使用 GCC 来编译`udpc.c`程序，如下所示：
 
-[PRE40]
+```cpp
+$ gcc udpc.c -o udpc
+```
 
 如果没有错误或警告，这意味着`udpc.c`程序已编译成可执行文件，`udpc.exe`。让我们运行这个可执行文件：
 
-[PRE41]
+```cpp
+$ ./udpc
+Enter the message to send to the server: Will it rain today?
+Message to the server sent.
+```
 
 服务器上的输出将给出以下输出：
 
-[PRE42]
+```cpp
+Message received from the client: Will it rain today?
+Enter the reply to be sent to the client: It might
+Reply to the client sent
+```
 
 一旦服务器发送回复，在客户端窗口，您将得到以下输出：
 
-[PRE43]
+```cpp
+Received from the server: It might
+```
 
-要运行演示使用共享内存和消息队列进行IPC的食谱，我们需要运行Cygserver。如果您在Linux上运行这些程序，则可以跳过本节。让我们看看Cygserver是如何运行的。
+要运行演示使用共享内存和消息队列进行 IPC 的食谱，我们需要运行 Cygserver。如果您在 Linux 上运行这些程序，则可以跳过本节。让我们看看 Cygserver 是如何运行的。
 
-# 运行Cygserver
+# 运行 Cygserver
 
-在执行运行Cygwin服务器命令之前，我们需要配置Cygserver并将其安装为服务。为此，您需要在终端上运行`cygserver.conf`脚本。以下是运行脚本后的输出：
+在执行运行 Cygwin 服务器命令之前，我们需要配置 Cygserver 并将其安装为服务。为此，您需要在终端上运行`cygserver.conf`脚本。以下是运行脚本后的输出：
 
-[PRE44]
+```cpp
+$ ./bin/cygserver-config
+Generating /etc/cygserver.conf file
+Warning: The following function requires administrator privileges!
+Do you want to install cygserver as service? yes
 
-现在，Cygserver已经配置并作为服务安装。下一步是运行服务器。要运行Cygserver，您需要使用以下命令：
+The service has been installed under LocalSystem account.
+To start it, call `net start cygserver' or `cygrunsrv -S cygserver'.
 
-[PRE45]
+Further configuration options are available by editing the configuration
+file /etc/cygserver.conf. Please read the inline information in that
+file carefully. The best option for the start is to just leave it alone.
 
-现在，Cygserver正在运行，我们可以制作一个食谱来演示使用共享内存和消息队列进行IPC。
+Basic Cygserver configuration finished. Have fun!
+```
+
+现在，Cygserver 已经配置并作为服务安装。下一步是运行服务器。要运行 Cygserver，您需要使用以下命令：
+
+```cpp
+$ net start cygserver
+The CYGWIN cygserver service is starting.
+The CYGWIN cygserver service was started successfully.
+```
+
+现在，Cygserver 正在运行，我们可以制作一个食谱来演示使用共享内存和消息队列进行 IPC。
 
 # 使用消息队列从一个进程向另一个进程传递消息
 
@@ -688,17 +1043,21 @@
 
 # ftok()
 
-这基于提供的文件名和ID生成一个IPC键。可以提供文件及其完整路径。文件必须引用一个现有文件。以下是它的语法：
+这基于提供的文件名和 ID 生成一个 IPC 键。可以提供文件及其完整路径。文件必须引用一个现有文件。以下是它的语法：
 
-[PRE46]
+```cpp
+key_t ftok(const char *filename, int id);
+```
 
-如果提供相同的文件名（具有相同的路径）和相同的ID，则 `ftok` 函数将生成相同的关键值。成功完成后，`ftok` 将返回一个键，否则返回 `-1`。
+如果提供相同的文件名（具有相同的路径）和相同的 ID，则 `ftok` 函数将生成相同的关键值。成功完成后，`ftok` 将返回一个键，否则返回 `-1`。
 
 # shmget()
 
 这分配了一个共享内存段，并返回与键关联的共享内存标识符。以下是它的语法：
 
-[PRE47]
+```cpp
+int shmget(key_t key, size_t size, int shmflg);
+```
 
 在这里，我们需要解决以下问题：
 
@@ -718,7 +1077,9 @@
 
 这用于将共享内存段附加到给定的地址空间。也就是说，通过调用 `shmgt` 函数接收到的共享内存标识符需要与进程的地址空间相关联。以下是它的语法：
 
-[PRE48]
+```cpp
+void *shmat(int shidtfr, const void *addr, int flag);
+```
 
 在这里，我们需要解决以下问题：
 
@@ -734,7 +1095,9 @@
 
 这将共享内存段分离。以下是它的语法：
 
-[PRE49]
+```cpp
+int shmdt(const void *addr);
+```
 
 这里，`addr` 表示共享内存段所在的地址。
 
@@ -742,7 +1105,9 @@
 
 这用于在指定的共享内存段上执行某些控制操作。以下是它的语法：
 
-[PRE50]
+```cpp
+int shmctl(int shidtr, int cmd, struct shmid_ds *buf);
+```
 
 在这里，我们必须处理以下问题：
 
@@ -764,7 +1129,9 @@
 
 这用于创建新的消息队列，以及访问与指定键相关联的现有队列。如果执行成功，则函数返回消息队列的标识符：
 
-[PRE51]
+```cpp
+       int msgget(key_t key, int flag);
+```
 
 在这里，我们必须处理以下问题：
 
@@ -780,7 +1147,9 @@
 
 这用于从指定的消息队列中读取消息，该队列的标识符由用户提供。以下是它的语法：
 
-[PRE52]
+```cpp
+int msgrcv(int msqid, void *msgstruc, int msgsize, long typemsg, int flag);
+```
 
 在这里，我们必须处理以下问题：
 
@@ -810,7 +1179,9 @@
 
 这用于向队列发送或投递消息。以下是它的语法：
 
-[PRE53]
+```cpp
+ int msgsnd ( int msqid, struct msgbuf *msgstruc, int msgsize, int flag );
+```
 
 在这里，我们必须解决以下问题：
 
@@ -832,25 +1203,63 @@
 
 # 如何做到这一点...
 
-1.  通过调用`ftok`函数生成一个IPC键。在创建IPC键时提供文件名和ID。
+1.  通过调用`ftok`函数生成一个 IPC 键。在创建 IPC 键时提供文件名和 ID。
 
-1.  调用`msgget`函数创建一个新的消息队列。消息队列与步骤1中创建的IPC键相关联。
+1.  调用`msgget`函数创建一个新的消息队列。消息队列与步骤 1 中创建的 IPC 键相关联。
 
-1.  定义一个包含两个成员的结构，`mtype`和`mesg`。将`mtype`成员的值设置为1。
+1.  定义一个包含两个成员的结构，`mtype`和`mesg`。将`mtype`成员的值设置为 1。
 
-1.  输入将要添加到消息队列的消息。输入的字符串被分配给我们在步骤3中定义的结构体的`mesg`成员。
+1.  输入将要添加到消息队列的消息。输入的字符串被分配给我们在步骤 3 中定义的结构体的`mesg`成员。
 
 1.  调用`msgsnd`函数将输入的消息发送到消息队列。
 
 将消息写入消息队列的`messageqsend.c`程序如下：
 
-[PRE54]
+```cpp
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define MSGSIZE     255
+
+struct msgstruc {
+    long mtype;
+    char mesg[MSGSIZE];
+};
+
+int main()
+{
+    int msqid, msglen;
+    key_t key;
+    struct msgstruc msgbuf;
+    system("touch messagefile");
+    if ((key = ftok("messagefile", 'a')) == -1) {
+        perror("ftok");
+        exit(1);
+    } 
+    if ((msqid = msgget(key, 0666 | IPC_CREAT)) == -1) {
+        perror("msgget");
+        exit(1);
+    }
+    msgbuf.mtype = 1;
+    printf("Enter a message to add to message queue : ");
+    scanf("%s",msgbuf.mesg);
+    msglen = strlen(msgbuf.mesg);
+    if (msgsnd(msqid, &msgbuf, msglen, IPC_NOWAIT) < 0)
+        perror("msgsnd");
+    printf("The message sent is %s\n", msgbuf.mesg);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
 # 它是如何工作的...
 
-我们将首先通过调用`ftok`函数来生成一个IPC密钥。在创建IPC密钥时提供的文件名和ID分别是`messagefile`和`a`。生成的密钥被分配给密钥变量。之后，我们将调用`msgget`函数来创建一个新的消息队列。该消息队列与使用`ftok`函数创建的IPC密钥相关联。
+我们将首先通过调用`ftok`函数来生成一个 IPC 密钥。在创建 IPC 密钥时提供的文件名和 ID 分别是`messagefile`和`a`。生成的密钥被分配给密钥变量。之后，我们将调用`msgget`函数来创建一个新的消息队列。该消息队列与使用`ftok`函数创建的 IPC 密钥相关联。
 
 接下来，我们将定义一个名为`msgstruc`的结构，包含两个成员，`mtype`和`mesg`。`mtype`成员有助于确定从消息队列发送或接收的消息的序列号。`mesg`成员包含要读取或写入消息队列的消息。我们将定义一个名为`msgbuf`的变量，其类型为`msgstruc`结构。`mtype`成员的值被设置为`1`。
 
@@ -864,49 +1273,96 @@
 
 # 如何做到这一点...
 
-1.  调用`ftok`函数来生成一个IPC密钥。在创建IPC密钥时提供的文件名和ID。这些必须与在消息队列中写入消息时生成密钥时使用的相同。
+1.  调用`ftok`函数来生成一个 IPC 密钥。在创建 IPC 密钥时提供的文件名和 ID。这些必须与在消息队列中写入消息时生成密钥时使用的相同。
 
-1.  调用`msgget`函数访问与IPC密钥相关联的消息队列。与该密钥相关联的消息队列已经包含了我们通过前面的程序写入的消息。
+1.  调用`msgget`函数访问与 IPC 密钥相关联的消息队列。与该密钥相关联的消息队列已经包含了我们通过前面的程序写入的消息。
 
 1.  定义一个包含两个成员的结构，`mtype`和`mesg`。
 
-1.  调用`msgrcv`函数从相关消息队列中读取消息。在步骤3中定义的结构被传递给此函数。
+1.  调用`msgrcv`函数从相关消息队列中读取消息。在步骤 3 中定义的结构被传递给此函数。
 
 1.  读取的消息随后显示在屏幕上。
 
 以下是从消息队列中读取消息的`messageqrecv.c`程序：
 
-[PRE55]
+```cpp
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#define MSGSIZE     255
+
+struct msgstruc {
+    long mtype;
+    char mesg[MSGSIZE];
+};
+
+int main()
+{
+    int msqid;
+    key_t key;
+    struct msgstruc rcvbuffer;
+
+    if ((key = ftok("messagefile", 'a')) == -1) {
+        perror("ftok");
+        exit(1);
+    }
+    if ((msqid = msgget(key, 0666)) < 0)
+    {
+        perror("msgget");
+        exit(1);
+    }
+    if (msgrcv(msqid, &rcvbuffer, MSGSIZE, 1, 0) < 0)
+    {
+        perror("msgrcv");
+        exit(1);
+    }
+    printf("The message received is %s\n", rcvbuffer.mesg);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
 # 它是如何工作的...
 
-首先，我们将调用`ftok`函数来生成一个IPC密钥。在创建IPC密钥时提供的文件名和ID分别是`messagefile`和`a`。这些文件名和ID必须与在消息队列中写入消息时生成密钥时使用的相同。生成的密钥被分配给密钥变量。
+首先，我们将调用`ftok`函数来生成一个 IPC 密钥。在创建 IPC 密钥时提供的文件名和 ID 分别是`messagefile`和`a`。这些文件名和 ID 必须与在消息队列中写入消息时生成密钥时使用的相同。生成的密钥被分配给密钥变量。
 
-之后，我们将调用`msgget`函数来访问与IPC密钥相关联的消息队列。访问的消息队列的标识符被分配给`msqid`变量。与该密钥相关联的消息队列已经包含了我们之前程序中写入的消息。
+之后，我们将调用`msgget`函数来访问与 IPC 密钥相关联的消息队列。访问的消息队列的标识符被分配给`msqid`变量。与该密钥相关联的消息队列已经包含了我们之前程序中写入的消息。
 
 然后，我们将定义一个名为`msgstruc`的结构，它有两个成员，`mtype`和`mesg`。`mtype`成员用于确定要从中读取的消息队列的序列号。`mesg`成员将用于存储从消息队列中读取的消息。然后，我们将定义一个名为`rcvbuffer`的变量，其类型为`msgstruc`结构。我们将调用`msgrcv`函数从相关的消息队列中读取消息。
 
 消息标识符`msqid`被传递给函数，以及`rcvbuffer`——其`mesg`成员将存储读取的消息。在`msgrcv`函数成功执行后，`rcvbuffer`中的`mesg`成员将显示在屏幕上，包含来自消息队列的消息。
 
-让我们使用GCC编译`messageqsend.c`程序，如下所示：
+让我们使用 GCC 编译`messageqsend.c`程序，如下所示：
 
-[PRE56]
+```cpp
+$ gcc messageqsend.c -o messageqsend
+```
 
 如果你没有收到任何错误或警告，这意味着`messageqsend.c`程序已编译成可执行文件，名为`messageqsend.exe`。让我们运行这个可执行文件：
 
-[PRE57]
+```cpp
+$ ./messageqsend
+Enter a message to add to message queue : GoodBye
+The message sent is GoodBye
+```
 
 现在，按*Alt + F2*打开第二个终端屏幕。在这个屏幕上，你可以编译和运行从消息队列读取消息的脚本。
 
-让我们使用GCC编译`messageqrecv.c`程序，如下所示：
+让我们使用 GCC 编译`messageqrecv.c`程序，如下所示：
 
-[PRE58]
+```cpp
+$ gcc messageqrecv.c -o messageqrecv
+```
 
 如果你没有收到任何错误或警告，这意味着`messageqrecv.c`程序已编译成可执行文件，名为`messageqrecv.exe`。让我们运行这个可执行文件：
 
-[PRE59]
+```cpp
+$ ./messageqrecv
+The message received is GoodBye
+```
 
 哇！我们已经成功通过消息队列将消息从一个进程传递到另一个进程。让我们继续下一个菜谱！
 
@@ -926,9 +1382,9 @@
 
 # 如何操作…
 
-1.  通过提供文件名和ID调用`ftok`函数以生成IPC密钥。
+1.  通过提供文件名和 ID 调用`ftok`函数以生成 IPC 密钥。
 
-1.  调用`shmget`函数分配与步骤1中生成的密钥关联的共享内存段。
+1.  调用`shmget`函数分配与步骤 1 中生成的密钥关联的共享内存段。
 
 1.  为所需的内存段指定的尺寸是`1024`。创建一个新的具有读写权限的内存段。
 
@@ -940,13 +1396,40 @@
 
 将数据写入共享内存的`writememory.c`程序如下所示：
 
-[PRE60]
+```cpp
+#include <stdio.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main()
+{
+    char *str;
+    int shmid;
+
+    key_t key = ftok("sharedmem",'a');
+    if ((shmid = shmget(key, 1024,0666|IPC_CREAT)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+    if ((str = shmat(shmid, NULL, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+    printf("Enter the string to be written in memory : ");
+    gets(str);
+    printf("String written in memory: %s\n",str);
+    shmdt(str);
+    return 0;
+}
+```
 
 让我们看看幕后。
 
 # 它是如何工作的...
 
-通过调用`ftok`函数，我们使用文件名`sharedmem`（你可以更改此名称）和ID为`a`生成一个IPC密钥。生成的密钥被分配给键变量。之后，调用`shmget`函数来分配一个与使用`ftok`函数生成的提供的密钥相关联的共享内存段。
+通过调用`ftok`函数，我们使用文件名`sharedmem`（你可以更改此名称）和 ID 为`a`生成一个 IPC 密钥。生成的密钥被分配给键变量。之后，调用`shmget`函数来分配一个与使用`ftok`函数生成的提供的密钥相关联的共享内存段。
 
 为所需内存段指定的尺寸是`1024`。创建一个新的具有读写权限的内存段，并将共享内存标识符分配给`shmid`变量。然后，将共享内存段连接到系统中的第一个可用地址。
 
@@ -960,9 +1443,9 @@
 
 # 如何操作...
 
-1.  调用`ftok`函数生成一个IPC密钥。提供的文件名和ID应与写入共享内存的程序中的相同。
+1.  调用`ftok`函数生成一个 IPC 密钥。提供的文件名和 ID 应与写入共享内存的程序中的相同。
 
-1.  调用`shmget`函数分配一个共享内存段。为分配的内存段指定的尺寸是`1024`，并与步骤1中生成的IPC密钥相关联。创建具有读写权限的内存段。
+1.  调用`shmget`函数分配一个共享内存段。为分配的内存段指定的尺寸是`1024`，并与步骤 1 中生成的 IPC 密钥相关联。创建具有读写权限的内存段。
 
 1.  将共享内存段连接到系统中的第一个可用地址。
 
@@ -974,13 +1457,38 @@
 
 以下是从共享内存中读取数据的`readmemory.c`程序：
 
-[PRE61]
+```cpp
+#include <stdio.h> 
+#include <sys/ipc.h> 
+#include <sys/shm.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main()
+{
+    int shmid;
+    char * str;
+    key_t key = ftok("sharedmem",'a');
+    if ((shmid = shmget(key, 1024,0666|IPC_CREAT)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+    if ((str = shmat(shmid, NULL, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+    printf("Data read from memory: %s\n",str);
+    shmdt(str);                
+    shmctl(shmid,IPC_RMID,NULL);
+    return 0;
+}
+```
 
 让我们深入了解幕后。
 
 # 它是如何工作的...
 
-我们将调用`ftok`函数生成一个IPC密钥。用于生成密钥的文件名和ID分别是`sharedmem`（可以是任何名称）和`a`。生成的密钥被分配给`key`变量。之后，我们将调用`shmget`函数来分配一个与之前生成的密钥相关联的共享内存段。该分配的内存段尺寸为`1024`。
+我们将调用`ftok`函数生成一个 IPC 密钥。用于生成密钥的文件名和 ID 分别是`sharedmem`（可以是任何名称）和`a`。生成的密钥被分配给`key`变量。之后，我们将调用`shmget`函数来分配一个与之前生成的密钥相关联的共享内存段。该分配的内存段尺寸为`1024`。
 
 我们将创建一个新的具有读写权限的内存段，并将获取的共享内存标识符分配给`shmid`变量。然后，将共享内存段连接到系统中的第一个可用地址。这样做是为了我们可以通过先前的程序访问共享内存段中写入的文本。
 
@@ -988,20 +1496,31 @@
 
 之后，附加的内存段从地址空间中分离出来。最后，共享内存标识符`shmid`从系统中移除，共享内存段被销毁。
 
-让我们使用GCC来编译`writememory.c`程序，具体如下：
+让我们使用 GCC 来编译`writememory.c`程序，具体如下：
 
-[PRE62]
+```cpp
+$ gcc writememory.c -o writememory
+```
 
 如果你没有收到任何错误或警告，这意味着`writememory.c`程序已经编译成了一个可执行文件，名为`writememory.exe`。现在我们来运行这个可执行文件：
 
-[PRE63]
+```cpp
+$ ./writememory
+Enter the string to be written in memory : Today it might rain
+String written in memory: Today it might rain
+```
 
-现在，按*Alt + F2*打开第二个终端窗口。在这个窗口中，让我们使用GCC来编译`readmemory.c`程序，具体如下：
+现在，按*Alt + F2*打开第二个终端窗口。在这个窗口中，让我们使用 GCC 来编译`readmemory.c`程序，具体如下：
 
-[PRE64]
+```cpp
+$ gcc readmemory.c -o readmemory
+```
 
 如果你没有收到任何错误或警告，这意味着`readmemory.c`程序已经编译成了一个可执行文件，名为`readmemory.exe`。现在我们来运行这个可执行文件：
 
-[PRE65]
+```cpp
+$ ./readmemory
+ Data read from memory: Today it might rain
+```
 
 哇！我们已经成功使用共享内存在不同进程之间进行了通信。

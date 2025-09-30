@@ -1,4 +1,4 @@
-# 第5章 多线程
+# 第五章 多线程
 
 在本章中，我们将涵盖：
 
@@ -30,7 +30,29 @@
 
 在现代多核编译器上，为了实现最大性能（或仅仅提供良好的用户体验），程序通常必须使用多个执行线程。以下是一个激励示例，其中我们需要在绘制用户界面的线程中创建和填充一个大文件：
 
-[PRE0]
+```cpp
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+
+void set_not_first_run();
+bool is_first_run();
+
+// Function, that executes for a long time
+void fill_file_with_data(char fill_char, std::size_t size, const char* filename){
+  std::ofstream ofs(filename);
+  std::fill_n(std::ostreambuf_iterator<char>(ofs), size, fill_char);
+  set_not_first_run();
+}
+
+// ...
+// Somewhere in thread that draws a user interface
+if (is_first_run()) {
+  // This will be executing for a long time during which
+  // users interface will freeze..
+  fill_file_with_data(0, 8 * 1024 * 1024, "save_file.txt");
+}
+```
 
 ## 准备工作
 
@@ -40,7 +62,20 @@
 
 启动执行线程从未如此简单：
 
-[PRE1]
+```cpp
+#include <boost/thread.hpp>
+
+// ...
+// Somewhere in thread that draws a user interface
+if (is_first_run()) {
+  boost::thread(boost::bind(
+      &fill_file_with_data,
+      0,
+      8 * 1024 * 1024,
+      "save_file.txt"
+  )).detach();
+}
+```
 
 ## 如何工作...
 
@@ -66,7 +101,22 @@
 
 如果我们想在执行其他工作之前确保文件已被创建并写入，我们需要使用以下方法连接线程：
 
-[PRE2]
+```cpp
+// ...
+// Somewhere in thread that draws a user interface
+if (is_first_run()) {
+  boost::thread t(boost::bind(
+      &fill_file_with_data,
+      0,
+      8 * 1024 * 1024,
+      "save_file.txt"
+  ));
+  // Do some work
+  // ...
+  // Waiting for thread to finish
+  t.join();
+}
+```
 
 在线程连接后，`boost::thread` 变量将保持 `Not-A-Thread` 状态，其析构函数不会调用 `std::terminate`。
 
@@ -76,9 +126,9 @@
 
 注意，当任何非`boost::thread_interrupted`类型的异常离开功能对象的边界并传递给`boost::thread`构造函数时，会调用`std::terminate()`。
 
-`boost::thread`类被接受为C++11标准的一部分，你可以在`std::`命名空间中的`<thread>`头文件中找到它。默认情况下，当`BOOST_THREAD_VERSION=2`时，`boost::thread`的析构函数将调用`detach()`，这不会导致`std::terminate`。但是这样做会破坏与`std::thread`的兼容性，而且有一天，当你的项目转移到C++标准库线程或者当`BOOST_THREAD_VERSION=2`不再被支持时，这会给你带来很多惊喜。`Boost.Thread`的版本4更加明确和强大，这在C++语言中通常是首选的。
+`boost::thread`类被接受为 C++11 标准的一部分，你可以在`std::`命名空间中的`<thread>`头文件中找到它。默认情况下，当`BOOST_THREAD_VERSION=2`时，`boost::thread`的析构函数将调用`detach()`，这不会导致`std::terminate`。但是这样做会破坏与`std::thread`的兼容性，而且有一天，当你的项目转移到 C++标准库线程或者当`BOOST_THREAD_VERSION=2`不再被支持时，这会给你带来很多惊喜。`Boost.Thread`的版本 4 更加明确和强大，这在 C++语言中通常是首选的。
 
-有一个非常有用的包装器，它作为线程的RAII包装器工作，允许你模拟`BOOST_THREAD_VERSION=2`的行为；它被称为`boost::scoped_thread<T>`，其中`T`可以是以下类之一：
+有一个非常有用的包装器，它作为线程的 RAII 包装器工作，允许你模拟`BOOST_THREAD_VERSION=2`的行为；它被称为`boost::scoped_thread<T>`，其中`T`可以是以下类之一：
 
 +   `boost::interrupt_and_join_if_joinable`: 在析构时中断并连接线程
 
@@ -88,19 +138,28 @@
 
 这里有一个小例子：
 
-[PRE3]
+```cpp
+#include <boost/thread/scoped_thread.hpp>
+void some_func();
+void example_with_raii() {
+  boost::scoped_thread<boost::join_if_joinable> t(
+    (boost::thread(&some_func))
+  );
+  // 't' will be joined at scope exit
+}
+```
 
 ### 注意
 
 我们在`(boost::thread(&some_func))`周围添加了额外的括号，这样编译器就不会将其解释为函数声明而不是变量构造。
 
-`Boost`和C++11 STL版本的`thread`类之间没有太大区别；然而，`boost::thread`在C++03编译器上可用，因此它的使用更加灵活。
+`Boost`和 C++11 STL 版本的`thread`类之间没有太大区别；然而，`boost::thread`在 C++03 编译器上可用，因此它的使用更加灵活。
 
 ## 参见
 
 +   本章中的所有配方都将使用`Boost.Thread`；你可以继续阅读以获取更多关于它们的信息
 
-+   官方文档列出了`boost::thread`的所有方法和关于它们在C++11 STL实现中可用性的说明；它可以在[http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)找到。
++   官方文档列出了`boost::thread`的所有方法和关于它们在 C++11 STL 实现中可用性的说明；它可以在[`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)找到。
 
 +   “中断线程”的配方将给你一个关于`boost::interrupt_and_join_if_joinable`类所做事情的概念。
 
@@ -108,11 +167,58 @@
 
 现在我们知道了如何启动执行线程，我们希望从不同的线程访问一些公共资源：
 
-[PRE4]
+```cpp
+#include <cassert>
+#include <cstddef>
 
-这个`'Oops!'`并不是无意中写上去的。对某些人来说，这可能是个惊喜，但有很大可能性`shared_i`不会等于0：
+// In previous recipe we included
+// <boost/thread.hpp>, which includes all
+// the classes of Boost.Thread
+#include <boost/thread/thread.hpp>
 
-[PRE5]
+int shared_i = 0;
+
+void do_inc() {
+  for (std::size_t i = 0; i < 30000; ++i) {
+    // do some work
+    // ...
+
+    const int i_snapshot = ++ shared_i;
+
+    // do some work with i_snapshot
+    // ...
+  }
+}
+
+void do_dec() {
+  for (std::size_t i = 0; i < 30000; ++i) {
+    // do some work
+    // ...
+
+    const int i_snapshot = -- shared_i;
+
+    // do some work with i_snapshot
+    // ...
+  }
+}
+
+void run() {
+  boost::thread t1(&do_inc);
+  boost::thread t2(&do_dec);
+
+  t1.join();
+  t2.join();
+
+  // assert(shared_i == 0); // Oops!
+  std::cout << "shared_i == " << shared_i;
+}
+```
+
+这个`'Oops!'`并不是无意中写上去的。对某些人来说，这可能是个惊喜，但有很大可能性`shared_i`不会等于 0：
+
+```cpp
+shared_i == 19567
+```
 
 ### 注意
 
@@ -132,25 +238,69 @@
 
 1.  首先，我们需要创建一个互斥锁：
 
-    [PRE6]
+    ```cpp
+    #include <boost/thread/mutex.hpp>
+    #include <boost/thread/locks.hpp>
+
+    int shared_i = 0;
+    boost::mutex i_mutex;
+    ```
 
 1.  将修改或从 `shared_i` 变量获取数据的所有操作放在以下内容之间：
 
-    [PRE7]
+    ```cpp
+    { // Critical section begin
+      boost::lock_guard<boost::mutex> lock(i_mutex);
+    ```
 
     以及以下内容：
 
-    [PRE8]
+    ```cpp
+    } // Critical section end
+    ```
 
 它看起来是这样的：
 
-[PRE9]
+```cpp
+void do_inc() {
+  for (std::size_t i = 0; i < 30000; ++i) {
+
+    // do some work
+    // …
+
+    int i_snapshot;
+    { // Critical section begin
+      boost::lock_guard<boost::mutex> lock(i_mutex);
+      i_snapshot = ++ shared_i;
+    } // Critical section end
+
+    // do some work with i_snapshot
+    // ...
+  }
+}
+
+void do_dec() {
+  for (std::size_t i = 0; i < 30000; ++i) {
+    // do some work
+    // ...
+
+    int i_snapshot;
+    { // Critical section begin
+      boost::lock_guard<boost::mutex> lock(i_mutex);
+      i_snapshot = -- shared_i;
+    } // Critical section end
+
+    // do some work with i_snapshot
+    // ...
+  }
+}
+```
 
 ## 工作原理...
 
 `boost::mutex` 类负责处理所有的同步问题。当一个线程尝试通过 `boost::lock_guard<boost::mutex>` 变量来锁定它，并且没有其他线程持有锁时，它将成功获取对代码段的独占访问权，直到锁被解锁或销毁。如果其他线程已经持有锁，尝试获取锁的线程将等待直到另一个线程解锁。所有的锁定/解锁操作都隐含了特定的指令，以确保在**临界区**中做出的更改对所有线程都是可见的。此外，你也不再需要**确保修改后的资源值对所有核心都是可见的，并且不仅仅是在处理器的寄存器中修改**，以及**强制处理器和编译器不重新排序指令**。
 
-`boost::lock_guard` 类是一个非常简单的RAII类，它存储对互斥锁的引用，并在单参数构造函数中调用 `lock()`，在析构函数中调用 `unlock()`。注意前面示例中的花括号使用；`lock` 变量是在其中构造的，这样当达到 `critical section` 结束括号时，`lock` 变量的析构函数将被调用，互斥锁将被解锁。即使临界区中发生异常，互斥锁也会被正确解锁。
+`boost::lock_guard` 类是一个非常简单的 RAII 类，它存储对互斥锁的引用，并在单参数构造函数中调用 `lock()`，在析构函数中调用 `unlock()`。注意前面示例中的花括号使用；`lock` 变量是在其中构造的，这样当达到 `critical section` 结束括号时，`lock` 变量的析构函数将被调用，互斥锁将被解锁。即使临界区中发生异常，互斥锁也会被正确解锁。
 
 ![工作原理...](img/4880OS_05_02.jpg)
 
@@ -162,7 +312,7 @@
 
 锁定互斥锁可能是一个非常慢的操作，这可能会导致你的代码长时间停止，直到其他线程释放锁。尽量使临界区尽可能小，并尽量减少代码中的临界区数量。
 
-让我们看看一些操作系统（OS）如何在多核CPU上处理锁定。当 `thread #1` 在 CPU1 上运行并尝试锁定另一个线程已锁定的互斥量时，`thread #1` 会被操作系统停止，直到锁被释放。被停止的线程不会**消耗**处理器资源，因此操作系统仍然会在 CPU1 上执行其他线程。现在我们在 CPU1 上有一些线程正在运行；其他某个线程释放了锁，现在操作系统必须恢复 `thread #1` 的执行。所以它将在当前空闲的 CPU 上恢复执行，例如，CPU2。这将导致 CPU 缓存未命中，并且在互斥量释放后代码将运行得略慢。这是减少关键区数量另一个原因。然而，事情并不那么糟糕，因为一个好的操作系统会尝试在之前使用的相同 CPU 上恢复线程。
+让我们看看一些操作系统（OS）如何在多核 CPU 上处理锁定。当 `thread #1` 在 CPU1 上运行并尝试锁定另一个线程已锁定的互斥量时，`thread #1` 会被操作系统停止，直到锁被释放。被停止的线程不会**消耗**处理器资源，因此操作系统仍然会在 CPU1 上执行其他线程。现在我们在 CPU1 上有一些线程正在运行；其他某个线程释放了锁，现在操作系统必须恢复 `thread #1` 的执行。所以它将在当前空闲的 CPU 上恢复执行，例如，CPU2。这将导致 CPU 缓存未命中，并且在互斥量释放后代码将运行得略慢。这是减少关键区数量另一个原因。然而，事情并不那么糟糕，因为一个好的操作系统会尝试在之前使用的相同 CPU 上恢复线程。
 
 不要尝试在同一个线程中两次锁定一个 `boost::mutex` 变量；这将导致**死锁**。如果需要从单个线程多次锁定互斥量，请使用 `boost::recursive_mutex` 而不是 `<boost/thread/recursive_mutex.hpp>` 头文件。多次锁定它不会导致死锁。`boost::recursive_mutex` 只在每次 `lock()` 调用后对每个 `unlock()` 调用释放锁。避免使用 `boost::recursive_mutex`；它比 `boost::mutex` 慢，通常表示代码流程设计不佳。
 
@@ -172,15 +322,20 @@
 
 +   下一个示例将给你一些想法，如何使这个例子更快（更短）。
 
-+   阅读本章的第一个示例以获取更多关于 `boost::thread` 类的信息。`Boost.Thread` 的官方文档也可能有所帮助；它可以在 [http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到。
++   阅读本章的第一个示例以获取更多关于 `boost::thread` 类的信息。`Boost.Thread` 的官方文档也可能有所帮助；它可以在 [`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到。
 
-+   更多关于第一个示例为何会失败以及多处理器如何与公共资源协同工作的信息，请参阅 *《Memory Barriers: a Hardware View for Software Hackers》*，可在 [http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf](http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf) 查看。
++   更多关于第一个示例为何会失败以及多处理器如何与公共资源协同工作的信息，请参阅 *《Memory Barriers: a Hardware View for Software Hackers》*，可在 [`www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf`](http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf) 查看。
 
 # 使用原子操作快速访问公共资源
 
 在前面的示例中，我们看到了如何从不同的线程安全地访问一个公共资源。但在那个示例中，我们只是为了从一个整数中获取值，就做了两次系统调用（在锁定和解锁互斥量时）：
 
-[PRE10]
+```cpp
+{ // Critical section begin
+  boost::lock_guard<boost::mutex> lock(i_mutex);
+  i_snapshot = ++ shared_i;
+} // Critical section end
+```
 
 这看起来很糟糕！而且很慢！我们能否使前面示例中的代码更好？
 
@@ -194,19 +349,56 @@
 
 1.  我们将需要不同的头文件：
 
-    [PRE11]
+    ```cpp
+    #include <cassert>
+    #include <cstddef>
+
+    #include <boost/thread/thread.hpp>
+    #include <boost/atomic.hpp>
+    ```
 
 1.  需要更改`shared_i`的类型（因为它在互斥锁中不再需要）：
 
-    [PRE12]
+    ```cpp
+    boost::atomic<int> shared_i(0);
+    ```
 
 1.  移除所有的`boost::lock_guard`变量：
 
-    [PRE13]
+    ```cpp
+    void do_inc() {
+      for (std::size_t i = 0; i < 30000; ++i) {
+        // do some work
+        // ...
+        const int i_snapshot = ++ shared_i;
+        // do some work with i_snapshot
+        // ...
+      }
+    }
+
+    void do_dec() {
+      for (std::size_t i = 0; i < 30000; ++i) {
+        // do some work
+        // ...
+        const int i_snapshot = -- shared_i;
+        // do some work with i_snapshot
+        // ...
+      }
+    }
+    ```
 
     就这样！现在它工作了。
 
-    [PRE14]
+    ```cpp
+    int main() {
+      boost::thread t1(&do_inc);
+      boost::thread t2(&do_dec);
+      t1.join();
+      t2.join();
+      assert(shared_i == 0);
+      std::cout << "shared_i == " << shared_i << std::endl;
+    }
+    ```
 
 ## 如何工作...
 
@@ -214,35 +406,46 @@
 
 换句话说，可以安全地在不同的线程中同时使用`boost::atomic<>`变量。对原子变量的每次操作都会被系统视为一个单独的事务。对原子变量的操作序列将被系统视为一系列事务：
 
-[PRE15]
+```cpp
+-- shared_i; // Transaction #1
+// Some other thread may work here with shared_i and change its value
+++shared_i; // Transaction #2
+```
 
 ![如何工作...](img/4880OS_05_03.jpg)
 
 ## 还有更多...
 
-`Boost.Atomic`库只能与POD类型一起工作；否则，其行为是未定义的。一些平台/处理器可能不提供某些类型的原子操作，因此`Boost.Atomic`将使用`boost::mutex`来模拟原子行为。如果类型特定的宏设置为`2`，则原子类型不会使用`boost::mutex`：
+`Boost.Atomic`库只能与 POD 类型一起工作；否则，其行为是未定义的。一些平台/处理器可能不提供某些类型的原子操作，因此`Boost.Atomic`将使用`boost::mutex`来模拟原子行为。如果类型特定的宏设置为`2`，则原子类型不会使用`boost::mutex`：
 
-[PRE16]
+```cpp
+#include <boost/static_assert.hpp>
+BOOST_STATIC_ASSERT(BOOST_ATOMIC_INT_LOCK_FREE == 2);
+```
 
 `boost::atomic<T>::is_lock_free`成员函数依赖于运行时，因此它不适合编译时检查，但在运行时检查足够的情况下，它可能提供更易读的语法：
 
-[PRE17]
+```cpp
+assert(shared_i.is_lock_free());
+```
 
-原子操作比互斥锁快得多。如果我们比较使用互斥锁的食谱的执行时间（0:00.08秒）和这个食谱中前一个示例的执行时间（0:00.02秒），我们会看到差异（在3,00,000次迭代中进行了测试）。
+原子操作比互斥锁快得多。如果我们比较使用互斥锁的食谱的执行时间（0:00.08 秒）和这个食谱中前一个示例的执行时间（0:00.02 秒），我们会看到差异（在 3,00,000 次迭代中进行了测试）。
 
-C++11编译器应该在`std::`命名空间中的`<atomic>`头文件中包含所有的原子类、typedefs和宏。如果编译器正确支持C++11内存模型，并且原子操作不再是编译器的障碍，那么特定编译器的`std::atomic`实现可能比Boost版本运行得更快。
+C++11 编译器应该在`std::`命名空间中的`<atomic>`头文件中包含所有的原子类、typedefs 和宏。如果编译器正确支持 C++11 内存模型，并且原子操作不再是编译器的障碍，那么特定编译器的`std::atomic`实现可能比 Boost 版本运行得更快。
 
 ## 参见
 
-+   官方文档可能会给你提供更多关于这个主题的示例和一些理论信息；它可以在[http://www.boost.org/doc/libs/1_53_0/doc/html/atomic.html](http://www.boost.org/doc/libs/1_53_0/doc/html/atomic.html)找到
++   官方文档可能会给你提供更多关于这个主题的示例和一些理论信息；它可以在[`www.boost.org/doc/libs/1_53_0/doc/html/atomic.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/atomic.html)找到
 
-+   关于原子操作如何工作的更多信息，请参阅[http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf](http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf)上的*Memory Barriers: a Hardware View for Software Hackers*
++   关于原子操作如何工作的更多信息，请参阅[`www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf`](http://www.rdrop.com/users/paulmck/scalability/paper/whymb.2010.07.23a.pdf)上的*Memory Barriers: a Hardware View for Software Hackers*
 
 # 创建一个`work_queue`类
 
 让我们称这个不接受任何参数的功能对象（简称为任务）。
 
-[PRE18]
+```cpp
+typedef boost::function<void()> task_t;
+```
 
 现在，想象一下我们有两种类型的线程：一种是发布任务的线程，另一种是执行已发布任务的线程。我们需要设计一个可以被这两种类型的线程安全使用的类。这个类必须具有获取任务（或阻塞并等待任务，直到另一个线程发布它）的方法，检查和获取任务（如果没有任务剩余，则返回空任务），以及发布任务的方法。
 
@@ -256,31 +459,125 @@ C++11编译器应该在`std::`命名空间中的`<atomic>`头文件中包含所�
 
 1.  我们需要以下头文件和成员：
 
-    [PRE19]
+    ```cpp
+    #include <deque>
+    #include <boost/function.hpp>
+    #include <boost/thread/mutex.hpp>
+    #include <boost/thread/locks.hpp>
+    #include <boost/thread/condition_variable.hpp>
+
+    class work_queue {
+    public:
+      typedef boost::function<void()> task_type;
+
+    private:
+      std::deque<task_type>   tasks_;
+      boost::mutex            tasks_mutex_;
+      boost::condition_variable cond_;
+    ```
 
 1.  将任务放入队列的函数看起来像这样：
 
-    [PRE20]
+    ```cpp
+    public:
+      void push_task(const task_type& task) {
+        boost::unique_lock<boost::mutex> lock(tasks_mutex_);
+        tasks_.push_back(task);
+        lock.unlock();
+        cond_.notify_one();
+      }
+    ```
 
 1.  用于获取已推送任务或空任务（如果没有任务剩余）的非阻塞函数：
 
-    [PRE21]
+    ```cpp
+      task_type try_pop_task() {
+        task_type ret;
+        boost::lock_guard<boost::mutex> lock(tasks_mutex_);
+        if (!tasks_.empty()) {
+          ret = tasks_.front();
+          tasks_.pop_front();
+        }
+        return ret;
+      }
+    ```
 
 1.  用于获取已推送任务或阻塞直到另一个线程推送任务的阻塞函数：
 
-    [PRE22]
+    ```cpp
+      task_type pop_task() {
+        boost::unique_lock<boost::mutex> lock(tasks_mutex_);
+        while (tasks_.empty()) {
+          cond_.wait(lock);
+        }
+        task_type ret = tasks_.front();
+        tasks_.pop_front();
+        return ret;
+      }
+    };
+    ```
 
     这就是`work_queue`类可能的使用方式：
 
-    [PRE23]
+    ```cpp
+    #include <boost/thread/thread.hpp>
+
+    work_queue g_queue;
+
+    void do_nothing(){}
+
+    const std::size_t tests_tasks_count = 3000;
+
+    void pusher() {
+      for (std::size_t i = 0; i < tests_tasks_count; ++i) {
+        // Adding task to do nothing
+        g_queue.push_task(&do_nothing);
+      }
+    }
+
+    void popper_sync() {
+      for (std::size_t i = 0; i < tests_tasks_count; ++i) {
+        g_queue.pop_task() // Getting task
+        (); // Executing task
+      }
+    }
+
+    int main() {
+      boost::thread pop_sync1(&popper_sync);
+      boost::thread pop_sync2(&popper_sync);
+      boost::thread pop_sync3(&popper_sync);
+
+      boost::thread push1(&pusher);
+      boost::thread push2(&pusher);
+      boost::thread push3(&pusher);
+
+      // Waiting for all the tasks to pop
+      pop_sync1.join();
+      pop_sync2.join();
+      pop_sync3.join();
+
+      push1.join();
+      push2.join();
+      push3.join();
+
+      // Asserting that no tasks remained,
+      // and falling though without blocking
+      assert(!g_queue.try_pop_task());
+
+      g_queue.push_task(&do_nothing);
+      // Asserting that there is a task,
+      // and falling though without blocking
+      assert(g_queue.try_pop_task());
+    }
+    ```
 
 ## 工作原理...
 
-在这个例子中，我们将看到一个新的RAII类`boost::unique_lock`。它只是具有附加功能的`boost::lock_guard`类；例如，它具有显式解锁和锁定互斥锁的方法。
+在这个例子中，我们将看到一个新的 RAII 类`boost::unique_lock`。它只是具有附加功能的`boost::lock_guard`类；例如，它具有显式解锁和锁定互斥锁的方法。
 
 回到我们的`work_queue`类，让我们从`pop_task()`函数开始。一开始，我们获取一个锁并检查是否有可用的任务。如果有任务，我们返回它；否则，调用`cond_.wait(lock)`。此方法将解锁锁并暂停执行线程，直到其他线程通知当前线程。
 
-现在，让我们看看`push_task`方法。在其中，我们也获取了一个锁，将任务推送到`tasks_.queue`，解锁锁，并调用`cond_notify_one()`，这将唤醒在`cond_wait(lock)`中等待的线程（如果有）。所以，在那之后，如果某个线程在`pop_task()`方法中等待一个条件变量，该线程将继续执行，在`cond_wait(lock)`深处调用`lock.lock()`，并在while循环中检查`tasks_empty()`。因为我们刚刚在`tasks_`中添加了一个任务，所以我们将退出`while`循环，解锁互斥锁（`lock`变量将超出作用域），并返回一个任务。
+现在，让我们看看`push_task`方法。在其中，我们也获取了一个锁，将任务推送到`tasks_.queue`，解锁锁，并调用`cond_notify_one()`，这将唤醒在`cond_wait(lock)`中等待的线程（如果有）。所以，在那之后，如果某个线程在`pop_task()`方法中等待一个条件变量，该线程将继续执行，在`cond_wait(lock)`深处调用`lock.lock()`，并在 while 循环中检查`tasks_empty()`。因为我们刚刚在`tasks_`中添加了一个任务，所以我们将退出`while`循环，解锁互斥锁（`lock`变量将超出作用域），并返回一个任务。
 
 ![工作原理...](img/4880OS_05_04.jpg)
 
@@ -296,11 +593,21 @@ C++11编译器应该在`std::`命名空间中的`<atomic>`头文件中包含所�
 
 当将 `tests_tasks_count` 设置为 `3000000` 且没有明确解锁时，此示例运行时间为 7 秒：
 
-[PRE24]
+```cpp
+$time -f E ./work_queue
+
+0:07.38
+
+```
 
 使用显式解锁，此示例运行时间为 5 秒：
 
-[PRE25]
+```cpp
+$ time -f E ./work_queue 
+
+0:05.39
+
+```
 
 你也可以使用 `cond_notify_all()` 通知等待特定条件变量的所有线程。
 
@@ -310,13 +617,50 @@ C++11 标准在 `<condition_variable>` 头文件中声明了 `std::condition_var
 
 +   本章的前三个食谱提供了关于 `Boost.Thread` 的许多有用信息
 
-+   官方文档可能会给你提供更多示例以及一些关于该主题的理论信息；它可以在 [http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到
++   官方文档可能会给你提供更多示例以及一些关于该主题的理论信息；它可以在 [`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到
 
 # 多读单写锁
 
 想象一下我们正在开发一些在线服务。我们有一个注册用户的映射，每个用户有一些属性。这个集合被许多线程访问，但它很少被修改。所有对以下集合的操作都是以线程安全的方式完成的：
 
-[PRE26]
+```cpp
+#include <map>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/locks.hpp>
+
+struct user_info {
+  std::string address;
+  unsigned short age;
+
+  // Other parameters
+  // ...
+};
+
+class users_online {
+  typedef boost::mutex                      mutex_t;
+  mutable mutex_t                           users_mutex_;
+  std::map<std::string, user_info>          users_;
+
+public:
+  bool is_online(const std::string& username) const {
+    boost::lock_guard<mutex_t> lock(mutex_);
+    return users_.find(username) != users_.end();
+  }
+
+  unsigned short get_age(const std::string& username) const {
+    boost::lock_guard<mutex_t> lock(mutex_);
+    return users_.at(username).age;
+  }
+
+  void set_online(const std::string& username, const user_info& data) {
+    boost::lock_guard<mutex_t> lock(mutex_);
+    users_.insert(std::make_pair(username, data));
+  }
+
+  // Other methods
+  // ...
+};
+```
 
 但任何操作都会在 `mutex_` 变量上获取唯一锁，因此即使获取资源也会导致在锁定互斥锁上等待；因此，这个类很快就会成为瓶颈。
 
@@ -326,7 +670,34 @@ C++11 标准在 `<condition_variable>` 头文件中声明了 `std::condition_var
 
 对于不修改数据的方法，将 `boost::unique_locks` 替换为 `boost::shared_lock`：
 
-[PRE27]
+```cpp
+#include <boost/thread/shared_mutex.hpp>
+
+class users_online {
+  typedef boost::shared_mutex         mutex_t;
+  mutable mutex_t                     users_mutex_;
+  std::map<std::string, user_info>    users_;
+
+public:
+  bool is_online(const std::string& username) const {
+    boost::shared_lock<mutex_t> lock(users_mutex_);
+    return users_.find(username) != users_.end();
+  }
+
+  unsigned short get_age(const std::string& username) const {
+    boost::shared_lock<mutex_t> lock(users_mutex_);
+    return users_.at(username).age;
+  }
+
+  void set_online(const std::string& username, const user_info& data) {
+    boost::lock_guard<mutex_t> lock(users_mutex_);
+    users_.insert(std::make_pair(username, data));
+  }
+
+  // Other methods
+  // ...
+};
+```
 
 ## 它是如何工作的...
 
@@ -344,15 +715,28 @@ C++11 标准在 `<condition_variable>` 头文件中声明了 `std::condition_var
 
 ## 参见
 
-+   此外，还有一个 `boost::upgrade_mutex` 类，在需要将共享锁提升为独占锁的情况下可能很有用。有关更多信息，请参阅 `Boost.Thread` 文档 [http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)。
++   此外，还有一个 `boost::upgrade_mutex` 类，在需要将共享锁提升为独占锁的情况下可能很有用。有关更多信息，请参阅 `Boost.Thread` 文档 [`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)。
 
-+   更多关于 `mutable` 关键字的信息，请参阅 [http://herbsutter.com/2013/01/01/video-you-dont-know-const-and-mutable/](http://herbsutter.com/2013/01/01/video-you-dont-know-const-and-mutable/)。
++   更多关于 `mutable` 关键字的信息，请参阅 [`herbsutter.com/2013/01/01/video-you-dont-know-const-and-mutable/`](http://herbsutter.com/2013/01/01/video-you-dont-know-const-and-mutable/)。
 
 # 创建每个线程唯一的变量
 
 让我们快速看一下 *创建一个* *工作队列类* 的配方。那里的每个任务都可以在许多线程中的一个上执行，我们不知道是哪一个。想象一下，我们想要使用某个连接发送已执行任务的成果。
 
-[PRE28]
+```cpp
+#include <boost/noncopyable.hpp>
+
+class connection: boost::noncopyable {
+public:
+  // Opening a connection is a slow operation
+  void open();
+
+  void send_result(int result);
+
+  // Other methods
+  // ...
+};
+```
 
 我们有以下解决方案：
 
@@ -374,11 +758,38 @@ C++11 标准在 `<condition_variable>` 头文件中声明了 `std::condition_var
 
 是时候创建一个线程局部变量了：
 
-[PRE29]
+```cpp
+// In header file
+#include <boost/thread/tss.hpp>
+
+connection& get_connection();
+
+// In source file
+boost::thread_specific_ptr<connection> connection_ptr;
+
+connection& get_connection() {
+  connection* p = connection_ptr.get();
+  if (!p) {
+    connection_ptr.reset(new connection);
+    p = connection_ptr.get();
+    p->open();
+  }
+  return *p;
+}
+```
 
 使用线程特定的资源从未如此简单：
 
-[PRE30]
+```cpp
+void task() {
+  int result;
+  // Some computations go there
+  // ...
+
+  // Sending result
+  get_connection().send_result(result);
+}
+```
 
 ## 它是如何工作的...
 
@@ -394,15 +805,23 @@ C++11 有一个特殊的关键字，`thread_local`，用于声明具有线程局
 
 ## 参见
 
-+   `Boost.Thread` 文档提供了大量关于不同情况的好例子；它可以在 [http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到。
++   `Boost.Thread` 文档提供了大量关于不同情况的好例子；它可以在 [`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html) 找到。
 
-+   阅读这个主题[http://stackoverflow.com/questions/13106049/c11-gcc-4-8-thread-local-performance-penalty.html](http://stackoverflow.com/questions/13106049/c11-gcc-4-8-thread-local-performance-penalty.html)以及关于`GCC__thread`关键字的[http://gcc.gnu.org/onlinedocs/gcc-3.3.1/gcc/Thread-Local.html](http://gcc.gnu.org/onlinedocs/gcc-3.3.1/gcc/Thread-Local.html)可能会给你一些关于编译器中`thread_local`是如何实现的以及它的速度如何的想法
++   阅读这个主题[`stackoverflow.com/questions/13106049/c11-gcc-4-8-thread-local-performance-penalty.html`](http://stackoverflow.com/questions/13106049/c11-gcc-4-8-thread-local-performance-penalty.html)以及关于`GCC__thread`关键字的[`gcc.gnu.org/onlinedocs/gcc-3.3.1/gcc/Thread-Local.html`](http://gcc.gnu.org/onlinedocs/gcc-3.3.1/gcc/Thread-Local.html)可能会给你一些关于编译器中`thread_local`是如何实现的以及它的速度如何的想法
 
 # 中断线程
 
 有时候，我们需要终止消耗过多资源或执行时间过长的线程。例如，某些解析器在一个线程中工作（并积极使用`Boost.Thread`），但我们已经从它那里获得了所需的数据量，因此解析可以停止。我们只需要：
 
-[PRE31]
+```cpp
+boost::thread parser_thread(&do_parse);
+  // Some code goes here
+  // ...
+  if (stop_parsing) {
+    // no more parsing required
+    // TODO: stop parser
+  }
+```
 
 我们如何做到这一点？
 
@@ -414,7 +833,12 @@ C++11 有一个特殊的关键字，`thread_local`，用于声明具有线程局
 
 我们可以通过中断来停止线程：
 
-[PRE32]
+```cpp
+if (stop_parsing) {
+  // no more parsing required
+  parser_thread.interrupt();
+}
+```
 
 ## 它是如何工作的...
 
@@ -428,11 +852,18 @@ C++11 有一个特殊的关键字，`thread_local`，用于声明具有线程局
 
 我们也可以在任何地方添加中断点。我们只需要调用`boost::this_thread::interruption_point()`：
 
-[PRE33]
+```cpp
+void do_parse() {
+  while (not_end_of_parsing) {
+    boost::this_thread::interruption_point();
+    // Some parsing goes here
+  }
+}
+```
 
 如果项目不需要中断，定义`BOOST_THREAD_DONT_PROVIDE_INTERRUPTIONS`可以提供一些性能提升，并完全禁用线程中断。
 
-C++11没有线程中断，但你可以使用原子操作部分模拟它们：
+C++11 没有线程中断，但你可以使用原子操作部分模拟它们：
 
 +   创建一个原子布尔变量
 
@@ -444,17 +875,25 @@ C++11没有线程中断，但你可以使用原子操作部分模拟它们：
 
 ## 参见
 
-+   `Boost.Thread`的官方文档提供了预定义的中断点的列表，请参阅[http://www.boost.org/doc/libs/1_53_0/doc/html/thread/thread_management.html#thread.thread_management.tutorial.interruption.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread/thread_management.html#thread.thread_management.tutorial.interruption.html)
++   `Boost.Thread`的官方文档提供了预定义的中断点的列表，请参阅[`www.boost.org/doc/libs/1_53_0/doc/html/thread/thread_management.html#thread.thread_management.tutorial.interruption.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread/thread_management.html#thread.thread_management.tutorial.interruption.html)
 
 +   作为练习，查看本章的其他配方，并思考在哪些地方添加额外的中断点可以改进代码
 
-+   阅读其他部分的`Boost.Thread`文档可能很有用；请访问[http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)
++   阅读其他部分的`Boost.Thread`文档可能很有用；请访问[`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)
 
 # 操作线程组
 
 那些试图自己重复所有示例的读者，或者那些在实验线程的读者，可能已经对编写以下代码来启动线程感到厌烦了：
 
-[PRE34]
+```cpp
+boost::thread t1(&some_function);
+boost::thread t2(&some_function);
+boost::thread t3(&some_function);
+// ...
+t1.join();
+t2.join();
+t3.join();
+```
 
 可能还有更好的方法来做这件事？
 
@@ -468,15 +907,28 @@ C++11没有线程中断，但你可以使用原子操作部分模拟它们：
 
 1.  构建一个`boost::thread_group`变量：
 
-    [PRE35]
+    ```cpp
+    boost::thread_group threads;
+    ```
 
 1.  将线程创建到前面的变量中：
 
-    [PRE36]
+    ```cpp
+    // Launching 10 threads
+    for (unsigned i = 0; i < 10; ++i) {
+      threads.create_thread(&some_function);
+    }
+    ```
 
 1.  现在你可以调用`boost::thread_group`内部的所有线程的函数：
 
-    [PRE37]
+    ```cpp
+    // Joining all threads
+    threads.join_all();
+
+    // We can also interrupt all of them
+    // by calling threads.interrupt_all();
+    ```
 
 ## 它是如何工作的...
 
@@ -484,8 +936,8 @@ C++11没有线程中断，但你可以使用原子操作部分模拟它们：
 
 ## 还有更多...
 
-C++11没有`thread_group`类；这是Boost特有的。
+C++11 没有`thread_group`类；这是 Boost 特有的。
 
 ## 参见
 
-+   `Boost.Thread`的官方文档可能会让你惊讶于本章未描述的许多其他有用的类；请访问[http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)
++   `Boost.Thread`的官方文档可能会让你惊讶于本章未描述的许多其他有用的类；请访问[`www.boost.org/doc/libs/1_53_0/doc/html/thread.html`](http://www.boost.org/doc/libs/1_53_0/doc/html/thread.html)

@@ -1,8 +1,8 @@
-# 第3章。C基础——让你变得更强大
+# 第三章。C 基础——让你变得更强大
 
-C语言编程并不那么难。但需要在开始时投入足够的工作。幸运的是，我和你在一起，我们有一个非常好的朋友，从第三章开始——我们的Arduino板。现在，我们将深入探讨C语言，我会尽我所能使其更加具体，而不是抽象。
+C 语言编程并不那么难。但需要在开始时投入足够的工作。幸运的是，我和你在一起，我们有一个非常好的朋友，从第三章开始——我们的 Arduino 板。现在，我们将深入探讨 C 语言，我会尽我所能使其更加具体，而不是抽象。
 
-本章和下一章真正是C语言导向的，因为Arduino程序设计需要编程逻辑语句的知识。在这两章之后，你将能够阅读这本书中的任何代码；这些坚实的基础也将帮助你进行进一步的项目，甚至那些与Arduino无关的项目。
+本章和下一章真正是 C 语言导向的，因为 Arduino 程序设计需要编程逻辑语句的知识。在这两章之后，你将能够阅读这本书中的任何代码；这些坚实的基础也将帮助你进行进一步的项目，甚至那些与 Arduino 无关的项目。
 
 我还将逐步介绍我们以后会用到的新概念，例如函数。如果你不太理解，不要害怕，我有时喜欢我的学生逐步听到一些单词，甚至在没有适当定义的情况下，因为这有助于进一步的解释。
 
@@ -20,13 +20,15 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 ## 什么是类型？
 
-变量（和常量）与类型相关联。类型，也称为 **数据类型**，定义了数据的可能性质。它还提供了一种直接在内存中预留定义大小的空间的好方法。C大约有10种主要的数据类型，我们可以像下面将要看到的那样进行扩展。
+变量（和常量）与类型相关联。类型，也称为 **数据类型**，定义了数据的可能性质。它还提供了一种直接在内存中预留定义大小的空间的好方法。C 大约有 10 种主要的数据类型，我们可以像下面将要看到的那样进行扩展。
 
-我故意只解释我们在Arduino编程中会大量使用的类型。这大约符合80%的其他常用C数据类型，在这里将绰绰有余。
+我故意只解释我们在 Arduino 编程中会大量使用的类型。这大约符合 80%的其他常用 C 数据类型，在这里将绰绰有余。
 
 基本上，当我们像这里所示那样声明变量时，我们正在使用一个类型：
 
-[PRE0]
+```cpp
+int ledPin; // declare a variable of the type int and named "ledPin"
+```
 
 为特定大小（与 `int` 类型相关的大小）的内存空间被预留，正如你所见，如果你只写这一行，该变量中仍然没有存储任何数据。但请记住，已经预留了内存空间，准备用来存储值。
 
@@ -34,7 +36,7 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 | --- | --- | --- |
 | `void` | 这种特定类型仅在 *函数* 声明和定义未知类型的指针时使用。我们将在下一章中看到这一点。 |   |
 | `boolean` | 它存储 `false` 或 `true`。 | 1 字节（8 位） |
-| `char` | 它以 *数字* 存储单引号字符，如 `'a'`，遵循 ASCII 表（[http://en.wikipedia.org/wiki/ASCII_chart](http://en.wikipedia.org/wiki/ASCII_chart)）。它是一个 *有符号* 类型，存储从 -128 到 127 的数字；它可以是无符号的，然后存储从 0 到 255 的数字。 | 1 字节 |
+| `char` | 它以 *数字* 存储单引号字符，如 `'a'`，遵循 ASCII 表（[`en.wikipedia.org/wiki/ASCII_chart`](http://en.wikipedia.org/wiki/ASCII_chart)）。它是一个 *有符号* 类型，存储从 -128 到 127 的数字；它可以是无符号的，然后存储从 0 到 255 的数字。 | 1 字节 |
 | `byte` | 它以 *8 位无符号* 数据存储数字，这意味着从 0 到 255。 | 8 位 |
 | `int` | 它以 *2 字节有符号* 数据存储数字，这意味着从 -32,768 到 32,767。它也可以是无符号的，然后存储从 0 到 65,535 的数字。 | 2 字节 (16 位) |
 | `word` | 它以 *2 字节无符号* 数据存储数字，这与 *无符号* `int` 相同。 | 2 字节 (16 位) |
@@ -51,7 +53,10 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 以下是一个示例：
 
-[PRE1]
+```cpp
+int myInt = 32767; //the maximum int value
+myInt = myInt + 1; // myInt is now -32768
+```
 
 这在两个方向上都可能发生，从存储 `-32768` 的 `int` 变量中减去 `1` 会得到 `32767`。请记住这一点。
 
@@ -75,70 +80,109 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 | --- | --- |
 | `boolean` |
 
-[PRE2]
+```cpp
+bool myVariable; // declaration of the variable
+myVariable = true; // definition of the variable by assigning it a value
+bool myOtherVariable = false; // declaration and definition inside the same statement !
+```
 
 |
 
 | `char` |
 | --- |
 
-[PRE3]
+```cpp
+char myChar = 'U'; // declaration and definition using the ASCII value of 'U' (i.e 85)
+char myOtherChar = 85; // equals the previous statement
+
+char myDefaultChar = 128; // this gives an ERROR because char are signed from -128 to 127
+unsigned char myUnsignedChar = 128; // this is correct !
+```
 
 |
 
 | `byte` |
 | --- |
 
-[PRE4]
+```cpp
+byte myByte = B10111; // 23 in binary notation with the B notation
+byte myOtherByte = 23; // equals the previous statement
+```
 
 |
 
 | `int` |
 | --- |
 
-[PRE5]
+```cpp
+int ledPin = 8; // classic for us, now :) 
+unsigned myUint = 32768; // very okay with the prefix unsigned !
+```
 
 |
 
 | `word` |
 | --- |
 
-[PRE6]
+```cpp
+word myWord = 12345;
+```
 
 |
 
 | `long` |
 | --- |
 
-[PRE7]
+```cpp
+long myLong = -123; // don't forget that we can use negative numbers too!
+long myOtherLong = 345;
+unsigned myUlong = 2147483648; // correct because of the unsigned prefix
+```
 
 |
 
 | `float` |
 | --- |
 
-[PRE8]
+```cpp
+float myFloat = -123456.1; // they can be negative.
+float myOtherFloat = 1.234567; //
+float myNoDecimalPointedFloat = 1234; // they can have a decimal part equaling zero
+```
 
 |
 
 | `double` |
 | --- |
 
-[PRE9]
+```cpp
+double myDouble  = 1.234567; // Arduino implementation of double is same as float
+```
 
 |
 
 | 数组 |
 | --- |
 
-[PRE10]
+```cpp
+int myIntTable[5]; // declaration of a table that can contain 5 integers
+boolean myOtherTab[] = { false, true, true}; // declaration and definition of a 3 boolean arrays
+
+myIntTable[5]; // considering the previous definition, this gives an array bound ERROR (index starts from 0 and thus the last one here is myIntTable[4])
+myOtherTab[1]; // this elements can be manipulated as a boolean, it IS a boolean with the value true
+```
 
 |
 
 | `string` |
 | --- |
 
-[PRE11]
+```cpp
+char mystring[3]; // a string of 3 characters
+char mystring2[4] = {'b','y','t','e'}; // declaration & definition
+char mystring3[4] = "byte"; // equals to mystring2;
+char mystring4[ ] = "byte"; // equals to mystring3;
+```
 
 |
 
@@ -158,7 +202,7 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 再次强调，框架会为你处理这些事情，提供一个具有强大且已编码函数的类型/对象，这些函数可以直接使用。
 
-在 Arduino 网站上查看 [http://arduino.cc/en/Reference/StringObject](http://arduino.cc/en/Reference/StringObject)。
+在 Arduino 网站上查看 [`arduino.cc/en/Reference/StringObject`](http://arduino.cc/en/Reference/StringObject)。
 
 ## String 定义是一种构造
 
@@ -166,7 +210,23 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 对于 `String` 对象，我在这里谈论的是 *构造* 而不是 *定义*，但你可以将这两个术语视为等同。在 Arduino 核心中声明 `String` 类型涉及对象构造函数，这是一个面向对象编程的概念；幸运的是，我们在这个阶段不必处理它。
 
-[PRE12]
+```cpp
+String myString01 = "Hello my friend"; // usual constant string to construct it
+String myString02 = String('U'); // convert U char into a String object
+
+// concatenating 2 String together and put the result into another
+String myString03 = String(myString01 + ", we are trying to play with String(s));
+
+// converting the current value of integer into a String object
+int myNiceInt = 8; // define an integer
+String myString04 = String(myNiceInt); // convert to a String object
+
+// converting the current value of an integer w/ a base into a String object
+int myNiceInt = 47; // define an integer
+String myString05 = String(myNiceInt, DEC);
+String myString06 = String(myNiceInt, HEX);
+String myString07 = String(myNiceInt, BIN);
+```
 
 ## 使用索引和字符串内的搜索
 
@@ -178,7 +238,9 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 考虑到 `String` 类型如下声明和定义：
 
-[PRE13]
+```cpp
+String myString = "Hello World !!";
+```
 
 语句 `myString.charAt(3)` 返回字符串中的第四个元素，即：`l`。注意这里使用的特定记法：我们有 `String` 变量的名称，然后是一个点，接着是函数的名称（这是 `String` 对象的方法），然后是传递给函数的参数 `3`。
 
@@ -198,7 +260,9 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 让我们考虑相同的声明/定义：
 
-[PRE14]
+```cpp
+String myString = "Hello World !!";
+```
 
 `myString.indexOf('r')` 等于 `8`。确实，`r` 在字符串 `myString` 的值中的第九位。`indexOf(val)` 和 `lastIndexOf(val)` 都是在查找值 `val` 的第一个出现位置。
 
@@ -230,7 +294,12 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 `startsWith()` 和 `endsWith()` 函数分别检查字符串是否以作为函数参数传递的另一个字符串开始或结束。
 
-[PRE15]
+```cpp
+String myString = "Hello World !!";
+String anotherString ="Hell" ;
+myString.startsWith(anotherString); // this returns true
+myString.startsWith("World"); // this returns false
+```
 
 ### 注意
 
@@ -256,7 +325,7 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 ## 连接、提取和替换
 
-前面的操作也引入了新的C运算符。我在这里用字符串来使用它们，但你将在更广泛的环境中了解更多关于它们的信息。
+前面的操作也引入了新的 C 运算符。我在这里用字符串来使用它们，但你将在更广泛的环境中了解更多关于它们的信息。
 
 ### 连接
 
@@ -266,7 +335,13 @@ C语言编程并不那么难。但需要在开始时投入足够的工作。幸�
 
 Arduino 核心提供了 `string.concat()` 函数，它专门为此目的设计。
 
-[PRE16]
+```cpp
+String firstString = "Hello ";
+String secondString ="World!";
+
+// appending the second to the first and put the result in the first
+firstString.concat(secondString);
+```
 
 ### 注意
 
@@ -282,15 +357,25 @@ Arduino 核心提供了 `string.concat()` 函数，它专门为此目的设计�
 
 另一种连接两个字符串的方法。这不是使用函数，而是使用操作符：`+`。
 
-[PRE17]
+```cpp
+String firstString = "Hello ";
+String secondString ="World!";
+
+// appending the second to the first and putting the result in the first
+firstString = firstString + secondString;
+```
 
 这段代码与之前的一样。`+` 是一个稍后我会更好地描述的操作符。我在这里给你提供了一些东西：`+` 操作符的缩写表示法：
 
-[PRE18]
+```cpp
+firstString = firstString + secondString;
+```
 
 这也可以写成：
 
-[PRE19]
+```cpp
+firstString += secondString;
+```
 
 尝试一下。你会理解的。
 
@@ -300,19 +385,31 @@ Arduino 核心提供了 `string.concat()` 函数，它专门为此目的设计�
 
 #### `substring()` 是提取器
 
-你想提取字符串的一部分。想象一下，如果Arduino板通过特定的和定义良好的通信协议发送消息：
+你想提取字符串的一部分。想象一下，如果 Arduino 板通过特定的和定义良好的通信协议发送消息：
 
 `<output number>.<value>`
 
-输出数字每次用两个字符编码，值用三个字符（45必须写成045）。我经常这样工作，并在需要时从我的电脑的串行端口通过USB弹出这类消息；例如，发送一个命令以特定强度点亮特定的LED。如果我想在第四个输出上以100/127的强度点亮LED，我会发送：
+输出数字每次用两个字符编码，值用三个字符（45 必须写成 045）。我经常这样工作，并在需要时从我的电脑的串行端口通过 USB 弹出这类消息；例如，发送一个命令以特定强度点亮特定的 LED。如果我想在第四个输出上以 100/127 的强度点亮 LED，我会发送：
 
-[PRE20]
+```cpp
+04.100
+```
 
-Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的情况下，因为这将涵盖在[第7章](ch07.html "第7章。通过串行通信")——*通过串行通信*，我想向你介绍一个新功能——拆分字符串。
+Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的情况下，因为这将涵盖在第七章——*通过串行通信*，我想向你介绍一个新功能——拆分字符串。
 
-[PRE21]
+```cpp
+String receivedMessage = "04.100";
+String currentOutputNumber;
+String currentValueNumber;
 
-这段代码将Arduino接收到的消息分成两部分。
+// extracting a part of receivedMessage from index 0 (included) to 1 (excluded)
+currentOutputNumber = receivedMessage.substring(0,2);
+
+// extracting a part of receivedMessage from index 3 (included) to the end
+currentValueNumber = receivedMessage.substring(3);
+```
+
+这段代码将 Arduino 接收到的消息分成两部分。
 
 ### 注意
 
@@ -336,13 +433,25 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 我们就是这样做的：
 
-[PRE22]
+```cpp
+String receivedMessage = "04.100";
+String currentOutputNumber;
+String currentValueNumber;
+int splitPointIndex; 
+
+// storing the index of the separator in the String 
+splitPointIndex = receivedMessage.indexOf('.');
+
+// extracting my two elements
+currentOutputNumber = receivedMessage.substring(0, splitPointIndex);
+currentValueNumber = receivedMessage.substring(splitPointIndex + 1);
+```
 
 首先，我找到分割点索引（字符串中点所在的位置）。其次，我将这个结果用作提取子字符串的最后一个元素。别担心，最后一个元素不包括在内，这意味着`currentOutputNumber`不包含点。
 
 最后，我再次使用`splitPointIndex`作为需要提取的字符串第二部分的起始位置。然后呢？我将整数`1`加到它上面，因为，正如你现在掌握的`substring()`函数所知，与起始索引对应的元素总是被`substring()`操作包括。我们不想那个点，因为它只是一个分隔符。对吧？
 
-如果你现在有点困惑，别担心。在下一章和特别是当我们开始用Arduino处理事情时，事情会变得更加清晰，这在书中稍后会出现。
+如果你现在有点困惑，别担心。在下一章和特别是当我们开始用 Arduino 处理事情时，事情会变得更加清晰，这在书中稍后会出现。
 
 #### 替换
 
@@ -350,7 +459,16 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 让我们以之前的例子为例。现在我们想要将点替换为另一个字符，因为我们想将结果发送到另一个只理解空格字符作为分隔符的进程。
 
-[PRE23]
+```cpp
+String receivedMessage = "04.100";
+String originalMessage;
+
+// keeping a trace of the previous message by putting it into another variable
+originalMessage = receivedMessage;
+
+// replacing dot by space character in receivedMessage
+receivedMessage.replace('.',' ');
+```
 
 首先，我将`receivedMessage`变量的内容放入另一个名为`originalMessage`的变量中，因为我知道`replace()`函数肯定会修改处理后的字符串。然后我用`replace()`函数处理`receivedMessage`。
 
@@ -372,25 +490,115 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 ### `toCharArray()`
 
-此函数将字符串的所有字符复制到一个名为“缓冲区”的“真实”字符数组中，出于内部原因，也被称为缓冲区。您可以查看[http://arduino.cc/en/Reference/StringToCharArray](http://arduino.cc/en/Reference/StringToCharArray)。
+此函数将字符串的所有字符复制到一个名为“缓冲区”的“真实”字符数组中，出于内部原因，也被称为缓冲区。您可以查看[`arduino.cc/en/Reference/StringToCharArray`](http://arduino.cc/en/Reference/StringToCharArray)。
 
 ### `toLowerCase()` 和 `toUpperCase()`
 
-这些函数将它们处理的字符串替换为相同但所有字符均为小写和大写的字符串。您可以查看[http://arduino.cc/en/Reference/StringToLower](http://arduino.cc/en/Reference/StringToLower) 和 [http://arduino.cc/en/Reference/StringToUpperCase](http://arduino.cc/en/Reference/StringToUpperCase)。请注意，因为它会覆盖经过此过程处理的字符串。
+这些函数将它们处理的字符串替换为相同但所有字符均为小写和大写的字符串。您可以查看[`arduino.cc/en/Reference/StringToLower`](http://arduino.cc/en/Reference/StringToLower) 和 [`arduino.cc/en/Reference/StringToUpperCase`](http://arduino.cc/en/Reference/StringToUpperCase)。请注意，因为它会覆盖经过此过程处理的字符串。
 
 ### `trim()`
 
-此函数会移除字符串中的所有空白字符。您可以查看[http://arduino.cc/en/Reference/StringTrim](http://arduino.cc/en/Reference/StringTrim)。再次提醒，请注意，因为它会覆盖经过此过程处理的字符串。
+此函数会移除字符串中的所有空白字符。您可以查看[`arduino.cc/en/Reference/StringTrim`](http://arduino.cc/en/Reference/StringTrim)。再次提醒，请注意，因为它会覆盖经过此过程处理的字符串。
 
 ### `length()`
 
-我想以这个函数结束。这是您将大量使用的函数。它以整数形式提供字符串的长度。您可以查看[http://arduino.cc/en/Reference/StringLength](http://arduino.cc/en/Reference/StringLength)。
+我想以这个函数结束。这是您将大量使用的函数。它以整数形式提供字符串的长度。您可以查看[`arduino.cc/en/Reference/StringLength`](http://arduino.cc/en/Reference/StringLength)。
 
 ## 在板上测试变量
 
 以下是一段您也可以在文件夹 `Chapter03/VariablesVariations/` 中找到的代码：
 
-[PRE24]
+```cpp
+/*
+  Variables Variations Program
+ This firmware pops out messages over Serial to better understand variables' use.
+ Switch on the Serial Monitoring window and reset the board after that.
+ Observe and check the code :)
+
+ Written by Julien Bayle, this example code is under Creative Commons CC-BY-SA
+ */
+
+// declaring variables before having fun !
+boolean myBoolean;
+char myChar;
+int myInt;
+float myFloat;
+String myString;
+
+void setup(){
+  Serial.begin(9600);
+  myBoolean = false;
+  myChar = 'A';
+  myInt = 1;
+  myFloat = 5.6789 ;
+  myString = "Hello Human!!";
+}
+
+void loop(){
+
+  // checking the boolean
+  if (myBoolean) {
+    Serial.println("myBoolean is true");
+  }
+  else {
+    Serial.println("myBoolean is false");
+  }
+
+  // playing with char & int
+  Serial.print("myChar is currently ");
+  Serial.write(myChar);
+  Serial.println();
+
+  Serial.print("myInt is currently ");
+  Serial.print(myInt);
+  Serial.println();
+
+  Serial.print("Then, here is myChar + myInt : ");
+  Serial.write(myChar + myInt);
+  Serial.println();
+
+  // playing with float & int
+  Serial.print("myFloat is : ");
+  Serial.print(myFloat);
+  Serial.println();
+
+  // putting the content of myFloat into myInt
+  myInt = myFloat;
+  Serial.print("I put myFloat into myInt, and here is myInt now : ");
+  Serial.println(myInt);
+
+  // playing with String
+  Serial.print("myString is currently: ");
+  Serial.println(myString);
+
+  myString += myChar; // concatening myString with myChar
+  Serial.print("myString has a length of ");
+  Serial.print(myString.length());// printing the myString length
+  Serial.print(" and equals now: ");
+  Serial.println(myString);
+
+ // myString becomes too long, more than 15, removing the last 3 elements
+  if (myString.length() >= 15){
+    Serial.println("myString too long ... come on, let's clean it up! ");
+    myInt = myString.lastIndexOf('!'); // finding the place of the '!' 
+    myString = myString.substring(0,myInt+1);  // removing characters 
+
+    Serial.print("myString is now cleaner: ");
+    Serial.println(myString);
+
+    // putting true into myBoolean
+  }
+  else {
+    myBoolean = false;     // resetting myBoolean to false
+  }
+
+  delay(5000);     // let's make a pause
+
+  // let's put 2 blank lines to have a clear read
+  Serial.println();
+  Serial.println();
+}
+```
 
 将此代码上传到您的板子，然后打开串行监视器。最后，通过按下复位按钮来复位板子并观察。板子会直接将内容写入您的串行监视器，如下面的截图所示：
 
@@ -426,7 +634,25 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 尽量缩小变量的作用域绝对是一个获胜的方法。查看以下示例：
 
-[PRE25]
+```cpp
+// this variable is declared at the highest level, making it visible everywhere
+int globalString;
+
+void setup(){
+  // … some code
+}
+void loop(){
+  int a; // a is visible inside the loop function only
+  anotherFunction(); // calling the global function anotherFunction
+
+// … some other code
+}
+
+void anotherFunction() {
+  // … yet another code
+  int veryLocalVar; // veryLocalVar is visible only in anotherFunction function
+}
+```
 
 我们可以将代码的作用域表示为一个或多或少嵌套的框。
 
@@ -440,7 +666,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 这种表示对我那些总是需要更多视觉的学生非常有用。当我们谈论*库*时，我们也会使用这个隐喻，特别是。库中声明的声明可以在我们的代码中使用，如果我们当然在代码开头包含一些特定的头文件。
 
-# 静态、易变和const限定符
+# 静态、易变和 const 限定符
 
 **限定符**是用于根据*限定*变量改变处理器行为的关键字。实际上，编译器将使用这些限定符来改变生成的二进制固件中考虑的变量的特性。我们将学习三个限定符：`static`、`volatile`和`const`。
 
@@ -448,11 +674,40 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 当你在函数内部使用`static`限定符时，这会使变量在两次函数调用之间保持持久。在函数内部声明变量使变量隐式地成为函数的局部变量，正如我们刚刚学到的。这意味着只有函数才能知道和使用该变量。例如：
 
-[PRE26]
+```cpp
+int myGlobalVariable;
+
+void setup(){
+}
+
+void loop(){
+  myFunction(digitalPinValue);
+}
+
+void myFunction(argument){
+int aLocalVariable;
+aLocalVariable = aLocalVariable + argument;
+  // playing with aLocalVariable
+}
+```
 
 这个变量仅在`myFunction`函数中可见。但是第一次循环之后会发生什么？之前的值丢失了，一旦执行了`int aLocalVariable;`，就会设置一个新的变量，其值为零。查看以下新代码块：
 
-[PRE27]
+```cpp
+int myGlobalVariable;
+void setup(){
+}
+
+void loop(){
+  myFunction(digitalPinValue);
+}
+
+void myFunction(argument){
+static int aStaticVariable;
+aStaticVariable = aStaticVariable + argument;
+  // playing with aStaticVariable
+}
+```
 
 这个变量仅在`myFunction`函数中可见，并且在添加参数后修改了它，我们可以玩弄其新值。
 
@@ -460,9 +715,9 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 ## 易变的
 
-当你在变量声明语句中使用`volatile`修饰符时，此变量将从RAM中加载，而不是从板上的存储寄存器内存空间中加载。这种差异很微妙，并且此修饰符在特定情况下使用，在这些情况下，你的代码本身无法控制处理器上执行的其他操作。其中一个例子，在其他例子中，是使用中断。我们稍后会看到这一点。
+当你在变量声明语句中使用`volatile`修饰符时，此变量将从 RAM 中加载，而不是从板上的存储寄存器内存空间中加载。这种差异很微妙，并且此修饰符在特定情况下使用，在这些情况下，你的代码本身无法控制处理器上执行的其他操作。其中一个例子，在其他例子中，是使用中断。我们稍后会看到这一点。
 
-基本上，你的代码正常运行，一些指令不是由这段代码触发的，而是由另一个过程，如外部事件触发的。确实，我们的代码不知道何时以及**中断服务例程**（**ISR**）做什么，但它在发生类似情况时停止，让CPU运行ISR，然后继续。从RAM中加载变量可以防止变量值的一些可能的不一致性。
+基本上，你的代码正常运行，一些指令不是由这段代码触发的，而是由另一个过程，如外部事件触发的。确实，我们的代码不知道何时以及**中断服务例程**（**ISR**）做什么，但它在发生类似情况时停止，让 CPU 运行 ISR，然后继续。从 RAM 中加载变量可以防止变量值的一些可能的不一致性。
 
 ## const
 
@@ -470,11 +725,15 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 如果你在声明/定义语句之后尝试向`const`变量写入值，编译器会给出错误。作用域的概念也适用于这里；我们可以在函数内部或全局范围内修饰变量。此语句定义并声明了`masterMidiChannel`变量为常量：
 
-[PRE28]
+```cpp
+const int masterMidiChannel = 10;
+```
 
 这相当于：
 
-[PRE29]
+```cpp
+#define masterMidiChannel 10
+```
 
 ### 注意
 
@@ -504,7 +763,9 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 我从最后一个开始讲：`=` **.** 它是**赋值**运算符。我们已经多次使用它来定义变量，这仅仅意味着给它赋值。例如：
 
-[PRE30]
+```cpp
+int oscillatorFrequency = 440;
+```
 
 对于其他运算符，我将在以下内容中区分两种不同的情况：字符类型，包括`char`和`String`，以及数值类型。运算符可以根据变量的类型改变其效果。
 
@@ -512,7 +773,13 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 `char`和`String`只能通过`+`来处理。正如你可能已经猜到的，`+`是连接运算符：
 
-[PRE31]
+```cpp
+String myString = "Hello ";
+String myString2 = "World";
+
+String myResultString = myString + myString2;
+myString.concat(myString2);
+```
 
 在此代码中，`myResultString`和`myString`的连接生成了`Hello World`字符串。
 
@@ -532,15 +799,19 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 以下是一个乘法的基本示例：
 
-[PRE32]
+```cpp
+float OutputOscillatorAmplitude = 5.5;
+int multiplier = 3;
+OutputOscillatorAmplitude = OutputOscillatorAmplitude * multiplier
+```
 
 ### 注意
 
 一旦你使用`float`或`double`类型作为操作数之一，就会使用浮点计算过程。
 
-在之前的代码中，`OutputOscillatorAmplitude * multiplier` 的结果是 `float` 类型的值。当然，除以零是 *禁止的*；原因在于数学而不是C或Arduino。
+在之前的代码中，`OutputOscillatorAmplitude * multiplier` 的结果是 `float` 类型的值。当然，除以零是 *禁止的*；原因在于数学而不是 C 或 Arduino。
 
-**取模**是简单地将一个整数除以另一个整数的余数。我们将大量使用它来保持变量在受控和选择的范围内。如果您让一个变量无限增长，但通过例如7来操作它的模，结果将始终在0（当增长变量是7的倍数时）和6之间，从而约束增长变量。
+**取模**是简单地将一个整数除以另一个整数的余数。我们将大量使用它来保持变量在受控和选择的范围内。如果您让一个变量无限增长，但通过例如 7 来操作它的模，结果将始终在 0（当增长变量是 7 的倍数时）和 6 之间，从而约束增长变量。
 
 ## 简化表示和优先级
 
@@ -548,29 +819,54 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 示例 1：
 
-[PRE33]
+```cpp
+int myInt1 = 1;
+int myInt2 = 2;
+
+myInt1 = myInt1 + myInt2;
+```
 
 示例 2：
 
-[PRE34]
+```cpp
+int myInt1 = 1;
+int myInt2 = 2;
 
-这两段代码是等价的。第一段向您介绍了运算符的优先级。在 *附录B，C和C++运算符优先级* 中给出了所有优先级。让我们现在学习一些。
+myInt1 += myInt2;
+```
+
+这两段代码是等价的。第一段向您介绍了运算符的优先级。在 *附录 B，C 和 C++运算符优先级* 中给出了所有优先级。让我们现在学习一些。
 
 `+`, `-`, `*`, `/`, 和 `%` 的优先级高于 `=`。这意味着 `myInt1 + myInt2` 在赋值运算符之前计算，然后，结果被赋值给 `myInt1`。
 
 第二个是简化版本。它与第一个版本等价，因此这里也适用优先级。以下是一个有点棘手的示例：
 
-[PRE35]
+```cpp
+int myInt1 = 1;
+int myInt2 = 2;
+
+myInt1 += myInt2 + myInt2;
+```
 
 您需要知道`+`的优先级高于`+=`。这意味着运算顺序是：首先，`myInt2 + myInt2`，然后是`myInt1 +`刚刚计算出的结果`myInt2 + myInt2`。然后，第二个运算的结果被赋值给`myInt1`。这意味着它等价于：
 
-[PRE36]
+```cpp
+int myInt1 = 1;
+int myInt2 = 2;
+
+myInt1 = myInt1 + myInt2 + myInt2;
+```
 
 ## 增量和减量运算符
 
 我想提醒您注意您经常会遇到的另一种简化表示：双重运算符。
 
-[PRE37]
+```cpp
+int myInt1 = 1;
+
+myInt++;	// myInt1 now contains 2
+myInt--;	// myInt1 now contains 1
+```
 
 `++` 等价于 `+=1`，`--` 等价于 `-=1`。这些被称为 *后缀增量* (`++`) 和 *后缀减量* (`--`)。它们也可以用作 *前缀*。作为前缀的 `++` 和 `--` 的优先级低于它们作为后缀使用时的等效运算符，但在两种情况下，优先级都远高于 `+`, `-`, `/`, `*`，甚至 `=` 和 `+=`。
 
@@ -592,9 +888,9 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 ## 选择正确的类型
 
-有时候，选择会受到外部因素的影响。例如，当你使用Arduino与一个能够以10位整数编码数据的外部传感器时，这种情况就会发生（2^10 = 1024个分辨率步骤）。你知道`byte`类型只能存储从0到255的数字吗？你可能不会选择它！你会选择`int`。
+有时候，选择会受到外部因素的影响。例如，当你使用 Arduino 与一个能够以 10 位整数编码数据的外部传感器时，这种情况就会发生（2¹⁰ = 1024 个分辨率步骤）。你知道`byte`类型只能存储从 0 到 255 的数字吗？你可能不会选择它！你会选择`int`。
 
-有时候你必须自己做出选择。想象一下，你从电脑上的Max 6框架补丁通过串行连接（使用USB）将数据发送到板上。因为这是最方便的，既然你设计了它这样，补丁就会弹出封装在字符串消息中的`float`数字到板上。在解析后，将这些消息切割成片段以提取你需要的信息（即`float`部分），你会选择将其存储到`int`中吗？
+有时候你必须自己做出选择。想象一下，你从电脑上的 Max 6 框架补丁通过串行连接（使用 USB）将数据发送到板上。因为这是最方便的，既然你设计了它这样，补丁就会弹出封装在字符串消息中的`float`数字到板上。在解析后，将这些消息切割成片段以提取你需要的信息（即`float`部分），你会选择将其存储到`int`中吗？
 
 这个问题有点难以回答。它涉及到一个*转换*过程。
 
@@ -602,7 +898,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 类型转换是将实体数据类型转换为另一个的过程。请注意，我没有提到变量，而是提到实体。
 
-这是C语言设计的结果，我们只能转换存储在变量中的值，其他值会保持它们的类型直到它们的生命周期结束，也就是程序执行结束的时候。
+这是 C 语言设计的结果，我们只能转换存储在变量中的值，其他值会保持它们的类型直到它们的生命周期结束，也就是程序执行结束的时候。
 
 类型转换可以是*隐式地*执行或*显式地*进行。为了确保每个人都跟我在一起，我会声明*隐式地意味着不是明显和有意识地写出来的*，与*显式地意味着在代码中明确写出来的*相对。
 
@@ -610,15 +906,32 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 有时候，这也被称为*强制转换*。这发生在你没有为编译器指定任何内容，编译器必须根据它自己的基本（但通常足够智能）规则自动进行转换时。一个经典的例子是将`float`值转换为`int`值。
 
-[PRE38]
+```cpp
+float myFloat = 12345.6789 ;
+int myInt;
+myInt = myFloat;
+
+println(myInt); // displays 12345
+```
 
 我使用赋值运算符（`=`）将`myFloat`的内容放入`myInt`。这会导致`float`值的**截断**，即*去除小数部分*。如果你继续只使用`myInt`变量而不是`myFloat`，你肯定已经丢失了一些东西。这可能没问题，但你必须记住这一点。
 
 另一个不太经典的例子是`int`类型到`float`类型的隐式转换。`int`没有小数部分。隐式转换为`float`不会产生除了等于零的小数部分之外的其他东西。这是简单的一部分。
 
-但要小心，你可能会对`int`到`float`的隐式转换感到惊讶。整数是使用32位编码的，但即使`float`也是32位，它们的*尾数*（也称为尾数）是使用23位编码的。如果你没有精确地记住这一点，没关系。但我希望你能记住这个例子：
+但要小心，你可能会对`int`到`float`的隐式转换感到惊讶。整数是使用 32 位编码的，但即使`float`也是 32 位，它们的*尾数*（也称为尾数）是使用 23 位编码的。如果你没有精确地记住这一点，没关系。但我希望你能记住这个例子：
 
-[PRE39]
+```cpp
+float myFloat;
+long int myInt = 123456789;
+void setup(){
+  Serial.begin(9600);
+  myFloat = myInt;
+}
+
+void loop(){
+  Serial.println(myFloat); // displays a very strange result
+}
+```
 
 代码的输出如下所示：
 
@@ -626,7 +939,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 从`int`到`float`隐式转换的奇怪结果
 
-我将`123456789`存储到`long int`类型中，这是完全合法的（`long int`是32位有符号整数，能够存储从`-2147483648`到`2147483647`的整数）。赋值后，我显示的结果是：**123456792.00**。我们当然期望的是`123456789.00`。
+我将`123456789`存储到`long int`类型中，这是完全合法的（`long int`是 32 位有符号整数，能够存储从`-2147483648`到`2147483647`的整数）。赋值后，我显示的结果是：**123456792.00**。我们当然期望的是`123456789.00`。
 
 ### 注意
 
@@ -642,7 +955,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 ### 显式类型转换
 
-如果你想要有可预测的结果，每次你都可以显式地转换类型。Arduino核心包含了六个转换函数：
+如果你想要有可预测的结果，每次你都可以显式地转换类型。Arduino 核心包含了六个转换函数：
 
 +   char()
 
@@ -684,7 +997,11 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 以下是一个代码中的比较表达式：
 
-[PRE40]
+```cpp
+int myInt1 = 4;
+float myFloat = 5.76;
+(myInt1 > myFloat) ;
+```
 
 这样的表达式没有任何作用，但它合法。比较两个元素会产生一个结果，在这个小例子中，它没有被用来触发或执行任何操作。`myInt1 > myFloat`是一个比较表达式。结果显然是`true`或`false`，我的意思是它是一个`boolean`值。这里它是`false`，因为`4`不大于`5.76`。我们也可以将比较表达式组合起来，以创建更复杂的表达式。
 
@@ -700,21 +1017,21 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 是时候回忆一些使用三个小表的逻辑运算了。你可以像阅读列元素 + 比较运算符 + 行元素那样阅读这些表；运算的结果位于列和行的交叉点。
 
-二元运算符AND，也写作`&&`:
+二元运算符 AND，也写作`&&`:
 
 | `&&` | true | false |
 | --- | --- | --- |
 | true | true | false |
 | false | false | false |
 
-然后是二元运算符OR，也写作`||`:
+然后是二元运算符 OR，也写作`||`:
 
 | `&#124;&#124;` | true | false |
 | --- | --- | --- |
 | true | true | true |
 | false | true | false |
 
-最后，一元运算符NOT，也写作`!`:
+最后，一元运算符 NOT，也写作`!`:
 
 |   | true | false |
 | --- | --- | --- |
@@ -744,7 +1061,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 `!`(a `<` b) 等于 (a `>=` b)
 
-*a严格小于b* 的相反面是 *a大于或等于b*。同样地：
+*a 严格小于 b* 的相反面是 *a 大于或等于 b*。同样地：
 
 `!`(c `>=` d) 等于 (c `<` d)
 
@@ -754,9 +1071,15 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 这里是另一个组合示例，引入了 *运算符优先级* 的概念：
 
-[PRE41]
+```cpp
+int myInt1 = 4;
+float myFloat = 5.76;
+int myInt2 = 16;
+(myInt1 > myFloat && myInt2 < myFloat) ;
+( (myInt1 > myFloat) && (myInt2 < myFloat) ) ;
+```
 
-我的两个陈述是等价的。这里发生优先级，我们现在可以将这些运算符添加到之前的优先级表中（检查 *附录B，C和C++中的运算符优先级*）。我添加了比较运算符：
+我的两个陈述是等价的。这里发生优先级，我们现在可以将这些运算符添加到之前的优先级表中（检查 *附录 B，C 和 C++中的运算符优先级*）。我添加了比较运算符：
 
 | 优先级组 | 运算符 | 名称 |
 | --- | --- | --- |
@@ -775,35 +1098,65 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 # 在代码中添加条件
 
-因为我在生物学方面有研究，并且有硕士学位，所以我熟悉有机和生物行为。我喜欢告诉我的学生，代码，尤其是在交互设计领域的工作中，必须是有生命的。使用Arduino，我们经常构建能够“感受”真实世界并通过*行动*与之交互的机器。没有*条件*语句是无法做到这一点的。这种语句被称为控制结构。当我们测试包括变量显示等的大代码时，我们使用了一个条件结构。
+因为我在生物学方面有研究，并且有硕士学位，所以我熟悉有机和生物行为。我喜欢告诉我的学生，代码，尤其是在交互设计领域的工作中，必须是有生命的。使用 Arduino，我们经常构建能够“感受”真实世界并通过*行动*与之交互的机器。没有*条件*语句是无法做到这一点的。这种语句被称为控制结构。当我们测试包括变量显示等的大代码时，我们使用了一个条件结构。
 
-## if和else条件结构
+## if 和 else 条件结构
 
 这是我们没有解释的一个例子。你已经学会了耐心和禅。事情开始出现，对吧？现在，让我们来解释它。这个结构非常直观，因为它非常类似于任何条件伪代码。这里有一个：
 
-如果变量`a`的值小于变量`b`的值，则打开LED。否则关闭它。
+如果变量`a`的值小于变量`b`的值，则打开 LED。否则关闭它。
 
-现在是真正的C代码，我在其中通过给出1或0的状态来简化LED的部分，这取决于我想要在代码中进一步做什么：
+现在是真正的 C 代码，我在其中通过给出 1 或 0 的状态来简化 LED 的部分，这取决于我想要在代码中进一步做什么：
 
-[PRE42]
+```cpp
+int a;
+int b;
+int ledState;
+if (a < b) {
+ledState = 1; 
+}
+else {
+ledState = 0; 
+}
+```
 
 我认为这已经很清楚了。以下是这种结构的通用语法：
 
-[PRE43]
+```cpp
+If (expression) {
+// code executed only if expression is true
+}
+else {
+// code executed only if expression is false
+}
+```
 
-表达式评估通常会产生布尔值。但在这个结构中，表达式的数值结果也可以是正确的，即使它不太明确，我个人不喜欢。在Arduino核心中，表达式的数值结果为`0`等于`false`，而对于任何其他值，都等于`true`。
+表达式评估通常会产生布尔值。但在这个结构中，表达式的数值结果也可以是正确的，即使它不太明确，我个人不喜欢。在 Arduino 核心中，表达式的数值结果为`0`等于`false`，而对于任何其他值，都等于`true`。
 
 ### 注意
 
 隐式通常意味着使你的代码更短更简洁。根据我个人的看法，这也意味着几个月后当你不得不支持和维护包含大量隐式内容的代码时，你会非常不高兴。
 
-我鼓励我的学生要明确和详细。我们不是在这里为了将代码压缩到极小的内存中，相信我。我们不是在谈论将3兆字节的代码减少到500千字节，而是更多地减少到198千字节。
+我鼓励我的学生要明确和详细。我们不是在这里为了将代码压缩到极小的内存中，相信我。我们不是在谈论将 3 兆字节的代码减少到 500 千字节，而是更多地减少到 198 千字节。
 
-### 将if…else结构链接到另一个if…else结构
+### 将 if…else 结构链接到另一个 if…else 结构
 
 以下是一个修改后的示例：
 
-[PRE44]
+```cpp
+int a;
+int b;
+int ledState;
+if (a < b) {
+ledState = 1; 
+}
+else if (b > 0) {
+ledState = 0; 
+}
+else {
+ledState = 1; 
+}
+```
 
 第一个`if`测试是：如果`a`小于`b`。如果是`true`，我们将值`1`放入变量`ledState`中。如果是`false`，我们进入下一个语句`else`。
 
@@ -817,21 +1170,45 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 一个不错的建议是尝试将所有情况都写在纸上，并尝试找到*漏洞*。我的意思是，变量的值部分没有通过测试。
 
-### 带有组合比较表达式的if…else结构
+### 带有组合比较表达式的 if…else 结构
 
 以下是我之前例子中注释更多的一些代码：
 
-[PRE45]
+```cpp
+int a;
+int b;
+int ledState;
+if (a < b) {     // a < b
+
+ledState = 1; 
+}
+else if (b > 0) {   // a >= b and b > 0
+ledState = 0; 
+}
+else {       // a >= b and b < 0
+ledState = 1; 
+}
+```
 
 我们也可以按照我之前在代码中写的注释来这样写：
 
-[PRE46]
+```cpp
+int a;
+int b;
+int ledState;
+if (a < b || (a >= b && b < 0) ) {
+ledState = 1; 
+}
+else if (a >= b && b > 0) {
+ledState = 0; 
+}
+```
 
-这可以被认为是一个更紧凑的版本，其中所有关于LED开关的语句都在一个地方，同样适用于关闭它。
+这可以被认为是一个更紧凑的版本，其中所有关于 LED 开关的语句都在一个地方，同样适用于关闭它。
 
 ### 寻找条件结构的所有情况
 
-假设你想测试一个温度值。你有两个特定的限制/点，你希望Arduino做出反应，例如通过点亮LED或任何与真实世界交互的事件。例如，这两个限制是：15摄氏度和30摄氏度。如何确保我涵盖了所有情况？最好的方法是拿一支笔，一张纸，画一画。
+假设你想测试一个温度值。你有两个特定的限制/点，你希望 Arduino 做出反应，例如通过点亮 LED 或任何与真实世界交互的事件。例如，这两个限制是：15 摄氏度和 30 摄氏度。如何确保我涵盖了所有情况？最好的方法是拿一支笔，一张纸，画一画。
 
 ![寻找条件结构的所有情况](img/7584_03_05.jpg)
 
@@ -855,25 +1232,65 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 当 T = 30 或 T = 15 时会发生什么？这些都是我们逻辑中的漏洞。根据我们如何设计我们的代码，这可能会发生。匹配所有情况意味着：包括 T = 15 和 T = 30 的情况。我们可以这样做：
 
-[PRE47]
+```cpp
+float T ; // my temperature variable
 
-我将这两个情况包含在我的比较中。15摄氏度包含在第二个温度区间内，30摄氏度在最后一个区间内。这是一个我们如何做到的例子。
+if (T < 15) {
+colorizeLed(blue);
+}
+else if (T >= 15 && T < 30) {
+colorizeLed(white);
+}
+else if (T >= 30) {
+colorizeLed(red);
+}
+```
 
-我希望你在这种情况下记得使用笔和纸。这有助于你设计和特别是在设计步骤中从IDE中跳出，这实际上是非常好的。现在让我们探索一个新的条件结构。
+我将这两个情况包含在我的比较中。15 摄氏度包含在第二个温度区间内，30 摄氏度在最后一个区间内。这是一个我们如何做到的例子。
+
+我希望你在这种情况下记得使用笔和纸。这有助于你设计和特别是在设计步骤中从 IDE 中跳出，这实际上是非常好的。现在让我们探索一个新的条件结构。
 
 ## switch…case…break 条件结构
 
 在这里，我们将看到一个新的条件结构。标准语法如下所示：
 
-[PRE48]
+```cpp
+switch (var) {
+  case label:
+  // statements
+  break;
+  case label:
+  // statements
+  break;
+  default:
+  // statements
+}
+```
 
 `var` 与每个情况标签进行比较。如果 `var` 等于特定的 `label` 值，则执行此情况中的语句，直到下一个 `break`。如果没有匹配，并且你使用了可选的 `default:` 情况，则执行此情况的语句。如果没有 `default:` 情况，则不执行任何操作。`label` 必须是一个值，而不是一个字符或字符串。让我们举一个更具体的例子：
 
-[PRE49]
+```cpp
+float midiCCMessage;
+switch (midiCCMessage) {
+  case 7:
+  changeVolume();
+  break;
+  case 10:
+  changePan();
+  break;
+  default:
+  LedOff();
+}
+```
 
 这段代码等同于：
 
-[PRE50]
+```cpp
+float midiCCMessage;
+if (midiCCMessage == 7) changeVolume();
+else if (midiCCMessage == 10) changePan ();
+else LedOff();
+```
 
 你好吗？
 
@@ -885,19 +1302,23 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 ## 三元运算符
 
-这种奇怪的符号通常对我的学生来说完全陌生。我过去常说，“嘿！这比Arduino更像是C语言”当他们回答“这就是我们忘记它的原因”时。淘气的学生！这个三元运算符接受三个输入元素。语法是 `(expression) ? val1 : val2`。
+这种奇怪的符号通常对我的学生来说完全陌生。我过去常说，“嘿！这比 Arduino 更像是 C 语言”当他们回答“这就是我们忘记它的原因”时。淘气的学生！这个三元运算符接受三个输入元素。语法是 `(expression) ? val1 : val2`。
 
 表达式被测试。如果是 `true`，则整个语句返回（或等于）`val1`，如果是 `false`，则等于 `val2`。
 
-再次想象我们的Arduino、温度传感器和唯一的限制是20摄氏度。我想如果`T`小于限制，就使LED变蓝，如果`T`大于或等于20摄氏度，就变红。以下是我们会如何使用两个三元运算符：
+再次想象我们的 Arduino、温度传感器和唯一的限制是 20 摄氏度。我想如果`T`小于限制，就使 LED 变蓝，如果`T`大于或等于 20 摄氏度，就变红。以下是我们会如何使用两个三元运算符：
 
-[PRE51]
+```cpp
+Int T;
+Int ledColor; // 0 means blue, 1 means red
+ledColor = (T < 20) ? 0 : 1;
+```
 
 这可以是一种很好的表示法，特别是如果你不需要在每个情况下执行语句，而只需要变量赋值的话。
 
 # 为重复性任务创建智能循环
 
-**循环**是一系列在时间上重复的事件。基本上，计算机最初被设计出来是为了进行大量的重复计算以节省人类的时间。设计一个循环来重复必须重复的任务似乎是一个自然的想法。C语言原生实现了一些设计循环的方法。Arduino核心自然包括三种循环结构：
+**循环**是一系列在时间上重复的事件。基本上，计算机最初被设计出来是为了进行大量的重复计算以节省人类的时间。设计一个循环来重复必须重复的任务似乎是一个自然的想法。C 语言原生实现了一些设计循环的方法。Arduino 核心自然包括三种循环结构：
 
 +   `for`
 
@@ -909,11 +1330,19 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 `for`循环语句相当容易使用。它基于至少一个从你定义的特定值开始的计数器，并增加或减少它，直到另一个定义的值。其语法如下：
 
-[PRE52]
+```cpp
+for (declaration & definition ; condition ; increment) {
+// statements
+}
+```
 
 计数器也被称为`index`。我在这里给你一个真实示例：
 
-[PRE53]
+```cpp
+for (int i = 0 ; i < 100 ; i++) {
+println(i);
+}
+```
 
 这个基本示例定义了一个循环，它打印从`0`到`99`的所有整数。整数类型变量`i`的声明/定义是`for`结构的第一个元素。然后，条件描述了在哪种情况下必须执行此循环中包含的语句。最后，执行`i++`增量。
 
@@ -933,9 +1362,14 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 当然，索引可以在`for`结构之前声明，并在`for`结构内部定义。我们也可以在声明和定义变量之前进行，我们会有：
 
-[PRE54]
+```cpp
+int i = 0;
+for ( ; i < 100 ; i++) {
+println(i);
+}
+```
 
-这看起来有点奇怪，但在C语言和Arduino核心中都是合法的。
+这看起来有点奇怪，但在 C 语言和 Arduino 核心中都是合法的。
 
 ### 小贴士
 
@@ -943,7 +1377,7 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 如果索引已经在`for`循环括号内声明，其作用域仅限于`for`循环。这意味着这个变量在循环外部是*不可知*或*不可用*的。
 
-对于在`for`循环语句中声明的任何变量，通常都是这样工作的。这并不是什么需要做的事情，即使在C语言中这是完全合法的。为什么不是呢？因为这意味着你每次循环运行时都会声明一个变量，这并不真的聪明。最好是在循环外部声明一次，然后在循环内部使用它，无论目的（索引或要在语句内部使用的变量）是什么。
+对于在`for`循环语句中声明的任何变量，通常都是这样工作的。这并不是什么需要做的事情，即使在 C 语言中这是完全合法的。为什么不是呢？因为这意味着你每次循环运行时都会声明一个变量，这并不真的聪明。最好是在循环外部声明一次，然后在循环内部使用它，无论目的（索引或要在语句内部使用的变量）是什么。
 
 ### 玩转增量
 
@@ -953,7 +1387,11 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 首先，我们可以在不写`i++`的情况下写`i = i + 1`。我们还可以使用其他类型的操作，如减法、乘法、除法、取模，或者它们的组合。想象一下，你只想打印奇数。奇数都是形如`2n + 1`的形式，其中`n`是整数。以下是打印从`1`到`99`的奇数的代码：
 
-[PRE55]
+```cpp
+for (int i = 0 ; i < 50 ; i = 2 * i + 1) {
+println(i);
+}
+```
 
 `i`的初始值是：`1`、`3`、`5`，依此类推。
 
@@ -961,23 +1399,43 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 我只是想将之前的代码重新组合成其他的东西，以激发你对增量和减量的思考。下面是另一段代码，做同样的事情，但打印从`99`到`1`的奇数：
 
-[PRE56]
+```cpp
+for (int i = 50 ; i > 0 ; i = 2 * i - 1) {
+println(i);
+}
+```
 
 好吧？让我们稍微复杂化一下。
 
 ### 使用嵌套`for`循环或两个索引
 
-在`for`结构中也可以使用多个索引。想象一下，我们想要计算一个10 x 10的乘法表。我们必须定义两个从`1`到`10`的整数变量（0是平凡的）。这两个索引必须从`1`到`10`变化。我们可以从一个带有索引`x`的循环开始：
+在`for`结构中也可以使用多个索引。想象一下，我们想要计算一个 10 x 10 的乘法表。我们必须定义两个从`1`到`10`的整数变量（0 是平凡的）。这两个索引必须从`1`到`10`变化。我们可以从一个带有索引`x`的循环开始：
 
-[PRE57]
+```cpp
+for (int x = 1 ; x <= 10 ; x++) {
+
+}
+```
 
 这是第一个索引的情况。第二个索引完全相同：
 
-[PRE58]
+```cpp
+for (int y = 1 ; y <= 10 ; y++) {
+
+}
+```
 
 我该如何混合这些？答案是和回答“乘法表是什么？”一样：我必须保持一个索引不变，然后将其与另一个从`1`到`10`的索引相乘。然后，我必须增加第一个索引，并继续用另一个索引重复同样的操作，依此类推。下面是如何做到这一点：
 
-[PRE59]
+```cpp
+for (int x = 1 ; x <= 10 ; x++) {
+
+  for (int y = 1 ; y <= 10 ; y++) {
+
+    println(x*y);
+}
+}
+```
 
 这段代码打印了所有`x*y`的结果，其中`x`和`y`是从`1`到`10`的整数，每个结果占一行。以下是前几个步骤：
 
@@ -997,7 +1455,17 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 每当其中一个索引（只有一个）达到限制值`10`时，我们需要转到下一行。
 
-[PRE60]
+```cpp
+for (int x = 1 ; x <= 10 ; x++) {
+
+  for (int y = 1 ; y <= 10 ; y++) {
+
+    print(x*y);
+}
+println(); // add a carriage return & a new line
+
+}
+```
 
 检查代码，每次`y`达到`10`时，就会创建一个新的行。`for`循环是一个强大的重复任务的结构。让我们检查另一个结构。
 
@@ -1005,27 +1473,52 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 `while`循环结构稍微简单一些。以下是语法：
 
-[PRE61]
+```cpp
+While (expression) {
+// statements
+}
+```
 
-表达式被评估为布尔值，`true`或`false`。当表达式为`true`时，执行语句，然后一旦它变为`false`，循环就会结束。显然，通常需要在`while`结构之外声明和定义。以下是一个例子，它产生了与我们的第一个`for`循环相同的结果，打印从0到99的所有整数：
+表达式被评估为布尔值，`true`或`false`。当表达式为`true`时，执行语句，然后一旦它变为`false`，循环就会结束。显然，通常需要在`while`结构之外声明和定义。以下是一个例子，它产生了与我们的第一个`for`循环相同的结果，打印从 0 到 99 的所有整数：
 
-[PRE62]
+```cpp
+int i = 0;
+while (i < 100) {
+println(i);
+i++;
+}
+```
 
 事实上，你*必须*在你的语句中明确处理增量或减量；我稍后会谈谈无限循环。我们可以通过这样做来进一步压缩代码：
 
-[PRE63]
+```cpp
+int i = 0;
+while (i < 100) {
+println(i++); // print the current I value, then increment i
+}
+```
 
 `while`循环结构在执行第一条语句之前测试表达式。让我们检查一个以不同方式执行类似结构的例子。
 
-## do…while循环结构
+## do…while 循环结构
 
 `do…while`循环结构与`while`结构非常相似，但它在循环的末尾评估表达式，这意味着在执行语句之后。以下是语法：
 
-[PRE64]
+```cpp
+do {
+// statements
+} while (expression);
+```
 
 这里是一个相同模型的例子：
 
-[PRE65]
+```cpp
+int i = 0;
+do {
+println(i);
+i++;
+} while (i < 100);
+```
 
 这意味着即使表达式评估的第一个结果是`false`，语句也会按时执行。这与`while`结构不同。
 
@@ -1033,31 +1526,51 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 我们学习了如何创建由索引驱动的循环，这些索引精确地定义了这些循环将如何存在。但当我们遇到一个*外部*事件时，我们如何停止循环？外部是指循环本身及其索引之外。在这种情况下，循环的条件本身不会包含外部元素。
 
-想象一下，我们在正常条件下运行一个过程100次。但我们要中断它，或者根据另一个具有更大作用域的变量（至少在循环外部声明）来修改它。
+想象一下，我们在正常条件下运行一个过程 100 次。但我们要中断它，或者根据另一个具有更大作用域的变量（至少在循环外部声明）来修改它。
 
 多亏了`break`语句，才使得这一点对我们来说成为可能。`break;`是基本语法。当执行`break`时，它会根据`do`、`for`和`while`退出当前循环。当我们在讨论`switch`条件结构时，你已经看到了`break`。让我们来举例说明。
 
-想象一个LED。我们希望它的强度从0增长到100%，然后回到0，每次都这样。但我们还希望使用一个很好的距离传感器，每次用户与传感器之间的距离大于某个值时，都会重置这个循环。
+想象一个 LED。我们希望它的强度从 0 增长到 100%，然后回到 0，每次都这样。但我们还希望使用一个很好的距离传感器，每次用户与传感器之间的距离大于某个值时，都会重置这个循环。
 
 ### 注意
 
-这基于我为一个博物馆安装的真实系统，该系统必须使用户远离时LED平滑闪烁，当用户靠近时关闭LED，就像一个活生生的系统在召唤用户来见面。
+这基于我为一个博物馆安装的真实系统，该系统必须使用户远离时 LED 平滑闪烁，当用户靠近时关闭 LED，就像一个活生生的系统在召唤用户来见面。
 
 我设计得非常简单，如下所示：
 
-[PRE66]
+```cpp
+for ( intensity = 0 ; intensity < 100 ; intensity++ ){
+  ledIntensity (intensity);
+  if (distance > maxDistance) { // if the user is far
+    intensity = 0;    // switch off the LED
+    break;      // exits the loop
+  }
+}
+```
 
-整个循环都包含在Arduino板上的全局`loop()`函数中，并且每次`loop()`函数执行时，都会执行关于距离的完整测试，等待用户。
+整个循环都包含在 Arduino 板上的全局`loop()`函数中，并且每次`loop()`函数执行时，都会执行关于距离的完整测试，等待用户。
 
 ## 无限循环不是你的朋友
 
-注意无限循环。问题其实不在于循环的无限状态，而在于一个系统，无论它是Arduino还是其他什么，如果运行了无限循环，就只能做那件事！循环之后的任何代码都无法执行，因为程序不会跳出循环。
+注意无限循环。问题其实不在于循环的无限状态，而在于一个系统，无论它是 Arduino 还是其他什么，如果运行了无限循环，就只能做那件事！循环之后的任何代码都无法执行，因为程序不会跳出循环。
 
-如果你正确理解了我的意思，`loop()`——这是Arduino核心的基本函数——是一个无限循环。但它是一个设计良好的、基于Arduino核心的受控循环。当调用函数或发生其他特殊事件时，它可以（并且确实可以）被中断，让我们用户在这个循环内部设计我们需要的功能。我过去把它称为“事件驱动器和监听器”，因为这是我们的主程序运行的地方。
+如果你正确理解了我的意思，`loop()`——这是 Arduino 核心的基本函数——是一个无限循环。但它是一个设计良好的、基于 Arduino 核心的受控循环。当调用函数或发生其他特殊事件时，它可以（并且确实可以）被中断，让我们用户在这个循环内部设计我们需要的功能。我过去把它称为“事件驱动器和监听器”，因为这是我们的主程序运行的地方。
 
-有很多方法可以创建无限循环的过程。你可以在 `setup()` 中定义一个变量，使其在 `loop()` 中增长，并在每次 `loop()` 运行时测试它，以便将其重置到初始值，例如。它利用了已经存在的 `loop()` 循环。以下是一个Arduino的C语言示例：
+有很多方法可以创建无限循环的过程。你可以在 `setup()` 中定义一个变量，使其在 `loop()` 中增长，并在每次 `loop()` 运行时测试它，以便将其重置到初始值，例如。它利用了已经存在的 `loop()` 循环。以下是一个 Arduino 的 C 语言示例：
 
-[PRE67]
+```cpp
+int i;
+
+void setup(){
+  i = 0;
+}
+
+void loop(){
+if (i < threshold) i +=1 ;
+else i = 0;
+// some statements	
+}
+```
 
 这个 `i` 从 `0` 增长到 `threshold – 1`，然后回到 `0`，再次增长，无限循环，利用了 `loop()` 函数。
 
@@ -1065,4 +1578,4 @@ Arduino *需要* 理解这条消息。在不进一步讨论通信协议设计的
 
 # 摘要
 
-在这个重要的章节中，我们学到了很多抽象的概念。从类型到运算符的优先级，再到条件结构，现在我们将学习新的结构和语法，这将帮助我们编写更高效的代码块，尤其是更可重用的代码块。我们现在可以学习函数了。让我们深入下一章C/C++知识，然后我们将在之后测试我们的Arduino。
+在这个重要的章节中，我们学到了很多抽象的概念。从类型到运算符的优先级，再到条件结构，现在我们将学习新的结构和语法，这将帮助我们编写更高效的代码块，尤其是更可重用的代码块。我们现在可以学习函数了。让我们深入下一章 C/C++知识，然后我们将在之后测试我们的 Arduino。

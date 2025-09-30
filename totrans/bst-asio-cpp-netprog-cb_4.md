@@ -30,9 +30,9 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 迭代服务器相对简单易实现，可以在请求率足够低，以至于服务器有足够的时间在下一个请求到来之前完成一个请求的处理时使用。很明显，迭代服务器是不可扩展的；向运行此类服务器的计算机添加更多处理器不会增加服务器的吞吐量。另一方面，并行服务器可以处理更高的请求率；如果实现得当，它们是可扩展的。在多处理器计算机上运行的真正并行服务器可以处理比在单处理器计算机上运行的相同服务器更高的请求率。
 
-从实现的角度来看，另一种对服务器应用程序进行分类的方法是按照服务器是同步的还是异步的。一个**同步服务器**使用同步套接字API调用，这些调用会阻塞执行线程直到请求的操作完成，或者发生错误。因此，一个典型的同步TCP服务器会使用如`asio::ip::tcp::acceptor::accept()`这样的方法来接受客户端连接请求，使用`asio::ip::tcp::socket::read_some()`从客户端接收请求消息，然后使用`asio::ip::tcp::socket::write_some()`将响应消息发送回客户端。这三个方法都是阻塞的。它们会阻塞执行线程直到请求的操作完成，或者发生错误，这使得使用这些操作的服务器是**同步**的。
+从实现的角度来看，另一种对服务器应用程序进行分类的方法是按照服务器是同步的还是异步的。一个**同步服务器**使用同步套接字 API 调用，这些调用会阻塞执行线程直到请求的操作完成，或者发生错误。因此，一个典型的同步 TCP 服务器会使用如`asio::ip::tcp::acceptor::accept()`这样的方法来接受客户端连接请求，使用`asio::ip::tcp::socket::read_some()`从客户端接收请求消息，然后使用`asio::ip::tcp::socket::write_some()`将响应消息发送回客户端。这三个方法都是阻塞的。它们会阻塞执行线程直到请求的操作完成，或者发生错误，这使得使用这些操作的服务器是**同步**的。
 
-与同步服务器应用相反，**异步服务器应用**使用异步套接字API调用。例如，异步TCP服务器可能使用`asio::ip::tcp::acceptor::async_accept()`方法异步接受客户端连接请求，使用`asio::ip::tcp::socket::async_read_some()`方法或`asio::async_read()`自由函数异步接收来自客户端的请求消息，然后使用`asio::ip::tcp::socket::async_write_some()`方法或`asio::async_write()`自由函数异步向客户端发送响应消息。
+与同步服务器应用相反，**异步服务器应用**使用异步套接字 API 调用。例如，异步 TCP 服务器可能使用`asio::ip::tcp::acceptor::async_accept()`方法异步接受客户端连接请求，使用`asio::ip::tcp::socket::async_read_some()`方法或`asio::async_read()`自由函数异步接收来自客户端的请求消息，然后使用`asio::ip::tcp::socket::async_write_some()`方法或`asio::async_write()`自由函数异步向客户端发送响应消息。
 
 由于同步服务器应用程序的结构与异步服务器应用程序的结构显著不同，因此应该在服务器应用程序设计阶段早期做出应用哪种方法的决定，并且这个决定应该基于对应用程序要求的仔细分析。此外，还应考虑可能出现的应用演变路径和新需求。
 
@@ -46,35 +46,37 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 这样的服务器通常用于安全且受保护的私有网络环境，或作为在单个计算机上运行的应用程序内部的一部分，该应用程序使用这样的服务器进行进程间通信。当然，同步服务器的另一个可能的应用领域是实现一次性原型。
 
-除了上述描述的结构复杂性和功能差异之外，这两种方法在处理大量以高频率发送请求的客户端时的效率和可扩展性也存在差异。使用异步操作的服务器比同步服务器更高效和可扩展，尤其是在它们运行在具有原生支持异步网络I/O的多处理器计算机上时。
+除了上述描述的结构复杂性和功能差异之外，这两种方法在处理大量以高频率发送请求的客户端时的效率和可扩展性也存在差异。使用异步操作的服务器比同步服务器更高效和可扩展，尤其是在它们运行在具有原生支持异步网络 I/O 的多处理器计算机上时。
 
 ## 样例协议
 
-在本章中，我们将探讨三个配方，描述如何实现同步迭代TCP服务器、同步并行TCP服务器和异步TCP服务器。在所有配方中，假设服务器通过以下故意简化的（为了清晰起见）应用层协议与客户端通信。
+在本章中，我们将探讨三个配方，描述如何实现同步迭代 TCP 服务器、同步并行 TCP 服务器和异步 TCP 服务器。在所有配方中，假设服务器通过以下故意简化的（为了清晰起见）应用层协议与客户端通信。
 
-服务器应用程序接受表示为ASCII字符串的请求消息，其中包含一系列以换行ASCII符号结束的符号。服务器忽略换行符号之后的所有符号。
+服务器应用程序接受表示为 ASCII 字符串的请求消息，其中包含一系列以换行 ASCII 符号结束的符号。服务器忽略换行符号之后的所有符号。
 
 服务器在收到请求后执行一些模拟操作，并以如下恒定消息进行回复：
 
-[PRE0]
+```cpp
+"Response\n"
+```
 
 这样的简单协议使我们能够专注于实现*服务器*，而不是它提供的*服务*。
 
-# 实现同步迭代TCP服务器
+# 实现同步迭代 TCP 服务器
 
-同步迭代TCP服务器是满足以下标准的一个分布式应用程序的组成部分：
+同步迭代 TCP 服务器是满足以下标准的一个分布式应用程序的组成部分：
 
 +   在客户端-服务器通信模型中充当服务器角色
 
-+   通过TCP协议与客户端应用程序通信
++   通过 TCP 协议与客户端应用程序通信
 
-+   使用I/O和控制操作，这些操作会阻塞执行线程，直到相应的操作完成或发生错误。
++   使用 I/O 和控制操作，这些操作会阻塞执行线程，直到相应的操作完成或发生错误。
 
 +   以串行、逐个的方式处理客户端
 
-典型的同步迭代TCP服务器按照以下算法工作：
+典型的同步迭代 TCP 服务器按照以下算法工作：
 
-1.  分配一个接受器套接字并将其绑定到特定的TCP端口。
+1.  分配一个接受器套接字并将其绑定到特定的 TCP 端口。
 
 1.  运行循环直到服务器停止：
 
@@ -98,9 +100,46 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 我们通过定义一个负责读取请求消息、处理它并发送响应消息的类来开始实现我们的服务器应用程序。此类代表服务器应用程序提供的单个服务，因此我们将它命名为 `Service`：
 
-[PRE1]
+```cpp
+#include <boost/asio.hpp>
 
-为了保持简单，在我们的示例服务器应用程序中，我们实现了一个模拟服务，它仅模拟执行某些操作。请求处理模拟包括执行许多增量操作来模拟消耗CPU的操作，然后让控制线程休眠一段时间来模拟读取文件或与外围设备同步通信等操作。
+#include <thread>
+#include <atomic>
+#include <memory>
+#include <iostream>
+
+using namespace boost;
+
+class Service {
+public:
+  Service(){}
+
+  void HandleClient(asio::ip::tcp::socket& sock) {
+    try {
+      asio::streambuf request;
+      asio::read_until(sock, request, '\n');
+
+      // Emulate request processing.
+      inti = 0;
+      while (i != 1000000)
+        i++;
+        std::this_thread::sleep_for(
+std::chrono::milliseconds(500));
+
+      // Sending response.
+      std::string response = "Response\n";
+      asio::write(sock, asio::buffer(response));
+}
+    catch (system::system_error&e) {
+      std::cout  << "Error occured! Error code = " 
+<<e.code() << ". Message: "
+          <<e.what();
+    }
+  }
+};
+```
+
+为了保持简单，在我们的示例服务器应用程序中，我们实现了一个模拟服务，它仅模拟执行某些操作。请求处理模拟包括执行许多增量操作来模拟消耗 CPU 的操作，然后让控制线程休眠一段时间来模拟读取文件或与外围设备同步通信等操作。
 
 ### 注意
 
@@ -108,13 +147,68 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 接下来，我们定义另一个代表高级 *接受者* 概念的类（与代表 `asio::ip::tcp::acceptor` 类的低级概念相比）。此类负责接受来自客户端的连接请求，并实例化 `Service` 类的对象，这些对象将为连接的客户端提供服务。让我们相应地命名这个类为 `Acceptor`：
 
-[PRE2]
+```cpp
+class Acceptor {
+public:
+  Acceptor(asio::io_service&ios, unsigned short port_num) :
+    m_ios(ios),
+    m_acceptor(m_ios,
+        asio::ip::tcp::endpoint(
+              asio::ip::address_v4::any(),
+              port_num))
+  {
+    m_acceptor.listen();
+  }
+
+  void Accept() {
+    asio::ip::tcp::socket sock(m_ios);
+
+    m_acceptor.accept(sock);
+
+    Service svc;
+    svc.HandleClient(sock);
+  }
+
+private:
+  asio::io_service&m_ios;
+  asio::ip::tcp::acceptor m_acceptor;
+};
+```
 
 此类拥有一个名为 `m_acceptor` 的 `asio::ip::tcp::acceptor` 类型的对象，用于同步接受传入的连接请求。
 
 此外，我们还定义了一个代表服务器本身的类。这个类相应地命名为 `Server`：
 
-[PRE3]
+```cpp
+class Server {
+public:
+  Server() : m_stop(false) {}
+
+  void Start(unsigned short port_num) {
+    m_thread.reset(new std::thread([this, port_num]() {
+      Run(port_num);
+    }));
+  }
+
+  void Stop() {
+    m_stop.store(true);
+    m_thread->join();
+  }
+
+private:
+  void Run(unsigned short port_num) {
+    Acceptor acc(m_ios, port_num);
+
+    while (!m_stop.load()) {
+      acc.Accept();
+    }
+  }
+
+  std::unique_ptr<std::thread>m_thread;
+  std::atomic<bool>m_stop;
+  asio::io_servicem_ios;
+};
+```
 
 此类提供了一个由两个方法组成的接口—`Start()` 和 `Stop()`，分别用于启动和停止服务器。循环在由 `Start()` 方法产生的单独线程中运行。`Start()` 方法是非阻塞的，而 `Stop()` 方法会阻塞调用线程，直到服务器停止。
 
@@ -122,7 +216,28 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 最终，我们实现了应用程序入口点函数 `main()`，演示了如何使用 `Server` 类：
 
-[PRE4]
+```cpp
+int main()
+{
+  unsigned short port_num = 3333;
+
+  try {
+    Server srv;
+    srv.Start(port_num);
+
+    std::this_thread::sleep_for(std::chrono::seconds(60));
+
+    srv.Stop();
+  }
+  catch (system::system_error&e) {
+        std::cout  << "Error occured! Error code = " 
+                   <<e.code() << ". Message: "
+                   <<e.what();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的…
 
@@ -134,9 +249,9 @@ TCP 协议在当今非常流行，许多通用服务器应用程序都使用它�
 
 这个类很简单，只包含一个`HandleClient()`方法。这个方法接受一个表示连接到客户端的套接字的对象作为其输入参数，并处理该特定客户端。
 
-在我们的示例中，这种处理很简单。首先，从套接字中同步读取请求消息，直到遇到新的换行ASCII符号`\n`。然后，处理请求。在我们的情况下，我们通过运行一个模拟循环执行一百万次递增操作，然后让线程休眠半秒钟来模拟处理。之后，准备响应消息，并同步发送回客户端。
+在我们的示例中，这种处理很简单。首先，从套接字中同步读取请求消息，直到遇到新的换行 ASCII 符号`\n`。然后，处理请求。在我们的情况下，我们通过运行一个模拟循环执行一百万次递增操作，然后让线程休眠半秒钟来模拟处理。之后，准备响应消息，并同步发送回客户端。
 
-Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中被捕获和处理，并且不会传播到方法调用者，这样如果处理一个客户端失败，服务器仍然可以继续工作。
+Boost.Asio I/O 函数和方法可能抛出的异常在`HandleClient()`方法中被捕获和处理，并且不会传播到方法调用者，这样如果处理一个客户端失败，服务器仍然可以继续工作。
 
 根据特定应用程序的需求，`Service`类可以被扩展并增加提供所需服务的功能。
 
@@ -166,15 +281,15 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 ### `main()` 入口点函数
 
-这个函数演示了服务器的使用方法。它创建了一个名为 `srv` 的 `Server` 类实例，并调用其 `Start()` 方法来启动服务器。由于服务器被表示为一个在其自己的控制线程中运行的活跃对象，因此 `Start()` 方法立即返回，而运行方法 `main()` 继续执行。为了让服务器运行一段时间，主线程被置于休眠状态60秒。当主线程醒来后，它会在 `srv` 对象上调用 `Stop()` 方法来停止服务器。当 `Stop()` 方法返回时，`main()` 函数也返回，我们的示例应用程序退出。
+这个函数演示了服务器的使用方法。它创建了一个名为 `srv` 的 `Server` 类实例，并调用其 `Start()` 方法来启动服务器。由于服务器被表示为一个在其自己的控制线程中运行的活跃对象，因此 `Start()` 方法立即返回，而运行方法 `main()` 继续执行。为了让服务器运行一段时间，主线程被置于休眠状态 60 秒。当主线程醒来后，它会在 `srv` 对象上调用 `Stop()` 方法来停止服务器。当 `Stop()` 方法返回时，`main()` 函数也返回，我们的示例应用程序退出。
 
-当然，在实际应用中，服务器会作为对用户输入或任何其他相关事件的反应而停止，而不是在模拟的60秒后，或者在服务器启动运行结束后。
+当然，在实际应用中，服务器会作为对用户输入或任何其他相关事件的反应而停止，而不是在模拟的 60 秒后，或者在服务器启动运行结束后。
 
 ### 消除缺点
 
 正如已经提到的，所提出的实现有两个缺点，这显著限制了其适用性。第一个问题是，如果在服务器线程阻塞等待传入连接请求时调用 `Stop()` 方法，可能无法停止服务器，因为没有连接请求到达。第二个问题是，服务器可以被单个恶意（或存在错误的）客户端轻易挂起，使其对其他客户端不可用。为了挂起服务器，客户端应用程序可以简单地连接到服务器，并且永远不向它发送任何请求，这将使服务器应用程序在阻塞输入操作中永远挂起。
 
-这两个问题的根本原因是在服务器中使用阻塞操作（对于同步服务器来说这是自然的）。解决这两个问题的合理且简单的方法是为阻塞操作分配超时时间，这将保证服务器会定期解除阻塞以检查是否已发出停止命令，并且强制丢弃长时间不发送请求的客户。然而，Boost.Asio不提供取消同步操作或为它们分配超时时间的方法。因此，我们应该尝试找到其他方法来使我们的同步服务器更加响应和稳定。
+这两个问题的根本原因是在服务器中使用阻塞操作（对于同步服务器来说这是自然的）。解决这两个问题的合理且简单的方法是为阻塞操作分配超时时间，这将保证服务器会定期解除阻塞以检查是否已发出停止命令，并且强制丢弃长时间不发送请求的客户。然而，Boost.Asio 不提供取消同步操作或为它们分配超时时间的方法。因此，我们应该尝试找到其他方法来使我们的同步服务器更加响应和稳定。
 
 让我们考虑解决这两个缺点的方法。
 
@@ -184,39 +299,39 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 在`Server`类的`Stop()`方法中，在将`m_stop`原子变量的值设置为`true`之后，我们可以创建一个虚拟活动套接字，将其连接到同一个服务器，并发送一些虚拟请求。这将保证服务器线程将离开接受者的`accept()`方法，并最终检查`m_stop`原子变量的值，发现其值等于`true`，这将导致循环终止并完成`Acceptor::Accept()`方法。
 
-在描述的方法中，假设服务器通过向自己发送消息（实际上是从I/O线程发送到工作线程的消息）来停止自己。另一种方法是有特殊客户端（独立应用程序），它会连接并发送特殊服务消息（例如，`stop\n`）到服务器，服务器将解释为停止信号。在这种情况下，服务器将外部控制（来自不同的应用程序），`Server`类不需要有`Stop()`方法。
+在描述的方法中，假设服务器通过向自己发送消息（实际上是从 I/O 线程发送到工作线程的消息）来停止自己。另一种方法是有特殊客户端（独立应用程序），它会连接并发送特殊服务消息（例如，`stop\n`）到服务器，服务器将解释为停止信号。在这种情况下，服务器将外部控制（来自不同的应用程序），`Server`类不需要有`Stop()`方法。
 
 #### 处理服务器的漏洞
 
-很遗憾，没有分配超时的I/O操作阻塞的性质是这样的，它可以很容易地挂起使用此类操作的迭代服务器，使其对其他客户端不可访问。
+很遗憾，没有分配超时的 I/O 操作阻塞的性质是这样的，它可以很容易地挂起使用此类操作的迭代服务器，使其对其他客户端不可访问。
 
-显然，为了保护服务器免受这种漏洞的影响，我们需要重新设计它，使其永远不会被I/O操作阻塞。实现这一目标的一种方法是通过使用非阻塞套接字（这将使我们的服务器变为响应式）或使用异步I/O操作。这两种选择都意味着我们的服务器不再同步。我们将在本章的其他菜谱中考虑这些解决方案。
+显然，为了保护服务器免受这种漏洞的影响，我们需要重新设计它，使其永远不会被 I/O 操作阻塞。实现这一目标的一种方法是通过使用非阻塞套接字（这将使我们的服务器变为响应式）或使用异步 I/O 操作。这两种选择都意味着我们的服务器不再同步。我们将在本章的其他菜谱中考虑这些解决方案。
 
 ### 分析结果
 
-如上所述，使用Boost.Asio实现的同步迭代服务器中固有的漏洞不允许在公共网络上使用，因为存在服务器被恶意者滥用的风险。通常，同步服务器会在封闭和保护的环境中用于客户端被精心设计，以确保它们不会使服务器挂起。
+如上所述，使用 Boost.Asio 实现的同步迭代服务器中固有的漏洞不允许在公共网络上使用，因为存在服务器被恶意者滥用的风险。通常，同步服务器会在封闭和保护的环境中用于客户端被精心设计，以确保它们不会使服务器挂起。
 
 迭代同步服务器的另一个局限性是它们不可扩展，无法利用多处理器硬件。然而，它们的优点——简单性——是为什么这种类型的服务器在许多情况下是一个好的选择的原因。
 
 ## 参见
 
-+   [第2章](ch02.html "第2章。I/O操作")，*I/O操作*，包括提供关于如何执行同步I/O的详细讨论的菜谱。
++   第二章，*I/O 操作*，包括提供关于如何执行同步 I/O 的详细讨论的菜谱。
 
-# 实现同步并行TCP服务器
+# 实现同步并行 TCP 服务器
 
-同步并行TCP服务器是分布式应用的一部分，满足以下标准：
+同步并行 TCP 服务器是分布式应用的一部分，满足以下标准：
 
 +   在客户端-服务器通信模型中充当服务器
 
-+   通过TCP协议与客户端应用程序通信
++   通过 TCP 协议与客户端应用程序通信
 
-+   使用I/O和控制操作，直到相应的操作完成或发生错误，才会阻塞执行线程
++   使用 I/O 和控制操作，直到相应的操作完成或发生错误，才会阻塞执行线程
 
 +   可以同时处理多个客户端
 
-一个典型的同步并行TCP服务器按照以下算法工作：
+一个典型的同步并行 TCP 服务器按照以下算法工作：
 
-1.  分配一个接受者套接字并将其绑定到特定的TCP端口。
+1.  分配一个接受者套接字并将其绑定到特定的 TCP 端口。
 
 1.  运行循环直到服务器停止：
 
@@ -236,15 +351,67 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
         +   关闭与客户端的连接并释放套接字
 
-此配方演示了如何使用Boost.Asio实现同步并行TCP服务器应用程序。
+此配方演示了如何使用 Boost.Asio 实现同步并行 TCP 服务器应用程序。
 
 ## 如何做到这一点…
 
 我们开始实现我们的服务器应用程序，通过定义一个处理单个客户端的类，该类通过读取请求消息、处理它并发送响应消息来处理单个客户端。此类代表服务器应用程序提供的一个单一服务，因此我们将它命名为`Service`：
 
-[PRE5]
+```cpp
+#include <boost/asio.hpp>
 
-为了保持简单，在我们的示例服务器应用程序中，我们实现了一个模拟服务，它仅模拟执行某些操作。请求处理模拟包括执行许多增量操作来模拟消耗CPU的操作，然后让控制线程休眠一段时间来模拟同步的I/O操作，如读取文件或与外围设备通信。
+#include <thread>
+#include <atomic>
+#include <memory>
+#include <iostream>
+
+using namespace boost;
+
+class Service {
+public:
+   Service(){}
+
+   void StartHandligClient(
+         std::shared_ptr<asio::ip::tcp::socket> sock) {
+
+      std::thread th(([this, sock]() {
+         HandleClient(sock);
+      }));
+
+      th.detach();
+   }
+
+private: 
+void HandleClient(std::shared_ptr<asio::ip::tcp::socket> sock) {
+      try {
+         asio::streambuf request;
+         asio::read_until(*sock.get(), request, '\n');
+
+         // Emulate request processing.
+         int i = 0;
+         while (i != 1000000)
+            i++;
+
+            std::this_thread::sleep_for(
+std::chrono::milliseconds(500));
+
+         // Sending response.
+         std::string response = "Response\n";
+         asio::write(*sock.get(), asio::buffer(response));
+      } 
+      catch (system::system_error &e) {
+         std::cout    << "Error occured! Error code = " 
+<< e.code() << ". Message: "
+               << e.what();
+      }
+
+      // Clean-up.
+      delete this;
+   }
+};
+```
+
+为了保持简单，在我们的示例服务器应用程序中，我们实现了一个模拟服务，它仅模拟执行某些操作。请求处理模拟包括执行许多增量操作来模拟消耗 CPU 的操作，然后让控制线程休眠一段时间来模拟同步的 I/O 操作，如读取文件或与外围设备通信。
 
 ### 注意
 
@@ -252,13 +419,68 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 接下来，我们定义另一个类，它代表一个高级的*接受者*概念（与`asio::ip::tcp::acceptor`类所代表的低级概念相比）。此类负责接受来自客户端的连接请求，并实例化`Service`类的对象，这些对象将为连接的客户端提供服务。让我们称它为`Acceptor`：
 
-[PRE6]
+```cpp
+class Acceptor {
+public:
+   Acceptor(asio::io_service& ios, unsigned short port_num) :
+      m_ios(ios),
+      m_acceptor(m_ios,
+          asio::ip::tcp::endpoint(
+asio::ip::address_v4::any(), 
+port_num))
+   {
+      m_acceptor.listen();
+   }
+
+   void Accept() {
+      std::shared_ptr<asio::ip::tcp::socket> 
+sock(new asio::ip::tcp::socket(m_ios));
+
+      m_acceptor.accept(*sock.get());
+
+      (new Service)->StartHandligClient(sock);
+   }
+
+private:
+   asio::io_service& m_ios;
+   asio::ip::tcp::acceptor m_acceptor;
+};
+```
 
 此类拥有一个名为`m_acceptor`的`asio::ip::tcp::acceptor`类对象，用于同步接受传入的连接请求。
 
 此外，我们还定义了一个代表服务器的类。类名相应地命名为——`Server`：
 
-[PRE7]
+```cpp
+class Server {
+public:
+  Server() : m_stop(false) {}
+
+  void Start(unsigned short port_num) {
+    m_thread.reset(new std::thread([this, port_num]() {
+      Run(port_num);
+    }));
+  }
+
+  void Stop() {
+    m_stop.store(true);
+    m_thread->join();
+  }
+
+private:
+  void Run(unsigned short port_num) {
+    Acceptor acc(m_ios, port_num);
+
+    while (!m_stop.load()) {
+      acc.Accept();
+    }
+  }
+
+  std::unique_ptr<std::thread>m_thread;
+  std::atomic<bool>m_stop;
+  asio::io_servicem_ios;
+};
+```
 
 此类提供了一个由两个方法组成的接口——`Start()`和`Stop()`，分别用于启动和停止服务器。循环在`Start()`方法启动的单独线程中运行。`Start()`方法是非阻塞的，而`Stop()`方法是阻塞的。它会阻塞调用线程，直到服务器停止。
 
@@ -266,7 +488,28 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 最终，我们实现了应用程序的入口点函数`main()`，演示了如何使用`Server`类：
 
-[PRE8]
+```cpp
+int main()
+{
+   unsigned short port_num = 3333;
+
+   try {
+      Server srv;
+      srv.Start(port_num);
+
+      std::this_thread::sleep_for(std::chrono::seconds(60));
+
+      srv.Stop();
+   }
+   catch (system::system_error &e) {
+      std::cout    << "Error occured! Error code = " 
+<< e.code() << ". Message: "
+            << e.what();
+   }
+
+   return 0;
+}
+```
 
 ## 它是如何工作的…
 
@@ -306,35 +549,35 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 所展示的实现有一个显著的缺点，即服务器可能无法立即停止。更甚者，存在服务器根本无法停止的可能性，并且`Stop()`方法将永远阻塞其调用者。问题的根本原因在于服务器对客户端行为的强依赖。
 
-如果在`Run()`方法中检查循环终止条件之前调用`Stop()`方法并将原子变量`m_stop`的值设置为`true`，则服务器几乎会立即停止，并且不会发生任何问题。然而，如果在服务器线程在`acc.Accept()`方法中阻塞等待来自客户端的下一个连接请求，或者在`Service`类中的某个同步I/O操作中等待来自已连接客户端的请求消息或客户端接收响应消息时调用`Stop()`方法，则服务器无法停止，直到这些阻塞操作完成。因此，例如，如果在调用`Stop()`方法时没有挂起的连接请求，服务器将不会停止，直到新的客户端连接并得到处理，在一般情况下可能永远不会发生，可能导致服务器永久阻塞。
+如果在`Run()`方法中检查循环终止条件之前调用`Stop()`方法并将原子变量`m_stop`的值设置为`true`，则服务器几乎会立即停止，并且不会发生任何问题。然而，如果在服务器线程在`acc.Accept()`方法中阻塞等待来自客户端的下一个连接请求，或者在`Service`类中的某个同步 I/O 操作中等待来自已连接客户端的请求消息或客户端接收响应消息时调用`Stop()`方法，则服务器无法停止，直到这些阻塞操作完成。因此，例如，如果在调用`Stop()`方法时没有挂起的连接请求，服务器将不会停止，直到新的客户端连接并得到处理，在一般情况下可能永远不会发生，可能导致服务器永久阻塞。
 
 在本节稍后，我们将考虑解决此缺点的方法。
 
 ### `main()`入口点函数
 
-此功能演示了服务器的使用方法。它创建了一个名为`srv`的`Server`类实例，并调用其`Start()`方法来启动服务器。因为服务器被表示为一个在其自己的控制线程中运行的活跃对象，所以`Start()`方法会立即返回，运行`main()`方法的线程继续执行。为了使服务器运行一段时间，主线程被休眠60秒。当主线程醒来后，它会调用`srv`对象的`Stop()`方法来停止服务器。当`Stop()`方法返回时，`main()`函数也会返回，我们的示例应用程序退出。
+此功能演示了服务器的使用方法。它创建了一个名为`srv`的`Server`类实例，并调用其`Start()`方法来启动服务器。因为服务器被表示为一个在其自己的控制线程中运行的活跃对象，所以`Start()`方法会立即返回，运行`main()`方法的线程继续执行。为了使服务器运行一段时间，主线程被休眠 60 秒。当主线程醒来后，它会调用`srv`对象的`Stop()`方法来停止服务器。当`Stop()`方法返回时，`main()`函数也会返回，我们的示例应用程序退出。
 
-当然，在实际应用中，服务器会作为对用户输入或任何其他相关事件的反应而停止，而不是在服务器启动运行后的60秒后。
+当然，在实际应用中，服务器会作为对用户输入或任何其他相关事件的反应而停止，而不是在服务器启动运行后的 60 秒后。
 
 ### 消除缺点
 
-使用Boost.Asio库实现的同步并行服务器应用程序的固有缺点与之前配方中考虑的同步迭代服务器应用程序的缺点相似。请参阅*实现同步迭代TCP服务器*配方，以了解缺点的讨论和消除它们的方法。
+使用 Boost.Asio 库实现的同步并行服务器应用程序的固有缺点与之前配方中考虑的同步迭代服务器应用程序的缺点相似。请参阅*实现同步迭代 TCP 服务器*配方，以了解缺点的讨论和消除它们的方法。
 
 ## 参见
 
-+   配方*实现同步迭代TCP服务器*提供了关于同步迭代和同步并行服务器固有的缺点以及消除它们的可能方法的更多详细信息。
++   配方*实现同步迭代 TCP 服务器*提供了关于同步迭代和同步并行服务器固有的缺点以及消除它们的可能方法的更多详细信息。
 
-+   [第2章](ch02.html "第2章。I/O操作")，*I/O操作*，包括提供如何执行同步I/O的详细讨论的配方
++   第二章，*I/O 操作*，包括提供如何执行同步 I/O 的详细讨论的配方
 
-# 实现异步TCP服务器
+# 实现异步 TCP 服务器
 
-异步TCP服务器是满足以下标准的一个分布式应用程序的组成部分：
+异步 TCP 服务器是满足以下标准的一个分布式应用程序的组成部分：
 
 +   在客户端-服务器通信模型中充当服务器
 
-+   通过TCP协议与客户端应用程序通信
++   通过 TCP 协议与客户端应用程序通信
 
-+   使用异步I/O和控制操作
++   使用异步 I/O 和控制操作
 
 +   可以同时处理多个客户端
 
@@ -364,7 +607,101 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 我们通过定义一个类来开始实现我们的服务器应用程序，该类负责通过读取请求消息、处理它并发送响应消息来处理单个客户端。这个类代表了服务器应用程序提供的一个单一服务。让我们称它为 `Service`：
 
-[PRE9]
+```cpp
+#include <boost/asio.hpp>
+
+#include <thread>
+#include <atomic>
+#include <memory>
+#include <iostream>
+
+using namespace boost;
+
+class Service {
+public:
+   Service(std::shared_ptr<asio::ip::tcp::socket> sock) :
+      m_sock(sock)
+   {}
+
+   void StartHandling() {
+
+      asio::async_read_until(*m_sock.get(), 
+            m_request, 
+            '\n', 
+            this 
+                        {                  
+                              onRequestReceived(ec,
+                               bytes_transferred);
+               });
+   }
+
+private:
+   void onRequestReceived(const boost::system::error_code& ec,
+                std::size_t bytes_transferred) {
+      if (ec != 0) {
+         std::cout << "Error occured! Error code = "
+            << ec.value()
+            << ". Message: " << ec.message();
+
+         onFinish();
+                return;
+      }
+
+// Process the request.
+      m_response = ProcessRequest(m_request);
+
+      // Initiate asynchronous write operation.
+      asio::async_write(*m_sock.get(), 
+            asio::buffer(m_response),
+            this 
+                            {
+                  onResponseSent(ec,
+                                  bytes_transferred);
+               });
+   }
+
+   void onResponseSent(const boost::system::error_code& ec,
+                      std::size_t bytes_transferred) {
+      if (ec != 0) {
+         std::cout << "Error occured! Error code = "
+            << ec.value()
+            << ". Message: " << ec.message();
+      }
+
+      onFinish();
+   }
+
+   // Here we perform the cleanup.
+   void onFinish() {
+      delete this;
+   }
+
+   std::string ProcessRequest(asio::streambuf& request) {
+
+      // In this method we parse the request, process it
+      // and prepare the request.
+
+      // Emulate CPU-consuming operations.
+      int i = 0;
+      while (i != 1000000)
+         i++;
+
+      // Emulate operations that block the thread
+// (e.g. synch I/O operations).
+         std::this_thread::sleep_for(
+                      std::chrono::milliseconds(100));
+
+      // Prepare and return the response message. 
+      std::string response = "Response\n";
+      return response;
+   }
+
+private:
+   std::shared_ptr<asio::ip::tcp::socket> m_sock;
+   std::string m_response;
+   asio::streambuf m_request;
+};
+```
 
 为了保持简单，在我们的示例服务器应用程序中，我们实现了一个模拟服务，它仅模拟执行某些操作。请求处理模拟包括执行许多增量操作来模拟消耗 CPU 的操作，然后让控制线程休眠一段时间来模拟同步的 I/O 操作，例如读取文件或与外围设备通信。
 
@@ -372,19 +709,159 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 接下来，我们定义另一个类，它代表一个高级 *接受者* 概念（与由 `asio::ip::tcp::acceptor` 类代表的低级概念相比）。这个类负责接受来自客户端的连接请求并实例化 `Service` 类的对象，该对象将为连接的客户端提供服务。让我们称它为 `Acceptor`：
 
-[PRE10]
+```cpp
+class Acceptor {
+public:
+  Acceptor(asio::io_service&ios, unsigned short port_num) :
+    m_ios(ios),
+    m_acceptor(m_ios,
+      asio::ip::tcp::endpoint(
+                  asio::ip::address_v4::any(), 
+                  port_num)),
+    m_isStopped(false)
+  {}
+
+  // Start accepting incoming connection requests.
+  void Start() {
+    m_acceptor.listen();
+    InitAccept();
+  }
+
+  // Stop accepting incoming connection requests.
+  void Stop() {
+    m_isStopped.store(true);
+  }
+
+private:
+  void InitAccept() {
+    std::shared_ptr<asio::ip::tcp::socket>
+              sock(new asio::ip::tcp::socket(m_ios));
+
+    m_acceptor.async_accept(*sock.get(),
+      this, sock 
+           {
+        onAccept(error, sock);
+      });
+  }
+
+  void onAccept(const boost::system::error_code&ec,
+               std::shared_ptr<asio::ip::tcp::socket> sock) 
+  {
+    if (ec == 0) {
+      (new Service(sock))->StartHandling();
+    }
+    else {
+      std::cout<< "Error occured! Error code = "
+        <<ec.value()
+        << ". Message: " <<ec.message();
+    }
+
+    // Init next async accept operation if
+    // acceptor has not been stopped yet.
+    if (!m_isStopped.load()) {
+      InitAccept();
+    }
+    else {
+      // Stop accepting incoming connections
+      // and free allocated resources.
+      m_acceptor.close();
+    }
+  }
+
+private:
+  asio::io_service&m_ios;
+  asio::ip::tcp::acceptor m_acceptor;
+  std::atomic<bool>m_isStopped;
+}; 
+```
 
 这个类拥有一个名为 `m_acceptor` 的 `asio::ip::tcp::acceptor` 类对象，用于异步接受传入的连接请求。
 
 此外，我们还定义了一个代表服务器本身的类。该类名称相应地命名为 `Server`：
 
-[PRE11]
+```cpp
+class Server {
+public:
+   Server() {
+      m_work.reset(new asio::io_service::work(m_ios));
+   }
+
+   // Start the server.
+   void Start(unsigned short port_num, 
+unsigned int thread_pool_size) {
+
+      assert(thread_pool_size > 0);
+
+      // Create and start Acceptor.
+      acc.reset(new Acceptor(m_ios, port_num));
+      acc->Start();
+
+      // Create specified number of threads and 
+      // add them to the pool.
+      for (unsigned int i = 0; i < thread_pool_size; i++) {
+         std::unique_ptr<std::thread> th(
+                   new std::thread([this]()
+                   {
+                          m_ios.run();
+                   }));
+
+         m_thread_pool.push_back(std::move(th));
+      }
+   }
+
+   // Stop the server.
+   void Stop() {
+      acc->Stop();
+      m_ios.stop();
+
+      for (auto& th : m_thread_pool) {
+         th->join();
+      }
+   }
+
+private:
+   asio::io_servicem_ios;
+   std::unique_ptr<asio::io_service::work>m_work;
+   std::unique_ptr<Acceptor>acc;
+   std::vector<std::unique_ptr<std::thread>>m_thread_pool;
+};
+```
 
 本类提供了一个包含两个方法——`Start()` 和 `Stop()` 的接口。`Start()` 方法接受服务器应监听传入连接请求的协议端口号以及要添加到池中的线程数作为输入参数，并启动服务器。`Stop()` 方法停止服务器。`Start()` 方法是非阻塞的，而 `Stop()` 方法是阻塞的。它会阻塞调用线程，直到服务器停止并且所有运行事件循环的线程退出。
 
 最后，我们实现了应用程序入口点函数 `main()`，它演示了如何使用 `Server` 类的对象：
 
-[PRE12]
+```cpp
+const unsigned intDEFAULT_THREAD_POOL_SIZE = 2;
+
+int main()
+{
+  unsigned short port_num = 3333;
+
+  try {
+    Server srv;
+
+    unsigned intthread_pool_size =
+      std::thread::hardware_concurrency() * 2;
+
+      if (thread_pool_size == 0)
+      thread_pool_size = DEFAULT_THREAD_POOL_SIZE;
+
+    srv.Start(port_num, thread_pool_size);
+
+    std::this_thread::sleep_for(std::chrono::seconds(60));
+
+    srv.Stop();
+  }
+  catch (system::system_error&e) {
+    std::cout  << "Error occured! Error code = " 
+               <<e.code() << ". Message: "
+               <<e.what();
+  }
+
+  return 0;
+}
+```
 
 ## 它是如何工作的...
 
@@ -406,13 +883,17 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 当写入操作完成（或发生错误）时，会调用 `onResponseSent()` 方法。此方法首先检查操作是否成功。如果操作失败，则将相应的消息输出到标准输出流。接下来，调用 `onFinish()` 方法以执行清理。当 `onFinish()` 方法返回时，客户端处理的全周期被认为是完成的。
 
-`ProcessRequest()` 方法是类的核心，因为它实现了服务。在我们的服务器应用程序中，我们有一个模拟服务，它运行一个模拟循环，执行一百万次自增操作，然后使线程休眠100毫秒。之后，生成模拟响应消息并返回给调用者。
+`ProcessRequest()` 方法是类的核心，因为它实现了服务。在我们的服务器应用程序中，我们有一个模拟服务，它运行一个模拟循环，执行一百万次自增操作，然后使线程休眠 100 毫秒。之后，生成模拟响应消息并返回给调用者。
 
 根据特定应用程序的需求，`Service` 类及其 `ProcessRequest()` 方法可以被扩展和丰富，以提供所需的服务功能。
 
 `Service` 类被设计成当其任务完成时，其对象会自行删除。删除操作在类的 `onFinish()` 私有方法中执行，该方法在客户端处理周期结束时被调用，无论操作是否成功或出错：
 
-[PRE13]
+```cpp
+void onFinish() {
+  delete this;
+}
+```
 
 ### 接收者类
 
@@ -440,14 +921,14 @@ Boost.Asio I/O函数和方法可能抛出的异常在`HandleClient()`方法中�
 
 ### `main()`入口点函数
 
-此函数演示了服务器使用方法。首先，它创建了一个名为`srv`的`Server`类对象。因为`Server`类的`Start()`方法需要一个由线程池构成的多个线程传递给它，所以在启动服务器之前，计算池的最优大小。在并行应用程序中通常使用的通用公式是计算机处理器数量的两倍来找到最优的线程数。我们使用`std::thread::hardware_concurrency()`静态方法来获取处理器数量。然而，因为这个方法可能无法完成其任务返回0，所以我们回退到由常量`DEFAULT_THREAD_POOL_SIZE`表示的默认值，在我们的情况下等于2。
+此函数演示了服务器使用方法。首先，它创建了一个名为`srv`的`Server`类对象。因为`Server`类的`Start()`方法需要一个由线程池构成的多个线程传递给它，所以在启动服务器之前，计算池的最优大小。在并行应用程序中通常使用的通用公式是计算机处理器数量的两倍来找到最优的线程数。我们使用`std::thread::hardware_concurrency()`静态方法来获取处理器数量。然而，因为这个方法可能无法完成其任务返回 0，所以我们回退到由常量`DEFAULT_THREAD_POOL_SIZE`表示的默认值，在我们的情况下等于 2。
 
-当线程池大小计算完毕后，调用`Start()`方法来启动服务器。`Start()`方法不会阻塞。当它返回时，运行`main()`方法的线程继续执行。为了允许服务器运行一段时间，主线程被休眠60秒。当主线程醒来时，它调用`srv`对象的`Stop()`方法来停止服务器。当`Stop()`方法返回时，`main()`函数也返回，我们的应用程序退出。
+当线程池大小计算完毕后，调用`Start()`方法来启动服务器。`Start()`方法不会阻塞。当它返回时，运行`main()`方法的线程继续执行。为了允许服务器运行一段时间，主线程被休眠 60 秒。当主线程醒来时，它调用`srv`对象的`Stop()`方法来停止服务器。当`Stop()`方法返回时，`main()`函数也返回，我们的应用程序退出。
 
 当然，在实际应用中，服务器会作为对某些相关事件（如用户输入）的反应而停止，而不是当某个虚拟的时间段过去时。
 
 ## 参见
 
-+   [第2章](ch02.html "第2章。I/O操作")，*I/O操作*，包括提供详细讨论如何执行同步I/O的配方。
++   第二章，*I/O 操作*，包括提供详细讨论如何执行同步 I/O 的配方。
 
-+   来自[第6章](ch06.html "第6章。其他主题")的*使用计时器*配方，*其他主题*，展示了如何使用Boost.Asio提供的计时器。计时器可以用来实现异步操作超时机制。
++   来自第六章的*使用计时器*配方，*其他主题*，展示了如何使用 Boost.Asio 提供的计时器。计时器可以用来实现异步操作超时机制。

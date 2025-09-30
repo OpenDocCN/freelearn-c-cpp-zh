@@ -1,12 +1,12 @@
-# 第3章。你的第一个游戏 – 桌面冰球
+# 第三章。你的第一个游戏 – 桌面冰球
 
-*我们将构建一个桌面冰球游戏，以介绍使用Cocos2d-x构建项目的所有主要方面。这包括设置项目的配置、加载图像、加载声音、为多个屏幕分辨率构建游戏以及管理触摸事件。*
+*我们将构建一个桌面冰球游戏，以介绍使用 Cocos2d-x 构建项目的所有主要方面。这包括设置项目的配置、加载图像、加载声音、为多个屏幕分辨率构建游戏以及管理触摸事件。*
 
 *哦，你还需要叫一个朋友。这是一个双人游戏。继续吧，我在这里等你。*
 
 到本章结束时，你将知道：
 
-+   如何构建仅适用于iPad的游戏
++   如何构建仅适用于 iPad 的游戏
 
 +   如何启用多点触控
 
@@ -18,7 +18,7 @@
 
 +   如何创建精灵
 
-+   如何扩展Cocos2d-x的`Sprite`类
++   如何扩展 Cocos2d-x 的`Sprite`类
 
 +   如何创建标签并更新它们
 
@@ -40,13 +40,16 @@
 
 # 行动时间 – 创建你的游戏项目
 
-我将首先在Xcode中构建游戏，然后展示如何将项目带到Eclipse，但文件夹结构保持不变，所以你可以使用任何你想要的IDE，这里的说明将是相同的：
+我将首先在 Xcode 中构建游戏，然后展示如何将项目带到 Eclipse，但文件夹结构保持不变，所以你可以使用任何你想要的 IDE，这里的说明将是相同的：
 
-1.  打开终端，创建一个名为`AirHockey`的新Cocos2d-x项目，使用C++作为其主要语言。我把我的保存在桌面上，所以我要输入的命令看起来像这样：
+1.  打开终端，创建一个名为`AirHockey`的新 Cocos2d-x 项目，使用 C++作为其主要语言。我把我的保存在桌面上，所以我要输入的命令看起来像这样：
 
-    [PRE0]
+    ```cpp
+    cocos new AirHockey -p com.rengelbert.AirHockey -l cpp -d /Users/rengelbert/Desktop/AirHockey
 
-1.  一旦创建项目，导航到其`proj.ios_mac`文件夹，双击`AirHockey.xcodeproj`文件。（对于Eclipse，你可以遵循我们创建`HelloWorld`项目时采取的相同步骤来导入项目。）
+    ```
+
+1.  一旦创建项目，导航到其`proj.ios_mac`文件夹，双击`AirHockey.xcodeproj`文件。（对于 Eclipse，你可以遵循我们创建`HelloWorld`项目时采取的相同步骤来导入项目。）
 
 1.  在**项目导航器**中选择顶部项目，并确保选择了**iOS**目标，通过导航到**通用** | **部署信息**，设置目标设备为**iPad**，并将**设备方向**设置为**纵向**和**颠倒**。![行动时间 – 创建你的游戏项目](img/00007.jpeg)
 
@@ -54,7 +57,7 @@
 
 ## *刚才发生了什么？*
 
-你创建了一个针对iPad的Cocos2d-x项目，你现在可以设置它，使用我之前描述的其余配置。
+你创建了一个针对 iPad 的 Cocos2d-x 项目，你现在可以设置它，使用我之前描述的其余配置。
 
 所以我们现在就来做。
 
@@ -64,11 +67,15 @@
 
 1.  前往`ios`文件夹中的`RootViewController.mm`，查找`shouldAutorotateToInterfaceOrientation`方法。将方法内的行更改为：
 
-    [PRE1]
+    ```cpp
+    return UIInterfaceOrientationIsPortrait( interfaceOrientation );
+    ```
 
 1.  在`supportedInterfaceOrientations`方法下方几行，更改条件`to`内的行：
 
-    [PRE2]
+    ```cpp
+    return UIInterfaceOrientationMaskPortrait;
+    ```
 
 ## *刚才发生了什么？*
 
@@ -106,7 +113,22 @@
 
 1.  前往 `AppDelegate.cpp` (您可以在 `Classes` 文件夹中找到它)。在 `applicationDidFinishLaunching` 方法中，在 `director->setAnimationInterval(1.0 / 60)` 行下面，添加以下行：
 
-    [PRE3]
+    ```cpp
+    auto screenSize = glview->getFrameSize();
+    auto designSize = Size(768, 1024);
+    glview->setDesignResolutionSize(designSize.width, designSize.height, ResolutionPolicy::EXACT_FIT);
+
+    std::vector<std::string> searchPaths;
+    if (screenSize.width > 768) {
+        searchPaths.push_back("hd");
+        director->setContentScaleFactor(2);
+    } else  {
+        searchPaths.push_back("sd");
+        director->setContentScaleFactor(1);
+    }
+    auto fileUtils = FileUtils::getInstance();
+    fileUtils->setSearchPaths(searchPaths);
+    ```
 
 1.  保存文件。
 
@@ -128,21 +150,31 @@
 
 1.  将两个`.wav`文件拖到你的`Project`文件夹内的`Resources`文件夹中。
 
-1.  然后转到Xcode，在文件导航面板中选择`Resources`文件夹，并选择**文件** | **将文件添加到AirHockey**。
+1.  然后转到 Xcode，在文件导航面板中选择`Resources`文件夹，并选择**文件** | **将文件添加到 AirHockey**。
 
 1.  确保选择了**AirHockey**目标。
 
 1.  再次转到`AppDelegate.cpp`。在顶部，添加以下`include`语句：
 
-    [PRE4]
+    ```cpp
+    #include "SimpleAudioEngine.h"
+    ```
 
 1.  然后在`USING_NS_CC`宏（用于`using namespace cocos2d`）下方添加：
 
-    [PRE5]
+    ```cpp
+    using namespace CocosDenshion;
+    ```
 
 1.  然后在上一节中添加的行下面，在`applicationDidFinishLaunching`中添加以下行：
 
-    [PRE6]
+    ```cpp
+    auto audioEngine = SimpleAudioEngine::getInstance();
+    audioEngine->preloadEffect( fileUtils->fullPathForFilename("hit.wav").c_str() );
+    audioEngine->preloadEffect( fileUtils->fullPathForFilename("score.wav").c_str() );
+    audioEngine->setBackgroundMusicVolume(0.5f);
+    audioEngine->setEffectsVolume(0.5f);
+    ```
 
 ## *发生了什么？*
 
@@ -152,49 +184,96 @@
 
 ![发生了什么？](img/00008.jpeg)
 
-# 扩展Sprite
+# 扩展 Sprite
 
 不，`Sprite`没有问题。我只是选择了一个需要从其一些精灵中获取更多信息的游戏。在这种情况下，我们想要存储精灵的位置以及游戏当前迭代完成后它将去的位置。我们还需要一个辅助方法来获取精灵的半径。
 
 那么，让我们创建我们的`GameSprite`类。
 
-# 行动时间 - 添加GameSprite.cpp
+# 行动时间 - 添加 GameSprite.cpp
 
-从这里开始，我们将在Xcode中创建任何新的类，但如果你记得更新`Make`文件，你同样可以在Eclipse中轻松完成。我将在本章后面展示如何做到这一点。
+从这里开始，我们将在 Xcode 中创建任何新的类，但如果你记得更新`Make`文件，你同样可以在 Eclipse 中轻松完成。我将在本章后面展示如何做到这一点。
 
-1.  在Xcode中，选择`Classes`文件夹，然后转到**文件** | **新建** | **文件**，导航到**iOS** | **源**选择**C++ 文件**。
+1.  在 Xcode 中，选择`Classes`文件夹，然后转到**文件** | **新建** | **文件**，导航到**iOS** | **源**选择**C++ 文件**。
 
 1.  命名为`GameSprite`并确保选择了**也创建一个头文件**选项。
 
 1.  选择新的`GameSprite.h`接口文件，并用以下代码替换那里的代码：
 
-    [PRE7]
+    ```cpp
+    #ifndef __GAMESPRITE_H__
+    #define __GAMESPRITE_H__
+    #include "cocos2d.h"
+    using namespace cocos2d;
+    class GameSprite : public Sprite {
+    public:
+       CC_SYNTHESIZE(Vec2, _nextPosition, NextPosition);
+       CC_SYNTHESIZE(Vec2, _vector, Vector);
+       CC_SYNTHESIZE(Touch*, _touch, Touch);
+       GameSprite();
+       virtual ~GameSprite();
+       static GameSprite* gameSpriteWithFile(const char*  pszFileName);
+       virtual void setPosition(const Vec2& pos) override;
+       float radius();
+    };
+    #endif // __GAMESPRITE_H__
+    ```
 
 ## *发生了什么？*
 
 在接口中，我们声明该类是公共`Sprite`类的子类。
 
-然后我们添加了三个合成属性。在Cocos2d-x中，这些是用于创建获取器和设置器的宏。你声明类型、受保护的变量名以及将附加到`get`和`set`方法的单词。因此，在第一个`CC_SYNTHESIZE`方法中，将创建`getNextPosition`和`setNextPosition`方法来处理`_nextPosition`受保护变量中的`Point`值。
+然后我们添加了三个合成属性。在 Cocos2d-x 中，这些是用于创建获取器和设置器的宏。你声明类型、受保护的变量名以及将附加到`get`和`set`方法的单词。因此，在第一个`CC_SYNTHESIZE`方法中，将创建`getNextPosition`和`setNextPosition`方法来处理`_nextPosition`受保护变量中的`Point`值。
 
 我们还为我们的类添加了构造函数和析构函数，以及实例化的通用静态方法。这个方法接收一个参数，即精灵使用的图像文件名。我们通过覆盖`Sprite`中的`setPosition`并添加我们的辅助方法半径的声明来完成。
 
 下一步是实现我们的新类。
 
-# 行动时间 - 实现GameSprite
+# 行动时间 - 实现 GameSprite
 
 头文件处理完毕后，我们只需要实现我们的方法。
 
 1.  选择`GameSprite.cpp`文件，让我们开始类的实例化逻辑：
 
-    [PRE8]
+    ```cpp
+    #include "GameSprite.h"
+
+    GameSprite::GameSprite(void){
+        _vector = Vec2(0,0);
+    }
+
+    GameSprite::~GameSprite(void){
+    }
+
+    GameSprite* GameSprite::gameSpriteWithFile(const char * pszFileName) {
+       auto sprite = new GameSprite();
+       if (sprite && sprite->initWithFile(pszFileName)) {
+              sprite->autorelease();
+              return sprite;
+       }
+       CC_SAFE_DELETE(sprite);
+       return sprite = nullptr;
+    }
+    ```
 
 1.  接下来，我们需要重写`Node`方法的`setPosition`。我们需要确保每次更改精灵的位置时，新的值也会被`_nextPosition`使用：
 
-    [PRE9]
+    ```cpp
+    void GameSprite::setPosition(const Point& pos) {
+        Sprite::setPosition(pos);
+        if (!_nextPosition.equals(pos)) {
+            _nextPosition = pos;
+        }
+    }
+    ```
 
 1.  最后，我们实现了我们的新方法来检索精灵的半径，我们将其确定为纹理宽度的一半：
 
-    [PRE10]
+    ```cpp
+    float GameSprite::radius() {
+        return getTexture()->getContentSize().width * 0.5f;
+    }
+    ```
 
 ## *发生了什么？*
 
@@ -214,35 +293,77 @@
 
 我们将创建那个类。
 
-# 行动时间 – 编码GameLayer接口
+# 行动时间 – 编码 GameLayer 接口
 
 `GameLayer`是我们游戏中的主要容器。
 
-1.  按照步骤将新文件添加到你的`Classes`文件夹中。这是一个名为`GameLayer`的C++文件。
+1.  按照步骤将新文件添加到你的`Classes`文件夹中。这是一个名为`GameLayer`的 C++文件。
 
 1.  选择你的`GameLayer.h`。在第一个`define`预处理器命令下方，添加：
 
-    [PRE11]
+    ```cpp
+    #define GOAL_WIDTH 400
+    ```
 
 1.  我们定义了球门的宽度（以像素为单位）。
 
 1.  接下来，添加我们的精灵和得分文本标签的声明：
 
-    [PRE12]
+    ```cpp
+    #include "cocos2d.h"
+    #include "GameSprite.h"
 
-    我们有两个玩家的`GameSprite`对象（看起来奇怪的称为mallets），以及球（称为puck）。我们将两个玩家存储在Cocos2d-x的`Vector`中。我们还有两个文本标签来显示每个玩家的得分。
+    using namespace cocos2d;
+
+    class GameLayer : public Layer
+    {
+        GameSprite* _player1;
+        GameSprite* _player2;
+        GameSprite* _ball;
+
+        Vector<GameSprite*> _players;
+        Label* _player1ScoreLabel;
+        Label* _player2ScoreLabel;
+    ```
+
+    我们有两个玩家的`GameSprite`对象（看起来奇怪的称为 mallets），以及球（称为 puck）。我们将两个玩家存储在 Cocos2d-x 的`Vector`中。我们还有两个文本标签来显示每个玩家的得分。
 
 1.  声明一个变量来存储屏幕大小。我们将大量使用它进行定位：
 
-    [PRE13]
+    ```cpp
+    Size _screenSize;
+    ```
 
 1.  添加变量以存储得分信息，并添加一个方法来更新屏幕上的这些得分：
 
-    [PRE14]
+    ```cpp
+    int _player1Score;
+    int _player2Score;
+
+    void playerScore (int player);
+    ```
 
 1.  最后，让我们添加我们的方法：
 
-    [PRE15]
+    ```cpp
+    public:
+
+       GameLayer();
+       virtual ~GameLayer();
+       virtual bool init();
+
+        static Scene* scene();
+
+        CREATE_FUNC(GameLayer);
+
+        void onTouchesBegan(const std::vector<Touch*> &touches,  Event* event);
+       void onTouchesMoved(const std::vector<Touch*> &touches,  Event* event);
+       void onTouchesEnded(const std::vector<Touch*> &touches,  Event* event);
+
+      void update (float dt);
+    };
+    #endif // __GAMELAYER_H__
+    ```
 
 有构造函数和析构函数方法，然后是`Layer init`方法，最后是触摸事件处理程序和我们的循环方法`update`。这些触摸事件处理程序将被添加到我们的类中，以处理用户触摸开始、在屏幕上移动以及结束时的情况。
 
@@ -252,33 +373,73 @@
 
 在类实现中，所有逻辑都开始于`init`方法内部。
 
-# 行动时间 – 实现init()
+# 行动时间 – 实现 init()
 
 在`init()`内部，我们将构建游戏屏幕，引入游戏所需的全部精灵和标签：
 
 1.  因此，在调用超类`Layer::init`方法的`if`语句之后，我们添加：
 
-    [PRE16]
+    ```cpp
+    _players = Vector<GameSprite*>(2);
+    _player1Score = 0;
+    _player2Score = 0;
+    _screenSize = Director::getInstance()->getWinSize();
+    ```
 
 1.  我们创建一个向量来存储两个玩家，初始化得分值，并从单例、无所不知的`Director`中获取屏幕大小。我们将使用屏幕大小来相对定位所有精灵。接下来，我们将创建第一个精灵。它使用图像文件名创建，`FileUtils`将负责从正确的文件夹中加载：
 
-    [PRE17]
+    ```cpp
+    auto court = Sprite::create("court.png");
+    court->setPosition(Vec2(_screenSize.width * 0.5, _screenSize.height * 0.5));
+    this->addChild(court);
+    ```
 
-1.  习惯使用相对值定位精灵，而不是绝对值，这样我们可以支持更多的屏幕尺寸。并且，欢迎`Vec2`类型定义，它用于创建点；你将在Cocos2d-x中经常看到它。
+1.  习惯使用相对值定位精灵，而不是绝对值，这样我们可以支持更多的屏幕尺寸。并且，欢迎`Vec2`类型定义，它用于创建点；你将在 Cocos2d-x 中经常看到它。
 
 1.  我们通过将精灵作为子节点添加到我们的`GameLayer`（球场精灵不需要是`GameSprite`）来完成。
 
 1.  接下来，我们将使用我们全新的`GameSprite`类，仔细地在屏幕上定位对象：
 
-    [PRE18]
+    ```cpp
+    _player1 =  GameSprite::gameSpriteWithFile("mallet.png");
+    _player1->setPosition(Vec2(_screenSize.width * 0.5,  _player1->radius() * 2));
+    _players.pushBack(_player1);
+    this->addChild(_player1);
 
-1.  我们将使用`Label`类的`createWithTTF`静态方法创建TTF标签，传递初始字符串值（`0`）和字体文件路径。然后我们将定位和旋转标签：
+    _player2 =  GameSprite::gameSpriteWithFile("mallet.png");
+    _player2->setPosition(Vec2(_screenSize.width * 0.5, _screenSize.height - _player1->radius() * 2));
+    _players.pushBack(_player2);
+    this->addChild(_player2);
+    _ball = GameSprite::gameSpriteWithFile("puck.png");
+    _ball->setPosition(Vec2(_screenSize.width * 0.5, _screenSize.height * 0.5 - 2 * _ball->radius()));
+    this->addChild(_ball);
+    ```
 
-    [PRE19]
+1.  我们将使用`Label`类的`createWithTTF`静态方法创建 TTF 标签，传递初始字符串值（`0`）和字体文件路径。然后我们将定位和旋转标签：
+
+    ```cpp
+    _player1ScoreLabel = Label::createWithTTF("0",  "fonts/Arial.ttf", 60);
+    _player1ScoreLabel->setPosition(Vec2(_screenSize.width - 60,  _screenSize.height * 0.5 - 80));
+    _player1ScoreLabel->setRotation(90);
+    this->addChild(_player1ScoreLabel);
+    _player2ScoreLabel = Label::createWithTTF("0",  "fonts/Arial.ttf", 60);
+    _player2ScoreLabel->setPosition(Vec2(_screenSize.width - 60,  _screenSize.height * 0.5 + 80));
+    _player2ScoreLabel->setRotation(90);
+    this->addChild(_player2ScoreLabel);
+    ```
 
 1.  然后，我们将`GameLayer`变成一个多点触摸事件监听器，并告诉`Director`事件分发器`GameLayer`希望监听这些事件。最后，我们按照以下方式安排游戏的主循环：
 
-    [PRE20]
+    ```cpp
+    auto listener = EventListenerTouchAllAtOnce::create();
+    listener->onTouchesBegan =  CC_CALLBACK_2(GameLayer::onTouchesBegan, this);
+    listener->onTouchesMoved =  CC_CALLBACK_2(GameLayer::onTouchesMoved, this);
+    listener->onTouchesEnded =  CC_CALLBACK_2(GameLayer::onTouchesEnded, this);
+    _eventDispatcher->addEventListenerWithSceneGraphPriority(listener, this);
+    //create main loop
+    this->scheduleUpdate();
+    return true;
+    ```
 
 ## *发生了什么？*
 
@@ -294,7 +455,21 @@
 
 1.  因此，添加我们的`onTouchesBegan`方法：
 
-    [PRE21]
+    ```cpp
+    void GameLayer::onTouchesBegan(const std::vector<Touch*> &touches, Event* event)
+    {
+       for( auto touch : touches) {
+         if(touch != nullptr) {
+            auto tap = touch->getLocation();
+            for (auto player : _players) {
+             if (player->boundingBox().containsPoint(tap)) {
+                player->setTouch(touch);
+             }
+           }
+         }
+       }
+    }
+    ```
 
     如果你还记得，每个`GameSprite`都有一个`_touch`属性。
 
@@ -304,13 +479,48 @@
 
 1.  在`TouchesMoved`中，当我们遍历玩家时，我们这样做：
 
-    [PRE22]
+    ```cpp
+    for (auto player : _players) {
+      if (player->getTouch() != nullptr && player->getTouch() ==  touch) {
+        Point nextPosition = tap;
+       if (nextPosition.x < player->radius())
+          nextPosition.x = player->radius();
+       if (nextPosition.x > _screenSize.width - player->radius())
+          nextPosition.x = _screenSize.width - player->radius();
+       if (nextPosition.y < player->radius())
+          nextPosition.y  = player->radius();
+       if (nextPosition.y > _screenSize.height - player->radius())
+          nextPosition.y = _screenSize.height - player->radius();
+
+       //keep player inside its court
+       if (player->getPositionY() < _screenSize.height* 0.5f) {
+          if (nextPosition.y > _screenSize.height* 0.5 -  player->radius()) {
+             nextPosition.y = _screenSize.height* 0.5 -  player->radius();
+            }
+       } else {
+          if (nextPosition.y < _screenSize.height* 0.5 +  player->radius()) {
+             nextPosition.y = _screenSize.height* 0.5 +  player->radius();
+          }
+       }              
+       player->setNextPosition(nextPosition);
+       player->setVector(Vec2(tap.x - player->getPositionX(),  tap.y - player->getPositionY()));
+     }   
+    }
+    ```
 
     我们检查存储在玩家中的`_touch`属性是否是当前正在移动的。如果是，我们使用触摸的当前位置更新玩家的位置，但我们会检查新位置是否有效：玩家不能移动到屏幕外，也不能进入对手的球场。我们还更新玩家的移动向量；当我们将玩家与冰球碰撞时，我们需要这个向量。该向量基于玩家的位移。
 
 1.  在`onTouchesEnded`中，我们添加以下内容：
 
-    [PRE23]
+    ```cpp
+    for (auto player : _players) {
+       if (player->getTouch() != nullptr && player->getTouch() == touch) {
+         //if touch ending belongs to this player, clear it
+         player->setTouch(nullptr);
+         player->setVector(Vec2(0,0));
+       }
+    }
+    ```
 
 如果这个触摸是刚刚结束的，我们清除玩家内部存储的 `_touch` 属性。玩家也会停止移动，因此其向量被设置为 `0`。注意，我们不再需要触摸的位置；所以在 `TouchesEnded` 中可以跳过这部分逻辑。
 
@@ -326,11 +536,29 @@
 
 1.  我们将使用一点摩擦力更新冰球的速率（`0.98f`）。如果没有发生碰撞，我们将存储迭代结束时冰球的下一个位置：
 
-    [PRE24]
+    ```cpp
+    void GameLayer::update (float dt) {
+
+        auto ballNextPosition = _ball->getNextPosition();
+        auto ballVector = _ball->getVector();
+        ballVector *=  0.98f;
+
+        ballNextPosition.x += ballVector.x;
+        ballNextPosition.y += ballVector.y;
+    ```
 
 1.  接下来是碰撞。我们将检查每个球员精灵和球之间的碰撞：
 
-    [PRE25]
+    ```cpp
+    float squared_radii = pow(_player1->radius() +  _ball->radius(), 2);
+    for (auto player : _players) {
+      auto playerNextPosition = player->getNextPosition();
+      auto playerVector = player->getVector();  
+      float diffx = ballNextPosition.x - player->getPositionX();
+      float diffy = ballNextPosition.y - player->getPositionY();
+      float distance1 = pow(diffx, 2) + pow(diffy, 2);
+      float distance2 = pow(_ball->getPositionX() -  playerNextPosition.x, 2) + pow(_ball->getPositionY() -  playerNextPosition.y, 2);
+    ```
 
     通过球和球员之间的距离来检查碰撞。以下图示说明了两个条件将触发碰撞：
 
@@ -338,7 +566,10 @@
 
 1.  如果球和球员之间的距离等于两个精灵半径之和，或者小于两个精灵半径之和，则存在碰撞：
 
-    [PRE26]
+    ```cpp
+    if (distance1 <= squared_radii || 
+        distance2 <= squared_radii)  {
+    ```
 
 1.  我们使用平方半径值，这样我们就不需要使用昂贵的平方根计算来获取距离值。所以前一个条件语句中的所有值都是平方的，包括距离。
 
@@ -346,23 +577,82 @@
 
 1.  如果发生碰撞，我们获取球和球员的向量的幅度，并使用这个力将球推开。在这种情况下，我们更新球的下一个位置，并通过 `SimpleAudioEngine` 单例播放一个好听的声音效果（别忘了包含 `SimpleAudioEngine.h` 头文件并声明我们使用 `CocosDenshion` 命名空间）：
 
-    [PRE27]
+    ```cpp
+        float mag_ball = pow(ballVector.x, 2) + pow(ballVector.y, 2);
+        float mag_player = pow(playerVector.x, 2) + pow (playerVector.y, 2);
+        float force = sqrt(mag_ball + mag_player);
+        float angle = atan2(diffy, diffx);
+
+            ballVector.x = force * cos(angle);
+            ballVector.y = (force * sin(angle));
+
+            ballNextPosition.x = playerNextPosition.x + (player->radius() + _ball->radius() + force) * cos(angle);
+            ballNextPosition.y = playerNextPosition.y + (player->radius() + _ball->radius() + force) * sin(angle);
+
+           SimpleAudioEngine::getInstance()->playEffect("hit.wav");
+        }
+    }
+    ```
 
 1.  接下来，我们将检查球和屏幕边缘之间的碰撞。如果是这样，我们将球移回球场，并在这里播放我们的音效：
 
-    [PRE28]
+    ```cpp
+    if (ballNextPosition.x < _ball->radius()) {
+        ballNextPosition.x = _ball->radius();
+        ballVector.x *= -0.8f;
+        SimpleAudioEngine::getInstance()->playEffect("hit.wav");
+    }
+
+    if (ballNextPosition.x > _screenSize.width - _ball->radius()) {
+        ballNextPosition.x = _screenSize.width - _ball->radius();
+        ballVector.x *= -0.8f;
+        SimpleAudioEngine::getInstance()->playEffect("hit.wav");
+    }
+    ```
 
 1.  在球场的顶部和底部两侧，我们检查球是否通过我们之前定义的 `GOAL_WIDTH` 属性没有穿过任何一个球门，如下所示：
 
-    [PRE29]
+    ```cpp
+    if (ballNextPosition.y > _screenSize.height - _ball->radius()) {
+        if (_ball->getPosition().x < _screenSize.width * 0.5f - GOAL_WIDTH * 0.5f || _ball->getPosition().x > _screenSize.width * 0.5f + GOAL_WIDTH * 0.5f) {
+            ballNextPosition.y = _screenSize.height - _ball->radius();
+            ballVector.y *= -0.8f;
+            SimpleAudioEngine::getInstance()->playEffect("hit.wav");
+        }
+    }
+
+    if (ballNextPosition.y < _ball->radius() ) {
+        if (_ball->getPosition().x < _screenSize.width * 0.5f - GOAL_WIDTH * 0.5f || _ball->getPosition().x > _screenSize.width * 0.5f + GOAL_WIDTH * 0.5f) {
+            ballNextPosition.y = _ball->radius();
+            ballVector.y *= -0.8f;
+            SimpleAudioEngine::getInstance()->playEffect("hit.wav");
+        }
+    }
+    ```
 
 1.  我们最终更新球的信息，如果球穿过了球门（鼓声响起）：
 
-    [PRE30]
+    ```cpp
+    _ball->setVector(ballVector);
+    _ball->setNextPosition(ballNextPosition);
+
+    //check for goals!
+    if (ballNextPosition.y  < -_ball->radius() * 2) {
+       this->playerScore(2);
+    }
+
+    if (ballNextPosition.y > _screenSize.height + _ball->radius() * 2) {
+       this->playerScore(1);
+    }
+    ```
 
 1.  我们调用我们的辅助方法来得分，并且现在我们知道游戏中每个元素 `nextPosition` 的值，我们完成更新，放置所有元素：
 
-    [PRE31]
+    ```cpp
+    _player1->setPosition(_player1->getNextPosition());
+    _player2->setPosition(_player2->getNextPosition());
+    _ball->setPosition(_ball->getNextPosition()); 
+    ```
 
 ## *发生了什么？*
 
@@ -376,15 +666,39 @@
 
 1.  我们首先播放一个漂亮的进球效果，并停止我们的球：
 
-    [PRE32]
+    ```cpp
+    void GameLayer::playerScore (int player) {
+
+        SimpleAudioEngine::getInstance()->playEffect("score.wav");
+
+        _ball->setVector(Vec2(0,0));
+    ```
 
 1.  然后我们更新得分的玩家的分数，在这个过程中更新分数标签。并且球移动到刚刚得分的玩家的球场：
 
-    [PRE33]
+    ```cpp
+    char score_buffer[10];
+    if (player == 1) {
+        _player1Score++;
+        _player1ScoreLabel->setString(std::to_string(_player1Score));
+        _ball->setNextPosition(Vec2(_screenSize.width * 0.5, _screenSize.height * 0.5 + 2 * _ball->radius()));
+
+        } else {
+        _player2Score++;
+        _player2ScoreLabel->setString(std::to_string(_player2Score));
+        _ball->setNextPosition(Vec2(_screenSize.width * 0.5, _screenSize.height * 0.5 - 2 * _ball->radius()));
+        }
+    ```
 
     玩家被移动到他们的原始位置，并且他们的 `_touch` 属性被清除：
 
-    [PRE34]
+    ```cpp
+        _player1->setPosition(Vec2(_screenSize.width * 0.5, _player1->radius() * 2));
+        _player2->setPosition(Vec2(_screenSize.width * 0.5, _screenSize.height - _player1->radius() * 2));
+        _player1->setTouch(nullptr);
+        _player2->setTouch(nullptr);
+    }
+    ```
 
 ## *发生了什么？*
 
@@ -404,19 +718,34 @@
 
 1.  在 `AndroidManifest.xml` 文件中，编辑 `activity` 标签中的以下行：
 
-    [PRE35]
+    ```cpp
+    android:screenOrientation="portrait"   
+    ```
 
 1.  通过在 `supports-screens` 标签中添加这些行，你可以仅针对平板电脑进行目标定位：
 
-    [PRE36]
+    ```cpp
+    <supports-screens android:anyDensity="true"
+              android:smallScreens="false"
+              android:normalScreens="false"
+              android:largeScreens="true"
+              android:xlargeScreens="true"/>
+    ```
 
 1.  虽然如果你只想针对平板电脑，你可能还希望针对 SDK 的后续版本，如下所示：
 
-    [PRE37]
+    ```cpp
+    <uses-sdk android:minSdkVersion="11"/>
+    ```
 
 1.  接下来，让我们编辑 make 文件，所以打开 `Android.mk` 文件，并编辑 `LOCAL_SRC_FILES` 中的行，使其读取：
 
-    [PRE38]
+    ```cpp
+    LOCAL_SRC_FILES := hellocpp/main.cpp \
+                       ../../Classes/AppDelegate.cpp \
+                       ../../Classes/GameSprite.cpp \
+                       ../../Classes/GameLayer.cpp 
+    ```
 
 1.  保存它并运行你的应用程序（别忘了连接一个 Android 设备，在这种情况下，如果你使用了这里解释的设置，那么是一个平板电脑）。
 
@@ -430,7 +759,7 @@
 
 对代码进行任何修改。例如，添加一个额外的标签，然后从 Eclipse 重新发布。你可能发现在这个 IDE 中与项目一起工作比 Xcode 快。
 
-很遗憾，迟早，Eclipse 会抛出它臭名昭著的脾气。如果你在导航器中打开了多个项目，常见的问题之一是其中一个或多个项目报告错误，例如**找不到java.lang.Object类文件**或**无法解析java.lang.Object类型**。养成在打开 Eclipse 后立即清理项目并构建它的习惯，只保留打开的活动项目，但即使这样也可能失败。解决方案？重启 Eclipse，或者更好的方法是，从导航器（但不是从磁盘！）中删除项目，然后重新导入它。是的，我知道。欢迎来到 Eclipse！
+很遗憾，迟早，Eclipse 会抛出它臭名昭著的脾气。如果你在导航器中打开了多个项目，常见的问题之一是其中一个或多个项目报告错误，例如**找不到 java.lang.Object 类文件**或**无法解析 java.lang.Object 类型**。养成在打开 Eclipse 后立即清理项目并构建它的习惯，只保留打开的活动项目，但即使这样也可能失败。解决方案？重启 Eclipse，或者更好的方法是，从导航器（但不是从磁盘！）中删除项目，然后重新导入它。是的，我知道。欢迎来到 Eclipse！
 
 # 摘要
 

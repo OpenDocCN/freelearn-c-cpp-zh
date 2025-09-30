@@ -1,6 +1,6 @@
 # 游戏
 
-在 [第 6 章](f20d7a19-156f-43e8-92a5-46b9068128fc.xhtml)，“增强 QT 图形应用”中，我们使用 Qt 图形库开发了一个模拟时钟、一个绘图程序和一个编辑器。在本章中，我们继续开发 Othello 和井字棋游戏，使用 Qt 库。您将在本介绍之后找到这些游戏的描述。我们从这个章节的基本版本开始，其中两名玩家相互对战。在第 8 章 [计算机游戏](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)中，我们将游戏改进为计算机与人类对战。
+在 第六章，“增强 QT 图形应用”中，我们使用 Qt 图形库开发了一个模拟时钟、一个绘图程序和一个编辑器。在本章中，我们继续开发 Othello 和井字棋游戏，使用 Qt 库。您将在本介绍之后找到这些游戏的描述。我们从这个章节的基本版本开始，其中两名玩家相互对战。在第八章 计算机游戏中，我们将游戏改进为计算机与人类对战。
 
 本章我们将涵盖的主题包括：
 
@@ -24,185 +24,448 @@
 
 # 游戏小部件
 
-首先，我们需要一个游戏网格。`GameWidget` 类是本章以及 [第 8 章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，“计算机游戏”中所有应用的通用类。在第 5 章 [Qt 图形应用](411aae8c-9215-4315-8a2e-882bf028834c.xhtml)和第 6 章 [增强 QT 图形应用](f20d7a19-156f-43e8-92a5-46b9068128fc.xhtml)中，由于我们处理的是基于文档的应用，我们开发了 `DocumentWidget` 类。在本章和 [第 8 章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，“计算机游戏”中，我们则开发了 `GameWidget` 类。
+首先，我们需要一个游戏网格。`GameWidget` 类是本章以及 第八章，“计算机游戏”中所有应用的通用类。在第五章 Qt 图形应用和第六章 增强 QT 图形应用中，由于我们处理的是基于文档的应用，我们开发了 `DocumentWidget` 类。在本章和 第八章，“计算机游戏”中，我们则开发了 `GameWidget` 类。
 
-上一章的`DocumentWidget`类和本章以及下一章的`GameWidget`类既有相似之处也有不同之处。它们都是Qt类`QWidget`的子类，并且都旨在嵌入到窗口中。然而，`DocumentWidget`旨在包含文档，而`GameWidget`旨在包含游戏网格。它绘制网格并捕获网格位置的鼠标点击。`GameWidget`是一个抽象类，允许其子类定义当用户点击鼠标或游戏网格中某个位置的标记需要重绘时调用的方法。
+上一章的`DocumentWidget`类和本章以及下一章的`GameWidget`类既有相似之处也有不同之处。它们都是 Qt 类`QWidget`的子类，并且都旨在嵌入到窗口中。然而，`DocumentWidget`旨在包含文档，而`GameWidget`旨在包含游戏网格。它绘制网格并捕获网格位置的鼠标点击。`GameWidget`是一个抽象类，允许其子类定义当用户点击鼠标或游戏网格中某个位置的标记需要重绘时调用的方法。
 
 然而，我们重用了上一章的`MainWindow`类来包含应用程序的主窗口及其菜单栏。
 
 **GameWidget.h**
 
-[PRE0]
+```cpp
+#ifndef GAMEWIDGET_H 
+#define GAMEWIDGET_H 
+
+#include <QPainter> 
+#include <QMouseEvent> 
+#include <QMessageBox> 
+
+#include "..\MainWindow\MainWindow.h" 
+
+class GameWidget : public QWidget { 
+  Q_OBJECT 
+```
 
 构造函数初始化游戏网格的行数和列数：
 
-[PRE1]
+```cpp
+    public: 
+      GameWidget(int rows, int columns, QWidget* parentWidget); 
+```
 
 `clearGrid`方法将游戏网格中的每个位置都设置为零，这被假定为表示一个空位置。因此，继承`GameWidget`的每个类都应该让零值代表一个空位置：
 
-[PRE2]
+```cpp
+      void clearGrid(); 
+```
 
 当用户改变窗口大小时会调用`resizeEvent`方法。由于行数和列数是固定的，每个位置的宽度和高度会根据窗口的新大小进行改变：
 
-[PRE3]
+```cpp
+    void resizeEvent(QResizeEvent *eventPtr); 
+```
 
 当用户按下鼠标按钮时调用`mousePressEvent`，当窗口需要重绘时调用`paintEvent`，当用户点击窗口右上角的关闭框时调用`closeEvent`：
 
-[PRE4]
+```cpp
+      void mousePressEvent(QMouseEvent *eventPtr); 
+      void paintEvent(QPaintEvent *eventPtr); 
+      void closeEvent(QCloseEvent *eventPtr); 
+```
 
 `mouseMark`和`drawMark`方法是纯虚方法，旨在被子类覆盖；当用户在网格中的某个位置点击时调用`mouseMark`，当需要重绘某个位置时调用`drawMark`。它们是纯虚方法，而`GameWidget`是抽象的，这意味着只能将其用作基类。`GameWidget`的子类必须覆盖这些方法以使其非抽象：
 
-[PRE5]
+```cpp
+    virtual void mouseMark(int row, int column) = 0; 
+    virtual void drawMark(QPainter& painter, 
+                          const QRect& markRect, int mark) = 0; 
+```
 
 `isQuitOk`方法显示一个消息框，询问用户是否真的想要退出游戏：
 
-[PRE6]
+```cpp
+  private: 
+    bool isQuitOk(); 
+```
 
 在`Game`菜单可见之前调用`isQuitEnabled`方法。当游戏正在进行时，`Quit`项被启用：
 
-[PRE7]
+```cpp
+  public slots: 
+    DEFINE_LISTENER(GameWidget, isQuitEnabled); 
+```
 
 当用户选择退出或退出菜单项时调用`onQuit`和`onExit`方法：
 
-[PRE8]
+```cpp
+    void onQuit(); 
+    void onExit(); 
+```
 
 `isGameInProgress`和`setGameInProgress`方法返回和设置`m_gameInProgress`字段的值：
 
-[PRE9]
+```cpp
+  protected: 
+    bool isGameInProgress() const {return m_gameInProgress;} 
+    void setGameInProgress(bool active) 
+                          {m_gameInProgress = active;} 
+```
 
 `get`和`set`方法用于在游戏网格中的某个位置获取和设置一个值。该值是一个整数；记住，一个空位置被假定为包含值零：
 
-[PRE10]
+```cpp
+    protected: 
+      int get(int row, int column) const; 
+      void set(int row, int column, int value); 
+```
 
 `m_gameInProgress` 字段在游戏进行中时为真。`m_rows` 和 `m_columns` 字段分别存储游戏网格的行数和列数；`m_rowHeight` 和 `m_columnWidth` 分别存储游戏网格中每个位置的高度和宽度（以像素为单位）。最后，`m_gameGrid` 是一个指向缓冲区的指针，该缓冲区包含游戏网格中位置值：
 
-[PRE11]
+```cpp
+     private: 
+       bool m_gameInProgress = false; 
+       int m_rows, m_columns; 
+       int m_rowHeight, m_columnWidth; 
+       int* m_gameGrid; 
+     }; 
+
+     #endif // GAMEWIDGET_H 
+```
 
 `GameWidget.cpp` 文件包含 `GameWidget` 类的方法定义、鼠标事件方法、菜单方法，以及标记的绘制和设置。
 
 **GameWidget.cpp**
 
-[PRE12]
+```cpp
+#include "GameWidget.h" 
+#include <QApplication> 
+#include <CAssert> 
+```
 
 构造函数初始化网格的行数和列数，动态分配其内存，并调用 `clearGrid` 以清除网格：
 
-[PRE13]
+```cpp
+GameWidget::GameWidget(int rows, int columns, 
+                       QWidget* parentWidget) 
+ :QWidget(parentWidget), 
+  m_rows(rows), 
+  m_columns(columns), 
+  m_gameGrid(new int[rows * columns]) { 
+  assert(rows > 0); 
+  assert(columns > 0); 
+  clearGrid(); 
+} 
+```
 
 `get` 方法返回由行和列指示的位置的值，而 `set` 设置该值。包含值的缓冲区按行组织。也就是说，缓冲区的第一部分包含第一行，然后是第二行，依此类推：
 
-[PRE14]
+```cpp
+int GameWidget::get(int row, int column) const { 
+  return m_gameGrid[(row * m_columns) + column]; 
+} 
+
+void GameWidget::set(int row, int column, int value) { 
+  m_gameGrid[(row * m_columns) + column] = value; 
+} 
+```
 
 `clearGrid` 方法将每个位置设置为零，因为零假设表示一个空位置：
 
-[PRE15]
+```cpp
+void GameWidget::clearGrid() { 
+  for (int row = 0; row < m_rows; ++row) { 
+    for (int column = 0; column < m_columns; ++column) { 
+      set(row, column, 0); 
+    } 
+  } 
+} 
+```
 
 只要游戏在进行中，`Quit` 菜单项就处于启用状态：
 
-[PRE16]
+```cpp
+bool GameWidget::isQuitEnabled() { 
+  return m_gameInProgress; 
+} 
+```
 
 如果用户在游戏进行中选择退出游戏，则显示一个带有确认问题的消息框：
 
-[PRE17]
+```cpp
+bool GameWidget::isQuitOk() { 
+  if (m_gameInProgress) { 
+    QMessageBox messageBox(QMessageBox::Warning, 
+                           tr("Quit"), QString()); 
+    messageBox.setText(tr("Quit the Game.")); 
+    messageBox.setInformativeText 
+                  (tr("Do you really want to quit the game?")); 
+    messageBox.setStandardButtons(QMessageBox::Yes | 
+                                  QMessageBox::No); 
+    messageBox.setDefaultButton(QMessageBox::No); 
+```
 
 如果用户按下 `Yes` 按钮，则返回 `true`：
 
-[PRE18]
+```cpp
+    return (messageBox.exec() == QMessageBox::Yes); 
+  } 
+
+  return true; 
+}
+
+```
 
 当用户选择退出菜单项时，会调用 `onQuit` 方法。如果 `isQuitOk` 的调用返回 `true`，则将 `m_gameInProgress` 设置为 `false` 并调用更新，这最终强制重新绘制游戏网格所在的窗口，并清除网格。
 
-[PRE19]
+```cpp
+void GameWidget::onQuit() { 
+  if (isQuitOk()) { 
+    m_gameInProgress = false; 
+    update(); 
+  } 
+} 
+```
 
 当用户选择退出菜单项时，会调用 `onExit` 方法。如果 `isQuitOk` 的调用返回 `true`，则应用程序退出。这在上面的代码中显示：
 
-[PRE20]
+```cpp
+void GameWidget::onExit() { 
+  if (isQuitOk()) { 
+    qApp->exit(0); 
+  } 
+} 
+```
 
 当用户调整窗口大小时，会调用 `resizeEvent` 方法。由于行数和列数是固定的，无论窗口大小如何，都会重新计算行高和列宽。我们将窗口的高度和宽度除以行数和列数加二，因为我们添加了额外的行和列作为边距。考虑以下代码：
 
-[PRE21]
+```cpp
+void GameWidget::resizeEvent(QResizeEvent* eventPtr) { 
+  m_rowHeight = height() / (m_rows + 2); 
+  m_columnWidth = width() / (m_columns + 2); 
+  QWidget::resizeEvent(eventPtr); 
+  update(); 
+} 
+```
 
 当用户点击窗口时，会调用 `mousePressEvent` 方法：
 
-[PRE22]
+```cpp
+    void GameWidget::mousePressEvent(QMouseEvent* eventPtr) { 
+       if (m_gameInProgress &&
+             (eventPtr->button() == Qt::LeftButton)) { 
+       QPoint mousePoint = eventPtr->pos(); 
+```
 
 由于游戏网格被边距包围，因此从鼠标点中减去列宽和行高：
 
-[PRE23]
+```cpp
+    mousePoint.setX(mousePoint.x() - m_columnWidth); 
+    mousePoint.setY(mousePoint.y() - m_rowHeight); 
+```
 
 如果鼠标点位于游戏网格中的一个位置内，并且该位置为空（零），则调用纯虚方法 `mouseMark`，该方法负责处理鼠标点击的实际操作。在下一节中，将在游戏网格中添加黑白标记，并在稍后的井字棋应用中添加。井字棋被添加到游戏网格中：
 
-[PRE24]
+```cpp
+      int row = mousePoint.y() / m_rowHeight, 
+         column = mousePoint.x() / m_columnWidth; 
+```
 
 如果点击的行和列位于游戏网格内（而不是游戏网格外的边距中）并且位置为空（零），我们调用 `mouseMark`，这是一个纯虚方法，并带有行和列：
 
-[PRE25]
+```cpp
+    if ((row < m_rows) && (column < m_columns) && 
+        (get(row, column) == 0)) { 
+      mouseMark(row, column); 
+      update(); 
+    } 
+  } 
+} 
+```
 
 当窗口需要重绘时，会调用 `paintEvent` 方法。如果游戏正在进行中（`m_gameInProgress` 为 true），则写入行和列，然后对游戏网格中的每个位置调用纯虚方法 `drawMark`，该方法负责实际绘制每个位置：
 
-[PRE26]
+```cpp
+void GameWidget::paintEvent(QPaintEvent* /*eventPtr*/) { 
+  if (m_gameInProgress) { 
+    QPainter painter(this); 
+    painter.setRenderHint(QPainter::Antialiasing); 
+    painter.setRenderHint(QPainter::TextAntialiasing); 
+```
 
 首先，我们遍历行，并为每一行写入一个从 `A` 到 `Z` 的字母。字母表中有 26 个字母，我们假设没有超过 26 行：
 
-[PRE27]
+```cpp
+    for (int row = 0; row < m_rows; ++row) { 
+      QString text; 
+      text.sprintf("%c", (char) (((int) 'A') + row)); 
+      QRect charRect(0, (row + 1) * m_rowHeight, 
+                     m_columnWidth, m_rowHeight); 
+      painter.drawText(charRect, Qt::AlignCenter | 
+                       Qt::AlignHCenter, text); 
+    } 
+```
 
 然后我们遍历列，并为每一列写入其编号：
 
-[PRE28]
+```cpp
+    for (int column = 0; column < m_columns; ++column) { 
+      QString text; 
+      text.sprintf("%i", column); 
+      QRect charRect((column + 1) * m_columnWidth, 0, 
+                     m_columnWidth, m_rowHeight); 
+      painter.drawText(charRect, Qt::AlignCenter | 
+                       Qt::AlignHCenter, text); 
+    } 
+
+    painter.save(); 
+    painter.translate(m_columnWidth, m_rowHeight); 
+```
 
 纯虚方法是那些不打算在类中定义，而只在其子类中定义的方法。包含至少一个纯虚方法的类成为抽象类，这意味着无法创建该类的对象。该类只能作为类层次结构中的基类使用。继承自抽象类的类必须定义基类中的每个纯虚方法，或者自身也成为抽象类。
 
 最后，我们遍历游戏网格，并对每个位置调用纯虚方法 `drawMark`，该方法使用位置的矩形及其当前标记：
 
-[PRE29]
+```cpp
+    for (int row = 0; row < m_rows; ++row) { 
+      for (int column = 0; column < m_columns; ++column) { 
+        QRect markRect(column * m_columnWidth, row * m_rowHeight, 
+                       m_columnWidth, m_rowHeight); 
+        painter.setPen(Qt::black); 
+        painter.drawRect(markRect); 
+        painter.fillRect(markRect, Qt::lightGray); 
+        drawMark(painter, markRect, get(row, column)); 
+      } 
+    } 
+
+    painter.restore(); 
+     } 
+    } 
+```
 
 当用户点击窗口右上角的关闭按钮时，会调用 `closeEvent` 方法。如果 `isQuitOk` 的调用返回 true，则窗口关闭，应用程序退出：
 
-[PRE30]
+```cpp
+void GameWidget::closeEvent(QCloseEvent* eventPtr) { 
+  if (isQuitOk()) { 
+    eventPtr->accept(); 
+    qApp->exit(0); 
+  } 
+  else { 
+    eventPtr->ignore(); 
+  } 
+} 
+```
 
 # OthelloWindow 类
 
-`Othello` 类是来自 [第 6 章](f20d7a19-156f-43e8-92a5-46b9068128fc.xhtml)，*增强 QT 图形应用程序* 的 `MainWindow` 子类。它向窗口添加菜单，并将 `OthelloWidget` 类（它是 `GameWidget` 的子类）设置为中央小部件。
+`Othello` 类是来自 第六章，*增强 QT 图形应用程序* 的 `MainWindow` 子类。它向窗口添加菜单，并将 `OthelloWidget` 类（它是 `GameWidget` 的子类）设置为中央小部件。
 
 **OthelloWindow.h**
 
-[PRE31]
+```cpp
+  #ifndef OTHELLOWINDOW_H 
+  #define OTHELLOWINDOW_H 
+
+  #include "..\MainWindow\MainWindow.h" 
+  #include "OthelloWidget.h" 
+
+  class OthelloWindow : public MainWindow { 
+    Q_OBJECT 
+
+    public: 
+      OthelloWindow(QWidget *parentWidget = nullptr); 
+      ~OthelloWindow(); 
+
+      void closeEvent(QCloseEvent *eventPtr) 
+        {m_othelloWidgetPtr->closeEvent(eventPtr);} 
+```
 
 `m_othelloWidgetPtr` 字段持有指向窗口中心小部件的指针。它指向 `OthelloWidget` 类的对象。以下代码展示了这一点：
 
-[PRE32]
+```cpp
+  private: 
+    OthelloWidget* m_othelloWidgetPtr; 
+}; 
+
+#endif // OTHELLOWINDOW_H 
+```
 
 `OthelloWindow.cpp` 文件定义了 `OthelloWindow` 类的方法。
 
 **OthelloWindow.cpp**
 
-[PRE33]
+```cpp
+#include "OthelloWidget.h" 
+#include "OthelloWindow.h" 
+#include <QtWidgets> 
+```
 
 构造函数将窗口标题设置为 `Othello` 并将大小设置为 *1000* x *500* 像素：
 
-[PRE34]
+```cpp
+OthelloWindow::OthelloWindow(QWidget *parentWidget /*= nullptr*/)
+ :MainWindow(parentWidget) {
+  setWindowTitle(tr("Othello"));
+  resize(1000, 500);
+```
 
 动态创建 `OthelloWidget` 对象并将其放置在窗口中心：
 
-[PRE35]
+```cpp
+    m_othelloWidgetPtr = new OthelloWidget(this); 
+    setCentralWidget(m_othelloWidgetPtr); 
+```
 
 我们将菜单 `Game` 添加到菜单栏，并将 `onMenuShow` 方法连接到菜单，这样在菜单可见之前就会调用它：
 
-[PRE36]
+```cpp
+  { QMenu* gameMenuPtr = menuBar()->addMenu(tr("&Game")); 
+    connect(gameMenuPtr, SIGNAL(aboutToShow()), 
+            this, SLOT(onMenuShow())); 
+```
 
 用户可以选择黑色或白色来开始第一步。在项目可见之前会调用 `isBlackStartsEnabled` 和 `isWhiteStartsEnabled` 方法。当游戏进行时，项目会变为不可用：
 
-[PRE37]
+```cpp
+    addAction(gameMenuPtr, tr("&Black Starts"), 
+              SLOT(onBlackStarts()), 0, 
+              tr("Black Starts"), nullptr,tr("Black Starts"), 
+              LISTENER(isBlackStartsEnabled)); 
+
+    addAction(gameMenuPtr, tr("&White Starts"), 
+              SLOT(onWhiteStarts()), 0, 
+              tr("White Starts"), nullptr, tr("White Starts"), 
+              LISTENER(isWhiteStartsEnabled)); 
+
+    gameMenuPtr->addSeparator(); 
+```
 
 当游戏进行时，用户可以退出游戏。如果没有游戏进行，项目会变为不可用：
 
-[PRE38]
+```cpp
+    addAction(gameMenuPtr, tr("&Quit the Game"), 
+              SLOT(onQuit()), 
+              QKeySequence(Qt::CTRL + Qt::Key_Q), 
+              tr("Quit Game"), nullptr, tr("Quit the Game"), 
+              LISTENER(isQuitEnabled)); 
+```
 
 用户可以随时退出应用程序：
 
-[PRE39]
+```cpp
+    addAction(gameMenuPtr, tr("E&xit"), 
+              SLOT(onExit()), QKeySequence::Quit); 
+  } 
+} 
+```
 
 析构函数释放窗口中心 `Othello` 小部件的资源：
 
-[PRE40]
+```cpp
+OthelloWindow::~OthelloWindow() { 
+  delete m_othelloWidgetPtr; 
+} 
+```
 
 # OthelloWidget 类
 
@@ -210,115 +473,324 @@
 
 **OthelloWidget.h**
 
-[PRE41]
+```cpp
+#ifndef OTHELLOWIDGET_H 
+#define OTHELLOWIDGET_H 
+
+#include "..\MainWindow\GameWidget.h" 
+
+#define ROWS    8 
+#define COLUMNS 8 
+```
 
 在奥赛罗游戏中，标记可以是黑色或白色。我们使用`Mark`枚举来存储游戏网格上的值。`Empty`项持有零值，它被假定为`GameWidget`以表示空位：
 
-[PRE42]
+```cpp
+enum Mark {Empty = 0, Black, White}; 
+
+class OthelloWidget : public GameWidget { 
+  Q_OBJECT 
+
+  public: 
+    OthelloWidget(QWidget* parentWidget); 
+
+    void mouseMark(int row, int column); 
+    void drawMark(QPainter& painter, 
+                  const QRect& markRect, int mark); 
+```
 
 在`BlackStarts`和`WhiteStarts`菜单项可见之前，会调用`isBlackStartsEnabled`和`isWhiteStartsEnabled`监听器以启用它们。请注意，监听器和方法必须被标记为公共槽，以便菜单框架允许它们作为监听器：
 
-[PRE43]
+```cpp
+    public slots: 
+     DEFINE_LISTENER(OthelloWidget, isBlackStartsEnabled); 
+     DEFINE_LISTENER(OthelloWidget, isWhiteStartsEnabled); 
+```
 
 当用户选择`BlackStarts`和`WhiteStarts`菜单项时，会调用`onBlackStarts`和`onWhiteStarts`方法：
 
-[PRE44]
+```cpp
+    void onBlackStarts(); 
+    void onWhiteStarts(); 
+```
 
 如果游戏网格上的每个位置都被黑白标记占据，`checkWinner`方法会检查。如果是这样，就会计算标记，并宣布获胜者，除非是平局：
 
-[PRE45]
+```cpp
+   private: 
+     void checkWinner(); 
+```
 
 当一位玩家移动时，会调用`turn`方法。它计算移动结果导致的翻转位置：
 
-[PRE46]
+```cpp
+     void turn(int row, int column, Mark mark); 
+```
 
 `calculateMark`方法计算如果玩家在由行和列给出的位置放置标记，则要翻转的标记集合：
 
-[PRE47]
+```cpp
+    void calculateMark(int row, int column, Mark mark, 
+                       QSet<QPair<int,int>>& resultSet); 
+```
 
 `m_nextMark`字段交替地赋予前一个`Mark`枚举的`Black`和`White`值，这取决于哪个玩家即将进行下一步移动。
 
 它由`onBlackStarts`或`onWhiteStarts`初始化，如前述代码所示：
 
-[PRE48]
+```cpp
+    Mark m_nextMark; 
+}; 
+
+#endif // OTHELLOWIDGET_H 
+```
 
 `OthelloWidget`类包含游戏的功能。它允许玩家将黑白标记添加到游戏网格，翻转标记，并宣布获胜者。
 
 **OthelloWidget.cpp**
 
-[PRE49]
+```cpp
+#include "OthelloWidget.h" 
+#include "OthelloWindow.h" 
+
+#include <QTime> 
+#include <CTime> 
+#include <CAssert> 
+using namespace std; 
+
+OthelloWidget::OthelloWidget(QWidget* parentWidget) 
+ :GameWidget(ROWS, COLUMNS, parentWidget) { 
+  // Empty. 
+} 
+```
 
 当没有正在进行的游戏时，`BlackStarts`和`WhiteStarts`菜单项被启用：
 
-[PRE50]
+```cpp
+bool OthelloWidget::isBlackStartsEnabled() { 
+  return !isGameInProgress(); 
+} 
+
+bool OthelloWidget::isWhiteStartsEnabled() { 
+  return !isGameInProgress(); 
+} 
+```
 
 `onBlackStarts`和`onWhiteStarts`方法设置一个新游戏开始，设置第一个移动的标记（黑色或白色），清除网格，并更新窗口以绘制一个空的游戏网格：
 
-[PRE51]
+```cpp
+void OthelloWidget::onBlackStarts() { 
+  setGameInProgress(true); 
+  m_nextMark = Black; 
+  update(); 
+} 
+
+void OthelloWidget::onWhiteStarts() { 
+  setGameInProgress(true); 
+  m_nextMark = White; 
+  update(); 
+} 
+```
 
 当玩家在游戏网格上点击一个空位时，会调用`onMouseMark`。我们使用下一个标记设置位置，翻转所有受移动影响的标记，并更新窗口以反映变化：
 
-[PRE52]
+```cpp
+void OthelloWidget::mouseMark(int row, int column) { 
+  set(row, column, m_nextMark); 
+  turn(row, column, m_nextMark); 
+  update(); 
+```
 
 我们检查移动是否使游戏网格变得满载，并切换下一个标记：
 
-[PRE53]
+```cpp
+  checkWinner(); 
+  m_nextMark = (m_nextMark == Black) ? White : Black; 
+} 
+```
 
 当游戏网格中的某个位置需要重绘时，会调用`drawMark`方法。如果位置不为空，我们用黑色边框绘制一个黑色或白色的椭圆。如果位置为空，我们不做任何操作。请注意，框架在调用重绘之前清除窗口：
 
-[PRE54]
+```cpp
+void OthelloWidget::drawMark(QPainter& painter, 
+     const QRect& markRect, int mark) { 
+  painter.setPen(Qt::black); 
+  painter.drawRect(markRect); 
+  painter.fillRect(markRect, Qt::lightGray); 
 
-[PRE55]
+  switch (mark) { 
+    case Black: 
+      painter.setPen(Qt::black); 
+      painter.setBrush(Qt::black); 
+      painter.drawEllipse(markRect); 
+      break; 
+
+    case White: 
+      painter.setPen(Qt::white); 
+      painter.setBrush(Qt::white); 
+      painter.drawEllipse(markRect); 
+      break; 
+
+    case Empty: 
+      break;
+```
+
+```cpp
+  } 
+} 
+```
 
 `checkWinner`方法计算被黑白标记占据或为空的格子的数量：
 
-[PRE56]
+```cpp
+void OthelloWidget::checkWinner() { 
+  int blacks = 0, whites = 0, empties = 0; 
+
+  for (int row = 0; row < ROWS; ++row) { 
+    for (int column = 0; column < COLUMNS; ++column) { 
+      switch (get(row, column)) { 
+        case Black: 
+          ++blacks; 
+          break; 
+
+        case White: 
+          ++whites; 
+          break; 
+
+        case Empty: 
+          ++empties; 
+          break; 
+      } 
+    } 
+  } 
+```
 
 如果没有剩余的空位置，游戏结束，我们宣布获胜者，除非是平局。获胜者是拥有最多标记的玩家：
 
-[PRE57]
+```cpp
+  if (empties == 0) { 
+    QMessageBox messageBox(QMessageBox::Information, 
+        tr("Victory"), QString()); 
+    QString text; 
+
+    if (blacks == whites) { 
+      text.sprintf("A Draw."); 
+    } 
+    else if (blacks > whites) { 
+      text.sprintf("The Winner: Black"); 
+    } 
+    else { 
+      text.sprintf("The Winner: White"); 
+    } 
+
+    messageBox.setText(text); 
+    messageBox.setStandardButtons(QMessageBox::Ok); 
+    messageBox.exec(); 
+    setGameInProgress(false); 
+
+    clearGrid(); 
+    update(); 
+  } 
+} 
+```
 
 `turn` 方法调用 `calculateMark` 来获取标记应翻转的位置集合。然后，将集合中的每个位置都设置为相应的标记。
 
-在这个应用程序中，`turn` 是唯一调用 `calculateMark` 的方法。然而，在[第8章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，《计算机对战》中，`calculateMark` 也会被调用以计算计算机玩家的移动。因此，`turn` 和 `calculateMark` 的功能被分为两个方法：
+在这个应用程序中，`turn` 是唯一调用 `calculateMark` 的方法。然而，在第八章，《计算机对战》中，`calculateMark` 也会被调用以计算计算机玩家的移动。因此，`turn` 和 `calculateMark` 的功能被分为两个方法：
 
-[PRE58]
+```cpp
+void OthelloWidget::turn(int row, int column, Mark mark) { 
+  QSet<QPair<int,int>> totalSet; 
+  calculateMark(row, column, mark, totalSet); 
+
+  for (QPair<int,int> pair : totalSet) { 
+    int row = pair.first, column = pair.second; 
+    set(row, column, mark); 
+  } 
+} 
+```
 
 `calculateMark` 方法计算游戏网格上每个位置将翻转的标记数量，包括八个方向：
 
-[PRE59]
+```cpp
+void OthelloWidget::calculateMark(int row, int column, 
+    Mark playerMark, QSet<QPair<int,int>>& totalSet){ 
+```
 
 `directionArray` 中的每个整数对都根据罗盘上升的方向指代一个方向：
 
-[PRE60]
+```cpp
+  QPair<int,int> directionArray[] = 
+    {QPair<int,int>(-1, 0),   // North 
+     QPair<int,int>(-1, 1),   // Northeast 
+     QPair<int,int>(0, 1),    // East 
+     QPair<int,int>(1, 1),    // Southeast 
+     QPair<int,int>(1, 0),    // South 
+     QPair<int,int>(1, -1),   // Southwest 
+     QPair<int,int>(0, -1),   // West 
+     QPair<int,int>(-1, -1)}; // Northwest 
+```
 
 数组的大小可以通过将其总大小（以字节为单位）除以第一个值的大小来确定：
 
-[PRE61]
+```cpp
+  int arraySize = 
+    (sizeof directionArray) / (sizeof directionArray[0]); 
+```
 
 我们遍历方向，并且对于每个方向，只要我们找到对手的标记就继续移动：
 
-[PRE62]
+```cpp
+  for (int index = 0; index < arraySize; ++index) { 
+    QPair<int,int> pair = directionArray[index]; 
+```
 
 `row` 和 `column` 字段在迭代该方向时保持当前行和列：
 
-[PRE63]
+```cpp
+    int rowStep = pair.first, columnStep = pair.second, 
+        currRow = row, currColumn = column; 
+```
 
 我们在迭代过程中找到的标记收集到 `directionSet` 中：
 
-[PRE64]
+```cpp
+    QSet<QPair<int,int>> directionSet; 
+
+    while (true) { 
+      currRow += rowStep; 
+      currColumn += columnStep; 
+```
 
 如果我们到达游戏网格的边界之一，或者如果我们找到一个空位置，我们就会中断迭代：
 
-[PRE65]
+```cpp
+if ((currRow < 0) || (currRow == ROWS) || 
+          (currColumn < 0) || (currColumn == COLUMNS) || 
+          (get(currRow, currColumn) == Empty)) { 
+break; 
+} 
+```
 
 如果我们找到玩家的标记，我们将方向集合添加到总集合中，并中断迭代：
 
-[PRE66]
+```cpp
+else if (get(currRow, currColumn) == playerMark) { 
+  totalSet += directionSet; 
+  break; 
+} 
+```
 
 如果我们没有找到玩家的标记或空位置，我们就找到了对手的标记，并将其位置添加到方向集合中：
 
-[PRE67]
+```cpp
+      else { 
+        directionSet.insert(QPair<int,int>(row, column)); 
+      } 
+    } 
+  } 
+} 
+```
 
 # 主函数
 
@@ -326,13 +798,24 @@
 
 **Main.cpp**
 
-[PRE68]
+```cpp
+#include "OthelloWidget.h" 
+#include "OthelloWindow.h" 
+#include <QApplication> 
+
+int main(int argc, char *argv[]) { 
+  QApplication application(argc, argv); 
+  OthelloWindow othelloWindow; 
+  othelloWindow.show(); 
+  return application.exec(); 
+} 
+```
 
 # 井字棋
 
 Noughts and Crosses 应用程序设置了一个游戏网格，并允许两名玩家相互对战。在井字棋游戏中，两名玩家轮流在游戏网格上添加圆圈和叉号。首先成功将五个标记连成一线的玩家赢得游戏。标记可以水平、垂直或对角放置。虽然每个玩家都试图将五个自己的标记连成一线，但他们也必须尝试阻止对手将五个标记连成一线。
 
-在[第8章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，《计算机对战》中，计算机与人类玩家对战。
+在第八章，《计算机对战》中，计算机与人类玩家对战。
 
 # NaCWindow 类
 
@@ -340,21 +823,94 @@ Noughts and Crosses 应用程序设置了一个游戏网格，并允许两名玩
 
 **NaCWindow.h**
 
-[PRE69]
+```cpp
+#ifndef NACWINDOW_H 
+#define NACWINDOW_H 
+
+#include "..\MainWindow\MainWindow.h" 
+#include "NaCWidget.h" 
+
+class NaCWindow : public MainWindow { 
+  Q_OBJECT 
+
+  public: 
+    NaCWindow(QWidget *parentWidget = nullptr); 
+    ~NaCWindow(); 
+
+  public: 
+    void closeEvent(QCloseEvent *eventPtr) override 
+                   {m_nacWidgetPtr->closeEvent(eventPtr);} 
+
+  private: 
+    NaCWidget* m_nacWidgetPtr; 
+}; 
+
+#endif // NACWINDOW_H 
+```
 
 `NaCWindow.cpp` 文件包含 `NacWindow` 类的方法定义。
 
 **NaCWindow.cpp**
 
-[PRE70]
+```cpp
+#include "NaCWindow.h" 
+#include <QtWidgets> 
+
+NaCWindow::NaCWindow(QWidget *parentWidget /*= nullptr*/) 
+ :MainWindow(parentWidget) { 
+  setWindowTitle(tr("Noughts and Crosses")); 
+  resize(1000, 500); 
+
+  m_nacWidgetPtr = new NaCWidget(this); 
+  setCentralWidget(m_nacWidgetPtr); 
+
+  { QMenu* gameMenuPtr = menuBar()->addMenu(tr("&Game")); 
+    connect(gameMenuPtr, SIGNAL(aboutToShow()), 
+            this, SLOT(onMenuShow())); 
+
+    addAction(gameMenuPtr, tr("&Nought Starts"), 
+              SLOT(onNoughtStarts()), 0, 
+              tr("Nought Starts"), nullptr, tr("Nought Starts"), 
+              LISTENER(isNoughtStartsEnabled)); 
+
+    addAction(gameMenuPtr, tr("&Cross Starts"), 
+              SLOT(onCrossStarts()), 0, 
+              tr("Cross Starts"), nullptr, tr("Cross Starts"), 
+              LISTENER(isCrossStartsEnabled)); 
+
+    gameMenuPtr->addSeparator(); 
+
+    addAction(gameMenuPtr, tr("&Quit the Game"), 
+              SLOT(onQuit()), 
+              QKeySequence(Qt::CTRL + Qt::Key_Q), tr("Quit Game"), 
+              nullptr, tr("Quit the Game"), 
+              LISTENER(isQuitEnabled)); 
+
+    addAction(gameMenuPtr, tr("E&xit"), 
+              SLOT(onExit()), QKeySequence::Quit); 
+  } 
+} 
+
+NaCWindow::~NaCWindow() { 
+  delete m_nacWidgetPtr; 
+} 
+```
 
 # NaCWidget 类
 
-`NaCWidget` 类处理井字棋的功能。它允许两个玩家相互对战。在[第8章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，*计算机对战*中，我们将编写一个计算机对战人类的游戏：
+`NaCWidget` 类处理井字棋的功能。它允许两个玩家相互对战。在第八章，*计算机对战*中，我们将编写一个计算机对战人类的游戏：
 
 **NaCWidget.h**
 
-[PRE71]
+```cpp
+#ifndef NACWIDGET_H 
+#define NACWIDGET_H 
+
+#include "..\MainWindow\GameWidget.h" 
+
+#define ROWS    26 
+#define COLUMNS 26 
+```
 
 与奥赛罗应用类似，游戏网格中的位置可以持有三个值之一：
 
@@ -366,81 +922,220 @@ Noughts and Crosses 应用程序设置了一个游戏网格，并允许两名玩
 
 `Mark` 枚举对应于 `Empty`、`Nought` 和 `Cross` 值：
 
-[PRE72]
+```cpp
+enum Mark {Empty = 0, Nought, Cross}; 
+
+class NaCWidget : public GameWidget { 
+  Q_OBJECT 
+
+  public: 
+    NaCWidget(QWidget* parentWidget); 
+
+    void mouseMark(int row, int column); 
+    void drawMark(QPainter& painter, 
+                  const QRect& markRect, int mark); 
+
+  public slots: 
+    DEFINE_LISTENER(NaCWidget, isNoughtStartsEnabled); 
+    void onNoughtStarts(); 
+
+    DEFINE_LISTENER(NaCWidget, isCrossStartsEnabled); 
+    void onCrossStarts(); 
+
+  private: 
+    void checkWinner(int row, int column, Mark mark); 
+    int countMarks(int row, int column, int rowStep, 
+                   int columnStep, Mark mark); 
+
+    Mark m_nextMark; 
+}; 
+
+#endif // NACWIDGET_H 
+```
 
 `NaCWidget.cpp` 文件包含 `NaCWidget` 类的方法定义：
 
 **NaCWidget.cpp**
 
-[PRE73]
+```cpp
+#include "NaCWidget.h" 
+#include <CTime> 
+
+NaCWidget::NaCWidget(QWidget* parentWidget) 
+ :GameWidget(ROWS, COLUMNS, parentWidget) { 
+  // Empty. 
+} 
+```
 
 在 `Game` 菜单可见之前，会调用 `isNoughtStartsEnabled` 和 `isCrossStartsEnabled` 方法。如果没有正在进行的游戏，则启用 `Noughts Begins` 和 `Cross Begins` 菜单项：
 
-[PRE74]
+```cpp
+bool NaCWidget::isCrossStartsEnabled() { 
+  return !isGameInProgress(); 
+} 
+
+bool NaCWidget::isNoughtStartsEnabled() { 
+  return !isGameInProgress(); 
+} 
+```
 
 当用户选择 `Nought Begins` 和 `Cross Begins` 菜单项时，会调用 `onNoughtBegins` 和 `onCrossBegins` 方法。它们设置正在进行的游戏，设置第一个标记以进行第一次移动（`m_nextMark`），并通过调用 `update` 强制重绘游戏网格：
 
-[PRE75]
+```cpp
+void NaCWidget::onNoughtStarts() { 
+  setGameInProgress(true); 
+  m_nextMark = Nought; 
+  update(); 
+} 
+
+void NaCWidget::onCrossStarts() { 
+  setGameInProgress(true); 
+  m_nextMark = Cross; 
+  update(); 
+} 
+```
 
 当玩家在游戏网格中点击一个位置时，会调用 `mouseMark` 方法。我们在该位置设置下一个标记，检查是否有玩家赢得了游戏，交换下一个移动，并通过调用 `update` 来重绘窗口：
 
-[PRE76]
+```cpp
+void NaCWidget::mouseMark(int row, int column) { 
+  set(row, column, m_nextMark); 
+  checkWinner(row, column, m_nextMark); 
+  m_nextMark = (m_nextMark == Nought) ? Cross : Nought; 
+  update(); 
+} 
+```
 
 当游戏网格中的位置需要重绘时，会调用 `drawMark` 方法：
 
-[PRE77]
+```cpp
+void NaCWidget::drawMark(QPainter& painter, 
+    const QRect& markRect, int mark) { 
+```
 
 我们将笔的颜色设置为黑色，在井的情况下，我们画一个椭圆，如下所示：
 
-[PRE78]
+```cpp
+  painter.setPen(Qt::black); 
+  switch (mark) { 
+    case Nought: 
+      painter.drawEllipse(markRect); 
+      break; 
+```
 
 在十字的情况下，我们在左上角和右下角以及右上角和左下角之间画两条线：
 
-[PRE79]
+```cpp
+    case Cross: 
+      painter.drawLine(markRect.topLeft(), 
+                       markRect.bottomRight()); 
+      painter.drawLine(markRect.topRight(), 
+                       markRect.bottomLeft()); 
+      break; 
+```
 
 在空位的情况下，我们不做任何操作。请记住，框架在重绘之前会清除窗口：
 
-[PRE80]
+```cpp
+    case Empty: 
+      break; 
+  } 
+} 
+```
 
 当玩家移动时，我们检查该移动是否导致了胜利。我们调用 `countMarks` 在四个方向上到 `checkWinner`，看看移动是否导致了五个标记连成一线：
 
-[PRE81]
+```cpp
+    void NaCWidget::checkWinner(int row, int column, Mark mark) { 
+```
 
 对于北和南方向，代码如下：
 
-[PRE82]
+```cpp
+  if ((countMarks(row, column, -1, 0, mark) >= 5) || 
+```
 
 对于西和东方向，代码如下：
 
-[PRE83]
+```cpp
+      (countMarks(row, column, 0, -1, mark) >= 5) || 
+```
 
 对于西北和东南方向，代码如下：
 
-[PRE84]
+```cpp
+      (countMarks(row, column, -1, 1, mark) >=5)|| 
+```
 
 对于东南和西北方向，代码如下：
 
-[PRE85]
+```cpp
+      (countMarks(row, column, 1, 1, mark) >= 5)) { 
+```
 
 如果移动导致一行有五个标记，我们将显示一个包含获胜者（黑色或白色）的消息框。在井字棋中，不可能平局：
 
-[PRE86]
+```cpp
+    QMessageBox messageBox(QMessageBox::Information, 
+                           tr("Victory"), QString()); 
+    QString text; 
+    text.sprintf("The Winner: %s.", 
+                 (mark == Nought) ? "Nought" : "Cross"); 
+
+    messageBox.setText(text); 
+    messageBox.setStandardButtons(QMessageBox::Ok); 
+    messageBox.exec(); 
+    setGameInProgress(false); 
+```
 
 游戏网格被清除，因此准备好进行另一场比赛：
 
-[PRE87]
+```cpp
+    clearGrid(); 
+    update(); 
+  } 
+} 
+```
 
 `countMarks` 方法计算一行中的标记数量。我们在两个方向上计算标记的数量。例如，如果 `rowStep` 和 `columnStep` 都是减一，那么我们每次迭代都减少当前行和列。这意味着我们在第一次迭代中在东北方向调用 `countMarks`。在第二次迭代中，我们在相反的方向调用 `countMarks`，即西南方向：
 
-[PRE88]
+```cpp
+int NaCWidget::countMarks(int row, int column, int rowStep, 
+                          int columnStep, Mark mark) { 
+  int countMarks = 0; 
+```
 
 我们继续计数，直到遇到游戏网格的边界，或者我们找到的不是我们正在计数的标记，即对手的标记或空标记：
 
-[PRE89]
+```cpp
+    { int currentRow = row, currentColumn = column; 
+      while ((currentRow >= 0) && (currentRow < ROWS) && 
+             (currentColumn >= 0) && (currentColumn < COLUMNS) && 
+             (get(currentRow, currentColumn) == mark)) { 
+          ++countMarks; 
+          currentRow += rowStep; 
+          currentColumn += columnStep; 
+         } 
+    } 
+```
 
 在第二次迭代中，我们减去行和列的步长而不是增加它们。这样，我们以相反的方向调用`countMarks`。我们还通过顺序添加步长来初始化当前行和列，这样我们就不会对中间的标记进行两次`countMarks`：
 
-[PRE90]
+```cpp
+  { int currentRow = row + rowStep, 
+        currentColumn = column + columnStep; 
+      while ((currentRow >= 0) && (currentRow < ROWS) && 
+           (currentColumn >= 0) && (currentColumn < COLUMNS) && 
+           (get(currentRow, currentColumn) == mark)) { 
+        ++countMarks; 
+        currentRow -= rowStep; 
+        currentColumn -= columnStep; 
+      } 
+     } 
+
+    return countMarks; 
+  } 
+```
 
 # 主函数
 
@@ -448,7 +1143,18 @@ Noughts and Crosses 应用程序设置了一个游戏网格，并允许两名玩
 
 **Main.cpp**
 
-[PRE91]
+```cpp
+#include "NaCWidget.h" 
+#include "NaCWindow.h" 
+#include <QApplication> 
+
+int main(int argc, char *argv[]) { 
+  QApplication application(argc, argv); 
+  NaCWindow mainWindow; 
+  mainWindow.show(); 
+  return application.exec(); 
+} 
+```
 
 上述代码的输出如下：
 
@@ -458,4 +1164,4 @@ Noughts and Crosses 应用程序设置了一个游戏网格，并允许两名玩
 
 在本章中，我们开发了两个游戏，黑白棋和井字棋。我们介绍了博弈论，并开发了一个游戏网格，玩家轮流在其上添加标记。在黑白棋中，我们开发了计算每步需要更改的标记数量的方法，在井字棋中，我们开发了识别玩家是否成功在一行中放置了五个标记的方法——如果他们做到了，我们宣布他们为胜者。
 
-在[第8章](ddd1aeb1-7f0c-4a44-b715-860c57771663.xhtml)，《计算机游戏》，我们将开发这些游戏的更高级版本，其中计算机与人类玩家对战。
+在第八章，《计算机游戏》，我们将开发这些游戏的更高级版本，其中计算机与人类玩家对战。
