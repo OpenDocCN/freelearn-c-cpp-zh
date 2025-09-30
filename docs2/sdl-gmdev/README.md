@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# SDL 游戏开发
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/48db1a23f0f893bcd8ad5db87e7c5256`](https://zh.annas-archive.org/md5/48db1a23f0f893bcd8ad5db87e7c5256)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

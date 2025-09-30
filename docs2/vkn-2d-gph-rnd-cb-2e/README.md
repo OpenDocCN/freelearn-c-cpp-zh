@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# Vulkan 3D 图形渲染秘籍第二版
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/87b0066438928a56f87cb4a34fbdcc51`](https://zh.annas-archive.org/md5/87b0066438928a56f87cb4a34fbdcc51)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 

@@ -1,6 +1,6 @@
-# GPT3 探索指南
+# 虚幻引擎物理精要
 
-> 原文：[`zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20`](https://zh.annas-archive.org/md5/e19ec4b9c1d08c12abd2983dace7ff20)
+> 原文：[`zh.annas-archive.org/md5/7b9c867e54ea37eeddfa0cb9bf827ecc`](https://zh.annas-archive.org/md5/7b9c867e54ea37eeddfa0cb9bf827ecc)
 > 
 > 译者：[飞龙](https://github.com/wizardforcel)
 > 
